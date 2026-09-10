@@ -173,6 +173,15 @@ The backend provides:
 
 ---
 
+## Continuous Integration
+
+Ready-to-enable GitHub Actions definitions are included in
+`docs/github-workflows/`. A maintainer with permission to manage workflows can
+copy them into `.github/workflows/` to enable linting, type checking, tests,
+and tagged releases.
+
+---
+
 ## Development
 
 ```bash
