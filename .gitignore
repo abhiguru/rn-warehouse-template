@@ -1,0 +1,43 @@
+# Dependencies
+node_modules/
+
+# Expo
+.expo/
+dist/
+web-build/
+
+# Native builds (regenerate with: npx expo prebuild)
+ios/
+android/
+
+# Environment files — NEVER commit these
+.env
+.env.local
+.env.*.local
+*.env
+
+# Build outputs
+*.jks
+coverage/
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
+
+# macOS
+.DS_Store
+
+# Editor
+.vscode/settings.json.bak
+.idea/
+
+# Logs
+npm-debug.*
+*.log
+
+# Sentry
+.sentryclirc
+
+# Backup files
+*.backup.*
