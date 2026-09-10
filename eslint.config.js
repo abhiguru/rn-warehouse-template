@@ -5,6 +5,10 @@ import reactHooks from 'eslint-plugin-react-hooks';
 
 export default [
   js.configs.recommended,
+  {
+    files: ['scripts/**/*.mjs'],
+    languageOptions: { globals: { Buffer: 'readonly', URL: 'readonly', process: 'readonly', console: 'readonly', fetch: 'readonly', AbortSignal: 'readonly' } },
+  },
   // Ignore CommonJS config files and utility files that legitimately use console
   {
     ignores: [

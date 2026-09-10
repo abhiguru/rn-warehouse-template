@@ -2,14 +2,14 @@
   "expo": {
     "name": "Warehouse Manager",
     "slug": "rn-warehouse-template",
-    "version": "1.0.0",
+    "version": "0.1.0",
     "orientation": "portrait",
     "newArchEnabled": true,
     "icon": "./assets/icon-1024.png",
     "userInterfaceStyle": "automatic",
     "backgroundColor": "#11222c",
     "scheme": "warehousemanager",
-    "runtimeVersion": "1.0.0",
+    "runtimeVersion": "0.1.0",
     "splash": {
       "image": "./assets/splash-icon-1024.png",
       "resizeMode": "contain",
@@ -23,7 +23,7 @@
       "requireFullScreen": true,
       "backgroundColor": "#11222c",
       "config": {
-        "deploymentTarget": "15.0"
+        "deploymentTarget": "15.1"
       },
       "privacyManifests": {
         "NSPrivacyTracking": false,

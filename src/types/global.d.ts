@@ -176,7 +176,6 @@ declare module '@react-native-async-storage/async-storage' {
 interface EnvConfig {
   SUPABASE_URL: string;
   SUPABASE_ANON_KEY: string;
-  SUPABASE_SERVICE_KEY?: string;
   API_URL?: string;
 }
 

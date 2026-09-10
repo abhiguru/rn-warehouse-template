@@ -18,6 +18,12 @@ const SECURE_KEYS = {
   TOKEN_EXPIRES: 'secure_token_expires',
 } as const;
 
+// Older fallback storage base64-encoded JWTs; do not send that encoding as a token.
+const decodeLegacyToken = (value: string | null): string | null => {
+  if (!value || value.includes('.')) return value;
+  try { return atob(value); } catch { return null; }
+};
+
 export interface AuthTokenResult {
   token: string | null;
   source: 'supabase' | 'securestore' | 'asyncstorage' | 'none';
@@ -65,7 +71,8 @@ export async function getAuthToken(): Promise<AuthTokenResult> {
     }
 
     // Fallback to legacy AsyncStorage JWT tokens (for migration)
-    const legacyToken = await AsyncStorage.getItem('auth_token');
+    const storedLegacyToken = await AsyncStorage.getItem('auth_token');
+    const legacyToken = decodeLegacyToken(storedLegacyToken);
     const legacyExpiresStr = await AsyncStorage.getItem('token_expires_at');
 
     if (legacyToken) {
@@ -86,7 +93,7 @@ export async function getAuthToken(): Promise<AuthTokenResult> {
       }
       const legacyRefresh = await AsyncStorage.getItem('refresh_token');
       if (legacyRefresh) {
-        await SecureStore.setItemAsync(SECURE_KEYS.REFRESH_TOKEN, legacyRefresh);
+        await SecureStore.setItemAsync(SECURE_KEYS.REFRESH_TOKEN, decodeLegacyToken(legacyRefresh)!);
       }
       // Clear legacy storage
       await AsyncStorage.multiRemove(['auth_token', 'refresh_token', 'token_expires_at']);
@@ -139,7 +146,7 @@ export async function getRefreshToken(): Promise<string | null> {
     }
 
     // Fallback to legacy AsyncStorage
-    return await AsyncStorage.getItem('refresh_token');
+    return decodeLegacyToken(await AsyncStorage.getItem('refresh_token'));
   } catch (error) {
     console.error('[AuthTokenUtils] Error getting refresh token:', error);
     return null;

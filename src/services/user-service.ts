@@ -90,7 +90,7 @@ export class UserService {
       if (!rpcError && assignedCustomerIds && assignedCustomerIds.length > 0) {
         // Fetch customer details for assigned customers
         const { data: customers, error: customersError } = await client
-          .from('customer')
+          .from('customers')
           .select('id, name, mobile, city, active')
           .in('id', assignedCustomerIds);
 
@@ -241,7 +241,7 @@ export class UserService {
       console.log('[UserService] Got client, executing search query...');
 
       const { data: customers, error } = await client
-        .from('customer')
+        .from('customers')
         .select('id, name, mobile, city')
         .or(`name.ilike.%${query}%,mobile.ilike.%${query}%,city.ilike.%${query}%`)
         .eq('active', true)
@@ -352,7 +352,7 @@ export class UserService {
     try {
       const client = await getAuthenticatedClient();
       const { data: customer, error } = await client
-        .from('customer')
+        .from('customers')
         .select('id, name, mobile, city, active')
         .eq('id', customerId)
         .single();

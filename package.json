@@ -1,6 +1,8 @@
 {
   "name": "rn-warehouse-template",
   "version": "0.1.0",
+  "private": true,
+  "engines": { "node": ">=22.18.0" },
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -21,6 +23,8 @@
     "format": "prettier --write .",
     "typecheck": "tsc --noEmit",
     "test": "jest --runInBand",
+    "test:setup": "node --test scripts/*.test.mjs",
+    "check:backend": "node scripts/check-backend.mjs",
     "update-supabase-keys": "bash scripts/update-supabase-keys.sh",
     "prepare": "husky"
   },

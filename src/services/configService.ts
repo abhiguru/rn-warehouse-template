@@ -10,6 +10,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { CONFIG_API_BASE_URL } from '@/config/envConfig';
+import { getAuthToken } from '@/utils/authTokenUtils';
 
 export interface PublicConfig {
   supabaseUrl: string;
@@ -387,40 +388,8 @@ class ConfigService {
    * Uses the same token storage pattern as supabaseConfig.ts
    */
   private static async getStoredJWT(): Promise<string | null> {
-    try {
-      // Get the auth token stored by the app
-      const authToken = await AsyncStorage.getItem('auth_token');
-
-      if (!authToken) {
-        console.warn('[ConfigService] No auth_token found in AsyncStorage');
-        return null;
-      }
-
-      // Check if token is expired
-      const expiresAtStr = await AsyncStorage.getItem('token_expires_at');
-      if (expiresAtStr) {
-        try {
-          const expiresAt = new Date(expiresAtStr).getTime();
-          const now = Date.now();
-
-          if (now > expiresAt) {
-            console.warn('[ConfigService] JWT token is expired', {
-              expiresAt: new Date(expiresAt).toISOString(),
-              now: new Date(now).toISOString()
-            });
-            return null;
-          }
-        } catch (parseError) {
-          console.warn('[ConfigService] Could not parse token expiry:', parseError);
-        }
-      }
-
-      console.log('[ConfigService] Using stored JWT token for config fetch');
-      return authToken;
-    } catch (error) {
-      console.error('[ConfigService] Failed to retrieve JWT from storage:', error);
-    }
-    return null;
+    const { token, expiresAt } = await getAuthToken();
+    return token && (!expiresAt || expiresAt > Date.now()) ? token : null;
   }
 
   /**

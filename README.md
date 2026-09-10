@@ -1,211 +1,112 @@
 # rn-warehouse-template
 
-An open-source React Native starter for warehouse management operations. Built with Expo, Supabase, and Redux Toolkit.
+Open-source React Native warehouse application source, built with Expo,
+Supabase, Redux Toolkit, and Expo Router.
 
-**Companion to**: [supabase-warehouse-template](https://github.com/abhiguru/supabase-warehouse-template) — the backend
+**Backend integration is not yet ready.** The companion
+[supabase-warehouse-template](https://github.com/abhiguru/supabase-warehouse-template)
+export is incomplete. You can install, check, and bundle this app, but cannot yet
+complete login/warehouse flows against that backend. See
+[READINESS.md](docs/READINESS.md) for verified results and remaining work.
 
----
+## Start contributing
 
-## Quick Start (<10 minutes)
-
-### Prerequisites
-
-- Node.js 20.19+
-- [supabase-warehouse-template](https://github.com/abhiguru/supabase-warehouse-template) running locally (Docker)
-- iOS: Xcode 15+ / Android: Android Studio
-
-### Steps
+Prerequisites: Node.js **22.18+** and npm. Native Android builds also need Android
+Studio, Android SDK, and a compatible JDK. iOS builds require macOS and Xcode
+16.1+ for this SDK; app-store submission requirements should be checked separately.
+This tree uses Expo SDK 54 / React Native 0.81.
 
 ```bash
-# 1. Clone and install
 git clone https://github.com/abhiguru/rn-warehouse-template.git
 cd rn-warehouse-template
-npm install
-
-# 2. Configure environment
+npm ci
 cp .env.example .env
-
-# 3. Fetch Supabase keys from local Docker
-npm run update-supabase-keys
-
-# 4. Start the dev server
-npm start
+npm run typecheck
+npm run lint
+npm test
+npm run test:setup
 ```
 
-Scan the QR code with Expo Go (iOS/Android) or press `i` for iOS simulator.
+`bash setup.sh` installs locked dependencies and creates `.env` only if absent.
+It never inspects Docker, reads service-role credentials, or overwrites an existing
+environment file.
 
-### Physical Device Setup
+## Connect a compatible backend
 
-If using a physical device, update `EXPO_PUBLIC_CONFIG_API_URL` in `.env` to use your LAN IP:
+After the backend export is complete, set `EXPO_PUBLIC_CONFIG_API_URL` in `.env`
+and the backend's `SUPABASE_PUBLIC_URL` to the same device-reachable origin:
+
+| Client | Example URL |
+| --- | --- |
+| iOS simulator / desktop on the backend host | `http://localhost:18000` |
+| Android emulator on the backend host | `http://10.0.2.2:18000` |
+| Physical phone | `http://YOUR_LAN_IP:18000` |
+
+The backend binds to loopback by default. A physical phone requires an explicit
+LAN binding/firewall choice; never expose test OTP mode to the internet. For
+remote deployment, use HTTPS. Do not copy the original deployment's credentials.
 
 ```bash
-EXPO_PUBLIC_CONFIG_API_URL=http://192.168.1.x:8000
+npm run check:backend
 ```
 
-Find your IP: `ipconfig getifaddr en0` (Mac) or `ip addr show` (Linux)
+This read-only check fetches public bootstrap configuration and detects wrong URLs,
+missing configuration, and accidental service-role keys. It does **not** prove
+that login or warehouse APIs work. No keys need to be copied into the app: it
+fetches its public anon key dynamically. `update-supabase-keys` is a deprecated
+alias for this check and no longer reads Docker.
 
----
-
-## Features
-
-| Feature | Description |
-|---|---|
-| GRN Management | Goods Receipt Note creation, editing, image upload |
-| Dispatch Tracking | Dispatch operations with customer assignment |
-| Invoice Management | Invoice creation and history |
-| Customer Orders | Order queue and management |
-| Stock Management | Inventory levels and stock aging |
-| Reports | Stock summary, dispatch activity, GRN activity |
-| Sensor Monitoring | Temperature & humidity sensor data |
-| Role-Based Access | Supervisor/Admin vs Customer views |
-
----
-
-## Architecture
-
-- **Routing**: [Expo Router](https://expo.github.io/router/) (file-based, like Next.js)
-- **State**: [Redux Toolkit](https://redux-toolkit.js.org/) + redux-persist
-- **Data Fetching**: [TanStack Query](https://tanstack.com/query)
-- **UI**: [React Native Paper](https://reactnativepaper.com/) (Material Design 3) + SAP Fiori patterns
-- **Backend**: [Supabase](https://supabase.com/) (PostgreSQL + Edge Functions + Auth)
-- **Auth**: Custom phone OTP via Supabase RPC
-
-```
-src/
-├── config/         # Supabase, Sentry, env config
-├── store/          # Redux slices and hooks
-├── services/       # API service layer
-├── components/     # Reusable UI components
-├── features/       # Feature modules (GRN form, etc.)
-├── hooks/          # Custom React hooks
-├── types/          # TypeScript types
-├── theme/          # Material Design 3 theme
-└── utils/          # Utilities
-
-app/                # Expo Router pages
-├── (tabs)/         # Main tab screens
-├── (auth)/         # Login/OTP screens
-├── grn-form/       # Multi-step GRN creation
-├── grn-edit/       # Multi-step GRN editing
-├── reports/        # Report screens
-└── ...
-```
-
----
-
-## Configuration
-
-All configuration is via environment variables in `.env`:
-
-| Variable | Default | Description |
-|---|---|---|
-| `EXPO_PUBLIC_CONFIG_API_URL` | `http://localhost:8000` | Supabase API base URL |
-| `EXPO_PUBLIC_APP_NAME` | `Warehouse Manager` | App display name |
-| `EXPO_PUBLIC_COMPANY_NAME` | `Your Company Name` | Company name for legal pages |
-| `EXPO_PUBLIC_APP_SCHEME` | `warehousemanager` | Deep link URL scheme |
-| `EXPO_PUBLIC_ANDROID_PACKAGE` | `com.example.warehousemanager` | Android package ID |
-| `EXPO_PUBLIC_SENTRY_DSN` | (empty = disabled) | Sentry/GlitchTip DSN |
-
----
-
-## Customization Guide
-
-### App Name & Brand
-
-1. Update `.env`:
-   ```bash
-   EXPO_PUBLIC_APP_NAME=My Warehouse App
-   EXPO_PUBLIC_COMPANY_NAME=Acme Corp
-   ```
-
-2. Update `app.json`:
-   - `name`, `slug`, `scheme`
-   - `ios.bundleIdentifier`, `android.package`
-
-3. Replace `assets/` placeholder images with your brand assets:
-   - `icon-1024.png` — App icon (1024x1024)
-   - `splash-icon-1024.png` — Splash screen (1024x1024)
-   - `logo.png` — Logo shown in tabs header
-
-### Theme Colors
-
-Edit `src/theme/index.ts` to change the color palette. The default uses:
-- Primary: `#f69000` (orange)
-- Background: `#11222c` (dark navy)
-
----
-
-## Native Builds
-
-The `ios/` and `android/` directories are excluded from this repo. Generate them:
+## Run a native debug build
 
 ```bash
-# Generate native projects
-npx expo prebuild
-
-# Build for iOS (requires Mac + Xcode)
-npm run ios
-
-# Build for Android
 npm run android
+# Or, on macOS:
+npm run ios
 ```
 
-### EAS Build (cloud)
+Expo generates the ignored native directories as needed. Use `npm start` for
+subsequent Metro sessions. Use native builds as the baseline; the latest Expo Go
+app may not support this older SDK, and Expo Go does not validate native plugins,
+permissions, or build settings. Native builds/device workflows have not yet been
+verified by this release.
+
+For a bundle-only check:
 
 ```bash
-npm install -g eas-cli
-eas login
-eas build --platform all
+npx expo export --platform android
 ```
 
-Update `eas.json` with your Apple/Google credentials before submitting.
+For cloud builds, first configure your own EAS project and signing credentials.
+No original signing assets or project ownership are included.
 
----
+## Application code
 
-## Backend
+Screens cover GRN, dispatch, invoices, customer orders, stock, reports, sensor
+monitoring, and role-based views. Their presence is not a claim of backend
+completeness. Many required RPC/PDF/print implementations are still missing.
 
-This app requires [supabase-warehouse-template](https://github.com/abhiguru/supabase-warehouse-template) as the backend.
+- `app/`: Expo Router routes and forms.
+- `src/services/`: backend calls and configuration.
+- `src/store/`: Redux state.
+- `src/components/`, `src/features/`, `src/hooks/`: UI/features.
+- `src/theme/`, `src/types/`, `src/utils/`: shared code.
 
-The backend provides:
-- `get-public-config` edge function (bootstraps the app on startup)
-- Phone OTP authentication RPC
-- All warehouse management data (GRN, dispatch, stock, etc.)
+Customize app identity in `app.json` (name, slug, scheme, bundle/package IDs).
+Use `.env` for displayed app/company names and optional Sentry DSN. Replace
+placeholder assets in `assets/` and review privacy/legal text and data collection
+before distributing a branded build. Never put private server keys in
+`EXPO_PUBLIC_*` variables: those are bundled into the app.
 
----
+## Checks and release status
 
-## Continuous Integration
+The second pass added regression tests for SecureStore-based config authentication,
+legacy token decoding, and bootstrap validation. See [READINESS.md](docs/READINESS.md).
+Dependency audit findings remain and require a tested SDK/dependency update.
 
-Ready-to-enable GitHub Actions definitions are included in
-`docs/github-workflows/`. A maintainer with permission to manage workflows can
-copy them into `.github/workflows/` to enable linting, type checking, tests,
-and tagged releases.
+GitHub Actions definitions are in `docs/github-workflows/` but **inactive**.
+A maintainer with workflow permission must copy them to `.github/workflows/`.
+The original publication credential cannot manage workflows; enabling CI does
+not require revoking or rotating existing credentials.
 
----
-
-## Development
-
-```bash
-npm run lint          # Check for linting errors
-npm run lint:fix      # Fix linting errors
-npm run format        # Format with Prettier
-npm run typecheck     # TypeScript type check
-```
-
-Commits follow [Conventional Commits](https://www.conventionalcommits.org/) (enforced by commitlint).
-
-### Test Credentials (local dev)
-
-- Phone: any 10-digit number
-- OTP: `123456`
-
----
-
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for development workflow.
-
----
-
-## License
-
-MIT — see [LICENSE](LICENSE)
+MIT — see [LICENSE](LICENSE). Contributions: [CONTRIBUTING.md](CONTRIBUTING.md).
+Security reports: [SECURITY.md](SECURITY.md).
