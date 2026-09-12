@@ -43,11 +43,11 @@ and, if Metro runs there, `adb reverse tcp:8081 tcp:8081`.
 Other development arrangements require matching backend `SUPABASE_PUBLIC_URL`
 and device-reachable app configuration. Examples for separately configured setups:
 
-| Client | Example URL |
-| --- | --- |
-| iOS simulator / desktop on the backend host | `http://localhost:18000` |
-| Android emulator on the backend host | `http://10.0.2.2:18000` |
-| Physical phone | `http://YOUR_LAN_IP:18000` |
+| Client                                      | Example URL                |
+| ------------------------------------------- | -------------------------- |
+| iOS simulator / desktop on the backend host | `http://localhost:18000`   |
+| Android emulator on the backend host        | `http://10.0.2.2:18000`    |
+| Physical phone                              | `http://YOUR_LAN_IP:18000` |
 
 The supported demo stays loopback-only; USB port reversal avoids a LAN binding.
 Do not expose test OTP mode to the internet. For
@@ -90,9 +90,9 @@ No original signing assets or project ownership are included.
 
 Screens cover GRN, dispatch, invoices, customer orders, stock, reports, sensor
 monitoring, and role-based views. Their presence is not a claim of backend
-completeness. All statically identified RPC names and four PDF endpoints are now
-present; optional preprinted printing/print-job management and broader runtime
-acceptance remain incomplete.
+completeness. All statically identified RPC names, four PDF endpoints, and
+companion preprinted print endpoints match the backend template contract (0 missing);
+physical printer/sensor hardware testing and broader runtime acceptance remain incomplete.
 
 - `app/`: Expo Router routes and forms.
 - `src/services/`: backend calls and configuration.
@@ -108,14 +108,15 @@ before distributing a branded build. Never put private server keys in
 
 ## Checks and release status
 
-The second pass added regression tests for SecureStore-based config authentication,
-legacy token decoding, and bootstrap validation. See [READINESS.md](docs/READINESS.md).
-Dependency audit findings remain and require a tested SDK/dependency update.
+The mobile test suite includes 75 automated Jest tests across 6 suites, covering
+fail-closed secure storage, token refresh, OTP verification, and client-side
+telemetry redaction (URLs, headers, user PII, breadcrumbs). See [READINESS.md](docs/READINESS.md)
+and [TELEMETRY_AND_PRIVACY.md](docs/TELEMETRY_AND_PRIVACY.md).
+Dependency audit findings are tracked in [DEPENDENCY_SECURITY.md](docs/DEPENDENCY_SECURITY.md).
 
-GitHub Actions definitions are in `docs/github-workflows/` but **inactive**.
-A maintainer with workflow permission must copy them to `.github/workflows/`.
-The original publication credential cannot manage workflows; enabling CI does
-not require revoking or rotating existing credentials.
+GitHub Actions workflows (`.github/workflows/ci.yml` and `release.yml`) are
+active and enforce linting, type-checking, automated tests, and dependency audits
+on all pushes and pull requests to `main`.
 
 MIT — see [LICENSE](LICENSE). Contributions: [CONTRIBUTING.md](CONTRIBUTING.md).
 Security reports: [SECURITY.md](SECURITY.md).
