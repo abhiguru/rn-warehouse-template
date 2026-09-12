@@ -7,27 +7,12 @@
  * Updated to support S2/S3 SecureStore migration.
  */
 
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as SecureStore from 'expo-secure-store';
-import { ensureValidTokens, getStoredToken } from '@/config/supabaseConfig';
-
-// SecureStore keys (must match supabaseConfig.ts)
-const SECURE_KEYS = {
-  AUTH_TOKEN: 'secure_auth_token',
-  REFRESH_TOKEN: 'secure_refresh_token',
-  TOKEN_EXPIRES: 'secure_token_expires',
-} as const;
-
-// Older fallback storage base64-encoded JWTs; do not send that encoding as a token.
-const decodeLegacyToken = (value: string | null): string | null => {
-  if (!value || value.includes('.') || /^[a-f0-9]{64}$/i.test(value))
-    return value;
-  try {
-    return atob(value);
-  } catch {
-    return null;
-  }
-};
+import {
+  clearStoredTokens,
+  ensureValidTokens,
+  getStoredToken,
+  storeTokens,
+} from '@/config/supabaseConfig';
 
 export interface AuthTokenResult {
   token: string | null;
@@ -78,24 +63,14 @@ export async function isAuthenticated(): Promise<boolean> {
 }
 
 /**
- * Get refresh token from SecureStore (with AsyncStorage fallback)
+ * Read a complete securely persisted session, including one-way legacy migration.
  *
  * @returns Promise with refresh token or null
  */
 export async function getRefreshToken(): Promise<string | null> {
   try {
-    // Try SecureStore first
-    const secureToken = await SecureStore.getItemAsync(
-      SECURE_KEYS.REFRESH_TOKEN
-    );
-    if (secureToken) {
-      return secureToken;
-    }
-
-    // Fallback to legacy AsyncStorage
-    return decodeLegacyToken(await AsyncStorage.getItem('refresh_token'));
-  } catch (error) {
-    console.error('[AuthTokenUtils] Error getting refresh token:', error);
+    return (await getStoredToken()).refreshToken ?? null;
+  } catch {
     return null;
   }
 }
@@ -112,49 +87,15 @@ export async function storeAuthTokens(
   refreshToken?: string,
   expiresAt?: number
 ): Promise<void> {
-  try {
-    await SecureStore.setItemAsync(SECURE_KEYS.AUTH_TOKEN, accessToken);
-
-    if (refreshToken) {
-      await SecureStore.setItemAsync(SECURE_KEYS.REFRESH_TOKEN, refreshToken);
-    }
-
-    if (expiresAt) {
-      await SecureStore.setItemAsync(
-        SECURE_KEYS.TOKEN_EXPIRES,
-        expiresAt.toString()
-      );
-    }
-  } catch (error) {
-    console.error('[AuthTokenUtils] Error storing auth tokens:', error);
-    throw error;
-  }
+  // Partial updates could pair credentials from different sessions.
+  await storeTokens(accessToken, refreshToken ?? '', expiresAt ?? 0);
 }
 
 /**
  * Clear all auth tokens from SecureStore and AsyncStorage
  */
 export async function clearAuthTokens(): Promise<void> {
-  try {
-    // Clear from SecureStore
-    await SecureStore.deleteItemAsync(SECURE_KEYS.AUTH_TOKEN).catch(() => {});
-    await SecureStore.deleteItemAsync(SECURE_KEYS.REFRESH_TOKEN).catch(
-      () => {}
-    );
-    await SecureStore.deleteItemAsync(SECURE_KEYS.TOKEN_EXPIRES).catch(
-      () => {}
-    );
-
-    // Also clear any legacy tokens from AsyncStorage
-    await AsyncStorage.multiRemove([
-      'auth_token',
-      'refresh_token',
-      'token_expires_at',
-    ]);
-  } catch (error) {
-    console.error('[AuthTokenUtils] Error clearing auth tokens:', error);
-    throw error;
-  }
+  await clearStoredTokens();
 }
 
 /**

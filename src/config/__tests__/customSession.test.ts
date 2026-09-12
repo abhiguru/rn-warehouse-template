@@ -28,6 +28,7 @@ const jwt = (expires = Math.floor(Date.now() / 1000) + 3600) =>
   `${btoa(JSON.stringify({ alg: 'HS256' }))}.${btoa(JSON.stringify({ sub: 'test-user', exp: expires, role: 'authenticated' }))}.test-signature`;
 
 beforeEach(async () => {
+  jest.clearAllMocks();
   secure.clear();
   rpc.mockReset();
   from.mockReset();
@@ -49,6 +50,83 @@ beforeEach(async () => {
       typeof createClient
     >);
   initializeSupabase('http://localhost:18000', 'local-test-anon');
+});
+
+it.each(['secure_auth_token', 'secure_refresh_token', 'secure_token_expires'])(
+  'fails closed and removes partial credentials when writing %s fails',
+  async failingKey => {
+    await storeTokens(jwt(), 'a'.repeat(64), Date.now() + 3600000);
+    jest
+      .mocked(SecureStore.setItemAsync)
+      .mockImplementation(async (key, value) => {
+        if (key === failingKey)
+          throw new Error('Native storage rejected a value');
+        secure.set(key, value);
+      });
+    const legacyWrite = jest.mocked(AsyncStorage.multiSet);
+    legacyWrite.mockClear();
+    await expect(
+      storeTokens(jwt(), 'b'.repeat(64), Date.now() + 3600000)
+    ).rejects.toThrow('Unable to save session securely');
+    expect(secure.size).toBe(0);
+    expect(legacyWrite).not.toHaveBeenCalled();
+    expect(await AsyncStorage.getItem('auth_token')).toBeNull();
+    expect(await AsyncStorage.getItem('refresh_token')).toBeNull();
+    expect(await getStoredToken()).toEqual({ isValid: false });
+  }
+);
+
+it('rejects a partial secure session without its expiry completion marker', async () => {
+  secure.set('secure_auth_token', jwt());
+  secure.set('secure_refresh_token', 'a'.repeat(64));
+  expect(await getStoredToken()).toEqual({ isValid: false });
+});
+
+it('does not use legacy credentials if secure migration fails', async () => {
+  await AsyncStorage.multiSet([
+    ['auth_token', btoa(jwt())],
+    ['refresh_token', 'd'.repeat(64)],
+    ['token_expires_at', String(Date.now() + 3600000)],
+  ]);
+  jest
+    .mocked(SecureStore.setItemAsync)
+    .mockRejectedValue(new Error('Unavailable'));
+  expect(await getStoredToken()).toEqual({ isValid: false });
+  expect(secure.size).toBe(0);
+  expect(await AsyncStorage.getItem('refresh_token')).toBeNull();
+});
+
+it('does not return success from OTP login when secure persistence fails', async () => {
+  const secret = 'native-error-must-not-leak-token';
+  const errors = jest.spyOn(console, 'error').mockImplementation(() => {});
+  rpc.mockResolvedValue({
+    data: {
+      success: true,
+      data: {
+        user: { role: 'customer' },
+        session: { access_token: jwt(), refresh_token: 'e'.repeat(64) },
+      },
+    },
+    error: null,
+  });
+  jest.mocked(SecureStore.setItemAsync).mockRejectedValue(new Error(secret));
+  expect((await verifyOTP('0000000002', '123456')).success).toBe(false);
+  expect(await getStoredToken()).toEqual({ isValid: false });
+  expect(errors.mock.calls.flat().map(String).join(' ')).not.toContain(secret);
+  errors.mockRestore();
+});
+
+it('rejects refreshed credentials if their secure persistence fails', async () => {
+  await storeTokens(jwt(1), 'a'.repeat(64), 1000);
+  rpc.mockResolvedValue({
+    data: { success: true, access_token: jwt(), refresh_token: 'b'.repeat(64) },
+    error: null,
+  });
+  jest
+    .mocked(SecureStore.setItemAsync)
+    .mockRejectedValue(new Error('Unavailable'));
+  expect(await refreshCustomJWT()).toBeNull();
+  expect(await getStoredToken()).toEqual({ isValid: false });
 });
 
 it('reloads an expired profile cache without destroying the session', async () => {

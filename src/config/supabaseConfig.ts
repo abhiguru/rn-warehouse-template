@@ -585,27 +585,15 @@ export const getStoredToken = async (): Promise<{
         refreshToken = decodeToken(legacyRefreshToken);
         expiresAtStr = legacyExpiresAt;
 
-        // Store in SecureStore
-        await SecureStore.setItemAsync(SECURE_KEYS.AUTH_TOKEN, authToken);
-        await SecureStore.setItemAsync(SECURE_KEYS.REFRESH_TOKEN, refreshToken);
-        if (expiresAtStr) {
-          await SecureStore.setItemAsync(
-            SECURE_KEYS.TOKEN_EXPIRES,
-            expiresAtStr
-          );
-        }
-
-        // Clean up legacy storage
-        await AsyncStorage.multiRemove([
-          'auth_token',
-          'refresh_token',
-          'token_expires_at',
-        ]);
+        // Never use legacy credentials until secure persistence succeeds.
+        await storeTokens(authToken, refreshToken, Number(expiresAtStr));
       }
     }
 
     if (authToken && refreshToken) {
-      const expires = expiresAtStr ? parseInt(expiresAtStr) : 0;
+      const expires = Number(expiresAtStr);
+      // Expiry is written last as the completion marker. Reject partial writes.
+      if (!Number.isFinite(expires) || expires <= 0) return { isValid: false };
       const now = Date.now();
 
       // Expired access tokens still carry a usable refresh token. Never delete it here.
@@ -619,28 +607,13 @@ export const getStoredToken = async (): Promise<{
     }
 
     return { isValid: false };
-  } catch (error) {
-    console.error('[Auth] Error getting stored session:', error);
+  } catch {
+    console.error('[Auth] Unable to read a securely persisted session.');
     return { isValid: false };
   }
 };
 
-/**
- * Simple base64 encoding for token storage (React Native compatible)
- * NOTE: This is NOT encryption - it's basic obfuscation to prevent casual inspection.
- * Primary token storage now uses expo-secure-store (see authTokenUtils.ts).
- * This encoding is only used as a fallback for non-sensitive data.
- */
-const encodeToken = (token: string): string => {
-  // Use btoa which is available in React Native's JavaScript environment
-  try {
-    // Simple encoding to prevent plain-text storage inspection
-    return btoa(unescape(encodeURIComponent(token)));
-  } catch {
-    return token; // Fallback to plain text if encoding fails
-  }
-};
-
+// Read-only compatibility for migrating old sessions; never encode new tokens.
 const decodeToken = (encoded: string): string => {
   try {
     // Check if it looks like base64 (contains only valid base64 characters)
@@ -655,35 +628,40 @@ const decodeToken = (encoded: string): string => {
   }
 };
 
-// Store tokens with expiration
-// S2/S3 Fix: Now uses SecureStore for encrypted token storage
+// Expiry is the completion marker for the three SecureStore values. Invalidate it
+// before replacing either token, then write it only after the pair is persisted.
 export const storeTokens = async (
   accessToken: string,
   refreshToken: string,
   expiresAt: number
 ) => {
   try {
-    // S2/S3 Fix: Store tokens in SecureStore (uses Keychain on iOS, encrypted SharedPreferences on Android)
+    if (
+      !accessToken ||
+      !refreshToken ||
+      !Number.isFinite(expiresAt) ||
+      expiresAt <= 0
+    ) {
+      throw new Error('Incomplete session');
+    }
+    clearAuthenticatedClientCache();
+    await SecureStore.deleteItemAsync(SECURE_KEYS.TOKEN_EXPIRES);
+    await AsyncStorage.multiRemove([
+      'auth_token',
+      'refresh_token',
+      'token_expires_at',
+    ]);
     await SecureStore.setItemAsync(SECURE_KEYS.AUTH_TOKEN, accessToken);
     await SecureStore.setItemAsync(SECURE_KEYS.REFRESH_TOKEN, refreshToken);
     await SecureStore.setItemAsync(
       SECURE_KEYS.TOKEN_EXPIRES,
       expiresAt.toString()
     );
-  } catch (error) {
-    console.error('[Auth] Error storing tokens in SecureStore:', error);
-    // Fallback to AsyncStorage with encoding if SecureStore fails
-    try {
-      await AsyncStorage.multiSet([
-        ['auth_token', encodeToken(accessToken)],
-        ['refresh_token', encodeToken(refreshToken)],
-        ['token_expires_at', expiresAt.toString()],
-      ]);
-      console.warn('[Auth] Tokens stored in AsyncStorage (fallback)');
-    } catch (fallbackError) {
-      console.error('[Auth] Fallback storage also failed:', fallbackError);
-      throw new Error('Unable to save session securely');
-    }
+  } catch {
+    // Never downgrade to unencrypted storage or log native errors that may echo
+    // the value being written. Login/refresh must fail when persistence fails.
+    await clearStoredTokens();
+    throw new Error('Unable to save session securely');
   }
 };
 
@@ -698,6 +676,10 @@ export const clearStoredTokens = async () => {
       () => {}
     );
     await SecureStore.deleteItemAsync(SECURE_KEYS.TOKEN_EXPIRES).catch(
+      () => {}
+    );
+    // Obsolete alternate helper used this expiry spelling.
+    await SecureStore.deleteItemAsync('secure_token_expires_at').catch(
       () => {}
     );
     await SecureStore.deleteItemAsync('cached_user_profile').catch(() => {});

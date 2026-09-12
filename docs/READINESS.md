@@ -6,7 +6,8 @@ repositories; the old v0.1.0 backend tag remains incomplete.
 
 ## Verified
 
-- 50 Jest tests pass, including expired access-token renewal, single-flight
+- 59 Jest tests pass, including secure-storage write/migration failure paths,
+  expired access-token renewal, single-flight
   refresh, transient network failure, refresh rejection, custom logout,
   legacy-token migration, expired profile-cache reload, and OTP authentication without GoTrue.
 - TypeScript and ESLint error checks pass. Backend public configuration is
@@ -19,9 +20,15 @@ repositories; the old v0.1.0 backend tag remains incomplete.
   getter. Fixed the paginated customer-item response adapter.
 - Setup preserves an existing environment file and retrieves no private backend
   keys. Original repositories and credentials remain unchanged.
+- Session persistence no longer falls back to Base64/AsyncStorage. Legacy
+  credentials are used only after secure migration succeeds. Token helpers share
+  the same session manager; incomplete writes cannot supply a refresh token.
+
 - Gitleaks 8.30.1 scans of the publishable mobile tree and its Git history find
   no secrets. The backend publication scan removed a legacy SMS initializer
   before release, without changing the original credential.
+
+Follow the [ordered release tracker](RELEASE_CHECKLIST.md) for ongoing work.
 
 The 2026-09-12 Android JavaScript export passed (2,934 modules, 45 assets).
 It is not a native APK or physical-device test.
@@ -52,8 +59,10 @@ numbers; no SMS is sent. Do not expose demo authentication publicly.
    enabling them. Four generic PDF endpoints are now implemented and API-tested.
 4. Implement production SMS and operator onboarding without fixed-code fallback.
    Production setup remains gated.
-5. Resolve the 2026-09-10 dependency audit findings (9 high, 20 moderate) through
-   compatible upgrades and native regression tests. Avoid exposing Metro.
+5. Resolve remaining dependency findings (2026-09-12: 0 high, 8 moderate,
+   0 critical) through navigation-compatible fixes and native regression tests.
+   Reviewed Metro/PostCSS/UUID overrides removed the high findings; see
+   [dependency review](DEPENDENCY_SECURITY.md). Avoid exposing Metro.
 6. Activate CI from `docs/github-workflows/` with maintainer workflow permission;
    complete rights/assets/privacy, secret/history and release-artifact checks.
    No credential revocation/rotation is needed to enable CI.
