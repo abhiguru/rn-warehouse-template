@@ -6,8 +6,9 @@ repositories; the old v0.1.0 backend tag remains incomplete.
 
 ## Verified
 
-- 59 Jest tests pass, including secure-storage write/migration failure paths,
-  expired access-token renewal, single-flight
+- 75 Jest tests (6 suites) pass, including Sentry/GlitchTip telemetry redaction
+  (URLs, query params, headers, user PII, recursive payloads, and real-time breadcrumbs),
+  secure-storage write/migration failure paths, expired access-token renewal, single-flight
   refresh, transient network failure, refresh rejection, custom logout,
   legacy-token migration, expired profile-cache reload, and OTP authentication without GoTrue.
 - TypeScript and ESLint error checks pass. Backend public configuration is
