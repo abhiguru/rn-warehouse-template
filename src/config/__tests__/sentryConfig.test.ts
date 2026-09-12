@@ -21,6 +21,15 @@ jest.mock('@sentry/react-native', () => ({
   addBreadcrumb: jest.fn(),
 }));
 
+// Deliberately unsigned fixture for redaction tests; never a usable session.
+const encodeFixture = (value: object) =>
+  btoa(JSON.stringify(value)).replace(/=+$/, '');
+const syntheticJwt = [
+  encodeFixture({ alg: 'HS256', typ: 'JWT' }),
+  encodeFixture({ sub: 'synthetic-redaction-fixture' }),
+  'invalid-signature',
+].join('.');
+
 describe('sentryConfig - Telemetry and Redaction', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -28,8 +37,7 @@ describe('sentryConfig - Telemetry and Redaction', () => {
 
   describe('redactSensitiveString', () => {
     it('redacts JWT tokens', () => {
-      const sampleJwt =
-        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c';
+      const sampleJwt = syntheticJwt;
       const input = `User failed to authenticate with token ${sampleJwt}`;
       const redacted = redactSensitiveString(input);
       expect(redacted).not.toContain(sampleJwt);
@@ -94,8 +102,7 @@ describe('sentryConfig - Telemetry and Redaction', () => {
     });
 
     it('redacts JWT query parameter values even if parameter name is unusual', () => {
-      const jwt =
-        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNH';
+      const jwt = syntheticJwt;
       const url = `https://example.com/callback?custom_auth=${jwt}`;
       const sanitized = sanitizeUrl(url);
       expect(sanitized).toContain('custom_auth=%5BREDACTED_JWT%5D');
@@ -203,7 +210,7 @@ describe('sentryConfig - Telemetry and Redaction', () => {
         },
         extra: {
           phoneNumber: '9876543210',
-          jwt: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIn0.abc',
+          jwt: syntheticJwt,
           status: 'error',
         },
         tags: {

@@ -2,6 +2,11 @@
 
 ## Current result
 
+Native follow-up: explicitly depend on SDK 54's `expo-font ~14.0.12` so the
+unrestricted icon-font peer does not autolink SDK 57's font module. Pin NetInfo
+to Expo's expected `11.4.1`. CI also runs `expo install --check`; a dependency
+regression test checks the selected font against Expo's bundled SDK range.
+
 The mobile audit fell from **9 high / 20 moderate / 0 critical** to
 **0 high / 8 moderate / 0 critical** after targeted dependency overrides.
 This is not a clean audit or a production-readiness approval. The backend npm
