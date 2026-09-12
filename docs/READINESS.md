@@ -63,9 +63,9 @@ numbers; no SMS is sent. Do not expose demo authentication publicly.
    0 critical) through navigation-compatible fixes and native regression tests.
    Reviewed Metro/PostCSS/UUID overrides removed the high findings; see
    [dependency review](DEPENDENCY_SECURITY.md). Avoid exposing Metro.
-6. Activate CI from `docs/github-workflows/` with maintainer workflow permission;
-   complete rights/assets/privacy, secret/history and release-artifact checks.
-   No credential revocation/rotation is needed to enable CI.
+6. CI workflows are activated in `.github/workflows/` and verified passing on GitHub Actions
+   (Lint, Typecheck, 59 tests, dependency audit, and bundle export all green).
+   Complete remaining rights/assets/privacy, secret/history and release-artifact checks.
 
 See the backend [readiness checklist](https://github.com/abhiguru/supabase-warehouse-template/blob/main/docs/READINESS.md)
 for the full integration/deployment boundary.
