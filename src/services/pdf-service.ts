@@ -1,4 +1,5 @@
-import { getSupabaseClient, getCurrentConfig, getStoredToken } from '../config/supabaseConfig';
+import { getCurrentConfig } from '../config/supabaseConfig';
+import { getAuthTokenString } from '@/utils/authTokenUtils';
 
 /**
  * Fix internal Docker URLs returned by backend Edge Functions
@@ -22,7 +23,10 @@ function fixInternalUrl(url: string): string {
   for (const pattern of internalPatterns) {
     if (url.startsWith(pattern)) {
       const fixedUrl = url.replace(pattern, publicUrl);
-      console.log('[PDF Service] Fixed internal URL:', { original: pattern, fixed: publicUrl });
+      console.log('[PDF Service] Fixed internal URL:', {
+        original: pattern,
+        fixed: publicUrl,
+      });
       return fixedUrl;
     }
   }
@@ -48,34 +52,7 @@ export interface PDFResponse {
  * Get authentication token for PDF API calls
  * First tries to get from Supabase session, falls back to stored JWT tokens
  */
-async function getAuthToken(): Promise<string | null> {
-  try {
-    console.log('[PDF Service] Starting getAuthToken...');
-
-    // Try Supabase session first
-    const { data: { session } } = await getSupabaseClient().auth.getSession();
-
-    if (session?.access_token) {
-      console.log('[PDF Service] ✓ Using Supabase session token');
-      return session.access_token;
-    }
-
-    // Fallback to stored JWT tokens
-    console.log('[PDF Service] Supabase session not found, checking stored JWT tokens...');
-    const storedToken = await getStoredToken();
-
-    if (storedToken.isValid && storedToken.type === 'jwt' && storedToken.authToken) {
-      console.log('[PDF Service] ✓ Using decoded JWT token');
-      return storedToken.authToken;
-    }
-
-    console.log('[PDF Service] ✗ No valid auth token found');
-    return null;
-  } catch (error) {
-    console.error('[PDF Service] Error getting auth token:', error);
-    return null;
-  }
-}
+const getAuthToken = getAuthTokenString;
 
 /**
  * Generate GRN PDF using Supabase Edge Function
@@ -151,7 +128,9 @@ export async function generateGRNPDF(grNo: string): Promise<PDFResponse> {
  * @param dispNo - Dispatch number (e.g., "I4613")
  * @returns PDF response with signed URL for download
  */
-export async function generateDispatchPDF(dispNo: string): Promise<PDFResponse> {
+export async function generateDispatchPDF(
+  dispNo: string
+): Promise<PDFResponse> {
   try {
     console.log('[PDF Service] generateDispatchPDF called:', { dispNo });
 
@@ -293,9 +272,13 @@ export async function generateInvoicePDF(
  * @param customerId - Customer UUID (e.g., "1275b249-2831-11ed-ba24-525400024271")
  * @returns PDF response with signed URL for download
  */
-export async function generateCustomerStockPDF(customerId: string): Promise<PDFResponse> {
+export async function generateCustomerStockPDF(
+  customerId: string
+): Promise<PDFResponse> {
   try {
-    console.log('[PDF Service] generateCustomerStockPDF called:', { customerId });
+    console.log('[PDF Service] generateCustomerStockPDF called:', {
+      customerId,
+    });
 
     const authToken = await getAuthToken();
     if (!authToken) {
@@ -349,7 +332,10 @@ export async function generateCustomerStockPDF(customerId: string): Promise<PDFR
       document: data.document,
     };
   } catch (error) {
-    console.error('[PDF Service] Exception in generateCustomerStockPDF:', error);
+    console.error(
+      '[PDF Service] Exception in generateCustomerStockPDF:',
+      error
+    );
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Failed to generate PDF',

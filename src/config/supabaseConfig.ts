@@ -1,8 +1,13 @@
-import { createClient, SupabaseClient, Session, User } from '@supabase/supabase-js';
+import {
+  createClient,
+  SupabaseClient,
+  Session,
+  User,
+} from '@supabase/supabase-js';
 import type { UserProfile } from '@/types/user.types';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
-import { createSecureSessionMarker, getSecureSessionMarker, clearSecureSessionMarker, migrateLegacySessionMarker } from '@/utils/secureSessionMarker';
+import { clearSecureSessionMarker } from '@/utils/secureSessionMarker';
 import { checkOTPRateLimit, recordOTPRequest } from '@/utils/otpRateLimiter';
 import { CACHE_DURATION_LONG_MS } from '@/config/cacheConfig';
 
@@ -13,390 +18,75 @@ const SECURE_KEYS = {
   TOKEN_EXPIRES: 'secure_token_expires',
 } as const;
 
-// Custom storage implementation for React Native
-const customStorage = {
-  getItem: async (key: string) => {
-    try {
-      return await AsyncStorage.getItem(key);
-    } catch (error) {
-      console.error('AsyncStorage getItem error:', error);
-      return null;
-    }
-  },
-  setItem: async (key: string, value: string) => {
-    try {
-      await AsyncStorage.setItem(key, value);
-    } catch (error) {
-      console.error('AsyncStorage setItem error:', error);
-    }
-  },
-  removeItem: async (key: string) => {
-    try {
-      await AsyncStorage.removeItem(key);
-    } catch (error) {
-      console.error('AsyncStorage removeItem error:', error);
-    }
-  },
-};
-
-// Global singleton instances to prevent multiple GoTrueClient warnings
+// The backend uses custom OTP sessions, not GoTrue. Keep the bootstrap client anonymous.
 let __supabaseInstance: SupabaseClient | undefined;
 let __currentConfig: { url: string; anonKey: string } | undefined;
+let __authenticatedClientInstance: SupabaseClient | undefined;
+let __cachedAuthToken: string | undefined;
 
-/**
- * Initialize or reinitialize Supabase client with new configuration
- * Always recreates on app startup to ensure fresh keys are used
- */
+export const clearAuthenticatedClientCache = () => {
+  __authenticatedClientInstance = undefined;
+  __cachedAuthToken = undefined;
+};
+
 export const initializeSupabase = (
   url: string,
   anonKey: string
 ): SupabaseClient => {
-  // Check if config changed
-  const configChanged =
-    !__currentConfig ||
-    __currentConfig.url !== url ||
-    __currentConfig.anonKey !== anonKey;
-
-  console.log('[SupabaseConfig] initializeSupabase called:', {
-    configChanged,
-    hasExistingInstance: !!__supabaseInstance,
-    newUrlPrefix: url?.substring(0, 30),
-    newKeyPrefix: anonKey?.substring(0, 30) + '...',
-    oldKeyPrefix: __currentConfig?.anonKey?.substring(0, 30) + '...',
-  });
-
-  if (configChanged) {
-    console.log('[SupabaseConfig] Creating NEW Supabase client (config changed)');
-
-    // Clear all cached client instances when keys change
-    __supabaseInstance = undefined;
-    __supabaseRPCInstance = undefined;
-    __supabaseJWTInstance = undefined;
-    __cachedJWTToken = undefined;
+  if (
+    !__supabaseInstance ||
+    __currentConfig?.url !== url ||
+    __currentConfig?.anonKey !== anonKey
+  ) {
     clearAuthenticatedClientCache();
-
+    __currentConfig = { url, anonKey };
     __supabaseInstance = createClient(url, anonKey, {
       auth: {
-        storage: customStorage,
-        autoRefreshToken: true,
-        persistSession: true,
-        detectSessionInUrl: false, // Disable for React Native
-        flowType: 'pkce',
+        autoRefreshToken: false,
+        persistSession: false,
+        detectSessionInUrl: false,
       },
     });
-
-    __currentConfig = { url, anonKey };
-    console.log('[SupabaseConfig] New client created successfully');
-  } else {
-    console.log('[SupabaseConfig] Reusing existing client (config unchanged)');
-  }
-
-  return __supabaseInstance!;
-};
-
-// Main Supabase client singleton (getter)
-export const getSupabaseClient = (): SupabaseClient => {
-  if (!__supabaseInstance) {
-    throw new Error('Supabase client not initialized. Configuration API must be loaded first.');
   }
   return __supabaseInstance;
 };
 
-/**
- * Get the current Supabase configuration
- */
+export const getSupabaseClient = (): SupabaseClient => {
+  if (!__supabaseInstance)
+    throw new Error('Configuration must be loaded first.');
+  return __supabaseInstance;
+};
+
 export const getCurrentConfig = () => {
-  if (!__currentConfig) {
-    throw new Error('Configuration not loaded. Bootstrap config first.');
-  }
+  if (!__currentConfig) throw new Error('Configuration must be loaded first.');
   return __currentConfig;
 };
 
-// NOTE: Do not create singleton here - it must be initialized dynamically
-// Always use getSupabaseClient() getter function instead
+export const getSupabaseRPCClient = getSupabaseClient;
 
-// Cached authenticated client instance
-let __authenticatedClientInstance: SupabaseClient | undefined;
-let __cachedAuthToken: string | null | undefined;
-let __cachedTokenExpiresAt: number | undefined;
-// Lock to prevent concurrent client creation race conditions
-let __authClientInitPromise: Promise<SupabaseClient> | null = null;
-
-/**
- * Check if cached token is still valid with a safety buffer
- * Returns false if token is expired or will expire within buffer period
- */
-const isTokenValid = (expiresAt: number | undefined, bufferMinutes: number = 5): boolean => {
-  if (!expiresAt) return false;
-  const bufferMs = bufferMinutes * 60 * 1000;
-  return Date.now() < (expiresAt - bufferMs);
-};
-
-/**
- * Clear the cached authenticated client (used when tokens expire)
- */
-export const clearAuthenticatedClientCache = () => {
-  __authenticatedClientInstance = undefined;
-  __cachedAuthToken = undefined;
-  __cachedTokenExpiresAt = undefined;
-  __authClientInitPromise = null;
-  console.log('[SupabaseConfig] Authenticated client cache cleared');
-};
-
-/**
- * Get an authenticated Supabase client for RPC calls
- * This function checks for stored JWT tokens and creates a client with proper auth headers
- * Uses singleton pattern with initialization lock to avoid race conditions
- * Enforces token expiration - will not return cached client if token is expired or about to expire
- */
 export const getAuthenticatedClient = async (): Promise<SupabaseClient> => {
-  const startTime = Date.now();
-
-  // FAST PATH: Quick synchronous return if we have a valid cached client
-  // This avoids AsyncStorage reads and race conditions for subsequent calls
-  if (__authenticatedClientInstance && __cachedAuthToken && isTokenValid(__cachedTokenExpiresAt)) {
-    return __authenticatedClientInstance;
-  }
-
-  // If already initializing, wait for that promise to prevent race conditions
-  if (__authClientInitPromise) {
-    console.log('[SupabaseConfig] getAuthenticatedClient - waiting for existing init promise');
-    return __authClientInitPromise;
-  }
-
-  // Check for stored JWT tokens (only if not already cached)
-  const tokenCheckStart = Date.now();
-  const tokenData = await getStoredToken();
-  console.log(`[SupabaseConfig] getStoredToken took ${Date.now() - tokenCheckStart}ms`);
-
-  if (tokenData.isValid && tokenData.type === 'jwt' && tokenData.authToken) {
-    // Return cached client if token matches (double-check after async getStoredToken)
-    if (__authenticatedClientInstance && __cachedAuthToken === tokenData.authToken) {
-      return __authenticatedClientInstance;
-    }
-
-    // Check if we need to create a new client (token changed)
-    if (__authenticatedClientInstance && __cachedAuthToken !== tokenData.authToken) {
-      console.log('[SupabaseConfig] Token changed, recreating authenticated client');
-      clearAuthenticatedClientCache();
-    }
-
-    // Create initialization promise to prevent concurrent creation
-    __authClientInitPromise = (async () => {
-      const clientCreateStart = Date.now();
-      try {
-        const config = getCurrentConfig();
-        console.log('[SupabaseConfig] Creating new authenticated client with URL:', config.url);
-        // Create a new client with JWT in Authorization header
-        const newClient = createClient(config.url, config.anonKey, {
-          global: {
-            headers: {
-              Authorization: `Bearer ${tokenData.authToken}`,
-              'apikey': config.anonKey
-            }
-          },
-          auth: {
-            storage: customStorage,
-            autoRefreshToken: false,
-            persistSession: false,
-            detectSessionInUrl: false
-          }
-        });
-        __authenticatedClientInstance = newClient;
-        __cachedAuthToken = tokenData.authToken;
-        __cachedTokenExpiresAt = tokenData.expiresAt;
-        console.log(`[SupabaseConfig] New client created in ${Date.now() - clientCreateStart}ms, total getAuthenticatedClient: ${Date.now() - startTime}ms`);
-        return newClient;
-      } finally {
-        // Clear the promise after initialization completes
-        __authClientInitPromise = null;
-      }
-    })();
-
-    return __authClientInitPromise;
-  }
-
-  // Token is invalid or expired - ensure cache is cleared
-  if (__authenticatedClientInstance) {
-    console.log('[SupabaseConfig] Tokens invalid/expired, clearing authenticated client cache');
+  if (!(await ensureValidTokens())) {
     clearAuthenticatedClientCache();
+    throw new Error('Sign in required');
   }
-
-  console.log('[SupabaseConfig] No valid JWT tokens found, returning regular client');
-  return getSupabaseClient();
-};
-
-// Create a special client for RPC calls that handle their own auth
-let __supabaseRPCInstance: SupabaseClient | undefined;
-
-export const getSupabaseRPCClient = (): SupabaseClient => {
-  if (!__supabaseRPCInstance) {
+  const token = await getStoredToken();
+  if (!token.authToken || !token.isValid) throw new Error('Sign in required');
+  if (!__authenticatedClientInstance || __cachedAuthToken !== token.authToken) {
     const config = getCurrentConfig();
-    console.log('[SupabaseConfig] Creating new Supabase RPC client instance');
-    __supabaseRPCInstance = createClient(config.url, config.anonKey, {
+    __authenticatedClientInstance = createClient(config.url, config.anonKey, {
+      global: { headers: { Authorization: 'Bearer ' + token.authToken } },
       auth: {
-        storage: customStorage,
         autoRefreshToken: false,
         persistSession: false,
         detectSessionInUrl: false,
-        storageKey: 'sb-rpc-auth-token'
-      }
+      },
     });
+    __cachedAuthToken = token.authToken;
   }
-  return __supabaseRPCInstance;
+  return __authenticatedClientInstance;
 };
 
-// JWT client singleton
-let __supabaseJWTInstance: SupabaseClient | undefined;
-let __cachedJWTToken: string | null | undefined;
-
-/**
- * Get a Supabase client configured with JWT authentication
- * Uses AsyncStorage instead of localStorage for React Native
- */
-export const getSupabaseWithJWT = async () => {
-  const config = getCurrentConfig();
-  console.log('[SupabaseConfig] Getting JWT-authenticated Supabase client');
-  console.log('[SupabaseConfig] JWT client will use URL:', config.url);
-
-  // First, try to get the session from the main Supabase client
-  const mainClient = getSupabaseClient();
-  const { data: sessionData } = await mainClient.auth.getSession();
-  
-  console.log('[SupabaseConfig] Session Check:', {
-    hasSession: !!sessionData?.session,
-    hasAccessToken: !!sessionData?.session?.access_token,
-    tokenType: sessionData?.session?.token_type,
-    expiresAt: sessionData?.session?.expires_at,
-    userId: sessionData?.session?.user?.id
-  });
-  
-  // If we have a valid session with JWT token, use it
-  if (sessionData?.session?.access_token) {
-    const token = sessionData.session.access_token;
-    
-    // S7 Fix: Only log token details in development
-    if (__DEV__) {
-      console.log('[SupabaseConfig] Using session JWT token:', {
-        tokenLength: token.length,
-        tokenPrefix: token.substring(0, 20) + '...',
-        tokenParts: token.split('.').length,
-        isValidJWT: token.split('.').length === 3
-      });
-    }
-    
-    // Check if we already have a JWT client with the same token
-    if (__supabaseJWTInstance && __cachedJWTToken === token) {
-      console.log('[SupabaseConfig] Returning cached JWT client');
-      return __supabaseJWTInstance;
-    }
-
-    console.log('[SupabaseConfig] Creating new JWT-authenticated client with session token');
-
-    // Create the client with proper auth configuration
-    __supabaseJWTInstance = createClient(config.url, config.anonKey, {
-      global: {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'apikey': config.anonKey
-        }
-      },
-      auth: {
-        storage: customStorage,
-        autoRefreshToken: false,
-        persistSession: true,  // Changed to true to maintain session
-        detectSessionInUrl: false
-      }
-    });
-
-    // Set the session on the new client instance
-    console.log('[SupabaseConfig] Setting session on JWT client');
-    await __supabaseJWTInstance.auth.setSession({
-      access_token: token,
-      refresh_token: sessionData.session.refresh_token
-    });
-
-    __cachedJWTToken = token;
-    return __supabaseJWTInstance;
-  }
-
-  // Fallback: Try to get stored tokens
-  console.log('[SupabaseConfig] No session found, checking stored tokens...');
-  const storedTokenResult = await getStoredToken();
-  
-  if (storedTokenResult.isValid && storedTokenResult.type === 'jwt' && storedTokenResult.authToken) {
-    const token = storedTokenResult.authToken;
-    
-    console.log('[SupabaseConfig] Using stored JWT token:', {
-      tokenLength: token.length,
-      tokenPrefix: token.substring(0, 20) + '...',
-      tokenParts: token.split('.').length,
-      isValidJWT: token.split('.').length === 3
-    });
-
-    // Check if we already have a JWT client with the same token
-    if (__supabaseJWTInstance && __cachedJWTToken === token) {
-      console.log('[SupabaseConfig] Returning cached JWT client');
-      return __supabaseJWTInstance;
-    }
-
-    console.log('[SupabaseConfig] Creating new JWT-authenticated client with stored token');
-    __supabaseJWTInstance = createClient(config.url, config.anonKey, {
-      global: {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'apikey': config.anonKey
-        }
-      },
-      auth: {
-        storage: customStorage,
-        autoRefreshToken: false,
-        persistSession: false,
-        detectSessionInUrl: false
-      }
-    });
-
-    __cachedJWTToken = token;
-    return __supabaseJWTInstance;
-  }
-
-  // Last resort: Check for custom auth token
-  console.log('[SupabaseConfig] No JWT tokens found, checking for custom auth token...');
-  const customToken = await AsyncStorage.getItem('auth_token');
-  
-  if (customToken) {
-    // S7 Fix: Only log token details in development
-    if (__DEV__) {
-      console.log('[SupabaseConfig] Found custom auth token:', {
-        tokenLength: customToken.length,
-        tokenPrefix: customToken.substring(0, 20) + '...',
-        tokenParts: customToken.split('.').length
-      });
-      console.warn('[SupabaseConfig] Using custom token format - this may have limited permissions');
-    }
-    
-    __supabaseJWTInstance = createClient(config.url, config.anonKey, {
-      global: {
-        headers: {
-          Authorization: `Bearer ${customToken}`,
-          'apikey': config.anonKey
-        }
-      },
-      auth: {
-        storage: customStorage,
-        autoRefreshToken: false,
-        persistSession: false,
-        detectSessionInUrl: false
-      }
-    });
-
-    __cachedJWTToken = customToken;
-    return __supabaseJWTInstance;
-  }
-
-  console.warn('[SupabaseConfig] No authentication tokens found, returning regular client');
-  return getSupabaseClient();
-};
+export const getSupabaseWithJWT = getAuthenticatedClient;
 
 // Phone authentication helper using custom RPC
 export const signInWithPhone = async (phone: string) => {
@@ -413,9 +103,10 @@ export const signInWithPhone = async (phone: string) => {
     const rateLimit = await checkOTPRateLimit(formattedPhone);
     if (!rateLimit.allowed) {
       const retryAfterSec = rateLimit.retryAfterSeconds || 60;
-      const reason = rateLimit.reason === 'daily'
-        ? `Daily limit reached (20 requests). Try again tomorrow.`
-        : `Please wait ${retryAfterSec} seconds before requesting another code.`;
+      const reason =
+        rateLimit.reason === 'daily'
+          ? `Daily limit reached (20 requests). Try again tomorrow.`
+          : `Please wait ${retryAfterSec} seconds before requesting another code.`;
 
       console.warn('[Auth] OTP rate limit exceeded:', {
         phone: formattedPhone.slice(-4),
@@ -430,20 +121,12 @@ export const signInWithPhone = async (phone: string) => {
       };
     }
 
-    console.log('[Auth] Sending OTP:', {
-      originalPhone: phone,
-      formattedPhone: formattedPhone,
-      purpose: 'login',
-      dailyRemaining: rateLimit.dailyRemaining,
-    });
-
     const { data, error } = await getSupabaseClient().rpc('send_otp', {
       p_phone_number: formattedPhone,
-      p_purpose: 'login'
+      p_purpose: 'login',
     });
 
     // Log full response for debugging
-    console.log('[Auth] Send OTP RPC Response:', { data, error });
 
     if (error) {
       console.error('[Auth] Send OTP RPC error:', error);
@@ -452,15 +135,17 @@ export const signInWithPhone = async (phone: string) => {
 
     // Check if OTP was sent successfully - RPC returns array
     const responseData = Array.isArray(data) ? data[0] : data;
-    const isSuccess = responseData?.success === true || responseData?.status === 'success';
+    const isSuccess =
+      responseData?.success === true || responseData?.status === 'success';
 
     if (isSuccess) {
       // Record successful OTP request for rate limiting
       await recordOTPRequest(formattedPhone);
-      console.log('[Auth] OTP sent successfully:', responseData);
+
       return { success: true, data: responseData };
     } else {
-      const errorMsg = responseData?.message || responseData?.error || 'Failed to send OTP';
+      const errorMsg =
+        responseData?.message || responseData?.error || 'Failed to send OTP';
       console.error('[Auth] Send OTP failed:', errorMsg);
       return { success: false, error: errorMsg };
     }
@@ -508,7 +193,9 @@ const formatPhoneNumber = (phone: string): string => {
  * S9 Fix: Validate JWT token structure and expiration
  * Returns decoded payload if valid, null otherwise
  */
-const validateJWTToken = (token: string): { valid: boolean; exp?: number; sub?: string } => {
+const validateJWTToken = (
+  token: string
+): { valid: boolean; exp?: number; sub?: string } => {
   try {
     const parts = token.split('.');
     if (parts.length !== 3) {
@@ -575,20 +262,15 @@ export const verifyOTP = async (
   try {
     const formattedPhone = formatPhoneNumber(phone);
 
-    console.log('[Auth] Verifying OTP:', {
-      originalPhone: phone,
-      formattedPhone,
-      otpCode: token,
-      userName: userName || 'User',
-    });
-
     // Step 1: Call the verification RPC
-    const { data, error } = await getSupabaseClient().rpc('verify_otp_or_register', {
-      p_phone_number: formattedPhone,
-      p_otp_code: token,
-    });
-
-    console.log('[Auth] RPC Response:', { data, error });
+    const { data, error } = await getSupabaseClient().rpc(
+      'verify_otp_or_register',
+      {
+        p_phone_number: formattedPhone,
+        p_otp_code: token,
+        p_name: userName || null,
+      }
+    );
 
     if (error) {
       console.error('[Auth] OTP verification RPC error:', error);
@@ -619,13 +301,6 @@ export const verifyOTP = async (
       action: string;
     };
 
-    console.log('[Auth] OTP verification successful');
-    console.log('[Auth] Response structure:', {
-      hasUser: !!responseData.user,
-      hasSession: !!responseData.session,
-      action: responseData.action,
-    });
-
     // =========================================================================
     // AUTH: Extract JWT tokens from session object
     // =========================================================================
@@ -646,12 +321,6 @@ export const verifyOTP = async (
       return { success: false, error: 'Invalid authentication token' };
     }
 
-    console.log('[Auth] ✅ JWT tokens validated');
-    console.log('[Auth] Token info:', {
-      expiresAt: new Date(validation.exp! * 1000).toISOString(),
-      subject: validation.sub,
-    });
-
     // Calculate expiration time
     const expiresAt = validation.exp
       ? validation.exp * 1000
@@ -668,23 +337,21 @@ export const verifyOTP = async (
     if (user) {
       try {
         const authClient = await getAuthenticatedClient();
-        const { data: customerIds, error: rpcError } = await authClient
-          .rpc('user_accessible_customers');
+        const { data: customerIds, error: rpcError } = await authClient.rpc(
+          'user_accessible_customers'
+        );
 
         if (!rpcError && customerIds) {
           userProfileWithCustomers = {
             ...user,
             assignedCustomerIds: customerIds,
           };
-          console.log('[Auth] Fetched customer assignments:', customerIds.length);
         }
       } catch (err) {
         console.warn('[Auth] Failed to fetch customer assignments:', err);
       }
       await cacheUserProfile(userProfileWithCustomers);
     }
-
-    console.log('[Auth] ✅ Authentication complete');
 
     return {
       success: true,
@@ -706,10 +373,15 @@ export const verifyOTP = async (
 // Sign out helper - clear stored tokens and Supabase session
 export const signOut = async () => {
   try {
-    // Sign out from Supabase first
-    const { error: signOutError } = await getSupabaseClient().auth.signOut();
-    if (signOutError) {
-      console.error('[Auth] Supabase sign out error:', signOutError);
+    const stored = await getStoredToken();
+    if (stored.refreshToken) {
+      const { error } = await getSupabaseRPCClient().rpc('logout_session', {
+        p_refresh_token: stored.refreshToken,
+      });
+      if (error)
+        console.warn(
+          '[Auth] Server logout unavailable; local credentials will still be cleared.'
+        );
     }
 
     // Clear all stored tokens and session data
@@ -717,27 +389,30 @@ export const signOut = async () => {
 
     // Clear secure session marker
     await clearSecureSessionMarker();
-    
+
     // Clear any AsyncStorage data that might persist
     // Get all keys and remove any that contain 'auth' or 'session'
     const allKeys = await AsyncStorage.getAllKeys();
-    const authKeys = allKeys.filter(key => 
-      key.includes('auth') || 
-      key.includes('session') || 
-      key.includes('supabase') ||
-      key.includes('sb-')
+    const authKeys = allKeys.filter(
+      key =>
+        key.includes('auth') ||
+        key.includes('session') ||
+        key.includes('supabase') ||
+        key.includes('sb-')
     );
-    
+
     if (authKeys.length > 0) {
-      console.log('[Auth] Clearing auth-related keys:', authKeys);
       await AsyncStorage.multiRemove(authKeys);
     }
-    
-    console.log('[Auth] Sign out completed');
+
     return { success: true };
   } catch (error) {
     console.error('[Auth] Sign out exception:', error);
     return { success: false, error: 'Sign out failed' };
+  } finally {
+    clearAuthenticatedClientCache();
+    await clearStoredTokens();
+    await clearSecureSessionMarker();
   }
 };
 
@@ -751,21 +426,28 @@ export const signOut = async () => {
  *
  * @returns New token data if successful, null if refresh failed
  */
-export const refreshCustomJWT = async (): Promise<{
+type RefreshedSession = {
   accessToken: string;
   refreshToken: string;
   expiresAt: number;
-} | null> => {
+};
+let refreshInFlight: Promise<RefreshedSession | null> | null = null;
+export const refreshCustomJWT = (): Promise<RefreshedSession | null> => {
+  if (!refreshInFlight) {
+    refreshInFlight = refreshSession().finally(() => {
+      refreshInFlight = null;
+    });
+  }
+  return refreshInFlight;
+};
+const refreshSession = async (): Promise<RefreshedSession | null> => {
   try {
     // Get stored refresh token from SecureStore
-    const refreshToken = await SecureStore.getItemAsync(SECURE_KEYS.REFRESH_TOKEN);
+    const { refreshToken } = await getStoredToken();
 
     if (!refreshToken) {
-      console.log('[Auth] No refresh token available for custom JWT refresh');
       return null;
     }
-
-    console.log('[Auth] Attempting custom JWT token refresh...');
 
     // Call backend RPC to refresh tokens
     const { data, error } = await getSupabaseClient().rpc('refresh_jwt_token', {
@@ -775,7 +457,10 @@ export const refreshCustomJWT = async (): Promise<{
     if (error) {
       console.error('[Auth] Token refresh RPC error:', error.message);
       // If refresh token is invalid/expired, clear stored tokens
-      if (error.message.includes('invalid') || error.message.includes('expired')) {
+      if (
+        error.message.includes('invalid') ||
+        error.message.includes('expired')
+      ) {
         await clearStoredTokens();
       }
       return null;
@@ -785,7 +470,11 @@ export const refreshCustomJWT = async (): Promise<{
     const responseData = Array.isArray(data) ? data[0] : data;
 
     if (!responseData?.success || !responseData?.access_token) {
-      console.error('[Auth] Token refresh failed:', responseData?.message || 'Unknown error');
+      if (responseData?.success === false) await clearStoredTokens();
+      console.error(
+        '[Auth] Token refresh failed:',
+        responseData?.message || 'Unknown error'
+      );
       return null;
     }
 
@@ -812,9 +501,6 @@ export const refreshCustomJWT = async (): Promise<{
     // Clear cached authenticated client so it picks up new token
     clearAuthenticatedClientCache();
 
-    console.log('[Auth] ✅ Custom JWT tokens refreshed successfully');
-    console.log('[Auth] New token expires at:', new Date(expiresAt).toISOString());
-
     return {
       accessToken: newAccessToken,
       refreshToken: newRefreshToken,
@@ -835,16 +521,6 @@ export const ensureValidTokens = async (): Promise<boolean> => {
   try {
     const tokenData = await getStoredToken();
 
-    // No tokens stored
-    if (!tokenData.isValid) {
-      return false;
-    }
-
-    // Session marker type - check expiration
-    if (tokenData.type === 'session') {
-      return true; // Session markers are valid until they expire
-    }
-
     // JWT tokens - check if we need to refresh
     if (tokenData.type === 'jwt') {
       const expiresAt = tokenData.expiresAt || 0;
@@ -857,17 +533,18 @@ export const ensureValidTokens = async (): Promise<boolean> => {
       }
 
       // Token expired or about to expire - try refresh
-      console.log('[Auth] Token expired or expiring soon, attempting refresh...');
+
       const refreshResult = await refreshCustomJWT();
 
       if (refreshResult) {
-        console.log('[Auth] Token refresh successful, session restored');
         return true;
       }
 
       // Refresh failed - tokens are invalid
-      console.log('[Auth] Token refresh failed, user needs to re-authenticate');
-      return false;
+
+      // A temporary network error must not destroy an otherwise unexpired session.
+      const remaining = await getStoredToken();
+      return remaining.isValid === true;
     }
 
     return false;
@@ -879,12 +556,22 @@ export const ensureValidTokens = async (): Promise<boolean> => {
 
 // Session Management (supports both JWT tokens and session markers)
 // S2/S3 Fix: Now uses SecureStore for encrypted token storage
-export const getStoredToken = async () => {
+export const getStoredToken = async (): Promise<{
+  authToken?: string;
+  refreshToken?: string;
+  expiresAt?: number;
+  isValid: boolean;
+  type?: 'jwt' | 'session';
+}> => {
   try {
     // S2/S3 Fix: First check SecureStore for tokens
     let authToken = await SecureStore.getItemAsync(SECURE_KEYS.AUTH_TOKEN);
-    let refreshToken = await SecureStore.getItemAsync(SECURE_KEYS.REFRESH_TOKEN);
-    let expiresAtStr = await SecureStore.getItemAsync(SECURE_KEYS.TOKEN_EXPIRES);
+    let refreshToken = await SecureStore.getItemAsync(
+      SECURE_KEYS.REFRESH_TOKEN
+    );
+    let expiresAtStr = await SecureStore.getItemAsync(
+      SECURE_KEYS.TOKEN_EXPIRES
+    );
 
     // Migration: If no tokens in SecureStore, check AsyncStorage and migrate
     if (!authToken || !refreshToken) {
@@ -902,12 +589,18 @@ export const getStoredToken = async () => {
         await SecureStore.setItemAsync(SECURE_KEYS.AUTH_TOKEN, authToken);
         await SecureStore.setItemAsync(SECURE_KEYS.REFRESH_TOKEN, refreshToken);
         if (expiresAtStr) {
-          await SecureStore.setItemAsync(SECURE_KEYS.TOKEN_EXPIRES, expiresAtStr);
+          await SecureStore.setItemAsync(
+            SECURE_KEYS.TOKEN_EXPIRES,
+            expiresAtStr
+          );
         }
 
         // Clean up legacy storage
-        await AsyncStorage.multiRemove(['auth_token', 'refresh_token', 'token_expires_at']);
-        console.log('[Auth] Migrated tokens from AsyncStorage to SecureStore');
+        await AsyncStorage.multiRemove([
+          'auth_token',
+          'refresh_token',
+          'token_expires_at',
+        ]);
       }
     }
 
@@ -915,34 +608,13 @@ export const getStoredToken = async () => {
       const expires = expiresAtStr ? parseInt(expiresAtStr) : 0;
       const now = Date.now();
 
-      // Check if token is still valid (with 5-minute buffer)
-      if (expires > now + (5 * 60 * 1000)) {
-        return {
-          authToken,
-          refreshToken,
-          expiresAt: expires,
-          isValid: true,
-          type: 'jwt'
-        };
-      } else {
-        // Tokens expired - clean up from SecureStore
-        await SecureStore.deleteItemAsync(SECURE_KEYS.AUTH_TOKEN);
-        await SecureStore.deleteItemAsync(SECURE_KEYS.REFRESH_TOKEN);
-        await SecureStore.deleteItemAsync(SECURE_KEYS.TOKEN_EXPIRES);
-      }
-    }
-
-    // Migrate legacy session markers if they exist
-    await migrateLegacySessionMarker();
-
-    // Check for secure session marker (with HMAC verification)
-    const secureMarker = await getSecureSessionMarker();
-    if (secureMarker) {
-      console.log('[Auth] Valid secure session marker found');
+      // Expired access tokens still carry a usable refresh token. Never delete it here.
       return {
-        sessionData: secureMarker,
-        isValid: true,
-        type: 'session'
+        authToken,
+        refreshToken,
+        expiresAt: expires,
+        isValid: expires > now,
+        type: 'jwt',
       };
     }
 
@@ -973,7 +645,7 @@ const decodeToken = (encoded: string): string => {
   try {
     // Check if it looks like base64 (contains only valid base64 characters)
     // Valid JWT tokens have periods, so if it has a period, it's likely already decoded/plain
-    if (encoded.includes('.')) {
+    if (encoded.includes('.') || /^[a-f0-9]{64}$/i.test(encoded)) {
       return encoded; // Already a plain JWT token
     }
     return decodeURIComponent(escape(atob(encoded)));
@@ -985,13 +657,19 @@ const decodeToken = (encoded: string): string => {
 
 // Store tokens with expiration
 // S2/S3 Fix: Now uses SecureStore for encrypted token storage
-export const storeTokens = async (accessToken: string, refreshToken: string, expiresAt: number) => {
+export const storeTokens = async (
+  accessToken: string,
+  refreshToken: string,
+  expiresAt: number
+) => {
   try {
     // S2/S3 Fix: Store tokens in SecureStore (uses Keychain on iOS, encrypted SharedPreferences on Android)
     await SecureStore.setItemAsync(SECURE_KEYS.AUTH_TOKEN, accessToken);
     await SecureStore.setItemAsync(SECURE_KEYS.REFRESH_TOKEN, refreshToken);
-    await SecureStore.setItemAsync(SECURE_KEYS.TOKEN_EXPIRES, expiresAt.toString());
-    console.log('[Auth] Tokens stored securely in SecureStore');
+    await SecureStore.setItemAsync(
+      SECURE_KEYS.TOKEN_EXPIRES,
+      expiresAt.toString()
+    );
   } catch (error) {
     console.error('[Auth] Error storing tokens in SecureStore:', error);
     // Fallback to AsyncStorage with encoding if SecureStore fails
@@ -999,11 +677,12 @@ export const storeTokens = async (accessToken: string, refreshToken: string, exp
       await AsyncStorage.multiSet([
         ['auth_token', encodeToken(accessToken)],
         ['refresh_token', encodeToken(refreshToken)],
-        ['token_expires_at', expiresAt.toString()]
+        ['token_expires_at', expiresAt.toString()],
       ]);
       console.warn('[Auth] Tokens stored in AsyncStorage (fallback)');
     } catch (fallbackError) {
       console.error('[Auth] Fallback storage also failed:', fallbackError);
+      throw new Error('Unable to save session securely');
     }
   }
 };
@@ -1011,15 +690,26 @@ export const storeTokens = async (accessToken: string, refreshToken: string, exp
 // Clear all stored tokens
 // S2/S3 Fix: Clears from both SecureStore and AsyncStorage
 export const clearStoredTokens = async () => {
+  clearAuthenticatedClientCache();
   try {
     // Clear from SecureStore
     await SecureStore.deleteItemAsync(SECURE_KEYS.AUTH_TOKEN).catch(() => {});
-    await SecureStore.deleteItemAsync(SECURE_KEYS.REFRESH_TOKEN).catch(() => {});
-    await SecureStore.deleteItemAsync(SECURE_KEYS.TOKEN_EXPIRES).catch(() => {});
+    await SecureStore.deleteItemAsync(SECURE_KEYS.REFRESH_TOKEN).catch(
+      () => {}
+    );
+    await SecureStore.deleteItemAsync(SECURE_KEYS.TOKEN_EXPIRES).catch(
+      () => {}
+    );
+    await SecureStore.deleteItemAsync('cached_user_profile').catch(() => {});
 
     // Also clear any legacy tokens from AsyncStorage
-    await AsyncStorage.multiRemove(['auth_token', 'refresh_token', 'token_expires_at', 'cached_user_profile', 'session_marker']);
-    console.log('[Auth] All tokens and session markers cleared');
+    await AsyncStorage.multiRemove([
+      'auth_token',
+      'refresh_token',
+      'token_expires_at',
+      'cached_user_profile',
+      'session_marker',
+    ]);
   } catch (error) {
     console.error('[Auth] Error clearing tokens:', error);
   }
@@ -1043,7 +733,6 @@ export const getCachedUserProfile = async () => {
       const parsed: CachedProfile = JSON.parse(cached);
       // Validate TTL
       if (Date.now() - parsed.cachedAt < PROFILE_CACHE_TTL_MS) {
-        if (__DEV__) console.log('[Auth] Cached user profile found (SecureStore)');
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         let profile = parsed.profile as any;
 
@@ -1051,17 +740,20 @@ export const getCachedUserProfile = async () => {
         if (profile && !profile.assignedCustomerIds) {
           try {
             const authClient = await getAuthenticatedClient();
-            const { data: customerIds, error: rpcError } = await authClient
-              .rpc('user_accessible_customers');
+            const { data: customerIds, error: rpcError } = await authClient.rpc(
+              'user_accessible_customers'
+            );
 
             if (!rpcError && customerIds) {
               profile = { ...profile, assignedCustomerIds: customerIds };
               // Update cache with customer assignments
               await cacheUserProfile(profile);
-              if (__DEV__) console.log('[Auth] Added customer assignments to cached profile:', customerIds.length);
             }
           } catch (err) {
-            console.warn('[Auth] Failed to fetch customer assignments for cached profile:', err);
+            console.warn(
+              '[Auth] Failed to fetch customer assignments for cached profile:',
+              err
+            );
           }
         }
 
@@ -1069,8 +761,6 @@ export const getCachedUserProfile = async () => {
       } else {
         // Cache expired, clean up
         await SecureStore.deleteItemAsync('cached_user_profile');
-        if (__DEV__) console.log('[Auth] Cached profile expired, cleared');
-        return null;
       }
     }
 
@@ -1081,9 +771,29 @@ export const getCachedUserProfile = async () => {
       // Migrate to SecureStore with new TTL format
       await cacheUserProfile(profile);
       await AsyncStorage.removeItem('cached_user_profile');
-      if (__DEV__) console.log('[Auth] Migrated cached profile to SecureStore');
+
       return profile;
     }
+
+    // A profile cache timeout is not a session timeout. Reload the active profile
+    // through RLS instead of discarding a still-refreshable login.
+    const client = await getAuthenticatedClient();
+    const stored = await getStoredToken();
+    const subject = stored.authToken
+      ? validateJWTToken(stored.authToken).sub
+      : undefined;
+    if (!subject) return null;
+    const { data: profile, error } = await client
+      .from('user_profiles')
+      .select('*')
+      .eq('auth_user_id', subject)
+      .eq('active', true)
+      .single();
+    if (error || !profile) return null;
+    const { data: customerIds } = await client.rpc('user_accessible_customers');
+    const result = { ...profile, assignedCustomerIds: customerIds || [] };
+    await cacheUserProfile(result);
+    return result;
   } catch (error) {
     console.error('[Auth] Error getting cached profile:', error);
   }
@@ -1098,13 +808,18 @@ export const cacheUserProfile = async (profile: unknown) => {
       profile,
       cachedAt: Date.now(),
     };
-    await SecureStore.setItemAsync('cached_user_profile', JSON.stringify(cacheEntry));
-    if (__DEV__) console.log('[Auth] User profile cached in SecureStore');
+    await SecureStore.setItemAsync(
+      'cached_user_profile',
+      JSON.stringify(cacheEntry)
+    );
   } catch (error) {
     console.error('[Auth] Error caching profile:', error);
     // Fallback to AsyncStorage if SecureStore fails
     try {
-      await AsyncStorage.setItem('cached_user_profile', JSON.stringify(profile));
+      await AsyncStorage.setItem(
+        'cached_user_profile',
+        JSON.stringify(profile)
+      );
       console.warn('[Auth] Profile cached in AsyncStorage (fallback)');
     } catch (fallbackError) {
       console.error('[Auth] Fallback caching also failed:', fallbackError);

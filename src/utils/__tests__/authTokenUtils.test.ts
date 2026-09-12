@@ -1,19 +1,28 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as SecureStore from 'expo-secure-store';
+import { ensureValidTokens, getStoredToken } from '@/config/supabaseConfig';
 import { getAuthToken } from '../authTokenUtils';
 
-jest.mock('@/config/supabaseConfig', () => ({ getSupabaseClient: () => ({ auth: { getSession: async () => ({ data: { session: null } }) } }) }));
+jest.mock('@/config/supabaseConfig', () => ({
+  ensureValidTokens: jest.fn(),
+  getStoredToken: jest.fn(),
+}));
 
-it('decodes legacy base64 tokens before migrating to secure storage', async () => {
-  await AsyncStorage.clear();
-  jest.mocked(SecureStore.getItemAsync).mockResolvedValue(null);
-  await AsyncStorage.multiSet([
-    ['auth_token', btoa('test.access.jwt')],
-    ['refresh_token', btoa('test.refresh.jwt')],
-    ['token_expires_at', String(Date.now() + 60000)],
-  ]);
-  const result = await getAuthToken();
-  expect(result.token).toBe('test.access.jwt');
-  expect(SecureStore.setItemAsync).toHaveBeenCalledWith('secure_auth_token', 'test.access.jwt');
-  expect(SecureStore.setItemAsync).toHaveBeenCalledWith('secure_refresh_token', 'test.refresh.jwt');
+it('renews the custom session before returning its access token', async () => {
+  jest.mocked(ensureValidTokens).mockResolvedValue(true);
+  jest
+    .mocked(getStoredToken)
+    .mockResolvedValue({
+      isValid: true,
+      authToken: 'new.access.jwt',
+      expiresAt: 123,
+    });
+  expect(await getAuthToken()).toEqual({
+    token: 'new.access.jwt',
+    expiresAt: 123,
+    source: 'securestore',
+  });
+});
+
+it('does not return an expired token when renewal fails', async () => {
+  jest.mocked(ensureValidTokens).mockResolvedValue(false);
+  expect(await getAuthToken()).toEqual({ token: null, source: 'none' });
 });

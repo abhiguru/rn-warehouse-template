@@ -1,4 +1,9 @@
-import { createSlice, PayloadAction, createAsyncThunk, createSelector } from '@reduxjs/toolkit';
+import {
+  createSlice,
+  PayloadAction,
+  createAsyncThunk,
+  createSelector,
+} from '@reduxjs/toolkit';
 import type { User, Session } from '@supabase/supabase-js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
@@ -89,7 +94,9 @@ const fetchConfigOnce = (
 ): void => {
   // If already fetching, skip
   if (configFetchPromise) {
-    console.log('[AuthSlice] Config fetch already in progress, skipping duplicate call');
+    console.log(
+      '[AuthSlice] Config fetch already in progress, skipping duplicate call'
+    );
     return;
   }
 
@@ -118,7 +125,10 @@ export const initializeAuth = createAsyncThunk(
       const supabaseClient = getSupabaseClient();
 
       // Check current Supabase session first
-      const { data: { session }, error: sessionError } = await supabaseClient.auth.getSession();
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabaseClient.auth.getSession();
 
       if (sessionError) {
         console.error('[AuthSlice] Session error:', sessionError);
@@ -139,7 +149,7 @@ export const initializeAuth = createAsyncThunk(
           fetchConfigOnce(dispatch, supabaseClient);
 
           // Auto-extend session to persist until logout
-          extendSessionMarker().catch((err) => {
+          extendSessionMarker().catch(err => {
             console.warn('[AuthSlice] Failed to extend session marker:', err);
           });
 
@@ -157,12 +167,12 @@ export const initializeAuth = createAsyncThunk(
 
           if (profileResult.status === 'success' && profileResult.data) {
             // Cache profile in background - don't block
-            cacheUserProfile(profileResult.data).catch((cacheError) => {
+            cacheUserProfile(profileResult.data).catch(cacheError => {
               console.warn('[AuthSlice] Failed to cache profile:', cacheError);
             });
 
             // Auto-extend session to persist until logout
-            extendSessionMarker().catch((err) => {
+            extendSessionMarker().catch(err => {
               console.warn('[AuthSlice] Failed to extend session marker:', err);
             });
 
@@ -172,7 +182,11 @@ export const initializeAuth = createAsyncThunk(
             // Set user context for crash reporting
             setSentryUser(profileResult.data.id, profileResult.data.role);
 
-            return { session, user: session.user, userProfile: profileResult.data };
+            return {
+              session,
+              user: session.user,
+              userProfile: profileResult.data,
+            };
           }
 
           return { session, user: session.user, userProfile: null };
@@ -212,19 +226,22 @@ export const initializeAuth = createAsyncThunk(
                 'Failed to get refreshed token'
               );
             } else {
-              console.log('[AuthSlice] Token refresh failed, will require re-authentication');
-              // Token refresh failed - clear tokens and require re-login
-              clearStoredTokens().catch((clearError) => {
-                console.warn('[AuthSlice] Failed to clear expired tokens:', clearError);
-              });
-              return { session: null, user: null, userProfile: null };
+              console.log(
+                '[AuthSlice] Token refresh failed, will require re-authentication'
+              );
+              // The session manager clears only definitive rejections, never transient network errors.
+              tokenData = await getStoredToken();
+              if (!tokenData.isValid)
+                return { session: null, user: null, userProfile: null };
             }
           }
         }
 
         // Check if we have valid JWT tokens
         if (tokenData.isValid && tokenData.type === 'jwt') {
-          console.log('[AuthSlice] Found valid JWT tokens, checking cached profile');
+          console.log(
+            '[AuthSlice] Found valid JWT tokens, checking cached profile'
+          );
           const cachedProfile = await safeAsyncOp(
             () => getCachedUserProfile(),
             null,
@@ -232,10 +249,12 @@ export const initializeAuth = createAsyncThunk(
           );
 
           if (cachedProfile) {
-            console.log('[AuthSlice] Restoring auth with cached profile (custom JWT auth)');
+            console.log(
+              '[AuthSlice] Restoring auth with cached profile (custom JWT auth)'
+            );
 
             // Auto-extend session to persist until logout
-            extendSessionMarker().catch((err) => {
+            extendSessionMarker().catch(err => {
               console.warn('[AuthSlice] Failed to extend session marker:', err);
             });
 
@@ -247,11 +266,11 @@ export const initializeAuth = createAsyncThunk(
 
             return { session: null, user: null, userProfile: cachedProfile };
           } else {
-            console.log('[AuthSlice] No cached profile found, clearing tokens');
-            // Clear tokens in background - don't block
-            clearStoredTokens().catch((clearError) => {
-              console.warn('[AuthSlice] Failed to clear tokens:', clearError);
-            });
+            // A missing profile may be a temporary network/cache failure.
+            // Keep refresh credentials for retry; the API still enforces active sessions.
+            console.log(
+              '[AuthSlice] Profile unavailable; session credentials retained for retry'
+            );
             return { session: null, user: null, userProfile: null };
           }
         }
@@ -259,15 +278,19 @@ export const initializeAuth = createAsyncThunk(
         // Fallback to session marker if no JWT tokens
         if (tokenData.isValid && tokenData.type === 'session') {
           // Remove session marker in background - don't block
-          AsyncStorage.removeItem('session_marker').catch((removeError) => {
-            console.warn('[AuthSlice] Failed to remove session marker:', removeError);
+          AsyncStorage.removeItem('session_marker').catch(removeError => {
+            console.warn(
+              '[AuthSlice] Failed to remove session marker:',
+              removeError
+            );
           });
         }
 
         return { session: null, user: null, userProfile: null };
       }
     } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : 'Failed to initialize auth';
+      const errorMessage =
+        error instanceof Error ? error.message : 'Failed to initialize auth';
       console.error('[AuthSlice] Initialize auth error:', error);
       return rejectWithValue(errorMessage);
     }
@@ -278,7 +301,7 @@ export const fetchUserProfile = createAsyncThunk(
   'auth/fetchUserProfile',
   async (userId: string) => {
     const result = await getUserByIdDirect(userId);
-    
+
     if (result.status === 'success' && result.data) {
       // Cache the profile for next time
       await cacheUserProfile(result.data);
@@ -289,79 +312,83 @@ export const fetchUserProfile = createAsyncThunk(
   }
 );
 
-export const logout = createAsyncThunk(
-  'auth/logout',
-  async () => {
-    // D8 Fix: Make logout atomic - clear local state regardless of signOut result
-    // Server session invalidation is best-effort; local cleanup must always succeed
+export const logout = createAsyncThunk('auth/logout', async () => {
+  // D8 Fix: Make logout atomic - clear local state regardless of signOut result
+  // Server session invalidation is best-effort; local cleanup must always succeed
 
-    console.log('[AuthSlice] Starting logout - clearing all user-specific data');
+  console.log('[AuthSlice] Starting logout - clearing all user-specific data');
 
-    // Clear user context from crash reporting
-    clearSentryUser();
+  // Clear user context from crash reporting
+  clearSentryUser();
 
-    // Clear all stored tokens (ignore errors)
-    await clearStoredTokens().catch((error) => {
-      console.warn('[AuthSlice] Error clearing tokens during logout:', error);
-    });
+  // Clear all stored tokens (ignore errors)
+  await clearStoredTokens().catch(error => {
+    console.warn('[AuthSlice] Error clearing tokens during logout:', error);
+  });
 
-    // Clear session markers (ignore errors)
-    await AsyncStorage.removeItem('session_marker').catch(() => {});
-    await AsyncStorage.removeItem('secure_session_marker').catch(() => {});
-    await AsyncStorage.removeItem('cached_user_profile').catch(() => {});
+  // Clear session markers (ignore errors)
+  await AsyncStorage.removeItem('session_marker').catch(() => {});
+  await AsyncStorage.removeItem('secure_session_marker').catch(() => {});
+  await AsyncStorage.removeItem('cached_user_profile').catch(() => {});
 
-    // =========================================================================
-    // Privacy cleanup: Clear all user-specific cached data
-    // This prevents data leakage when different users log in on the same device
-    // =========================================================================
+  // =========================================================================
+  // Privacy cleanup: Clear all user-specific cached data
+  // This prevents data leakage when different users log in on the same device
+  // =========================================================================
 
-    // Clear recent customers (search history)
-    await RecentCustomersService.clearRecentCustomers().catch((error) => {
-      console.warn('[AuthSlice] Error clearing recent customers:', error);
-    });
+  // Clear recent customers (search history)
+  await RecentCustomersService.clearRecentCustomers().catch(error => {
+    console.warn('[AuthSlice] Error clearing recent customers:', error);
+  });
 
-    // Clear session recent items (per-customer item history)
-    await SessionRecentItemsService.clearAllSessionRecentItems().catch((error) => {
-      console.warn('[AuthSlice] Error clearing session recent items:', error);
-    });
+  // Clear session recent items (per-customer item history)
+  await SessionRecentItemsService.clearAllSessionRecentItems().catch(error => {
+    console.warn('[AuthSlice] Error clearing session recent items:', error);
+  });
 
-    // Clear recent items cache (frequently ordered items)
-    await RecentItemsService.clearCache().catch((error) => {
-      console.warn('[AuthSlice] Error clearing recent items cache:', error);
-    });
+  // Clear recent items cache (frequently ordered items)
+  await RecentItemsService.clearCache().catch(error => {
+    console.warn('[AuthSlice] Error clearing recent items cache:', error);
+  });
 
-    // Clear OTP rate limit data (phone number history)
-    await clearAllRateLimits().catch((error) => {
-      console.warn('[AuthSlice] Error clearing OTP rate limits:', error);
-    });
+  // Clear OTP rate limit data (phone number history)
+  await clearAllRateLimits().catch(error => {
+    console.warn('[AuthSlice] Error clearing OTP rate limits:', error);
+  });
 
-    // Clear user-scoped search history from SearchableBottomSheet
-    // These are stored with keys like "recent_customers_{userId}"
-    try {
-      const allKeys = await AsyncStorage.getAllKeys();
-      const userScopedKeys = allKeys.filter(key =>
-        key.startsWith('recent_customers_') ||
-        key.startsWith('recent_senders_')
+  // Clear user-scoped search history from SearchableBottomSheet
+  // These are stored with keys like "recent_customers_{userId}"
+  try {
+    const allKeys = await AsyncStorage.getAllKeys();
+    const userScopedKeys = allKeys.filter(
+      key =>
+        key.startsWith('recent_customers_') || key.startsWith('recent_senders_')
+    );
+    if (userScopedKeys.length > 0) {
+      await AsyncStorage.multiRemove(userScopedKeys);
+      console.log(
+        '[AuthSlice] Cleared',
+        userScopedKeys.length,
+        'user-scoped search history keys'
       );
-      if (userScopedKeys.length > 0) {
-        await AsyncStorage.multiRemove(userScopedKeys);
-        console.log('[AuthSlice] Cleared', userScopedKeys.length, 'user-scoped search history keys');
-      }
-    } catch (error) {
-      console.warn('[AuthSlice] Error clearing user-scoped search history:', error);
     }
-
-    // Sign out from Supabase (best-effort, don't throw on failure)
-    await signOut().catch((error) => {
-      console.warn('[AuthSlice] Error signing out from Supabase:', error);
-    });
-
-    console.log('[AuthSlice] Logout complete - all user data cleared');
-
-    // Always return success - local state will be cleared by reducer
-    return;
+  } catch (error) {
+    console.warn(
+      '[AuthSlice] Error clearing user-scoped search history:',
+      error
+    );
   }
-);
+
+  // Sign out from Supabase (best-effort, don't throw on failure)
+  await signOut().catch(error => {
+    console.warn('[AuthSlice] Error signing out from Supabase:', error);
+  });
+
+  console.log('[AuthSlice] Logout complete - all user data cleared');
+
+  // Always return success - local state will be cleared by reducer
+  return;
+});
 
 /**
  * Delete the user's account permanently.
@@ -383,15 +410,20 @@ export const deleteAccount = createAsyncThunk(
       return rejectWithValue(result.error || 'Failed to delete account');
     }
 
-    console.log('[AuthSlice] Backend account deletion successful, clearing local data...');
+    console.log(
+      '[AuthSlice] Backend account deletion successful, clearing local data...'
+    );
 
     // Step 2: Clear all local data (same as logout)
     // Clear user context from crash reporting
     clearSentryUser();
 
     // Clear all stored tokens
-    await clearStoredTokens().catch((error) => {
-      console.warn('[AuthSlice] Error clearing tokens during account deletion:', error);
+    await clearStoredTokens().catch(error => {
+      console.warn(
+        '[AuthSlice] Error clearing tokens during account deletion:',
+        error
+      );
     });
 
     // Clear session markers
@@ -400,39 +432,49 @@ export const deleteAccount = createAsyncThunk(
     await AsyncStorage.removeItem('cached_user_profile').catch(() => {});
 
     // Clear all user-specific cached data
-    await RecentCustomersService.clearRecentCustomers().catch((error) => {
+    await RecentCustomersService.clearRecentCustomers().catch(error => {
       console.warn('[AuthSlice] Error clearing recent customers:', error);
     });
 
-    await SessionRecentItemsService.clearAllSessionRecentItems().catch((error) => {
-      console.warn('[AuthSlice] Error clearing session recent items:', error);
-    });
+    await SessionRecentItemsService.clearAllSessionRecentItems().catch(
+      error => {
+        console.warn('[AuthSlice] Error clearing session recent items:', error);
+      }
+    );
 
-    await RecentItemsService.clearCache().catch((error) => {
+    await RecentItemsService.clearCache().catch(error => {
       console.warn('[AuthSlice] Error clearing recent items cache:', error);
     });
 
-    await clearAllRateLimits().catch((error) => {
+    await clearAllRateLimits().catch(error => {
       console.warn('[AuthSlice] Error clearing OTP rate limits:', error);
     });
 
     // Clear user-scoped search history
     try {
       const allKeys = await AsyncStorage.getAllKeys();
-      const userScopedKeys = allKeys.filter(key =>
-        key.startsWith('recent_customers_') ||
-        key.startsWith('recent_senders_')
+      const userScopedKeys = allKeys.filter(
+        key =>
+          key.startsWith('recent_customers_') ||
+          key.startsWith('recent_senders_')
       );
       if (userScopedKeys.length > 0) {
         await AsyncStorage.multiRemove(userScopedKeys);
-        console.log('[AuthSlice] Cleared', userScopedKeys.length, 'user-scoped keys');
+        console.log(
+          '[AuthSlice] Cleared',
+          userScopedKeys.length,
+          'user-scoped keys'
+        );
       }
     } catch (error) {
-      console.warn('[AuthSlice] Error clearing user-scoped search history:', error);
+      console.warn(
+        '[AuthSlice] Error clearing user-scoped search history:',
+        error
+      );
     }
 
     // Sign out from Supabase
-    await signOut().catch((error) => {
+    await signOut().catch(error => {
       console.warn('[AuthSlice] Error signing out from Supabase:', error);
     });
 
@@ -456,7 +498,7 @@ export const forceLogoutOnInvalidToken = createAsyncThunk(
     clearSentryUser();
 
     // Clear all stored tokens
-    await clearStoredTokens().catch((error) => {
+    await clearStoredTokens().catch(error => {
       console.error('[AuthSlice] Error clearing tokens:', error);
     });
 
@@ -465,7 +507,7 @@ export const forceLogoutOnInvalidToken = createAsyncThunk(
     await AsyncStorage.removeItem('secure_session_marker').catch(() => {});
 
     // Sign out from Supabase
-    await signOut().catch((error) => {
+    await signOut().catch(error => {
       console.error('[AuthSlice] Error signing out:', error);
     });
 
@@ -503,7 +545,10 @@ export const refreshAuthToken = createAsyncThunk(
       const customRefreshResult = await refreshCustomJWT();
 
       if (customRefreshResult) {
-        console.log('[AuthSlice] Custom JWT refresh successful, expires:', new Date(customRefreshResult.expiresAt).toISOString());
+        console.log(
+          '[AuthSlice] Custom JWT refresh successful, expires:',
+          new Date(customRefreshResult.expiresAt).toISOString()
+        );
 
         // Return the current user profile since we don't have a new session
         return {
@@ -513,28 +558,10 @@ export const refreshAuthToken = createAsyncThunk(
         };
       }
 
-      // Fall back to Supabase's built-in session refresh
-      console.log('[AuthSlice] Custom JWT refresh failed, trying Supabase refresh...');
-      const { data, error } = await supabaseClient.auth.refreshSession();
-
-      if (error) {
-        console.error('[AuthSlice] Token refresh failed:', error.message);
-        return rejectWithValue(error.message);
-      }
-
-      if (!data.session) {
-        console.warn('[AuthSlice] Token refresh returned no session');
-        return rejectWithValue('No session returned from refresh');
-      }
-
-      console.log('[AuthSlice] Token refresh successful, new expiry:', data.session.expires_at);
-
-      return {
-        session: data.session,
-        user: data.session.user,
-      };
+      return rejectWithValue('Custom session refresh unavailable');
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Token refresh failed';
+      const message =
+        error instanceof Error ? error.message : 'Token refresh failed';
       console.error('[AuthSlice] Token refresh error:', message);
       return rejectWithValue(message);
     }
@@ -574,13 +601,20 @@ export const checkTokenExpiry = createAsyncThunk(
     // Attempt proactive token refresh if within refresh threshold
     if (shouldRefresh && !isRefreshInProgress) {
       isRefreshInProgress = true;
-      console.log('[AuthSlice] Token expires in', timeUntilExpiry, 'seconds, attempting refresh...');
+      console.log(
+        '[AuthSlice] Token expires in',
+        timeUntilExpiry,
+        'seconds, attempting refresh...'
+      );
 
       try {
         await dispatch(refreshAuthToken()).unwrap();
         console.log('[AuthSlice] Proactive token refresh successful');
       } catch (refreshError) {
-        console.warn('[AuthSlice] Proactive token refresh failed:', refreshError);
+        console.warn(
+          '[AuthSlice] Proactive token refresh failed:',
+          refreshError
+        );
         // Don't clear auth - let user continue until actual expiry
       } finally {
         isRefreshInProgress = false;
@@ -628,14 +662,14 @@ const authSlice = createSlice({
     setTokenExpired: (state, action: PayloadAction<boolean>) => {
       state.tokenExpired = action.payload;
     },
-    clearTokenExpiryStates: (state) => {
+    clearTokenExpiryStates: state => {
       state.tokenExpiryWarning = false;
       state.tokenExpired = false;
     },
-    clearAuthError: (state) => {
+    clearAuthError: state => {
       state.error = null;
     },
-    clearAllAuthAlerts: (state) => {
+    clearAllAuthAlerts: state => {
       state.tokenExpiryWarning = false;
       state.tokenExpired = false;
       state.error = null;
@@ -646,10 +680,10 @@ const authSlice = createSlice({
       state.configFetchFailed = action.payload;
     },
   },
-  extraReducers: (builder) => {
+  extraReducers: builder => {
     builder
       // Initialize auth
-      .addCase(initializeAuth.pending, (state) => {
+      .addCase(initializeAuth.pending, state => {
         // Only set loading if we don't have cached auth data
         // This prevents the UI from unmounting when we have cached credentials
         if (!state.userProfile) {
@@ -683,10 +717,10 @@ const authSlice = createSlice({
         }
       })
       // Logout
-      .addCase(logout.pending, (state) => {
+      .addCase(logout.pending, state => {
         state.isLoading = true;
       })
-      .addCase(logout.fulfilled, (state) => {
+      .addCase(logout.fulfilled, state => {
         state.isLoading = false;
         state.session = null;
         state.user = null;
@@ -694,15 +728,15 @@ const authSlice = createSlice({
         state.phoneNumber = '';
         state.otpSent = false;
       })
-      .addCase(logout.rejected, (state) => {
+      .addCase(logout.rejected, state => {
         state.isLoading = false;
       })
       // Delete account
-      .addCase(deleteAccount.pending, (state) => {
+      .addCase(deleteAccount.pending, state => {
         state.isLoading = true;
         state.error = null;
       })
-      .addCase(deleteAccount.fulfilled, (state) => {
+      .addCase(deleteAccount.fulfilled, state => {
         state.isLoading = false;
         state.session = null;
         state.user = null;
@@ -732,10 +766,12 @@ const authSlice = createSlice({
         state.tokenExpiryWarning = false;
         state.tokenExpired = false;
       })
-      .addCase(refreshAuthToken.rejected, (state) => {
+      .addCase(refreshAuthToken.rejected, state => {
         // Don't clear auth on refresh failure - user may still be able to use app
         // The token expiry warning will remain visible
-        console.warn('[AuthSlice] Token refresh rejected, keeping current auth state');
+        console.warn(
+          '[AuthSlice] Token refresh rejected, keeping current auth state'
+        );
       });
   },
 });
@@ -766,32 +802,28 @@ const selectAuthState = (state: { auth: AuthState }) => state.auth;
 /** Memoized selector for user profile - prevents re-renders on unrelated auth changes */
 export const selectUserProfile = createSelector(
   [selectAuthState],
-  (auth) => auth.userProfile
+  auth => auth.userProfile
 );
 
 /** Memoized selector for session */
 export const selectSession = createSelector(
   [selectAuthState],
-  (auth) => auth.session
+  auth => auth.session
 );
 
 /** Memoized selector for authentication loading state */
 export const selectIsAuthLoading = createSelector(
   [selectAuthState],
-  (auth) => auth.isLoading || auth.isAuthenticating || auth.isVerifyingOTP
+  auth => auth.isLoading || auth.isAuthenticating || auth.isVerifyingOTP
 );
-
 
 /** Memoized selector for user role info */
-export const selectUserRole = createSelector(
-  [selectUserProfile],
-  (profile) => ({
-    role: profile?.role,
-    isSupervisor: profile?.supervisor ?? false,
-    isAdmin: profile?.role === 'admin',
-    isStaff: profile?.role === 'staff',
-    isCustomer: profile?.role === 'customer',
-  })
-);
+export const selectUserRole = createSelector([selectUserProfile], profile => ({
+  role: profile?.role,
+  isSupervisor: profile?.supervisor ?? false,
+  isAdmin: profile?.role === 'admin',
+  isStaff: profile?.role === 'staff',
+  isCustomer: profile?.role === 'customer',
+}));
 
 export default authSlice.reducer;

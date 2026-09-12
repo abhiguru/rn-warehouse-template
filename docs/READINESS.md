@@ -1,66 +1,62 @@
-# Second-pass readiness review — 2026-09-10
+# Readiness — 2026-09-12
 
-## Status
+Current main pairs with a tested **local-demo backend**. This is not a
+production-ready or native-device-accepted release. Use current main in both
+repositories; the old v0.1.0 backend tag remains incomplete.
 
-The mobile code installs and passes local checks, but the published pair is not
-yet an end-to-end starter. The companion backend's initial migration fails on
-an empty database. Its name inventory lacks 70 of 76 literal RPC calls, four
-tables, and seven PDF/print functions required by this app. See the backend
-[readiness checklist](https://github.com/abhiguru/supabase-warehouse-template/blob/main/docs/READINESS.md)
-and [API inventory](https://github.com/abhiguru/supabase-warehouse-template/blob/main/docs/API_CONTRACT.md).
+## Verified
 
-Do not describe the v0.1.0 pair as production-ready or a working ten-minute demo.
+- 50 Jest tests pass, including expired access-token renewal, single-flight
+  refresh, transient network failure, refresh rejection, custom logout,
+  legacy-token migration, expired profile-cache reload, and OTP authentication without GoTrue.
+- TypeScript and ESLint error checks pass. Backend public configuration is
+  reachable from this checkout.
+- The companion backend's live API tests pass for admin/customer login,
+  customer isolation, GRN, dispatch stock updates, oversell rejection, invoice
+  saving, four PDF/signed-download flows, refresh replay, and logout revocation.
+- Removed raw OTP/session-response and token-prefix logging from the central
+  session manager. PDF/print services now use the central refreshing token
+  getter. Fixed the paginated customer-item response adapter.
+- Setup preserves an existing environment file and retrieves no private backend
+  keys. Original repositories and credentials remain unchanged.
+- Gitleaks 8.30.1 scans of the publishable mobile tree and its Git history find
+  no secrets. The backend publication scan removed a legacy SMS initializer
+  before release, without changing the original credential.
 
-## Second-pass fixes
+The 2026-09-12 Android JavaScript export passed (2,934 modules, 45 assets).
+It is not a native APK or physical-device test.
 
-- Setup uses `npm ci`, checks Node 22.18+, and preserves an existing `.env`.
-- Removed Docker inspection and service-role credential retrieval from the old
-  key-update script. Public configuration is already fetched at app bootstrap.
-  `npm run check:backend` validates that endpoint without copying keys or changing
-  any environment file; errors and device/backend URL mismatches fail clearly.
-- Changed the default API port to 18000 to distinguish the starter from an
-  existing Supabase installation. Documented emulator/phone URLs and native builds.
-- Authenticated configuration now uses the central SecureStore/session token
-  lookup instead of the removed legacy AsyncStorage key. Legacy base64 JWTs are
-  decoded before migration. Added regression tests for both paths and expiry.
-- Fixed three customer queries using the nonexistent singular `customer` table.
-- Removed the leftover service-key environment type. Aligned app/runtime version
-  with package version 0.1.0 and corrected the iOS minimum to 15.1.
+## Local demo
 
-## Verification
+Start current backend main with `bash setup.sh --demo`. API defaults to
+`http://localhost:18000`; set the mobile `EXPO_PUBLIC_CONFIG_API_URL` to that
+origin and run `npm run check:backend`. For an Android device attached to the
+backend host, `adb reverse tcp:18000 tcp:18000` keeps the API loopback-only.
+Use `adb reverse tcp:8081 tcp:8081` if Metro also runs on that host.
 
-Fresh-checkout `npm ci`, TypeScript, ESLint error checks, and **41 Jest tests**
-passed. Public-bootstrap script regression tests also passed. These cover local
-code, not completed database integration. A fresh Android JS export also passed
-in this second pass (2,934 modules, 45 assets); this is not a compiled native app.
+Demo admin: 0000000001. Demo customer: 0000000002. OTP: 123456.
+Only the backend's explicit local demo permits these impossible subscriber
+numbers; no SMS is sent. Do not expose demo authentication publicly.
 
-`npm audit` on 2026-09-10 reports **29 dependency findings: nine high and 20
-moderate**. They include the Expo/Metro toolchain and transitive parsing packages.
-They were not suppressed or force-upgraded. A supported SDK migration and native
-regression tests are required; avoid exposing Metro to untrusted networks.
+## Remaining acceptance work
 
-GitHub Actions are not active: workflow definitions live in
-`docs/github-workflows/`. Enabling them needs a maintainer with workflow permission.
-The audit job will remain red until the dependency findings are addressed.
+1. Complete native Android/iOS builds and fresh install, login, app restart,
+   cache-expiry, offline/error, camera, secure-storage, deep-link and role flows.
+   Local Jest/API tests do not establish that every mobile screen works.
+2. Complete image upload/deletion, pricing/invoice calculations, payments,
+   cart/order lifecycle, reports and concurrency tests against the backend.
+   Backend inventory finds all 100 called RPC names, but not every signature or
+   business result has been verified.
+3. Export/review optional preprinted-print endpoints and dynamic print-job
+   management. Validate actual printer/sensor hardware and Realtime before
+   enabling them. Four generic PDF endpoints are now implemented and API-tested.
+4. Implement production SMS and operator onboarding without fixed-code fallback.
+   Production setup remains gated.
+5. Resolve the 2026-09-10 dependency audit findings (9 high, 20 moderate) through
+   compatible upgrades and native regression tests. Avoid exposing Metro.
+6. Activate CI from `docs/github-workflows/` with maintainer workflow permission;
+   complete rights/assets/privacy, secret/history and release-artifact checks.
+   No credential revocation/rotation is needed to enable CI.
 
-## Required before saying “hit the ground running”
-
-1. Complete and sanitize the backend export and its seed/demo/admin setup, without
-   including original credentials, production data, private keys, or git history.
-2. Pass backend migration, RPC/signature, storage-policy, and role-isolation tests.
-3. From a fresh app install, test OTP success/failure/replay/expiry, registration,
-   admin/customer assignments, inactive accounts, logout, app restart, and token
-   refresh. The inherited session/refresh behavior still needs end-to-end review.
-4. Test customer creation, GRN/image upload, stock, dispatch, invoice/payment,
-   orders/reports, PDF generation, and optional printer/sensor flows. Inventory
-   coverage is a lower bound; dynamic endpoints must also be checked.
-5. Build Android and iOS natively; test emulator and physical-device connectivity,
-   HTTP-development/HTTPS-production behavior, camera permissions, secure storage,
-   deep links, and offline/error states. Expo Go/bundle success cannot establish this.
-6. Address dependency findings, check all assets/licenses and store privacy claims,
-   enable CI and dependency/secret scanning, and verify release artifacts contain
-   no signing credentials, private URLs/keys, customer data, or original history.
-
-The SDK-specific platform corrections use the
-[Expo SDK compatibility table](https://docs.expo.dev/versions/latest/).
-Existing private repositories and credentials were not changed by this pass.
+See the backend [readiness checklist](https://github.com/abhiguru/supabase-warehouse-template/blob/main/docs/READINESS.md)
+for the full integration/deployment boundary.

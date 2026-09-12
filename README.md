@@ -3,10 +3,11 @@
 Open-source React Native warehouse application source, built with Expo,
 Supabase, Redux Toolkit, and Expo Router.
 
-**Backend integration is not yet ready.** The companion
+**Current main supports a local-demo backend.** The companion
 [supabase-warehouse-template](https://github.com/abhiguru/supabase-warehouse-template)
-export is incomplete. You can install, check, and bundle this app, but cannot yet
-complete login/warehouse flows against that backend. See
+now passes API tests for custom login, customer isolation, GRN, dispatch,
+invoice saving and PDF downloads. Native-device acceptance and production
+readiness are still incomplete; use current main in both repositories. See
 [READINESS.md](docs/READINESS.md) for verified results and remaining work.
 
 ## Start contributing
@@ -33,8 +34,14 @@ environment file.
 
 ## Connect a compatible backend
 
-After the backend export is complete, set `EXPO_PUBLIC_CONFIG_API_URL` in `.env`
-and the backend's `SUPABASE_PUBLIC_URL` to the same device-reachable origin:
+Start the companion backend with `bash setup.sh --demo`. Set
+`EXPO_PUBLIC_CONFIG_API_URL` in this app's `.env` to `http://localhost:18000`.
+Demo admin: **0000000001**; customer: **0000000002**; OTP: **123456** (no SMS).
+For Android attached to the backend host, use `adb reverse tcp:18000 tcp:18000`
+and, if Metro runs there, `adb reverse tcp:8081 tcp:8081`.
+
+Other development arrangements require matching backend `SUPABASE_PUBLIC_URL`
+and device-reachable app configuration. Examples for separately configured setups:
 
 | Client | Example URL |
 | --- | --- |
@@ -42,8 +49,8 @@ and the backend's `SUPABASE_PUBLIC_URL` to the same device-reachable origin:
 | Android emulator on the backend host | `http://10.0.2.2:18000` |
 | Physical phone | `http://YOUR_LAN_IP:18000` |
 
-The backend binds to loopback by default. A physical phone requires an explicit
-LAN binding/firewall choice; never expose test OTP mode to the internet. For
+The supported demo stays loopback-only; USB port reversal avoids a LAN binding.
+Do not expose test OTP mode to the internet. For
 remote deployment, use HTTPS. Do not copy the original deployment's credentials.
 
 ```bash
@@ -83,7 +90,9 @@ No original signing assets or project ownership are included.
 
 Screens cover GRN, dispatch, invoices, customer orders, stock, reports, sensor
 monitoring, and role-based views. Their presence is not a claim of backend
-completeness. Many required RPC/PDF/print implementations are still missing.
+completeness. All statically identified RPC names and four PDF endpoints are now
+present; optional preprinted printing/print-job management and broader runtime
+acceptance remain incomplete.
 
 - `app/`: Expo Router routes and forms.
 - `src/services/`: backend calls and configuration.

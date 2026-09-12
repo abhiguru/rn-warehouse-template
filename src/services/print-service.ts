@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { getSupabaseClient, getCurrentConfig, getStoredToken } from '../config/supabaseConfig';
+import { getCurrentConfig } from '../config/supabaseConfig';
+import { getAuthTokenString } from '@/utils/authTokenUtils';
 
 interface PrintJobResponse {
   success: boolean;
@@ -71,45 +72,7 @@ export interface GetPrinterStatusResponse {
  * Get authentication token for print API calls
  * First tries to get from Supabase session, falls back to stored JWT tokens (properly decoded)
  */
-async function getAuthToken(): Promise<string | null> {
-  try {
-    console.log('[Print Service] Starting getAuthToken...');
-
-    // Try Supabase session first
-    const { data: { session } } = await getSupabaseClient().auth.getSession();
-    console.log('[Print Service] Supabase session check:', {
-      hasSession: !!session,
-      hasAccessToken: !!session?.access_token,
-      tokenPreview: session?.access_token ? `${session.access_token.substring(0, 20)}...` : 'none',
-    });
-
-    if (session?.access_token) {
-      console.log('[Print Service] ✓ Using Supabase session token');
-      return session.access_token;
-    }
-
-    // Fallback to stored JWT tokens (using getStoredToken which properly decodes)
-    console.log('[Print Service] Supabase session not found, checking stored JWT tokens...');
-    const storedToken = await getStoredToken();
-
-    if (storedToken.isValid && storedToken.type === 'jwt' && storedToken.authToken) {
-      console.log('[Print Service] ✓ Using decoded JWT token (valid until:',
-        storedToken.expiresAt ? new Date(storedToken.expiresAt).toISOString() : 'unknown', ')');
-      console.log('[Print Service] Token format check:', {
-        length: storedToken.authToken.length,
-        isJWT: storedToken.authToken.split('.').length === 3,
-        preview: storedToken.authToken.substring(0, 30) + '...',
-      });
-      return storedToken.authToken;
-    }
-
-    console.log('[Print Service] ✗ No valid auth token found');
-    return null;
-  } catch (error) {
-    console.error('[Print Service] Error getting auth token:', error);
-    return null;
-  }
-}
+const getAuthToken = getAuthTokenString;
 
 /**
  * Print GRN range using Supabase Edge Function
@@ -122,7 +85,10 @@ export async function printGRNRange(
   endGrNo: string
 ): Promise<PrintJobResponse> {
   try {
-    console.log('[Print Service] printGRNRange called:', { startGrNo, endGrNo });
+    console.log('[Print Service] printGRNRange called:', {
+      startGrNo,
+      endGrNo,
+    });
 
     const authToken = await getAuthToken();
     if (!authToken) {
@@ -179,7 +145,8 @@ export async function printGRNRange(
     console.error('[Print Service] Exception in printGRNRange:', error);
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to submit print job',
+      error:
+        error instanceof Error ? error.message : 'Failed to submit print job',
     };
   }
 }
@@ -195,7 +162,10 @@ export async function printDispatchRange(
   endDispNo: string
 ): Promise<PrintJobResponse> {
   try {
-    console.log('[Print Service] printDispatchRange called:', { startDispNo, endDispNo });
+    console.log('[Print Service] printDispatchRange called:', {
+      startDispNo,
+      endDispNo,
+    });
 
     const authToken = await getAuthToken();
     if (!authToken) {
@@ -252,7 +222,8 @@ export async function printDispatchRange(
     console.error('[Print Service] Exception in printDispatchRange:', error);
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to submit print job',
+      error:
+        error instanceof Error ? error.message : 'Failed to submit print job',
     };
   }
 }
@@ -270,7 +241,11 @@ export async function printInvoiceRange(
   finYear?: number
 ): Promise<PrintJobResponse> {
   try {
-    console.log('[Print Service] printInvoiceRange called:', { startInvNo, endInvNo, finYear });
+    console.log('[Print Service] printInvoiceRange called:', {
+      startInvNo,
+      endInvNo,
+      finYear,
+    });
 
     const authToken = await getAuthToken();
     if (!authToken) {
@@ -354,7 +329,8 @@ export async function printInvoiceRange(
     console.error('[Print Service] Exception in printInvoiceRange:', error);
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to submit print job',
+      error:
+        error instanceof Error ? error.message : 'Failed to submit print job',
     };
   }
 }
@@ -372,7 +348,11 @@ export async function getPrintJobs(
   status?: 'pending' | 'printing' | 'completed' | 'failed' | 'cancelled'
 ): Promise<GetPrintJobsResponse> {
   try {
-    console.log('[Print Service] getPrintJobs called:', { jobType, limit, status });
+    console.log('[Print Service] getPrintJobs called:', {
+      jobType,
+      limit,
+      status,
+    });
 
     const authToken = await getAuthToken();
     if (!authToken) {
@@ -383,7 +363,9 @@ export async function getPrintJobs(
       };
     }
 
-    console.log('[Print Service] ✓ Auth token obtained, making RPC API request...');
+    console.log(
+      '[Print Service] ✓ Auth token obtained, making RPC API request...'
+    );
 
     // Get Supabase URL from configuration
     const config = getCurrentConfig();
@@ -394,8 +376,8 @@ export async function getPrintJobs(
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${authToken}`,
-        'apikey': config.anonKey,
+        Authorization: `Bearer ${authToken}`,
+        apikey: config.anonKey,
       },
       body: JSON.stringify({
         p_job_type: jobType || null,
@@ -416,11 +398,18 @@ export async function getPrintJobs(
       });
       return {
         success: false,
-        error: data.error || data.message || `HTTP error! status: ${response.status}`,
+        error:
+          data.error ||
+          data.message ||
+          `HTTP error! status: ${response.status}`,
       };
     }
 
-    console.log('[Print Service] ✓ Print jobs fetched successfully:', Array.isArray(data) ? data.length : 0, 'jobs');
+    console.log(
+      '[Print Service] ✓ Print jobs fetched successfully:',
+      Array.isArray(data) ? data.length : 0,
+      'jobs'
+    );
     return {
       success: true,
       data: Array.isArray(data) ? data : [],
@@ -429,7 +418,8 @@ export async function getPrintJobs(
     console.error('[Print Service] Exception in getPrintJobs:', error);
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to fetch print jobs',
+      error:
+        error instanceof Error ? error.message : 'Failed to fetch print jobs',
     };
   }
 }
@@ -439,7 +429,9 @@ export async function getPrintJobs(
  * @param jobId - Database ID of the print job to cancel
  * @returns Success status and message
  */
-export async function cancelPrintJob(jobId: string): Promise<CancelPrintJobResponse> {
+export async function cancelPrintJob(
+  jobId: string
+): Promise<CancelPrintJobResponse> {
   try {
     console.log('[Print Service] cancelPrintJob called:', { jobId });
 
@@ -459,8 +451,8 @@ export async function cancelPrintJob(jobId: string): Promise<CancelPrintJobRespo
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${authToken}`,
-        'apikey': config.anonKey,
+        Authorization: `Bearer ${authToken}`,
+        apikey: config.anonKey,
       },
       body: JSON.stringify({
         p_print_job_id: jobId,
@@ -486,7 +478,8 @@ export async function cancelPrintJob(jobId: string): Promise<CancelPrintJobRespo
     console.error('[Print Service] Exception in cancelPrintJob:', error);
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to cancel print job',
+      error:
+        error instanceof Error ? error.message : 'Failed to cancel print job',
     };
   }
 }
@@ -511,7 +504,9 @@ export async function getPrinterStatus(
       };
     }
 
-    console.log('[Print Service] ✓ Auth token obtained, checking printer status...');
+    console.log(
+      '[Print Service] ✓ Auth token obtained, checking printer status...'
+    );
 
     // Get Supabase URL from configuration
     const config = getCurrentConfig();
@@ -521,7 +516,7 @@ export async function getPrinterStatus(
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${authToken}`,
+        Authorization: `Bearer ${authToken}`,
       },
       body: JSON.stringify({
         printer_name: printerName,
@@ -537,7 +532,10 @@ export async function getPrinterStatus(
       });
       return {
         success: false,
-        error: data.error || data.message || `HTTP error! status: ${response.status}`,
+        error:
+          data.error ||
+          data.message ||
+          `HTTP error! status: ${response.status}`,
       };
     }
 
@@ -562,7 +560,10 @@ export async function getPrinterStatus(
     console.error('[Print Service] Exception in getPrinterStatus:', error);
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to check printer status',
+      error:
+        error instanceof Error
+          ? error.message
+          : 'Failed to check printer status',
     };
   }
 }

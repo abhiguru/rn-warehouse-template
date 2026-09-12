@@ -1,6 +1,13 @@
-import { getSupabaseClient, getAuthenticatedClient } from '@/config/supabaseConfig';
+import {
+  getSupabaseClient,
+  getAuthenticatedClient,
+} from '@/config/supabaseConfig';
 import { getAuthToken, getRefreshToken } from '@/utils/authTokenUtils';
-import { isJWTSignatureError, createErrorResponse, executeRPC } from '@/utils/serviceErrorHandler';
+import {
+  isJWTSignatureError,
+  createErrorResponse,
+  executeRPC,
+} from '@/utils/serviceErrorHandler';
 import { PAGINATION } from '@/config/cacheConfig';
 import { store } from '@/store';
 import { forceLogoutOnInvalidToken } from '@/store/slices/authSlice';
@@ -19,7 +26,7 @@ import {
   EnhancedSearchFilters,
   EnhancedGRNItem,
   SearchMetadata,
-  CustomerDispatchResponse
+  CustomerDispatchResponse,
 } from '@/types/order.types';
 // Import canonical types (snake_case) - fully migrated
 import type {
@@ -36,30 +43,38 @@ import type {
 function handleJWTError(error: unknown): void {
   if (isJWTSignatureError(error)) {
     console.warn('[OrderService] JWT signature invalid - forcing logout');
-    store.dispatch(forceLogoutOnInvalidToken('JWT signature invalid. Please sign in again.'));
+    store.dispatch(
+      forceLogoutOnInvalidToken('JWT signature invalid. Please sign in again.')
+    );
   }
 }
 
 // Order Service - Frontend uses "Order" terminology, backend uses "Cart"
 export class OrderService {
-  
   // Test connection to Supabase
-  static async testConnection(): Promise<{ success: boolean; error?: string; details?: Record<string, unknown> }> {
+  static async testConnection(): Promise<{
+    success: boolean;
+    error?: string;
+    details?: Record<string, unknown>;
+  }> {
     try {
       console.log('[OrderService] Testing Supabase connection...');
-      
+
       // Test 1: Basic connectivity
       const startTime = Date.now();
-      const { data, error } = await getSupabaseClient().from('goodsreceived').select('count').limit(1);
+      const { data, error } = await getSupabaseClient()
+        .from('goodsreceived')
+        .select('count')
+        .limit(1);
       const endTime = Date.now();
-      
+
       console.log('[OrderService] Connection test results:', {
         success: !error,
         responseTime: endTime - startTime,
         hasData: !!data,
-        error: error?.message
+        error: error?.message,
       });
-      
+
       if (error) {
         return {
           success: false,
@@ -67,39 +82,42 @@ export class OrderService {
           details: {
             code: error.code,
             details: error.details,
-            hint: error.hint
-          }
+            hint: error.hint,
+          },
         };
       }
-      
+
       // Test 2: Check session
       const { data: sessionData } = await getSupabaseClient().auth.getSession();
       console.log('[OrderService] Session status:', {
         hasSession: !!sessionData?.session,
         hasUser: !!sessionData?.session?.user,
-        userId: sessionData?.session?.user?.id
+        userId: sessionData?.session?.user?.id,
       });
-      
+
       return {
         success: true,
         details: {
           responseTime: endTime - startTime,
           hasSession: !!sessionData?.session,
-          userId: sessionData?.session?.user?.id
-        }
+          userId: sessionData?.session?.user?.id,
+        },
       };
     } catch (error) {
       console.error('[OrderService] Connection test failed:', error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Connection test failed',
-        details: { originalError: error }
+        error:
+          error instanceof Error ? error.message : 'Connection test failed',
+        details: { originalError: error },
       };
     }
   }
-  
+
   // Get or create order for a customer (perpetual cart model)
-  static async getOrCreateOrder(customerId: string): Promise<OrderServiceResponse<GetOrCreateOrderResponse>> {
+  static async getOrCreateOrder(
+    customerId: string
+  ): Promise<OrderServiceResponse<GetOrCreateOrderResponse>> {
     try {
       console.log('[OrderService] ========================================');
       console.log('[OrderService] GET OR CREATE ORDER - START');
@@ -110,7 +128,7 @@ export class OrderService {
         return {
           success: false,
           message: 'Customer ID is required',
-          error: 'Missing parameter'
+          error: 'Missing parameter',
         };
       }
 
@@ -131,7 +149,7 @@ export class OrderService {
         return {
           success: false,
           message: 'Authentication required - no access token',
-          error: 'No JWT token in storage'
+          error: 'No JWT token in storage',
         };
       }
 
@@ -143,12 +161,15 @@ export class OrderService {
       // Make RPC call
       console.log('[OrderService] Step 3: Calling get_or_create_cart RPC...');
       console.log('[OrderService] RPC Parameters:', {
-        p_customer_id: customerId
+        p_customer_id: customerId,
       });
 
-      const { data, error } = await authenticatedClient.rpc('get_or_create_cart', {
-        p_customer_id: customerId
-      });
+      const { data, error } = await authenticatedClient.rpc(
+        'get_or_create_cart',
+        {
+          p_customer_id: customerId,
+        }
+      );
 
       console.log('[OrderService] Step 4: RPC call completed');
 
@@ -157,12 +178,14 @@ export class OrderService {
         hasData: !!data,
         dataType: typeof data,
         dataValue: JSON.stringify(data),
-        errorDetails: error ? {
-          message: error.message,
-          code: error.code,
-          details: error.details,
-          hint: error.hint
-        } : null
+        errorDetails: error
+          ? {
+              message: error.message,
+              code: error.code,
+              details: error.details,
+              hint: error.hint,
+            }
+          : null,
       });
 
       if (error) {
@@ -171,16 +194,24 @@ export class OrderService {
         console.error('[OrderService] Error Code:', error.code);
         console.error('[OrderService] Error Details:', error.details);
         console.error('[OrderService] Error Hint:', error.hint);
-        console.error('[OrderService] Full Error Object:', JSON.stringify(error));
+        console.error(
+          '[OrderService] Full Error Object:',
+          JSON.stringify(error)
+        );
         return {
           success: false,
           message: 'Failed to get or create order',
-          error: error.message
+          error: error.message,
         };
       }
 
       // Check if the RPC returned an error in the data itself
-      if (data && typeof data === 'object' && 'success' in data && !data.success) {
+      if (
+        data &&
+        typeof data === 'object' &&
+        'success' in data &&
+        !data.success
+      ) {
         console.error('[OrderService] ❌ RPC RETURNED ERROR IN DATA');
         console.error('[OrderService] Data Message:', data.message);
         console.error('[OrderService] Data Error:', data.error);
@@ -188,7 +219,7 @@ export class OrderService {
         return {
           success: false,
           message: data.message || 'Failed to get or create order',
-          error: data.error || 'RPC function returned error'
+          error: data.error || 'RPC function returned error',
         };
       }
 
@@ -204,8 +235,8 @@ export class OrderService {
         message: 'Order retrieved successfully',
         data: {
           cart_id: cartId,
-          is_new: false // We can't determine this from the current response
-        }
+          is_new: false, // We can't determine this from the current response
+        },
       };
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
@@ -215,7 +246,11 @@ export class OrderService {
       console.error('[OrderService] Exception Stack:', err.stack);
       console.error('[OrderService] Full Exception:', JSON.stringify(error));
       console.error('[OrderService] ========================================');
-      return createErrorResponse(error, 'An unexpected error occurred', 'OrderService.getOrCreateOrder');
+      return createErrorResponse(
+        error,
+        'An unexpected error occurred',
+        'OrderService.getOrCreateOrder'
+      );
     }
   }
 
@@ -226,13 +261,17 @@ export class OrderService {
     grnItemId: string,
     quantity: number
   ): Promise<OrderServiceResponse<AddToOrderResponse>> {
-    console.log('[OrderService] Adding item to order:', { orderId, grnItemId, quantity });
+    console.log('[OrderService] Adding item to order:', {
+      orderId,
+      grnItemId,
+      quantity,
+    });
 
     if (!orderId || !grnItemId || quantity <= 0) {
       return {
         success: false,
         message: 'Invalid parameters',
-        error: 'Order ID, item ID, and positive quantity required'
+        error: 'Order ID, item ID, and positive quantity required',
       };
     }
 
@@ -242,7 +281,7 @@ export class OrderService {
       {
         p_grn_item_id: grnItemId,
         p_order_id: orderId,
-        p_quantity: quantity
+        p_quantity: quantity,
       },
       {
         context: 'OrderService.addItemToOrder',
@@ -266,7 +305,10 @@ export class OrderService {
     orderId: string,
     newQuantity: number
   ): Promise<OrderServiceResponse<OrderItem>> {
-    console.log('[OrderService] Updating item quantity via RPC:', { itemId, newQuantity });
+    console.log('[OrderService] Updating item quantity via RPC:', {
+      itemId,
+      newQuantity,
+    });
 
     if (newQuantity === 0) {
       // If quantity is 0, remove the item
@@ -278,7 +320,13 @@ export class OrderService {
       return {
         success: true,
         message: 'Item removed successfully',
-        data: { id: itemId, order_id: orderId, grn_item_id: '', requested_quantity: 0, created_at: '' }
+        data: {
+          id: itemId,
+          order_id: orderId,
+          grn_item_id: '',
+          requested_quantity: 0,
+          created_at: '',
+        },
       };
     }
 
@@ -287,7 +335,7 @@ export class OrderService {
       'update_order_item_quantity',
       {
         p_new_quantity: newQuantity,
-        p_order_item_id: itemId
+        p_order_item_id: itemId,
       },
       {
         context: 'OrderService.updateOrderItemQuantity',
@@ -310,7 +358,10 @@ export class OrderService {
     orderId: string
   ): Promise<OrderServiceResponse<void>> {
     try {
-      console.log('[OrderService] Removing item from order:', { itemId, orderId });
+      console.log('[OrderService] Removing item from order:', {
+        itemId,
+        orderId,
+      });
 
       const authenticatedClient = await getAuthenticatedClient();
       const { data, error, count } = await authenticatedClient
@@ -320,51 +371,70 @@ export class OrderService {
         .eq('order_id', orderId)
         .select();
 
-      console.log('[OrderService] Delete result:', { data, error, count, rowsDeleted: data?.length });
+      console.log('[OrderService] Delete result:', {
+        data,
+        error,
+        count,
+        rowsDeleted: data?.length,
+      });
 
       if (error) {
         console.error('[OrderService] Delete Error:', error);
         return {
           success: false,
           message: 'Failed to remove item',
-          error: error.message
+          error: error.message,
         };
       }
 
       if (!data || data.length === 0) {
-        console.warn('[OrderService] Delete returned no rows - item may not exist or RLS blocked');
+        console.warn(
+          '[OrderService] Delete returned no rows - item may not exist or RLS blocked'
+        );
         return {
           success: false,
-          message: 'Item not found or permission denied'
+          message: 'Item not found or permission denied',
         };
       }
 
       console.log('[OrderService] Item removed successfully');
       return {
         success: true,
-        message: 'Item removed from order'
+        message: 'Item removed from order',
       };
     } catch (error) {
       console.error('[OrderService] Exception:', error);
-      return createErrorResponse(error, 'An unexpected error occurred', 'OrderService.removeItemFromOrder');
+      return createErrorResponse(
+        error,
+        'An unexpected error occurred',
+        'OrderService.removeItemFromOrder'
+      );
     }
   }
 
   // Get order with items using RPC
-  static async getOrderWithItems(orderId: string): Promise<OrderServiceResponse<Order>> {
+  static async getOrderWithItems(
+    orderId: string
+  ): Promise<OrderServiceResponse<Order>> {
     try {
-      console.log('[OrderService] Fetching order with items using RPC:', orderId);
+      console.log(
+        '[OrderService] Fetching order with items using RPC:',
+        orderId
+      );
 
       const authenticatedClient = await getAuthenticatedClient();
-      const { data, error } = await authenticatedClient.rpc('get_order_with_items', {
-        p_order_id: orderId
-      });
+      const { data, error } = await authenticatedClient.rpc(
+        'get_order_with_items',
+        {
+          p_order_id: orderId,
+        }
+      );
 
-      console.log('[OrderService] get_order_with_items raw response:', { 
+      console.log('[OrderService] get_order_with_items raw response:', {
         data: typeof data === 'string' ? data.substring(0, 200) + '...' : data,
         dataType: typeof data,
         error,
-        orderId 
+        orderId,
       });
 
       if (error) {
@@ -372,7 +442,7 @@ export class OrderService {
         return {
           success: false,
           message: 'Failed to fetch order details',
-          error: error.message
+          error: error.message,
         };
       }
 
@@ -381,7 +451,7 @@ export class OrderService {
         return {
           success: false,
           message: 'Order not found',
-          error: 'No data returned'
+          error: 'No data returned',
         };
       }
 
@@ -389,19 +459,30 @@ export class OrderService {
       let parsedData;
       try {
         parsedData = typeof data === 'string' ? JSON.parse(data) : data;
-        console.log('[OrderService] Parsed data type:', typeof parsedData, Array.isArray(parsedData));
+        console.log(
+          '[OrderService] Parsed data type:',
+          typeof parsedData,
+          Array.isArray(parsedData)
+        );
       } catch (parseError) {
-        console.error('[OrderService] Failed to parse JSON response:', parseError);
+        console.error(
+          '[OrderService] Failed to parse JSON response:',
+          parseError
+        );
         return {
           success: false,
           message: 'Invalid response format',
-          error: 'Failed to parse response'
+          error: 'Failed to parse response',
         };
       }
 
       // Handle nested data structure: { data: {...}, success: true, message: null }
       let orderRecord;
-      if (parsedData?.data && typeof parsedData.data === 'object' && !Array.isArray(parsedData.data)) {
+      if (
+        parsedData?.data &&
+        typeof parsedData.data === 'object' &&
+        !Array.isArray(parsedData.data)
+      ) {
         // New format: { data: { order_data: {...}, items: [...] }, success: true }
         console.log('[OrderService] Unwrapping nested data object');
         orderRecord = parsedData.data;
@@ -413,12 +494,12 @@ export class OrderService {
         console.log('[OrderService] Invalid data structure:', {
           isArray: Array.isArray(parsedData),
           hasData: !!parsedData?.data,
-          keys: parsedData ? Object.keys(parsedData) : []
+          keys: parsedData ? Object.keys(parsedData) : [],
         });
         return {
           success: false,
           message: 'Invalid response structure',
-          error: 'Expected order data in response'
+          error: 'Expected order data in response',
         };
       }
 
@@ -426,12 +507,12 @@ export class OrderService {
         console.log('[OrderService] Missing order_data or items in response:', {
           hasOrderData: !!orderRecord.order_data,
           hasItems: !!orderRecord.items,
-          keys: Object.keys(orderRecord)
+          keys: Object.keys(orderRecord),
         });
         return {
           success: false,
           message: 'Incomplete order data',
-          error: 'Missing order_data or items'
+          error: 'Missing order_data or items',
         };
       }
 
@@ -473,13 +554,16 @@ export class OrderService {
           gr_id: item?.grns_id ?? '',
           grn_number: item?.grns_gr_no ?? '',
           grn_date: item?.grns_date ?? '',
-        }
+        },
       }));
 
       // Calculate totals
       const total_items = mappedItems.length;
-      const total_quantity = mappedItems.reduce((sum: number, item: typeof mappedItems[number]) =>
-        sum + (item.requested_quantity || 0), 0);
+      const total_quantity = mappedItems.reduce(
+        (sum: number, item: (typeof mappedItems)[number]) =>
+          sum + (item.requested_quantity || 0),
+        0
+      );
 
       const finalOrderData = {
         id: orderData.id,
@@ -508,22 +592,28 @@ export class OrderService {
         total_quantity: finalOrderData.total_quantity,
         itemsCount: finalOrderData.items?.length,
         hasCustomer: !!finalOrderData.customer,
-        hasItems: !!finalOrderData.items
+        hasItems: !!finalOrderData.items,
       });
 
       return {
         success: true,
         message: 'Order retrieved successfully',
-        data: finalOrderData
+        data: finalOrderData,
       };
     } catch (error) {
       console.error('[OrderService] Exception:', error);
-      return createErrorResponse(error, 'An unexpected error occurred', 'OrderService.getOrderWithItems');
+      return createErrorResponse(
+        error,
+        'An unexpected error occurred',
+        'OrderService.getOrderWithItems'
+      );
     }
   }
 
   // Get orders list with filters using RPC
-  static async getOrdersList(filters?: OrderFilters): Promise<OrderServiceResponse<Order[]>> {
+  static async getOrdersList(
+    filters?: OrderFilters
+  ): Promise<OrderServiceResponse<Order[]>> {
     const totalStartTime = Date.now();
     try {
       console.log('[OrderService] Fetching orders list using RPC:', filters);
@@ -531,11 +621,15 @@ export class OrderService {
       // Get authenticated client with JWT tokens
       const authClientStart = Date.now();
       const authenticatedClient = await getAuthenticatedClient();
-      console.log(`[OrderService] getAuthenticatedClient took ${Date.now() - authClientStart}ms`);
+      console.log(
+        `[OrderService] getAuthenticatedClient took ${Date.now() - authClientStart}ms`
+      );
 
       // Skip session check - it's slow and not needed since we're using JWT auth
       // The authenticated client already has the JWT token
-      console.log('[OrderService] Using authenticated client for RPC call (skipping session check)');
+      console.log(
+        '[OrderService] Using authenticated client for RPC call (skipping session check)'
+      );
 
       // Make the RPC call with enhanced error handling using authenticated client
       const rpcStartTime = Date.now();
@@ -547,7 +641,7 @@ export class OrderService {
         p_has_items: filters?.has_items || null,
         p_user_id: null,
         p_limit: 200,
-        p_offset: 0
+        p_offset: 0,
       });
       const rpcCall = authenticatedClient.rpc('get_orders_list', {
         p_customer_id: filters?.customer_id || null,
@@ -555,7 +649,7 @@ export class OrderService {
         p_has_items: filters?.has_items || null,
         p_user_id: null, // Use current session user
         p_limit: 200, // Increased from 50 to show more customers
-        p_offset: 0
+        p_offset: 0,
       });
 
       console.log('[OrderService] RPC call initiated, waiting for response...');
@@ -565,7 +659,7 @@ export class OrderService {
         hasData: !!data,
         dataType: typeof data,
         hasError: !!error,
-        errorDetails: error
+        errorDetails: error,
       });
 
       if (error) {
@@ -573,41 +667,53 @@ export class OrderService {
           message: error.message,
           details: error.details,
           hint: error.hint,
-          code: error.code
+          code: error.code,
         });
 
         // Check for JWT signature error and force logout
         handleJWTError(error);
 
         // Check if it's a network error
-        if (error.message?.includes('Network request failed') || error.message?.includes('fetch')) {
+        if (
+          error.message?.includes('Network request failed') ||
+          error.message?.includes('fetch')
+        ) {
           return {
             success: false,
-            message: 'Network connection error. Please check your internet connection and try again.',
-            error: 'Network request failed - ' + error.message
+            message:
+              'Network connection error. Please check your internet connection and try again.',
+            error: 'Network request failed - ' + error.message,
           };
         }
 
         return {
           success: false,
           message: 'Failed to fetch orders',
-          error: error.message
+          error: error.message,
         };
       }
 
       if (__DEV__) {
         console.log('[OrderService] ====== RAW RPC RESPONSE DEBUG ======');
-        console.log('[OrderService] data is null/undefined:', data === null || data === undefined);
+        console.log(
+          '[OrderService] data is null/undefined:',
+          data === null || data === undefined
+        );
         console.log('[OrderService] typeof data:', typeof data);
-        console.log('[OrderService] JSON.stringify(data):', JSON.stringify(data)?.substring(0, 500));
+        console.log(
+          '[OrderService] JSON.stringify(data):',
+          JSON.stringify(data)?.substring(0, 500)
+        );
 
         if (data) {
           console.log('[OrderService] Raw data structure:', {
             isArray: Array.isArray(data),
             hasOrders: !!data.orders,
             keys: typeof data === 'object' ? Object.keys(data) : 'N/A',
-            firstItem: Array.isArray(data) ? data[0] : (data.orders?.[0] || null),
-            dataLength: Array.isArray(data) ? data.length : (data.orders?.length || 'N/A'),
+            firstItem: Array.isArray(data) ? data[0] : data.orders?.[0] || null,
+            dataLength: Array.isArray(data)
+              ? data.length
+              : data.orders?.length || 'N/A',
           });
           console.log('Orders:', data.orders);
           console.log('Total:', data.total_count);
@@ -616,7 +722,9 @@ export class OrderService {
         console.log('[OrderService] ====== END RAW RPC RESPONSE DEBUG ======');
 
         const totalDuration = Date.now() - totalStartTime;
-        console.log(`[OrderService] === TOTAL getOrdersList TIME: ${totalDuration}ms ===`);
+        console.log(
+          `[OrderService] === TOTAL getOrdersList TIME: ${totalDuration}ms ===`
+        );
       }
 
       // Handle multiple response formats:
@@ -630,7 +738,10 @@ export class OrderService {
       console.log('  - Is Array?:', Array.isArray(data));
       console.log('  - Has data.data?:', !!data?.data);
       console.log('  - Has data.data.orders?:', !!data?.data?.orders);
-      console.log('  - data.data.orders is Array?:', Array.isArray(data?.data?.orders));
+      console.log(
+        '  - data.data.orders is Array?:',
+        Array.isArray(data?.data?.orders)
+      );
       console.log('  - data.data.orders length:', data?.data?.orders?.length);
       console.log('  - Has data.orders?:', !!data?.orders);
       console.log('  - data.orders is Array?:', Array.isArray(data?.orders));
@@ -641,7 +752,10 @@ export class OrderService {
       } else if (data?.data?.orders) {
         console.log('[OrderService] Using nested format: data.data.orders');
         ordersArray = data.data.orders;
-        console.log('[OrderService] Extracted array length:', ordersArray.length);
+        console.log(
+          '[OrderService] Extracted array length:',
+          ordersArray.length
+        );
         console.log('[OrderService] First order:', ordersArray[0]);
       } else if (data?.orders) {
         console.log('[OrderService] Using direct object format: data.orders');
@@ -650,18 +764,28 @@ export class OrderService {
         console.log('[OrderService] ⚠️ NO MATCHING FORMAT FOUND!');
       }
 
-      console.log('[OrderService] Final extracted orders array length:', ordersArray.length);
+      console.log(
+        '[OrderService] Final extracted orders array length:',
+        ordersArray.length
+      );
       console.log('[OrderService] ====== END PARSING ======');
 
       return {
         success: true,
         message: 'Orders retrieved successfully',
-        data: ordersArray
+        data: ordersArray,
       };
     } catch (error) {
       const totalDuration = Date.now() - totalStartTime;
-      console.error(`[OrderService] Exception after ${totalDuration}ms:`, error);
-      return createErrorResponse(error, 'An unexpected error occurred', 'OrderService.getOrdersList');
+      console.error(
+        `[OrderService] Exception after ${totalDuration}ms:`,
+        error
+      );
+      return createErrorResponse(
+        error,
+        'An unexpected error occurred',
+        'OrderService.getOrdersList'
+      );
     }
   }
 
@@ -672,7 +796,11 @@ export class OrderService {
     limit = 20,
     offset = 0
   ): Promise<OrderServiceResponse<Dispatch[]>> {
-    console.log('[OrderService] Fetching order dispatches:', { orderId, limit, offset });
+    console.log('[OrderService] Fetching order dispatches:', {
+      orderId,
+      limit,
+      offset,
+    });
 
     const result = await executeRPC<Dispatch[]>(
       getAuthenticatedClient,
@@ -690,7 +818,7 @@ export class OrderService {
       return {
         success: false,
         message: result.message,
-        error: result.error
+        error: result.error,
       };
     }
 
@@ -699,7 +827,7 @@ export class OrderService {
       return {
         success: false,
         message: 'Invalid response format',
-        error: 'Expected array response from RPC'
+        error: 'Expected array response from RPC',
       };
     }
 
@@ -709,7 +837,7 @@ export class OrderService {
     return {
       success: true,
       message: 'Dispatches retrieved successfully',
-      data: paginatedData
+      data: paginatedData,
     };
   }
 
@@ -734,13 +862,16 @@ export class OrderService {
     }
   ): Promise<OrderServiceResponse<CustomerDispatchResponse>> {
     try {
-      console.log('[OrderService] Fetching customer dispatches:', { customerId, options });
+      console.log('[OrderService] Fetching customer dispatches:', {
+        customerId,
+        options,
+      });
 
       if (!customerId) {
         return {
           success: false,
           message: 'Customer ID is required',
-          error: 'Missing customer_id parameter'
+          error: 'Missing customer_id parameter',
         };
       }
 
@@ -763,26 +894,31 @@ export class OrderService {
       }
 
       const authenticatedClient = await getAuthenticatedClient();
-      const { data, error } = await authenticatedClient.rpc('get_customer_dispatch_items', {
-        p_customer_id: customerId,
-        p_date_from: options?.dateFrom || null,
-        p_date_to: options?.dateTo || null,
-        p_filters: transformedFilters,
-        p_sort_by: options?.sortBy || 'grns_grNo',
-        p_sort_order: options?.sortOrder || 'asc',
-        p_limit: options?.limit || PAGINATION.DEFAULT_LIMIT,
-        p_offset: options?.offset || 0
-      });
+      const { data, error } = await authenticatedClient.rpc(
+        'get_customer_dispatch_items',
+        {
+          p_customer_id: customerId,
+          p_date_from: options?.dateFrom || null,
+          p_date_to: options?.dateTo || null,
+          p_filters: transformedFilters,
+          p_sort_by: options?.sortBy || 'grns_grNo',
+          p_sort_order: options?.sortOrder || 'asc',
+          p_limit: options?.limit || PAGINATION.DEFAULT_LIMIT,
+          p_offset: options?.offset || 0,
+        }
+      );
 
       console.log('[OrderService] Customer dispatches response:', {
         success: !error,
         error: error,
-        dataStructure: data ? {
-          hasItems: !!data.data?.items,
-          itemsCount: data.data?.items?.length,
-          hasPagination: !!data.data?.pagination,
-          hasAggregations: !!data.data?.aggregations
-        } : null
+        dataStructure: data
+          ? {
+              hasItems: !!data.data?.items,
+              itemsCount: data.data?.items?.length,
+              hasPagination: !!data.data?.pagination,
+              hasAggregations: !!data.data?.aggregations,
+            }
+          : null,
       });
 
       if (error) {
@@ -790,7 +926,7 @@ export class OrderService {
         return {
           success: false,
           message: 'Failed to fetch customer dispatches',
-          error: error.message
+          error: error.message,
         };
       }
 
@@ -805,33 +941,44 @@ export class OrderService {
               total_initial_qty: 0,
               total_dispatch_qty: 0,
               total_weight: 0,
-              total_count: 0
-            }
-          }
+              total_count: 0,
+            },
+          },
         };
       }
 
       return {
         success: true,
         message: 'Customer dispatches retrieved successfully',
-        data: data.data
+        data: data.data,
       };
     } catch (error) {
       console.error('[OrderService] Customer dispatches exception:', error);
-      return createErrorResponse(error, 'An unexpected error occurred', 'OrderService.getCustomerDispatches');
+      return createErrorResponse(
+        error,
+        'An unexpected error occurred',
+        'OrderService.getCustomerDispatches'
+      );
     }
   }
 
   // Enhanced search for customer items with intelligent search detection
-  static async searchCustomerItemsForOrder(filters: EnhancedSearchFilters): Promise<OrderServiceResponse<EnhancedGRNItem[]> & { metadata?: SearchMetadata }> {
+  static async searchCustomerItemsForOrder(
+    filters: EnhancedSearchFilters
+  ): Promise<
+    OrderServiceResponse<EnhancedGRNItem[]> & { metadata?: SearchMetadata }
+  > {
     try {
-      console.log('[OrderService] Enhanced search with intelligent detection:', filters);
+      console.log(
+        '[OrderService] Enhanced search with intelligent detection:',
+        filters
+      );
 
       if (!filters.customer_id) {
         return {
           success: false,
           message: 'Customer ID is required',
-          error: 'Missing customer_id parameter'
+          error: 'Missing customer_id parameter',
         };
       }
 
@@ -845,20 +992,26 @@ export class OrderService {
         p_page_size: filters.page_size || 50,
         p_offset: filters.offset || 0,
         p_stock_filter_min: filters.stock_filter_min || 0,
-        p_catalog_id: filters.catalog_id || null
+        p_catalog_id: filters.catalog_id || null,
       };
 
       console.log('[OrderService] 🔍 ENHANCED SEARCH RPC CALL:', {
         functionName: 'search_customer_items_for_order',
         parameters: rpcParams,
-        parameterTypes: Object.entries(rpcParams).reduce((acc, [key, value]) => ({
-          ...acc,
-          [key]: `${typeof value} ${value === null ? '(null)' : `(${value})`}`
-        }), {})
+        parameterTypes: Object.entries(rpcParams).reduce(
+          (acc, [key, value]) => ({
+            ...acc,
+            [key]: `${typeof value} ${value === null ? '(null)' : `(${value})`}`,
+          }),
+          {}
+        ),
       });
 
       const authenticatedClient = await getAuthenticatedClient();
-      const { data, error } = await authenticatedClient.rpc('search_customer_items_for_order', rpcParams);
+      const { data, error } = await authenticatedClient.rpc(
+        'search_customer_items_for_order',
+        rpcParams
+      );
 
       // Log raw response immediately after RPC call
       console.log('[OrderService] 📥 RAW RPC RESPONSE:', {
@@ -872,39 +1025,46 @@ export class OrderService {
         errorMessage: error?.message,
         errorDetails: error?.details,
         errorHint: error?.hint,
-        errorCode: error?.code
+        errorCode: error?.code,
       });
 
       // Additional detailed logging if data exists
       if (data !== null && data !== undefined) {
         console.log('[OrderService] 📊 RESPONSE DATA ANALYSIS:', {
           stringified: JSON.stringify(data).substring(0, 500) + '...',
-          firstRecord: Array.isArray(data) && data[0] ? {
-            allKeys: Object.keys(data[0]),
-            grn_item_id: data[0].grn_item_id,
-            item_name: data[0].item_name,
-            weight: data[0].weight,
-            search_match_type: data[0].search_match_type,
-            total_count: data[0].total_count
-          } : 'No first record'
+          firstRecord:
+            Array.isArray(data) && data[0]
+              ? {
+                  allKeys: Object.keys(data[0]),
+                  grn_item_id: data[0].grn_item_id,
+                  item_name: data[0].item_name,
+                  weight: data[0].weight,
+                  search_match_type: data[0].search_match_type,
+                  total_count: data[0].total_count,
+                }
+              : 'No first record',
         });
       }
 
       console.log('[OrderService] Enhanced search response:', {
-        data: Array.isArray(data) ? {
-          isArray: true,
-          itemsLength: data.length,
-          totalCount: data[0]?.total_count,
-          searchType: data[0]?.search_type,
-          firstItem: data[0] ? {
-            grn_item_id: data[0].grn_item_id,
-            item_name: data[0].item_name,
-            weight: data[0].weight,
-            search_match_type: data[0].search_match_type
-          } : null
-        } : null,
+        data: Array.isArray(data)
+          ? {
+              isArray: true,
+              itemsLength: data.length,
+              totalCount: data[0]?.total_count,
+              searchType: data[0]?.search_type,
+              firstItem: data[0]
+                ? {
+                    grn_item_id: data[0].grn_item_id,
+                    item_name: data[0].item_name,
+                    weight: data[0].weight,
+                    search_match_type: data[0].search_match_type,
+                  }
+                : null,
+            }
+          : null,
         error,
-        filters
+        filters,
       });
 
       if (error) {
@@ -912,14 +1072,14 @@ export class OrderService {
         return {
           success: false,
           message: 'Failed to search items',
-          error: error.message
+          error: error.message,
         };
       }
 
       // Handle new response structure with items array
       let itemsArray: RpcEnhancedGrnItem[] = [];
       let responseMetadata: Partial<RpcSearchMetadata> = {};
-      
+
       if (!data) {
         return {
           success: true,
@@ -930,8 +1090,8 @@ export class OrderService {
             match_type: 'combined',
             total_count: 0,
             current_count: 0,
-            has_more: false
-          }
+            has_more: false,
+          },
         };
       }
 
@@ -943,7 +1103,7 @@ export class OrderService {
           total_count: data.total_count || 0,
           has_more: data.has_more || false,
           search_type_detected: data.search_type_detected || 'text',
-          pagination: data.pagination
+          pagination: data.pagination,
         };
       } else if (Array.isArray(data)) {
         console.log('[OrderService] 🔸 LEGACY ARRAY FORMAT');
@@ -952,7 +1112,7 @@ export class OrderService {
         const firstRecord = data.length > 0 ? data[0] : null;
         responseMetadata = {
           total_count: firstRecord?.total_count || data.length,
-          has_more: false
+          has_more: false,
         };
       } else {
         console.log('[OrderService] ⚠️ UNEXPECTED DATA FORMAT:', typeof data);
@@ -965,8 +1125,8 @@ export class OrderService {
             match_type: 'combined',
             total_count: 0,
             current_count: 0,
-            has_more: false
-          }
+            has_more: false,
+          },
         };
       }
 
@@ -976,12 +1136,14 @@ export class OrderService {
           message: 'No items found for search criteria',
           data: [],
           metadata: {
-            search_type: (filters.search_type as 'text' | 'weight' | 'weight_range') || 'text',
+            search_type:
+              (filters.search_type as 'text' | 'weight' | 'weight_range') ||
+              'text',
             match_type: 'combined',
             total_count: 0,
             current_count: 0,
-            has_more: false
-          }
+            has_more: false,
+          },
         };
       }
 
@@ -989,61 +1151,72 @@ export class OrderService {
       const currentCount = itemsArray.length;
 
       // Map enhanced search results to EnhancedGRNItem format
-      const mappedItems: EnhancedGRNItem[] = itemsArray.map((item: RpcEnhancedGrnItem) => ({
-        // Core GRNItem fields - handle both old and new response formats
-        id: item.grn_item_id || item.id || '',
-        name: item.item_name,
-        packaging: item.packaging || '',
-        package_mark: item.package_mark || '',
-        current_stock: item.stock,
-        original_quantity: item.qty,
-        catalog_id: undefined,
-        catalog: undefined,
-        rack: item.rack || '',
-        weight: item.weight || 0,
-        gr_id: item.grn_id,
-        grn_number: item.gr_no || item.grn_details?.gr_no,
-        grn_date: item.grn_date || item.date || item.grn_details?.date,
-        
-        // Enhanced search specific fields
-        grns_id: item.grns_id,
-        grns_gr_no: item.grns_gr_no,
-        grns_date: item.grns_date,
-        grns_customer_name: item.grns_customer_name,
-        grns_registration: item.grns_registration,
-        grns_supervisor_name: item.grns_supervisor_name,
-        grns_sender_name: item.grns_sender_name,
-        grns_invoiced: item.grns_invoiced,
-        grns_leon: item.grns_leon,
-        grns_out_of_stock: item.grns_out_of_stock,
-        grns_note: item.grns_note,
-        grns_image_url: item.grns_image_url,
-        search_match_type: item.search_match_type as 'weight' | 'name' | 'package_mark' | 'combined' | undefined,
-        
-        // Additional customer context - handle both formats
-        customer_id: item.customer_id || item.customer?.id,
-        customer_name: item.customer_name || item.customer?.name,
-        
-        // Legacy compatibility
-        image_url: item.grns_image_url || item.image_url || '',
-        pricing_mode: undefined,
-        created_at: undefined,
-        updated_at: undefined
-      }));
+      const mappedItems: EnhancedGRNItem[] = itemsArray.map(
+        (item: RpcEnhancedGrnItem) => ({
+          // Core GRNItem fields - handle both old and new response formats
+          id: item.grn_item_id || item.id || '',
+          name: item.item_name,
+          packaging: item.packaging || '',
+          package_mark: item.package_mark || '',
+          current_stock: item.stock,
+          original_quantity: item.qty,
+          catalog_id: undefined,
+          catalog: undefined,
+          rack: item.rack || '',
+          weight: item.weight || 0,
+          gr_id: item.grn_id,
+          grn_number: item.gr_no || item.grn_details?.gr_no,
+          grn_date: item.grn_date || item.date || item.grn_details?.date,
+
+          // Enhanced search specific fields
+          grns_id: item.grns_id,
+          grns_gr_no: item.grns_gr_no,
+          grns_date: item.grns_date,
+          grns_customer_name: item.grns_customer_name,
+          grns_registration: item.grns_registration,
+          grns_supervisor_name: item.grns_supervisor_name,
+          grns_sender_name: item.grns_sender_name,
+          grns_invoiced: item.grns_invoiced,
+          grns_leon: item.grns_leon,
+          grns_out_of_stock: item.grns_out_of_stock,
+          grns_note: item.grns_note,
+          grns_image_url: item.grns_image_url,
+          search_match_type: item.search_match_type as
+            'weight' | 'name' | 'package_mark' | 'combined' | undefined,
+
+          // Additional customer context - handle both formats
+          customer_id: item.customer_id || item.customer?.id,
+          customer_name: item.customer_name || item.customer?.name,
+
+          // Legacy compatibility
+          image_url: item.grns_image_url || item.image_url || '',
+          pricing_mode: undefined,
+          created_at: undefined,
+          updated_at: undefined,
+        })
+      );
 
       // Determine detected search type from results or response metadata
-      const detectedSearchType = responseMetadata.search_type_detected === 'weight_range' ? 'weight_range' :
-                                 responseMetadata.search_type_detected === 'weight' ? 'weight' :
-                                 (itemsArray[0]?.search_match_type === 'weight' ? 'weight' : 
-                                 filters.search_query && /^\d+(\.\d+)?(-\d+(\.\d+)?)?$/.test(filters.search_query) ? 'weight_range' : 
-                                 'text');
+      const detectedSearchType =
+        responseMetadata.search_type_detected === 'weight_range'
+          ? 'weight_range'
+          : responseMetadata.search_type_detected === 'weight'
+            ? 'weight'
+            : itemsArray[0]?.search_match_type === 'weight'
+              ? 'weight'
+              : filters.search_query &&
+                  /^\d+(\.\d+)?(-\d+(\.\d+)?)?$/.test(filters.search_query)
+                ? 'weight_range'
+                : 'text';
 
       const searchMetadata: SearchMetadata = {
         search_type: detectedSearchType as 'weight' | 'text' | 'weight_range',
-        match_type: (itemsArray[0]?.search_match_type as 'weight' | 'name' | 'package_mark' | 'combined') || 'combined',
+        match_type:
+          (itemsArray[0]?.search_match_type as
+            'weight' | 'name' | 'package_mark' | 'combined') || 'combined',
         total_count: totalCount,
         current_count: currentCount,
-        has_more: responseMetadata.has_more || (currentCount < totalCount)
+        has_more: responseMetadata.has_more || currentCount < totalCount,
       };
 
       console.log('[OrderService] Enhanced search mapped results:', {
@@ -1051,75 +1224,106 @@ export class OrderService {
         mappedCount: mappedItems.length,
         metadata: searchMetadata,
         searchQuery: filters.search_query,
-        detectedType: detectedSearchType
+        detectedType: detectedSearchType,
       });
 
       return {
         success: true,
         message: 'Items found successfully',
         data: mappedItems,
-        metadata: searchMetadata
+        metadata: searchMetadata,
       };
     } catch (error) {
       console.error('[OrderService] Enhanced search exception:', error);
-      return createErrorResponse(error, 'An unexpected error occurred during search', 'OrderService.searchCustomerItemsForOrder');
+      return createErrorResponse(
+        error,
+        'An unexpected error occurred during search',
+        'OrderService.searchCustomerItemsForOrder'
+      );
     }
   }
 
   // Get available items for ordering using customer-specific RPC
-  static async getAvailableItems(filters?: ItemFilters & { customer_id?: string }): Promise<OrderServiceResponse<GRNItem[]>> {
+  static async getAvailableItems(
+    filters?: ItemFilters & { customer_id?: string }
+  ): Promise<OrderServiceResponse<GRNItem[]>> {
     try {
-      console.log('[OrderService] Fetching available items using customer-specific RPC:', filters);
+      console.log(
+        '[OrderService] Fetching available items using customer-specific RPC:',
+        filters
+      );
 
       if (!filters?.customer_id) {
-        console.error('[OrderService] Customer ID is required for fetching items');
+        console.error(
+          '[OrderService] Customer ID is required for fetching items'
+        );
         return {
           success: false,
           message: 'Customer ID is required',
-          error: 'Missing customer_id parameter'
+          error: 'Missing customer_id parameter',
         };
       }
 
       // Use the customer-specific RPC function with all supported parameters
       const authenticatedClient = await getAuthenticatedClient();
-      const { data, error } = await authenticatedClient.rpc('get_customer_items_for_order_selection', {
-        p_customer_id: filters.customer_id,
-        p_page_size: 50, // Default page size
-        p_offset: 0,     // No pagination for now
-        p_search_term: filters.search || null,
-        p_stock_filter_min: filters.in_stock_only ? 1 : 0, // Server-side stock filtering
-        p_grn_no_filter: filters.grn_id || null // GRN filter if provided
-      });
-
-      console.log('[OrderService] get_customer_items_for_order_selection response:', { 
-        data: Array.isArray(data) ? {
-          isArray: true,
-          itemsLength: data.length,
-          totalCount: data[0]?.total_count,
-          firstItem: data[0] ? {
-            grn_item_id: data[0].grn_item_id,
-            item_name: data[0].item_name,
-            packaging: data[0].packaging,
-            stock: data[0].stock,
-            gr_no: data[0].gr_no,
-            customer_name: data[0].customer_name
-          } : null
-        } : null,
-        error,
-        parameters: {
-          customer_id: filters.customer_id,
-          search_term: filters.search,
-          stock_filter_min: filters.in_stock_only ? 1 : 0,
-          grn_filter: filters.grn_id
+      const { data: response, error } = await authenticatedClient.rpc(
+        'get_customer_items_for_order_selection',
+        {
+          p_customer_id: filters.customer_id,
+          p_page_size: 50, // Default page size
+          p_offset: 0, // No pagination for now
+          p_search_term: filters.search || null,
+          p_stock_filter_min: filters.in_stock_only ? 1 : 0, // Server-side stock filtering
+          p_grn_no_filter: filters.grn_id || null, // GRN filter if provided
         }
-      });
+      );
+
+      if (response?.success === false) {
+        return {
+          success: false,
+          message: response.message || 'Failed to fetch items',
+          error: 'BACKEND_ERROR',
+        };
+      }
+      // The six-argument RPC returns the standard paginated envelope, not a bare array.
+      const data = Array.isArray(response) ? response : response?.data;
+
+      console.log(
+        '[OrderService] get_customer_items_for_order_selection response:',
+        {
+          data: Array.isArray(data)
+            ? {
+                isArray: true,
+                itemsLength: data.length,
+                totalCount: data[0]?.total_count,
+                firstItem: data[0]
+                  ? {
+                      grn_item_id: data[0].grn_item_id,
+                      item_name: data[0].item_name,
+                      packaging: data[0].packaging,
+                      stock: data[0].stock,
+                      gr_no: data[0].gr_no,
+                      customer_name: data[0].customer_name,
+                    }
+                  : null,
+              }
+            : null,
+          error,
+          parameters: {
+            customer_id: filters.customer_id,
+            search_term: filters.search,
+            stock_filter_min: filters.in_stock_only ? 1 : 0,
+            grn_filter: filters.grn_id,
+          },
+        }
+      );
 
       if (error) {
         console.error('[OrderService] RPC Error:', error);
         return {
           success: false,
           message: 'Failed to fetch items',
-          error: error.message
+          error: error.message,
         };
       }
 
@@ -1128,40 +1332,49 @@ export class OrderService {
         return {
           success: true,
           message: 'No items available',
-          data: []
+          data: [],
         };
       }
 
       if (data.length === 0) {
-        console.log('[OrderService] Empty result set for customer:', filters.customer_id);
+        console.log(
+          '[OrderService] Empty result set for customer:',
+          filters.customer_id
+        );
         return {
           success: true,
           message: 'No items available for this customer',
-          data: []
+          data: [],
         };
       }
 
       // Extract total count from first record for pagination metadata
-      const totalCount = data[0]?.total_count || 0;
-      console.log('[OrderService] Total available items for customer:', totalCount);
+      const totalCount =
+        response?.pagination?.total_count ??
+        data[0]?.total_count ??
+        data.length;
+      console.log(
+        '[OrderService] Total available items for customer:',
+        totalCount
+      );
 
       // Map the customer-specific items to our expected format
       const mappedItems = data.map((item: RpcEnhancedGrnItem) => ({
         // Core identification
         id: item.grn_item_id,
         name: item.item_name,
-        
+
         // Stock and quantity
         current_stock: item.stock,
         original_quantity: item.qty,
-        
+
         // Physical attributes
         packaging: item.packaging || '',
         package_mark: item.package_mark || '',
         rack: item.rack || '',
         weight: item.weight || 0,
         image_url: item.grns_image_url || '',
-        
+
         // GRN information
         gr_id: item.grn_id,
         grn_number: item.gr_no, // Note: using gr_no not grn_no
@@ -1170,7 +1383,7 @@ export class OrderService {
         // Customer context
         customer_id: item.customer_id,
         customer_name: item.customer_name,
-        
+
         // GRN header information
         grns_id: item.grns_id,
         grns_gr_no: item.grns_gr_no,
@@ -1183,23 +1396,25 @@ export class OrderService {
         grns_leon: item.grns_leon,
         grns_out_of_stock: item.grns_out_of_stock,
         grns_note: item.grns_note,
-        
+
         // Legacy compatibility fields
         catalog_id: undefined,
-        catalog: undefined
+        catalog: undefined,
       }));
 
       console.log('[OrderService] Mapped customer items:', {
         originalCount: data.length,
         mappedCount: mappedItems.length,
         totalCount: totalCount,
-        firstMappedItem: mappedItems[0] ? {
-          id: mappedItems[0].id,
-          name: mappedItems[0].name,
-          packaging: mappedItems[0].packaging,
-          current_stock: mappedItems[0].current_stock,
-          grn_number: mappedItems[0].grn_number
-        } : null
+        firstMappedItem: mappedItems[0]
+          ? {
+              id: mappedItems[0].id,
+              name: mappedItems[0].name,
+              packaging: mappedItems[0].packaging,
+              current_stock: mappedItems[0].current_stock,
+              grn_number: mappedItems[0].grn_number,
+            }
+          : null,
       });
 
       // Note: Server-side filtering is already applied, so no need for additional client-side filtering
@@ -1210,8 +1425,8 @@ export class OrderService {
         appliedFilters: {
           search: filters?.search,
           in_stock_only: filters?.in_stock_only,
-          grn_filter: filters?.grn_id
-        }
+          grn_filter: filters?.grn_id,
+        },
       });
 
       return {
@@ -1222,17 +1437,23 @@ export class OrderService {
         metadata: {
           total_count: totalCount,
           current_count: mappedItems.length,
-          has_more: mappedItems.length < totalCount
-        }
+          has_more: mappedItems.length < totalCount,
+        },
       };
     } catch (error) {
       console.error('[OrderService] Exception:', error);
-      return createErrorResponse(error, 'An unexpected error occurred', 'OrderService.getAvailableItems');
+      return createErrorResponse(
+        error,
+        'An unexpected error occurred',
+        'OrderService.getAvailableItems'
+      );
     }
   }
 
   // Get order summary
-  static async getOrderSummary(orderId: string): Promise<OrderServiceResponse<OrderSummary>> {
+  static async getOrderSummary(
+    orderId: string
+  ): Promise<OrderServiceResponse<OrderSummary>> {
     try {
       console.log('[OrderService] Fetching order summary:', orderId);
 
@@ -1247,23 +1468,31 @@ export class OrderService {
         return {
           success: false,
           message: 'Failed to fetch order summary',
-          error: error.message
+          error: error.message,
         };
       }
 
       const summary: OrderSummary = {
         item_count: data?.length || 0,
-        total_quantity: data?.reduce((sum, item) => sum + (item.requested_quantity || 0), 0) || 0
+        total_quantity:
+          data?.reduce(
+            (sum, item) => sum + (item.requested_quantity || 0),
+            0
+          ) || 0,
       };
 
       return {
         success: true,
         message: 'Summary retrieved successfully',
-        data: summary
+        data: summary,
       };
     } catch (error) {
       console.error('[OrderService] Exception:', error);
-      return createErrorResponse(error, 'An unexpected error occurred', 'OrderService.getOrderSummary');
+      return createErrorResponse(
+        error,
+        'An unexpected error occurred',
+        'OrderService.getOrderSummary'
+      );
     }
   }
 
@@ -1289,14 +1518,17 @@ export class OrderService {
     orderId: string,
     userId: string
   ): Promise<OrderServiceResponse<CreateDispatchResponse>> {
-    console.log('[OrderService] Creating dispatch from order:', { orderId, userId });
+    console.log('[OrderService] Creating dispatch from order:', {
+      orderId,
+      userId,
+    });
 
     const result = await executeRPC<CreateDispatchResponse>(
       getAuthenticatedClient,
       'convert_order_to_dispatch',
       {
         p_order_id: orderId,
-        p_user_id: userId
+        p_user_id: userId,
       },
       {
         context: 'OrderService.createDispatchFromOrder',
@@ -1307,7 +1539,9 @@ export class OrderService {
 
     return {
       success: result.success,
-      message: result.success ? 'Dispatch created successfully' : result.message,
+      message: result.success
+        ? 'Dispatch created successfully'
+        : result.message,
       data: result.data,
       error: result.error,
     };
@@ -1321,37 +1555,46 @@ export class OrderService {
 // ============================================================
 
 /** Test connection to Supabase */
-export const testOrderConnection = OrderService.testConnection.bind(OrderService);
+export const testOrderConnection =
+  OrderService.testConnection.bind(OrderService);
 
 /** Get or create order for a customer (perpetual cart model) */
-export const getOrCreateOrder = OrderService.getOrCreateOrder.bind(OrderService);
+export const getOrCreateOrder =
+  OrderService.getOrCreateOrder.bind(OrderService);
 
 /** Add item to order */
 export const addItemToOrder = OrderService.addItemToOrder.bind(OrderService);
 
 /** Update order item quantity */
-export const updateOrderItemQuantity = OrderService.updateOrderItemQuantity.bind(OrderService);
+export const updateOrderItemQuantity =
+  OrderService.updateOrderItemQuantity.bind(OrderService);
 
 /** Remove item from order */
-export const removeItemFromOrder = OrderService.removeItemFromOrder.bind(OrderService);
+export const removeItemFromOrder =
+  OrderService.removeItemFromOrder.bind(OrderService);
 
 /** Get order with items using RPC */
-export const getOrderWithItems = OrderService.getOrderWithItems.bind(OrderService);
+export const getOrderWithItems =
+  OrderService.getOrderWithItems.bind(OrderService);
 
 /** Get orders list with filters using RPC */
 export const getOrdersList = OrderService.getOrdersList.bind(OrderService);
 
 /** Get order dispatches */
-export const getOrderDispatches = OrderService.getOrderDispatches.bind(OrderService);
+export const getOrderDispatches =
+  OrderService.getOrderDispatches.bind(OrderService);
 
 /** Get customer dispatches using the new RPC */
-export const getCustomerDispatches = OrderService.getCustomerDispatches.bind(OrderService);
+export const getCustomerDispatches =
+  OrderService.getCustomerDispatches.bind(OrderService);
 
 /** Enhanced search for customer items with intelligent search detection */
-export const searchCustomerItemsForOrder = OrderService.searchCustomerItemsForOrder.bind(OrderService);
+export const searchCustomerItemsForOrder =
+  OrderService.searchCustomerItemsForOrder.bind(OrderService);
 
 /** Get available items for ordering using customer-specific RPC */
-export const getAvailableItems = OrderService.getAvailableItems.bind(OrderService);
+export const getAvailableItems =
+  OrderService.getAvailableItems.bind(OrderService);
 
 /** Get order summary */
 export const getOrderSummary = OrderService.getOrderSummary.bind(OrderService);
@@ -1360,7 +1603,8 @@ export const getOrderSummary = OrderService.getOrderSummary.bind(OrderService);
 export const isOrderEmpty = OrderService.isOrderEmpty.bind(OrderService);
 
 /** Create dispatch from order */
-export const createDispatchFromOrder = OrderService.createDispatchFromOrder.bind(OrderService);
+export const createDispatchFromOrder =
+  OrderService.createDispatchFromOrder.bind(OrderService);
 
 // Default export maintained for backward compatibility
 export default OrderService;
