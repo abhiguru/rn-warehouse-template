@@ -65,7 +65,7 @@ const FIORI_STATIC = {
 // Company information
 const COMPANY = {
   name: process.env.EXPO_PUBLIC_COMPANY_NAME || 'Your Company Name',
-  email: 'legal@example.com',
+  email: process.env.EXPO_PUBLIC_LEGAL_EMAIL || 'legal@example.com',
 };
 
 export default function TermsOfServiceScreen() {
@@ -73,7 +73,13 @@ export default function TermsOfServiceScreen() {
   const { isDarkMode } = useTheme();
   const FIORI = useFioriColors();
 
-  const Section = ({ title, children }: { title: string; children: React.ReactNode }) => (
+  const Section = ({
+    title,
+    children,
+  }: {
+    title: string;
+    children: React.ReactNode;
+  }) => (
     <View style={styles.section}>
       <Text style={[styles.sectionTitle, { color: FIORI.colors.textPrimary }]}>
         {title}
@@ -92,8 +98,12 @@ export default function TermsOfServiceScreen() {
     <View style={styles.bulletList}>
       {items.map((item, index) => (
         <View key={index} style={styles.bulletItem}>
-          <Text style={[styles.bullet, { color: FIORI.colors.textSecondary }]}>•</Text>
-          <Text style={[styles.bulletText, { color: FIORI.colors.textSecondary }]}>
+          <Text style={[styles.bullet, { color: FIORI.colors.textSecondary }]}>
+            •
+          </Text>
+          <Text
+            style={[styles.bulletText, { color: FIORI.colors.textSecondary }]}
+          >
             {item}
           </Text>
         </View>
@@ -105,7 +115,10 @@ export default function TermsOfServiceScreen() {
     <View
       style={[
         styles.container,
-        { paddingTop: insets.top, backgroundColor: FIORI.colors.backgroundGrouped },
+        {
+          paddingTop: insets.top,
+          backgroundColor: FIORI.colors.backgroundGrouped,
+        },
       ]}
     >
       <StatusBar
@@ -141,17 +154,25 @@ export default function TermsOfServiceScreen() {
 
       <ScrollView
         style={styles.scrollView}
-        contentContainerStyle={{ paddingBottom: insets.bottom + FIORI_STATIC.spacing.xl }}
+        contentContainerStyle={{
+          paddingBottom: insets.bottom + FIORI_STATIC.spacing.xl,
+        }}
         showsVerticalScrollIndicator={false}
       >
-        <View style={[styles.content, { backgroundColor: FIORI.colors.background }]}>
+        <View
+          style={[styles.content, { backgroundColor: FIORI.colors.background }]}
+        >
           {/* Header */}
-          <Text style={[styles.lastUpdated, { color: FIORI.colors.textTertiary }]}>
+          <Text
+            style={[styles.lastUpdated, { color: FIORI.colors.textTertiary }]}
+          >
             Last Updated: December 2025
           </Text>
 
           <Paragraph>
-            Welcome to the App. These Terms and Conditions constitute a legal agreement between you and {COMPANY.name}. By accessing or using our App and services, you agree to be bound by these Terms.
+            Welcome to the App. These Terms and Conditions constitute a legal
+            agreement between you and {COMPANY.name}. By accessing or using our
+            App and services, you agree to be bound by these Terms.
           </Paragraph>
 
           {/* Section 1 */}
@@ -162,159 +183,223 @@ export default function TermsOfServiceScreen() {
 
           {/* Section 2 */}
           <Section title="2. Definitions">
-            <BulletList items={[
-              '"Services" means cold storage rental, leasing, booking system, customer account management, and related services offered through the App',
-              '"User Account" means the customer dashboard accessible through phone number authentication',
-              '"Agreement" means the formal service agreement or contract executed between you and the Company for cold storage services',
-              '"Content" means all information, text, graphics, images, and other material available on the App',
-            ]} />
+            <BulletList
+              items={[
+                '"Services" means cold storage rental, leasing, booking system, customer account management, and related services offered through the App',
+                '"User Account" means the customer dashboard accessible through phone number authentication',
+                '"Agreement" means the formal service agreement or contract executed between you and the Company for cold storage services',
+                '"Content" means all information, text, graphics, images, and other material available on the App',
+              ]}
+            />
           </Section>
 
           {/* Section 3 */}
           <Section title="3. Acceptance of Terms">
             <Paragraph>
-              By accessing and using our App, you acknowledge that you have read, understood, and agree to be bound by these Terms and our Privacy Policy. These Terms apply to all visitors, users, and others who access or use the App.
+              By accessing and using our App, you acknowledge that you have
+              read, understood, and agree to be bound by these Terms and our
+              Privacy Policy. These Terms apply to all visitors, users, and
+              others who access or use the App.
             </Paragraph>
           </Section>
 
           {/* Section 4 */}
           <Section title="4. Services Offered">
-            <Paragraph>The Company provides the following services through the App:</Paragraph>
-            <BulletList items={[
-              'Cold Storage Rental and Leasing: Provision of cold storage facilities for preservation of goods',
-              'Booking System: Platform for requesting and managing cold storage bookings',
-              'Customer Account Management: Access to customer dashboard for viewing records and managing services',
-              'GRN Management: Goods Receipt Note creation and tracking',
-              'Dispatch Management: Track and manage dispatch operations',
-              'Inventory Management: View and manage stock levels',
-            ]} />
+            <Paragraph>
+              The Company provides the following services through the App:
+            </Paragraph>
+            <BulletList
+              items={[
+                'Cold Storage Rental and Leasing: Provision of cold storage facilities for preservation of goods',
+                'Booking System: Platform for requesting and managing cold storage bookings',
+                'Customer Account Management: Access to customer dashboard for viewing records and managing services',
+                'GRN Management: Goods Receipt Note creation and tracking',
+                'Dispatch Management: Track and manage dispatch operations',
+                'Inventory Management: View and manage stock levels',
+              ]}
+            />
           </Section>
 
           {/* Section 5 */}
           <Section title="5. User Account and Registration">
             <Paragraph>
-              To access the App features, you need to create a User Account by providing your phone number. You agree to:
+              To access the App features, you need to create a User Account by
+              providing your phone number. You agree to:
             </Paragraph>
-            <BulletList items={[
-              'Provide accurate and complete information during registration',
-              'Maintain the confidentiality of your account credentials',
-              'Notify us immediately of any unauthorized use of your account',
-              'Be responsible for all activities that occur under your account',
-            ]} />
+            <BulletList
+              items={[
+                'Provide accurate and complete information during registration',
+                'Maintain the confidentiality of your account credentials',
+                'Notify us immediately of any unauthorized use of your account',
+                'Be responsible for all activities that occur under your account',
+              ]}
+            />
             <Paragraph>
-              We reserve the right to suspend or terminate your User Account at any time if we believe you have violated these Terms or engaged in fraudulent, illegal, or harmful activities.
+              We reserve the right to suspend or terminate your User Account at
+              any time if we believe you have violated these Terms or engaged in
+              fraudulent, illegal, or harmful activities.
             </Paragraph>
           </Section>
 
           {/* Section 6 */}
           <Section title="6. Use of App">
-            <Paragraph>You may use the App for lawful purposes only. You agree NOT to:</Paragraph>
-            <BulletList items={[
-              'Use the App for any unlawful purpose or in violation of any applicable laws',
-              'Attempt to gain unauthorized access to any portion of the App',
-              'Interfere with or disrupt the App or servers',
-              'Transmit any viruses, malware, or harmful code',
-              'Use automated systems to extract data from the App',
-              'Impersonate any person or entity',
-              'Reproduce, duplicate, copy, sell, or exploit any portion of the App without permission',
-            ]} />
+            <Paragraph>
+              You may use the App for lawful purposes only. You agree NOT to:
+            </Paragraph>
+            <BulletList
+              items={[
+                'Use the App for any unlawful purpose or in violation of any applicable laws',
+                'Attempt to gain unauthorized access to any portion of the App',
+                'Interfere with or disrupt the App or servers',
+                'Transmit any viruses, malware, or harmful code',
+                'Use automated systems to extract data from the App',
+                'Impersonate any person or entity',
+                'Reproduce, duplicate, copy, sell, or exploit any portion of the App without permission',
+              ]}
+            />
           </Section>
 
           {/* Section 7 */}
           <Section title="7. Mobile Device Permissions">
-            <Paragraph>The App may request access to certain features on your device:</Paragraph>
-            <BulletList items={[
-              'Camera: For capturing images of goods and documents',
-              'Photo Library: For uploading images from your device',
-              'Notifications: For receiving updates about your orders and services',
-              'Biometric Authentication: For secure app access (optional)',
-            ]} />
             <Paragraph>
-              You can manage these permissions through your device settings at any time.
+              The App may request access to certain features on your device:
+            </Paragraph>
+            <BulletList
+              items={[
+                'Camera: For capturing images of goods and documents',
+                'Photo Library: For uploading images from your device',
+                'Notifications: For receiving updates about your orders and services',
+                'Biometric Authentication: For secure app access (optional)',
+              ]}
+            />
+            <Paragraph>
+              You can manage these permissions through your device settings at
+              any time.
             </Paragraph>
           </Section>
 
           {/* Section 8 */}
           <Section title="8. Payment Terms">
             <Paragraph>
-              Payment terms, including the amount, due dates, advance payment requirements, and billing cycles, shall be as specified in your written Agreement with the Company. All prices are exclusive of applicable taxes, including GST, unless otherwise stated.
+              Payment terms, including the amount, due dates, advance payment
+              requirements, and billing cycles, shall be as specified in your
+              written Agreement with the Company. All prices are exclusive of
+              applicable taxes, including GST, unless otherwise stated.
             </Paragraph>
           </Section>
 
           {/* Section 9 */}
           <Section title="9. Cancellation and Refund Policy">
             <Paragraph>
-              Cancellation terms, refund eligibility, notice periods, and refund processing timelines shall be governed by the specific terms outlined in your written Agreement with the Company. Any cancellation request must be submitted in writing to {COMPANY.email}.
+              Cancellation terms, refund eligibility, notice periods, and refund
+              processing timelines shall be governed by the specific terms
+              outlined in your written Agreement with the Company. Any
+              cancellation request must be submitted in writing to{' '}
+              {COMPANY.email}.
             </Paragraph>
           </Section>
 
           {/* Section 10 */}
           <Section title="10. Intellectual Property Rights">
             <Paragraph>
-              All Content on the App, including but not limited to text, graphics, logos, images, software, and other material, is the property of {COMPANY.name} or its licensors and is protected by Indian and international intellectual property laws.
+              All Content on the App, including but not limited to text,
+              graphics, logos, images, software, and other material, is the
+              property of {COMPANY.name} or its licensors and is protected by
+              Indian and international intellectual property laws.
             </Paragraph>
           </Section>
 
           {/* Section 11 */}
           <Section title="11. Privacy and Data Protection">
             <Paragraph>
-              Your use of the App is also governed by our Privacy Policy, which is incorporated into these Terms by reference. Please review our Privacy Policy to understand our practices regarding the collection, use, and disclosure of your personal information.
+              Your use of the App is also governed by our Privacy Policy, which
+              is incorporated into these Terms by reference. Please review our
+              Privacy Policy to understand our practices regarding the
+              collection, use, and disclosure of your personal information.
             </Paragraph>
           </Section>
 
           {/* Section 12 */}
           <Section title="12. Third-Party Services">
             <Paragraph>
-              The App may use third-party services for functionality such as authentication, analytics, and cloud storage. We have no control over and assume no responsibility for the privacy policies or practices of any third-party services.
+              The App may use third-party services for functionality such as
+              authentication, analytics, and cloud storage. We have no control
+              over and assume no responsibility for the privacy policies or
+              practices of any third-party services.
             </Paragraph>
           </Section>
 
           {/* Section 13 */}
           <Section title="13. Disclaimer of Warranties">
             <Paragraph>
-              TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW: The App and all Content are provided on an "AS IS" and "AS AVAILABLE" basis without warranties of any kind, either express or implied. We do not warrant that the App will be uninterrupted, error-free, or free of viruses or other harmful components.
+              TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW: The App and all
+              Content are provided on an "AS IS" and "AS AVAILABLE" basis
+              without warranties of any kind, either express or implied. We do
+              not warrant that the App will be uninterrupted, error-free, or
+              free of viruses or other harmful components.
             </Paragraph>
           </Section>
 
           {/* Section 14 */}
           <Section title="14. Limitation of Liability">
             <Paragraph>
-              TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW: The Company, its directors, officers, employees, agents, and affiliates shall not be liable for any indirect, incidental, special, consequential, or punitive damages arising out of or related to your use of the App or services.
+              TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW: The Company,
+              its directors, officers, employees, agents, and affiliates shall
+              not be liable for any indirect, incidental, special,
+              consequential, or punitive damages arising out of or related to
+              your use of the App or services.
             </Paragraph>
           </Section>
 
           {/* Section 15 */}
           <Section title="15. Indemnification">
             <Paragraph>
-              You agree to indemnify, defend, and hold harmless {COMPANY.name}, its directors, officers, employees, agents, affiliates, and licensors from any claims, liabilities, damages, losses, costs, or expenses arising out of your use of the App or violation of these Terms.
+              You agree to indemnify, defend, and hold harmless {COMPANY.name},
+              its directors, officers, employees, agents, affiliates, and
+              licensors from any claims, liabilities, damages, losses, costs, or
+              expenses arising out of your use of the App or violation of these
+              Terms.
             </Paragraph>
           </Section>
 
           {/* Section 16 */}
           <Section title="16. Force Majeure">
             <Paragraph>
-              The Company shall not be liable for any failure or delay in performance due to circumstances beyond its reasonable control, including acts of God, natural disasters, war, terrorism, pandemics, or government actions.
+              The Company shall not be liable for any failure or delay in
+              performance due to circumstances beyond its reasonable control,
+              including acts of God, natural disasters, war, terrorism,
+              pandemics, or government actions.
             </Paragraph>
           </Section>
 
           {/* Section 17 */}
           <Section title="17. Dispute Resolution">
             <Paragraph>
-              Any dispute arising out of these Terms shall first be attempted to be resolved through good faith negotiations. If unresolved within thirty (30) days, the dispute shall be referred to arbitration in accordance with the Arbitration and Conciliation Act, 1996. The seat of arbitration shall be Ahmedabad, Gujarat, India.
+              Any dispute arising out of these Terms shall first be attempted to
+              be resolved through good faith negotiations. If unresolved within
+              thirty (30) days, the dispute shall be referred to arbitration in
+              accordance with the Arbitration and Conciliation Act, 1996. The
+              seat of arbitration shall be Ahmedabad, Gujarat, India.
             </Paragraph>
           </Section>
 
           {/* Section 18 */}
           <Section title="18. Governing Law">
             <Paragraph>
-              These Terms shall be governed by and construed in accordance with the laws of India, including the Indian Contract Act, 1872, the Information Technology Act, 2000, and the Consumer Protection Act, 2019.
+              These Terms shall be governed by and construed in accordance with
+              the laws of India, including the Indian Contract Act, 1872, the
+              Information Technology Act, 2000, and the Consumer Protection Act,
+              2019.
             </Paragraph>
           </Section>
 
           {/* Section 19 */}
           <Section title="19. Modifications to Terms">
             <Paragraph>
-              We reserve the right to modify these Terms at any time. Changes will be effective immediately upon posting the updated Terms in the App. Your continued use of the App after such changes constitutes acceptance of the modified Terms.
+              We reserve the right to modify these Terms at any time. Changes
+              will be effective immediately upon posting the updated Terms in
+              the App. Your continued use of the App after such changes
+              constitutes acceptance of the modified Terms.
             </Paragraph>
           </Section>
 
@@ -328,9 +413,20 @@ export default function TermsOfServiceScreen() {
           </Section>
 
           {/* Acknowledgment */}
-          <View style={[styles.acknowledgment, { borderTopColor: FIORI.colors.divider }]}>
-            <Text style={[styles.acknowledgmentText, { color: FIORI.colors.textSecondary }]}>
-              BY USING THE APP, YOU ACKNOWLEDGE THAT YOU HAVE READ THESE TERMS AND CONDITIONS, UNDERSTAND THEM, AND AGREE TO BE BOUND BY THEM.
+          <View
+            style={[
+              styles.acknowledgment,
+              { borderTopColor: FIORI.colors.divider },
+            ]}
+          >
+            <Text
+              style={[
+                styles.acknowledgmentText,
+                { color: FIORI.colors.textSecondary },
+              ]}
+            >
+              BY USING THE APP, YOU ACKNOWLEDGE THAT YOU HAVE READ THESE TERMS
+              AND CONDITIONS, UNDERSTAND THEM, AND AGREE TO BE BOUND BY THEM.
             </Text>
           </View>
         </View>
