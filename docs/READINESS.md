@@ -14,8 +14,11 @@ repositories; the old v0.1.0 backend tag remains incomplete.
 - TypeScript and ESLint error checks pass. Backend public configuration is
   reachable from this checkout.
 - The companion backend's live API tests pass for admin/customer login,
-  customer isolation, GRN, dispatch stock updates, oversell rejection, invoice
-  saving, four PDF/signed-download flows, refresh replay, and logout revocation.
+  customer isolation, dynamic assignment lifecycle, staff privilege boundaries,
+  storage image registration/upload/confirmation/read/deletion, GRN,
+  concurrent dispatch race prevention with exact stock decrement, oversell rejection,
+  invoice saving, operational KPI reports, four PDF/signed-download flows, refresh replay,
+  and logout revocation.
 - Removed raw OTP/session-response and token-prefix logging from the central
   session manager. PDF/print services now use the central refreshing token
   getter. Fixed the paginated customer-item response adapter.
