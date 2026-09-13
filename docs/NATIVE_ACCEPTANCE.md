@@ -1,15 +1,20 @@
 # Native and physical-device acceptance
 
-## Status — 2026-09-12
+## Status — 2026-09-13
 
 Source baseline: `75e42324b6c9317d8432c1caebe122e4cafa4fdf`, Expo SDK 54,
 React Native 0.81.5. The Linux public-clone test passes dependency installation,
 75 Jest tests, typecheck, lint, bootstrap and dependency tests.
 
+Native follow-up at `96d92a287f2ce8a27b2587fcebe482eb4fe988b2` explicitly
+aligns Expo Font and NetInfo with SDK 54. A fresh public fetch and `npm ci`, Expo's
+SDK compatibility check, and all eight bootstrap/dependency tests pass. The
+Android ARM64 debug build below also passes at this commit.
+
 | Evidence | Status |
 | --- | --- |
 | Android native generation (`expo prebuild --platform android --no-install`) | Pass in a fresh scratch clone |
-| ARM64 debug APK compilation | In progress; no binary acceptance claimed yet |
+| ARM64 debug APK compilation | Pass on Linux; `:app:assembleDebug`, 594 tasks, 6m 57s |
 | Physical Android device | Not run: no device listed by `adb devices -l` |
 | iOS native compilation | Not run: this host is Linux, without Xcode |
 | Camera, reboot, offline and deep-link acceptance | Pending physical-device execution |
@@ -18,6 +23,23 @@ React Native 0.81.5. The Linux public-clone test passes dependency installation,
 An Android JavaScript/Hermes export or successful native generation is **not** a
 compiled APK or a physical-device test. Use this runbook to record real evidence,
 not to mark device checks complete automatically.
+
+### Recorded Android compile evidence
+
+- Node 22.23.2, npm 10.9.8, OpenJDK 21.0.12, Gradle 8.14.3.
+- SDK platform 36; Build Tools 36.0.0 and 35.0.0; NDK 27.1.12297006 and
+  27.0.12077973 (Worklets Core); CMake 3.22.1. Missing components in the initial
+  scratch SDK copy caused two prerequisite failures before the successful build.
+- SDK files were copied from installed public tools into an isolated scratch SDK;
+  Gradle used a new cache, two workers and disabled SDK auto-downloads. Existing
+  SDK files, private repositories and production signing assets were not changed.
+- APK: `app-debug.apk`, 79,543,019 bytes, ARM64 only, application ID
+  `com.example.warehousemanager`, min SDK 24 / target SDK 36.
+- SHA-256: `b3a9c69e73daec23be4d5ddfa9852d127a6108853d4d723e0d821153a0fb05e2`.
+- This local debug artifact is **not attached to the source release** and was
+  not installed or launched. Build/deprecation warnings remain. The template's
+  app/runtime version is still `0.1.0`; the `v0.2.0-demo` source tag is not an
+  app-store binary version or a production signing approval.
 
 ## Build using your own environment
 
@@ -37,7 +59,13 @@ npx expo run:android --device
 npx expo run:ios --device
 ```
 
-An APK-only check can use `android/gradlew :app:assembleDebug` from `android/`.
+An APK-only check, run from `android/`, is:
+
+```bash
+./gradlew :app:assembleDebug --no-daemon --max-workers=2 \
+  -PreactNativeArchitectures=arm64-v8a
+```
+
 Record target architectures. A debug build uses test signing and usually needs
 Metro; it is not a signed app-store release. Do not publish generated signing
 files, `.env`, Gradle credentials, logs or unreviewed binary attachments.
