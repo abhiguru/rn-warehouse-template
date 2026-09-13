@@ -2,6 +2,11 @@
 
 ## Current result
 
+Native follow-up: explicitly depend on SDK 54's `expo-font ~14.0.12` so the
+unrestricted icon-font peer does not autolink SDK 57's font module. Pin NetInfo
+to Expo's expected `11.4.1`. CI also runs `expo install --check`; a dependency
+regression test checks the selected font against Expo's bundled SDK range.
+
 The mobile audit fell from **9 high / 20 moderate / 0 critical** to
 **0 high / 8 moderate / 0 critical** after targeted dependency overrides.
 This is not a clean audit or a production-readiness approval. The backend npm
@@ -43,7 +48,11 @@ remains open until the issue is resolved or explicitly risk-assessed.
 
 ## Verification
 
-- 59 Jest tests pass across five suites.
+- Initial override review: 59 Jest tests across five suites. Subsequent telemetry
+  coverage increases this to 75 tests across six suites, all passing in CI.
+- SDK-alignment follow-up: eight bootstrap/dependency tests and
+  `expo install --check` pass. Audit refreshed 2026-09-13: unchanged at eight
+  moderate findings, zero high/critical.
 - TypeScript and full ESLint error checks pass.
 - `npm run test:setup` passes bootstrap and dependency-security test files.
 - Dependency tests cover PNG dimensions in patched Metro, blocked external
@@ -53,6 +62,8 @@ remains open until the issue is resolved or explicitly risk-assessed.
   this export. This is not a native build or physical-device test.
 - Re-run `npm audit` for current advisories. Native acceptance, container scanning
   and full release-artifact inspection remain in the shared release checklist.
+- Android ARM64 debug compilation passes at `96d92a2`; this is not device/iOS
+  acceptance. See [native evidence and runbook](NATIVE_ACCEPTANCE.md).
 
 ## Primary references
 

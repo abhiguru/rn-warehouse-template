@@ -1,4 +1,4 @@
-name: Release
+name: Release validation
 
 on:
   push:
@@ -6,20 +6,34 @@ on:
       - 'v*'
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   release:
-    name: Create Release
+    name: Validate source demo
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Create Release
-        uses: softprops/action-gh-release@v2
         with:
-          generate_release_notes: true
-          prerelease: true
-          body: 'Source preview only. See docs/READINESS.md; backend integration and native builds are not verified.'
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Reviewed source-demo tag only
+        run: test "$GITHUB_REF_TYPE" = tag && test "$GITHUB_REF_NAME" = v0.2.0-demo
+      - run: npm ci
+      - run: npx expo install --check
+      - run: npm test -- --silent
+      - run: npm run typecheck
+      - run: npx eslint . --quiet
+      - run: npm run test:setup
+      - run: npm audit --audit-level=high
+      - run: npx expo export --platform android --max-workers 2
+        env:
+          EXPO_NO_DOTENV: '1'
+          EXPO_NO_TELEMETRY: '1'
+      # A maintainer explicitly publishes a source-only prerelease after this
+      # tag's validation passes. No credentials/native binaries are uploaded.

@@ -1,0 +1,5 @@
+# Reviewed synthetic/documentation JWTs in historical telemetry tests, not
+# Supabase sessions: no role/expiry and no production credential source.
+# Current tests construct an explicitly invalid-signature fixture instead.
+8054f8d203e07d702c43284ae2b6e20b231a43fe:src/config/__tests__/sentryConfig.test.ts:jwt:32
+8054f8d203e07d702c43284ae2b6e20b231a43fe:src/config/__tests__/sentryConfig.test.ts:jwt:98

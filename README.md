@@ -75,7 +75,9 @@ Expo generates the ignored native directories as needed. Use `npm start` for
 subsequent Metro sessions. Use native builds as the baseline; the latest Expo Go
 app may not support this older SDK, and Expo Go does not validate native plugins,
 permissions, or build settings. Native builds/device workflows have not yet been
-verified by this release.
+verified by this release. Use [NATIVE_ACCEPTANCE.md](docs/NATIVE_ACCEPTANCE.md)
+to record native build and physical-device results; do not substitute a JS bundle
+or a green CI badge for device acceptance.
 
 For a bundle-only check:
 
@@ -114,9 +116,10 @@ telemetry redaction (URLs, headers, user PII, breadcrumbs). See [READINESS.md](d
 and [TELEMETRY_AND_PRIVACY.md](docs/TELEMETRY_AND_PRIVACY.md).
 Dependency audit findings are tracked in [DEPENDENCY_SECURITY.md](docs/DEPENDENCY_SECURITY.md).
 
-GitHub Actions workflows (`.github/workflows/ci.yml` and `release.yml`) are
-active and enforce linting, type-checking, automated tests, and dependency audits
-on all pushes and pull requests to `main`.
+GitHub Actions CI runs lint, typecheck, tests and a high-severity dependency gate
+on pushes and pull requests to `main`; moderate findings remain documented.
+Tag validation is separate. Demo releases are explicitly published as prereleases
+after validation, without production signing assets or unreviewed app binaries.
 
 MIT — see [LICENSE](LICENSE). Contributions: [CONTRIBUTING.md](CONTRIBUTING.md).
 Security reports: [SECURITY.md](SECURITY.md).

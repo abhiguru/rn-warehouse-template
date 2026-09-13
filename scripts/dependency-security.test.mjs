@@ -7,6 +7,16 @@ import test from 'node:test';
 
 const require = createRequire(import.meta.url);
 
+test('font autolinking selects the installed Expo SDK version, not an unrestricted peer', () => {
+  const expected = require('expo/bundledNativeModules.json')['expo-font'];
+  const installed = require('expo-font/package.json').version;
+  const semver = require('semver');
+  assert.ok(
+    semver.satisfies(installed, expected),
+    `expo-font must satisfy SDK range ${expected}`
+  );
+});
+
 test('Metro uses the patched 0.83 parser and still reads PNG dimensions', () => {
   const pkg = require('metro/package.json');
   assert.equal(pkg.version, '0.83.8');
