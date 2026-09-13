@@ -7,10 +7,13 @@ Supabase, Redux Toolkit, and Expo Router.
 [supabase-warehouse-template](https://github.com/abhiguru/supabase-warehouse-template)
 now passes API tests for custom login, customer isolation, GRN, dispatch,
 invoice saving and PDF downloads. Native-device acceptance and production
-readiness are still incomplete; use current main in both repositories. See
+readiness are still incomplete. For a reproducible checkpoint, use
+**`v0.2.0-demo` in both repositories**; `main` may advance. The
+[demo prerelease](https://github.com/abhiguru/rn-warehouse-template/releases/tag/v0.2.0-demo)
+records the exact tested commit pair and publishes no native binaries. See
 [READINESS.md](docs/READINESS.md) for verified results and remaining work.
 
-## Start contributing
+## Start locally
 
 Prerequisites: Node.js **22.18+** and npm. Native Android builds also need Android
 Studio, Android SDK, and a compatible JDK. iOS builds require macOS and Xcode
@@ -18,7 +21,7 @@ Studio, Android SDK, and a compatible JDK. iOS builds require macOS and Xcode
 This tree uses Expo SDK 54 / React Native 0.81.
 
 ```bash
-git clone https://github.com/abhiguru/rn-warehouse-template.git
+git clone --branch v0.2.0-demo https://github.com/abhiguru/rn-warehouse-template.git
 cd rn-warehouse-template
 npm ci
 cp .env.example .env
@@ -31,6 +34,8 @@ npm run test:setup
 `bash setup.sh` installs locked dependencies and creates `.env` only if absent.
 It never inspects Docker, reads service-role credentials, or overwrites an existing
 environment file.
+
+For contribution work instead of the pinned demo, branch from current `main`.
 
 ## Connect a compatible backend
 
