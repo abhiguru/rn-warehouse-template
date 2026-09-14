@@ -28,6 +28,8 @@
     "test:setup": "node --test scripts/*.test.mjs",
     "check:backend": "node scripts/check-backend.mjs",
     "update-supabase-keys": "bash scripts/update-supabase-keys.sh",
+    "doctor": "node scripts/doctor.mjs",
+    "postinstall": "node scripts/patch-expo-metro.mjs && node scripts/patch-navigation-decoder.mjs",
     "prepare": "husky"
   },
   "dependencies": {
@@ -131,7 +133,8 @@
     "metro-source-map": "0.83.8",
     "metro-symbolicate": "0.83.8",
     "metro-transform-plugins": "0.83.8",
-    "metro-transform-worker": "0.83.8"
+    "metro-transform-worker": "0.83.8",
+    "decode-uri-component": "0.5.0"
   },
   "lint-staged": {
     "*.{ts,tsx}": [
@@ -151,7 +154,7 @@
       "^@/(.*)$": "<rootDir>/src/$1"
     },
     "transformIgnorePatterns": [
-      "node_modules/(?!((jest-)?react-native|@react-native(-community)?|expo(nent)?|@expo(nent)?/.*|@gorhom/.*|@reduxjs/toolkit|immer|@sentry/react-native|react-navigation|@react-navigation/.*|react-native-svg))"
+      "node_modules/(?!((jest-)?react-native|@react-native(-community)?|expo(nent)?|@expo(nent)?/.*|@gorhom/.*|@reduxjs/toolkit|immer|@sentry/react-native|react-navigation|@react-navigation/.*|react-native-svg|decode-uri-component))"
     ]
   }
 }

@@ -5,7 +5,10 @@
  * Returns current inventory at a glance with item-level breakdowns.
  */
 
-import { getAuthenticatedClient, getStoredToken } from '@/config/supabaseConfig';
+import {
+  getAuthenticatedClient,
+  getStoredToken,
+} from '@/config/supabaseConfig';
 import type {
   StockSummaryResponse,
   StockSummaryData,
@@ -74,17 +77,24 @@ export async function getCustomerStockSummary(
       isValid: tokenData.isValid,
       type: tokenData.type,
       hasAuthToken: !!tokenData.authToken,
-      tokenPreview: tokenData.authToken ? `${tokenData.authToken.substring(0, 20)}...` : 'none',
-      expiresAt: tokenData.expiresAt ? new Date(tokenData.expiresAt).toISOString() : 'none',
+      expiresAt: tokenData.expiresAt
+        ? new Date(tokenData.expiresAt).toISOString()
+        : 'none',
     });
 
     const client = await getAuthenticatedClient();
 
     const rpcParams = { p_customer_uuid: customerId };
 
-    console.log('[StockSummary] Calling get_customer_stock_summary with params:', rpcParams);
+    console.log(
+      '[StockSummary] Calling get_customer_stock_summary with params:',
+      rpcParams
+    );
 
-    const { data, error } = await client.rpc('get_customer_stock_summary', rpcParams);
+    const { data, error } = await client.rpc(
+      'get_customer_stock_summary',
+      rpcParams
+    );
 
     console.timeEnd('⏱️ [StockSummary] RPC call duration');
 
@@ -109,7 +119,9 @@ export async function getCustomerStockSummary(
 
     // Log response size for debugging
     const dataSize = JSON.stringify(data).length;
-    console.log(`📊 [StockSummary] Response size: ${(dataSize / 1024).toFixed(2)} KB`);
+    console.log(
+      `📊 [StockSummary] Response size: ${(dataSize / 1024).toFixed(2)} KB`
+    );
 
     // Parse the RPC response - handle both wrapped and unwrapped formats
     const responseData = Array.isArray(data) ? data[0] : data;
@@ -188,7 +200,6 @@ export async function getAllStockSummary(): Promise<AllStockSummaryResponse> {
       isValid: tokenData.isValid,
       type: tokenData.type,
       hasAuthToken: !!tokenData.authToken,
-      tokenPreview: tokenData.authToken ? `${tokenData.authToken.substring(0, 20)}...` : 'none',
     });
 
     const client = await getAuthenticatedClient();
@@ -220,29 +231,36 @@ export async function getAllStockSummary(): Promise<AllStockSummaryResponse> {
 
     // Log response size for debugging
     const dataSize = JSON.stringify(data).length;
-    console.log(`📊 [AllStockSummary] Response size: ${(dataSize / 1024).toFixed(2)} KB`);
+    console.log(
+      `📊 [AllStockSummary] Response size: ${(dataSize / 1024).toFixed(2)} KB`
+    );
 
     // Parse the RPC response - handle both wrapped and unwrapped formats
     const responseData = Array.isArray(data) ? data[0] : data;
 
     // Map to our expected format
     const summary: AllStockSummaryKPIs = {
-      total_customers_with_stock: responseData?.summary?.total_customers_with_stock ?? 0,
+      total_customers_with_stock:
+        responseData?.summary?.total_customers_with_stock ?? 0,
       total_items: responseData?.summary?.total_items ?? 0,
       total_quantity: responseData?.summary?.total_quantity ?? 0,
       total_weight_kg: responseData?.summary?.total_weight_kg ?? 0,
     };
 
-    const customers: CustomerStockRow[] = (responseData?.customers ?? []).map((customer: any) => ({
-      customer_id: customer.customer_id,
-      customer_name: customer.customer_name,
-      total_stock: customer.total_stock ?? 0,
-      total_weight: customer.total_weight ?? 0,
-      item_count: customer.item_count ?? 0,
-      grn_count: customer.grn_count ?? 0,
-    }));
+    const customers: CustomerStockRow[] = (responseData?.customers ?? []).map(
+      (customer: any) => ({
+        customer_id: customer.customer_id,
+        customer_name: customer.customer_name,
+        total_stock: customer.total_stock ?? 0,
+        total_weight: customer.total_weight ?? 0,
+        item_count: customer.item_count ?? 0,
+        grn_count: customer.grn_count ?? 0,
+      })
+    );
 
-    console.log(`[AllStockSummary] Parsed ${customers.length} customers, total qty: ${summary.total_quantity}`);
+    console.log(
+      `[AllStockSummary] Parsed ${customers.length} customers, total qty: ${summary.total_quantity}`
+    );
 
     return {
       success: true,

@@ -5,7 +5,10 @@
  * Returns GRN history with items, invoice status, and dispatch summary.
  */
 
-import { getAuthenticatedClient, getStoredToken } from '@/config/supabaseConfig';
+import {
+  getAuthenticatedClient,
+  getStoredToken,
+} from '@/config/supabaseConfig';
 import type {
   GRNActivityResponse,
   GRNActivityData,
@@ -97,8 +100,9 @@ export async function getCustomerGRNActivity(
       isValid: tokenData.isValid,
       type: tokenData.type,
       hasAuthToken: !!tokenData.authToken,
-      tokenPreview: tokenData.authToken ? `${tokenData.authToken.substring(0, 20)}...` : 'none',
-      expiresAt: tokenData.expiresAt ? new Date(tokenData.expiresAt).toISOString() : 'none',
+      expiresAt: tokenData.expiresAt
+        ? new Date(tokenData.expiresAt).toISOString()
+        : 'none',
     });
 
     const client = await getAuthenticatedClient();
@@ -114,9 +118,15 @@ export async function getCustomerGRNActivity(
       p_to_date: toDate,
     };
 
-    console.log('[GRNActivity] Calling get_customer_grn_activity with params:', rpcParams);
+    console.log(
+      '[GRNActivity] Calling get_customer_grn_activity with params:',
+      rpcParams
+    );
 
-    const { data, error } = await client.rpc('get_customer_grn_activity', rpcParams);
+    const { data, error } = await client.rpc(
+      'get_customer_grn_activity',
+      rpcParams
+    );
 
     console.timeEnd('⏱️ [GRNActivity] RPC call duration');
 
@@ -141,15 +151,19 @@ export async function getCustomerGRNActivity(
 
     // Log response size for debugging
     const dataSize = JSON.stringify(data).length;
-    console.log(`📊 [GRNActivity] Response size: ${(dataSize / 1024).toFixed(2)} KB`);
-    console.log('[GRNActivity] Raw RPC response:', JSON.stringify(data, null, 2));
+    console.log(
+      `📊 [GRNActivity] Response size: ${(dataSize / 1024).toFixed(2)} KB`
+    );
 
     // Parse the RPC response - handle both wrapped and unwrapped formats
     const rawData = Array.isArray(data) ? data[0] : data;
 
     // Unwrap if response has { data, success, metadata } structure
     const responseData = rawData?.data ?? rawData;
-    console.log('[GRNActivity] Unwrapped responseData keys:', responseData ? Object.keys(responseData) : 'null');
+    console.log(
+      '[GRNActivity] Unwrapped responseData keys:',
+      responseData ? Object.keys(responseData) : 'null'
+    );
 
     // Map to our expected format
     const summary: GRNActivityKPIs = {
@@ -161,43 +175,48 @@ export async function getCustomerGRNActivity(
       total_images: responseData?.summary?.total_images ?? 0,
     };
 
-    const grns: GRNActivityRecord[] = (responseData?.grns ?? []).map((grn: any) => ({
-      grn_id: grn.grn_id,
-      gr_no: grn.gr_no,
-      grn_date: grn.grn_date,
-      registration: grn.registration ?? '',
-      sender_name: grn.sender_name ?? '',
-      supervisor_name: grn.supervisor_name ?? '',
-      note: grn.note ?? null,
-      total_items: grn.total_items ?? 0,
-      total_qty: grn.total_qty ?? 0,
-      total_weight: grn.total_weight ?? 0,
-      image_count: grn.image_count ?? 0,
-      invoice_status: {
-        is_invoiced: grn.invoice_status?.is_invoiced ?? false,
-        invoice_id: grn.invoice_status?.invoice_id ?? null,
-        invoice_number: grn.invoice_status?.invoice_number ?? null,
-      },
-      dispatch_summary: {
-        total_dispatched: grn.dispatch_summary?.total_dispatched ?? 0,
-        current_stock: grn.dispatch_summary?.current_stock ?? 0,
-        dispatch_count: grn.dispatch_summary?.dispatch_count ?? 0,
-        last_dispatch_date: grn.dispatch_summary?.last_dispatch_date ?? null,
-        is_fully_dispatched: grn.dispatch_summary?.is_fully_dispatched ?? false,
-      },
-      items: (grn.items ?? []).map((item: any) => ({
-        item_name: item.item_name ?? '',
-        packaging: item.packaging ?? '',
-        quantity: item.quantity ?? 0,
-        current_stock: item.current_stock ?? 0,
-        dispatched_qty: item.dispatched_qty ?? 0,
-        weight: item.weight ?? 0,
-        rack: item.rack ?? '',
-        package_mark: item.package_mark ?? '',
-      })),
-    }));
+    const grns: GRNActivityRecord[] = (responseData?.grns ?? []).map(
+      (grn: any) => ({
+        grn_id: grn.grn_id,
+        gr_no: grn.gr_no,
+        grn_date: grn.grn_date,
+        registration: grn.registration ?? '',
+        sender_name: grn.sender_name ?? '',
+        supervisor_name: grn.supervisor_name ?? '',
+        note: grn.note ?? null,
+        total_items: grn.total_items ?? 0,
+        total_qty: grn.total_qty ?? 0,
+        total_weight: grn.total_weight ?? 0,
+        image_count: grn.image_count ?? 0,
+        invoice_status: {
+          is_invoiced: grn.invoice_status?.is_invoiced ?? false,
+          invoice_id: grn.invoice_status?.invoice_id ?? null,
+          invoice_number: grn.invoice_status?.invoice_number ?? null,
+        },
+        dispatch_summary: {
+          total_dispatched: grn.dispatch_summary?.total_dispatched ?? 0,
+          current_stock: grn.dispatch_summary?.current_stock ?? 0,
+          dispatch_count: grn.dispatch_summary?.dispatch_count ?? 0,
+          last_dispatch_date: grn.dispatch_summary?.last_dispatch_date ?? null,
+          is_fully_dispatched:
+            grn.dispatch_summary?.is_fully_dispatched ?? false,
+        },
+        items: (grn.items ?? []).map((item: any) => ({
+          item_name: item.item_name ?? '',
+          packaging: item.packaging ?? '',
+          quantity: item.quantity ?? 0,
+          current_stock: item.current_stock ?? 0,
+          dispatched_qty: item.dispatched_qty ?? 0,
+          weight: item.weight ?? 0,
+          rack: item.rack ?? '',
+          package_mark: item.package_mark ?? '',
+        })),
+      })
+    );
 
-    console.log(`[GRNActivity] Parsed ${grns.length} GRNs, total qty: ${summary.total_quantity}`);
+    console.log(
+      `[GRNActivity] Parsed ${grns.length} GRNs, total qty: ${summary.total_quantity}`
+    );
 
     return {
       success: true,
@@ -238,7 +257,6 @@ export async function getAllGRNActivity(
       isValid: tokenData.isValid,
       type: tokenData.type,
       hasAuthToken: !!tokenData.authToken,
-      tokenPreview: tokenData.authToken ? `${tokenData.authToken.substring(0, 20)}...` : 'none',
     });
 
     const client = await getAuthenticatedClient();
@@ -248,7 +266,10 @@ export async function getAllGRNActivity(
       p_to_date: params.toDate,
     };
 
-    console.log('[AllGRNActivity] Calling get_all_grn_activity with params:', rpcParams);
+    console.log(
+      '[AllGRNActivity] Calling get_all_grn_activity with params:',
+      rpcParams
+    );
 
     const { data, error } = await client.rpc('get_all_grn_activity', rpcParams);
 
@@ -275,16 +296,23 @@ export async function getAllGRNActivity(
 
     // Log response size for debugging
     const dataSize = JSON.stringify(data).length;
-    console.log(`📊 [AllGRNActivity] Response size: ${(dataSize / 1024).toFixed(2)} KB`);
-    console.log('[AllGRNActivity] Raw RPC response:', JSON.stringify(data, null, 2));
+    console.log(
+      `📊 [AllGRNActivity] Response size: ${(dataSize / 1024).toFixed(2)} KB`
+    );
 
     // Parse the RPC response - handle both wrapped and unwrapped formats
     const rawData = Array.isArray(data) ? data[0] : data;
-    console.log('[AllGRNActivity] Parsed rawData keys:', rawData ? Object.keys(rawData) : 'null');
+    console.log(
+      '[AllGRNActivity] Parsed rawData keys:',
+      rawData ? Object.keys(rawData) : 'null'
+    );
 
     // Unwrap if response has { data, success, metadata } structure
     const responseData = rawData?.data ?? rawData;
-    console.log('[AllGRNActivity] Unwrapped responseData keys:', responseData ? Object.keys(responseData) : 'null');
+    console.log(
+      '[AllGRNActivity] Unwrapped responseData keys:',
+      responseData ? Object.keys(responseData) : 'null'
+    );
 
     // Map to our expected format (new get_all_grn_activity RPC)
     const summary: AllGRNActivityKPIs = {
@@ -295,7 +323,9 @@ export async function getAllGRNActivity(
       total_weight_kg: responseData?.summary?.total_weight ?? 0, // Backend uses total_weight
     };
 
-    const byCustomer: CustomerGRNSummary[] = (responseData?.by_customer ?? []).map((customer: any) => ({
+    const byCustomer: CustomerGRNSummary[] = (
+      responseData?.by_customer ?? []
+    ).map((customer: any) => ({
       customer_id: customer.customer_id,
       customer_name: customer.customer_name,
       grn_count: customer.grn_count ?? 0,
@@ -304,7 +334,9 @@ export async function getAllGRNActivity(
       latest_grn_date: customer.latest_grn ?? '', // Backend uses latest_grn
     }));
 
-    console.log(`[AllGRNActivity] Parsed ${byCustomer.length} customers, total GRNs: ${summary.total_grns}`);
+    console.log(
+      `[AllGRNActivity] Parsed ${byCustomer.length} customers, total GRNs: ${summary.total_grns}`
+    );
 
     return {
       success: true,

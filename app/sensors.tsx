@@ -65,9 +65,18 @@ const FIORI = {
   typography: {
     headerTitle: { fontSize: 20, fontWeight: '700' as const },
     cardTitle: { fontSize: 16, fontWeight: '600' as const },
-    cardLabel: { fontSize: 11, fontWeight: '500' as const, textTransform: 'uppercase' as const, letterSpacing: 0.5 },
+    cardLabel: {
+      fontSize: 11,
+      fontWeight: '500' as const,
+      textTransform: 'uppercase' as const,
+      letterSpacing: 0.5,
+    },
     cardValue: { fontSize: 24, fontWeight: '700' as const },
-    readingLabel: { fontSize: 11, fontWeight: '500' as const, textTransform: 'uppercase' as const },
+    readingLabel: {
+      fontSize: 11,
+      fontWeight: '500' as const,
+      textTransform: 'uppercase' as const,
+    },
     readingValue: { fontSize: 22, fontWeight: '700' as const },
     timestamp: { fontSize: 12, fontWeight: '400' as const },
   },
@@ -89,7 +98,7 @@ const POLL_INTERVAL = 10 * 1000; // 10 seconds
 const LAST_POLL_KEY = 'sensor_last_poll_timestamp';
 
 const SensorsScreen: React.FC = () => {
-  const { userProfile } = useAppSelector((state) => state.auth);
+  const { userProfile } = useAppSelector(state => state.auth);
   const insets = useSafeAreaInsets();
   const colors = useListColors();
 
@@ -121,20 +130,18 @@ const SensorsScreen: React.FC = () => {
           setDashboard(result.data.dashboard);
 
           // Store the poll timestamp
-          await AsyncStorage.setItem(
-            LAST_POLL_KEY,
-            result.data.poll_timestamp
-          );
+          await AsyncStorage.setItem(LAST_POLL_KEY, result.data.poll_timestamp);
           setLastPollTime(result.data.poll_timestamp);
 
           // Reset countdown
           setNextPollIn(POLL_INTERVAL);
 
-          if (__DEV__) console.log('[SensorsScreen] Poll successful:', {
-            devices: result.data.devices.length,
-            newReadings: result.data.new_readings.length,
-            timestamp: result.data.poll_timestamp,
-          });
+          if (__DEV__)
+            console.log('[SensorsScreen] Poll successful:', {
+              devices: result.data.devices.length,
+              newReadings: result.data.new_readings.length,
+              timestamp: result.data.poll_timestamp,
+            });
         } else {
           setErrorMessage(result.message || 'Failed to load sensor data');
           setErrorVisible(true);
@@ -172,7 +179,8 @@ const SensorsScreen: React.FC = () => {
     // Set up new interval
     pollIntervalRef.current = setInterval(async () => {
       const lastPoll = await AsyncStorage.getItem(LAST_POLL_KEY);
-      if (__DEV__) console.log('[SensorsScreen] Auto-polling (10 second interval)');
+      if (__DEV__)
+        console.log('[SensorsScreen] Auto-polling (10 second interval)');
       await fetchSensorData(false, lastPoll || undefined);
     }, POLL_INTERVAL);
 
@@ -190,7 +198,7 @@ const SensorsScreen: React.FC = () => {
     }
 
     countdownIntervalRef.current = setInterval(() => {
-      setNextPollIn((prev) => {
+      setNextPollIn(prev => {
         const next = prev - 1000;
         return next < 0 ? POLL_INTERVAL : next;
       });
@@ -213,8 +221,9 @@ const SensorsScreen: React.FC = () => {
           nextAppState === 'active'
         ) {
           // App has come to foreground - trigger a poll
-          if (__DEV__) console.log('[SensorsScreen] App foregrounded - polling');
-          AsyncStorage.getItem(LAST_POLL_KEY).then((lastPoll) => {
+          if (__DEV__)
+            console.log('[SensorsScreen] App foregrounded - polling');
+          AsyncStorage.getItem(LAST_POLL_KEY).then(lastPoll => {
             fetchSensorData(false, lastPoll || undefined);
           });
         }
@@ -232,20 +241,25 @@ const SensorsScreen: React.FC = () => {
     await fetchSensorData(true, lastPoll || undefined);
   }, [fetchSensorData]);
 
-  const getHealthColor = useCallback((status: string) => {
-    switch (status) {
-      case 'healthy':
-        return colors.statusPositive;
-      case 'warning':
-        return colors.statusCritical;
-      case 'critical':
-        return colors.statusNegative;
-      default:
-        return colors.gray400;
-    }
-  }, [colors]);
+  const getHealthColor = useCallback(
+    (status: string) => {
+      switch (status) {
+        case 'healthy':
+          return colors.statusPositive;
+        case 'warning':
+          return colors.statusCritical;
+        case 'critical':
+          return colors.statusNegative;
+        default:
+          return colors.gray400;
+      }
+    },
+    [colors]
+  );
 
-  const getBatteryIcon = (status: string): 'battery-full' | 'battery-half' | 'warning' | 'help-circle' => {
+  const getBatteryIcon = (
+    status: string
+  ): 'battery-full' | 'battery-half' | 'warning' | 'help-circle' => {
     switch (status) {
       case 'GOOD':
         return 'battery-full';
@@ -258,18 +272,21 @@ const SensorsScreen: React.FC = () => {
     }
   };
 
-  const getBatteryColor = useCallback((status: string) => {
-    switch (status) {
-      case 'GOOD':
-        return colors.statusPositive;
-      case 'LOW':
-        return colors.statusCritical;
-      case 'CRITICAL':
-        return colors.statusNegative;
-      default:
-        return colors.gray400;
-    }
-  }, [colors]);
+  const getBatteryColor = useCallback(
+    (status: string) => {
+      switch (status) {
+        case 'GOOD':
+          return colors.statusPositive;
+        case 'LOW':
+          return colors.statusCritical;
+        case 'CRITICAL':
+          return colors.statusNegative;
+        default:
+          return colors.gray400;
+      }
+    },
+    [colors]
+  );
 
   const formatNextPoll = (ms: number) => {
     const seconds = Math.floor(ms / 1000);
@@ -280,26 +297,71 @@ const SensorsScreen: React.FC = () => {
     if (!dashboard) return null;
 
     return (
-      <View style={[styles.dashboardSection, { backgroundColor: colors.cellBackground }]}>
+      <View
+        style={[
+          styles.dashboardSection,
+          { backgroundColor: colors.cellBackground },
+        ]}
+      >
         {/* Status Overview */}
         <View style={styles.statusRow}>
-          <View style={[styles.statusCard, styles.primaryCard, { backgroundColor: colors.primary }]}>
-            <Ionicons name="hardware-chip-outline" size={FIORI.icon.card} color={colors.white} />
-            <Text style={[styles.primaryCardLabel, { color: colors.white }]}>Total Sensors</Text>
-            <Text style={[styles.primaryCardValue, { color: colors.white }]}>{dashboard.total_active_sensors}</Text>
+          <View
+            style={[
+              styles.statusCard,
+              styles.primaryCard,
+              { backgroundColor: colors.primary },
+            ]}
+          >
+            <Ionicons
+              name="hardware-chip-outline"
+              size={FIORI.icon.card}
+              color={colors.white}
+            />
+            <Text style={[styles.primaryCardLabel, { color: colors.white }]}>
+              Total Sensors
+            </Text>
+            <Text style={[styles.primaryCardValue, { color: colors.white }]}>
+              {dashboard.total_active_sensors}
+            </Text>
           </View>
 
           <View style={styles.statusColumn}>
-            <View style={[styles.statusCard, { backgroundColor: colors.cellBackground }]}>
-              <Ionicons name="checkmark-circle" size={FIORI.icon.status + 8} color={colors.statusPositive} />
-              <Text style={[styles.cardLabel, { color: colors.gray600 }]}>Online</Text>
-              <Text style={[styles.cardValue, { color: colors.gray900 }]}>{dashboard.online_sensors}</Text>
+            <View
+              style={[
+                styles.statusCard,
+                { backgroundColor: colors.cellBackground },
+              ]}
+            >
+              <Ionicons
+                name="checkmark-circle"
+                size={FIORI.icon.status + 8}
+                color={colors.statusPositive}
+              />
+              <Text style={[styles.cardLabel, { color: colors.gray600 }]}>
+                Online
+              </Text>
+              <Text style={[styles.cardValue, { color: colors.gray900 }]}>
+                {dashboard.online_sensors}
+              </Text>
             </View>
 
-            <View style={[styles.statusCard, { backgroundColor: colors.cellBackground }]}>
-              <Ionicons name="close-circle" size={FIORI.icon.status + 8} color={colors.statusNegative} />
-              <Text style={[styles.cardLabel, { color: colors.gray600 }]}>Offline</Text>
-              <Text style={[styles.cardValue, { color: colors.gray900 }]}>{dashboard.offline_sensors}</Text>
+            <View
+              style={[
+                styles.statusCard,
+                { backgroundColor: colors.cellBackground },
+              ]}
+            >
+              <Ionicons
+                name="close-circle"
+                size={FIORI.icon.status + 8}
+                color={colors.statusNegative}
+              />
+              <Text style={[styles.cardLabel, { color: colors.gray600 }]}>
+                Offline
+              </Text>
+              <Text style={[styles.cardValue, { color: colors.gray900 }]}>
+                {dashboard.offline_sensors}
+              </Text>
             </View>
           </View>
         </View>
@@ -310,21 +372,78 @@ const SensorsScreen: React.FC = () => {
           dashboard.critical_battery_count > 0) && (
           <View style={styles.alertsRow}>
             {dashboard.stale_sensors > 0 && (
-              <View style={[styles.chip, { borderColor: colors.statusCritical, backgroundColor: colors.statusCriticalLight }]}>
-                <Ionicons name="alert-circle-outline" size={16} color={colors.statusCritical} />
-                <Text style={[styles.chipText, { color: colors.statusCriticalDark }]}>{dashboard.stale_sensors} Stale</Text>
+              <View
+                style={[
+                  styles.chip,
+                  {
+                    borderColor: colors.statusCritical,
+                    backgroundColor: colors.statusCriticalLight,
+                  },
+                ]}
+              >
+                <Ionicons
+                  name="alert-circle-outline"
+                  size={16}
+                  color={colors.statusCritical}
+                />
+                <Text
+                  style={[
+                    styles.chipText,
+                    { color: colors.statusCriticalDark },
+                  ]}
+                >
+                  {dashboard.stale_sensors} Stale
+                </Text>
               </View>
             )}
             {dashboard.low_battery_count > 0 && (
-              <View style={[styles.chip, { borderColor: colors.statusCritical, backgroundColor: colors.statusCriticalLight }]}>
-                <Ionicons name="battery-half" size={16} color={colors.statusCritical} />
-                <Text style={[styles.chipText, { color: colors.statusCriticalDark }]}>{dashboard.low_battery_count} Low Battery</Text>
+              <View
+                style={[
+                  styles.chip,
+                  {
+                    borderColor: colors.statusCritical,
+                    backgroundColor: colors.statusCriticalLight,
+                  },
+                ]}
+              >
+                <Ionicons
+                  name="battery-half"
+                  size={16}
+                  color={colors.statusCritical}
+                />
+                <Text
+                  style={[
+                    styles.chipText,
+                    { color: colors.statusCriticalDark },
+                  ]}
+                >
+                  {dashboard.low_battery_count} Low Battery
+                </Text>
               </View>
             )}
             {dashboard.critical_battery_count > 0 && (
-              <View style={[styles.chip, { borderColor: colors.statusNegative, backgroundColor: colors.statusNegativeLight }]}>
-                <Ionicons name="warning" size={16} color={colors.statusNegative} />
-                <Text style={[styles.chipText, { color: colors.statusNegativeDark }]}>{dashboard.critical_battery_count} Critical</Text>
+              <View
+                style={[
+                  styles.chip,
+                  {
+                    borderColor: colors.statusNegative,
+                    backgroundColor: colors.statusNegativeLight,
+                  },
+                ]}
+              >
+                <Ionicons
+                  name="warning"
+                  size={16}
+                  color={colors.statusNegative}
+                />
+                <Text
+                  style={[
+                    styles.chipText,
+                    { color: colors.statusNegativeDark },
+                  ]}
+                >
+                  {dashboard.critical_battery_count} Critical
+                </Text>
               </View>
             )}
           </View>
@@ -334,11 +453,14 @@ const SensorsScreen: React.FC = () => {
         <View style={[styles.pollingInfo, { backgroundColor: colors.gray50 }]}>
           <View style={styles.pollingRow}>
             <Ionicons name="time-outline" size={16} color={colors.gray600} />
-            <Text style={[styles.pollingText, { color: colors.gray700 }]}>Next poll in {formatNextPoll(nextPollIn)}</Text>
+            <Text style={[styles.pollingText, { color: colors.gray700 }]}>
+              Next poll in {formatNextPoll(nextPollIn)}
+            </Text>
           </View>
           {dashboard.most_recent_sync && (
             <Text style={[styles.syncText, { color: colors.gray500 }]}>
-              Last sync: {new Date(dashboard.most_recent_sync).toLocaleTimeString()}
+              Last sync:{' '}
+              {new Date(dashboard.most_recent_sync).toLocaleTimeString()}
             </Text>
           )}
         </View>
@@ -354,7 +476,10 @@ const SensorsScreen: React.FC = () => {
       <Pressable
         style={({ pressed }) => [
           styles.deviceCard,
-          { backgroundColor: colors.cellBackground, borderColor: colors.cellDivider },
+          {
+            backgroundColor: colors.cellBackground,
+            borderColor: colors.cellDivider,
+          },
           pressed && { opacity: 0.8 },
         ]}
         onPress={() => router.push(`/sensor-detail/${device.id}`)}
@@ -368,8 +493,12 @@ const SensorsScreen: React.FC = () => {
               color={isOffline ? colors.gray400 : colors.primary}
             />
             <View style={styles.deviceInfo}>
-              <Text style={[styles.deviceName, { color: colors.gray900 }]}>{device.device_name}</Text>
-              <Text style={[styles.deviceLocation, { color: colors.gray500 }]}>{device.location}</Text>
+              <Text style={[styles.deviceName, { color: colors.gray900 }]}>
+                {device.device_name}
+              </Text>
+              <Text style={[styles.deviceLocation, { color: colors.gray500 }]}>
+                {device.location}
+              </Text>
             </View>
           </View>
 
@@ -392,25 +521,33 @@ const SensorsScreen: React.FC = () => {
         {!isOffline && device.latest_temperature !== null ? (
           <>
             <View style={styles.readingsRow}>
-              <View style={[styles.readingCard, { backgroundColor: colors.gray50 }]}>
+              <View
+                style={[styles.readingCard, { backgroundColor: colors.gray50 }]}
+              >
                 <Ionicons
                   name="thermometer"
                   size={FIORI.icon.reading}
                   color={colors.primary}
                 />
-                <Text style={[styles.readingLabel, { color: colors.gray600 }]}>Temperature</Text>
+                <Text style={[styles.readingLabel, { color: colors.gray600 }]}>
+                  Temperature
+                </Text>
                 <Text style={[styles.readingValue, { color: colors.gray900 }]}>
                   {device.latest_temperature.toFixed(1)}°C
                 </Text>
               </View>
 
-              <View style={[styles.readingCard, { backgroundColor: colors.gray50 }]}>
+              <View
+                style={[styles.readingCard, { backgroundColor: colors.gray50 }]}
+              >
                 <Ionicons
                   name="water"
                   size={FIORI.icon.reading}
                   color={colors.statusPositive}
                 />
-                <Text style={[styles.readingLabel, { color: colors.gray600 }]}>Humidity</Text>
+                <Text style={[styles.readingLabel, { color: colors.gray600 }]}>
+                  Humidity
+                </Text>
                 <Text style={[styles.readingValue, { color: colors.gray900 }]}>
                   {device.latest_humidity?.toFixed(1) || '0.0'}%
                 </Text>
@@ -419,7 +556,8 @@ const SensorsScreen: React.FC = () => {
 
             {device.latest_reading_timestamp && (
               <Text style={[styles.timestampText, { color: colors.gray500 }]}>
-                Updated: {new Date(device.latest_reading_timestamp).toLocaleString()}
+                Updated:{' '}
+                {new Date(device.latest_reading_timestamp).toLocaleString()}
               </Text>
             )}
           </>
@@ -452,14 +590,26 @@ const SensorsScreen: React.FC = () => {
   const renderEmpty = () => (
     <View style={styles.emptyContainer}>
       <Ionicons name="thermometer-outline" size={64} color={colors.gray300} />
-      <Text style={[styles.emptyText, { color: colors.gray700 }]}>No sensors available</Text>
-      <Text style={[styles.emptySubtext, { color: colors.gray500 }]}>Check your sensor configuration</Text>
+      <Text style={[styles.emptyText, { color: colors.gray700 }]}>
+        No sensors available
+      </Text>
+      <Text style={[styles.emptySubtext, { color: colors.gray500 }]}>
+        Check your sensor configuration
+      </Text>
     </View>
   );
 
   const renderHeader = () => (
     <>
-      <View style={[styles.header, { paddingTop: insets.top + 16, backgroundColor: colors.cellBackground }]}>
+      <View
+        style={[
+          styles.header,
+          {
+            paddingTop: insets.top + 16,
+            backgroundColor: colors.cellBackground,
+          },
+        ]}
+      >
         <Pressable
           onPress={() => router.back()}
           style={({ pressed }) => [
@@ -467,9 +617,16 @@ const SensorsScreen: React.FC = () => {
             pressed && styles.buttonPressed,
           ]}
         >
-          <Ionicons name="arrow-back" size={FIORI.icon.button} color={colors.gray700} />
+          <Ionicons
+            name="arrow-back"
+            size={FIORI.icon.button}
+            color={colors.gray700}
+          />
         </Pressable>
-        <Text style={[styles.title, { color: colors.gray900 }]} numberOfLines={1}>
+        <Text
+          style={[styles.title, { color: colors.gray900 }]}
+          numberOfLines={1}
+        >
           Temperature & Humidity
         </Text>
         <Pressable
@@ -479,7 +636,11 @@ const SensorsScreen: React.FC = () => {
             pressed && styles.buttonPressed,
           ]}
         >
-          <Ionicons name="refresh" size={FIORI.icon.button} color={colors.primary} />
+          <Ionicons
+            name="refresh"
+            size={FIORI.icon.button}
+            color={colors.primary}
+          />
         </Pressable>
       </View>
       {renderDashboard()}
@@ -490,12 +651,19 @@ const SensorsScreen: React.FC = () => {
     return (
       <View style={[styles.container, { backgroundColor: colors.gray50 }]}>
         {/* Status Bar Background */}
-        <View style={[styles.statusBarCover, { height: insets.top, backgroundColor: colors.cellBackground }]} />
+        <View
+          style={[
+            styles.statusBarCover,
+            { height: insets.top, backgroundColor: colors.cellBackground },
+          ]}
+        />
 
         {renderHeader()}
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={[styles.loadingText, { color: colors.gray600 }]}>Loading sensor data...</Text>
+          <Text style={[styles.loadingText, { color: colors.gray600 }]}>
+            Loading sensor data...
+          </Text>
         </View>
       </View>
     );
@@ -504,12 +672,17 @@ const SensorsScreen: React.FC = () => {
   return (
     <View style={[styles.container, { backgroundColor: colors.gray50 }]}>
       {/* Status Bar Background */}
-      <View style={[styles.statusBarCover, { height: insets.top, backgroundColor: colors.cellBackground }]} />
+      <View
+        style={[
+          styles.statusBarCover,
+          { height: insets.top, backgroundColor: colors.cellBackground },
+        ]}
+      />
 
       <FlatList
         data={devices}
         renderItem={renderDevice}
-        keyExtractor={(device) => device.id}
+        keyExtractor={device => device.id}
         ListHeaderComponent={renderHeader()}
         ListEmptyComponent={renderEmpty}
         refreshControl={
@@ -526,7 +699,9 @@ const SensorsScreen: React.FC = () => {
       {/* Error Snackbar */}
       {errorVisible && (
         <View style={[styles.snackbar, { backgroundColor: colors.gray900 }]}>
-          <Text style={[styles.snackbarText, { color: colors.white }]}>{errorMessage}</Text>
+          <Text style={[styles.snackbarText, { color: colors.white }]}>
+            {errorMessage}
+          </Text>
           <Pressable
             onPress={() => {
               setErrorVisible(false);
@@ -537,7 +712,11 @@ const SensorsScreen: React.FC = () => {
               pressed && styles.buttonPressed,
             ]}
           >
-            <Text style={[styles.snackbarButtonText, { color: colors.primary }]}>Retry</Text>
+            <Text
+              style={[styles.snackbarButtonText, { color: colors.primary }]}
+            >
+              Retry
+            </Text>
           </Pressable>
           <Pressable
             onPress={() => setErrorVisible(false)}
@@ -851,4 +1030,14 @@ const styles = StyleSheet.create({
   },
 });
 
-export default SensorsScreen;
+function SensorsEntry() {
+  return (
+    <View style={{ flex: 1, padding: 32, justifyContent: 'center' }}>
+      <Text>Sensor monitoring is unavailable in the local demo.</Text>
+      <Pressable onPress={() => router.back()} accessibilityRole="button">
+        <Text style={{ paddingTop: 20 }}>Back</Text>
+      </Pressable>
+    </View>
+  );
+}
+export default SensorsEntry;

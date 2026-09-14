@@ -3,10 +3,12 @@
 ## Development Workflow
 
 1. Fork the repo and create a feature branch from `main`
-2. Install dependencies: `npm install`
-3. Set up `.env`: `cp .env.example .env`
+2. Install dependencies: `npm ci`
+3. Create `.env` safely: `node scripts/create-env.mjs`
 4. Start the backend: [supabase-warehouse-template](https://github.com/abhiguru/supabase-warehouse-template)
 5. Run the app: `npm start`
+
+Start the companion backend with `bash setup.sh --demo`. Use the same localhost API origin and Android USB/emulator port reversal described in [the handoff](docs/DEVELOPER_HANDOFF.md). Run `npm run doctor`, `npm test`, `npm run test:setup`, lint and typecheck before submitting. Stop Metro with Ctrl+C and stop the backend with its `bash stop.sh` wrapper.
 
 ## Code Style
 

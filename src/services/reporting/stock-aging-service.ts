@@ -5,7 +5,10 @@
  * Returns stock items grouped by aging buckets with dispatch velocity info.
  */
 
-import { getAuthenticatedClient, getStoredToken } from '@/config/supabaseConfig';
+import {
+  getAuthenticatedClient,
+  getStoredToken,
+} from '@/config/supabaseConfig';
 import type {
   StockAgingResponse,
   StockAgingData,
@@ -87,8 +90,9 @@ export async function getCustomerStockAging(
       isValid: tokenData.isValid,
       type: tokenData.type,
       hasAuthToken: !!tokenData.authToken,
-      tokenPreview: tokenData.authToken ? `${tokenData.authToken.substring(0, 20)}...` : 'none',
-      expiresAt: tokenData.expiresAt ? new Date(tokenData.expiresAt).toISOString() : 'none',
+      expiresAt: tokenData.expiresAt
+        ? new Date(tokenData.expiresAt).toISOString()
+        : 'none',
     });
 
     const client = await getAuthenticatedClient();
@@ -103,9 +107,15 @@ export async function getCustomerStockAging(
       rpcParams.p_aging_buckets = params.agingBuckets;
     }
 
-    console.log('[StockAging] Calling get_stock_aging_report with params:', rpcParams);
+    console.log(
+      '[StockAging] Calling get_stock_aging_report with params:',
+      rpcParams
+    );
 
-    const { data, error } = await client.rpc('get_stock_aging_report', rpcParams);
+    const { data, error } = await client.rpc(
+      'get_stock_aging_report',
+      rpcParams
+    );
 
     console.timeEnd('⏱️ [StockAging] RPC call duration');
 
@@ -130,15 +140,19 @@ export async function getCustomerStockAging(
 
     // Log response size for debugging
     const dataSize = JSON.stringify(data).length;
-    console.log(`📊 [StockAging] Response size: ${(dataSize / 1024).toFixed(2)} KB`);
-    console.log('[StockAging] Raw RPC response:', JSON.stringify(data, null, 2));
+    console.log(
+      `📊 [StockAging] Response size: ${(dataSize / 1024).toFixed(2)} KB`
+    );
 
     // Parse the RPC response - handle both wrapped and unwrapped formats
     const rawData = Array.isArray(data) ? data[0] : data;
 
     // Unwrap if response has { data, success, metadata } structure
     const responseData = rawData?.data ?? rawData;
-    console.log('[StockAging] Unwrapped responseData keys:', responseData ? Object.keys(responseData) : 'null');
+    console.log(
+      '[StockAging] Unwrapped responseData keys:',
+      responseData ? Object.keys(responseData) : 'null'
+    );
 
     // Map to our expected format
     const summary: StockAgingKPIs = {
@@ -149,47 +163,57 @@ export async function getCustomerStockAging(
       average_age_days: responseData?.summary?.average_age_days ?? 0,
       items_over_365_days: responseData?.summary?.items_over_365_days ?? 0,
       qty_over_365_days: responseData?.summary?.qty_over_365_days ?? 0,
-      avg_dispatch_velocity_days: responseData?.summary?.avg_dispatch_velocity_days ?? null,
-      items_no_recent_dispatch: responseData?.summary?.items_no_recent_dispatch ?? 0,
+      avg_dispatch_velocity_days:
+        responseData?.summary?.avg_dispatch_velocity_days ?? null,
+      items_no_recent_dispatch:
+        responseData?.summary?.items_no_recent_dispatch ?? 0,
     };
 
     // Map bucket data
     const byBucket: Record<string, AgingBucketData> = {};
     if (responseData?.by_bucket) {
-      Object.entries(responseData.by_bucket).forEach(([key, value]: [string, any]) => {
-        byBucket[key] = {
-          item_count: value?.item_count ?? 0,
-          total_quantity: value?.total_quantity ?? 0,
-          total_weight: value?.total_weight ?? 0,
-          percentage: value?.percentage ?? 0,
-        };
-      });
+      Object.entries(responseData.by_bucket).forEach(
+        ([key, value]: [string, any]) => {
+          byBucket[key] = {
+            item_count: value?.item_count ?? 0,
+            total_quantity: value?.total_quantity ?? 0,
+            total_weight: value?.total_weight ?? 0,
+            percentage: value?.percentage ?? 0,
+          };
+        }
+      );
     }
 
     // Map items
-    const items: StockAgingItem[] = (responseData?.items ?? []).map((item: any) => ({
-      grn_id: item.grn_id,
-      gr_no: item.gr_no,
-      item_name: item.item_name,
-      packaging: item.packaging ?? '',
-      current_stock: item.current_stock ?? 0,
-      original_qty: item.original_qty ?? 0,
-      weight: item.weight ?? 0,
-      rack: item.rack ?? '',
-      package_mark: item.package_mark ?? '',
-      grn_date: item.grn_date,
-      aging_days: item.aging_days ?? 0,
-      aging_bucket: item.aging_bucket ?? '',
-      dispatch_info: {
-        total_dispatched: item.dispatch_info?.total_dispatched ?? 0,
-        dispatch_count: item.dispatch_info?.dispatch_count ?? 0,
-        last_dispatch_date: item.dispatch_info?.last_dispatch_date ?? null,
-        days_since_last_dispatch: item.dispatch_info?.days_since_last_dispatch ?? null,
-        avg_days_between_dispatches: item.dispatch_info?.avg_days_between_dispatches ?? null,
-      },
-    }));
+    const items: StockAgingItem[] = (responseData?.items ?? []).map(
+      (item: any) => ({
+        grn_id: item.grn_id,
+        gr_no: item.gr_no,
+        item_name: item.item_name,
+        packaging: item.packaging ?? '',
+        current_stock: item.current_stock ?? 0,
+        original_qty: item.original_qty ?? 0,
+        weight: item.weight ?? 0,
+        rack: item.rack ?? '',
+        package_mark: item.package_mark ?? '',
+        grn_date: item.grn_date,
+        aging_days: item.aging_days ?? 0,
+        aging_bucket: item.aging_bucket ?? '',
+        dispatch_info: {
+          total_dispatched: item.dispatch_info?.total_dispatched ?? 0,
+          dispatch_count: item.dispatch_info?.dispatch_count ?? 0,
+          last_dispatch_date: item.dispatch_info?.last_dispatch_date ?? null,
+          days_since_last_dispatch:
+            item.dispatch_info?.days_since_last_dispatch ?? null,
+          avg_days_between_dispatches:
+            item.dispatch_info?.avg_days_between_dispatches ?? null,
+        },
+      })
+    );
 
-    console.log(`[StockAging] Parsed ${items.length} items, avg age: ${summary.average_age_days} days`);
+    console.log(
+      `[StockAging] Parsed ${items.length} items, avg age: ${summary.average_age_days} days`
+    );
 
     return {
       success: true,
@@ -229,7 +253,6 @@ export async function getAllStockAging(
       isValid: tokenData.isValid,
       type: tokenData.type,
       hasAuthToken: !!tokenData.authToken,
-      tokenPreview: tokenData.authToken ? `${tokenData.authToken.substring(0, 20)}...` : 'none',
     });
 
     const client = await getAuthenticatedClient();
@@ -244,9 +267,15 @@ export async function getAllStockAging(
       rpcParams.p_aging_buckets = params.agingBuckets;
     }
 
-    console.log('[AllStockAging] Calling get_stock_aging_report with params:', rpcParams);
+    console.log(
+      '[AllStockAging] Calling get_stock_aging_report with params:',
+      rpcParams
+    );
 
-    const { data, error } = await client.rpc('get_stock_aging_report', rpcParams);
+    const { data, error } = await client.rpc(
+      'get_stock_aging_report',
+      rpcParams
+    );
 
     console.timeEnd('⏱️ [AllStockAging] RPC call duration');
 
@@ -271,15 +300,19 @@ export async function getAllStockAging(
 
     // Log response size for debugging
     const dataSize = JSON.stringify(data).length;
-    console.log(`📊 [AllStockAging] Response size: ${(dataSize / 1024).toFixed(2)} KB`);
-    console.log('[AllStockAging] Raw RPC response:', JSON.stringify(data, null, 2));
+    console.log(
+      `📊 [AllStockAging] Response size: ${(dataSize / 1024).toFixed(2)} KB`
+    );
 
     // Parse the RPC response - handle both wrapped and unwrapped formats
     const rawData = Array.isArray(data) ? data[0] : data;
 
     // Unwrap if response has { data, success, metadata } structure
     const responseData = rawData?.data ?? rawData;
-    console.log('[AllStockAging] Unwrapped responseData keys:', responseData ? Object.keys(responseData) : 'null');
+    console.log(
+      '[AllStockAging] Unwrapped responseData keys:',
+      responseData ? Object.keys(responseData) : 'null'
+    );
 
     // Map to our expected format
     const summary: AllStockAgingKPIs = {
@@ -293,19 +326,26 @@ export async function getAllStockAging(
     };
 
     // Map bucket data
-    const byBucket: Record<string, { item_count: number; total_quantity: number; percentage: number }> = {};
+    const byBucket: Record<
+      string,
+      { item_count: number; total_quantity: number; percentage: number }
+    > = {};
     if (responseData?.by_bucket) {
-      Object.entries(responseData.by_bucket).forEach(([key, value]: [string, any]) => {
-        byBucket[key] = {
-          item_count: value?.item_count ?? 0,
-          total_quantity: value?.total_quantity ?? 0,
-          percentage: value?.percentage ?? 0,
-        };
-      });
+      Object.entries(responseData.by_bucket).forEach(
+        ([key, value]: [string, any]) => {
+          byBucket[key] = {
+            item_count: value?.item_count ?? 0,
+            total_quantity: value?.total_quantity ?? 0,
+            percentage: value?.percentage ?? 0,
+          };
+        }
+      );
     }
 
     // Map customer data
-    const byCustomer: CustomerAgingSummary[] = (responseData?.by_customer ?? []).map((customer: any) => ({
+    const byCustomer: CustomerAgingSummary[] = (
+      responseData?.by_customer ?? []
+    ).map((customer: any) => ({
       customer_id: customer.customer_id,
       customer_name: customer.customer_name,
       total_stock: customer.total_stock ?? 0,
@@ -315,7 +355,9 @@ export async function getAllStockAging(
       aging_distribution: customer.aging_distribution ?? {},
     }));
 
-    console.log(`[AllStockAging] Parsed ${byCustomer.length} customers, avg age: ${summary.average_age_days} days`);
+    console.log(
+      `[AllStockAging] Parsed ${byCustomer.length} customers, avg age: ${summary.average_age_days} days`
+    );
 
     return {
       success: true,

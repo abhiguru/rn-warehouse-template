@@ -5,7 +5,10 @@
  * Staff-only report showing cross-customer KPIs and trends.
  */
 
-import { getAuthenticatedClient, getStoredToken } from '@/config/supabaseConfig';
+import {
+  getAuthenticatedClient,
+  getStoredToken,
+} from '@/config/supabaseConfig';
 import type {
   OperationsDashboardResponse,
   OperationsDashboardData,
@@ -75,8 +78,9 @@ export async function getOperationsDashboard(
       isValid: tokenData.isValid,
       type: tokenData.type,
       hasAuthToken: !!tokenData.authToken,
-      tokenPreview: tokenData.authToken ? `${tokenData.authToken.substring(0, 20)}...` : 'none',
-      expiresAt: tokenData.expiresAt ? new Date(tokenData.expiresAt).toISOString() : 'none',
+      expiresAt: tokenData.expiresAt
+        ? new Date(tokenData.expiresAt).toISOString()
+        : 'none',
     });
 
     const client = await getAuthenticatedClient();
@@ -91,9 +95,15 @@ export async function getOperationsDashboard(
       p_to_date: toDate,
     };
 
-    console.log('[OperationsDashboard] Calling get_operations_dashboard with params:', rpcParams);
+    console.log(
+      '[OperationsDashboard] Calling get_operations_dashboard with params:',
+      rpcParams
+    );
 
-    const { data, error } = await client.rpc('get_operations_dashboard', rpcParams);
+    const { data, error } = await client.rpc(
+      'get_operations_dashboard',
+      rpcParams
+    );
 
     console.timeEnd('⏱️ [OperationsDashboard] RPC call duration');
 
@@ -129,7 +139,9 @@ export async function getOperationsDashboard(
 
     // Log response size for debugging
     const dataSize = JSON.stringify(data).length;
-    console.log(`📊 [OperationsDashboard] Response size: ${(dataSize / 1024).toFixed(2)} KB`);
+    console.log(
+      `📊 [OperationsDashboard] Response size: ${(dataSize / 1024).toFixed(2)} KB`
+    );
 
     // Parse the RPC response - handle both wrapped and unwrapped formats
     const responseData = Array.isArray(data) ? data[0] : data;
@@ -149,20 +161,26 @@ export async function getOperationsDashboard(
         date: point.date,
         count: point.count ?? 0,
       })),
-      dispatch_daily: (responseData?.trends?.dispatch_daily ?? []).map((point: any) => ({
-        date: point.date,
-        count: point.count ?? 0,
-      })),
+      dispatch_daily: (responseData?.trends?.dispatch_daily ?? []).map(
+        (point: any) => ({
+          date: point.date,
+          count: point.count ?? 0,
+        })
+      ),
     };
 
-    const recent_activity: RecentActivityItem[] = (responseData?.recent_activity ?? []).map((item: any) => ({
+    const recent_activity: RecentActivityItem[] = (
+      responseData?.recent_activity ?? []
+    ).map((item: any) => ({
       type: item.type as 'grn' | 'dispatch',
       ref: item.ref,
       customer: item.customer,
       time: item.time,
     }));
 
-    console.log(`[OperationsDashboard] Parsed KPIs - GRNs: ${kpis.total_grns}, Dispatches: ${kpis.total_dispatches}`);
+    console.log(
+      `[OperationsDashboard] Parsed KPIs - GRNs: ${kpis.total_grns}, Dispatches: ${kpis.total_dispatches}`
+    );
 
     return {
       success: true,

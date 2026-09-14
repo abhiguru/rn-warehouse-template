@@ -95,14 +95,16 @@ const THEME_OPTIONS: {
 
 const SettingsScreen: React.FC = () => {
   const dispatch = useAppDispatch();
-  const { userProfile } = useAppSelector((state) => state.auth);
+  const { userProfile } = useAppSelector(state => state.auth);
   const insets = useSafeAreaInsets();
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
 
   // Delete account state
   const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [deleteStep, setDeleteStep] = useState<'warning' | 'confirm'>('warning');
+  const [deleteStep, setDeleteStep] = useState<'warning' | 'confirm'>(
+    'warning'
+  );
   const [deleteConfirmPhone, setDeleteConfirmPhone] = useState('');
   const [deletingAccount, setDeletingAccount] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -154,7 +156,9 @@ const SettingsScreen: React.FC = () => {
     // Check all possible phone field names due to type inconsistencies
     const userPhone = userProfile?.mobile || userProfile?.phoneNumber || '';
     const normalizedUserPhone = userPhone.replace(/\D/g, '').slice(-10);
-    const normalizedInputPhone = deleteConfirmPhone.replace(/\D/g, '').slice(-10);
+    const normalizedInputPhone = deleteConfirmPhone
+      .replace(/\D/g, '')
+      .slice(-10);
 
     if (normalizedInputPhone !== normalizedUserPhone) {
       setDeleteError('Phone number does not match your account');
@@ -296,7 +300,10 @@ const SettingsScreen: React.FC = () => {
     <View
       style={[
         styles.container,
-        { paddingTop: insets.top, backgroundColor: FIORI.colors.backgroundGrouped },
+        {
+          paddingTop: insets.top,
+          backgroundColor: FIORI.colors.backgroundGrouped,
+        },
       ]}
     >
       <StatusBar
@@ -333,7 +340,9 @@ const SettingsScreen: React.FC = () => {
 
       <ScrollView
         style={styles.scrollView}
-        contentContainerStyle={{ paddingBottom: insets.bottom + FIORI.spacing.xl }}
+        contentContainerStyle={{
+          paddingBottom: insets.bottom + FIORI.spacing.xl,
+        }}
         showsVerticalScrollIndicator={false}
       >
         {/* User Profile Card */}
@@ -375,7 +384,10 @@ const SettingsScreen: React.FC = () => {
         {/* App Features Section */}
         <View style={styles.section}>
           <Text
-            style={[styles.sectionHeader, { color: FIORI.colors.textSecondary }]}
+            style={[
+              styles.sectionHeader,
+              { color: FIORI.colors.textSecondary },
+            ]}
           >
             APP FEATURES
           </Text>
@@ -420,7 +432,7 @@ const SettingsScreen: React.FC = () => {
             <ObjectCellRow
               icon="thermometer-outline"
               label="Temperature & Humidity"
-              subtitle="Monitor sensor data"
+              subtitle="Unavailable in the local demo"
               onPress={handleSensors}
             />
           </View>
@@ -429,7 +441,10 @@ const SettingsScreen: React.FC = () => {
         {/* Appearance Section */}
         <View style={styles.section}>
           <Text
-            style={[styles.sectionHeader, { color: FIORI.colors.textSecondary }]}
+            style={[
+              styles.sectionHeader,
+              { color: FIORI.colors.textSecondary },
+            ]}
           >
             APPEARANCE
           </Text>
@@ -440,7 +455,7 @@ const SettingsScreen: React.FC = () => {
             ]}
           >
             <View style={styles.themeSelector}>
-              {THEME_OPTIONS.map((option) => {
+              {THEME_OPTIONS.map(option => {
                 const isSelected = themePreference === option.value;
                 return (
                   <Pressable
@@ -485,7 +500,9 @@ const SettingsScreen: React.FC = () => {
                 );
               })}
             </View>
-            <Text style={[styles.themeHint, { color: FIORI.colors.textTertiary }]}>
+            <Text
+              style={[styles.themeHint, { color: FIORI.colors.textTertiary }]}
+            >
               {themePreference === 'system'
                 ? `Currently using ${isDarkMode ? 'dark' : 'light'} mode based on system settings`
                 : `Using ${themePreference} mode`}
@@ -496,7 +513,10 @@ const SettingsScreen: React.FC = () => {
         {/* Legal Section */}
         <View style={styles.section}>
           <Text
-            style={[styles.sectionHeader, { color: FIORI.colors.textSecondary }]}
+            style={[
+              styles.sectionHeader,
+              { color: FIORI.colors.textSecondary },
+            ]}
           >
             LEGAL
           </Text>
@@ -524,7 +544,10 @@ const SettingsScreen: React.FC = () => {
         {/* Account Section */}
         <View style={styles.section}>
           <Text
-            style={[styles.sectionHeader, { color: FIORI.colors.textSecondary }]}
+            style={[
+              styles.sectionHeader,
+              { color: FIORI.colors.textSecondary },
+            ]}
           >
             ACCOUNT
           </Text>
@@ -560,7 +583,10 @@ const SettingsScreen: React.FC = () => {
             {process.env.EXPO_PUBLIC_APP_NAME || 'Warehouse Manager'}
           </Text>
           <Text
-            style={[styles.footerSubtitle, { color: FIORI.colors.textTertiary }]}
+            style={[
+              styles.footerSubtitle,
+              { color: FIORI.colors.textTertiary },
+            ]}
           >
             Management System v1.0
           </Text>
@@ -586,7 +612,7 @@ const SettingsScreen: React.FC = () => {
               styles.modalDialog,
               { backgroundColor: FIORI.colors.background },
             ]}
-            onPress={(e) => e.stopPropagation()}
+            onPress={e => e.stopPropagation()}
           >
             {/* Modal Icon */}
             <View
@@ -609,7 +635,10 @@ const SettingsScreen: React.FC = () => {
               Sign Out
             </Text>
             <Text
-              style={[styles.modalMessage, { color: FIORI.colors.textSecondary }]}
+              style={[
+                styles.modalMessage,
+                { color: FIORI.colors.textSecondary },
+              ]}
             >
               Are you sure you want to sign out of your account?
             </Text>
@@ -681,7 +710,7 @@ const SettingsScreen: React.FC = () => {
               styles.modalDialog,
               { backgroundColor: FIORI.colors.background, width: 320 },
             ]}
-            onPress={(e) => e.stopPropagation()}
+            onPress={e => e.stopPropagation()}
           >
             {/* Modal Icon */}
             <View
@@ -701,7 +730,10 @@ const SettingsScreen: React.FC = () => {
               <>
                 {/* Warning Step */}
                 <Text
-                  style={[styles.modalTitle, { color: FIORI.colors.textPrimary }]}
+                  style={[
+                    styles.modalTitle,
+                    { color: FIORI.colors.textPrimary },
+                  ]}
                 >
                   Delete Account
                 </Text>
@@ -759,7 +791,10 @@ const SettingsScreen: React.FC = () => {
               <>
                 {/* Confirm Step */}
                 <Text
-                  style={[styles.modalTitle, { color: FIORI.colors.textPrimary }]}
+                  style={[
+                    styles.modalTitle,
+                    { color: FIORI.colors.textPrimary },
+                  ]}
                 >
                   Confirm Deletion
                 </Text>
@@ -786,7 +821,7 @@ const SettingsScreen: React.FC = () => {
                   placeholder="Phone number"
                   placeholderTextColor={FIORI.colors.textTertiary}
                   value={deleteConfirmPhone}
-                  onChangeText={(text) => {
+                  onChangeText={text => {
                     setDeleteConfirmPhone(text);
                     setDeleteError(null);
                   }}
@@ -828,9 +863,10 @@ const SettingsScreen: React.FC = () => {
                     style={[
                       styles.modalButton,
                       {
-                        backgroundColor: deleteConfirmPhone.length >= 10
-                          ? FIORI.colors.destructive
-                          : FIORI.colors.divider,
+                        backgroundColor:
+                          deleteConfirmPhone.length >= 10
+                            ? FIORI.colors.destructive
+                            : FIORI.colors.divider,
                       },
                     ]}
                     onPress={confirmDeleteAccount}

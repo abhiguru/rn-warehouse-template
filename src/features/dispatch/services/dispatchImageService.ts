@@ -1,3 +1,4 @@
+import { deleteWarehouseImage } from '@/services/imageDeletion';
 /**
  * Dispatch Image Upload Service
  * Handles image upload operations for dispatch forms
@@ -6,7 +7,11 @@
 
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
-import { getAuthenticatedClient, getCurrentConfig, getSupabaseClient } from '@/config/supabaseConfig';
+import {
+  getAuthenticatedClient,
+  getCurrentConfig,
+  getSupabaseClient,
+} from '@/config/supabaseConfig';
 import type { DispatchImageData } from '@/types/dispatch.types';
 
 // ============================================================================
@@ -58,7 +63,9 @@ const STORAGE_BUCKET = 'dispatch-images';
 /**
  * Convert image URI to ArrayBuffer for direct Supabase Storage upload
  */
-const imageToArrayBuffer = async (uri: string): Promise<{ buffer: ArrayBuffer; size: number }> => {
+const imageToArrayBuffer = async (
+  uri: string
+): Promise<{ buffer: ArrayBuffer; size: number }> => {
   try {
     const response = await fetch(uri);
     const blob = await response.blob();
@@ -76,13 +83,12 @@ const imageToArrayBuffer = async (uri: string): Promise<{ buffer: ArrayBuffer; s
       reader.readAsArrayBuffer(blob);
     });
 
-    console.log('[DispatchImageService] Image converted to ArrayBuffer:', {
-      size: arrayBuffer.byteLength,
-      blobType: blob.type
-    });
     return { buffer: arrayBuffer, size: arrayBuffer.byteLength };
   } catch (error) {
-    console.error('[DispatchImageService] Error converting image to ArrayBuffer:', error);
+    console.error(
+      '[DispatchImageService] Error converting image to ArrayBuffer:',
+      error
+    );
     throw new Error('Failed to read image file');
   }
 };
@@ -90,13 +96,20 @@ const imageToArrayBuffer = async (uri: string): Promise<{ buffer: ArrayBuffer; s
 /**
  * Compress image before upload to reduce file size
  */
-const compressImage = async (uri: string): Promise<{ uri: string; fileSize: number }> => {
+const compressImage = async (
+  uri: string
+): Promise<{ uri: string; fileSize: number }> => {
   try {
-    console.log('[DispatchImageService] Compressing image:', uri);
-
     const manipulatedImage = await ImageManipulator.manipulateAsync(
       uri,
-      [{ resize: { width: IMAGE_COMPRESSION_SETTINGS.maxWidth, height: IMAGE_COMPRESSION_SETTINGS.maxHeight } }],
+      [
+        {
+          resize: {
+            width: IMAGE_COMPRESSION_SETTINGS.maxWidth,
+            height: IMAGE_COMPRESSION_SETTINGS.maxHeight,
+          },
+        },
+      ],
       {
         compress: IMAGE_COMPRESSION_SETTINGS.compress,
         format: IMAGE_COMPRESSION_SETTINGS.format,
@@ -107,16 +120,9 @@ const compressImage = async (uri: string): Promise<{ uri: string; fileSize: numb
     const blob = await response.blob();
     const fileSize = blob.size;
 
-    console.log('[DispatchImageService] Image compressed:', {
-      originalUri: uri,
-      compressedUri: manipulatedImage.uri,
-      fileSize: fileSize,
-      fileSizeMB: (fileSize / (1024 * 1024)).toFixed(2)
-    });
-
     return {
       uri: manipulatedImage.uri,
-      fileSize: fileSize
+      fileSize: fileSize,
     };
   } catch (error) {
     console.error('[DispatchImageService] Error compressing image:', error);
@@ -125,7 +131,7 @@ const compressImage = async (uri: string): Promise<{ uri: string; fileSize: numb
     const blob = await response.blob();
     return {
       uri: uri,
-      fileSize: blob.size
+      fileSize: blob.size,
     };
   }
 };
@@ -133,19 +139,28 @@ const compressImage = async (uri: string): Promise<{ uri: string; fileSize: numb
 /**
  * Validate image file before upload
  */
-export const validateImageFile = (asset: ImagePicker.ImagePickerAsset): { valid: boolean; error?: string } => {
+export const validateImageFile = (
+  asset: ImagePicker.ImagePickerAsset
+): { valid: boolean; error?: string } => {
   if (asset.fileSize && asset.fileSize > MAX_FILE_SIZE) {
     return {
       valid: false,
-      error: `File size (${(asset.fileSize / (1024 * 1024)).toFixed(1)}MB) exceeds maximum limit (10MB)`
+      error: `File size (${(asset.fileSize / (1024 * 1024)).toFixed(1)}MB) exceeds maximum limit (10MB)`,
     };
   }
 
-  const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];
+  const allowedTypes = [
+    'image/jpeg',
+    'image/jpg',
+    'image/png',
+    'image/webp',
+    'image/heic',
+    'image/heif',
+  ];
   if (asset.mimeType && !allowedTypes.includes(asset.mimeType.toLowerCase())) {
     return {
       valid: false,
-      error: `File type ${asset.mimeType} is not supported. Use JPEG, PNG, WebP, or HEIC.`
+      error: `File type ${asset.mimeType} is not supported. Use JPEG, PNG, WebP, or HEIC.`,
     };
   }
 
@@ -175,17 +190,11 @@ export const uploadDispatchImage = async (
   onProgress?: (progress: ImageUploadProgress) => void
 ): Promise<ImageUploadResult> => {
   try {
-    console.log('[DispatchImageService] Starting upload:', {
-      dispatchId,
-      fileName: asset.fileName,
-      fileSize: asset.fileSize
-    });
-
     // Validate file size before compression
     if (asset.fileSize && asset.fileSize > MAX_FILE_SIZE) {
       return {
         success: false,
-        error: `File size (${(asset.fileSize / (1024 * 1024)).toFixed(1)}MB) exceeds maximum limit (10MB)`
+        error: `File size (${(asset.fileSize / (1024 * 1024)).toFixed(1)}MB) exceeds maximum limit (10MB)`,
       };
     }
 
@@ -201,18 +210,17 @@ export const uploadDispatchImage = async (
     if (fileSize > MAX_FILE_SIZE) {
       return {
         success: false,
-        error: `Compressed file size (${(fileSize / (1024 * 1024)).toFixed(1)}MB) still exceeds maximum limit (10MB)`
+        error: `Compressed file size (${(fileSize / (1024 * 1024)).toFixed(1)}MB) still exceeds maximum limit (10MB)`,
       };
     }
 
     // Determine content type (always JPEG after compression)
     const contentType = 'image/jpeg';
-    const fileName = asset.fileName?.replace(/\.[^/.]+$/, '.jpg') || 'image.jpg';
+    const fileName =
+      asset.fileName?.replace(/\.[^/.]+$/, '.jpg') || 'image.jpg';
 
     // Check for temporary dispatch ID - skip RPC and defer upload
     if (dispatchId.startsWith('temp_dispatch_')) {
-      console.log('[DispatchImageService] Temporary dispatch ID detected, deferring upload:', dispatchId);
-
       if (onProgress) {
         onProgress({ loaded: 100, total: 100, percentage: 100 });
       }
@@ -226,8 +234,8 @@ export const uploadDispatchImage = async (
           file_name: fileName,
           mime_type: contentType,
           uploadTimestamp: new Date().toISOString(),
-          storage_path: undefined
-        }
+          storage_path: undefined,
+        },
       };
     }
 
@@ -241,32 +249,41 @@ export const uploadDispatchImage = async (
     // === THREE-STEP TRANSACTIONAL UPLOAD ===
 
     // Step 1: Register the upload
-    console.log('[DispatchImageService] Step 1: Registering image upload');
-    const { data: regResult, error: regError } = await supabase.rpc('register_dispatch_image_upload', {
-      p_dispatch_id: dispatchId,
-      p_file_name: fileName,
-      p_file_size: fileSize,
-      p_mime_type: contentType
-    });
+
+    const { data: regResult, error: regError } = await supabase.rpc(
+      'register_dispatch_image_upload',
+      {
+        p_dispatch_id: dispatchId,
+        p_file_name: fileName,
+        p_file_size: fileSize,
+        p_mime_type: contentType,
+      }
+    );
 
     if (regError) {
       console.error('[DispatchImageService] Registration failed:', regError);
       return {
         success: false,
-        error: regError.message || 'Failed to register image upload'
+        error: regError.message || 'Failed to register image upload',
       };
     }
 
     if (!regResult?.success) {
-      console.error('[DispatchImageService] Registration rejected:', regResult?.error);
+      console.error(
+        '[DispatchImageService] Registration rejected:',
+        regResult?.error
+      );
       return {
         success: false,
-        error: regResult?.error || 'Registration failed on server'
+        error: regResult?.error || 'Registration failed on server',
       };
     }
 
-    const { image_id: imageId, storage_path: storagePath, upload_token: uploadToken } = regResult;
-    console.log('[DispatchImageService] Registration successful:', { imageId, storagePath });
+    const {
+      image_id: imageId,
+      storage_path: storagePath,
+      upload_token: uploadToken,
+    } = regResult;
 
     // Progress: Registration complete
     if (onProgress) {
@@ -275,7 +292,7 @@ export const uploadDispatchImage = async (
 
     try {
       // Step 2: Upload to storage
-      console.log('[DispatchImageService] Step 2: Uploading to storage:', storagePath);
+
       const startTime = Date.now();
 
       const { buffer: fileBuffer } = await imageToArrayBuffer(compressedUri);
@@ -284,14 +301,16 @@ export const uploadDispatchImage = async (
         .from(STORAGE_BUCKET)
         .upload(storagePath, fileBuffer, {
           contentType: contentType,
-          upsert: false
+          upsert: false,
         });
 
       const uploadDuration = Date.now() - startTime;
-      console.log('[DispatchImageService] Storage upload duration:', `${uploadDuration}ms`);
 
       if (uploadError) {
-        console.error('[DispatchImageService] Storage upload failed:', uploadError);
+        console.error(
+          '[DispatchImageService] Storage upload failed:',
+          uploadError
+        );
         throw uploadError;
       }
 
@@ -301,23 +320,32 @@ export const uploadDispatchImage = async (
       }
 
       // Step 3: Confirm the upload
-      console.log('[DispatchImageService] Step 3: Confirming upload');
-      const { data: confirmResult, error: confirmError } = await supabase.rpc('confirm_dispatch_image_upload', {
-        p_image_id: imageId,
-        p_upload_token: uploadToken
-      });
+
+      const { data: confirmResult, error: confirmError } = await supabase.rpc(
+        'confirm_dispatch_image_upload',
+        {
+          p_image_id: imageId,
+          p_upload_token: uploadToken,
+        }
+      );
 
       if (confirmError) {
-        console.error('[DispatchImageService] Confirmation failed:', confirmError);
+        console.error(
+          '[DispatchImageService] Confirmation failed:',
+          confirmError
+        );
         throw confirmError;
       }
 
       if (!confirmResult?.success) {
-        console.error('[DispatchImageService] Confirmation rejected:', confirmResult?.error);
-        throw new Error(confirmResult?.error || 'Confirmation failed on server');
+        console.error(
+          '[DispatchImageService] Confirmation rejected:',
+          confirmResult?.error
+        );
+        throw new Error(
+          confirmResult?.error || 'Confirmation failed on server'
+        );
       }
-
-      console.log('[DispatchImageService] Upload confirmed successfully');
 
       // Generate signed URL for the uploaded image
       const { data: urlData, error: urlError } = await supabase.storage
@@ -326,7 +354,10 @@ export const uploadDispatchImage = async (
 
       let finalImageUrl: string;
       if (urlError || !urlData?.signedUrl) {
-        console.warn('[DispatchImageService] Could not create signed URL:', urlError);
+        console.warn(
+          '[DispatchImageService] Could not create signed URL:',
+          urlError
+        );
         finalImageUrl = `${getCurrentConfig().url}/storage/v1/object/${STORAGE_BUCKET}/${storagePath}`;
       } else {
         finalImageUrl = urlData.signedUrl;
@@ -337,12 +368,6 @@ export const uploadDispatchImage = async (
         onProgress({ loaded: 100, total: 100, percentage: 100 });
       }
 
-      console.log('[DispatchImageService] ✅ Upload completed:', {
-        imageId,
-        storagePath,
-        fileSize
-      });
-
       return {
         success: true,
         imageId: imageId,
@@ -352,43 +377,55 @@ export const uploadDispatchImage = async (
           file_name: fileName,
           mime_type: contentType,
           uploadTimestamp: new Date().toISOString(),
-          storage_path: storagePath
-        }
+          storage_path: storagePath,
+        },
       };
-
     } catch (uploadOrConfirmError) {
       // Rollback: Cancel the pending DB record
-      console.error('[DispatchImageService] Upload/confirm failed, rolling back:', uploadOrConfirmError);
+      console.error(
+        '[DispatchImageService] Upload/confirm failed, rolling back:',
+        uploadOrConfirmError
+      );
 
       try {
-        await supabase.rpc('cancel_dispatch_image_upload', { p_image_id: imageId });
-        console.log('[DispatchImageService] Pending record cancelled');
+        await supabase.rpc('cancel_dispatch_image_upload', {
+          p_image_id: imageId,
+        });
       } catch (cancelError) {
-        console.warn('[DispatchImageService] Failed to cancel pending record:', cancelError);
+        console.warn(
+          '[DispatchImageService] Failed to cancel pending record:',
+          cancelError
+        );
       }
 
       try {
         await supabase.storage.from(STORAGE_BUCKET).remove([storagePath]);
-        console.log('[DispatchImageService] Partial upload removed from storage');
       } catch (removeError) {
-        console.warn('[DispatchImageService] Failed to remove partial upload:', removeError);
+        console.warn(
+          '[DispatchImageService] Failed to remove partial upload:',
+          removeError
+        );
       }
 
       return {
         success: false,
-        error: uploadOrConfirmError instanceof Error ? uploadOrConfirmError.message : 'Upload failed'
+        error:
+          uploadOrConfirmError instanceof Error
+            ? uploadOrConfirmError.message
+            : 'Upload failed',
       };
     }
-
   } catch (error) {
     console.error('[DispatchImageService] Upload exception:', error);
 
     let errorMessage = 'Upload failed';
     if (error instanceof Error) {
       if (error.message.includes('Network request failed')) {
-        errorMessage = 'Network connection failed. Please check your internet connection and try again.';
+        errorMessage =
+          'Network connection failed. Please check your internet connection and try again.';
       } else if (error.message.includes('Failed to read image')) {
-        errorMessage = 'Failed to process image file. Please try a different image.';
+        errorMessage =
+          'Failed to process image file. Please try a different image.';
       } else {
         errorMessage = error.message;
       }
@@ -396,7 +433,7 @@ export const uploadDispatchImage = async (
 
     return {
       success: false,
-      error: errorMessage
+      error: errorMessage,
     };
   }
 };
@@ -410,51 +447,9 @@ export const uploadDispatchImage = async (
  */
 export const deleteDispatchImage = async (
   imageId: string,
-  imageUrl: string
+  _imageUrl: string
 ): Promise<{ success: boolean; error?: string }> => {
-  try {
-    console.log('[DispatchImageService] Deleting image:', { imageId, imageUrl });
-
-    // Delete from database using RPC
-    const { data, error: dbError } = await getSupabaseClient().rpc('delete_dispatch_image', {
-      p_image_id: imageId
-    });
-
-    if (dbError) {
-      console.error('[DispatchImageService] Database delete error:', dbError);
-      return {
-        success: false,
-        error: dbError.message || 'Failed to delete image record'
-      };
-    }
-
-    // Extract file path from URL and delete from storage
-    const urlParts = imageUrl.split('/');
-    const bucketIndex = urlParts.findIndex(part => part === STORAGE_BUCKET);
-    if (bucketIndex !== -1 && bucketIndex < urlParts.length - 1) {
-      const filePath = urlParts.slice(bucketIndex + 1).join('/');
-      const supabase = await getAuthenticatedClient();
-
-      const { error: storageError } = await supabase.storage
-        .from(STORAGE_BUCKET)
-        .remove([filePath]);
-
-      if (storageError) {
-        console.warn('[DispatchImageService] Storage delete warning:', storageError);
-        // Don't fail since database record is already deleted
-      }
-    }
-
-    console.log('[DispatchImageService] Image deleted successfully');
-    return { success: true };
-
-  } catch (error) {
-    console.error('[DispatchImageService] Delete exception:', error);
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : 'Delete failed'
-    };
-  }
+  return deleteWarehouseImage('dispatch', imageId);
 };
 
 // ============================================================================
@@ -470,18 +465,19 @@ const uploadSingleDeferredImage = async (
   image: DispatchImageData
 ): Promise<{ success: boolean; error?: string }> => {
   try {
-    console.log('[DispatchImageService] Uploading deferred image:', image.file_name);
-
     const fileName = image.file_name || 'image.jpg';
     const mimeType = image.mime_type || 'image/jpeg';
 
     // Step 1: Register
-    const { data: regResult, error: regError } = await supabase.rpc('register_dispatch_image_upload', {
-      p_dispatch_id: realDispatchId,
-      p_file_name: fileName,
-      p_file_size: image.file_size || 0,
-      p_mime_type: mimeType
-    });
+    const { data: regResult, error: regError } = await supabase.rpc(
+      'register_dispatch_image_upload',
+      {
+        p_dispatch_id: realDispatchId,
+        p_file_name: fileName,
+        p_file_size: image.file_size || 0,
+        p_mime_type: mimeType,
+      }
+    );
 
     if (regError) {
       console.error('[DispatchImageService] Registration failed:', regError);
@@ -489,10 +485,17 @@ const uploadSingleDeferredImage = async (
     }
 
     if (!regResult?.success) {
-      return { success: false, error: regResult?.error || 'Registration failed' };
+      return {
+        success: false,
+        error: regResult?.error || 'Registration failed',
+      };
     }
 
-    const { image_id: imageId, storage_path: storagePath, upload_token: uploadToken } = regResult;
+    const {
+      image_id: imageId,
+      storage_path: storagePath,
+      upload_token: uploadToken,
+    } = regResult;
 
     try {
       // Step 2: Upload to storage
@@ -502,7 +505,7 @@ const uploadSingleDeferredImage = async (
         .from(STORAGE_BUCKET)
         .upload(storagePath, fileBuffer, {
           contentType: mimeType,
-          upsert: false
+          upsert: false,
         });
 
       if (uploadError) {
@@ -510,10 +513,13 @@ const uploadSingleDeferredImage = async (
       }
 
       // Step 3: Confirm
-      const { data: confirmResult, error: confirmError } = await supabase.rpc('confirm_dispatch_image_upload', {
-        p_image_id: imageId,
-        p_upload_token: uploadToken
-      });
+      const { data: confirmResult, error: confirmError } = await supabase.rpc(
+        'confirm_dispatch_image_upload',
+        {
+          p_image_id: imageId,
+          p_upload_token: uploadToken,
+        }
+      );
 
       if (confirmError) {
         throw confirmError;
@@ -523,15 +529,18 @@ const uploadSingleDeferredImage = async (
         throw new Error(confirmResult?.error || 'Confirmation failed');
       }
 
-      console.log('[DispatchImageService] ✅ Deferred image uploaded:', storagePath);
       return { success: true };
-
     } catch (uploadOrConfirmError) {
       // Rollback
-      console.error('[DispatchImageService] Deferred upload failed, rolling back:', uploadOrConfirmError);
+      console.error(
+        '[DispatchImageService] Deferred upload failed, rolling back:',
+        uploadOrConfirmError
+      );
 
       try {
-        await supabase.rpc('cancel_dispatch_image_upload', { p_image_id: imageId });
+        await supabase.rpc('cancel_dispatch_image_upload', {
+          p_image_id: imageId,
+        });
       } catch (cancelError) {
         console.warn('[DispatchImageService] Failed to cancel:', cancelError);
       }
@@ -539,18 +548,29 @@ const uploadSingleDeferredImage = async (
       try {
         await supabase.storage.from(STORAGE_BUCKET).remove([storagePath]);
       } catch (removeError) {
-        console.warn('[DispatchImageService] Failed to remove partial upload:', removeError);
+        console.warn(
+          '[DispatchImageService] Failed to remove partial upload:',
+          removeError
+        );
       }
 
       return {
         success: false,
-        error: uploadOrConfirmError instanceof Error ? uploadOrConfirmError.message : 'Upload failed'
+        error:
+          uploadOrConfirmError instanceof Error
+            ? uploadOrConfirmError.message
+            : 'Upload failed',
       };
     }
-
   } catch (err) {
-    console.error('[DispatchImageService] Error uploading deferred image:', err);
-    return { success: false, error: err instanceof Error ? err.message : 'Unknown error' };
+    console.error(
+      '[DispatchImageService] Error uploading deferred image:',
+      err
+    );
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : 'Unknown error',
+    };
   }
 };
 
@@ -566,13 +586,11 @@ export const uploadDeferredDispatchImages = async (
   let uploadedCount = 0;
 
   // Filter to only deferred images (have image_url but no storage_path)
-  const deferredImages = images.filter(img => img.image_url && !img.storage_path);
-
-  console.log('[DispatchImageService] 🚀 Uploading deferred images for dispatch:', realDispatchId);
-  console.log('[DispatchImageService] Total deferred images:', deferredImages.length);
+  const deferredImages = images.filter(
+    img => img.image_url && !img.storage_path
+  );
 
   if (deferredImages.length === 0) {
-    console.log('[DispatchImageService] No deferred images to upload');
     return { success: true, uploadedCount: 0, errors: [] };
   }
 
@@ -581,8 +599,9 @@ export const uploadDeferredDispatchImages = async (
 
     // Upload all images in parallel
     const uploadPromises = deferredImages.map(image =>
-      uploadSingleDeferredImage(supabase, realDispatchId, image)
-        .then(result => ({ ...result, file_name: image.file_name }))
+      uploadSingleDeferredImage(supabase, realDispatchId, image).then(
+        result => ({ ...result, file_name: image.file_name })
+      )
     );
 
     const results = await Promise.all(uploadPromises);
@@ -595,23 +614,24 @@ export const uploadDeferredDispatchImages = async (
       }
     }
 
-    console.log('[DispatchImageService] 📊 Deferred upload summary:', {
-      totalUploaded: uploadedCount,
-      totalImages: deferredImages.length,
-      totalErrors: errors.length
-    });
-
     return {
       success: errors.length === 0,
       uploadedCount,
-      errors
+      errors,
     };
   } catch (error) {
-    console.error('[DispatchImageService] uploadDeferredDispatchImages exception:', error);
+    console.error(
+      '[DispatchImageService] uploadDeferredDispatchImages exception:',
+      error
+    );
     return {
       success: false,
       uploadedCount,
-      errors: [error instanceof Error ? error.message : 'Failed to upload deferred images']
+      errors: [
+        error instanceof Error
+          ? error.message
+          : 'Failed to upload deferred images',
+      ],
     };
   }
 };
@@ -640,7 +660,6 @@ export const getDispatchImageSignedUrl = async (
       .createSignedUrl(filePath, expiresIn);
 
     if (!error && data?.signedUrl) {
-      console.log('[DispatchImageService] Signed URL created successfully');
       return data.signedUrl;
     }
 

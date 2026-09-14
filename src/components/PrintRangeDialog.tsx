@@ -1,3 +1,4 @@
+import { DEMO_CAPABILITIES } from '@/config/demoCapabilities';
 /**
  * PrintRangeDialog - Reusable dialog for selecting print range
  *
@@ -132,7 +133,11 @@ export const PrintRangeDialog: React.FC<PrintRangeDialogProps> = ({
 
   useEffect(() => {
     if (visible) {
-      if (__DEV__) console.log('[PrintRangeDialog] Dialog opened with defaultNumber:', defaultNumber);
+      if (__DEV__)
+        console.log(
+          '[PrintRangeDialog] Dialog opened with defaultNumber:',
+          defaultNumber
+        );
       setStartNumber(defaultNumber);
       setEndNumber(defaultNumber);
       setError(null);
@@ -162,6 +167,40 @@ export const PrintRangeDialog: React.FC<PrintRangeDialogProps> = ({
 
   if (!visible) return null;
 
+  // Keep every entry point honest, including direct document detail actions.
+  if (!DEMO_CAPABILITIES.printing)
+    return (
+      <Modal
+        visible
+        transparent
+        animationType="fade"
+        onRequestClose={onDismiss}
+      >
+        <View style={styles.backdrop}>
+          <View
+            style={[
+              styles.dialog,
+              { backgroundColor: themeColors.white, padding: 24 },
+            ]}
+          >
+            <Text style={{ color: themeColors.fiori.text.primary }}>
+              Printing is unavailable in the local demo. Use PDF download or
+              sharing.
+            </Text>
+            <Pressable
+              onPress={onDismiss}
+              accessibilityRole="button"
+              accessibilityLabel="Close printing notice"
+            >
+              <Text style={{ color: themeColors.primary, paddingTop: 20 }}>
+                Close
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+    );
+
   return (
     <Modal
       visible={visible}
@@ -178,11 +217,27 @@ export const PrintRangeDialog: React.FC<PrintRangeDialogProps> = ({
         <View style={styles.dialogContainer}>
           <View style={[styles.dialog, { backgroundColor: themeColors.white }]}>
             {/* Fiori Header */}
-            <View style={[styles.header, { borderBottomColor: themeColors.gray[200] }]}>
+            <View
+              style={[
+                styles.header,
+                { borderBottomColor: themeColors.gray[200] },
+              ]}
+            >
               <View style={styles.headerIcon}>
-                <Icon name="print-outline" size={24} color={themeColors.primary} />
+                <Icon
+                  name="print-outline"
+                  size={24}
+                  color={themeColors.primary}
+                />
               </View>
-              <Text style={[styles.title, { color: themeColors.fiori.text.primary }]}>{title}</Text>
+              <Text
+                style={[
+                  styles.title,
+                  { color: themeColors.fiori.text.primary },
+                ]}
+              >
+                {title}
+              </Text>
               <Pressable
                 onPress={onDismiss}
                 style={({ pressed }) => [
@@ -192,20 +247,39 @@ export const PrintRangeDialog: React.FC<PrintRangeDialogProps> = ({
                 accessibilityRole="button"
                 accessibilityLabel="Close"
               >
-                <Icon name="close" size={24} color={themeColors.fiori.text.secondary} />
+                <Icon
+                  name="close"
+                  size={24}
+                  color={themeColors.fiori.text.secondary}
+                />
               </Pressable>
             </View>
 
             {/* Divider */}
-            <View style={[styles.divider, { backgroundColor: themeColors.gray[200] }]} />
+            <View
+              style={[
+                styles.divider,
+                { backgroundColor: themeColors.gray[200] },
+              ]}
+            />
 
             {/* Content */}
             <View style={styles.content}>
               {/* Description */}
-              <Text style={[styles.description, { color: themeColors.fiori.text.primary }]}>
+              <Text
+                style={[
+                  styles.description,
+                  { color: themeColors.fiori.text.primary },
+                ]}
+              >
                 Select the range of {label.toLowerCase()}s to print.
               </Text>
-              <Text style={[styles.helpText, { color: themeColors.fiori.text.secondary }]}>
+              <Text
+                style={[
+                  styles.helpText,
+                  { color: themeColors.fiori.text.secondary },
+                ]}
+              >
                 Leave both fields the same to print a single item.
               </Text>
 
@@ -214,8 +288,19 @@ export const PrintRangeDialog: React.FC<PrintRangeDialogProps> = ({
                 {/* From Input */}
                 <View style={styles.inputGroup}>
                   <View style={styles.inputLabel}>
-                    <Icon name="arrow-forward-circle" size={18} color={themeColors.primary} />
-                    <Text style={[styles.inputLabelText, { color: themeColors.fiori.text.primary }]}>From</Text>
+                    <Icon
+                      name="arrow-forward-circle"
+                      size={18}
+                      color={themeColors.primary}
+                    />
+                    <Text
+                      style={[
+                        styles.inputLabelText,
+                        { color: themeColors.fiori.text.primary },
+                      ]}
+                    >
+                      From
+                    </Text>
                   </View>
                   <TextInput
                     value={startNumber}
@@ -223,21 +308,44 @@ export const PrintRangeDialog: React.FC<PrintRangeDialogProps> = ({
                     placeholder={placeholder || `Start ${label}`}
                     placeholderTextColor={themeColors.gray[400]}
                     editable={!loading}
-                    style={[styles.input, { color: themeColors.fiori.text.primary, backgroundColor: themeColors.gray[50], borderColor: themeColors.gray[200] }, loading && styles.inputDisabled]}
+                    style={[
+                      styles.input,
+                      {
+                        color: themeColors.fiori.text.primary,
+                        backgroundColor: themeColors.gray[50],
+                        borderColor: themeColors.gray[200],
+                      },
+                      loading && styles.inputDisabled,
+                    ]}
                     returnKeyType="next"
                   />
                 </View>
 
                 {/* Arrow */}
                 <View style={styles.arrowContainer}>
-                  <Icon name="arrow-forward" size={20} color={themeColors.gray[400]} />
+                  <Icon
+                    name="arrow-forward"
+                    size={20}
+                    color={themeColors.gray[400]}
+                  />
                 </View>
 
                 {/* To Input */}
                 <View style={styles.inputGroup}>
                   <View style={styles.inputLabel}>
-                    <Icon name="arrow-forward-circle" size={18} color={themeColors.primary} />
-                    <Text style={[styles.inputLabelText, { color: themeColors.fiori.text.primary }]}>To</Text>
+                    <Icon
+                      name="arrow-forward-circle"
+                      size={18}
+                      color={themeColors.primary}
+                    />
+                    <Text
+                      style={[
+                        styles.inputLabelText,
+                        { color: themeColors.fiori.text.primary },
+                      ]}
+                    >
+                      To
+                    </Text>
                   </View>
                   <TextInput
                     value={endNumber}
@@ -245,7 +353,15 @@ export const PrintRangeDialog: React.FC<PrintRangeDialogProps> = ({
                     placeholder={placeholder || `End ${label}`}
                     placeholderTextColor={themeColors.gray[400]}
                     editable={!loading}
-                    style={[styles.input, { color: themeColors.fiori.text.primary, backgroundColor: themeColors.gray[50], borderColor: themeColors.gray[200] }, loading && styles.inputDisabled]}
+                    style={[
+                      styles.input,
+                      {
+                        color: themeColors.fiori.text.primary,
+                        backgroundColor: themeColors.gray[50],
+                        borderColor: themeColors.gray[200],
+                      },
+                      loading && styles.inputDisabled,
+                    ]}
                     returnKeyType="done"
                     onSubmitEditing={handleConfirm}
                   />
@@ -255,14 +371,30 @@ export const PrintRangeDialog: React.FC<PrintRangeDialogProps> = ({
               {/* Error Message */}
               {error && (
                 <View style={styles.errorContainer}>
-                  <Icon name="alert-circle" size={18} color={themeColors.semantic.error} />
-                  <Text style={[styles.errorText, { color: themeColors.semantic.error }]}>{error}</Text>
+                  <Icon
+                    name="alert-circle"
+                    size={18}
+                    color={themeColors.semantic.error}
+                  />
+                  <Text
+                    style={[
+                      styles.errorText,
+                      { color: themeColors.semantic.error },
+                    ]}
+                  >
+                    {error}
+                  </Text>
                 </View>
               )}
             </View>
 
             {/* Divider */}
-            <View style={[styles.divider, { backgroundColor: themeColors.gray[200] }]} />
+            <View
+              style={[
+                styles.divider,
+                { backgroundColor: themeColors.gray[200] },
+              ]}
+            />
 
             {/* Actions */}
             <View style={styles.actions}>
@@ -281,8 +413,19 @@ export const PrintRangeDialog: React.FC<PrintRangeDialogProps> = ({
                     accessibilityRole="button"
                     accessibilityLabel="View print jobs"
                   >
-                    <Icon name="list-outline" size={20} color={themeColors.primary} />
-                    <Text style={[styles.viewJobsButtonText, { color: themeColors.primary }]}>View Jobs</Text>
+                    <Icon
+                      name="list-outline"
+                      size={20}
+                      color={themeColors.primary}
+                    />
+                    <Text
+                      style={[
+                        styles.viewJobsButtonText,
+                        { color: themeColors.primary },
+                      ]}
+                    >
+                      View Jobs
+                    </Text>
                   </Pressable>
                 )}
               </View>
@@ -301,7 +444,14 @@ export const PrintRangeDialog: React.FC<PrintRangeDialogProps> = ({
                   accessibilityRole="button"
                   accessibilityLabel="Cancel"
                 >
-                  <Text style={[styles.cancelButtonText, { color: themeColors.fiori.text.secondary }]}>Cancel</Text>
+                  <Text
+                    style={[
+                      styles.cancelButtonText,
+                      { color: themeColors.fiori.text.secondary },
+                    ]}
+                  >
+                    Cancel
+                  </Text>
                 </Pressable>
 
                 {/* Print Button - Fiori Primary */}
@@ -319,13 +469,30 @@ export const PrintRangeDialog: React.FC<PrintRangeDialogProps> = ({
                 >
                   {loading ? (
                     <View style={styles.loadingContainer}>
-                      <ActivityIndicator size="small" color={themeColors.white} />
-                      <Text style={[styles.printButtonText, { color: themeColors.white }]}>Printing...</Text>
+                      <ActivityIndicator
+                        size="small"
+                        color={themeColors.white}
+                      />
+                      <Text
+                        style={[
+                          styles.printButtonText,
+                          { color: themeColors.white },
+                        ]}
+                      >
+                        Printing...
+                      </Text>
                     </View>
                   ) : (
                     <>
                       <Icon name="print" size={18} color={themeColors.white} />
-                      <Text style={[styles.printButtonText, { color: themeColors.white }]}>Print</Text>
+                      <Text
+                        style={[
+                          styles.printButtonText,
+                          { color: themeColors.white },
+                        ]}
+                      >
+                        Print
+                      </Text>
                     </>
                   )}
                 </Pressable>

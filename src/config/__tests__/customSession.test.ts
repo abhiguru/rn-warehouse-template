@@ -1,3 +1,20 @@
+import { configureStore } from '@reduxjs/toolkit';
+import authReducer, { logout, setUserProfile } from '@/store/slices/authSlice';
+jest.mock('@/services/recent-customers-service', () => ({
+  RecentCustomersService: { clearRecentCustomers: jest.fn(async () => {}) },
+}));
+jest.mock('@/services/session-recent-items-service', () => ({
+  SessionRecentItemsService: {
+    clearAllSessionRecentItems: jest.fn(async () => {}),
+  },
+}));
+jest.mock('@/services/recent-items-service', () => ({
+  RecentItemsService: { clearCache: jest.fn(async () => {}) },
+}));
+jest.mock('@/config/sentryConfig', () => ({
+  setSentryUser: jest.fn(),
+  clearSentryUser: jest.fn(),
+}));
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 import { createClient } from '@supabase/supabase-js';
@@ -19,13 +36,14 @@ jest.mock('@/utils/secureSessionMarker', () => ({
 jest.mock('@/utils/otpRateLimiter', () => ({
   checkOTPRateLimit: jest.fn(),
   recordOTPRequest: jest.fn(),
+  clearAllRateLimits: jest.fn(async () => {}),
 }));
 
 const secure = new Map<string, string>();
 const rpc = jest.fn();
 const from = jest.fn();
 const jwt = (expires = Math.floor(Date.now() / 1000) + 3600) =>
-  `${btoa(JSON.stringify({ alg: 'HS256' }))}.${btoa(JSON.stringify({ sub: 'test-user', exp: expires, role: 'authenticated' }))}.test-signature`;
+  `${btoa(JSON.stringify({ alg: 'HS256' }))}.${btoa(JSON.stringify({ sub: 'test-user', session_id: 'test-session', exp: expires, role: 'authenticated' }))}.test-signature`;
 
 beforeEach(async () => {
   jest.clearAllMocks();
@@ -247,4 +265,112 @@ it('signs in without contacting GoTrue or logging OTP/access/refresh tokens', as
     /123456|test-signature|eeeeeeee/
   );
   log.mockRestore();
+});
+
+const deferred = <T>() => {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>(r => {
+    resolve = r;
+  });
+  return { promise, resolve };
+};
+const flush = async () => {
+  for (let i = 0; i < 25; i++) await Promise.resolve();
+};
+it('revokes and discards refresh credentials arriving after logout', async () => {
+  await storeTokens(jwt(1), 'a'.repeat(64), 1000);
+  const slow = deferred<any>();
+  rpc.mockImplementation(name =>
+    name === 'refresh_jwt_token'
+      ? slow.promise
+      : Promise.resolve({ data: { success: true }, error: null })
+  );
+  const pending = refreshCustomJWT();
+  await flush();
+  await signOut();
+  slow.resolve({
+    data: { success: true, access_token: jwt(), refresh_token: 'b'.repeat(64) },
+    error: null,
+  });
+  expect(await pending).toBeNull();
+  expect(await getStoredToken()).toEqual({ isValid: false });
+  expect(rpc).toHaveBeenCalledWith('logout_session', {
+    p_refresh_token: 'b'.repeat(64),
+  });
+});
+it('does not let failed old refresh erase a newer account', async () => {
+  await storeTokens(jwt(1), 'a'.repeat(64), 1000);
+  const slow = deferred<any>();
+  rpc.mockReturnValue(slow.promise);
+  const pending = refreshCustomJWT();
+  await flush();
+  await storeTokens(jwt(), 'c'.repeat(64), Date.now() + 3600000);
+  slow.resolve({ data: { success: false }, error: null });
+  expect(await pending).toBeNull();
+  expect((await getStoredToken()).refreshToken).toBe('c'.repeat(64));
+});
+it('serializes overlapping secure writes and keeps only the latest session', async () => {
+  const slow = deferred<void>();
+  jest
+    .mocked(SecureStore.setItemAsync)
+    .mockImplementation(async (key, value) => {
+      if (key === 'secure_auth_token' && value === 'first') await slow.promise;
+      secure.set(key, value);
+    });
+  const first = storeTokens('first', 'a'.repeat(64), Date.now() + 3600000);
+  const rejected = expect(first).rejects.toThrow('Session changed');
+  await flush();
+  const second = storeTokens('second', 'b'.repeat(64), Date.now() + 3600000);
+  slow.resolve();
+  await rejected;
+  await second;
+  expect((await getStoredToken()).authToken).toBe('second');
+  expect((await getStoredToken()).refreshToken).toBe('b'.repeat(64));
+});
+it('a late OTP response cannot restore a logged-out session', async () => {
+  const slow = deferred<any>();
+  rpc.mockImplementation(name =>
+    name === 'verify_otp_or_register'
+      ? slow.promise
+      : Promise.resolve({ data: null, error: null })
+  );
+  const pending = verifyOTP('0000000002', '123456');
+  await flush();
+  await signOut();
+  slow.resolve({
+    data: {
+      success: true,
+      data: {
+        user: { role: 'customer' },
+        session: { access_token: jwt(), refresh_token: 'b'.repeat(64) },
+      },
+    },
+    error: null,
+  });
+  expect((await pending).success).toBe(false);
+  expect(await getStoredToken()).toEqual({ isValid: false });
+});
+
+it('Redux logout revokes its captured credential without clearing an account signed in during revocation', async () => {
+  await storeTokens(jwt(), 'a'.repeat(64), Date.now() + 3600000);
+  const slow = deferred<any>();
+  rpc.mockImplementation(name =>
+    name === 'logout_session'
+      ? slow.promise
+      : Promise.resolve({ data: [], error: null })
+  );
+  const store = configureStore({ reducer: { auth: authReducer } });
+  const pending = store.dispatch(logout());
+  await flush();
+  expect(rpc).toHaveBeenCalledWith('logout_session', {
+    p_refresh_token: 'a'.repeat(64),
+  });
+  await storeTokens(jwt(), 'b'.repeat(64), Date.now() + 3600000);
+  store.dispatch(
+    setUserProfile({ id: 'new-account', role: 'customer' } as any)
+  );
+  slow.resolve({ data: { success: true }, error: null });
+  await pending.unwrap();
+  expect((await getStoredToken()).refreshToken).toBe('b'.repeat(64));
+  expect(store.getState().auth.userProfile?.id).toBe('new-account');
 });

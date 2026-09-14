@@ -9,7 +9,7 @@ import React, { useCallback, useMemo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import theme from '@/theme';
-import { getSupabaseClient } from '@/config/supabaseConfig';
+import { getAuthenticatedClient } from '@/config/supabaseConfig';
 import { SearchableBottomSheet } from '@/components/common';
 import { useListColors } from '@/hooks/useListColors';
 
@@ -39,31 +39,40 @@ export const SupervisorBottomSheet: React.FC<SupervisorBottomSheetProps> = ({
   const colors = useListColors();
 
   // Dynamic styles based on theme
-  const dynamicStyles = useMemo(() => StyleSheet.create({
-    supervisorItem: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      paddingHorizontal: theme.spacing.lg,
-      paddingVertical: theme.spacing.md,
-      minHeight: theme.touchTarget.minimum,
-    },
-    supervisorName: {
-      fontSize: theme.fontSize.base,
-      color: colors.textPrimary,
-      fontWeight: theme.fontWeight.medium,
-    },
-    metaText: {
-      fontSize: theme.fontSize.sm,
-      color: colors.textSecondary,
-    },
-  }), [colors]);
+  const dynamicStyles = useMemo(
+    () =>
+      StyleSheet.create({
+        supervisorItem: {
+          flexDirection: 'row',
+          alignItems: 'center',
+          paddingHorizontal: theme.spacing.lg,
+          paddingVertical: theme.spacing.md,
+          minHeight: theme.touchTarget.minimum,
+        },
+        supervisorName: {
+          fontSize: theme.fontSize.base,
+          color: colors.textPrimary,
+          fontWeight: theme.fontWeight.medium,
+        },
+        metaText: {
+          fontSize: theme.fontSize.sm,
+          color: colors.textSecondary,
+        },
+      }),
+    [colors]
+  );
 
   // Search function for supervisors using RPC
   const searchSupervisors = useCallback(
     async (query: string): Promise<Supervisor[]> => {
-      console.log('[SupervisorBottomSheet] Searching supervisors with query:', query);
+      console.log(
+        '[SupervisorBottomSheet] Searching supervisors with query:',
+        query
+      );
 
-      const { data, error } = await getSupabaseClient().rpc('get_supervisors', {
+      const { data, error } = await (
+        await getAuthenticatedClient()
+      ).rpc('get_supervisors', {
         search_query: query,
       });
 
@@ -74,7 +83,10 @@ export const SupervisorBottomSheet: React.FC<SupervisorBottomSheetProps> = ({
 
       // Debug: Log raw response
       if (__DEV__) {
-        console.log('[SupervisorBottomSheet] Raw RPC response:', JSON.stringify(data, null, 2));
+        console.log(
+          '[SupervisorBottomSheet] Raw RPC response:',
+          JSON.stringify(data, null, 2)
+        );
       }
 
       // Handle both direct array and wrapped response formats

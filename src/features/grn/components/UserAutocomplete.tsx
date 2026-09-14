@@ -10,7 +10,7 @@
 import React, { useCallback } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { RemoteAutocompleteInput } from '@/components/RemoteAutocompleteInput';
-import { getSupabaseClient } from '@/config/supabaseConfig';
+import { getAuthenticatedClient } from '@/config/supabaseConfig';
 import theme from '@/theme';
 
 // ============================================================================
@@ -51,34 +51,35 @@ export const UserAutocomplete: React.FC<UserAutocompleteProps> = ({
   zIndex = 1000,
 }) => {
   // Fetch supervisors using RPC (bypasses RLS)
-  const fetchUsers = useCallback(
-    async (query: string): Promise<User[]> => {
-      if (query.length < 2) {
+  const fetchUsers = useCallback(async (query: string): Promise<User[]> => {
+    if (query.length < 2) {
+      return [];
+    }
+
+    try {
+      const { data, error: rpcError } = await (
+        await getAuthenticatedClient()
+      ).rpc('get_supervisors', {
+        search_query: query,
+      });
+
+      if (rpcError) {
+        console.error('[UserAutocomplete] RPC error:', rpcError);
         return [];
       }
 
-      try {
-        const { data, error: rpcError } = await getSupabaseClient().rpc('get_supervisors', {
-          search_query: query,
-        });
-
-        if (rpcError) {
-          console.error('[UserAutocomplete] RPC error:', rpcError);
-          return [];
-        }
-
-        return (data || []).map((user: { id: string; name: string; phone: string }) => ({
+      return (data || []).map(
+        (user: { id: string; name: string; phone: string }) => ({
           id: user.id,
           name: user.name,
           phone: user.phone || '',
-        }));
-      } catch (err) {
-        console.error('[UserAutocomplete] Search error:', err);
-        return [];
-      }
-    },
-    []
-  );
+        })
+      );
+    } catch (err) {
+      console.error('[UserAutocomplete] Search error:', err);
+      return [];
+    }
+  }, []);
 
   // Handle user selection
   const handleSelect = useCallback(
@@ -99,9 +100,7 @@ export const UserAutocomplete: React.FC<UserAutocompleteProps> = ({
         <Text style={styles.itemName} numberOfLines={1}>
           {user.name}
         </Text>
-        {user.phone && (
-          <Text style={styles.phoneText}>{user.phone}</Text>
-        )}
+        {user.phone && <Text style={styles.phoneText}>{user.phone}</Text>}
       </View>
     );
   }, []);

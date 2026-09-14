@@ -41,7 +41,10 @@ class CustomerService {
     limit: number = 20
   ): Promise<CustomerListItem[]> {
     try {
-      console.log('[CustomerService] searchCustomers called:', { query, limit });
+      console.log('[CustomerService] searchCustomers called:', {
+        query,
+        limit,
+      });
 
       if (!query || query.length < 1) {
         console.log('[CustomerService] Query too short, returning empty');
@@ -74,15 +77,26 @@ class CustomerService {
       let customerArray: unknown[];
       if (Array.isArray(data)) {
         customerArray = data;
-      } else if (data && typeof data === 'object' && 'data' in data && Array.isArray((data as Record<string, unknown>).data)) {
+      } else if (
+        data &&
+        typeof data === 'object' &&
+        'data' in data &&
+        Array.isArray((data as Record<string, unknown>).data)
+      ) {
         console.log('[CustomerService] Unwrapping nested data array');
         customerArray = (data as Record<string, unknown>).data as unknown[];
       } else {
-        console.log('[CustomerService] No valid customer data found, raw data:', JSON.stringify(data, null, 2));
+        console.log(
+          '[CustomerService] No valid customer data found, raw data:',
+          JSON.stringify(data, null, 2)
+        );
         return [];
       }
 
-      console.log('[CustomerService] Customer array length:', customerArray.length);
+      console.log(
+        '[CustomerService] Customer array length:',
+        customerArray.length
+      );
 
       // Map RPC response to CustomerListItem
       interface RpcCustomer {
@@ -129,18 +143,26 @@ class CustomerService {
     offset: number = 0
   ): Promise<CustomerListResponse> {
     try {
-      console.log('[CustomerService] getCustomerList:', { filters, limit, offset });
+      console.log('[CustomerService] getCustomerList:', {
+        filters,
+        limit,
+        offset,
+      });
 
       const client = await getAuthenticatedClient();
 
       // Build query
       let query = client
         .from('customers')
-        .select('id, name, mobile, city, email, address, active', { count: 'exact' });
+        .select('id, name, mobile, city, email, address, active', {
+          count: 'exact',
+        });
 
       // Apply filters
       if (filters.search) {
-        query = query.or(`name.ilike.%${filters.search}%,mobile.ilike.%${filters.search}%`);
+        query = query.or(
+          `name.ilike.%${filters.search}%,mobile.ilike.%${filters.search}%`
+        );
       }
 
       if (filters.active !== null && filters.active !== undefined) {
@@ -180,15 +202,17 @@ class CustomerService {
         address?: string;
         active?: boolean;
       }
-      const customers: CustomerListItem[] = (data || []).map((c: RpcCustomerRow) => ({
-        id: c.id,
-        name: c.name,
-        mobile: c.mobile || '',
-        city: c.city,
-        email: c.email,
-        address: c.address,
-        active: c.active ?? true,
-      }));
+      const customers: CustomerListItem[] = (data || []).map(
+        (c: RpcCustomerRow) => ({
+          id: c.id,
+          name: c.name,
+          mobile: c.mobile || '',
+          city: c.city,
+          email: c.email,
+          address: c.address,
+          active: c.active ?? true,
+        })
+      );
 
       return {
         success: true,
@@ -307,8 +331,13 @@ class CustomerService {
    * - PAN format (10 chars Indian format)
    * - Image count (max 10)
    */
-  async createCustomer(params: CreateCustomerParams): Promise<CustomerServiceResponse> {
-    console.log('[CustomerService] createCustomer:', { ...params, p_image_urls: params.p_image_urls?.length || 0 });
+  async createCustomer(
+    params: CreateCustomerParams
+  ): Promise<CustomerServiceResponse> {
+    console.log('[CustomerService] createCustomer:', {
+      ...params,
+      p_image_urls: params.p_image_urls?.length || 0,
+    });
 
     // Validate image count
     if (params.p_image_urls && params.p_image_urls.length > 10) {
@@ -356,7 +385,10 @@ class CustomerService {
       };
     }
 
-    console.log('[CustomerService] Customer created via RPC:', rpcData.customer_id);
+    console.log(
+      '[CustomerService] Customer created via RPC:',
+      rpcData.customer_id
+    );
     return {
       success: true,
       message: rpcData.message || 'Customer created successfully',
@@ -402,7 +434,9 @@ class CustomerService {
    * - Admin/Supervisor: all fields
    * - Customer role: only contact fields (contact_person, contact_mobile, contact_email)
    */
-  async updateCustomer(params: UpdateCustomerParams): Promise<CustomerServiceResponse> {
+  async updateCustomer(
+    params: UpdateCustomerParams
+  ): Promise<CustomerServiceResponse> {
     console.log('[CustomerService] updateCustomer:', {
       customer_id: params.p_customer_id,
       has_images: !!params.p_image_urls,
@@ -427,7 +461,22 @@ class CustomerService {
     const result = await executeRPC<UpdateCustomerRpcResponse>(
       getAuthenticatedClient,
       'update_customer',
-      params as unknown as Record<string, unknown>,
+      {
+        p_customer_id: params.p_customer_id,
+        p_name: params.p_name,
+        p_mobile: params.p_mobile,
+        p_email: params.p_email,
+        p_address: params.p_address,
+        p_city: params.p_city,
+        p_state: params.p_state,
+        p_pincode: params.p_pincode,
+        p_gst: params.p_gst_number,
+        p_pan: params.p_pan_number,
+        p_contact_person: params.p_contact_person,
+        p_contact_mobile: params.p_contact_mobile,
+        p_contact_email: params.p_contact_email,
+        p_image_urls: params.p_image_urls,
+      },
       {
         context: 'CustomerService.updateCustomer',
         errorMessage: 'Failed to update customer',
@@ -469,7 +518,9 @@ class CustomerService {
    * Inactivate (soft delete) a customer
    * Uses safe_delete_customer RPC
    */
-  async inactivateCustomer(customerId: string): Promise<CustomerServiceResponse> {
+  async inactivateCustomer(
+    customerId: string
+  ): Promise<CustomerServiceResponse> {
     try {
       console.log('[CustomerService] inactivateCustomer:', customerId);
 
@@ -491,8 +542,14 @@ class CustomerService {
         console.error('[CustomerService] Inactivate error:', error);
 
         // Fallback to direct update if RPC doesn't exist
-        if (error.code === 'PGRST202' || error.message?.includes('function') || error.message?.includes('does not exist')) {
-          console.log('[CustomerService] RPC not available, using direct update fallback');
+        if (
+          error.code === 'PGRST202' ||
+          error.message?.includes('function') ||
+          error.message?.includes('does not exist')
+        ) {
+          console.log(
+            '[CustomerService] RPC not available, using direct update fallback'
+          );
 
           const { error: updateError } = await client
             .from('customers')
@@ -538,7 +595,10 @@ class CustomerService {
         data: data,
       };
     } catch (error) {
-      console.error('[CustomerService] Exception in inactivateCustomer:', error);
+      console.error(
+        '[CustomerService] Exception in inactivateCustomer:',
+        error
+      );
       return {
         success: false,
         message: 'Failed to inactivate customer',
@@ -572,8 +632,14 @@ class CustomerService {
         console.error('[CustomerService] Restore error:', error);
 
         // Fallback to direct update if RPC doesn't exist
-        if (error.code === 'PGRST202' || error.message?.includes('function') || error.message?.includes('does not exist')) {
-          console.log('[CustomerService] RPC not available, using direct update fallback');
+        if (
+          error.code === 'PGRST202' ||
+          error.message?.includes('function') ||
+          error.message?.includes('does not exist')
+        ) {
+          console.log(
+            '[CustomerService] RPC not available, using direct update fallback'
+          );
 
           const { error: updateError } = await client
             .from('customers')

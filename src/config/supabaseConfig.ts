@@ -10,6 +10,11 @@ import * as SecureStore from 'expo-secure-store';
 import { clearSecureSessionMarker } from '@/utils/secureSessionMarker';
 import { checkOTPRateLimit, recordOTPRequest } from '@/utils/otpRateLimiter';
 import { CACHE_DURATION_LONG_MS } from '@/config/cacheConfig';
+import {
+  advanceSessionGeneration,
+  getSessionGeneration,
+  serializeCredentials,
+} from './sessionLifecycle';
 
 // S2/S3 Fix: SecureStore keys for encrypted token storage
 const SECURE_KEYS = {
@@ -38,6 +43,8 @@ export const initializeSupabase = (
     __currentConfig?.url !== url ||
     __currentConfig?.anonKey !== anonKey
   ) {
+    if (__currentConfig && __currentConfig.url !== url)
+      void clearStoredTokens();
     clearAuthenticatedClientCache();
     __currentConfig = { url, anonKey };
     __supabaseInstance = createClient(url, anonKey, {
@@ -65,12 +72,18 @@ export const getCurrentConfig = () => {
 export const getSupabaseRPCClient = getSupabaseClient;
 
 export const getAuthenticatedClient = async (): Promise<SupabaseClient> => {
+  const generation = getSessionGeneration();
   if (!(await ensureValidTokens())) {
     clearAuthenticatedClientCache();
     throw new Error('Sign in required');
   }
   const token = await getStoredToken();
-  if (!token.authToken || !token.isValid) throw new Error('Sign in required');
+  if (
+    generation !== getSessionGeneration() ||
+    !token.authToken ||
+    !token.isValid
+  )
+    throw new Error('Sign in required');
   if (!__authenticatedClientInstance || __cachedAuthToken !== token.authToken) {
     const config = getCurrentConfig();
     __authenticatedClientInstance = createClient(config.url, config.anonKey, {
@@ -87,6 +100,29 @@ export const getAuthenticatedClient = async (): Promise<SupabaseClient> => {
 };
 
 export const getSupabaseWithJWT = getAuthenticatedClient;
+
+async function boundedAuthRPC(name: string, args: Record<string, unknown>) {
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const request = getSupabaseRPCClient().rpc(name, args);
+    const pending =
+      typeof request.abortSignal === 'function'
+        ? request.abortSignal(controller.signal)
+        : request;
+    return await Promise.race([
+      pending,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+          controller.abort();
+          reject(new Error('Authentication request timed out'));
+        }, 15000);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 // Phone authentication helper using custom RPC
 export const signInWithPhone = async (phone: string) => {
@@ -259,19 +295,24 @@ export const verifyOTP = async (
   token: string,
   userName?: string
 ): Promise<AuthResult> => {
+  const generation = advanceSessionGeneration();
+  await serializeCredentials(clearStoredTokensRaw);
   try {
     const formattedPhone = formatPhoneNumber(phone);
 
     // Step 1: Call the verification RPC
-    const { data, error } = await getSupabaseClient().rpc(
-      'verify_otp_or_register',
-      {
-        p_phone_number: formattedPhone,
-        p_otp_code: token,
-        p_name: userName || null,
-      }
-    );
+    const { data, error } = await boundedAuthRPC('verify_otp_or_register', {
+      p_phone_number: formattedPhone,
+      p_otp_code: token,
+      p_name: userName || null,
+    });
 
+    if (generation !== getSessionGeneration()) {
+      const obsolete = Array.isArray(data) ? data[0] : data;
+      const refresh = obsolete?.data?.session?.refresh_token;
+      if (typeof refresh === 'string') await revokeSession(refresh);
+      return { success: false, error: 'Session changed' };
+    }
     if (error) {
       console.error('[Auth] OTP verification RPC error:', error);
       return { success: false, error: error.message };
@@ -327,7 +368,7 @@ export const verifyOTP = async (
       : new Date(session.expires_at).getTime();
 
     // Store the JWT tokens
-    await storeTokens(accessTokenStr, refreshTokenStr, expiresAt);
+    await storeTokens(accessTokenStr, refreshTokenStr, expiresAt, generation);
 
     // Clear cached authenticated client so it picks up the new token
     clearAuthenticatedClientCache();
@@ -350,9 +391,11 @@ export const verifyOTP = async (
       } catch (err) {
         console.warn('[Auth] Failed to fetch customer assignments:', err);
       }
-      await cacheUserProfile(userProfileWithCustomers);
+      await cacheUserProfile(userProfileWithCustomers, generation);
     }
 
+    if (generation !== getSessionGeneration())
+      return { success: false, error: 'Session changed' };
     return {
       success: true,
       data: {
@@ -372,49 +415,29 @@ export const verifyOTP = async (
 
 // Sign out helper - clear stored tokens and Supabase session
 export const signOut = async () => {
-  try {
-    const stored = await getStoredToken();
-    if (stored.refreshToken) {
-      const { error } = await getSupabaseRPCClient().rpc('logout_session', {
-        p_refresh_token: stored.refreshToken,
-      });
-      if (error)
-        console.warn(
-          '[Auth] Server logout unavailable; local credentials will still be cleared.'
-        );
-    }
-
-    // Clear all stored tokens and session data
-    await clearStoredTokens();
-
-    // Clear secure session marker
+  // Queue the read before invalidating pending work; preserve the credential for
+  // server revocation while local cleanup proceeds independently of the network.
+  const storedPromise = serializeCredentials(readStoredToken);
+  advanceSessionGeneration();
+  const cleanup = serializeCredentials(async () => {
+    await clearStoredTokensRaw();
     await clearSecureSessionMarker();
-
-    // Clear any AsyncStorage data that might persist
-    // Get all keys and remove any that contain 'auth' or 'session'
-    const allKeys = await AsyncStorage.getAllKeys();
-    const authKeys = allKeys.filter(
-      key =>
-        key.includes('auth') ||
-        key.includes('session') ||
-        key.includes('supabase') ||
-        key.includes('sb-')
-    );
-
-    if (authKeys.length > 0) {
-      await AsyncStorage.multiRemove(authKeys);
-    }
-
-    return { success: true };
-  } catch (error) {
-    console.error('[Auth] Sign out exception:', error);
-    return { success: false, error: 'Sign out failed' };
-  } finally {
-    clearAuthenticatedClientCache();
-    await clearStoredTokens();
-    await clearSecureSessionMarker();
-  }
+  });
+  const stored = await storedPromise;
+  await cleanup;
+  if (stored.refreshToken) await revokeSession(stored.refreshToken);
+  return { success: true };
 };
+
+async function revokeSession(refreshToken: string) {
+  try {
+    await boundedAuthRPC('logout_session', { p_refresh_token: refreshToken });
+  } catch {
+    console.warn(
+      '[Auth] Server logout unavailable; local credentials cleared.'
+    );
+  }
+}
 
 // ============================================================================
 // CUSTOM JWT TOKEN REFRESH
@@ -431,29 +454,42 @@ type RefreshedSession = {
   refreshToken: string;
   expiresAt: number;
 };
-let refreshInFlight: Promise<RefreshedSession | null> | null = null;
+let refreshInFlight: {
+  generation: number;
+  promise: Promise<RefreshedSession | null>;
+} | null = null;
 export const refreshCustomJWT = (): Promise<RefreshedSession | null> => {
-  if (!refreshInFlight) {
-    refreshInFlight = refreshSession().finally(() => {
-      refreshInFlight = null;
-    });
-  }
-  return refreshInFlight;
+  const generation = getSessionGeneration();
+  if (refreshInFlight?.generation === generation)
+    return refreshInFlight.promise;
+  const promise = refreshSession(generation).finally(() => {
+    if (refreshInFlight?.promise === promise) refreshInFlight = null;
+  });
+  refreshInFlight = { generation, promise };
+  return promise;
 };
-const refreshSession = async (): Promise<RefreshedSession | null> => {
+const refreshSession = async (
+  generation: number
+): Promise<RefreshedSession | null> => {
   try {
     // Get stored refresh token from SecureStore
     const { refreshToken } = await getStoredToken();
 
-    if (!refreshToken) {
+    if (!refreshToken || generation !== getSessionGeneration()) {
       return null;
     }
 
     // Call backend RPC to refresh tokens
-    const { data, error } = await getSupabaseClient().rpc('refresh_jwt_token', {
+    const { data, error } = await boundedAuthRPC('refresh_jwt_token', {
       p_refresh_token: refreshToken,
     });
 
+    if (generation !== getSessionGeneration()) {
+      const obsolete = Array.isArray(data) ? data[0] : data;
+      if (obsolete?.success && obsolete.refresh_token)
+        await revokeSession(String(obsolete.refresh_token));
+      return null;
+    }
     if (error) {
       console.error('[Auth] Token refresh RPC error:', error.message);
       // If refresh token is invalid/expired, clear stored tokens
@@ -496,7 +532,7 @@ const refreshSession = async (): Promise<RefreshedSession | null> => {
         : Date.now() + 24 * 60 * 60 * 1000; // Default 24h
 
     // Store the new tokens
-    await storeTokens(newAccessToken, newRefreshToken, expiresAt);
+    await storeTokens(newAccessToken, newRefreshToken, expiresAt, generation);
 
     // Clear cached authenticated client so it picks up new token
     clearAuthenticatedClientCache();
@@ -556,7 +592,7 @@ export const ensureValidTokens = async (): Promise<boolean> => {
 
 // Session Management (supports both JWT tokens and session markers)
 // S2/S3 Fix: Now uses SecureStore for encrypted token storage
-export const getStoredToken = async (): Promise<{
+const readStoredToken = async (): Promise<{
   authToken?: string;
   refreshToken?: string;
   expiresAt?: number;
@@ -586,7 +622,7 @@ export const getStoredToken = async (): Promise<{
         expiresAtStr = legacyExpiresAt;
 
         // Never use legacy credentials until secure persistence succeeds.
-        await storeTokens(authToken, refreshToken, Number(expiresAtStr));
+        await storeTokensRaw(authToken, refreshToken, Number(expiresAtStr));
       }
     }
 
@@ -613,6 +649,14 @@ export const getStoredToken = async (): Promise<{
   }
 };
 
+export const getStoredToken = async () => {
+  const generation = getSessionGeneration();
+  const stored = await serializeCredentials(readStoredToken);
+  return generation === getSessionGeneration()
+    ? stored
+    : ({ isValid: false } as Awaited<ReturnType<typeof readStoredToken>>);
+};
+
 // Read-only compatibility for migrating old sessions; never encode new tokens.
 const decodeToken = (encoded: string): string => {
   try {
@@ -630,7 +674,7 @@ const decodeToken = (encoded: string): string => {
 
 // Expiry is the completion marker for the three SecureStore values. Invalidate it
 // before replacing either token, then write it only after the pair is persisted.
-export const storeTokens = async (
+const storeTokensRaw = async (
   accessToken: string,
   refreshToken: string,
   expiresAt: number
@@ -660,14 +704,37 @@ export const storeTokens = async (
   } catch {
     // Never downgrade to unencrypted storage or log native errors that may echo
     // the value being written. Login/refresh must fail when persistence fails.
-    await clearStoredTokens();
+    await clearStoredTokensRaw();
     throw new Error('Unable to save session securely');
   }
 };
 
+export const storeTokens = (
+  accessToken: string,
+  refreshToken: string,
+  expiresAt: number,
+  expectedGeneration?: number
+) => {
+  const generation = expectedGeneration ?? advanceSessionGeneration();
+  return serializeCredentials(async () => {
+    if (generation !== getSessionGeneration())
+      throw new Error('Session changed');
+    await storeTokensRaw(accessToken, refreshToken, expiresAt);
+    if (generation !== getSessionGeneration()) {
+      await clearStoredTokensRaw();
+      throw new Error('Session changed');
+    }
+  });
+};
+
+export const clearStoredTokens = () => {
+  advanceSessionGeneration();
+  return serializeCredentials(clearStoredTokensRaw);
+};
+
 // Clear all stored tokens
 // S2/S3 Fix: Clears from both SecureStore and AsyncStorage
-export const clearStoredTokens = async () => {
+const clearStoredTokensRaw = async () => {
   clearAuthenticatedClientCache();
   try {
     // Clear from SecureStore
@@ -703,18 +770,26 @@ const PROFILE_CACHE_TTL_MS = CACHE_DURATION_LONG_MS;
 interface CachedProfile {
   profile: unknown;
   cachedAt: number;
+  scope: string;
 }
 
 // Get cached user profile
 // S8 Fix: Now uses SecureStore with TTL validation
 export const getCachedUserProfile = async () => {
+  const generation = getSessionGeneration();
   try {
+    const scope = await profileScope();
+    if (!scope || generation !== getSessionGeneration()) return null;
     // Try SecureStore first
     const cached = await SecureStore.getItemAsync('cached_user_profile');
     if (cached) {
       const parsed: CachedProfile = JSON.parse(cached);
       // Validate TTL
-      if (Date.now() - parsed.cachedAt < PROFILE_CACHE_TTL_MS) {
+      if (
+        parsed.scope === scope &&
+        Date.now() >= parsed.cachedAt &&
+        Date.now() - parsed.cachedAt < PROFILE_CACHE_TTL_MS
+      ) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         let profile = parsed.profile as any;
 
@@ -729,7 +804,7 @@ export const getCachedUserProfile = async () => {
             if (!rpcError && customerIds) {
               profile = { ...profile, assignedCustomerIds: customerIds };
               // Update cache with customer assignments
-              await cacheUserProfile(profile);
+              await cacheUserProfile(profile, generation);
             }
           } catch (err) {
             console.warn(
@@ -739,22 +814,11 @@ export const getCachedUserProfile = async () => {
           }
         }
 
-        return profile;
+        return generation === getSessionGeneration() ? profile : null;
       } else {
         // Cache expired, clean up
         await SecureStore.deleteItemAsync('cached_user_profile');
       }
-    }
-
-    // Migration: Check AsyncStorage for legacy cache
-    const legacyCached = await AsyncStorage.getItem('cached_user_profile');
-    if (legacyCached) {
-      const profile = JSON.parse(legacyCached);
-      // Migrate to SecureStore with new TTL format
-      await cacheUserProfile(profile);
-      await AsyncStorage.removeItem('cached_user_profile');
-
-      return profile;
     }
 
     // A profile cache timeout is not a session timeout. Reload the active profile
@@ -774,8 +838,8 @@ export const getCachedUserProfile = async () => {
     if (error || !profile) return null;
     const { data: customerIds } = await client.rpc('user_accessible_customers');
     const result = { ...profile, assignedCustomerIds: customerIds || [] };
-    await cacheUserProfile(result);
-    return result;
+    await cacheUserProfile(result, generation);
+    return generation === getSessionGeneration() ? result : null;
   } catch (error) {
     console.error('[Auth] Error getting cached profile:', error);
   }
@@ -784,29 +848,50 @@ export const getCachedUserProfile = async () => {
 
 // Store user profile in cache
 // S8 Fix: Now uses SecureStore with TTL tracking
-export const cacheUserProfile = async (profile: unknown) => {
+async function profileScope(): Promise<string | null> {
+  const stored = await getStoredToken();
+  if (!stored.authToken || !stored.isValid) return null;
   try {
-    const cacheEntry: CachedProfile = {
-      profile,
-      cachedAt: Date.now(),
-    };
-    await SecureStore.setItemAsync(
-      'cached_user_profile',
-      JSON.stringify(cacheEntry)
+    const claims = JSON.parse(
+      atob(stored.authToken.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))
     );
-  } catch (error) {
-    console.error('[Auth] Error caching profile:', error);
-    // Fallback to AsyncStorage if SecureStore fails
-    try {
-      await AsyncStorage.setItem(
-        'cached_user_profile',
-        JSON.stringify(profile)
-      );
-      console.warn('[Auth] Profile cached in AsyncStorage (fallback)');
-    } catch (fallbackError) {
-      console.error('[Auth] Fallback caching also failed:', fallbackError);
-    }
+    if (!claims.sub || !claims.session_id) return null;
+    return JSON.stringify([
+      getCurrentConfig().url,
+      claims.sub,
+      claims.session_id,
+    ]);
+  } catch {
+    return null;
   }
+}
+
+export const cacheUserProfile = async (
+  profile: unknown,
+  generation = getSessionGeneration()
+) => {
+  const scope = await profileScope();
+  if (!scope || generation !== getSessionGeneration()) return;
+  const subject = JSON.parse(scope)[1];
+  if (
+    !profile ||
+    typeof profile !== 'object' ||
+    !('auth_user_id' in profile) ||
+    profile.auth_user_id !== subject
+  )
+    return;
+  await serializeCredentials(async () => {
+    if (generation !== getSessionGeneration()) return;
+    try {
+      const entry: CachedProfile = { profile, cachedAt: Date.now(), scope };
+      await SecureStore.setItemAsync(
+        'cached_user_profile',
+        JSON.stringify(entry)
+      );
+    } catch {
+      /* Profile caching is optional; never persist an unscoped fallback. */
+    }
+  });
 };
 
 // Export types for convenience

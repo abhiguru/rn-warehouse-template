@@ -117,3 +117,52 @@ describe('authSlice', () => {
     });
   });
 });
+
+test.each([
+  'auth/logout',
+  'auth/deleteAccount',
+  'auth/forceLogoutOnInvalidToken',
+])('late %s completion cannot clear a newly signed-in profile', type => {
+  let state = authReducer(undefined, {
+    type: `${type}/pending`,
+    meta: { requestId: 'old' },
+  });
+  state = authReducer(state, {
+    type: 'auth/setUserProfile',
+    payload: { id: 'new-user', role: 'customer' },
+  });
+  state = authReducer(state, {
+    type: `${type}/fulfilled`,
+    meta: { requestId: 'old' },
+    payload: { reason: 'old' },
+  });
+  expect(state.userProfile?.id).toBe('new-user');
+  expect(state.isLoading).toBe(false);
+});
+
+test.each(['auth/initialize', 'auth/refreshToken', 'auth/fetchUserProfile'])(
+  'logout discards a late %s result',
+  type => {
+    let state = authReducer(undefined, {
+      type: `${type}/pending`,
+      meta: { requestId: 'old' },
+    });
+    state = authReducer(state, {
+      type: 'auth/logout/pending',
+      meta: { requestId: 'logout' },
+    });
+    state = authReducer(state, {
+      type: `${type}/fulfilled`,
+      meta: { requestId: 'old' },
+      payload: {
+        id: 'old',
+        user: { id: 'old' },
+        session: {},
+        userProfile: { id: 'old' },
+      },
+    });
+    expect(state.userProfile).toBeNull();
+    expect(state.user).toBeNull();
+    expect(state.session).toBeNull();
+  }
+);

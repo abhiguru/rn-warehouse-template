@@ -5,7 +5,10 @@
 
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import ConfigService, { PublicConfig, FullConfig } from '@/services/configService';
+import ConfigService, {
+  PublicConfig,
+  FullConfig,
+} from '@/services/configService';
 
 export interface ConfigState {
   publicConfig: PublicConfig | null;
@@ -16,6 +19,7 @@ export interface ConfigState {
   lastFetchedFull: number | null;
   publicError: string | null;
   fullError: string | null;
+  fullRequest?: string;
 }
 
 const initialState: ConfigState = {
@@ -40,7 +44,10 @@ export const fetchPublicConfig = createAsyncThunk(
       const config = await ConfigService.getPublicConfig();
       return config;
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : 'Failed to fetch public config';
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Failed to fetch public config';
       return rejectWithValue(message);
     }
   }
@@ -65,7 +72,8 @@ export const fetchFullConfig = createAsyncThunk(
       return rejectWithValue('Full config not available (optional)');
     } catch (error: unknown) {
       console.error('[ConfigSlice] Full config fetch error:', error);
-      const message = error instanceof Error ? error.message : 'Failed to fetch full config';
+      const message =
+        error instanceof Error ? error.message : 'Failed to fetch full config';
       return rejectWithValue(message);
     }
   }
@@ -82,7 +90,10 @@ export const refreshPublicConfig = createAsyncThunk(
       const config = await ConfigService.refreshPublicConfig();
       return config;
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : 'Failed to refresh public config';
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Failed to refresh public config';
       return rejectWithValue(message);
     }
   }
@@ -102,7 +113,10 @@ export const refreshFullConfig = createAsyncThunk(
       }
       return config;
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : 'Failed to refresh full config';
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Failed to refresh full config';
       return rejectWithValue(message);
     }
   }
@@ -115,8 +129,9 @@ const configSlice = createSlice({
     /**
      * Clear all cached configurations
      */
-    clearConfig: (state) => {
+    clearConfig: state => {
       state.publicConfig = null;
+      state.fullRequest = undefined;
       state.fullConfig = null;
       state.publicError = null;
       state.fullError = null;
@@ -125,7 +140,8 @@ const configSlice = createSlice({
     /**
      * Clear only full configuration (e.g., after logout)
      */
-    clearFullConfig: (state) => {
+    clearFullConfig: state => {
+      state.fullRequest = undefined;
       state.fullConfig = null;
       state.fullError = null;
       state.lastFetchedFull = null;
@@ -134,15 +150,15 @@ const configSlice = createSlice({
     /**
      * Mark configs as stale to trigger refresh
      */
-    markConfigsStale: (state) => {
+    markConfigsStale: state => {
       state.lastFetchedPublic = null;
       state.lastFetchedFull = null;
     },
   },
-  extraReducers: (builder) => {
+  extraReducers: builder => {
     // ==================== Fetch Public Config ====================
 
-    builder.addCase(fetchPublicConfig.pending, (state) => {
+    builder.addCase(fetchPublicConfig.pending, state => {
       state.isLoadingPublic = true;
       state.publicError = null;
     });
@@ -162,12 +178,15 @@ const configSlice = createSlice({
 
     // ==================== Fetch Full Config ====================
 
-    builder.addCase(fetchFullConfig.pending, (state) => {
+    builder.addCase(fetchFullConfig.pending, (state, action) => {
+      state.fullRequest = action.meta.requestId;
       state.isLoadingFull = true;
       state.fullError = null;
     });
 
     builder.addCase(fetchFullConfig.fulfilled, (state, action) => {
+      if (state.fullRequest !== action.meta.requestId) return;
+      state.fullRequest = undefined;
       state.isLoadingFull = false;
       state.fullConfig = action.payload;
       state.lastFetchedFull = Date.now();
@@ -175,14 +194,18 @@ const configSlice = createSlice({
     });
 
     builder.addCase(fetchFullConfig.rejected, (state, action) => {
+      if (state.fullRequest !== action.meta.requestId) return;
+      state.fullRequest = undefined;
       state.isLoadingFull = false;
+      state.fullConfig = null;
+      state.lastFetchedFull = null;
       state.fullError = action.payload as string;
       // Keep existing config on error (stale-while-revalidate pattern)
     });
 
     // ==================== Refresh Public Config ====================
 
-    builder.addCase(refreshPublicConfig.pending, (state) => {
+    builder.addCase(refreshPublicConfig.pending, state => {
       state.isLoadingPublic = true;
       // Keep previous error until refresh completes
     });
@@ -201,11 +224,14 @@ const configSlice = createSlice({
 
     // ==================== Refresh Full Config ====================
 
-    builder.addCase(refreshFullConfig.pending, (state) => {
+    builder.addCase(refreshFullConfig.pending, (state, action) => {
+      state.fullRequest = action.meta.requestId;
       state.isLoadingFull = true;
     });
 
     builder.addCase(refreshFullConfig.fulfilled, (state, action) => {
+      if (state.fullRequest !== action.meta.requestId) return;
+      state.fullRequest = undefined;
       state.isLoadingFull = false;
       state.fullConfig = action.payload;
       state.lastFetchedFull = Date.now();
@@ -213,11 +239,31 @@ const configSlice = createSlice({
     });
 
     builder.addCase(refreshFullConfig.rejected, (state, action) => {
+      if (state.fullRequest !== action.meta.requestId) return;
+      state.fullRequest = undefined;
       state.isLoadingFull = false;
+      state.fullConfig = null;
+      state.lastFetchedFull = null;
       state.fullError = action.payload as string;
     });
+    builder.addMatcher(
+      action =>
+        [
+          'auth/logout/pending',
+          'auth/deleteAccount/fulfilled',
+          'auth/forceLogoutOnInvalidToken/pending',
+          'auth/setUserProfile',
+        ].includes(action.type),
+      state => {
+        state.fullRequest = undefined;
+        state.fullConfig = null;
+        state.lastFetchedFull = null;
+        state.isLoadingFull = false;
+      }
+    );
   },
 });
 
-export const { clearConfig, clearFullConfig, markConfigsStale } = configSlice.actions;
+export const { clearConfig, clearFullConfig, markConfigsStale } =
+  configSlice.actions;
 export default configSlice.reducer;
