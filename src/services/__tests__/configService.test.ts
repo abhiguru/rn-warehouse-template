@@ -112,9 +112,9 @@ it('does not send an expired token', async () => {
   expect(global.fetch).not.toHaveBeenCalled();
 });
 it('enforces full memory TTL and discards rejected authorization without stale fallback', async () => {
-  const now = Date.now();
   await ConfigService.getFullConfig(client);
-  jest.spyOn(Date, 'now').mockReturnValue(now + 60001);
+  const now = Date.now();
+  jest.spyOn(Date, 'now').mockReturnValue(now + 70000);
   jest
     .mocked(global.fetch)
     .mockResolvedValue({ ok: false, status: 403 } as Response);
