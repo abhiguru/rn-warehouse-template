@@ -115,7 +115,7 @@ export default function OTPScreen() {
 
   const dispatch = useAppDispatch();
   const { phoneNumber, isVerifyingOTP, isAuthenticating } = useAppSelector(
-    (state) => state.auth
+    state => state.auth
   );
 
   // Rate limit countdown
@@ -134,8 +134,8 @@ export default function OTPScreen() {
 
     // Start countdown timers
     const timer = setInterval(() => {
-      setResendTimer((prev) => (prev > 0 ? prev - 1 : 0));
-      setExpiryTimer((prev) => (prev > 0 ? prev - 1 : 0));
+      setResendTimer(prev => (prev > 0 ? prev - 1 : 0));
+      setExpiryTimer(prev => (prev > 0 ? prev - 1 : 0));
     }, 1000);
 
     return () => {
@@ -191,8 +191,6 @@ export default function OTPScreen() {
     try {
       dispatch(setVerifyingOTP(true));
 
-      if (__DEV__)
-        console.log('[OTP] Verifying OTP for phone:', phoneNumber, 'Code:', code);
       const result = await verifyOTP(phoneNumber, code);
 
       if (result.success && result.data) {
@@ -200,14 +198,18 @@ export default function OTPScreen() {
 
         if (result.data.customAuth && result.data.userProfile) {
           if (__DEV__)
-            console.log('[OTP] Custom JWT auth successful, setting user profile');
+            console.log(
+              '[OTP] Custom JWT auth successful, setting user profile'
+            );
           dispatch(setUserProfile(result.data.userProfile));
 
           if (__DEV__) console.log('[OTP] Redirecting to home screen');
           router.replace('/');
         } else if (result.data.session && result.data.user) {
           if (__DEV__)
-            console.log('[OTP] GoTrue session established, updating Redux state');
+            console.log(
+              '[OTP] GoTrue session established, updating Redux state'
+            );
 
           dispatch(setSession(result.data.session));
           dispatch(setUser(result.data.user));
@@ -216,7 +218,8 @@ export default function OTPScreen() {
           if (__DEV__) console.log('[OTP] Redirecting to home screen');
           router.replace('/');
         } else {
-          if (__DEV__) console.log('[OTP] Verification successful but no redirect');
+          if (__DEV__)
+            console.log('[OTP] Verification successful but no redirect');
         }
       } else {
         const friendlyMessage = parseErrorToFriendly(
@@ -288,7 +291,10 @@ export default function OTPScreen() {
     <View
       style={[
         styles.container,
-        { paddingTop: insets.top + 8, backgroundColor: FIORI.colors.background },
+        {
+          paddingTop: insets.top + 8,
+          backgroundColor: FIORI.colors.background,
+        },
       ]}
     >
       <StatusBar
@@ -363,7 +369,10 @@ export default function OTPScreen() {
                 Verify Your Phone
               </Text>
               <Text
-                style={[styles.description, { color: FIORI.colors.textSecondary }]}
+                style={[
+                  styles.description,
+                  { color: FIORI.colors.textSecondary },
+                ]}
               >
                 Enter the 6-digit code sent to
               </Text>
@@ -375,13 +384,16 @@ export default function OTPScreen() {
             {/* B. OTP Input Section */}
             <View style={styles.otpSection}>
               <Text
-                style={[styles.sectionHeader, { color: FIORI.colors.textSecondary }]}
+                style={[
+                  styles.sectionHeader,
+                  { color: FIORI.colors.textSecondary },
+                ]}
               >
                 VERIFICATION CODE
               </Text>
 
               <Pressable style={styles.otpContainer} onPress={focusHiddenInput}>
-                {[0, 1, 2, 3, 4, 5].map((index) => {
+                {[0, 1, 2, 3, 4, 5].map(index => {
                   const digit = otpCode[index] || '';
                   const isFilled = digit !== '';
                   const isCurrent =
@@ -396,7 +408,9 @@ export default function OTPScreen() {
                           borderColor: FIORI.colors.inputBorder,
                           backgroundColor: FIORI.colors.backgroundSecondary,
                         },
-                        isFilled && { backgroundColor: FIORI.colors.background },
+                        isFilled && {
+                          backgroundColor: FIORI.colors.background,
+                        },
                         isCurrent && {
                           borderColor: FIORI.colors.inputBorderFocus,
                           backgroundColor: FIORI.colors.background,
@@ -419,7 +433,10 @@ export default function OTPScreen() {
 
               {/* Helper text */}
               <Text
-                style={[styles.helperText, { color: FIORI.colors.textTertiary }]}
+                style={[
+                  styles.helperText,
+                  { color: FIORI.colors.textTertiary },
+                ]}
               >
                 Code expires in {formatTimer(expiryTimer)}
               </Text>
@@ -488,18 +505,27 @@ export default function OTPScreen() {
             {/* E. Resend Section */}
             <View style={styles.resendSection}>
               <View
-                style={[styles.divider, { backgroundColor: FIORI.colors.divider }]}
+                style={[
+                  styles.divider,
+                  { backgroundColor: FIORI.colors.divider },
+                ]}
               />
 
               <Text
-                style={[styles.resendLabel, { color: FIORI.colors.textSecondary }]}
+                style={[
+                  styles.resendLabel,
+                  { color: FIORI.colors.textSecondary },
+                ]}
               >
                 Didn't receive the code?
               </Text>
 
               {resendTimer > 0 || isRateLimited ? (
                 <Text
-                  style={[styles.resendTimer, { color: FIORI.colors.textTertiary }]}
+                  style={[
+                    styles.resendTimer,
+                    { color: FIORI.colors.textTertiary },
+                  ]}
                   accessible={true}
                   accessibilityRole="timer"
                   accessibilityLabel={

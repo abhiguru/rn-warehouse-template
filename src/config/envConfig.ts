@@ -8,8 +8,8 @@
  * Set EXPO_PUBLIC_CONFIG_API_URL in your .env file to point to your
  * local Supabase Docker instance (default: http://localhost:18000).
  *
- * For physical devices, use your LAN IP:
- *   EXPO_PUBLIC_CONFIG_API_URL=http://192.168.1.x:8000
+ * Android USB/emulator: use adb reverse tcp:18000 tcp:18000.
+ * Keep the supported demo origin http://localhost:18000.
  */
 
 /**

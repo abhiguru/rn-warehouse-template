@@ -24,18 +24,35 @@ import React, { useEffect, useState, useMemo } from 'react';
 
 // Type declaration for React Native's global ErrorUtils
 interface ErrorUtilsType {
-  setGlobalHandler: (handler: (error: Error, isFatal?: boolean) => void) => void;
-  getGlobalHandler: () => ((error: Error, isFatal?: boolean) => void) | undefined;
+  setGlobalHandler: (
+    handler: (error: Error, isFatal?: boolean) => void
+  ) => void;
+  getGlobalHandler: () =>
+    ((error: Error, isFatal?: boolean) => void) | undefined;
 }
 
 declare const ErrorUtils: ErrorUtilsType | undefined;
 import { Stack } from 'expo-router';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
-import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Platform, View, ActivityIndicator, Text, useColorScheme, Image } from 'react-native';
+import {
+  SafeAreaProvider,
+  useSafeAreaInsets,
+} from 'react-native-safe-area-context';
+import {
+  Platform,
+  View,
+  ActivityIndicator,
+  Text,
+  useColorScheme,
+  Image,
+} from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
+import {
+  DarkTheme,
+  DefaultTheme,
+  ThemeProvider,
+} from '@react-navigation/native';
 import { Provider } from 'react-redux';
 import { PersistGate } from 'redux-persist/integration/react';
 import { PaperProvider, MD3LightTheme, MD3DarkTheme } from 'react-native-paper';
@@ -50,8 +67,16 @@ import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { OfflineBanner } from '@/components/OfflineBanner';
 import { createLogger } from '@/utils/logger';
 import { useAppSelector } from '@/store/hooks';
-import { selectThemePreference, selectResolvedThemeMode } from '@/store/slices/themeSlice';
-import { initializeSentry, captureException, captureMessage, Sentry } from '@/config/sentryConfig';
+import {
+  selectThemePreference,
+  selectResolvedThemeMode,
+} from '@/store/slices/themeSlice';
+import {
+  initializeSentry,
+  captureException,
+  captureMessage,
+  Sentry,
+} from '@/config/sentryConfig';
 import { UpdatePrompt } from '@/components/UpdatePrompt';
 import { AppStateManager } from '@/components/AppStateManager';
 import { ForceUpdateModal } from '@/components/ForceUpdateModal';
@@ -94,7 +119,10 @@ if (typeof global !== 'undefined') {
   // React Native uses a polyfill that exposes tracking-rejection event
   const originalRejectionHandler = (global as any).onunhandledrejection;
 
-  (global as any).onunhandledrejection = (event: { reason: any; promise: Promise<any> }) => {
+  (global as any).onunhandledrejection = (event: {
+    reason: any;
+    promise: Promise<any>;
+  }) => {
     const reason = event?.reason;
     errorLogger.error('Unhandled promise rejection:', {
       message: reason?.message || String(reason),
@@ -103,7 +131,10 @@ if (typeof global !== 'undefined') {
 
     // Send to GlitchTip crash reporting
     if (reason instanceof Error) {
-      captureException(reason, { type: 'unhandledRejection', source: 'PromiseRejectionHandler' });
+      captureException(reason, {
+        type: 'unhandledRejection',
+        source: 'PromiseRejectionHandler',
+      });
     } else {
       captureMessage(`Unhandled rejection: ${String(reason)}`, 'error');
     }
@@ -162,7 +193,14 @@ const splashImage = require('../assets/splash-icon-1024.png');
 
 // Splash/loading screen
 const SplashScreen = () => (
-  <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#000000' }}>
+  <View
+    style={{
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      backgroundColor: '#000000',
+    }}
+  >
     <Image
       source={splashImage}
       style={{ width: '100%', height: '80%' }}
@@ -214,7 +252,10 @@ function NavigationStack({ screenBackground }: { screenBackground: string }) {
 
       {/* Form screens */}
       <Stack.Screen name="grn-form" options={{ headerShown: false }} />
-      <Stack.Screen name="grn-edit" options={{ title: 'Edit GRN', headerShown: false }} />
+      <Stack.Screen
+        name="grn-edit"
+        options={{ title: 'Edit GRN', headerShown: false }}
+      />
       <Stack.Screen name="dispatch-form" options={{ headerShown: false }} />
       <Stack.Screen name="dispatch-edit" options={{ headerShown: false }} />
       <Stack.Screen name="invoice-form" options={{ headerShown: false }} />
@@ -231,9 +272,18 @@ function NavigationStack({ screenBackground }: { screenBackground: string }) {
       <Stack.Screen name="privacy-policy" options={{ headerShown: false }} />
 
       {/* Report screens */}
-      <Stack.Screen name="reports/stock-summary" options={{ headerShown: false }} />
-      <Stack.Screen name="reports/dispatch-activity" options={{ headerShown: false }} />
-      <Stack.Screen name="reports/operations-dashboard" options={{ headerShown: false }} />
+      <Stack.Screen
+        name="reports/stock-summary"
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="reports/dispatch-activity"
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="reports/operations-dashboard"
+        options={{ headerShown: false }}
+      />
     </Stack>
   );
 }
@@ -242,14 +292,20 @@ function NavigationStack({ screenBackground }: { screenBackground: string }) {
 function ThemedContent() {
   const themePreference = useAppSelector(selectThemePreference);
   const systemColorScheme = useColorScheme();
-  const resolvedMode = selectResolvedThemeMode(themePreference, systemColorScheme);
+  const resolvedMode = selectResolvedThemeMode(
+    themePreference,
+    systemColorScheme
+  );
   const isDarkMode = resolvedMode === 'dark';
 
   // I10: Handle cold start deep links
   useColdStartDeepLink();
 
   // Memoize the paper theme to avoid recreating on every render
-  const currentPaperTheme = useMemo(() => createPaperTheme(isDarkMode), [isDarkMode]);
+  const currentPaperTheme = useMemo(
+    () => createPaperTheme(isDarkMode),
+    [isDarkMode]
+  );
   const themeColors = isDarkMode ? darkColors : colors;
 
   // Background color that matches the theme
@@ -329,19 +385,22 @@ function BootstrapApp() {
         publicConfig = await ConfigService.refreshPublicConfig();
         console.log('[Bootstrap] Config received:', {
           supabaseUrl: publicConfig.supabaseUrl,
-          anonKeyPrefix: publicConfig.anonKey?.substring(0, 30) + '...',
           environment: publicConfig.environment,
           version: publicConfig.version,
         });
       } catch (error: any) {
         console.error('[Bootstrap] Config fetch failed:', error);
-        setConfigError('Configuration API is unreachable. Please check your internet connection.');
+        setConfigError(
+          'Configuration API is unreachable. Please check your internet connection.'
+        );
         setIsReady(true);
         return;
       }
 
       // STEP 2: Initialize Supabase with fresh keys
-      console.log('[Bootstrap] Initializing Supabase client with fresh keys...');
+      console.log(
+        '[Bootstrap] Initializing Supabase client with fresh keys...'
+      );
       try {
         initializeSupabase(publicConfig.supabaseUrl, publicConfig.anonKey);
         console.log('[Bootstrap] Supabase client initialized successfully');

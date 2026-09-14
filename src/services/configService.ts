@@ -11,6 +11,15 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { CONFIG_API_BASE_URL } from '@/config/envConfig';
 import { getAuthToken } from '@/utils/authTokenUtils';
+import {
+  httpOrigin,
+  validatePublicConfig,
+  validateFullConfig,
+} from '@/config/bootstrapValidation';
+import {
+  getSessionGeneration,
+  onSessionChange,
+} from '@/config/sessionLifecycle';
 
 export interface PublicConfig {
   supabaseUrl: string;
@@ -93,354 +102,232 @@ export interface FullConfig {
 interface CachedConfig<T> {
   data: T;
   timestamp: number;
-  ttlMs: number;
+  scope: string;
 }
 
 class ConfigService {
-  private static readonly PUBLIC_CONFIG_CACHE_KEY = 'public_config_cache';
-  private static readonly FULL_CONFIG_CACHE_KEY = 'full_config_cache';
-  private static readonly PUBLIC_CONFIG_TTL = 3600000; // 1 hour
-  private static readonly FULL_CONFIG_TTL = 60000; // 1 minute
+  private static readonly PUBLIC_TTL = 3600000;
+  private static readonly FULL_TTL = 60000;
+  private static publicCache: CachedConfig<PublicConfig> | null = null;
+  private static fullCache: CachedConfig<FullConfig> | null = null;
+  private static fullKey: string | null = null;
+  private static cacheGeneration = 0;
+  private static writes: Promise<unknown> = Promise.resolve();
 
-  private static publicConfigCache: PublicConfig | null = null;
-  private static fullConfigCache: FullConfig | null = null;
-
-  /**
-   * Get public configuration (no authentication required)
-   * Used during app bootstrap to get fresh API keys
-   */
-  static async getPublicConfig(): Promise<PublicConfig> {
-    // Return in-memory cache if available
-    if (this.publicConfigCache) {
-      return this.publicConfigCache;
-    }
-
-    // Try to get from AsyncStorage cache
-    try {
-      const cached = await this.getFromAsyncStorage<PublicConfig>(
-        this.PUBLIC_CONFIG_CACHE_KEY,
-        this.PUBLIC_CONFIG_TTL
-      );
-      if (cached) {
-        this.publicConfigCache = cached;
-        return cached;
-      }
-    } catch (error) {
-      console.error('Failed to read public config from cache:', error);
-    }
-
-    // Fetch fresh config from API
-    try {
-      const config = await this.fetchPublicConfigFromAPI();
-      this.publicConfigCache = config;
-
-      // Cache it for future use
-      await this.saveToAsyncStorage(
-        this.PUBLIC_CONFIG_CACHE_KEY,
-        config,
-        this.PUBLIC_CONFIG_TTL
-      );
-
-      return config;
-    } catch (error) {
-      console.error('Failed to fetch public config from API:', error);
-
-      // If API fails, try to use stale cache
-      try {
-        const staleCache = await this.getFromAsyncStorage<PublicConfig>(
-          this.PUBLIC_CONFIG_CACHE_KEY,
-          Infinity // Accept stale cache
-        );
-        if (staleCache) {
-          console.warn('Using stale public config due to API failure');
-          this.publicConfigCache = staleCache;
-          return staleCache;
-        }
-      } catch (cacheError) {
-        console.error('Failed to read stale cache:', cacheError);
-      }
-
-      // No fallback - throw error to surface to user
-      throw new Error('Configuration API is unreachable and no cached config available');
-    }
+  private static write(operation: () => Promise<unknown>): Promise<unknown> {
+    const result = this.writes.then(operation, operation);
+    this.writes = result.catch(() => {});
+    return result.catch(() => {}); // Cache persistence is optional.
   }
 
-  /**
-   * Get full configuration (requires authentication)
-   * Contains features, limits, and role-based configuration
-   */
-  static async getFullConfig(_supabase: SupabaseClient): Promise<FullConfig | null> {
-    // Return in-memory cache if available
-    if (this.fullConfigCache) {
-      return this.fullConfigCache;
-    }
-
-    // Try to get from AsyncStorage cache
-    try {
-      const cached = await this.getFromAsyncStorage<FullConfig>(
-        this.FULL_CONFIG_CACHE_KEY,
-        this.FULL_CONFIG_TTL
-      );
-      if (cached) {
-        this.fullConfigCache = cached;
-        return cached;
-      }
-    } catch (error) {
-      console.error('Failed to read full config from cache:', error);
-    }
-
-    // Fetch fresh config from API
-    try {
-      const config = await this.fetchFullConfigFromAPI();
-      if (config) {
-        this.fullConfigCache = config;
-
-        // Cache it for future use
-        await this.saveToAsyncStorage(
-          this.FULL_CONFIG_CACHE_KEY,
-          config,
-          this.FULL_CONFIG_TTL
-        );
-
-        return config;
-      }
-    } catch (error) {
-      console.error('Failed to fetch full config from API:', error);
-
-      // Return cached config even if stale
-      try {
-        const staleCache = await this.getFromAsyncStorage<FullConfig>(
-          this.FULL_CONFIG_CACHE_KEY,
-          Infinity
-        );
-        if (staleCache) {
-          console.warn('Using stale full config due to API failure');
-          this.fullConfigCache = staleCache;
-          return staleCache;
-        }
-      } catch (cacheError) {
-        console.error('Failed to read stale cache:', cacheError);
-      }
-    }
-
-    return null;
-  }
-
-  /**
-   * Clear all cached configurations
-   */
-  static async clearCache(): Promise<void> {
-    this.publicConfigCache = null;
-    this.fullConfigCache = null;
-
-    try {
-      await Promise.all([
-        AsyncStorage.removeItem(this.PUBLIC_CONFIG_CACHE_KEY),
-        AsyncStorage.removeItem(this.FULL_CONFIG_CACHE_KEY),
-      ]);
-    } catch (error) {
-      console.error('Failed to clear config cache:', error);
-    }
-  }
-
-  /**
-   * Refresh public config (force fetch from API)
-   */
-  static async refreshPublicConfig(): Promise<PublicConfig> {
-    console.log('[ConfigService] refreshPublicConfig - clearing all caches');
-    this.publicConfigCache = null;
-    try {
-      await AsyncStorage.removeItem(this.PUBLIC_CONFIG_CACHE_KEY);
-      console.log('[ConfigService] AsyncStorage cache cleared');
-    } catch (error) {
-      console.error('[ConfigService] Failed to clear public config cache:', error);
-    }
-
-    // Force fetch from API (bypass getPublicConfig's cache checks)
-    console.log('[ConfigService] Forcing fresh fetch from API...');
-    const config = await this.fetchPublicConfigFromAPI();
-    this.publicConfigCache = config;
-
-    // Cache it for future use
-    await this.saveToAsyncStorage(
-      this.PUBLIC_CONFIG_CACHE_KEY,
-      config,
-      this.PUBLIC_CONFIG_TTL
+  private static fresh<T>(
+    entry: CachedConfig<T> | null,
+    scope: string,
+    ttl: number
+  ): entry is CachedConfig<T> {
+    const age = entry ? Date.now() - entry.timestamp : NaN;
+    return (
+      !!entry &&
+      entry.scope === scope &&
+      Number.isFinite(age) &&
+      age >= 0 &&
+      age < ttl
     );
-
-    console.log('[ConfigService] Fresh config loaded and cached');
-    return config;
   }
 
-  /**
-   * Refresh full config (force fetch from API)
-   */
-  static async refreshFullConfig(supabase: SupabaseClient): Promise<FullConfig | null> {
-    this.fullConfigCache = null;
+  private static async read<T>(key: string): Promise<CachedConfig<T> | null> {
     try {
-      await AsyncStorage.removeItem(this.FULL_CONFIG_CACHE_KEY);
-    } catch (error) {
-      console.error('Failed to clear full config cache:', error);
+      return JSON.parse((await AsyncStorage.getItem(key)) || 'null');
+    } catch {
+      return null;
     }
+  }
+
+  private static async fetchConfig(
+    path: string,
+    token?: string
+  ): Promise<unknown> {
+    const controller = new AbortController();
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    try {
+      // Race the entire fetch + body parse, including clients that ignore abort.
+      return await Promise.race([
+        (async () => {
+          const response = await fetch(
+            `${httpOrigin(CONFIG_API_BASE_URL)}/functions/v1/${path}`,
+            {
+              method: 'GET',
+              signal: controller.signal,
+              headers: {
+                'Content-Type': 'application/json',
+                ...(token ? { Authorization: `Bearer ${token}` } : {}),
+              },
+            }
+          );
+          if (!response.ok)
+            throw new Error(
+              `Configuration request failed (HTTP ${response.status}).`
+            );
+          return response.json();
+        })(),
+        new Promise<never>((_, reject) => {
+          timeout = setTimeout(() => {
+            controller.abort();
+            reject(new Error('Configuration request timed out.'));
+          }, 15000);
+        }),
+      ]);
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  static async getPublicConfig(): Promise<PublicConfig> {
+    const origin = httpOrigin(CONFIG_API_BASE_URL);
+    const key = `public_config_v2:${origin}`;
+    const cached = this.publicCache || (await this.read<PublicConfig>(key));
+    if (this.fresh(cached, origin, this.PUBLIC_TTL)) {
+      try {
+        const data = validatePublicConfig(
+          { success: true, data: cached.data },
+          origin
+        );
+        this.publicCache = cached;
+        return data;
+      } catch {
+        /* Reject corrupt or expired public-key caches. */
+      }
+    }
+    const data = validatePublicConfig(
+      await this.fetchConfig('get-public-config'),
+      origin
+    );
+    const entry = { data, timestamp: Date.now(), scope: origin };
+    this.publicCache = entry;
+    await this.write(() => AsyncStorage.setItem(key, JSON.stringify(entry)));
+    return data;
+  }
+
+  static async getFullConfig(
+    _supabase: SupabaseClient
+  ): Promise<FullConfig | null> {
+    const generation = getSessionGeneration();
+    const cacheGeneration = this.cacheGeneration;
+    const current = () =>
+      generation === getSessionGeneration() &&
+      cacheGeneration === this.cacheGeneration;
+    let requestKey: string | null = null;
+    try {
+      const origin = httpOrigin(CONFIG_API_BASE_URL);
+      const { token, expiresAt } = await getAuthToken();
+      if (!current()) return null;
+      if (!token || !expiresAt || expiresAt <= Date.now()) {
+        await this.clearAuthenticatedCache();
+        return null;
+      }
+      const claims = JSON.parse(
+        atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))
+      );
+      if (
+        typeof claims.sub !== 'string' ||
+        typeof claims.session_id !== 'string'
+      ) {
+        await this.clearAuthenticatedCache();
+        return null;
+      }
+      // Never persist the bearer token as a cache key or value.
+      const scope = JSON.stringify([origin, claims.sub, claims.session_id]);
+      const key = `full_config_v2:${scope}`;
+      requestKey = key;
+      if (this.fullKey && this.fullKey !== key) {
+        const previous = this.fullKey;
+        this.fullCache = null;
+        await this.write(() => AsyncStorage.removeItem(previous));
+      }
+      if (!current()) return null;
+      this.fullKey = key;
+      const cached = this.fullCache || (await this.read<FullConfig>(key));
+      if (!current()) return null;
+      if (this.fresh(cached, scope, this.FULL_TTL)) {
+        try {
+          const data = validateFullConfig(
+            { success: true, data: cached.data },
+            origin
+          );
+          this.fullCache = cached;
+          return data;
+        } catch {
+          /* Revalidate corrupt cache through the server. */
+        }
+      }
+      const data = validateFullConfig(
+        await this.fetchConfig('get-config', token),
+        origin
+      );
+      if (!current() || this.fullKey !== key) return null;
+      const entry = { data, timestamp: Date.now(), scope };
+      this.fullCache = entry;
+      await this.write(async () => {
+        if (current() && this.fullKey === key)
+          await AsyncStorage.setItem(key, JSON.stringify(entry));
+      });
+      return current() && this.fullKey === key ? data : null;
+    } catch {
+      // No stale fallback after auth rejection, timeout, or invalid configuration.
+      if (current() && (requestKey === null || this.fullKey === requestKey))
+        await this.clearAuthenticatedCache();
+      return null;
+    }
+  }
+
+  static async clearAuthenticatedCache(): Promise<void> {
+    this.cacheGeneration += 1;
+    this.fullCache = null;
+    this.fullKey = null;
+    await this.write(async () => {
+      const keys = await AsyncStorage.getAllKeys();
+      await AsyncStorage.multiRemove(
+        keys.filter(
+          key =>
+            key === 'full_config_cache' || key.startsWith('full_config_v2:')
+        )
+      );
+    });
+  }
+
+  static async clearCache(): Promise<void> {
+    this.publicCache = null;
+    await this.clearAuthenticatedCache();
+    await this.write(async () => {
+      const keys = await AsyncStorage.getAllKeys();
+      await AsyncStorage.multiRemove(
+        keys.filter(
+          key =>
+            key === 'public_config_cache' || key.startsWith('public_config_v2:')
+        )
+      );
+    });
+  }
+
+  static async refreshPublicConfig(): Promise<PublicConfig> {
+    this.publicCache = null;
+    await this.write(() =>
+      AsyncStorage.removeItem(
+        `public_config_v2:${httpOrigin(CONFIG_API_BASE_URL)}`
+      )
+    );
+    return this.getPublicConfig();
+  }
+
+  static async refreshFullConfig(
+    supabase: SupabaseClient
+  ): Promise<FullConfig | null> {
+    await this.clearAuthenticatedCache();
     return this.getFullConfig(supabase);
   }
-
-  // ==================== Private Methods ====================
-
-  /**
-   * Fetch public config from API endpoint
-   */
-  private static async fetchPublicConfigFromAPI(): Promise<PublicConfig> {
-    const url = `${CONFIG_API_BASE_URL}/functions/v1/get-public-config`;
-
-    console.log('[ConfigService] Fetching public config from:', url);
-
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        'Cache-Control': 'no-cache, no-store, must-revalidate',
-        'Pragma': 'no-cache',
-      },
-    });
-
-    console.log('[ConfigService] Response status:', response.status);
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('[ConfigService] Fetch failed:', errorText);
-      throw new Error(
-        `Failed to fetch public config: ${response.status} ${response.statusText}`
-      );
-    }
-
-    const data = await response.json();
-    console.log('[ConfigService] Response received:', {
-      success: data.success,
-      hasData: !!data.data,
-      anonKeyPrefix: data.data?.anonKey?.substring(0, 30) + '...',
-      supabaseUrl: data.data?.supabaseUrl,
-    });
-
-    if (!data.success || !data.data) {
-      throw new Error(
-        data.error || 'Invalid response from public config endpoint'
-      );
-    }
-
-    return data.data as PublicConfig;
-  }
-
-  /**
-   * Fetch full config from API endpoint
-   * Tries multiple methods: direct fetch with token, then uses endpoint directly
-   */
-  private static async fetchFullConfigFromAPI(): Promise<FullConfig | null> {
-    try {
-      // Method 1: Try direct fetch with stored JWT token
-      const authToken = await this.getStoredJWT();
-
-      if (authToken) {
-        console.log('[ConfigService] Attempting fetch with stored JWT token');
-        console.log('[ConfigService] Fetching from:', `${CONFIG_API_BASE_URL}/functions/v1/get-config`);
-        console.log('[ConfigService] Token length:', authToken.length, 'chars');
-
-        try {
-          const response = await fetch(`${CONFIG_API_BASE_URL}/functions/v1/get-config`, {
-            method: 'GET',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${authToken}`
-            }
-          });
-
-          console.log('[ConfigService] Response status:', response.status);
-
-          if (response.ok) {
-            const json = await response.json();
-            if (json.success && json.data) {
-              console.log('[ConfigService] Full config fetched successfully');
-              return json.data as FullConfig;
-            }
-          } else {
-            const responseText = await response.text();
-            console.warn(`[ConfigService] Fetch failed with status ${response.status}:`, responseText);
-            // Continue to try alternative method
-          }
-        } catch (fetchError) {
-          console.warn('[ConfigService] Direct fetch failed, trying alternative method:', fetchError);
-        }
-      } else {
-        console.warn('[ConfigService] No JWT token available for full config fetch');
-      }
-
-      // Method 2: Try using Supabase client if available
-      console.log('[ConfigService] Full config fetch failed - app will continue without it');
-      return null;
-    } catch (error) {
-      console.error('[ConfigService] Edge function invocation failed:', error);
-      return null;
-    }
-  }
-
-  /**
-   * Get stored JWT token from AsyncStorage
-   * Uses the same token storage pattern as supabaseConfig.ts
-   */
-  private static async getStoredJWT(): Promise<string | null> {
-    const { token, expiresAt } = await getAuthToken();
-    return token && (!expiresAt || expiresAt > Date.now()) ? token : null;
-  }
-
-  /**
-   * Get config from AsyncStorage with TTL validation
-   */
-  private static async getFromAsyncStorage<T>(
-    key: string,
-    ttlMs: number
-  ): Promise<T | null> {
-    try {
-      const cached = await AsyncStorage.getItem(key);
-
-      if (!cached) {
-        return null;
-      }
-
-      const parsed: CachedConfig<T> = JSON.parse(cached);
-      const age = Date.now() - parsed.timestamp;
-
-      if (age > ttlMs) {
-        // Cache is expired
-        return null;
-      }
-
-      return parsed.data;
-    } catch (error) {
-      console.error(`Failed to parse ${key} from AsyncStorage:`, error);
-      return null;
-    }
-  }
-
-  /**
-   * Save config to AsyncStorage with timestamp
-   */
-  private static async saveToAsyncStorage<T>(
-    key: string,
-    data: T,
-    ttlMs: number
-  ): Promise<void> {
-    try {
-      const cacheData: CachedConfig<T> = {
-        data,
-        timestamp: Date.now(),
-        ttlMs,
-      };
-      await AsyncStorage.setItem(key, JSON.stringify(cacheData));
-    } catch (error) {
-      console.error(`Failed to save ${key} to AsyncStorage:`, error);
-    }
-  }
-
 }
 
+onSessionChange(() => {
+  void ConfigService.clearAuthenticatedCache();
+});
 export default ConfigService;

@@ -5,7 +5,10 @@
  * Returns recent dispatch history with item-level details.
  */
 
-import { getAuthenticatedClient, getStoredToken } from '@/config/supabaseConfig';
+import {
+  getAuthenticatedClient,
+  getStoredToken,
+} from '@/config/supabaseConfig';
 import type {
   DispatchActivityResponse,
   DispatchActivityData,
@@ -93,8 +96,9 @@ export async function getCustomerDispatchActivity(
       isValid: tokenData.isValid,
       type: tokenData.type,
       hasAuthToken: !!tokenData.authToken,
-      tokenPreview: tokenData.authToken ? `${tokenData.authToken.substring(0, 20)}...` : 'none',
-      expiresAt: tokenData.expiresAt ? new Date(tokenData.expiresAt).toISOString() : 'none',
+      expiresAt: tokenData.expiresAt
+        ? new Date(tokenData.expiresAt).toISOString()
+        : 'none',
     });
 
     const client = await getAuthenticatedClient();
@@ -110,9 +114,15 @@ export async function getCustomerDispatchActivity(
       p_to_date: toDate,
     };
 
-    console.log('[DispatchActivity] Calling get_customer_dispatch_activity with params:', rpcParams);
+    console.log(
+      '[DispatchActivity] Calling get_customer_dispatch_activity with params:',
+      rpcParams
+    );
 
-    const { data, error } = await client.rpc('get_customer_dispatch_activity', rpcParams);
+    const { data, error } = await client.rpc(
+      'get_customer_dispatch_activity',
+      rpcParams
+    );
 
     console.timeEnd('⏱️ [DispatchActivity] RPC call duration');
 
@@ -137,7 +147,9 @@ export async function getCustomerDispatchActivity(
 
     // Log response size for debugging
     const dataSize = JSON.stringify(data).length;
-    console.log(`📊 [DispatchActivity] Response size: ${(dataSize / 1024).toFixed(2)} KB`);
+    console.log(
+      `📊 [DispatchActivity] Response size: ${(dataSize / 1024).toFixed(2)} KB`
+    );
 
     // Parse the RPC response - handle both wrapped and unwrapped formats
     const responseData = Array.isArray(data) ? data[0] : data;
@@ -149,7 +161,9 @@ export async function getCustomerDispatchActivity(
       total_weight: responseData?.summary?.total_weight ?? 0,
     };
 
-    const dispatches: DispatchActivityRecord[] = (responseData?.dispatches ?? []).map((disp: any) => ({
+    const dispatches: DispatchActivityRecord[] = (
+      responseData?.dispatches ?? []
+    ).map((disp: any) => ({
       disp_id: disp.disp_id,
       disp_no: disp.disp_no,
       disp_date: disp.disp_date,
@@ -168,7 +182,9 @@ export async function getCustomerDispatchActivity(
       })),
     }));
 
-    console.log(`[DispatchActivity] Parsed ${dispatches.length} dispatches, total qty: ${summary.total_quantity}`);
+    console.log(
+      `[DispatchActivity] Parsed ${dispatches.length} dispatches, total qty: ${summary.total_quantity}`
+    );
 
     return {
       success: true,
@@ -209,7 +225,6 @@ export async function getAllDispatchActivity(
       isValid: tokenData.isValid,
       type: tokenData.type,
       hasAuthToken: !!tokenData.authToken,
-      tokenPreview: tokenData.authToken ? `${tokenData.authToken.substring(0, 20)}...` : 'none',
     });
 
     const client = await getAuthenticatedClient();
@@ -219,9 +234,15 @@ export async function getAllDispatchActivity(
       p_to_date: params.toDate,
     };
 
-    console.log('[AllDispatchActivity] Calling get_all_dispatch_activity with params:', rpcParams);
+    console.log(
+      '[AllDispatchActivity] Calling get_all_dispatch_activity with params:',
+      rpcParams
+    );
 
-    const { data, error } = await client.rpc('get_all_dispatch_activity', rpcParams);
+    const { data, error } = await client.rpc(
+      'get_all_dispatch_activity',
+      rpcParams
+    );
 
     console.timeEnd('⏱️ [AllDispatchActivity] RPC call duration');
 
@@ -246,7 +267,9 @@ export async function getAllDispatchActivity(
 
     // Log response size for debugging
     const dataSize = JSON.stringify(data).length;
-    console.log(`📊 [AllDispatchActivity] Response size: ${(dataSize / 1024).toFixed(2)} KB`);
+    console.log(
+      `📊 [AllDispatchActivity] Response size: ${(dataSize / 1024).toFixed(2)} KB`
+    );
 
     // Parse the RPC response - handle both wrapped and unwrapped formats
     const responseData = Array.isArray(data) ? data[0] : data;
@@ -259,12 +282,10 @@ export async function getAllDispatchActivity(
       total_weight: responseData?.summary?.total_weight ?? 0,
     };
 
-    // Debug: Log raw customer data to check field names
-    if (responseData?.by_customer?.length > 0) {
-      console.log('[AllDispatchActivity] First customer raw data:', JSON.stringify(responseData.by_customer[0]));
-    }
 
-    const byCustomer: CustomerDispatchRow[] = (responseData?.by_customer ?? []).map((customer: any) => ({
+    const byCustomer: CustomerDispatchRow[] = (
+      responseData?.by_customer ?? []
+    ).map((customer: any) => ({
       customer_id: customer.customer_id,
       customer_name: customer.customer_name,
       dispatch_count: customer.dispatch_count ?? 0,
@@ -272,7 +293,9 @@ export async function getAllDispatchActivity(
       total_weight: customer.total_weight ?? 0,
     }));
 
-    console.log(`[AllDispatchActivity] Parsed ${byCustomer.length} customers, total dispatches: ${summary.total_dispatches}, first customer qty: ${byCustomer[0]?.total_quantity ?? 'N/A'}`);
+    console.log(
+      `[AllDispatchActivity] Parsed ${byCustomer.length} customers, total dispatches: ${summary.total_dispatches}, first customer qty: ${byCustomer[0]?.total_quantity ?? 'N/A'}`
+    );
 
     return {
       success: true,

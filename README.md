@@ -24,7 +24,7 @@ This tree uses Expo SDK 54 / React Native 0.81.
 git clone --branch v0.2.0-demo https://github.com/abhiguru/rn-warehouse-template.git
 cd rn-warehouse-template
 npm ci
-cp .env.example .env
+node scripts/create-env.mjs
 npm run typecheck
 npm run lint
 npm test
@@ -45,18 +45,11 @@ Demo admin: **0000000001**; customer: **0000000002**; OTP: **123456** (no SMS).
 For Android attached to the backend host, use `adb reverse tcp:18000 tcp:18000`
 and, if Metro runs there, `adb reverse tcp:8081 tcp:8081`.
 
-Other development arrangements require matching backend `SUPABASE_PUBLIC_URL`
-and device-reachable app configuration. Examples for separately configured setups:
-
-| Client                                      | Example URL                |
-| ------------------------------------------- | -------------------------- |
-| iOS simulator / desktop on the backend host | `http://localhost:18000`   |
-| Android emulator on the backend host        | `http://10.0.2.2:18000`    |
-| Physical phone                              | `http://YOUR_LAN_IP:18000` |
-
-The supported demo stays loopback-only; USB port reversal avoids a LAN binding.
-Do not expose test OTP mode to the internet. For
-remote deployment, use HTTPS. Do not copy the original deployment's credentials.
+The supported demo uses the same `http://localhost:18000` origin on the host,
+emulator and USB device. Both backend public URLs must match it. Keep demo
+authentication bound to loopback; LAN access is outside this supported path.
+For an isolated second checkout, change both backend public URLs and its API port,
+then use the matching app URL and `adb reverse tcp:PORT tcp:PORT`.
 
 ```bash
 npm run check:backend

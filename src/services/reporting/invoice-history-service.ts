@@ -5,7 +5,10 @@
  * Returns invoices with line items, payment status, and monthly breakdown.
  */
 
-import { getAuthenticatedClient, getStoredToken } from '@/config/supabaseConfig';
+import {
+  getAuthenticatedClient,
+  getStoredToken,
+} from '@/config/supabaseConfig';
 import type {
   InvoiceHistoryResponse,
   InvoiceHistoryData,
@@ -105,8 +108,9 @@ export async function getCustomerInvoiceHistory(
       isValid: tokenData.isValid,
       type: tokenData.type,
       hasAuthToken: !!tokenData.authToken,
-      tokenPreview: tokenData.authToken ? `${tokenData.authToken.substring(0, 20)}...` : 'none',
-      expiresAt: tokenData.expiresAt ? new Date(tokenData.expiresAt).toISOString() : 'none',
+      expiresAt: tokenData.expiresAt
+        ? new Date(tokenData.expiresAt).toISOString()
+        : 'none',
     });
 
     const client = await getAuthenticatedClient();
@@ -126,9 +130,15 @@ export async function getCustomerInvoiceHistory(
       rpcParams.p_financial_year = params.financialYear;
     }
 
-    console.log('[InvoiceHistory] Calling get_customer_invoice_summary with params:', rpcParams);
+    console.log(
+      '[InvoiceHistory] Calling get_customer_invoice_summary with params:',
+      rpcParams
+    );
 
-    const { data, error } = await client.rpc('get_customer_invoice_summary', rpcParams);
+    const { data, error } = await client.rpc(
+      'get_customer_invoice_summary',
+      rpcParams
+    );
 
     console.timeEnd('⏱️ [InvoiceHistory] RPC call duration');
 
@@ -153,15 +163,19 @@ export async function getCustomerInvoiceHistory(
 
     // Log response size for debugging
     const dataSize = JSON.stringify(data).length;
-    console.log(`📊 [InvoiceHistory] Response size: ${(dataSize / 1024).toFixed(2)} KB`);
-    console.log('[InvoiceHistory] Raw RPC response:', JSON.stringify(data, null, 2));
+    console.log(
+      `📊 [InvoiceHistory] Response size: ${(dataSize / 1024).toFixed(2)} KB`
+    );
 
     // Parse the RPC response - handle both wrapped and unwrapped formats
     const rawData = Array.isArray(data) ? data[0] : data;
 
     // Unwrap if response has { data, success, metadata } structure
     const responseData = rawData?.data ?? rawData;
-    console.log('[InvoiceHistory] Unwrapped responseData keys:', responseData ? Object.keys(responseData) : 'null');
+    console.log(
+      '[InvoiceHistory] Unwrapped responseData keys:',
+      responseData ? Object.keys(responseData) : 'null'
+    );
 
     // Map to our expected format
     const summary: InvoiceHistoryKPIs = {
@@ -177,50 +191,54 @@ export async function getCustomerInvoiceHistory(
       pending_amount: responseData?.summary?.pending_amount ?? 0,
     };
 
-    const invoices: InvoiceHistoryRecord[] = (responseData?.invoices ?? []).map((inv: any) => ({
-      invoice_id: inv.invoice_id,
-      invoice_number: inv.invoice_number,
-      invoice_date: inv.invoice_date,
-      financial_year: inv.financial_year ?? '',
-      grn_ref: inv.grn_ref ?? '',
-      grn_id: inv.grn_id ?? '',
-      total: inv.total ?? 0,
-      labour: inv.labour ?? 0,
-      discount: inv.discount ?? 0,
-      tax_amount: inv.tax_amount ?? 0,
-      net_total: inv.net_total ?? 0,
-      item_count: inv.item_count ?? 0,
-      total_quantity: inv.total_quantity ?? 0,
-      notes: inv.notes ?? null,
-      payment_status: {
-        status: inv.payment_status?.status ?? 'pending',
-        paid_date: inv.payment_status?.paid_date ?? null,
-        payment_ref: inv.payment_status?.payment_ref ?? null,
-        amount: inv.payment_status?.amount,
-        payment_mode: inv.payment_status?.payment_mode,
-      },
-      line_items: (inv.line_items ?? []).map((item: any) => ({
-        item_id: item.item_id ?? '',
-        item_name: item.item_name ?? '',
-        packaging: item.packaging ?? '',
-        quantity: item.quantity ?? 0,
-        rate: item.rate ?? 0,
-        no_of_days: item.no_of_days ?? 0,
-        charge: item.charge ?? 0,
-        labour_rate: item.labour_rate ?? 0,
-        labour_amount: item.labour_amount ?? 0,
-        tax_percent: item.tax_percent ?? 0,
-        tax_amount: item.tax_amount ?? 0,
-        line_total: item.line_total ?? 0,
-        grn_item_ref: {
-          gr_no: item.grn_item_ref?.gr_no ?? '',
-          rack: item.grn_item_ref?.rack ?? '',
-          package_mark: item.grn_item_ref?.package_mark ?? '',
+    const invoices: InvoiceHistoryRecord[] = (responseData?.invoices ?? []).map(
+      (inv: any) => ({
+        invoice_id: inv.invoice_id,
+        invoice_number: inv.invoice_number,
+        invoice_date: inv.invoice_date,
+        financial_year: inv.financial_year ?? '',
+        grn_ref: inv.grn_ref ?? '',
+        grn_id: inv.grn_id ?? '',
+        total: inv.total ?? 0,
+        labour: inv.labour ?? 0,
+        discount: inv.discount ?? 0,
+        tax_amount: inv.tax_amount ?? 0,
+        net_total: inv.net_total ?? 0,
+        item_count: inv.item_count ?? 0,
+        total_quantity: inv.total_quantity ?? 0,
+        notes: inv.notes ?? null,
+        payment_status: {
+          status: inv.payment_status?.status ?? 'pending',
+          paid_date: inv.payment_status?.paid_date ?? null,
+          payment_ref: inv.payment_status?.payment_ref ?? null,
+          amount: inv.payment_status?.amount,
+          payment_mode: inv.payment_status?.payment_mode,
         },
-      })),
-    }));
+        line_items: (inv.line_items ?? []).map((item: any) => ({
+          item_id: item.item_id ?? '',
+          item_name: item.item_name ?? '',
+          packaging: item.packaging ?? '',
+          quantity: item.quantity ?? 0,
+          rate: item.rate ?? 0,
+          no_of_days: item.no_of_days ?? 0,
+          charge: item.charge ?? 0,
+          labour_rate: item.labour_rate ?? 0,
+          labour_amount: item.labour_amount ?? 0,
+          tax_percent: item.tax_percent ?? 0,
+          tax_amount: item.tax_amount ?? 0,
+          line_total: item.line_total ?? 0,
+          grn_item_ref: {
+            gr_no: item.grn_item_ref?.gr_no ?? '',
+            rack: item.grn_item_ref?.rack ?? '',
+            package_mark: item.grn_item_ref?.package_mark ?? '',
+          },
+        })),
+      })
+    );
 
-    const byMonth: InvoiceMonthlyBreakdown[] = (responseData?.by_month ?? []).map((m: any) => ({
+    const byMonth: InvoiceMonthlyBreakdown[] = (
+      responseData?.by_month ?? []
+    ).map((m: any) => ({
       month: m.month ?? '',
       invoice_count: m.invoice_count ?? 0,
       total_amount: m.total_amount ?? 0,
@@ -228,7 +246,9 @@ export async function getCustomerInvoiceHistory(
       pending_amount: m.pending_amount ?? 0,
     }));
 
-    console.log(`[InvoiceHistory] Parsed ${invoices.length} invoices, net amount: ${summary.net_amount}`);
+    console.log(
+      `[InvoiceHistory] Parsed ${invoices.length} invoices, net amount: ${summary.net_amount}`
+    );
 
     return {
       success: true,
@@ -270,7 +290,6 @@ export async function getAllInvoiceHistory(
       isValid: tokenData.isValid,
       type: tokenData.type,
       hasAuthToken: !!tokenData.authToken,
-      tokenPreview: tokenData.authToken ? `${tokenData.authToken.substring(0, 20)}...` : 'none',
     });
 
     const client = await getAuthenticatedClient();
@@ -285,9 +304,15 @@ export async function getAllInvoiceHistory(
       rpcParams.p_financial_year = params.financialYear;
     }
 
-    console.log('[AllInvoiceHistory] Calling get_customer_invoice_summary with params:', rpcParams);
+    console.log(
+      '[AllInvoiceHistory] Calling get_customer_invoice_summary with params:',
+      rpcParams
+    );
 
-    const { data, error } = await client.rpc('get_customer_invoice_summary', rpcParams);
+    const { data, error } = await client.rpc(
+      'get_customer_invoice_summary',
+      rpcParams
+    );
 
     console.timeEnd('⏱️ [AllInvoiceHistory] RPC call duration');
 
@@ -312,15 +337,19 @@ export async function getAllInvoiceHistory(
 
     // Log response size for debugging
     const dataSize = JSON.stringify(data).length;
-    console.log(`📊 [AllInvoiceHistory] Response size: ${(dataSize / 1024).toFixed(2)} KB`);
-    console.log('[AllInvoiceHistory] Raw RPC response:', JSON.stringify(data, null, 2));
+    console.log(
+      `📊 [AllInvoiceHistory] Response size: ${(dataSize / 1024).toFixed(2)} KB`
+    );
 
     // Parse the RPC response - handle both wrapped and unwrapped formats
     const rawData = Array.isArray(data) ? data[0] : data;
 
     // Unwrap if response has { data, success, metadata } structure
     const responseData = rawData?.data ?? rawData;
-    console.log('[AllInvoiceHistory] Unwrapped responseData keys:', responseData ? Object.keys(responseData) : 'null');
+    console.log(
+      '[AllInvoiceHistory] Unwrapped responseData keys:',
+      responseData ? Object.keys(responseData) : 'null'
+    );
 
     // Map to our expected format
     const summary: AllInvoiceHistoryKPIs = {
@@ -331,7 +360,9 @@ export async function getAllInvoiceHistory(
       net_amount: responseData?.summary?.net_amount ?? 0,
     };
 
-    const byCustomer: CustomerInvoiceSummary[] = (responseData?.by_customer ?? []).map((customer: any) => ({
+    const byCustomer: CustomerInvoiceSummary[] = (
+      responseData?.by_customer ?? []
+    ).map((customer: any) => ({
       customer_id: customer.customer_id,
       customer_name: customer.customer_name,
       invoice_count: customer.invoice_count ?? 0,
@@ -346,7 +377,9 @@ export async function getAllInvoiceHistory(
       total_amount: m.total_amount ?? 0,
     }));
 
-    console.log(`[AllInvoiceHistory] Parsed ${byCustomer.length} customers, total invoices: ${summary.total_invoices}`);
+    console.log(
+      `[AllInvoiceHistory] Parsed ${byCustomer.length} customers, total invoices: ${summary.total_invoices}`
+    );
 
     return {
       success: true,

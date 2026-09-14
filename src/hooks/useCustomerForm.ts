@@ -115,15 +115,27 @@ export interface UseCustomerFormReturn {
   updateContactEmail: (value: string) => void;
 
   // Bulk updates
-  updateBasicInfoFields: (fields: Partial<Pick<CustomerFormData, 'name' | 'mobile' | 'email'>>) => void;
-  updateDetailsFields: (fields: Partial<Omit<CustomerFormData, 'name' | 'mobile' | 'email' | 'document_urls' | 'document_images'>>) => void;
+  updateBasicInfoFields: (
+    fields: Partial<Pick<CustomerFormData, 'name' | 'mobile' | 'email'>>
+  ) => void;
+  updateDetailsFields: (
+    fields: Partial<
+      Omit<
+        CustomerFormData,
+        'name' | 'mobile' | 'email' | 'document_urls' | 'document_images'
+      >
+    >
+  ) => void;
 
   // Document actions (Step 3)
   addDocument: (image: CustomerDocumentImage) => void;
   removeDocument: (uri: string) => void;
 
   // Validation
-  validateCurrentStep: () => Promise<{ isValid: boolean; errors: CustomerValidationErrors }>;
+  validateCurrentStep: () => Promise<{
+    isValid: boolean;
+    errors: CustomerValidationErrors;
+  }>;
   clearFieldError: (field: keyof CustomerValidationErrors) => void;
   clearAllErrors: () => void;
 
@@ -134,7 +146,11 @@ export interface UseCustomerFormReturn {
   canNavigateToStep: (targetStep: CustomerFormStep) => Promise<boolean>;
 
   // Submission
-  submitForm: () => Promise<{ success: boolean; customerId?: string; error?: string }>;
+  submitForm: () => Promise<{
+    success: boolean;
+    customerId?: string;
+    error?: string;
+  }>;
 
   // Reset
   resetFormState: () => void;
@@ -147,7 +163,9 @@ export interface UseCustomerFormReturn {
 // HOOK IMPLEMENTATION
 // =============================================================================
 
-export function useCustomerForm(options: UseCustomerFormOptions): UseCustomerFormReturn {
+export function useCustomerForm(
+  options: UseCustomerFormOptions
+): UseCustomerFormReturn {
   const { mode: initialMode, customerIdParam } = options;
   const dispatch = useAppDispatch();
 
@@ -182,7 +200,9 @@ export function useCustomerForm(options: UseCustomerFormOptions): UseCustomerFor
 
     // Also skip if form is already in create mode in Redux (prevents reset when navigating between steps)
     if (mode === 'create' && (formData.name || formData.mobile)) {
-      console.log('[useCustomerForm] Form already initialized in create mode with data, skipping reinit');
+      console.log(
+        '[useCustomerForm] Form already initialized in create mode with data, skipping reinit'
+      );
       isInitialized.current = true;
       return;
     }
@@ -205,13 +225,17 @@ export function useCustomerForm(options: UseCustomerFormOptions): UseCustomerFor
       // This prevents re-fetching when navigating between steps (each step creates a new hook instance)
       // Check both customerId match AND that we have form data (name is required)
       if (customerId === id && formData.name) {
-        console.log('[useCustomerForm] Customer already loaded in Redux, skipping fetch');
+        console.log(
+          '[useCustomerForm] Customer already loaded in Redux, skipping fetch'
+        );
         return;
       }
 
       // Also skip if the local ref matches (for re-renders within the same step)
       if (lastLoadedIdRef.current === id) {
-        console.log('[useCustomerForm] Customer already loaded, skipping fetch');
+        console.log(
+          '[useCustomerForm] Customer already loaded, skipping fetch'
+        );
         return;
       }
 
@@ -310,7 +334,7 @@ export function useCustomerForm(options: UseCustomerFormOptions): UseCustomerFor
     (fields: Partial<Pick<CustomerFormData, 'name' | 'mobile' | 'email'>>) => {
       dispatch(updateBasicInfo(fields));
       // Clear errors for updated fields
-      Object.keys(fields).forEach((key) => {
+      Object.keys(fields).forEach(key => {
         dispatch(clearValidationError(key as keyof CustomerValidationErrors));
       });
     },
@@ -394,10 +418,17 @@ export function useCustomerForm(options: UseCustomerFormOptions): UseCustomerFor
   );
 
   const updateDetailsFields = useCallback(
-    (fields: Partial<Omit<CustomerFormData, 'name' | 'mobile' | 'email' | 'document_urls' | 'document_images'>>) => {
+    (
+      fields: Partial<
+        Omit<
+          CustomerFormData,
+          'name' | 'mobile' | 'email' | 'document_urls' | 'document_images'
+        >
+      >
+    ) => {
       dispatch(updateDetails(fields));
       // Clear errors for updated fields
-      Object.keys(fields).forEach((key) => {
+      Object.keys(fields).forEach(key => {
         dispatch(clearValidationError(key as keyof CustomerValidationErrors));
       });
     },
@@ -507,7 +538,11 @@ export function useCustomerForm(options: UseCustomerFormOptions): UseCustomerFor
       dispatch(setCurrentStep(nextStep));
 
       // Navigate to next route
-      const routePath = getStepRoutePath(nextStep, mode, customerId || undefined);
+      const routePath = getStepRoutePath(
+        nextStep,
+        mode,
+        customerId || undefined
+      );
       router.push(routePath as Href);
 
       return true;
@@ -538,7 +573,10 @@ export function useCustomerForm(options: UseCustomerFormOptions): UseCustomerFor
 
     if (!validation.isValid) {
       dispatch(setValidationErrors(validation.errors));
-      Alert.alert('Validation Error', 'Please fix the errors before submitting.');
+      Alert.alert(
+        'Validation Error',
+        'Please fix the errors before submitting.'
+      );
       return { success: false, error: 'Validation failed' };
     }
 
@@ -557,10 +595,19 @@ export function useCustomerForm(options: UseCustomerFormOptions): UseCustomerFor
         p_gst_number: formData.gst || undefined,
         p_pan_number: formData.pan || undefined,
         p_contact_person: formData.contact_name || undefined,
-        p_contact_mobile: formData.contact_mobile ? formatMobile(formData.contact_mobile) : undefined,
+        p_contact_mobile: formData.contact_mobile
+          ? formatMobile(formData.contact_mobile)
+          : undefined,
         p_contact_email: formData.contact_email || undefined,
-        p_image_urls: formData.image_urls && formData.image_urls.length > 0 ? formData.image_urls : undefined,
-        p_document_urls: formData.document_urls && formData.document_urls.length > 0 ? formData.document_urls : undefined,
+        p_image_urls: isCreateMode
+          ? formData.image_urls.length
+            ? formData.image_urls
+            : undefined
+          : formData.image_urls,
+        p_document_urls:
+          formData.document_urls && formData.document_urls.length > 0
+            ? formData.document_urls
+            : undefined,
       };
 
       let result;
@@ -584,7 +631,9 @@ export function useCustomerForm(options: UseCustomerFormOptions): UseCustomerFor
 
       Alert.alert(
         'Success',
-        isCreateMode ? 'Customer created successfully' : 'Customer updated successfully',
+        isCreateMode
+          ? 'Customer created successfully'
+          : 'Customer updated successfully',
         [
           {
             text: 'OK',

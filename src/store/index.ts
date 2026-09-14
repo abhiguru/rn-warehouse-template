@@ -2,6 +2,7 @@ import { configureStore } from '@reduxjs/toolkit';
 import { persistStore, persistReducer } from 'redux-persist';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { combineReducers } from 'redux';
+import { restorePreferences } from './persistence';
 
 // Import slices
 import authReducer from './slices/authSlice';
@@ -33,15 +34,16 @@ const persistConfig = {
   // #22 Fix: Minimize persisted data to reduce cold start delay
   // - Form slices: Reset on app restart (user expectation)
   // - config: Fetched fresh after auth initialization
-  // Note: auth IS persisted to maintain login state across reloads
-  blacklist: ['grnForm', 'dispatchForm', 'invoiceForm', 'customerForm', 'config'],
+  // Auth is restored only from the complete SecureStore session.
+  whitelist: ['theme', 'filter'],
+  migrate: restorePreferences,
 };
 
 const persistedReducer = persistReducer(persistConfig, rootReducer);
 
 export const store = configureStore({
   reducer: persistedReducer,
-  middleware: (getDefaultMiddleware) =>
+  middleware: getDefaultMiddleware =>
     getDefaultMiddleware({
       serializableCheck: {
         ignoredActions: ['persist/PERSIST', 'persist/REHYDRATE'],
