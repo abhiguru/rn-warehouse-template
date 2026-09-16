@@ -1,7 +1,7 @@
-import { getAuthenticatedClient } from '@/config/supabaseConfig';
-import { CACHE_DURATION_SHORT_MS } from '@/config/cacheConfig';
+import { getAuthenticatedClient, getCurrentConfig } from '@/config/supabaseConfig';
+import { getSessionGeneration } from '@/config/sessionLifecycle';
 import { unwrapNestedData } from '@/utils/responseUtils';
-import { executeRPC, createErrorResponse } from '@/utils/serviceErrorHandler';
+import { executeRPC } from '@/utils/serviceErrorHandler';
 
 // Types for autocomplete results
 export interface AutocompleteItem {
@@ -57,166 +57,83 @@ export interface AutocompleteResponse {
   error?: string;
 }
 
-// Cache for recent searches
-const searchCache = new Map<string, { data: AutocompleteResponse; timestamp: number }>();
-const CACHE_DURATION = CACHE_DURATION_SHORT_MS;
+// Results are authorized by the backend on every search, including repeated queries.
+// A local cache cannot observe assignment changes or active-session demotion.
+let requestEpoch = 0;
 
-export const getGRNAutocomplete = async (
+async function getAutocomplete(
+  rpcName: 'get_grn_autocomplete' | 'get_dispatch_autocomplete',
   searchQuery: string,
-  limit: number = 10
-): Promise<AutocompleteResponse> => {
-  try {
-    // Check if query is too short
-    if (!searchQuery || searchQuery.trim().length < 2) {
-      return {
-        success: false,
-        message: 'Search query must be at least 2 characters',
-        error: 'Query too short'
-      };
-    }
-
-    const trimmedQuery = searchQuery.trim().toLowerCase();
-    const cacheKey = `${trimmedQuery}-${limit}`;
-
-    // Check cache
-    const cached = searchCache.get(cacheKey);
-    if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
-      return cached.data;
-    }
-
-    // Get authenticated client with JWT tokens
-    const authenticatedClient = await getAuthenticatedClient();
-    const { data, error } = await authenticatedClient.rpc('get_grn_autocomplete', {
-      p_search_query: trimmedQuery,
-      p_limit: limit
-    });
-
-    if (error) {
-      console.error('[AutocompleteService] RPC error:', error);
-      return {
-        success: false,
-        message: 'Failed to fetch autocomplete results',
-        error: error.message || 'Unknown error'
-      };
-    }
-
-    if (!data) {
-      return {
-        success: false,
-        message: 'No data returned',
-        error: 'Empty response'
-      };
-    }
-
-    const response: AutocompleteResponse = {
-      success: true,
-      data: unwrapNestedData(data) || data, // Handle nested response structure (M4 fix)
-      message: 'Autocomplete results retrieved successfully'
-    };
-    
-    // Debug GRN autocomplete
-    if (__DEV__ && response.data?.grnNumbers && response.data.grnNumbers.length > 0) {
-      console.log('[DEBUG Autocomplete] GRN results:', response.data.grnNumbers);
-    }
-    
-
-    // Cache the results
-    searchCache.set(cacheKey, { data: response, timestamp: Date.now() });
-
-    // Clean old cache entries
-    if (searchCache.size > 50) {
-      const entries = Array.from(searchCache.entries());
-      const now = Date.now();
-      entries.forEach(([key, value]) => {
-        if (now - value.timestamp > CACHE_DURATION) {
-          searchCache.delete(key);
-        }
-      });
-    }
-
-    return response;
-  } catch (error) {
-    console.error('[AutocompleteService] Exception:', error);
-    return {
-      success: false,
-      message: 'An unexpected error occurred',
-      error: error instanceof Error ? error.message : 'Unknown error'
-    };
-  }
-};
-
-// M3 Fix: Using executeRPC wrapper
-// New dispatch autocomplete function
-export const getDispatchAutocomplete = async (
-  searchQuery: string,
-  limit: number = 10
-): Promise<AutocompleteResponse> => {
-  // Check if query is too short
+  limit: number
+): Promise<AutocompleteResponse> {
   if (!searchQuery || searchQuery.trim().length < 2) {
     return {
       success: false,
       message: 'Search query must be at least 2 characters',
-      error: 'Query too short'
+      error: 'Query too short',
     };
   }
 
-  const trimmedQuery = searchQuery.trim().toLowerCase();
-  const cacheKey = `dispatch-${trimmedQuery}-${limit}`;
-
-  // Check cache
-  const cached = searchCache.get(cacheKey);
-  if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
-    return cached.data;
-  }
-
-  // M3 Fix: Using executeRPC wrapper
-  const result = await executeRPC<AutocompleteResponse['data']>(
-    getAuthenticatedClient,
-    'get_dispatch_autocomplete',
-    {
-      p_search_query: trimmedQuery,
-      p_limit: limit
-    },
-    {
-      context: 'AutocompleteService.getDispatchAutocomplete',
-      errorMessage: 'Failed to fetch dispatch autocomplete results',
-      unwrapNested: false,
-      validateSuccess: false
-    }
-  );
-
-  if (!result.success || !result.data) {
-    return {
-      ...createErrorResponse(
-        result.error || 'Unknown error',
-        result.message || 'Failed to fetch dispatch autocomplete results',
-        'AutocompleteService.getDispatchAutocomplete'
-      )
+  const generation = getSessionGeneration();
+  const epoch = requestEpoch;
+  try {
+    const origin = getCurrentConfig().url;
+    const isCurrent = () =>
+      generation === getSessionGeneration() &&
+      epoch === requestEpoch &&
+      origin === getCurrentConfig().url;
+    const staleResponse: AutocompleteResponse = {
+      success: false,
+      message: 'Search session changed. Please search again.',
+      error: 'Search session changed',
     };
-  }
-
-  const response: AutocompleteResponse = {
-    success: true,
-    data: unwrapNestedData(result.data) || result.data, // Handle nested response structure (M4 fix)
-    message: 'Dispatch autocomplete results retrieved successfully'
-  };
-
-  // Cache the results
-  searchCache.set(cacheKey, { data: response, timestamp: Date.now() });
-
-  // Clean old cache entries
-  if (searchCache.size > 50) {
-    const entries = Array.from(searchCache.entries());
-    const now = Date.now();
-    entries.forEach(([key, value]) => {
-      if (now - value.timestamp > CACHE_DURATION) {
-        searchCache.delete(key);
+    const client = await getAuthenticatedClient();
+    if (!isCurrent()) return staleResponse;
+    const result = await executeRPC<AutocompleteResponse['data']>(
+      async () => client,
+      rpcName,
+      { p_search_query: searchQuery.trim().toLowerCase(), p_limit: limit },
+      {
+        context: 'AutocompleteService',
+        errorMessage: 'Failed to fetch autocomplete results',
+        unwrapNested: false,
+        validateSuccess: false,
       }
-    });
+    );
+    // Never return data obtained for a previous account or backend origin.
+    if (!isCurrent()) return staleResponse;
+    if (!result.success || !result.data) {
+      return {
+        success: false,
+        message: result.message || 'Failed to fetch autocomplete results',
+        error: result.error || 'Empty response',
+      };
+    }
+    return {
+      success: true,
+      data: unwrapNestedData(result.data) || result.data,
+      message: 'Autocomplete results retrieved successfully',
+    };
+  } catch (error) {
+    return {
+      success: false,
+      message: 'Failed to fetch autocomplete results',
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
   }
+}
 
-  return response;
-};
+export const getGRNAutocomplete = (
+  searchQuery: string,
+  limit: number = 10
+): Promise<AutocompleteResponse> =>
+  getAutocomplete('get_grn_autocomplete', searchQuery, limit);
+
+export const getDispatchAutocomplete = (
+  searchQuery: string,
+  limit: number = 10
+): Promise<AutocompleteResponse> =>
+  getAutocomplete('get_dispatch_autocomplete', searchQuery, limit);
 
 // Helper to format autocomplete selections for filters
 export const formatAutocompleteSelection = (item: AutocompleteItem) => {
@@ -254,7 +171,7 @@ export const formatAutocompleteSelection = (item: AutocompleteItem) => {
   }
 };
 
-// Clear cache utility
+// Invalidate pending searches when callers explicitly reset search state.
 export const clearAutocompleteCache = () => {
-  searchCache.clear();
+  requestEpoch += 1;
 };

@@ -1,4 +1,11 @@
-# Dependency security review — 2026-09-12
+# Dependency security review — 2026-09-14
+
+**Follow-up status — 2026-09-15:** See [the dated verification ledger](RESUME_VERIFICATION_2026-09-15.md)
+for current local checks and open native/review gates. Evidence below dated
+2026-09-14 or earlier describes the historical release checkpoint. The
+pending mobile authentication/privacy fixes and backend follow-up commits
+are outside the immutable `v0.2.1-demo` tags. Local follow-up results do
+not establish merged-main CI or physical-device acceptance.
 
 ## Current result
 
@@ -7,11 +14,9 @@ unrestricted icon-font peer does not autolink SDK 57's font module. Pin NetInfo
 to Expo's expected `11.4.1`. CI also runs `expo install --check`; a dependency
 regression test checks the selected font against Expo's bundled SDK range.
 
-The mobile audit fell from **9 high / 20 moderate / 0 critical** to
-**0 high / 8 moderate / 0 critical** after targeted dependency overrides.
-This is not a clean audit or a production-readiness approval. The backend npm
-audit reports zero findings; that small dependency tree does not cover Docker
-images, Edge imports, operating systems or native SDKs.
+Both locked npm dependency trees report **zero vulnerabilities** on 2026-09-14.
+This audit does not cover Docker images, Edge imports, operating systems or
+native SDKs. Expo SDK 54 / React Native 0.81.5 are preserved.
 
 ## Changes and rationale
 
@@ -25,34 +30,30 @@ These overrides are deliberate compatibility exceptions. Review them when Expo
 updates its own dependencies; do not remove them without re-running audit and
 regression checks. Expo SDK 54 and React Native 0.81.5 are unchanged.
 
-## Remaining moderate finding
+## Decoder and Metro compatibility
 
-All eight reported package findings trace to
-[`decode-uri-component` denial of service](https://github.com/advisories/GHSA-vcc3-ghjq-m6fr)
-through `query-string`, Expo Router and React Navigation. They are not eight
-independent root vulnerabilities. Malformed percent-encoded input can cause
-excessive decoding work; navigation/deep-link exposure still needs assessment.
+The upstream [decoder advisory](https://github.com/advisories/GHSA-vcc3-ghjq-m6fr)
+identifies 0.5.0 as patched. The lockfile overrides to that version.
+`query-string` 7.1.3 expects a callable CommonJS export; the minimal adapter in
+`scripts/patch-navigation-decoder.mjs` selects the upstream default export while
+preserving `query-string`'s existing parse/stringify interface. Installation
+checks dependency versions and source hashes before patching, is idempotent,
+and fails clearly for unexpected contents. No advisory is suppressed.
 
-The installed `query-string` 7.1.3 requires a CommonJS function export. Patched
-`decode-uri-component` 0.5.0 is ESM, while `query-string` 9.5.1 changes the package's
-export shape. Current navigation/router code imports a namespace and calls
-`.parse()`/`.stringify()`. A blind dependency override can therefore break
-navigation even if a bundle compiles. npm also suggests an Expo Router downgrade;
-that is not a validated fix for this app.
-
-Do not silence this advisory or force an upgrade just to obtain a clean audit.
-Next: choose a supported navigation/SDK migration or a reviewed compatibility
-backport, then test actual route parsing, Unicode/array parameters, malformed
-deep links, redirects, and native Android/iOS startup. Production acceptance
-remains open until the issue is resolved or explicitly risk-assessed.
+Metro 0.83.8 changed its watcher event shape. The checked SDK 54 adapter in
+`scripts/patch-expo-metro.mjs` maps that shape for both Expo observers, including
+TypeScript file detection. Tests drive the real Metro aggregator and Expo
+observers. Both adapters run on postinstall; keep package.json CommonJS because
+Babel/Jest rely on it. ESLint's own configuration is `eslint.config.mjs`.
 
 ## Verification
 
-- Initial override review: 59 Jest tests across five suites. Subsequent telemetry
-  coverage increases this to 75 tests across six suites, all passing in CI.
-- SDK-alignment follow-up: eight bootstrap/dependency tests and
-  `expo install --check` pass. Audit refreshed 2026-09-13: unchanged at eight
-  moderate findings, zero high/critical.
+- Released mobile: 100 Jest tests across nine suites, including actual navigation
+  consumers, malformed input, logout/refresh races and configuration TTLs.
+- Setup regressions cover bootstrap, dependency consumers, both checked adapters
+  and safe environment-file creation.
+- Online SDK compatibility passes in mobile main CI 34825877719; offline local
+  compatibility checks are weaker evidence and are recorded as such.
 - TypeScript and full ESLint error checks pass.
 - `npm run test:setup` passes bootstrap and dependency-security test files.
 - Dependency tests cover PNG dimensions in patched Metro, blocked external

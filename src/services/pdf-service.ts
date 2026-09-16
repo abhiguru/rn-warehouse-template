@@ -23,10 +23,7 @@ function fixInternalUrl(url: string): string {
   for (const pattern of internalPatterns) {
     if (url.startsWith(pattern)) {
       const fixedUrl = url.replace(pattern, publicUrl);
-      console.log('[PDF Service] Fixed internal URL:', {
-        original: pattern,
-        fixed: publicUrl,
-      });
+
       return fixedUrl;
     }
   }
@@ -61,8 +58,6 @@ const getAuthToken = getAuthTokenString;
  */
 export async function generateGRNPDF(grNo: string): Promise<PDFResponse> {
   try {
-    console.log('[PDF Service] generateGRNPDF called:', { grNo });
-
     const authToken = await getAuthToken();
     if (!authToken) {
       return {
@@ -73,7 +68,6 @@ export async function generateGRNPDF(grNo: string): Promise<PDFResponse> {
 
     const config = getCurrentConfig();
     const url = `${config.url}/functions/v1/generate-grn-pdf`;
-    console.log('[PDF Service] Request URL:', url);
 
     const response = await fetch(url, {
       method: 'POST',
@@ -87,11 +81,6 @@ export async function generateGRNPDF(grNo: string): Promise<PDFResponse> {
     // Handle non-JSON responses
     const contentType = response.headers.get('content-type');
     if (!contentType || !contentType.includes('application/json')) {
-      const textResponse = await response.text();
-      console.error('[PDF Service] ✗ Non-JSON response:', {
-        status: response.status,
-        preview: textResponse.substring(0, 200),
-      });
       return {
         success: false,
         error: `Server error (${response.status}): PDF generation service unavailable.`,
@@ -99,7 +88,6 @@ export async function generateGRNPDF(grNo: string): Promise<PDFResponse> {
     }
 
     const data = await response.json();
-    console.log('[PDF Service] Response:', data);
 
     if (!response.ok || !data.success) {
       return {
@@ -115,7 +103,6 @@ export async function generateGRNPDF(grNo: string): Promise<PDFResponse> {
       document: data.document,
     };
   } catch (error) {
-    console.error('[PDF Service] Exception in generateGRNPDF:', error);
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Failed to generate PDF',
@@ -132,8 +119,6 @@ export async function generateDispatchPDF(
   dispNo: string
 ): Promise<PDFResponse> {
   try {
-    console.log('[PDF Service] generateDispatchPDF called:', { dispNo });
-
     const authToken = await getAuthToken();
     if (!authToken) {
       return {
@@ -144,7 +129,6 @@ export async function generateDispatchPDF(
 
     const config = getCurrentConfig();
     const url = `${config.url}/functions/v1/generate-dispatch-pdf`;
-    console.log('[PDF Service] Request URL:', url);
 
     const response = await fetch(url, {
       method: 'POST',
@@ -158,11 +142,6 @@ export async function generateDispatchPDF(
     // Handle non-JSON responses
     const contentType = response.headers.get('content-type');
     if (!contentType || !contentType.includes('application/json')) {
-      const textResponse = await response.text();
-      console.error('[PDF Service] ✗ Non-JSON response:', {
-        status: response.status,
-        preview: textResponse.substring(0, 200),
-      });
       return {
         success: false,
         error: `Server error (${response.status}): PDF generation service unavailable.`,
@@ -170,7 +149,6 @@ export async function generateDispatchPDF(
     }
 
     const data = await response.json();
-    console.log('[PDF Service] Response:', data);
 
     if (!response.ok || !data.success) {
       return {
@@ -186,7 +164,6 @@ export async function generateDispatchPDF(
       document: data.document,
     };
   } catch (error) {
-    console.error('[PDF Service] Exception in generateDispatchPDF:', error);
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Failed to generate PDF',
@@ -205,8 +182,6 @@ export async function generateInvoicePDF(
   finYear: number
 ): Promise<PDFResponse> {
   try {
-    console.log('[PDF Service] generateInvoicePDF called:', { invNo, finYear });
-
     const authToken = await getAuthToken();
     if (!authToken) {
       return {
@@ -217,7 +192,6 @@ export async function generateInvoicePDF(
 
     const config = getCurrentConfig();
     const url = `${config.url}/functions/v1/generate-invoice-pdf`;
-    console.log('[PDF Service] Request URL:', url);
 
     const response = await fetch(url, {
       method: 'POST',
@@ -231,11 +205,6 @@ export async function generateInvoicePDF(
     // Handle non-JSON responses
     const contentType = response.headers.get('content-type');
     if (!contentType || !contentType.includes('application/json')) {
-      const textResponse = await response.text();
-      console.error('[PDF Service] ✗ Non-JSON response:', {
-        status: response.status,
-        preview: textResponse.substring(0, 200),
-      });
       return {
         success: false,
         error: `Server error (${response.status}): PDF generation service unavailable.`,
@@ -243,7 +212,6 @@ export async function generateInvoicePDF(
     }
 
     const data = await response.json();
-    console.log('[PDF Service] Response:', data);
 
     if (!response.ok || !data.success) {
       return {
@@ -259,7 +227,6 @@ export async function generateInvoicePDF(
       document: data.document,
     };
   } catch (error) {
-    console.error('[PDF Service] Exception in generateInvoicePDF:', error);
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Failed to generate PDF',
@@ -276,10 +243,6 @@ export async function generateCustomerStockPDF(
   customerId: string
 ): Promise<PDFResponse> {
   try {
-    console.log('[PDF Service] generateCustomerStockPDF called:', {
-      customerId,
-    });
-
     const authToken = await getAuthToken();
     if (!authToken) {
       return {
@@ -290,7 +253,6 @@ export async function generateCustomerStockPDF(
 
     const config = getCurrentConfig();
     const url = `${config.url}/functions/v1/generate-customer-stock-pdf`;
-    console.log('[PDF Service] Request URL:', url);
 
     const response = await fetch(url, {
       method: 'POST',
@@ -304,11 +266,6 @@ export async function generateCustomerStockPDF(
     // Handle non-JSON responses
     const contentType = response.headers.get('content-type');
     if (!contentType || !contentType.includes('application/json')) {
-      const textResponse = await response.text();
-      console.error('[PDF Service] ✗ Non-JSON response:', {
-        status: response.status,
-        preview: textResponse.substring(0, 200),
-      });
       return {
         success: false,
         error: `Server error (${response.status}): PDF generation service unavailable.`,
@@ -316,7 +273,6 @@ export async function generateCustomerStockPDF(
     }
 
     const data = await response.json();
-    console.log('[PDF Service] Response:', data);
 
     if (!response.ok || !data.success) {
       return {
@@ -332,10 +288,6 @@ export async function generateCustomerStockPDF(
       document: data.document,
     };
   } catch (error) {
-    console.error(
-      '[PDF Service] Exception in generateCustomerStockPDF:',
-      error
-    );
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Failed to generate PDF',

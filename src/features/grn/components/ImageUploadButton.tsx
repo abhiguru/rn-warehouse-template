@@ -325,8 +325,7 @@ export const ImageUploadButton: React.FC<ImageUploadButtonProps> = ({
     setShowCameraModal(false);
     try {
       // Get the actual file size using the new File API (SDK 54+)
-      const cleanPath = uri.startsWith('file://') ? uri.slice(7) : uri;
-      const file = new File(cleanPath);
+      const file = new File(uri);
       let fileSize: number | undefined;
 
       try {

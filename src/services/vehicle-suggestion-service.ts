@@ -3,7 +3,7 @@
  * Fetches popular vehicle registration numbers for autocomplete
  */
 
-import { getSupabaseClient } from '@/config/supabaseConfig';
+import { getAuthenticatedClient } from '@/config/supabaseConfig';
 import { executeRPC, createErrorResponse } from '@/utils/serviceErrorHandler';
 
 export interface VehicleSuggestion {
@@ -35,7 +35,7 @@ export async function getVehicleSuggestions(
   const { prefix = '', limit = 5, customerId = null } = options;
 
   const result = await executeRPC<VehicleSuggestionsResponse, VehicleSuggestion[]>(
-    async () => getSupabaseClient(),
+    getAuthenticatedClient,
     'get_vehicle_suggestions',
     {
       p_prefix: prefix || null,

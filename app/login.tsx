@@ -146,7 +146,6 @@ export default function LoginScreen() {
     try {
       dispatch(setAuthenticating(true));
 
-      if (__DEV__) console.log('[Login] Sending OTP to:', formattedPhone);
       const result = await signInWithPhone(formattedPhone);
 
       if (result.success) {
@@ -163,7 +162,6 @@ export default function LoginScreen() {
         );
       }
     } catch (error) {
-      console.error('[Login] Send OTP error:', error);
       if (handleRateLimitError(error)) {
         return;
       }

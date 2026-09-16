@@ -246,9 +246,9 @@ function NavigationStack({ screenBackground }: { screenBackground: string }) {
       <Stack.Screen name="otp" options={{ title: 'Verify OTP' }} />
 
       {/* Detail screens */}
-      <Stack.Screen name="grn-details" options={{ headerShown: false }} />
-      <Stack.Screen name="dispatch-details" options={{ headerShown: false }} />
-      <Stack.Screen name="invoice-details" options={{ headerShown: false }} />
+      <Stack.Screen name="grn-details/[id]" options={{ headerShown: false }} />
+      <Stack.Screen name="dispatch-details/[id]" options={{ headerShown: false }} />
+      <Stack.Screen name="invoice-details/[id]" options={{ headerShown: false }} />
 
       {/* Form screens */}
       <Stack.Screen name="grn-form" options={{ headerShown: false }} />

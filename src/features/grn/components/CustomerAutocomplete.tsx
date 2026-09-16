@@ -10,7 +10,7 @@
 import React, { useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { RemoteAutocompleteInput } from '@/components/RemoteAutocompleteInput';
-import { getSupabaseClient } from '@/config/supabaseConfig';
+import { getAuthenticatedClient } from '@/config/supabaseConfig';
 import theme from '@/theme';
 import { useListColors } from '@/hooks/useListColors';
 
@@ -61,7 +61,7 @@ export const CustomerAutocomplete: React.FC<CustomerAutocompleteProps> = ({
     }
 
     try {
-      const { data, error: queryError } = await getSupabaseClient()
+      const { data, error: queryError } = await (await getAuthenticatedClient())
         .from('customers')
         .select('id, name, mobile')
         .ilike('name', `%${query}%`)

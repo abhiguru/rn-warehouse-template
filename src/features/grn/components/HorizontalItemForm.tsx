@@ -18,7 +18,7 @@ import { RemoteAutocompleteInput } from '@/components/RemoteAutocompleteInput';
 import theme from '@/theme';
 import { useListColors } from '@/hooks/useListColors';
 import { GRNImageData } from '@/store/slices/grnFormSlice';
-import { getSupabaseClient } from '@/config/supabaseConfig';
+import { searchItems } from '@/services/item-search-service';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const FIELD_WIDTH = 180; // Base width for fields
@@ -295,53 +295,7 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                         <RemoteAutocompleteInput<{ id: string; name: string; packaging?: string }>
                             value={currentItem.item_name}
                             placeholder="Type to search..."
-                            fetchData={async (query) => {
-                                try {
-                                    console.log('[ItemAutocomplete] Starting search for:', query);
-                                    const supabase = getSupabaseClient();
-                                    console.log('[ItemAutocomplete] Using RPC: search_items_autocomplete');
-
-                                    const { data, error } = await supabase.rpc('search_items_autocomplete', {
-                                        p_search_query: query,
-                                        p_active_only: true,
-                                        p_limit: 20
-                                    });
-
-                                    console.log('[ItemAutocomplete] RPC result:', {
-                                        success: !error,
-                                        errorCode: error?.code,
-                                        errorMessage: error?.message,
-                                        dataCount: data?.items?.length || 0,
-                                        hasItems: !!data?.items
-                                    });
-
-                                    if (error) {
-                                        console.error('[ItemAutocomplete] RPC error:', error);
-                                        throw error;
-                                    }
-
-                                    if (!data || !data.items) {
-                                        console.log('[ItemAutocomplete] No items in response');
-                                        return [];
-                                    }
-
-                                    const mappedData = data.items.map((item: any) => ({
-                                        id: item.id,
-                                        name: item.name,
-                                        packaging: item.packaging || ''
-                                    }));
-
-                                    console.log('[ItemAutocomplete] Returning mapped data:', {
-                                        count: mappedData.length,
-                                        firstItem: mappedData[0]
-                                    });
-
-                                    return mappedData;
-                                } catch (e) {
-                                    console.error('[ItemAutocomplete] Search failed:', e);
-                                    return [];
-                                }
-                            }}
+                            fetchData={searchItems}
                             onSelect={(item) => {
                                 if (item) {
                                     onFieldChange('item_table_id', item.id);

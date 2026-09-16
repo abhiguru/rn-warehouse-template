@@ -1,5 +1,5 @@
 import {
-  getSupabaseClient,
+  getStoredToken,
   getAuthenticatedClient,
 } from '@/config/supabaseConfig';
 import { getAuthToken, getRefreshToken } from '@/utils/authTokenUtils';
@@ -60,7 +60,7 @@ export class OrderService {
     try {
       // Test 1: Basic connectivity
       const startTime = Date.now();
-      const { data, error } = await getSupabaseClient()
+      const { data, error } = await (await getAuthenticatedClient())
         .from('goodsreceived')
         .select('count')
         .limit(1);
@@ -78,15 +78,14 @@ export class OrderService {
         };
       }
 
-      // Test 2: Check session
-      const { data: sessionData } = await getSupabaseClient().auth.getSession();
+      // Custom OTP sessions are stored outside the GoTrue client.
+      const tokenData = await getStoredToken();
 
       return {
         success: true,
         details: {
           responseTime: endTime - startTime,
-          hasSession: !!sessionData?.session,
-          userId: sessionData?.session?.user?.id,
+          hasSession: tokenData.isValid,
         },
       };
     } catch (error) {
@@ -1097,7 +1096,7 @@ export class OrderService {
     orderId: string
   ): Promise<OrderServiceResponse<OrderSummary>> {
     try {
-      const { data, error } = await getSupabaseClient()
+      const { data, error } = await (await getAuthenticatedClient())
         .from('order_items')
         .select('requested_quantity')
         .eq('order_id', orderId)
@@ -1139,16 +1138,16 @@ export class OrderService {
   // Check if order is empty
   static async isOrderEmpty(orderId: string): Promise<boolean> {
     try {
-      const { data, count } = await getSupabaseClient()
+      const { error, count } = await (await getAuthenticatedClient())
         .from('order_items')
         .select('*', { count: 'exact', head: true })
         .eq('order_id', orderId)
         .gt('requested_quantity', 0);
 
-      return count === 0;
+      return !error && count === 0;
     } catch (error) {
       console.error('[OrderService] Error checking order status:', error);
-      return true;
+      return false;
     }
   }
 

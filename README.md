@@ -1,5 +1,12 @@
 # rn-warehouse-template
 
+**Follow-up status — 2026-09-15:** See [the dated verification ledger](docs/RESUME_VERIFICATION_2026-09-15.md)
+for current local checks and open native/review gates. Evidence below dated
+2026-09-14 or earlier describes the historical release checkpoint. The
+pending mobile authentication/privacy fixes and backend follow-up commits
+are outside the immutable `v0.2.1-demo` tags. Local follow-up results do
+not establish merged-main CI or physical-device acceptance.
+
 Open-source React Native warehouse application source, built with Expo,
 Supabase, Redux Toolkit, and Expo Router.
 
@@ -8,8 +15,8 @@ Supabase, Redux Toolkit, and Expo Router.
 now passes API tests for custom login, customer isolation, GRN, dispatch,
 invoice saving and PDF downloads. Native-device acceptance and production
 readiness are still incomplete. For a reproducible checkpoint, use
-**`v0.2.0-demo` in both repositories**; `main` may advance. The
-[demo prerelease](https://github.com/abhiguru/rn-warehouse-template/releases/tag/v0.2.0-demo)
+**`v0.2.1-demo` in both repositories**; `main` may advance. The
+[demo prerelease](https://github.com/abhiguru/rn-warehouse-template/releases/tag/v0.2.1-demo)
 records the exact tested commit pair and publishes no native binaries. See
 [READINESS.md](docs/READINESS.md) for verified results and remaining work.
 
@@ -21,7 +28,7 @@ Studio, Android SDK, and a compatible JDK. iOS builds require macOS and Xcode
 This tree uses Expo SDK 54 / React Native 0.81.
 
 ```bash
-git clone --branch v0.2.0-demo https://github.com/abhiguru/rn-warehouse-template.git
+git clone --branch v0.2.1-demo https://github.com/abhiguru/rn-warehouse-template.git
 cd rn-warehouse-template
 npm ci
 node scripts/create-env.mjs
@@ -108,14 +115,14 @@ before distributing a branded build. Never put private server keys in
 
 ## Checks and release status
 
-The mobile test suite includes 75 automated Jest tests across 6 suites, covering
+The mobile test suite includes 100 automated Jest tests across 9 suites, covering
 fail-closed secure storage, token refresh, OTP verification, and client-side
 telemetry redaction (URLs, headers, user PII, breadcrumbs). See [READINESS.md](docs/READINESS.md)
 and [TELEMETRY_AND_PRIVACY.md](docs/TELEMETRY_AND_PRIVACY.md).
 Dependency audit findings are tracked in [DEPENDENCY_SECURITY.md](docs/DEPENDENCY_SECURITY.md).
 
 GitHub Actions CI runs lint, typecheck, tests and a high-severity dependency gate
-on pushes and pull requests to `main`; moderate findings remain documented.
+on pushes and pull requests to `main`; dependency remediation is documented.
 Tag validation is separate. Demo releases are explicitly published as prereleases
 after validation, without production signing assets or unreviewed app binaries.
 

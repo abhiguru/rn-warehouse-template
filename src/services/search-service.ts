@@ -1,4 +1,4 @@
-import { getSupabaseClient, getAuthenticatedClient } from '@/config/supabaseConfig';
+import { getAuthenticatedClient } from '@/config/supabaseConfig';
 import { executeRPC, createErrorResponse } from '@/utils/serviceErrorHandler';
 
 export interface SearchResult {
@@ -266,11 +266,8 @@ class SearchService {
       }>;
     }
 
-    // Note: searchGRNNumbers uses getSupabaseClient (not authenticated) for wider search
-    const getClient = async () => getSupabaseClient();
-
     const result = await executeRPC<GRNListResponse, SearchResult[]>(
-      getClient,
+      getAuthenticatedClient,
       'get_grn_list',
       {
         p_date_from: oneYearAgo.toISOString().split('T')[0],

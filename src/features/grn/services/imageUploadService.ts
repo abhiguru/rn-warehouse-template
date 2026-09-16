@@ -65,9 +65,8 @@ const MAX_FILE_SIZE = 10 * 1024 * 1024;
  */
 const imageToBase64 = async (uri: string): Promise<string> => {
   try {
-    // Remove file:// prefix if present for the File constructor
-    const cleanPath = uri.startsWith('file://') ? uri.slice(7) : uri;
-    const file = new File(cleanPath);
+    // Preserve the absolute URI returned by Expo camera/image manipulation.
+    const file = new File(uri);
     const base64 = await file.base64();
     return base64;
   } catch (error) {

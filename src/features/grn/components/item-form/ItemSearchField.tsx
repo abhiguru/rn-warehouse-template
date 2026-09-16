@@ -11,7 +11,7 @@ import React, { useCallback } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { RemoteAutocompleteInput } from '@/components/RemoteAutocompleteInput';
-import { getSupabaseClient } from '@/config/supabaseConfig';
+import { searchItems } from '@/services/item-search-service';
 import theme from '@/theme';
 
 // ============================================================================
@@ -41,42 +41,6 @@ export const ItemSearchField: React.FC<ItemSearchFieldProps> = ({
   error,
   zIndex = 3000,
 }) => {
-  // Fetch items from Supabase RPC
-  const fetchItems = useCallback(async (query: string): Promise<ItemSearchResult[]> => {
-    try {
-      console.log('[ItemSearchField] Starting search for:', query);
-      const supabase = getSupabaseClient();
-
-      const { data, error: rpcError } = await supabase.rpc('search_items_autocomplete', {
-        p_search_query: query,
-        p_active_only: true,
-        p_limit: 20,
-      });
-
-      if (rpcError) {
-        console.error('[ItemSearchField] RPC error:', rpcError);
-        throw rpcError;
-      }
-
-      if (!data || !data.items) {
-        console.log('[ItemSearchField] No items in response');
-        return [];
-      }
-
-      const mappedData = data.items.map((item: any) => ({
-        id: item.id,
-        name: item.name,
-        packaging: item.packaging || '',
-      }));
-
-      console.log('[ItemSearchField] Found', mappedData.length, 'items');
-      return mappedData;
-    } catch (e) {
-      console.error('[ItemSearchField] Search failed:', e);
-      return [];
-    }
-  }, []);
-
   // Render dropdown item
   const renderItem = useCallback(
     (item: ItemSearchResult) => (
@@ -105,7 +69,7 @@ export const ItemSearchField: React.FC<ItemSearchFieldProps> = ({
       <RemoteAutocompleteInput<ItemSearchResult>
         value={value}
         placeholder="Type to search..."
-        fetchData={fetchItems}
+        fetchData={searchItems}
         onSelect={onSelect}
         renderItem={renderItem}
         keyExtractor={keyExtractor}
