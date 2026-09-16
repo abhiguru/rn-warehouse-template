@@ -26,6 +26,7 @@ import { DetailSkeleton } from '@/components/skeletons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { isAbortError } from '@/hooks/useAbortableFetch';
 import { useLocalSearchParams, router, Stack } from 'expo-router';
+import * as ImagePicker from 'expo-image-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import {
@@ -58,6 +59,7 @@ import {
   GRNImageData,
 } from '@/components/grn-details';
 import { useFioriColors } from '@/theme/fioriColors';
+import { deleteGRNImage, uploadGRNImage } from '@/features/grn/services/imageUploadService';
 
 // ============================================================================
 // FIORI DESIGN TOKENS - Static values (typography, spacing, dimensions)
@@ -141,6 +143,9 @@ function GRNDetailScreen() {
   const [showPrintDialog, setShowPrintDialog] = useState(false);
   const [snackbarVisible, setSnackbarVisible] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [isDeletingImage, setIsDeletingImage] = useState(false);
+  const imageMutationRef = useRef(false);
 
   // Image overlay state
   const [overlayVisible, setOverlayVisible] = useState(false);
@@ -184,6 +189,73 @@ function GRNDetailScreen() {
     setOverlayImages(convertedImages);
     setOverlayInitialIndex(initialIndex);
     setOverlayVisible(true);
+  };
+
+  const handleAddHeaderImage = async () => {
+    if (!id || !canEdit || imageMutationRef.current) return;
+    imageMutationRef.current = true;
+    try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        setSnackbarMessage('Photo library permission is required to add an image');
+        setSnackbarVisible(true);
+        return;
+      }
+      const picked = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: 'images' as const,
+        allowsEditing: false,
+        quality: 0.8,
+        allowsMultipleSelection: false,
+      });
+      if (picked.canceled || !picked.assets?.[0]) return;
+
+      setIsUploadingImage(true);
+      const result = await uploadGRNImage(picked.assets[0], id, 'header');
+      if (!result.success) {
+        setSnackbarMessage(result.error || 'Image upload failed');
+        setSnackbarVisible(true);
+        return;
+      }
+      await fetchGRNDetails();
+      setSnackbarMessage('Image uploaded');
+      setSnackbarVisible(true);
+    } catch {
+      setSnackbarMessage('Image upload failed');
+      setSnackbarVisible(true);
+    } finally {
+      setIsUploadingImage(false);
+      imageMutationRef.current = false;
+    }
+  };
+
+  const handleDeleteImage = (image: GRNImageData) => {
+    if (imageMutationRef.current) return;
+    imageMutationRef.current = true;
+    Alert.alert('Delete image?', 'This removes the image permanently.', [
+      { text: 'Cancel', style: 'cancel', onPress: () => { imageMutationRef.current = false; } },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            setIsDeletingImage(true);
+            const result = await deleteGRNImage(image.id, image.image_url);
+            if (result.success) {
+              await fetchGRNDetails();
+              setSnackbarMessage('Image deleted');
+            } else {
+              setSnackbarMessage(result.error || 'Image deletion failed');
+            }
+          } catch {
+            setSnackbarMessage('Image deletion failed');
+          } finally {
+            setIsDeletingImage(false);
+            imageMutationRef.current = false;
+            setSnackbarVisible(true);
+          }
+        },
+      },
+    ]);
   };
 
   // Fetch GRN details
@@ -872,6 +944,9 @@ function GRNDetailScreen() {
             <GRNImagesTab
               images={allImages}
               onImagePress={(images, index) => handleImagePress(images, index)}
+              onUpload={canEdit ? handleAddHeaderImage : undefined}
+              onDeleteImage={canEdit ? handleDeleteImage : undefined}
+              isUploading={isUploadingImage}
             />
           )}
 
