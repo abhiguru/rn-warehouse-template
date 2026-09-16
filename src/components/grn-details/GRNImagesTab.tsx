@@ -42,6 +42,9 @@ export interface GRNImageData {
 interface GRNImagesTabProps {
   images: GRNImageData[];
   onImagePress?: (images: GRNImageData[], index: number) => void;
+  onUpload?: () => void;
+  onDeleteImage?: (image: GRNImageData) => void;
+  isUploading?: boolean;
 }
 
 type FilterType = 'all' | 'header' | 'item';
@@ -51,8 +54,9 @@ const ImageTile: React.FC<{
   item: GRNImageData;
   index: number;
   onPress: () => void;
+  onDelete?: () => void;
   colors: ListColors;
-}> = ({ item, index, onPress, colors }) => {
+}> = ({ item, index, onPress, onDelete, colors }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
 
@@ -113,6 +117,15 @@ const ImageTile: React.FC<{
           <Text style={styles.labelText} numberOfLines={1}>{item.item_name}</Text>
         </View>
       )}
+      {onDelete && (
+        <TouchableOpacity
+          accessibilityLabel={`Delete ${item.file_name || 'image'}`}
+          style={styles.deleteButton}
+          onPress={onDelete}
+        >
+          <Icon name="trash-can-outline" size={16} color="#fff" />
+        </TouchableOpacity>
+      )}
     </TouchableOpacity>
   );
 };
@@ -120,6 +133,9 @@ const ImageTile: React.FC<{
 export const GRNImagesTab: React.FC<GRNImagesTabProps> = ({
   images,
   onImagePress,
+  onUpload,
+  onDeleteImage,
+  isUploading = false,
 }) => {
   // Theme colors for dark mode support
   const colors = useListColors();
@@ -139,6 +155,17 @@ export const GRNImagesTab: React.FC<GRNImagesTabProps> = ({
         <Icon name="image-off-outline" size={48} color={colors.gray400} />
         <Text style={[styles.emptyTitle, { color: colors.gray900 }]}>No Images</Text>
         <Text style={[styles.emptySubtitle, { color: colors.gray500 }]}>No images uploaded for this GRN</Text>
+        {onUpload && (
+          <TouchableOpacity
+            accessibilityLabel="Add GRN image"
+            style={[styles.uploadButton, { backgroundColor: colors.primary }]}
+            onPress={onUpload}
+            disabled={isUploading}
+          >
+            <Icon name="image-plus" size={18} color="#fff" />
+            <Text style={styles.uploadButtonText}>{isUploading ? 'Uploading…' : 'Add Image'}</Text>
+          </TouchableOpacity>
+        )}
       </View>
     );
   }
@@ -161,6 +188,7 @@ export const GRNImagesTab: React.FC<GRNImagesTabProps> = ({
         item={item}
         index={index}
         onPress={() => onImagePress?.(filteredImages, index)}
+        onDelete={onDeleteImage ? () => onDeleteImage(item) : undefined}
         colors={colors}
       />
     );
@@ -173,6 +201,16 @@ export const GRNImagesTab: React.FC<GRNImagesTabProps> = ({
         <FilterButton type="all" label="All" count={images.length} />
         <FilterButton type="header" label="Header" count={headerCount} />
         <FilterButton type="item" label="Items" count={itemCount} />
+        {onUpload && (
+          <TouchableOpacity
+            accessibilityLabel="Add GRN image"
+            style={[styles.compactUploadButton, { backgroundColor: colors.primary }]}
+            onPress={onUpload}
+            disabled={isUploading}
+          >
+            <Icon name="image-plus" size={16} color="#fff" />
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Image Grid */}
@@ -283,5 +321,35 @@ const styles = StyleSheet.create({
   emptySubtitle: {
     fontSize: 13,
     marginTop: 4,
+  },
+  uploadButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  uploadButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  compactUploadButton: {
+    marginLeft: 'auto',
+    padding: 7,
+    borderRadius: 14,
+  },
+  deleteButton: {
+    position: 'absolute',
+    right: 4,
+    bottom: 4,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(190, 30, 45, 0.9)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });
