@@ -1,6 +1,13 @@
 # Native and physical-device acceptance
 
-## Status — 2026-09-13
+**Follow-up status — 2026-09-15:** See [the dated verification ledger](RESUME_VERIFICATION_2026-09-15.md)
+for current local checks and open native/review gates. Evidence below dated
+2026-09-14 or earlier describes the historical release checkpoint. The
+pending mobile authentication/privacy fixes and backend follow-up commits
+are outside the immutable `v0.2.1-demo` tags. Local follow-up results do
+not establish merged-main CI or physical-device acceptance.
+
+## Historical compile evidence — 2026-09-13
 
 Source baseline: `75e42324b6c9317d8432c1caebe122e4cafa4fdf`, Expo SDK 54,
 React Native 0.81.5. The Linux public-clone test passes dependency installation,
@@ -110,9 +117,9 @@ commit, backend commit, OS, build ID, device model and test timestamp.
    SQLite synchronization: no SQLite dependency or general offline-sync engine
    has been established in this release.
 6. **Deep links:** cold/warm launch, Unicode and repeated parameters, redirects,
-   malformed percent encodings and unauthorized routes. The remaining decoder
-   advisory requires isolated, time-bounded testing and remediation; do not send
-   adversarial URLs to real users or treat this checklist as a fix.
+   malformed percent encodings and unauthorized routes. Decoder 0.5.0 and
+   navigation regressions are included in v0.2.1-demo; this still requires actual
+   native route acceptance. Use only the isolated test app for adversarial input.
 7. **Documents:** open/share all four generated PDFs; verify private URLs expire
    and cannot disclose another customer's document through the API.
 8. **Privacy:** default-empty telemetry DSN emits no crash events. If enabled in a

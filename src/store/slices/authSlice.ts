@@ -22,10 +22,10 @@ import { getUserByIdDirect } from '@/services/user-core-service';
 import { fetchFullConfig, clearFullConfig } from './configSlice';
 import { getSessionGeneration } from '@/config/sessionLifecycle';
 import { setSentryUser, clearSentryUser } from '@/config/sentryConfig';
+import { CACHE_PREFIXES } from '@/config/cacheConfig';
 // Privacy cleanup services - clear user-specific data on logout
 import { RecentCustomersService } from '@/services/recent-customers-service';
 import { SessionRecentItemsService } from '@/services/session-recent-items-service';
-import { RecentItemsService } from '@/services/recent-items-service';
 import { clearAllRateLimits } from '@/utils/otpRateLimiter';
 import { UserService } from '@/services/user-service';
 import { UserProfile } from '@/types/user.types';
@@ -386,8 +386,9 @@ export const logout = createAsyncThunk(
       }
     );
 
-    // Clear recent items cache (frequently ordered items)
-    await RecentItemsService.clearCache().catch(error => {
+    // Clear recent items cache (frequently ordered items).  Keep this direct:
+    // importing RecentItemsService here creates a startup cycle through OrderService.
+    await AsyncStorage.removeItem(CACHE_PREFIXES.RECENT_ITEMS).catch(error => {
       console.warn('[AuthSlice] Error clearing recent items cache:', error);
     });
 

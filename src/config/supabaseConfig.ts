@@ -144,12 +144,7 @@ export const signInWithPhone = async (phone: string) => {
           ? `Daily limit reached (20 requests). Try again tomorrow.`
           : `Please wait ${retryAfterSec} seconds before requesting another code.`;
 
-      console.warn('[Auth] OTP rate limit exceeded:', {
-        phone: formattedPhone.slice(-4),
-        reason: rateLimit.reason,
-        retryAfterSec,
-        dailyRemaining: rateLimit.dailyRemaining,
-      });
+      console.warn('[Auth] OTP rate limit exceeded:');
 
       return {
         success: false,
@@ -162,10 +157,8 @@ export const signInWithPhone = async (phone: string) => {
       p_purpose: 'login',
     });
 
-    // Log full response for debugging
-
     if (error) {
-      console.error('[Auth] Send OTP RPC error:', error);
+      console.error('[Auth] Send OTP RPC error:');
       return { success: false, error: error.message };
     }
 
@@ -182,11 +175,11 @@ export const signInWithPhone = async (phone: string) => {
     } else {
       const errorMsg =
         responseData?.message || responseData?.error || 'Failed to send OTP';
-      console.error('[Auth] Send OTP failed:', errorMsg);
+      console.error('[Auth] Send OTP failed:');
       return { success: false, error: errorMsg };
     }
   } catch (error) {
-    console.error('[Auth] Send OTP exception:', error);
+    console.error('[Auth] Send OTP exception:');
     return { success: false, error: 'Failed to send OTP' };
   }
 };
@@ -235,7 +228,7 @@ const validateJWTToken = (
   try {
     const parts = token.split('.');
     if (parts.length !== 3) {
-      console.warn('[Auth] Invalid JWT: Expected 3 parts, got', parts.length);
+      console.warn('[Auth] Invalid JWT: Expected 3 parts, got');
       return { valid: false };
     }
 
@@ -263,7 +256,7 @@ const validateJWTToken = (
       sub: payload.sub,
     };
   } catch (error) {
-    console.warn('[Auth] Invalid JWT: Failed to parse token', error);
+    console.warn('[Auth] Invalid JWT: Failed to parse token');
     return { valid: false };
   }
 };
@@ -314,7 +307,7 @@ export const verifyOTP = async (
       return { success: false, error: 'Session changed' };
     }
     if (error) {
-      console.error('[Auth] OTP verification RPC error:', error);
+      console.error('[Auth] OTP verification RPC error:');
       return { success: false, error: error.message };
     }
 
@@ -324,7 +317,7 @@ export const verifyOTP = async (
 
     if (!isSuccess || !rpcResponse?.data) {
       const errorMsg = rpcResponse?.message || 'Verification failed';
-      console.error('[Auth] OTP verification failed:', errorMsg);
+      console.error('[Auth] OTP verification failed:');
       return { success: false, error: errorMsg };
     }
 
@@ -389,7 +382,7 @@ export const verifyOTP = async (
           };
         }
       } catch (err) {
-        console.warn('[Auth] Failed to fetch customer assignments:', err);
+        console.warn('[Auth] Failed to fetch customer assignments:');
       }
       await cacheUserProfile(userProfileWithCustomers, generation);
     }
@@ -408,7 +401,7 @@ export const verifyOTP = async (
       },
     };
   } catch (error) {
-    console.error('[Auth] OTP verification exception:', error);
+    console.error('[Auth] OTP verification exception:');
     return { success: false, error: 'OTP verification failed' };
   }
 };
@@ -491,7 +484,7 @@ const refreshSession = async (
       return null;
     }
     if (error) {
-      console.error('[Auth] Token refresh RPC error:', error.message);
+      console.error('[Auth] Token refresh RPC error:');
       // If refresh token is invalid/expired, clear stored tokens
       if (
         error.message.includes('invalid') ||
@@ -507,10 +500,7 @@ const refreshSession = async (
 
     if (!responseData?.success || !responseData?.access_token) {
       if (responseData?.success === false) await clearStoredTokens();
-      console.error(
-        '[Auth] Token refresh failed:',
-        responseData?.message || 'Unknown error'
-      );
+      console.error('[Auth] Token refresh failed:');
       return null;
     }
 
@@ -543,7 +533,7 @@ const refreshSession = async (
       expiresAt,
     };
   } catch (error) {
-    console.error('[Auth] Token refresh exception:', error);
+    console.error('[Auth] Token refresh exception:');
     return null;
   }
 };
@@ -585,7 +575,7 @@ export const ensureValidTokens = async (): Promise<boolean> => {
 
     return false;
   } catch (error) {
-    console.error('[Auth] ensureValidTokens error:', error);
+    console.error('[Auth] ensureValidTokens error:');
     return false;
   }
 };
@@ -760,7 +750,7 @@ const clearStoredTokensRaw = async () => {
       'session_marker',
     ]);
   } catch (error) {
-    console.error('[Auth] Error clearing tokens:', error);
+    console.error('[Auth] Error clearing tokens:');
   }
 };
 
@@ -808,8 +798,7 @@ export const getCachedUserProfile = async () => {
             }
           } catch (err) {
             console.warn(
-              '[Auth] Failed to fetch customer assignments for cached profile:',
-              err
+              '[Auth] Failed to fetch customer assignments for cached profile:'
             );
           }
         }
@@ -841,7 +830,7 @@ export const getCachedUserProfile = async () => {
     await cacheUserProfile(result, generation);
     return generation === getSessionGeneration() ? result : null;
   } catch (error) {
-    console.error('[Auth] Error getting cached profile:', error);
+    console.error('[Auth] Error getting cached profile:');
   }
   return null;
 };

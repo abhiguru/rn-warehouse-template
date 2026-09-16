@@ -7,7 +7,16 @@ export default [
   js.configs.recommended,
   {
     files: ['scripts/**/*.mjs'],
-    languageOptions: { globals: { Buffer: 'readonly', URL: 'readonly', process: 'readonly', console: 'readonly', fetch: 'readonly', AbortSignal: 'readonly' } },
+    languageOptions: {
+      globals: {
+        Buffer: 'readonly',
+        URL: 'readonly',
+        process: 'readonly',
+        console: 'readonly',
+        fetch: 'readonly',
+        AbortSignal: 'readonly',
+      },
+    },
   },
   // Ignore CommonJS config files and utility files that legitimately use console
   {
@@ -56,6 +65,53 @@ export default [
       'no-unused-vars': 'off',
       'no-undef': 'off',
       'no-console': 'warn',
+    },
+  },
+  {
+    // Authentication inputs and provider errors may contain OTPs or phone numbers.
+    // Enforce this boundary in CI, including development-only logging.
+    files: ['app/login.tsx', 'app/otp.tsx', 'src/services/pdf-service.ts'],
+    rules: { 'no-console': 'error' },
+  },
+  {
+    files: [
+      'src/features/grn/components/HorizontalItemForm.tsx',
+      'src/features/grn/components/item-form/ItemSearchField.tsx',
+      'src/features/grn/components/CustomerAutocomplete.tsx',
+      'src/features/grn/services/grnFormService.ts',
+      'src/services/search-service.ts',
+      'src/services/user-core-service.ts',
+      'src/services/vehicle-suggestion-service.ts',
+      'src/services/autocomplete-service.ts',
+      'src/services/item-search-service.ts',
+      'src/services/order-service.ts',
+    ],
+    rules: {
+      'no-restricted-imports': ['error', {
+        patterns: [{
+          group: ['**/supabaseConfig'],
+          importNames: ['getSupabaseClient', 'getSupabaseRPCClient'],
+          message: 'Business data requires getAuthenticatedClient and the custom OTP session.',
+        }],
+      }],
+    },
+  },
+  {
+    files: ['src/config/supabaseConfig.ts'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "CallExpression[callee.object.name='console'][arguments.1]",
+          message:
+            'Authentication diagnostics must not include credentials, input or response payloads.',
+        },
+        {
+          selector:
+            "CallExpression[callee.object.name='console'][arguments.0.type!='Literal']",
+          message: 'Authentication diagnostics must use a fixed message.',
+        },
+      ],
     },
   },
 ];

@@ -150,9 +150,7 @@ export default function OTPScreen() {
   }, [phoneNumber]);
 
   const handleOtpChange = (value: string) => {
-    if (__DEV__) console.log('[OTP] Input changed, raw value:', value);
     const numericValue = value.replace(/[^0-9]/g, '').slice(0, 6);
-    if (__DEV__) console.log('[OTP] Numeric value:', numericValue);
     setOtpCode(numericValue);
     setFocusedIndex(numericValue.length);
 
@@ -163,7 +161,6 @@ export default function OTPScreen() {
 
     // Auto-submit when 6 digits are entered
     if (numericValue.length === 6 && !isVerifyingOTP) {
-      if (__DEV__) console.log('[OTP] 6 digits entered, auto-submitting...');
       autoSubmitTimerRef.current = setTimeout(() => {
         handleVerifyOTPWithCode(numericValue);
       }, 300);
@@ -171,14 +168,12 @@ export default function OTPScreen() {
   };
 
   const focusHiddenInput = () => {
-    if (__DEV__) console.log('[OTP] Focusing hidden input...');
     hiddenInputRef.current?.blur();
     if (focusTimerRef.current) {
       clearTimeout(focusTimerRef.current);
     }
     focusTimerRef.current = setTimeout(() => {
       hiddenInputRef.current?.focus();
-      if (__DEV__) console.log('[OTP] Hidden input focused');
     }, 10);
   };
 
@@ -194,32 +189,16 @@ export default function OTPScreen() {
       const result = await verifyOTP(phoneNumber, code);
 
       if (result.success && result.data) {
-        if (__DEV__) console.log('[OTP] Verification successful');
-
         if (result.data.customAuth && result.data.userProfile) {
-          if (__DEV__)
-            console.log(
-              '[OTP] Custom JWT auth successful, setting user profile'
-            );
           dispatch(setUserProfile(result.data.userProfile));
 
-          if (__DEV__) console.log('[OTP] Redirecting to home screen');
           router.replace('/');
         } else if (result.data.session && result.data.user) {
-          if (__DEV__)
-            console.log(
-              '[OTP] GoTrue session established, updating Redux state'
-            );
-
           dispatch(setSession(result.data.session));
           dispatch(setUser(result.data.user));
           dispatch(setUserProfile(result.data.userProfile));
 
-          if (__DEV__) console.log('[OTP] Redirecting to home screen');
           router.replace('/');
-        } else {
-          if (__DEV__)
-            console.log('[OTP] Verification successful but no redirect');
         }
       } else {
         const friendlyMessage = parseErrorToFriendly(
@@ -227,8 +206,7 @@ export default function OTPScreen() {
         );
         Alert.alert('Verification Failed', friendlyMessage);
       }
-    } catch (error) {
-      console.error('[OTP] Verification error:', error);
+    } catch {
       Alert.alert('Error', 'Something went wrong. Please try again.');
     } finally {
       dispatch(setVerifyingOTP(false));
@@ -245,7 +223,6 @@ export default function OTPScreen() {
     try {
       dispatch(setAuthenticating(true));
 
-      if (__DEV__) console.log('[OTP] Resending OTP to:', phoneNumber);
       const result = await signInWithPhone(phoneNumber);
 
       if (result.success) {
@@ -265,7 +242,6 @@ export default function OTPScreen() {
         Alert.alert('Could Not Send Code', friendlyMessage);
       }
     } catch (error) {
-      console.error('[OTP] Resend error:', error);
       if (handleRateLimitError(error)) {
         return;
       }

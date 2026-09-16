@@ -1,5 +1,5 @@
 import * as Crypto from 'expo-crypto';
-import { getSupabaseClient, getAuthenticatedClient, getCurrentConfig } from '@/config/supabaseConfig';
+import { getAuthenticatedClient, getCurrentConfig } from '@/config/supabaseConfig';
 import { GRNHeaderData, GRNItemData, GRNImageData } from '@/store/slices/grnFormSlice';
 import { savePendingImageMetadata, uploadDeferredImages } from './imageUploadService';
 // M3 Fix: Import executeRPC for potential future refactoring
@@ -1141,7 +1141,7 @@ export const loadGRNData = async (grnId: string) => {
 // Check if items have dispatches
 export const checkItemsHaveDispatches = async (grnId: string) => {
   try {
-    const { data, error } = await getSupabaseClient()
+    const { data, error } = await (await getAuthenticatedClient())
       .from('dispatch_trl')
       .select('id')
       .eq('gr_id', grnId)

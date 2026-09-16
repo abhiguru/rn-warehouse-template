@@ -5,7 +5,7 @@
  * Adapted from the shared library for React Native compatibility.
  */
 
-import { getSupabaseClient } from '../config/supabaseConfig';
+import { getAuthenticatedClient } from '../config/supabaseConfig';
 import type { UserProfile } from '@/types/user.types';
 
 /**
@@ -21,7 +21,7 @@ export const getUserByIdDirect = async (userId: string): Promise<{
   }
   
   try {
-    const { data, error } = await getSupabaseClient()
+    const { data, error } = await (await getAuthenticatedClient())
       .from('user_profiles')
       .select('*')
       .eq('auth_user_id', userId)
@@ -37,7 +37,7 @@ export const getUserByIdDirect = async (userId: string): Promise<{
     // Fetch customer assignments via RPC (needed for Reports role-based access)
     let assignedCustomerIds: string[] = [];
     try {
-      const { data: customerIds, error: rpcError } = await getSupabaseClient()
+      const { data: customerIds, error: rpcError } = await (await getAuthenticatedClient())
         .rpc('user_accessible_customers');
 
       if (!rpcError && customerIds) {
