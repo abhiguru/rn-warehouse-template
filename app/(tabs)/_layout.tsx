@@ -34,7 +34,10 @@ export default function TabsLayout() {
         if (!isMounted) return undefined;
         return dispatch(initializeAuth()).unwrap();
       })
-      .catch(() => undefined)
+      .catch(() => {
+        // Do not include the thrown value: it can contain session or network details.
+        console.warn('[TabsLayout] Auth initialization failed');
+      })
       .finally(() => {
         if (isMounted) setHasAuthCheckSettled(true);
       });
@@ -57,15 +60,14 @@ export default function TabsLayout() {
   const lightBg = '#f7f9fa'; // gray[50]
   const screenBg = isDarkMode ? darkBg : lightBg;
 
-  if (!hasAuthCheckSettled) {
+  // Keep a deliberate loading surface while navigation replaces an unauthenticated route.
+  if (!hasAuthCheckSettled || isUnauthenticated) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: screenBg }}>
         <ActivityIndicator size="large" color={themeColors.primary} />
       </View>
     );
   }
-
-  if (isUnauthenticated) return null;
 
   return (
     <View style={{ flex: 1, backgroundColor: screenBg }}>

@@ -307,7 +307,7 @@ describe('TabsLayout authentication gate', () => {
     expect(replace).toHaveBeenCalledTimes(1);
     expect(replace).toHaveBeenCalledWith('/login');
     expect(hasTestId(renderer.root, 'protected-tabs')).toBe(false);
-    expect(hasTestId(renderer.root, 'auth-restore-spinner')).toBe(false);
+    expect(hasTestId(renderer.root, 'auth-restore-spinner')).toBe(true);
     await unmountLayout(renderer);
   });
 
