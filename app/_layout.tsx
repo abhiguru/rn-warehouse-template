@@ -66,7 +66,8 @@ import ConfigErrorScreen from '@/components/ConfigErrorScreen';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { OfflineBanner } from '@/components/OfflineBanner';
 import { createLogger } from '@/utils/logger';
-import { useAppSelector } from '@/store/hooks';
+import { useAppDispatch, useAppSelector } from '@/store/hooks';
+import { initializeAuth } from '@/store/slices/authSlice';
 import {
   selectThemePreference,
   selectResolvedThemeMode,
@@ -291,6 +292,8 @@ function NavigationStack({ screenBackground }: { screenBackground: string }) {
 
 // Themed content component that uses Redux state for theme
 function ThemedContent() {
+  const dispatch = useAppDispatch();
+  const [authCheckSettled, setAuthCheckSettled] = useState(false);
   const themePreference = useAppSelector(selectThemePreference);
   const systemColorScheme = useColorScheme();
   const resolvedMode = selectResolvedThemeMode(
@@ -299,8 +302,26 @@ function ThemedContent() {
   );
   const isDarkMode = resolvedMode === 'dark';
 
-  // I10: Handle cold start deep links
-  useColdStartDeepLink();
+  // Restore credentials before any route screen can redirect an initially
+  // empty Redux auth state. Deep links can bypass the tab layout, so auth
+  // restoration belongs at the root navigation boundary.
+  useEffect(() => {
+    let mounted = true;
+    void dispatch(initializeAuth())
+      .unwrap()
+      // initializeAuth records its failure in Redux; the root only needs to
+      // release the navigation gate after the attempt settles.
+      .catch(() => undefined)
+      .finally(() => {
+        if (mounted) setAuthCheckSettled(true);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [dispatch]);
+
+  // I10: Handle cold start deep links only after the root auth check settles.
+  useColdStartDeepLink(authCheckSettled);
 
   // Memoize the paper theme to avoid recreating on every render
   const currentPaperTheme = useMemo(
@@ -339,6 +360,24 @@ function ThemedContent() {
       },
     };
   }, [isDarkMode, screenBackground, themeColors]);
+
+  if (!authCheckSettled) {
+    return (
+      <View
+        style={{
+          flex: 1,
+          justifyContent: 'center',
+          alignItems: 'center',
+          backgroundColor: screenBackground,
+        }}
+      >
+        <EdgeToEdgeStatusBar
+          barStyle={isDarkMode ? 'light-content' : 'dark-content'}
+        />
+        <ActivityIndicator size="large" color={themeColors.primary} />
+      </View>
+    );
+  }
 
   return (
     // ThemeProvider ensures React Navigation uses our colors (prevents white flash)

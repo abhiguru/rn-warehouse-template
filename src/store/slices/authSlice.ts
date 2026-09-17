@@ -89,6 +89,21 @@ const safeAsyncOp = async <T>(
   }
 };
 
+// Older builds persisted protected GRN details and signed image URLs without
+// an account scope. Current detail screens do not persist them; remove any
+// legacy entries before restoration and during every session teardown.
+const clearProtectedDetailCaches = async (): Promise<void> => {
+  try {
+    const keys = await AsyncStorage.getAllKeys();
+    const protectedKeys = keys.filter(key => key.startsWith('grn_detail_'));
+    if (protectedKeys.length > 0) {
+      await AsyncStorage.multiRemove(protectedKeys);
+    }
+  } catch {
+    // Best effort for legacy data. Current detail screens never persist it.
+  }
+};
+
 // Guard to prevent multiple concurrent fetchFullConfig calls
 // This prevents race conditions when initializeAuth hits multiple code paths
 let configFetchPromise: Promise<void> | null = null;
@@ -129,6 +144,8 @@ export const initializeAuth = createAsyncThunk(
     const generation = getSessionGeneration();
     const result = await (async () => {
       try {
+        await clearProtectedDetailCaches();
+
         // STEP 1: Ensure we have Supabase client (fallback to initialized one)
         const supabaseClient = getSupabaseClient();
 
@@ -391,6 +408,7 @@ export const logout = createAsyncThunk(
     await AsyncStorage.removeItem(CACHE_PREFIXES.RECENT_ITEMS).catch(error => {
       console.warn('[AuthSlice] Error clearing recent items cache:', error);
     });
+    await clearProtectedDetailCaches();
 
     // Clear OTP rate limit data (phone number history)
     await clearAllRateLimits().catch(error => {
@@ -464,6 +482,7 @@ export const forceLogoutOnInvalidToken = createAsyncThunk(
     const signingOut = signOut();
     const generation = getSessionGeneration();
     await signingOut;
+    await clearProtectedDetailCaches();
     if (generation !== getSessionGeneration()) return { reason };
 
     // Refresh public config and reinitialize Supabase client with fresh keys

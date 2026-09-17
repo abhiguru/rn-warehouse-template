@@ -23,7 +23,6 @@ import {
   Platform,
 } from 'react-native';
 import { DetailSkeleton } from '@/components/skeletons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { isAbortError } from '@/hooks/useAbortableFetch';
 import { useLocalSearchParams, router, Stack } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
@@ -160,7 +159,7 @@ function GRNDetailScreen() {
     if (!userProfile && (!user || !session)) {
       router.replace('/login');
     }
-  }, [user, session]);
+  }, [user, session, userProfile]);
 
   // Use centralized permission system
   const { canUpdate, canDelete, isCustomer } = usePermissions();
@@ -271,21 +270,8 @@ function GRNDetailScreen() {
 
     setError(null);
     try {
-      // Try to load cached data first (with images already processed)
-      const cacheKey = `grn_detail_${id}`;
-      const cachedData = await AsyncStorage.getItem(cacheKey);
-      let initialData = null;
-
-      if (cachedData) {
-        try {
-          initialData = JSON.parse(cachedData);
-          if (__DEV__) console.log('[GRNDetailScreen] Loaded cached GRN data with processed images');
-        } catch (e) {
-          console.warn('[GRNDetailScreen] Failed to parse cached data');
-        }
-      }
-
-      // Fetch fresh data from API (images will be processed in background)
+      // Fetch current caller-authorized data; protected details are never
+      // restored from a previous account's persistent cache.
       const result = await getGRNDetails(id);
 
       if (controller.signal.aborted) {
@@ -294,15 +280,10 @@ function GRNDetailScreen() {
       }
 
       if (result.success && result.data) {
-        // Use API data first (which has fresh content), will be updated with signed URLs in background
         setData(result.data);
         setError(null);
       } else {
-        // Fall back to cached data if API fails
-        if (initialData) {
-          if (__DEV__) console.log('[GRNDetailScreen] API failed, using cached data');
-          setData(initialData);
-        }
+        setData(null);
         setError(
           result.error || result.message || 'Failed to load GRN details'
         );
@@ -313,6 +294,7 @@ function GRNDetailScreen() {
         return;
       }
       console.error('[GRNDetailScreen] Exception:', err);
+      setData(null);
       setError(
         'Failed to load GRN details. Please check your connection and try again.'
       );
@@ -326,7 +308,7 @@ function GRNDetailScreen() {
 
   // Fetch all dispatches for all items
   const fetchAllDispatches = async () => {
-    if (!data?.grn.items) return;
+    if (!data?.grn?.items) return;
 
     setLoadingDispatches(true);
     try {
@@ -383,14 +365,16 @@ function GRNDetailScreen() {
   };
 
   useEffect(() => {
-    fetchGRNDetails();
+    if (userProfile || (user && session)) {
+      fetchGRNDetails();
+    }
 
     return () => {
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
       }
     };
-  }, [id, fetchGRNDetails]);
+  }, [id, fetchGRNDetails, user, session, userProfile]);
 
   useEffect(() => {
     if (
@@ -401,45 +385,6 @@ function GRNDetailScreen() {
       fetchAllDispatches();
     }
   }, [activeTab, data]);
-
-  // Poll for background image processing completion
-  useEffect(() => {
-    if (!id || !data) return;
-
-    const checkForUpdates = async () => {
-      try {
-        const cacheKey = `grn_detail_${id}`;
-        const cachedData = await AsyncStorage.getItem(cacheKey);
-
-        if (cachedData) {
-          const parsed = JSON.parse(cachedData);
-          // Check if images have been processed (have signed URLs)
-          const hasImages =
-            (parsed.grn?.processed_header_images?.length > 0 &&
-              parsed.grn.processed_header_images[0]?.image_url?.includes('token')) ||
-            (parsed.grn?.items?.some((item: any) =>
-              item.processed_images?.some((img: any) => img.image_url?.includes('token'))
-            ));
-
-          if (hasImages) {
-            if (__DEV__) console.log('[GRNDetailScreen] Background images processed, updating UI');
-            setData(parsed);
-          }
-        }
-      } catch (error) {
-        console.warn('[GRNDetailScreen] Error checking for image updates:', error);
-      }
-    };
-
-    // Check every 2 seconds for up to 30 seconds
-    const interval = setInterval(checkForUpdates, 2000);
-    const timeout = setTimeout(() => clearInterval(interval), 30000);
-
-    return () => {
-      clearInterval(interval);
-      clearTimeout(timeout);
-    };
-  }, [id, data]);
 
   // Handle edit action
   const handleEditGRN = () => {

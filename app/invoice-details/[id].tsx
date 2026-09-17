@@ -131,7 +131,7 @@ function InvoiceDetailScreen() {
     if (!userProfile && (!user || !session)) {
       router.replace('/login');
     }
-  }, [user, session]);
+  }, [user, session, userProfile]);
 
   // Fetch invoice details
   const fetchInvoiceDetails = async () => {
@@ -173,8 +173,10 @@ function InvoiceDetailScreen() {
   };
 
   useEffect(() => {
-    fetchInvoiceDetails();
-  }, [id]);
+    if (userProfile || (user && session)) {
+      fetchInvoiceDetails();
+    }
+  }, [id, user, session, userProfile]);
 
   // Handle GRN navigation
   const handleViewGRN = (grnId: string) => {
