@@ -223,7 +223,7 @@ export const ImagePreviewGrid: React.FC<ImagePreviewGridProps> = ({
                 style={styles.imageWrapper}
                 onPress={() => onImagePress?.(imageData)}
                 activeOpacity={onImagePress ? 0.7 : 1}
-                disabled={isDeleting || isUploading}
+                disabled={!onImagePress || isDeleting || isUploading}
               >
                 <Image
                   source={{ uri: imageData.imageUrl }}
@@ -277,6 +277,12 @@ export const ImagePreviewGrid: React.FC<ImagePreviewGridProps> = ({
               {editable && !isDeleting && (
                 <TouchableOpacity
                   style={styles.removeButton}
+                  accessible
+                  accessibilityRole="button"
+                  accessibilityLabel={`Remove image ${index + 1}`}
+                  accessibilityHint="Removes this image from the goods receipt"
+                  testID={`remove-image-${index}`}
+                  hitSlop={8}
                   onPress={() => {
                     if (onRemoveImage || imageData.id) {
                       handleRemoveImage(imageData);
@@ -402,6 +408,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 10,
+    elevation: 11,
   },
   metadataContainer: {
     position: 'absolute',

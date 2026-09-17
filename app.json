@@ -22,9 +22,6 @@
       "isTabletOnly": false,
       "requireFullScreen": true,
       "backgroundColor": "#11222c",
-      "config": {
-        "deploymentTarget": "15.1"
-      },
       "privacyManifests": {
         "NSPrivacyTracking": false,
         "NSPrivacyTrackingDomains": [],
