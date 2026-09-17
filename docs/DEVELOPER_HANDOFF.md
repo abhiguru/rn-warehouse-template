@@ -1,5 +1,28 @@
 # Developer handoff — v0.2.1-demo
 
+## Active source-demo continuation — 2026-09-18
+
+This file retains the immutable `v0.2.1-demo` checkpoint below as history. For
+the active handoff, create sibling clones named `rn-warehouse-template` and
+`supabase-warehouse-template`, check out and fast-forward
+`handoff/source-demo-20260917` in both, and record the resolved full SHAs. Before
+setup, verify the backend's active and documented CI workflow copies are
+byte-identical and that both jobs pin the mobile checkout SHA.
+
+Follow the backend `docs/CLEAN_INSTALL.md` isolation procedure with a unique
+Compose project and unused loopback ports. Run backend setup/doctor/health first;
+then create the mobile environment with its repository script, point it at the
+same localhost API origin, and run doctor, bootstrap check, Android export, and
+the native debug build. Do not copy configuration or credentials from another
+checkout. Prove setup rerun, stop, restart, configuration preservation, and
+Android login/connectivity before treating onboarding as reproducible.
+
+This branch is a source-demo candidate, not a production or all-platform
+release. Physical camera/hardware, iOS, production SMS/TLS/operations,
+distribution, printing, sensors, and unsupported integrations remain separate
+gates. The branch becomes delivered only after both PRs merge and required CI
+passes on the resulting default-branch commits.
+
 **Follow-up status — 2026-09-15:** See [the dated verification ledger](RESUME_VERIFICATION_2026-09-15.md)
 for current local checks and open native/review gates. Evidence below dated
 2026-09-14 or earlier describes the historical release checkpoint. The
