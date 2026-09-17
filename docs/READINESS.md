@@ -1,6 +1,26 @@
-# Readiness — 2026-09-14
+# Readiness
 
-## Active source-demo handoff candidate — 2026-09-18
+## Current source-demo status — 2026-09-18
+
+The Android-first source-demo scope is accepted. Matching `v0.2.2-demo` tags
+remain forthcoming until both reviewed changes merge, default-branch CI passes,
+the exact tags pass release validation, and both source-only prereleases are
+published. Use matching current `main` branches during preparation and matching
+`v0.2.2-demo` tags after publication.
+
+The verified scope and separate gates are recorded in
+[SOURCE_DEMO_ACCEPTANCE.md](SOURCE_DEMO_ACCEPTANCE.md). The scoped maintainer
+redistribution attestation and reconciled third-party inventory are recorded in
+[ATTRIBUTION_REVIEW.md](ATTRIBUTION_REVIEW.md). There is no unresolved
+source-only attribution blocker.
+
+Physical Android hardware/camera, iOS, production SMS/TLS/operations,
+app-store/native-binary distribution, printing, sensors, payments, Realtime, and
+unsupported integrations remain separate gates.
+
+## Historical readiness records
+
+### Source-demo handoff candidate — 2026-09-18 (historical pre-merge record)
 
 PR #10 is the reviewed Android source-demo handoff candidate. Its companion
 backend PR #7 pins the exact remotely available mobile commit in both

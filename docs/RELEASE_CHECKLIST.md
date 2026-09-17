@@ -1,5 +1,30 @@
 # Open-source release checklist
 
+## v0.2.2-demo source-only prerelease — 2026-09-18
+
+- [x] Android-first source-demo acceptance summarized in
+      `SOURCE_DEMO_ACCEPTANCE.md`; physical hardware, iOS, production, printing,
+      sensors, payments, and unsupported integrations remain separate gates.
+- [x] Maintainer redistribution attestation and tracked-material/third-party
+      inventory reconciled in `ATTRIBUTION_REVIEW.md` and
+      `../THIRD_PARTY_NOTICES.md`; no unresolved source-only provenance blocker.
+- [x] Exact `v0.2.2-demo` positive/negative gate tests and required local checks
+      pass: 165 Jest tests, 18 setup/gate tests, typecheck, zero-error lint, Expo
+      compatibility/export, zero-vulnerability audit, and source/history scan.
+- [ ] Required hosted PR/default-branch checks pass for the release-preparation
+      change.
+- [ ] Mobile change merges through review and resulting `main` CI passes.
+- [ ] Backend pins that exact mobile `main` SHA in both byte-identical CI copies,
+      merges through review, and resulting paired CI passes.
+- [ ] Matching immutable tags pass tag validation before either GitHub release is
+      published.
+- [ ] Both GitHub releases are prereleases with generated source archives only,
+      matching cross-links, and no uploaded binaries or latest-stable designation.
+
+The final tag SHAs and workflow/release URLs are recorded in GitHub release notes
+and the external delivery ledger to avoid circular commit-SHA documentation.
+Historical release records follow.
+
 **Follow-up status — 2026-09-15:** See [the dated verification ledger](RESUME_VERIFICATION_2026-09-15.md)
 for current local checks and open native/review gates. Evidence below dated
 2026-09-14 or earlier describes the historical release checkpoint. The

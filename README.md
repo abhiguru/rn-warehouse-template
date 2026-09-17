@@ -1,40 +1,30 @@
 # rn-warehouse-template
 
-## Current source-demo handoff candidate
+## Current source-demo release
 
-The immutable `v0.2.1-demo` instructions below describe the historical
-2026-09-14 checkpoint. For the active source-demo handoff, clone this repository
-and its backend sibling, check out `handoff/source-demo-20260917` in both, and
-fast-forward both branches before setup. Record both resolved full SHAs. The
-backend branch's two byte-identical CI workflow copies pin the reviewed mobile
-SHA; verify that pin equals the mobile checkout before running acceptance.
+The Android-first source-demo acceptance is complete. The matching
+`v0.2.2-demo` tag is forthcoming until exact-tag validation passes and both
+source-only GitHub prereleases are published. During preparation, use matching
+current `main` branches; after publication, use `v0.2.2-demo` in both this
+repository and its backend sibling. Existing tags remain immutable.
 
-Use the clean-install isolation procedure in the backend repository to select a
-unique `WAREHOUSE_PROJECT_NAME` and unused loopback ports. Generate each
-checkout's configuration through its scripts; do not copy `.env`, credentials,
-database files, or workspace-only plans from another installation. The active
-handoff remains a candidate until both PRs merge and CI passes on the resulting
-default-branch commits. Existing `v0.2.1-demo` tags will not move.
-
-**Follow-up status — 2026-09-15:** See [the dated verification ledger](docs/RESUME_VERIFICATION_2026-09-15.md)
-for current local checks and open native/review gates. Evidence below dated
-2026-09-14 or earlier describes the historical release checkpoint. The
-pending mobile authentication/privacy fixes and backend follow-up commits
-are outside the immutable `v0.2.1-demo` tags. Local follow-up results do
-not establish merged-main CI or physical-device acceptance.
+The public acceptance summary is in
+[SOURCE_DEMO_ACCEPTANCE.md](docs/SOURCE_DEMO_ACCEPTANCE.md). Ownership and
+third-party review evidence is in
+[ATTRIBUTION_REVIEW.md](docs/ATTRIBUTION_REVIEW.md). Physical hardware, iOS,
+production operations, signed/native distribution, printing, sensors, and
+unsupported integrations remain separate gates.
 
 Open-source React Native warehouse application source, built with Expo,
 Supabase, Redux Toolkit, and Expo Router.
 
-**Current main supports a local-demo backend.** The companion
+**Current main supports the verified local-demo backend.** The companion
 [supabase-warehouse-template](https://github.com/abhiguru/supabase-warehouse-template)
 now passes API tests for custom login, customer isolation, GRN, dispatch,
-invoice saving and PDF downloads. Native-device acceptance and production
-readiness are still incomplete. For a reproducible checkpoint, use
-**`v0.2.1-demo` in both repositories**; `main` may advance. The
-[demo prerelease](https://github.com/abhiguru/rn-warehouse-template/releases/tag/v0.2.1-demo)
-records the exact tested commit pair and publishes no native binaries. See
-[READINESS.md](docs/READINESS.md) for verified results and remaining work.
+invoice saving and PDF downloads. The supported API-36 emulator workflow is
+accepted; physical-device and production readiness remain separate. The
+[v0.2.2-demo prerelease](https://github.com/abhiguru/rn-warehouse-template/releases/tag/v0.2.2-demo)
+records the final compatible pair and publishes generated source archives only.
 
 ## Start locally
 
@@ -49,7 +39,7 @@ For command-line Android work, set `ANDROID_HOME` to the SDK root and add
 implicitly adopt an emulator owned by another checkout or user.
 
 ```bash
-git clone --branch v0.2.1-demo https://github.com/abhiguru/rn-warehouse-template.git
+git clone --branch v0.2.2-demo https://github.com/abhiguru/rn-warehouse-template.git
 cd rn-warehouse-template
 npm ci
 node scripts/create-env.mjs
@@ -100,10 +90,9 @@ npm run ios
 Expo generates the ignored native directories as needed. Use `npm start` for
 subsequent Metro sessions. Use native builds as the baseline; the latest Expo Go
 app may not support this older SDK, and Expo Go does not validate native plugins,
-permissions, or build settings. Native builds/device workflows have not yet been
-verified by this release. Use [NATIVE_ACCEPTANCE.md](docs/NATIVE_ACCEPTANCE.md)
-to record native build and physical-device results; do not substitute a JS bundle
-or a green CI badge for device acceptance.
+permissions, or build settings. The API-36 emulator debug build and supported
+source-demo workflows are verified; physical-device hardware and iOS remain
+separate. See [NATIVE_ACCEPTANCE.md](docs/NATIVE_ACCEPTANCE.md).
 
 For a bundle-only check:
 
@@ -136,7 +125,7 @@ before distributing a branded build. Never put private server keys in
 
 ## Checks and release status
 
-The mobile test suite includes 100 automated Jest tests across 9 suites, covering
+The mobile test suite includes 165 automated Jest tests across 20 suites, covering
 fail-closed secure storage, token refresh, OTP verification, and client-side
 telemetry redaction (URLs, headers, user PII, breadcrumbs). See [READINESS.md](docs/READINESS.md)
 and [TELEMETRY_AND_PRIVACY.md](docs/TELEMETRY_AND_PRIVACY.md).
