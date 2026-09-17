@@ -8,7 +8,6 @@ import {
   RefreshControl,
   Alert,
   Platform,
-  UIManager,
   Pressable,
   LayoutAnimation,
   ActivityIndicator,
@@ -48,11 +47,6 @@ interface PricingSection {
   itemId: string;
   data: ItemStoragePrice[];
   totalCount: number; // Total count even when collapsed
-}
-
-// Enable LayoutAnimation on Android
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
 // Filter configuration for Item Pricing List

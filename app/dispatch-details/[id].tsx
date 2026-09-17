@@ -137,7 +137,7 @@ function DispatchDetailScreen() {
     if (!userProfile && (!user || !session)) {
       router.replace('/login');
     }
-  }, [user, session]);
+  }, [user, session, userProfile]);
 
   // Fetch dispatch details
   const fetchDispatchDetails = useCallback(async () => {
@@ -186,7 +186,9 @@ function DispatchDetailScreen() {
   }, [id]);
 
   useEffect(() => {
-    fetchDispatchDetails();
+    if (userProfile || (user && session)) {
+      fetchDispatchDetails();
+    }
 
     // Cleanup: abort any pending request on unmount
     return () => {
@@ -194,7 +196,7 @@ function DispatchDetailScreen() {
         abortControllerRef.current.abort();
       }
     };
-  }, [id, fetchDispatchDetails]);
+  }, [id, fetchDispatchDetails, user, session, userProfile]);
 
   // Track focus count to skip refetch on initial mount
   const focusCountRef = useRef(0);

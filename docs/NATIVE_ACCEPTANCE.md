@@ -1,5 +1,23 @@
 # Native and physical-device acceptance
 
+## Source-demo emulator acceptance — 2026-09-18
+
+The PR #10 candidate was built from fresh public sibling clones on Linux with
+Android SDK/API 36 and installed on `Medium_Phone_API_36.1`. The exact candidate
+completed 608 Gradle tasks, bundled 3,072 modules, fetched loopback bootstrap
+configuration, logged in through the native UI, and restored an authenticated
+cold start to Orders. Earlier acceptance on the same reviewed code line covered
+theme/status-bar and modal restoration, protected navigation, Android photo
+picker upload/reopen/delete/storage cleanup, and native PDF share/open flows.
+Clean onboarding proved setup rerun, owned stop/restart, configuration/data
+preservation, and ownership-scoped shutdown.
+
+The development-client bootstrap URL is explicitly ignored as an application
+deep link; three regressions and the fresh native cold-start scenario pass. This
+is emulator evidence for the supported source demo. Physical camera capture,
+physical-device hardware, iOS, printing, and sensors remain unverified release
+gates and are not implied by this result.
+
 **Follow-up status — 2026-09-15:** See [the dated verification ledger](RESUME_VERIFICATION_2026-09-15.md)
 for current local checks and open native/review gates. Evidence below dated
 2026-09-14 or earlier describes the historical release checkpoint. The

@@ -11,9 +11,9 @@ import {
   StyleSheet,
   ScrollView,
   Pressable,
-  StatusBar,
 } from 'react-native';
 import { router } from 'expo-router';
+import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/hooks/useTheme';
@@ -121,9 +121,8 @@ export default function PrivacyPolicyScreen() {
         },
       ]}
     >
-      <StatusBar
+      <EdgeToEdgeStatusBar
         barStyle={isDarkMode ? 'light-content' : 'dark-content'}
-        backgroundColor={FIORI.colors.background}
       />
 
       {/* Navigation Bar */}

@@ -21,7 +21,6 @@ import {
   TouchableOpacity,
   LayoutAnimation,
   Platform,
-  UIManager,
   ActivityIndicator,
 } from 'react-native';
 import { router } from 'expo-router';
@@ -30,11 +29,6 @@ import { useListColors } from '@/hooks/useListColors';
 import { getRecentDispatchedOrders } from '@/services/dispatch-service';
 import { RecentDispatchedOrderCard } from './list-items/RecentDispatchedOrderCard';
 import type { RecentDispatchedOrder } from '@/types/dispatch.types';
-
-// Enable LayoutAnimation on Android
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
 
 interface RecentDispatchedOrdersSectionProps {
   /** Optional trigger to force refresh (increment to refresh) */

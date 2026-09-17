@@ -5,7 +5,7 @@
  * Spec: design/sap-fiori-specs/12-empty-state.md
  *
  * Displayed when configuration cannot be fetched from API.
- * Shows fallback configuration is being used.
+ * Keeps protected app content unavailable until configuration can be loaded.
  */
 
 import React, { useState } from 'react';
@@ -19,8 +19,6 @@ import {
   useColorScheme,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useAppDispatch } from '@/store/hooks';
-import { refreshPublicConfig } from '@/store/slices/configSlice';
 import { colors, darkColors } from '@/theme';
 
 // ============================================================================
@@ -71,7 +69,6 @@ const ConfigErrorScreen: React.FC<ConfigErrorScreenProps> = ({
   error,
   onRetry,
 }) => {
-  const dispatch = useAppDispatch();
   const [isRetrying, setIsRetrying] = useState(false);
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
@@ -94,7 +91,7 @@ const ConfigErrorScreen: React.FC<ConfigErrorScreenProps> = ({
     <View
       style={[styles.container, { backgroundColor: themeColors.white }]}
       accessible={true}
-      accessibilityLabel="Configuration error screen. Using fallback configuration."
+      accessibilityLabel="Configuration error screen. Protected features are unavailable."
     >
       <View style={styles.content}>
         {/* Illustration - Fiori Warning State */}
@@ -124,8 +121,8 @@ const ConfigErrorScreen: React.FC<ConfigErrorScreenProps> = ({
         <Text
           style={[styles.description, { color: themeColors.fiori.text.secondary }]}
         >
-          We couldn't load the latest app configuration. Using fallback
-          configuration instead.
+          We couldn't load the latest app configuration. Retry after restoring
+          the connection.
         </Text>
 
         {/* Error Details */}
@@ -183,10 +180,9 @@ const ConfigErrorScreen: React.FC<ConfigErrorScreenProps> = ({
             <Text
               style={[styles.infoText, { color: themeColors.fiori.text.secondary }]}
             >
-              • The app is using cached or hardcoded configuration{'\n'}
-              • Some features might not be up to date{'\n'}
-              • API keys might be outdated{'\n'}
-              • Try connecting to the internet and retrying
+              • Protected features remain unavailable until configuration loads{'\n'}
+              • Restore the API connection, then retry{'\n'}
+              • No cached business data is shown on this screen
             </Text>
           </View>
         </View>
@@ -226,22 +222,6 @@ const ConfigErrorScreen: React.FC<ConfigErrorScreenProps> = ({
           )}
         </Pressable>
 
-        {/* Continue Button - Fiori Tertiary */}
-        <Pressable
-          style={({ pressed }) => [
-            styles.continueButton,
-            pressed && { backgroundColor: themeColors.gray[100] },
-          ]}
-          onPress={() => {
-            // User will proceed with app using fallback config
-          }}
-          accessibilityRole="button"
-          accessibilityLabel="Continue with fallback configuration"
-        >
-          <Text style={[styles.continueButtonText, { color: themeColors.primary }]}>
-            Continue Anyway
-          </Text>
-        </Pressable>
       </View>
 
       {/* Footer */}
@@ -389,20 +369,6 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   retryButtonText: {
-    fontSize: FIORI.button.fontSize,
-    fontWeight: FIORI.button.fontWeight,
-  },
-
-  // Continue Button - Fiori Tertiary
-  continueButton: {
-    height: FIORI.button.height,
-    width: '100%',
-    borderRadius: FIORI.button.borderRadius,
-    backgroundColor: 'transparent',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  continueButtonText: {
     fontSize: FIORI.button.fontSize,
     fontWeight: FIORI.button.fontWeight,
   },

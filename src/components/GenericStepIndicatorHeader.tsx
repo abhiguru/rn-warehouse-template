@@ -14,10 +14,10 @@ import {
   Platform,
   TouchableOpacity,
   Alert,
-  StatusBar,
   ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
 import { Ionicons } from '@expo/vector-icons';
 import Svg, { Path } from 'react-native-svg';
 import theme from '@/theme';
@@ -346,10 +346,8 @@ export const GenericStepIndicatorHeader: React.FC<GenericStepIndicatorHeaderProp
 
   return (
     <>
-      <StatusBar
+      <EdgeToEdgeStatusBar
         barStyle="light-content"
-        backgroundColor={theme.colors.primary}
-        translucent={false}
       />
       <View style={styles.safeAreaBackground}>
         <View

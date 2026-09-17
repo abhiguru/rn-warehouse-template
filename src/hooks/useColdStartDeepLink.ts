@@ -31,10 +31,23 @@ interface ColdStartDeepLinkResult {
  * @param url - Full URL (e.g., "gcsreactnative://grn-details/123")
  * @returns Route path (e.g., "/grn-details/123") or null if invalid
  */
-function parseDeepLinkUrl(url: string): string | null {
+export function parseDeepLinkUrl(url: string): string | null {
   try {
-    // Handle custom scheme (gcsreactnative://path)
     const scheme = process.env.EXPO_PUBLIC_APP_SCHEME || 'warehousemanager';
+
+    // Expo uses this URL only to boot the development client. It is not an
+    // application route and must not be replayed after auth restoration.
+    const developmentClientPrefix = `${scheme}://expo-development-client`;
+    if (
+      url === developmentClientPrefix ||
+      url.startsWith(`${developmentClientPrefix}/`) ||
+      url.startsWith(`${developmentClientPrefix}?`) ||
+      url.startsWith(`${developmentClientPrefix}#`)
+    ) {
+      return null;
+    }
+
+    // Handle custom scheme (gcsreactnative://path)
     const schemeMatch = url.match(new RegExp(`^${scheme}:\\/\\/(.+)$`));
     if (schemeMatch) {
       return '/' + schemeMatch[1];
@@ -90,7 +103,9 @@ function isProtectedRoute(path: string): boolean {
  * }
  * ```
  */
-export function useColdStartDeepLink(): ColdStartDeepLinkResult {
+export function useColdStartDeepLink(
+  authCheckSettled: boolean = true
+): ColdStartDeepLinkResult {
   const router = useRouter();
   const currentPath = usePathname();
   const { userProfile, isLoading } = useAppSelector((state) => state.auth);
@@ -163,7 +178,7 @@ export function useColdStartDeepLink(): ColdStartDeepLinkResult {
   // Navigate to pending URL after auth completes
   useEffect(() => {
     // Skip if no pending URL or still loading auth
-    if (!pendingUrlRef.current || isLoading) return;
+    if (!pendingUrlRef.current || !authCheckSettled || isLoading) return;
 
     // Skip if already processed
     if (processed) return;
@@ -181,12 +196,15 @@ export function useColdStartDeepLink(): ColdStartDeepLinkResult {
       setPendingAuth(false);
       setProcessed(true);
 
-      // Navigate to the pending route
-      // Use replace to avoid back navigation to splash/login
-      router.replace(pendingRoute as Href);
+      // Expo Router may already hold the native target while the root auth
+      // gate is mounted. Avoid remounting the same detail screen and issuing
+      // its protected requests twice.
+      if (currentPath !== pendingRoute) {
+        router.replace(pendingRoute as Href);
+      }
     } else if (!isLoading) {
       // Auth loaded but user not authenticated
-      // Let the auth guard redirect to login
+      // Let the protected screen's settled auth guard redirect to login.
       if (__DEV__) {
         console.log('[ColdStartDeepLink] User not authenticated, clearing pending URL');
       }
@@ -195,7 +213,14 @@ export function useColdStartDeepLink(): ColdStartDeepLinkResult {
       setPendingAuth(false);
       setProcessed(true);
     }
-  }, [userProfile, isLoading, processed, router]);
+  }, [
+    userProfile,
+    isLoading,
+    processed,
+    router,
+    authCheckSettled,
+    currentPath,
+  ]);
 
   return {
     initialUrl,

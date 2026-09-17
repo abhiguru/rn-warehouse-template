@@ -1,5 +1,5 @@
 import 'react-native-gesture-handler';
-import { LogBox } from 'react-native';
+import { LogBox, Platform } from 'react-native';
 import * as SystemUI from 'expo-system-ui';
 import * as NavigationBar from 'expo-navigation-bar';
 
@@ -16,9 +16,11 @@ import { en, registerTranslation } from 'react-native-paper-dates';
 // Register English locale for react-native-paper-dates (pure JS date picker)
 registerTranslation('en', en);
 
-// Set native root view background color BEFORE any React code runs
-// This prevents white flash during navigation transitions (Bug #33647)
-SystemUI.setBackgroundColorAsync('#11222c');
+// Set the native root background before React renders on supported platforms.
+// Android edge-to-edge mode rejects this call.
+if (Platform.OS !== 'android') {
+  SystemUI.setBackgroundColorAsync('#11222c');
+}
 
 import React, { useEffect, useState, useMemo } from 'react';
 
@@ -40,14 +42,12 @@ import {
   useSafeAreaInsets,
 } from 'react-native-safe-area-context';
 import {
-  Platform,
   View,
   ActivityIndicator,
   Text,
   useColorScheme,
   Image,
 } from 'react-native';
-import { StatusBar } from 'expo-status-bar';
 import {
   DarkTheme,
   DefaultTheme,
@@ -66,7 +66,8 @@ import ConfigErrorScreen from '@/components/ConfigErrorScreen';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { OfflineBanner } from '@/components/OfflineBanner';
 import { createLogger } from '@/utils/logger';
-import { useAppSelector } from '@/store/hooks';
+import { useAppDispatch, useAppSelector } from '@/store/hooks';
+import { initializeAuth } from '@/store/slices/authSlice';
 import {
   selectThemePreference,
   selectResolvedThemeMode,
@@ -80,6 +81,7 @@ import {
 import { UpdatePrompt } from '@/components/UpdatePrompt';
 import { AppStateManager } from '@/components/AppStateManager';
 import { ForceUpdateModal } from '@/components/ForceUpdateModal';
+import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
 import { useColdStartDeepLink } from '@/hooks/useColdStartDeepLink';
 
 // Initialize Sentry/GlitchTip crash reporting immediately (before any React code)
@@ -290,6 +292,8 @@ function NavigationStack({ screenBackground }: { screenBackground: string }) {
 
 // Themed content component that uses Redux state for theme
 function ThemedContent() {
+  const dispatch = useAppDispatch();
+  const [authCheckSettled, setAuthCheckSettled] = useState(false);
   const themePreference = useAppSelector(selectThemePreference);
   const systemColorScheme = useColorScheme();
   const resolvedMode = selectResolvedThemeMode(
@@ -298,8 +302,26 @@ function ThemedContent() {
   );
   const isDarkMode = resolvedMode === 'dark';
 
-  // I10: Handle cold start deep links
-  useColdStartDeepLink();
+  // Restore credentials before any route screen can redirect an initially
+  // empty Redux auth state. Deep links can bypass the tab layout, so auth
+  // restoration belongs at the root navigation boundary.
+  useEffect(() => {
+    let mounted = true;
+    void dispatch(initializeAuth())
+      .unwrap()
+      // initializeAuth records its failure in Redux; the root only needs to
+      // release the navigation gate after the attempt settles.
+      .catch(() => undefined)
+      .finally(() => {
+        if (mounted) setAuthCheckSettled(true);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [dispatch]);
+
+  // I10: Handle cold start deep links only after the root auth check settles.
+  useColdStartDeepLink(authCheckSettled);
 
   // Memoize the paper theme to avoid recreating on every render
   const currentPaperTheme = useMemo(
@@ -313,15 +335,13 @@ function ThemedContent() {
   // So we use gray[50] for both modes as it represents the "background" color
   const screenBackground = themeColors.gray[50];
 
-  // Update system UI and navigation bar colors when theme changes (Android only)
+  // Keep the platform-specific system background in sync with theme changes.
   useEffect(() => {
     if (Platform.OS === 'android') {
-      // Set the root background color
-      SystemUI.setBackgroundColorAsync(screenBackground);
-      // Set the navigation bar background color
-      NavigationBar.setBackgroundColorAsync(screenBackground);
       // Set navigation bar button style (light icons for dark bg, dark icons for light bg)
       NavigationBar.setButtonStyleAsync(isDarkMode ? 'light' : 'dark');
+    } else {
+      SystemUI.setBackgroundColorAsync(screenBackground);
     }
   }, [screenBackground, isDarkMode]);
 
@@ -341,12 +361,32 @@ function ThemedContent() {
     };
   }, [isDarkMode, screenBackground, themeColors]);
 
+  if (!authCheckSettled) {
+    return (
+      <View
+        style={{
+          flex: 1,
+          justifyContent: 'center',
+          alignItems: 'center',
+          backgroundColor: screenBackground,
+        }}
+      >
+        <EdgeToEdgeStatusBar
+          barStyle={isDarkMode ? 'light-content' : 'dark-content'}
+        />
+        <ActivityIndicator size="large" color={themeColors.primary} />
+      </View>
+    );
+  }
+
   return (
     // ThemeProvider ensures React Navigation uses our colors (prevents white flash)
     <ThemeProvider value={navigationTheme}>
       {/* Root View fills entire screen INCLUDING status bar area */}
       <View style={{ flex: 1, backgroundColor: screenBackground }}>
-        <StatusBar style={isDarkMode ? 'light' : 'dark'} translucent />
+        <EdgeToEdgeStatusBar
+          barStyle={isDarkMode ? 'light-content' : 'dark-content'}
+        />
         <PaperProvider theme={currentPaperTheme}>
           <SafeAreaProvider>
             <GestureHandlerRootView style={{ flex: 1 }}>
@@ -374,6 +414,11 @@ function BootstrapApp() {
   }, []);
 
   const bootstrapApp = async () => {
+    // A retry must leave the prior error state before starting. Otherwise a
+    // successful refresh completes behind the still-mounted error screen.
+    setConfigError(null);
+    setIsReady(false);
+
     try {
       console.log('[Bootstrap] Starting app bootstrap');
 
@@ -420,6 +465,7 @@ function BootstrapApp() {
         await new Promise(resolve => setTimeout(resolve, 3000)); // 3 second minimum
       }
 
+      setConfigError(null);
       setIsReady(true);
     } catch (error: any) {
       console.error('[Bootstrap] Unexpected bootstrap error:', error);

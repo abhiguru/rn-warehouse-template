@@ -11,11 +11,11 @@ import React, { useEffect, useState } from 'react';
 import { Tabs } from 'expo-router';
 import { ActivityIndicator, ImageBackground, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { StatusBar } from 'expo-status-bar';
 import { useRouter } from 'expo-router';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { loadAuthSlice } from '@/store/loadAuthSlice';
 import FioriTabBar from '@/components/FioriTabBar';
+import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
 import { useTheme } from '@/hooks/useTheme';
 
 export default function TabsLayout() {
@@ -72,7 +72,9 @@ export default function TabsLayout() {
   return (
     <View style={{ flex: 1, backgroundColor: screenBg }}>
       {/* StatusBar explicitly set for tab screens */}
-      <StatusBar style={isDarkMode ? 'light' : 'dark'} translucent />
+      <EdgeToEdgeStatusBar
+        barStyle={isDarkMode ? 'light-content' : 'dark-content'}
+      />
       <ImageBackground
         source={require('../../assets/logo.png')}
         style={{ flex: 1 }}

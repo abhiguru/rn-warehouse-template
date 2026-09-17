@@ -220,11 +220,14 @@ const grnFormSlice = createSlice({
         }
       }
     },
-    completeItemImageUpload: (state, action: PayloadAction<{ itemId: string; imageId: string; storagePath?: string; imageUrl?: string; fileSize?: number; mimeType?: string }>) => {
+    completeItemImageUpload: (state, action: PayloadAction<{ itemId: string; imageId: string; persistedImageId?: string; storagePath?: string; imageUrl?: string; fileSize?: number; mimeType?: string }>) => {
       const item = state.items.find(item => item.grn_trl_id === action.payload.itemId);
       if (item && item.trl_images) {
         const image = item.trl_images.find(img => img.id === action.payload.imageId);
         if (image) {
+          if (action.payload.persistedImageId) {
+            image.id = action.payload.persistedImageId;
+          }
           if (action.payload.storagePath) {
             image.storagePath = action.payload.storagePath;
           }

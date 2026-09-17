@@ -15,6 +15,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 // complex transactional flows (register -> upload -> confirm with rollback),
 // so they are kept unchanged to preserve debugging capability
 import { executeRPC, createErrorResponse } from '@/utils/serviceErrorHandler';
+import { isTemporaryGRNImageId } from './imageId';
 
 export interface ImageUploadProgress {
   loaded: number;
@@ -460,7 +461,7 @@ export const deleteGRNImage = async (
   imageId: string,
   _imageUrl: string
 ): Promise<{ success: boolean; error?: string }> => {
-  if (imageId.startsWith('temp_')) return { success: true };
+  if (isTemporaryGRNImageId(imageId)) return { success: true };
   return deleteWarehouseImage('grn', imageId);
 };
 
@@ -572,7 +573,7 @@ export const saveImageMetadataAfterGRN = async (
     const supabase = await getSupabaseWithJWT();
 
     // Check if we have a non-temp ID that needs to be passed to the RPC
-    const hasExistingId = imageData.id && !imageData.id.startsWith('temp_');
+    const hasExistingId = imageData.id && !isTemporaryGRNImageId(imageData.id);
 
     // Always use the RPC function which should handle user authentication properly
 
@@ -634,7 +635,7 @@ export const savePendingImageMetadata = async (
 
     // Save header images
     for (const image of headerImages) {
-      if (image.storagePath && (!image.id || image.id.startsWith('temp_'))) {
+      if (image.storagePath && isTemporaryGRNImageId(image.id)) {
         // If the ID has temp_edit_ prefix, extract the original ID
         const imageToSave = { ...image };
         if (image.id?.startsWith('temp_edit_')) {
@@ -654,7 +655,7 @@ export const savePendingImageMetadata = async (
 
     // Save item images
     for (const { itemId, image } of itemImages) {
-      if (image.storagePath && (!image.id || image.id.startsWith('temp_'))) {
+      if (image.storagePath && isTemporaryGRNImageId(image.id)) {
         // If the ID has temp_edit_ prefix, extract the original ID
         const imageToSave = { ...image };
         if (image.id?.startsWith('temp_edit_')) {
@@ -881,10 +882,10 @@ export const uploadDeferredImages = async (
   const deferredHeaderImages = headerImages.filter(img => {
     const hasLocalUrl = img.imageUrl && img.imageUrl.startsWith('file://');
     const hasNoStoragePath = !img.storagePath;
-    const isNotAlreadyUploaded = !img.id || img.id.startsWith('temp_');
+    const isNotAlreadyUploaded = isTemporaryGRNImageId(img.id);
 
     // Skip if image already has a real database ID (was already uploaded)
-    if (img.id && !img.id.startsWith('temp_')) {
+    if (!isTemporaryGRNImageId(img.id)) {
       return false;
     }
 
@@ -900,7 +901,7 @@ export const uploadDeferredImages = async (
       const hasNoStoragePath = !img.storagePath;
 
       // Skip if image already has a real database ID
-      if (img.id && !img.id.startsWith('temp_')) {
+      if (!isTemporaryGRNImageId(img.id)) {
         return false;
       }
 

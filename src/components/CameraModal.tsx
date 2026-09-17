@@ -14,10 +14,10 @@ import {
     Modal,
     ActivityIndicator,
     Platform,
-    StatusBar,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
 import { CameraView, useCameraPermissions, FlashMode } from 'expo-camera';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import theme from '@/theme';
@@ -144,7 +144,7 @@ export const CameraModal: React.FC<CameraModalProps> = ({
     if (previewUri) {
         return (
             <Modal visible={visible} animationType="fade" statusBarTranslucent>
-                <StatusBar barStyle="light-content" backgroundColor="black" />
+                <EdgeToEdgeStatusBar barStyle="light-content" active={visible} />
                 <View style={styles.container}>
                     <Image
                         source={{ uri: previewUri }}
@@ -173,7 +173,7 @@ export const CameraModal: React.FC<CameraModalProps> = ({
 
     return (
         <Modal visible={visible} animationType="slide" statusBarTranslucent>
-            <StatusBar barStyle="light-content" backgroundColor="black" />
+            <EdgeToEdgeStatusBar barStyle="light-content" active={visible} />
             <View style={styles.container}>
                 <CameraView
                     ref={cameraRef}

@@ -16,7 +16,6 @@ import {
   TouchableOpacity,
   LayoutAnimation,
   Platform,
-  UIManager,
   ActivityIndicator,
 } from 'react-native';
 import { router } from 'expo-router';
@@ -25,11 +24,6 @@ import { useListColors } from '@/hooks/useListColors';
 import { getDispatchListWithItems, Dispatch } from '@/services/dispatch-service';
 import { MemoizedDispatchItem } from './list-items/MemoizedDispatchItem';
 import theme from '@/theme';
-
-// Enable LayoutAnimation on Android
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
 
 interface RecentDispatchesSectionProps {
   /** Customer UUID to fetch dispatches for */

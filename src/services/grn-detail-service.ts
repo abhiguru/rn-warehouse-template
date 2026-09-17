@@ -1,5 +1,4 @@
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { executeRPC } from '@/utils/serviceErrorHandler';
 // Import canonical types (snake_case) - fully migrated
 import type {
@@ -167,14 +166,14 @@ interface GrnDetailsWithProcessedImages extends RpcGrnDetails {
   processed_header_images?: ProcessedImage[];
 }
 
-// Background image processing - fires and forgets
-const processImagesInBackground = async (
-  grnId: string,
+// Process signed image URLs only after the current caller has successfully
+// fetched the GRN. Protected detail data and signed URLs are not persisted.
+const processImagesForDisplay = async (
   grnData: GrnDetailsWithProcessedImages,
   headerImages: RpcImageInfo[]
 ): Promise<void> => {
   const startTime = Date.now();
-  if (__DEV__) console.log('[GRNDetailService] Starting background image processing...');
+  if (__DEV__) console.log('[GRNDetailService] Starting image processing...');
 
   try {
     // Create all image processing promises at once
@@ -205,14 +204,9 @@ const processImagesInBackground = async (
 
     // Wait for ALL images to process in parallel
     await Promise.all(allPromises);
-    if (__DEV__) console.log('[GRNDetailService] Background images processed:', Date.now() - startTime, 'ms');
-
-    // Cache the updated GRN data with signed URLs to AsyncStorage
-    const cacheKey = `grn_detail_${grnId}`;
-    await AsyncStorage.setItem(cacheKey, JSON.stringify(grnData));
-    if (__DEV__) console.log('[GRNDetailService] Cached GRN with processed images to AsyncStorage');
+    if (__DEV__) console.log('[GRNDetailService] Images processed:', Date.now() - startTime, 'ms');
   } catch (error) {
-    console.warn('[GRNDetailService] Background image processing error:', error);
+    console.warn('[GRNDetailService] Image processing error:', error);
   }
 
   const totalTime = Date.now() - startTime;
@@ -303,11 +297,10 @@ export const getGRNDetails = async (grnId: string): Promise<GRNDetailsResponse> 
       console.log('[GRNDetailService] Returning data immediately. Will process', totalImages, 'images in background...');
     }
 
-    // Fire-and-forget background image processing
+    // Finish caller-authorized image signing before returning. This avoids a
+    // persistent cross-account cache of protected rows and bearer URLs.
     if (totalImages > 0) {
-      processImagesInBackground(grnId, responseData.grn, headerImages).catch(err => {
-        console.warn('[GRNDetailService] Background image processing failed:', err);
-      });
+      await processImagesForDisplay(responseData.grn, headerImages);
     }
 
     return {

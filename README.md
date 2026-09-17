@@ -1,5 +1,21 @@
 # rn-warehouse-template
 
+## Current source-demo handoff candidate
+
+The immutable `v0.2.1-demo` instructions below describe the historical
+2026-09-14 checkpoint. For the active source-demo handoff, clone this repository
+and its backend sibling, check out `handoff/source-demo-20260917` in both, and
+fast-forward both branches before setup. Record both resolved full SHAs. The
+backend branch's two byte-identical CI workflow copies pin the reviewed mobile
+SHA; verify that pin equals the mobile checkout before running acceptance.
+
+Use the clean-install isolation procedure in the backend repository to select a
+unique `WAREHOUSE_PROJECT_NAME` and unused loopback ports. Generate each
+checkout's configuration through its scripts; do not copy `.env`, credentials,
+database files, or workspace-only plans from another installation. The active
+handoff remains a candidate until both PRs merge and CI passes on the resulting
+default-branch commits. Existing `v0.2.1-demo` tags will not move.
+
 **Follow-up status — 2026-09-15:** See [the dated verification ledger](docs/RESUME_VERIFICATION_2026-09-15.md)
 for current local checks and open native/review gates. Evidence below dated
 2026-09-14 or earlier describes the historical release checkpoint. The
@@ -26,6 +42,11 @@ Prerequisites: Node.js **22.18+** and npm. Native Android builds also need Andro
 Studio, Android SDK, and a compatible JDK. iOS builds require macOS and Xcode
 16.1+ for this SDK; app-store submission requirements should be checked separately.
 This tree uses Expo SDK 54 / React Native 0.81.
+
+For command-line Android work, set `ANDROID_HOME` to the SDK root and add
+`$ANDROID_HOME/emulator` and `$ANDROID_HOME/platform-tools` to `PATH`. Verify
+`emulator -list-avds` and `adb devices -l` before selecting a device; do not
+implicitly adopt an emulator owned by another checkout or user.
 
 ```bash
 git clone --branch v0.2.1-demo https://github.com/abhiguru/rn-warehouse-template.git

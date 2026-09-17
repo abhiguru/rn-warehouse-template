@@ -18,9 +18,9 @@ import {
   LayoutAnimation,
   Dimensions,
   Modal,
-  StatusBar,
 } from 'react-native';
 import { router } from 'expo-router';
+import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { LineChart } from 'react-native-gifted-charts';
 import { ReportHeader, KPIGrid, ReportEmptyState, type KPIItem } from '@/components/reports';
@@ -412,7 +412,10 @@ const StockTrendChart: React.FC<StockTrendChartProps> = ({ trends }) => {
         onRequestClose={() => setIsFullscreen(false)}
       >
         <View style={[styles.fullscreenContainer, { backgroundColor: fiori.colors.cardBackground }]}>
-          <StatusBar barStyle="dark-content" />
+          <EdgeToEdgeStatusBar
+            barStyle="dark-content"
+            active={isFullscreen}
+          />
 
           {/* Header */}
           <View style={[styles.fullscreenHeader, { borderBottomColor: fiori.colors.divider }]}>

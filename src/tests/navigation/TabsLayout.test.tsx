@@ -7,6 +7,7 @@ import { initializeAuth } from '@/store/slices/authSlice';
 import { loadAuthSlice } from '@/store/loadAuthSlice';
 import { useRouter } from 'expo-router';
 import { useTheme } from '@/hooks/useTheme';
+import { StatusBar } from 'react-native';
 
 jest.mock('react-native', () => {
   const React = require('react');
@@ -32,6 +33,12 @@ jest.mock('react-native', () => {
         { style, testID: 'tabs-background' },
         children
       ),
+    Platform: {
+      OS: 'ios',
+    },
+    StatusBar: {
+      setBarStyle: jest.fn(),
+    },
   };
 });
 jest.mock('react-native-safe-area-context', () => {
@@ -45,16 +52,6 @@ jest.mock('react-native-safe-area-context', () => {
     }: {
       children?: React.ReactNode;
     }) => React.createElement(View, { ...props, testID: 'tabs-safe-area' }, children),
-  };
-});
-
-jest.mock('expo-status-bar', () => {
-  const React = require('react');
-  const { View } = require('react-native');
-
-  return {
-    StatusBar: (props: Record<string, unknown>) =>
-      React.createElement(View, { ...props, testID: 'tabs-status-bar' }),
   };
 });
 
@@ -390,10 +387,13 @@ describe('TabsLayout authentication gate', () => {
     authState.userProfile = { id: 'profile-1', role: 'customer' };
     await settleRestore(restore);
 
-    expect(getTestId(renderer.root, 'tabs-status-bar').props).toMatchObject({
-      style: 'light',
-      translucent: true,
-    });
+    expect(StatusBar.setBarStyle.mock.calls).toEqual([
+      ['light-content', false],
+    ]);
+    expect(StatusBar.setBarStyle).toHaveBeenCalledWith(
+      'light-content',
+      false
+    );
     expect(
       getTestId(renderer.root, 'tabs-safe-area').props.style
     ).toEqual(

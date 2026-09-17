@@ -16,12 +16,8 @@
  */
 
 import React, { useState, useEffect, useCallback, useRef, useMemo, memo } from 'react';
-import { View, Text, StyleSheet, RefreshControl, Pressable, LayoutAnimation, Vibration, Platform, UIManager } from 'react-native';
+import { View, Text, StyleSheet, RefreshControl, Pressable, LayoutAnimation, Vibration } from 'react-native';
 
-// Enable LayoutAnimation on Android
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
 import { FlashList } from '@shopify/flash-list';
 import { ActivityIndicator, Badge, IconButton, Portal, Snackbar, Chip } from 'react-native-paper';
 import { router } from 'expo-router';

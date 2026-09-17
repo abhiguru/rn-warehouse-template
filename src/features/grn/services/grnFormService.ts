@@ -2,6 +2,7 @@ import * as Crypto from 'expo-crypto';
 import { getAuthenticatedClient, getCurrentConfig } from '@/config/supabaseConfig';
 import { GRNHeaderData, GRNItemData, GRNImageData } from '@/store/slices/grnFormSlice';
 import { savePendingImageMetadata, uploadDeferredImages } from './imageUploadService';
+import { isTemporaryGRNImageId } from './imageId';
 // M3 Fix: Import executeRPC for potential future refactoring
 // Note: Current RPC methods have custom error handling (E5 fix) or extensive debug logging
 // and are not migrated to executeRPC pattern to preserve their specialized behavior
@@ -40,6 +41,30 @@ interface UpdateGRNPayload {
     note?: string;     // Item-level note
   })[];
 }
+
+const withUploadTimeout = async <T>(
+  uploadPromise: Promise<T>,
+  timeoutResult: T,
+  timeoutMessage: string,
+  timeoutMs = 30000
+): Promise<T> => {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
+  try {
+    const timeoutPromise = new Promise<T>((resolve) => {
+      timeoutId = setTimeout(() => {
+        console.warn(timeoutMessage);
+        resolve(timeoutResult);
+      }, timeoutMs);
+    });
+
+    return await Promise.race([uploadPromise, timeoutPromise]);
+  } finally {
+    if (timeoutId !== undefined) {
+      clearTimeout(timeoutId);
+    }
+  }
+};
 
 // ============================================================================
 // CHECK GRN EXISTS
@@ -369,15 +394,11 @@ export const createGRN = async (payload: CreateGRNPayload) => {
           rpcResult.item_mapping
         );
 
-        // Set a 30 second timeout for image uploads
-        const timeoutPromise = new Promise<{ success: false; uploadedCount: number; errors: string[] }>((resolve) => {
-          setTimeout(() => {
-            console.warn('[GRNFormService] 📸 Image upload timeout - continuing without waiting');
-            resolve({ success: false, uploadedCount: 0, errors: ['Upload timeout - images will be uploaded in background'] });
-          }, 30000);
-        });
-
-        const uploadResult = await Promise.race([uploadPromise, timeoutPromise]);
+        const uploadResult = await withUploadTimeout(
+          uploadPromise,
+          { success: false, uploadedCount: 0, errors: ['Upload timeout - images will be uploaded in background'] },
+          '[GRNFormService] 📸 Image upload timeout - continuing without waiting'
+        );
 
         console.log('[GRNFormService] 📸 Deferred image upload result:', uploadResult);
 
@@ -429,7 +450,7 @@ export const updateGRN = async (grnId: string, payload: UpdateGRNPayload) => {
     const isValidUUID = (id: string | undefined | null): boolean => {
       if (!id || typeof id !== 'string') return false;
       // Temp IDs start with "item-" or "temp_" - these are NOT valid UUIDs
-      if (id.startsWith('item-') || id.startsWith('temp_')) return false;
+      if (id.startsWith('item-') || isTemporaryGRNImageId(id)) return false;
       // Basic UUID format check (8-4-4-4-12 hex characters)
       const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
       return uuidRegex.test(id);
@@ -598,7 +619,7 @@ export const updateGRN = async (grnId: string, payload: UpdateGRNPayload) => {
         });
         if (img.storagePath) {
           rpcImages.push({
-            ...(img.id && !img.id.startsWith('temp_') && { id: img.id }), // Include real IDs for existing images
+            ...(img.id && !isTemporaryGRNImageId(img.id) && { id: img.id }), // Include real IDs for existing images
             storage_path: img.storagePath, // ✅ Required by actual backend
             image_type: 'header', // ✅ Required by actual backend
             original_filename: img.fileName || null,
@@ -622,7 +643,7 @@ export const updateGRN = async (grnId: string, payload: UpdateGRNPayload) => {
           if (img.storagePath) {
             // For item images, we need to link them to the GRN item ID
             const imagePayload: any = {
-              ...(img.id && !img.id.startsWith('temp_') && { id: img.id }), // Include real IDs for existing images
+              ...(img.id && !isTemporaryGRNImageId(img.id) && { id: img.id }), // Include real IDs for existing images
               storage_path: img.storagePath, // ✅ Required by actual backend
               image_type: 'item', // ✅ Required by actual backend
               original_filename: img.fileName || null,
@@ -807,7 +828,7 @@ export const updateGRN = async (grnId: string, payload: UpdateGRNPayload) => {
       const hasNoStoragePath = !img.storagePath;
 
       // Skip if image already has a real database ID (was already uploaded during image selection)
-      if (img.id && !img.id.startsWith('temp_')) {
+      if (!isTemporaryGRNImageId(img.id)) {
         console.log('[GRNFormService] Skipping already-uploaded header image:', { id: img.id, fileName: img.fileName });
         return false;
       }
@@ -824,7 +845,7 @@ export const updateGRN = async (grnId: string, payload: UpdateGRNPayload) => {
           const hasNoStoragePath = !img.storagePath;
 
           // Skip if image already has a real database ID
-          if (img.id && !img.id.startsWith('temp_')) {
+          if (!isTemporaryGRNImageId(img.id)) {
             console.log('[GRNFormService] Skipping already-uploaded item image:', { id: img.id, fileName: img.fileName });
             return false;
           }
@@ -858,15 +879,11 @@ export const updateGRN = async (grnId: string, payload: UpdateGRNPayload) => {
           itemsForUpload
         );
 
-        // Set a 30 second timeout for image uploads
-        const timeoutPromise = new Promise<{ success: false; uploadedCount: number; errors: string[] }>((resolve) => {
-          setTimeout(() => {
-            console.warn('[GRNFormService] 📸 Image upload timeout during update - continuing without waiting');
-            resolve({ success: false, uploadedCount: 0, errors: ['Upload timeout - images will be uploaded in background'] });
-          }, 30000);
-        });
-
-        const uploadResult = await Promise.race([uploadPromise, timeoutPromise]);
+        const uploadResult = await withUploadTimeout(
+          uploadPromise,
+          { success: false, uploadedCount: 0, errors: ['Upload timeout - images will be uploaded in background'] },
+          '[GRNFormService] 📸 Image upload timeout during update - continuing without waiting'
+        );
 
         console.log('[GRNFormService] 📸 Deferred image upload result for update:', uploadResult);
 

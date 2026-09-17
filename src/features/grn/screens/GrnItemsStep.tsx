@@ -31,7 +31,8 @@ import { useGRNForm } from '@/hooks';
 import * as ImagePicker from 'expo-image-picker';
 import { GRNStepIndicator } from '@/components/GRNStepIndicator';
 import { GRN_STEPS, STEP_NUMBERS, getCompletedSteps } from '@/constants/grnSteps';
-import { uploadGRNItemImage, validateImageFile } from '@/features/grn/services/imageUploadService';
+import { deleteGRNImage, uploadGRNItemImage, validateImageFile } from '@/features/grn/services/imageUploadService';
+import { isTemporaryGRNImageId } from '@/features/grn/services/imageId';
 import ItemsSummaryBottomSheet from '@/features/grn/components/ItemsSummaryBottomSheet';
 import { HorizontalItemForm, ItemFormData, HorizontalItemFormRef } from '@/features/grn/components/HorizontalItemForm';
 import { validateStep2 } from '@/features/grn/schemas/grnValidation';
@@ -343,10 +344,11 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
     }));
   };
 
-  const handleImageUploadComplete = (imageData: GRNImageData) => {
+  const handleImageUploadComplete = (imageData: GRNImageData, tempImageId: string) => {
     dispatch(completeItemImageUpload({
       itemId: currentItem.grn_trl_id,
-      imageId: imageData.id,
+      imageId: tempImageId,
+      persistedImageId: imageData.id,
       imageUrl: imageData.imageUrl,
       storagePath: imageData.storagePath,
       fileSize: imageData.fileSize,
@@ -354,7 +356,7 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
     }));
     setCurrentItem((prev) => ({
       ...prev,
-      trl_images: (prev.trl_images || []).map((img) => (img.id === imageData.id ? { ...img, ...imageData } : img)),
+      trl_images: (prev.trl_images || []).map((img) => (img.id === tempImageId ? { ...img, ...imageData } : img)),
     }));
   };
 
@@ -362,7 +364,16 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
     dispatch(failItemImageUpload({ itemId: currentItem.grn_trl_id, imageId: '', error }));
   };
 
-  const handleImageRemove = (imageId: string) => {
+  const handleImageRemove = async (imageId: string) => {
+    const image = (currentItem.trl_images || []).find((candidate) => candidate.id === imageId);
+    if (image && !isTemporaryGRNImageId(image.id)) {
+      const result = await deleteGRNImage(image.id, image.imageUrl);
+      if (!result.success) {
+        Alert.alert('Delete Failed', result.error || 'Failed to delete image');
+        return;
+      }
+    }
+
     dispatch(removeItemImage({ itemId: currentItem.grn_trl_id, imageId }));
     setCurrentItem((prev) => ({
       ...prev,
@@ -381,7 +392,7 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
       }
 
       const tempImageData: GRNImageData = {
-        id: `temp-${Date.now()}`,
+        id: `temp_${Date.now()}`,
         imageUrl: asset.uri,
         fileName: asset.fileName || 'item-image.jpg',
         fileSize: asset.fileSize || 0,
@@ -397,17 +408,17 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
         try {
           const uploadResult = await uploadGRNItemImage(asset, effectiveGrnId, currentItem.grn_trl_id);
           const uploadedImageData: GRNImageData = {
-            id: uploadResult.imageId || `uploaded-${Date.now()}`,
+            id: uploadResult.imageId || tempImageData.id,
             fileName: uploadResult.metadata?.fileName || 'item-image.jpg',
             imageUrl: uploadResult.imageUrl || '',
-            storagePath: uploadResult.imageUrl,
+            storagePath: uploadResult.metadata?.storagePath,
             uploadStatus: uploadResult.success ? 'completed' : 'failed',
             fileSize: uploadResult.metadata?.fileSize,
             mimeType: uploadResult.metadata?.mimeType,
             uploadTimestamp: uploadResult.metadata?.uploadTimestamp,
             error: uploadResult.error,
           };
-          handleImageUploadComplete(uploadedImageData);
+          handleImageUploadComplete(uploadedImageData, tempImageData.id);
         } catch (error) {
           console.error('[GrnItemsStep] Upload failed:', error);
         }

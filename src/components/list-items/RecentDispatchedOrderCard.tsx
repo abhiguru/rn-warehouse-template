@@ -20,8 +20,6 @@ import {
   StyleSheet,
   Pressable,
   LayoutAnimation,
-  Platform,
-  UIManager,
   Vibration,
 } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
@@ -29,11 +27,6 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { formatNumber, formatDate } from '@/utils/formatters';
 import type { RecentDispatchedOrder } from '@/types/dispatch.types';
 import type { ListColors } from '@/hooks/useListColors';
-
-// Enable LayoutAnimation on Android
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
 
 // ============================================================================
 // TYPES

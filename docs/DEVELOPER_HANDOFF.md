@@ -1,5 +1,35 @@
 # Developer handoff — v0.2.1-demo
 
+## Active source-demo continuation — 2026-09-18
+
+This file retains the immutable `v0.2.1-demo` checkpoint below as history. For
+the active handoff, create sibling clones named `rn-warehouse-template` and
+`supabase-warehouse-template`, check out and fast-forward
+`handoff/source-demo-20260917` in both, and record the resolved full SHAs. Before
+setup, verify the backend's active and documented CI workflow copies are
+byte-identical and that both jobs pin the mobile checkout SHA.
+
+Follow the backend `docs/CLEAN_INSTALL.md` isolation procedure with a unique
+Compose project and unused loopback ports. Run backend setup/doctor/health first;
+then create the mobile environment with its repository script, point it at the
+same localhost API origin, and run doctor, bootstrap check, Android export, and
+the native debug build. Do not copy configuration or credentials from another
+checkout. Prove setup rerun, stop, restart, configuration preservation, and
+Android login/connectivity before treating onboarding as reproducible.
+
+This branch is a source-demo candidate, not a production or all-platform
+release. Physical camera/hardware, iOS, production SMS/TLS/operations,
+distribution, printing, sensors, and unsupported integrations remain separate
+gates. The branch becomes delivered only after both PRs merge and required CI
+passes on the resulting default-branch commits.
+
+The 2026-09-18 fresh-clone rehearsal now passes dependency install, generated
+configuration, backend bootstrap, Android debug build/install, login, native
+picker and PDF sharing, setup rerun, owned stop/restart, and authenticated cold
+restoration. The acceptance-discovered development-client route defect is fixed
+and regression-tested. Use the backend workflow pin to identify the exact
+compatible mobile commit; repeat required checks on the merged pair.
+
 **Follow-up status — 2026-09-15:** See [the dated verification ledger](RESUME_VERIFICATION_2026-09-15.md)
 for current local checks and open native/review gates. Evidence below dated
 2026-09-14 or earlier describes the historical release checkpoint. The
@@ -21,6 +51,14 @@ native development needs a compatible JDK (17 or 21), SDK platform 36, build too
 36.0.0, platform tools, and an emulator or USB device. Expo SDK 54 / React Native
 0.81.5 remain selected by the lockfile. Allow space for Docker images, npm,
 the Android SDK/NDK, and Gradle caches. iOS requires macOS/Xcode and is untested.
+
+For command-line Android work, export the installed SDK root as `ANDROID_HOME`
+and add `$ANDROID_HOME/emulator` and `$ANDROID_HOME/platform-tools` to `PATH`.
+Run `emulator -list-avds`, select a suitable API-36 AVD, start it with
+`emulator -avd "$AVD_NAME"`, discover its serial with `adb devices -l`, and
+confirm ownership/identity with `adb -s "$EMULATOR_SERIAL" emu avd name` before
+adding reverse mappings. Record whether the rehearsal started that emulator;
+never stop an emulator the rehearsal did not start.
 
 ```bash
 git clone --branch v0.2.1-demo https://github.com/abhiguru/supabase-warehouse-template.git

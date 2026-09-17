@@ -13,10 +13,8 @@ import {
     StyleSheet,
     TextInput,
     TouchableOpacity,
-    Platform,
     ActivityIndicator,
     LayoutAnimation,
-    UIManager,
 } from 'react-native';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -34,11 +32,6 @@ import { DISPATCH_STEPS, DISPATCH_STEP_NUMBERS, getDispatchCompletedSteps } from
 import { toLocalISODate } from '@/utils/formatters';
 import { GhostTextInput } from '@/components/GhostTextInput';
 import { getTopVehicleSuggestion } from '@/services/vehicle-suggestion-service';
-
-// Enable LayoutAnimation on Android
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-    UIManager.setLayoutAnimationEnabledExperimental(true);
-}
 
 type DispatchHeaderStepProps = {
     mode: 'create' | 'edit';
@@ -244,9 +237,10 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
                                             style={[styles.input, { color: colors.gray900 }]}
                                             value={header.disp_no}
                                             onChangeText={(text) => handleDispNoChange(text.toUpperCase())}
-                                            placeholder="D####"
+                                            placeholder="I####"
                                             placeholderTextColor={colors.gray400}
                                             autoCapitalize="characters"
+                                            maxLength={8}
                                         />
                                     </View>
                                 )}
