@@ -4,13 +4,11 @@ import {
 } from '@/config/supabaseConfig';
 import { getAuthToken, getRefreshToken } from '@/utils/authTokenUtils';
 import {
-  isJWTSignatureError,
   createErrorResponse,
   executeRPC,
+  handleGlobalAuthError,
 } from '@/utils/serviceErrorHandler';
 import { PAGINATION } from '@/config/cacheConfig';
-import { store } from '@/store';
-import { forceLogoutOnInvalidToken } from '@/store/slices/authSlice';
 import {
   Order,
   OrderItem,
@@ -35,19 +33,6 @@ import type {
   RpcEnhancedGrnItem,
   RpcSearchMetadata,
 } from '@/types/rpc-canonical.types';
-
-/**
- * Handle JWT signature errors by forcing logout
- * Call this whenever you detect a PGRST301/JWSInvalidSignature error
- */
-function handleJWTError(error: unknown): void {
-  if (isJWTSignatureError(error)) {
-    console.warn('[OrderService] JWT signature invalid - forcing logout');
-    store.dispatch(
-      forceLogoutOnInvalidToken('JWT signature invalid. Please sign in again.')
-    );
-  }
-}
 
 // Order Service - Frontend uses "Order" terminology, backend uses "Cart"
 export class OrderService {
@@ -532,8 +517,8 @@ export class OrderService {
           code: error.code,
         });
 
-        // Check for JWT signature error and force logout
-        handleJWTError(error);
+        // Definitive token/session failures clear local auth immediately.
+        handleGlobalAuthError(error);
 
         // Check if it's a network error
         if (

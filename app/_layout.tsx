@@ -375,6 +375,11 @@ function BootstrapApp() {
   }, []);
 
   const bootstrapApp = async () => {
+    // A retry must leave the prior error state before starting. Otherwise a
+    // successful refresh completes behind the still-mounted error screen.
+    setConfigError(null);
+    setIsReady(false);
+
     try {
       console.log('[Bootstrap] Starting app bootstrap');
 
@@ -421,6 +426,7 @@ function BootstrapApp() {
         await new Promise(resolve => setTimeout(resolve, 3000)); // 3 second minimum
       }
 
+      setConfigError(null);
       setIsReady(true);
     } catch (error: any) {
       console.error('[Bootstrap] Unexpected bootstrap error:', error);

@@ -38,7 +38,7 @@ const getForceLogoutAction = () => {
  * Called automatically by createErrorResponse and executeRPC
  */
 export function handleGlobalAuthError(error: unknown): void {
-  if (isJWTSignatureError(error)) {
+  if (isJWTSignatureError(error) || isSessionInvalidationError(error)) {
     console.warn('[ServiceErrorHandler] Auth error detected globally - forcing logout');
     try {
       const store = getStore();
@@ -50,6 +50,26 @@ export function handleGlobalAuthError(error: unknown): void {
       console.error('[ServiceErrorHandler] Failed to dispatch logout:', e);
     }
   }
+}
+
+/**
+ * Detect the backend's definitive active-session rejection without treating
+ * every authorization failure as a reason to discard local credentials.
+ */
+export function isSessionInvalidationError(error: unknown): boolean {
+  if (!error) return false;
+
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof error === 'object' && error !== null &&
+          typeof (error as Record<string, unknown>).message === 'string'
+        ? String((error as Record<string, unknown>).message)
+        : typeof error === 'string'
+          ? error
+          : '';
+
+  return message.toLowerCase().includes('session expired or revoked');
 }
 
 /**
