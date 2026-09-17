@@ -23,7 +23,7 @@ jobs:
           node-version: '22'
           cache: npm
       - name: Reviewed source-demo tag only
-        run: test "$GITHUB_REF_TYPE" = tag && test "$GITHUB_REF_NAME" = v0.2.1-demo
+        run: bash scripts/check-release.sh
       - run: npm ci
       - run: npx expo install --check
       - run: npm test -- --silent

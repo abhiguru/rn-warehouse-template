@@ -2,8 +2,8 @@
 
 ## Source-demo emulator acceptance — 2026-09-18
 
-The PR #10 candidate was built from fresh public sibling clones on Linux with
-Android SDK/API 36 and installed on `Medium_Phone_API_36.1`. The exact candidate
+The source-demo release baseline was built from fresh public sibling clones on
+Linux with Android SDK/API 36 and installed on `Medium_Phone_API_36.1`. That build
 completed 608 Gradle tasks, bundled 3,072 modules, fetched loopback bootstrap
 configuration, logged in through the native UI, and restored an authenticated
 cold start to Orders. Earlier acceptance on the same reviewed code line covered
@@ -18,7 +18,9 @@ is emulator evidence for the supported source demo. Physical camera capture,
 physical-device hardware, iOS, printing, and sensors remain unverified release
 gates and are not implied by this result.
 
-**Follow-up status — 2026-09-15:** See [the dated verification ledger](RESUME_VERIFICATION_2026-09-15.md)
+## Historical pre-release evidence
+
+See [the dated verification ledger](RESUME_VERIFICATION_2026-09-15.md)
 for current local checks and open native/review gates. Evidence below dated
 2026-09-14 or earlier describes the historical release checkpoint. The
 pending mobile authentication/privacy fixes and backend follow-up commits
@@ -136,7 +138,7 @@ commit, backend commit, OS, build ID, device model and test timestamp.
    has been established in this release.
 6. **Deep links:** cold/warm launch, Unicode and repeated parameters, redirects,
    malformed percent encodings and unauthorized routes. Decoder 0.5.0 and
-   navigation regressions are included in v0.2.1-demo; this still requires actual
+   navigation regressions are included in `v0.2.2-demo`; this still requires actual
    native route acceptance. Use only the isolated test app for adversarial input.
 7. **Documents:** open/share all four generated PDFs; verify private URLs expire
    and cannot disclose another customer's document through the API.
