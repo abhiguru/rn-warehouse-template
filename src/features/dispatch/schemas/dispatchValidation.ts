@@ -14,7 +14,7 @@ export const step1Schema = yup.object().shape({
     .string()
     .required('Dispatch number is required')
     .min(5, 'Dispatch number must be at least 5 characters')
-    .max(15, 'Dispatch number must be at most 15 characters')
+    .max(8, 'Dispatch number must be at most 8 characters')
     .matches(/^[A-Z0-9]+$/, 'Dispatch number must be alphanumeric (uppercase)'),
 
   disp_date: yup

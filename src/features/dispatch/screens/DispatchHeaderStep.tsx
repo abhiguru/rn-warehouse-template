@@ -237,9 +237,10 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
                                             style={[styles.input, { color: colors.gray900 }]}
                                             value={header.disp_no}
                                             onChangeText={(text) => handleDispNoChange(text.toUpperCase())}
-                                            placeholder="D####"
+                                            placeholder="I####"
                                             placeholderTextColor={colors.gray400}
                                             autoCapitalize="characters"
+                                            maxLength={8}
                                         />
                                     </View>
                                 )}
