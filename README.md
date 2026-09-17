@@ -43,6 +43,11 @@ Studio, Android SDK, and a compatible JDK. iOS builds require macOS and Xcode
 16.1+ for this SDK; app-store submission requirements should be checked separately.
 This tree uses Expo SDK 54 / React Native 0.81.
 
+For command-line Android work, set `ANDROID_HOME` to the SDK root and add
+`$ANDROID_HOME/emulator` and `$ANDROID_HOME/platform-tools` to `PATH`. Verify
+`emulator -list-avds` and `adb devices -l` before selecting a device; do not
+implicitly adopt an emulator owned by another checkout or user.
+
 ```bash
 git clone --branch v0.2.1-demo https://github.com/abhiguru/rn-warehouse-template.git
 cd rn-warehouse-template

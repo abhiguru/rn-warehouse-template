@@ -45,6 +45,14 @@ native development needs a compatible JDK (17 or 21), SDK platform 36, build too
 0.81.5 remain selected by the lockfile. Allow space for Docker images, npm,
 the Android SDK/NDK, and Gradle caches. iOS requires macOS/Xcode and is untested.
 
+For command-line Android work, export the installed SDK root as `ANDROID_HOME`
+and add `$ANDROID_HOME/emulator` and `$ANDROID_HOME/platform-tools` to `PATH`.
+Run `emulator -list-avds`, select a suitable API-36 AVD, start it with
+`emulator -avd "$AVD_NAME"`, discover its serial with `adb devices -l`, and
+confirm ownership/identity with `adb -s "$EMULATOR_SERIAL" emu avd name` before
+adding reverse mappings. Record whether the rehearsal started that emulator;
+never stop an emulator the rehearsal did not start.
+
 ```bash
 git clone --branch v0.2.1-demo https://github.com/abhiguru/supabase-warehouse-template.git
 git clone --branch v0.2.1-demo https://github.com/abhiguru/rn-warehouse-template.git
