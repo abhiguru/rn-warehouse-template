@@ -31,10 +31,23 @@ interface ColdStartDeepLinkResult {
  * @param url - Full URL (e.g., "gcsreactnative://grn-details/123")
  * @returns Route path (e.g., "/grn-details/123") or null if invalid
  */
-function parseDeepLinkUrl(url: string): string | null {
+export function parseDeepLinkUrl(url: string): string | null {
   try {
-    // Handle custom scheme (gcsreactnative://path)
     const scheme = process.env.EXPO_PUBLIC_APP_SCHEME || 'warehousemanager';
+
+    // Expo uses this URL only to boot the development client. It is not an
+    // application route and must not be replayed after auth restoration.
+    const developmentClientPrefix = `${scheme}://expo-development-client`;
+    if (
+      url === developmentClientPrefix ||
+      url.startsWith(`${developmentClientPrefix}/`) ||
+      url.startsWith(`${developmentClientPrefix}?`) ||
+      url.startsWith(`${developmentClientPrefix}#`)
+    ) {
+      return null;
+    }
+
+    // Handle custom scheme (gcsreactnative://path)
     const schemeMatch = url.match(new RegExp(`^${scheme}:\\/\\/(.+)$`));
     if (schemeMatch) {
       return '/' + schemeMatch[1];
