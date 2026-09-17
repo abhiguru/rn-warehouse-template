@@ -23,6 +23,13 @@ distribution, printing, sensors, and unsupported integrations remain separate
 gates. The branch becomes delivered only after both PRs merge and required CI
 passes on the resulting default-branch commits.
 
+The 2026-09-18 fresh-clone rehearsal now passes dependency install, generated
+configuration, backend bootstrap, Android debug build/install, login, native
+picker and PDF sharing, setup rerun, owned stop/restart, and authenticated cold
+restoration. The acceptance-discovered development-client route defect is fixed
+and regression-tested. Use the backend workflow pin to identify the exact
+compatible mobile commit; repeat required checks on the merged pair.
+
 **Follow-up status — 2026-09-15:** See [the dated verification ledger](RESUME_VERIFICATION_2026-09-15.md)
 for current local checks and open native/review gates. Evidence below dated
 2026-09-14 or earlier describes the historical release checkpoint. The

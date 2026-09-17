@@ -1,5 +1,22 @@
 # Readiness — 2026-09-14
 
+## Active source-demo handoff candidate — 2026-09-18
+
+PR #10 is the reviewed Android source-demo handoff candidate. Its companion
+backend PR #7 pins the exact remotely available mobile commit in both
+byte-identical workflow copies. The current candidate passes 20 Jest suites / 165
+tests, typecheck, five setup checks, dependency and redacted source/history CI,
+Android export, a fresh API-36 debug build/install, login, authenticated cold
+restoration, offline/reconnect/auth isolation, GRN/dispatch/stock, cart/order,
+invoice, all four PDF flows, Android photo picker upload/display/delete, document
+sharing, navigation/deep links, status-bar lifecycle, and clean-clone onboarding.
+
+This establishes source-demo developer handoff only after both PRs merge and the
+resulting default-branch pair passes required CI and compatibility checks.
+Physical camera/hardware, iOS, production SMS/TLS/operations, distribution,
+printing, sensors, and unsupported integrations remain separate release gates.
+The immutable `v0.2.1-demo` material below is historical and its tags do not move.
+
 **Follow-up status — 2026-09-15:** See [the dated verification ledger](RESUME_VERIFICATION_2026-09-15.md)
 for current local checks and open native/review gates. Evidence below dated
 2026-09-14 or earlier describes the historical release checkpoint. The
