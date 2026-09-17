@@ -1,5 +1,5 @@
 import 'react-native-gesture-handler';
-import { LogBox } from 'react-native';
+import { LogBox, Platform } from 'react-native';
 import * as SystemUI from 'expo-system-ui';
 import * as NavigationBar from 'expo-navigation-bar';
 
@@ -16,9 +16,11 @@ import { en, registerTranslation } from 'react-native-paper-dates';
 // Register English locale for react-native-paper-dates (pure JS date picker)
 registerTranslation('en', en);
 
-// Set native root view background color BEFORE any React code runs
-// This prevents white flash during navigation transitions (Bug #33647)
-SystemUI.setBackgroundColorAsync('#11222c');
+// Set the native root background before React renders on supported platforms.
+// Android edge-to-edge mode rejects this call.
+if (Platform.OS !== 'android') {
+  SystemUI.setBackgroundColorAsync('#11222c');
+}
 
 import React, { useEffect, useState, useMemo } from 'react';
 
@@ -40,7 +42,6 @@ import {
   useSafeAreaInsets,
 } from 'react-native-safe-area-context';
 import {
-  Platform,
   View,
   ActivityIndicator,
   Text,
@@ -313,15 +314,13 @@ function ThemedContent() {
   // So we use gray[50] for both modes as it represents the "background" color
   const screenBackground = themeColors.gray[50];
 
-  // Update system UI and navigation bar colors when theme changes (Android only)
+  // Keep the platform-specific system background in sync with theme changes.
   useEffect(() => {
     if (Platform.OS === 'android') {
-      // Set the root background color
-      SystemUI.setBackgroundColorAsync(screenBackground);
-      // Set the navigation bar background color
-      NavigationBar.setBackgroundColorAsync(screenBackground);
       // Set navigation bar button style (light icons for dark bg, dark icons for light bg)
       NavigationBar.setButtonStyleAsync(isDarkMode ? 'light' : 'dark');
+    } else {
+      SystemUI.setBackgroundColorAsync(screenBackground);
     }
   }, [screenBackground, isDarkMode]);
 
