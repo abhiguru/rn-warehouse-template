@@ -12,9 +12,9 @@ import {
   Modal,
   ScrollView,
   Dimensions,
-  StatusBar,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
 import { LineChart } from 'react-native-gifted-charts';
 import { useFioriColors } from '@/theme/fioriColors';
 import theme from '@/theme';
@@ -305,7 +305,10 @@ export const SensorHistoryChart: React.FC<SensorHistoryChartProps> = ({
         onRequestClose={() => setIsFullscreen(false)}
       >
         <View style={[styles.fullscreenContainer, { backgroundColor: fiori.colors.cardBackground }]}>
-          <StatusBar barStyle="dark-content" />
+          <EdgeToEdgeStatusBar
+            barStyle="dark-content"
+            active={isFullscreen}
+          />
 
           {/* Header */}
           <View style={[styles.fullscreenHeader, { borderBottomColor: fiori.colors.divider }]}>

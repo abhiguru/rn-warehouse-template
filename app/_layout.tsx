@@ -48,7 +48,6 @@ import {
   useColorScheme,
   Image,
 } from 'react-native';
-import { StatusBar } from 'expo-status-bar';
 import {
   DarkTheme,
   DefaultTheme,
@@ -81,6 +80,7 @@ import {
 import { UpdatePrompt } from '@/components/UpdatePrompt';
 import { AppStateManager } from '@/components/AppStateManager';
 import { ForceUpdateModal } from '@/components/ForceUpdateModal';
+import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
 import { useColdStartDeepLink } from '@/hooks/useColdStartDeepLink';
 
 // Initialize Sentry/GlitchTip crash reporting immediately (before any React code)
@@ -345,7 +345,9 @@ function ThemedContent() {
     <ThemeProvider value={navigationTheme}>
       {/* Root View fills entire screen INCLUDING status bar area */}
       <View style={{ flex: 1, backgroundColor: screenBackground }}>
-        <StatusBar style={isDarkMode ? 'light' : 'dark'} translucent />
+        <EdgeToEdgeStatusBar
+          barStyle={isDarkMode ? 'light-content' : 'dark-content'}
+        />
         <PaperProvider theme={currentPaperTheme}>
           <SafeAreaProvider>
             <GestureHandlerRootView style={{ flex: 1 }}>

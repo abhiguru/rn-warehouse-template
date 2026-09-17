@@ -18,10 +18,10 @@ import {
   ActivityIndicator,
   Platform,
   Switch as RNSwitch,
-  StatusBar,
   TextInput,
 } from 'react-native';
 import { router } from 'expo-router';
+import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAppSelector, useAppDispatch } from '@/store/hooks';
@@ -306,9 +306,8 @@ const SettingsScreen: React.FC = () => {
         },
       ]}
     >
-      <StatusBar
+      <EdgeToEdgeStatusBar
         barStyle={isDarkMode ? 'light-content' : 'dark-content'}
-        backgroundColor={FIORI.colors.background}
       />
 
       {/* Fiori Navigation Bar */}

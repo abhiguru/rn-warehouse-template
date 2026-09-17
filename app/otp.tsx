@@ -16,10 +16,10 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  StatusBar,
   Pressable,
 } from 'react-native';
 import { router } from 'expo-router';
+import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useAppSelector, useAppDispatch } from '@/store/hooks';
@@ -273,9 +273,8 @@ export default function OTPScreen() {
         },
       ]}
     >
-      <StatusBar
+      <EdgeToEdgeStatusBar
         barStyle={isDarkMode ? 'light-content' : 'dark-content'}
-        backgroundColor={FIORI.colors.background}
       />
 
       {/* Hidden TextInput for OTP entry */}

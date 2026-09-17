@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, StyleSheet, ActivityIndicator, Text, StatusBar, Platform, TouchableOpacity } from 'react-native';
+import { View, StyleSheet, ActivityIndicator, Text, TouchableOpacity } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { Stack } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
 import { useAppSelector } from '@/store/hooks';
 import { router } from 'expo-router';
 import OrderManagement from '@/components/OrderManagement';
@@ -98,14 +99,6 @@ export default function CustomerOrderScreen() {
   }, [user, session, customerId]);
 
   // Configure StatusBar for this screen
-  useEffect(() => {
-    if (Platform.OS === 'android') {
-      StatusBar.setBarStyle('light-content');
-      StatusBar.setBackgroundColor('transparent');
-      StatusBar.setTranslucent(true); // Allow header to extend into status bar
-    }
-  }, []);
-
   const fetchCustomerName = async () => {
     try {
       setLoading(true);
@@ -149,7 +142,7 @@ export default function CustomerOrderScreen() {
 
   return (
     <>
-      <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
+      <EdgeToEdgeStatusBar barStyle="light-content" />
       <Stack.Screen options={{ headerShown: false }} />
       <View style={{ flex: 1, backgroundColor: colors.gray50 }}>
         {/* Custom Header that extends behind status bar */}
