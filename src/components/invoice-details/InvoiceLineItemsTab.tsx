@@ -20,6 +20,7 @@ import { InvoiceLineItemGroup, InvoiceLineItemGroupData, DispatchLineItem } from
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { formatCurrency } from '@/utils/formatters';
 import { useListColors } from '@/hooks/useListColors';
+import { calculateItemAmounts, roundMoney } from '@/utils/invoiceCalculations';
 
 // ============================================================================
 // FIORI DESIGN TOKENS (Static values only - colors are dynamic)
@@ -110,7 +111,7 @@ interface InvoiceLineItemsTabProps {
 }
 
 // Helper function to group items by GRN item
-const groupItemsByGrnItem = (
+export const groupItemsByGrnItem = (
   items: InvoiceLineItem[],
   on_view_grn?: (gr_no: string) => void,
   on_view_dispatch?: (disp_no: string) => void
@@ -134,6 +135,7 @@ const groupItemsByGrnItem = (
         grn_quantity: item.grn_quantity || 0,
         total_dispatch_qty: 0,
         charge_per_unit: charge_per_unit,
+        tax_rate: item.tax || 0,
         labour_rate: labour_rate,
         total_base_amount: 0,
         total_tax_amount: 0,
@@ -156,9 +158,22 @@ const groupItemsByGrnItem = (
     const charge_per_unit = item.charge_per_unit || item.charge || group.charge_per_unit || 0;
     const labour_rate = item.labour_rate || group.labour_rate || 0;
 
-    const baseAmount = (duration * charge_per_unit * dispatch_qty) + (dispatch_qty * labour_rate);
-    const taxAmount = item.tax || 0;
+    const taxRate = item.tax || 0;
+    const amounts = calculateItemAmounts(
+      dispatch_qty,
+      charge_per_unit,
+      labour_rate,
+      taxRate,
+      duration
+    );
+    const baseAmount = amounts.taxable_amount;
+    const taxAmount = amounts.tax_amount;
     const lineItemAmount = baseAmount;
+
+    // A group-level rate is only meaningful when every dispatch uses the same rate.
+    if (group.tax_rate !== undefined && group.tax_rate !== taxRate) {
+      group.tax_rate = undefined;
+    }
 
     // Create dispatch line item
     const dispatchItem: DispatchLineItem = {
@@ -180,9 +195,9 @@ const groupItemsByGrnItem = (
     // Add to group
     group.dispatch_items.push(dispatchItem);
     group.total_dispatch_qty += dispatch_qty;
-    group.total_base_amount += baseAmount;
-    group.total_tax_amount += taxAmount;
-    group.total_amount += (baseAmount + taxAmount);
+    group.total_base_amount = roundMoney(group.total_base_amount + baseAmount);
+    group.total_tax_amount = roundMoney(group.total_tax_amount + taxAmount);
+    group.total_amount = roundMoney(group.total_amount + amounts.item_total);
   });
 
   return Array.from(groupMap.values());

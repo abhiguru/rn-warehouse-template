@@ -563,8 +563,21 @@ function InvoiceDetailScreen() {
     })),
   ];
 
-  // Items summary
-  const summary = itemsSummary || invoice.summary;
+  // Normalize the two supported summary shapes. The detailed-items service uses
+  // camelCase while get_invoice_data returns snake_case.
+  const totalItems =
+    itemsSummary?.totalItems ??
+    itemsSummary?.total_items ??
+    invoice.summary?.total_items ??
+    lineItems.length;
+  const totalDispatchQty =
+    itemsSummary?.totalDispatchQty ??
+    itemsSummary?.total_quantity ??
+    invoice.summary?.total_quantity;
+  const lineItemsTotal =
+    itemsSummary?.totalAmount ??
+    itemsSummary?.total_amount ??
+    invoice.total;
 
   // Format date for display - Fiori spec: keep it concise
   const formattedDate = new Date(invoice.invoice_date || new Date()).toLocaleDateString('en-US', {
@@ -621,7 +634,7 @@ function InvoiceDetailScreen() {
         <InvoiceHeroHeader
           invoice_number={invoice.invoice_number || 0}
           date={invoice.invoice_date || new Date().toISOString()}
-          total_items={summary?.total_items || 0}
+          total_items={totalItems}
           total_amount={total}
           tax_amount={tax_amount}
           customer_name={invoice.customer?.name || invoice.invoice_customer_name}
@@ -664,9 +677,9 @@ function InvoiceDetailScreen() {
             <InvoiceLineItemsTab
               items={lineItems}
               loading={loading}
-              total_items={summary?.total_items}
-              total_dispatch_qty={itemsSummary?.totalDispatchQty}
-              total_amount={itemsSummary?.totalAmount || invoice.total}
+              total_items={totalItems}
+              total_dispatch_qty={totalDispatchQty}
+              total_amount={lineItemsTotal}
               on_view_grn={handleViewGRN}
               on_view_dispatch={handleViewDispatch}
             />
