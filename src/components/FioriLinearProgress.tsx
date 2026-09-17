@@ -300,7 +300,11 @@ export const FioriSegmentedProgress: React.FC<SegmentedProgressProps> = ({
         ]}
       >
         {segments.map((segment, index) => {
-          if (segment.value <= 0 || total <= 0) return null;
+          // Keep the ordinary segment value out of an inline style member
+          // expression. Reanimated's development transform treats every
+          // `.value` there as a SharedValue and otherwise emits a false warning.
+          const segmentValue = segment.value;
+          if (segmentValue <= 0 || total <= 0) return null;
 
           return (
             <View
@@ -308,7 +312,7 @@ export const FioriSegmentedProgress: React.FC<SegmentedProgressProps> = ({
               style={[
                 styles.segment,
                 {
-                  flex: segment.value,
+                  flex: segmentValue,
                   backgroundColor: segment.color,
                 },
                 // First segment gets left border radius
