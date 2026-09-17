@@ -16,7 +16,6 @@ import {
   Alert,
   LayoutAnimation,
   Platform,
-  UIManager,
   ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -29,11 +28,6 @@ import { OrderService } from '@/services/order-service';
 import type { Order, OrderItem } from '@/types/order.types';
 import type { ListColors } from '@/hooks/useListColors';
 import theme from '@/theme';
-
-// Enable LayoutAnimation on Android
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
 
 // ============================================================================
 // TYPES

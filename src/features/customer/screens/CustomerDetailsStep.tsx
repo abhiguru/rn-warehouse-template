@@ -15,7 +15,6 @@ import {
   Alert,
   Platform,
   LayoutAnimation,
-  UIManager,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
@@ -26,11 +25,6 @@ import { useCustomerForm } from '@/hooks/useCustomerForm';
 import { GenericStepIndicatorHeader } from '@/components/GenericStepIndicatorHeader';
 import { CUSTOMER_STEPS, CUSTOMER_STEP_NUMBERS, getCompletedSteps } from '@/constants/customerSteps';
 import { CustomerFormMode } from '@/types/customer.types';
-
-// Enable LayoutAnimation on Android
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
 
 // =============================================================================
 // COMPONENT

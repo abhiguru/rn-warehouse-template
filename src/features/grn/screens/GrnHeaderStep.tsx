@@ -7,9 +7,7 @@ import {
   TouchableOpacity,
   Switch,
   Alert,
-  Platform,
   LayoutAnimation,
-  UIManager,
   Keyboard,
   ActivityIndicator,
 } from 'react-native';
@@ -28,10 +26,6 @@ import { GRNStepIndicator } from '@/components/GRNStepIndicator';
 import { GRN_STEPS, STEP_NUMBERS, getCompletedSteps } from '@/constants/grnSteps';
 import { GhostTextInput, GhostTextInputRef } from '@/components/GhostTextInput';
 import { getTopVehicleSuggestion } from '@/services/vehicle-suggestion-service';
-
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
 
 type GrnHeaderStepProps = {
   mode: 'create' | 'edit';

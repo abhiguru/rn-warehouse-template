@@ -6,15 +6,9 @@ import {
   StyleSheet,
   Animated,
   LayoutAnimation,
-  Platform,
-  UIManager,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import theme from '@/theme';
-
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
 
 interface DispatchHistorySummaryProps {
   totalDispatches: number;

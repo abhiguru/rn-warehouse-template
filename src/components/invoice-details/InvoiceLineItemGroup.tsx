@@ -25,7 +25,6 @@ import {
   ScrollView,
   LayoutAnimation,
   Platform,
-  UIManager,
   Vibration,
   ViewStyle,
 } from 'react-native';
@@ -33,11 +32,6 @@ import { Surface } from 'react-native-paper';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { formatCurrency, formatNumber, formatDate } from '@/utils/formatters';
 import { useListColors, ListColors } from '@/hooks/useListColors';
-
-// Enable LayoutAnimation for Android
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
 
 // ============================================================================
 // FIORI DESIGN TOKENS (Static values only - colors are dynamic)

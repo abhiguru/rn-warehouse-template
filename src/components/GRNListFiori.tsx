@@ -16,11 +16,9 @@ import {
   FlatList,
   RefreshControl,
   Alert,
-  Platform,
   Pressable,
   Vibration,
   LayoutAnimation,
-  UIManager,
 } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
 import {
@@ -61,11 +59,6 @@ import PrintJobsBottomSheet, { PrintJobsBottomSheetRef } from '@/components/Prin
 import { printGRNRange } from '@/services/print-service';
 import { getStockStatus, getStatusColors, StockStatus } from '@/utils/stockStatus';
 import { createLogger } from '@/utils/logger';
-
-// Enable LayoutAnimation on Android
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
 
 // Dynamic theme colors hook
 import { useListColors, ListColors } from '@/hooks/useListColors';

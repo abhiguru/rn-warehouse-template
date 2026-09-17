@@ -5,8 +5,6 @@ import {
   Pressable,
   StyleSheet,
   LayoutAnimation,
-  Platform,
-  UIManager,
   Vibration,
 } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
@@ -14,11 +12,6 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import theme from '@/theme';
 import { listColors as colors } from '@/theme/listColors';
 import { CustomerDispatchItem } from '@/types/order.types';
-
-// Enable LayoutAnimation on Android
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
 
 export interface DispatchGroup {
   dispatchId: string;

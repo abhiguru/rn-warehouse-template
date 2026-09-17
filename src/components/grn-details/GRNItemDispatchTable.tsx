@@ -12,8 +12,6 @@ import {
   StyleSheet,
   TouchableOpacity,
   LayoutAnimation,
-  Platform,
-  UIManager,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { router } from 'expo-router';
@@ -21,11 +19,6 @@ import theme from '@/theme';
 import { useListColors } from '@/hooks/useListColors';
 import { DispatchRecord } from '@/services/grn-detail-service';
 import { GRNItem } from './GRNItemsTab';
-
-// Enable LayoutAnimation on Android
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
 
 interface GRNItemDispatchTableProps {
   item: GRNItem;
