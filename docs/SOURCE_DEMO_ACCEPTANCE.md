@@ -1,8 +1,9 @@
 # Source-demo acceptance
 
-Status: completed for the Android-first source demo on **2026-09-18**.
-`v0.2.2-demo` is the forthcoming immutable source-only prerelease checkpoint
-until its tag-validation workflow passes and the GitHub prerelease is published.
+Status: completed and published for the Android-first source demo on
+**2026-09-18**. Matching immutable `v0.2.2-demo` source-only prereleases
+identify mobile commit `6e6885786912fe9186285103e19de762e4ba88f8` and
+backend commit `2959881d0e46a8797a98d10da8c7139217477476`.
 
 The accepted application/backend behavior was exercised as a compatible pair.
 The final tag targets and cross-repository commit pair are recorded in the two
@@ -27,18 +28,20 @@ GitHub release notes because a commit cannot contain its own final SHA.
 - Runtime checks covered light/dark status-bar ownership, modal restoration,
   repeat Metro startup/reload, loopback containment, and the development-client
   cold-start route regression.
-- The delivered pre-release baseline passed mobile CI run
-  [35269266129](https://github.com/abhiguru/rn-warehouse-template/actions/runs/35269266129)
-  and backend CI run
-  [35269882640](https://github.com/abhiguru/supabase-warehouse-template/actions/runs/35269882640).
-  Release-preparation changes are documentation and release-gate changes and must
-  pass their own PR, default-branch, and exact-tag workflows before publication.
+- The published pair passed mobile main CI run
+  [35274817895](https://github.com/abhiguru/rn-warehouse-template/actions/runs/35274817895)
+  and tag run
+  [35276024942](https://github.com/abhiguru/rn-warehouse-template/actions/runs/35276024942),
+  plus backend main CI run
+  [35275536840](https://github.com/abhiguru/supabase-warehouse-template/actions/runs/35275536840)
+  and tag run
+  [35276027479](https://github.com/abhiguru/supabase-warehouse-template/actions/runs/35276027479).
 
 ## Supported onboarding
 
 Use matching `v0.2.2-demo` tags in this repository and
-[`supabase-warehouse-template`](https://github.com/abhiguru/supabase-warehouse-template)
-after publication. Before publication, use matching current `main` branches.
+[`supabase-warehouse-template`](https://github.com/abhiguru/supabase-warehouse-template).
+Use current `main` branches for contribution work.
 Follow the backend `docs/CLEAN_INSTALL.md`, keep both repositories as siblings,
 and verify the backend workflow pin equals the mobile commit checked out.
 
