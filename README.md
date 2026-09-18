@@ -2,11 +2,11 @@
 
 ## Current source-demo release
 
-The Android-first source-demo acceptance is complete. The matching
-`v0.2.2-demo` tag is forthcoming until exact-tag validation passes and both
-source-only GitHub prereleases are published. During preparation, use matching
-current `main` branches; after publication, use `v0.2.2-demo` in both this
-repository and its backend sibling. Existing tags remain immutable.
+The Android-first source-demo acceptance is complete. Matching
+`v0.2.2-demo` source-only GitHub prereleases were published on 2026-09-18.
+Use `v0.2.2-demo` in both this repository and its backend sibling for the
+verified release pair. Existing tags remain immutable; use current `main`
+branches for contribution work.
 
 The public acceptance summary is in
 [SOURCE_DEMO_ACCEPTANCE.md](docs/SOURCE_DEMO_ACCEPTANCE.md). Ownership and
