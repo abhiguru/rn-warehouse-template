@@ -3,8 +3,9 @@
 ## v0.2.2-demo source-only prerelease — 2026-09-18
 
 - [x] Android-first source-demo acceptance summarized in
-      `SOURCE_DEMO_ACCEPTANCE.md`; physical hardware, iOS, production, printing,
-      sensors, payments, and unsupported integrations remain separate gates.
+      `SOURCE_DEMO_ACCEPTANCE.md`; physical hardware was a separate gate at
+      publication and is covered by the later record below. iOS, production,
+      printing, sensors, payments, and unsupported integrations remain open.
 - [x] Maintainer redistribution attestation and tracked-material/third-party
       inventory reconciled in `ATTRIBUTION_REVIEW.md` and
       `../THIRD_PARTY_NOTICES.md`; no unresolved source-only provenance blocker.
@@ -27,6 +28,25 @@
 
 The final tag SHAs and workflow/release URLs are recorded in GitHub release notes
 and the external delivery ledger to avoid circular commit-SHA documentation.
+
+## Post-release physical Android acceptance — 2026-09-18
+
+- [x] Fresh debug install on physical Samsung SM-A346E, Android 15/API 35,
+      using mobile `7a9c6449c01600ccbbe92b1071df845a63d0f861` with backend
+      `1898dc79588f5db0a6d6dae520d5fa663548eb8f`.
+- [x] Admin/customer login and role screens, secure-session cold restoration,
+      logout/re-login, authenticated cold deep link, and customer denial on the
+      admin-only Users route passed.
+- [x] API-disconnect fail-closed behavior and retry recovery passed through an
+      explicitly owned USB reverse mapping.
+- [x] Initial camera denial, retry/grant, physical capture, Android Photo Picker,
+      and two-image return to the GRN item form passed.
+- [x] Invoice PDF generation, private download, cache cleanup, and native share
+      sheet passed. No external share target was selected.
+
+The run used fictional demo data. Its two reverse mappings were removed and
+Metro was stopped afterward. iOS and production/distribution gates remain open.
+
 Historical release records follow.
 
 **Follow-up status — 2026-09-15:** See [the dated verification ledger](RESUME_VERIFICATION_2026-09-15.md)

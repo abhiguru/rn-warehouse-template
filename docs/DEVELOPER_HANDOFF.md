@@ -17,7 +17,9 @@ checkout. Prove setup rerun, stop, restart, configuration preservation, and
 Android login/connectivity before treating onboarding as reproducible.
 
 This is a source-demo release, not a production or all-platform release.
-Physical camera/hardware, iOS, production SMS/TLS/operations,
+Post-release physical Android acceptance now covers USB connectivity, camera,
+picker, permission lifecycle, offline/retry, roles, deep links, secure
+restoration, and invoice PDF sharing. iOS, production SMS/TLS/operations,
 distribution, printing, sensors, and unsupported integrations remain separate
 gates. The reviewed merges, default-branch CI, exact-tag validation, and
 matching source-only prerelease publication completed on 2026-09-18.
@@ -183,7 +185,8 @@ fails its legacy table constraints; combined-rate semantics require a separate
 review. Change-category filtering is unavailable; other change-log filters remain.
 Payments/accounting integrations are not part of the documented demo workflow.
 
-Physical-device camera/USB acceptance, iOS, production scale/security, native
-telemetry delivery, retention enforcement, and privacy declarations remain
-separate checks. The scoped ownership and attribution review is complete; see
-ATTRIBUTION_REVIEW.md. A successful bundle is not a physical-device test.
+iOS, production scale/security, native telemetry delivery, retention enforcement,
+and privacy declarations remain separate checks. Physical Android camera/USB and
+the core device matrix passed after publication; see NATIVE_ACCEPTANCE.md. The
+scoped ownership and attribution review is complete; see ATTRIBUTION_REVIEW.md.
+A successful bundle still does not replace platform-specific device evidence.

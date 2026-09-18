@@ -1,5 +1,30 @@
 # Native and physical-device acceptance
 
+## Physical Android acceptance — 2026-09-18
+
+Post-release acceptance passed on a user-connected, USB-authorized physical
+Samsung SM-A346E (serial `RZC…56FB`), Android 15/API 35, with
+`ro.kernel.qemu=0`.
+The freshly installed debug package was `com.example.warehousemanager`, version
+`0.1.0`/code `1`, built from mobile
+`7a9c6449c01600ccbbe92b1071df845a63d0f861` and paired with backend
+`1898dc79588f5db0a6d6dae520d5fa663548eb8f` in the checkout-owned
+`warehouse-v021-review` project.
+
+| Case | Result |
+| --- | --- |
+| Fresh install and demo login | PASS — package was absent before install; admin and customer OTP login succeeded. |
+| Secure restoration and logout | PASS — force-stop/cold launch restored the encrypted admin session; logout cleared session/user caches and re-login succeeded. |
+| Offline and retry | PASS — removing only the API reverse mapping produced the fail-closed configuration screen; restoring it and retrying returned to authenticated Orders. |
+| Deep link and roles | PASS — authenticated cold `warehousemanager://customers` launch succeeded; customer `/users` access rendered Access Denied. |
+| Camera and picker | PASS — denial produced the permission explanation, retry/grant opened the physical Samsung camera, a captured photo returned, and Android Photo Picker returned a second image without broad media permission. |
+| PDF | PASS — invoice PDF generation/download opened Android's native share sheet with `Invoice_483303912_FY2026-2027.pdf`; no share target was selected. |
+| USB cleanup | PASS — only `tcp:28000` and `tcp:8081` were added for the isolated run; both were removed and Metro was stopped. |
+
+This run closes the physical Android core matrix. It does not establish iOS,
+production deployment, signed distribution, printer/sensor hardware, native
+telemetry delivery, or app-store acceptance.
+
 ## Source-demo emulator acceptance — 2026-09-18
 
 The source-demo release baseline was built from fresh public sibling clones on
@@ -14,9 +39,9 @@ preservation, and ownership-scoped shutdown.
 
 The development-client bootstrap URL is explicitly ignored as an application
 deep link; three regressions and the fresh native cold-start scenario pass. This
-is emulator evidence for the supported source demo. Physical camera capture,
-physical-device hardware, iOS, printing, and sensors remain unverified release
-gates and are not implied by this result.
+is emulator evidence for the supported source demo. The later physical Android
+record above supplies separate device evidence. iOS, printing, and sensors remain
+unverified gates and are not implied by the emulator result.
 
 ## Historical pre-release evidence
 

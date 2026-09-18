@@ -11,9 +11,11 @@ branches for contribution work.
 The public acceptance summary is in
 [SOURCE_DEMO_ACCEPTANCE.md](docs/SOURCE_DEMO_ACCEPTANCE.md). Ownership and
 third-party review evidence is in
-[ATTRIBUTION_REVIEW.md](docs/ATTRIBUTION_REVIEW.md). Physical hardware, iOS,
-production operations, signed/native distribution, printing, sensors, and
-unsupported integrations remain separate gates.
+[ATTRIBUTION_REVIEW.md](docs/ATTRIBUTION_REVIEW.md). A post-release physical
+Android run now covers USB, camera, picker, permission, offline/retry, role,
+deep-link, restoration, and PDF workflows. iOS, production operations,
+signed/native distribution, printing, sensors, and unsupported integrations
+remain separate gates.
 
 Open-source React Native warehouse application source, built with Expo,
 Supabase, Redux Toolkit, and Expo Router.
@@ -21,9 +23,9 @@ Supabase, Redux Toolkit, and Expo Router.
 **Current main supports the verified local-demo backend.** The companion
 [supabase-warehouse-template](https://github.com/abhiguru/supabase-warehouse-template)
 now passes API tests for custom login, customer isolation, GRN, dispatch,
-invoice saving and PDF downloads. The supported API-36 emulator workflow is
-accepted; physical-device and production readiness remain separate. The
-[v0.2.2-demo prerelease](https://github.com/abhiguru/rn-warehouse-template/releases/tag/v0.2.2-demo)
+invoice saving and PDF downloads. The supported API-36 emulator workflow and the
+post-release physical Android matrix are accepted; production readiness remains
+separate. The [v0.2.2-demo prerelease](https://github.com/abhiguru/rn-warehouse-template/releases/tag/v0.2.2-demo)
 records the final compatible pair and publishes generated source archives only.
 
 ## Start locally
@@ -91,8 +93,9 @@ Expo generates the ignored native directories as needed. Use `npm start` for
 subsequent Metro sessions. Use native builds as the baseline; the latest Expo Go
 app may not support this older SDK, and Expo Go does not validate native plugins,
 permissions, or build settings. The API-36 emulator debug build and supported
-source-demo workflows are verified; physical-device hardware and iOS remain
-separate. See [NATIVE_ACCEPTANCE.md](docs/NATIVE_ACCEPTANCE.md).
+source-demo workflows are verified. A physical Samsung Android 15/API-35 run is
+recorded separately; iOS remains untested. See
+[NATIVE_ACCEPTANCE.md](docs/NATIVE_ACCEPTANCE.md).
 
 For a bundle-only check:
 
