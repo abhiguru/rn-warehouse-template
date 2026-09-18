@@ -47,7 +47,11 @@ and verify the backend workflow pin equals the mobile commit checked out.
 
 ## Separate gates
 
-Physical camera and other Android hardware, iOS, production SMS/TLS/operations,
-app-store or signed-binary distribution, printing, sensors, Realtime, payments,
-and unsupported integrations remain separate gates. The source-demo acceptance
-does not claim production readiness or all-platform acceptance.
+A post-release physical Android run on current `main` subsequently passed USB,
+camera, picker, permission, offline/retry, secure-restoration, deep-link, role,
+and invoice-PDF workflows; see [NATIVE_ACCEPTANCE.md](NATIVE_ACCEPTANCE.md).
+This additional evidence does not change the immutable tag. iOS, production
+SMS/TLS/operations, app-store or signed-binary distribution, printing, sensors,
+Realtime, payments, and unsupported integrations remain separate gates. The
+source-demo acceptance does not claim production readiness or all-platform
+acceptance.

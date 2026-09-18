@@ -14,7 +14,8 @@ redistribution attestation and reconciled third-party inventory are recorded in
 [ATTRIBUTION_REVIEW.md](ATTRIBUTION_REVIEW.md). There is no unresolved
 source-only attribution blocker.
 
-Physical Android hardware/camera, iOS, production SMS/TLS/operations,
+Post-release physical Android hardware/camera acceptance is recorded in
+[NATIVE_ACCEPTANCE.md](NATIVE_ACCEPTANCE.md). iOS, production SMS/TLS/operations,
 app-store/native-binary distribution, printing, sensors, payments, Realtime, and
 unsupported integrations remain separate gates.
 
