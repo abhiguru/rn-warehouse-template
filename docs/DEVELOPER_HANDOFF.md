@@ -8,11 +8,13 @@ for branch-clone commands, implementation baselines and the next review tasks.
 Start with [the handoff review and prioritized open work](HANDOFF_REVIEW_2026-09-21.md)
 for the latest source changes. Ordered item 3's physical-iOS matrix was executed
 with known session-revocation UX defects; item 4 has not begun. The customer
-GRN/recent-dispatch repair is now on `fix/customer-history-access` in both
-repositories: it uses guarded customer contracts, preserves staff calls, and
-has passed focused mobile, fresh-migration, live API and live contract checks.
-It still requires paired PR review/CI and a merged-pair Android smoke. After
-merge, use the reviewed `main` revisions and record both SHAs.
+GRN/recent-dispatch repair is merged and verified: mobile PR #15 produced
+`09919ebfbce1f6e819363eca7711c23dd29b155f`, backend PR #11 produced
+`a1ad80741ddff97d4f9eb47a0066094f76ea476a`, and both default-branch CI runs
+passed. A fresh API-36 emulator debug build on that exact pair confirmed demo
+login, two customer GRNs, three recent dispatches, and authenticated cold
+restoration. The remaining work is the separately listed iOS onboarding,
+revoked-session UX, fixture-name, and production scope.
 The release-tag clone commands below reproduce the published baseline, not these
 post-release fixes. Existing `v0.2.2-demo` tags are unchanged.
 
@@ -54,10 +56,11 @@ the backend's standardized `{ success, data }` response while retaining support
 for the legacy direct-array shape. A focused parser regression test and a real
 iPhone search for the fictional `Example` customers passed.
 
-The customer history repair does not move or amend `v0.2.2-demo`. Its local
+The customer history repair does not move or amend `v0.2.2-demo`. Its merged
 evidence covers assigned-customer results, cross-customer denial, pagination,
-and explicit mobile error handling; a physical-device recheck belongs to the
-post-merge Android/iOS acceptance work.
+explicit mobile error handling, hosted CI, and the post-merge Android emulator
+smoke. Physical-device behavior remains covered by the separate recorded
+Android/iOS matrices.
 
 ## Historical `v0.2.1-demo` record
 

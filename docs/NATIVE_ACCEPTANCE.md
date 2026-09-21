@@ -1,5 +1,28 @@
 # Native and physical-device acceptance
 
+## Merged customer-history Android emulator smoke — 2026-09-21
+
+The exact reviewed pair was mobile
+`09919ebfbce1f6e819363eca7711c23dd29b155f` and backend
+`a1ad80741ddff97d4f9eb47a0066094f76ea476a`. Mobile main CI run
+`35605871279` and backend main CI run `35606744913` passed; the backend run used
+the same pinned mobile implementation commit. Existing `v0.2.2-demo` tags were
+not moved.
+
+A fresh Android Debug build completed, installed, and launched on the headless
+`Medium_Phone_API_36.1` AVD (`sdk_gphone64_x86_64`, API 36). The emulator used
+ADB reverse mappings for the checkout-owned loopback API and Metro only. Public
+configuration bootstrap and fictional customer OTP login succeeded. The
+assigned customer showed two GRNs in the GRN list and three completed records in
+the expanded Recent Dispatches section. After `am force-stop`, a launcher cold
+start restored the authenticated Orders screen.
+
+This closes the merged-pair Android smoke required for the customer-history
+repair. It verifies native build/install, loopback connectivity, login, the two
+repaired history views, and authenticated cold restoration in emulator scope.
+It does not add physical camera, OEM, USB, printer/sensor, signed-distribution,
+iOS onboarding, or production evidence.
+
 ## iOS simulator acceptance — 2026-09-18
 
 The source-demo application was built, installed and launched from
