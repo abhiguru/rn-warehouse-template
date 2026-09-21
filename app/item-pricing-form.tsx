@@ -37,6 +37,7 @@ import type {
   UpdateItemPricingPayload,
 } from '@/types/item-pricing.types';
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
+import { mapCustomerSearchResponse } from '@/features/item-pricing/utils/customerSearch';
 import { createLogger } from '@/utils/logger';
 
 const itemPricingFormLogger = createLogger('ItemPricingForm');
@@ -250,13 +251,7 @@ const ItemPricingFormScreen: React.FC = () => {
         return;
       }
 
-      // search_customers RPC returns array with id, name, mobile, city, etc.
-      setCustomers(
-        (data || []).map((customer: { id: string; name: string }) => ({
-          id: customer.id,
-          name: customer.name,
-        }))
-      );
+      setCustomers(mapCustomerSearchResponse(data));
     } catch (err) {
       itemPricingFormLogger.error('Customer search exception:', err);
       setCustomers([]);

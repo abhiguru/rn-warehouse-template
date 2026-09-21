@@ -2,30 +2,27 @@ import { getCurrentConfig } from '../config/supabaseConfig';
 import { getAuthTokenString } from '@/utils/authTokenUtils';
 
 /**
- * Fix internal Docker URLs returned by backend Edge Functions
- * The backend may return URLs with internal Docker service names (e.g., http://kong:8000)
- * which are not accessible from mobile devices. This function rewrites them to the public URL.
+ * Fix private development origins returned by backend Edge Functions. Docker
+ * service names and loopback hosts are not reachable from a physical device,
+ * so retain the signed path/query while using the app's configured API origin.
  */
 function fixInternalUrl(url: string): string {
   if (!url) return url;
 
-  // Replace internal Docker URLs with public URL
-  const internalPatterns = [
-    'http://kong:8000',
-    'http://kong:8443',
-    'http://localhost:54321',
-    'http://127.0.0.1:54321',
-  ];
+  try {
+    const signedUrl = new URL(url);
+    const internalHosts = new Set(['kong', 'localhost', '127.0.0.1']);
 
-  const config = getCurrentConfig();
-  const publicUrl = config.url; // e.g., http://localhost:8000
-
-  for (const pattern of internalPatterns) {
-    if (url.startsWith(pattern)) {
-      const fixedUrl = url.replace(pattern, publicUrl);
-
-      return fixedUrl;
+    if (!internalHosts.has(signedUrl.hostname)) {
+      return url;
     }
+
+    const publicOrigin = new URL(getCurrentConfig().url).origin;
+    if (signedUrl.origin !== publicOrigin) {
+      return url.replace(signedUrl.origin, publicOrigin);
+    }
+  } catch {
+    // Preserve malformed server values so the caller reports the download error.
   }
 
   return url;

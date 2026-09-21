@@ -41,6 +41,7 @@ import type { GRNDetailItem, DispatchItemData, ItemFormData } from '@/types/disp
 import { EMPTY_DISPATCH_ITEM } from '@/types/dispatch.types';
 import { DISPATCH_STEPS, DISPATCH_STEP_NUMBERS, getDispatchCompletedSteps } from '@/constants/dispatchSteps';
 import { getUserFriendlyError } from '@/utils/errorHandler';
+import { areAllAvailableLotsAlreadyAdded } from '@/features/dispatch/utils/lotAvailability';
 
 type DispatchItemsStepProps = {
     mode: 'create' | 'edit';
@@ -352,6 +353,14 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
     const addedLotIds = useMemo(() =>
         savedItems.map(item => item.grnItems_id).filter(Boolean) as string[],
         [savedItems]
+    );
+
+    const allAvailableLotsAlreadyAdded = useMemo(
+        () =>
+            editingItemId === null &&
+            selectedGRN !== null &&
+            areAllAvailableLotsAlreadyAdded(selectedGRN.items, addedLotIds),
+        [addedLotIds, editingItemId, selectedGRN]
     );
 
     // Calculate remaining stock after applying current dispatch quantity
@@ -832,11 +841,11 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
                             style={[
                                 styles.inputContainer,
                                 { backgroundColor: colors.cellBackground, borderColor: colors.cellDivider },
-                                !selectedGRN && { backgroundColor: colors.gray50, opacity: 0.6 },
+                                (!selectedGRN || allAvailableLotsAlreadyAdded) && { backgroundColor: colors.gray50, opacity: 0.6 },
                                 validationErrors.grnItems_item_id && { borderColor: colors.error, borderWidth: 2 },
                             ]}
                             onPress={() => selectedGRN && setShowItemBottomSheet(true)}
-                            disabled={!selectedGRN}
+                            disabled={!selectedGRN || allAvailableLotsAlreadyAdded}
                             activeOpacity={0.7}
                         >
                             <Icon
@@ -859,6 +868,34 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
                         </TouchableOpacity>
                         {validationErrors.grnItems_item_id && (
                             <Text style={[styles.errorText, { color: colors.error }]}>{validationErrors.grnItems_item_id}</Text>
+                        )}
+                        {allAvailableLotsAlreadyAdded && selectedGRN && (
+                            <View
+                                style={[
+                                    styles.allLotsAddedNotice,
+                                    { backgroundColor: colors.infoLight, borderColor: colors.info },
+                                ]}
+                            >
+                                <Icon name="information-outline" size={20} color={colors.info} />
+                                <View style={styles.allLotsAddedContent}>
+                                    <Text style={[styles.allLotsAddedText, { color: colors.gray900 }]}>
+                                        All available items from {selectedGRN.gr_no} are already in this dispatch.
+                                    </Text>
+                                    <TouchableOpacity
+                                        style={styles.viewAllItemsButton}
+                                        onPress={() => {
+                                            Keyboard.dismiss();
+                                            setShowSummaryBottomSheet(true);
+                                        }}
+                                        accessibilityRole="button"
+                                        accessibilityLabel={`View all ${savedItems.length} dispatch items`}
+                                        activeOpacity={0.7}
+                                    >
+                                        <Text style={[styles.viewAllItemsText, { color: colors.info }]}>View All</Text>
+                                        <Icon name="arrow-right" size={16} color={colors.info} />
+                                    </TouchableOpacity>
+                                </View>
+                            </View>
                         )}
                     </View>
 
@@ -1193,6 +1230,34 @@ const styles = StyleSheet.create({
     selectorText: {
         flex: 1,
         fontSize: theme.fontSize.base,
+    },
+    allLotsAddedNotice: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        gap: theme.spacing.sm,
+        borderWidth: 1,
+        borderRadius: theme.borderRadius.lg,
+        padding: theme.spacing.md,
+        marginTop: theme.spacing.sm,
+    },
+    allLotsAddedContent: {
+        flex: 1,
+        gap: theme.spacing.xs,
+    },
+    allLotsAddedText: {
+        fontSize: theme.fontSize.sm,
+        lineHeight: 20,
+    },
+    viewAllItemsButton: {
+        alignSelf: 'flex-start',
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 2,
+        minHeight: 28,
+    },
+    viewAllItemsText: {
+        fontSize: theme.fontSize.sm,
+        fontWeight: theme.fontWeight.semibold,
     },
     quantityRow: {
         flexDirection: 'row',

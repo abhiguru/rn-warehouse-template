@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased — iOS acceptance handoff (2026-09-21)
+
+- Fixed Item Pricing customer search, duplicate dispatch-lot feedback, private
+  PDF URL handling and native warm-link delivery, with physical-iPhone evidence.
+- Made CLI bootstrap, doctor and postinstall entry checks work through symlinked
+  checkout paths, with a regression that verifies failures are not silently skipped.
+- Recorded the qualified iOS acceptance result, remaining customer-view/session
+  defects, physical-USB onboarding gap and pricing/PDF customization contracts.
+- Preserved all published source-release tags; these changes require paired review.
+
 ## 0.2.2-demo — source-only prerelease (2026-09-18)
 
 - Added Android-first clean onboarding, ownership-aware emulator/Metro guidance,
