@@ -7,9 +7,12 @@ for branch-clone commands, implementation baselines and the next review tasks.
 
 Start with [the handoff review and prioritized open work](HANDOFF_REVIEW_2026-09-21.md)
 for the latest source changes. Ordered item 3's physical-iOS matrix was executed
-with known customer-view and session-revocation UX defects; item 4 has not begun.
-The fixes are on `handoff/ios-acceptance-review` in both repositories pending
-review. After merge, use the reviewed `main` revisions and record both SHAs.
+with known session-revocation UX defects; item 4 has not begun. The customer
+GRN/recent-dispatch repair is now on `fix/customer-history-access` in both
+repositories: it uses guarded customer contracts, preserves staff calls, and
+has passed focused mobile, fresh-migration, live API and live contract checks.
+It still requires paired PR review/CI and a merged-pair Android smoke. After
+merge, use the reviewed `main` revisions and record both SHAs.
 The release-tag clone commands below reproduce the published baseline, not these
 post-release fixes. Existing `v0.2.2-demo` tags are unchanged.
 
@@ -50,6 +53,11 @@ The post-release physical-iOS run also fixed Item Pricing customer search for
 the backend's standardized `{ success, data }` response while retaining support
 for the legacy direct-array shape. A focused parser regression test and a real
 iPhone search for the fictional `Example` customers passed.
+
+The customer history repair does not move or amend `v0.2.2-demo`. Its local
+evidence covers assigned-customer results, cross-customer denial, pagination,
+and explicit mobile error handling; a physical-device recheck belongs to the
+post-merge Android/iOS acceptance work.
 
 ## Historical `v0.2.1-demo` record
 

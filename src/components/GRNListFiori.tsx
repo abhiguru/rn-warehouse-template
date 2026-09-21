@@ -47,7 +47,14 @@ import Animated, {
 } from 'react-native-reanimated';
 import { Swipeable } from 'react-native-gesture-handler';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { getAllGRNItems, GRNItem, GRNFilters, GRNListResponse, GRNListParams } from '@/services/grn-service';
+import {
+  getAllGRNItems,
+  getAssignedCustomerGRNItems,
+  GRNItem,
+  GRNFilters,
+  GRNListResponse,
+  GRNListParams,
+} from '@/services/grn-service';
 import { useFilterState } from '@/hooks/useFilterState';
 import type { AutocompleteSelection, FilterValues, FilterValueType } from '@/types/filter.types';
 import { getAutocompleteSelections, getStringValue, getNumberValue } from '@/types/filter.types';
@@ -675,6 +682,14 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({
 }) => {
   const { userProfile } = useAppSelector((state) => state.auth);
   const colors = useListColors();
+  const isCustomerAccount = userProfile?.role === 'customer';
+  const assignedCustomerIds = useMemo(
+    () =>
+      userProfile?.assignedCustomerIds ||
+      userProfile?.assignedCustomers?.map(customer => customer.id) ||
+      [],
+    [userProfile]
+  );
 
   // State
   const [data, setData] = useState<GRNListResponse['data'] | null>(null);
@@ -772,7 +787,7 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({
       // Convert sortBy to snake_case for API (SortField is 'grNo' | 'date')
       const apiSortBy = sortBy === 'grNo' ? 'gr_no' : sortBy;
 
-      const result = await getAllGRNItems({
+      const request: GRNListParams = {
         p_filters: Object.keys(apiFilters).length > 0 ? apiFilters : undefined,
         p_date_from: filters.dateFrom,
         p_date_to: filters.dateTo,
@@ -780,7 +795,10 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({
         p_sort_order: sortOrder,
         p_limit: offset === 0 ? 20 : 80,
         p_offset: offset,
-      });
+      };
+      const result = isCustomerAccount
+        ? await getAssignedCustomerGRNItems(assignedCustomerIds, request)
+        : await getAllGRNItems(request);
 
       if (result.success && result.data) {
         if (append) {
@@ -802,7 +820,7 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({
       setRefreshing(false);
       setLoadingMore(false);
     }
-  }, [filters, sortBy, sortOrder]);
+  }, [assignedCustomerIds, filters, isCustomerAccount, sortBy, sortOrder]);
 
   useEffect(() => {
     setCurrentOffset(0);

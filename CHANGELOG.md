@@ -2,6 +2,14 @@
 
 ## Unreleased — iOS acceptance handoff (2026-09-21)
 
+- Repaired assigned-customer GRN and recent-dispatch history views without
+  widening staff RPC grants. Customer responses are explicitly normalized,
+  pagination works across multiple assignments, and visible errors replace
+  misleading empty states. The companion backend adds the guarded customer
+  dispatch-list contract and extends customer GRN filtering.
+- Added customer-history regression coverage and recorded fresh migration, live
+  API, and paired-contract evidence. This post-release repair still requires
+  paired PR review, CI, and an Android smoke on the merged JavaScript pair.
 - Fixed Item Pricing customer search, duplicate dispatch-lot feedback, private
   PDF URL handling and native warm-link delivery, with physical-iPhone evidence.
 - Made CLI bootstrap, doctor and postinstall entry checks work through symlinked

@@ -21,9 +21,14 @@ import {
 import { router } from 'expo-router';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useListColors } from '@/hooks/useListColors';
-import { getDispatchListWithItems, Dispatch } from '@/services/dispatch-service';
+import {
+  getCustomerDispatchList,
+  getDispatchListWithItems,
+  Dispatch,
+} from '@/services/dispatch-service';
 import { MemoizedDispatchItem } from './list-items/MemoizedDispatchItem';
 import theme from '@/theme';
+import { useAppSelector } from '@/store/hooks';
 
 interface RecentDispatchesSectionProps {
   /** Customer UUID to fetch dispatches for */
@@ -37,6 +42,9 @@ const RecentDispatchesSection: React.FC<RecentDispatchesSectionProps> = ({
   refreshTrigger = 0,
 }) => {
   const colors = useListColors();
+  const isCustomerAccount = useAppSelector(
+    state => state.auth.userProfile?.role === 'customer'
+  );
   const [isExpanded, setIsExpanded] = useState(false); // Collapsed by default
   const [dispatches, setDispatches] = useState<Dispatch[]>([]);
   const [loading, setLoading] = useState(true);
@@ -54,13 +62,20 @@ const RecentDispatchesSection: React.FC<RecentDispatchesSectionProps> = ({
         console.log('[RecentDispatchesSection] Fetching dispatches for customer:', customerId);
       }
 
-      const result = await getDispatchListWithItems({
-        p_customer_id: customerId,
-        p_sort_by: 'dispatch_date',
-        p_sort_order: 'desc',
-        p_limit: 10,
-        p_include_items: true,
-      });
+      const result = isCustomerAccount
+        ? await getCustomerDispatchList({
+            p_customer_id: customerId,
+            p_limit: 10,
+            p_offset: 0,
+            p_include_items: true,
+          })
+        : await getDispatchListWithItems({
+            p_customer_id: customerId,
+            p_sort_by: 'dispatch_date',
+            p_sort_order: 'desc',
+            p_limit: 10,
+            p_include_items: true,
+          });
 
       if (__DEV__) {
         console.log('[RecentDispatchesSection] Fetch result:', {
@@ -86,7 +101,7 @@ const RecentDispatchesSection: React.FC<RecentDispatchesSectionProps> = ({
     } finally {
       setLoading(false);
     }
-  }, [customerId]);
+  }, [customerId, isCustomerAccount]);
 
   // Initial fetch and refresh on trigger change
   useEffect(() => {
@@ -143,7 +158,7 @@ const RecentDispatchesSection: React.FC<RecentDispatchesSectionProps> = ({
       </TouchableOpacity>
 
       {/* Content */}
-      {isExpanded && (
+      {(isExpanded || !!error) && (
         <View style={styles.content}>
           {loading ? (
             <View style={styles.loadingContainer}>

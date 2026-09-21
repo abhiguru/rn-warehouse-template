@@ -69,6 +69,22 @@ interface GRNRpcParams {
   // Note: p_in_stock_only is NOT part of V2 - use p_filters.stock_status instead
 }
 
+interface CustomerGRNRpcResponse {
+  success?: boolean;
+  message?: string;
+  data?: {
+    items?: Array<Record<string, unknown>>;
+    pagination?: {
+      total?: number;
+      total_count?: number;
+      has_more?: boolean;
+    };
+    aggregations?: Partial<GRNAggregations> & { total_count?: number };
+  };
+}
+
+const CUSTOMER_GRN_RPC_MAX_LIMIT = 100;
+
 /**
  * GRN Aggregations - uses snake_case
  */
@@ -254,4 +270,248 @@ export const getAllGRNItems = async (params: GRNListParams = {}): Promise<GRNLis
       data: EMPTY_GRN_RESPONSE_DATA
     };
   }
+};
+
+const normalizeCustomerGRNItem = (raw: Record<string, unknown>): GRNItem => ({
+  ...(raw as unknown as GRNItem),
+  id: String(raw.id || raw.grn_item_id || ''),
+  grn_id: String(raw.grn_id || raw.grns_id || ''),
+  grn_item_id: String(raw.grn_item_id || raw.id || ''),
+  gr_no: String(raw.gr_no || raw.grns_gr_no || ''),
+  date: String(raw.date || raw.grns_date || ''),
+  customer_id: String(raw.customer_id || ''),
+  customer_name: String(raw.customer_name || ''),
+  supervisor_name: raw.supervisor_name == null ? null : String(raw.supervisor_name),
+  registration: raw.registration == null ? null : String(raw.registration),
+  item_id: raw.item_id == null ? undefined : String(raw.item_id),
+  item_name: String(raw.item_name || ''),
+  packaging: raw.packaging == null ? null : String(raw.packaging),
+  qty: Number(raw.qty) || 0,
+  stock: Number(raw.stock) || 0,
+  weight: raw.weight == null ? null : Number(raw.weight),
+  rack: raw.rack == null ? null : String(raw.rack),
+  package_mark: raw.package_mark == null ? null : String(raw.package_mark),
+});
+
+export const getCustomerGRNItems = async (
+  customerId: string,
+  params: GRNListParams = {}
+): Promise<GRNListResponse> => {
+  const limit = Math.min(params.p_limit || PAGINATION.DEFAULT_LIMIT, CUSTOMER_GRN_RPC_MAX_LIMIT);
+  const offset = params.p_offset || 0;
+  const emptyData = {
+    ...EMPTY_GRN_RESPONSE_DATA,
+    pagination: { total_count: 0, limit, offset, has_more: false },
+  };
+
+  if (!customerId) {
+    return { success: false, data: emptyData, message: 'Customer assignment is required' };
+  }
+
+  try {
+    const authenticatedClient = await getAuthenticatedClient();
+    const rpcParams: Record<string, unknown> = {
+      p_customer_id: customerId,
+      p_sort_by: params.p_sort_by || 'date',
+      p_sort_order: params.p_sort_order || 'desc',
+      p_limit: limit,
+      p_offset: offset,
+    };
+    if (params.p_date_from) rpcParams.p_date_from = params.p_date_from;
+    if (params.p_date_to) rpcParams.p_date_to = params.p_date_to;
+    if (params.p_filters) {
+      const { customer_ids: _customerIds, ...customerFilters } = params.p_filters;
+      if (Object.keys(customerFilters).length > 0) rpcParams.p_filters = customerFilters;
+    }
+
+    const { data, error } = await authenticatedClient.rpc(
+      'get_customer_grn_items',
+      rpcParams
+    );
+    if (error) {
+      return {
+        ...createErrorResponse(error, 'Failed to fetch customer GRN items', 'GRNService.getCustomerGRNItems'),
+        data: emptyData,
+      };
+    }
+
+    const response = data as CustomerGRNRpcResponse | null;
+    if (!response?.success || !response.data) {
+      return {
+        success: false,
+        data: emptyData,
+        message: response?.message || 'Failed to fetch customer GRN items',
+      };
+    }
+
+    const items = (response.data.items || []).map(normalizeCustomerGRNItem);
+    const totalCount = Number(
+      response.data.pagination?.total_count ??
+        response.data.pagination?.total ??
+        response.data.aggregations?.total_count ??
+        items.length
+    );
+
+    return {
+      success: true,
+      message: response.message || 'Customer GRN items retrieved successfully',
+      data: {
+        items,
+        pagination: {
+          total_count: totalCount,
+          limit,
+          offset,
+          has_more:
+            response.data.pagination?.has_more ?? hasMoreItems(offset, limit, totalCount),
+        },
+        aggregations: {
+          total_qty: Number(response.data.aggregations?.total_qty) || 0,
+          total_stock: Number(response.data.aggregations?.total_stock) || 0,
+        },
+        filters: {
+          date_from: params.p_date_from || null,
+          date_to: params.p_date_to || null,
+          applied_filters: params.p_filters || {},
+          sort_by: params.p_sort_by || 'date',
+          sort_order: params.p_sort_order || 'desc',
+        },
+        user_access: {
+          role: 'customer',
+          is_admin: false,
+          is_supervisor: false,
+          accessible_customers: 1,
+        },
+      },
+    };
+  } catch (error) {
+    return {
+      ...createErrorResponse(error, 'Failed to fetch customer GRN items', 'GRNService.getCustomerGRNItems'),
+      data: emptyData,
+    };
+  }
+};
+
+const compareGRNItems = (
+  left: GRNItem,
+  right: GRNItem,
+  sortBy: GRNListParams['p_sort_by'],
+  sortOrder: GRNListParams['p_sort_order']
+) => {
+  const direction = sortOrder === 'asc' ? 1 : -1;
+  const field = sortBy || 'date';
+  const leftValue = field === 'gr_no' ? left.gr_no : field === 'date' ? left.date : left[field];
+  const rightValue = field === 'gr_no' ? right.gr_no : field === 'date' ? right.date : right[field];
+  if (typeof leftValue === 'number' || typeof rightValue === 'number') {
+    return (Number(leftValue) - Number(rightValue)) * direction;
+  }
+  return String(leftValue || '').localeCompare(String(rightValue || ''), undefined, {
+    numeric: true,
+  }) * direction;
+};
+
+export const getAssignedCustomerGRNItems = async (
+  assignedCustomerIds: string[],
+  params: GRNListParams = {}
+): Promise<GRNListResponse> => {
+  const uniqueAssignedIds = [...new Set(assignedCustomerIds.filter(Boolean))];
+  const requestedIds = params.p_filters?.customer_ids || [];
+  const unauthorizedId = requestedIds.find(id => !uniqueAssignedIds.includes(id));
+  if (unauthorizedId) {
+    return {
+      success: false,
+      data: EMPTY_GRN_RESPONSE_DATA,
+      message: 'Customer access denied',
+    };
+  }
+
+  const targetIds = requestedIds.length > 0 ? requestedIds : uniqueAssignedIds;
+  if (targetIds.length === 0) {
+    return {
+      success: false,
+      data: EMPTY_GRN_RESPONSE_DATA,
+      message: 'No customer assignment is available for this account',
+    };
+  }
+
+  const offset = params.p_offset || 0;
+  const limit = Math.min(params.p_limit || PAGINATION.DEFAULT_LIMIT, PAGINATION.MAX_LIMIT);
+  if (targetIds.length === 1) {
+    return getCustomerGRNItems(targetIds[0], { ...params, p_limit: limit, p_offset: offset });
+  }
+
+  const requiredItems = offset + limit;
+  const responses = await Promise.all(
+    targetIds.map(async customerId => {
+      const customerItems: GRNItem[] = [];
+      let pageOffset = 0;
+      let firstResponse: GRNListResponse | null = null;
+
+      while (customerItems.length < requiredItems) {
+        const pageLimit = Math.min(
+          CUSTOMER_GRN_RPC_MAX_LIMIT,
+          requiredItems - customerItems.length
+        );
+        const response = await getCustomerGRNItems(customerId, {
+          ...params,
+          p_limit: pageLimit,
+          p_offset: pageOffset,
+        });
+        if (!response.success) return response;
+        if (!firstResponse) firstResponse = response;
+        customerItems.push(...response.data.items);
+        if (!response.data.pagination.has_more || response.data.items.length === 0) break;
+        pageOffset += response.data.items.length;
+      }
+
+      if (!firstResponse) {
+        return getCustomerGRNItems(customerId, { ...params, p_limit: limit, p_offset: 0 });
+      }
+
+      return {
+        ...firstResponse,
+        data: { ...firstResponse.data, items: customerItems },
+      };
+    })
+  );
+  const failed = responses.find(response => !response.success);
+  if (failed) return failed;
+
+  const allItems = responses
+    .flatMap(response => response.data.items)
+    .sort((left, right) => compareGRNItems(left, right, params.p_sort_by, params.p_sort_order));
+  const totalCount = responses.reduce(
+    (total, response) => total + response.data.pagination.total_count,
+    0
+  );
+
+  return {
+    success: true,
+    message: 'Assigned customer GRN items retrieved successfully',
+    data: {
+      items: allItems.slice(offset, offset + limit),
+      pagination: {
+        total_count: totalCount,
+        limit,
+        offset,
+        has_more: offset + limit < totalCount,
+      },
+      aggregations: {
+        total_qty: responses.reduce((total, response) => total + response.data.aggregations.total_qty, 0),
+        total_stock: responses.reduce((total, response) => total + response.data.aggregations.total_stock, 0),
+      },
+      filters: {
+        date_from: params.p_date_from || null,
+        date_to: params.p_date_to || null,
+        applied_filters: params.p_filters || {},
+        sort_by: params.p_sort_by || 'date',
+        sort_order: params.p_sort_order || 'desc',
+      },
+      user_access: {
+        role: 'customer',
+        is_admin: false,
+        is_supervisor: false,
+        accessible_customers: targetIds.length,
+      },
+    },
+  };
 };
