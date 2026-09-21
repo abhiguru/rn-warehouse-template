@@ -2,6 +2,9 @@
 
 ## Post-release handoff — 2026-09-21
 
+For continuation on another computer, use the [AI agent handoff](AI_AGENT_HANDOFF.md)
+for branch-clone commands, implementation baselines and the next review tasks.
+
 Start with [the handoff review and prioritized open work](HANDOFF_REVIEW_2026-09-21.md)
 for the latest source changes. Ordered item 3's physical-iOS matrix was executed
 with known customer-view and session-revocation UX defects; item 4 has not begun.
