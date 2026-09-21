@@ -137,6 +137,7 @@ function GRNDetailScreen() {
     Record<string, { total_dispatched: number; dispatch_count: number }>
   >({});
   const [loadingDispatches, setLoadingDispatches] = useState(false);
+  const [dispatchError, setDispatchError] = useState<string | null>(null);
   const [canEdit, setCanEdit] = useState(false);
   const [isShareLoading, setIsShareLoading] = useState(false);
   const [showPrintDialog, setShowPrintDialog] = useState(false);
@@ -311,6 +312,7 @@ function GRNDetailScreen() {
     if (!data?.grn?.items) return;
 
     setLoadingDispatches(true);
+    setDispatchError(null);
     try {
       const dispatchPromises = data.grn.items.map((item) =>
         getGRNItemDispatches(item.id)
@@ -324,6 +326,7 @@ function GRNDetailScreen() {
         string,
         { total_dispatched: number; dispatch_count: number }
       > = {};
+      let firstError: string | null = null;
 
       results.forEach((result, index) => {
         const itemId = data.grn.items?.[index]?.id;
@@ -346,6 +349,9 @@ function GRNDetailScreen() {
               dispatch_count: result.data.summary.total_dispatches || 0,
             };
           }
+        } else if (!firstError) {
+          firstError =
+            result.error || result.message || 'Failed to load dispatch history';
         }
       });
 
@@ -357,8 +363,12 @@ function GRNDetailScreen() {
       setAllDispatches(combined);
       setDispatchesByItem(byItem);
       setItemDispatchSummaries(summaries);
+      setDispatchError(firstError);
     } catch (error) {
       console.error('[GRNDetailScreen] Error loading dispatches:', error);
+      setDispatchError(
+        'Failed to load dispatch history. Check your connection and try again.'
+      );
     } finally {
       setLoadingDispatches(false);
     }
@@ -882,6 +892,8 @@ function GRNDetailScreen() {
               items={items}
               dispatchesByItem={dispatchesByItem}
               loading={loadingDispatches}
+              error={dispatchError}
+              onRetry={fetchAllDispatches}
             />
           )}
 

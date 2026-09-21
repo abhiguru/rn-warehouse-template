@@ -208,7 +208,7 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
         undefined, // no filters
         'date',
         'desc',
-        1000, // large limit to get all items
+        100, // server contract maximum; enough to populate the quick-filter pills
         0
       );
 

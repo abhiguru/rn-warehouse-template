@@ -12,6 +12,7 @@ const makeLine = (
 ): InvoiceLineItem => ({
   id,
   item_name: 'Example Potatoes',
+  grn_id: '20252868-b5d6-11f1-98b6-336cf2ba48b4',
   grn_item_id: 'a0003-item',
   grn_quantity: 100,
   dispatch_no: dispatchNo,
@@ -44,5 +45,13 @@ describe('groupItemsByGrnItem', () => {
       3.5,
       24.5,
     ]);
+  });
+
+  it('preserves the GRN UUID used by the details route', () => {
+    const [group] = groupItemsByGrnItem([
+      makeLine('line-1', 'I0001', 20),
+    ]);
+
+    expect(group.grn_id).toBe('20252868-b5d6-11f1-98b6-336cf2ba48b4');
   });
 });

@@ -156,6 +156,7 @@ export interface InvoiceLineItemGroupData {
   // Storage details
   package_mark?: string;
   rack?: string;
+  grn_id?: string;
   gr_no?: string;
   // Dispatch line items
   dispatch_items: DispatchLineItem[];
@@ -440,10 +441,11 @@ const InvoiceLineItemGroupComponent: React.FC<InvoiceLineItemGroupProps> = ({
   }, []);
 
   const handleViewGRN = useCallback(() => {
-    if (group.gr_no && group.on_view_grn) {
-      group.on_view_grn(group.gr_no);
+    const grnReference = group.grn_id || group.gr_no;
+    if (grnReference && group.on_view_grn) {
+      group.on_view_grn(grnReference);
     }
-  }, [group.gr_no, group.on_view_grn]);
+  }, [group.grn_id, group.gr_no, group.on_view_grn]);
 
   return (
     <View style={dynamicStyles.card}>

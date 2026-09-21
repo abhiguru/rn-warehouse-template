@@ -108,7 +108,10 @@ export const GRNItemsTab: React.FC<GRNItemsTabProps> = ({
         item_name={item.item_name}
         qty={item.qty}
         stock={item.stock}
-        total_dispatched={item.dispatch_summary?.total_dispatched || 0}
+        total_dispatched={
+          item.dispatch_summary?.total_dispatched ??
+          Math.max(0, Number(item.qty || 0) - Number(item.stock || 0))
+        }
         weight={item.weight}
         packaging={item.packaging}
         rack={item.rack}

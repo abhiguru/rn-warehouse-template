@@ -33,6 +33,7 @@ import {
   DEFAULT_LIST_CONFIG,
   SectionData,
 } from './types';
+import { resolveCustomerOrderTarget } from './orderCustomerTarget';
 
 // Services
 import { OrderService } from '@/services/order-service';
@@ -322,8 +323,26 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
 
   // Handle add order button press
   const handleAddOrder = useCallback(() => {
+    if (userProfile?.role === 'customer') {
+      const targetCustomerId = resolveCustomerOrderTarget({
+        explicitCustomerId: customerId,
+        assignedCustomerIds: userProfile.assignedCustomerIds,
+        orderCustomerIds: orders.map((order) => order.customer_id),
+      });
+      if (targetCustomerId) {
+        router.push(`/orders/${targetCustomerId}`);
+        return;
+      }
+      setSnackbarMessage(
+        userProfile.assignedCustomerIds?.length
+          ? 'Select an existing assigned-customer order.'
+          : 'No assigned customer is available for this account.'
+      );
+      setSnackbarVisible(true);
+      return;
+    }
     customerSearchRef.current?.open();
-  }, []);
+  }, [customerId, orders, userProfile]);
 
   // Handle customer selection - navigate to order screen
   const handleCustomerSelect = useCallback((customer: { id: string; name: string }) => {
