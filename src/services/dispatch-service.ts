@@ -211,6 +211,61 @@ export interface GetDispatchListWithItemsParams {
   p_include_items?: boolean;
 }
 
+export interface GetCustomerDispatchListParams {
+  p_customer_id: string;
+  p_limit?: number;
+  p_offset?: number;
+  p_include_items?: boolean;
+}
+
+export const mapBackendDispatch = (dispatch: BackendDispatchData): Dispatch => {
+  const items = dispatch.items || [];
+  const calculatedTotalItems = items.length;
+  const calculatedTotalQty = items.reduce(
+    (sum, item) => sum + (Number(item.dispQty || item.disp_qty) || 0),
+    0
+  );
+  const calculatedTotalWeight = items.reduce(
+    (sum, item) => sum + (Number(item.weight) || 0),
+    0
+  );
+
+  return {
+    id: dispatch.id,
+    dispatch_id: dispatch.id,
+    disp_no: dispatch.dispNo || dispatch.disp_no || '',
+    note: dispatch.notes || dispatch.note || null,
+    disp_date:
+      dispatch.dispDate ||
+      dispatch.dispatchDate ||
+      dispatch.disp_date ||
+      dispatch.dispatch_date ||
+      dispatch.date ||
+      '',
+    registration: dispatch.registration || dispatch.truck_no || null,
+    customer_id: dispatch.customerId || dispatch.customer_id || '',
+    customer_name: dispatch.customerName || dispatch.customer_name || '',
+    supervisor_id: dispatch.supervisorId || dispatch.supervisor_id || null,
+    supervisor_name: dispatch.supervisorName || dispatch.supervisor_name || null,
+    total_items: dispatch.totalItems || dispatch.total_items || calculatedTotalItems,
+    total_qty: dispatch.totalQty || dispatch.total_qty || calculatedTotalQty,
+    total_weight: dispatch.totalWeight || dispatch.total_weight || calculatedTotalWeight,
+    items: items.map(item => ({
+      item_id: item.itemId || item.item_id || '',
+      item_name: item.itemName || item.item_name || '',
+      disp_qty: Number(item.dispQty || item.disp_qty) || 0,
+      weight: Number(item.weight) || null,
+      gr_no: item.grNo || item.gr_no || '',
+      grn_item_id: item.grnItemId || item.grn_item_id || '',
+      package_mark: item.packageMark || item.package_mark || null,
+      grn_qty: Number(item.grnQty || item.grn_qty) || 0,
+      rack: item.rack || null,
+    })),
+    created_at: dispatch.createdAt || dispatch.created_at || '',
+    updated_at: dispatch.updatedAt || dispatch.updated_at || '',
+  };
+};
+
 /**
  * @deprecated Use DispatchFilters instead
  * Legacy filters for backward compatibility
@@ -561,9 +616,24 @@ export const getDispatchListWithItems = async (
     // Note: RPC returns page-based pagination, we need to convert back to offset-based
     const responseData = data.data;
     const dispatchesReturned = responseData.dispatches?.length || 0;
-    const totalItems = responseData.pagination?.total || responseData.totalCount || 0;
-    const currentPage = responseData.pagination?.currentPage || responseData.currentPage || p_page;
-    const totalPages = responseData.pagination?.totalPages || responseData.totalPages || 0;
+    const totalItems =
+      responseData.pagination?.total_count ||
+      responseData.pagination?.total ||
+      responseData.total_count ||
+      responseData.totalCount ||
+      0;
+    const currentPage =
+      responseData.pagination?.current_page ||
+      responseData.pagination?.currentPage ||
+      responseData.current_page ||
+      responseData.currentPage ||
+      p_page;
+    const totalPages =
+      responseData.pagination?.total_pages ||
+      responseData.pagination?.totalPages ||
+      responseData.total_pages ||
+      responseData.totalPages ||
+      0;
 
     // Calculate hasMore: prefer page-based comparison if totalPages is available,
     // otherwise fall back to checking if we got a full page of results
@@ -596,46 +666,7 @@ export const getDispatchListWithItems = async (
         date: firstDispatch.date,
       });
     }
-    const mappedDispatches: Dispatch[] = responseData.dispatches.map((dispatch: BackendDispatchData) => {
-      // Calculate totals from items array if not provided by backend
-      // Use Number() to coerce strings to numbers and prevent string concatenation
-      const items = dispatch.items || [];
-      const calculatedTotalItems = items.length;
-      const calculatedTotalQty = items.reduce((sum, item) => sum + (Number(item.dispQty || item.disp_qty) || 0), 0);
-      const calculatedTotalWeight = items.reduce((sum, item) => sum + (Number(item.weight) || 0), 0);
-
-      // Map to snake_case format
-      const mapped: Dispatch = {
-        id: dispatch.id,
-        dispatch_id: dispatch.id,
-        disp_no: dispatch.dispNo || dispatch.disp_no || '',
-        note: dispatch.notes || dispatch.note || null,
-        disp_date: dispatch.dispDate || dispatch.dispatchDate || dispatch.disp_date || dispatch.dispatch_date || dispatch.date || '',
-        registration: dispatch.registration || dispatch.truck_no || null,
-        customer_id: dispatch.customerId || dispatch.customer_id || '',
-        customer_name: dispatch.customerName || dispatch.customer_name || '',
-        supervisor_id: dispatch.supervisorId || dispatch.supervisor_id || null,
-        supervisor_name: dispatch.supervisorName || dispatch.supervisor_name || null,
-        total_items: dispatch.totalItems || dispatch.total_items || calculatedTotalItems,
-        total_qty: dispatch.totalQty || dispatch.total_qty || calculatedTotalQty,
-        total_weight: dispatch.totalWeight || dispatch.total_weight || calculatedTotalWeight,
-        items: items.map(item => ({
-          item_id: item.itemId || item.item_id || '',
-          item_name: item.itemName || item.item_name || '',
-          disp_qty: Number(item.dispQty || item.disp_qty) || 0,
-          weight: Number(item.weight) || null,
-          gr_no: item.grNo || item.gr_no || '',
-          grn_item_id: item.grnItemId || item.grn_item_id || '',
-          package_mark: item.packageMark || item.package_mark || null,
-          grn_qty: Number(item.grnQty || item.grn_qty) || 0,
-          rack: item.rack || null,
-        })),
-        created_at: dispatch.createdAt || dispatch.created_at || '',
-        updated_at: dispatch.updatedAt || dispatch.updated_at || '',
-      };
-
-      return mapped;
-    });
+    const mappedDispatches: Dispatch[] = responseData.dispatches.map(mapBackendDispatch);
 
     const responsePayload = {
       ...responseData,
@@ -684,6 +715,127 @@ export const getDispatchListWithItems = async (
         filters: { date_from: null, date_to: null, applied_filters: {}, sort_by: 'disp_date', sort_order: params.p_sort_order || 'desc' },
         user_access: { user_id: '', role: 'customer', is_admin: false, is_supervisor: false, accessible_customers: 0 }
       }
+    };
+  }
+};
+
+export const getCustomerDispatchList = async (
+  params: GetCustomerDispatchListParams
+): Promise<DispatchListResponseNew> => {
+  const limit = Math.min(Math.max(params.p_limit || 10, 1), 100);
+  const offset = Math.max(params.p_offset || 0, 0);
+  const emptyData: DispatchListResponseNew['data'] = {
+    dispatches: [],
+    pagination: { total_count: 0, limit, offset, has_more: false },
+    aggregations: {
+      total_dispatches: 0,
+      total_dispatched_qty: 0,
+      total_weight: null,
+      unique_customers: 0,
+      unique_grns: 0,
+    },
+    filters: {
+      date_from: null,
+      date_to: null,
+      applied_filters: {},
+      sort_by: 'disp_date',
+      sort_order: 'desc',
+    },
+    user_access: {
+      user_id: '',
+      role: 'customer',
+      is_admin: false,
+      is_supervisor: false,
+      accessible_customers: 1,
+    },
+  };
+
+  if (!params.p_customer_id) {
+    return {
+      success: false,
+      message: 'Customer ID is required',
+      data: emptyData,
+    };
+  }
+
+  try {
+    const authenticatedClient = await getAuthenticatedClient();
+    const { data, error } = await authenticatedClient.rpc(
+      'get_customer_dispatch_list',
+      {
+        p_customer_id: params.p_customer_id,
+        p_limit: limit,
+        p_offset: offset,
+        p_include_items: params.p_include_items ?? true,
+      }
+    );
+
+    if (error) {
+      return {
+        ...createErrorResponse(
+          error,
+          'Failed to fetch customer dispatches',
+          'DispatchService.getCustomerDispatchList'
+        ),
+        data: emptyData,
+      };
+    }
+
+    if (!data?.success || !data.data) {
+      return {
+        success: false,
+        message: data?.message || 'Failed to fetch customer dispatches',
+        data: emptyData,
+      };
+    }
+
+    const dispatches: Dispatch[] = (data.data.dispatches || []).map(
+      (dispatch: BackendDispatchData) => mapBackendDispatch(dispatch)
+    );
+    const pagination = data.data.pagination || {};
+    const totalCount = Number(pagination.total_count) || dispatches.length;
+
+    return {
+      success: true,
+      message: data.message || 'Customer dispatches retrieved successfully',
+      data: {
+        ...emptyData,
+        dispatches,
+        pagination: {
+          total_count: totalCount,
+          limit: Number(pagination.limit) || limit,
+          offset: Number(pagination.offset) || offset,
+          has_more:
+            typeof pagination.has_more === 'boolean'
+              ? pagination.has_more
+              : hasMoreItems(offset, limit, totalCount),
+        },
+        aggregations: {
+          ...emptyData.aggregations,
+          total_dispatches: totalCount,
+          total_dispatched_qty: dispatches.reduce(
+            (total, dispatch) => total + (dispatch.total_qty || 0),
+            0
+          ),
+          total_weight: dispatches.reduce(
+            (total, dispatch) => total + (dispatch.total_weight || 0),
+            0
+          ),
+          unique_customers: dispatches.length > 0 ? 1 : 0,
+          unique_grns: new Set(
+            dispatches.flatMap(dispatch => dispatch.items?.map(item => item.gr_no) || [])
+          ).size,
+        },
+      },
+    };
+  } catch (error) {
+    return {
+      ...createErrorResponse(
+        error,
+        'Failed to fetch customer dispatches',
+        'DispatchService.getCustomerDispatchList'
+      ),
+      data: emptyData,
     };
   }
 };

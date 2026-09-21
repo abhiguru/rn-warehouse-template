@@ -45,7 +45,7 @@ published baseline and does **not** include the fixes in this handoff.
 
 | Priority | Gap and evidence | Completion criterion |
 | --- | --- | --- |
-| High | Customer GRN and recent-dispatch views use staff-only RPCs (`grn-service.ts`, `dispatch-service.ts`, `GRNListFiori.tsx`, `RecentDispatchesSection.tsx`). The phone showed empty views despite existing records. | Use customer-authorized queries with explicit response mapping and visible errors. Test assigned customer data, other-customer denial, pagination and unchanged staff behavior. Preserve backend authorization. |
+| High, repair ready | Customer GRN and recent-dispatch views used staff-only RPCs, producing empty views despite existing records. `fix/customer-history-access` now uses customer-authorized GRN/dispatch contracts with explicit mapping, visible errors, assignment-aware pagination, and unchanged staff calls. | Focused mobile tests, fresh migration replay, full live API and live paired-contract checks passed. Review both PRs, verify CI with the new mobile pin, then repeat the Android smoke on the merged pair. |
 | High | Physical-iPhone onboarding is not reproducible from the tracked runbook alone. The successful run needed temporary USB API/bundle relays and a local development signing identity. Those helpers were removed. iOS has no `adb reverse`. | Supply a reviewed, repeatable USB-only connection procedure or helper with reconnect detection, origin handling, ownership-scoped shutdown and fresh-clone validation. Keep demo OTP services off LAN/public listeners. |
 | Medium | Revoking an active account denies protected data but leaves the stock screen in an error state instead of invalidating local credentials. | Route definitive session revocation through the shared logout/cache invalidation path. Verify cold relaunch remains logged out; assignment-only denial and network errors must not destroy a valid session. |
 | Low | Pricing cards display the fictional `Review customer <timestamp>` fixture name. The orange number is a record count, not an identifier leak. | Use readable fixture names or isolate automated-test data; confirm real customer names remain intact. |
@@ -54,20 +54,18 @@ published baseline and does **not** include the fixes in this handoff.
 
 ## Validation and remaining evidence
 
-On Node.js 22.23.1, the mobile suite passed 23 suites / 177 tests, typecheck,
-ESLint's error check and 19 setup tests. `npm audit --audit-level=high` reported
-zero vulnerabilities. Expo's online compatibility check reported dependencies
-up to date (`EXPO_NO_CACHE=1` avoided a sandbox-restricted cache). Existing lint warnings remain.
-Jest used `--watchman=false` because this sandbox cannot install Watchman's
-LaunchAgent; no application test was skipped.
+On Node.js 22.23.1, the mobile suite now passes 24 suites / 182 tests,
+typecheck, zero-error lint and all 19 setup tests. Expo's online compatibility
+check and both high-severity dependency audits reported clean results; the
+Android JavaScript export passed. Existing lint warnings remain.
 
-Backend unit tests passed 17/17 after the CLI-path fix, including configuration
-preservation and the symlink regression. The physical/API evidence predates that
-CLI-only fix. The static companion check found 93 RPC names / 127 typed calls,
-zero missing names and zero mismatches. Both npm audits reported zero findings.
-Docker was unavailable during this final review, so fresh setup,
-migration execution and live API/contract checks must be confirmed by the paired
-CI or an isolated Docker rehearsal; this review does not claim a new live run.
+The backend unit suite passes 17/17. An isolated, loopback-only,
+checkout-owned `warehouse-customer-history` demo applied migrations 00000–00011
+and passed health checks. Its full API matrix passed, including assigned-customer
+GRN/dispatch results, pagination and cross-customer denial. The live companion
+check found 94 RPC names / 129 typed calls, zero missing names and zero
+mismatches. These are local repair evidence; paired PR CI and a merged-pair
+Android smoke are still required.
 
 ## Local cleanup and continuation
 
