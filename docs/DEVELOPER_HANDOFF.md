@@ -2,8 +2,11 @@
 
 ## Post-release handoff — 2026-09-21
 
-For continuation on another computer, use the [AI agent handoff](AI_AGENT_HANDOFF.md)
-for branch-clone commands, implementation baselines and the next review tasks.
+For execution on the separate Mac, use the
+[final AI agent handoff](AI_AGENT_HANDOFF.md). It requires the receiving agent to
+complete the entire physical-iPhone source-demo matrix, repair and merge defects,
+rerun the final merged pair, close the durable records and clean up without
+creating another continuation handoff.
 
 Start with [the handoff review and prioritized open work](HANDOFF_REVIEW_2026-09-21.md)
 for the latest source changes. Ordered item 3's physical-iOS matrix was executed
