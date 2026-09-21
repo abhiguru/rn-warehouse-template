@@ -71,6 +71,7 @@
       "./plugins/remove-microphone-permission",
       "expo-router",
       "./plugins/with-ios-linking-manager",
+      "./plugins/with-ios-usb",
       "expo-secure-store",
       [
         "expo-image-picker",

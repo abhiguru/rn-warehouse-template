@@ -31,6 +31,15 @@ export function adaptWatcher(source, filename, version) {
   }
   return original.replaceAll(oldListener, newListener) + helper;
 }
+const oldBinding = 'httpServer.listen(config.server.port, host, ()=>{';
+const usbBinding = "httpServer.listen(config.server.port, process.env.WAREHOUSE_USB_METRO === '1' ? '127.0.0.1' : host, ()=>{";
+export function adaptBinding(source, version) {
+  const original = source.replace(usbBinding, oldBinding);
+  if (version !== '54.0.27' || createHash('sha256').update(original).digest('hex') !== '6f36f43fe87dbba6e98c374cafee9e713b565d3476b560644b5129bf1e982c9d') {
+    throw new Error('Unreviewed Expo server binding; review the USB loopback adapter.');
+  }
+  return original.replace(oldBinding, usbBinding);
+}
 export function patchExpoMetro(root) {
   const fromExpo = createRequire(resolve(root, 'node_modules/expo/package.json'));
   const cli = dirname(fromExpo.resolve('@expo/cli/package.json'));
@@ -42,6 +51,9 @@ export function patchExpoMetro(root) {
     const source = readFileSync(target, 'utf8');
     return { target, source, patched: adaptWatcher(source, filename, version) };
   });
+  const bindingTarget = resolve(cli, 'build/src/start/server/metro/runServer-fork.js');
+  const bindingSource = readFileSync(bindingTarget, 'utf8');
+  changes.push({ target: bindingTarget, source: bindingSource, patched: adaptBinding(bindingSource, version) });
   for (const change of changes) if (change.source !== change.patched) writeFileSync(change.target, change.patched);
   console.log('Verified Expo SDK 54 watcher compatibility with Metro 0.83.8.');
 }
