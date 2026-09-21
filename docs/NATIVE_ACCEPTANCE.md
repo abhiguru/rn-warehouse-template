@@ -103,14 +103,17 @@ a new link-local address; refreshing the relay and Metro restored bootstrap.
 | Deep links and authorization | PASS — on the physical iPhone, an authenticated admin `warehousemanager://customers` link opened the three-customer list from both warm and fully stopped launches. Warm Unicode plus repeated parameters reached the app, and malformed percent/invalid-byte input did not crash the decoder. After switching to the assigned customer, `warehousemanager://users` rendered **Access Denied** instead of the Users list. Xcode recorded each native URL delivery. The fix includes a tracked Expo config plugin so the generated native bridge survives `expo prebuild`, plus focused hook/plugin regression tests. |
 | Acceptance defects | FAIL — the customer GRN list renders an empty state because it calls staff-only `get_all_grn_items`; customer recent dispatches likewise call staff-only `get_dispatch_list_with_items`. The pricing list exposes a timestamp-suffixed automated fixture name (`Review customer …`) in normal UI; the orange item-header number is only the pricing-record count, not an identifier leak. A newly revoked active session is denied protected data and displays the accurate `Session expired or revoked` reason, but remains on the failed screen instead of clearing credentials and returning to login. Two defects were fixed in the current worktree and confirmed on the physical iPhone: Item Pricing now normalizes direct and standardized wrapped customer-search results, and Dispatch duplicate-lot selection now disables the empty item selector, explains where the item is, and provides a working **View All** action. Focused regression tests and typecheck passed. |
 
-This completes execution of the documented physical-iOS core matrix for ordered
-item 3, with the listed defects still open. See
-[the handoff review](HANDOFF_REVIEW_2026-09-21.md) for priorities, source revisions,
-validation and the missing reproducible physical-USB setup procedure. It
-does not waive the acceptance defects above or establish production signing,
-App Store distribution, retention enforcement, or enabled native-telemetry
-delivery. Telemetry remained disabled because no dedicated test DSN/project was
-provided; the default-empty configuration emitted no crash events.
+This completed the first physical-iOS core-matrix execution for ordered item 3.
+The customer-history defect was subsequently repaired, merged and verified in
+CI and on an Android API-36 emulator, but still requires physical-iPhone
+confirmation on the final merged pair. The revoked-session redirect, readable
+fixture data and reproducible physical-USB setup remain open. The final Mac
+execution checklist is in [AI_AGENT_HANDOFF.md](AI_AGENT_HANDOFF.md); it requires
+repair and retest through closure rather than another continuation handoff.
+This record does not establish production signing, App Store distribution,
+retention enforcement, or enabled native-telemetry delivery. Telemetry remained
+disabled because no dedicated test DSN/project was provided; the default-empty
+configuration emitted no crash events.
 
 ## Physical Android acceptance — 2026-09-18
 
