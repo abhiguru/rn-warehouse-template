@@ -4,17 +4,17 @@
 
 Ordered item 3's physical-iOS test execution is complete, with the open defects
 below. This is a qualified acceptance record, not an all-green product sign-off.
-Item 4 has not started. Detailed observations and the separate Android scope are
-in [NATIVE_ACCEPTANCE.md](NATIVE_ACCEPTANCE.md).
+Item 4 has not started. The customer-history repair and its paired release gate
+are now closed. Detailed observations and the separate Android scope are in
+[NATIVE_ACCEPTANCE.md](NATIVE_ACCEPTANCE.md).
 
 The physical run started from mobile
 `51ee8d39b74238576339d95dd30f5a4bf8bb1fbc` and backend
-`1898dc79588f5db0a6d6dae520d5fa663548eb8f`. The fixes and documentation are
-post-release work on `handoff/ios-acceptance-review` in both repositories. Use
-those branches while review is pending, then the reviewed merge commits on
-`main`; record both full SHAs when reproducing the handoff. Backend CI pins its
-mobile companion explicitly. A final commit cannot embed its own SHA; Git and
-the paired pull requests identify the submitted revisions.
+`1898dc79588f5db0a6d6dae520d5fa663548eb8f`. The reviewed customer-history pair
+on `main` is mobile `09919ebfbce1f6e819363eca7711c23dd29b155f` and backend
+`a1ad80741ddff97d4f9eb47a0066094f76ea476a`. Backend CI pins that exact mobile
+implementation commit in its active and documented workflow copies. Mobile PR
+#15 and backend PR #11 identify the reviewed submissions and checks.
 
 The immutable `v0.2.2-demo` tags still select mobile
 `6e6885786912fe9186285103e19de762e4ba88f8` and backend
@@ -41,15 +41,15 @@ published baseline and does **not** include the fixes in this handoff.
 - Both developer guides distinguish staff-configurable prices from code-level
   billing-day policy and PDF branding customization.
 
-## Open work, in priority order
+## Status by priority
 
 | Priority | Gap and evidence | Completion criterion |
 | --- | --- | --- |
-| High, repair ready | Customer GRN and recent-dispatch views used staff-only RPCs, producing empty views despite existing records. `fix/customer-history-access` now uses customer-authorized GRN/dispatch contracts with explicit mapping, visible errors, assignment-aware pagination, and unchanged staff calls. | Focused mobile tests, fresh migration replay, full live API and live paired-contract checks passed. Review both PRs, verify CI with the new mobile pin, then repeat the Android smoke on the merged pair. |
+| Closed — customer history | Customer GRN and recent-dispatch views previously used staff-only RPCs, producing empty views despite existing records. The merged pair uses customer-authorized contracts with explicit mapping, visible errors, assignment-aware pagination, and unchanged staff calls. | Mobile PR #15 and backend PR #11 merged; default-branch CI passed; an API-36 emulator displayed two GRNs and three recent dispatches for the assigned fictional customer. |
 | High | Physical-iPhone onboarding is not reproducible from the tracked runbook alone. The successful run needed temporary USB API/bundle relays and a local development signing identity. Those helpers were removed. iOS has no `adb reverse`. | Supply a reviewed, repeatable USB-only connection procedure or helper with reconnect detection, origin handling, ownership-scoped shutdown and fresh-clone validation. Keep demo OTP services off LAN/public listeners. |
 | Medium | Revoking an active account denies protected data but leaves the stock screen in an error state instead of invalidating local credentials. | Route definitive session revocation through the shared logout/cache invalidation path. Verify cold relaunch remains logged out; assignment-only denial and network errors must not destroy a valid session. |
 | Low | Pricing cards display the fictional `Review customer <timestamp>` fixture name. The orange number is a record count, not an identifier leak. | Use readable fixture names or isolate automated-test data; confirm real customer names remain intact. |
-| Release gate | Local success and historic CI are not CI evidence for these new commits. Native tests used an evolving worktree, and no clean final-commit physical rebuild has been recorded. | Review both PRs, verify the pinned pair in CI, merge, and smoke-test the resulting source pair. Repeat Android smoke for the shared JS changes. Preserve existing release tags. |
+| Closed — paired gate | The implementation required current CI and a clean native smoke on the final merged pair. | Both PRs merged, mobile main CI run `35605871279` and backend main CI run `35606744913` passed, including the pinned integration pair. The post-merge API-36 emulator build/login/history/cold-restoration smoke passed. Existing release tags remain unchanged. |
 | Separate scope | Enabled telemetry, production signing/distribution, SMS/TLS/operations, retention and privacy declarations remain open. | Keep telemetry off until a dedicated test project is configured and redaction/delivery are verified. Complete the production gates before any production claim. |
 
 ## Validation and remaining evidence
@@ -64,8 +64,11 @@ checkout-owned `warehouse-customer-history` demo applied migrations 00000–0001
 and passed health checks. Its full API matrix passed, including assigned-customer
 GRN/dispatch results, pagination and cross-customer denial. The live companion
 check found 94 RPC names / 129 typed calls, zero missing names and zero
-mismatches. These are local repair evidence; paired PR CI and a merged-pair
-Android smoke are still required.
+mismatches. Mobile main CI run `35605871279` and backend main CI run
+`35606744913` passed for the reviewed pair. A fresh debug build installed on
+`Medium_Phone_API_36.1` (Android API 36); demo login succeeded, the assigned
+customer displayed two GRNs and three recent dispatches, and force-stop/relaunch
+restored the authenticated Orders screen.
 
 ## Local cleanup and continuation
 
