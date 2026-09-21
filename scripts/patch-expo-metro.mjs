@@ -3,6 +3,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isMain } from './is-main.mjs';
 
 const hashes = {
   'waitForMetroToObserveTypeScriptFile.js': 'aed7e130a2c8bb5e6bc4a89f525086c368a4ed73cf1c4d2dc1318ada8622c570',
@@ -44,4 +45,4 @@ export function patchExpoMetro(root) {
   for (const change of changes) if (change.source !== change.patched) writeFileSync(change.target, change.patched);
   console.log('Verified Expo SDK 54 watcher compatibility with Metro 0.83.8.');
 }
-if (process.argv[1] === fileURLToPath(import.meta.url)) patchExpoMetro(fileURLToPath(new URL('..', import.meta.url)));
+if (isMain(import.meta.url)) patchExpoMetro(fileURLToPath(new URL('..', import.meta.url)));

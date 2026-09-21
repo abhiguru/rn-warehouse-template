@@ -6,14 +6,16 @@ import {
   generateCustomerStockPDF,
 } from '../pdf-service';
 
+let mockConfigUrl = 'http://localhost:28000';
 jest.mock('@/config/supabaseConfig', () => ({
-  getCurrentConfig: () => ({ url: 'http://localhost:28000' }),
+  getCurrentConfig: () => ({ url: mockConfigUrl }),
 }));
 jest.mock('@/utils/authTokenUtils', () => ({ getAuthTokenString: jest.fn() }));
 
 const originalFetch = global.fetch;
 let logs: jest.SpyInstance[];
 beforeEach(() => {
+  mockConfigUrl = 'http://localhost:28000';
   jest
     .mocked(getAuthTokenString)
     .mockResolvedValue('fictional-access-credential');
@@ -65,6 +67,28 @@ it.each([
     logs.forEach(log => expect(log).not.toHaveBeenCalled());
   }
 );
+
+it('rewrites a loopback signed URL to the configured physical-device origin', async () => {
+  mockConfigUrl = 'http://169.254.49.167:18000';
+  jest
+    .mocked(fetch)
+    .mockResolvedValue({
+      ok: true,
+      headers: { get: () => 'application/json' },
+      json: async () => ({
+        success: true,
+        pdf_url:
+          'http://localhost:18000/storage/v1/object/sign/documents/dispatch.pdf?token=private',
+        expires_in: 60,
+      }),
+    } as any);
+
+  expect(await generateDispatchPDF('TEST0001')).toMatchObject({
+    success: true,
+    pdfUrl:
+      'http://169.254.49.167:18000/storage/v1/object/sign/documents/dispatch.pdf?token=private',
+  });
+});
 
 it('reports a non-JSON gateway failure without reading or logging the response body', async () => {
   const text = jest.fn(async () => 'sensitive upstream diagnostic');

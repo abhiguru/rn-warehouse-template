@@ -1,10 +1,10 @@
 import { readFileSync, existsSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { isMain } from './is-main.mjs';
 
 import { httpOrigin, validatePublicConfig } from '../src/config/bootstrapValidation.ts';
 export { validatePublicConfig };
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+if (isMain(import.meta.url)) {
   try {
     const envPath = new URL('../.env', import.meta.url);
     const env = existsSync(envPath) ? readFileSync(envPath, 'utf8') : '';

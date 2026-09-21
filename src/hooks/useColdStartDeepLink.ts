@@ -118,6 +118,39 @@ export function useColdStartDeepLink(
   const pendingUrlRef = useRef<string | null>(null);
   const hasCheckedInitialUrl = useRef(false);
 
+  // Expo Router normally consumes warm links, but native delivery can race with
+  // the router state on a running app. Listen explicitly so an already-running
+  // authenticated session always applies the requested route.
+  useEffect(() => {
+    const subscription = Linking.addEventListener('url', ({ url }) => {
+      if (__DEV__) {
+        console.log('[ColdStartDeepLink] Warm URL:', url);
+      }
+
+      const routePath = parseDeepLinkUrl(url);
+      if (!routePath) return;
+
+      setInitialUrl(url);
+
+      if (isProtectedRoute(routePath) && (!authCheckSettled || isLoading)) {
+        pendingUrlRef.current = routePath;
+        setPendingAuth(true);
+        setProcessed(false);
+        return;
+      }
+
+      pendingUrlRef.current = null;
+      setPendingAuth(false);
+      setProcessed(true);
+
+      if (currentPath !== routePath) {
+        router.replace(routePath as Href);
+      }
+    });
+
+    return () => subscription.remove();
+  }, [authCheckSettled, currentPath, isLoading, router]);
+
   // Check for initial URL on mount (cold start)
   useEffect(() => {
     if (hasCheckedInitialUrl.current) return;

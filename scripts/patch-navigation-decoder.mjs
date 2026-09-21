@@ -3,6 +3,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isMain } from './is-main.mjs';
 
 const originalLine = "const decodeComponent = require('decode-uri-component');";
 const adapter = "const decodeComponentModule = require('decode-uri-component');\nconst decodeComponent = typeof decodeComponentModule === 'function' ? decodeComponentModule : decodeComponentModule.default;";
@@ -37,4 +38,4 @@ export function patch(root) {
   console.log('Verified upstream decoder 0.5.0 and query-string CommonJS/default-export adapter.');
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) patch(fileURLToPath(new URL('..', import.meta.url)));
+if (isMain(import.meta.url)) patch(fileURLToPath(new URL('..', import.meta.url)));

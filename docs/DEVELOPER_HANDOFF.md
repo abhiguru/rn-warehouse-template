@@ -1,5 +1,18 @@
 # Developer handoff — v0.2.2-demo
 
+## Post-release handoff — 2026-09-21
+
+For continuation on another computer, use the [AI agent handoff](AI_AGENT_HANDOFF.md)
+for branch-clone commands, implementation baselines and the next review tasks.
+
+Start with [the handoff review and prioritized open work](HANDOFF_REVIEW_2026-09-21.md)
+for the latest source changes. Ordered item 3's physical-iOS matrix was executed
+with known customer-view and session-revocation UX defects; item 4 has not begun.
+The fixes are on `handoff/ios-acceptance-review` in both repositories pending
+review. After merge, use the reviewed `main` revisions and record both SHAs.
+The release-tag clone commands below reproduce the published baseline, not these
+post-release fixes. Existing `v0.2.2-demo` tags are unchanged.
+
 ## Active source-demo release — 2026-09-18
 
 Source-demo acceptance and publication are complete. Use `v0.2.2-demo` in
@@ -17,11 +30,12 @@ checkout. Prove setup rerun, stop, restart, configuration preservation, and
 Android login/connectivity before treating onboarding as reproducible.
 
 This is a source-demo release, not a production or all-platform release.
-Post-release physical Android acceptance now covers USB connectivity, camera,
-picker, permission lifecycle, offline/retry, roles, deep links, secure
-restoration, and invoice PDF sharing. iOS, production SMS/TLS/operations,
-distribution, printing, sensors, and unsupported integrations remain separate
-gates. The reviewed merges, default-branch CI, exact-tag validation, and
+Post-release physical Android and iOS acceptance now cover USB connectivity,
+camera, picker, permission lifecycle, offline/retry, roles, deep links, secure
+restoration, warehouse mutations, and all four private PDF share paths.
+Production SMS/TLS/operations, distribution, enabled native telemetry,
+printing, sensors, and unsupported integrations remain separate gates. The
+reviewed merges, default-branch CI, exact-tag validation, and
 matching source-only prerelease publication completed on 2026-09-18.
 
 The 2026-09-18 fresh-clone rehearsal now passes dependency install, generated
@@ -31,6 +45,11 @@ restoration. The acceptance-discovered development-client route defect is fixed
 and regression-tested. The durable result is summarized in
 [SOURCE_DEMO_ACCEPTANCE.md](SOURCE_DEMO_ACCEPTANCE.md), and ownership/attribution
 evidence is in [ATTRIBUTION_REVIEW.md](ATTRIBUTION_REVIEW.md).
+
+The post-release physical-iOS run also fixed Item Pricing customer search for
+the backend's standardized `{ success, data }` response while retaining support
+for the legacy direct-array shape. A focused parser regression test and a real
+iPhone search for the fictional `Example` customers passed.
 
 ## Historical `v0.2.1-demo` record
 
@@ -54,7 +73,8 @@ Use Node.js 22.18+ with npm, Git, Docker with Compose v2, and OpenSSL. Android
 native development needs a compatible JDK (17 or 21), SDK platform 36, build tools
 36.0.0, platform tools, and an emulator or USB device. Expo SDK 54 / React Native
 0.81.5 remain selected by the lockfile. Allow space for Docker images, npm,
-the Android SDK/NDK, and Gradle caches. iOS requires macOS/Xcode and is untested.
+the Android SDK/NDK, and Gradle caches. iOS requires macOS, full Xcode and
+CocoaPods; the physical-device evidence is recorded in `NATIVE_ACCEPTANCE.md`.
 
 For command-line Android work, export the installed SDK root as `ANDROID_HOME`
 and add `$ANDROID_HOME/emulator` and `$ANDROID_HOME/platform-tools` to `PATH`.
@@ -89,14 +109,21 @@ npm run android
 ```
 
 The app's `.env` must contain `EXPO_PUBLIC_CONFIG_API_URL=http://localhost:18000`.
-Both backend public URL settings must use that exact origin. USB devices and
-emulators use `adb reverse`; the supported demo does not use a LAN origin.
+Both backend public URL settings must use that exact origin. Android USB devices
+and emulators use `adb reverse`; the supported demo does not use a LAN origin.
 With several attached devices, select one using `adb -s SERIAL reverse ...`.
 Run `npm start -- --localhost` for later Metro sessions. Doctor is read-only; it
 checks prerequisites/configuration/connectivity without starting services or
 printing credentials. It does not start ADB or prove device connectivity: inspect
 `adb devices` and `adb reverse --list` yourself. `doctor -- --backend-only` checks
 the mobile bootstrap without requiring the Android SDK.
+
+For iOS, generate the native project on the Mac and select your own development
+team/device. The simulator can use the Mac's loopback API. A physical iPhone
+requires a separate connection: the recorded run used temporary USB-only relays
+that are no longer running or included in the checkout. A reproducible physical
+iOS connection procedure is an open handoff task; see the dated review before
+attempting a fresh-phone rehearsal. The Android commands above do not provide it.
 
 ## First login and warehouse walkthrough
 
@@ -120,6 +147,25 @@ requests/hour, twenty/day); repeated automated runs consume those allowances.
    starter layouts. GRN/dispatch images use register → upload → confirm;
    deletion revokes metadata access and removes stored bytes. A storage cleanup
    failure is reported, not treated as complete deletion.
+
+### Pricing and document customization
+
+This is a customizable source template. Authorized warehouse staff can maintain
+default or customer-specific item rates, pricing type, weight bands, labour,
+tax and effective dates through Item Pricing. The billing-day calculation is a
+code-level business-policy extension point, not a runtime end-user setting in
+this release: customize the backend `calculate_invoice_duration` contract and
+its invoice-preview/save consumers when onboarding a cold-storage operator that
+uses different day, fortnight or month boundaries. Update `docs/INVOICE_RULES.md`
+and the duration, preview and rounding fixtures with every policy change.
+
+Generated PDFs are also starter templates. `COMPANY_NAME` supplies the displayed
+cold-storage name, while `functions/_shared/document-html.ts` defines the shared
+header, styling, metadata, table and footer used by GRN, dispatch, invoice and
+stock PDFs. Customize that template for the operator's name, logo, address,
+registration/tax details, terms and document header, then redeploy the PDF Edge
+functions and verify all four private-document flows. This customization is
+source/deployment work; the current app does not provide a branding editor.
 
 `npm run test:api` in the backend creates fictional fixtures for these API flows.
 The test uses a customer-specific monthly rate of 5, labour rate 2 and tax 5%.
@@ -185,8 +231,9 @@ fails its legacy table constraints; combined-rate semantics require a separate
 review. Change-category filtering is unavailable; other change-log filters remain.
 Payments/accounting integrations are not part of the documented demo workflow.
 
-iOS, production scale/security, native telemetry delivery, retention enforcement,
-and privacy declarations remain separate checks. Physical Android camera/USB and
-the core device matrix passed after publication; see NATIVE_ACCEPTANCE.md. The
+iOS production distribution, production scale/security, native telemetry
+delivery, retention enforcement, and privacy declarations remain separate
+checks. Physical Android core acceptance passed after publication; iOS matrix
+execution completed with documented acceptance defects. See NATIVE_ACCEPTANCE.md. The
 scoped ownership and attribution review is complete; see ATTRIBUTION_REVIEW.md.
 A successful bundle still does not replace platform-specific device evidence.

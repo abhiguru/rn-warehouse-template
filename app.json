@@ -70,6 +70,7 @@
     "plugins": [
       "./plugins/remove-microphone-permission",
       "expo-router",
+      "./plugins/with-ios-linking-manager",
       "expo-secure-store",
       [
         "expo-image-picker",

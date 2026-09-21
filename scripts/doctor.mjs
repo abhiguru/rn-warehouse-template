@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { isMain } from './is-main.mjs';
 import { probe, readEnv, root, supportedNode } from './doctor-common.mjs';
 import { httpOrigin, validatePublicConfig } from '../src/config/bootstrapValidation.ts';
 
@@ -24,7 +24,7 @@ export async function doctor({ backendOnly = false } = {}) {
   return 'Prerequisites and host bootstrap passed. Use adb reverse for Android API and Metro ports; device connectivity requires an actual device check. No files or services changed.';
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+if (isMain(import.meta.url)) {
   try { console.log(await doctor({ backendOnly: process.argv.includes('--backend-only') })); }
   catch (error) { console.error(`Doctor: ${error.message}`); process.exitCode = 1; }
 }

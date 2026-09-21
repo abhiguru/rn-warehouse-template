@@ -1,4 +1,9 @@
-import { parseDeepLinkUrl } from '../useColdStartDeepLink';
+import React from 'react';
+import { Linking } from 'react-native';
+import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { usePathname, useRouter } from 'expo-router';
+import { useAppSelector } from '@/store/hooks';
+import { parseDeepLinkUrl, useColdStartDeepLink } from '../useColdStartDeepLink';
 
 jest.mock('@/store/hooks', () => ({ useAppSelector: jest.fn() }));
 jest.mock('expo-router', () => ({
@@ -42,5 +47,57 @@ describe('parseDeepLinkUrl', () => {
     expect(parseDeepLinkUrl('warehouse-review://invoice-details/invoice-123')).toBe(
       '/invoice-details/invoice-123'
     );
+  });
+});
+
+describe('useColdStartDeepLink warm links', () => {
+  const replace = jest.fn();
+  let renderer: ReactTestRenderer | undefined;
+  let urlListener: ((event: { url: string }) => void) | undefined;
+
+  function Harness() {
+    useColdStartDeepLink(true);
+    return null;
+  }
+
+  beforeEach(() => {
+    replace.mockReset();
+    urlListener = undefined;
+    (useRouter as jest.Mock).mockReturnValue({ replace });
+    (usePathname as jest.Mock).mockReturnValue('/(tabs)');
+    (useAppSelector as jest.Mock).mockReturnValue({
+      userProfile: { id: 'admin-user' },
+      isLoading: false,
+    });
+    jest.spyOn(Linking, 'getInitialURL').mockResolvedValue(null);
+    jest.spyOn(Linking, 'addEventListener').mockImplementation((event, listener) => {
+      if (event === 'url') {
+        urlListener = listener as (event: { url: string }) => void;
+      }
+      return { remove: jest.fn() };
+    });
+  });
+
+  afterEach(() => {
+    if (renderer) {
+      act(() => renderer?.unmount());
+      renderer = undefined;
+    }
+    jest.restoreAllMocks();
+  });
+
+  it('navigates a running authenticated app when a warm link arrives', async () => {
+    await act(async () => {
+      renderer = create(React.createElement(Harness));
+      await Promise.resolve();
+    });
+
+    expect(urlListener).toBeDefined();
+
+    await act(async () => {
+      urlListener?.({ url: 'warehousemanager://customers' });
+    });
+
+    expect(replace).toHaveBeenCalledWith('/customers');
   });
 });
