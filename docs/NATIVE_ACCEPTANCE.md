@@ -23,97 +23,63 @@ repaired history views, and authenticated cold restoration in emulator scope.
 It does not add physical camera, OEM, USB, printer/sensor, signed-distribution,
 iOS onboarding, or production evidence.
 
-## iOS simulator acceptance — 2026-09-18
+## Final merged physical-iPhone source-demo acceptance — 2026-09-22
 
-The source-demo application was built, installed and launched from
-`WarehouseManager.xcworkspace` on an Apple-silicon Mac using Xcode 26.3
-(17C529), CocoaPods 1.16.2 and Node.js 22.23.1. The target was an iPhone 17 Pro
-simulator running iOS 26.2. The Debug application ID was
-`com.example.warehousemanager`. Mobile source was
-`51ee8d39b74238576339d95dd30f5a4bf8bb1fbc`; the paired backend was
-`1898dc79588f5db0a6d6dae520d5fa663548eb8f`. Both match the requested `main`
-handoff commits. Existing `v0.2.2-demo` tags were not moved.
+The final tested implementation pair is mobile
+`9ba56ff122dc38dc57d6100de4c27599023d22b1` and backend
+`cf18f1e43ab613310b1b13339ab97e8533861f9b`, merged through mobile
+[#18](https://github.com/abhiguru/rn-warehouse-template/pull/18) and backend
+[#13](https://github.com/abhiguru/supabase-warehouse-template/pull/13). Exact-main
+CI passed in mobile run
+[`35686164009`](https://github.com/abhiguru/rn-warehouse-template/actions/runs/35686164009)
+and backend run
+[`35686198287`](https://github.com/abhiguru/supabase-warehouse-template/actions/runs/35686198287).
+The existing `v0.2.2-demo` tags were not moved.
 
-| Case | Result |
+The physical target was an iPhone 15 running iOS 26.6.2, attached by USB and
+signed locally with a Personal Team. The Mac used Xcode 26.3, `xcrun` 72,
+CocoaPods 1.16.2, Git 2.50.1 and Node.js 22.23.1. Generated native files,
+signing identifiers, profiles and configuration remained ignored and local.
+The tracked `scripts/ios-usb.mjs` relay and `docs/IOS_USB_DEVELOPMENT.md`
+procedure kept the API and Metro on the USB link-local path; the OTP service,
+database and API were never exposed on Wi-Fi, LAN or a public listener. USB
+disconnect/reconnect and address change recovery were exercised.
+
+| Source-demo iPhone case | Result |
 | --- | --- |
-| Clean native build and install | PASS — iOS prebuild, installation of 118 pods, Xcode Debug build, simulator installation and launch completed. Public configuration was fetched from the isolated loopback demo backend. |
-| Fresh login and roles | PASS — fictional admin and assigned-customer OTP logins succeeded. Admin exposed Queue, Customers and Users; the customer exposed no Queue, Customers or Users controls. |
-| Persistence and logout | PASS (simulator scope) — a stopped/cold-launched app restored the admin session. Admin and customer logout returned to login; a subsequent full stop/relaunch did not resurrect the customer session. Reboot/unlock and instrumented secure-storage failure remain NOT RUN. |
-| Offline and retry | PARTIAL PASS — stopping only the API gateway made OTP fail without false success (`Network request failed`); restoring the gateway allowed the same request to reach verification and complete login. Mid-upload and stock-mutation interruption remain NOT RUN. |
-| Deep links and authorization | PASS — an authenticated admin `warehousemanager://customers` launch opened the customer list; a customer `warehousemanager://users` launch rendered Access Denied. Unicode, repeated-parameter and malformed-encoding native cases remain NOT RUN. |
-| Documents | PARTIAL PASS — an invoice displayed the independently seeded ₹100 total and generated a 21 KB PDF in the native iOS share sheet. The backend acceptance suite generated all four document types and passed its access-denial checks; manual native open/share of the other three remains NOT RUN. |
-| Camera and picker | NOT APPLICABLE / NOT RUN — Simulator cannot establish real-camera capture. Native permission denial/grant, capture, picker upload/reopen/delete and physical-device lifecycle remain open. Backend image access/delete flows passed. |
-| Refresh and stock races | PARTIAL PASS — backend API acceptance passed refresh replay, logout revocation, concurrent dispatch, oversell denial and idempotent business flows. The full native parallel-request and logout-during-refresh matrix remains NOT RUN. |
-| Privacy | PASS for the default configuration — the telemetry DSN is empty/absent and the generated `.env` is ignored with mode `0600`. Enabled telemetry payload/redaction testing remains NOT RUN. |
-| Clean rerun | PASS — the checksummed migration plan reported all 11 migrations already applied; the backend `.env` hash and `0600` mode were unchanged, and fictional customer rows remained 3 before and after. Doctor and live mobile-contract checks passed with zero missing RPCs or mismatches. |
+| Clean checkout, configuration, build, install and launch | PASS — locked dependencies, generated mode-0600 configuration, clean iOS prebuild/pods, Personal Team Debug signing, physical installation, public bootstrap and launch completed from the final source. The tracked warm-link plugin survived regeneration. |
+| Fictional login and role boundaries | PASS — admin and assigned-customer OTP login succeeded. Admin exposed Queue, Customers, Items, Users and Item Pricing. Customer exposed Orders, GRN, Dispatch, Invoices and Reports only; staff screens and denied routes remained inaccessible. |
+| Restoration, refresh and logout | PASS — warm/cold restoration, expired-token refresh, stop/relaunch, reboot/unlock persistence and logout/relogin passed. Forced SecureStore read/write failures failed closed without AsyncStorage credential fallback; the instrumentation was removed. |
+| Interrupted requests and retry | PASS — bootstrap/OTP failure, GRN image upload interruption and GRN stock submission interruption showed errors without false success. A single retry after USB recovery created exactly one image/stock result. |
+| Refresh races and definitive revocation | PASS — concurrent validity probes used one refresh, logout won against a delayed refresh, and the late response did not restore credentials. Revoked/disabled sessions cleared credentials and returned to login, including after relaunch. Assignment-only denial and network failure preserved a valid session and displayed the correct error. |
+| Customer GRN and dispatch history | PASS — on the final merged build the assigned customer displayed its Example Customer A GRNs, opened item details showing 100 received, 79 in stock and 21 dispatched, and displayed the two authorized per-item dispatch rows (20 and 1). Staff-only records and another customer's data remained denied; failures render retryable errors rather than empty success. |
+| Camera, picker and image lifecycle | PASS — permission denial showed the explanation; retry/grant opened the camera. Real capture and native picker uploads produced thumbnails, reopening displayed both images, deletion removed one, and admin/customer access boundaries held. |
+| Warehouse walkthrough | PASS — GRN creation/reopen, photos, partial and final dispatch, stock/cart add/change/remove, customer-aware Item Pricing, invoice preview/save and invoice-to-GRN navigation passed with fictional data. Duplicate lot selection now explains that the item is already present and offers **View All**. Readable Example fixtures replaced timestamp-suffixed customer names. |
+| Pricing and invoice arithmetic | PASS — Example Potatoes used monthly ₹5, labour ₹2 and tax 5%; the accepted invoice showed 100 received/dispatched bags, ₹500 storage, ₹200 labour, ₹35 tax and ₹735 total, saved and reopened successfully. |
+| Four private documents | PASS — GRN, dispatch, invoice and customer-stock PDF generation reached the native iOS share sheet. Signed paths were rewritten to the configured USB API origin and cross-customer/private URL checks passed. |
+| Warm/cold links and malformed input | PASS — allowed and denied role routes, warm and fully stopped launch, Unicode/repeated parameters, malformed percent encoding and invalid bytes were exercised without crash or authorization bypass. |
+| Privacy/default telemetry | PASS — telemetry stayed disabled, generated configuration remained ignored and mode 0600, no credentials or private signed URLs were committed, and wrong-account document/image access was denied. |
+| Setup rerun, persistence and owned restart | PASS — migration/doctor/health/contract/API checks passed, setup rerun preserved configuration and fictional data, and checkout-owned stop/restart restored the same healthy service. |
 
-Supporting source checks passed 20 Jest suites / 165 tests, typecheck, setup tests,
-Expo dependency compatibility and lint with zero errors (existing warnings remain).
-The backend API suite passed the OTP, authorization, GRN, dispatch, oversell,
-invoice, image, role, concurrency, PDF, customer-order, rounding, refresh-replay
-and logout-revocation flows. One backend unit fixture that expects a temporary
-fake Docker executable to return exit 42 instead received exit 1; 15 of 16
-backend unit tests passed. The 2026-09-21 review traced this to symlink-sensitive
-CLI entry checks that skipped configuration generation, corrected them, and
-passed 17/17 backend tests. The earlier live Docker-backed doctor, contract and
-API suites passed separately.
+The earlier simulator and first physical-device passes supplied the destructive
+fault-injection, camera, reboot, deep-link, mutation and all-document evidence.
+The final merged rerun repeated the affected onboarding, role, customer-history,
+stock, pricing, invoice and document paths on the physical iPhone. The merged
+source is the same reviewed implementation content as the successful PR-head
+run, with GitHub's squash commits above. iPhone Mirroring intermittently dropped
+its control channel and would not activate one filter-sheet header target; that
+Mac mirroring limitation did not change the physical-device results already
+observed directly.
 
-The initial large migration stream was truncated by the sandbox-to-Colima stdin
-bridge. The exact generated checksummed plan was copied into the isolated DB
-container and applied there, after which doctor and API acceptance passed. This
-workaround does not replace a normal unsandboxed `setup.sh --demo` verification.
+The final shared navigation/runtime changes are additionally supported by the
+fresh Android API-36 emulator build/login/customer-history/cold-restoration smoke
+recorded above. This Mac did not provision a second Android SDK solely for the
+documentation closure.
 
-This closes the simulator-eligible iOS checks, not physical-device acceptance.
-The remaining iOS gate is a real iPhone run for camera/photo permissions and
-capture, reboot/unlock persistence, secure-storage failure instrumentation,
-network interruption during uploads and stock mutations, the remaining native
-document paths, and distribution signing. Do not begin a later ordered item on
-the strength of this simulator record alone if physical iOS evidence is required.
-
-## iOS physical-device acceptance — 2026-09-18 to 2026-09-21
-
-An iPhone 15 running iOS 26.6.2 was connected by USB and selected as the Xcode
-run destination. Xcode registered a new local-development application ID under
-the tester's Personal Team, built the Debug target, installed it, and launched it
-after the device trusted the developer certificate. The temporary application ID
-and generated native changes remain local to the ignored `ios/` tree; no release
-tag or production signing asset was changed. Xcode 26.3, `xcrun` 72,
-CocoaPods 1.16.2, Git 2.50.1 and the installed NVM Node.js 22.23.1 satisfied
-the handoff prerequisites.
-
-The physical app uses a temporary HTTP relay bound only to the iPhone USB
-link-local interface. The relay forwards to the loopback demo backend and rewrites
-only the advertised public demo origin; neither the OTP API nor the database was
-bound to Wi-Fi or a public interface. Disconnecting USB removed that interface
-and correctly produced the fail-closed configuration error. Reconnecting assigned
-a new link-local address; refreshing the relay and Metro restored bootstrap.
-
-| Case | Result |
-| --- | --- |
-| Signed build, install and launch | PASS — Personal Team provisioning, framework/app signing, installation and trusted-device launch completed. |
-| Private demo connectivity | PASS — Metro and public configuration loaded on-device through the USB-only arrangement; no Wi-Fi/public backend listener was used. |
-| Fresh admin login and role UI | PASS — fictional admin OTP login opened Orders. Settings identified the Demo Admin role and exposed Customers, Items, Users and Item Pricing. |
-| Secure restoration and refresh | PASS — an Xcode stop/relaunch restored the cached admin profile; a later relaunch refreshed an expired JWT and restored the same session. After a full iPhone reboot and unlock, relaunching the existing installation without clearing app data restored the admin session directly to Orders. A temporary instrumented build then forced SecureStore reads and writes to fail: the saved customer session failed closed to login without an AsyncStorage credential fallback, and OTP verification reported failure rather than opening an authenticated screen. The fault injection was removed after the run. |
-| Disconnect/offline behavior | PASS — removing the USB route caused bootstrap to time out and show the configuration error without false success; restoring the route recovered normally. While editing existing GRN `A0001`, removing only that route before adding a header photo produced an explicit upload failure and no false completed thumbnail; after reconnection, retrying the same photo succeeded with one new thumbnail. For a stock mutation, fictional GRN `A0002` was prepared with one Example Potatoes bag / 10 kg and one deferred header image. Submitting without the route reported `Network request failed` and remained on Review. After reconnection, one retry created the GRN; reopening it showed total quantity 1, stock 1, dispatched 0, weight 10 kg and an Images count of 1, with no duplicate stock change. |
-| Logout and revocation | PASS — customer logout followed by a full stop/relaunch remained logged out; a later admin login and expired-token refresh restored only the current admin session. |
-| Refresh races | PASS — a temporary instrumented physical-device build expired the saved access marker and issued three simultaneous validity checks; all three succeeded while the USB relay observed one refresh RPC per probe, confirming single-flight renewal. With that refresh response delayed for three seconds, logout completed first; the late refresh resolved false, secure storage remained invalid, and the phone visibly returned to login. The probes were removed after the run. For the assigned fictional customer, removing the warehouse assignment made the open stock view fail closed with `Customer access denied`; restoring the assignment immediately restored the same 100-unit/two-GRN view. Deactivating the account made the same protected view fail closed with `Session expired or revoked`; reactivation immediately restored the data. Backend acceptance separately covers refresh replay and server revocation. |
-| Camera and images | PASS — camera grant and denial were exercised; denial displayed the required permission explanation. A real item photo and GRN header photo were captured and uploaded. Admin and assigned-customer reads succeeded, one image was deleted, and the customer subsequently saw only the remaining image. |
-| Warehouse walkthrough | PASS — physical-device GRN `A0001` was created with 100 bags at 10 kg, 20 bags were dispatched, and the committed balance reopened as 80 bags / 800 kg. The assigned customer viewed the balance and completed cart add/change/remove. A default monthly Example Potatoes price (₹5, labour ₹2, tax 5%, 0–100 kg) was created after the customer-specific picker initially failed. The picker was subsequently fixed to normalize the standardized wrapped `search_customers` response; searching `Example` then displayed the matching customers on the physical iPhone. Dispatch `I0002` submitted the remaining 80 bags / 800 kg successfully. After aligning the monthly price's effective date with the GRN date, invoice `715118652` previewed 100 received/dispatched bags with ₹500 storage, ₹200 labour, ₹35 tax and ₹735 total, then saved successfully. |
-| Documents | PASS — GRN `A0001`, dispatch `I0002`, invoice `715118652`, and the Example Customer A stock summary each generated a private PDF and opened the native iOS share sheet after the shared PDF service was fixed to rewrite loopback/internal signed-URL origins to the app's configured physical-device API origin. The focused seven-case PDF privacy/URL suite, typecheck and lint passed. |
-| Deep links and authorization | PASS — on the physical iPhone, an authenticated admin `warehousemanager://customers` link opened the three-customer list from both warm and fully stopped launches. Warm Unicode plus repeated parameters reached the app, and malformed percent/invalid-byte input did not crash the decoder. After switching to the assigned customer, `warehousemanager://users` rendered **Access Denied** instead of the Users list. Xcode recorded each native URL delivery. The fix includes a tracked Expo config plugin so the generated native bridge survives `expo prebuild`, plus focused hook/plugin regression tests. |
-| Acceptance defects | FAIL — the customer GRN list renders an empty state because it calls staff-only `get_all_grn_items`; customer recent dispatches likewise call staff-only `get_dispatch_list_with_items`. The pricing list exposes a timestamp-suffixed automated fixture name (`Review customer …`) in normal UI; the orange item-header number is only the pricing-record count, not an identifier leak. A newly revoked active session is denied protected data and displays the accurate `Session expired or revoked` reason, but remains on the failed screen instead of clearing credentials and returning to login. Two defects were fixed in the current worktree and confirmed on the physical iPhone: Item Pricing now normalizes direct and standardized wrapped customer-search results, and Dispatch duplicate-lot selection now disables the empty item selector, explains where the item is, and provides a working **View All** action. Focused regression tests and typecheck passed. |
-
-This completed the first physical-iOS core-matrix execution for ordered item 3.
-The customer-history defect was subsequently repaired, merged and verified in
-CI and on an Android API-36 emulator, but still requires physical-iPhone
-confirmation on the final merged pair. The revoked-session redirect, readable
-fixture data and reproducible physical-USB setup remain open. The final Mac
-execution checklist is in [AI_AGENT_HANDOFF.md](AI_AGENT_HANDOFF.md); it requires
-repair and retest through closure rather than another continuation handoff.
-This record does not establish production signing, App Store distribution,
-retention enforcement, or enabled native-telemetry delivery. Telemetry remained
-disabled because no dedicated test DSN/project was provided; the default-empty
-configuration emitted no crash events.
+This closes the local source-demo iPhone matrix. Production signing,
+App Store/TestFlight distribution, enabled telemetry delivery, production
+SMS/TLS/operations, retention/privacy deployment, printing, sensors, Realtime,
+payments and unsupported integrations remain separate production gates.
 
 ## Physical Android acceptance — 2026-09-18
 
@@ -182,9 +148,9 @@ Android ARM64 debug build below also passes at this commit.
 | --- | --- |
 | Android native generation (`expo prebuild --platform android --no-install`) | Pass in a fresh scratch clone |
 | ARM64 debug APK compilation | Pass on Linux; `:app:assembleDebug`, 594 tasks, 6m 57s |
-| Physical Android device | Not run: no device listed by `adb devices -l` |
-| iOS native compilation | Not run: this host is Linux, without Xcode |
-| Camera, reboot, offline and deep-link acceptance | Pending physical-device execution |
+| Physical Android device | Historical Linux compile host had no attached device; later physical Android acceptance is recorded above. |
+| iOS native compilation | Historical Linux compile host had no Xcode; the later complete physical-iPhone record is above. |
+| Camera, reboot, offline and deep-link acceptance | Later completed in the physical-device records above. |
 | Printer, sensors, Realtime | Unsupported/unverified for the default demo; keep disabled |
 
 An Android JavaScript/Hermes export or successful native generation is **not** a
@@ -304,8 +270,8 @@ Remaining defects and release limitations:
 ```
 
 Keep device identifiers, tokens and customer information out of published logs.
-Do not mark overall native acceptance complete while either platform or required
-physical-device flows remain untested.
+For future releases, do not mark overall native acceptance complete until every
+required platform and physical-device flow has current evidence.
 
 References: [Expo local builds](https://docs.expo.dev/guides/local-app-development/),
 [native generation](https://docs.expo.dev/workflow/continuous-native-generation/).

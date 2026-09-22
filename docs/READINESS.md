@@ -1,5 +1,17 @@
 # Readiness
 
+## Final physical-iPhone closure — 2026-09-22
+
+Current `main` passed the complete local source-demo physical-iPhone gate at
+mobile `9ba56ff122dc38dc57d6100de4c27599023d22b1` paired with backend
+`cf18f1e43ab613310b1b13339ab97e8533861f9b`. Mobile PR #18 and backend PR #13
+merged after review; exact-main CI runs `35686164009` and `35686198287` passed.
+An iPhone 15 on iOS 26.6.2 passed the matrix recorded in
+[NATIVE_ACCEPTANCE.md](NATIVE_ACCEPTANCE.md), including USB-only onboarding,
+roles/session lifecycle, customer history, images, warehouse mutations, pricing,
+invoice, all four PDFs and protected/deformed navigation inputs. Existing
+`v0.2.2-demo` tags remain immutable.
+
 ## Current source-demo status — 2026-09-18
 
 The Android-first source-demo scope is accepted and published. Matching
@@ -14,10 +26,11 @@ redistribution attestation and reconciled third-party inventory are recorded in
 [ATTRIBUTION_REVIEW.md](ATTRIBUTION_REVIEW.md). There is no unresolved
 source-only attribution blocker.
 
-Post-release physical Android hardware/camera acceptance is recorded in
-[NATIVE_ACCEPTANCE.md](NATIVE_ACCEPTANCE.md). iOS, production SMS/TLS/operations,
-app-store/native-binary distribution, printing, sensors, payments, Realtime, and
-unsupported integrations remain separate gates.
+Post-release physical Android and complete physical-iPhone source-demo acceptance
+are recorded in [NATIVE_ACCEPTANCE.md](NATIVE_ACCEPTANCE.md). Production
+SMS/TLS/operations, app-store/native-binary distribution, enabled telemetry,
+printing, sensors, payments, Realtime and unsupported integrations remain
+separate gates.
 
 ## Historical readiness records
 
@@ -93,29 +106,14 @@ Demo admin: 0000000001. Demo customer: 0000000002. OTP: 123456.
 Only the backend's explicit local demo permits these impossible subscriber
 numbers; no SMS is sent. Do not expose demo authentication publicly.
 
-## Remaining acceptance work
+## Remaining production-only work
 
-1. Complete native Android/iOS builds and fresh install, login, app restart,
-   cache-expiry, offline/error, camera, secure-storage, deep-link and role flows.
-   Local Jest/API tests do not establish that every mobile screen works.
-2. Complete image upload/deletion, pricing/invoice calculations, payments,
-   cart/order lifecycle, reports and concurrency tests against the backend.
-   Live contract inventory covers 95 literal RPC names and 128 typed calls with
-   zero missing names or mismatches; three dynamic forwarding sites are reported.
-   Explicit financial and storage fixtures pass; payments still need business acceptance.
-3. Export/review optional preprinted-print endpoints and dynamic print-job
-   management. Validate actual printer/sensor hardware and Realtime before
-   enabling them. Four generic PDF endpoints are now implemented and API-tested.
-4. Implement production SMS and operator onboarding without fixed-code fallback.
-   Production setup remains gated.
-5. Keep dependency and native compatibility checks current. Both npm audits
-   report zero findings on 2026-09-14 after checked decoder/Metro adapters; see
-   [dependency review](DEPENDENCY_SECURITY.md). Avoid exposing Metro.
-6. CI workflows are activated in `.github/workflows/` and verified passing on GitHub Actions
-   for mobile main (100 tests, typecheck/lint, dependency audit and bundle export).
-   The released backend main CI selected an old mobile checkout and failed live
-   contracts; the follow-up pins its companion SHA. See RELEASE_CHECKLIST.md.
-   Complete remaining rights/assets/privacy, secret/history and release-artifact checks.
+The local source-demo native acceptance gate is closed. Production deployment
+still requires real SMS/operator onboarding, TLS/CORS and operational review,
+production signing and App Store/TestFlight work, enabled telemetry delivery and
+redaction validation, retention/privacy policy deployment, backup/restore and
+scale review. Optional printing, sensors, Realtime, payments and unsupported
+integrations require their own credentials, hardware and business acceptance.
 
 See the backend [readiness checklist](https://github.com/abhiguru/supabase-warehouse-template/blob/main/docs/READINESS.md)
 for the full integration/deployment boundary.
