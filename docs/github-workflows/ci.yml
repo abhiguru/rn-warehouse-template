@@ -32,6 +32,11 @@ jobs:
         env:
           EXPO_NO_TELEMETRY: '1'
 
+      - name: Expo project diagnostics
+        run: npx expo-doctor
+        env:
+          EXPO_NO_TELEMETRY: '1'
+
       - name: Lint
         run: npm run lint
 
@@ -46,6 +51,31 @@ jobs:
 
       - name: Android JavaScript bundle
         run: npx expo export --platform android
+
+  android-artifact:
+    name: Android debug artifact audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - run: npm ci
+      - name: Generate Android project
+        run: npx expo prebuild --platform android --clean --no-install
+      - name: Assemble debug APK
+        run: ./gradlew assembleDebug
+        working-directory: android
+      - name: Audit APK contents, permissions and notices
+        run: npm run audit:artifact -- android/app/build/outputs/apk/debug/app-debug.apk
 
   dependencies:
     runs-on: ubuntu-latest

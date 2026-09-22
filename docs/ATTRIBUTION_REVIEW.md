@@ -1,5 +1,16 @@
 # Ownership and third-party attribution review
 
+## Development-artifact follow-up — 2026-09-22
+
+A fresh Android debug APK and Android JavaScript export were inspected. The APK
+contained Expo Updates' public `assets/expo-root.pem` certificate and no private
+key, environment/database file, service-role text, or workstation path. Its
+development bundle is served by Metro, so it contained no font entries. The
+separate export contained the expected `@expo/vector-icons` font set already
+reconciled below and in `THIRD_PARTY_NOTICES.md`. This closes the local
+development-artifact inventory only; distributors must repeat the audit on the
+final release AAB/APK and iOS archive.
+
 Review date: **2026-09-18**. Release scope: **`v0.2.2-demo` source-only prerelease**.
 
 ## Maintainer attestation

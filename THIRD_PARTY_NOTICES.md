@@ -39,6 +39,12 @@ bundle.
 - **Gorhom Bottom Sheet**: MIT License (Copyright Mo Gorhom)
 - **Sentry React Native**: MIT License (Copyright Sentry)
 
+Expo Updates bundles the public `Expo Root Certificate` as
+`assets/expo-root.pem` in Android builds. It is public trust material rather
+than a signing key; private keys and unrecognized certificate/key files remain
+blocked by the artifact audit. Expo SDK's installed MIT license covers the
+package code that supplies this certificate.
+
 The repository's MIT license applies to the original warehouse-template code and
 maintainer-confirmed artwork and does not alter third-party terms. Primary
 runtime package licenses were checked from their installed package files on
