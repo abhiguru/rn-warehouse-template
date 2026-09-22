@@ -1,5 +1,19 @@
 # Readiness
 
+## Provider-independent production-readiness pass — 2026-09-22
+
+A fresh Android debug APK now builds and passes the tracked contents,
+permissions, certificate and notices audit. Jest, setup tests, lint, typecheck,
+dependency audit, Expo compatibility/Doctor, and Android export pass. CI repeats
+the native debug build and audit without uploading a binary. See
+[LOCAL_PRODUCTION_READINESS.md](LOCAL_PRODUCTION_READINESS.md).
+
+The companion backend records the local results for backup/restore, recovery,
+auth/RLS, gateway, retention, business correctness, load, monitoring, and
+Realtime. Production remains blocked by its unsuppressed all-profile image scan
+and by provider/operator/distribution gates. The existing physical Android and
+iPhone source-demo evidence and `v0.2.2-demo` tags remain unchanged.
+
 ## Final physical-iPhone closure — 2026-09-22
 
 Current `main` passed the complete local source-demo physical-iPhone gate at
@@ -29,8 +43,9 @@ source-only attribution blocker.
 Post-release physical Android and complete physical-iPhone source-demo acceptance
 are recorded in [NATIVE_ACCEPTANCE.md](NATIVE_ACCEPTANCE.md). Production
 SMS/TLS/operations, app-store/native-binary distribution, enabled telemetry,
-printing, sensors, payments, Realtime and unsupported integrations remain
-separate gates.
+printing, sensors, payments, unsupported integrations, and production Realtime
+capacity/resilience remain separate gates. The companion backend's local
+authenticated Realtime startup and authorization probe now passes.
 
 ## Historical readiness records
 
@@ -113,9 +128,12 @@ numbers; no SMS is sent. Do not expose demo authentication publicly.
 The local source-demo native acceptance gate is closed. Production deployment
 still requires real SMS/operator onboarding, TLS/CORS and operational review,
 production signing and App Store/TestFlight work, enabled telemetry delivery and
-redaction validation, retention/privacy policy deployment, backup/restore and
-scale review. Optional printing, sensors, Realtime, payments and unsupported
-integrations require their own credentials, hardware and business acceptance.
+redaction validation, retention/privacy policy deployment, encrypted off-host
+backup/restore and scale review. Local isolated restore and authenticated
+Realtime authorization pass; target disaster recovery and Realtime
+capacity/resilience still require operator acceptance. Optional printing,
+sensors, payments and unsupported integrations require their own credentials,
+hardware and business acceptance.
 
 See the backend [readiness checklist](https://github.com/abhiguru/supabase-warehouse-template/blob/main/docs/READINESS.md)
 for the full integration/deployment boundary.

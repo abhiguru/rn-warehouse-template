@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased — local Android artifact readiness (2026-09-22)
+
+- Added a native APK audit for forbidden archive paths and embedded material,
+  Android permissions, public certificates, artifact hashing, and required
+  third-party notices.
+- Built and audited a fresh development APK, documented the separate exported
+  icon-font inventory, and kept release signing/store review open.
+- Extended CI with Expo Doctor and a native debug build/audit job; no APK is
+  uploaded or published.
+- Linked the companion backend's provider-independent readiness evidence and
+  preserved the immutable source-demo release tags.
+
 ## Unreleased — iOS acceptance handoff (2026-09-21)
 
 - Reconciled the final handoff records: all local source-demo acceptance and

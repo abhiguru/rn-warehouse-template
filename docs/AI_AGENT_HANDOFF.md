@@ -1,5 +1,15 @@
 # Final Mac execution handoff — completed
 
+## Later local-readiness follow-up — 2026-09-22
+
+The physical-iPhone work below remains closed. A later provider-independent
+follow-up added the Android debug-artifact build/audit and paired backend
+operational checks; see
+[LOCAL_PRODUCTION_READINESS.md](LOCAL_PRODUCTION_READINESS.md). Only the
+documented container-scan, provider, operator-policy, production infrastructure,
+and signed distribution gates remain. Existing `v0.2.2-demo` tags remain
+unchanged.
+
 Completed 2026-09-22. This is a durable closure record, not a continuation
 handoff. No later agent action is required for the local physical-iPhone
 source-demo scope.
@@ -50,5 +60,7 @@ header, then must revalidate all four private-document flows.
 
 Only production gates remain: enabled telemetry delivery, App Store/TestFlight,
 production signing, production SMS/TLS/operations, retention/privacy deployment,
-printing, sensors, Realtime, payments and unsupported integrations. This record
-does not authorize or claim those capabilities.
+printing, sensors, payments, unsupported integrations, and production Realtime
+capacity/resilience. The companion backend now verifies local authenticated
+Realtime startup and authorization only. This record does not authorize or claim
+the remaining capabilities.

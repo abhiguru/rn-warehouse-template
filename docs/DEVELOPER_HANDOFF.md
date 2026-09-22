@@ -1,5 +1,17 @@
 # Developer handoff — v0.2.2-demo
 
+## Current continuation point — local readiness 1–11
+
+The local Android artifact work is complete and recorded in
+[LOCAL_PRODUCTION_READINESS.md](LOCAL_PRODUCTION_READINESS.md); companion backend
+evidence covers the other ten areas. Mobile CI now creates and audits a debug APK
+without publishing it.
+
+Do not describe this as production distribution. Final Android/iOS release
+signing, artifact/store/privacy review, production telemetry, external services,
+operator policies/SLOs, and the backend image-scan blocker remain open. Existing
+source-demo tags are immutable.
+
 ## Final post-release closure — 2026-09-22
 
 The physical-iPhone source-demo handoff is complete. Mobile PR
@@ -242,8 +254,11 @@ Stop preserves database/files. Remove only the reverse mappings you created:
 
 ## Unsupported and separately untested
 
-Physical printing, sensors, Realtime, customer document uploads, production SMS,
-barcode scanning and automatic offline/SQLite synchronization are unsupported.
+Physical printing, sensors, customer document uploads, production SMS, barcode
+scanning and automatic offline/SQLite synchronization are unsupported. Realtime
+remains optional and default-disabled; the companion backend verifies local
+startup and authenticated channel authorization, while application subscription
+behavior and target-deployment capacity/resilience remain separate acceptance.
 Printing/sensor UI explains unavailability; hardware Edge endpoints return 503.
 The imported dual-rate pricing overload is not the mobile contract and currently
 fails its legacy table constraints; combined-rate semantics require a separate

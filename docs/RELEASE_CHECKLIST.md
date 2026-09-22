@@ -1,5 +1,20 @@
 # Open-source release checklist
 
+## Post-release local-readiness follow-up — 2026-09-22
+
+- [x] Build a fresh Android development APK and audit archive paths, embedded
+  text, permissions, public certificates, hash, and applicable notices.
+- [x] Add the artifact unit tests and CI build/audit job without uploading a
+  binary; keep active/documented workflow copies byte-identical.
+- [x] Link the companion backend's provider-independent checks for areas 1–10.
+- [ ] Audit final release-signed Android/iOS artifacts, privacy/store metadata,
+  and enabled telemetry using owned credentials and target distribution paths.
+- [ ] Clear the companion backend's all-profile image-scan blocker and its
+  external/provider/operator production gates.
+
+This follow-up does not move or republish `v0.2.2-demo`. See
+[LOCAL_PRODUCTION_READINESS.md](LOCAL_PRODUCTION_READINESS.md).
+
 ## v0.2.2-demo source-only prerelease — 2026-09-18
 
 - [x] Android-first source-demo acceptance summarized in

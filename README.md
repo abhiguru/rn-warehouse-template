@@ -1,5 +1,16 @@
 # rn-warehouse-template
 
+## Local production-readiness work
+
+The provider-independent backend operations and Android artifact work are
+implemented and reproducible. The local Android debug APK build/audit, exact
+permission result, Expo public-certificate handling, and remaining signed-store
+boundary are recorded in
+[LOCAL_PRODUCTION_READINESS.md](docs/LOCAL_PRODUCTION_READINESS.md). Production
+SMS, public DNS/TLS, external alerts, operator policies/SLOs, final signing and
+stores, payments/telemetry, and hardware still require their actual services,
+credentials, infrastructure, or owner decisions. Existing demo tags do not move.
+
 ## Current source-demo release
 
 The Android-first source-demo acceptance is complete. Matching
@@ -93,8 +104,8 @@ Expo generates the ignored native directories as needed. Use `npm start` for
 subsequent Metro sessions. Use native builds as the baseline; the latest Expo Go
 app may not support this older SDK, and Expo Go does not validate native plugins,
 permissions, or build settings. The API-36 emulator debug build and supported
-source-demo workflows are verified. A physical Samsung Android 15/API-35 run is
-recorded separately; iOS remains untested. See
+source-demo workflows are verified. Physical Samsung Android 15/API-35 and
+iPhone 15/iOS 26.6.2 runs are recorded separately. See
 [NATIVE_ACCEPTANCE.md](docs/NATIVE_ACCEPTANCE.md).
 
 For a bundle-only check:

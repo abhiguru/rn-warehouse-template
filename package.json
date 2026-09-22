@@ -29,6 +29,7 @@
     "check:backend": "node scripts/check-backend.mjs",
     "update-supabase-keys": "bash scripts/update-supabase-keys.sh",
     "doctor": "node scripts/doctor.mjs",
+    "audit:artifact": "node scripts/artifact-audit.mjs",
     "postinstall": "node scripts/patch-expo-metro.mjs && node scripts/patch-navigation-decoder.mjs",
     "prepare": "husky"
   },
