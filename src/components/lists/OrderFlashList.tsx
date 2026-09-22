@@ -1,3 +1,5 @@
+import { getSessionGeneration } from '@/config/sessionLifecycle';
+import { useOrderLiveUpdates } from '@/hooks/useOrderLiveUpdates';
 /**
  * OrderFlashList - FlashList Implementation (2025 Best Practices)
  *
@@ -152,6 +154,7 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
   hasItemsOnly = false,
 }) => {
   const fetchInProgressRef = useRef(false);
+  const liveRefreshPendingRef = useRef(false);
 
   // Customer search bottom sheet ref
   const customerSearchRef = useRef<CustomerSearchBottomSheetRef>(null);
@@ -190,9 +193,11 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
   // Used by useFocusEffect to avoid contentOffset.y = -60 gap from RefreshControl.
   const fetchOrders = useCallback(async (isRefresh = false, isSilent = false) => {
     if (fetchInProgressRef.current) {
+      if (isSilent) liveRefreshPendingRef.current = true;
       return;
     }
     fetchInProgressRef.current = true;
+    const sessionGeneration = getSessionGeneration();
 
     // E7 Fix: Increment request ID to track this request
     const currentRequestId = ++requestIdRef.current;
@@ -216,6 +221,7 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
       }
 
       const result = await OrderService.getOrdersList(filters);
+      if (sessionGeneration !== getSessionGeneration()) return;
 
       // E3 Fix: Skip state updates if component unmounted during fetch
       if (!isMountedRef.current) {
@@ -257,6 +263,10 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
       setSnackbarVisible(true);
     } finally {
       fetchInProgressRef.current = false;
+      if (liveRefreshPendingRef.current && isMountedRef.current && sessionGeneration === getSessionGeneration()) {
+        liveRefreshPendingRef.current = false;
+        void fetchOrders(true, true);
+      }
       // E3 Fix: Only update state if still mounted
       if (isMountedRef.current) {
         setIsLoading(false);
@@ -273,6 +283,8 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
       isMountedRef.current = false;
     };
   }, []);
+
+  useOrderLiveUpdates(() => fetchOrders(true, true));
 
   // Initial load
   useEffect(() => {

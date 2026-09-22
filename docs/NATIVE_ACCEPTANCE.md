@@ -1,5 +1,15 @@
 # Native and physical-device acceptance
 
+## Order/cart live-update follow-up — 2026-09-22
+
+New order/cart subscriptions passed Android API-36 emulator delivery and
+reconnect acceptance plus automated session/lifecycle coverage. See
+[ORDER_LIVE_UPDATES.md](ORDER_LIVE_UPDATES.md) for exact behavior and checks.
+The historical physical-iPhone closure below predates this new feature; its
+new iOS UI acceptance remains pending on the separate Mac/device. Existing
+demo release tags are unchanged.
+
+
 ## Merged customer-history Android emulator smoke — 2026-09-21
 
 The exact reviewed pair was mobile
