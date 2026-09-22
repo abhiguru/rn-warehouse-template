@@ -50,10 +50,11 @@ and verify the backend workflow pin equals the mobile commit checked out.
 A post-release physical Android run on current `main` subsequently passed USB,
 camera, picker, permission, offline/retry, secure-restoration, deep-link, role,
 and invoice-PDF workflows; see [NATIVE_ACCEPTANCE.md](NATIVE_ACCEPTANCE.md).
-The later physical-iOS matrix was executed with documented defects and fixes;
-see [the 2026-09-21 handoff review](HANDOFF_REVIEW_2026-09-21.md) for its qualified
-status and remaining onboarding work. This additional evidence does not change
-the immutable tag. Production SMS/TLS/operations, app-store or signed-binary distribution, printing, sensors,
-Realtime, payments, and unsupported integrations remain separate gates. The
-source-demo acceptance does not claim production readiness or all-platform
-acceptance.
+The complete physical-iPhone matrix later passed on mobile
+`9ba56ff122dc38dc57d6100de4c27599023d22b1` and backend
+`cf18f1e43ab613310b1b13339ab97e8533861f9b`; see the
+[closed handoff review](HANDOFF_REVIEW_2026-09-21.md). This post-release evidence
+does not change the immutable tag. Production SMS/TLS/operations, app-store or
+signed-binary distribution, enabled telemetry, printing, sensors, Realtime,
+payments and unsupported integrations remain separate gates. The source-demo
+acceptance does not claim production readiness.

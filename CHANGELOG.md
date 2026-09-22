@@ -2,6 +2,16 @@
 
 ## Unreleased — iOS acceptance handoff (2026-09-21)
 
+- Closed the complete physical-iPhone source-demo matrix on the final merged pair:
+  PR #18 / `9ba56ff122dc38dc57d6100de4c27599023d22b1` with backend PR #13 /
+  `cf18f1e43ab613310b1b13339ab97e8533861f9b`; exact-main CI and affected
+  iPhone reruns passed.
+- Added tracked checkout-owned USB-only iPhone onboarding, definitive
+  revoked-session logout, per-GRN customer dispatch history, invoice-to-GRN
+  navigation, stable order targeting and focused regressions.
+- Replaced the continuation handoff with durable acceptance evidence and recorded
+  the end-user pricing, code-level billing-day and PDF/cold-storage branding
+  customization boundaries.
 - Repaired assigned-customer GRN and recent-dispatch history views without
   widening staff RPC grants. Customer responses are explicitly normalized,
   pagination works across multiple assignments, and visible errors replace

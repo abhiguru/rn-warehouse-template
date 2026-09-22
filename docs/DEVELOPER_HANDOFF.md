@@ -1,25 +1,27 @@
 # Developer handoff — v0.2.2-demo
 
-## Post-release handoff — 2026-09-21
+## Final post-release closure — 2026-09-22
 
-For execution on the separate Mac, use the
-[final AI agent handoff](AI_AGENT_HANDOFF.md). It requires the receiving agent to
-complete the entire physical-iPhone source-demo matrix, repair and merge defects,
-rerun the final merged pair, close the durable records and clean up without
-creating another continuation handoff.
+The physical-iPhone source-demo handoff is complete. Mobile PR
+[#18](https://github.com/abhiguru/rn-warehouse-template/pull/18) merged as
+`9ba56ff122dc38dc57d6100de4c27599023d22b1`; backend PR
+[#13](https://github.com/abhiguru/supabase-warehouse-template/pull/13) merged as
+`cf18f1e43ab613310b1b13339ab97e8533861f9b`. Exact-main CI passed in mobile run
+[`35686164009`](https://github.com/abhiguru/rn-warehouse-template/actions/runs/35686164009)
+and backend run
+[`35686198287`](https://github.com/abhiguru/supabase-warehouse-template/actions/runs/35686198287).
 
-Start with [the handoff review and prioritized open work](HANDOFF_REVIEW_2026-09-21.md)
-for the latest source changes. Ordered item 3's physical-iOS matrix was executed
-with known session-revocation UX defects; item 4 has not begun. The customer
-GRN/recent-dispatch repair is merged and verified: mobile PR #15 produced
-`09919ebfbce1f6e819363eca7711c23dd29b155f`, backend PR #11 produced
-`a1ad80741ddff97d4f9eb47a0066094f76ea476a`, and both default-branch CI runs
-passed. A fresh API-36 emulator debug build on that exact pair confirmed demo
-login, two customer GRNs, three recent dispatches, and authenticated cold
-restoration. The remaining work is the separately listed iOS onboarding,
-revoked-session UX, fixture-name, and production scope.
-The release-tag clone commands below reproduce the published baseline, not these
-post-release fixes. Existing `v0.2.2-demo` tags are unchanged.
+An iPhone 15 on iOS 26.6.2 passed the complete local source-demo matrix,
+including tracked USB-only onboarding, secure-session failure and revocation,
+admin/customer roles, customer GRN/dispatch history, camera/picker/image
+lifecycle, GRN/dispatch/stock/cart/pricing/invoice flows, all four private PDF
+share paths, and protected/malformed deep links. Shared runtime/navigation work
+also has a fresh Android API-36 emulator smoke. See
+[NATIVE_ACCEPTANCE.md](NATIVE_ACCEPTANCE.md) for the complete evidence and
+[the closed review](HANDOFF_REVIEW_2026-09-21.md) for the decision.
+
+The release-tag commands below reproduce the immutable published baseline, not
+these post-release fixes. Existing `v0.2.2-demo` tags remain unchanged.
 
 ## Active source-demo release — 2026-09-18
 
@@ -134,10 +136,10 @@ the mobile bootstrap without requiring the Android SDK.
 
 For iOS, generate the native project on the Mac and select your own development
 team/device. The simulator can use the Mac's loopback API. A physical iPhone
-requires a separate connection: the recorded run used temporary USB-only relays
-that are no longer running or included in the checkout. A reproducible physical
-iOS connection procedure is an open handoff task; see the dated review before
-attempting a fresh-phone rehearsal. The Android commands above do not provide it.
+requires the tracked USB-only connection procedure in
+[IOS_USB_DEVELOPMENT.md](IOS_USB_DEVELOPMENT.md). Its checkout-owned helper
+handles API/Metro relay status, reconnect/address changes and scoped shutdown.
+The Android commands above do not provide an iOS connection.
 
 ## First login and warehouse walkthrough
 
@@ -247,7 +249,7 @@ Payments/accounting integrations are not part of the documented demo workflow.
 
 iOS production distribution, production scale/security, native telemetry
 delivery, retention enforcement, and privacy declarations remain separate
-checks. Physical Android core acceptance passed after publication; iOS matrix
-execution completed with documented acceptance defects. See NATIVE_ACCEPTANCE.md. The
-scoped ownership and attribution review is complete; see ATTRIBUTION_REVIEW.md.
+checks. Physical Android core acceptance and the complete physical-iPhone
+source-demo matrix passed after publication; see NATIVE_ACCEPTANCE.md. The scoped
+ownership and attribution review is complete; see ATTRIBUTION_REVIEW.md.
 A successful bundle still does not replace platform-specific device evidence.

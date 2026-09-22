@@ -4,8 +4,9 @@
 
 - [x] Android-first source-demo acceptance summarized in
       `SOURCE_DEMO_ACCEPTANCE.md`; physical hardware was a separate gate at
-      publication and is covered by the later record below. iOS, production,
-      printing, sensors, payments, and unsupported integrations remain open.
+      publication and is covered by the later records below. The post-release
+      physical-iPhone source-demo gate is now closed; production, printing,
+      sensors, payments and unsupported integrations remain separate.
 - [x] Maintainer redistribution attestation and tracked-material/third-party
       inventory reconciled in `ATTRIBUTION_REVIEW.md` and
       `../THIRD_PARTY_NOTICES.md`; no unresolved source-only provenance blocker.
@@ -45,7 +46,26 @@ and the external delivery ledger to avoid circular commit-SHA documentation.
       sheet passed. No external share target was selected.
 
 The run used fictional demo data. Its two reverse mappings were removed and
-Metro was stopped afterward. iOS and production/distribution gates remain open.
+Metro was stopped afterward. Production/distribution gates remain open.
+
+## Post-release physical iPhone acceptance — 2026-09-22
+
+- [x] Mobile PR #18 merged as
+      `9ba56ff122dc38dc57d6100de4c27599023d22b1`; backend PR #13 merged as
+      `cf18f1e43ab613310b1b13339ab97e8533861f9b`.
+- [x] Exact-main CI passed in mobile run `35686164009` and backend run
+      `35686198287`.
+- [x] Tracked checkout-owned USB-only API/Metro onboarding passed disconnect,
+      reconnect, address change, status and ownership-scoped shutdown behavior.
+- [x] Fresh build/install/bootstrap, admin/customer roles, secure restoration,
+      expired refresh, logout/relogin, reboot/unlock, SecureStore failure,
+      refresh races and definitive revocation behavior passed on iPhone 15 /
+      iOS 26.6.2.
+- [x] Interruption/retry, customer history, camera/picker/images, GRN/dispatch,
+      stock/cart, pricing/invoice, all four private PDFs and protected/malformed
+      deep links passed with fictional demo data.
+- [x] Temporary probes were removed; generated native/config/signing artifacts
+      stayed ignored; existing `v0.2.2-demo` tags were not moved.
 
 Historical release records follow.
 
@@ -75,7 +95,7 @@ does not establish the full release acceptance gate.
 | R03 | Moderate, fixed | Navigation pulled vulnerable decoder <=0.4.2 | Upstream 0.5.0, checked CommonJS adapter and actual navigation/malformed-input tests; SDK 54 retained | Version/content checks deliberately fail on unexpected dependency changes |
 | R04 | High, fixed | Contributor command targeted a generic database container | Checkout ownership wrappers, disposable migration tests, read-only doctors, exclusive config creation | Demo remains loopback-only |
 | R05 | Review, covered API cases | Images, orders, invoice/report values, role changes and retries lacked coverage | Full demo API passes locally; confirmed GRN/dispatch customer isolation, staff-only customer-images, explicit 950/48/998 invoice fixture, duration boundaries, concurrent stock mutations and rollback | See backend INVOICE_RULES.md; legacy dual-rate overload unsupported; payments not comprehensively accepted |
-| R06 | Acceptance, open | Native build and actual Android UI workflow require separate evidence | See mobile NATIVE_ACCEPTANCE.md for recorded build/UI results | Physical Android, iOS and hardware camera remain untested |
+| R06 | Acceptance, later closed | Native build and actual Android UI workflow required separate evidence at this historical checkpoint | See mobile NATIVE_ACCEPTANCE.md for the later Android and complete iPhone records | Production distribution and optional hardware remain separate |
 | R07 | High onboarding/CI, follow-up | Backend branch inference selected old or nonexistent mobile branch | Both CI companion checkouts pinned to released mobile SHA; both tested SHAs printed | Follow-up CI must pass before merge; tags are not moved |
 
 Local review services use API 28000, HTTPS 28443, Studio 55325, database 25433,
