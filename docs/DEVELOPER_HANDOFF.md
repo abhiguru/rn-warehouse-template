@@ -16,7 +16,10 @@ including tracked USB-only onboarding, secure-session failure and revocation,
 admin/customer roles, customer GRN/dispatch history, camera/picker/image
 lifecycle, GRN/dispatch/stock/cart/pricing/invoice flows, all four private PDF
 share paths, and protected/malformed deep links. Shared runtime/navigation work
-also has a fresh Android API-36 emulator smoke. See
+also has Android coverage: the earlier merged customer-history pair passed a
+fresh API-36 emulator smoke, while the final pair passed Android JS export and
+shared regression tests. This Mac had no Android SDK, so the exact final pair
+was not rerun in an emulator. See
 [NATIVE_ACCEPTANCE.md](NATIVE_ACCEPTANCE.md) for the complete evidence and
 [the closed review](HANDOFF_REVIEW_2026-09-21.md) for the decision.
 

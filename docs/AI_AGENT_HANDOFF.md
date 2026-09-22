@@ -20,18 +20,21 @@ and backend `2959881d0e46a8797a98d10da8c7139217477476`.
 The complete source-demo matrix was exercised with fictional data on an iPhone
 15 running iOS 26.6.2 using Xcode 26.3, CocoaPods 1.16.2, Node.js 22.23.1 and
 Personal Team development signing. The final merged rerun confirmed clean
-USB-only bootstrap, admin/customer roles, assigned-customer GRN and dispatch
-history, stock/cart behavior, pricing, invoice save/reopen, private PDFs and the
-affected navigation paths. Earlier passes on the same reviewed implementation
-content supplied the destructive fault-injection, secure-storage, refresh race,
-reboot, camera/picker, mutation-retry and malformed deep-link evidence.
+USB-only bootstrap, admin/customer roles and the repaired assigned-customer GRN
+and per-item dispatch history. The complete pre-merge physical run used the
+exact reviewed implementation trees later squash-merged and supplied the
+stock/cart, pricing, invoice, private-PDF, navigation, destructive
+fault-injection, secure-storage, refresh-race, reboot, camera/picker,
+mutation-retry and malformed deep-link evidence.
 
 The fixes delivered by the final pair include reproducible checkout-owned
 USB-only iPhone API/Metro connectivity, definitive revoked-session logout,
 customer-authorized per-GRN dispatch history, readable demo fixtures, stable
 order snapshots, invoice-to-GRN navigation, actionable duplicate-item feedback
-and focused regressions. A fresh Android API-36 emulator smoke also covered the
-shared customer-history/navigation path and authenticated cold restoration.
+and focused regressions. The earlier merged customer-history pair also passed a
+fresh Android API-36 build/login/history/cold-restoration smoke. The final pair
+passed Android JS export and shared regression tests; this Mac had no Android
+SDK, so an exact-final-pair emulator run was not repeated here.
 
 Full case-by-case evidence is in
 [NATIVE_ACCEPTANCE.md](NATIVE_ACCEPTANCE.md). The review and closure decision are

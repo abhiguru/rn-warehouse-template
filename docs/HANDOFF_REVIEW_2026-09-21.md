@@ -36,12 +36,16 @@ or mismatches. Both exact-main CI runs above passed after squash merge.
 
 The device was an iPhone 15 on iOS 26.6.2 using Xcode 26.3, CocoaPods 1.16.2
 and Node.js 22.23.1. The final merged rerun covered clean USB bootstrap,
-admin/customer roles, assigned-customer history/details, stock/cart, pricing,
-invoice save/reopen, PDFs and affected navigation. The earlier full physical
-passes supplied secure-storage, refresh-race, reboot, camera/picker,
-interruption/retry and malformed-link evidence on the same reviewed content.
-The fresh Android API-36 emulator smoke for shared navigation/runtime changes
-also passed build/install, customer login/history and cold restoration.
+admin/customer roles and the repaired assigned-customer GRN/per-item dispatch
+history. The complete pre-merge physical run used the exact reviewed
+implementation trees later squash-merged and supplied stock/cart, pricing,
+invoice, PDF, navigation, secure-storage, refresh-race, reboot, camera/picker,
+interruption/retry and malformed-link evidence.
+
+The earlier merged customer-history pair passed an Android API-36
+build/install/login/history/cold-restoration smoke. The final pair passed Android
+JS export and shared regression tests; this Mac had no Android SDK, so an
+exact-final-pair emulator run was not repeated.
 
 ## Customization and boundaries
 
