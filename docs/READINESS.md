@@ -59,7 +59,9 @@ are outside the immutable `v0.2.1-demo` tags. Local follow-up results do
 not establish merged-main CI or physical-device acceptance.
 
 Current main pairs with a tested **local-demo backend**. This is not a
-production-ready or native-device-accepted release. Use matching `v0.2.1-demo` source tags for onboarding; the old v0.1.0 backend tag remains incomplete.
+At that historical checkpoint it was not production-ready or
+native-device-accepted. Use matching `v0.2.1-demo` source tags only to reproduce
+that archived checkpoint; the old v0.1.0 backend tag remains incomplete.
 
 ## Verified
 

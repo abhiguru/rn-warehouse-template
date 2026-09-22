@@ -55,6 +55,8 @@ Metro was stopped afterward. Production/distribution gates remain open.
       `cf18f1e43ab613310b1b13339ab97e8533861f9b`.
 - [x] Exact-main CI passed in mobile run `35686164009` and backend run
       `35686198287`.
+- [x] Final evidence corrections also passed exact-main CI in mobile run
+      `35690385027` and backend run `35690411801`.
 - [x] Tracked checkout-owned USB-only API/Metro onboarding passed disconnect,
       reconnect, address change, status and ownership-scoped shutdown behavior.
 - [x] Fresh build/install/bootstrap, admin/customer roles, secure restoration,
@@ -69,8 +71,8 @@ Metro was stopped afterward. Production/distribution gates remain open.
 
 Historical release records follow.
 
-**Follow-up status — 2026-09-15:** See [the dated verification ledger](RESUME_VERIFICATION_2026-09-15.md)
-for current local checks and open native/review gates. Evidence below dated
+**Historical follow-up status — 2026-09-15:** See [the dated verification ledger](RESUME_VERIFICATION_2026-09-15.md)
+for that checkpoint's local checks and open native/review gates. Evidence below dated
 2026-09-14 or earlier describes the historical release checkpoint. The
 pending mobile authentication/privacy fixes and backend follow-up commits
 are outside the immutable `v0.2.1-demo` tags. Local follow-up results do
@@ -96,7 +98,7 @@ does not establish the full release acceptance gate.
 | R04 | High, fixed | Contributor command targeted a generic database container | Checkout ownership wrappers, disposable migration tests, read-only doctors, exclusive config creation | Demo remains loopback-only |
 | R05 | Review, covered API cases | Images, orders, invoice/report values, role changes and retries lacked coverage | Full demo API passes locally; confirmed GRN/dispatch customer isolation, staff-only customer-images, explicit 950/48/998 invoice fixture, duration boundaries, concurrent stock mutations and rollback | See backend INVOICE_RULES.md; legacy dual-rate overload unsupported; payments not comprehensively accepted |
 | R06 | Acceptance, later closed | Native build and actual Android UI workflow required separate evidence at this historical checkpoint | See mobile NATIVE_ACCEPTANCE.md for the later Android and complete iPhone records | Production distribution and optional hardware remain separate |
-| R07 | High onboarding/CI, follow-up | Backend branch inference selected old or nonexistent mobile branch | Both CI companion checkouts pinned to released mobile SHA; both tested SHAs printed | Follow-up CI must pass before merge; tags are not moved |
+| R07 | High onboarding/CI, fixed | Backend branch inference selected old or nonexistent mobile branch | Both CI companion checkouts pin the reviewed mobile implementation tree; paired CI passed | Historical tags are not moved |
 
 Local review services use API 28000, HTTPS 28443, Studio 55325, database 25433,
 and renderer 23100, all on 127.0.0.1 under project `warehouse-v021-review`.
@@ -115,5 +117,5 @@ For sibling local checkouts: [local checklist](../../supabase-warehouse-template
 
 Work is confined to the new open-source repositories. Original repositories,
 deployments and credentials must remain unchanged; no credential revocation or
-rotation is part of this work. Current main is a local-demo checkpoint, not a
-production-ready or native-device-accepted release.
+rotation is part of this work. Current main is a physical-device-accepted local
+source demo, not a production-ready or production-signed/app-store release.

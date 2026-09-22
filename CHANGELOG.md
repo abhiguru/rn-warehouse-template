@@ -2,6 +2,9 @@
 
 ## Unreleased — iOS acceptance handoff (2026-09-21)
 
+- Reconciled the final handoff records: all local source-demo acceptance and
+  source-only attribution items are closed, while production distribution,
+  deployed retention/telemetry and optional integrations remain separate gates.
 - Closed the complete physical-iPhone source-demo matrix on the final merged pair:
   PR #18 / `9ba56ff122dc38dc57d6100de4c27599023d22b1` with backend PR #13 /
   `cf18f1e43ab613310b1b13339ab97e8533861f9b`; exact-main CI and affected
@@ -18,15 +21,16 @@
   misleading empty states. The companion backend adds the guarded customer
   dispatch-list contract and extends customer GRN filtering.
 - Added customer-history regression coverage and recorded fresh migration, live
-  API, and paired-contract evidence. This post-release repair still requires
-  paired PR review, CI, and an Android smoke on the merged JavaScript pair.
+  API, and paired-contract evidence. The post-release repair passed paired PR
+  review, CI and Android API-36 emulator smoke on the merged pair.
 - Fixed Item Pricing customer search, duplicate dispatch-lot feedback, private
   PDF URL handling and native warm-link delivery, with physical-iPhone evidence.
 - Made CLI bootstrap, doctor and postinstall entry checks work through symlinked
   checkout paths, with a regression that verifies failures are not silently skipped.
 - Recorded the qualified iOS acceptance result, remaining customer-view/session
   defects, physical-USB onboarding gap and pricing/PDF customization contracts.
-- Preserved all published source-release tags; these changes require paired review.
+- Preserved all published source-release tags; the changes passed paired review
+  and exact-main CI.
 
 ## 0.2.2-demo — source-only prerelease (2026-09-18)
 
