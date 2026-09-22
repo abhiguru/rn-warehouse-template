@@ -1,4 +1,6 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { getSessionGeneration } from '@/config/sessionLifecycle';
+import { useOrderLiveUpdates } from '@/hooks/useOrderLiveUpdates';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -160,13 +162,19 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
     await initializeOrder(customer.value);
   }, [initializeOrder]);
 
+  const activeOrderId = useRef(order?.id);
+  activeOrderId.current = order?.id;
+  useEffect(() => () => { activeOrderId.current = undefined; }, []);
+
   // Handle refresh
   const onRefresh = useCallback(async () => {
     if (!order) return;
     
+    const sessionGeneration = getSessionGeneration();
     setRefreshing(true);
     try {
       const result = await OrderService.getOrderWithItems(order.id);
+      if (sessionGeneration !== getSessionGeneration() || activeOrderId.current !== order.id) return;
       if (result.success && result.data) {
         setOrder(result.data);
       }
@@ -176,6 +184,8 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
       setRefreshing(false);
     }
   }, [order]);
+
+  useOrderLiveUpdates(onRefresh, !!order);
 
   // Handle quantity update
   const handleQuantityUpdate = useCallback(async (item: OrderItem, newQuantity: number) => {

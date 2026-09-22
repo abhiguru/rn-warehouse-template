@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased — order/cart live updates
+
+- Refetch order lists, supervisor queues and carts on authenticated order events
+  and reconnect, with session cleanup and foreground/network lifecycle handling.
+- Keep stock/invoice subscriptions and production capacity acceptance outside
+  this change; see `docs/ORDER_LIVE_UPDATES.md`.
+
 ## Unreleased — local Android artifact readiness (2026-09-22)
 
 - Added a native APK audit for forbidden archive paths and embedded material,

@@ -152,3 +152,6 @@ after validation, without production signing assets or unreviewed app binaries.
 
 MIT — see [LICENSE](LICENSE). Contributions: [CONTRIBUTING.md](CONTRIBUTING.md).
 Security reports: [SECURITY.md](SECURITY.md).
+
+Order/cart live-update behavior and its acceptance scope are documented in
+[ORDER_LIVE_UPDATES.md](docs/ORDER_LIVE_UPDATES.md).

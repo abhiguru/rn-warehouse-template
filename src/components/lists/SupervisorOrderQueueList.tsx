@@ -1,3 +1,5 @@
+import { getSessionGeneration } from '@/config/sessionLifecycle';
+import { useOrderLiveUpdates } from '@/hooks/useOrderLiveUpdates';
 /**
  * SupervisorOrderQueueList - Order Queue for Supervisors/Staff
  *
@@ -99,6 +101,7 @@ const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = ({
   customerFilter: externalFilter,
 }) => {
   const fetchInProgressRef = useRef(false);
+  const liveRefreshPendingRef = useRef(false);
 
   // Dynamic colors for dark mode support
   const colors = useListColors();
@@ -138,9 +141,11 @@ const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = ({
   // isSilent = true → fetch without showing RefreshControl spinner (avoids -60px offset gap)
   const fetchOrders = useCallback(async (isRefresh = false, isSilent = false) => {
     if (fetchInProgressRef.current) {
+      if (isSilent) liveRefreshPendingRef.current = true;
       return;
     }
     fetchInProgressRef.current = true;
+    const sessionGeneration = getSessionGeneration();
 
     const currentRequestId = ++requestIdRef.current;
 
@@ -160,6 +165,7 @@ const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = ({
       if (__DEV__) console.log('[SupervisorOrderQueueList] Fetching orders with filters:', filters);
 
       const result = await OrderService.getOrdersList(filters);
+      if (sessionGeneration !== getSessionGeneration()) return;
 
       // Skip state updates if component unmounted during fetch
       if (!isMountedRef.current) {
@@ -197,6 +203,10 @@ const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = ({
       setSnackbarVisible(true);
     } finally {
       fetchInProgressRef.current = false;
+      if (liveRefreshPendingRef.current && isMountedRef.current && sessionGeneration === getSessionGeneration()) {
+        liveRefreshPendingRef.current = false;
+        void fetchOrders(true, true);
+      }
       if (isMountedRef.current) {
         setIsLoading(false);
         setIsRefreshing(false);
@@ -211,6 +221,8 @@ const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = ({
       isMountedRef.current = false;
     };
   }, []);
+
+  useOrderLiveUpdates(() => fetchOrders(true, true));
 
   // Initial load
   useEffect(() => {
