@@ -61,20 +61,21 @@ disconnect/reconnect and address change recovery were exercised.
 | Privacy/default telemetry | PASS — telemetry stayed disabled, generated configuration remained ignored and mode 0600, no credentials or private signed URLs were committed, and wrong-account document/image access was denied. |
 | Setup rerun, persistence and owned restart | PASS — migration/doctor/health/contract/API checks passed, setup rerun preserved configuration and fictional data, and checkout-owned stop/restart restored the same healthy service. |
 
-The earlier simulator and first physical-device passes supplied the destructive
-fault-injection, camera, reboot, deep-link, mutation and all-document evidence.
-The final merged rerun repeated the affected onboarding, role, customer-history,
-stock, pricing, invoice and document paths on the physical iPhone. The merged
-source is the same reviewed implementation content as the successful PR-head
-run, with GitHub's squash commits above. iPhone Mirroring intermittently dropped
-its control channel and would not activate one filter-sheet header target; that
-Mac mirroring limitation did not change the physical-device results already
-observed directly.
+The complete pre-merge physical run used the exact reviewed implementation trees
+later squash-merged and supplied the stock/cart, pricing, invoice, private-PDF,
+navigation, destructive fault-injection, camera, reboot, deep-link and mutation
+evidence. The final merged rerun repeated clean USB bootstrap, admin/customer
+roles and the repaired assigned-customer GRN/per-item dispatch history on the
+physical iPhone. iPhone Mirroring intermittently dropped its control channel and
+would not activate one filter-sheet header target; that Mac mirroring limitation
+did not change the physical-device results already observed directly.
 
-The final shared navigation/runtime changes are additionally supported by the
-fresh Android API-36 emulator build/login/customer-history/cold-restoration smoke
-recorded above. This Mac did not provision a second Android SDK solely for the
-documentation closure.
+The earlier merged customer-history pair passed the fresh Android API-36
+emulator build/login/history/cold-restoration smoke recorded above. The final
+pair passed Android JS export and shared regression tests, but this Mac had no
+Android SDK, so an exact-final-pair emulator run was not repeated. The ordered
+handoff explicitly left Android execution on the Linux host; this does not
+reduce the completed physical-iPhone matrix.
 
 This closes the local source-demo iPhone matrix. Production signing,
 App Store/TestFlight distribution, enabled telemetry delivery, production
