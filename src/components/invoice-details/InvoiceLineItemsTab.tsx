@@ -80,6 +80,7 @@ export interface InvoiceLineItem {
   no_of_days?: number;
   charge: number;
   tax: number;
+  grn_id?: string;
   gr_no?: string;
   // GRN Item reference for grouping
   grn_item_id?: string;
@@ -142,6 +143,7 @@ export const groupItemsByGrnItem = (
         total_amount: 0,
         package_mark: item.package_mark,
         rack: item.rack,
+        grn_id: item.grn_id,
         gr_no: item.gr_no,
         dispatch_items: [],
         on_view_grn,

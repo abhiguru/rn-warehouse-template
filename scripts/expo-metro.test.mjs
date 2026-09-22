@@ -3,12 +3,20 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { readFileSync } from 'node:fs';
 import { EventEmitter } from 'node:events';
-import { adaptWatcher } from './patch-expo-metro.mjs';
+import { adaptWatcher, adaptBinding } from './patch-expo-metro.mjs';
 const require = createRequire(import.meta.url);
 const folder = '../node_modules/expo/node_modules/@expo/cli/build/src/start/server/metro/';
 const observers = require(folder + 'waitForMetroToObserveTypeScriptFile.js');
 const { metroWatchTypeScriptFiles } = require(folder + 'metroWatchTypeScriptFiles.js');
 const { FileSystemChangeAggregator } = require('../node_modules/metro-file-map/src/lib/FileSystemChangeAggregator.js');
+
+test('USB Metro binding adapter is explicit loopback, idempotent, and version checked', () => {
+  const source = readFileSync(new URL(folder + 'runServer-fork.js', import.meta.url), 'utf8');
+  assert.equal(adaptBinding(source, '54.0.27'), source);
+  assert.ok(source.includes("process.env.WAREHOUSE_USB_METRO === '1' ? '127.0.0.1' : host"));
+  assert.throws(() => adaptBinding(source, '55.0.0'), /Unreviewed/);
+  assert.throws(() => adaptBinding(source + '\n', '54.0.27'), /Unreviewed/);
+});
 
 test('actual Expo observers consume Metro added/modified/deleted events and detach', () => {
   const watcher = new EventEmitter(); const server = new EventEmitter();

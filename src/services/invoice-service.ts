@@ -223,6 +223,7 @@ export interface InvoiceItem {
   };
   grn_item: {
     id: string;
+    gr_id?: string;
     name: string;
     rack: string;
     weight: number;

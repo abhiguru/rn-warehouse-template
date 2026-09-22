@@ -18,7 +18,7 @@ import {
   SortOrder,
 } from '@/types/stock.types';
 import { hasMoreItems } from '@/utils/paginationUtils';
-import { executeRPC, createErrorResponse } from '@/utils/serviceErrorHandler';
+import { executeRPC, createErrorResponse, handleGlobalAuthError } from '@/utils/serviceErrorHandler';
 import { deduplicatedRequest, generateRequestKey } from '@/utils/requestDedup';
 
 // M3 Fix: Removed duplicate categorizeError function - now using centralized version from serviceErrorHandler.ts
@@ -108,6 +108,7 @@ export class StockService {
 
       if (error) {
         console.error('[StockService] RPC error:', error);
+        handleGlobalAuthError(error);
         return {
           success: false,
           message: error.message || 'Failed to fetch stock analysis',
@@ -116,6 +117,7 @@ export class StockService {
       }
 
       if (!data?.success) {
+        handleGlobalAuthError(data);
         return {
           success: false,
           message: data?.message || 'Failed to fetch stock analysis',

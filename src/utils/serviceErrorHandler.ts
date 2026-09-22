@@ -575,6 +575,7 @@ export async function executeRPC<TRaw, TResult = TRaw>(
     // Handle wrapped response with success: false
     const dataObj = data as Record<string, unknown>;
     if (validateSuccess && typeof dataObj === 'object' && 'success' in dataObj && dataObj.success === false) {
+      handleGlobalAuthError(dataObj);
       return {
         success: false,
         message: (dataObj.message as string) || errorMessage || 'Operation failed',
@@ -600,6 +601,7 @@ export async function executeRPC<TRaw, TResult = TRaw>(
     };
   } catch (error) {
     logger.error(`[${context}] Exception in RPC '${rpcName}':`, error);
+    handleGlobalAuthError(error);
     const categorized = categorizeError(error);
 
     return {

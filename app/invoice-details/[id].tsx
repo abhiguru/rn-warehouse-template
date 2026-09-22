@@ -487,6 +487,9 @@ function InvoiceDetailScreen() {
           no_of_days: item.no_of_days || 0,
           charge: item.charge || 0,
           tax: item.tax || 0,
+          // Some deployed get_invoice_data variants omit grn.id, but every
+          // invoice line carries the authoritative GRN UUID on its dispatch.
+          grn_id: invoice.grn?.id || dispatch.gr_id || grnItem.gr_id || '',
           gr_no: invoice.gr_no || invoice.grn?.number || '',
           // GRN Item ID for grouping
           grn_item_id: grnItem.id || '',
@@ -514,6 +517,7 @@ function InvoiceDetailScreen() {
         no_of_days: item.noOfDays,
         charge: item.charge || 0,
         tax: item.tax || 0,
+        grn_id: invoice.grn?.id || '',
         gr_no: item.grNo,
         // GRN Item ID for grouping (use dispatchId as fallback for unique grouping)
         grn_item_id: item.dispatchId || item.id,

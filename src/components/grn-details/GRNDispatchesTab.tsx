@@ -6,7 +6,7 @@
  */
 
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Pressable } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useListColors } from '@/hooks/useListColors';
 import { DispatchRecord } from '@/services/grn-detail-service';
@@ -20,12 +20,18 @@ interface GRNDispatchesTabProps {
   dispatchesByItem: Record<string, DispatchRecord[]>;
   /** Loading state */
   loading?: boolean;
+  /** Visible failure state; never represent a failed request as empty history. */
+  error?: string | null;
+  /** Retry the failed history request. */
+  onRetry?: () => void;
 }
 
 export const GRNDispatchesTab: React.FC<GRNDispatchesTabProps> = ({
   items,
   dispatchesByItem,
   loading = false,
+  error = null,
+  onRetry,
 }) => {
   // Theme colors for dark mode support
   const colors = useListColors();
@@ -35,6 +41,28 @@ export const GRNDispatchesTab: React.FC<GRNDispatchesTabProps> = ({
       <View style={[styles.loadingContainer, { backgroundColor: colors.gray50 }]}>
         <ActivityIndicator size="large" color={colors.primary} />
         <Text style={[styles.loadingText, { color: colors.gray500 }]}>Loading dispatches...</Text>
+      </View>
+    );
+  }
+
+  if (error) {
+    return (
+      <View style={[styles.emptyContainer, { backgroundColor: colors.gray50 }]}>
+        <View style={[styles.emptyIconContainer, { backgroundColor: colors.gray100 }]}>
+          <Icon name="alert-circle-outline" size={48} color={colors.statusNegative || colors.gray500} />
+        </View>
+        <Text style={[styles.emptyTitle, { color: colors.gray700 }]}>Dispatches Unavailable</Text>
+        <Text style={[styles.emptyMessage, { color: colors.gray500 }]}>{error}</Text>
+        {onRetry ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Retry loading dispatches"
+            onPress={onRetry}
+            style={[styles.retryButton, { backgroundColor: colors.primary }]}
+          >
+            <Text style={styles.retryText}>Retry</Text>
+          </Pressable>
+        ) : null}
       </View>
     );
   }
@@ -126,6 +154,20 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlign: 'center',
     lineHeight: 20,
+  },
+  retryButton: {
+    marginTop: 20,
+    minHeight: 44,
+    minWidth: 120,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  retryText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '600',
   },
 });
 
