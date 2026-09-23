@@ -2,12 +2,18 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import net from 'node:net';
+import { setTimeout, clearTimeout } from 'node:timers';
 import { createRequire } from 'node:module';
 import { selectUsbAddress, rewriteConfig, parseOptions, createApiRelay } from './ios-usb.mjs';
 
 test('USB relay carries Realtime upgrades and both directions of socket data', { timeout: 3000 }, async t => {
   const sockets = new Set();
-  const track = socket => { sockets.add(socket); socket.once('close', () => sockets.delete(socket)); };
+  let resolveClosed;
+  const closed = new Promise(resolve => { resolveClosed = resolve; });
+  const track = socket => { sockets.add(socket); socket.once('close', () => {
+    sockets.delete(socket);
+    if (!sockets.size) resolveClosed();
+  }); };
   const upstream = http.createServer();
   upstream.on('connection', track);
   upstream.on('upgrade', (request, socket, head) => {
@@ -38,7 +44,7 @@ test('USB relay carries Realtime upgrades and both directions of socket data', {
   client.write('GET /realtime/v1/websocket?apikey=fictional&vsn=1.0.0 HTTP/1.1\r\nHost: localhost\r\nConnection: Upgrade\r\nUpgrade: websocket\r\nAuthorization: Bearer fictional\r\n\r\nearly-frame');
   assert.match(await response, /^HTTP\/1\.1 101 /);
   client.destroy();
-  await new Promise(resolve => setTimeout(resolve, 30));
+  await closed;
   assert.equal(sockets.size, 0, 'disconnect closes both relay and upstream sockets');
 });
 
