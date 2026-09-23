@@ -1,5 +1,57 @@
 # Native and physical-device acceptance
 
+## Later gateway-fix iPhone retest — 2026-09-23 (pre-merge pair)
+
+The earlier complete orders/cart matrix below remains tied to mobile
+`c943de56b460852e8bca71fbe481b40d0c5265e6` and merged backend
+`8c682e4d4b83d4f4a8cb2dc252a00702478b11f9`. A later backend CI
+failure prompted [backend PR #42](https://github.com/abhiguru/supabase-warehouse-template/pull/42).
+Its gateway DNS runtime fix, backend
+`53b983d3916dd44ec22c6ac2db05136ca81f3875`, was retested with the
+same mobile runtime on a physical iPhone 15 / iOS 26.6.2 (23G90), Xcode
+26.3 (17C529), local Personal Team Debug bundle `20260923.3`. The backend
+SHA is a **pre-merge PR commit**, not a final-main pair. Later PR head
+`604643517fa175b7383d57a9f3702c3f6976b8c0` adds documentation only.
+
+The isolated backend `warehouse-order-live-20260923` used loopback API port
+28000, the documented USB-only relay and fictional demo data. Fresh setup and
+Realtime tests passed before the device run. The build version was read from
+the built app's `Info.plist`. No customer details, tokens, signing identifiers
+or device identifiers are included here. For live cases, the mounted screen
+changed without a gesture; disconnected Mirroring observations were excluded.
+
+| Affected iPhone case | Redacted before/after observation | Result |
+| --- | --- | --- |
+| Customer Orders | Visible 61→62 after a remote quantity change. | PASS, automatic |
+| Open cart add/change/remove | Mounted cart 62→63; remote re-add showed 64; a repeated removal showed the empty state while Mirroring stayed connected. The first removal overlapped a Mirroring interruption and was not counted. | PASS, automatic on the repeated run |
+| Missed Realtime events | Cart stayed at 65 while Realtime was stopped and remote state became 66. After restart it showed 66 automatically within a conservative 36-second observation bound; 67 then arrived live. | PASS |
+| Manual fallback | With Realtime stopped, Orders stayed at 67 after remote state became 68. Header Refresh retrieved 68 without navigation. | PASS |
+| USB interruption/recovery | Orders stayed at 68 with this run's relay stopped while the backend became 69. Restarting the relay showed 69 automatically within a conservative 43-second observation bound, without refresh or app restart. | PASS |
+| Gateway replacement and cold restoration | Owned forced upstream-IP replacement regression passed locally without a Kong restart while the iPhone was open. A remote 70 update overlapped Mirroring loss and was not counted live. After Xcode stopped the app, physical cold launch restored the customer Orders screen at current 70; remote 71 appeared automatically. | PASS for cold restoration and subsequent live update; local gateway regression PASS |
+| Admin queue and session isolation | Customer signed out to Welcome. Fictional admin signed in; profile showed Admin, Queue showed 71, and remote 72 arrived automatically. Admin signed out; Welcome remained visible after remote 73, with no protected Queue data. | PASS |
+
+The earlier merged-pair matrix below supplies the unchanged token-rotation,
+background/foreground, other-customer isolation and full cart sequence evidence;
+those cases were not repeated for this later backend SHA. Mirroring periodically
+disconnected and backgrounded the app, so the interrupted first removal and
+remote 70 were explicitly excluded from mounted-live claims. The intentional
+USB relay outage produced an expected Metro warning during recovery.
+
+The later backend PR has **not** passed CI or merged. Both
+[runtime-head run 35859569984](https://github.com/abhiguru/supabase-warehouse-template/actions/runs/35859569984)
+and [documentation-head run 35860093972](https://github.com/abhiguru/supabase-warehouse-template/actions/runs/35860093972)
+failed in the `Gateway upstream IP replacement` step of `Isolated demo API`.
+The separate backend-main [run 35842102994](https://github.com/abhiguru/supabase-warehouse-template/actions/runs/35842102994)
+also failed earlier; its second attempt returned configuration HTTP 500, whose
+cause is unestablished. This retest does not establish a CI-green merged pair.
+
+After the run, the fictional `USB3091X` cart/GRN fixture was removed, both
+fixture sessions were revoked, and the user-facing app was signed out. This
+run's USB helper, Metro and Compose project were stopped; ports 28000, 8081
+and 8082 had no listeners. The unrelated `warehouse-ios-acceptance` stack and
+isolated test volumes were preserved. No temporary token-lifetime setting was
+introduced for this retest. The Android implementation was not rerun here.
+
 ## Physical-iPhone orders/cart live-update closure — 2026-09-23
 
 The complete feature matrix passed on the final merged pair:
