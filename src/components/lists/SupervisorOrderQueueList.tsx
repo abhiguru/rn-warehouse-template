@@ -1,5 +1,6 @@
 import { getSessionGeneration } from '@/config/sessionLifecycle';
 import { useOrderLiveUpdates } from '@/hooks/useOrderLiveUpdates';
+import { OrderRefreshAction } from '@/components/OrderRefreshAction';
 /**
  * SupervisorOrderQueueList - Order Queue for Supervisors/Staff
  *
@@ -356,6 +357,7 @@ const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = ({
       >
         <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Order Queue</Text>
         <View style={styles.headerActions}>
+          <OrderRefreshAction onRefresh={handleRefresh} refreshing={isRefreshing} color={colors.primary} label="Refresh order queue" />
           {/* Order Count Badge */}
           <View style={[styles.countBadge, { backgroundColor: colors.primaryLight }]}>
             <Text style={[styles.countText, { color: colors.primary }]}>{filteredOrders.length}</Text>
