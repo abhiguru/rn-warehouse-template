@@ -33,12 +33,23 @@ backend's two public origins remain `http://localhost:PORT`. The helper rewrites
 only configuration and PDF-link JSON responses to the current USB origin;
 authorization and signed paths are unchanged. File bodies stream unchanged.
 The helper supplies the Expo public bootstrap URL without persisting credentials.
+It also forwards authenticated WebSocket upgrades for `/realtime/v1/websocket`
+to that same fixed loopback gateway. Other upgrade paths are rejected. This is
+required for automatic order/cart updates: successful HTTP requests alone do
+not prove that Realtime crosses the USB relay. Socket peers close together on
+disconnect, including when the helper stops or detects a USB address change.
 
 Open the generated `ios/WarehouseManager.xcworkspace` in Xcode. Select your own
 Personal Team and a unique development bundle identifier, choose the connected
 iPhone and Run. Keep signing changes in the ignored native tree. If required,
 set your compliant Node path in ignored `ios/.xcode.env.local`. Do not commit
 team IDs, provisioning profiles, device identifiers or generated native files.
+
+For cold-session restoration, keep the phone unlocked until the authenticated
+screen has fully loaded, then lock it to use iPhone Mirroring. Locking while
+startup is still reading the iOS keychain can produce a secure-storage warning
+and a fail-closed login screen. Relaunch while unlocked before diagnosing a
+lost session; do not weaken secure-storage accessibility for mirroring.
 
 ## Network boundaries and reconnects
 

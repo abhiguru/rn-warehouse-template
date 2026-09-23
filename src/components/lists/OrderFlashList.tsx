@@ -1,5 +1,6 @@
 import { getSessionGeneration } from '@/config/sessionLifecycle';
 import { useOrderLiveUpdates } from '@/hooks/useOrderLiveUpdates';
+import { OrderRefreshAction } from '@/components/OrderRefreshAction';
 /**
  * OrderFlashList - FlashList Implementation (2025 Best Practices)
  *
@@ -487,6 +488,7 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
         <View style={[styles.header, { backgroundColor: colors.cellBackground, borderBottomColor: colors.cellDivider }]}>
           <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Orders</Text>
           <View style={styles.headerActions}>
+            <OrderRefreshAction onRefresh={handleRefresh} refreshing={isRefreshing} color={colors.primary} label="Refresh orders" />
             <IconButton
               icon="plus"
               size={22}
@@ -528,6 +530,7 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
       >
         <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Orders</Text>
         <View style={styles.headerActions}>
+          <OrderRefreshAction onRefresh={handleRefresh} refreshing={isRefreshing} color={colors.primary} label="Refresh orders" />
           <IconButton
             icon="plus"
             size={22}

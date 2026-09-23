@@ -1,8 +1,73 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
+import net from 'node:net';
+import { setTimeout, clearTimeout } from 'node:timers';
 import { createRequire } from 'node:module';
 import { selectUsbAddress, rewriteConfig, parseOptions, createApiRelay } from './ios-usb.mjs';
+
+test('USB relay carries Realtime upgrades and both directions of socket data', { timeout: 3000 }, async t => {
+  const sockets = new Set();
+  let resolveClosed;
+  const closed = new Promise(resolve => { resolveClosed = resolve; });
+  const track = socket => { sockets.add(socket); socket.once('close', () => {
+    sockets.delete(socket);
+    if (!sockets.size) resolveClosed();
+  }); };
+  const upstream = http.createServer();
+  upstream.on('connection', track);
+  upstream.on('upgrade', (request, socket, head) => {
+    assert.equal(request.url, '/realtime/v1/websocket?apikey=fictional&vsn=1.0.0');
+    assert.equal(request.headers.authorization, 'Bearer fictional');
+    socket.write('HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n');
+    if (head.length) socket.write(head);
+    socket.pipe(socket);
+  });
+  await new Promise(resolve => upstream.listen(0, '127.0.0.1', resolve));
+  const relay = createApiRelay({ apiPort: upstream.address().port, publicOrigin: 'http://169.254.43.183:28000' });
+  relay.on('connection', track);
+  await new Promise(resolve => relay.listen(0, '127.0.0.1', resolve));
+  t.after(() => { for (const socket of sockets) socket.destroy(); relay.close(); upstream.close(); });
+  const client = net.connect(relay.address().port, '127.0.0.1');
+  track(client);
+  const received = [];
+  const response = new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error('Realtime WebSocket upgrade did not cross USB relay')), 1000);
+    client.on('error', error => { clearTimeout(timeout); reject(error); });
+    client.on('data', chunk => {
+      received.push(chunk);
+      const text = Buffer.concat(received).toString();
+      if (text.includes('early-frame') && !text.includes('later-frame')) client.write('later-frame');
+      if (text.includes('later-frame')) { clearTimeout(timeout); resolve(text); }
+    });
+  });
+  client.write('GET /realtime/v1/websocket?apikey=fictional&vsn=1.0.0 HTTP/1.1\r\nHost: localhost\r\nConnection: Upgrade\r\nUpgrade: websocket\r\nAuthorization: Bearer fictional\r\n\r\nearly-frame');
+  assert.match(await response, /^HTTP\/1\.1 101 /);
+  client.destroy();
+  await closed;
+  assert.equal(sockets.size, 0, 'disconnect closes both relay and upstream sockets');
+});
+
+test('Realtime relay preserves gateway denial and rejects unrelated upgrade paths', { timeout: 3000 }, async t => {
+  let requests = 0;
+  const upstream = http.createServer((request, response) => { requests++; response.writeHead(401).end(); });
+  await new Promise(resolve => upstream.listen(0, '127.0.0.1', resolve));
+  const relay = createApiRelay({ apiPort: upstream.address().port, publicOrigin: 'http://169.254.43.183:28000' });
+  await new Promise(resolve => relay.listen(0, '127.0.0.1', resolve));
+  t.after(() => { relay.close(); upstream.close(); });
+  const upgrade = path => new Promise((resolve, reject) => {
+    const request = http.request({ host: '127.0.0.1', port: relay.address().port, path,
+      headers: { Connection: 'Upgrade', Upgrade: 'websocket' }, timeout: 1000 }, response => {
+      response.resume(); resolve(response.statusCode);
+    });
+    request.on('timeout', () => request.destroy(new Error('Upgrade rejection timed out')));
+    request.on('error', reject); request.end();
+  });
+  assert.equal(await upgrade('/realtime/v1/websocket?apikey=fictional'), 401);
+  assert.equal(await upgrade('//example.test/realtime/v1/websocket'), 400);
+  assert.equal(await upgrade('/other'), 400);
+  assert.equal(requests, 1);
+});
 
 test('USB discovery never selects Wi-Fi and rejects ambiguous physical links', () => {
   const entry = address => [{ family: 'IPv4', internal: false, address }];

@@ -9,6 +9,10 @@ custom-session RPC/RLS path, never by copying socket records into local state.
 Bursts are coalesced and an event received during a fetch queues another fetch.
 A successful join/rejoin triggers a full refetch to recover missed changes.
 Manual refresh remains available when Realtime is unreachable.
+Use the refresh-arrow button in the Orders or Order Queue header; it uses the
+same authorized API fetch as pull-to-refresh and stays available for empty
+lists. Its busy state prevents duplicate presses. A navigation-triggered fetch
+does not count as a manual-refresh or live-update acceptance pass.
 
 The dedicated Supabase client obtains the current custom JWT for connection and
 heartbeat authentication. It does not use GoTrue sessions or fall back to an

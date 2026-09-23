@@ -50,7 +50,7 @@ export function rewriteConfig(value, apiPort, publicOrigin) {
 }
 
 export function createApiRelay({ apiPort, publicOrigin }) {
-  return http.createServer((request, response) => {
+  const server = http.createServer((request, response) => {
     if (!request.url?.startsWith('/') || request.url.startsWith('//')) {
       response.writeHead(400).end(); return;
     }
@@ -95,6 +95,45 @@ export function createApiRelay({ apiPort, publicOrigin }) {
     response.on('close', () => upstream.destroy());
     request.pipe(upstream);
   });
+  server.on('upgrade', (request, socket, head) => {
+    // Keep the destination fixed to this checkout's gateway. Authentication is
+    // still enforced there; forward its original headers and query unchanged.
+    if (request.method !== 'GET' || request.url?.split('?')[0] !== '/realtime/v1/websocket' ||
+        request.headers.upgrade?.toLowerCase() !== 'websocket') {
+      socket.end('HTTP/1.1 400 Bad Request\r\nConnection: close\r\nContent-Length: 0\r\n\r\n');
+      return;
+    }
+    let peer;
+    const upstream = http.request({ hostname: '127.0.0.1', port: apiPort,
+      path: request.url, method: 'GET',
+      headers: { ...request.headers, host: `localhost:${apiPort}` }, timeout: 10000,
+    });
+    socket.on('error', () => { upstream.destroy(); peer?.destroy(); });
+    socket.once('close', () => { upstream.destroy(); peer?.destroy(); });
+    upstream.on('timeout', () => upstream.destroy());
+    upstream.on('error', () => socket.destroy());
+    upstream.on('response', response => {
+      socket.end(`HTTP/1.1 ${response.statusCode} ${response.statusMessage}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`);
+      response.resume();
+    });
+    upstream.on('upgrade', (response, upgraded, upstreamHead) => {
+      peer = upgraded;
+      if (socket.destroyed) { upgraded.destroy(); return; }
+      upstream.setTimeout(0);
+      upgraded.setTimeout(0);
+      upgraded.on('error', () => socket.destroy());
+      upgraded.once('close', () => socket.destroy());
+      const headers = response.rawHeaders;
+      let reply = `HTTP/1.1 ${response.statusCode} ${response.statusMessage}\r\n`;
+      for (let index = 0; index < headers.length; index += 2) reply += `${headers[index]}: ${headers[index + 1]}\r\n`;
+      socket.write(reply + '\r\n');
+      if (upstreamHead.length) socket.write(upstreamHead);
+      if (head.length) upgraded.write(head);
+      socket.pipe(upgraded).pipe(socket);
+    });
+    upstream.end();
+  });
+  return server;
 }
 
 const listen = (server, host, port) => new Promise((resolve, reject) => {
