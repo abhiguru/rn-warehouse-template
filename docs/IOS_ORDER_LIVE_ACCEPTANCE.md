@@ -1,5 +1,14 @@
 # Physical-iPhone order/cart live-update acceptance
 
+Later status (2026-09-23): an affected physical-iPhone regression against the
+unmerged backend gateway fix `53b983d3916dd44ec22c6ac2db05136ca81f3875`
+and mobile `c943de56b460852e8bca71fbe481b40d0c5265e6` passed the
+observed customer Orders/cart, Realtime reconnect, manual fallback, USB recovery,
+cold restoration, admin Queue and logout cases on local bundle `20260923.3`.
+This does not supersede the complete merged-pair matrix below. Backend PR #42
+remains open with failing CI; see the later, redacted case table and cleanup in
+[NATIVE_ACCEPTANCE.md](NATIVE_ACCEPTANCE.md#later-gateway-fix-iphone-retest--2026-09-23-pre-merge-pair).
+
 Completed on 2026-09-23 with mobile
 `c943de56b460852e8bca71fbe481b40d0c5265e6` and backend
 `8c682e4d4b83d4f4a8cb2dc252a00702478b11f9` on physical iPhone 15 / iOS 26.6.2,
@@ -59,8 +68,9 @@ failed or silently add schema/permission changes for this acceptance run.
 Publish the redacted case table and exact commit/CI links in
 [NATIVE_ACCEPTANCE.md](NATIVE_ACCEPTANCE.md), then update
 [AI_AGENT_HANDOFF.md](AI_AGENT_HANDOFF.md) and the paired PR evidence. Complete
-this review on the Mac with its connected iPhone; a second handoff is not
-needed. Finally stop the USB helper and only the owned backend Compose project,
+this review on the Mac with its connected iPhone. For the later gateway fix,
+the user requested a new agent handoff after physical testing; see
+[AI_AGENT_HANDOFF.md](AI_AGENT_HANDOFF.md). Finally stop the USB helper and only the owned backend Compose project,
 verify their listeners are gone, and leave both source checkouts clean. This
 is source-demo iOS acceptance, separate from production signing and App Store
 distribution.

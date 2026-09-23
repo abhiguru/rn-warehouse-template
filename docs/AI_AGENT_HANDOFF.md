@@ -1,4 +1,70 @@
-# Final Mac execution handoff — completed
+# AI agent handoff — gateway CI follow-up after iPhone retest
+
+## Current task for the next machine (2026-09-23)
+
+The user narrowed this Mac's scope to **physical-iPhone testing, then a Git-pushed
+handoff to another machine's AI**. The affected device retest is complete;
+[NATIVE_ACCEPTANCE.md](NATIVE_ACCEPTANCE.md#later-gateway-fix-iphone-retest--2026-09-23-pre-merge-pair)
+records the redacted observations and cleanup. Do not interpret that pre-merge
+test as a green final-main build. Do not use GLM skills or helpers.
+
+Clone both current main branches as siblings in a local, non-synchronized
+workspace, then fetch and inspect newer commits before acting:
+
+- Mobile: `https://github.com/abhiguru/rn-warehouse-template`; last verified
+  main `4d6219553a742b3e84ee44063628a8660cd04615`. The physical runtime
+  SHA is `c943de56b460852e8bca71fbe481b40d0c5265e6`. Mobile closure
+  [PR #27](https://github.com/abhiguru/rn-warehouse-template/pull/27) was
+  documentation only; [exact-main CI 35841891499](https://github.com/abhiguru/rn-warehouse-template/actions/runs/35841891499)
+  passed.
+- Backend: `https://github.com/abhiguru/supabase-warehouse-template`; last
+  verified main `85b5f0335fab4023ebf1b0d4a3ff83cd2a77fa01`. The earlier
+  complete physical matrix used merged backend
+  `8c682e4d4b83d4f4a8cb2dc252a00702478b11f9` and passed its
+  [exact-main CI 35829262796](https://github.com/abhiguru/supabase-warehouse-template/actions/runs/35829262796).
+  Documentation-only closure [PR #41](https://github.com/abhiguru/supabase-warehouse-template/pull/41)
+  then merged, but [new-main CI 35842102994](https://github.com/abhiguru/supabase-warehouse-template/actions/runs/35842102994)
+  failed (attempt 1 configuration HTTP 502 on setup rerun; attempt 2 fresh
+  setup configuration HTTP 500, with cause not established).
+
+Backend [PR #42](https://github.com/abhiguru/supabase-warehouse-template/pull/42)
+is **open and unmerged** on `fix/setup-failure-diagnostics`, head at handoff
+`6a11b74a8c5c86b8fd59e9d677d4e2bff8b37f10` (documentation after
+runtime commit `53b983d3916dd44ec22c6ac2db05136ca81f3875`). The runtime
+fix shortens Kong DNS caching for a replaced functions container, adds
+ownership-checked failure diagnostics and a forced-IP-change regression.
+Local reproduction was red before the fix and passed afterward. Setup rerun,
+Realtime, doctor, API and 34 unit tests passed locally. The physical iPhone
+15/iOS 26.6.2, Xcode 26.3, build `20260923.3`, ran mobile `c943de56` with
+backend runtime `53b983d` and passed the affected case table linked above.
+The preceding full merged-pair matrix at `c943de56`/`8c682e4` remains in
+NATIVE_ACCEPTANCE. No Android rerun occurred on this Mac.
+
+**Immediate blocker:** both [PR #42 runtime-head CI 35859569984](https://github.com/abhiguru/supabase-warehouse-template/actions/runs/35859569984)
+and [documentation-head CI 35860093972](https://github.com/abhiguru/supabase-warehouse-template/actions/runs/35860093972)
+failed in `Isolated demo API` → `Gateway upstream IP replacement`. The
+[new documentation-head run 35863552478](https://github.com/abhiguru/supabase-warehouse-template/actions/runs/35863552478)
+was still in progress when this handoff was written; check its final result.
+Inspect the exact CI logs and reproduce any failure in an isolated checkout. Fix on the
+focused PR branch, run required checks, and get reviewed green PR CI before
+merging. User approved PR #42 earlier **after CI passes**; this Mac paused the
+merge because the user changed scope to iPhone testing and handoff. Verify
+approval still applies to any material new fix; follow repository review rules.
+After merge, verify exact backend-main CI, runtime SHA equivalence, paired
+workflow pins and any newly affected physical-iPhone cases. A runtime change
+that affects the tested device path requires a fresh device run; do not claim
+the pre-merge `53b983d` observations cover a different implementation. Keep
+active and documented workflow copies identical. Preserve all existing
+`v0.2.2-demo` tags; do not deploy production or publish binaries.
+
+Use the current mobile and backend setup/CI documents. Keep the demo on
+loopback/USB, regenerate dependencies and private configuration on the next
+machine, and use fictional data only. The Mac's owned test fixture was removed,
+sessions revoked, helper/Metro/Compose stopped, and unrelated stack preserved.
+No credentials, signing files, device IDs or generated build outputs belong in
+Git. Production operator choices (SMS/onboarding, hosting/DNS/TLS, alerts,
+off-host backup/recovery, retention, billing and capacity) and Grafana and
+PostgREST inventory/scan security gates remain open.
 
 ## Order/cart physical-iPhone closure — 2026-09-23
 
