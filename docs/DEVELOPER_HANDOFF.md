@@ -36,7 +36,9 @@ The companion backend's
 is the canonical tracker for the unexplained historical configuration HTTP 500,
 component security evidence, SMS, public hosting, alerts, off-host recovery,
 retention, billing policy, and target capacity. Its dated findings are recorded
-evidence, not a fresh scan. Mobile work remains:
+evidence, not a fresh scan. The [release preparation inventory](RELEASE_PREPARATION.md)
+lists current template values, audit-tool limits, and the final-build evidence
+worksheet. Mobile work remains:
 
 | Stage | Owner and task | Completion evidence |
 | --- | --- | --- |
