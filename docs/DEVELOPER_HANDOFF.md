@@ -22,6 +22,38 @@ native signing/distribution, and hardware integrations remain open. The earlier
 configuration HTTP 500 has no established cause; the subsequent green CI is
 not a diagnosis of it. Existing demo tags remain immutable.
 
+## Remaining work after the source-demo handoff — 2026-09-24
+
+The accepted source-demo flows, physical Android/iPhone records, affected gateway
+retest, and local debug APK audit do not need another run solely because this
+documentation changed. Their tested commits and limits remain in
+[NATIVE_ACCEPTANCE.md](NATIVE_ACCEPTANCE.md) and
+[LOCAL_PRODUCTION_READINESS.md](LOCAL_PRODUCTION_READINESS.md). Test affected
+cases if runtime or native configuration changes.
+
+The companion backend's
+[remaining production work](https://github.com/abhiguru/supabase-warehouse-template/blob/main/docs/PRODUCTION_DEPENDENCIES.md#remaining-production-work)
+is the canonical tracker for the unexplained historical configuration HTTP 500,
+component security evidence, SMS, public hosting, alerts, off-host recovery,
+retention, billing policy, and target capacity. Its dated findings are recorded
+evidence, not a fresh scan. The [release preparation inventory](RELEASE_PREPARATION.md)
+lists current template values, audit-tool limits, and the final-build evidence
+worksheet. Mobile work remains:
+
+| Stage | Owner and task | Completion evidence |
+| --- | --- | --- |
+| Inputs before distribution | Operator/product owner: choose app name, bundle/package IDs and scheme, artwork, supported platforms and distribution route; supply owned signing credentials and accounts required by that route. Review privacy/legal text, actual data collection and store declarations. | Reviewed app identity, assets, privacy declarations and distribution plan; signing material stays outside Git. See [README.md](../README.md#application-code) and [LOCAL_PRODUCTION_READINESS.md](LOCAL_PRODUCTION_READINESS.md#remaining-external-or-distribution-gates). |
+| Signed release artifacts | Mobile release owner, after those inputs: build final release AAB/APK and iOS archive with owned credentials; audit each artifact for contents, permissions, certificates, secrets and applicable third-party notices. | Artifact hashes, audit results, notices, build IDs and signing provenance for the exact intended builds. The 2026-09-22 debug APK audit is only a development baseline. See [ATTRIBUTION_REVIEW.md](ATTRIBUTION_REVIEW.md#development-artifact-follow-up--2026-09-22). |
+| Telemetry decision and acceptance | Operator decides whether to enable optional Sentry/GlitchTip and supplies an owned test destination and retention/access policy if enabled. Mobile/operations owners then test delivery and received-payload redaction, including native crashes and breadcrumbs. | Disabled configuration remains empty, or a reviewed report shows received payloads, scrubbing, access and retention for the chosen service; reconcile store privacy declarations with observed collection. See [TELEMETRY_AND_PRIVACY.md](TELEMETRY_AND_PRIVACY.md) and [NATIVE_ACCEPTANCE.md](NATIVE_ACCEPTANCE.md#manual-acceptance-matrix). |
+| Distribution acceptance | Mobile release owner and operator: submit or distribute the exact reviewed builds through the chosen Play/App Store/TestFlight or enterprise path, then accept required platform/device behavior on those builds. | Store/enterprise review outcome, final artifact/build IDs and targeted device results tied to the submitted versions. Historical source-demo phone SHAs and a compiled Android debug APK do not establish release-build acceptance. |
+
+Printing, sensors, payments, customer document uploads, barcode scanning and
+automatic offline synchronization are outside the default source-demo contract.
+Only if an operator adopts one should its owner specify the hardware/provider,
+behavior and acceptance cases, implement the integration, and record real
+hardware/service results. The [unsupported-features boundary](#unsupported-and-separately-untested)
+describes the present behavior. Existing demo tags remain immutable.
+
 ## Current continuation point — local readiness 1–11
 
 The local Android artifact work is complete and recorded in
@@ -279,17 +311,21 @@ Stop preserves database/files. Remove only the reverse mappings you created:
 ## Unsupported and separately untested
 
 Physical printing, sensors, customer document uploads, production SMS, barcode
-scanning and automatic offline/SQLite synchronization are unsupported. Realtime
-remains optional and default-disabled; the companion backend verifies local
-startup and authenticated channel authorization, while application subscription
-behavior and target-deployment capacity/resilience remain separate acceptance.
+scanning and automatic offline/SQLite synchronization are unsupported. Default
+source-demo Realtime covers order/cart invalidation and authorized refetch, with
+recorded Android emulator and physical-iPhone acceptance in
+[ORDER_LIVE_UPDATES.md](ORDER_LIVE_UPDATES.md) and
+[NATIVE_ACCEPTANCE.md](NATIVE_ACCEPTANCE.md). Stock/invoice subscriptions are
+outside that scope; target-deployment capacity/resilience remains a production
+gate in the companion backend's
+[remaining work](https://github.com/abhiguru/supabase-warehouse-template/blob/main/docs/PRODUCTION_DEPENDENCIES.md#remaining-production-work).
 Printing/sensor UI explains unavailability; hardware Edge endpoints return 503.
 The imported dual-rate pricing overload is not the mobile contract and currently
 fails its legacy table constraints; combined-rate semantics require a separate
 review. Change-category filtering is unavailable; other change-log filters remain.
 Payments/accounting integrations are not part of the documented demo workflow.
 
-iOS production distribution, production scale/security, native telemetry
+iOS production distribution, production scale/security, enabled native telemetry
 delivery, retention enforcement, and privacy declarations remain separate
 checks. Physical Android core acceptance and the complete physical-iPhone
 source-demo matrix passed after publication; see NATIVE_ACCEPTANCE.md. The scoped

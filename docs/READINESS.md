@@ -1,5 +1,12 @@
 # Readiness
 
+The [remaining-work list](DEVELOPER_HANDOFF.md#remaining-work-after-the-source-demo-handoff--2026-09-24)
+separates mobile operator inputs, signed-artifact and distribution acceptance,
+optional telemetry, and conditional hardware features. The companion
+[backend tracker](https://github.com/abhiguru/supabase-warehouse-template/blob/main/docs/PRODUCTION_DEPENDENCIES.md#remaining-production-work)
+owns server security and production service follow-ups. The source-demo device
+and CI records below retain their original tested scope.
+
 ## Order/cart live-update follow-up — 2026-09-22
 
 New order/cart subscriptions passed Android API-36 emulator delivery and
