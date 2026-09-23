@@ -33,6 +33,11 @@ backend's two public origins remain `http://localhost:PORT`. The helper rewrites
 only configuration and PDF-link JSON responses to the current USB origin;
 authorization and signed paths are unchanged. File bodies stream unchanged.
 The helper supplies the Expo public bootstrap URL without persisting credentials.
+It also forwards authenticated WebSocket upgrades for `/realtime/v1/websocket`
+to that same fixed loopback gateway. Other upgrade paths are rejected. This is
+required for automatic order/cart updates: successful HTTP requests alone do
+not prove that Realtime crosses the USB relay. Socket peers close together on
+disconnect, including when the helper stops or detects a USB address change.
 
 Open the generated `ios/WarehouseManager.xcworkspace` in Xcode. Select your own
 Personal Team and a unique development bundle identifier, choose the connected

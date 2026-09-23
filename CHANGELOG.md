@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased — iPhone USB Realtime transport (2026-09-23)
+
+- Forward authenticated Realtime WebSocket upgrades through the checkout-owned
+  USB relay without broadening its fixed loopback destination or USB binding.
+- Cover bidirectional frames, gateway rejection, forbidden upgrade paths and
+  socket cleanup. Previously HTTP worked but automatic updates could not cross
+  the relay. Device acceptance is recorded separately in `NATIVE_ACCEPTANCE.md`.
+
 ## Unreleased — order/cart live updates
 
 - Refetch order lists, supervisor queues and carts on authenticated order events
