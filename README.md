@@ -24,7 +24,9 @@ The public acceptance summary is in
 third-party review evidence is in
 [ATTRIBUTION_REVIEW.md](docs/ATTRIBUTION_REVIEW.md). A post-release physical
 Android run now covers USB, camera, picker, permission, offline/retry, role,
-deep-link, restoration, and PDF workflows. iOS, production operations,
+deep-link, restoration, and PDF workflows. Physical iPhone source-demo
+acceptance, including the later order/cart and gateway retest, is recorded in
+[NATIVE_ACCEPTANCE.md](docs/NATIVE_ACCEPTANCE.md). Production operations,
 signed/native distribution, printing, sensors, and unsupported integrations
 remain separate gates.
 

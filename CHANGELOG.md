@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased — gateway source-demo closure (2026-09-23)
+
+- Recorded the reviewed mobile/backend merge checkpoint and successful exact-main
+  CI in the handoff and native acceptance records.
+- Kept the complete and affected iPhone observations tied to their tested SHAs;
+  documented runtime equivalence and the separate production gates.
+
 ## Unreleased — iPhone USB Realtime transport (2026-09-23)
 
 - Forward authenticated Realtime WebSocket upgrades through the checkout-owned

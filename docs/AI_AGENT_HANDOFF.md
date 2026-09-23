@@ -1,70 +1,42 @@
-# AI agent handoff — gateway CI follow-up after iPhone retest
+# AI agent handoff — source-demo gateway closure
 
-## Current task for the next machine (2026-09-23)
+## Current source-demo checkpoint — 2026-09-23
 
-The user narrowed this Mac's scope to **physical-iPhone testing, then a Git-pushed
-handoff to another machine's AI**. The affected device retest is complete;
-[NATIVE_ACCEPTANCE.md](NATIVE_ACCEPTANCE.md#later-gateway-fix-iphone-retest--2026-09-23-pre-merge-pair)
-records the redacted observations and cleanup. Do not interpret that pre-merge
-test as a green final-main build. Do not use GLM skills or helpers.
+The source-demo gateway follow-up is merged in both repositories. The reviewed
+source checkpoint is mobile
+[`f818c325b4d314b308187e3d12fd8d2e16d59db1`](https://github.com/abhiguru/rn-warehouse-template/commit/f818c325b4d314b308187e3d12fd8d2e16d59db1)
+([PR #28](https://github.com/abhiguru/rn-warehouse-template/pull/28),
+[exact-main CI 35866779110](https://github.com/abhiguru/rn-warehouse-template/actions/runs/35866779110): success)
+and backend
+[`f96f49f94e61bd7a57d7758c93b07c1324728d89`](https://github.com/abhiguru/supabase-warehouse-template/commit/f96f49f94e61bd7a57d7758c93b07c1324728d89)
+([PR #42](https://github.com/abhiguru/supabase-warehouse-template/pull/42),
+[exact-main CI 35868837880](https://github.com/abhiguru/supabase-warehouse-template/actions/runs/35868837880): success).
+Later documentation-only commits can advance `main`; these SHAs identify the
+reviewed source checkpoint, not an assertion that documentation HEAD never moves.
 
-Clone both current main branches as siblings in a local, non-synchronized
-workspace, then fetch and inspect newer commits before acting:
+The complete earlier physical-iPhone order/cart matrix was run on mobile
+`c943de56b460852e8bca71fbe481b40d0c5265e6` / backend
+`8c682e4d4b83d4f4a8cb2dc252a00702478b11f9`. The affected gateway-fix
+retest was run on the same mobile SHA / backend
+`53b983d3916dd44ec22c6ac2db05136ca81f3875`. No phone run occurred on
+the merged checkpoint SHAs. The reviewed merge trees differ from the tested
+runtime only in documentation, CI, and the standalone backend gateway test
+harness; see [NATIVE_ACCEPTANCE.md](NATIVE_ACCEPTANCE.md#current-gateway-merge-closure--2026-09-23)
+for scope and redacted device observations. The earlier configuration HTTP 500
+has no established cause and is not claimed as fixed.
 
-- Mobile: `https://github.com/abhiguru/rn-warehouse-template`; last verified
-  main `4d6219553a742b3e84ee44063628a8660cd04615`. The physical runtime
-  SHA is `c943de56b460852e8bca71fbe481b40d0c5265e6`. Mobile closure
-  [PR #27](https://github.com/abhiguru/rn-warehouse-template/pull/27) was
-  documentation only; [exact-main CI 35841891499](https://github.com/abhiguru/rn-warehouse-template/actions/runs/35841891499)
-  passed.
-- Backend: `https://github.com/abhiguru/supabase-warehouse-template`; last
-  verified main `85b5f0335fab4023ebf1b0d4a3ff83cd2a77fa01`. The earlier
-  complete physical matrix used merged backend
-  `8c682e4d4b83d4f4a8cb2dc252a00702478b11f9` and passed its
-  [exact-main CI 35829262796](https://github.com/abhiguru/supabase-warehouse-template/actions/runs/35829262796).
-  Documentation-only closure [PR #41](https://github.com/abhiguru/supabase-warehouse-template/pull/41)
-  then merged, but [new-main CI 35842102994](https://github.com/abhiguru/supabase-warehouse-template/actions/runs/35842102994)
-  failed (attempt 1 configuration HTTP 502 on setup rerun; attempt 2 fresh
-  setup configuration HTTP 500, with cause not established).
+For new development, clone both current `main` branches as siblings in an
+isolated local workspace, inspect any commits after the checkpoint, follow the
+current setup/CI documents, and regenerate private configuration. Keep the demo
+on loopback/USB and use fictional data. Source-demo handoff is complete. The
+remaining work is in production security and operator gates: Grafana and
+PostgREST component inventory/scans, production SMS/onboarding, hosting/DNS/TLS,
+external alerts, off-host backup/recovery, retention, billing/capacity policies,
+native signing and distribution. Existing `v0.2.2-demo` tags stay immutable.
 
-Backend [PR #42](https://github.com/abhiguru/supabase-warehouse-template/pull/42)
-is **open and unmerged** on `fix/setup-failure-diagnostics`, head at handoff
-`6a11b74a8c5c86b8fd59e9d677d4e2bff8b37f10` (documentation after
-runtime commit `53b983d3916dd44ec22c6ac2db05136ca81f3875`). The runtime
-fix shortens Kong DNS caching for a replaced functions container, adds
-ownership-checked failure diagnostics and a forced-IP-change regression.
-Local reproduction was red before the fix and passed afterward. Setup rerun,
-Realtime, doctor, API and 34 unit tests passed locally. The physical iPhone
-15/iOS 26.6.2, Xcode 26.3, build `20260923.3`, ran mobile `c943de56` with
-backend runtime `53b983d` and passed the affected case table linked above.
-The preceding full merged-pair matrix at `c943de56`/`8c682e4` remains in
-NATIVE_ACCEPTANCE. No Android rerun occurred on this Mac.
-
-**Immediate blocker:** both [PR #42 runtime-head CI 35859569984](https://github.com/abhiguru/supabase-warehouse-template/actions/runs/35859569984)
-and [documentation-head CI 35860093972](https://github.com/abhiguru/supabase-warehouse-template/actions/runs/35860093972)
-failed in `Isolated demo API` → `Gateway upstream IP replacement`. The
-[new documentation-head run 35863552478](https://github.com/abhiguru/supabase-warehouse-template/actions/runs/35863552478)
-was still in progress when this handoff was written; check its final result.
-Inspect the exact CI logs and reproduce any failure in an isolated checkout. Fix on the
-focused PR branch, run required checks, and get reviewed green PR CI before
-merging. User approved PR #42 earlier **after CI passes**; this Mac paused the
-merge because the user changed scope to iPhone testing and handoff. Verify
-approval still applies to any material new fix; follow repository review rules.
-After merge, verify exact backend-main CI, runtime SHA equivalence, paired
-workflow pins and any newly affected physical-iPhone cases. A runtime change
-that affects the tested device path requires a fresh device run; do not claim
-the pre-merge `53b983d` observations cover a different implementation. Keep
-active and documented workflow copies identical. Preserve all existing
-`v0.2.2-demo` tags; do not deploy production or publish binaries.
-
-Use the current mobile and backend setup/CI documents. Keep the demo on
-loopback/USB, regenerate dependencies and private configuration on the next
-machine, and use fictional data only. The Mac's owned test fixture was removed,
-sessions revoked, helper/Metro/Compose stopped, and unrelated stack preserved.
-No credentials, signing files, device IDs or generated build outputs belong in
-Git. Production operator choices (SMS/onboarding, hosting/DNS/TLS, alerts,
-off-host backup/recovery, retention, billing and capacity) and Grafana and
-PostgREST inventory/scan security gates remain open.
+The Mac's owned phone fixture and sessions were cleaned up, and its helper,
+Metro, and Compose project were stopped. Keep credentials, signing files,
+device IDs, and generated build outputs out of Git.
 
 ## Order/cart physical-iPhone closure — 2026-09-23
 

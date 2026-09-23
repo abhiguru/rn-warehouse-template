@@ -1,5 +1,29 @@
 # Native and physical-device acceptance
 
+## Current gateway merge closure — 2026-09-23
+
+The reviewed source checkpoint is mobile
+[`f818c325b4d314b308187e3d12fd8d2e16d59db1`](https://github.com/abhiguru/rn-warehouse-template/commit/f818c325b4d314b308187e3d12fd8d2e16d59db1)
+([PR #28](https://github.com/abhiguru/rn-warehouse-template/pull/28),
+[exact-main CI 35866779110](https://github.com/abhiguru/rn-warehouse-template/actions/runs/35866779110): success)
+and backend
+[`f96f49f94e61bd7a57d7758c93b07c1324728d89`](https://github.com/abhiguru/supabase-warehouse-template/commit/f96f49f94e61bd7a57d7758c93b07c1324728d89)
+([PR #42](https://github.com/abhiguru/supabase-warehouse-template/pull/42),
+[exact-main CI 35868837880](https://github.com/abhiguru/supabase-warehouse-template/actions/runs/35868837880): success).
+These are checkpoint SHAs; later documentation-only commits may advance `main`.
+
+The complete physical matrix below used mobile
+`c943de56b460852e8bca71fbe481b40d0c5265e6` / backend
+`8c682e4d4b83d4f4a8cb2dc252a00702478b11f9`. The affected gateway-fix
+retest below used that mobile SHA / backend
+`53b983d3916dd44ec22c6ac2db05136ca81f3875`. No phone was run on the
+merged checkpoint SHAs. Reviewed Git comparisons show only documentation
+changes in mobile and only documentation, CI, and the standalone gateway test
+harness in backend relative to the tested runtime. The merge trees match the
+reviewed PR heads. This runtime equivalence supports the source-demo handoff;
+it does not reattribute physical observations to later SHAs. Production security,
+operator, native distribution, and hardware gates remain separate.
+
 ## Later gateway-fix iPhone retest — 2026-09-23 (pre-merge pair)
 
 The earlier complete orders/cart matrix below remains tied to mobile
@@ -10,7 +34,8 @@ Its gateway DNS runtime fix, backend
 `53b983d3916dd44ec22c6ac2db05136ca81f3875`, was retested with the
 same mobile runtime on a physical iPhone 15 / iOS 26.6.2 (23G90), Xcode
 26.3 (17C529), local Personal Team Debug bundle `20260923.3`. The backend
-SHA is a **pre-merge PR commit**, not a final-main pair. Later PR head
+SHA was a **pre-merge PR commit** at test time, not the merged checkpoint SHA.
+An intermediate PR head
 `604643517fa175b7383d57a9f3702c3f6976b8c0` adds documentation only.
 
 The isolated backend `warehouse-order-live-20260923` used loopback API port
@@ -37,13 +62,15 @@ disconnected and backgrounded the app, so the interrupted first removal and
 remote 70 were explicitly excluded from mounted-live claims. The intentional
 USB relay outage produced an expected Metro warning during recovery.
 
-The later backend PR has **not** passed CI or merged. Both
+At the time of this retest, the backend PR had not passed CI or merged. Both
 [runtime-head run 35859569984](https://github.com/abhiguru/supabase-warehouse-template/actions/runs/35859569984)
 and [documentation-head run 35860093972](https://github.com/abhiguru/supabase-warehouse-template/actions/runs/35860093972)
 failed in the `Gateway upstream IP replacement` step of `Isolated demo API`.
 The separate backend-main [run 35842102994](https://github.com/abhiguru/supabase-warehouse-template/actions/runs/35842102994)
 also failed earlier; its second attempt returned configuration HTTP 500, whose
-cause is unestablished. This retest does not establish a CI-green merged pair.
+cause is unestablished. These are historical failures; the successful exact-main
+CI for the later merged checkpoint is linked above. This retest alone did not
+establish a CI-green merged pair or explain the earlier configuration HTTP 500.
 
 After the run, the fictional `USB3091X` cart/GRN fixture was removed, both
 fixture sessions were revoked, and the user-facing app was signed out. This

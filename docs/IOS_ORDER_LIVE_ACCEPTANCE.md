@@ -1,12 +1,21 @@
 # Physical-iPhone order/cart live-update acceptance
 
-Later status (2026-09-23): an affected physical-iPhone regression against the
-unmerged backend gateway fix `53b983d3916dd44ec22c6ac2db05136ca81f3875`
+Current source checkpoint (2026-09-23): mobile
+`f818c325b4d314b308187e3d12fd8d2e16d59db1` and backend
+`f96f49f94e61bd7a57d7758c93b07c1324728d89` merged through
+[mobile PR #28](https://github.com/abhiguru/rn-warehouse-template/pull/28) and
+[backend PR #42](https://github.com/abhiguru/supabase-warehouse-template/pull/42).
+Their [mobile exact-main CI](https://github.com/abhiguru/rn-warehouse-template/actions/runs/35866779110)
+and [backend exact-main CI](https://github.com/abhiguru/supabase-warehouse-template/actions/runs/35868837880)
+passed. Later documentation-only commits may advance `main`. The affected
+physical-iPhone regression against the then-unmerged backend gateway fix
+`53b983d3916dd44ec22c6ac2db05136ca81f3875`
 and mobile `c943de56b460852e8bca71fbe481b40d0c5265e6` passed the
 observed customer Orders/cart, Realtime reconnect, manual fallback, USB recovery,
 cold restoration, admin Queue and logout cases on local bundle `20260923.3`.
-This does not supersede the complete merged-pair matrix below. Backend PR #42
-remains open with failing CI; see the later, redacted case table and cleanup in
+This does not supersede the complete earlier merged-pair matrix below. The phone
+did not run the later merge SHAs; the reviewed source changes preserve the tested
+runtime. See the later, redacted case table and cleanup in
 [NATIVE_ACCEPTANCE.md](NATIVE_ACCEPTANCE.md#later-gateway-fix-iphone-retest--2026-09-23-pre-merge-pair).
 
 Completed on 2026-09-23 with mobile
