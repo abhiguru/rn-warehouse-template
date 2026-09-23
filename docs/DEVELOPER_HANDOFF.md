@@ -1,5 +1,27 @@
 # Developer handoff — v0.2.2-demo
 
+## Current source-demo checkpoint — 2026-09-23
+
+The gateway follow-up is merged at mobile
+`f818c325b4d314b308187e3d12fd8d2e16d59db1` / backend
+`f96f49f94e61bd7a57d7758c93b07c1324728d89` through
+[mobile PR #28](https://github.com/abhiguru/rn-warehouse-template/pull/28) and
+[backend PR #42](https://github.com/abhiguru/supabase-warehouse-template/pull/42).
+Their [mobile exact-main CI](https://github.com/abhiguru/rn-warehouse-template/actions/runs/35866779110)
+and [backend exact-main CI](https://github.com/abhiguru/supabase-warehouse-template/actions/runs/35868837880)
+passed. These SHAs identify the reviewed source checkpoint even if later
+documentation-only commits advance `main`. The full earlier phone matrix and
+affected gateway retest remain attributed to their exact tested SHAs in
+[NATIVE_ACCEPTANCE.md](NATIVE_ACCEPTANCE.md#current-gateway-merge-closure--2026-09-23);
+the phone did not run on these merge SHAs. The source-demo handoff is complete.
+
+For further work, clone current sibling `main` branches into an isolated local
+workspace and check for later commits before following the setup instructions
+below. Production security inventory/scans, operator policies and services,
+native signing/distribution, and hardware integrations remain open. The earlier
+configuration HTTP 500 has no established cause; the subsequent green CI is
+not a diagnosis of it. Existing demo tags remain immutable.
+
 ## Current continuation point — local readiness 1–11
 
 The local Android artifact work is complete and recorded in
@@ -43,8 +65,10 @@ these post-release fixes. Existing `v0.2.2-demo` tags remain unchanged.
 Source-demo acceptance and publication are complete. Use `v0.2.2-demo` in
 both sibling repositories for the verified release pair. The mobile tag targets
 `6e6885786912fe9186285103e19de762e4ba88f8`; the backend tag targets
-`2959881d0e46a8797a98d10da8c7139217477476`. The backend's active and
-documented CI copies are byte-identical and pin that mobile commit.
+`2959881d0e46a8797a98d10da8c7139217477476`. At publication, the backend's
+active and documented CI copies pinned that mobile tag commit. Their later
+paired source-demo workflow pin is mobile runtime `c127ef6`; it was not repinned
+for documentation-only or squash-equivalent changes.
 
 Follow the backend `docs/CLEAN_INSTALL.md` isolation procedure with a unique
 Compose project and unused loopback ports. Run backend setup/doctor/health first;

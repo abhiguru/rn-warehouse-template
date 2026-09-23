@@ -5,9 +5,10 @@
 New order/cart subscriptions passed Android API-36 emulator delivery and
 reconnect acceptance plus automated session/lifecycle coverage. See
 [ORDER_LIVE_UPDATES.md](ORDER_LIVE_UPDATES.md) for exact behavior and checks.
-The historical physical-iPhone closure below predates this new feature; its
-new iOS UI acceptance remains pending on the separate Mac/device. Existing
-demo release tags are unchanged.
+The feature's complete physical-iPhone matrix and later affected gateway retest
+also passed on their recorded test pairs; see
+[NATIVE_ACCEPTANCE.md](NATIVE_ACCEPTANCE.md#current-gateway-merge-closure--2026-09-23).
+Existing demo release tags are unchanged.
 
 
 ## Provider-independent production-readiness pass — 2026-09-22
