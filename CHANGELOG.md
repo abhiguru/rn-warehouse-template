@@ -7,6 +7,9 @@
 - Cover bidirectional frames, gateway rejection, forbidden upgrade paths and
   socket cleanup. Previously HTTP worked but automatic updates could not cross
   the relay. Device acceptance is recorded separately in `NATIVE_ACCEPTANCE.md`.
+- Add accessible Refresh actions to Orders and Order Queue, including empty
+  states, so API fallback does not depend on a scroll gesture. Show busy state
+  and suppress repeated presses during refresh.
 
 ## Unreleased — order/cart live updates
 

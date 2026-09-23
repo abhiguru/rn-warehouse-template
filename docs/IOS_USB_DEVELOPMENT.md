@@ -45,6 +45,12 @@ iPhone and Run. Keep signing changes in the ignored native tree. If required,
 set your compliant Node path in ignored `ios/.xcode.env.local`. Do not commit
 team IDs, provisioning profiles, device identifiers or generated native files.
 
+For cold-session restoration, keep the phone unlocked until the authenticated
+screen has fully loaded, then lock it to use iPhone Mirroring. Locking while
+startup is still reading the iOS keychain can produce a secure-storage warning
+and a fail-closed login screen. Relaunch while unlocked before diagnosing a
+lost session; do not weaken secure-storage accessibility for mirroring.
+
 ## Network boundaries and reconnects
 
 Discovery uses Apple's USB NCM driver and its IPv4 link-local address, not Wi-Fi
