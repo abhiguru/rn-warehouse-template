@@ -1,11 +1,12 @@
 # Physical-iPhone order/cart live-update acceptance
 
-The order/cart live-update implementation is at mobile
-`989ade8e86f313ae4b173ad1bb5b56607ecbe353` with the compatible backend
-at `14dca36d7ca9cf11f29927f4c0c27d4759bc9de3`. Earlier complete iPhone
-acceptance predates this change. This procedure is the remaining iOS regression
-for that feature and can be completed in one Mac/device session. Use only
-fictional demo accounts and data.
+Completed on 2026-09-23 with mobile
+`c943de56b460852e8bca71fbe481b40d0c5265e6` and backend
+`8c682e4d4b83d4f4a8cb2dc252a00702478b11f9` on physical iPhone 15 / iOS 26.6.2,
+Xcode 26.3, local Debug bundle `20260923.2`. Every case below passed in the final
+merged-pair rerun. See [NATIVE_ACCEPTANCE.md](NATIVE_ACCEPTANCE.md#physical-iphone-orderscart-live-update-closure--2026-09-23)
+for the redacted observations, exact-main CI links, setup limitations and cleanup.
+This procedure remains available for reproduction with fictional demo data.
 
 ## Prepare the exact pair
 
@@ -13,7 +14,7 @@ On the Mac, clone this repository and the companion backend as siblings in a
 local, non-synchronized directory. Record `git rev-parse HEAD` for both before
 building. Use the exact implementation pair above. This document is added by a
 later mobile documentation commit, so keep it open from `main` when checking out
-the earlier mobile implementation commit. The immutable `v0.2.2-demo` tags
+the tested mobile implementation commit. The immutable `v0.2.2-demo` tags
 predate live updates. Follow the backend's `docs/CLEAN_INSTALL.md` with
 an isolated project and loopback ports, then
 [IOS_USB_DEVELOPMENT.md](IOS_USB_DEVELOPMENT.md) for the USB-only API/Metro relay,

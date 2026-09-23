@@ -40,10 +40,14 @@ restored session, automatic order-list timestamp refresh, live cart insertion
 and cleanup back to an empty cart. No manual refresh was used for these changes.
 
 The full mobile suite passed 29 suites / 200 tests, setup 28 tests, typecheck,
-lint (zero errors; existing warnings), and Android export. Earlier physical
-iPhone acceptance predates this feature; iOS live-update UI acceptance still
-requires the separate Mac/device. Production native signing is also separate.
+lint (zero errors; existing warnings), and Android export. Those are the original
+Android implementation results, not an Android rerun on the Mac. The subsequent
+physical-iPhone matrix passed on 2026-09-23 at mobile `c943de5` / backend `8c682e4`,
+including the USB WebSocket relay and manual Refresh repairs. Full immutable
+SHAs, case-by-case results and exact-main CI are in
+[NATIVE_ACCEPTANCE.md](NATIVE_ACCEPTANCE.md#physical-iphone-orderscart-live-update-closure--2026-09-23).
+Production native signing is separate.
 Production scale, soak, host-loss and latency objectives remain operator-dependent.
 
-The remaining physical-iPhone regression has a single-session procedure and
+The completed physical-iPhone regression retains its reproduction procedure and
 case matrix in [IOS_ORDER_LIVE_ACCEPTANCE.md](IOS_ORDER_LIVE_ACCEPTANCE.md).
