@@ -1,5 +1,10 @@
 # AI agent handoff — source-demo gateway closure
 
+For actionable work after this closed source-demo handoff, use the
+[mobile remaining-work list](DEVELOPER_HANDOFF.md#remaining-work-after-the-source-demo-handoff--2026-09-24)
+and the companion backend's
+[production tracker](https://github.com/abhiguru/supabase-warehouse-template/blob/main/docs/PRODUCTION_DEPENDENCIES.md#remaining-production-work).
+
 ## Current source-demo checkpoint — 2026-09-23
 
 The source-demo gateway follow-up is merged in both repositories. The reviewed
