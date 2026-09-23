@@ -1,0 +1,65 @@
+# Physical-iPhone order/cart live-update acceptance
+
+The order/cart live-update implementation is at mobile
+`989ade8e86f313ae4b173ad1bb5b56607ecbe353` with the compatible backend
+at `14dca36d7ca9cf11f29927f4c0c27d4759bc9de3`. Earlier complete iPhone
+acceptance predates this change. This procedure is the remaining iOS regression
+for that feature and can be completed in one Mac/device session. Use only
+fictional demo accounts and data.
+
+## Prepare the exact pair
+
+On the Mac, clone this repository and the companion backend as siblings in a
+local, non-synchronized directory. Record `git rev-parse HEAD` for both before
+building. Use the exact implementation pair above. This document is added by a
+later mobile documentation commit, so keep it open from `main` when checking out
+the earlier mobile implementation commit. The immutable `v0.2.2-demo` tags
+predate live updates. Follow the backend's `docs/CLEAN_INSTALL.md` with
+an isolated project and loopback ports, then
+[IOS_USB_DEVELOPMENT.md](IOS_USB_DEVELOPMENT.md) for the USB-only API/Metro relay,
+Personal Team Debug build, and owned cleanup. The backend must start Realtime
+and pass `npm run test:realtime`; capture the command result before UI testing.
+
+Verify the same backend is reached from the iPhone by logging in as the demo
+admin and assigned customer. Keep the backend on loopback and relay only over
+the trusted USB link. Capture device model, iOS/Xcode versions, test date,
+backend/mobile SHAs, and local build identifier. Keep credentials, device IDs,
+real customer data and personal images out of the evidence.
+
+## Complete the matrix
+
+Use an authenticated second session or a controlled fictional-data fixture to
+change an existing order and its cart while the iPhone screen is open. Record
+the order/cart identifiers privately for cleanup. A visible automatic update
+without pull-to-refresh is required for the live cases; a successful manual
+refresh alone does not pass them.
+
+| Case | Action and required observation |
+| --- | --- |
+| Customer order list | Open the assigned customer's order list; change its order from the second session. The list updates without a gesture. |
+| Supervisor queue | Open the admin/supervisor queue; change a visible order. The queue updates without a gesture. |
+| Open cart | Add, change quantity, then remove a fictional cart line remotely. The iPhone cart reflects each state without a gesture. |
+| Missed events | With the cart visible, stop only this checkout's Realtime service; change the cart while disconnected; restart Realtime. The missed state appears after rejoin without a gesture or app restart. |
+| Network and app lifecycle | Disconnect/reconnect the iPhone's network within the trusted test setup, then background/foreground the app with a remote change during each interruption. The screen refreshes after connection/restoration and does not show stale data indefinitely. |
+| Session isolation | Log out, change the former user's order, and verify no protected data or late update appears. Log into the other demo role; verify only that role's authorized orders, then change a visible order and observe a fresh live update. |
+| Token rotation | In the isolated demo, use a shortened access-token lifetime or wait for a normal rotation. While the screen stays mounted, verify a later remote order change still arrives through the refreshed session. Restore any temporary demo lifetime setting in cleanup; do not record token values. |
+| Restoration and fallback | Cold-launch with a previously valid session, confirm the right role and current order/cart data, then verify live changes still arrive. While Realtime is unavailable, manual refresh remains usable through the existing authorized API path. |
+
+For each case, record pass/fail, the visible before/after value and whether an
+automatic refresh occurred; note any reconnect delay. Check backend Realtime
+delivery/isolation logs without copying tokens into the record. Also run the
+mobile test, setup, typecheck and lint commands from the root README, and the
+backend's required CI checks for the exact commits. Reuse the earlier physical
+iPhone matrix only for behavior untouched by this feature; record any additional
+fix and rerun the affected cases.
+Stock and invoice subscriptions are outside the selected scope; do not mark them
+failed or silently add schema/permission changes for this acceptance run.
+
+Publish the redacted case table and exact commit/CI links in
+[NATIVE_ACCEPTANCE.md](NATIVE_ACCEPTANCE.md), then update
+[AI_AGENT_HANDOFF.md](AI_AGENT_HANDOFF.md) and the paired PR evidence. Complete
+this review on the Mac with its connected iPhone; a second handoff is not
+needed. Finally stop the USB helper and only the owned backend Compose project,
+verify their listeners are gone, and leave both source checkouts clean. This
+is source-demo iOS acceptance, separate from production signing and App Store
+distribution.

@@ -40,3 +40,6 @@ lint (zero errors; existing warnings), and Android export. Earlier physical
 iPhone acceptance predates this feature; iOS live-update UI acceptance still
 requires the separate Mac/device. Production native signing is also separate.
 Production scale, soak, host-loss and latency objectives remain operator-dependent.
+
+The remaining physical-iPhone regression has a single-session procedure and
+case matrix in [IOS_ORDER_LIVE_ACCEPTANCE.md](IOS_ORDER_LIVE_ACCEPTANCE.md).
