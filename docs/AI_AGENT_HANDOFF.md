@@ -1,16 +1,22 @@
 # Final Mac execution handoff — completed
 
-## Order/cart live-update follow-up — 2026-09-22
+## Order/cart physical-iPhone closure — 2026-09-23
 
-New order/cart subscriptions passed Android API-36 emulator delivery and
-reconnect acceptance plus automated session/lifecycle coverage. See
-[ORDER_LIVE_UPDATES.md](ORDER_LIVE_UPDATES.md) for exact behavior and checks.
-The historical physical-iPhone closure below predates this new feature; its
-new iOS UI acceptance remains pending on the separate Mac/device. Existing
-demo release tags are unchanged.
-Complete the new feature's entire physical-iPhone matrix from
-[IOS_ORDER_LIVE_ACCEPTANCE.md](IOS_ORDER_LIVE_ACCEPTANCE.md) in one Mac/device
-session, then record redacted results and exact commits before closure.
+The remaining live-update regression is complete on physical iPhone 15 / iOS
+26.6.2, using Xcode 26.3 and local Debug bundle `20260923.2`. The exact final
+tested pair is mobile `c943de56b460852e8bca71fbe481b40d0c5265e6` and backend
+`8c682e4d4b83d4f4a8cb2dc252a00702478b11f9`, merged through mobile PR #26 and
+backend PR #40. Their exact-main CI runs passed. The full redacted case table,
+CI links, setup limitations and cleanup record are in
+[NATIVE_ACCEPTANCE.md](NATIVE_ACCEPTANCE.md#physical-iphone-orderscart-live-update-closure--2026-09-23).
+
+Customer list, staff Queue, cart add/change/remove, missed-event reconnect,
+network and lifecycle recovery, logout/role isolation, token rotation, cold
+restoration and manual fallback were all observed on the merged pair. This is
+a closure record, not another continuation handoff. Later evidence commits are
+documentation-only; companion runtime pins and immutable demo tags stay intact.
+The earlier Android run was not repeated on this Mac. Production operator choices,
+Grafana findings and PostgREST component-inventory/scan coverage remain open.
 
 
 ## Later local-readiness follow-up — 2026-09-22

@@ -1,15 +1,85 @@
 # Native and physical-device acceptance
 
-## Order/cart live-update follow-up — 2026-09-22
+## Physical-iPhone orders/cart live-update closure — 2026-09-23
 
-New order/cart subscriptions passed Android API-36 emulator delivery and
-reconnect acceptance plus automated session/lifecycle coverage. See
-[ORDER_LIVE_UPDATES.md](ORDER_LIVE_UPDATES.md) for exact behavior and checks.
-The historical physical-iPhone closure below predates this new feature; its
-new iOS UI acceptance remains pending on the separate Mac/device. Existing
-demo release tags are unchanged.
-The full remaining iPhone matrix and cleanup steps are in
-[IOS_ORDER_LIVE_ACCEPTANCE.md](IOS_ORDER_LIVE_ACCEPTANCE.md).
+The complete feature matrix passed on the final merged pair:
+
+| Repository | Exact physical-device test SHA | Reviewed fix PR | Successful exact-main CI |
+| --- | --- | --- | --- |
+| Mobile | `c943de56b460852e8bca71fbe481b40d0c5265e6` | [#26](https://github.com/abhiguru/rn-warehouse-template/pull/26) | [35828897266](https://github.com/abhiguru/rn-warehouse-template/actions/runs/35828897266) |
+| Backend | `8c682e4d4b83d4f4a8cb2dc252a00702478b11f9` | [#40](https://github.com/abhiguru/supabase-warehouse-template/pull/40) | [35829262796](https://github.com/abhiguru/supabase-warehouse-template/actions/runs/35829262796) |
+
+Physical iPhone 15, iOS 26.6.2 (23G90), Xcode 26.3 (17C529), CocoaPods 1.16.2,
+Node 22.23.1, Personal Team Debug build. The installed final bundle version was
+`20260923.2`, independently read from the built app. Earlier pre-merge runs had
+bundle version `1`; `20260923` was their local run label, not installed version.
+Generated native configuration/signing files remained ignored and local.
+
+The backend used a fresh isolated demo Compose project with loopback ports and
+the documented USB-only API/Metro relay. Fresh setup and rerun passed. Following
+local Docker recovery, bootstrap and `npm run test:realtime` passed again
+(delivery, customer isolation, reconnect and invalid-token rejection). All
+observations below used fictional Example Customer A/B and Example Potatoes.
+Live rows required visible automatic changes without pull-to-refresh.
+
+| Final merged-pair physical case | Redacted observation | Result |
+| --- | --- | --- |
+| Customer Orders | Remote quantity 37→38 appeared on the open list, without a gesture. | PASS |
+| Admin/supervisor Queue | After customer logout and admin login, A:49/B:79 were authorized; remote A:49→50 appeared on the mounted Queue. | PASS |
+| Open cart add/change/remove | Mounted cart 38→empty after remote removal; remote addition 39 and quantity 40 each appeared automatically. | PASS |
+| Missed events during Realtime downtime | Cart stayed 40 while backend became 41. Restart at 08:29:26 UTC restored 41 before 08:29:45 (≤19-second observation bound); subsequent 42 arrived live. | PASS |
+| Network interruption/reconnect | Owned USB API/Metro relays stopped; list 43 stayed stale while backend became 44. Restart restored 44 automatically within 30 seconds. | PASS |
+| Background/foreground | App backgrounded at 45; remote 46 changed while away. Switcher snapshot remained 45; foreground fetched 46 automatically. | PASS |
+| Logout and role isolation | Customer logout left Welcome/login during remote 49, with no protected data. Admin login exposed A/B and Queue. User then signed out/in as customer: only A:51 and customer tabs remained; other-customer B:79→80 stayed excluded while A:51→52 arrived live. | PASS |
+| Token rotation | On the mounted customer session, consumed-refresh count increased 8→10; subsequent remote 45 arrived live. Only counts, never token values, were recorded. | PASS |
+| Cold restoration and subsequent live update | Xcode stopped the process at 46; backend became 47. Unlocked cold launch restored Customer, current 47 and customer-only tabs. Remote 48 then arrived automatically. | PASS |
+| Manual fallback, customer and staff | With Realtime stopped, customer list 42 stayed stale until header Refresh retrieved 43; admin Queue 50 similarly retrieved 51. Neither required navigation. | PASS |
+
+Most immediate live changes were visible on the next observation, approximately
+five seconds later; these are observation bounds, not performance benchmarks.
+The pre-merge equivalent implementation also passed the empty-list Refresh
+regression (remove→empty, add 26→26) and the complete matrix. The final merged
+rerun above is separate evidence, not inferred from that earlier run.
+
+Fixes: the USB relay now forwards authenticated Realtime WebSocket upgrades only
+to its fixed loopback gateway; Orders/Queue have accessible Refresh controls,
+including empty states; the paired CI pooler probe waits for an authenticated
+SQL query rather than relying solely on HTTP health. Mobile checks passed 202
+unit tests, 30 setup tests, typecheck and lint (zero errors, existing warnings).
+Backend passed 31 unit tests; both exact-main CI runs above passed all required
+jobs. Companion workflows and documented copies pin mobile runtime `c127ef6`;
+later documentation and squash-equivalent commits do not require repinning.
+
+### Environment limitations and cleanup
+
+A Mac disk-full event interrupted the native build and aborted Docker's storage
+journal. The user freed space and authorized/completed a Colima restart; existing
+volumes and the unrelated warehouse stack were preserved. Backend health and
+Realtime checks were rerun before the final device cases.
+
+Physical cable changes can change the USB address and require the documented
+prepare/rebuild procedure. During role switching, iOS routed the configured
+link-local API/Metro requests over Wi-Fi and timed out; local backend checks
+still passed. Physical user-assisted connectivity/login recovery restored the
+same build and the remaining role/queue cases passed. This is a recorded local
+transport limitation, not a claim that every cable/lock transition is seamless.
+Keep the iPhone unlocked through cold-start secure-storage restoration, then
+lock for Mirroring. Mirroring cannot reliably scroll this app's Settings, so
+the user performed physical sign-outs. Failed attempts were not counted as passes.
+
+User signed out after testing. Owned fictional fixtures were removed and the
+fixture session revoked; temporary token lifetime was restored and verified as
+3,600 seconds. Owned API/Metro services and Compose project were stopped, preserving
+volumes and unrelated work. No native binary or release was published and no
+existing `v0.2.2-demo` tag was changed.
+
+This closes source-demo iPhone orders/cart only with refresh after reconnect.
+Stock/invoice subscriptions are outside scope. The Android API-36 observations
+of 2026-09-22 remain historical; no Android device rerun occurred on this Mac.
+Later closure commits change documentation only. Production SMS/onboarding,
+hosting/DNS/TLS, alerts, off-host backup/recovery objectives, retention, billing
+and capacity still require operator decisions. Grafana findings and PostgREST
+component-inventory/scan coverage remain open regardless of application CI.
 
 
 ## Merged customer-history Android emulator smoke — 2026-09-21
