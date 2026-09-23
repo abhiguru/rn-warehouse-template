@@ -28,8 +28,8 @@ workspace, then fetch and inspect newer commits before acting:
   setup configuration HTTP 500, with cause not established).
 
 Backend [PR #42](https://github.com/abhiguru/supabase-warehouse-template/pull/42)
-is **open and unmerged** on `fix/setup-failure-diagnostics`, latest head
-`604643517fa175b7383d57a9f3702c3f6976b8c0` (documentation after
+is **open and unmerged** on `fix/setup-failure-diagnostics`, head at handoff
+`6a11b74a8c5c86b8fd59e9d677d4e2bff8b37f10` (documentation after
 runtime commit `53b983d3916dd44ec22c6ac2db05136ca81f3875`). The runtime
 fix shortens Kong DNS caching for a replaced functions container, adds
 ownership-checked failure diagnostics and a forced-IP-change regression.
@@ -42,8 +42,10 @@ NATIVE_ACCEPTANCE. No Android rerun occurred on this Mac.
 
 **Immediate blocker:** both [PR #42 runtime-head CI 35859569984](https://github.com/abhiguru/supabase-warehouse-template/actions/runs/35859569984)
 and [documentation-head CI 35860093972](https://github.com/abhiguru/supabase-warehouse-template/actions/runs/35860093972)
-failed in `Isolated demo API` → `Gateway upstream IP replacement`. Inspect the
-exact CI logs and reproduce that failure in an isolated checkout. Fix on the
+failed in `Isolated demo API` → `Gateway upstream IP replacement`. The
+[new documentation-head run 35863552478](https://github.com/abhiguru/supabase-warehouse-template/actions/runs/35863552478)
+was still in progress when this handoff was written; check its final result.
+Inspect the exact CI logs and reproduce any failure in an isolated checkout. Fix on the
 focused PR branch, run required checks, and get reviewed green PR CI before
 merging. User approved PR #42 earlier **after CI passes**; this Mac paused the
 merge because the user changed scope to iPhone testing and handoff. Verify
