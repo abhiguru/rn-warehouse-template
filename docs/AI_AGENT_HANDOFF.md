@@ -8,6 +8,9 @@ reconnect acceptance plus automated session/lifecycle coverage. See
 The historical physical-iPhone closure below predates this new feature; its
 new iOS UI acceptance remains pending on the separate Mac/device. Existing
 demo release tags are unchanged.
+Complete the new feature's entire physical-iPhone matrix from
+[IOS_ORDER_LIVE_ACCEPTANCE.md](IOS_ORDER_LIVE_ACCEPTANCE.md) in one Mac/device
+session, then record redacted results and exact commits before closure.
 
 
 ## Later local-readiness follow-up — 2026-09-22

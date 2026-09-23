@@ -8,6 +8,8 @@ reconnect acceptance plus automated session/lifecycle coverage. See
 The historical physical-iPhone closure below predates this new feature; its
 new iOS UI acceptance remains pending on the separate Mac/device. Existing
 demo release tags are unchanged.
+The full remaining iPhone matrix and cleanup steps are in
+[IOS_ORDER_LIVE_ACCEPTANCE.md](IOS_ORDER_LIVE_ACCEPTANCE.md).
 
 
 ## Merged customer-history Android emulator smoke — 2026-09-21
