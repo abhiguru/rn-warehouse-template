@@ -38,7 +38,19 @@ component security evidence, SMS, public hosting, alerts, off-host recovery,
 retention, billing policy, and target capacity. Its dated findings are recorded
 evidence, not a fresh scan. The [release preparation inventory](RELEASE_PREPARATION.md)
 lists current template values, audit-tool limits, and the final-build evidence
-worksheet. Mobile work remains:
+worksheet.
+
+The 2026-09-25 backend research checkpoint is PRs #62/#63, merged at
+`3eda9686f71b48860464d74e9b42c3e3490fb239` with
+[exact-main CI 36128411899](https://github.com/abhiguru/supabase-warehouse-template/actions/runs/36128411899)
+passing. Its native amd64 Grafana core candidate has eight remaining plugin
+HIGH findings; the active Grafana recipe has nine. The candidate needs arm64
+validation, and PostgREST component inventory remains open. See the
+[AI agent handoff](AI_AGENT_HANDOFF.md#production-security-follow-up--2026-09-25)
+for scope. This backend research change does not call for another physical-iPhone
+source-demo run.
+
+Mobile work remains:
 
 | Stage | Owner and task | Completion evidence |
 | --- | --- | --- |
