@@ -43,8 +43,9 @@ worksheet.
 The 2026-09-25 backend research checkpoint is PRs #62/#63, merged at
 `3eda9686f71b48860464d74e9b42c3e3490fb239` with
 [exact-main CI 36128411899](https://github.com/abhiguru/supabase-warehouse-template/actions/runs/36128411899)
-passing. Its native amd64 Grafana core candidate has eight remaining plugin
-HIGH findings; the active Grafana recipe has nine. The candidate needs arm64
+passing. The native amd64 Grafana candidate scan no longer reports one
+server-binary Thrift finding; eight signed-plugin HIGH findings remain, versus
+nine HIGH findings in the active Grafana recipe. The candidate needs arm64
 validation, and PostgREST component inventory remains open. See the
 [AI agent handoff](AI_AGENT_HANDOFF.md#production-security-follow-up--2026-09-25)
 for scope. This backend research change does not call for another physical-iPhone
