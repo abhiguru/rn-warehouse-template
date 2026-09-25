@@ -5,6 +5,26 @@ For actionable work after this closed source-demo handoff, use the
 and the companion backend's
 [production tracker](https://github.com/abhiguru/supabase-warehouse-template/blob/main/docs/PRODUCTION_DEPENDENCIES.md#remaining-production-work).
 
+## Production security follow-up — 2026-09-25
+
+Backend [PR #62](https://github.com/abhiguru/supabase-warehouse-template/pull/62)
+recorded the signed-plugin Grafana recheck, and
+[PR #63](https://github.com/abhiguru/supabase-warehouse-template/pull/63)
+merged a research recipe for rebuilding Grafana's core with patched Thrift.
+The native amd64 candidate passed startup, plugin-signature and live-query
+checks, but its targeted scan still found **8 HIGH** vulnerabilities in signed
+plugins. The active Grafana recipe still has **9 HIGH** findings; the candidate
+has not been built on arm64 or activated. Backend `main` at
+[`3eda9686f71b48860464d74e9b42c3e3490fb239`](https://github.com/abhiguru/supabase-warehouse-template/commit/3eda9686f71b48860464d74e9b42c3e3490fb239)
+passed [exact-main CI 36128411899](https://github.com/abhiguru/supabase-warehouse-template/actions/runs/36128411899).
+That CI tests the ordinary Grafana recipe, not the core candidate. The full
+19-image security gate and PostgREST component inventory remain open; its
+native arm64 build evidence is deferred. See the backend
+[container security record](https://github.com/abhiguru/supabase-warehouse-template/blob/main/docs/CONTAINER_SECURITY.md#grafana-os-patch-and-remaining-publisher-dependency)
+for the dated evidence. These backend research and CI changes do not alter the
+mobile source-demo runtime, so the recorded physical-iPhone matrix needs no
+rerun solely for this follow-up.
+
 ## Current source-demo checkpoint — 2026-09-23
 
 The source-demo gateway follow-up is merged in both repositories. The reviewed

@@ -7,6 +7,15 @@ optional telemetry, and conditional hardware features. The companion
 owns server security and production service follow-ups. The source-demo device
 and CI records below retain their original tested scope.
 
+Backend PRs #62/#63 advanced the Grafana security investigation through
+`3eda9686f71b48860464d74e9b42c3e3490fb239`; its
+[exact-main CI 36128411899](https://github.com/abhiguru/supabase-warehouse-template/actions/runs/36128411899)
+passed. The native amd64 core candidate has eight remaining signed-plugin HIGH
+findings, while the active image has nine. Arm64 candidate validation and the
+full image gate remain open. See the
+[dated handoff note](AI_AGENT_HANDOFF.md#production-security-follow-up--2026-09-25).
+This research follow-up does not change the physical-iPhone acceptance scope.
+
 ## Order/cart live-update follow-up — 2026-09-22
 
 New order/cart subscriptions passed Android API-36 emulator delivery and
