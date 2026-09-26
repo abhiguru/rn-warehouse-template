@@ -22,7 +22,7 @@ if (Platform.OS !== 'android') {
   SystemUI.setBackgroundColorAsync('#11222c');
 }
 
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 
 // Type declaration for React Native's global ErrorUtils
 interface ErrorUtilsType {
@@ -62,12 +62,16 @@ import { queryClient } from '@/lib/queryClient';
 import theme, { getThemeColors, colors, darkColors } from '@/theme';
 import ConfigService from '@/services/configService';
 import { initializeSupabase } from '@/config/supabaseConfig';
+import { clearPendingEnrollment } from '@/config/supabaseConfig';
 import ConfigErrorScreen from '@/components/ConfigErrorScreen';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { OfflineBanner } from '@/components/OfflineBanner';
 import { createLogger } from '@/utils/logger';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { initializeAuth } from '@/store/slices/authSlice';
+import { logout } from '@/store/slices/authSlice';
+import { OperatorServerSelection } from '@/components/OperatorServerSelection';
+import { discoverOperator, loadOperatorServer, onOperatorServerChange, saveOperatorServer } from '@/config/operatorServer';
 import {
   selectThemePreference,
   selectResolvedThemeMode,
@@ -246,6 +250,9 @@ function NavigationStack({ screenBackground }: { screenBackground: string }) {
       {/* Auth screens */}
       <Stack.Screen name="login" options={{ title: 'Sign In' }} />
       <Stack.Screen name="otp" options={{ title: 'Verify OTP' }} />
+      <Stack.Screen name="pending-enrollment" options={{ title: 'Enrollment Pending' }} />
+      <Stack.Screen name="operator-server" options={{ title: 'Warehouse Server' }} />
+      <Stack.Screen name="enrollment-review" options={{ title: 'Enrollment Review' }} />
 
       {/* Detail screens */}
       <Stack.Screen name="grn-details/[id]" options={{ headerShown: false }} />
@@ -407,19 +414,39 @@ function ThemedContent() {
 // Bootstrap component (inside providers)
 function BootstrapApp() {
   const [isReady, setIsReady] = useState(false);
+  const [needsSelection, setNeedsSelection] = useState(false);
   const [configError, setConfigError] = useState<string | null>(null);
+  const bootstrapRun = useRef(0);
 
   useEffect(() => {
-    bootstrapApp();
+    void bootstrapApp();
+    return onOperatorServerChange(() => { void bootstrapApp(); });
   }, []);
 
   const bootstrapApp = async () => {
+    const run = ++bootstrapRun.current;
     // A retry must leave the prior error state before starting. Otherwise a
     // successful refresh completes behind the still-mounted error screen.
     setConfigError(null);
     setIsReady(false);
+    setNeedsSelection(false);
 
     try {
+      const selected = await loadOperatorServer();
+      if (!selected) {
+        if (run === bootstrapRun.current) { setNeedsSelection(true); setIsReady(true); }
+        return;
+      }
+      const discovered = await discoverOperator(selected.origin);
+      if (run !== bootstrapRun.current) return;
+      if (selected.instanceId !== discovered.server.instanceId) {
+        await store.dispatch(logout()).unwrap();
+        await clearPendingEnrollment();
+        await queryClient.cancelQueries();
+        queryClient.clear();
+        await ConfigService.clearCache();
+      }
+      await saveOperatorServer(discovered.server, false);
       console.log('[Bootstrap] Starting app bootstrap');
 
       // STEP 1: Fetch public config (always refresh to get latest keys)
@@ -427,7 +454,7 @@ function BootstrapApp() {
       let publicConfig;
       try {
         // Always refresh on app start to ensure we have the latest anon key
-        publicConfig = await ConfigService.refreshPublicConfig();
+        publicConfig = discovered.config;
         console.log('[Bootstrap] Config received:', {
           supabaseUrl: publicConfig.supabaseUrl,
           environment: publicConfig.environment,
@@ -465,18 +492,21 @@ function BootstrapApp() {
         await new Promise(resolve => setTimeout(resolve, 3000)); // 3 second minimum
       }
 
-      setConfigError(null);
-      setIsReady(true);
+      if (run === bootstrapRun.current) { setConfigError(null); setIsReady(true); }
     } catch (error: any) {
       console.error('[Bootstrap] Unexpected bootstrap error:', error);
-      setConfigError('An unexpected error occurred during app initialization');
-      setIsReady(true);
+      if (run === bootstrapRun.current) {
+        setConfigError(error instanceof Error ? error.message : 'Could not verify the selected server.');
+        setIsReady(true);
+      }
     }
   };
 
   if (!isReady) {
     return <SplashScreen />;
   }
+
+  if (needsSelection) return <OperatorServerSelection initial />;
 
   if (configError) {
     return <ConfigErrorScreen error={configError} onRetry={bootstrapApp} />;

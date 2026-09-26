@@ -189,7 +189,10 @@ export default function OTPScreen() {
       const result = await verifyOTP(phoneNumber, code);
 
       if (result.success && result.data) {
-        if (result.data.customAuth && result.data.userProfile) {
+        if (result.data.action === 'pending') {
+          dispatch(setOtpSent(false));
+          router.replace('/pending-enrollment');
+        } else if (result.data.customAuth && result.data.userProfile) {
           dispatch(setUserProfile(result.data.userProfile));
 
           router.replace('/');

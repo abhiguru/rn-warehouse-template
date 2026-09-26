@@ -167,7 +167,27 @@ remains blocked. Release notes identify the exact commit pair and verification:
 The tags were published on 2026-09-14. See [release verification](RELEASE_CHECKLIST.md)
 for the backend CI checkout failure and subsequent follow-up evidence.
 
-## Prerequisites and paired checkout
+## Current operator authentication and server selection
+
+Current `main` asks for the operator's canonical HTTPS origin before login. The
+operator backend's `get-public-config` must report a matching origin, stable
+installation ID, compatible API version and supported minimum app version. The
+app stores one active server and checks its identity again on restart. A server
+switch clears the old session and business caches; a replacement at the same URL
+also requires a fresh login. Set `EXPO_PUBLIC_CONFIG_API_URL` only when running
+the separate `check:backend` CLI check against that origin.
+
+Operator OTP delivery uses the backend's configured MSG91 credentials. A verified
+new customer remains pending until an admin opens **Settings → Enrollment Review**,
+chooses existing customer assignments and approves the account. The customer then
+requests another code to sign in. Rejection and disabled accounts cannot sign in.
+The current operator flow has not been tested on a VM, physical device or live
+MSG91 delivery. Follow the backend's `docs/OPERATOR_INSTALL.md` for installation.
+
+The checkout and walkthrough below reproduce the historical immutable demo tags;
+they are not setup instructions for current `main`.
+
+## Prerequisites and paired checkout (historical demo)
 
 Use Node.js 22.18+ with npm, Git, Docker with Compose v2, and OpenSSL. Android
 native development needs a compatible JDK (17 or 21), SDK platform 36, build tools
@@ -225,7 +245,7 @@ requires the tracked USB-only connection procedure in
 handles API/Metro relay status, reconnect/address changes and scoped shutdown.
 The Android commands above do not provide an iOS connection.
 
-## First login and warehouse walkthrough
+## First login and warehouse walkthrough (historical demo)
 
 Enter admin **0000000001**, then demo OTP **123456**. For the assigned customer,
 use **0000000002** and the same code. No SMS is sent. Only fictional numbers

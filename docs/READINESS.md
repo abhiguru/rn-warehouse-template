@@ -139,7 +139,17 @@ Follow the [ordered release tracker](RELEASE_CHECKLIST.md) for ongoing work.
 The 2026-09-12 Android JavaScript export passed (2,934 modules, 45 assets).
 It is not a native APK or physical-device test.
 
-## Local demo
+## Current operator flow
+
+Current `main` requires an operator-owned HTTPS origin selected in the app before
+authentication. It verifies public server identity and minimum client version on
+startup, including after a cold restart. Operator OTP uses real SMS delivery;
+unknown verified customers enter pending enrollment and an administrator must
+approve them with existing customer assignments. Switching servers clears the
+previous session. VM, physical-device and live MSG91 acceptance are not yet
+recorded for this flow.
+
+## Local demo (historical source-demo tag only)
 
 Start the paired backend checkout with `bash setup.sh --demo`. API defaults to
 `http://localhost:18000`; set the mobile `EXPO_PUBLIC_CONFIG_API_URL` to that
