@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { getCurrentConfig } from '../config/supabaseConfig';
+import { createAuthenticatedFetch, getCurrentConfig } from '../config/supabaseConfig';
 import { getAuthTokenString } from '@/utils/authTokenUtils';
 
 interface PrintJobResponse {
@@ -90,6 +90,7 @@ export async function printGRNRange(
       endGrNo,
     });
 
+    const authenticatedFetch = createAuthenticatedFetch();
     const authToken = await getAuthToken();
     if (!authToken) {
       console.log('[Print Service] ✗ No auth token, returning error');
@@ -110,7 +111,7 @@ export async function printGRNRange(
       end_gr_no: endGrNo,
     });
 
-    const response = await fetch(url, {
+    const response = await authenticatedFetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -167,6 +168,7 @@ export async function printDispatchRange(
       endDispNo,
     });
 
+    const authenticatedFetch = createAuthenticatedFetch();
     const authToken = await getAuthToken();
     if (!authToken) {
       console.log('[Print Service] ✗ No auth token, returning error');
@@ -187,7 +189,7 @@ export async function printDispatchRange(
       end_disp_no: endDispNo,
     });
 
-    const response = await fetch(url, {
+    const response = await authenticatedFetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -247,6 +249,7 @@ export async function printInvoiceRange(
       finYear,
     });
 
+    const authenticatedFetch = createAuthenticatedFetch();
     const authToken = await getAuthToken();
     if (!authToken) {
       console.log('[Print Service] ✗ No auth token, returning error');
@@ -282,7 +285,7 @@ export async function printInvoiceRange(
     console.log('[Print Service] Request URL:', url);
     console.log('[Print Service] Request body:', requestBody);
 
-    const response = await fetch(url, {
+    const response = await authenticatedFetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -354,6 +357,7 @@ export async function getPrintJobs(
       status,
     });
 
+    const authenticatedFetch = createAuthenticatedFetch();
     const authToken = await getAuthToken();
     if (!authToken) {
       console.log('[Print Service] ✗ No auth token, returning error');
@@ -372,7 +376,7 @@ export async function getPrintJobs(
     const url = `${config.url}/rest/v1/rpc/get_print_jobs`;
     console.log('[Print Service] Request URL:', url);
 
-    const response = await fetch(url, {
+    const response = await authenticatedFetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -435,6 +439,7 @@ export async function cancelPrintJob(
   try {
     console.log('[Print Service] cancelPrintJob called:', { jobId });
 
+    const authenticatedFetch = createAuthenticatedFetch();
     const authToken = await getAuthToken();
     if (!authToken) {
       return {
@@ -447,7 +452,7 @@ export async function cancelPrintJob(
     const config = getCurrentConfig();
     const url = `${config.url}/rest/v1/rpc/cancel_print_job`;
 
-    const response = await fetch(url, {
+    const response = await authenticatedFetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -495,6 +500,7 @@ export async function getPrinterStatus(
   try {
     console.log('[Print Service] getPrinterStatus called:', { printerName });
 
+    const authenticatedFetch = createAuthenticatedFetch();
     const authToken = await getAuthToken();
     if (!authToken) {
       console.log('[Print Service] ✗ No auth token, returning error');
@@ -512,7 +518,7 @@ export async function getPrinterStatus(
     const config = getCurrentConfig();
     const url = `${config.url}/functions/v1/get-printer-status`;
 
-    const response = await fetch(url, {
+    const response = await authenticatedFetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

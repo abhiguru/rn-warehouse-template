@@ -1,4 +1,4 @@
-import { getCurrentConfig } from '../config/supabaseConfig';
+import { createAuthenticatedFetch, getCurrentConfig } from '../config/supabaseConfig';
 import { getAuthTokenString } from '@/utils/authTokenUtils';
 
 /**
@@ -55,6 +55,7 @@ const getAuthToken = getAuthTokenString;
  */
 export async function generateGRNPDF(grNo: string): Promise<PDFResponse> {
   try {
+    const authenticatedFetch = createAuthenticatedFetch();
     const authToken = await getAuthToken();
     if (!authToken) {
       return {
@@ -66,7 +67,7 @@ export async function generateGRNPDF(grNo: string): Promise<PDFResponse> {
     const config = getCurrentConfig();
     const url = `${config.url}/functions/v1/generate-grn-pdf`;
 
-    const response = await fetch(url, {
+    const response = await authenticatedFetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -116,6 +117,7 @@ export async function generateDispatchPDF(
   dispNo: string
 ): Promise<PDFResponse> {
   try {
+    const authenticatedFetch = createAuthenticatedFetch();
     const authToken = await getAuthToken();
     if (!authToken) {
       return {
@@ -127,7 +129,7 @@ export async function generateDispatchPDF(
     const config = getCurrentConfig();
     const url = `${config.url}/functions/v1/generate-dispatch-pdf`;
 
-    const response = await fetch(url, {
+    const response = await authenticatedFetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -179,6 +181,7 @@ export async function generateInvoicePDF(
   finYear: number
 ): Promise<PDFResponse> {
   try {
+    const authenticatedFetch = createAuthenticatedFetch();
     const authToken = await getAuthToken();
     if (!authToken) {
       return {
@@ -190,7 +193,7 @@ export async function generateInvoicePDF(
     const config = getCurrentConfig();
     const url = `${config.url}/functions/v1/generate-invoice-pdf`;
 
-    const response = await fetch(url, {
+    const response = await authenticatedFetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -240,6 +243,7 @@ export async function generateCustomerStockPDF(
   customerId: string
 ): Promise<PDFResponse> {
   try {
+    const authenticatedFetch = createAuthenticatedFetch();
     const authToken = await getAuthToken();
     if (!authToken) {
       return {
@@ -251,7 +255,7 @@ export async function generateCustomerStockPDF(
     const config = getCurrentConfig();
     const url = `${config.url}/functions/v1/generate-customer-stock-pdf`;
 
-    const response = await fetch(url, {
+    const response = await authenticatedFetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

@@ -10,6 +10,7 @@ import * as SecureStore from 'expo-secure-store';
 import { clearSecureSessionMarker } from '@/utils/secureSessionMarker';
 import { checkOTPRateLimit, recordOTPRequest } from '@/utils/otpRateLimiter';
 import { CACHE_DURATION_LONG_MS } from '@/config/cacheConfig';
+import { getActiveOperatorServer } from '@/config/operatorServer';
 import {
   advanceSessionGeneration,
   getSessionGeneration,
@@ -21,6 +22,8 @@ const SECURE_KEYS = {
   AUTH_TOKEN: 'secure_auth_token',
   REFRESH_TOKEN: 'secure_refresh_token',
   TOKEN_EXPIRES: 'secure_token_expires',
+  ENROLLMENT_TOKEN: 'secure_enrollment_token',
+  OPERATOR_IDENTITY: 'secure_operator_identity',
 } as const;
 
 // The backend uses custom OTP sessions, not GoTrue. Keep the bootstrap client anonymous.
@@ -28,6 +31,60 @@ let __supabaseInstance: SupabaseClient | undefined;
 let __currentConfig: { url: string; anonKey: string } | undefined;
 let __authenticatedClientInstance: SupabaseClient | undefined;
 let __cachedAuthToken: string | undefined;
+let operatorSwitching = false;
+const activeRequests = new Set<{ controller: AbortController; mutation: boolean }>();
+
+async function trackedSessionFetch(input: RequestInfo | URL, init: RequestInit | undefined, generation: number, mutation: boolean): Promise<Response> {
+  if (operatorSwitching || generation !== getSessionGeneration()) throw new Error('Session changed');
+  const controller = new AbortController();
+  const request = { controller, mutation };
+  const abort = () => controller.abort();
+  if (init?.signal?.aborted) controller.abort();
+  else init?.signal?.addEventListener('abort', abort, { once: true });
+  activeRequests.add(request);
+  try {
+    const response = await fetch(input, { ...init, signal: controller.signal });
+    if (operatorSwitching || generation !== getSessionGeneration()) throw new Error('Session changed');
+    // Body parsing can finish after fetch resolves. Check again before callers
+    // can use a late document, print result, or warehouse response.
+    return new Proxy(response, {
+      get(target, property) {
+        const value = Reflect.get(target, property);
+        if (typeof value !== 'function') return value;
+        if (['json', 'text', 'arrayBuffer', 'blob', 'formData'].includes(String(property))) {
+          return async (...args: unknown[]) => {
+            const body = await value.apply(target, args);
+            if (operatorSwitching || generation !== getSessionGeneration()) throw new Error('Session changed');
+            return body;
+          };
+        }
+        return value.bind(target);
+      },
+    });
+  } finally {
+    activeRequests.delete(request);
+    init?.signal?.removeEventListener('abort', abort);
+  }
+}
+
+export function createAuthenticatedFetch() {
+  const generation = getSessionGeneration();
+  return (input: RequestInfo | URL, init?: RequestInit) => trackedSessionFetch(input, init, generation, true);
+}
+
+export function createSessionReadFetch() {
+  const generation = getSessionGeneration();
+  return (input: RequestInfo | URL, init?: RequestInit) => trackedSessionFetch(input, init, generation, false);
+}
+
+export function beginOperatorSwitch(): boolean {
+  if (operatorSwitching || [...activeRequests].some(request => request.mutation)) return false;
+  operatorSwitching = true;
+  for (const request of activeRequests) if (!request.mutation) request.controller.abort();
+  return true;
+}
+
+export function endOperatorSwitch(): void { operatorSwitching = false; }
 
 export const clearAuthenticatedClientCache = () => {
   __authenticatedClientInstance = undefined;
@@ -72,6 +129,7 @@ export const getCurrentConfig = () => {
 export const getSupabaseRPCClient = getSupabaseClient;
 
 export const getAuthenticatedClient = async (): Promise<SupabaseClient> => {
+  if (operatorSwitching) throw new Error('Server switch in progress');
   const generation = getSessionGeneration();
   if (!(await ensureValidTokens())) {
     clearAuthenticatedClientCache();
@@ -80,6 +138,7 @@ export const getAuthenticatedClient = async (): Promise<SupabaseClient> => {
   const token = await getStoredToken();
   if (
     generation !== getSessionGeneration() ||
+    operatorSwitching ||
     !token.authToken ||
     !token.isValid
   )
@@ -87,7 +146,10 @@ export const getAuthenticatedClient = async (): Promise<SupabaseClient> => {
   if (!__authenticatedClientInstance || __cachedAuthToken !== token.authToken) {
     const config = getCurrentConfig();
     __authenticatedClientInstance = createClient(config.url, config.anonKey, {
-      global: { headers: { Authorization: 'Bearer ' + token.authToken } },
+      global: {
+        headers: { Authorization: 'Bearer ' + token.authToken },
+        fetch: (input, init) => trackedSessionFetch(input, init, generation, true),
+      },
       auth: {
         autoRefreshToken: false,
         persistSession: false,
@@ -124,8 +186,79 @@ async function boundedAuthRPC(name: string, args: Record<string, unknown>) {
   }
 }
 
-// Phone authentication helper using custom RPC
+type OperatorEnvelope = {
+  success: boolean;
+  error?: string;
+  message?: string;
+  data?: Record<string, unknown>;
+};
+
+async function operatorOtpRequest(
+  action: 'request' | 'verify' | 'status' | 'signout',
+  body: Record<string, unknown>
+): Promise<OperatorEnvelope> {
+  const generation = getSessionGeneration();
+  const { url, anonKey } = getCurrentConfig();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
+  try {
+    const request = `${url}/functions/v1/operator-otp/${action}`;
+    const options: RequestInit = {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: anonKey,
+        Authorization: `Bearer ${anonKey}`,
+      },
+      body: JSON.stringify(body),
+    };
+    const response = action === 'signout'
+      ? await fetch(request, options)
+      : await trackedSessionFetch(request, options, generation, action !== 'status');
+    const result = (await response.json()) as OperatorEnvelope;
+    if (!response.ok || result.success !== true) {
+      return { success: false, error: result.error || result.message || `Request failed (HTTP ${response.status})` };
+    }
+    return result;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+export const getPendingEnrollmentToken = () =>
+  SecureStore.getItemAsync(SECURE_KEYS.ENROLLMENT_TOKEN);
+
+export const clearPendingEnrollment = () =>
+  SecureStore.deleteItemAsync(SECURE_KEYS.ENROLLMENT_TOKEN);
+
+export const getEnrollmentStatus = async () => {
+  const enrollmentToken = await getPendingEnrollmentToken();
+  if (!enrollmentToken) return { success: false as const, error: 'Enrollment session unavailable' };
+  try {
+    const result = await operatorOtpRequest('status', { enrollment_token: enrollmentToken });
+    if (!result.success) return { success: false as const, error: result.error || 'Could not check enrollment' };
+    const status = result.data?.status;
+    if (!['pending', 'approved', 'rejected', 'disabled'].includes(String(status)))
+      return { success: false as const, error: 'Invalid enrollment status' };
+    return { success: true as const, status: status as 'pending' | 'approved' | 'rejected' | 'disabled' };
+  } catch {
+    return { success: false as const, error: 'Could not check enrollment' };
+  }
+};
+
+export const signOutPendingEnrollment = async () => {
+  const enrollmentToken = await getPendingEnrollmentToken();
+  try {
+    if (enrollmentToken) await operatorOtpRequest('signout', { enrollment_token: enrollmentToken });
+  } finally {
+    await clearPendingEnrollment();
+  }
+};
+
+// Request a one-time code from the operator authentication edge function.
 export const signInWithPhone = async (phone: string) => {
+  const generation = getSessionGeneration();
   try {
     // Format phone number for backend (ensure 12 digits with country code 91)
     let formattedPhone = phone.replace(/^\+/, ''); // Remove + if present
@@ -152,29 +285,18 @@ export const signInWithPhone = async (phone: string) => {
       };
     }
 
-    const { data, error } = await getSupabaseClient().rpc('send_otp', {
-      p_phone_number: formattedPhone,
-      p_purpose: 'login',
-    });
-
-    if (error) {
-      console.error('[Auth] Send OTP RPC error:');
-      return { success: false, error: error.message };
-    }
-
-    // Check if OTP was sent successfully - RPC returns array
-    const responseData = Array.isArray(data) ? data[0] : data;
-    const isSuccess =
-      responseData?.success === true || responseData?.status === 'success';
+    const responseData = await operatorOtpRequest('request', { phone_number: formattedPhone });
+    const isSuccess = responseData.success === true;
 
     if (isSuccess) {
       // Record successful OTP request for rate limiting
       await recordOTPRequest(formattedPhone);
+      if (generation !== getSessionGeneration() || operatorSwitching)
+        return { success: false, error: 'Session changed' };
 
       return { success: true, data: responseData };
     } else {
-      const errorMsg =
-        responseData?.message || responseData?.error || 'Failed to send OTP';
+      const errorMsg = responseData.error || responseData.message || 'Failed to send OTP';
       console.error('[Auth] Send OTP failed:');
       return { success: false, error: errorMsg };
     }
@@ -194,10 +316,15 @@ interface AuthSuccessResult {
     session: Session | null;
     user: User | null;
     userProfile: UserProfile | null;
-    action: string;
+    action: 'login';
     customAuth?: boolean;
     accessToken?: string;
   };
+}
+
+interface AuthPendingResult {
+  success: true;
+  data: { action: 'pending'; pendingEnrollment: true; userProfile: null };
 }
 
 interface AuthFailureResult {
@@ -205,7 +332,7 @@ interface AuthFailureResult {
   error: string;
 }
 
-type AuthResult = AuthSuccessResult | AuthFailureResult;
+type AuthResult = AuthSuccessResult | AuthPendingResult | AuthFailureResult;
 
 /**
  * Format phone number to standard format (12 digits with country code 91)
@@ -266,7 +393,7 @@ const validateJWTToken = (
 // ============================================================================
 
 /**
- * OTP verification using custom RPC
+ * OTP verification through the operator authentication edge function.
  *
  * Standardized backend response format:
  * {
@@ -275,13 +402,13 @@ const validateJWTToken = (
  *   data: {
  *     user: { id, auth_user_id, name, mobile, role, ... },
  *     session: { access_token, refresh_token, expires_at, ... },
- *     action: "login" | "register"
+ *     action: "login"
  *   }
  * }
  *
  * @param phone - Phone number to verify
  * @param token - OTP code entered by user
- * @param userName - Optional user name for registration
+ * @param userName - Optional name for a new pending enrollment
  */
 export const verifyOTP = async (
   phone: string,
@@ -293,37 +420,38 @@ export const verifyOTP = async (
   try {
     const formattedPhone = formatPhoneNumber(phone);
 
-    // Step 1: Call the verification RPC
-    const { data, error } = await boundedAuthRPC('verify_otp_or_register', {
-      p_phone_number: formattedPhone,
-      p_otp_code: token,
-      p_name: userName || null,
+    const rpcResponse = await operatorOtpRequest('verify', {
+      phone_number: formattedPhone,
+      otp_code: token,
+      ...(userName ? { name: userName } : {}),
     });
 
     if (generation !== getSessionGeneration()) {
-      const obsolete = Array.isArray(data) ? data[0] : data;
-      const refresh = obsolete?.data?.session?.refresh_token;
+      const refresh = (rpcResponse.data?.session as { refresh_token?: unknown } | undefined)?.refresh_token;
       if (typeof refresh === 'string') await revokeSession(refresh);
       return { success: false, error: 'Session changed' };
     }
-    if (error) {
-      console.error('[Auth] OTP verification RPC error:');
-      return { success: false, error: error.message };
-    }
-
-    // Handle array response from RPC
-    const rpcResponse = Array.isArray(data) ? data[0] : data;
     const isSuccess = rpcResponse?.success === true;
 
     if (!isSuccess || !rpcResponse?.data) {
-      const errorMsg = rpcResponse?.message || 'Verification failed';
+      const errorMsg = rpcResponse?.error || rpcResponse?.message || 'Verification failed';
       console.error('[Auth] OTP verification failed:');
       return { success: false, error: errorMsg };
     }
 
+    if (rpcResponse.data.action === 'pending') {
+      const enrollmentToken = rpcResponse.data.enrollment_token;
+      if (typeof enrollmentToken !== 'string' || !enrollmentToken)
+        return { success: false, error: 'Invalid enrollment response' };
+      await SecureStore.setItemAsync(SECURE_KEYS.ENROLLMENT_TOKEN, enrollmentToken);
+      return { success: true, data: { action: 'pending', pendingEnrollment: true, userProfile: null } };
+    }
+    if (rpcResponse.data.action !== 'login')
+      return { success: false, error: 'Invalid authentication response' };
+
     // Extract standardized response structure:
     // { success: true, message: "...", data: { user: {...}, session: {...}, action: "..." } }
-    const responseData = rpcResponse.data as {
+    const responseData = rpcResponse.data as unknown as {
       user: UserProfile;
       session: {
         access_token: string;
@@ -338,7 +466,7 @@ export const verifyOTP = async (
     // =========================================================================
     // AUTH: Extract JWT tokens from session object
     // =========================================================================
-    const { session, user, action } = responseData;
+    const { session, user } = responseData;
 
     if (!session?.access_token || !session?.refresh_token) {
       console.error('[Auth] No JWT tokens in session object');
@@ -362,6 +490,7 @@ export const verifyOTP = async (
 
     // Store the JWT tokens
     await storeTokens(accessTokenStr, refreshTokenStr, expiresAt, generation);
+    await clearPendingEnrollment();
 
     // Clear cached authenticated client so it picks up the new token
     clearAuthenticatedClientCache();
@@ -395,7 +524,7 @@ export const verifyOTP = async (
         session: null,
         user: null,
         userProfile: userProfileWithCustomers,
-        action: action || 'login',
+        action: 'login',
         customAuth: true,
         accessToken: accessTokenStr,
       },
@@ -598,9 +727,17 @@ const readStoredToken = async (): Promise<{
     let expiresAtStr = await SecureStore.getItemAsync(
       SECURE_KEYS.TOKEN_EXPIRES
     );
+    const operator = getActiveOperatorServer();
+    if (operator && authToken) {
+      const identity = await SecureStore.getItemAsync(SECURE_KEYS.OPERATOR_IDENTITY);
+      if (identity !== `${operator.origin}|${operator.instanceId}`) {
+        await clearStoredTokensRaw();
+        return { isValid: false };
+      }
+    }
 
     // Migration: If no tokens in SecureStore, check AsyncStorage and migrate
-    if (!authToken || !refreshToken) {
+    if (!operator && (!authToken || !refreshToken)) {
       const legacyAuthToken = await AsyncStorage.getItem('auth_token');
       const legacyRefreshToken = await AsyncStorage.getItem('refresh_token');
       const legacyExpiresAt = await AsyncStorage.getItem('token_expires_at');
@@ -687,6 +824,8 @@ const storeTokensRaw = async (
     ]);
     await SecureStore.setItemAsync(SECURE_KEYS.AUTH_TOKEN, accessToken);
     await SecureStore.setItemAsync(SECURE_KEYS.REFRESH_TOKEN, refreshToken);
+    const operator = getActiveOperatorServer();
+    if (operator) await SecureStore.setItemAsync(SECURE_KEYS.OPERATOR_IDENTITY, `${operator.origin}|${operator.instanceId}`);
     await SecureStore.setItemAsync(
       SECURE_KEYS.TOKEN_EXPIRES,
       expiresAt.toString()
@@ -735,6 +874,7 @@ const clearStoredTokensRaw = async () => {
     await SecureStore.deleteItemAsync(SECURE_KEYS.TOKEN_EXPIRES).catch(
       () => {}
     );
+    await SecureStore.deleteItemAsync(SECURE_KEYS.OPERATOR_IDENTITY).catch(() => {});
     // Obsolete alternate helper used this expiry spelling.
     await SecureStore.deleteItemAsync('secure_token_expires_at').catch(
       () => {}

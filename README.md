@@ -33,13 +33,12 @@ remain separate gates.
 Open-source React Native warehouse application source, built with Expo,
 Supabase, Redux Toolkit, and Expo Router.
 
-**Current main supports the verified local-demo backend.** The companion
-[supabase-warehouse-template](https://github.com/abhiguru/supabase-warehouse-template)
-now passes API tests for custom login, customer isolation, GRN, dispatch,
-invoice saving and PDF downloads. The supported API-36 emulator workflow and the
-post-release physical Android matrix are accepted; production readiness remains
-separate. The [v0.2.2-demo prerelease](https://github.com/abhiguru/rn-warehouse-template/releases/tag/v0.2.2-demo)
-records the final compatible pair and publishes generated source archives only.
+Current `main` connects to a warehouse-owned operator installation. At first
+launch, enter or scan its **HTTPS origin**. The app checks the server identity,
+API compatibility and minimum client version before restoring any session. It
+stores one active operator server; switching clears the previous session and
+business caches. The [v0.2.2-demo prerelease](https://github.com/abhiguru/rn-warehouse-template/releases/tag/v0.2.2-demo)
+remains the historical source-demo pair.
 
 ## Start locally
 
@@ -54,7 +53,7 @@ For command-line Android work, set `ANDROID_HOME` to the SDK root and add
 implicitly adopt an emulator owned by another checkout or user.
 
 ```bash
-git clone --branch v0.2.2-demo https://github.com/abhiguru/rn-warehouse-template.git
+git clone https://github.com/abhiguru/rn-warehouse-template.git
 cd rn-warehouse-template
 npm ci
 node scripts/create-env.mjs
@@ -68,27 +67,27 @@ npm run test:setup
 It never inspects Docker, reads service-role credentials, or overwrites an existing
 environment file.
 
-For contribution work instead of the pinned demo, branch from current `main`.
+Use the immutable `v0.2.2-demo` tag only to reproduce the historical demo.
 
 ## Connect a compatible backend
 
-Start the companion backend with `bash setup.sh --demo`. Set
-`EXPO_PUBLIC_CONFIG_API_URL` in this app's `.env` to `http://localhost:18000`.
-Demo admin: **0000000001**; customer: **0000000002**; OTP: **123456** (no SMS).
-For Android attached to the backend host, use `adb reverse tcp:18000 tcp:18000`
-and, if Metro runs there, `adb reverse tcp:8081 tcp:8081`.
-
-The supported demo uses the same `http://localhost:18000` origin on the host,
-emulator and USB device. Both backend public URLs must match it. Keep demo
-authentication bound to loopback; LAN access is outside this supported path.
-For an isolated second checkout, change both backend public URLs and its API port,
-then use the matching app URL and `adb reverse tcp:PORT tcp:PORT`.
+Install the companion backend in operator mode using its
+[`OPERATOR_INSTALL.md`](https://github.com/abhiguru/supabase-warehouse-template/blob/main/docs/OPERATOR_INSTALL.md).
+The mobile app requires the operator's canonical HTTPS origin, reachable from
+the device, and a real SMS code sent to the entered phone. No fixed OTP or demo
+account is available on current `main`. A new customer's verified phone enters
+pending enrollment; an administrator opens **Settings → Enrollment Review**,
+selects one or more existing customer records and approves or rejects it. After
+approval, the customer requests a new code to sign in. Rejected or disabled
+accounts cannot sign in.
 
 ```bash
 npm run check:backend
 ```
 
-This read-only check fetches public bootstrap configuration and detects wrong URLs,
+For the CLI check, set `EXPO_PUBLIC_CONFIG_API_URL` to the selected operator
+origin. The app itself uses the server chosen on its first screen. This read-only
+check fetches public bootstrap configuration and detects wrong URLs,
 missing configuration, and accidental service-role keys. It does **not** prove
 that login or warehouse APIs work. No keys need to be copied into the app: it
 fetches its public anon key dynamically. `update-supabase-keys` is a deprecated
@@ -106,9 +105,11 @@ Expo generates the ignored native directories as needed. Use `npm start` for
 subsequent Metro sessions. Use native builds as the baseline; the latest Expo Go
 app may not support this older SDK, and Expo Go does not validate native plugins,
 permissions, or build settings. The API-36 emulator debug build and supported
-source-demo workflows are verified. Physical Samsung Android 15/API-35 and
+source-demo workflows were verified on the historical pair. Physical Samsung Android 15/API-35 and
 iPhone 15/iOS 26.6.2 runs are recorded separately. See
 [NATIVE_ACCEPTANCE.md](docs/NATIVE_ACCEPTANCE.md).
+The current operator authentication and server-selection flow has not yet been
+tested on a VM, physical device, or live MSG91 delivery.
 
 For a bundle-only check:
 
