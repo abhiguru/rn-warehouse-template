@@ -6,7 +6,7 @@
  * @see design/sap-fiori-specs/06-text-input-form-cell.md
  * @see design/sap-fiori-specs/08-button.md
  */
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -27,7 +27,7 @@ import {
   setPhoneNumber as setStorePhoneNumber,
   setOtpSent,
 } from '@/store/slices/authSlice';
-import { signInWithPhone } from '@/config/supabaseConfig';
+import { getPendingEnrollmentToken, signInWithPhone } from '@/config/supabaseConfig';
 import { PhoneInput } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { useRateLimitCountdown } from '@/hooks/useRateLimitCountdown';
@@ -94,6 +94,16 @@ export default function LoginScreen() {
   const insets = useSafeAreaInsets();
   const FIORI = useFioriColors();
   const { isDarkMode } = useTheme();
+
+  useEffect(() => {
+    let active = true;
+    getPendingEnrollmentToken()
+      .then(token => {
+        if (active && token) router.replace('/pending-enrollment');
+      })
+      .catch(() => {});
+    return () => { active = false; };
+  }, []);
 
   // Rate limit countdown
   const {
@@ -204,6 +214,7 @@ export default function LoginScreen() {
         >
           {/* Fiori: Welcome Screen Content */}
           <View style={styles.content}>
+            <Button type="secondary" onPress={() => router.push('/operator-server')}>Change warehouse server</Button>
             {/* A. Logo Section */}
             <View
               style={styles.logoContainer}

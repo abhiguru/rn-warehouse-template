@@ -1,5 +1,7 @@
 # Native and physical-device acceptance
 
+The operator authentication, server selection and replacement-instance runtime has **not been accepted on physical devices**. Use [DEVELOPER_HANDOFF.md](DEVELOPER_HANDOFF.md) for the next pilot. The historical device identifiers and tested commits below remain unchanged; they do not validate the operator branch.
+
 ## Current gateway merge closure — 2026-09-23
 
 The reviewed source checkpoint is mobile

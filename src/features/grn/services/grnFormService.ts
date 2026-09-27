@@ -1,5 +1,5 @@
 import * as Crypto from 'expo-crypto';
-import { getAuthenticatedClient, getCurrentConfig } from '@/config/supabaseConfig';
+import { beginOperatorMutation, getAuthenticatedClient, getCurrentConfig } from '@/config/supabaseConfig';
 import { GRNHeaderData, GRNItemData, GRNImageData } from '@/store/slices/grnFormSlice';
 import { savePendingImageMetadata, uploadDeferredImages } from './imageUploadService';
 import { isTemporaryGRNImageId } from './imageId';
@@ -216,7 +216,9 @@ export const getNextGRNNumber = async (): Promise<string> => {
 // M3 Fix: Not migrated to executeRPC - extensive debug logging for troubleshooting
 // image uploads and item mapping; complex post-RPC deferred image upload logic
 export const createGRN = async (payload: CreateGRNPayload) => {
+  let finishMutation: (() => void) | undefined;
   try {
+    finishMutation = beginOperatorMutation();
     if (__DEV__) console.log('[GRNFormService] DEBUG: Creating GRN with enhanced RPC payload:', {
       header: {
         ...payload.header,
@@ -432,6 +434,8 @@ export const createGRN = async (payload: CreateGRNPayload) => {
       success: false,
       error: error instanceof Error ? error.message : 'Failed to create GRN',
     };
+  } finally {
+    finishMutation?.();
   }
 };
 
@@ -439,7 +443,9 @@ export const createGRN = async (payload: CreateGRNPayload) => {
 // M3 Fix: Not migrated to executeRPC - extensive debug logging for troubleshooting
 // field normalization, ID validation, image updates; complex stock protection handling
 export const updateGRN = async (grnId: string, payload: UpdateGRNPayload) => {
+  let finishMutation: (() => void) | undefined;
   try {
+    finishMutation = beginOperatorMutation();
     console.log('[GRNFormService] 🚀 STARTING GRN UPDATE - Input Analysis:');
     console.log('GRN ID:', grnId);
     console.log('Items received from frontend:', payload.items.length);
@@ -926,6 +932,8 @@ export const updateGRN = async (grnId: string, payload: UpdateGRNPayload) => {
       success: false,
       error: errorMessage,
     };
+  } finally {
+    finishMutation?.();
   }
 };
 

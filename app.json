@@ -77,13 +77,13 @@
         "expo-image-picker",
         {
           "photosPermission": false,
-          "cameraPermission": "Allow $(PRODUCT_NAME) to take photos of items for documentation"
+          "cameraPermission": "Allow $(PRODUCT_NAME) to scan warehouse QR codes and photograph items"
         }
       ],
       [
         "expo-camera",
         {
-          "cameraPermission": "Allow $(PRODUCT_NAME) to take photos of warehouse items for GRN and dispatch documentation",
+          "cameraPermission": "Allow $(PRODUCT_NAME) to scan warehouse QR codes and photograph items for GRN and dispatch documentation",
           "microphonePermission": false,
           "recordAudioAndroid": false
         }

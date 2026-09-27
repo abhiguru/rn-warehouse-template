@@ -11,6 +11,7 @@ import {
   getAuthenticatedClient,
   getCurrentConfig,
   getSupabaseClient,
+  beginOperatorMutation,
 } from '@/config/supabaseConfig';
 import type { DispatchImageData } from '@/types/dispatch.types';
 
@@ -189,7 +190,9 @@ export const uploadDispatchImage = async (
   dispatchId: string,
   onProgress?: (progress: ImageUploadProgress) => void
 ): Promise<ImageUploadResult> => {
+  let finishMutation: (() => void) | undefined;
   try {
+    finishMutation = beginOperatorMutation();
     // Validate file size before compression
     if (asset.fileSize && asset.fileSize > MAX_FILE_SIZE) {
       return {
@@ -435,6 +438,8 @@ export const uploadDispatchImage = async (
       success: false,
       error: errorMessage,
     };
+  } finally {
+    finishMutation?.();
   }
 };
 
@@ -594,7 +599,9 @@ export const uploadDeferredDispatchImages = async (
     return { success: true, uploadedCount: 0, errors: [] };
   }
 
+  let finishMutation: (() => void) | undefined;
   try {
+    finishMutation = beginOperatorMutation();
     const supabase = await getAuthenticatedClient();
 
     // Upload all images in parallel
@@ -633,6 +640,8 @@ export const uploadDeferredDispatchImages = async (
           : 'Failed to upload deferred images',
       ],
     };
+  } finally {
+    finishMutation?.();
   }
 };
 

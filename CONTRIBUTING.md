@@ -8,7 +8,11 @@
 4. Start the backend: [supabase-warehouse-template](https://github.com/abhiguru/supabase-warehouse-template)
 5. Run the app: `npm start`
 
-Start the companion backend with `bash setup.sh --demo`. Use the same localhost API origin and Android USB/emulator port reversal described in [the handoff](docs/DEVELOPER_HANDOFF.md). Run `npm run doctor`, `npm test`, `npm run test:setup`, lint and typecheck before submitting. Stop Metro with Ctrl+C and stop the backend with its `bash stop.sh` wrapper.
+Install the companion backend with its operator installation guide, then select
+its canonical HTTPS origin in the app. See [the handoff](docs/DEVELOPER_HANDOFF.md)
+for the current compatibility and device test boundary. Run `npm run doctor`,
+`npm test`, `npm run test:setup`, lint and typecheck before submitting. Stop Metro
+with Ctrl+C; set `WAREHOUSE_STATE_DIR` before using the backend's `bash stop.sh`.
 
 ## Code Style
 

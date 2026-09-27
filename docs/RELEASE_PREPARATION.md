@@ -1,7 +1,7 @@
 # Mobile release preparation
 
 This inventory is based on source configuration reviewed on 2026-09-24. It
-prepares the mobile part of [remaining handoff work](DEVELOPER_HANDOFF.md#remaining-work-after-the-source-demo-handoff--2026-09-24);
+prepares the mobile part of [remaining handoff work](SOURCE_DEMO_DEVELOPER_HANDOFF.md#remaining-work-after-the-source-demo-handoff--2026-09-24);
 it does not approve a production identity, privacy statement, signed artifact,
 or store submission. The 2026-09-22 Android development APK evidence remains in
 [LOCAL_PRODUCTION_READINESS.md](LOCAL_PRODUCTION_READINESS.md).

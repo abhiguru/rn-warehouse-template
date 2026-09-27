@@ -6,6 +6,7 @@ import {
   getAuthenticatedClient,
   getCurrentConfig,
   getSupabaseClient,
+  beginOperatorMutation,
 } from '@/config/supabaseConfig';
 import * as ImagePicker from 'expo-image-picker';
 import { GRNImageData } from '@/store/slices/grnFormSlice';
@@ -190,7 +191,9 @@ export const uploadGRNImage = async (
   itemId?: string,
   onProgress?: (progress: ImageUploadProgress) => void
 ): Promise<ImageUploadResult> => {
+  let finishMutation: (() => void) | undefined;
   try {
+    finishMutation = beginOperatorMutation();
     // Validate file size before compression
     if (asset.fileSize && asset.fileSize > MAX_FILE_SIZE) {
       return {
@@ -428,6 +431,8 @@ export const uploadGRNImage = async (
       success: false,
       error: errorMessage,
     };
+  } finally {
+    finishMutation?.();
   }
 };
 
@@ -925,7 +930,9 @@ export const uploadDeferredImages = async (
     return { success: true, uploadedCount: 0, errors: [] };
   }
 
+  let finishMutation: (() => void) | undefined;
   try {
+    finishMutation = beginOperatorMutation();
     const supabase = await getAuthenticatedClient();
 
     // Upload all images in parallel for better performance
@@ -985,6 +992,8 @@ export const uploadDeferredImages = async (
           : 'Failed to upload deferred images',
       ],
     };
+  } finally {
+    finishMutation?.();
   }
 };
 

@@ -9,7 +9,7 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { CONFIG_API_BASE_URL } from '@/config/envConfig';
+import { getActiveOperatorOrigin } from '@/config/operatorServer';
 import { getAuthToken } from '@/utils/authTokenUtils';
 import {
   httpOrigin,
@@ -27,6 +27,13 @@ export interface PublicConfig {
   environment: string;
   version: string;
   maintenanceMode: boolean;
+  instanceId: string;
+  displayName: string;
+  companyName: string;
+  canonicalOrigin: string;
+  supportedApiVersions: string[];
+  minimumClientVersion: string;
+  capabilities: Record<string, unknown>;
   urls: {
     publicConfig: string;
     fullConfig: string;
@@ -154,7 +161,7 @@ class ConfigService {
       return await Promise.race([
         (async () => {
           const response = await fetch(
-            `${httpOrigin(CONFIG_API_BASE_URL)}/functions/v1/${path}`,
+            `${httpOrigin(getActiveOperatorOrigin())}/functions/v1/${path}`,
             {
               method: 'GET',
               signal: controller.signal,
@@ -183,7 +190,7 @@ class ConfigService {
   }
 
   static async getPublicConfig(): Promise<PublicConfig> {
-    const origin = httpOrigin(CONFIG_API_BASE_URL);
+    const origin = httpOrigin(getActiveOperatorOrigin());
     const key = `public_config_v2:${origin}`;
     const cached = this.publicCache || (await this.read<PublicConfig>(key));
     if (this.fresh(cached, origin, this.PUBLIC_TTL)) {
@@ -218,7 +225,7 @@ class ConfigService {
       cacheGeneration === this.cacheGeneration;
     let requestKey: string | null = null;
     try {
-      const origin = httpOrigin(CONFIG_API_BASE_URL);
+      const origin = httpOrigin(getActiveOperatorOrigin());
       const { token, expiresAt } = await getAuthToken();
       if (!current()) return null;
       if (!token || !expiresAt || expiresAt <= Date.now()) {
@@ -313,7 +320,7 @@ class ConfigService {
     this.publicCache = null;
     await this.write(() =>
       AsyncStorage.removeItem(
-        `public_config_v2:${httpOrigin(CONFIG_API_BASE_URL)}`
+        `public_config_v2:${httpOrigin(getActiveOperatorOrigin())}`
       )
     );
     return this.getPublicConfig();

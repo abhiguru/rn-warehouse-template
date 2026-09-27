@@ -404,6 +404,14 @@ const SettingsScreen: React.FC = () => {
                 onPress={handleCustomers}
               />
             )}
+            {userProfile?.role === 'admin' && (
+              <ObjectCellRow
+                icon="person-add-outline"
+                label="Enrollment Review"
+                subtitle="Approve verified customers and assign access"
+                onPress={() => router.push('/enrollment-review')}
+              />
+            )}
             {canManageItems && (
               <ObjectCellRow
                 icon="cube-outline"
@@ -562,6 +570,12 @@ const SettingsScreen: React.FC = () => {
               onPress={handleLogout}
               showChevron={false}
               destructive
+            />
+            <ObjectCellRow
+              icon="server-outline"
+              label="Change Warehouse Server"
+              onPress={() => router.push('/operator-server')}
+              showChevron
             />
             <ObjectCellRow
               icon="trash-outline"

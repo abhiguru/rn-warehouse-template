@@ -3,11 +3,11 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import ConfigService from '../configService';
 import { getAuthToken } from '@/utils/authTokenUtils';
 import { advanceSessionGeneration } from '@/config/sessionLifecycle';
-const env = jest.requireMock('@/config/envConfig');
+const server = jest.requireMock('@/config/operatorServer');
 
 jest.mock('@/utils/authTokenUtils', () => ({ getAuthToken: jest.fn() }));
-jest.mock('@/config/envConfig', () => ({
-  CONFIG_API_BASE_URL: 'http://localhost:18000',
+jest.mock('@/config/operatorServer', () => ({
+  getActiveOperatorOrigin: jest.fn(() => 'http://localhost:18000'),
 }));
 const client = {} as SupabaseClient;
 const origin = 'http://localhost:18000';
@@ -78,7 +78,7 @@ beforeEach(async () => {
   jest.restoreAllMocks();
   await AsyncStorage.clear();
   await ConfigService.clearCache();
-  Object.assign(env, { CONFIG_API_BASE_URL: origin });
+  server.getActiveOperatorOrigin.mockReturnValue(origin);
   global.fetch = jest.fn().mockResolvedValue(response(fullData()));
   authenticate();
 });
@@ -190,7 +190,7 @@ it('enforces public memory TTL, scopes origin and rejects legacy caches', async 
   await ConfigService.getPublicConfig();
   jest.spyOn(Date, 'now').mockReturnValue(now + 3600001);
   await ConfigService.getPublicConfig();
-  Object.assign(env, { CONFIG_API_BASE_URL: 'http://localhost:28000' });
+  server.getActiveOperatorOrigin.mockReturnValue('http://localhost:28000');
   jest
     .mocked(global.fetch)
     .mockResolvedValue(

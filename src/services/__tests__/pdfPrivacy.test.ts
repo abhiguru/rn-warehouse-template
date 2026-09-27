@@ -9,6 +9,7 @@ import {
 let mockConfigUrl = 'http://localhost:28000';
 jest.mock('@/config/supabaseConfig', () => ({
   getCurrentConfig: () => ({ url: mockConfigUrl }),
+  createAuthenticatedFetch: () => (...args: Parameters<typeof fetch>) => global.fetch(...args),
 }));
 jest.mock('@/utils/authTokenUtils', () => ({ getAuthTokenString: jest.fn() }));
 

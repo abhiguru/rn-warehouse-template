@@ -1,5 +1,6 @@
 import { Paths, File } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
+import { createSessionReadFetch } from '@/config/supabaseConfig';
 
 export interface ShareResult {
   success: boolean;
@@ -17,6 +18,7 @@ export async function downloadAndSharePDF(
   pdfUrl: string,
   filename: string
 ): Promise<ShareResult> {
+  const sessionFetch = createSessionReadFetch();
   const cacheDir = Paths.cache;
   const localPath = `${cacheDir.uri}/${filename}`;
 
@@ -35,7 +37,7 @@ export async function downloadAndSharePDF(
 
     // Download the PDF using fetch and save with File API
     console.log('[Share] Downloading PDF to:', localPath);
-    const response = await fetch(pdfUrl);
+    const response = await sessionFetch(pdfUrl);
 
     if (!response.ok) {
       console.error('[Share] ✗ Download failed:', response.status);
@@ -111,13 +113,14 @@ export async function downloadPDF(
   pdfUrl: string,
   filename: string
 ): Promise<ShareResult & { localUri?: string }> {
+  const sessionFetch = createSessionReadFetch();
   const cacheDir = Paths.cache;
   const localPath = `${cacheDir.uri}/${filename}`;
 
   try {
     console.log('[Download] Starting PDF download:', { filename });
 
-    const response = await fetch(pdfUrl);
+    const response = await sessionFetch(pdfUrl);
 
     if (!response.ok) {
       console.error('[Download] ✗ Download failed:', response.status);
