@@ -1,6 +1,6 @@
 # Readiness
 
-The [remaining-work list](DEVELOPER_HANDOFF.md#remaining-work-after-the-source-demo-handoff--2026-09-24)
+The [remaining-work list](SOURCE_DEMO_DEVELOPER_HANDOFF.md#remaining-work-after-the-source-demo-handoff--2026-09-24)
 separates mobile operator inputs, signed-artifact and distribution acceptance,
 optional telemetry, and conditional hardware features. The companion
 [backend tracker](https://github.com/abhiguru/supabase-warehouse-template/blob/main/docs/PRODUCTION_DEPENDENCIES.md#remaining-production-work)

@@ -31,6 +31,7 @@ import {
   getPendingEnrollmentToken,
   signOutPendingEnrollment,
   beginOperatorSwitch,
+  beginOperatorMutation,
   endOperatorSwitch,
   getAuthenticatedClient,
   createAuthenticatedFetch,
@@ -347,6 +348,19 @@ it('blocks direct authenticated writes and cancels pending document downloads on
   expect(readSignal?.aborted).toBe(true);
   await expect(read).rejects.toThrow('Aborted');
   await expect(writeFetch('https://warehouse.example.test/functions/v1/print-grn-preprinted', { method: 'POST' })).rejects.toThrow('Session changed');
+  endOperatorSwitch();
+});
+
+it('holds the switch gate across a multi-request image operation', () => {
+  const finish = beginOperatorMutation();
+  expect(beginOperatorSwitch()).toBe(false);
+  finish();
+  finish(); // Releasing twice must not unlock another active operation.
+  const second = beginOperatorMutation();
+  expect(beginOperatorSwitch()).toBe(false);
+  second();
+  expect(beginOperatorSwitch()).toBe(true);
+  expect(() => beginOperatorMutation()).toThrow('Server switch in progress');
   endOperatorSwitch();
 });
 

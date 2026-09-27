@@ -1,5 +1,10 @@
 # rn-warehouse-template
 
+The operator branch connects to an independent warehouse backend through its
+canonical HTTPS origin. Start with the [current developer handoff](docs/DEVELOPER_HANDOFF.md).
+The operator changes are under review; the source-demo evidence below does not
+validate the changed runtime.
+
 ## Local production-readiness work
 
 The provider-independent backend operations and Android artifact work are
@@ -11,13 +16,12 @@ SMS, public DNS/TLS, external alerts, operator policies/SLOs, final signing and
 stores, payments/telemetry, and hardware still require their actual services,
 credentials, infrastructure, or owner decisions. Existing demo tags do not move.
 
-## Current source-demo release
+## Historical source-demo release
 
 The Android-first source-demo acceptance is complete. Matching
 `v0.2.2-demo` source-only GitHub prereleases were published on 2026-09-18.
-Use `v0.2.2-demo` in both this repository and its backend sibling for the
-verified release pair. Existing tags remain immutable; use current `main`
-branches for contribution work.
+Those historical tags remain immutable. Use the reviewed operator commit pair
+for the fresh VM integration test.
 
 The public acceptance summary is in
 [SOURCE_DEMO_ACCEPTANCE.md](docs/SOURCE_DEMO_ACCEPTANCE.md). Ownership and
@@ -33,7 +37,7 @@ remain separate gates.
 Open-source React Native warehouse application source, built with Expo,
 Supabase, Redux Toolkit, and Expo Router.
 
-Current `main` connects to a warehouse-owned operator installation. At first
+The operator branch connects to a warehouse-owned installation. At first
 launch, enter or scan its **HTTPS origin**. The app checks the server identity,
 API compatibility and minimum client version before restoring any session. It
 stores one active operator server; switching clears the previous session and

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Modal, StyleSheet, Text, TextInput, View } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { router } from 'expo-router';
@@ -24,17 +24,26 @@ export function OperatorServerSelection({ initial = false }: { initial?: boolean
   const [busy, setBusy] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [permission, requestPermission] = useCameraPermissions();
+  const inspection = useRef(0);
+  const scanLocked = useRef(false);
+  const activating = useRef(false);
+
+  useEffect(() => () => { inspection.current += 1; }, []);
 
   const inspect = async (value: string) => {
+    if (activating.current) return;
+    const request = ++inspection.current;
     setBusy(true);
     setCandidate(null);
     try {
       const discovered = await discoverOperator(value);
+      if (request !== inspection.current) return;
       setOrigin(discovered.server.origin);
       setCandidate(discovered);
     } catch (error) {
+      if (request !== inspection.current) return;
       Alert.alert('Server Unavailable', error instanceof Error ? error.message : 'Could not inspect this server.');
-    } finally { setBusy(false); }
+    } finally { if (request === inspection.current) setBusy(false); }
   };
 
   const scan = async () => {
@@ -42,11 +51,12 @@ export function OperatorServerSelection({ initial = false }: { initial?: boolean
       const result = await requestPermission();
       if (!result.granted) return;
     }
+    scanLocked.current = false;
     setScanning(true);
   };
 
   const activate = async () => {
-    if (!candidate || busy) return;
+    if (!candidate || busy || activating.current) return;
     if (queryClient.isMutating() > 0) {
       Alert.alert('Operation In Progress', 'Finish the current operation before switching servers.');
       return;
@@ -55,6 +65,7 @@ export function OperatorServerSelection({ initial = false }: { initial?: boolean
       Alert.alert('Operation In Progress', 'Finish the current operation before switching servers.');
       return;
     }
+    activating.current = true;
     setBusy(true);
     let sessionCleared = false;
     try {
@@ -84,13 +95,13 @@ export function OperatorServerSelection({ initial = false }: { initial?: boolean
       Alert.alert('Switch Failed', sessionCleared
         ? 'The old session was cleared. Check the selected server and sign in again.'
         : 'The current server was kept. Please try again.');
-    } finally { endOperatorSwitch(); setBusy(false); }
+    } finally { endOperatorSwitch(); activating.current = false; setBusy(false); }
   };
 
   return <View style={styles.container}>
     <Text style={styles.title}>Choose your warehouse server</Text>
     <Text style={styles.help}>Enter the HTTPS server origin supplied by your operator, or scan its origin QR code.</Text>
-    <TextInput value={origin} onChangeText={value => { setOrigin(value); setCandidate(null); }}
+    <TextInput value={origin} onChangeText={value => { if (activating.current) return; inspection.current += 1; setBusy(false); setOrigin(value); setCandidate(null); }}
       autoCapitalize="none" autoCorrect={false} keyboardType="url" placeholder="https://warehouse.example.com"
       style={styles.input} accessibilityLabel="Server origin" />
     <Button onPress={() => void inspect(origin)} disabled={busy}>Check server</Button>
@@ -106,6 +117,8 @@ export function OperatorServerSelection({ initial = false }: { initial?: boolean
       <View style={styles.cameraContainer}>
         <CameraView style={styles.camera} barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
           onBarcodeScanned={({ data }) => {
+            if (scanLocked.current) return;
+            scanLocked.current = true;
             setScanning(false);
             try { void inspect(parseOperatorOrigin(data)); }
             catch { Alert.alert('Invalid QR Code', 'Scan a QR code containing only an HTTPS server origin.'); }

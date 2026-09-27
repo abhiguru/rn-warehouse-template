@@ -56,12 +56,24 @@ export function validateOperatorDiscovery(json: unknown, origin: string): Public
 
 export async function discoverOperator(input: string): Promise<{ server: OperatorServer; config: PublicConfig }> {
   const origin = parseOperatorOrigin(input);
-  const response = await fetch(`${origin}/functions/v1/get-public-config`, {
-    signal: AbortSignal.timeout(15000),
-    redirect: 'error',
-  });
-  if (!response.ok) throw new Error(`Server discovery failed (HTTP ${response.status}).`);
-  const config = validateOperatorDiscovery(await response.json(), origin);
+  const controller = new AbortController();
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const config = await Promise.race([
+    (async () => {
+      const response = await fetch(`${origin}/functions/v1/get-public-config`, {
+        signal: controller.signal,
+        redirect: 'error',
+      });
+      if (!response.ok) throw new Error(`Server discovery failed (HTTP ${response.status}).`);
+      return validateOperatorDiscovery(await response.json(), origin);
+    })(),
+    new Promise<never>((_, reject) => {
+      timeout = setTimeout(() => {
+        controller.abort();
+        reject(new Error('Server discovery timed out.'));
+      }, 15000);
+    }),
+  ]).finally(() => clearTimeout(timeout));
   return {
     server: { origin, instanceId: config.instanceId, displayName: config.displayName, companyName: config.companyName },
     config,
@@ -70,7 +82,7 @@ export async function discoverOperator(input: string): Promise<{ server: Operato
 
 export async function loadOperatorServer(): Promise<OperatorServer | null> {
   const raw = await AsyncStorage.getItem(STORAGE_KEY);
-  if (!raw) return null;
+  if (!raw) { activeServer = null; return null; }
   try {
     const saved = JSON.parse(raw) as OperatorServer;
     if (parseOperatorOrigin(saved.origin) !== saved.origin || !saved.instanceId || !saved.displayName)
@@ -79,6 +91,7 @@ export async function loadOperatorServer(): Promise<OperatorServer | null> {
     return saved;
   } catch {
     await AsyncStorage.removeItem(STORAGE_KEY);
+    activeServer = null;
     return null;
   }
 }

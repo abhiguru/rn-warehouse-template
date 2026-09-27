@@ -53,3 +53,20 @@ it('rejects a substituted origin, unsupported API, or too-new minimum client', a
   }
   expect(compareVersions('0.1.0', '0.1.0')).toBe(0);
 });
+
+it('bounds discovery even when a server stalls while sending its JSON body', async () => {
+  jest.useFakeTimers();
+  try {
+    jest.mocked(global.fetch).mockResolvedValue({
+      ok: true,
+      json: () => new Promise(() => {}),
+    } as unknown as Response);
+    const pending = discoverOperator(origin);
+    const rejected = expect(pending).rejects.toThrow('Server discovery timed out.');
+    await jest.advanceTimersByTimeAsync(15000);
+    await rejected;
+    expect(jest.mocked(global.fetch).mock.calls[0][1]?.signal?.aborted).toBe(true);
+  } finally {
+    jest.useRealTimers();
+  }
+});

@@ -33,6 +33,20 @@ let __authenticatedClientInstance: SupabaseClient | undefined;
 let __cachedAuthToken: string | undefined;
 let operatorSwitching = false;
 const activeRequests = new Set<{ controller: AbortController; mutation: boolean }>();
+let activeMutationOperations = 0;
+
+// Hold the switch gate across a workflow with local work between several
+// requests, such as register -> image conversion -> Storage upload -> confirm.
+export function beginOperatorMutation(): () => void {
+  if (operatorSwitching) throw new Error('Server switch in progress');
+  activeMutationOperations += 1;
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    activeMutationOperations -= 1;
+  };
+}
 
 async function trackedSessionFetch(input: RequestInfo | URL, init: RequestInit | undefined, generation: number, mutation: boolean): Promise<Response> {
   if (operatorSwitching || generation !== getSessionGeneration()) throw new Error('Session changed');
@@ -78,7 +92,7 @@ export function createSessionReadFetch() {
 }
 
 export function beginOperatorSwitch(): boolean {
-  if (operatorSwitching || [...activeRequests].some(request => request.mutation)) return false;
+  if (operatorSwitching || activeMutationOperations > 0 || [...activeRequests].some(request => request.mutation)) return false;
   operatorSwitching = true;
   for (const request of activeRequests) if (!request.mutation) request.controller.abort();
   return true;

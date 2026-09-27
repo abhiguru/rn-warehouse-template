@@ -1,10 +1,12 @@
-import { getAuthenticatedClient } from '@/config/supabaseConfig';
+import { beginOperatorMutation, getAuthenticatedClient } from '@/config/supabaseConfig';
 
 export async function deleteWarehouseImage(
   kind: 'grn' | 'dispatch',
   imageId: string
 ) {
+  let finishMutation: (() => void) | undefined;
   try {
+    finishMutation = beginOperatorMutation();
     const client = await getAuthenticatedClient();
     const { data, error } = await client.rpc(`delete_${kind}_image`, {
       p_image_id: imageId,
@@ -32,5 +34,7 @@ export async function deleteWarehouseImage(
       success: false,
       error: 'Image deletion failed. Check your connection.',
     };
+  } finally {
+    finishMutation?.();
   }
 }

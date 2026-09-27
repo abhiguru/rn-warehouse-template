@@ -5,7 +5,7 @@
  */
 
 import * as Crypto from 'expo-crypto';
-import { getAuthenticatedClient } from '@/config/supabaseConfig';
+import { beginOperatorMutation, getAuthenticatedClient } from '@/config/supabaseConfig';
 import { executeRPC, createErrorResponse } from '@/utils/serviceErrorHandler';
 import type {
   DispatchHeaderData,
@@ -198,7 +198,9 @@ export const createDispatch = async (payload: {
   items: DispatchItemData[];
   images?: DispatchImageData[];
 }): Promise<DispatchApiResponse> => {
+  let finishMutation: (() => void) | undefined;
   try {
+    finishMutation = beginOperatorMutation();
     console.log('[DispatchFormService] Creating dispatch with payload:', {
       header: payload.header,
       itemCount: payload.items.length,
@@ -301,6 +303,8 @@ export const createDispatch = async (payload: {
       error: errorMessage,
       message: errorMessage,
     };
+  } finally {
+    finishMutation?.();
   }
 };
 

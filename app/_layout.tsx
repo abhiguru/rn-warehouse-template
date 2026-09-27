@@ -70,8 +70,13 @@ import { createLogger } from '@/utils/logger';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { initializeAuth } from '@/store/slices/authSlice';
 import { logout } from '@/store/slices/authSlice';
+import { resetForm as resetGrn } from '@/store/slices/grnFormSlice';
+import { resetForm as resetDispatch } from '@/store/slices/dispatchFormSlice';
+import { resetForm as resetInvoice } from '@/store/slices/invoiceFormSlice';
+import { resetForm as resetCustomer } from '@/store/slices/customerFormSlice';
 import { OperatorServerSelection } from '@/components/OperatorServerSelection';
 import { discoverOperator, loadOperatorServer, onOperatorServerChange, saveOperatorServer } from '@/config/operatorServer';
+import { clearAutocompleteCache } from '@/services/autocomplete-service';
 import {
   selectThemePreference,
   selectResolvedThemeMode,
@@ -444,6 +449,11 @@ function BootstrapApp() {
         await clearPendingEnrollment();
         await queryClient.cancelQueries();
         queryClient.clear();
+        clearAutocompleteCache();
+        store.dispatch(resetGrn());
+        store.dispatch(resetDispatch());
+        store.dispatch(resetInvoice());
+        store.dispatch(resetCustomer());
         await ConfigService.clearCache();
       }
       await saveOperatorServer(discovered.server, false);
