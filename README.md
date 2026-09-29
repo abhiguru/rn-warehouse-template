@@ -1,7 +1,8 @@
 # rn-warehouse-template
 
 The operator branch connects to an independent warehouse backend through its
-canonical HTTPS origin. Start with the [current developer handoff](docs/DEVELOPER_HANDOFF.md).
+canonical HTTPS origin. Start with the [current developer handoff](docs/DEVELOPER_HANDOFF.md)
+and [fresh operator installation notes](docs/OPERATOR_INSTALL_NOTES.md).
 The operator changes are under review; the source-demo evidence below does not
 validate the changed runtime.
 
@@ -59,6 +60,9 @@ implicitly adopt an emulator owned by another checkout or user.
 ```bash
 git clone https://github.com/abhiguru/rn-warehouse-template.git
 cd rn-warehouse-template
+git switch --detach 8240cce9121a797fd0cf2e00e568a61985814ddb
+git rev-parse HEAD
+git status --porcelain
 npm ci
 node scripts/create-env.mjs
 npm run typecheck
@@ -71,6 +75,11 @@ npm run test:setup
 It never inspects Docker, reads service-role credentials, or overwrites an existing
 environment file.
 
+Require a clean checkout of this exact candidate: it is published in draft
+[PR #33](https://github.com/abhiguru/rn-warehouse-template/pull/33), not mobile
+`main`. The backend baseline is `f18f51d4625e7f8c0d977ac69645804e318a9d49`
+(merged PR #68). Stop if either commit is unavailable; explain before substituting.
+Complete backend local/public doctor before beginning Android installation.
 Use the immutable `v0.2.2-demo` tag only to reproduce the historical demo.
 
 ## Connect a compatible backend

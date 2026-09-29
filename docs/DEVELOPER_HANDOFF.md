@@ -5,13 +5,17 @@ Manual entry and QR discovery show the warehouse identity. Credentials, pending
 enrollment and business state belong to one selected instance; a server switch
 or replacement instance requires a fresh login.
 
-Use the backend [operator installation guide](https://github.com/abhiguru/supabase-warehouse-template/blob/codex/operator-install/docs/OPERATOR_INSTALL.md)
+Use the backend [operator installation guide](https://github.com/abhiguru/supabase-warehouse-template/blob/f18f51d4625e7f8c0d977ac69645804e318a9d49/docs/OPERATOR_INSTALL.md)
 for the VM, MSG91 settings and local first-administrator bootstrap. The backend
-[acceptance ledger](https://github.com/abhiguru/supabase-warehouse-template/blob/codex/operator-install/docs/PRODUCTION_DEPENDENCIES.md#independent-operator-installation-work)
+[acceptance ledger](https://github.com/abhiguru/supabase-warehouse-template/blob/f18f51d4625e7f8c0d977ac69645804e318a9d49/docs/PRODUCTION_DEPENDENCIES.md#independent-operator-installation-work)
 is authoritative for unfinished software and service/device acceptance.
 
-Implementation is under [mobile PR #33](https://github.com/abhiguru/rn-warehouse-template/pull/33)
-and [backend PR #68](https://github.com/abhiguru/supabase-warehouse-template/pull/68).
+Mobile implementation is under draft [mobile PR #33](https://github.com/abhiguru/rn-warehouse-template/pull/33)
+and backend [PR #68](https://github.com/abhiguru/supabase-warehouse-template/pull/68)
+merged at `f18f51d4625e7f8c0d977ac69645804e318a9d49`. Mobile candidate is
+`8240cce9121a797fd0cf2e00e568a61985814ddb`; do not assume it is on mobile `main`.
+See [OPERATOR_INSTALL_NOTES.md](OPERATOR_INSTALL_NOTES.md) for this fresh VM
+attempt, its installation findings and the current acceptance matrix.
 Record exact backend/mobile commits and native build IDs for every VM or physical
 device acceptance run. Source checks and an Android artifact audit do not prove
 real SMS, iPhone, lifecycle recovery or server-switch isolation on a device.
