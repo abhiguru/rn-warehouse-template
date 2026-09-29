@@ -106,6 +106,13 @@ that login or warehouse APIs work. No keys need to be copied into the app: it
 fetches its public anon key dynamically. `update-supabase-keys` is a deprecated
 alias for this check and no longer reads Docker.
 
+## Build a standalone operator test app
+
+Follow the [local standalone APK sequence](docs/OPERATOR_INSTALL_NOTES.md#reproducible-local-standalone-test-apk)
+for JDK/SDK installation, a separate native test identity, bundled release-variant
+build, artifact audit and device acceptance without Metro. This is a local test
+artifact; production signing and distribution remain open.
+
 ## Run a native debug build
 
 ```bash
