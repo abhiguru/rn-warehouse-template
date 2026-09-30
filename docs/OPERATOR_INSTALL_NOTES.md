@@ -167,10 +167,15 @@ identity, and test QR, malformed origins, cold launch, background/foreground and
 server persistence. Disconnect USB, keep Metro stopped and launch from the phone
 icon before claiming standalone acceptance. Test Wi-Fi and cellular separately.
 For a local QR test, install `qrencode` (this VM used 4.1.1), then generate
-`qrencode -s 12 -m 4 -o /private/path/origin-qr.png https://YOUR-DEDICATED-API-HOST`.
-Display that public-origin image on the VM and scan it with the app camera; the
+`qrencode -s 24 -m 6 -o /private/path/origin-qr.png https://YOUR-DEDICATED-API-HOST`.
+On Ubuntu, install `qrencode eog` if missing. Open the image explicitly with
+`eog --new-instance --fullscreen --disable-gallery /private/path/origin-qr.png`.
+If another window covers it, use Alt+Tab on the VM to select Image Viewer; verify
+the operator can actually see it before asking for a scan. `xdg-open` success
+alone did not make the image visible in this attempt. Scan with the app camera; the
 payload is only the HTTPS origin, not JSON, credentials or a deep link. Camera
 permission and an actual successful scan remain separate acceptance steps.
+This attempt required the explicit fullscreen viewer before scanning passed.
 
 Real authentication needs explicit SMS permission and owned phones; input OTPs
 locally, never in chat/logs. Historical device tests do not count for this APK.
@@ -202,12 +207,13 @@ locally, never in chat/logs. Historical device tests do not count for this APK.
 | Selected physical Android model/OS/install | PASS | Authorized Samsung SM-A346E, Android 15/API 35, arm64-v8a; package absence checked before first install; corrected APK updated only this owned package with matching signer; pulled installed APK SHA-256 equals audited artifact |
 | Emulator alternative | NOT TESTED | Emulator results cannot close physical acceptance |
 | Manual server selection and displayed identity | PASS | Corrected artifact discovers Test Warehouse 1 and dedicated HTTPS origin, then Use This Server reaches login. Login retains generic Warehouse Manager branding; chooser is where warehouse identity is verified |
-| QR selection | NOT TESTED | Requires selected device camera |
+| QR selection | PASS | Operator allowed camera and scanned public-origin QR; preview displayed Test Warehouse 1 and canonical origin before selection |
 | Malformed origins | PASS, scoped | HTTP origin and HTTPS origin with /extra path rejected; other malformed cases remain open |
 | Cold launch, foreground/background, selected-server persistence | PASS, unauthenticated scope | Home/launcher and force-stop/launcher returned to login without requiring server selection; authenticated restore remains untested |
 | Standalone operation without Metro/USB | NOT TESTED | Bundled artifact and disconnected-device launch required |
-| Administrator/customer native login, pending approval and approval | NOT TESTED | Operator permitted real SMS for this warehouse only; current backend real administrator login, Customer A pending enrollment/approval/login PASS; not native evidence |
-| Logout, expired/revoked sessions, offline/reconnect, Realtime, images and authorized PDFs | BLOCKED | Requires permitted authentication and exact native artifact |
+| Administrator/customer native login | NOT TESTED | SMS permitted for this warehouse only; native administrator verification now waiting for local operator OTP entry. Backend real administrator/Customer A login passes are separate evidence |
+| Native pending enrollment/approval and reciprocal Customer B | BLOCKED | Existing owned Customer A already approved; operator has no third owned phone. Do not reset an existing user or send SMS to a fictional number to manufacture this case |
+| Logout, expired/revoked sessions, offline/reconnect, Realtime, images and authorized PDFs | NOT TESTED | Exact APK installed; native authenticated verification pending local OTP entry |
 | Wi-Fi | NOT TESTED | Actual selected device/network observation required |
 | Cellular | NOT TESTED | Record unavailable cellular separately |
 | Cross-instance and replacement-instance isolation | BLOCKED | Needs second isolated running instance; never use the live pilot |
@@ -236,5 +242,5 @@ cause is unresolved; the host was not modified. Preserve both failed native
 periods and the bounded successful trial.
 
 This is an in-progress record, not current end-to-end acceptance. Physical
-QR selection, lifecycle, standalone disconnected operation and native
+authenticated lifecycle, standalone disconnected operation and native
 authenticated workflows remain open; no historical device result closes them.
