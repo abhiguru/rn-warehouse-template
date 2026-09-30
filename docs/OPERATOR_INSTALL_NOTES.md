@@ -1118,3 +1118,15 @@ run had one erroneous test expectation (ceil9.5 is10, not9); corrected that lite
 and retained the failure. First typecheck found the edit-summary caller missing
 the new items prop; caller corrected and typecheck rerun. APK/native/save/PDF
 validation is still pending; the blocker remains open.
+
+
+A second invoice display defect was observed on the native saved-invoice list
+while preparing the regression: total-tax was labelled Subtotal and negative
+discounts were hidden. This is a saved net-before-tax amount, already including
+labour, discount/surcharge and rounding; it cannot establish the original storage
+subtotal. The correction names that value Net before tax, displays Surcharge
+for negative discounts, and marks labour/adjustments as included in details.
+Cost percentages are no longer assigned to those overlapping included rows.
+Stored values, discount semantics and pricing policy remain unchanged.
+233Jest tests/typecheck/lint0errorsPASS for this follow-up; a newly audited
+artifact and affected saved-display native check remain required.

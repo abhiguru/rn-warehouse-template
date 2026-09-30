@@ -17,6 +17,7 @@
 import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, Platform, Pressable, ViewStyle } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import { savedInvoiceAmounts } from '@/utils/invoiceCalculations';
 import { formatCurrency } from '@/utils/formatters';
 import { useListColors } from '@/hooks/useListColors';
 
@@ -239,10 +240,9 @@ export const InvoiceBreakdownTab: React.FC<InvoiceBreakdownTabProps> = ({
   };
 
   // Calculate percentages
-  const subtotalPercent = calculatePercentage(breakdown.subtotal, breakdown.total);
+  const saved = savedInvoiceAmounts(breakdown);
+  const subtotalPercent = calculatePercentage(saved.netBeforeTax, breakdown.total);
   const taxPercent = calculatePercentage(breakdown.tax_amount, breakdown.total);
-  const labourPercent = breakdown.labour > 0 ? calculatePercentage(breakdown.labour, breakdown.total) : 0;
-  const discountPercent = breakdown.discount > 0 ? calculatePercentage(breakdown.discount, breakdown.total) : 0;
 
   const grnDocs = related_documents.filter(doc => doc.type === 'grn');
   const dispatchDocs = related_documents.filter(doc => doc.type === 'dispatch');
@@ -264,7 +264,7 @@ export const InvoiceBreakdownTab: React.FC<InvoiceBreakdownTabProps> = ({
   }: {
     color: string;
     label: string;
-    percent: number;
+    percent?: number;
     amount: number;
     isNegative?: boolean;
   }) => (
@@ -274,7 +274,7 @@ export const InvoiceBreakdownTab: React.FC<InvoiceBreakdownTabProps> = ({
         <Text style={dynamicStyles.breakdownLabel}>{label}</Text>
       </View>
       <View style={styles.breakdownRight}>
-        <Text style={dynamicStyles.breakdownPercent}>{percent}%</Text>
+        {percent !== undefined && <Text style={dynamicStyles.breakdownPercent}>{percent}%</Text>}
         <Text style={[dynamicStyles.breakdownValue, isNegative && { color: colors.error }]}>
           {isNegative ? '- ' : ''}{formatCurrency(amount)}
         </Text>
@@ -332,7 +332,7 @@ export const InvoiceBreakdownTab: React.FC<InvoiceBreakdownTabProps> = ({
           <View style={[styles.avatar, { backgroundColor: colors.primaryLight }]}>
             <Icon name="chart-pie" size={24} color={colors.primary} />
           </View>
-          <Text style={dynamicStyles.cardTitle}>Cost Distribution</Text>
+          <Text style={dynamicStyles.cardTitle}>Saved Invoice Amounts</Text>
         </View>
 
         {/* Breakdown Rows */}
@@ -340,19 +340,18 @@ export const InvoiceBreakdownTab: React.FC<InvoiceBreakdownTabProps> = ({
           {/* Subtotal */}
           <BreakdownRow
             color={FIORI_STATIC.chartColors.subtotal}
-            label="Subtotal"
+            label="Net before tax"
             percent={subtotalPercent}
-            amount={breakdown.subtotal}
+            amount={saved.netBeforeTax}
           />
 
           {/* Discount */}
-          {breakdown.discount > 0 && (
+          {saved.hasAdjustment && (
             <BreakdownRow
               color={FIORI_STATIC.chartColors.discount}
-              label="Discount"
-              percent={discountPercent}
-              amount={breakdown.discount}
-              isNegative
+              label={`${saved.adjustmentLabel} (included)`}
+              amount={saved.adjustmentAmount}
+              isNegative={breakdown.discount > 0}
             />
           )}
 
@@ -360,8 +359,7 @@ export const InvoiceBreakdownTab: React.FC<InvoiceBreakdownTabProps> = ({
           {breakdown.labour > 0 && (
             <BreakdownRow
               color={FIORI_STATIC.chartColors.labour}
-              label="Labour Charges"
-              percent={labourPercent}
+              label="Labour (included)"
               amount={breakdown.labour}
             />
           )}

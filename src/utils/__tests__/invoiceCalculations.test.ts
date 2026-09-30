@@ -1,5 +1,5 @@
 import {
-  calculateItemAmounts, calculateHeaderTotals, calculateInvoiceBreakdown,
+  calculateItemAmounts, calculateHeaderTotals, calculateInvoiceBreakdown, savedInvoiceAmounts,
 } from '../invoiceCalculations';
 import type { InvoiceItemData } from '@/types/invoice.types';
 import reducer, {
@@ -80,3 +80,15 @@ it('uses the same header contract after individual, bulk and group edits', () =>
     expect(reducer(loaded(), action).header).toMatchObject({ labour: 20, tax_amount: 9, total: 179 });
   }
 });
+
+
+it.each([
+  [179, 0, 170, false, 'Discount', '-', 0],
+  [177, 2.5, 168, true, 'Discount', '-', 2.5],
+  [182, -2.5, 173, true, 'Surcharge', '+', 2.5],
+] as const)('labels saved total%s/discount%s without inventing a storage subtotal',
+  (total, discount, netBeforeTax, hasAdjustment, adjustmentLabel, adjustmentSign, adjustmentAmount) => {
+    expect(savedInvoiceAmounts({total, tax_amount: 9, discount})).toEqual({
+      netBeforeTax, hasAdjustment, adjustmentLabel, adjustmentSign, adjustmentAmount,
+    });
+  });

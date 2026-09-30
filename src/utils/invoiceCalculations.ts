@@ -157,6 +157,17 @@ export function calculateHeaderTotals(
   };
 }
 
+/** Saved headers expose net-before-tax, not the original storage subtotal. */
+export function savedInvoiceAmounts(header: { total: number; tax_amount: number; discount: number }) {
+  return {
+    netBeforeTax: roundMoney(header.total - header.tax_amount),
+    hasAdjustment: header.discount !== 0,
+    adjustmentLabel: header.discount < 0 ? 'Surcharge' : 'Discount',
+    adjustmentSign: header.discount < 0 ? '+' : '-',
+    adjustmentAmount: Math.abs(header.discount),
+  };
+}
+
 /** Keep storage and save rounding separate; never infer storage from total. */
 export function calculateInvoiceBreakdown(
   items: InvoiceItemData[],
