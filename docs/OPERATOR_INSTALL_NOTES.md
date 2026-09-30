@@ -1093,6 +1093,23 @@ PDF reconciliation, a newly built/audited APK, and the affected native case on
 that exact artifact. Unit tests or compilation alone do not close this gate.
 Production pricing-policy changes remain a separate business decision.
 
+Before generating a fixture APK or starting/resuming its test run, set
+WAREHOUSE_FIXTURE_MIN_VALID_HOURS to the planned run plus build/setup and a
+safety margin (default12 hours). Run the certificate preflight against the same
+private CA used by the bridge and embedded APK:
+
+```bash
+WAREHOUSE_FIXTURE_CA=/absolute/private/fixture-ca.pem \
+WAREHOUSE_FIXTURE_MIN_VALID_HOURS=12 \
+node scripts/prepare-emulator-fixture.mjs --check-certificate
+```
+
+The check does not alter Android sources. If it fails, issue a new private
+fixture certificate, rebuild/audit/install the matching fixture APK and check
+its embedded certificate; never bypass TLS or extend another instance's trust.
+Recheck immediately before the run. This closes the missing expiry-horizon
+instruction, not actual overnight execution or device stability.
+
 Then resolve the scoped mobile CI trigger, fixture certificate validity and PDF
 viewer prerequisites one at a time, with a short smoke check for each before any
 dependent long run. Keep the larger runner/fault-injection/two-instance work and
@@ -1149,3 +1166,10 @@ codex/operator-mobile had no current checks. Add that exact candidate branch to
 the pull_request filter; keep push/main, read-only permissions and all existing
 jobs and release gates. Verify a new run appears on the pushed review head.
 No check result is implied by correcting the trigger.
+
+Certificate lifetime follow-up: three fixture regression tests PASS, including
+wrong domain/package, expired/not-yet-valid CA, insufficient requested horizon
+and invalid horizon inputs. Current private CA expires2026-10-01T09:51:45Z;
+12-hour preflight PASS at the time of this check. The lifetime must be checked
+again at actual launch. CI trigger verification PASS: review head6fa6553 started
+run36705487757; job conclusions are recorded separately, not assumed.

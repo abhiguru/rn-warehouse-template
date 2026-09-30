@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync, rmSync, mkdirSync, copyFileSync, writeFileSy
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { validateFixtureTarget } from './prepare-emulator-fixture.mjs';
+import { validateFixtureTarget, validateCertificateHorizon } from './prepare-emulator-fixture.mjs';
 import { validateEntries, validateText } from './artifact-audit.mjs';
 
 test('fixture certificate overlay rejects normal warehouse packages before parsing any certificate', () => {
@@ -59,6 +59,12 @@ test('fixture trust requires the correct hostname and a currently valid CA', () 
       const pem = readFileSync(join(dir, 'ca.pem'));
       if (domain === 'backend-core.example.test') {
         assert.doesNotThrow(() => validateFixtureTarget(gradle, pem));
+        assert.doesNotThrow(() => validateCertificateHorizon(pem, 12));
+        assert.throws(() => validateCertificateHorizon(pem, 25), /expires before/);
+        assert.throws(() => validateCertificateHorizon(pem, 1, Date.now() - 2 * 86400000), /not valid yet/);
+        for (const invalid of [0, -1, NaN, Infinity, 169]) {
+          assert.throws(() => validateCertificateHorizon(pem, invalid), /horizon/);
+        }
         assert.throws(() => validateFixtureTarget(gradle, pem, Date.now() + 3 * 86400000));
       } else assert.throws(() => validateFixtureTarget(gradle, pem));
     }

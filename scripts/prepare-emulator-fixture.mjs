@@ -6,6 +6,16 @@ import { readFileSync, writeFileSync, mkdirSync, lstatSync } from 'node:fs';
 import { resolve, isAbsolute } from 'node:path';
 import { isMain } from './is-main.mjs';
 
+export function validateCertificateHorizon(pem, hours, now = Date.now()) {
+  assert.ok(Number.isFinite(hours) && hours > 0 && hours <= 168,
+    'Certificate horizon must be more than zero and at most 168 hours');
+  const ca = new X509Certificate(pem);
+  assert.ok(Date.parse(ca.validFrom) <= now, 'Fixture certificate is not valid yet');
+  assert.ok(Date.parse(ca.validTo) > now + hours * 3600000,
+    'Fixture certificate expires before the requested run plus preparation/margin');
+  return ca.validTo;
+}
+
 export function validateFixtureTarget(gradle, pem, now = Date.now()) {
   assert.match(gradle, /applicationId\s+["']in\.gurucold\.warehouse\.fixture["']/,
     'Refusing certificate overlay for a normal warehouse APK');
@@ -21,6 +31,14 @@ assert.ok(caPath && isAbsolute(caPath), 'Private local fixture certificate path 
 const st = lstatSync(caPath);
 assert.ok(st.isFile() && !st.isSymbolicLink() && st.uid === process.getuid());
 const pem = readFileSync(caPath);
+// Include build/setup time and an explicit safety margin, not just suite time.
+const hours = Number(process.env.WAREHOUSE_FIXTURE_MIN_VALID_HOURS ?? '12');
+const expiry = validateCertificateHorizon(pem, hours);
+if (process.argv.includes('--check-certificate')) {
+  validateFixtureTarget('applicationId "in.gurucold.warehouse.fixture"', pem);
+  console.log(`Fixture certificate covers ${hours} hours; expires ${expiry}`);
+  return;
+}
 const app = resolve(root, 'android/app');
 const gradle = readFileSync(resolve(app, 'build.gradle'), 'utf8');
 validateFixtureTarget(gradle, pem);
