@@ -25,6 +25,10 @@ The operator selected a physical Android phone; its USB debugging authorization
 is now complete. Historical phones, APKs and successful compilation do not
 count as this attempt's device acceptance.
 
+Before an unattended run, complete the [bounded fixture-run prerequisites](UNATTENDED_RUN.md).
+Do not start the overnight suite while its artifact, PDF, device or case-specific
+gates remain open. The historical result ledger below preserves failed attempts.
+
 ## Reproducible local standalone test APK
 
 Complete backend local/public doctor first. Use a separate, clean source checkout
@@ -1173,3 +1177,26 @@ and invalid horizon inputs. Current private CA expires2026-10-01T09:51:45Z;
 12-hour preflight PASS at the time of this check. The lifetime must be checked
 again at actual launch. CI trigger verification PASS: review head6fa6553 started
 run36705487757; job conclusions are recorded separately, not assumed.
+
+
+### Bounded runner and PDF prerequisite findings
+
+New scripts/run-fixture-plan.mjs provides private artifact/plan-bound checkpoints,
+per-command deadlines, exclusive locking, stop-on-failure and explicit resume.
+Six regression tests PASS (private511); successful writes are not repeated, and
+failed/interrupted writes require review. See UNATTENDED_RUN.md for the main
+sequence, plan schema, read-only postconditions and recovery limitations. No
+complete overnight plan has been executed or claimed by these harness tests.
+
+PDF reader prerequisite was more than installing a VIEW handler. MuPDF1.28.5a
+was inspected but not installed; MJ PDF3.1.0/code5804 was installed/verified but
+its SEND filter accepts text/plain, so it did not appear for application/pdf.
+Librera9.6.17/code7306 accepts PDF SEND but crashed on API30 with missing
+android.app.PictureInPictureUiState. Verified older Librera9.5.7/code7222 lacks
+that class reference and receives the shared content, but its first share failed
+with EACCES while copying to its download directory. Initializing the reader
+revealed a manage-all-files permission requirement. Automatic approval review
+rejected granting that broad permission; it was not granted or bypassed. Native
+external viewing remains BLOCKED pending a narrower compatible reader or explicit
+permission approval. Private PDF authorization/content API checks are separate
+PASS evidence. Preserve all viewer attempts; do not count installation as viewing.
