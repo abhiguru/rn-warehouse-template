@@ -42,6 +42,7 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
   const {
     header,
     isLoading,
+    isGeneratingNumber,
     validationErrors,
     isCreateMode,
     updateHeaderField,
@@ -220,7 +221,7 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
               <Text style={[styles.label, { color: colors.textSecondary }]}>
                 GR NUMBER<Text style={[styles.required, { color: colors.statusNegative }]}> *</Text>
               </Text>
-              {isCreateMode && !header.gr_no ? (
+              {isCreateMode && isGeneratingNumber ? (
                 <View style={[styles.loadingInputContainer, { backgroundColor: colors.gray100 }]}>
                   <ActivityIndicator size="small" color={colors.primary} />
                 </View>

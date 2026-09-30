@@ -1530,3 +1530,32 @@ needs the explicitly declared correction, revalidated clean native switching and
 relevant health/readiness before automatic overnight launch. Original timeout
 and recovered Retry evidence remain separate. Test1/pilot/recovery/host DNS
 were untouched; deferred dependency/release gates remain open.
+
+### Receipt blocker: clearing the generated GRN number hides its input
+
+Exact sourcec4cb8d2/code3013 on owned API30 emulator: normal new-GRN form
+generatedA0002. Clearing it to enter reservedFXF301 made the field disappear
+and left a spinner; replacement text could not enter. Sender selection remained
+possible but the draft was unsaved; the response-loss relay remained disarmed.
+Native failed UI/XML/screenshot and private helper attempts retained603. The
+source condition `isCreateMode && !header.gr_no` treated an intentionally empty
+field as an ongoing generation request, although the request had finished.
+
+The reviewed correction tracks actual initial number generation, clears it in
+finally on success/failure and keeps an empty field editable thereafter. It
+matches the existing dispatch generation-state pattern; validation still requires
+a number and business/RPC/billing rules are unchanged. Two component regressions
+fail on prior source for the observed absent input and pass with the correction.
+A first private red-test log-format assertion failed; read-only reconciliation
+confirmed actual failures without rerunning tests. Full248Jest/37suites,
+typecheck and lint0errors/1468 existing warnings PASS604. Required setup checks
+and a new clean separately identified APK/native affected-case retest remain
+necessary. Passed3013 switching/readiness stays scoped3013; no transfer to an
+unbuilt corrected artifact or automatic overnight launch yet.
+
+Picker automation also needed a correction: a search input and selection button
+can display the same name. Prefer the actual enabled selection button, never an
+editable search field. Selecting a sender auto-populates the customer by design;
+do not wait for an already-replaced Select customer placeholder. These failed
+private automation assumptions did not submit a receipt. No user input, SMS,
+ADB reset or production data was used.

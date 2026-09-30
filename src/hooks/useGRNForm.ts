@@ -94,6 +94,7 @@ export interface UseGRNFormReturn {
   grnId: string | null;
   tempGrnId: string | null;
   isLoading: boolean;
+  isGeneratingNumber: boolean;
   isSaving: boolean;
   validationErrors: Record<string, string>;
   isCreateMode: boolean;
@@ -156,6 +157,7 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
 
   // Local state
   const [validationErrors, setLocalValidationErrors] = useState<Record<string, string>>({});
+  const [isGeneratingNumber, setIsGeneratingNumber] = useState(isCreateMode && !header.gr_no);
 
   // AbortController for cancelling pending GRN number change operations
   const grNoChangeAbortRef = useRef<AbortController | null>(null);
@@ -204,6 +206,7 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
     // Generate GRN number
     if (!header.gr_no && !hasGeneratedGRN.current) {
       hasGeneratedGRN.current = true;
+      setIsGeneratingNumber(true);
       try {
         const grNumber = await getNextGRNNumber();
         // Check if session changed before updating state (prevents stale updates after navigation)
@@ -217,7 +220,11 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
         if (globalSessionId === currentSessionId) {
           Alert.alert('Error', 'Failed to generate GRN number');
         }
+      } finally {
+        setIsGeneratingNumber(false);
       }
+    } else {
+      setIsGeneratingNumber(false);
     }
 
     // Check session again before continuing
@@ -643,6 +650,7 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
     grnId,
     tempGrnId,
     isLoading: grnFormState.isLoading,
+    isGeneratingNumber,
     isSaving: grnFormState.isSaving,
     validationErrors,
     isCreateMode,
