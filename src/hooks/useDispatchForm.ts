@@ -111,6 +111,7 @@ export interface UseDispatchFormReturn {
   images: DispatchImageData[];
   dispatchId: string | null;
   isLoading: boolean;
+  isGeneratingNumber: boolean;
   isSaving: boolean;
   validationErrors: Record<string, string>;
   isCreateMode: boolean;
@@ -189,6 +190,8 @@ export function useDispatchForm({
   // Local state
   const [validationErrors, setLocalValidationErrors] = useState<Record<string, string>>({});
 
+  const [isGeneratingNumber, setIsGeneratingNumber] = useState(isCreateMode && !header.disp_no);
+
   // AbortController for cancelling pending dispatch number change operations
   const dispNoChangeAbortRef = useRef<AbortController | null>(null);
 
@@ -224,6 +227,7 @@ export function useDispatchForm({
     // Generate dispatch number
     if (!header.disp_no && !hasGeneratedDispNo.current) {
       hasGeneratedDispNo.current = true;
+      setIsGeneratingNumber(true);
       try {
         const disp_no = await getNextDispatchNumber();
         // Check if session changed before updating state (prevents stale updates after navigation)
@@ -237,7 +241,11 @@ export function useDispatchForm({
         if (globalSessionId === currentSessionId) {
           Alert.alert('Error', 'Failed to generate dispatch number');
         }
+      } finally {
+        setIsGeneratingNumber(false);
       }
+    } else {
+      setIsGeneratingNumber(false);
     }
 
     // Check session again before supervisor update
@@ -744,6 +752,7 @@ export function useDispatchForm({
     images,
     dispatchId,
     isLoading: dispatchFormState.is_loading,
+    isGeneratingNumber,
     isSaving: dispatchFormState.is_saving,
     validationErrors,
     isCreateMode,

@@ -48,6 +48,7 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
         header,
         validationErrors,
         isLoading,
+        isGeneratingNumber,
         isCreateMode,
         updateHeaderField,
         updateHeaderFields,
@@ -226,7 +227,7 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
                                 <Text style={[styles.label, { color: colors.gray600 }]}>
                                     DISPATCH NO<Text style={[styles.required, { color: colors.error }]}> *</Text>
                                 </Text>
-                                {isCreateMode && !header.disp_no ? (
+                                {isCreateMode && isGeneratingNumber ? (
                                     <View style={[styles.loadingInputContainer, { backgroundColor: colors.gray100 }]}>
                                         <ActivityIndicator size="small" color={colors.primary} />
                                     </View>
@@ -235,6 +236,7 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
                                         <Icon name="truck" size={18} color={colors.gray400} style={styles.inputIcon} />
                                         <TextInput
                                             style={[styles.input, { color: colors.gray900 }]}
+                                            accessibilityLabel="Dispatch number"
                                             value={header.disp_no}
                                             onChangeText={(text) => handleDispNoChange(text.toUpperCase())}
                                             placeholder="I####"
@@ -299,6 +301,7 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
                                 REGISTRATION<Text style={[styles.required, { color: colors.error }]}> *</Text>
                             </Text>
                             <GhostTextInput
+                                accessibilityLabel="Vehicle registration"
                                 value={header.registration}
                                 onChangeText={handleRegistrationChange}
                                 getSuggestion={getTopVehicleSuggestion}

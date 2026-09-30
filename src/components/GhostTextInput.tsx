@@ -240,6 +240,8 @@ export const GhostTextInput = forwardRef<GhostTextInputRef, GhostTextInputProps>
             <TouchableOpacity
               style={styles.ghostContainer}
               onPress={handleAcceptSuggestion}
+              accessibilityRole="button"
+              accessibilityLabel={`Use suggestion ${suggestion}`}
               activeOpacity={0.6}
             >
               {/* Invisible spacer matching user input */}
