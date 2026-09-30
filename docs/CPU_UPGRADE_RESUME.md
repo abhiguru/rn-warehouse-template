@@ -1,4 +1,52 @@
-# Resume after the operator assigns six CPU cores
+# Resume after a VM CPU upgrade
+
+
+## Current resume results — 2026-09-30
+
+The operator resumed. Actual allocation is eight guest CPUs; VT-x and usable
+KVM are now exposed.17GiB RAM/74GiB free remain sufficient for the measured
+checks. Test1 source/private-input preservation and local/public doctor PASS543.
+The permission pause interrupted the first544 startup; the resumed KVM/API30/
+two-emulated-core OS trial booted25.2s plus120s observation PASS. Retained57/
+code3010 passed3cold launches and1804s/29cycles read/navigation/background smoke550
+without ANR dismissal, ADB restart or user interaction. Previous ANR failures
+remain historical; CPU and KVM changes were not isolated causally.
+
+A new retry blocker was discovered and corrected: numbered GRN/dispatch retries
+now retain their canonical complete-body operation key in reviewedb03f197.
+Fresh source checks246Jest/42setup/type/lint/Expo/audit/doctor/bootstrap/live-contract
+and clean standalone code3012 build/audit/install/readback PASS. Its exact SHA256
+is27d9ed96fe1b306610a4e50aedc4f56579bdd1d8c7f93e3a6fe270f070b77108.
+Backend guarded relay2bbc681 plus four API/database lost-response cases PASS;
+native dispatch before/after retries PASS582, final read-only stock reconciliation
+PASS and normal route restoration584. Current3012 native PDF585 and3cold launches/1802.8s/29cycle readiness PASS.
+Native receipt faults, dual-CA artifact/native authenticated switching and final
+plan remain open; independent switching backend TLS/auth prerequisite passed. The original checkpoint below is historical, not current
+service/artifact state. Use OPERATOR_INSTALL_NOTES.md for the current matrix.
+
+## Next work at the resumed checkpoint
+
+Owned emulator now has sourcec4cb8d2/code2026093013, SHA256
+`e809e0fc875788f4af0794da13e28d966e5a804f54e940421a9a4330d79d47b7`.
+Fresh standalone dual-CA build/audit/readback592–594 PASS. Secondary native
+actual-verifier login/profile, empty Orders/invoices and background/cold
+persistence PASS; return-to-primary discovery timed out once, preserved FAIL.
+Normal Retry plus fresh primary mock verifier login restored primary data PASS
+separately. A full clean round trip remains required. Stock shell UIAutomator
+cannot reliably capture the active OTP countdown; the bounded API30 snapshot
+correction and failed keyboard-only workaround are in UNATTENDED_RUN.md.
+Current3013 three cold launches passed; its30-minute readiness is RUNNING,
+not PASS. No overnight run has started at this checkpoint.
+
+Complete native receipt response-loss cases on new reserved fictional lots,
+with independent no-commit/commit reconciliation before unchanged-form retries.
+Verify native PDF on this exact artifact. Freeze source, overlays, APK/CA/fixture
+identities and helpers into a fresh private executable plan; rehearse its
+read-only preflight/resume. Do not repeat previously committed writes or
+transfer3012 results to3013. The operator authorized automatic overnight launch
+once current tasks and blockers pass, using recommended routine defaults.
+Hardware/provider/release gates remain separate; no production/pilot/recovery
+access or permission to merge/release is implied.
 
 ## Paused checkpoint — 2026-09-30
 
@@ -42,7 +90,7 @@ VM as unsupported in its [acceleration guidance](https://developer.android.com/s
 Additional CPU capacity is a software-performance experiment, not proof of KVM
 availability or a guaranteed ANR fix.
 
-## Ordered work after explicit resume
+## Historical planned work after explicit resume
 
 1. Refresh host inventory and compare the saved boot ID privately. Verify six
    guest CPUs with nproc/lscpu, memory/disk, effective noninteractive sudo, pinned

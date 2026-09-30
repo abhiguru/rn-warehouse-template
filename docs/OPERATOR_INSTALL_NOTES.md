@@ -29,22 +29,24 @@ Before an unattended run, complete the [bounded fixture-run prerequisites](UNATT
 Do not start the overnight suite while its artifact, PDF, device or case-specific
 gates remain open. The historical result ledger below preserves failed attempts.
 
-The operator has requested a pause before assigning six VM CPU cores and rebooting.
-Use [CPU_UPGRADE_RESUME.md](CPU_UPGRADE_RESUME.md) for the preserved checkpoint
-and ordered next steps. Resume only after the operator explicitly resumes work.
+The operator resumed after the VM resource change. The guest now exposes eight
+CPUs and usable KVM. See [CPU_UPGRADE_RESUME.md](CPU_UPGRADE_RESUME.md) for the
+preserved pause, interrupted attempt and scoped post-reboot results. The full
+overnight suite has not started.
 
 ## Current pre-overnight blocker checkpoint — 2026-09-30
 
 | Case | Status | Current evidence and limit |
 | --- | --- | --- |
 | Invoice arithmetic and saved display | PASS, scoped |239 Jest tests;470 native original179/discount177/surcharge182 checks; final57/code3010 native saved list/overview/breakdown and half-cent review/confirmation/save2 |
-| Exact corrected artifact | PASS |57add4456cf47465771e3962f041928f8d6029d7, version2026093010, x86_64; build/audit/signature/install/readback; SHA256 c642950d24922b89119b9dacf91e0565a04f75f47e83bb3d286af07d12457676 |
-| Private PDF and local viewing | PASS, scoped |Half-cent invoice20261007 SQL/PDF metadata528; normal native share to verified Librera9.5.7/code7222, visible rendering527 and reader-copy text/readback529; explicit emulator-only storage permission approved |
-| Stacked PR CI trigger | PASS |6fa6553/run36705487757 and certificate guardfa74f28/run36705795453 each4/4 jobs PASS; runner812 lint failure preserved; correctionb22c3b5 local and remote lint/unit/setup job PASS; its Android job status remains in PR |
+| Exact installed fixture artifact | PASS |c4cb8d24bedbb6bb730a6631385d4f6e114210c2, code2026093013/x86_64; clean build4m17s/983tasks, generic/exact signature/manifest/two-CA policy/installed readback592–594; SHA256 e809e0fc875788f4af0794da13e28d966e5a804f54e940421a9a4330d79d47b7. Prior3010/3012 native evidence remains attached to those artifacts |
+| Private PDF and local viewing | PASS, scoped |Code3012 invoice20261005 native PDF SEND to approved Librera9.5.7/code7222: visible render585 and reader-copy number/tax9/discount-2.5/total182/hash PASS. Earlier half-cent527–529 remains scoped3010 |
+| Stacked PR CI trigger | PASS |6fa6553/run36705487757 and certificate guardfa74f28/run36705795453 each4/4 jobs PASS; runner812 lint failure preserved; correctionb22c3b5 local and remote lint/unit/setup job PASS; currentb03f197 run36717966812 all4 jobs PASS |
 | Certificate horizon guard | PASS at check time |Requested12-hour horizon verified; CA expires2026-10-01T09:51:45Z; recheck before every actual long run |
 | Bounded runner infrastructure | PASS, scoped |Six regression cases;42 full setup checks; guarded read-only fixture smoke/resume514 retained one execution; changed runner bindings require new evidence, not blind reuse |
-| Emulator cold-start readiness | FAIL / BLOCKER |Final57 first launch SystemUI ANR525; one recorded recovery enabled targeted diagnostics only. No KVM exposed; exact root cause not isolated |
-| Full overnight suite | NOT TESTED / BLOCKED |Not started. Stable unattended readiness and a complete case plan are required; fault controls and second authenticated fixture remain substantial preparation |
+| Emulator cold-start readiness | PASS, artifact-scoped |Eight-host-CPU/KVM/API30/two-emulated-core trial: OS boot25.2s plus120s observation; code3010 three clean cold launches plus1804s/29cycles read/navigation/background rehearsal550. Earlier no-KVM ANRs525 remain FAIL; code3012 three cold launches and1802.8s/29cycles PASS550-20260930T143230Z; no ANR/crash, ADB restart or user interaction |
+| Lost-response controls and API reconciliation | PASS, scoped |Reviewed relay2bbc681:12 regressions/60 backend units; installed-state refusal571; four owned receipt/dispatch before/after API cases566 and final read-only quantities/stock/cache572. Native dispatch before/after same-form retries PASS582 on3012; native receipt cases remain open |
+| Full overnight suite | NOT TESTED / BLOCKED |Not started. Native receipt faults, new dual-certificate artifact/native switching and a complete bound executable plan remain required; separate backend switching fixture TLS/auth passed |
 | Current normal arm64/physical acceptance | NOT TESTED |Phone remains8d9da8e/code3001; normal historical e54/code3008 build is separate; corrected native evidence is emulator-only |
 
 Do not rerun successful unchanged cases to obscure these boundaries. Line-level
@@ -64,25 +66,27 @@ For the corrected sequence, fetch review PR #34 and pin the tested code source
 before installing dependencies:
 
 ```bash
-export MOBILE_BUILD_CHECKOUT="$HOME/warehouse-mobile-build-2026093011"
+export MOBILE_BUILD_CHECKOUT="$HOME/warehouse-mobile-build-2026093013"
 test ! -e "$MOBILE_BUILD_CHECKOUT"
 umask 022
 git clone --branch codex/fresh-vm-operator-notes \
   https://github.com/abhiguru/rn-warehouse-template.git "$MOBILE_BUILD_CHECKOUT"
 cd "$MOBILE_BUILD_CHECKOUT"
-git checkout --detach b22c3b5ad72f41e9ea936d987aee6b027459ca0e
+git checkout --detach c4cb8d24bedbb6bb730a6631385d4f6e114210c2
 git rev-parse HEAD
 git status --short
 ```
 
-This pin includes the invoice reconciliation correction and the certificate,
-CI and checkpoint safeguards. Its app/src/config/dependency files match the
-built invoice source57add4456cf47465771e3962f041928f8d6029d7; tooling/docs changes
-still belong to theb22c3b5 source and must be recorded. Choose a new unused
-build identifier. The example3011 has not been built/installed in this exercise.
-The final corrected x86_64 fixture artifact is57add44/code3010; the historical
-clean normal arm64 build remains e54/code3008 and the physical phone remains
-8d9da8e/code3001. Neither establishes physical acceptance of the invoice fix.
+This pin includes invoice reconciliation, certificate/runner safeguards and
+stable keys for identical numbered GRN/dispatch RPC bodies after a lost response.
+It changes application code relative to57add44; previous native results cannot
+be attributed to this source alone. Fresh code3012 x86_64 build/audit/install is
+recorded below. Optionalc4cb8d2 additionally supports independent exact-domain
+fixture certificate anchors; app/dependency source matchesb03. Current code3013
+clean standalone build/audit/install/readback PASS592–594 with both CAs. The earlierb22 clean checkout passed its source checks but did
+not produce example3011. The historical normal arm64 build remains e54/code3008
+and the physical phone remains8d/code3001. Neither establishes current physical
+acceptance. Choose your own unused build identity/identifier.
 
 On this Ubuntu 24.04 guest, install JDK 17 with `sudo apt-get install openjdk-17-jdk
 unzip`. Verify `java -version` and `javac -version`. Download Android command-line
@@ -140,7 +144,7 @@ a later operator must choose their own unused identity.
 export WAREHOUSE_ANDROID_PACKAGE=in.gurucold.warehouse.test1
 export WAREHOUSE_APP_NAME='Test Warehouse 1'
 export WAREHOUSE_APP_SCHEME=warehouse-test1
-export WAREHOUSE_ANDROID_VERSION_CODE=2026093011
+export WAREHOUSE_ANDROID_VERSION_CODE=2026093013
 npx expo config --type public
 # Only in the dedicated disposable build checkout:
 npx expo prebuild --platform android --clean --no-install
@@ -261,23 +265,23 @@ overlay. Never attach this harness to a real warehouse or tunnel. The installed
 Test Warehouse 1 and the production pilot do not supply fixture authentication.
 
 Start a clean, separate mobile checkout at
-`b22c3b5ad72f41e9ea936d987aee6b027459ca0e` from the review branch. Run npm ci,
+`b03f197f6d168eab7fc7a87fe1bae3e00df6276d` from the review branch. Run npm ci,
 environment creation and the dependency/setup/unit/lint/typecheck/contract
-sequence above before heavy compilation. This pin includes the invoice fixes
-and new preflight/runner instructions; historical43/e54 outcomes below remain
-attached to their original artifacts. The invoice application source57add44
-passed239 Jest tests, typecheck and lint (0errors/1468existing warnings), then
-built the audited code3010 x86_64 APK. New safeguard tooling passed42 setup
-checks and a read-only guarded runner/resume smoke. A full cleanb22c3b5 build and
-physical-device acceptance are not claimed. The dedicated fixture APK uses a
+sequence above before heavy compilation. This pin includes the invoice/retry fixes and
+preflight/runner safeguards. Earlier43/e54/57 outcomes remain attached to their
+original artifacts. Fresh b03/code3012 locked installation,246 Jest/36 suites,
+42 setup/type/lint/Expo/dependency/doctor/bootstrap/live-contract checks and
+standalone x86_64 build/audit/signature/install/readback PASS. Its native retry,
+PDF and readiness checks need artifact-specific evidence.
+The dedicated fixture APK uses a
 local public CA generated by the backend sequence; its private key never enters
-the build tree. Select a fresh build identifier, shown as3011 below.
+the build tree. Select a fresh build identifier, shown as3012 below.
 
 ```bash
 export WAREHOUSE_ANDROID_PACKAGE=in.gurucold.warehouse.fixture
 export WAREHOUSE_APP_NAME='Fictional Core Warehouse'
 export WAREHOUSE_APP_SCHEME=warehouse-fixture
-export WAREHOUSE_ANDROID_VERSION_CODE=2026093011
+export WAREHOUSE_ANDROID_VERSION_CODE=2026093012
 export WAREHOUSE_FIXTURE_CA="$FIXTURE_PRIVATE/tls/fixture-ca.pem"
 # Cover build/setup + planned run + safety margin; recheck at actual run start.
 export WAREHOUSE_FIXTURE_MIN_VALID_HOURS=12
@@ -311,30 +315,58 @@ free -h
 df -h "$HOME"
 ```
 
-This VMware guest has no exposed virtualization extensions or /dev/kvm.
+Before the operator resource change, this VMware guest had no exposed
+virtualization extensions or /dev/kvm. After that change, eight guest CPUs, VT-x,
+/dev/kvm and emulator accel-check report usable KVM. Record actual capabilities
+instead of assuming either state.
 [Google documents the acceleration requirements and VM restrictions](https://developer.android.com/studio/run/emulator-acceleration).
-Software mode is slow and must be measured; do not promise a full UI suite from
-boot completion. No host BIOS/VMware change or host reboot is authorized here.
-This run used emulator 37.1.11.0/build 15917651 and API 35 Google APIs x86_64
-revision 9. A separate API 30 default x86_64 revision 11 trial was added after
-API 35 System UI instability; record it separately rather than substituting
-device evidence. Choose an unused private AVD name, directory and emulator
-port pair; example 5556/5557 and AVD below were created only for this fixture.
-Never use `--force` to replace an existing AVD.
+Measure both boot and application readiness; boot completion alone is insufficient.
+For the owned API30 emulator, KVM with two emulated cores passed the scoped
+code3010 three-launch/30-minute rehearsal. This is observed behavior in VMware,
+not a supported-platform or production-readiness claim. No host BIOS/VMware change or host reboot is authorized here.
+Use the measured fixture image: emulator37.1.11.0/build15917651 and API30 default
+x86_64 revision11. Earlier API35 Google APIs revision9/software failures remain
+in the historical findings. Choose a new unused private AVD name/directory and
+port pair; these commands must never replace the existing fixture or another
+operator's AVD. Match720x1280/density280 if using the recorded UI driver's bounds.
+Never use --force.
 
 ```bash
-sdkmanager 'emulator' 'system-images;android-35;google_apis;x86_64'
+sdkmanager 'emulator' 'system-images;android-30;default;x86_64'
 export ANDROID_AVD_HOME="$FIXTURE_PRIVATE/avd"
 export ANDROID_EMULATOR_HOME="$FIXTURE_PRIVATE"
 mkdir -m 700 "$ANDROID_AVD_HOME"
-printf 'no\n' | avdmanager create avd -n TestWarehouseFixture_API35 \
-  -k 'system-images;android-35;google_apis;x86_64' \
-  -p "$ANDROID_AVD_HOME/TestWarehouseFixture_API35.avd"
+printf 'no\n' | avdmanager create avd -n TestWarehouseFixture_API30 \
+  -k 'system-images;android-30;default;x86_64' \
+  -p "$ANDROID_AVD_HOME/TestWarehouseFixture_API30.avd"
+# Only the newly created, owned AVD; record this configuration overlay:
+python3 - <<'CONFIG'
+import os, pathlib, re
+p = pathlib.Path(os.environ['ANDROID_AVD_HOME']) / 'TestWarehouseFixture_API30.avd/config.ini'
+s = p.read_text()
+for key, value in {'hw.lcd.width': '720', 'hw.lcd.height': '1280',
+                   'hw.lcd.density': '280', 'hw.ramSize': '2048',
+                   'hw.cpu.ncore': '2'}.items():
+    pattern = r'^' + re.escape(key) + r'=.*$'
+    s = re.sub(pattern, key + '=' + value, s, flags=re.M) if re.search(pattern, s, re.M) else s + '\n' + key + '=' + value + '\n'
+p.write_text(s)
+CONFIG
 ss -ltn
-emulator -avd TestWarehouseFixture_API35 -port 5556 -no-accel \
-  -gpu swiftshader -no-window -no-audio -no-boot-anim -no-snapshot \
+# Record the accel-check output. KVM must pass before using on.
+if emulator -accel-check; then
+  WAREHOUSE_EMULATOR_ACCEL=on
+else
+  WAREHOUSE_EMULATOR_ACCEL=off
+fi
+emulator -avd TestWarehouseFixture_API30 -port 5556 \
+  -accel "$WAREHOUSE_EMULATOR_ACCEL" -gpu swiftshader \
+  -no-window -no-audio -no-boot-anim -no-snapshot \
   -memory 2048 -cores 2 -writable-system
 ```
+
+Software fallback has not established reliable overnight acceptance here. KVM
+availability likewise requires measured cold-start/read/navigation readiness;
+never proceed automatically from accel-check or boot-completed alone.
 
 Keep emulator output private. In a separate terminal with the same Android
 environment, set SELECTED_EMULATOR to the newly created emulator's private ADB
@@ -412,7 +444,7 @@ Stop only the selected emulator with `adb -s "$SELECTED_EMULATOR" emu kill`,
 then stop the owned bridge and fixture as the backend guide describes. Preserve
 the AVD, state and private failure logs; do not kill the shared ADB server.
 
-## Current acceptance matrix
+## Initial physical acceptance matrix — preserved historical snapshot
 
 | Required case | Status | Evidence / next resource |
 | --- | --- | --- |
@@ -1290,3 +1322,196 @@ ID and configuration fingerprints for post-reboot comparison. New CPU_UPGRADE_RE
 integrates ordered inventory/health/ANR/rehearsal/build/plan prerequisites. No
 overnight suite, VM setting change or reboot was initiated. Passed unchanged
 cases remain reusable to their recorded scope; cold readiness remains FAIL.
+
+
+### Resume with eight CPUs and usable KVM — 2026-09-30
+
+Ubuntu24.04.3 VMware now exposes8CPUs/17GiB RAM/78GiB free, VT-x and usable
+KVM API12 (private542). Both CPU allocation and virtualization exposure changed;
+this trial does not isolate either as the sole cause of the previous ANRs.
+Test1 source/private inputs/identity/artifact preservation and local/public doctor
+PASS543. An initial comparison helper falsely failed because it compared an
+0o600 string with a decimal-padded mode; corrected octal comparison passed.
+No credential/state change was required. One startup544 attempt was explicitly
+interrupted for permissions; its emulator-exited FAIL is preserved as interrupted
+evidence, not a detected ANR. On resume, KVM/two emulated cores booted API30 in
+25.2s and completed120s OS observation with no ANR. Current-focus probe549 ran
+too early once; subsequent bounded focus waits retain that failure and check the
+actual last focus entry rather than swallowing ANRs.
+
+Retained57/code3010 then passed three cold launches and1804seconds/29cycles of
+read/navigation/background/foreground with no ADB reset, Wait, crash or human
+input550. Reused invoice20261005 reads asserted net173/tax9/surcharge2.5/total182;
+completed business fixtures were not recreated. This is emulator readiness for
+that artifact, not overnight or physical acceptance.
+
+Source inspection found Crypto.randomUUID inside each createGRN/createDispatch
+call. Expected retry to reuse the completed operation after response loss;
+actual next call generated a new cache key. b03f197 now hashes the canonical full
+numbered RPC body, with separate GRN/dispatch namespaces, so identical retries
+reuse a key and changed bodies do not return stale cached data. No auth/OTP or
+billing policy changed. Five key and two lost-response service regressions,
+246 full Jest/36 suites,42 setup/type/lint checks PASS561. Keys depend on retaining
+the same complete numbered body. Form drafts still reset on app restart; do not
+claim cold-process interrupted-write recovery or silently regenerate/edit a lost
+operation. The service's auto-number fallback is not covered by these numbered
+retry assertions; native forms must retain their assigned number.
+
+Fresh cleanb22 checkout551–557 passed required source checks; initial doctor
+failed only because the agent omitted documented ANDROID_HOME in a new shell.
+Corrected environment passed; passing unit/static checks were not rerun to hide
+that attempt. After application source changed, separate cleanb03 checkout562–565
+repeated npm ci/environment/all required checks including live contract from its
+owning backend fixture. Clean standalone code3012 build/audit568–570 and signature,
+identity, embedded CA, installed bytes/version573–574 PASS. Package stays the owned
+fixture identity; no Metro, physical phone or real SMS was used. SHA256:
+27d9ed96fe1b306610a4e50aedc4f56579bdd1d8c7f93e3a6fe270f070b77108.
+
+An initial private installer expected res/raw/warehouse_fixture_ca.crt in the
+release APK. Android optimized its filename to res/Yo.crt; install had not run.
+Preserve573 failure, resolve the named resource with aapt dump --values resources,
+and compare that packaged certificate byte-for-byte with the private bridge CA.
+The compiled domain policy also references that resource; no TLS bypass or source
+edit was needed. Do not infer a compiled resource filename from its source path.
+
+Backend relay2bbc681 is declared as an additional file overlay in the owningc0a6
+fixture checkout; the original fixture guard is unchanged. Twelve transport/control
+regressions and60 backend units PASS. The tool refused installed Test1 before
+opening listeners571. Four fictional receipt/dispatch pre-forward and post-success
+API cases passed independent commit/no-commit, stock and same-key replay assertions
+566; final read-only line quantities/cache/no-invoice reconciliation572 PASS.
+Dispatch API controls used generate_invoice:false. Native retry and invoice side
+effects remain separate. Full case plan and second authenticated fixture are
+still incomplete; no overnight run, release, merge or production readiness claim.
+
+
+Cached-response authorization supplemental result: before native fault submission,
+source inspection raised a cache-before-role question. The starter access migration
+wraps imported logic with authorize_rpc; actual verified fictional CustomerA/B
+known-key save_grn/dispatch requests each returned403575 PASS. No authorization
+change or production bypass was needed. Permanent equivalent cases are in backend
+d068d77 and require a fresh fixture run; do not infer a vulnerability from the
+unwrapped initial-schema body alone. Code3012 cold-only three-launch/known-invoice
+read checks PASS550-20260930T131228Z; that mode did not run30minutes. Its initial
+private helper banner incorrectly said30minutes; structured result scope is cold-only.
+Preserve this misleading-message finding and correct the banner before full reuse.
+
+
+### Current artifact native dispatch fault results — 2026-09-30
+
+Standaloneb03f197/code2026093012, SHA256
+27d9ed96fe1b306610a4e50aedc4f56579bdd1d8c7f93e3a6fe270f070b77108,
+AndroidAPI30 on the owned KVM emulator. FXF201 before-upstream and FXF202
+after-success controls both produced a native network error; read-only database
+checks established no commit or exactly one committed dispatch before retry.
+Unchanged forms retried successfully with one header/line/cache each and two
+units each; reserved stock10→8→6 exactly once. PASS582; normal HTTPS route restored
+and arm disarmed584. No real SMS, physical phone, pilot or recovery host used.
+
+Expected-versus-actual finding: the private after-retry verifier initially expected
+a persisted auto invoice and failed583. Existing RPC SQL only returns conditional
+invoice calculation data; it does not save an invoice. Corrected the assertion to
+zero invoices/errors and rechecked read-only, preserving the failed attempt. Do
+not infer invoice persistence from p_generate_invoice:true. No pricing/auth policy
+change was made. An automation wait used an invented success label and was
+interrupted; actual label is Dispatch Created Successfully!, now asserted.
+Runtime release logging did not expose the key, so there is no claim of an
+independent second wire capture; native success and the original cached operation
+are reconciled with the database and deterministic-key source/unit evidence.
+Native receipt faults and interrupted-draft recovery across process death remain
+separate open cases.
+
+Current source CIb03f197/run36717966812 completed all4 jobs PASS:
+https://github.com/abhiguru/rn-warehouse-template/actions/runs/36717966812 .
+Backendd068d7787 clean owned fixture05 setup/core (including known-cache CustomerA/B
+403) PASS577–581; its remote container audit remains FAIL with dependent checks
+SKIPPED at run36724067923. Preserve release gates.
+
+
+### Completed3012 readiness and separate switching-fixture prerequisite
+
+Current3012/b03 three cold launches plus1802.8seconds/29controlled
+read/navigation/background cycles PASS550-20260930T143230Z. No ANR/crash detected,
+ADB restart, diagnostic Wait dismissal or user intervention. Readiness does not
+establish overnight, physical or another artifact's acceptance.
+
+Native PDF SEND for existing invoice20261005 reached approved Librera9.5.7/code7222;
+later screenshot585 visibly rendered header total182/tax9/discount-2.5 and three
+line parameters. The private reader copy text/hash reconciled that unique invoice.
+Immediate focus assertions failed during asynchronous handoff/mode transition and
+an initial Page1 placeholder was preserved. Later actual reader component and
+crash buffer were checked. A text assertion wrongly assumed a printed GRN label;
+existing starter document-pdf.ts prints Number/customer/header and line fields,
+not GRN. Corrected the expectation without changing PDF/billing policy; initial
+failed attempt retained. Wait for the actual chooser/reader and visible page before
+calling viewing PASS. No Share request was repeated to repair automation.
+
+A separate backend switching fixture now passed supported setup/local doctor,
+pinned TLS discovery on its own18444 and occupancy-checked VM loopback443 passthrough,
+fresh crypto mock delivery through the real verifier and authenticated admin read.
+Primary fixture phones are refused. Sourcea9a49863600dbb33935b49a721f3d406ede9302f;
+new state/identity/JWT/database/storage and independent72-hour TLS key. The original
+core fixture guard is unchanged. Read the backend SWITCHING_FIXTURE.md before
+preparing the two-origin native case; no pilot/Test1/recovery data or routes used.
+
+SMALL BLOCKER for significant native cross-origin acceptance:3012 trusts only the
+primary CA. Optional mobile toolc4cb8d24bedbb6bb730a6631385d4f6e114210c2 supports
+separate exact-domain anchors for two independent keys; normal packages, reused
+keys and existing trust policies remain refused.43setup checks and lint0errors/
+1468existing warnings PASS589–590;62backend units PASS587. Clean dual-CA
+code3013 build4m17s/983executed tasks PASS592; both optimized certificate mappings/
+compiled exact-domain policies/manifest reference/signature PASS593; installed
+bytes/version/two private routes with SELinux Enforcing PASS594. Three current
+cold launches and known invoice read PASS550-20260930T152710Z, cold-only scope.
+Native authenticated switching and full current-artifact readiness remain open. Current3012 findings remain
+attached to their actual APK. Native receipt faults and the complete bound plan
+still remain open; no overnight run/timer has started.
+
+
+Current optional tooling CIc4cb8d2/run36733198901 completed all4 jobs PASS:
+https://github.com/abhiguru/rn-warehouse-template/actions/runs/36733198901 .
+The immediate post-install UI dump refused focus during launch; bounded actual-focus
+cold checks passed without dismissing a dialog or restarting ADB. Preserve the
+initial failed probe separately from artifact installation success.
+
+### Current dual-CA emulator OTP automation limitation
+
+Exact sourcec4cb8d2/code2026093013 on API30/x86_64: the supported OTP
+page appeared, but `uiautomator dump /proc/self/fd/1` while the numeric keyboard
+was open returned `ERROR: could not get idle state`, so the bounded wait
+failed. The first fictional challenge expired during that failed probe. Failed
+probe logs/screenshots and helper versions remain private. The OTP TextInput is
+intentionally positioned off-screen in app/otp.tsx; expecting its accessibility
+label in the visible hierarchy is an incorrect automation assumption. Dismissing the soft keyboard alone also failed; retain that failed proposed
+workaround. A bounded read-only API30 snapshot helper now captures the active
+fictional app hierarchy without demanding global idle. Focus the visible code
+boxes and verify the active owned numeric input method before sending a fresh
+fixture challenge via protected IPC/stdin. No provider SMS, fixed OTP, source
+authentication bypass or ADB restart is an acceptable workaround. Compilation, API30 native snapshot and code3013 secondary administrator login
+using a fresh cryptographic challenge all passed. This fixes automation only;
+the installed app and its verifier are unchanged. No countdown pause or device
+reset was used. Other Android API levels are not verified.
+
+### Dual-CA native switching and conditional automatic start
+
+Exact code3013/sourcec4cb8d2/e809e0fc APK: ordinary secondary selection, fresh
+mock challenge/native actual verifier login, Switch Demo Administrator profile,
+loaded empty Orders/invoices without primary A/B/invoice cache, Home return and
+cold persistence PASS. Normal manual return preview displayed Fictional Core
+Warehouse and activation cleared secondary authentication to login. Subsequent
+cold discovery displayed Configuration Error/Server discovery timed out: FAIL
+preserved. Host pinned primary HTTPS discovery returned200 in8.13s and8.09s;
+the exact timeout cause is not established. An unconditional back-key automation
+step reached Launcher; focus guard refused subsequent submission, no ANR. The
+new automation checks actual keyboard visibility before dismissing it. Normal
+app Retry then fresh primary actual-verifier login/CustomerA orders/invoice
+20261005 total182 PASS separately. This recovery does not erase the failure or
+establish a clean full switching trip.
+
+Current3013 three cold launches PASS;30-minute read/navigation/background
+rehearsal RUNNING, no business writes. Exact-artifact native receipts/PDF and
+the final bound executable plan remain open. The operator authorized automatic
+start of the isolated fixture/emulator overnight run when current tasks and
+blockers pass, using recommended routine defaults. No overnight run or timer
+has started at this recorded checkpoint; hardware/provider/release gates stay
+separate.

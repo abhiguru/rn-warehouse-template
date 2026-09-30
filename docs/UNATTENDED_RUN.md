@@ -6,9 +6,20 @@ input, not a security boundary: inspect every command before using it. Never use
 a pilot, production state, a physical device serial or real provider delivery.
 A runner smoke check does not establish application acceptance.
 
-The installation is paused for an operator-managed six-core VM change/reboot.
-Follow [CPU_UPGRADE_RESUME.md](CPU_UPGRADE_RESUME.md) on explicit resume before
-starting new diagnostics or a long plan. Existing failed ANR evidence is retained.
+The operator resumed after the VM change: eight guest CPUs and usable KVM are
+verified. [CPU_UPGRADE_RESUME.md](CPU_UPGRADE_RESUME.md) preserves the pause and
+current bounded results. Earlier failed ANR evidence is retained; a passed
+30-minute code3010 rehearsal is not the full overnight plan.
+
+## Launch authorization for this exercise
+
+The operator authorized automatic launch after current tasks and prerequisite
+blockers pass. Use recommended defaults for routine fixture choices. This does
+not waive failed readiness checks or authorize production/pilot/recovery access,
+real SMS delivery, physical-device changes, destructive actions, merging or a
+release. Record the exact plan, bindings, private evidence directory and process
+identifier when it starts. If a check fails, preserve its evidence and reconcile
+state before retrying; do not launch the long run against a known failure.
 
 ## Before preparing a long plan
 
@@ -38,7 +49,11 @@ starting new diagnostics or a long plan. Existing failed ANR evidence is retaine
    not proof that every emulator failure has the same cause.
 5. Review the per-case prerequisites and postconditions. Interrupted writes and
    two-instance authentication need their own guarded controls/second fixture;
-   do not replace either case with link-offline or unauthenticated discovery.
+   do not replace either case with link-offline or unauthenticated discovery. Use
+   the backend FIXTURE_FAULT_REHEARSAL.md for guarded response-loss controls and
+   independent database postconditions. Native numbered retries now use the
+   complete normalized body key; changing the form after a lost response is a
+   different attempt and requires reconciliation first.
 
 ## Verified viewer prerequisite on the disposable API30 emulator
 
@@ -81,6 +96,56 @@ saved record; installation/handler discovery alone is insufficient. Preserve
 private screenshots and, when checking an export, its hash/text. Do not select
 printing, Bluetooth or an external delivery destination in this exercise.
 Final code3010 native share/render and reader-copy reconciliation PASS527–529.
+
+## Bounded snapshots for an active OTP countdown on API30
+
+The stock shell `uiautomator dump` returned `ERROR: could not get idle state`
+on the verification page with an active countdown, including after dismissing
+the keyboard. Waiting until expiry creates a stale challenge. Keep these failed
+attempts as failures. Android's shell capture first waits for global idle;
+see the [AOSP shell implementation](https://android.googlesource.com/platform/frameworks/base/+/android11-release/cmds/uiautomator/cmds/uiautomator/src/com/android/commands/uiautomator/DumpCommand.java).
+
+For this expressly owned API30/x86_64 fictional emulator, the read-only
+`scripts/fixture-ui/FixtureUiCapture.java` uses the existing shell accessibility
+wrapper and a bounded root snapshot instead. It refuses another API, a
+non-generic device or another active app root. The host must independently verify
+its owned AVD, installed APK/hash, actual focus, portrait720x1280 viewport,
+SELinux and ANR/crash state. This is an internal Android shell API: other Android
+versions are NOT TESTED. It does not change timers, authentication or the app.
+
+Build in a new private directory with the already documented JDK17/SDK36:
+
+```bash
+umask 077
+mkdir -m 700 "$FIXTURE_PRIVATE/ui-capture"
+javac --release 8 -classpath "$ANDROID_HOME/platforms/android-36/android.jar" \
+  -d "$FIXTURE_PRIVATE/ui-capture" scripts/fixture-ui/FixtureUiCapture.java
+"$ANDROID_HOME/build-tools/36.0.0/d8" --min-api 30 \
+  --lib "$ANDROID_HOME/platforms/android-36/android.jar" \
+  --output "$FIXTURE_PRIVATE/ui-capture/capture.jar" \
+  "$FIXTURE_PRIVATE/ui-capture/FixtureUiCapture.class"
+```
+
+Choose an unused `/data/local/tmp/warehouse-fixture-ui-capture.jar` path on that
+emulator only; do not overwrite an existing helper. Push the JAR using the
+explicitly selected owned emulator, chmod600 and compare remote/local SHA256.
+Bind the source and compiled JAR hashes in the test plan. Capture stdout to a
+private0600 file, never chat or Git:
+
+```bash
+adb -s "$SELECTED_EMULATOR" exec-out env \
+  CLASSPATH=/system/framework/uiautomator.jar:/data/local/tmp/warehouse-fixture-ui-capture.jar \
+  app_process /system/bin FixtureUiCapture > "$FIXTURE_PRIVATE/ui-raw.xml"
+```
+
+Redact phone numbers, numeric challenges and OTP field values before displaying
+or archiving a sanitized hierarchy. Poll explicit screen/control assertions with
+a deadline; a snapshot alone does not prove loading completed. The OTP input is
+intentionally off-screen. Confirm the displayed fictional phone/page, focus its
+visible code boxes, then verify the active input method belongs to the fixture
+package and is numeric before reading its fresh mock challenge from0600 IPC.
+Submit through stdin, never argv/logs. Code3013 snapshot/secondary native verifier
+login passed with this procedure; stock idle-wait failures remain recorded.
 
 ## Private plan and evidence
 
@@ -157,9 +222,19 @@ remain historical evidence, not new test executions.
 The runner's regression tests cover successful resume without a repeated write,
 changed bindings/plan/evidence/postconditions, FAIL/BLOCKED dependency stop,
 timeouts, interrupted writes, failed preflight, private permissions and locking.
-These checks are infrastructure evidence only. The complete long native plan,
-current device stability, external PDF handoff, fault injection and second
-fixture remain separate gates until their own evidence is recorded. Preserve
+These checks are infrastructure evidence only. The complete long native plan remains open. The second backend independently
+passed TLS/auth. Exact dual-certificate APK3013 build/audit/readback and native
+secondary login/profile/empty cache/background/cold persistence passed. One
+return-to-primary cold discovery timed out (FAIL retained); supported Retry and
+fresh primary login/read passed separately. Clean full switching, native receipt
+faults, exact3013 PDF and completed current-artifact readiness remain launch
+gates. Three3013 cold launches passed; its30-minute rehearsal is still RUNNING.
+Code3010 emulator readiness and its PDF handoff passed their recorded scopes;
+backend API fault controls passed separately. Code3012 dispatch before/after
+native retries PASS582 with independent final database reconciliation, PDF585 and
+1802.8s/29cycle readiness PASS. Native receipt faults and the new dual-CA artifact
+require their own evidence. Hardware/provider and physical acceptance remain
+separate gates. Preserve
 line-level versus header semantics: line amounts/taxes can sum differently
 from the independently ceiled saved header. Discounts and header rounding
 must not be inferred as storage charges or counted twice.
