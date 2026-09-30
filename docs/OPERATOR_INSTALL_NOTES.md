@@ -244,3 +244,34 @@ periods and the bounded successful trial.
 This is an in-progress record, not current end-to-end acceptance. Physical
 authenticated lifecycle, standalone disconnected operation and native
 authenticated workflows remain open; no historical device result closes them.
+
+## Unattended fixture/emulator run requested — in progress
+
+The operator selected fixture/emulator automation with real-SMS and physical
+hardware gaps reported separately. No further phone/OTP prompts are planned.
+Current real administrator native login also passed before this scope change:
+the exact installed APK displayed Orders, Fictional Customer A and staff tabs.
+Actual current-device Wi-Fi transport was observed, Metro port 8081 was not
+listening, and Home/launcher preserved the authenticated Orders screen. This
+does not establish disconnected-USB operation or cellular acceptance.
+
+This VMware guest exposes neither CPU virtualization nor /dev/kvm. Emulator
+37.1.11.0 / build 15917651 and Google APIs API 35 x86_64 revision 9 were installed
+into the SDK. A new private TestWarehouseFixture_API35 AVD uses software
+emulation, SwiftShader, 2048 MiB, two cores and no snapshots/window/audio.
+Android eventually completed boot; the bounded probe observed completion after
+439 seconds, following the earlier creation/start period. Earlier incomplete
+probes and instruction-feature mismatch warnings are retained; no CPU flag
+substitution, host change or host reboot was performed. The unsupported
+`emulator -help-qemu` diagnostic failed without affecting the running AVD.
+
+A separate fictional fixture APK must be built for x86_64; the physical phone's
+arm64 artifact is not reused. `scripts/prepare-emulator-fixture.mjs` adds a
+generated native trust overlay only when applicationId is exactly
+`in.gurucold.warehouse.fixture`. It accepts a valid local CA for
+backend-core.example.test and restricts that trust to this domain, preserving
+system trust for other hosts and denying cleartext. It refuses normal warehouse
+packages and an existing network-security policy. Two guard tests passed,
+including normal-package, wrong-hostname and expired-certificate rejection.
+The production authentication implementation is unchanged. Exact fixture
+artifact/build/positive integration acceptance remains pending.
