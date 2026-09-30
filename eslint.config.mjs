@@ -6,6 +6,13 @@ import reactHooks from 'eslint-plugin-react-hooks';
 export default [
   js.configs.recommended,
   {
+    files: ['app.config.js'],
+    languageOptions: {
+      sourceType: 'commonjs',
+      globals: { module: 'readonly', process: 'readonly' },
+    },
+  },
+  {
     files: ['scripts/**/*.mjs'],
     languageOptions: {
       globals: {

@@ -22,7 +22,7 @@ public doctor and identity discovery. The fresh host is Ubuntu 24.04.3 x86-64
 VMware with 5.7 GiB RAM, 4 GiB swap and initially 63 GiB free disk. Backend host
 preparation installed Node 22.23.3/npm 10.9.9. OpenJDK 17.0.20.1, command-line tools 22.0 and ADB 37.0.1 are now installed.
 The operator selected a physical Android phone; its USB debugging authorization
-is pending. Historical phones, APKs and successful compilation do not
+is now complete. Historical phones, APKs and successful compilation do not
 count as this attempt's device acceptance.
 
 ## Reproducible local standalone test APK
@@ -41,6 +41,9 @@ verify its published SHA-256 before extracting, and install the archive's
 `cmdline-tools` directory at `$HOME/Android/Sdk/cmdline-tools/22.0`. This attempt
 used `commandlinetools-linux-15859902_latest.zip`, SHA-256
 `4e4c464f145a7512b57d088ac6c278c03c9eea610886b35a5e0804e74eedf583`.
+The actual tools revision is 22.0. Native build completion has not been established
+on the initial 5.7 GiB VM; the resumed build host has 17.2 GiB RAM. Record actual
+memory/disk, and finish unit/static checks before heavy native compilation.
 The actual tools revision is 22.0. Do not assume the archive revision from its
 filename or copy another installation's private state.
 
@@ -104,6 +107,21 @@ phone ABI; other architectures need their own artifact. Record Gradle/JDK/SDK
 versions, source pair, native identity, signing certificate, command, artifact
 SHA-256 and build ID. Audit that exact APK before installing it.
 
+Authorize USB debugging on the operator-selected phone. On VMware, attach USB
+to the guest. Distinguish unauthorized/offline/absent states. If Samsung MTP is
+visible in `lsusb` but ADB loses the selected phone, and no other ADB task uses
+this server, restart this owned server:
+
+```bash
+adb kill-server
+ADB_USB_LEGACY=1 adb start-server
+adb devices -l
+```
+
+This restored detection during this attempt; the operator still had to accept
+Android’s RSA prompt. Do not delete keys, change another app or assume this
+setting fixes every host.
+
 Authorize USB debugging on the operator-selected phone. Keep its serial in
 private evidence, select it explicitly for every adb command, and record only
 model/OS in shared notes. Install the APK with `adb -s "$SELECTED_DEVICE" install
@@ -112,6 +130,12 @@ its data. Choose the new HTTPS server manually, verify the displayed warehouse
 identity, and test QR, malformed origins, cold launch, background/foreground and
 server persistence. Disconnect USB, keep Metro stopped and launch from the phone
 icon before claiming standalone acceptance. Test Wi-Fi and cellular separately.
+For a local QR test, install `qrencode` (this VM used 4.1.1), then generate
+`qrencode -s 12 -m 4 -o /private/path/origin-qr.png https://YOUR-DEDICATED-API-HOST`.
+Display that public-origin image on the VM and scan it with the app camera; the
+payload is only the HTTPS origin, not JSON, credentials or a deep link. Camera
+permission and an actual successful scan remain separate acceptance steps.
+
 Real authentication needs explicit SMS permission and owned phones; input OTPs
 locally, never in chat/logs. Historical device tests do not count for this APK.
 
@@ -122,6 +146,10 @@ locally, never in chat/logs. Historical device tests do not count for this APK.
 | Candidate README `git clone` sequence | Candidate changes expected; clone defaults to a different main commit | Pin full candidate before npm/setup; record both sources and clean status | Remote candidate availability PASS; Android installation not started |
 | Mobile handoff at candidate | Backend branch/PR described as current review dependency; backend PR #68 has merged | Link pinned backend merge documentation and distinguish mobile draft | GitHub backend merge and seven CI jobs PASS; no fresh backend/device acceptance inherited |
 | Review-worktree `npm run test:setup` before `npm ci` | Expected setup tests; missing Expo/Metro modules caused 7 failures | Run locked dependency installation in every checkout before checks | Corrected review checkout: 33/33 setup tests PASS; original failed log preserved privately |
+| Full Jest run alongside Gradle/Metro native compilation | 216/217 passed; one GRN history-render test exceeded its unchanged five-second timeout | Preserve failure; rerun after the heavy native build finishes, without loosening assertions or timeouts | Cause not established; CPU contention is an inference. Initial candidate 217/217 run remains separate evidence |
+| New `app.config.js`, `npm run lint` | 5 no-undef errors for Node globals, plus existing warnings | Scope CommonJS/module/process globals to this config in ESLint | Corrected lint: 0 errors, 1468 existing warnings; 33/33 setup tests PASS |
+| SDK/ADB 37.0.1 on VMware, reconnect | Device initially unauthorized, then absent while Samsung MTP remained visible | Restart only this VM’s ADB server; historical `ADB_USB_LEGACY=1` restored detection; operator accepted RSA prompt | Current authorization PASS; record exact versions, not a universal requirement |
+| First standalone build on 5.7 GiB VM | Build started; process interrupted before an APK existed | Preserve first log; resumed VM reports 17.2 GiB RAM; rerun same command | Larger-memory build still running; 5.7 GiB completion not established; no agent-issued reboot |
 | Optional native identity configuration | Existing default package could collide with another warehouse app | Add validated package/name/scheme/version-code overrides; no default permission/plugin changes | 3 new guard/default/identity tests PASS; artifact/device checks pending |
 | Read historical Android build workflow | Standalone warehouse operation required; documented debug APK normally requires Metro | Treat debug compilation/audit as limited evidence; establish a supported bundled test build and test without Metro/USB in phase 2 | No standalone artifact or device pass claimed yet |
 
@@ -134,7 +162,7 @@ locally, never in chat/logs. Historical device tests do not count for this APK.
 | npm ci, SDK compatibility, Expo Doctor, unit/setup, lint, typecheck, contract, dependency and secret checks | PASS | Candidate: 217 Jest tests / 33 suites, 30 setup tests, lint 0 errors / 1468 warnings, typecheck, SDK compatibility, Expo Doctor 18/18, npm audit 0 findings, public backend and static contract, redacted source/history scan |
 | Android SDK/JDK/native generation and build | NOT TESTED | Install documented native prerequisites in phase 2 |
 | Artifact hash/build ID/audit | NOT TESTED | No current artifact |
-| Selected physical Android model/OS/install | BLOCKED | Selected phone USB debugging unauthorized; keep serial private |
+| Selected physical Android model/OS/install | NOT TESTED | Authorized Samsung SM-A346E, Android 15/API 35, arm64-v8a; dedicated package absent; artifact build underway |
 | Emulator alternative | NOT TESTED | Emulator results cannot close physical acceptance |
 | Manual server selection and displayed identity | NOT TESTED | Test on exact installed artifact and independent origin |
 | QR selection | NOT TESTED | Requires selected device camera |
