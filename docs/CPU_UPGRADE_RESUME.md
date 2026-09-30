@@ -26,27 +26,29 @@ service/artifact state. Use OPERATOR_INSTALL_NOTES.md for the current matrix.
 
 ## Next work at the resumed checkpoint
 
-Owned emulator now has sourcec4cb8d2/code2026093013, SHA256
-`e809e0fc875788f4af0794da13e28d966e5a804f54e940421a9a4330d79d47b7`.
-Fresh standalone dual-CA build/audit/readback592–594 PASS. Secondary native
-actual-verifier login/profile, empty Orders/invoices and background/cold
-persistence PASS; return-to-primary discovery timed out once, preserved FAIL.
-Normal Retry plus fresh primary mock verifier login restored primary data PASS
-separately. A full clean round trip remains required. Stock shell UIAutomator
-cannot reliably capture the active OTP countdown; the bounded API30 snapshot
-correction and failed keyboard-only workaround are in UNATTENDED_RUN.md.
-Current3013 three cold launches passed; its30-minute readiness is RUNNING,
-not PASS. No overnight run has started at this checkpoint.
+Current owned emulator has source42a5559b4abcad3ddd7601b2e4885e3c29101c76,
+code2026093014/x86_64, SHA256
+6e882894ff4a0533b31e755fda6930aad6fea8c875030c083a887d445be5bb17.
+Clean build606/exact compiled trust/signature/installed bytes607 PASS;248Jest/
+43setup/type/lint PASS604, mobile42 CI36751524355 all4 jobs PASS. Native clear/retype
+GRN number and both native receipt response-loss/unchanged retry/database/image
+checks608 PASS. Actual private PDF609, clean two-origin authentication/cache/cold
+persistence610 and offline/reconnect PASS. Both fixture gateways include exact
+DNS258 overlay601; identity/credentials/state preserved. Fresh258 fixture06 full
+checks599/same-input preservation605 PASS and state retained stopped. Earlier
+3013 timeout/Retry/GRN defect remain failed history;3013 readiness completed
+1804.6s/29cycles PASS, not current3014 evidence.
 
-Complete native receipt response-loss cases on new reserved fictional lots,
-with independent no-commit/commit reconciliation before unchanged-form retries.
-Verify native PDF on this exact artifact. Freeze source, overlays, APK/CA/fixture
-identities and helpers into a fresh private executable plan; rehearse its
-read-only preflight/resume. Do not repeat previously committed writes or
-transfer3012 results to3013. The operator authorized automatic overnight launch
-once current tasks and blockers pass, using recommended routine defaults.
-Hardware/provider/release gates remain separate; no production/pilot/recovery
-access or permission to merge/release is implied.
+Current3014 three cold launches and1801.7seconds/28cycles readiness PASS.
+Rehearse the new
+public native/network soak helper without concurrent UI automation, freeze private
+plan/APK/source/overlays/identities/CA/helpers, check remaining CA horizon/resources
+and launch automatically if all required checks pass. Operator authorized this
+conditional automatic start and recommended routine defaults; no further input
+is needed. No overnight run/timer started yet. No production/pilot/recovery, real
+SMS, physical-device changes, destructive actions, merge or release are authorized
+by this scope. Backend current CI retains dependency audit FAIL/dependent jobs
+SKIPPED. Preserve hardware/provider/release and unsaved-form/same-origin gaps.
 
 ## Paused checkpoint — 2026-09-30
 

@@ -217,24 +217,142 @@ its children are stopped before removing that specific lock. Never automatically
 remove a lock or globally kill ADB/emulators to resume. Previously passed cases
 remain historical evidence, not new test executions.
 
+## Preparing the current eight-hour native read plan
+
+New optional tooling is in `scripts/fixture-ui/soak-api30.py`,
+`scripts/fixture-ui/verify-soak-summary.py` and `scripts/fixture-soak-preflight.mjs`.
+Backend review helpers are `scripts/fixture-soak-database.mjs`,
+`scripts/fixture-soak-http.mjs` and their pure observation module. Keep a separate
+checkout of the reviewed tooling and record its exact pushed commit. It is not
+the APK's source commit and does not modify the installed app. Bind every helper
+and imported module in the plan.
+
+Complete the preceding native gates first, using unused reserved fictional
+receipts FXF301/302 quantity4 each and unchanged retries. Do not run those writes
+again if evidence/state already exists. Before/after dispatch evidence on3012
+stays3012. The read plan checks reserved FXF101/102 stock7, FXF200 stock6 and
+FXF301/302 stock4; this is a prerequisite layout for this exercise. A fresh
+operator must prepare and reconcile those cases before capturing a baseline;
+never weaken the guard to make a differently populated warehouse pass.
+
+The item suggestion on this API30 viewport displayed visually but reported
+inverted accessibility bounds. Preserve the failed accessibility assertion.
+Inspect a fresh screenshot/focus and select the actual visible suggestion, then
+verify the selected item. Do not globally loosen bounds checks. For the system
+multi-file image picker, taps did not select the fictional file in this attempt;
+use Tab until the actual focused node names the expected file, then Enter.
+Verify the uploaded image and final confirmed WebP/private Storage object.
+These are specific automation limits, not general Android accessibility acceptance.
+
+Create a0700 privateRoot and results directory and a0600 config outside Git.
+Use an absolute path for every value below. `emulatorInputs` must be private JSON
+with `createdOnlyForUnattendedFixtures=true`, the selected emulator serial,
+`artifact` (package/source/path/sha256/versionCode), and the previously validated
+`uiCapture` metadata (api30, viewport[720,1280], jar/local hash/remotePath). Never
+print that file or commit its serial. The source manifest records actual backend
+HEADs, every overlay/hash and independently created state/identity/CA.
+
+Config fields:
+
+| Field | Required value or purpose |
+| --- | --- |
+| scope | isolated-fictional-fixture |
+| privateRoot / results / emulatorInputs | Private directories and metadata path |
+| versionCode / apkSHA256 / mobileSource | Exact installed/audited APK values |
+| adb / node | Absolute installed executable paths, Node22 |
+| backendCheckout / backendState | Owning core fixture checkout/private state |
+| secondaryBackendCheckout / secondaryBackendState | Separate switching fixture checkout/private state |
+| primaryCA / secondaryCA / faultSocket | Independently audited certificates and protected relay control socket |
+| databaseHelper / httpObserver | Exact reviewed backend read-only helper paths |
+| businessBaseline | Private snapshot captured below |
+| nativeSessionId | Private actual native session ID, matched to the fresh login time window |
+| orderLabel / invoiceLabel | Exact expected loaded native labels from the prepared fictional data |
+| startRecord | New private0600 start record, created only at actual launch |
+| prerequisites | Current artifact audit, two native receipt results, current PDF, clean switching, completed readiness and short-helper rehearsal JSON paths |
+
+Export owning paths explicitly for backend observer commands. A review checkout
+may contain tooling but does not own the running fixture. The first invocation
+from the review root correctly failed the ownership check. These tools require
+WAREHOUSE_FIXTURE_CHECKOUT and import its unchanged validator; no guard bypass:
+
+```bash
+export WAREHOUSE_STATE_DIR="$OWNED_CORE_STATE"
+export WAREHOUSE_FIXTURE_CHECKOUT="$OWNED_CORE_CHECKOUT"
+export PATH="$NODE22_BIN:$PATH"
+node "$BACKEND_TOOLS/scripts/fixture-soak-database.mjs" snapshot "$PRIVATE/business-baseline.json"
+node "$BACKEND_TOOLS/scripts/fixture-soak-database.mjs" session "$PRIVATE/native-session-baseline.json"
+```
+
+SQL uses an explicitly read-only repeatable-read transaction. Locally identify
+the one native administrator session created within the actual fresh native
+login window, save its ID in the private config and confirm its fixture identity.
+The long run performs no OTP request or login; it must keep that session alive.
+The final verifier requires unchanged OTP verification count/session IDs and at
+least four observed refresh-credential rotations across the nine blocks. This
+proves observed session renewal; it does not alone establish revoked-session or
+every expired-token case. Do not infer successful fresh reads from cached tabs.
+
+After the30-minute rehearsal finishes and no other UI automation is running:
+
+```bash
+python3 "$MOBILE_TOOLS/scripts/fixture-ui/soak-api30.py" "$PRIVATE/config.json" run rehearsal 60
+python3 "$MOBILE_TOOLS/scripts/fixture-ui/soak-api30.py" "$PRIVATE/config.json" verify rehearsal 60
+sg docker -c 'node /ABSOLUTE/MOBILE_TOOLS/scripts/fixture-soak-preflight.mjs /ABSOLUTE/PRIVATE/config.json'
+```
+
+Replace the two literal absolute paths locally. Bind the short result as a
+prerequisite. An initial copied preflight socket variable shadowed config and
+failed; the extracted bounded read-only socket helper/regressions fix it. A
+second actual preflight exceeded Node's default1MiB stdout buffer on retained
+Android events (ENOBUFS at1060581bytes). It now uses an explicit8MiB ceiling;
+full ANR/crash checks remain. Both failures are retained; no logs were cleared.
+
+Make a new private schema1 plan using the schema above. Its nine steps are
+soak-01 through soak-09, each invoking the public Python helper `run` with3200
+seconds and `verify` with the same ID/duration. Use timeout3500 for run and120
+for verify. Each block has one cold launch, force-refreshes Orders, independently
+observes a new actual Kong Orders RPC200, reads invoice20261005/net173/tax9/
+surcharge2.5/total182, cycles Home/foreground, checks ANR/crash and reconciles
+reserved stocks/business counts/saved invoice. No business write is repeated.
+Add a final step running verify-soak-summary.py, with the same command as its
+read-only verify. The nine durations sum to eight hours; checks add some overhead.
+Use a180-second preflight before each step. Bind config, APK, source manifest,
+identities, CA files, runtime Compose files, original guards, backend observers/
+parser, snapshot source/JAR, all public plan/soak/preflight helpers/imports and
+prerequisite/baseline evidence. The existing runner validates summed timeouts
+below24hours and stops at the first failure.
+
+At actual launch, create0600 startRecord containing started UTC and
+plannedEndMillis = start time +8.5hours. Preflight validates remaining planned
+window plus one hour of CA margin; before start it requires10hours. Never reuse
+an old start record to make an expired certificate pass. Keep owned fixture
+services/bridges/emulator running. Start only the new reviewed plan, using an
+unused scoped user systemd unit with no automatic restart and private logs:
+
+```bash
+systemd-run --user --unit=warehouse-fixture-overnight-YOUR_ID \
+  --property=Restart=no --property=UMask=0077 \
+  --working-directory="$MOBILE_TOOLS" \
+  "$NODE22_BIN/node" scripts/run-fixture-plan.mjs "$PRIVATE/plan.json" "$PRIVATE/run-evidence"
+systemctl --user status warehouse-fixture-overnight-YOUR_ID.service
+```
+
+Record actual unit/PID/plan hash/start and verify the ledger is RUNNING before
+reporting started. Do not count a scheduled command as a started run. If the
+unit exits, inspect its private ledger/child logs. The completed ledger and final
+summary must both PASS; elapsed time alone is insufficient. Ordinary stop is
+`systemctl --user stop` for that exact owned unit; preserve interrupted evidence
+and reconcile before any new plan. It does not stop Test1 or other services.
+
 ## Current gate status
 
-The runner's regression tests cover successful resume without a repeated write,
-changed bindings/plan/evidence/postconditions, FAIL/BLOCKED dependency stop,
-timeouts, interrupted writes, failed preflight, private permissions and locking.
-These checks are infrastructure evidence only. The complete long native plan remains open. The second backend independently
-passed TLS/auth. Exact dual-certificate APK3013 build/audit/readback and native
-secondary login/profile/empty cache/background/cold persistence passed. One
-return-to-primary cold discovery timed out (FAIL retained); supported Retry and
-fresh primary login/read passed separately. Clean full switching, native receipt
-faults, exact3013 PDF and completed current-artifact readiness remain launch
-gates. Three3013 cold launches passed; its30-minute rehearsal is still RUNNING.
-Code3010 emulator readiness and its PDF handoff passed their recorded scopes;
-backend API fault controls passed separately. Code3012 dispatch before/after
-native retries PASS582 with independent final database reconciliation, PDF585 and
-1802.8s/29cycle readiness PASS. Native receipt faults and the new dual-CA artifact
-require their own evidence. Hardware/provider and physical acceptance remain
-separate gates. Preserve
-line-level versus header semantics: line amounts/taxes can sum differently
-from the independently ceiled saved header. Discounts and header rounding
-must not be inferred as storage charges or counted twice.
+Exact source42a5559/code3014 clean build/audit/readback607, native clearing-number
+regression/two receipt loss-retry-image cases608, actual private PDF609, clean
+two-origin verifier/cache/cold persistence610 and offline/reconnect PASS. Current
+3014 three cold launches and1801.7seconds/28cycles readiness PASS. New read-only preflight,64 backend units and45 mobile setup
+checks PASS. The final exact-helper short rehearsal/plan binding/launch remain
+open. No overnight run or timer has started. Earlier3013 failures/readiness and
+3012 dispatch/PDF/readiness stay scoped to their actual artifacts. Hardware,
+real-provider, cellular, unsaved-form/same-origin replacement and release gates
+remain separate. The operator authorized automatic launch when current gates
+pass; no additional approval is required for this isolated plan.

@@ -39,14 +39,14 @@ overnight suite has not started.
 | Case | Status | Current evidence and limit |
 | --- | --- | --- |
 | Invoice arithmetic and saved display | PASS, scoped |239 Jest tests;470 native original179/discount177/surcharge182 checks; final57/code3010 native saved list/overview/breakdown and half-cent review/confirmation/save2 |
-| Exact installed fixture artifact | PASS |c4cb8d24bedbb6bb730a6631385d4f6e114210c2, code2026093013/x86_64; clean build4m17s/983tasks, generic/exact signature/manifest/two-CA policy/installed readback592–594; SHA256 e809e0fc875788f4af0794da13e28d966e5a804f54e940421a9a4330d79d47b7. Prior3010/3012 native evidence remains attached to those artifacts |
-| Private PDF and local viewing | PASS, scoped |Code3012 invoice20261005 native PDF SEND to approved Librera9.5.7/code7222: visible render585 and reader-copy number/tax9/discount-2.5/total182/hash PASS. Earlier half-cent527–529 remains scoped3010 |
-| Stacked PR CI trigger | PASS |6fa6553/run36705487757 and certificate guardfa74f28/run36705795453 each4/4 jobs PASS; runner812 lint failure preserved; correctionb22c3b5 local and remote lint/unit/setup job PASS; currentb03f197 run36717966812 all4 jobs PASS |
+| Exact installed fixture artifact | PASS |42a5559b4abcad3ddd7601b2e4885e3c29101c76/code2026093014/x86_64; clean checkout build606/exact audit/readback607; SHA2566e882894ff4a0533b31e755fda6930aad6fea8c875030c083a887d445be5bb17. Earlier results retain their own APK scope |
+| Private PDF and local viewing | PASS, scoped |Exact code3014 native SEND/render and copied number/tax9/discount-2.5/total182/three lines/hash609 PASS using approved Librera9.5.7/code7222. Wrong expected net173/9.00 template fields retained as failed assertion/read-only reconciled. Historical half-cent527–529 stays scoped3010 |
+| Stacked PR CI trigger | PASS for mobile |Current app42a5559/run36751524355 all4 jobs PASS; earlier failures retained. Backend383 CI dependency audit FAIL and dependent jobs SKIPPED; no release claim |
 | Certificate horizon guard | PASS at check time |Requested12-hour horizon verified; CA expires2026-10-01T09:51:45Z; recheck before every actual long run |
 | Bounded runner infrastructure | PASS, scoped |Six regression cases;42 full setup checks; guarded read-only fixture smoke/resume514 retained one execution; changed runner bindings require new evidence, not blind reuse |
-| Emulator cold-start readiness | PASS, artifact-scoped |Eight-host-CPU/KVM/API30/two-emulated-core trial: OS boot25.2s plus120s observation; code3010 three clean cold launches plus1804s/29cycles read/navigation/background rehearsal550. Earlier no-KVM ANRs525 remain FAIL; code3012 three cold launches and1802.8s/29cycles PASS550-20260930T143230Z; no ANR/crash, ADB restart or user interaction |
-| Lost-response controls and API reconciliation | PASS, scoped |Reviewed relay2bbc681:12 regressions/60 backend units; installed-state refusal571; four owned receipt/dispatch before/after API cases566 and final read-only quantities/stock/cache572. Native dispatch before/after same-form retries PASS582 on3012; native receipt cases remain open |
-| Full overnight suite | NOT TESTED / BLOCKED |Not started. Native receipt faults, new dual-certificate artifact/native switching and a complete bound executable plan remain required; separate backend switching fixture TLS/auth passed |
+| Emulator cold-start readiness | PASS on3014 |Three cold launches plus1801.7seconds/28cycles PASS550-20260930T181721Z, no ANR/crash/ADB restart/human. Earlier failures/artifact results retained |
+| Lost-response controls and API reconciliation | PASS, scoped |Native3014 receipt before/after loss: independent no-commit/commit before unchanged retries, one line/qty4/stock4/cache and success608; confirmed private images PASS. Native dispatch results582 remain3012, API four-case evidence566/572 retained |
+| Full overnight suite | NOT TESTED |Automatic launch authorized after final readiness, executable plan and exact helper rehearsal pass. Native3014 clean two-origin switching610/offline-reconnect/PDF609/receipt608 PASS; long plan being frozen |
 | Current normal arm64/physical acceptance | NOT TESTED |Phone remains8d9da8e/code3001; normal historical e54/code3008 build is separate; corrected native evidence is emulator-only |
 
 Do not rerun successful unchanged cases to obscure these boundaries. Line-level
@@ -66,13 +66,13 @@ For the corrected sequence, fetch review PR #34 and pin the tested code source
 before installing dependencies:
 
 ```bash
-export MOBILE_BUILD_CHECKOUT="$HOME/warehouse-mobile-build-2026093013"
+export MOBILE_BUILD_CHECKOUT="$HOME/warehouse-mobile-build-2026093014"
 test ! -e "$MOBILE_BUILD_CHECKOUT"
 umask 022
 git clone --branch codex/fresh-vm-operator-notes \
   https://github.com/abhiguru/rn-warehouse-template.git "$MOBILE_BUILD_CHECKOUT"
 cd "$MOBILE_BUILD_CHECKOUT"
-git checkout --detach c4cb8d24bedbb6bb730a6631385d4f6e114210c2
+git checkout --detach 42a5559b4abcad3ddd7601b2e4885e3c29101c76
 git rev-parse HEAD
 git status --short
 ```
@@ -81,9 +81,10 @@ This pin includes invoice reconciliation, certificate/runner safeguards and
 stable keys for identical numbered GRN/dispatch RPC bodies after a lost response.
 It changes application code relative to57add44; previous native results cannot
 be attributed to this source alone. Fresh code3012 x86_64 build/audit/install is
-recorded below. Optionalc4cb8d2 additionally supports independent exact-domain
-fixture certificate anchors; app/dependency source matchesb03. Current code3013
-clean standalone build/audit/install/readback PASS592–594 with both CAs. The earlierb22 clean checkout passed its source checks but did
+recorded below. Source42a5559 also includes dual fixture certificate anchors and
+the cleared-GRN-number loading-state correction. Clean code3014 build606 and
+exact signature/compiled CA policy/manifest/bundle/installed readback607 PASS.
+Keep all native results attached to the APK actually tested. The earlierb22 clean checkout passed its source checks but did
 not produce example3011. The historical normal arm64 build remains e54/code3008
 and the physical phone remains8d/code3001. Neither establishes current physical
 acceptance. Choose your own unused build identity/identifier.
@@ -144,7 +145,7 @@ a later operator must choose their own unused identity.
 export WAREHOUSE_ANDROID_PACKAGE=in.gurucold.warehouse.test1
 export WAREHOUSE_APP_NAME='Test Warehouse 1'
 export WAREHOUSE_APP_SCHEME=warehouse-test1
-export WAREHOUSE_ANDROID_VERSION_CODE=2026093013
+export WAREHOUSE_ANDROID_VERSION_CODE=2026093014
 npx expo config --type public
 # Only in the dedicated disposable build checkout:
 npx expo prebuild --platform android --clean --no-install
@@ -1559,3 +1560,68 @@ editable search field. Selecting a sender auto-populates the customer by design;
 do not wait for an already-replaced Select customer placeholder. These failed
 private automation assumptions did not submit a receipt. No user input, SMS,
 ADB reset or production data was used.
+
+### Current corrected GRN artifact and two native receipt faults
+
+Clean remote source42a5559b4abcad3ddd7601b2e4885e3c29101c76/code2026093014
+build606 PASS. Full248Jest/37suites,43setup/typecheck/lint0errors PASS604;
+[CI36751524355](https://github.com/abhiguru/rn-warehouse-template/actions/runs/36751524355) all four jobs PASS.
+Exact artifact SHA2566e882894ff4a0533b31e755fda6930aad6fea8c875030c083a887d445be5bb17,
+audited fixture signer, both compiled exact-domain certificate resources and
+manifest reference, bundled standalone code and owned-emulator installed bytes
+PASS607. Native clearing/retyping generated GRN number PASS608.
+
+Reserved FXF301 before-upstream loss and FXF302 after-success response loss each
+showed native Error, independent database no-commit/commit before retry, unchanged
+form retry, native success and exactly one receipt/line/qty4/stock4/cached success
+PASS608. Both header images confirmed as WebP with private Storage objects.
+Finally disarm and normal443-to18443 restoration passed; reserved stocks remain
+untouched by later business cases. No previously passed write was repeated.
+
+API30 reports inverted accessibility bounds for the visually displayed item
+suggestion beneath the horizontal form. The first accessibility check FAIL is
+retained; screenshot inspection showed the dropdown visible. A viewport-specific
+inspected tap selected it, followed by explicit selected-item validation. This
+is an automation limitation, not established visual clipping. Android multi-file
+picker taps did not select the fictional file in this attempt; inspecting actual
+keyboard focus after Tab and using Enter selected it. Wrong-case alert labels,
+transition-focus failures and the premature image-count wait remain failed
+attempts. This is fixture automation evidence only; do not claim general device
+accessibility acceptance or silently loosen bounds guards. Current PDF, clean
+switching, current readiness and final executable plan remain launch gates.
+
+Current backend review383367b/run36748327886 has dependency-audit FAIL
+(brace-expansion HIGH/fast-uri MODERATE), contract/redacted scan PASS and dependent
+functional jobs SKIPPED. Fresh separate DNS258 fixture full local functional
+checks599/same-input preservation605 passed; these do not erase remote failures.
+
+### Exact3014 final preflight and native recovery checks
+
+Clean two-origin authenticated switching610 PASS with current3014/source42: separate
+fresh actual mock verifier, secondary empty cache/profile/cold persistence, primary
+identity/data/cold persistence, no Retry/ADB reset/dialog dismissal/human. Link
+offline banner and restoration/manual actual Orders refresh PASS on this emulator;
+this is synthetic emulator connectivity, not physical Wi-Fi/cellular acceptance.
+Current saved invoice header and actual native SEND/render/copied private PDF609
+PASS. The template prints tax9 and total182, not net173 or9.00; a mistaken initial
+assertion FAIL is retained and corrected by read-only comparison, without re-sharing
+or repeating a write. Current3014 three cold launches PASS;30-minute rehearsal
+started2026-09-30T18:17:21Z and remains RUNNING at this checkpoint.
+
+The new read-soak observer first invoked from the review checkout was refused by
+the original fixture ownership guard. This is a correct refusal: review code and
+running fixture checkout differ. Tooling now requires an explicit owning
+WAREHOUSE_FIXTURE_CHECKOUT and imports that unchanged validator. Owned fixture
+business baseline/private administrator session snapshot/actual Orders RPC200
+observation and read-only preflight passed. Never weaken the guard or pretend a
+review tool's HEAD is the installed backend. Public helpers/plan procedure are
+in UNATTENDED_RUN.md. No overnight run/timer started; recommended defaults and
+conditional authorization remain recorded.
+
+Final3014 readiness completed1801.7seconds/28cycles/three cold launches PASS,
+without ANR/crash/Wait/ADB restart/human. New public preflight/soak source remains
+separate tooling from APK42.64 backend units/45 mobile setup checks PASS612.
+The copied preflight socket variable-shadowing failure was corrected with bounded
+read-only IPC regression checks. Retained Android events then exceeded Node's
+default1MiB stdout buffer(ENOBUFS1060581bytes); explicit8MiB cap restores full
+checks without clearing logs. Corrected actual preflight PASS612.
