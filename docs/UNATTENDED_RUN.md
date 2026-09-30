@@ -15,7 +15,11 @@ A runner smoke check does not establish application acceptance.
    helper scripts as extra bindings so changed automation cannot reuse evidence.
 2. Complete invoice/native acceptance on that exact artifact. Check the actual
    PDF handoff; a VIEW intent handler alone is insufficient for the app's SEND
-   flow. Record compatible reader version and its first-run permissions.
+   flow. Record compatible reader version and its first-run permissions. On
+   this disposable API30 image, verified Librera9.5.7/code7222 receives PDF SEND
+   but needs explicit approval for manage-all-files storage permission. The
+   operator approved that permission for this fictional-data emulator only;
+   this is not authorization for another operator's phone or shared emulator.
 3. Check certificate lifetime with prepare-emulator-fixture.mjs
    --check-certificate. WAREHOUSE_FIXTURE_MIN_VALID_HOURS must cover the planned
    run, setup and a safety margin. Compare the APK's embedded public certificate
@@ -23,12 +27,56 @@ A runner smoke check does not establish application acceptance.
 4. Complete a short emulator readiness check: boot, app cold launch, controlled
    UI navigation, foreground/background and a known fictional read. Fail on
    ANR/crash, unauthorized/disconnected ADB, unexpected package or timeout.
+   Read the actual last mCurrentFocus entry when dumpsys contains historical
+   entries; an earlier matching app entry does not establish current focus.
    Do not automatically dismiss ANRs. A recovered manual session is not a clean
    unattended readiness pass. No-KVM availability is a resource limitation,
    not proof that every emulator failure has the same cause.
 5. Review the per-case prerequisites and postconditions. Interrupted writes and
    two-instance authentication need their own guarded controls/second fixture;
    do not replace either case with link-offline or unauthenticated discovery.
+
+## Verified viewer prerequisite on the disposable API30 emulator
+
+The verified package is [Librera9.5.7-fdroid/code7222](https://f-droid.org/packages/com.foobnix.pro.pdf.reader/),
+not9.6.17, which failed on this API30 image. Download only to private fixture
+storage and compare the official F-Droid index metadata and signing certificate:
+
+```bash
+curl --fail --location https://f-droid.org/repo/com.foobnix.pro.pdf.reader_7222.apk \
+  --output "$FIXTURE_PRIVATE/librera-7222.apk"
+printf '%s  %s\n' \
+  b43e0991b7e356231077013667a90420010754681cec55873342229ead610eb8 \
+  "$FIXTURE_PRIVATE/librera-7222.apk" | sha256sum --check -
+"$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs \
+  "$FIXTURE_PRIVATE/librera-7222.apk"
+adb -s "$SELECTED_EMULATOR" shell pm list packages com.foobnix.pro.pdf.reader
+# Continue only if this package is absent in the explicitly owned emulator.
+adb -s "$SELECTED_EMULATOR" install "$FIXTURE_PRIVATE/librera-7222.apk"
+adb -s "$SELECTED_EMULATOR" shell cmd package query-activities --brief \
+  -a android.intent.action.SEND -t application/pdf \
+  -c android.intent.category.DEFAULT
+```
+
+Expected signer SHA-256:
+`ea0d90df4dde7b9a9e8eaebe2e8aa47ed13f4df9d77aa64bc99c7ed309d2a84d`.
+The APK size is99754068bytes. A hash/signature or handler mismatch is a blocker.
+Never overwrite an existing operator reader merely to obtain this version.
+
+Launch the reader once. Its YES prompt opens Android's All files access screen.
+This reader needs broad shared-storage access to copy a shared PDF into its
+Download/Librera directory. Grant only with explicit approval for the disposable
+emulator. This exercise received that approval after automatic review initially
+rejected the permission; the initial denial and EACCES attempt remain recorded.
+Another operator may instead choose and verify a narrower compatible PDF SEND
+reader. The permission is not required by the warehouse app itself.
+
+Return to the warehouse app, use Share PDF, choose Librera FD and Scroll mode.
+Verify the displayed invoice number, totals and line parameters against the
+saved record; installation/handler discovery alone is insufficient. Preserve
+private screenshots and, when checking an export, its hash/text. Do not select
+printing, Bluetooth or an external delivery destination in this exercise.
+Final code3010 native share/render and reader-copy reconciliation PASS527–529.
 
 ## Private plan and evidence
 
@@ -107,4 +155,7 @@ changed bindings/plan/evidence/postconditions, FAIL/BLOCKED dependency stop,
 timeouts, interrupted writes, failed preflight, private permissions and locking.
 These checks are infrastructure evidence only. The complete long native plan,
 current device stability, external PDF handoff, fault injection and second
-fixture remain separate gates until their own evidence is recorded.
+fixture remain separate gates until their own evidence is recorded. Preserve
+line-level versus header semantics: line amounts/taxes can sum differently
+from the independently ceiled saved header. Discounts and header rounding
+must not be inferred as storage charges or counted twice.

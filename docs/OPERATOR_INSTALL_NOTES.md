@@ -29,6 +29,24 @@ Before an unattended run, complete the [bounded fixture-run prerequisites](UNATT
 Do not start the overnight suite while its artifact, PDF, device or case-specific
 gates remain open. The historical result ledger below preserves failed attempts.
 
+## Current pre-overnight blocker checkpoint — 2026-09-30
+
+| Case | Status | Current evidence and limit |
+| --- | --- | --- |
+| Invoice arithmetic and saved display | PASS, scoped |239 Jest tests;470 native original179/discount177/surcharge182 checks; final57/code3010 native saved list/overview/breakdown and half-cent review/confirmation/save2 |
+| Exact corrected artifact | PASS |57add4456cf47465771e3962f041928f8d6029d7, version2026093010, x86_64; build/audit/signature/install/readback; SHA256 c642950d24922b89119b9dacf91e0565a04f75f47e83bb3d286af07d12457676 |
+| Private PDF and local viewing | PASS, scoped |Half-cent invoice20261007 SQL/PDF metadata528; normal native share to verified Librera9.5.7/code7222, visible rendering527 and reader-copy text/readback529; explicit emulator-only storage permission approved |
+| Stacked PR CI trigger | PASS |6fa6553/run36705487757 and certificate guardfa74f28/run36705795453 each4/4 jobs PASS; runner812 lint failure preserved; correctionb22c3b5 local and remote lint/unit/setup job PASS; its Android job status remains in PR |
+| Certificate horizon guard | PASS at check time |Requested12-hour horizon verified; CA expires2026-10-01T09:51:45Z; recheck before every actual long run |
+| Bounded runner infrastructure | PASS, scoped |Six regression cases;42 full setup checks; guarded read-only fixture smoke/resume514 retained one execution; changed runner bindings require new evidence, not blind reuse |
+| Emulator cold-start readiness | FAIL / BLOCKER |Final57 first launch SystemUI ANR525; one recorded recovery enabled targeted diagnostics only. No KVM exposed; exact root cause not isolated |
+| Full overnight suite | NOT TESTED / BLOCKED |Not started. Stable unattended readiness and a complete case plan are required; fault controls and second authenticated fixture remain substantial preparation |
+| Current normal arm64/physical acceptance | NOT TESTED |Phone remains8d9da8e/code3001; normal historical e54/code3008 build is separate; corrected native evidence is emulator-only |
+
+Do not rerun successful unchanged cases to obscure these boundaries. Line-level
+rounded taxes can differ from the ceiled saved header; compare the documented
+header/discount/rounding contract and do not infer storage from total-tax.
+
 ## Reproducible local standalone test APK
 
 Complete backend local/public doctor first. Use a separate, clean source checkout
@@ -42,24 +60,25 @@ For the corrected sequence, fetch review PR #34 and pin the tested code source
 before installing dependencies:
 
 ```bash
-export MOBILE_BUILD_CHECKOUT="$HOME/warehouse-mobile-build-2026093008"
+export MOBILE_BUILD_CHECKOUT="$HOME/warehouse-mobile-build-2026093011"
 test ! -e "$MOBILE_BUILD_CHECKOUT"
 umask 022
 git clone --branch codex/fresh-vm-operator-notes \
   https://github.com/abhiguru/rn-warehouse-template.git "$MOBILE_BUILD_CHECKOUT"
 cd "$MOBILE_BUILD_CHECKOUT"
-git checkout --detach e54c8268f6f5dd67652d3779d2b4a111292a59fa
+git checkout --detach b22c3b5ad72f41e9ea936d987aee6b027459ca0e
 git rev-parse HEAD
 git status --short
 ```
 
-This source includes the original candidate plus the cleared-dispatch-number
-loading/accessibility correction and reviewed identity, lint,
-scoped-picker, fixture-overlay and compatible lock corrections. It is not
-mobile main or unmodified8240cce. The ordinary arm64 build does not invoke
-the optional fixture CA helper. The original installed phone remains on8d9da8e;
-code2026093008 is the new separate normal-build verification; earlier43/code3006
-is retained in the historical evidence.
+This pin includes the invoice reconciliation correction and the certificate,
+CI and checkpoint safeguards. Its app/src/config/dependency files match the
+built invoice source57add4456cf47465771e3962f041928f8d6029d7; tooling/docs changes
+still belong to theb22c3b5 source and must be recorded. Choose a new unused
+build identifier. The example3011 has not been built/installed in this exercise.
+The final corrected x86_64 fixture artifact is57add44/code3010; the historical
+clean normal arm64 build remains e54/code3008 and the physical phone remains
+8d9da8e/code3001. Neither establishes physical acceptance of the invoice fix.
 
 On this Ubuntu 24.04 guest, install JDK 17 with `sudo apt-get install openjdk-17-jdk
 unzip`. Verify `java -version` and `javac -version`. Download Android command-line
@@ -117,7 +136,7 @@ a later operator must choose their own unused identity.
 export WAREHOUSE_ANDROID_PACKAGE=in.gurucold.warehouse.test1
 export WAREHOUSE_APP_NAME='Test Warehouse 1'
 export WAREHOUSE_APP_SCHEME=warehouse-test1
-export WAREHOUSE_ANDROID_VERSION_CODE=2026093008
+export WAREHOUSE_ANDROID_VERSION_CODE=2026093011
 npx expo config --type public
 # Only in the dedicated disposable build checkout:
 npx expo prebuild --platform android --clean --no-install
@@ -238,20 +257,27 @@ overlay. Never attach this harness to a real warehouse or tunnel. The installed
 Test Warehouse 1 and the production pilot do not supply fixture authentication.
 
 Start a clean, separate mobile checkout at
-`43b832092bb8157e73b012add6a57f2e6dd724a1` from the review branch. Run npm ci,
+`b22c3b5ad72f41e9ea936d987aee6b027459ca0e` from the review branch. Run npm ci,
 environment creation and the dependency/setup/unit/lint/typecheck/contract
-sequence above **before** heavy compilation. Current source43b8320 passed locked installation, 36 setup tests, 217 Jest
-tests, lint (0 errors / 1468 existing warnings), typecheck, SDK compatibility,
-Expo Doctor 18/18, public bootstrap and npm audit (0 findings). Earlier results
-remain separately dated below; do not transfer an old result to a changed head. The dedicated fixture APK uses a local public CA
-generated by the backend sequence; its private key never enters the build tree.
+sequence above before heavy compilation. This pin includes the invoice fixes
+and new preflight/runner instructions; historical43/e54 outcomes below remain
+attached to their original artifacts. The invoice application source57add44
+passed239 Jest tests, typecheck and lint (0errors/1468existing warnings), then
+built the audited code3010 x86_64 APK. New safeguard tooling passed42 setup
+checks and a read-only guarded runner/resume smoke. A full cleanb22c3b5 build and
+physical-device acceptance are not claimed. The dedicated fixture APK uses a
+local public CA generated by the backend sequence; its private key never enters
+the build tree. Select a fresh build identifier, shown as3011 below.
 
 ```bash
 export WAREHOUSE_ANDROID_PACKAGE=in.gurucold.warehouse.fixture
 export WAREHOUSE_APP_NAME='Fictional Core Warehouse'
 export WAREHOUSE_APP_SCHEME=warehouse-fixture
-export WAREHOUSE_ANDROID_VERSION_CODE=2026093007
+export WAREHOUSE_ANDROID_VERSION_CODE=2026093011
 export WAREHOUSE_FIXTURE_CA="$FIXTURE_PRIVATE/tls/fixture-ca.pem"
+# Cover build/setup + planned run + safety margin; recheck at actual run start.
+export WAREHOUSE_FIXTURE_MIN_VALID_HOURS=12
+node scripts/prepare-emulator-fixture.mjs --check-certificate
 npx expo prebuild --platform android --clean --no-install
 node scripts/prepare-emulator-fixture.mjs
 cd android
@@ -1200,3 +1226,50 @@ rejected granting that broad permission; it was not granted or bypassed. Native
 external viewing remains BLOCKED pending a narrower compatible reader or explicit
 permission approval. Private PDF authorization/content API checks are separate
 PASS evidence. Preserve all viewer attempts; do not count installation as viewing.
+
+
+Runner integration smoke514 PASS against the original guarded fixture03: local
+and loopback HTTPS identity,12-hour certificate horizon and disk checks; explicit
+resume rechecked the postcondition with exactly one case execution retained.
+This read-only harness smoke did not repeat a business mutation or establish
+native/overnight acceptance. The operator subsequently explicitly approved
+Librera's manage-all-files permission on the disposable emulator only; the
+initial rejection and failed PDF attempts remain historical evidence. Grant and
+actual rendering verification are still pending at this checkpoint.
+
+Main-sequence documentation correction: the fixture build block still pinned
+43b8320 while later evidence described e54/invoice follow-ups, and the newly
+documented certificate CLI was absent from that old pin. Both primary source
+examples now pin812d5ac, which contains the correction and safeguards, and use
+a fresh example build identifier3011. Git comparison confirms app/src/config/
+dependency equality with the actually built57add44/code3010 artifact; full
+clean812 build/physical acceptance remains NOT TESTED rather than inferred.
+
+CI follow-up preserved: run36706535954 on812d5ac failed Lint with eight runner
+errors (Node timer globals, empty catch blocks, unused catch binding), despite
+behavior tests passing. b22c3b5 imports node:timers, documents already-exited
+process catches and removes the unused binding; lint0errors/1468existingwarnings
+and six runner regressions PASS523–524. Rules were not weakened. The primary
+source examples advance to that correction; the previous CI FAIL remains.
+
+
+Final invoice artifact verification:57add44/code3010 built7m32s with983tasks
+(955executed/28up-to-date), audited, signature-verified, installed and byte-readback
+matched. This follow-up reused the owned clean build checkout and unchanged
+installed dependencies, with clean Expo regeneration and declared fixture CA/
+identity overlays; it was not a fresh npm installation. Native saved overview
+and breakdown include surcharge/labour rather than adding them twice. New
+IRH01 review storage0.44+labour0+tax1-discount0+rounding0.56=2; confirmation and
+saved invoice20261007 match. SQL numeric lines/header/duration and private PDF
+metadata PASS528; PDF line fields show quantity1/duration1.5/days31/charge0.29/
+tax25, while header tax1/total2. No production billing-policy change.
+
+After explicit operator approval, Librera7222 storage permission verified520.
+Normal final-APK SharePDF selected Librera and Scroll mode; actual rendering527
+PASS, and the PDF copied by that reader reconciled invoice number, header and
+line parameters529 PASS. This closes the compatible-viewer prerequisite for
+this emulator, not the complete PDF authorization/cache matrix or phone viewing.
+The first final-APK cold launch still FAILed with SystemUI ANR525. The private
+driver was tightened to the last current-focus entry rather than any historical
+matching entry. One explicit Wait recovery was recorded for targeted diagnostics;
+it is not an unattended readiness pass. No overnight suite has started.
