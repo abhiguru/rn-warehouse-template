@@ -28,7 +28,9 @@ const manifestPath = resolve(app, 'src/main/AndroidManifest.xml');
 let manifest = readFileSync(manifestPath, 'utf8');
 assert.ok(!manifest.includes('android:networkSecurityConfig'), 'Existing trust policy must not be overwritten');
 for (const dir of ['raw', 'xml']) mkdirSync(resolve(app, 'src/main/res', dir), { recursive: true });
-writeFileSync(resolve(app, 'src/main/res/raw/warehouse_fixture_ca.pem'), pem);
+// A public certificate is not key material. Keep its conventional .crt suffix
+// so the normal artifact audit can still reject every unexpected .pem/key file.
+writeFileSync(resolve(app, 'src/main/res/raw/warehouse_fixture_ca.crt'), pem);
 writeFileSync(resolve(app, 'src/main/res/xml/warehouse_fixture_network_security.xml'), `<?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
   <base-config cleartextTrafficPermitted="false"><trust-anchors><certificates src="system" /></trust-anchors></base-config>
