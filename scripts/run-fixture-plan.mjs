@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync, lstatSync, openSync, closeSync, mkdirSync, renameSync, unlinkSync, existsSync } from 'node:fs';
 import { resolve, dirname, isAbsolute } from 'node:path';
 import { spawn } from 'node:child_process';
+import { setTimeout, clearTimeout } from 'node:timers';
 import { isMain } from './is-main.mjs';
 
 const digest = b => createHash('sha256').update(b).digest('hex');
@@ -56,15 +57,15 @@ async function execute(c, path) {
     return await new Promise(resolveResult => {
       let timedOut = false, interrupted = false;
       const stop = () => {
-        try { process.kill(-child.pid, 'SIGTERM'); } catch {}
-        killTimer ??= setTimeout(() => { try { process.kill(-child.pid, 'SIGKILL'); } catch {} }, 1000);
+        try { process.kill(-child.pid, 'SIGTERM'); } catch { /* Process group already exited. */ }
+        killTimer ??= setTimeout(() => { try { process.kill(-child.pid, 'SIGKILL'); } catch { /* Process group already exited. */ } }, 1000);
       };
       const signal = () => { interrupted = true; stop(); };
       child = spawn(c.argv[0], c.argv.slice(1), { cwd: c.cwd, detached: true, stdio: ['ignore', fd, fd] });
       process.once('SIGINT', signal); process.once('SIGTERM', signal);
       const done = status => {
         clearTimeout(timer); clearTimeout(killTimer);
-        if (timedOut || interrupted) { try { process.kill(-child.pid, 'SIGKILL'); } catch {} }
+        if (timedOut || interrupted) { try { process.kill(-child.pid, 'SIGKILL'); } catch { /* Process group already exited. */ } }
         process.removeListener('SIGINT', signal); process.removeListener('SIGTERM', signal);
         resolveResult(status);
       };
@@ -135,7 +136,7 @@ if (isMain(import.meta.url)) {
     assert.ok(plan && evidence && (!option || option === '--resume'),
       'Usage: node scripts/run-fixture-plan.mjs PRIVATE_PLAN PRIVATE_EVIDENCE [--resume]');
     await runPlan(plan, evidence, option === '--resume');
-  } catch (e) {
+  } catch {
     // Commands, arguments and child output may be sensitive; retain them privately.
     console.error('Fixture plan stopped. Inspect the private ledger; do not automatically repeat writes.');
     process.exitCode = 1;
