@@ -1140,3 +1140,12 @@ round-off at the half-cent and uses PostgreSQL NUMERIC's ties-away-from-zero
 rule, including negative adjustments. Six new boundary cases bring the full
 suite to239 tests/34 suites PASS; typecheck/lint0errorsPASS499–501. Native
 verification and the follow-up APK remain pending; production policy is unchanged.
+
+
+### Blocker follow-up: stacked review CI trigger
+
+The CI workflow selected only pull requests targeting main, so PR34 targeting
+codex/operator-mobile had no current checks. Add that exact candidate branch to
+the pull_request filter; keep push/main, read-only permissions and all existing
+jobs and release gates. Verify a new run appears on the pushed review head.
+No check result is implied by correcting the trigger.
