@@ -4,13 +4,49 @@ import { mkdtempSync, readFileSync, rmSync, mkdirSync, copyFileSync, writeFileSy
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { validateFixtureTarget, validateCertificateHorizon } from './prepare-emulator-fixture.mjs';
+import { validateFixtureTarget, validateSwitchingFixtureTarget, validateCertificateHorizon } from './prepare-emulator-fixture.mjs';
 import { validateEntries, validateText } from './artifact-audit.mjs';
 
 test('fixture certificate overlay rejects normal warehouse packages before parsing any certificate', () => {
   for (const id of ['in.gurucold.warehouse.test1', 'com.warehouse.manager']) {
     assert.throws(() => validateFixtureTarget(`applicationId "${id}"`, 'not a certificate'), /normal warehouse APK/);
+    assert.throws(() => validateSwitchingFixtureTarget(`applicationId "${id}"`, 'not a certificate'), /normal warehouse APK/);
   }
+});
+
+test('optional switching trust uses independent certificates and separate exact domains', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'warehouse-switching-overlay-test-'));
+  try {
+    const scripts = join(dir, 'scripts'), app = join(dir, 'android/app');
+    mkdirSync(scripts); mkdirSync(join(app, 'src/main'), { recursive: true });
+    for (const name of ['prepare-emulator-fixture.mjs', 'is-main.mjs']) copyFileSync(new URL(name, import.meta.url), join(scripts, name));
+    writeFileSync(join(app, 'build.gradle'), 'applicationId "in.gurucold.warehouse.fixture"');
+    writeFileSync(join(app, 'src/main/AndroidManifest.xml'), '<manifest><application android:name="fixture" /></manifest>');
+    const cert = (name, domains) => {
+      const path = join(dir, name+'.pem');
+      const r = spawnSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1',
+        '-keyout', join(dir, name+'-key.pem'), '-out', path, '-subj', `/CN=${domains[0]}`,
+        '-addext', 'subjectAltName='+domains.map(d => 'DNS:'+d).join(','), '-addext', 'basicConstraints=critical,CA:TRUE'], { stdio:'ignore' });
+      assert.equal(r.status, 0); return path;
+    };
+    const primary = cert('primary', ['backend-core.example.test']);
+    const switching = cert('switching', ['backend-switch.example.test']);
+    const shared = cert('shared', ['backend-core.example.test', 'backend-switch.example.test']);
+    const run = (ca, second, option) => spawnSync(process.execPath, [join(scripts, 'prepare-emulator-fixture.mjs'), ...(option ? [option] : [])], {
+      env: { ...process.env, WAREHOUSE_FIXTURE_CA: ca, WAREHOUSE_SWITCH_FIXTURE_CA: second, WAREHOUSE_FIXTURE_MIN_VALID_HOURS:'12' }, encoding:'utf8' });
+    assert.notEqual(run(shared, shared, '--check-certificate').status, 0, 'Same TLS key must not be reused across instances');
+    assert.notEqual(run(primary, primary, '--check-certificate').status, 0, 'Primary hostname must not satisfy switching trust');
+    assert.equal(run(primary, switching, '--check-certificate').status, 0);
+    assert.equal(run(primary, switching).status, 0);
+    const xml = readFileSync(join(app, 'src/main/res/xml/warehouse_fixture_network_security.xml'), 'utf8');
+    assert.match(xml, /<domain includeSubdomains="false">backend-core\.example\.test<\/domain>\s*<trust-anchors><certificates src="@raw\/warehouse_fixture_ca"/);
+    assert.match(xml, /<domain includeSubdomains="false">backend-switch\.example\.test<\/domain>\s*<trust-anchors><certificates src="@raw\/warehouse_switch_fixture_ca"/);
+    assert.equal((xml.match(/cleartextTrafficPermitted="false"/g) || []).length, 3);
+    assert.equal(readFileSync(join(app,'src/main/res/raw/warehouse_switch_fixture_ca.crt'),'utf8'),readFileSync(switching,'utf8'));
+    assert.doesNotThrow(() => validateEntries(['res/raw/warehouse_switch_fixture_ca.crt']));
+    assert.throws(() => validateText(readFileSync(join(dir,'switching-key.pem'),'utf8')));
+    assert.notEqual(run(primary, switching).status, 0, 'Existing policy must not be overwritten');
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
 test('generated fixture certificate passes the unchanged artifact guard without permitting key files', () => {

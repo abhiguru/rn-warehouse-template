@@ -17,10 +17,18 @@ export function validateCertificateHorizon(pem, hours, now = Date.now()) {
 }
 
 export function validateFixtureTarget(gradle, pem, now = Date.now()) {
+  validateDomainTarget(gradle, pem, 'backend-core.example.test', now);
+}
+
+export function validateSwitchingFixtureTarget(gradle, pem, now = Date.now()) {
+  validateDomainTarget(gradle, pem, 'backend-switch.example.test', now);
+}
+
+function validateDomainTarget(gradle, pem, domain, now) {
   assert.match(gradle, /applicationId\s+["']in\.gurucold\.warehouse\.fixture["']/,
     'Refusing certificate overlay for a normal warehouse APK');
   const ca = new X509Certificate(pem);
-  assert.equal(ca.checkHost('backend-core.example.test'), 'backend-core.example.test');
+  assert.equal(ca.checkHost(domain), domain);
   assert.ok(ca.ca && Date.parse(ca.validFrom) <= now && Date.parse(ca.validTo) > now);
 }
 
@@ -34,6 +42,18 @@ const pem = readFileSync(caPath);
 // Include build/setup time and an explicit safety margin, not just suite time.
 const hours = Number(process.env.WAREHOUSE_FIXTURE_MIN_VALID_HOURS ?? '12');
 const expiry = validateCertificateHorizon(pem, hours);
+let switchingPem;
+const switchingPath = process.env.WAREHOUSE_SWITCH_FIXTURE_CA;
+if (switchingPath) {
+  assert.ok(isAbsolute(switchingPath), 'Absolute separate switching certificate path required');
+  const ss = lstatSync(switchingPath);
+  assert.ok(ss.isFile() && !ss.isSymbolicLink() && ss.uid === process.getuid());
+  switchingPem = readFileSync(switchingPath);
+  validateSwitchingFixtureTarget('applicationId "in.gurucold.warehouse.fixture"', switchingPem);
+  validateCertificateHorizon(switchingPem, hours);
+  const publicKey = cert => new X509Certificate(cert).publicKey.export({ type: 'spki', format: 'der' });
+  assert.ok(!publicKey(pem).equals(publicKey(switchingPem)), 'Instances must have independent TLS keys');
+}
 if (process.argv.includes('--check-certificate')) {
   validateFixtureTarget('applicationId "in.gurucold.warehouse.fixture"', pem);
   console.log(`Fixture certificate covers ${hours} hours; expires ${expiry}`);
@@ -49,6 +69,7 @@ for (const dir of ['raw', 'xml']) mkdirSync(resolve(app, 'src/main/res', dir), {
 // A public certificate is not key material. Keep its conventional .crt suffix
 // so the normal artifact audit can still reject every unexpected .pem/key file.
 writeFileSync(resolve(app, 'src/main/res/raw/warehouse_fixture_ca.crt'), pem);
+if (switchingPem) writeFileSync(resolve(app, 'src/main/res/raw/warehouse_switch_fixture_ca.crt'), switchingPem);
 writeFileSync(resolve(app, 'src/main/res/xml/warehouse_fixture_network_security.xml'), `<?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
   <base-config cleartextTrafficPermitted="false"><trust-anchors><certificates src="system" /></trust-anchors></base-config>
@@ -56,10 +77,14 @@ writeFileSync(resolve(app, 'src/main/res/xml/warehouse_fixture_network_security.
     <domain includeSubdomains="false">backend-core.example.test</domain>
     <trust-anchors><certificates src="@raw/warehouse_fixture_ca" /></trust-anchors>
   </domain-config>
-</network-security-config>
+${switchingPem ? `  <domain-config cleartextTrafficPermitted="false">
+    <domain includeSubdomains="false">backend-switch.example.test</domain>
+    <trust-anchors><certificates src="@raw/warehouse_switch_fixture_ca" /></trust-anchors>
+  </domain-config>
+` : ''}</network-security-config>
 `);
 manifest = manifest.replace('<application ', '<application android:networkSecurityConfig="@xml/warehouse_fixture_network_security" ');
 writeFileSync(manifestPath, manifest);
-console.log('Dedicated fixture APK trusts its short-lived local certificate for the fictional fixture domain only.');
+console.log('Dedicated fixture APK trusts independent short-lived certificates for its explicitly selected fictional domains only.');
 }
 if (isMain(import.meta.url)) main();
