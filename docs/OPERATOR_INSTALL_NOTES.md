@@ -1515,3 +1515,18 @@ start of the isolated fixture/emulator overnight run when current tasks and
 blockers pass, using recommended routine defaults. No overnight run or timer
 has started at this recorded checkpoint; hardware/provider/release gates stay
 separate.
+
+### Small launch blocker: inherited gateway DNS search delay
+
+The second native return timeout prompted independent latency/DNS diagnostics.
+Both fixture discoveries tookabout8s; each Kong REST read waited4s while
+direct REST took15–39ms. DNS trace showed rest.localdomain SERVFAIL retries
+at0/2/4s despite immediate rest A resolution. Backend reviewed2584496f20a86595be2cf1996e9b4e5f82164fd8
+sets root dns_search on Kong alone. Fresh separate fixture06 setup/doctor,
+62units/migrations/gateway/changed-IP/core/Realtime/final API/Studio/retention
+checks PASS; REST proxy0–2ms, discovery84ms, unauthenticated/invalidkeys401.
+Application timeout/authentication was not weakened. Current emulator pair still
+needs the explicitly declared correction, revalidated clean native switching and
+relevant health/readiness before automatic overnight launch. Original timeout
+and recovered Retry evidence remain separate. Test1/pilot/recovery/host DNS
+were untouched; deferred dependency/release gates remain open.
