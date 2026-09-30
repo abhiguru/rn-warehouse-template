@@ -195,11 +195,15 @@ function GRNDetailScreen() {
     if (!id || !canEdit || imageMutationRef.current) return;
     imageMutationRef.current = true;
     try {
-      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!permission.granted) {
-        setSnackbarMessage('Photo library permission is required to add an image');
-        setSnackbarVisible(true);
-        return;
+      // Android's system picker grants access to the selected asset; broad
+      // library permissions are deliberately blocked by our native manifest.
+      if (Platform.OS !== 'android') {
+        const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (!permission.granted) {
+          setSnackbarMessage('Photo library permission is required to add an image');
+          setSnackbarVisible(true);
+          return;
+        }
       }
       const picked = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: 'images' as const,
