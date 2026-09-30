@@ -1130,3 +1130,13 @@ Cost percentages are no longer assigned to those overlapping included rows.
 Stored values, discount semantics and pricing policy remain unchanged.
 233Jest tests/typecheck/lint0errorsPASS for this follow-up; a newly audited
 artifact and affected saved-display native check remain required.
+
+
+Fractional-duration follow-up found a real half-cent defect in the existing
+roundMoney helper: binary floating-point multiplication made0.29×1.5 round to0.43
+instead of0.44, and0.29×3.5 round to1.01 instead of1.02. Two new expected-value
+regressions failed first (private496). The correction compensates binary
+round-off at the half-cent and uses PostgreSQL NUMERIC's ties-away-from-zero
+rule, including negative adjustments. Six new boundary cases bring the full
+suite to239 tests/34 suites PASS; typecheck/lint0errorsPASS499–501. Native
+verification and the follow-up APK remain pending; production policy is unchanged.

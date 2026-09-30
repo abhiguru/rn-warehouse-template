@@ -12,7 +12,10 @@ import type { InvoiceHeaderData, InvoiceItemData } from '@/types/invoice.types';
  * Prevents floating-point precision errors in currency calculations
  */
 export function roundMoney(value: number): number {
-  return Math.round(value * 100) / 100;
+  // Compensate only for binary representation noise at a decimal half-cent.
+  // PostgreSQL NUMERIC rounds ties away from zero, including surcharges.
+  const scaled = Math.abs(value) * 100;
+  return Math.sign(value) * Math.round(scaled + Number.EPSILON * scaled) / 100;
 }
 
 /**

@@ -1,5 +1,5 @@
 import {
-  calculateItemAmounts, calculateHeaderTotals, calculateInvoiceBreakdown, savedInvoiceAmounts,
+  calculateItemAmounts, calculateHeaderTotals, calculateInvoiceBreakdown, savedInvoiceAmounts, roundMoney,
 } from '../invoiceCalculations';
 import type { InvoiceItemData } from '@/types/invoice.types';
 import reducer, {
@@ -91,4 +91,14 @@ it.each([
     expect(savedInvoiceAmounts({total, tax_amount: 9, discount})).toEqual({
       netBeforeTax, hasAdjustment, adjustmentLabel, adjustmentSign, adjustmentAmount,
     });
+  });
+
+it.each([[1.5, 0.44, 0.11, 0.55], [3.5, 1.02, 0.26, 1.28]])(
+  'rounds half-cent storage at duration%s like database numeric arithmetic', (duration, amount, tax_amount, item_total) => {
+    expect(calculateItemAmounts(1, 0.29, 0, 25, duration)).toMatchObject({ amount, tax_amount, item_total });
+  });
+
+it.each([[1.005, 1.01], [-1.005, -1.01], [10.075, 10.08], [-10.075, -10.08]])(
+  'rounds amount %s to %s consistently with NUMERIC(12,2)', (value, expected) => {
+    expect(roundMoney(value)).toBe(expected);
   });
