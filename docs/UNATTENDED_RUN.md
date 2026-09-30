@@ -6,6 +6,10 @@ input, not a security boundary: inspect every command before using it. Never use
 a pilot, production state, a physical device serial or real provider delivery.
 A runner smoke check does not establish application acceptance.
 
+The installation is paused for an operator-managed six-core VM change/reboot.
+Follow [CPU_UPGRADE_RESUME.md](CPU_UPGRADE_RESUME.md) on explicit resume before
+starting new diagnostics or a long plan. Existing failed ANR evidence is retained.
+
 ## Before preparing a long plan
 
 1. Freeze the exact backend source plus declared local changes, mobile source,

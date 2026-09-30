@@ -29,6 +29,10 @@ Before an unattended run, complete the [bounded fixture-run prerequisites](UNATT
 Do not start the overnight suite while its artifact, PDF, device or case-specific
 gates remain open. The historical result ledger below preserves failed attempts.
 
+The operator has requested a pause before assigning six VM CPU cores and rebooting.
+Use [CPU_UPGRADE_RESUME.md](CPU_UPGRADE_RESUME.md) for the preserved checkpoint
+and ordered next steps. Resume only after the operator explicitly resumes work.
+
 ## Current pre-overnight blocker checkpoint — 2026-09-30
 
 | Case | Status | Current evidence and limit |
@@ -1273,3 +1277,16 @@ The first final-APK cold launch still FAILed with SystemUI ANR525. The private
 driver was tightened to the last current-focus entry rather than any historical
 matching entry. One explicit Wait recovery was recorded for targeted diagnostics;
 it is not an unattended readiness pass. No overnight suite has started.
+
+
+### Pause before six-core VM change — 2026-09-30
+
+Inventory remained two guest CPUs/17GiB RAM/77GiB free with no KVM. No new
+emulator diagnostic was launched before the operator interrupted work to request
+the CPU change. Read existing launch/ANR evidence and official guidance; no cause
+was established. Private539 verifies no diagnostic processes/listeners/socket;
+Test1 gateway/tunnel active. Protected540 saves source/artifact identities, boot
+ID and configuration fingerprints for post-reboot comparison. New CPU_UPGRADE_RESUME
+integrates ordered inventory/health/ANR/rehearsal/build/plan prerequisites. No
+overnight suite, VM setting change or reboot was initiated. Passed unchanged
+cases remain reusable to their recorded scope; cold readiness remains FAIL.
