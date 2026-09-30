@@ -323,7 +323,7 @@ prerequisite/baseline evidence. The existing runner validates summed timeouts
 below24hours and stops at the first failure.
 
 At actual launch, create0600 startRecord containing started UTC and
-plannedEndMillis = start time +8.5hours. Preflight validates remaining planned
+plannedEndMillis = start time +10hours. Preflight validates remaining planned
 window plus one hour of CA margin; before start it requires10hours. Never reuse
 an old start record to make an expired certificate pass. Keep owned fixture
 services/bridges/emulator running. Start only the new reviewed plan, using an
@@ -344,15 +344,24 @@ summary must both PASS; elapsed time alone is insufficient. Ordinary stop is
 `systemctl --user stop` for that exact owned unit; preserve interrupted evidence
 and reconcile before any new plan. It does not stop Test1 or other services.
 
-## Current gate status
+## Current gate status — actual launch
 
 Exact source42a5559/code3014 clean build/audit/readback607, native clearing-number
 regression/two receipt loss-retry-image cases608, actual private PDF609, clean
-two-origin verifier/cache/cold persistence610 and offline/reconnect PASS. Current
-3014 three cold launches and1801.7seconds/28cycles readiness PASS. New read-only preflight,64 backend units and45 mobile setup
-checks PASS. The final exact-helper short rehearsal/plan binding/launch remain
-open. No overnight run or timer has started. Earlier3013 failures/readiness and
-3012 dispatch/PDF/readiness stay scoped to their actual artifacts. Hardware,
-real-provider, cellular, unsaved-form/same-origin replacement and release gates
-remain separate. The operator authorized automatic launch when current gates
-pass; no additional approval is required for this isolated plan.
+two-origin verifier/cache/cold persistence610 and offline/reconnect PASS. Final
+3014 readiness1801.7seconds/28cycles/three cold launches and exact-helper60second
+rehearsal/verify PASS.64backend units/45mobile setup/public preflight PASS612.
+The original relative-guard/socket-shadow/default-buffer failures remain retained.
+
+The scoped supervised run actually started2026-10-01T00:30:19IST. Unit
+warehouse-fixture-overnight-3014.service is active/running(PID2141593), first
+block RUNNING after two PASS preflights. Tooling pins9868738/4867d1a were pushed
+and remotely verified; APK still42/source3014. PlanSHA256
+5ab3825ba7445a2d279d422d5eea24679b7369fd7e80f14c0c40b5004fadecf5 binds44
+inputs; nine3200second blocks plus final native-session/business reconciliation.
+No timer or automatic restart;10hour maximum. This is current RUNNING evidence,
+not a completed overnight PASS. Next inspect each block/private runner ledger
+and require the final summary. Preserve all failures before any reconciliation.
+Earlier3013 failures/readiness and3012 dispatch/PDF/readiness retain their
+actual artifact scope. Physical/cellular/provider/revocation/unsaved-form/
+same-origin and release gaps remain separate.

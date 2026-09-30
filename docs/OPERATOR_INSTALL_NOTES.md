@@ -31,8 +31,8 @@ gates remain open. The historical result ledger below preserves failed attempts.
 
 The operator resumed after the VM resource change. The guest now exposes eight
 CPUs and usable KVM. See [CPU_UPGRADE_RESUME.md](CPU_UPGRADE_RESUME.md) for the
-preserved pause, interrupted attempt and scoped post-reboot results. The full
-overnight suite has not started.
+preserved pause, interrupted attempt and scoped post-reboot results. The scoped eight-hour fixture/emulator run started at00:30IST on1October;
+its results are still RUNNING and do not close all installation acceptance.
 
 ## Current pre-overnight blocker checkpoint — 2026-09-30
 
@@ -46,7 +46,7 @@ overnight suite has not started.
 | Bounded runner infrastructure | PASS, scoped |Six regression cases;42 full setup checks; guarded read-only fixture smoke/resume514 retained one execution; changed runner bindings require new evidence, not blind reuse |
 | Emulator cold-start readiness | PASS on3014 |Three cold launches plus1801.7seconds/28cycles PASS550-20260930T181721Z, no ANR/crash/ADB restart/human. Earlier failures/artifact results retained |
 | Lost-response controls and API reconciliation | PASS, scoped |Native3014 receipt before/after loss: independent no-commit/commit before unchanged retries, one line/qty4/stock4/cache and success608; confirmed private images PASS. Native dispatch results582 remain3012, API four-case evidence566/572 retained |
-| Full overnight suite | NOT TESTED |Automatic launch authorized after final readiness, executable plan and exact helper rehearsal pass. Native3014 clean two-origin switching610/offline-reconnect/PDF609/receipt608 PASS; long plan being frozen |
+| Overnight fixture/emulator run | RUNNING, scoped |Started2026-10-01T00:30:19IST, supervised unit warehouse-fixture-overnight-3014;44bindings/nine3200second native blocks. All launch prerequisites PASS; first block RUNNING. No completed long-run PASS or physical/provider/release acceptance claimed |
 | Current normal arm64/physical acceptance | NOT TESTED |Phone remains8d9da8e/code3001; normal historical e54/code3008 build is separate; corrected native evidence is emulator-only |
 
 Do not rerun successful unchanged cases to obscure these boundaries. Line-level
@@ -1625,3 +1625,29 @@ The copied preflight socket variable-shadowing failure was corrected with bounde
 read-only IPC regression checks. Retained Android events then exceeded Node's
 default1MiB stdout buffer(ENOBUFS1060581bytes); explicit8MiB cap restores full
 checks without clearing logs. Corrected actual preflight PASS612.
+
+### Automatic overnight launch — 2026-10-01 IST
+
+Actual launch at2026-09-30T19:00:19.804384UTC /1October00:30:19IST.
+User unit warehouse-fixture-overnight-3014.service active/running, PID2141593;
+preflight and before-first-case checks PASS, actual soak-01 RUNNING. This is
+a started supervised run, not a timer or compilation result. Frozen plan
+SHA2565ab3825ba7445a2d279d422d5eea24679b7369fd7e80f14c0c40b5004fadecf5
+with44bindings. Nine3200second blocks provide eight hours of native/network
+reads plus checks; no business writes are repeated. No long-run PASS yet.
+
+Tooling sources are backend98687380dc95e7200bf9888a9794a7a0dea12443 and
+mobile4867d1a0ba29db1ff48a428c0e113ff60f10b6eb, pushed and remotely verified
+before launch. Installed APK remains source42a5559/code3014/6e882894SHA;
+app/config/dependency bytes match the later tooling checkout. The primary
+backend is c0a6db plus declared bridgeee5,relay2bbc,DNS258/subnet overlays;
+secondarya9 plus DNS258/subnet. Test1 stays requestedf18 unchanged. Private
+manifest/identity/config/helper/artifact hashes retain these exact distinctions.
+
+RuntimeMaxSec36000/Restart=no/private log/evidence permissions are set. The CA
+guard covers the conservative10hour timeout window plus one hour of margin,
+not only nominal elapsed soak. No additional user input is required. Hardware,
+real-provider/cellular, unsaved-form/same-origin/revoked-session and dependency
+release gaps remain separate. Inspect the unit and private ledger at completion;
+require all steps/postconditions and the final aggregate to PASS before claiming
+long acceptance. Never rerun interrupted writes or alter bound files to recover.

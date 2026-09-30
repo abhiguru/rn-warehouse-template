@@ -24,6 +24,23 @@ Native receipt faults, dual-CA artifact/native authenticated switching and final
 plan remain open; independent switching backend TLS/auth prerequisite passed. The original checkpoint below is historical, not current
 service/artifact state. Use OPERATOR_INSTALL_NOTES.md for the current matrix.
 
+## Overnight run now started — 2026-10-01 IST
+
+All required launch gates passed. Actual start00:30:19IST; scoped user unit
+warehouse-fixture-overnight-3014.service active/running, PID2141593; first
+native block RUNNING with two passed preflights.44input bindings and nine
+3200second blocks cover eight hours plus checks. Do not start another UI actor
+or edit bound inputs. Backend/tooling9868738, mobile/tooling4867d1a are pushed;
+installed app source42/code3014 and backend overlays remain separately recorded.
+No completed overnight PASS yet.
+
+Next: inspect that exact unit/private ledger. On failure preserve logs and
+reconcile state; no blind rerun. On completion require each verify plus the
+aggregate duration/actual requests/business invariants/native session renewal
+PASS, then update sanitized operator matrix/PRs and final handoff. Ordinary stop
+is systemctl --user stop for that exact unit; no global ADB/fixture shutdown.
+The checkpoint below records prelaunch work and is historical.
+
 ## Next work at the resumed checkpoint
 
 Current owned emulator has source42a5559b4abcad3ddd7601b2e4885e3c29101c76,
