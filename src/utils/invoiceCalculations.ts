@@ -5,7 +5,7 @@
  * Extracted from Redux reducers for better testability and reusability.
  */
 
-import type { InvoiceItemData } from '@/types/invoice.types';
+import type { InvoiceHeaderData, InvoiceItemData } from '@/types/invoice.types';
 
 /**
  * Round money values to 2 decimal places
@@ -135,16 +135,36 @@ export function calculateHeaderTotals(
   const labour = roundMoney(
     items.reduce((sum, item) => sum + (isNaN(item.labour_amount) ? 0 : item.labour_amount), 0)
   );
-  const tax_amount = roundMoney(
-    items.reduce((sum, item) => sum + (isNaN(item.tax_amount) ? 0 : item.tax_amount), 0)
-  );
-  const total = roundMoney(subtotal + labour + tax_amount - safeDiscount);
+  // The database preview ceilings the sum of UNROUNDED line taxes.
+  // Base amounts and persisted tax percentages have two decimal places. Sum
+  // their integer products before division to avoid a spurious extra rupee at
+  // floating-point integer boundaries (e.g. ten lines taxed at 0.1 rupee).
+  const taxUnits = items.reduce((sum, item) => {
+    const baseCents = Math.round(roundMoney(item.amount + item.labour_amount) * 100);
+    const rateHundredths = Math.round(item.tax * 100);
+    return sum + (Number.isFinite(baseCents) && Number.isFinite(rateHundredths)
+      ? baseCents * Math.max(0, rateHundredths) : 0);
+  }, 0);
+  const tax_amount = Math.ceil(taxUnits / 1_000_000);
+  // save_invoice and update_invoice cast total to NUMERIC(12,2), then CEIL.
+  // Preserve the existing absolute discount (negative means surcharge).
+  const total = Math.ceil(roundMoney(subtotal + labour + tax_amount - safeDiscount));
 
   return {
     labour,
     tax_amount,
     total,
   };
+}
+
+/** Keep storage and save rounding separate; never infer storage from total. */
+export function calculateInvoiceBreakdown(
+  items: InvoiceItemData[],
+  header: Pick<InvoiceHeaderData, 'labour' | 'tax_amount' | 'discount' | 'total'>
+): { subtotal: number; base: number; rounding: number } {
+  const subtotal = roundMoney(items.reduce((sum, item) => sum + item.amount, 0));
+  const base = roundMoney(subtotal + header.labour + header.tax_amount);
+  return { subtotal, base, rounding: roundMoney(header.total - (base - header.discount)) };
 }
 
 /**
@@ -243,7 +263,7 @@ export function restoreItemDurations(
   originalDurations: Record<string, number>
 ): InvoiceItemData[] {
   return items.map((item) => {
-    const originalDuration = Math.round(originalDurations[item.temp_id] || 1);
+    const originalDuration = originalDurations[item.temp_id] || 1;
 
     const amounts = calculateItemAmounts(
       item.qty,

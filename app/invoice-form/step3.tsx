@@ -182,9 +182,6 @@ export default function InvoiceFormStep3() {
     }
   };
 
-  // Calculate breakdown values
-  const subtotal = header.total + header.discount - header.labour - header.tax_amount;
-
   // Calculate totals for items summary
   // Total Dispatch Qty: sum of all dispatch item quantities being invoiced
   const totalDispatchQty = items.reduce((sum, item) => sum + item.qty, 0);
@@ -286,6 +283,7 @@ export default function InvoiceFormStep3() {
         {/* Calculation Summary with Discount */}
         <InvoiceCalculationSummary
           header={header}
+          items={items}
           onDiscountChange={handleDiscountChange}
         />
 

@@ -1079,3 +1079,42 @@ Supply an explicit local author for review commits, for example
 only the existing draft PR body; return only number/URL/draft/head. Prior bodies
 and failures retained. Do not put credentials, multiline expansions or raw logs
 in CLI arguments/PRs. Corrected commits/updates passed; no merge/release.
+
+
+### Sequential blocker queue — invoice reconciliation in progress
+
+Invoice preview/save reconciliation is the first blocker to fix before long
+unattended tasks (estimated 2–4 hours, not a completion promise). The historical
+e54 APK result remains FAIL: ₹178.50 displayed, ₹179 saved. Correct the mobile
+calculation paths against the existing backend invoice contract, preserve
+absolute discounts including negative surcharges, and test fractional tax and
+duration boundaries. Closure requires review, confirmation, saved invoice and
+PDF reconciliation, a newly built/audited APK, and the affected native case on
+that exact artifact. Unit tests or compilation alone do not close this gate.
+Production pricing-policy changes remain a separate business decision.
+
+Then resolve the scoped mobile CI trigger, fixture certificate validity and PDF
+viewer prerequisites one at a time, with a short smoke check for each before any
+dependent long run. Keep the larger runner/fault-injection/two-instance work and
+hardware/provider/security limitations distinct. No long task was launched by
+adding this queue.
+
+
+Invoice fix investigation: mobile create calls the three-argument `save_invoice`
+wrapper, which delegates to `save_invoice_internal` in the initial schema.
+It and `update_invoice` independently CEIL tax and total after NUMERIC(12,2)
+conversion. The historical note identifying the one-argument migration has the
+same rounding behavior but was not the mobile overload. Mobile initial-load,
+duration-toggle and edit reducers also duplicated two-decimal sums. The shared
+summary inferred storage backwards from rounded totals, incorrectly assigning
+rounding to storage after a fractional discount. The correction shares header
+calculation, uses unrounded line-tax bases, preserves fractional durations and
+absolute discounts/surcharges, and displays an explicit rounding adjustment.
+No backend pricing rule is changed.
+
+Local validation: 230 Jest tests in34 suites PASS (13 new invoice cases),36 setup
+checks PASS, typecheck PASS and lint0errors/1468existing warnings. First targeted
+run had one erroneous test expectation (ceil9.5 is10, not9); corrected that literal
+and retained the failure. First typecheck found the edit-summary caller missing
+the new items prop; caller corrected and typecheck rerun. APK/native/save/PDF
+validation is still pending; the blocker remains open.

@@ -4,17 +4,20 @@ import { ConfirmDialog } from '@/components/ConfirmDialog';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import theme from '@/theme';
 import { useTheme } from '@/hooks/useTheme';
-import { InvoiceHeaderData } from '@/types/invoice.types';
+import { InvoiceHeaderData, InvoiceItemData } from '@/types/invoice.types';
+import { calculateInvoiceBreakdown } from '@/utils/invoiceCalculations';
 import { formatCurrency } from '@/utils/formatters';
 import { KeyValueCell, InlineValidation } from '@/components/fiori';
 
 interface InvoiceCalculationSummaryProps {
   header: InvoiceHeaderData;
+  items: InvoiceItemData[];
   onDiscountChange: (value: number) => void;
 }
 
 export const InvoiceCalculationSummary: React.FC<InvoiceCalculationSummaryProps> = ({
   header,
+  items,
   onDiscountChange,
 }) => {
   const { colors: themeColors, isDarkMode } = useTheme();
@@ -50,8 +53,7 @@ export const InvoiceCalculationSummary: React.FC<InvoiceCalculationSummaryProps>
     const value = parseFloat(text);
 
     // Calculate subtotal first to determine max discount
-    const subtotal = header.total + header.discount - header.labour - header.tax_amount;
-    const maxDiscount = subtotal + header.labour + header.tax_amount;
+    const maxDiscount = base;
 
     if (text === '') {
       setDiscountError(null);
@@ -78,14 +80,10 @@ export const InvoiceCalculationSummary: React.FC<InvoiceCalculationSummaryProps>
     }
   };
 
-  // Calculate subtotal (storage charges only)
-  const subtotal = header.total + header.discount - header.labour - header.tax_amount;
+  const { subtotal, base, rounding } = calculateInvoiceBreakdown(items, header);
 
-  // Round total up/down by setting absolute discount value
-  // Formula: total = (subtotal + labour + tax) - discount
-  // base = subtotal + labour + tax (before any discount)
-  // To achieve rounded total: discount = base - roundedTotal
-  const base = subtotal + header.labour + header.tax_amount;
+  // These controls continue to set an absolute discount from the pre-discount
+  // base. The whole-rupee save adjustment is displayed separately below.
 
   const handleRoundUp = () => {
     // Round the base (pre-discount total) up to nearest integer
@@ -204,6 +202,7 @@ export const InvoiceCalculationSummary: React.FC<InvoiceCalculationSummaryProps>
             <Text style={[styles.currencySymbol, { color: textSecondary }]}>₹</Text>
             <TextInput
               style={[styles.discountInput, { color: textPrimary }]}
+              accessibilityLabel="Invoice discount"
               value={discountText}
               onChangeText={handleDiscountChange}
               placeholder="0.00"
@@ -220,6 +219,12 @@ export const InvoiceCalculationSummary: React.FC<InvoiceCalculationSummaryProps>
             visible={!!discountError}
           />
         </View>
+
+        <KeyValueCell
+          keyLabel="Rounding adjustment"
+          value={formatCurrency(rounding, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          showDivider
+        />
 
         {/* Collapsible Discount Calculator */}
         <TouchableOpacity
@@ -246,7 +251,7 @@ export const InvoiceCalculationSummary: React.FC<InvoiceCalculationSummaryProps>
         {isCalculatorExpanded && (
           <View style={[styles.calculatorContent, { backgroundColor: themeColors.gray[50] }]}>
             <Text style={[styles.calculatorLabel, { color: textSecondary }]}>
-              Enter the final amount you want:
+              Enter an amount before whole-rupee rounding:
             </Text>
             <View style={styles.calculatorInputRow}>
               <View
@@ -290,6 +295,10 @@ export const InvoiceCalculationSummary: React.FC<InvoiceCalculationSummaryProps>
         />
       </View>
 
+      <Text style={{ color: textSecondary }}>
+        Header tax and the final amount round up to whole rupees. Discount is preserved.
+      </Text>
+
       {/* Breakdown Info - Fiori info card */}
       <View style={[styles.breakdownContainer, { backgroundColor: infoBg }]}>
         <View style={styles.breakdownHeader}>
@@ -297,7 +306,7 @@ export const InvoiceCalculationSummary: React.FC<InvoiceCalculationSummaryProps>
           <Text style={[styles.breakdownTitle, { color: infoIconColor }]}>Calculation Breakdown</Text>
         </View>
         <Text style={[styles.breakdownText, { color: textSecondary }]}>
-          {formatCurrency(subtotal, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (Storage) + {formatCurrency(header.labour, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (Labour) + {formatCurrency(header.tax_amount, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (Tax) - {formatCurrency(header.discount, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (Discount) = {formatCurrency(header.total, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          {formatCurrency(subtotal, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (Storage) + {formatCurrency(header.labour, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (Labour) + {formatCurrency(header.tax_amount, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (Tax) - {formatCurrency(header.discount, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (Discount) + {formatCurrency(rounding, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (Rounding) = {formatCurrency(header.total, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
         </Text>
       </View>
 
