@@ -4,7 +4,7 @@
  * Follows GRN form service patterns adapted for dispatch requirements
  */
 
-import * as Crypto from 'expo-crypto';
+import { submissionIdempotencyKey } from '@/utils/submissionIdempotency';
 import { beginOperatorMutation, getAuthenticatedClient } from '@/config/supabaseConfig';
 import { executeRPC, createErrorResponse } from '@/utils/serviceErrorHandler';
 import type {
@@ -210,7 +210,7 @@ export const createDispatch = async (payload: {
     const authenticatedClient = await getAuthenticatedClient();
 
     // Transform data to match RPC function format
-    const rpcPayload: CreateDispatchPayload = {
+    const rpcBody = {
       p_dispatch_data: {
         disp_no: payload.header.disp_no,
         disp_date: payload.header.disp_date, // ISO timestamp
@@ -229,7 +229,10 @@ export const createDispatch = async (payload: {
       })),
       p_generate_invoice: true, // Auto-generate invoice
       p_retry_count: 0, // Required to disambiguate function overload
-      p_idempotency_key: Crypto.randomUUID(),
+    };
+    const rpcPayload: CreateDispatchPayload = {
+      ...rpcBody,
+      p_idempotency_key: await submissionIdempotencyKey('dispatch', rpcBody),
     };
 
     console.log('[DispatchFormService] Calling create_dispatch_with_stock_check RPC');
