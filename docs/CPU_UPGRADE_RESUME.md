@@ -27,15 +27,14 @@ control stayed ARMED; read-only reconciled, never replayed. Configure relay rout
 before a cold app launch and a new unused draft; restore normal route and cold
 launch for read gates. Existing pooled-connection reuse remains a hypothesis.
 
-PDF626 SEND/render/new %PDF export reconciliation PASS.623a switching refused
-reader focus;623b passed secondary but its primary return reached the actual
-five/hour request limit and FAIL remains. Read-only natural reset is12:23:50IST.
-Supervised preparation629 waits, then supported login/new623c round trip and
-readiness; no limit reset, OTP bypass or repeated request.
+PDF626 SEND/render/new%PDF export PASS.623a/b failures retained. The actual
+five/hour window cleared naturally12:23:50IST; supported primary login and
+new clean authenticated623c round trip PASS. Three cold launches PASS; current
+30minute readiness RUNNING under629.630 final-gate/automatic-launch job active;
+no limit reset, OTP bypass or real provider delivery.
 
-Next: finish clean authenticated core/switch/core
-round trip, run three cold launches and30minute readiness without another UI
-actor, then current-artifact public60second soak/verify. Recheck TLS/resources/
+Next: let the current30minute readiness finish without another UI actor.
+If PASS,630 automatically performs current-artifact public60second soak/verify. Recheck TLS/resources/
 helper lifetime, capture fresh business/native-session baselines, freeze an
 unused plan/config with current helper/unit/CA/source bindings and automatically
 launch9×3200second reads only if every gate PASS. Preserve every failure.

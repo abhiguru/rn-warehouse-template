@@ -46,8 +46,8 @@ did not run. The corrected supervised run is not yet started. See the current
 | Persistent stale Orders warning | PASS |622; retained order marked after5seconds/error expiry, while retry pending, cleared after actual Orders200 |
 | Native receipt response-loss/retries | PASS, scoped |Corrected before303/after302 and private images624; initial301 fault FAIL and saved record retained, no replay |
 | Saved invoice/private PDF SEND/render/export | PASS, scoped |626; actual new artifact/new exported%PDF number20261005/tax9/discount-2.5/total182/three lines/hash; driver failures preserved |
-| Clean authenticated core/switch/core round trip | BLOCKED, timed |623b primary return hit actual five/hour quota after secondary PASS; natural reset12:23:50IST; supervised629 waits, then unused623c attempt |
-| Three cold launches/30minute readiness | NOT TESTED on new artifact |Automatically follows clean623c PASS in supervised629; historical3014 readiness not carried forward |
+| Clean authenticated core/switch/core round trip | PASS |623c after natural quota reset: both real mock verifiers, separate profile/data/cache, primary return/invoice and both cold persistence;623a/b failures retained |
+| Three cold launches/30minute readiness | RUNNING |Three clean cold launches PASS on2026100101;30minute supervised629 rehearsal underway, no completed readiness PASS yet |
 | Final current short read/preflight/frozen plan | NOT TESTED yet |Supervised630 waits for all629 gates, then captures baselines/explicitly renews helper lifetime/60second read+verify/freezes new plan |
 | New8hour read soak | NOT STARTED |Automatic631 launch only after all8 current-artifact prerequisite files PASS; no completed eight-hour acceptance |
 | Physical/provider/cellular/noUSB/revocation/release cases | OPEN |Current run is isolated emulator/mock delivery; backend dependency gate FAIL and documented hardware/auth gaps remain |
@@ -1876,3 +1876,14 @@ hypothesis; settled/enabled control checks are still appropriate driver guards.
 A scoped supervised prerequisite job629 now waits for that window, then runs
 623c and the exact-artifact three cold launches/30minute rehearsal. It stops at
 the first failure; no long-run acceptance exists yet. No operator input needed.
+
+Quota gate cleared naturally at12:23:50IST, without counter or policy changes.
+Supervised629 supported primary login PASS, then new clean authenticated round
+trip623c PASS: both canonical HTTPS previews, session-cleared real mock verifiers,
+secondary admin profile/empty Orders and invoices, both cold persistence, primary
+CustomerA and saved invoice182 return. No Retry, human input, ANR dismissal or
+ADB restart. New artifact readiness has three cold launches PASS and its actual
+30minute controlled read/background rehearsal RUNNING.630 remains active and
+will start the8hour unit only after completed readiness, short-read verification,
+preflight and all8 prerequisite files PASS. No completed long-run PASS or actual
+8hour start at this checkpoint; earlier timed-blocker sections are historical.
