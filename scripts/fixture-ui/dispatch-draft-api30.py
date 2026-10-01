@@ -24,10 +24,12 @@ os.umask(0o077)
 
 class Draft(soak.Soak):
     def tap(self, label, button=False):
+        self.state['lastAction'] = {'operation':'tap', 'control':label}; self.save()
         xy = point(self.wait(label), label, button=button)
         self.adb('shell', 'input', 'tap', *map(str, xy))
 
     def fill(self, label, value):
+        self.state['lastAction'] = {'operation':'fill', 'control':label}; self.save()
         assert re.fullmatch(r'[A-Za-z0-9 ]{1,60}', value), 'Fictional input required'
         t = self.wait(label)
         xy = point(t, label, editable=True)
@@ -98,9 +100,10 @@ def main(path):
         driver.tap('Select customer...'); driver.fill('Search customers...', 'Backend Test Customer A')
         driver.tap('Backend Test Customer A', button=True)
         driver.fill('Vehicle registration', 'TEST FIXTURE')
-        t = driver.snapshot()
-        if any(n.get('text') == 'Select supervisor...' for n in t.iter('node')):
-            driver.tap('Select supervisor...'); driver.tap('Core Demo Administrator')
+        # useDispatchForm populates the authenticated supervisor asynchronously.
+        # Wait for that bound administrator instead of chasing a placeholder.
+        driver.state['lastAction'] = {'operation':'wait', 'control':'Core Demo Administrator'}; driver.save()
+        driver.wait('Core Demo Administrator')
         driver.tap('Go to Items step')
         driver.tap('Select GR No')
         prefix, digits = grn_search_controls(case['sourceReceipt'])
