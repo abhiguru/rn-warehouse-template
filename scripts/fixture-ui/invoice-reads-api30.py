@@ -33,10 +33,13 @@ def main(path):
         assert d.adb('emu','avd','name').splitlines()[0]=='TestWarehouseFixture_API30';p=d.adb('shell','pm','path',soak.PACKAGE);assert re.fullmatch(r'package:/data/app/[^\n]+',p);assert d.adb('shell','sha256sum',p[8:]).split()[0]==case['artifactSHA256']==c['apkSHA256'];owned_reverse_route(d.adb('reverse','--list'),18443)
         for row in catalog['rows']:
             assert re.fullmatch(r'IRP0[1-5]',row['record']) and re.fullmatch(r'[a-f0-9-]{36}',row['id'])
-            d.state['currentInvoice']=row['number'];d.save();d.health()
+            d.state['currentInvoice']=row['number'];d.state['failurePhase']='COLD_INVOICE_HEADER';d.save();d.health()
+            d.adb('shell','am','force-stop',soak.PACKAGE)
             d.adb('shell','am','start','-W','-a','android.intent.action.VIEW','-d','warehouse-fixture://invoice-details/'+row['id'],soak.PACKAGE)
             d.wait('Total amount: ₹'+str(row['total']));d.wait('Tax amount: ₹'+str(row['tax']));d.archive(row['record']+'-overview-header')
+            d.state['failurePhase']='VISIBLE_BREAKDOWN_FINANCIAL_ROWS';d.save()
             d.tap_read('Breakdown tab',row['record']);d.visible('CHARGES BREAKDOWN');financial_row(d.visible('Total Amount'),'Total Amount',row['total']);financial_row(d.visible('Tax Amount'),'Tax Amount',row['tax']);d.archive(row['record']+'-breakdown')
+            d.state['failurePhase']='RELATED_GRN_OVERVIEW';d.save()
             d.visible('View GRN '+row['record']);d.tap_read('View GRN '+row['record'],row['record']);t=d.wait('Overview tab')
             assert any(row['record'] in n.get('text','') or row['record'] in n.get('content-desc','') for n in t.iter('node')),'Matched fictional GRN destination required'
             tabs=[n for n in t.iter('node') if n.get('content-desc')=='Overview tab'];assert len(tabs)==1 and tabs[0].get('selected')=='true','GRN must open Overview'
