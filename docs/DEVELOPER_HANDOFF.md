@@ -35,3 +35,5 @@ the running app uses the selected server.
 [NATIVE_ACCEPTANCE.md](NATIVE_ACCEPTANCE.md) retain the original tested commits
 and device identifiers. Those results do not validate the changed operator
 runtime. Preserve `v0.2.2-demo`.
+
+For work after the current isolated soak, use the [next acceptance plan](OPERATOR_NEXT_ACCEPTANCE.md). It distinguishes the source-only GRN-link fix from the installed artifact and lists the remaining native/hardware blockers.

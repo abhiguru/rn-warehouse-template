@@ -128,8 +128,10 @@ permissions, or build settings. The API-36 emulator debug build and supported
 source-demo workflows were verified on the historical pair. Physical Samsung Android 15/API-35 and
 iPhone 15/iOS 26.6.2 runs are recorded separately. See
 [NATIVE_ACCEPTANCE.md](docs/NATIVE_ACCEPTANCE.md).
-The current operator authentication and server-selection flow has not yet been
-tested on a VM, physical device, or live MSG91 delivery.
+Dated operator authentication, server-selection and provider results are in
+[OPERATOR_INSTALL_NOTES.md](docs/OPERATOR_INSTALL_NOTES.md). Each result applies
+only to its recorded source, artifact and device; consult its current matrix
+and [next acceptance plan](docs/OPERATOR_NEXT_ACCEPTANCE.md) for open cases.
 
 For a bundle-only check:
 

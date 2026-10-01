@@ -36,6 +36,10 @@ bridges disappeared. Four blocks passed; later blocks and final reconciliation
 did not run. The corrected supervised run started13:17IST1October and remains RUNNING at the saved launch checkpoint. See the current
 1October checkpoint below; earlier RUNNING observations are historical.
 
+A later source-only GRN-link correction is recorded at the end of this ledger.
+Its candidate has not been installed; current native/soak results remain scoped
+to the artifact in the table below.
+
 ## Current exact-artifact checkpoint — 2026-10-01
 
 | Case | Status | Evidence and scope |
@@ -1931,3 +1935,61 @@ A start or compilation is not end-to-end acceptance. Real SMS/current revoked
 sessions, physical phone/Wi-Fi/cellular/noUSB, same-origin/unsaved-form switching,
 current native dispatch faults, undefined related-GRN Breakdown label and
 existing security/release gates remain open. Test1/pilot/recovery unchanged.
+
+## Invoice Breakdown GRN link correction — source checks636, 2026-10-01
+
+Candidate `04452271e786f9ce26f183e8383b8f874f29181a` is a source correction awaiting a new audited APK and
+native navigation check. The running eight-hour suite retains e217c1f/code2026100101;
+its frozen checkout, inputs, emulator and two fictional backends were not changed.
+The new source lives in a separate worktree based on
+93db85c7397c3602dce0abc5015fb4e0d317991a, Ubuntu24.04.3 x86_64, Node22.23.3/npm10.9.9.
+
+Observed trigger626: invoice20261005 → Breakdown → Linked Documents displayed
+`View GRN undefined`; Overview already displayed IRP05. Expected a readable
+receipt number and navigation to its UUID. Backend7e3f66a's get_invoice_data
+returns header.gr_no and grn.gr_no; Breakdown previously read grn.number alone.
+It now uses the same grn.number → header.gr_no fallback as Overview. The route
+continues to use grn.id; a printed number is never substituted for a missing UUID.
+No invoice amount, provider, authorization or backend code changed.
+
+Reproduce from this candidate with the ordinary documented Node22 setup:
+
+```bash
+npm ci
+npm test -- --runTestsByPath src/tests/components/InvoiceRelatedGRN.test.tsx
+npm test
+npm run test:setup
+npm run typecheck
+npm run lint
+```
+
+| Check | Result |
+| --- | --- |
+| Before-fix screen regression with corrected test driver | FAIL as expected: missing/empty nested number cases fail; legacy number and absent UUID cases pass |
+| After-fix screen regression | PASS4: actual Breakdown text/accessibility label and press→GRN UUID route; legacy number preserved; no fabricated route when UUID absent |
+| Full unit suite | PASS253 tests/39 suites |
+| Setup checks | PASS48 |
+| Typecheck | PASS |
+| Lint | PASS,0errors/1468existing warnings |
+| Privacy/whitespace | PASS; fictional fixture only, private inputs excluded |
+| New APK build/audit/native navigation | NOT TESTED; deferred until the current soak ends |
+
+An initial test-driver attempt also failed its legacy control because
+React Test Renderer exposes Pressable's inner function rather than the imported
+memo wrapper. Preserved original logs show3fail/1pass; label/onPress-based
+selection corrected the driver before recording the meaningful2fail/2pass
+baseline. Then the single application-line change produced4PASS. These are
+source regressions; they do not establish a new native pass.
+
+For the next native build, select this candidate explicitly in a separate clean
+checkout and follow the existing standalone APK sequence with a new build ID.
+Audit its exact source/trust/SHA before installation. After the soak has stopped,
+open saved invoice20261005 → Breakdown, verify visible/accessibility text
+`View GRN IRP05`, press it, confirm the matching GRN detail and return to the
+invoice. Also check the existing Overview GRN link. Record the new artifact and
+result separately; do not transfer the previous artifact's eight-hour result.
+No receipt, dispatch or invoice needs to be recreated for this read-only check.
+
+The [next acceptance plan](OPERATOR_NEXT_ACCEPTANCE.md) records dependent work,
+blocking resources and reuse rules. Historical626 undefined-label evidence is
+retained above; the installed e217 artifact still contains that defect.
