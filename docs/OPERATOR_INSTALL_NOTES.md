@@ -47,8 +47,8 @@ did not run. The corrected supervised run is not yet started. See the current
 | Native receipt response-loss/retries | PASS, scoped |Corrected before303/after302 and private images624; initial301 fault FAIL and saved record retained, no replay |
 | Saved invoice/private PDF SEND/render/export | PASS, scoped |626; actual new artifact/new exported%PDF number20261005/tax9/discount-2.5/total182/three lines/hash; driver failures preserved |
 | Clean authenticated core/switch/core round trip | PASS |623c after natural quota reset: both real mock verifiers, separate profile/data/cache, primary return/invoice and both cold persistence;623a/b failures retained |
-| Three cold launches/30minute readiness | RUNNING |Three clean cold launches PASS on2026100101;30minute supervised629 rehearsal underway, no completed readiness PASS yet |
-| Final current short read/preflight/frozen plan | NOT TESTED yet |Supervised630 waits for all629 gates, then captures baselines/explicitly renews helper lifetime/60second read+verify/freezes new plan |
+| Three cold launches/30minute readiness | PASS |Three cold launches;1802.6seconds/30cycles on current2026100101 artifact, completed629 |
+| Final current short read/preflight/frozen plan | FAIL630; separate633 pending |Captured baselines and restarted owned helpers; immediate fault IPC connect raced startup. Bounded owned readiness correction; failed attempt preserved |
 | New8hour read soak | NOT STARTED |Automatic631 launch only after all8 current-artifact prerequisite files PASS; no completed eight-hour acceptance |
 | Physical/provider/cellular/noUSB/revocation/release cases | OPEN |Current run is isolated emulator/mock delivery; backend dependency gate FAIL and documented hardware/auth gaps remain |
 

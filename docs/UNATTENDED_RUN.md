@@ -490,3 +490,15 @@ scheduled. No operator input is required for the retained diagnosis. Backend
 job results before claiming any downstream checks. Mobilec082 CI36819240073
 was still running at this documentation checkpoint. Deferred security, provider,
 physical-device/cellular and persistent stale-display findings remain open.
+
+## Helper readiness before plan freeze — 2026-10-01 correction
+
+After an explicit pre-plan helper start/restart, follow the backend
+[bounded IPC/listener readiness procedure](https://github.com/abhiguru/supabase-warehouse-template/blob/codex/fresh-vm-operator-install/docs/UNATTENDED_FIXTURE.md).
+`systemctl start` alone does not wait for Node's control socket.630 failed with
+ENOENT on immediate fault control; its successful captures and failed logs are
+retained. Check all owned services, listeners and mode0600 IPC within30seconds,
+then require fault DISARMED and run the complete guarded preflight. Stop on
+failure; do not reset ADB, restart helpers during a run or replay writes.
+Current629 three cold launches/1802.6seconds/30cycles PASS.633 is a separate
+read-only final-gate attempt against the preserved baselines, not a630 replay.

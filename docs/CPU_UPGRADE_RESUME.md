@@ -3,6 +3,11 @@
 ## Current renewed preparation — 2026-10-01
 
 Long run NOT STARTED at this checkpoint. No operator input is required.
+629 completed all gates, including1802.6seconds/30cycles.630 failed at immediate
+fault IPC connect after systemd start (ENOENT); failed logs/baselines preserved.
+Separate633 waits for actual owned IPC/listeners before full preflight and short
+read verification, then freezes/launches only after PASS. No transaction replay.
+The following active-pipeline description records the earlier checkpoint.
 Supervised preparation629 and automatic final-gate/launch pipeline630 are
 active: natural quota reset→normal login→new623c→30minute readiness→baselines/
 helper lifetime reset→short read/verify→frozen8-prerequisite plan→actual631 launch.
