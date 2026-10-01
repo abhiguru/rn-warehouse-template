@@ -42,6 +42,16 @@ function validateDomainTarget(gradle, pem, domain, now) {
   assert.ok(ca.ca && Date.parse(ca.validFrom) <= now && Date.parse(ca.validTo) > now);
 }
 
+export function fixtureBundleGradle(gradle, workers) {
+  assert.match(gradle, /applicationId\s+["']in\.gurucold\.warehouse\.fixture["']/,
+    'Refusing bundle overlay for a normal warehouse APK');
+  assert.match(workers, /^[12]$/, 'Fixture bundle workers must be one or two');
+  const needle = 'bundleCommand = "export:embed"';
+  assert.equal(gradle.split(needle).length, 2, 'One Expo embedded bundle command required');
+  assert.ok(!/^\s*extraPackagerArgs\s*=/m.test(gradle), 'Existing packager options must not be overwritten');
+  return gradle.replace(needle, needle + `\n    extraPackagerArgs = ["--max-workers", "${workers}"]`);
+}
+
 function main() {
 const root = resolve(import.meta.dirname, '..');
 const caPath = process.env.WAREHOUSE_FIXTURE_CA;
@@ -82,9 +92,12 @@ if (process.argv.includes('--check-certificate')) {
 const app = resolve(root, 'android/app');
 const gradle = readFileSync(resolve(app, 'build.gradle'), 'utf8');
 validateFixtureTarget(gradle, pem);
+const bundleWorkers = process.env.WAREHOUSE_FIXTURE_BUNDLE_WORKERS;
+const bundledGradle = bundleWorkers === undefined ? gradle : fixtureBundleGradle(gradle, bundleWorkers);
 const manifestPath = resolve(app, 'src/main/AndroidManifest.xml');
 let manifest = readFileSync(manifestPath, 'utf8');
 assert.ok(!manifest.includes('android:networkSecurityConfig'), 'Existing trust policy must not be overwritten');
+if (bundledGradle !== gradle) writeFileSync(resolve(app, 'build.gradle'), bundledGradle);
 for (const dir of ['raw', 'xml']) mkdirSync(resolve(app, 'src/main/res', dir), { recursive: true });
 // A public certificate is not key material. Keep its conventional .crt suffix
 // so the normal artifact audit can still reject every unexpected .pem/key file.

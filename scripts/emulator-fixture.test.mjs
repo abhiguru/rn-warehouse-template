@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync, rmSync, mkdirSync, copyFileSync, writeFileSy
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { validateFixtureTarget, validateSwitchingFixtureTarget, validateCertificateHorizon, validateReplacementFixtureTarget, validateIndependentFixtureKeys } from './prepare-emulator-fixture.mjs';
+import { validateFixtureTarget, validateSwitchingFixtureTarget, validateCertificateHorizon, validateReplacementFixtureTarget, validateIndependentFixtureKeys, fixtureBundleGradle } from './prepare-emulator-fixture.mjs';
 import { validateEntries, validateText } from './artifact-audit.mjs';
 
 test('fixture certificate overlay rejects normal warehouse packages before parsing any certificate', () => {
@@ -158,4 +158,14 @@ test('replacement trust is optional, exact-host, independent and confined to the
     assert.doesNotThrow(() => validateEntries(['res/raw/warehouse_replacement_fixture_ca.crt']));
     assert.notEqual(run(replacement).status, 0, 'Do not overwrite generated trust');
   } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('fixture bundle worker cap rejects normal packages, unbounded workers and existing packager options', () => {
+  const g = 'react {\n    bundleCommand = "export:embed"\n}\napplicationId "in.gurucold.warehouse.fixture"';
+  assert.match(fixtureBundleGradle(g, '2'), /extraPackagerArgs = \["--max-workers", "2"\]/);
+  for (const v of ['0','3','8','2; bad','']) assert.throws(() => fixtureBundleGradle(g,v));
+  assert.throws(() => fixtureBundleGradle(g.replace('.fixture','.test1'),'2'));
+  assert.throws(() => fixtureBundleGradle(g.replace('export:embed','bundle'),'2'));
+  assert.throws(() => fixtureBundleGradle(g+'\nextraPackagerArgs = []','2'));
+  assert.throws(() => fixtureBundleGradle(g+'\nbundleCommand = "export:embed"','2'));
 });

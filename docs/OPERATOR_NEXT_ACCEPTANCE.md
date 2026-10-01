@@ -136,3 +136,21 @@ schedule one bounded check for expiry plus ten minutes. Preserve its storage;
 never change timestamps, reset quotas or clone authenticated device state.
 The appointment can fall after the execution campaign; its eventual result
 remains pending until the actual check executes.
+
+### VM build resource correction
+
+The clean accessibility build2026100103 completed, but Metro's default worker
+count caused VM memory pressure and the kernel killed the old terminal-owned
+emulator. Its stopped state was archived locally and verified before an owned
+supervised boot; no stored state was restored or erased. Native work stopped at
+its preflight gate. Preserve that failure even though build/audit passed.
+
+For a future disposable **fixture** build, set
+`WAREHOUSE_FIXTURE_BUNDLE_WORKERS=2` before running
+`node scripts/prepare-emulator-fixture.mjs` after prebuild. This optional overlay
+adds Expo `export:embed --max-workers 2` to generated Gradle only after the
+fixture package, expected command and absence of existing options are verified.
+Normal APKs and worker counts outside1–2 are refused. Keep Gradle's documented
+two-worker/3GiB heap limits too. Stop the proven-owned AVD cleanly before another
+heavy build, preserve its storage, and restart it under supervision afterward;
+never build while a final soak owns the fixture.
