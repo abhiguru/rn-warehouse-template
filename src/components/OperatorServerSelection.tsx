@@ -55,8 +55,10 @@ export function OperatorServerSelection({ initial = false }: { initial?: boolean
     setScanning(true);
   };
 
-  const activate = async () => {
-    if (!candidate || busy || activating.current) return;
+  const activate = async (selected: Discovery, request: number) => {
+    // A confirmation belongs to one discovery result. Editing the origin or
+    // leaving this screen invalidates its callback before any session change.
+    if (request !== inspection.current || busy || activating.current) return;
     if (queryClient.isMutating() > 0) {
       Alert.alert('Operation In Progress', 'Finish the current operation before switching servers.');
       return;
@@ -70,11 +72,11 @@ export function OperatorServerSelection({ initial = false }: { initial?: boolean
     let sessionCleared = false;
     try {
       const previous = getActiveOperatorServer();
-      if (previous?.origin === candidate.server.origin && previous.instanceId === candidate.server.instanceId) {
+      if (previous?.origin === selected.server.origin && previous.instanceId === selected.server.instanceId) {
         if (!initial) router.back();
         return;
       }
-      await stageOperatorServer(candidate.server);
+      await stageOperatorServer(selected.server);
       sessionCleared = true;
       await dispatch(logout()).unwrap();
       if (await getPendingEnrollmentToken()) {
@@ -89,13 +91,32 @@ export function OperatorServerSelection({ initial = false }: { initial?: boolean
       dispatch(resetInvoice());
       dispatch(resetCustomer());
       await ConfigService.clearCache();
-      await commitStagedOperatorServer(candidate.server);
+      await commitStagedOperatorServer(selected.server);
       if (!initial) router.replace('/login');
     } catch {
       Alert.alert('Switch Failed', sessionCleared
         ? 'The old session was cleared. Check the selected server and sign in again.'
         : 'The current server was kept. Please try again.');
     } finally { endOperatorSwitch(); activating.current = false; setBusy(false); }
+  };
+
+  const chooseServer = () => {
+    if (!candidate || busy || activating.current) return;
+    const selected = candidate;
+    const request = inspection.current;
+    const previous = getActiveOperatorServer();
+    if (previous && (previous.origin !== selected.server.origin || previous.instanceId !== selected.server.instanceId)) {
+      Alert.alert(
+        'Change Warehouse Server',
+        `Changing to ${selected.server.displayName} will sign you out and discard unsaved forms. You will need to sign in again.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Change server', style: 'destructive', onPress: () => { void activate(selected, request); } },
+        ]
+      );
+      return;
+    }
+    void activate(selected, request);
   };
 
   return <View style={styles.container}>
@@ -110,7 +131,7 @@ export function OperatorServerSelection({ initial = false }: { initial?: boolean
       <Text style={styles.name}>{candidate.server.displayName}</Text>
       <Text>{candidate.server.companyName}</Text>
       <Text>{candidate.server.origin}</Text>
-      <Button onPress={() => void activate()} disabled={busy}>Use this server</Button>
+      <Button onPress={chooseServer} disabled={busy}>Use this server</Button>
     </View>}
     {busy && <ActivityIndicator />}
     <Modal visible={scanning} onRequestClose={() => setScanning(false)}>

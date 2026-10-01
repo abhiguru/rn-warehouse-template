@@ -267,6 +267,17 @@ payload is only the HTTPS origin, not JSON, credentials or a deep link. Camera
 permission and an actual successful scan remain separate acceptance steps.
 This attempt required the explicit fullscreen viewer before scanning passed.
 
+For a later warehouse change, open **Settings → Change Warehouse Server** (or
+**Change warehouse server** on the login screen), enter the new HTTPS origin,
+tap **Check server** and verify the displayed identity. On a build containing
+correction649, **Use this server** asks for confirmation when either the origin
+or instance identity changes. **Cancel** preserves the current session and drafts;
+**Change server** clears them and requires a fresh login. Selecting the same
+origin and instance preserves them. Finish any active save before switching.
+See [server-switch acceptance](OPERATOR_SERVER_SWITCH_CASES.md) for unsaved-form
+and replacement-instance cases. The installed e217 APK predates this correction;
+build/audit the reviewed correction with a new identifier before testing it.
+
 Real authentication needs explicit SMS permission and owned phones; input OTPs
 locally, never in chat/logs. Historical device tests do not count for this APK.
 
@@ -2209,3 +2220,44 @@ correcting that validation import to default produced PASS, with no workflow
 change needed. The next CI SDK download and full APK build remain pending. This
 preflight does not guarantee archive integrity, eliminate network failures or
 establish native acceptance. No active VM SDK, device or warehouse was changed.
+
+### Server-switch confirmation and dispatch cleanup649 — 2026-10-01
+
+Source review of86bde05 on Ubuntu24.04.3, Node22.23.3/npm10.9.9 found that pressing
+**Use this server** for a different instance immediately logged out and discarded
+unfinished forms without warning. The existing dispatch `resetForm` also left
+its rollback snapshot and error intact, so rollback could restore a previous
+warehouse's draft after a reset. This is a reproduced in-memory state defect;
+no cross-warehouse request or disclosure was observed on a device.
+
+Added a confirmation describing logout and unsaved-form loss. Cancel changes no
+session/cache/form state. Same-origin/same-identity selection remains a no-op;
+a replacement identity requires confirmation and cleanup. Confirmation callbacks
+are invalidated by editing the origin or leaving the screen, and the existing
+mutation guards are checked when confirming. Full dispatch reset now returns its
+complete initial state, including an empty snapshot and error. No server, pricing,
+authentication or persistence policy was changed.
+
+Trigger: `npm test -- --watch=false --runTestsByPath
+src/tests/components/OperatorServerSwitch.test.tsx`. Before correction:10FAIL/1PASS;
+after correction:11PASS. Tests use real reducers for all four forms with fictional
+drafts; discovery, credential operations and native alerts are mocked. They cover
+cancel, confirmed switching/replacement, same instance, first selection, active
+mutations, stale/unmounted confirmations, staging failure and rollback after reset.
+The existing overlapping-discovery test also passes. Full Jest268/41suites PASS,
+typecheck PASS, lint0errors/1463warnings. Raw failed/passing logs remain private.
+Setup72 evidence648 is unchanged; no setup scripts changed in649.
+
+No new APK, native dialog, SecureStore behavior or two-instance backend case was
+tested in649. Current soak inputs/artifact/services are unchanged. Follow the
+[main switch sequence above](#reproducible-local-standalone-test-apk) and
+[new-artifact acceptance cases](OPERATOR_SERVER_SWITCH_CASES.md) after exclusive
+fixture access is released.
+
+CI follow-up: backendbed4eeee4a008073aa453c32da27cade50a32a2f completed all seven
+jobs PASS in [36864729906](https://github.com/abhiguru/supabase-warehouse-template/actions/runs/36864729906),
+including the source audit and isolated operator installation. Mobile86bde05
+[36867225316](https://github.com/abhiguru/rn-warehouse-template/actions/runs/36867225316)
+passed the explicit SDK prerequisite step and three non-Android jobs; Android
+assembly/audit remained pending at this observation. Preserve the earlier failed
+archive download. These results do not upgrade the currently installed artifacts.

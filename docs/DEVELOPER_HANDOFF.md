@@ -45,3 +45,9 @@ See [post-soak write retry cases](OPERATOR_WRITE_RETRY_CASES.md) for preparation
 The dispatch draft-only driver641 and read-only adapter640 are documented in [write retry cases](OPERATOR_WRITE_RETRY_CASES.md). They have source and active-run refusal evidence, not current native acceptance. Include the three dispatch accessibility labels in the next audited APK; never replay existing fault documents.
 
 Before Android compilation run `node scripts/check-android-sdk.mjs` after installing the pinned packages in [operator notes](OPERATOR_INSTALL_NOTES.md). CI now performs this explicit prerequisite step; SDK archive/download failures remain separate from app compilation/native acceptance.
+
+Correction649 adds confirmation before switching warehouses and clears dispatch
+rollback/error state on full reset. Eleven new source regressions pass; the
+[server-switch cases](OPERATOR_SERVER_SWITCH_CASES.md) still require a new audited
+APK and exclusive fixtures after the soak. Historical round-trip evidence does
+not establish unsaved-form cancellation or same-origin replacement acceptance.

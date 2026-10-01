@@ -343,16 +343,8 @@ const dispatchFormSlice = createSlice({
      * Reset form to initial state
      * Called on mount, unmount, and after successful submission
      */
-    resetForm: (state) => {
-      state.dispatch_id = null;
-      state.header = EMPTY_DISPATCH_HEADER;
-      state.items = [];
-      state.images = [];
-      state.current_step = 0;
-      state.is_loading = false;
-      state.is_saving = false;
-      state.validationErrors = {};
-    },
+    // A full reset also drops rollback data and errors from the old warehouse.
+    resetForm: () => initialState,
 
     /**
      * Reset only form data, keep UI state

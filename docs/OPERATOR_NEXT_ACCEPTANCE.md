@@ -14,7 +14,7 @@ backend reconfiguration or bound-source edit is allowed while it runs.
 | Priority | Required work | Blocking prerequisite | Current evidence |
 | --- | --- | --- | --- |
 | 1 | Complete nine native blocks plus final duration/request/session/business/refresh reconciliation | Active run must finish; a failed/stopped unit is not a successful release | RUNNING at this checkpoint; earlier passed blocks remain valid, final aggregate pending |
-| 2 | Build/audit the current reviewed mobile candidate with a new ID, including GRN-link fix, dispatch accessibility labels and logging correction; verify Breakdown IRP05 label, GRN UUID navigation and Overview | Exclusive emulator; new APK not built/audited/installed | GRN source636 and CI36854228659 PASS; newer source checks are scoped separately; native new-artifact case NOT TESTED |
+| 2 | Build/audit the current reviewed mobile candidate with a new ID, including GRN-link fix, dispatch accessibility labels, logging correction and switch cleanup; verify Breakdown IRP05 label, GRN UUID navigation and Overview | Exclusive emulator; new APK not built/audited/installed | GRN source636 and CI36854228659 PASS; newer source checks are scoped separately; native new-artifact case NOT TESTED |
 | 3 | Native direct partial dispatch before/after response loss with proof before retry, one independently observed same-key retry and stock/cache reconciliation | New APK, reviewed relay, fresh reserved stock/documents, exact private config and12source bindings; complete-schema SQL/native/cleanup integration | Drivers640–643 prepared and guarded; setup69PASS, refusal/mocked cleanup and scratch SQL647PASS; current native acceptance NOT TESTED, API625 and historical native3012 do not close it |
 | 4 | Revoked/expired sessions, offline-before-submit/reconnect, unsaved-form switch and same-origin replacement | Reserved session customer/private bindings; seven-day natural refresh expiry; remaining offline/switch drivers and fresh replacement state | Session drivers637 prepared; no current native case. Lost-response transport tests do not establish airplane-mode/offline queue behavior |
 | 5 | Current normal standalone APK on selected physical phone; QR, Wi-Fi/cellular, noUSB/Metro and owned-phone flows | Device/operator availability, camera/cellular as available | BLOCKED for fully unattended scope; emulator and historical phone results do not close hardware acceptance |
@@ -23,8 +23,9 @@ backend reconfiguration or bound-source edit is allowed while it runs.
 
 Backend review candidatebed4eee corrects the locally failing source dependency
 audit with same-major leaf updates. Local metadata/Storage audits report zero;
-backend80tests and metadata build/typecheck/12recipe tests passed. FreshCI and
-rebuilt-container integration remain pending. Installed runtime still uses the
+backend80tests and metadata build/typecheck/12recipe tests passed. Exact
+[CI36864729906](https://github.com/abhiguru/supabase-warehouse-template/actions/runs/36864729906)
+passed all seven jobs, including isolated operator installation. Installed runtime still uses the
 recorded earlier source/images. Existing image-security findings and production
 release gates remain open; a clean npm audit does not clear them.
 
@@ -46,7 +47,10 @@ acceptance. No branch merge, release or production-readiness claim is authorized
   authentication policy or OTP counters to simulate seven-day refresh expiry.
 - Unsaved-form switching must verify the app's supported confirmation/cancellation
   behavior, account/cache/draft clearing and fresh authentication. Record an
-  operator decision if the intended policy is undocumented.
+  operator decision if the intended policy is undocumented. Correction649 adds
+  the explicit warning/Cancel action and clears dispatch rollback data; source
+  regressions PASS, new-APK acceptance remains open. Follow
+  [server-switch cases](OPERATOR_SERVER_SWITCH_CASES.md).
 - Same-origin replacement needs separate empty state, new credentials and identity;
   never copy another instance's state. Inspect listener ownership before routing.
   Existing core/switch round-trip623c does not prove replacement at the same URL.
