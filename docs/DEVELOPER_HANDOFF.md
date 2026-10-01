@@ -62,3 +62,8 @@ Preparation653 adds [guarded navigation/offline drivers](OPERATOR_NAVIGATION_DRI
 Four active-run refusals and setup75PASS; full-schema/native execution remains open.
 Cold-start identity correction652 has290Jest tests PASS; replacement authentication
 on a new audited native artifact still needs separately owned replacement state.
+
+Correction654 makes query-based writes one attempt per explicit action and avoids
+paused reconnect execution. Five real-client regressions PASS; full295Jest tests,
+typecheck and lint0errors PASS. The unused dispatch-delete hook is hardened;
+current direct document services and installed soak APK are unchanged.

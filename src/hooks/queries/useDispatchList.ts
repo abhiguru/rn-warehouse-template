@@ -246,6 +246,10 @@ export function useDeleteDispatch() {
   const queryClient = useQueryClient();
 
   return useMutation({
+    // Preserve one-attempt behavior even under a different provider's defaults.
+    // Reconcile an uncertain delete before the operator requests another one.
+    retry: false,
+    networkMode: 'always',
     mutationFn: async ({ dispatchId, userId }: { dispatchId: string; userId: string }) => {
       const result = await deleteDispatch(dispatchId, userId);
       if (!result.success) {

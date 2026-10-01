@@ -4,8 +4,8 @@
  * Provides a configured QueryClient instance for the application.
  * Uses best practices for React Native including:
  * - Appropriate stale times for mobile
- * - Offline support configuration
- * - Retry logic for network failures
+ * - Read retries for network failures
+ * - One attempt per explicit write; no reconnect write queue
  *
  * @module lib/queryClient
  */
@@ -48,9 +48,12 @@ export const queryClient = new QueryClient({
       networkMode: 'online',
     },
     mutations: {
-      retry: 2,
-      retryDelay: (attemptIndex: number) => Math.min(1000 * 2 ** attemptIndex, 30000),
-      networkMode: 'online',
+      // A failed response may follow a committed write. Surface the error so the
+      // operator can reconcile before explicitly trying again.
+      retry: false,
+      // Execute once even when reported offline; let the transport return its
+      // normal error instead of pausing a write to run after reconnection.
+      networkMode: 'always',
     },
   },
 });

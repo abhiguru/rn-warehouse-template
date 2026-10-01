@@ -22,11 +22,15 @@ stock before an explicit unchanged retry. The same numbered GRN/dispatch body
 has a stable idempotency key; changed fields produce a different key. Do not edit
 an uncertain operation and assume it is the same retry.
 
-The shared QueryClient has an automatic mutation retry default, and an exported
-`useDeleteDispatch` hook inherits it. Source search at3dc2023 found no mounted
-consumer of that hook; the current dispatch-detail screen calls its service
-directly. This is a separate source-hardening item before enabling query-based
-writes. There is also no native NetInfo-to-QueryClient online-manager bridge;
+Correction654 removes automatic mutation retries and paused reconnect writes
+from the shared QueryClient. Each explicit action gets one transport attempt,
+including while reported offline, and surfaces its normal error. The exported
+`useDeleteDispatch` hook also specifies this policy under other provider defaults.
+Source search found no mounted consumer of that hook; the current dispatch-detail
+screen calls its service directly. This is preventive hardening of query-based
+writes, not evidence of a current native duplicate-delete incident. Reconcile
+an uncertain outcome before another explicit action. There is also no native
+NetInfo-to-QueryClient online-manager bridge;
 its reconnect option alone does not establish working native reconnection.
 Do not use those unused query hooks as evidence that current document forms queue
 writes. Order Realtime and the offline banner use the network hook directly.

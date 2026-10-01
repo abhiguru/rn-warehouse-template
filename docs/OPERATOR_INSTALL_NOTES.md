@@ -2381,3 +2381,27 @@ all7PASS; mobile switch3dc2023ff4c11274c9ff0da26367c8479bb9d692
 and mobile70c3073914eea2b52d6955848716ec8d0aa17909
 [36871398156](https://github.com/abhiguru/rn-warehouse-template/actions/runs/36871398156)
 all4PASS each. These debug/source jobs do not establish current native acceptance.
+
+### One-attempt query write policy654 — 2026-10-01
+
+Source88817d1 still configured QueryClient mutations with two retries and
+`networkMode: online`, which can pause an offline action until reconnect.
+Five regressions exercise the actual application client/mutation cache with fake
+transports: failed write, committed write/lost response, offline-to-online, transient
+read and successful explicit write. Old source RED3/PASS2; corrected source PASS5.
+Failed attempts retained privately. No network/backend business mutation occurred.
+
+Changed mutation defaults to `retry: false`, `networkMode: always`: one transport
+attempt immediately, with normal errors surfaced rather than queuing a later write.
+The exported dispatch-delete hook specifies the same policy under another provider.
+Read retries remain unchanged and their transient-read case PASS. Source search
+found no mounted delete-hook consumer; current document/detail screens call their
+services directly. This is preventive hardening, not proof of a current native
+duplicate-delete incident or an audit of every transport retry in the stack.
+Operators must still reconcile uncertain commits before another explicit action.
+
+Trigger: targeted Jest5PASS, full Jest295/45suites PASS, typecheck PASS, lint
+0errors/1463warnings. Setup75PASS from653 remains unchanged in scope. No native
+APK rebuild, offline radio case or production policy change; new-artifact
+acceptance remains open. Native NetInfo is not bridged to QueryClient's online
+manager; this correction does not claim that query reconnect events work on-device.
