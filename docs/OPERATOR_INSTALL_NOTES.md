@@ -31,8 +31,10 @@ gates remain open. The historical result ledger below preserves failed attempts.
 
 The operator resumed after the VM resource change. The guest now exposes eight
 CPUs and usable KVM. See [CPU_UPGRADE_RESUME.md](CPU_UPGRADE_RESUME.md) for the
-preserved pause, interrupted attempt and scoped post-reboot results. The scoped eight-hour fixture/emulator run started at00:30IST on1October;
-its results are still RUNNING and do not close all installation acceptance.
+preserved pause, interrupted attempt and scoped post-reboot results. The first eight-hour attempt FAILED in block05 after its terminal-backed
+bridges disappeared. Four blocks passed; later blocks and final reconciliation
+did not run. The corrected supervised run is not yet started. See the current
+1October checkpoint below; earlier RUNNING observations are historical.
 
 ## Current pre-overnight blocker checkpoint — 2026-09-30
 
@@ -46,7 +48,7 @@ its results are still RUNNING and do not close all installation acceptance.
 | Bounded runner infrastructure | PASS, scoped |Six regression cases;42 full setup checks; guarded read-only fixture smoke/resume514 retained one execution; changed runner bindings require new evidence, not blind reuse |
 | Emulator cold-start readiness | PASS on3014 |Three cold launches plus1801.7seconds/28cycles PASS550-20260930T181721Z, no ANR/crash/ADB restart/human. Earlier failures/artifact results retained |
 | Lost-response controls and API reconciliation | PASS, scoped |Native3014 receipt before/after loss: independent no-commit/commit before unchanged retries, one line/qty4/stock4/cache and success608; confirmed private images PASS. Native dispatch results582 remain3012, API four-case evidence566/572 retained |
-| Overnight fixture/emulator run | RUNNING, scoped |Started2026-10-01T00:30:19IST, supervised unit warehouse-fixture-overnight-3014;44bindings/nine3200second native blocks. All launch prerequisites PASS; first block RUNNING. No completed long-run PASS or physical/provider/release acceptance claimed |
+| First overnight fixture/emulator run | FAIL |3014 started00:30:19IST1October; blocks01–04 PASS/208cycles/12801.18seconds, fifth block FAIL after40 further completed cycles. Three dependency listeners/processes disappeared. Blocks06–09/final NOT RUN; no completed eight-hour or physical/provider/release acceptance |
 | Current normal arm64/physical acceptance | NOT TESTED |Phone remains8d9da8e/code3001; normal historical e54/code3008 build is separate; corrected native evidence is emulator-only |
 
 Do not rerun successful unchanged cases to obscure these boundaries. Line-level
@@ -66,13 +68,13 @@ For the corrected sequence, fetch review PR #34 and pin the tested code source
 before installing dependencies:
 
 ```bash
-export MOBILE_BUILD_CHECKOUT="$HOME/warehouse-mobile-build-2026093014"
+export MOBILE_BUILD_CHECKOUT="$HOME/warehouse-mobile-build-2026100101"
 test ! -e "$MOBILE_BUILD_CHECKOUT"
 umask 022
 git clone --branch codex/fresh-vm-operator-notes \
   https://github.com/abhiguru/rn-warehouse-template.git "$MOBILE_BUILD_CHECKOUT"
 cd "$MOBILE_BUILD_CHECKOUT"
-git checkout --detach 42a5559b4abcad3ddd7601b2e4885e3c29101c76
+git checkout --detach e217c1f2b22f74ea5aaabca5101c27aa166c5f68
 git rev-parse HEAD
 git status --short
 ```
@@ -261,29 +263,36 @@ locally, never in chat/logs. Historical device tests do not count for this APK.
 Use the backend review's [isolated fixture guide](https://github.com/abhiguru/supabase-warehouse-template/blob/codex/fresh-vm-operator-install/docs/UNATTENDED_FIXTURE.md)
 first. It provisions a separate guarded Fictional Core Warehouse with a
 non-delivery key; leave that fixture and its loopback TLS bridge running. Record
-backend source `ee5b4936e2aa644667fe617f79e2a48b2eb67bbb` plus its CI network
-overlay. Never attach this harness to a real warehouse or tunnel. The installed
-Test Warehouse 1 and the production pilot do not supply fixture authentication.
+backend source `7e3f66a34bb729d80e25c6a4a0975f072c05d03a` plus the declared isolated
+Compose subnet overlay. Follow the backend guide literally in a new state;
+never borrow another instance's state, connector or identity. After the backend
+functional checks, supervise core, switching bridge and fault relay using its
+persistent, unenabled user-unit procedure. No terminal-backed dependency is
+sufficient for a long run.
 
-Start a clean, separate mobile checkout at
-`b03f197f6d168eab7fc7a87fe1bae3e00df6276d` from the review branch. Run npm ci,
+Clone a clean separate mobile checkout and pin
+`e217c1f2b22f74ea5aaabca5101c27aa166c5f68` from this review branch before npm ci,
 environment creation and the dependency/setup/unit/lint/typecheck/contract
-sequence above before heavy compilation. This pin includes the invoice/retry fixes and
-preflight/runner safeguards. Earlier43/e54/57 outcomes remain attached to their
-original artifacts. Fresh b03/code3012 locked installation,246 Jest/36 suites,
-42 setup/type/lint/Expo/dependency/doctor/bootstrap/live-contract checks and
-standalone x86_64 build/audit/signature/install/readback PASS. Its native retry,
-PDF and readiness checks need artifact-specific evidence.
+sequence above. This source adds a persistent stale-Orders warning: retained
+orders remain marked after a refresh failure, including during a pending retry,
+until a successful response replaces them. Earlier artifact results retain
+their original scope. Clean build620 and compiled trust/install/readback621 PASS;
+the current native prerequisites must finish before an overnight launch.
+
+Finish the separate switching fixture first and generate fresh independently
+owned private TLS there as well. Set SWITCH_PRIVATE to its protected directory.
+Only public certificates enter the build; keep both private keys outside Git.
 The dedicated fixture APK uses a
 local public CA generated by the backend sequence; its private key never enters
-the build tree. Select a fresh build identifier, shown as3012 below.
+the build tree. Select a fresh build identifier, shown as2026100101 below.
 
 ```bash
 export WAREHOUSE_ANDROID_PACKAGE=in.gurucold.warehouse.fixture
 export WAREHOUSE_APP_NAME='Fictional Core Warehouse'
 export WAREHOUSE_APP_SCHEME=warehouse-fixture
-export WAREHOUSE_ANDROID_VERSION_CODE=2026093012
+export WAREHOUSE_ANDROID_VERSION_CODE=2026100101
 export WAREHOUSE_FIXTURE_CA="$FIXTURE_PRIVATE/tls/fixture-ca.pem"
+export WAREHOUSE_SWITCH_FIXTURE_CA="$SWITCH_PRIVATE/tls/fixture-ca.pem"
 # Cover build/setup + planned run + safety margin; recheck at actual run start.
 export WAREHOUSE_FIXTURE_MIN_VALID_HOURS=12
 node scripts/prepare-emulator-fixture.mjs --check-certificate
@@ -301,7 +310,8 @@ sha256sum android/app/build/outputs/apk/release/app-release.apk
 Record the generated certificate/network-security overlay as a local native
 modification, even though android/ is ignored by Git. The helper rejects normal
 warehouse package IDs, invalid/expired/wrong-hostname CAs and existing trust
-policies. Trust is limited to backend-core.example.test; other hosts retain
+policies. Separate trust is limited to the exact backend-core.example.test and
+backend-switch.example.test domain entries; other hosts retain
 system trust and cleartext stays disabled. Do not disable TLS validation. Rebuild
 with new private CA material after its one-day expiry. This locally signed APK
 is a fixture artifact, separate from the physical arm64 test APK.
@@ -1741,3 +1751,54 @@ scheduled. No operator input is required for the retained diagnosis. Backend
 job results before claiming any downstream checks. Mobilec082 CI36819240073
 was still running at this documentation checkpoint. Deferred security, provider,
 physical-device/cellular and persistent stale-display findings remain open.
+
+## Renewed supervised-run preparation — 2026-10-01
+
+The first3014 run remains FAIL; no blind resume or completed-write replay.
+Old fixture03 was read-only reconciled, locally backed up and stopped without
+removing its database/Storage/state. A clean remotely fetched backend7e3f66a
+checkout owns a new core-backend-test-2026100101 state and fresh identity, JWTs,
+passwords, database and Storage. Only the documented10.233.245.0/24 overlay was
+applied. Setup/local doctor and all functional checks PASS618:75 units,
+migrations, core API, customerA/B Realtime, final images/PDF/accounts, Studio,
+gateway, gateway-DNS replacement, retention preview and live contract.
+Container dependency audit remains FAIL; no release readiness.
+
+Two fresh independently generated private fixture CAs expire at
+2026-10-02T05:43:04Z. Never carry the old trust past expiry or disable TLS.
+Clean mobilee217c1f build620/code2026100101/x86_64 SHA-256
+238ba669f3e14e1e0ea6d0dd396b8766fe5ce1482eae48e264a9af2f95900ed0 passed generic
+audit, signature, actual compiled manifest/two-domain trust/public certificate
+byte comparisons, bundled JS and exact installed readback621. Only the documented
+generated fixture native certificate overlay supplements source HEAD.
+249 Jest tests/38suites,48setup, typecheck and lint0errors PASS617; lint retains
+1468existing warnings. Persistent stale-warning regression failed before the
+source correction and passed afterward. Native gates are still pending at this
+checkpoint. Fresh API fixtures625 passed four lost-response cases and saved
+invoice contracts179/147/200/252/177/182, including private PDFs; native
+acceptance is separate. API-only FXF200 preparation is not current native
+dispatch evidence. No real provider delivery or physical-phone change occurred.
+
+Further current results: native persistent warning622 PASS on the exact new
+APK after5seconds/error-Snackbar expiry, while a retry was deliberately pending,
+and removed only after an observed current Orders RPC200. Explicit supervised
+bridge recovery used no login, SMS or warehouse write. Mobile sourcee217c1f
+[CI36821249722](https://github.com/abhiguru/rn-warehouse-template/actions/runs/36821249722)
+completed successfully; previous helperc082 run36819240073 also finished all4
+jobs PASS. Mobile Expo compatibility, Doctor18/18 and dependency audit PASS620.
+A host check against http://127.0.0.1:18080 failed because it differs from the
+fixture's canonical HTTPS origin; preserve the failure and do not weaken identity
+validation. Host check:backend/doctor passed against the canonical independent
+Test1 public origin; the actual emulator separately selected and authenticated
+the new fictional HTTPS identity. No production/pilot request was made.
+
+Driver preparation failures are retained624: misspelled GRNs tab (actualGRN tab)
+and assuming a form had only one EditText before the registration field loaded.
+Both guards refused before a tap/edit. Select the inspected exact control and
+retain viewport/focus guards. The known item dropdown's inverted accessibility
+bounds were independently checked against a new screenshot before using the
+scoped prior API30 coordinate; do not broadly loosen bounds. Raw logs must be
+created with umask077/mode0600 even inside a private directory. One seed-log
+invocation omitted that umask; its mode664 was corrected to600, without printing
+contents or putting it in Git. These are driver/operator findings, not new
+production pricing or authentication changes.
