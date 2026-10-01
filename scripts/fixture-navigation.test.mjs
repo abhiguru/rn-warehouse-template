@@ -41,3 +41,13 @@ test('reciprocal switching binds the destination administrator and revokes only 
   assert.throws(()=>navigationAfter(config,snapshot,snapshot));
   assert.throws(()=>navigationConfig({...config,profileName:'Core Demo Administrator'}));
 });
+
+test('cold lifecycle requires a preserved active native session and unchanged business/authentication', () => {
+  const config={...c(),case:'cold-lifecycle'};
+  navigationConfig(config);navigationAfter(config,before(),before());
+  assert.throws(()=>navigationBefore(config,{...before(),nativeSessionPresent:false}));
+  assert.throws(()=>navigationAfter(config,before(),{...before(),nativeSessionPresent:false}));
+  for(const key of ['businessHash','otherAuthHash','otpCount','profile'])
+    assert.throws(()=>navigationAfter(config,before(),{...before(),[key]:'changed'}));
+  assert.doesNotMatch(navigationSnapshotSQL(config),/\b(INSERT|UPDATE|DELETE|ALTER|TRUNCATE)\b/i);
+});
