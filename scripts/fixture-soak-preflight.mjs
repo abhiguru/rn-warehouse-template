@@ -10,6 +10,7 @@ import { pathToFileURL } from 'node:url';
 import { resolve, isAbsolute } from 'node:path';
 import { createConnection } from 'node:net';
 import { isMain } from './is-main.mjs';
+import { verifyManagedHelpers } from './fixture-service-health.mjs';
 export async function validateSoakEnvironment(configPath) {
   process.umask(0o077);
   assert.ok(configPath && isAbsolute(configPath));
@@ -23,6 +24,7 @@ export async function validateSoakEnvironment(configPath) {
   const c = JSON.parse(readFileSync(configPath));
   process.env.PATH = resolve(c.node, '..') + ':' + process.env.PATH;
   assert.equal(c.scope, 'isolated-fictional-fixture');
+  verifyManagedHelpers(c.managedUnits);
   const parent = lstatSync(c.privateRoot);
   assert.ok(
     parent.isDirectory() &&

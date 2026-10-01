@@ -15,6 +15,7 @@ import subprocess
 import sys
 import time
 import xml.etree.ElementTree as ET
+from fixture_observation import decode_observation
 
 PACKAGE = 'in.gurucold.warehouse.fixture'
 os.umask(0o077)
@@ -45,6 +46,10 @@ def config(path):
     private(c['results'], True)
     for key in ['adb', 'node', 'databaseHelper', 'httpObserver', 'backendCheckout', 'backendState']:
         assert Path(c[key]).is_absolute()
+    units = c['managedUnits']
+    assert set(units) == {'core', 'switch', 'fault'}
+    for role, unit in units.items():
+        assert re.fullmatch(r'warehouse-fixture-' + role + r'-[a-z0-9][a-z0-9-]{0,39}\.service', unit)
     return c, i
 
 
@@ -64,6 +69,13 @@ class Soak:
         return r.stdout.decode(errors='replace').strip()
 
     def health(self, foreground=False):
+        for unit in self.c['managedUnits'].values():
+            r = subprocess.run(['systemctl', '--user', 'show', unit,
+                                '--property=ActiveState,SubState,MainPID,Restart,NRestarts,KillMode'],
+                               capture_output=True, timeout=5)
+            p = dict(line.split('=', 1) for line in r.stdout.decode().splitlines() if '=' in line)
+            assert r.returncode == 0 and p.get('ActiveState') == 'active' and p.get('SubState') == 'running' and int(p.get('MainPID', '0')) > 0, 'Supervised fixture helper unavailable; no automatic restart'
+            assert p.get('Restart') == 'no' and p.get('NRestarts') == '0' and p.get('KillMode') == 'control-group', 'Fixture helper restarted or ownership changed'
         w = self.adb('shell', 'dumpsys', 'window')
         assert 'Application Not Responding' not in w, 'ANR detected; no dismissal attempted'
         assert not re.search(r'\bam_anr\b|\bam_crash\b', self.adb('logcat', '-b', 'events', '-d'))
@@ -111,6 +123,11 @@ class Soak:
         self.adb('shell', 'input', 'tap', str((x + xx) // 2), str((y + yy) // 2))
 
     def backend(self, helper, args):
+        r = self.backend_process(helper, args)
+        assert r.returncode == 0, 'Guarded read-only backend observation failed; output suppressed'
+        return r.stdout.decode()
+
+    def backend_process(self, helper, args, timeout=45):
         # Exact plan bindings and strict backend fixture guard are required too.
         # Filenames are not shell-quoted ad hoc: quote every private path/argument.
         import shlex
@@ -119,9 +136,8 @@ class Soak:
                'WAREHOUSE_FIXTURE_CHECKOUT': self.c['backendCheckout'],
                'PATH': str(Path(self.c['node']).parent) + ':' + os.environ['PATH']}
         r = subprocess.run(['/usr/bin/sg', 'docker', '-c', command], cwd=self.c['backendCheckout'],
-                           env=env, capture_output=True, timeout=45)
-        assert r.returncode == 0, 'Guarded read-only backend observation failed; output suppressed'
-        return r.stdout.decode()
+                           env=env, capture_output=True, timeout=timeout)
+        return r
 
     def save(self):
         tmp = self.file.with_suffix('.tmp')
@@ -162,10 +178,17 @@ class Soak:
                 while time.monotonic() < deadline:
                     polls += 1
                     try:
-                        network = json.loads(self.backend(self.c['httpObserver'], [since]))
+                        observed = self.backend_process(self.c['httpObserver'], [since], timeout=max(0.1, deadline - time.monotonic()))
+                        safe = decode_observation(observed.returncode, observed.stdout.decode(errors='replace'))
+                    except subprocess.TimeoutExpired:
+                        safe = {'status': 'FAIL', 'category': 'OBSERVATION_TIMEOUT'}
+                    self.state['lastNetworkObservation'] = {'sinceUTC': since, **safe}
+                    self.save()
+                    if safe['status'] == 'PASS':
+                        network = safe
                         break
-                    except AssertionError:
-                        time.sleep(1)
+                    assert safe['status'] == 'WAIT', 'Orders observer failed: ' + safe['category']
+                    time.sleep(1)
                 assert network is not None, 'Actual Orders RPC200 not observed within deadline'
                 network['observationPolls'] = polls
                 self.tap('Invoices tab')
