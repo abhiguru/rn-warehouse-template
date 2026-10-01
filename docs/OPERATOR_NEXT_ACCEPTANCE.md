@@ -1,72 +1,63 @@
 # Next operator acceptance after the active soak
 
-Checkpoint2026-10-01. This is a work plan, not a test result. Use
-[OPERATOR_INSTALL_NOTES.md](OPERATOR_INSTALL_NOTES.md) for evidence and
-[CPU_UPGRADE_RESUME.md](CPU_UPGRADE_RESUME.md) for the running unit/frozen inputs.
-The active run owns its emulator and session; execute no concurrent native actor,
-authentication mutation, backend reconfiguration or replacement APK there.
+Current plan, 2026-10-01. This is not an acceptance result. Historical preparations,
+failed attempts and validation are retained in
+[OPERATOR_INSTALL_NOTES.md](OPERATOR_INSTALL_NOTES.md). Read the private live soak
+ledger for current status; do not use a documentation checkpoint as live telemetry.
+
+The active soak exclusively owns its emulator, fixture sessions, services and54
+frozen inputs. No concurrent UI actor, authentication mutation, replacement APK,
+backend reconfiguration or bound-source edit is allowed while it runs.
 
 ## Order and blockers
 
-| Priority | Work and required evidence | Small blocker or required resource | Current status |
+| Priority | Required work | Blocking prerequisite | Current evidence |
 | --- | --- | --- | --- |
-| 1 | Finish nine native blocks and their verifies; aggregate actual requests, ≥8hours, business/session invariants and refresh rotations. Retain every failed attempt | Current supervised run must finish or stop with preserved failure evidence | RUNNING at preparation checkpoint; read live ledger for current state |
-| 2 | Build/audit candidate0445227 with a new ID; Breakdown shows IRP05 and opens its GRN UUID, then return and check Overview | SOURCE DEFECT FIXED; emulator occupied by soak, new artifact not built/audited | Source636 PASS253unit/48setup/type/lint; GRN-fix CI36854228659 all4 jobs PASS; native NOT TESTED |
-| 3 | Current native dispatch before/after lost-response cases: independent no-commit/commit proof, same-key retry, exactly one dispatch and reconciled stock | Exclusive emulator and unused fictional IDs; observer source fixed639; deploy and integrate after soak; current native evidence remains historical3012 | NOT TESTED on current APK; API625 results remain scoped API |
-| 4 | Expired/revoked sessions, offline writes/reconnect, unsaved-form switch, same-origin replacement | Session drivers prepared637; exclusive emulator/reserved account/private session bindings still required; natural refresh expiry needs seven-day age. Offline/switching drivers and replacement state remain pending | NOT TESTED current native; prepare drivers before execution |
-| 5 | Corrected normal standalone APK on selected physical phone; QR/Wi-Fi/cellular/noUSB/Metro and authorized operator flows | Physical device/operator availability; cellular/camera as available; owned phone authentication inputs entered locally | BLOCKED for fully unattended scope; emulator cannot close hardware cases |
+| 1 | Complete nine native blocks plus final duration/request/session/business/refresh reconciliation | Active run must finish; a failed/stopped unit is not a successful release | RUNNING at this checkpoint; earlier passed blocks remain valid, final aggregate pending |
+| 2 | Build/audit the current reviewed mobile candidate with a new ID, including GRN-link fix, dispatch accessibility labels and logging correction; verify Breakdown IRP05 label, GRN UUID navigation and Overview | Exclusive emulator; new APK not built/audited/installed | GRN source636 and CI36854228659 PASS; newer source checks are scoped separately; native new-artifact case NOT TESTED |
+| 3 | Native direct partial dispatch before/after response loss with proof before retry, one independently observed same-key retry and stock/cache reconciliation | New APK, reviewed relay, fresh reserved stock/documents, exact private config and12source bindings; live SQL/native/cleanup integration | Drivers640–643 prepared and guarded; setup69PASS and refusal/mocked cleanup evidence; current native acceptance NOT TESTED, API625 and historical native3012 do not close it |
+| 4 | Revoked/expired sessions, offline-before-submit/reconnect, unsaved-form switch and same-origin replacement | Reserved session customer/private bindings; seven-day natural refresh expiry; remaining offline/switch drivers and fresh replacement state | Session drivers637 prepared; no current native case. Lost-response transport tests do not establish airplane-mode/offline queue behavior |
+| 5 | Current normal standalone APK on selected physical phone; QR, Wi-Fi/cellular, noUSB/Metro and owned-phone flows | Device/operator availability, camera/cellular as available | BLOCKED for fully unattended scope; emulator and historical phone results do not close hardware acceptance |
 
-## Execution rules for remaining unattended cases
+## Source corrections and CI
 
-- Freeze each case's source/artifact, owned instance/identity, expected invariant,
-  unique record identifiers, driver hash and unused private evidence directory.
-  Run unchanged owning guards and complete doctor/transport prerequisites first.
-- Session tests use only an isolated fictional account. Distinguish normal access-token renewal from
-  revoked/expired refresh sessions that require fresh login. Use the prepared
-  [session cases](OPERATOR_SESSION_CASES.md) and their explicit release guards. Never alter the active soak's session, use a fixed
-  OTP, weaken authentication or reset rate-limit counters. Account for existing
-  five/hour limits before starting; fictional delivery uses the guarded bridge.
-- Offline writes use the reviewed fault relay and unused documents. Set the route
-  before a cold launch/new draft. Reconcile commit state before any retry; assert
-  unchanged-key retry creates exactly one operation. Keep every saved attempt.
+Backend review candidatebed4eee corrects the locally failing source dependency
+audit with same-major leaf updates. Local metadata/Storage audits report zero;
+backend80tests and metadata build/typecheck/12recipe tests passed. FreshCI and
+rebuilt-container integration remain pending. Installed runtime still uses the
+recorded earlier source/images. Existing image-security findings and production
+release gates remain open; a clean npm audit does not clear them.
+
+Review the exact latest PR34 and PR79 CI heads before assigning all-pass status.
+Completed CI for an earlier tooling head or debug artifact is not current native
+acceptance. No branch merge, release or production-readiness claim is authorized.
+
+## Execution and evidence rules
+
+- Follow [write retry cases](OPERATOR_WRITE_RETRY_CASES.md) for draft, submission,
+  independent observations, source bindings and ownership-aware cleanup. Native
+  cases use new unused documents; never replay successful historical transactions.
+- The relay route must precede cold launch and draft preparation. Preserve any
+  uncertain/in-flight operation; cleanup must not erase evidence or overwrite an
+  unowned route. After successful cleanup perform a separate normal-route cold
+  launch/read-health check before another case.
+- Follow [session cases](OPERATOR_SESSION_CASES.md) for reserved-account preparation.
+  Normal access renewal is already covered by the soak; do not alter timestamps,
+  authentication policy or OTP counters to simulate seven-day refresh expiry.
 - Unsaved-form switching must verify the app's supported confirmation/cancellation
-  behavior, removal of the old account/cache/draft after a confirmed switch and
-  fresh authentication to the second fictional identity. Do not invent policy
-  where the intended behavior is undocumented; record the decision needed.
-- Same-origin replacement must use a separately provisioned empty fictional state,
-  new credentials and new identity. Do not clone/copy another instance's state.
-  Keep both states and inspect local listener ownership before routing the owned
-  test origin. Verify old credentials and cached data are not adopted. Existing
-  core/switch origin round-trip PASS623c does not prove this replacement case.
-- A new APK requires its own audit and affected native tests. Reuse source/API
-  evidence only within its recorded unchanged scope. Existing passed receipt,
-  dispatch and invoice transactions must never be replayed just to refresh a
-  checklist. A previous artifact's soak does not become a new artifact's soak.
+  behavior, account/cache/draft clearing and fresh authentication. Record an
+  operator decision if the intended policy is undocumented.
+- Same-origin replacement needs separate empty state, new credentials and identity;
+  never copy another instance's state. Inspect listener ownership before routing.
+  Existing core/switch round-trip623c does not prove replacement at the same URL.
+- Reuse source and API evidence only within its unchanged recorded scope. A new
+  APK needs its own audit and affected native tests; it does not inherit the old
+  artifact's eight-hour soak. Clean setup618 and safe rerun628 remain scoped to
+  their recorded backend source/overlays; no duplicate install solely for display
+  or logging changes is required.
 
-## Operator handoff and retained boundaries
-
-Consolidate one current source/artifact/case matrix, link historical attempts,
-source checks and CI separately, and list ordinary service start/stop/health
-commands. Clean independent setup618 and same-input preservation628 remain
-usable evidence for their exact backend source/overlay; no duplicate warehouse
-reinstall is required solely for this display correction.
-
-Third owned real CustomerB number remains unavailable; installed-warehouse real
-A/B login is blocked, while isolated fictional API A/B evidence is separately
-recorded. Do not request the same missing resource again without a changed need.
-Printing, sensors, iPhone, external alerts, rotation, image-security research,
-recovery rehearsal and production/pilot changes remain outside scope. Preserve
-existing dependency/CI/release gates. No merge, release or production-readiness
-claim follows from these source checks or a successful emulator soak.
-
-Prepared session-case drivers and their pending setup/native checks are documented in [OPERATOR_SESSION_CASES.md](OPERATOR_SESSION_CASES.md). The active soak already covers normal renewal; do not repeat it merely to add an expiry checkbox. Natural refresh expiry requires the actual seven-day lifetime.
-
-The [write retry specification](OPERATOR_WRITE_RETRY_CASES.md) provides tested pure reconciliation predicates. Backend observer source0dc7392 closes the missing-source blocker; deployment and native adapter integration remain pending. Retained relay status alone is insufficient.
-
-Read-only direct partial-dispatch adapter640 is prepared with setup66PASS and active-run refusal verified. Its SQL/native integration, draft driver and exclusive case orchestration remain pending; observation-only PASS is not case acceptance.
-
-Native non-submitting draft driver641 and explicit accessible controls are prepared; setup67/unit253/type/lint checks pass. New APK, native selector/SQL integration and complete submit/retry orchestration remain pending. The active run reached block6 with firstfivePASS at this checkpoint; consult its live ledger.
-
-Submission/retry runner642 is source-prepared (setup68PASS, active-run refusalPASS). Freeze its12source bindings before draft preparation. Next acceptance blockers are released fixture, new audited APK/reviewed relay and actual SQL/native/transport/cleanup integration; no source-only result closes those checks.
-
-Cleanup correction643 adds ownership and in-flight preservation guards, verified with setup69PASS and mocks only. Actual native cleanup acceptance stays open.
+Third owned CustomerB phone remains unavailable. Installed-warehouse real A/B
+authentication stays blocked; isolated fictional evidence is separate. Do not
+request the same missing input again. Printing, sensors, iPhone, external alerts,
+rotation, deferred image-security research, recovery rehearsal and production/pilot
+changes remain outside this exercise. Preserve every historical failure and gate.

@@ -477,13 +477,12 @@ export function useDispatchForm({
 
     switch (step) {
       case 1:
-        console.log('[useDispatchForm] Validating step 1 - header:', JSON.stringify(header, null, 2));
+        console.log('[useDispatchForm] Validating step 1');
         result = await validateStep1(header);
         console.log('[useDispatchForm] Step 1 validation result:', result);
         break;
       case 2:
         console.log('[useDispatchForm] Validating step 2 - items count:', items.length);
-        console.log('[useDispatchForm] Items data:', JSON.stringify(items, null, 2));
         // NOTE: validateStep2 expects { items: [...] } not just the array
         result = await validateStep2({ items });
         console.log('[useDispatchForm] Step 2 validation result:', result);
@@ -491,7 +490,6 @@ export function useDispatchForm({
       case 3:
         console.log('[useDispatchForm] Validating step 3 - header + items');
         console.log('[useDispatchForm] 🔍 Header disp_date:', header.disp_date, 'type:', typeof header.disp_date);
-        console.log('[useDispatchForm] 🔍 Header full:', JSON.stringify(header, null, 2));
         console.log('[useDispatchForm] 🔍 Items count:', items.length);
         if (items.length > 0) {
           console.log('[useDispatchForm] 🔍 First item grns_date:', items[0].grns_date);

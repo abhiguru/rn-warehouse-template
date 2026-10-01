@@ -2124,3 +2124,30 @@ route and fault intact for reconciliation. No active runtime was affected.
 coverage added; Python syntax PASS. Real ADB/warehouse cleanup NOT TESTED. Follow
 the updated [main case sequence](OPERATOR_WRITE_RETRY_CASES.md); its frozen tooling
 map now includes12files. Preserve all historical results and failed attempts.
+
+### Dispatch console payload correction645 — 2026-10-01
+
+While preparing native acceptance, source inspection found unconditional full
+header/item dumps in dispatch form validation/review and full request/result/error
+objects in create-dispatch console calls. These could include customer details,
+notes and idempotency keys. Removed those dumps; create-path diagnostics now use
+fixed messages/counts. RPC construction, one-attempt behavior, caller-visible
+errors, validation and business rules are unchanged. This is a scoped dispatch
+correction, not a complete app-wide logging audit; other paths remain unassessed.
+
+The first fictional logging fixture omitted required vehicle registration, so
+initial tests failed before reaching the intended RPC. That failed attempt is
+retained privately. After correcting the fixture, all four privacy regressions
+failed on the previous source and passed on the correction. They cover success,
+transport rejection, business rejection and thrown exceptions while asserting
+unchanged caller results, one RPC and mutation-lock release. New APK/native log
+verification remains pending; installed e217 behavior has not changed.
+
+The [current acceptance plan](OPERATOR_NEXT_ACCEPTANCE.md) has been consolidated;
+preparation638–643 history remains above. It now separates lost-response tests
+from offline queue behavior, names the current APK prerequisites and records the
+backendbed4eee local dependency-gate correction without clearing image/runtime gates.
+
+Validation645: `npm test -- --watch=false` PASS257/40suites, typecheck PASS,
+lint0errors/1463warnings. The unchanged setup scripts retain643's69PASS evidence;
+no duplicate fixture/native run was performed.

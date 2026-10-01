@@ -201,8 +201,7 @@ export const createDispatch = async (payload: {
   let finishMutation: (() => void) | undefined;
   try {
     finishMutation = beginOperatorMutation();
-    console.log('[DispatchFormService] Creating dispatch with payload:', {
-      header: payload.header,
+    console.log('[DispatchFormService] Creating dispatch:', {
       itemCount: payload.items.length,
       imageCount: payload.images?.length || 0,
     });
@@ -236,7 +235,6 @@ export const createDispatch = async (payload: {
     };
 
     console.log('[DispatchFormService] Calling create_dispatch_with_stock_check RPC');
-    console.log('[DispatchFormService] RPC payload:', JSON.stringify(rpcPayload, null, 2));
 
     const { data, error } = await authenticatedClient.rpc(
       'create_dispatch_with_stock_check',
@@ -244,21 +242,21 @@ export const createDispatch = async (payload: {
     );
 
     if (error) {
-      console.error('[DispatchFormService] ❌ RPC Error:', error);
+      console.error('[DispatchFormService] Create RPC failed');
       throw new Error(error.message || 'Failed to create dispatch');
     }
 
     // Check if RPC returned success: false (business logic error, not Postgres error)
     if (data && data.success === false) {
-      console.error('[DispatchFormService] ❌ RPC returned failure:', data);
+      console.error('[DispatchFormService] Create RPC returned failure');
       throw new Error(data.error || data.message || 'Failed to create dispatch');
     }
 
-    console.log('[DispatchFormService] ✅ Dispatch created successfully:', data);
+    console.log('[DispatchFormService] Dispatch created successfully');
 
     // Upload deferred images if any
     if (payload.images && payload.images.length > 0 && data.dispatch_id) {
-      console.log('[DispatchFormService] Uploading deferred images for dispatch:', data.dispatch_id);
+      console.log('[DispatchFormService] Uploading deferred images');
 
       const imageUploadResult = await uploadDeferredDispatchImages(
         data.dispatch_id,
@@ -266,7 +264,7 @@ export const createDispatch = async (payload: {
       );
 
       if (!imageUploadResult.success) {
-        console.warn('[DispatchFormService] Some images failed to upload:', imageUploadResult.errors);
+        console.warn('[DispatchFormService] Some deferred images failed to upload');
         // Don't fail the dispatch creation, just log the warning
       } else {
         console.log('[DispatchFormService] All images uploaded successfully:', imageUploadResult.uploadedCount);
@@ -283,7 +281,7 @@ export const createDispatch = async (payload: {
       source_order_id: data.source_order_id,
     };
   } catch (error: any) {
-    console.error('[DispatchFormService] Exception creating dispatch:', error);
+    console.error('[DispatchFormService] Create dispatch failed');
 
     // Parse error message for user-friendly display
     let errorMessage = 'Failed to create dispatch';
@@ -514,7 +512,7 @@ export const deleteDispatch = async (
     }
   );
 
-  console.log('[DispatchFormService] RPC Result:', JSON.stringify(result, null, 2));
+  console.log('[DispatchFormService] Delete RPC completed:', { success: result.success });
 
   if (!result.success) {
     console.error('[DispatchFormService] ❌ Delete dispatch failed:', result.error);
