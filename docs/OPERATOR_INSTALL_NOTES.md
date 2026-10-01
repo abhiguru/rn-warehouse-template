@@ -144,6 +144,7 @@ sdkmanager --licenses
 sdkmanager 'platform-tools' 'platforms;android-36' 'build-tools;36.0.0' \
   'build-tools;35.0.0' 'ndk;27.1.12297006' 'ndk;27.0.12077973' 'cmake;3.22.1'
 sdkmanager --list_installed
+node scripts/check-android-sdk.mjs
 adb version
 npm ci
 node scripts/create-env.mjs
@@ -2183,3 +2184,28 @@ count8 was replaced with nine named checks; original output retained. The minima
 schema and synthetic UI flags do not establish full schema/RPC/RLS or native
 acceptance. No installed warehouse was queried or changed. Only the new scratch
 container was removed after evidence capture; active soak inputs remain unchanged.
+
+### Android CI SDK prerequisite correction648 — 2026-10-01
+
+[CI36863674447](https://github.com/abhiguru/rn-warehouse-template/actions/runs/36863674447)
+on14129f2 failed Android assemble while configuring react-native-worklets-core.
+Gradle implicitly installed NDK27.0.12077973 after its license was accepted, then
+reported `Error on ZipFile unknown archive`. The unreadable SDK archive is the
+observed failure; its underlying download/cache cause is not established. Other
+three jobs passed. Earlier e4c5526/2664426 runs completed all-pass separately.
+
+The operator sequence already listed both NDK revisions, but CI did not install
+or verify them explicitly. Added a bounded12minute sdkmanager prerequisite step
+before prebuild/Gradle, covering platform36, buildtools35/36, both NDKs and CMake.
+It consumes no interactive stdin and does not silently accept new licenses, delete
+SDK caches or repeat the whole build. Missing licenses/packages remain a failure.
+A new read-only `node scripts/check-android-sdk.mjs` checks revisions and tool files
+on Linuxx86_64; it is now in the main operator build sequence too.
+
+Validation: setup72PASS with missing/wrong/incomplete SDK regressions; current VM
+SDK checker PASS without running ADB; workflow YAML/shell/package-list checks PASS.
+An initial ad-hoc YAML validation used a named import from CommonJS and failed;
+correcting that validation import to default produced PASS, with no workflow
+change needed. The next CI SDK download and full APK build remain pending. This
+preflight does not guarantee archive integrity, eliminate network failures or
+establish native acceptance. No active VM SDK, device or warehouse was changed.
