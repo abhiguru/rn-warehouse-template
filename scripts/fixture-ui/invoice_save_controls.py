@@ -4,7 +4,7 @@ ACTIONS={'Search and select GRN...','IRN01','Go to Review step','Submit Invoice'
 def bounds(n):
  m=re.fullmatch(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]',n.get('bounds',''));assert m;x,y,xx,yy=map(int,m.groups());assert 0<=x<xx<=720 and 0<=y<yy<=1280;return x,y,xx,yy
 def point(tree,label):
- assert label in ACTIONS;nodes=[n for n in tree.iter('node') if label in [n.get('text'),n.get('content-desc')]];buttons=[n for n in nodes if n.get('class')=='android.widget.Button'];nodes=buttons or nodes
+ assert label in ACTIONS;nodes=[n for n in tree.iter('node') if label in [n.get('text'),n.get('content-desc')] and (label!='IRN01' or n.get('class')!='android.widget.EditText')];buttons=[n for n in nodes if n.get('class')=='android.widget.Button'];nodes=buttons or nodes
  if len(nodes)==2:
   assert nodes[0].get('bounds')==nodes[1].get('bounds') and nodes[1] in list(nodes[0].iter('node'))[1:],'Distinct invoice actions refused'
   assert all(n.get('enabled')=='true' for n in nodes);nodes=nodes[:1]

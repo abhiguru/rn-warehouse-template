@@ -17,4 +17,8 @@ class SaveControls(unittest.TestCase):
   t=E.fromstring('<hierarchy><node text="Search and select GRN..." enabled="true" bounds="[51,827][606,877]"><node text="Search and select GRN..." enabled="true" bounds="[51,827][606,877]"/></node></hierarchy>');self.assertEqual(point(t,'Search and select GRN...'),(328,852))
   t[0][0].set('bounds','[52,827][606,877]')
   with self.assertRaises(AssertionError):point(t,'Search and select GRN...')
+ def test_grn_search_input_cannot_be_selected_as_record(self):
+  t=E.fromstring('<hierarchy><node text="IRN01" class="android.widget.EditText" enabled="true" bounds="[99,166][635,247]"/></hierarchy>')
+  with self.assertRaises(AssertionError):point(t,'IRN01')
+  E.SubElement(t,'node',{'text':'IRN01','class':'android.widget.TextView','enabled':'true','bounds':'[56,370][135,407]'});self.assertEqual(point(t,'IRN01'),(95,388))
 if __name__=='__main__':unittest.main()
