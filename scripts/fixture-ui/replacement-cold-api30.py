@@ -5,7 +5,7 @@ On failure restore only hash-proven owned infrastructure; never log in or replay
 """
 import datetime,fcntl,hashlib,http.client,importlib.util,json,os,re,shlex,socket,sqlite3,ssl,subprocess,sys,time,traceback,xml.etree.ElementTree as ET
 from pathlib import Path
-from replacement_controls import observations,identity,empty_credentials
+from replacement_controls import observations,identity,empty_credentials,discovery
 from dispatch_case_controls import owned_reverse_route
 spec=importlib.util.spec_from_file_location('auth',Path(__file__).with_name('auth-api30.py'));auth=importlib.util.module_from_spec(spec);spec.loader.exec_module(auth);soak=auth.soak
 os.umask(0o077)
@@ -28,7 +28,7 @@ def main(path):
   ctx=ssl.create_default_context(cafile=cafile)
   with socket.create_connection(('127.0.0.1',18443),timeout=10) as raw:
    with ctx.wrap_socket(raw,server_hostname='backend-core.example.test') as conn:
-    conn.sendall(b'GET /functions/v1/get-public-config HTTP/1.1\r\nHost: backend-core.example.test\r\nConnection: close\r\n\r\n');response=http.client.HTTPResponse(conn);response.begin();assert response.status==200;payload=json.loads(response.read(65536));assert payload['instanceId']==instance
+    conn.sendall(b'GET /functions/v1/get-public-config HTTP/1.1\r\nHost: backend-core.example.test\r\nConnection: close\r\n\r\n');response=http.client.HTTPResponse(conn);response.begin();assert response.status==200;payload=json.loads(response.read(65536));discovery(payload,instance);expected=hashlib.sha256(ssl.PEM_cert_to_DER_cert(Path(cafile).read_text())).hexdigest();assert hashlib.sha256(conn.getpeercert(binary_form=True)).hexdigest()==expected
   st=Path(ipc).lstat();assert st.st_uid==os.getuid() and st.st_mode&0o077==0
   with socket.socket(socket.AF_UNIX) as conn:
    conn.settimeout(5);conn.connect(ipc);conn.sendall(b'{"phone":"919888888891"}\n');reply=json.loads(conn.recv(1024));assert reply=={'error':'no pending fixture challenge'}

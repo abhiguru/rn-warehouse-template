@@ -1,5 +1,5 @@
 import unittest
-from replacement_controls import observations,identity,empty_credentials
+from replacement_controls import observations,identity,empty_credentials,discovery
 class ReplacementControls(unittest.TestCase):
  def test_one_discovery_or_missing_transport_fields_refused(self):
   row={'atUTC':'2026-10-01T23:00:00Z','event':'request','path':'/functions/v1/get-public-config','authorizationPresent':False,'credentialQueryPresent':False}
@@ -16,4 +16,8 @@ class ReplacementControls(unittest.TestCase):
   good={'securePresence':{'enrollment':False,'auth':False},'legacyCredentialKeys':[],'protectedCacheKeys':[]};empty_credentials(good)
   for bad in [{**good,'securePresence':{'enrollment':True}},{**good,'legacyCredentialKeys':['auth_token']},{**good,'protectedCacheKeys':['grn_detail_old']}]:
    with self.assertRaises(AssertionError):empty_credentials(bad)
+ def test_discovery_envelope_and_exact_instance_and_origin(self):
+  d={'instanceId':'a'*36,'canonicalOrigin':'https://backend-core.example.test','supabaseUrl':'https://backend-core.example.test','supportedApiVersions':['1']};self.assertEqual(discovery({'success':True,'data':d},'a'*36),d)
+  for bad in [d,{'success':False,'data':d},{'success':True,'data':{**d,'canonicalOrigin':'https://other.example.test'}},{'success':True,'data':{**d,'instanceId':'b'*36}}]:
+   with self.assertRaises(AssertionError):discovery(bad,'a'*36)
 if __name__=='__main__':unittest.main()

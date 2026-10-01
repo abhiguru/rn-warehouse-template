@@ -15,3 +15,7 @@ def identity(record,instance):
 def empty_credentials(metadata):
  assert not any(metadata['securePresence'].values()),'Old secure credentials/profile/enrollment remained'
  assert metadata['legacyCredentialKeys']==[] and metadata['protectedCacheKeys']==[],'Old legacy credentials or protected cache remained'
+
+def discovery(payload,expected):
+ assert payload.get('success') is True and isinstance(payload.get('data'),dict),'Documented public-config envelope required'
+ d=payload['data'];assert d.get('instanceId')==expected and d.get('canonicalOrigin')=='https://backend-core.example.test' and d.get('supabaseUrl')=='https://backend-core.example.test';assert '1' in d.get('supportedApiVersions',[]);return d
