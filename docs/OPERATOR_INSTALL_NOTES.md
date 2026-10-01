@@ -2469,3 +2469,39 @@ uncertainty/stock/cache reconciliation rules remain required.
 
 At15:01UTC: eight soak blocks PASS, ninth RUNNING, no failed checks; all54 frozen
 inputs unchanged. Final aggregate/native acceptance not counted as PASS.
+
+### Full-schema observer preparation657 — 2026-10-01
+
+The new navigation/offline observer queries had not been checked against the full
+migrated schema. Added an explicit scratch-only checker with pinned image, numeric
+owned name/label, no network/ports/external mounts/privilege/restart,1CPU/1GiB and
+tmpfs guards. It requires clean backendbed4, a fresh schema and private exclusive
+command evidence. It applies the unmodified migration plan, without another
+instance's state, credentials, volumes or fixture-guard changes.
+
+Command: `node scripts/check-observer-schema.mjs OWNED_SCRATCH_CONTAINER CLEAN_BACKEND PRIVATE_EVIDENCE`.
+All18 migrations and five query/rejection cases PASS: dispatch with/without key,
+missing stock refused, repeat navigation digest stable, missing session refused.
+Reused schema refused before migrations/queries. Owned scratch container removed.
+No RPC/RLS, session issuance, populated business fixture, guarded observer CLI
+warehouse path or native execution is claimed. Exact executed script hash/raw
+logs remain private. After that run an early name check was added before Docker
+inspection; pure guard regression PASS, unchanged SQL workload not repeated.
+Initial setup76PASS, final77PASS. Application code stays2fb; this is tooling-only.
+Reproduction/source pin and safe cleanup are in [schema check guide](OBSERVER_SCHEMA_CHECK.md).
+
+Read-only horizon check15:28UTC: both current public fixture CAs expire
+2026-10-02T05:43:04Z (11:13IST),14.24hours remaining. Current supervised helper
+units remain active/Restart=no/NRestarts0,12-hour caps from12:56:34IST1October.
+A later long run needs a fresh bounded service horizon and must recheck/prepare
+fixture TLS before building if its required12-hour window would no longer fit.
+This is a prerequisite for the next run, not a fault in the present soak.
+No runtime/route/emulator/frozen source or production credential changed.
+
+CI follow-up15:34UTC: exact mobile6bf0645a1ae119aabdcfa28804ea6cd8ad627e92
+[36882231604](https://github.com/abhiguru/rn-warehouse-template/actions/runs/36882231604)
+now all4PASS, as is code2fb
+[36879080017](https://github.com/abhiguru/rn-warehouse-template/actions/runs/36879080017).
+Backendb1 run36882201481 still has isolated installation pending at this checkpoint.
+Eight soak blocks PASS/ninth RUNNING, no failed checks,54frozen inputs unchanged.
+No new artifact/native acceptance is inherited from debug CI compilation.

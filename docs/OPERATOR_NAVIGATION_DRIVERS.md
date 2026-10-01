@@ -1,7 +1,9 @@
 # Guarded post-soak navigation and offline drivers
 
 Preparation653, 2026-10-01, is source/guard evidence. These drivers have **not**
-passed current complete-schema SQL or native integration. Do not use them to
+passed populated-fixture or native integration. Separate [check657](OBSERVER_SCHEMA_CHECK.md)
+passes generated queries against an empty complete schema. It does not invoke
+these guarded observer CLIs against a warehouse. Do not use these results to
 close offline, switching or hardware acceptance before executing the cases on
 the next audited APK. The original soak APK and its frozen files are unchanged.
 
@@ -115,7 +117,7 @@ the normal18443route; check normal-route cold read health separately.
 
 This is one no-image partial-dispatch case and a bounded no-replay observation,
 not independent same-key HTTP observation, durable queue acceptance, GRN/image
-recovery or every future reconnect timer. Full-schema SQL, selectors, real radio
+recovery or every future reconnect timer. Populated-fixture SQL/guard integration, selectors, real radio
 behavior, native error handling and cleanup integration remain NOT TESTED until
 the guarded run. A failure blocks further writes and retains its reserved number.
 

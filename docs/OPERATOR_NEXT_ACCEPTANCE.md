@@ -15,7 +15,7 @@ backend reconfiguration or bound-source edit is allowed while it runs.
 | --- | --- | --- | --- |
 | 1 | Complete nine native blocks plus final duration/request/session/business/refresh reconciliation | Active run must finish; a failed/stopped unit is not a successful release | RUNNING at this checkpoint; earlier passed blocks remain valid, final aggregate pending |
 | 2 | Build/audit the current reviewed mobile candidate with a new ID, including GRN-link fix, dispatch accessibility labels, logging correction and switch cleanup; verify Breakdown IRP05 label, GRN UUID navigation and Overview | Exclusive emulator; new APK not built/audited/installed | GRN source636 and CI36854228659 PASS; newer source checks are scoped separately; native new-artifact case NOT TESTED |
-| 3 | Native direct partial dispatch before/after response loss with proof before retry, one independently observed same-key retry and stock/cache reconciliation | New APK, reviewed relay, fresh reserved stock/documents, exact private config and12source bindings; complete-schema SQL/native/cleanup integration | Drivers640–643 prepared and guarded; setup69PASS, refusal/mocked cleanup and scratch SQL647PASS; current native acceptance NOT TESTED, API625 and historical native3012 do not close it |
+| 3 | Native direct partial dispatch before/after response loss with proof before retry, one independently observed same-key retry and stock/cache reconciliation | New APK, reviewed relay, fresh reserved stock/documents, exact private config and12source bindings; populated-fixture SQL/native/cleanup integration | Drivers640–643 prepared and guarded; setup69PASS, refusal/mocked cleanup and scratch SQL647PASS; current native acceptance NOT TESTED, API625 and historical native3012 do not close it |
 | 4 | Revoked/expired sessions, offline-before-submit/reconnect, unsaved-form switch and same-origin replacement | Reserved session customer/private bindings; seven-day natural refresh expiry; new APK, complete-schema/native driver integration and fresh replacement state | Session637 and navigation/offline653 drivers prepared with release refusals; no current native case. Read-only switching does not establish unsaved-form behavior; lost-response tests do not establish device disconnection |
 | 5 | Current normal standalone APK on selected physical phone; QR, Wi-Fi/cellular, noUSB/Metro and owned-phone flows | Device/operator availability, camera/cellular as available | BLOCKED for fully unattended scope; emulator and historical phone results do not close hardware acceptance |
 
@@ -77,3 +77,21 @@ drivers, one-attempt query writes, scoped acceptance index and clean-source guid
 checks. Pin explicit mobile2fbf238/backendbed4 as documented; new APK/complete-schema
 driver integration/full local new-backend setup remain gated. Clean source checks
 and configuration-only rerun PASS do not close standalone/native acceptance.
+
+
+Preparation657 now validates dispatch/navigation generated SQL against all18
+unmodified bed4 migrations in an isolated network-disabled scratch database.
+Empty-state shape, stable digests, missing source/session and reused-schema refusal
+PASS; setup77PASS. Container removed. This closes empty full-schema compatibility;
+actual guarded CLI/populated-fixture/native/cleanup integration remains open.
+See [repeatable schema check](OBSERVER_SCHEMA_CHECK.md); do not rerun unchanged PASS.
+
+Small prerequisites before another long run: current helper units have12-hour caps
+and stop around00:56IST2October; current fixture CAs expire11:13IST2October.
+They cover the present soak, but must be replaced by a newly bounded owned helper
+plan and sufficient certificate horizon for the next run. At15:28UTC there were
+14.24certificate hours remaining. Recheck at build and actual launch; include
+build/preparation/run/safety margin. Do not change current units/certificates/
+trust while frozen. Prepare any new certificates before the next APK build if
+the intended later run cannot meet its12-hour guard. This concerns disposable
+fixture TLS, not production provider/warehouse credential rotation.
