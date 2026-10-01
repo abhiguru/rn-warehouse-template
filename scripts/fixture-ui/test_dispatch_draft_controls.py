@@ -1,6 +1,6 @@
 import unittest
 import xml.etree.ElementTree as ET
-from dispatch_draft_controls import point, draft_labels, grn_search_controls, selected_lot_labels
+from dispatch_draft_controls import point, draft_labels, grn_search_controls, selected_lot_labels, exact_field_value
 
 
 def tree(label='Create Dispatch', bounds='[1,2][100,200]', enabled='true', kind='android.widget.Button'):
@@ -53,6 +53,14 @@ class Controls(unittest.TestCase):
         list(t)[1].set('text', 'Qty: 20 · Stock: 20')
         ET.SubElement(t, 'node', {'text': 'Select lot'})
         with self.assertRaises(AssertionError): selected_lot_labels(t, 20)
+
+    def test_suggestion_accepted_value_requires_exact_unique_labelled_field(self):
+        t = tree('TEST FIXTURE',kind='android.widget.EditText')
+        list(t)[0].set('content-desc','Vehicle registration')
+        self.assertTrue(exact_field_value(t,'Vehicle registration','TEST FIXTURE'))
+        self.assertFalse(exact_field_value(t,'Vehicle registration','OTHER'))
+        t.append(list(t)[0])
+        with self.assertRaises(AssertionError): exact_field_value(t,'Vehicle registration','TEST FIXTURE')
 
     def test_review_requires_both_reserved_documents(self):
         t = tree('Submit Dispatch')

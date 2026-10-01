@@ -347,3 +347,9 @@ preserved and the stopped runner is not resumed. Future fresh cases omit only
 that selected receipt's updated_at from the unrelated hash; all other receipt
 fields and all other receipts remain included. This evidence does not establish
 a successful unchanged retry for that stopped case.
+
+A populated vehicle-history fixture exposes GhostTextInput's suggestion over the
+input. Tapping that inspected input can accept the exact desired suggestion and
+blur. Draft preparation now checks the unique labelled EditText's exact desired
+value after the tap before deciding whether typing is needed; otherwise its
+focused-field gate remains mandatory. No arbitrary suggestion is accepted.

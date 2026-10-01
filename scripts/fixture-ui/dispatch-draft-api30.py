@@ -14,7 +14,7 @@ from pathlib import Path
 import re
 import sys
 import time
-from dispatch_draft_controls import point, draft_labels, grn_search_controls, selected_lot_labels
+from dispatch_draft_controls import point, draft_labels, grn_search_controls, selected_lot_labels, exact_field_value
 
 spec = importlib.util.spec_from_file_location('fixture_soak', Path(__file__).with_name('soak-api30.py'))
 soak = importlib.util.module_from_spec(spec)
@@ -35,6 +35,12 @@ class Draft(soak.Soak):
         xy = point(t, label, editable=True)
         self.adb('shell', 'input', 'tap', *map(str, xy))
         t = self.snapshot()
+        # GhostTextInput can accept its exact suggestion on the inspected tap
+        # and blur. Require the labelled input value before skipping typing.
+        if exact_field_value(t, label, value):
+            if 'mInputShown=true' in self.adb('shell', 'dumpsys', 'input_method'):
+                self.adb('shell', 'input', 'keyevent', '4')
+            return
         nodes = [n for n in t.iter('node') if n.get('class') == 'android.widget.EditText' and n.get('focused') == 'true']
         assert len(nodes) == 1 and label in [nodes[0].get('text'), nodes[0].get('content-desc')], 'Exact focused field required'
         old = nodes[0].get('text', '')

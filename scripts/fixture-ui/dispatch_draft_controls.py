@@ -41,3 +41,9 @@ def selected_lot_labels(tree, quantity):
     labels = {v for n in tree.iter('node') for v in [n.get('text'), n.get('content-desc')] if v}
     assert {'Backend Test Potatoes', f'Qty: {quantity} · Stock: {quantity}'} <= labels, 'Exact unused source lot required'
     assert not labels.intersection({'Select item', 'Select lot', 'Error'}), 'Auto-selected lot required'
+
+
+def exact_field_value(tree, label, value):
+    nodes = [n for n in tree.iter('node') if n.get('class') == 'android.widget.EditText' and n.get('content-desc') == label]
+    assert len(nodes) == 1, 'Unique labelled field required'
+    return nodes[0].get('text') == value
