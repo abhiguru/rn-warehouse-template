@@ -2032,3 +2032,23 @@ The bounded private CI observer saved exact-head/job results; no action was
 replayed in the eight-hour suite. The operator session driver preparation is
 sourcecec94766bf6a025d712482c441f58b8e5409c37b, with56setup/syntax/lint PASS and
 live/native integration still NOT TESTED.
+
+## Write retry evidence preparation638 — 2026-10-01
+
+Ubuntu24.04.3, Node22.23.3, separate source checkout based on87c6d40.
+Review of historical native receipt/dispatch helpers and the backend relay found
+that repeated relay status reads retain the first dropped key. Expected independent
+proof of the retry request key; actual helper comparison alone does not supply it.
+This limits that part of the historical evidence without deleting its stock,
+transaction, UI or cache results.
+
+Added pure receipt/dispatch loss/retry reconciliation predicates and six regression
+cases. The main [execution sequence](OPERATOR_WRITE_RETRY_CASES.md) now requires
+independent retry-request observation, pre-retry commit proof and unused records.
+The observer/native integration is BLOCKED pending implementation after exclusive
+fixture access. This preparation does not alter application behavior, replay
+business transactions or close current native acceptance. Run source setup checks;
+record their result separately from future native evidence.
+
+Validation: `node --test scripts/fixture-write-reconciliation.test.mjs` PASS6;
+`npm run test:setup` PASS62/62, no failures/skips. No native/SQL/HTTP test executed.

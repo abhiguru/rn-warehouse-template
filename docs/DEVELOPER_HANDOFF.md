@@ -39,3 +39,5 @@ runtime. Preserve `v0.2.2-demo`.
 For work after the current isolated soak, use the [next acceptance plan](OPERATOR_NEXT_ACCEPTANCE.md). It distinguishes the source-only GRN-link fix from the installed artifact and lists the remaining native/hardware blockers.
 
 The [post-soak session drivers](OPERATOR_SESSION_CASES.md) have passing guard/refusal checks; live/native acceptance and reserved-account preparation remain pending. The exact GRN-fix CI run36854228659 completed with all4 jobs PASS; later tooling-head CI and new-artifact native acceptance remain separate.
+
+See [post-soak write retry cases](OPERATOR_WRITE_RETRY_CASES.md) for preparation638 and the small retry-observation blocker to close before unattended writes. No active-soak infrastructure was changed.
