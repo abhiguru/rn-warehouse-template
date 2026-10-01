@@ -5,12 +5,12 @@ const uuid = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
 const hash = /^[a-f0-9]{64}$/;
 export function navigationConfig(c) {
   assert.equal(c.scope, 'isolated-fictional-navigation-case');
-  assert.ok(['offline-orders', 'same-server', 'cancel-switch', 'confirm-switch'].includes(c.case));
+  assert.ok(['offline-orders', 'same-server', 'cancel-switch', 'confirm-switch', 'switch-back'].includes(c.case));
   for (const name of ['backendCheckout', 'backendState', 'soakConfig', 'artifactAudit', 'caseDirectory'])
     assert.ok(isAbsolute(c[name]), 'ABSOLUTE_CASE_PATH_REQUIRED');
   for (const name of ['instanceId', 'profileId', 'sessionId']) assert.match(c[name], uuid);
   for (const name of ['artifactSHA256', 'fixtureGuardSHA256']) assert.match(c[name], hash);
-  assert.equal(c.profileName, 'Core Demo Administrator');
+  assert.equal(c.profileName, c.case === 'switch-back' ? 'Switch Demo Administrator' : 'Core Demo Administrator');
   return c;
 }
 
@@ -20,7 +20,7 @@ export function navigationSnapshotSQL(c) {
 SET LOCAL statement_timeout='10s';
 SELECT jsonb_build_object(
  'profile',(SELECT jsonb_build_object('id',id,'active',active,'role',role,'name',name)
-   FROM public.user_profiles WHERE id='${c.profileId}' AND mobile='919888888871'),
+   FROM public.user_profiles WHERE id='${c.profileId}' AND mobile='${c.case === 'switch-back' ? '919888888881' : '919888888871'}'),
  'nativeSessionPresent',EXISTS(SELECT 1 FROM warehouse_security.refresh_sessions s
    JOIN public.user_profiles p ON p.auth_user_id=s.user_id
    WHERE p.id='${c.profileId}' AND s.id='${c.sessionId}' AND s.expires_at>now()),
@@ -60,6 +60,6 @@ export function navigationAfter(c, before, after) {
   navigationBefore(c, before);
   for (const key of ['profile', 'businessHash', 'otherAuthHash', 'otpCount'])
     assert.deepEqual(after[key], before[key], 'UNEXPECTED_NAVIGATION_STATE_CHANGE');
-  assert.equal(after.nativeSessionPresent, c.case !== 'confirm-switch',
-    c.case === 'confirm-switch' ? 'OLD_SESSION_NOT_REVOKED' : 'NATIVE_SESSION_LOST');
+  assert.equal(after.nativeSessionPresent, !['confirm-switch','switch-back'].includes(c.case),
+    ['confirm-switch','switch-back'].includes(c.case) ? 'OLD_SESSION_NOT_REVOKED' : 'NATIVE_SESSION_LOST');
 }

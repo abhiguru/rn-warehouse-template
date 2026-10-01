@@ -105,7 +105,8 @@ def main(path):
         assert json.loads(result.stdout) == {'status':'PASS', 'phase':phase, 'scope':'readonly-navigation-observation'}
     guard_command('guard')
     c, inputs = soak.config(case['soakConfig'])
-    assert case['backendCheckout'] == c['backendCheckout'] and case['backendState'] == c['backendState']
+    returning = case['case'] == 'switch-back'
+    assert case['backendCheckout'] == c['secondaryBackendCheckout' if returning else 'backendCheckout'] and case['backendState'] == c['secondaryBackendState' if returning else 'backendState']
     assert case['artifactSHA256'] == c['apkSHA256']
     names = ['fixture-navigation-observe.mjs', 'fixture-navigation-guards.mjs', 'fixture-session-guards.mjs',
              'fixture-ui/navigation-api30.py', 'fixture-ui/navigation_controls.py', 'fixture-ui/dispatch_case_controls.py',
@@ -176,7 +177,8 @@ def main(path):
         package = driver.adb('shell','pm','path',soak.PACKAGE); assert re.fullmatch(r'package:/data/app/[^\n]+',package)
         assert driver.adb('shell','sha256sum',package[8:]).split()[0] == c['apkSHA256']
         owned_reverse_route(driver.adb('reverse','--list'),18443)
-        primary_name = transport('https://backend-core.example.test',18443,c['primaryCA'],case['instanceId'])
+        primary_id = json.loads((soak.private(c['backendState'],True)/'public/instance.json').read_text())['instanceId']
+        primary_name = transport('https://backend-core.example.test',18443,c['primaryCA'],primary_id)
         disarmed_relay()
         driver.health(True); guard_command('before')
         if case['case'] == 'offline-orders':
@@ -203,16 +205,19 @@ def main(path):
                 assert time.monotonic()<deadline; time.sleep(1)
             fresh_orders(); driver.state['phases'].append('RECONNECT_CURRENT_ORDERS200')
         else:
-            driver.wait('View profile for Core Demo Administrator')
+            driver.wait('View profile for '+case['profileName'])
             for _ in range(7):
                 if 'Change Warehouse Server' in labels(driver.snapshot()): break
                 driver.adb('shell','input','swipe','360','1050','360','450','400')
             driver.tap('Change Warehouse Server')
             same = case['case'] == 'same-server'
-            target = 'https://backend-core.example.test' if same else 'https://backend-switch.example.test'
+            target = 'https://backend-core.example.test' if same or returning else 'https://backend-switch.example.test'
             name = primary_name
             target_id = case['instanceId']
-            if not same:
+            if returning:
+                assert case['instanceId'] != primary_id
+                target_id = primary_id
+            elif not same:
                 secondary = json.loads((soak.private(c['secondaryBackendState'],True)/'public/instance.json').read_text())
                 assert secondary['instanceId'] != case['instanceId']
                 target_id = secondary['instanceId']
@@ -223,7 +228,7 @@ def main(path):
                 driver.wait('Change Warehouse Server')
                 assert f'Changing to {name} will sign you out and discard unsaved forms. You will need to sign in again.' in labels(driver.snapshot())
                 driver.tap('CANCEL' if case['case']=='cancel-switch' else 'CHANGE SERVER')
-            if case['case']=='confirm-switch':
+            if case['case'] in ['confirm-switch','switch-back']:
                 driver.wait('Send OTP'); driver.cold(); driver.wait('Send OTP')
                 assert 'Choose your warehouse server' not in labels(driver.snapshot())
                 driver.selected_server(evidence,target,target_id)

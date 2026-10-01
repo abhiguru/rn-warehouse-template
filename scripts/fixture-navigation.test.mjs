@@ -30,3 +30,14 @@ test('native navigation controls reject dangerous actions and unowned route/radi
   const r=spawnSync('python3',[fileURLToPath(new URL('./fixture-ui/test_navigation_controls.py',import.meta.url))],{encoding:'utf8',timeout:10000});
   assert.equal(r.status,0,r.stderr);
 });
+
+test('reciprocal switching binds the destination administrator and revokes only its native session', () => {
+  const config={...c(),case:'switch-back',profileName:'Switch Demo Administrator'};
+  const snapshot={...before(),profile:{...before().profile,name:'Switch Demo Administrator'}};
+  navigationBefore(config,snapshot);
+  assert.match(navigationSnapshotSQL(config),/mobile='919888888881'/);
+  assert.doesNotMatch(navigationSnapshotSQL(config),/919888888871/);
+  navigationAfter(config,snapshot,{...snapshot,nativeSessionPresent:false});
+  assert.throws(()=>navigationAfter(config,snapshot,snapshot));
+  assert.throws(()=>navigationConfig({...config,profileName:'Core Demo Administrator'}));
+});

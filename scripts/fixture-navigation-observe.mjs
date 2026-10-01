@@ -17,11 +17,12 @@ try {
     const dir = lstatSync(c.caseDirectory);
     assert.ok(dir.isDirectory() && dir.uid === process.getuid() && (dir.mode & 0o777) === 0o700
       && realpathSync(c.caseDirectory) === resolve(c.caseDirectory));
-    const guard = resolve(c.backendCheckout, 'tests/operator-fixture.mjs');
+    const returning = c.case === 'switch-back';
+    const guard = resolve(c.backendCheckout, returning ? 'scripts/switch-fixture-common.mjs' : 'tests/operator-fixture.mjs');
     assert.equal(createHash('sha256').update(readFileSync(guard)).digest('hex'), c.fixtureGuardSHA256);
     process.env.WAREHOUSE_STATE_DIR = c.backendState;
-    const { operatorFixture } = await import(pathToFileURL(guard).href);
-    const { env } = operatorFixture();
+    const owning = await import(pathToFileURL(guard).href);
+    const { env } = returning ? owning.switchingFixture() : owning.operatorFixture();
     assert.equal(JSON.parse(readFileSync(resolve(c.backendState, 'public/instance.json'))).instanceId, c.instanceId);
     const result = spawnSync('docker', ['exec', '-i', '-e', 'PGPASSWORD', `${env.WAREHOUSE_PROJECT_NAME}-db-1`,
       'psql', '-X', '-qAt', '-U', 'supabase_admin', '-d', 'postgres', '-v', 'ON_ERROR_STOP=1'],
