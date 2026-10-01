@@ -2111,3 +2111,16 @@ Python syntax PASS. Actual runner refusal while soak active PASS before any ADB,
 lock, marker or backend/socket access. No native case, business write or new APK
 installation occurred. SQL/native/transport/cleanup integration NOT TESTED. Normal
 read-health after cleanup remains a separate required check. No new suite scheduled.
+
+### Native cleanup ownership correction643 — 2026-10-01
+
+Review of prepared runner2664426 found its finally block could restore the reverse
+route after an early guard failure without having verified route ownership.
+Corrected source requires exact unique owned routing before/after restoration;
+unknown/in-flight/other-case control or failed evidence preservation leaves both
+route and fault intact for reconciliation. No active runtime was affected.
+
+`npm run test:setup` PASS69; seven mocked cleanup scenarios and exact-route boundary
+coverage added; Python syntax PASS. Real ADB/warehouse cleanup NOT TESTED. Follow
+the updated [main case sequence](OPERATOR_WRITE_RETRY_CASES.md); its frozen tooling
+map now includes12files. Preserve all historical results and failed attempts.

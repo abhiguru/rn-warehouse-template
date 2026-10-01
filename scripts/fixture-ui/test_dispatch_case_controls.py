@@ -1,6 +1,6 @@
 import unittest
 import xml.etree.ElementTree as ET
-from dispatch_case_controls import Attempts, submission_point
+from dispatch_case_controls import Attempts, submission_point, owned_reverse_route
 
 
 class CaseControls(unittest.TestCase):
@@ -22,6 +22,11 @@ class CaseControls(unittest.TestCase):
         with self.assertRaises(AssertionError): submission_point(t, 'Discard', 'FXF901')
         t.append(list(t)[0])
         with self.assertRaises(AssertionError): submission_point(t, 'Submit', 'FXF901')
+
+    def test_route_ownership_is_exact_and_unambiguous(self):
+        owned_reverse_route('UsbFfs tcp:443 tcp:18643', 18643)
+        for value in ['UsbFfs tcp:443 tcp:18443', 'UsbFfs tcp:443 tcp:186430', '', 'UsbFfs tcp:443 tcp:18643\nUsbFfs tcp:443 tcp:18590']:
+            with self.assertRaises(AssertionError): owned_reverse_route(value, 18643)
 
     def test_ok_only_dismisses_observed_error(self):
         t = ET.Element('hierarchy'); ET.SubElement(t, 'node', {'text':'OK', 'enabled':'true','bounds':'[1,2][100,200]'})

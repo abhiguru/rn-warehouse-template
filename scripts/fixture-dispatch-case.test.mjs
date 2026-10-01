@@ -6,3 +6,7 @@ test('native dispatch case requires exact confirmation and loss proof before one
   const r = spawnSync('python3', [fileURLToPath(new URL('./fixture-ui/test_dispatch_case_controls.py', import.meta.url))], { encoding:'utf8', timeout:10000 });
   assert.equal(r.status, 0, r.stderr);
 });
+test('native cleanup preserves evidence and refuses unowned or in-flight changes', () => {
+  const r = spawnSync('python3', [fileURLToPath(new URL('./fixture-ui/test_dispatch_case_cleanup.py', import.meta.url))], { encoding:'utf8', timeout:10000 });
+  assert.equal(r.status, 0, r.stderr);
+});

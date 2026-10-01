@@ -224,9 +224,9 @@ python3 scripts/fixture-ui/dispatch-case-api30.py /absolute/private/case.json
 
 Use the **same unchanged private config** as draft preparation. It now needs
 `toolingSHA256`, a map of relative script names to SHA-256 values. Freeze the exact
-11 entries listed by `required` in the runner before preparing the draft: the
+12 entries listed by `required` in the runner before preparing the draft: the
 observation/snapshot/verification/reconciliation/session-guard modules, both
-native drivers and their control modules, soak helper and observation decoder.
+native drivers and their control/cleanup modules, soak helper and observation decoder.
 The runner verifies all bindings before ADB and before each submission. Do not
 edit config or scripts between preparing and submitting a case. Record the source
 pair, actual APK audit, declared fixture overlays and backend guard hash too.
@@ -266,3 +266,25 @@ before ADB, locks, attempt markers, socket/SQL access during the active soak.
 Actual SQL, pinned discovery integration, native selectors, transport fault/retry
 and cleanup execution remain NOT TESTED. The runner's source preparation closes
 the missing-runner implementation task, not the installed-artifact acceptance gate.
+
+### Cleanup ownership correction643
+
+Source review of642 found that an early native guard failure could reach cleanup
+before the runner had proved ownership of443→18643. Cleanup now requires an exact,
+single route row and rechecks it immediately before restoration and afterward.
+A missing, duplicate, changed or prefix-similar route is refused, not overwritten.
+
+Control evidence must be saved before disarming. Only this case's exact record,
+phase and dispatch RPC may be disarmed. If control is unknown, evidence cannot be
+saved, another case owns the fault, or the relay reports MATCHED/in-flight, preserve
+both control and route for reconciliation and mark FAIL. Do not blindly disarm or
+reroute a request that may still commit. An operator may later inspect the saved
+case and perform deliberate recovery within fixture ownership boundaries.
+
+The frozen source map now has12entries, including
+`fixture-ui/dispatch_case_cleanup.py`; generate it before preparing a fresh draft.
+Validation643: setup69PASS, including seven mocked cleanup scenarios and one new
+exact-route boundary test; Python syntax PASS. Mocks cover preservation failure,
+control/route errors, unverified ownership, changed routes, another record and
+in-flight work. These tests perform no real ADB/SQL/network operation and do not
+replace native fault/cleanup acceptance, which remains NOT TESTED.

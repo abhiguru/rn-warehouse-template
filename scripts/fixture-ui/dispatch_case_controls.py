@@ -36,3 +36,9 @@ class Attempts:
     def verified_loss(self):
         assert self.count == 1 and not self.loss_verified
         self.loss_verified = True
+
+
+def owned_reverse_route(output, port):
+    rows = [line.split() for line in output.splitlines() if 'tcp:443' in line.split()]
+    assert len(rows) == 1 and len(rows[0]) == 3, 'One owned reverse route required'
+    assert rows[0][1:] == ['tcp:443', 'tcp:' + str(port)], 'Reverse route ownership changed'

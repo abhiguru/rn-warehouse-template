@@ -18,7 +18,8 @@ import ssl
 import sys
 import time
 from dispatch_draft_controls import draft_labels
-from dispatch_case_controls import Attempts, submission_point
+from dispatch_case_controls import Attempts, submission_point, owned_reverse_route
+from dispatch_case_cleanup import cleanup_case
 
 spec = importlib.util.spec_from_file_location('fixture_soak', Path(__file__).with_name('soak-api30.py'))
 soak = importlib.util.module_from_spec(spec); spec.loader.exec_module(soak)
@@ -46,7 +47,8 @@ def main(path):
     required = ['fixture-dispatch-observe.mjs', 'fixture-dispatch-snapshot.mjs',
                 'fixture-dispatch-verify.mjs', 'fixture-write-reconciliation.mjs',
                 'fixture-session-guards.mjs', 'fixture-ui/dispatch-case-api30.py',
-                'fixture-ui/dispatch_case_controls.py', 'fixture-ui/dispatch-draft-api30.py',
+                'fixture-ui/dispatch_case_controls.py', 'fixture-ui/dispatch_case_cleanup.py',
+                'fixture-ui/dispatch-draft-api30.py',
                 'fixture-ui/dispatch_draft_controls.py', 'fixture-ui/soak-api30.py',
                 'fixture-ui/fixture_observation.py']
     assert set(case['toolingSHA256']) == set(required), 'Complete case source bindings required'
@@ -68,7 +70,7 @@ def main(path):
     driver.e, driver.file = evidence, evidence / 'case-result.json'
     driver.state.update(scope='reserved direct partial dispatch fault case', phases=[], attempts=0)
     driver.save()
-    attempts = Attempts(); touched_control = False
+    attempts = Attempts(); touched_control = False; route_verified = False
 
     def save(name, value):
         with (evidence / (name+'.json')).open('x') as f: json.dump(value, f)
@@ -130,7 +132,8 @@ def main(path):
         package = driver.adb('shell', 'pm', 'path', soak.PACKAGE)
         assert re.fullmatch(r'package:/data/app/[^\n]+', package)
         assert driver.adb('shell', 'sha256sum', package[8:]).split()[0] == c['apkSHA256']
-        assert 'tcp:443 tcp:18643' in driver.adb('reverse', '--list')
+        owned_reverse_route(driver.adb('reverse', '--list'), 18643)
+        route_verified = True
         transport(18443); transport(18643)
         review_hash(); backend('pre-submit')
         backend('guard')
@@ -155,18 +158,9 @@ def main(path):
         driver.state['reason'] = 'Stopped; preserve write state and evidence; no automatic replay'
         raise
     finally:
-        if touched_control:
-            try:
-                save('control-before-cleanup', {'status':control({'action':'status'}), 'observations':control({'action':'observations'})})
-                assert control({'action':'disarm'})['state'] == 'DISARMED'
-                driver.state['faultDisarmed'] = True
-            except Exception:
-                driver.state['faultDisarmed'] = False; driver.state['status'] = 'FAIL'
-        try:
-            driver.adb('reverse', 'tcp:443', 'tcp:18443')
-            driver.state['normalRouteRestored'] = True
-        except Exception:
-            driver.state['normalRouteRestored'] = False; driver.state['status'] = 'FAIL'
+        cleanup = cleanup_case(route_verified, touched_control, case['record'], case['phase'], control, driver.adb, save)
+        if cleanup.pop('status') != 'PASS': driver.state['status'] = 'FAIL'
+        driver.state.update(cleanup)
         driver.save(); os.close(fd)
     assert driver.state['status'] == 'PASS'
     print(json.dumps({'status':'PASS', 'scope':'one reserved native dispatch fault/retry case'}))

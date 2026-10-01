@@ -67,4 +67,6 @@ Read-only direct partial-dispatch adapter640 is prepared with setup66PASS and ac
 
 Native non-submitting draft driver641 and explicit accessible controls are prepared; setup67/unit253/type/lint checks pass. New APK, native selector/SQL integration and complete submit/retry orchestration remain pending. The active run reached block6 with firstfivePASS at this checkpoint; consult its live ledger.
 
-Submission/retry runner642 is source-prepared (setup68PASS, active-run refusalPASS). Freeze its11source bindings before draft preparation. Next acceptance blockers are released fixture, new audited APK/reviewed relay and actual SQL/native/transport/cleanup integration; no source-only result closes those checks.
+Submission/retry runner642 is source-prepared (setup68PASS, active-run refusalPASS). Freeze its12source bindings before draft preparation. Next acceptance blockers are released fixture, new audited APK/reviewed relay and actual SQL/native/transport/cleanup integration; no source-only result closes those checks.
+
+Cleanup correction643 adds ownership and in-flight preservation guards, verified with setup69PASS and mocks only. Actual native cleanup acceptance stays open.
