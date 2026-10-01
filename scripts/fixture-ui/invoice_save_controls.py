@@ -6,7 +6,8 @@ def bounds(n):
 def point(tree,label):
  assert label in ACTIONS;nodes=[n for n in tree.iter('node') if label in [n.get('text'),n.get('content-desc')] and (label!='IRN01' or n.get('class')!='android.widget.EditText')];buttons=[n for n in nodes if n.get('class')=='android.widget.Button'];nodes=buttons or nodes
  if len(nodes)==2:
-  assert nodes[0].get('bounds')==nodes[1].get('bounds') and nodes[1] in list(nodes[0].iter('node'))[1:],'Distinct invoice actions refused'
+  assert nodes[1] in list(nodes[0].iter('node'))[1:],'Distinct invoice actions refused'
+  x,y,xx,yy=bounds(nodes[0]);a,b,aa,bb=bounds(nodes[1]);assert x<=a<aa<=xx and y<=b<bb<=yy,'Nested visible control required'
   assert all(n.get('enabled')=='true' for n in nodes);nodes=nodes[:1]
  assert len(nodes)==1 and nodes[0].get('enabled')=='true';x,y,xx,yy=bounds(nodes[0]);return (x+xx)//2,(y+yy)//2
 def money_row(tree,label,value):

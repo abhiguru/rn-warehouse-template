@@ -15,10 +15,12 @@ class SaveControls(unittest.TestCase):
   with self.assertRaises(AssertionError):point(t,'Create')
  def test_one_parent_child_control_allowed_but_two_controls_refused(self):
   t=E.fromstring('<hierarchy><node text="Search and select GRN..." enabled="true" bounds="[51,827][606,877]"><node text="Search and select GRN..." enabled="true" bounds="[51,827][606,877]"/></node></hierarchy>');self.assertEqual(point(t,'Search and select GRN...'),(328,852))
-  t[0][0].set('bounds','[52,827][606,877]')
+  t[0][0].set('bounds','[50,827][606,877]')
   with self.assertRaises(AssertionError):point(t,'Search and select GRN...')
  def test_grn_search_input_cannot_be_selected_as_record(self):
   t=E.fromstring('<hierarchy><node text="IRN01" class="android.widget.EditText" enabled="true" bounds="[99,166][635,247]"/></hierarchy>')
   with self.assertRaises(AssertionError):point(t,'IRN01')
   E.SubElement(t,'node',{'text':'IRN01','class':'android.widget.TextView','enabled':'true','bounds':'[56,370][135,407]'});self.assertEqual(point(t,'IRN01'),(95,388))
+ def test_nested_success_list_control_is_one_action(self):
+  t=E.fromstring('<hierarchy><node text="View Invoice List" enabled="true" bounds="[80,798][640,875]"><node text="View Invoice List" enabled="true" bounds="[253,816][467,857]"/></node></hierarchy>');self.assertEqual(point(t,'View Invoice List'),(360,836))
 if __name__=='__main__':unittest.main()
