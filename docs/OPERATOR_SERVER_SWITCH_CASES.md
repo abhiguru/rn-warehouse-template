@@ -58,3 +58,11 @@ outside Git. Record PASS/FAIL/BLOCKED/NOT TESTED with the exact case/artifact.
 Do not reinterpret compilation, mocked logout or emulator evidence as real SMS,
 physical phone, cellular or production acceptance. Preserve failures and saved
 transactions; return to the normal owned route and check read health afterward.
+
+Populated API30 integration: settings retains its scroll position when selecting
+the same instance returns via router.back(). The driver must verify the visible
+Change Warehouse Server settings action, then cold-launch and independently
+verify the original session, public persisted selection and an actual Orders200.
+Waiting for the off-screen profile header incorrectly fails that return. The
+failed attempt remains preserved and its business/auth invariants are checked
+before the final permitted corrected rerun.

@@ -229,7 +229,7 @@ def main(path):
                 driver.selected_server(evidence,target,target_id)
                 driver.state['phases'].append('NEW_ORIGIN_LOGIN_REQUIRED_COLD_PERSISTENCE')
             else:
-                if same: driver.wait('View profile for Core Demo Administrator')
+                if same: driver.wait('Change Warehouse Server')
                 else: driver.wait('Use this server')
                 driver.cold(); driver.wait('Orders tab'); fresh_orders()
                 driver.selected_server(evidence,'https://backend-core.example.test',case['instanceId'])
