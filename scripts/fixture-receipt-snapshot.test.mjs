@@ -21,3 +21,17 @@ test('native receipt controls refuse submissions in draft and enforce reconcilia
     assert.equal(r.status,0,r.stderr);
   }
 });
+
+test('deferred book image is absent before retry and must bind exactly one confirmed object afterward', async () => {
+  const {receiptImageCommitted,receiptCoreSnapshot}=await import('./fixture-receipt-snapshot.mjs');
+  const config={...c,phase:'after-upstream-success',imagePolicy:'deferred-single-book-image'};
+  const id='11111111-1111-4111-8111-111111111111';
+  const s={wrongCustomer:0,wrongItem:0,images:1,headerIds:[id],imageDetails:[{id,grnId:id,itemId:null,type:'header',status:'confirmed',path:'headers/'+id+'/fictional.webp',fileSize:100,mimeType:'image/webp'}],imageObjects:[{id,name:'headers/'+id+'/fictional.webp',size:'100',mimeType:'image/webp'}]};
+  receiptImageCommitted(config,s);receiptSnapshotShape(config,s,'after-retry');
+  assert.throws(()=>receiptSnapshotShape(config,s,'after-loss'));
+  assert.throws(()=>receiptConfig({...config,phase:'before-upstream'}));
+  for(const edit of [{status:'pending'},{grnId:c.customerId},{type:'item'},{path:'headers/other/fictional.webp'},{fileSize:0}])assert.throws(()=>receiptImageCommitted(config,{...s,imageDetails:[{...s.imageDetails[0],...edit}]}));
+  assert.throws(()=>receiptImageCommitted(config,{...s,imageObjects:[]}));
+  assert.deepEqual(receiptCoreSnapshot(s),{wrongCustomer:0,wrongItem:0,headerIds:[id]});
+  const sql=receiptSnapshotSQL(config);assert.match(sql,/bucket_id='grn-images'/);assert.doesNotMatch(sql,/upload_token/);
+});

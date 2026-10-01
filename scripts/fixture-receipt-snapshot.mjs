@@ -10,6 +10,8 @@ export function receiptConfig(c) {
   assert.ok(['before-upstream','after-upstream-success'].includes(c.phase));
   assert.ok(Number.isSafeInteger(c.quantity) && c.quantity > 0 && c.quantity <= 50);
   assert.ok(Number.isSafeInteger(c.weight) && c.weight > 0 && c.weight <= 1000);
+  assert.ok(c.imagePolicy === undefined || c.imagePolicy === 'deferred-single-book-image');
+  if (c.imagePolicy) assert.equal(c.phase, 'after-upstream-success', 'BEFORE_EXECUTION_RECEIPT_CAMPAIGN_CASE_BLOCKED');
   return c;
 }
 export function receiptSnapshotSQL(c, key = null) {
@@ -31,6 +33,8 @@ SELECT jsonb_build_object(
  'wrongCustomer',(SELECT count(*) FROM target WHERE customer_id IS DISTINCT FROM '${c.customerId}'::uuid),
  'wrongItem',(SELECT count(*) FROM lines WHERE item_id IS DISTINCT FROM '${c.itemId}'::uuid OR item_name IS DISTINCT FROM 'Backend Test Potatoes' OR weight IS DISTINCT FROM ${c.weight}),
  'images',(SELECT count(*) FROM public.grn_images WHERE grn_id IN (SELECT id FROM target)),
+ 'imageDetails',(SELECT coalesce(jsonb_agg(jsonb_build_object('id',id,'grnId',grn_id,'itemId',grn_item_id,'type',image_type,'status',status,'path',storage_path,'fileSize',file_size,'mimeType',mime_type,'originalFilename',original_filename) ORDER BY id),'[]') FROM public.grn_images WHERE grn_id IN (SELECT id FROM target)),
+ 'imageObjects',(SELECT coalesce(jsonb_agg(jsonb_build_object('id',o.id,'name',o.name,'size',o.metadata->>'size','mimeType',o.metadata->>'mimetype') ORDER BY o.id),'[]') FROM storage.objects o WHERE o.bucket_id='grn-images' AND o.name IN (SELECT storage_path FROM public.grn_images WHERE grn_id IN (SELECT id FROM target))),
  'invoices',(SELECT count(*) FROM public.invoice WHERE gr_no='${c.record}'),
  'cacheCount',(SELECT count(*) FROM cache),
  'cacheSuccess',(SELECT bool_and(response->>'success'='true' AND rpc_function='save_grn') FROM cache),
@@ -40,18 +44,40 @@ SELECT jsonb_build_object(
   'receiptLines',(SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM public.goodsreceived_trl t WHERE gr_id NOT IN (SELECT id FROM target)),
   'dispatch',(SELECT jsonb_agg(to_jsonb(d) ORDER BY id) FROM public.dispatch d),
   'dispatchLines',(SELECT jsonb_agg(to_jsonb(d) ORDER BY id) FROM public.dispatch_trl d),
-  'invoices',(SELECT jsonb_agg(to_jsonb(i) ORDER BY id) FROM public.invoice i),
+  'imageDetails',(SELECT coalesce(jsonb_agg(jsonb_build_object('id',id,'grnId',grn_id,'itemId',grn_item_id,'type',image_type,'status',status,'path',storage_path,'fileSize',file_size,'mimeType',mime_type,'originalFilename',original_filename) ORDER BY id),'[]') FROM public.grn_images WHERE grn_id IN (SELECT id FROM target)),
+ 'imageObjects',(SELECT coalesce(jsonb_agg(jsonb_build_object('id',o.id,'name',o.name,'size',o.metadata->>'size','mimeType',o.metadata->>'mimetype') ORDER BY o.id),'[]') FROM storage.objects o WHERE o.bucket_id='grn-images' AND o.name IN (SELECT storage_path FROM public.grn_images WHERE grn_id IN (SELECT id FROM target))),
+ 'invoices',(SELECT jsonb_agg(to_jsonb(i) ORDER BY id) FROM public.invoice i),
   'invoiceLines',(SELECT jsonb_agg(to_jsonb(i) ORDER BY id) FROM public.invoice_trl i),
   'orders',(SELECT jsonb_agg(to_jsonb(o) ORDER BY id) FROM public.orders o),
   'orderItems',(SELECT jsonb_agg(to_jsonb(o) ORDER BY id) FROM public.order_items o),
-  'images',(SELECT jsonb_agg(to_jsonb(g) ORDER BY id) FROM public.grn_images g),
-  'storage',(SELECT jsonb_agg(to_jsonb(o) ORDER BY id) FROM storage.objects o)
+  'images',(SELECT jsonb_agg(to_jsonb(g) ORDER BY id) FROM public.grn_images g WHERE grn_id NOT IN (SELECT id FROM target)),
+  'storage',(SELECT jsonb_agg(to_jsonb(o) ORDER BY id) FROM storage.objects o WHERE NOT (o.bucket_id='grn-images' AND o.name IN (SELECT storage_path FROM public.grn_images WHERE grn_id IN (SELECT id FROM target))))
  )::text,'sha256'),'hex'));
 COMMIT;`;
 }
-export function receiptSnapshotShape(c, s) {
+export function receiptSnapshotShape(c, s, phase='baseline') {
   receiptConfig(c);
   assert.equal(s.wrongCustomer, 0, 'WRONG_CUSTOMER');
   assert.equal(s.wrongItem, 0, 'WRONG_ITEM_OR_WEIGHT');
-  assert.equal(s.images, 0, 'IMAGE_CASE_REQUIRES_SEPARATE_OBJECT_RECONCILIATION');
+  const savedImage = c.imagePolicy && phase === 'after-retry';
+  assert.equal(s.images, savedImage ? 1 : 0, 'UNEXPECTED_RECEIPT_IMAGE_COUNT');
+  if (savedImage) receiptImageCommitted(c, s);
+  else { assert.deepEqual(s.imageDetails ?? [], []); assert.deepEqual(s.imageObjects ?? [], []); }
+}
+
+export function receiptImageCommitted(c, s) {
+  receiptConfig(c); assert.equal(c.imagePolicy, 'deferred-single-book-image');
+  assert.equal(s.imageDetails.length, 1); assert.equal(s.imageObjects.length, 1);
+  const image=s.imageDetails[0], object=s.imageObjects[0];
+  assert.equal(s.headerIds.length, 1); assert.equal(image.grnId, s.headerIds[0]);
+  assert.equal(image.type, 'header'); assert.equal(image.itemId, null); assert.equal(image.status, 'confirmed');
+  assert.equal(image.mimeType, 'image/webp'); assert.ok(Number.isSafeInteger(image.fileSize) && image.fileSize>0 && image.fileSize<=10485760);
+  assert.ok(image.path.startsWith('headers/'+image.grnId+'/') && !image.path.includes('..'));
+  assert.equal(object.name,image.path); assert.equal(Number(object.size),image.fileSize); assert.equal(object.mimeType,image.mimeType);
+}
+
+export function receiptCoreSnapshot(s) {
+  const { images, imageDetails, imageObjects, ...core } = s;
+  void images; void imageDetails; void imageObjects;
+  return core;
 }

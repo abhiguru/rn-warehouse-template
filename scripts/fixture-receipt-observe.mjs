@@ -56,7 +56,7 @@ try {
     { input: query, encoding: 'utf8', timeout: 15000, maxBuffer: 1024*1024,
       env: { ...process.env, PGPASSWORD: env.POSTGRES_PASSWORD } });
     assert.equal(r.status, 0, 'PRIVATE_READONLY_OBSERVATION_FAILED');
-    const snapshot = JSON.parse(r.stdout.trim()); receiptSnapshotShape(c, snapshot, phase === 'baseline');
+    const snapshot = JSON.parse(r.stdout.trim()); receiptSnapshotShape(c, snapshot, phase);
     if (['baseline', 'after-draft', 'pre-submit'].includes(phase)) writeBaseline(c, snapshot);
     if (['after-draft', 'pre-submit'].includes(phase)) assert.deepEqual(snapshot, privateJSON(resolve(c.caseDirectory, 'baseline.json')).snapshot, 'DRAFT_CHANGED_BUSINESS_DATA');
     // Detect requests/control changes during the SQL observation window.
