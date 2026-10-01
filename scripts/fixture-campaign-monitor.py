@@ -16,6 +16,11 @@ def run(args,timeout=10):
     assert q.returncode==0,'Read-only probe unavailable'
     return q.stdout
 
+def terminal_plan(ledger,locked):
+    terminal={'PASS','FAIL','BLOCKED','TIMEOUT','INTERRUPTED'}
+    steps=ledger.get('steps',[])
+    return not locked and ((bool(steps) and all(x.get('status') in terminal for x in steps)) or (not any(x.get('status')=='RUNNING' for x in steps) and any(x.get('status') in terminal-{'PASS'} for x in ledger.get('checks',[]))))
+
 def sample(c,cycle):
     root=Path(c['root']);row={'utc':datetime.datetime.now(datetime.timezone.utc).isoformat(),'readOnly':True,'services':{},'stages':{},'certificates':{}}
     row['diskAvailableBytes']=shutil.disk_usage(root).free
@@ -42,20 +47,29 @@ def sample(c,cycle):
         try:v=private(path);row['stages'][path.parent.name]={'steps':[{k:s.get(k) for k in ['id','status']} for s in v.get('steps',[])],'checks':[{k:s.get(k) for k in ['label','status']} for s in v.get('checks',[])]}
         except Exception:row['stages'][path.parent.name]={'status':'CONCURRENT_OR_UNREADABLE_LEDGER'}
     if cycle%10==0:
-        bindings={};errors=[]
-        for path in [Path(c['olderPlan']),*sorted(root.glob('stage-*.json'))[:100]]:
+        actual={};errors=[];critical=[];plans=[Path(c['olderPlan']),*sorted(root.glob('stage-*.json'))[:100]]
+        for path in plans:
+            historical=False
             try:
-                for b in private(path)['bindings']:
-                    if b['path'] in bindings and bindings[b['path']]!=b['sha256']:errors.append({'plan':path.name,'category':'CONFLICTING_BINDING'})
-                    bindings[b['path']]=b['sha256']
-            except Exception:errors.append({'plan':path.name,'category':'PLAN_UNREADABLE'})
-        assert len(bindings)<=1500
-        for path,expected in bindings.items():
-            try:
-                p=Path(path);assert p.stat().st_size<=1024**3
-                if hashlib.file_digest(p.open('rb'),'sha256').hexdigest()!=expected:errors.append({'path':path,'category':'BINDING_CHANGED'})
-            except Exception:errors.append({'path':path,'category':'BOUND_FILE_UNAVAILABLE'})
-        row['integrity']={'boundFiles':len(bindings),'errors':errors}
+                if path!=Path(c['olderPlan']):
+                    ledger=root/(path.stem+'-evidence')/'ledger.json'
+                    if ledger.exists():
+                        historical=terminal_plan(private(ledger),(ledger.parent/'run.lock').exists())
+                for binding in private(path)['bindings']:
+                    name=binding['path']
+                    if name not in actual:
+                        assert len(actual)<1500
+                        file=Path(name);assert file.stat().st_size<=1024**3
+                        actual[name]=hashlib.file_digest(file.open('rb'),'sha256').hexdigest()
+                    if actual[name]!=binding['sha256']:
+                        error={'plan':path.name,'path':name,'category':'BINDING_CHANGED','terminalHistoricalPlan':historical}
+                        errors.append(error)
+                        if not historical:critical.append(error)
+            except Exception:
+                error={'plan':path.name,'category':'PLAN_OR_BOUND_FILE_UNREADABLE','terminalHistoricalPlan':historical}
+                errors.append(error)
+                if not historical:critical.append(error)
+        row['integrity']={'boundFiles':len(actual),'errors':errors,'currentOrPreservedSoakErrors':critical,'historicalChangesNeverAuthorizeResume':True}
     # The serial is fixed; never enumerate or contact other devices.
     try:
         a=[c['adb'],'-s','emulator-5556'];name=run(a+['emu','avd','name'],5).splitlines()[0]
