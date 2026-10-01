@@ -5,7 +5,7 @@ const uuid = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
 const hash = /^[a-f0-9]{64}$/;
 export function navigationConfig(c) {
   assert.equal(c.scope, 'isolated-fictional-navigation-case');
-  assert.ok(['offline-orders', 'same-server', 'cancel-switch', 'confirm-switch', 'switch-back', 'malformed-server', 'cold-lifecycle'].includes(c.case));
+  assert.ok(['offline-orders', 'same-server', 'cancel-switch', 'confirm-switch', 'switch-back', 'malformed-server', 'cold-lifecycle', 'ordinary-logout'].includes(c.case));
   for (const name of ['backendCheckout', 'backendState', 'soakConfig', 'artifactAudit', 'caseDirectory'])
     assert.ok(isAbsolute(c[name]), 'ABSOLUTE_CASE_PATH_REQUIRED');
   for (const name of ['instanceId', 'profileId', 'sessionId']) assert.match(c[name], uuid);
@@ -60,6 +60,6 @@ export function navigationAfter(c, before, after) {
   navigationBefore(c, before);
   for (const key of ['profile', 'businessHash', 'otherAuthHash', 'otpCount'])
     assert.deepEqual(after[key], before[key], 'UNEXPECTED_NAVIGATION_STATE_CHANGE');
-  assert.equal(after.nativeSessionPresent, !['confirm-switch','switch-back'].includes(c.case),
-    ['confirm-switch','switch-back'].includes(c.case) ? 'OLD_SESSION_NOT_REVOKED' : 'NATIVE_SESSION_LOST');
+  assert.equal(after.nativeSessionPresent, !['confirm-switch','switch-back','ordinary-logout'].includes(c.case),
+    ['confirm-switch','switch-back','ordinary-logout'].includes(c.case) ? 'OLD_SESSION_NOT_REVOKED' : 'NATIVE_SESSION_LOST');
 }

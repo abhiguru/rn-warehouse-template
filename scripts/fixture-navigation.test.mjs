@@ -51,3 +51,10 @@ test('cold lifecycle requires a preserved active native session and unchanged bu
     assert.throws(()=>navigationAfter(config,before(),{...before(),[key]:'changed'}));
   assert.doesNotMatch(navigationSnapshotSQL(config),/\b(INSERT|UPDATE|DELETE|ALTER|TRUNCATE)\b/i);
 });
+
+test('ordinary logout revokes only its matched native session and preserves unrelated state', () => {
+  const config={...c(),case:'ordinary-logout'};
+  navigationAfter(config,before(),{...before(),nativeSessionPresent:false});
+  assert.throws(()=>navigationAfter(config,before(),before()));
+  assert.throws(()=>navigationAfter(config,before(),{...before(),nativeSessionPresent:false,otherAuthHash:'changed'}));
+});
