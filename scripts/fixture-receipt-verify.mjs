@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
 import { assertReleased, privateJSON } from './fixture-session-guards.mjs';
-import { receiptConfig, receiptCoreSnapshot, receiptSnapshotShape } from './fixture-receipt-snapshot.mjs';
+import { receiptConfig, receiptCoreSnapshot, receiptSnapshotShape, receiptStoredImageBytes } from './fixture-receipt-snapshot.mjs';
 import { lossEvidence, retryEvidence } from './fixture-write-reconciliation.mjs';
 try {
   const [path, mode] = process.argv.slice(2);
@@ -14,10 +14,12 @@ try {
   const before = receiptCoreSnapshot(originalBefore);
   const loss = { ...read('after-loss'), nativeError: read('native-loss').nativeError };
   receiptSnapshotShape(c, loss.snapshot, 'after-loss');
+  if (c.imagePolicy) assert.deepEqual(loss.snapshot.storedFiles, originalBefore.storedFiles, 'STORED_BYTES_CHANGED_BEFORE_RETRY');
   const coreLoss = { ...loss, snapshot: receiptCoreSnapshot(loss.snapshot) };
   lossEvidence(c, before, coreLoss);
   if (mode === 'retry') {
     const retry = read('after-retry'); receiptSnapshotShape(c, retry.snapshot, 'after-retry');
+    if (c.imagePolicy) receiptStoredImageBytes(c, originalBefore, retry.snapshot);
     retryEvidence(c, before, coreLoss, { ...retry, snapshot: receiptCoreSnapshot(retry.snapshot), nativeSuccess: read('native-retry').nativeSuccess, unchangedForm: read('native-retry').unchangedForm });
   }
   console.log(JSON.stringify({ status: 'PASS', phase: mode, scope: 'native-evidence-and-database-reconciliation' }));

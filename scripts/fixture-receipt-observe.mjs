@@ -1,7 +1,7 @@
 // Guarded observation only: no fault arming, UI, authentication or business writes.
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { lstatSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { lstatSync, readFileSync, realpathSync, writeFileSync, readdirSync } from 'node:fs';
 import { dirname, isAbsolute, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { spawnSync } from 'node:child_process';
@@ -56,7 +56,22 @@ try {
     { input: query, encoding: 'utf8', timeout: 15000, maxBuffer: 1024*1024,
       env: { ...process.env, PGPASSWORD: env.POSTGRES_PASSWORD } });
     assert.equal(r.status, 0, 'PRIVATE_READONLY_OBSERVATION_FAILED');
-    const snapshot = JSON.parse(r.stdout.trim()); receiptSnapshotShape(c, snapshot, phase);
+    const snapshot = JSON.parse(r.stdout.trim());
+    if (c.imagePolicy) {
+      const root = resolve(c.backendState, 'data/storage'); const files = {}; let bytes = 0;
+      const walk = dir => {
+        for (const entry of readdirSync(dir, { withFileTypes: true })) {
+          const file = resolve(dir, entry.name); assert.ok(!entry.isSymbolicLink(), 'NO_STORAGE_SYMLINKS');
+          if (entry.isDirectory()) walk(file);
+          else {
+            assert.ok(entry.isFile()); const stat = lstatSync(file);
+            assert.ok(stat.size <= 10485760 && Object.keys(files).length < 1000 && (bytes += stat.size) <= 268435456, 'BOUNDED_OWNED_STORAGE_REQUIRED');
+            files[file.slice(root.length+1)] = { size:stat.size, sha256:createHash('sha256').update(readFileSync(file)).digest('hex') };
+          }
+        }
+      }; walk(root); snapshot.storedFiles = files;
+    }
+    receiptSnapshotShape(c, snapshot, phase);
     if (['baseline', 'after-draft', 'after-image', 'pre-submit'].includes(phase)) writeBaseline(c, snapshot);
     if (['after-draft', 'after-image', 'pre-submit'].includes(phase)) assert.deepEqual(snapshot, privateJSON(resolve(c.caseDirectory, 'baseline.json')).snapshot, 'DRAFT_CHANGED_BUSINESS_DATA');
     // Detect requests/control changes during the SQL observation window.

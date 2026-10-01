@@ -77,7 +77,20 @@ export function receiptImageCommitted(c, s) {
 }
 
 export function receiptCoreSnapshot(s) {
-  const { images, imageDetails, imageObjects, ...core } = s;
-  void images; void imageDetails; void imageObjects;
+  const { images, imageDetails, imageObjects, storedFiles, ...core } = s;
+  void images; void imageDetails; void imageObjects; void storedFiles;
   return core;
+}
+
+export function receiptStoredImageBytes(c, before, after) {
+  receiptImageCommitted(c, after);
+  assert.ok(before.storedFiles && after.storedFiles, 'ACTUAL_PRIVATE_STORED_BYTES_REQUIRED');
+  for (const [name, value] of Object.entries(before.storedFiles)) assert.deepEqual(after.storedFiles[name], value, 'UNRELATED_STORED_BYTES_CHANGED');
+  const added=Object.keys(after.storedFiles).filter(name=>!Object.hasOwn(before.storedFiles,name));
+  assert.equal(added.length,1,'ONE_NEW_STORED_IMAGE_FILE_REQUIRED');
+  const image=after.imageDetails[0], path=added[0];
+  assert.ok(path.includes('/grn-images/'+image.path+'/') && !path.includes('..'), 'STORED_IMAGE_PATH_MISMATCH');
+  assert.match(path.split('/').at(-1), uuid);
+  assert.equal(after.storedFiles[path].size,image.fileSize); assert.match(after.storedFiles[path].sha256,/^[a-f0-9]{64}$/);
+  return {path, ...after.storedFiles[path]};
 }

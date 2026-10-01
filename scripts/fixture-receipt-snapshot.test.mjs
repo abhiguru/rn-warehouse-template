@@ -35,3 +35,16 @@ test('deferred book image is absent before retry and must bind exactly one confi
   assert.deepEqual(receiptCoreSnapshot(s),{wrongCustomer:0,wrongItem:0,headerIds:[id]});
   const sql=receiptSnapshotSQL(config);assert.match(sql,/bucket_id='grn-images'/);assert.doesNotMatch(sql,/upload_token/);
 });
+
+test('actual stored image bytes add one bound object and preserve every older file', async () => {
+  const {receiptStoredImageBytes}=await import('./fixture-receipt-snapshot.mjs');
+  const config={...c,phase:'after-upstream-success',imagePolicy:'deferred-single-book-image'};
+  const id=c.instanceId,path='headers/'+id+'/fictional.webp',version=c.customerId;
+  const old={size:50,sha256:'a'.repeat(64)},added={size:100,sha256:'b'.repeat(64)};
+  const before={storedFiles:{'old/object':old}};
+  const after={headerIds:[id],imageDetails:[{id,grnId:id,itemId:null,type:'header',status:'confirmed',path,fileSize:100,mimeType:'image/webp'}],imageObjects:[{id,name:path,size:'100',mimeType:'image/webp'}],storedFiles:{'old/object':old,['stub/stub/grn-images/'+path+'/'+version]:added}};
+  assert.equal(receiptStoredImageBytes(config,before,after).sha256,added.sha256);
+  assert.throws(()=>receiptStoredImageBytes(config,before,{...after,storedFiles:{...after.storedFiles,'old/object':added}}));
+  assert.throws(()=>receiptStoredImageBytes(config,before,{...after,storedFiles:{...after.storedFiles,'extra/object':added}}));
+  assert.throws(()=>receiptStoredImageBytes(config,before,{...after,storedFiles:{'old/object':old,'wrong/path':added}}));
+});
