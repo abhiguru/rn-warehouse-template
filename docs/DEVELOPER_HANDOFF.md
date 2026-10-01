@@ -41,3 +41,5 @@ For work after the current isolated soak, use the [next acceptance plan](OPERATO
 The [post-soak session drivers](OPERATOR_SESSION_CASES.md) have passing guard/refusal checks; live/native acceptance and reserved-account preparation remain pending. The exact GRN-fix CI run36854228659 completed with all4 jobs PASS; later tooling-head CI and new-artifact native acceptance remain separate.
 
 See [post-soak write retry cases](OPERATOR_WRITE_RETRY_CASES.md) for preparation638 and the small retry-observation blocker to close before unattended writes. No active-soak infrastructure was changed.
+
+The dispatch draft-only driver641 and read-only adapter640 are documented in [write retry cases](OPERATOR_WRITE_RETRY_CASES.md). They have source and active-run refusal evidence, not current native acceptance. Include the three dispatch accessibility labels in the next audited APK; never replay existing fault documents.

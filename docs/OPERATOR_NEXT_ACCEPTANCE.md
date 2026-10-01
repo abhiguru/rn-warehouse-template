@@ -64,3 +64,5 @@ Prepared session-case drivers and their pending setup/native checks are document
 The [write retry specification](OPERATOR_WRITE_RETRY_CASES.md) provides tested pure reconciliation predicates. Backend observer source0dc7392 closes the missing-source blocker; deployment and native adapter integration remain pending. Retained relay status alone is insufficient.
 
 Read-only direct partial-dispatch adapter640 is prepared with setup66PASS and active-run refusal verified. Its SQL/native integration, draft driver and exclusive case orchestration remain pending; observation-only PASS is not case acceptance.
+
+Native non-submitting draft driver641 and explicit accessible controls are prepared; setup67/unit253/type/lint checks pass. New APK, native selector/SQL integration and complete submit/retry orchestration remain pending. The active run reached block6 with firstfivePASS at this checkpoint; consult its live ledger.

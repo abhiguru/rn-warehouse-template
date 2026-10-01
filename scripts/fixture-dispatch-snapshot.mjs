@@ -10,6 +10,8 @@ export function dispatchConfig(c) {
   for (const field of ['artifactSHA256', 'fixtureGuardSHA256']) assert.match(c[field], /^[a-f0-9]{64}$/);
   assert.ok(['before-upstream', 'after-upstream-success'].includes(c.phase));
   assert.ok(Number.isSafeInteger(c.quantity) && c.quantity > 0);
+  assert.ok(Number.isSafeInteger(c.sourceQuantity) && c.sourceQuantity > c.quantity);
+  assert.match(c.sourcePackageMark, /^[A-Za-z0-9 -]{0,30}$/);
   return c;
 }
 export function dispatchSnapshotSQL(c, key = null) {
@@ -30,6 +32,9 @@ SELECT jsonb_build_object(
  'stock',(SELECT stock FROM public.goodsreceived_trl WHERE id='${c.stockLineId}'),
  'sourceBound',(SELECT count(*)=1 FROM public.goodsreceived_trl t JOIN public.goodsreceived g ON g.id=t.gr_id
    WHERE t.id='${c.stockLineId}' AND g.gr_no='${c.sourceReceipt}' AND g.deleted_at IS NULL),
+ 'sourceLineCount',(SELECT count(*) FROM public.goodsreceived_trl t JOIN public.goodsreceived g ON g.id=t.gr_id WHERE g.gr_no='${c.sourceReceipt}'),
+ 'sourceQuantity',(SELECT qty FROM public.goodsreceived_trl WHERE id='${c.stockLineId}'),
+ 'sourcePackageMark',(SELECT coalesce(package_mark,'') FROM public.goodsreceived_trl WHERE id='${c.stockLineId}'),
  'wrongStockLines',(SELECT count(*) FROM lines WHERE gr_trl_id IS DISTINCT FROM '${c.stockLineId}'::uuid),
  'invoices',(SELECT count(*) FROM public.invoice WHERE notes='Auto-generated invoice for dispatch ${c.record}'),
  'cacheCount',(SELECT count(*) FROM cache),
@@ -53,5 +58,8 @@ export function dispatchSnapshotShape(c, s, baseline = false) {
   dispatchConfig(c);
   assert.equal(s.sourceBound, true, 'RESERVED_SOURCE_NOT_BOUND');
   assert.equal(s.wrongStockLines, 0, 'WRONG_STOCK_LINE');
+  assert.equal(s.sourceLineCount, 1, 'ONE_SOURCE_LOT_REQUIRED');
+  assert.equal(s.sourceQuantity, c.sourceQuantity, 'SOURCE_QUANTITY_MISMATCH');
+  assert.equal(s.sourcePackageMark, c.sourcePackageMark, 'SOURCE_MARK_MISMATCH');
   if (baseline) assert.ok(s.stock > c.quantity, 'PARTIAL_DISPATCH_STOCK_REQUIRED');
 }

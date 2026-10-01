@@ -2074,3 +2074,25 @@ The [main write-retry sequence](OPERATOR_WRITE_RETRY_CASES.md) documents exact c
 phase commands, hash coverage and limits. This adapter covers direct partial
 fictional dispatch, not receipt/image/cart/final-dispatch policy. Native driver,
 exclusive orchestration and released-fixture SQL integration remain NOT TESTED.
+
+### Native dispatch draft preparation641 — 2026-10-01
+
+Source based on62cc926, Ubuntu24.04.3/Node22.23.3/Python3.12. Inspection found the
+create-dispatch icon, save-item icon and quantity input lacked explicit accessible
+names. Added names without changing handlers or pricing/business rules. A new APK
+is required for native verification. The prepared driver stops before submission;
+read-only `after-draft` snapshots must match baseline and exact single-lot binding.
+
+Commands: `npm test -- --watch=false` PASS253/39suites; `npm run test:setup` PASS67,
+including four Python boundary tests; `npm run typecheck` PASS; `npm run lint`
+0errors/1468existingwarnings; Python compile PASS. Actual entrypoint sentinel test
+returned BLOCKED before ADB/route/lock/evidence access while soak remained active.
+SQL/native execution NOT TESTED. Full arming/submission/retry/reconciliation and
+cleanup orchestration remains pending; do not start another unattended suite yet.
+See [the main draft sequence](OPERATOR_WRITE_RETRY_CASES.md) for config and limits.
+
+Earlier mobile tooling CI87c6d40/90b2d90 completed successfully. Backend observer
+[CI36858689257](https://github.com/abhiguru/supabase-warehouse-template/actions/runs/36858689257)
+on0dc7392 failed Container source dependency audit; contract and redacted scan
+passed, dependent migrations/isolated install/Grafana jobs were skipped. This is
+not an all-pass backend gate. Existing dependency findings remain open.

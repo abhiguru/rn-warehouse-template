@@ -114,6 +114,7 @@ Create a private0600 JSON config under an owned0700 directory outside Git, with:
 | record / sourceReceipt | Separate reserved `FXF` numbers (2–5digits), independently checked unused dispatch and owned source receipt |
 | stockLineId / instanceId | Exact private source-line UUID and owned fixture instance UUID |
 | quantity | Positive integral quantity strictly less than source stock |
+| sourceQuantity / sourcePackageMark | Exact original receipt quantity and package mark (empty string if absent); the reserved receipt must have exactly one line |
 | phase | `before-upstream` or `after-upstream-success` |
 | artifactSHA256 | Exact audited installed artifact hash; the native runner must independently verify it |
 | fixtureGuardSHA256 | Hash of the unchanged owning backend `tests/operator-fixture.mjs` |
@@ -162,3 +163,52 @@ as BLOCKED before backend import, socket/SQL access or output-directory creation
 That guard config is marked TEST ONLY and must never become a live case config.
 Native draft driver, independent artifact/transport binding, exclusive orchestration
 and actual SQL/native integration remain pending. No warehouse transaction ran.
+
+## Native draft preparation641 (source only)
+
+`python3 scripts/fixture-ui/dispatch-draft-api30.py /absolute/private/case.json`
+prepares a single direct dispatch draft and leaves its review open. The config
+above additionally requires `soakConfig` (private owned-emulator config used by
+the source soak helpers) and `artifactAudit` (private PASS audit for that exact
+APK). Use the current reviewed scripts and a newly built/audited APK including
+the Create Dispatch, Save dispatch item and Dispatch quantity accessibility labels.
+The old installed e217 APK does not establish this driver's acceptance.
+
+The fixture must already have an authenticated administrator, the named fictional
+customer Backend Test Customer A, supervisor Core Demo Administrator, Backend
+Test Potatoes and the privately bound single-lot reserved receipt. Prepare stock
+through ordinary guarded fixture APIs separately; this driver does not issue
+sessions, request OTPs, seed stock or create a warehouse. The native lot's original
+quantity/package mark must match the SQL baseline. The future integrated runner
+must verify public transport identity and freeze all sources before execution.
+
+After the release guard, the driver takes the same actor lock as session tests,
+checks emulator ownership/API30/SELinux, installed APK SHA and normal reverse route,
+and requires the authenticated tabs screen. It records a read-only baseline,
+force-stops only the owned fixture app, sets443→18643, cold launches and fills a
+new draft using exact native labels. No selector fallback, duplicate-control guess,
+blind tap or Submit action is permitted. The three-step form uses the existing
+Save dispatch item action before navigating to Review.
+
+`after-draft` observation requires DISARMED/empty relay observations and the same
+business snapshot as baseline. Output PASS means **non-submitting draft preparation
+only**. On success the relay route remains selected and the draft stays open for
+the future guarded submission runner. The lock is released when the process exits;
+that runner must reacquire exclusive ownership and verify the unchanged draft,
+route, artifact and baseline before arming. Do not start this standalone stage
+and assume it is a complete unattended write case.
+
+On failure, retain the private result and existing draft. If changed by this driver,
+the reverse route is restored to18443; no draft discard, automatic resume or
+business retry occurs. Raw UI XML/text is not saved; only a private label digest
+and fixed phase/category results. The label digest is preparation evidence, not
+proof of an unchanged request payload across a later retry.
+
+Validation: source setup67PASS (including four Python selector boundary tests),
+253Jest tests/39suites PASS, typecheck PASS, lint0errors/1468existingwarnings,
+Python syntax PASS. Actual driver invocation with sentinel ADB was BLOCKED before
+ADB/route/lock/output directory access while the soak ran. No native screen/form
+execution or released-fixture SQL run has occurred. Selector visibility, scrolling,
+keyboard behavior and complete UI-to-SQL integration remain NOT TESTED. Stop and
+record any native mismatch before correcting the reviewed driver; never silently
+patch a running case.
