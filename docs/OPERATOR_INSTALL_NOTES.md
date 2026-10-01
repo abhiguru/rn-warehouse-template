@@ -36,7 +36,32 @@ bridges disappeared. Four blocks passed; later blocks and final reconciliation
 did not run. The corrected supervised run is not yet started. See the current
 1October checkpoint below; earlier RUNNING observations are historical.
 
-## Current pre-overnight blocker checkpoint — 2026-09-30
+## Current exact-artifact checkpoint — 2026-10-01
+
+| Case | Status | Evidence and scope |
+| --- | --- | --- |
+| Fresh clean backend7e installation and functional cases | PASS |618; new owned identity/configuration/DB/Storage, documented subnet overlay only; backend dependency audit remains FAIL |
+| Same-input setup preservation | PASS |628; private instance/config/catalog hashes and all13 stored-file hashes unchanged |
+| Source tests/build/trust/install | PASS |e217;249Jest/48setup/type/lint/Expo/audit, all4CI36821249722, clean620 and exact compiled trust/readback621 |
+| Persistent stale Orders warning | PASS |622; retained order marked after5seconds/error expiry, while retry pending, cleared after actual Orders200 |
+| Native receipt response-loss/retries | PASS, scoped |Corrected before303/after302 and private images624; initial301 fault FAIL and saved record retained, no replay |
+| Saved invoice/private PDF SEND/render/export | PASS, scoped |626; actual new artifact/new exported%PDF number20261005/tax9/discount-2.5/total182/three lines/hash; driver failures preserved |
+| Clean authenticated core/switch/core round trip | BLOCKED, timed |623b primary return hit actual five/hour quota after secondary PASS; natural reset12:23:50IST; supervised629 waits, then unused623c attempt |
+| Three cold launches/30minute readiness | NOT TESTED on new artifact |Automatically follows clean623c PASS in supervised629; historical3014 readiness not carried forward |
+| Final current short read/preflight/frozen plan | NOT TESTED yet |Supervised630 waits for all629 gates, then captures baselines/explicitly renews helper lifetime/60second read+verify/freezes new plan |
+| New8hour read soak | NOT STARTED |Automatic631 launch only after all8 current-artifact prerequisite files PASS; no completed eight-hour acceptance |
+| Physical/provider/cellular/noUSB/revocation/release cases | OPEN |Current run is isolated emulator/mock delivery; backend dependency gate FAIL and documented hardware/auth gaps remain |
+
+The automatic preparation/launch jobs are owned user units
+warehouse-fixture-prepare-2026100101 and warehouse-fixture-autostart-2026100101,
+Restart=no/KillMode=control-group, private logs,70/100minute caps. They preserve
+failed results and stop before dependent work; no automatic case replay. These
+are prerequisite jobs, not evidence that the8hour unit has started. The future
+warehouse-fixture-overnight-2026100101 unit is created only by actual successful
+launch; its private start result must include an activePID, passed preflights
+and first native block RUNNING. No timer or reboot is scheduled.
+
+## Historical pre-overnight blocker checkpoint — 2026-09-30
 
 | Case | Status | Current evidence and limit |
 | --- | --- | --- |
@@ -1802,3 +1827,52 @@ created with umask077/mode0600 even inside a private directory. One seed-log
 invocation omitted that umask; its mode664 was corrected to600, without printing
 contents or putting it in Git. These are driver/operator findings, not new
 production pricing or authentication changes.
+
+Native retry preparation624 initially failed: reverse443 was changed after the
+loaded form; FXF301 saved successfully while its controller stayed ARMED.
+Read-only reconciliation proves one receipt/line, received4/stock4 and confirmed
+image. The failure and state are retained, with no retry/delete/replay. Existing
+HTTP-connection reuse is a hypothesis; the control itself did not fire.
+Configure the relay route before a cold launch and before preparing an unused
+document. Corrected FXF303 before-upstream case PASS: actual Error, control
+DROPPED_BEFORE_UPSTREAM, independent no-commit, unchanged same-key native
+retry, one receipt/line/qty4/stock4/cache and native success. After-upstream
+FXF302 remains pending here. Restore normal route/disarm and cold-launch before
+normal-read gates. The permanent procedure is in backend FIXTURE_FAULT_REHEARSAL.md.
+
+After-success FXF302 native case now PASS624: control DROPPED_AFTER_UPSTREAM_SUCCESS,
+independent committed receipt before unchanged same-key retry, exactly one
+receipt/line/qty4/stock4/cache and native success. Both corrected cases303/302
+use the exact new APK. Three retained receipts301/302/303 have confirmed header
+WebP and one private stored image each;301 remains a failed fault attempt with
+a successfully saved record. No successful write was replayed.
+
+New APK private PDF gate626 PASS: actual Overview→Actions→Share PDF→Android
+chooser→approved Librera9.5.7/code7222→Scroll mode, rendered invoice number20261005/
+labour20/tax9/discount-2.5/total182 and three duration/quantity rows inspected.
+New exported bytes begin%PDF and text/hash match the fictional saved contract;
+export timestamp is after this share. Reader title uses PDF metadata naming an
+HTML source; that title does not establish the file format. Saved app summary
+shows net173/tax9/total182, while existing per-line rounded totals are separately
+labelled; no pricing-policy change. Driver failures retained: Share action sought
+on Breakdown (present on Overview), immediate chooser check before asynchronous
+PDF completion, and adb shell stat format containing an unquoted space. Correct
+by inspecting the right tab, awaiting actual chooser and using a no-space%Y stat
+format. Reconciled existing copied bytes without another share/write. First
+623 switching attempt correctly refused the still-foreground reader;623b is the
+new attempt after normal supported return. A Breakdown related-GRN accessibility
+label reads undefined; its navigation is NOT TESTED and remains an open finding.
+
+The623b return-login timeout has an established prerequisite cause: the fresh
+fictional administrator's otp_rate_limits hourly_count is5 (daily5). Prior API
+setup and native login consumed the existing five-per-hour allowance. No new
+challenge was prepared after return. A subsequent normal request showed the
+rate-limit UI; its generic60second countdown does not prove the server hour
+window expired. Read-only rate-window inspection gives reset2026-10-01T06:53:50Z
+(12:23:50IST). Do not reset counters, change auth limits, invent an OTP or issue
+repeated requests. Wait for the actual natural window, then complete login and
+use a new clean round-trip attempt623c. This supersedes a tentative missed-tap
+hypothesis; settled/enabled control checks are still appropriate driver guards.
+A scoped supervised prerequisite job629 now waits for that window, then runs
+623c and the exact-artifact three cold launches/30minute rehearsal. It stops at
+the first failure; no long-run acceptance exists yet. No operator input needed.

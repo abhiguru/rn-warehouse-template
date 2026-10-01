@@ -1,5 +1,46 @@
 # Resume after a VM CPU upgrade
 
+## Current renewed preparation — 2026-10-01
+
+Long run NOT STARTED at this checkpoint. No operator input is required.
+Supervised preparation629 and automatic final-gate/launch pipeline630 are
+active: natural quota reset→normal login→new623c→30minute readiness→baselines/
+helper lifetime reset→short read/verify→frozen8-prerequisite plan→actual631 launch.
+Any failure stops the pipeline with private evidence; no automatic retry/replay.
+Clean backend7e3f66a owns new core-backend-test-2026100101 state; fresh setup/local
+doctor/all functional checks618 PASS, audit FAIL remains. Same-input rerun628
+preserved private identity/config/table hashes and all13 stored-file hashes.
+Old fixture03/failed3014 plan/local backup are retained without write replay.
+Supervised core/switch/fault-renewed-2026100101 user services are active with
+Restart=no. Secondary443 passthrough is an existing system socket/service.
+New private core/switch CAs expire2026-10-02T05:43:04Z.
+
+Installed emulator APK e217c1f/code2026100101/x86_64, SHA256
+238ba669f3e14e1e0ea6d0dd396b8766fe5ce1482eae48e264a9af2f95900ed0.
+Clean build620/exact audit/install/readback621 PASS.249Jest/48setup/type/lint/
+Expo compatibility/Doctor/dependency audit PASS; all4 mobileCI36821249722 PASS.
+Persistent stale-warning622 native PASS, including pending retry and actual
+current Orders200 recovery. Fresh API invoice/lost-response checks625 PASS.
+Native corrected receipts303-before/302-after PASS624, three stored images
+confirmed. Initial301 fault case remains FAIL: saved one receipt while its
+control stayed ARMED; read-only reconciled, never replayed. Configure relay route
+before a cold app launch and a new unused draft; restore normal route and cold
+launch for read gates. Existing pooled-connection reuse remains a hypothesis.
+
+PDF626 SEND/render/new %PDF export reconciliation PASS.623a switching refused
+reader focus;623b passed secondary but its primary return reached the actual
+five/hour request limit and FAIL remains. Read-only natural reset is12:23:50IST.
+Supervised preparation629 waits, then supported login/new623c round trip and
+readiness; no limit reset, OTP bypass or repeated request.
+
+Next: finish clean authenticated core/switch/core
+round trip, run three cold launches and30minute readiness without another UI
+actor, then current-artifact public60second soak/verify. Recheck TLS/resources/
+helper lifetime, capture fresh business/native-session baselines, freeze an
+unused plan/config with current helper/unit/CA/source bindings and automatically
+launch9×3200second reads only if every gate PASS. Preserve every failure.
+The first run/earlier CPU pause sections below are historical evidence.
+
 ## Network failure investigation and local backup — 2026-10-01
 
 Evidence 615/616 supersedes the earlier unexplained block-05 timeout. Ubuntu

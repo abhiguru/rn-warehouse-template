@@ -23,7 +23,22 @@ state before retrying; do not launch the long run against a known failure.
 
 Use reviewed backend tooling 7e3f66a34bb729d80e25c6a4a0975f072c05d03a and mobile tooling
 c0824db72b73a049f066a2259352c5207e393bb6 for the corrected supervised/observed read
-workflow. These tooling commits are distinct from installed APK source42a5559.
+workflow. These tooling commits are distinct from the historical installed APK source42a5559. The renewed current APK source
+is e217c1f2b22f74ea5aaabca5101c27aa166c5f68/code2026100101; it includes the
+persistent stale-Orders correction. Keep tooling and runtime source separate.
+
+## Budget fixture authentication before UI gates
+
+Mock delivery still uses the actual backend authentication implementation and
+its existing limits: five requests per phone/hour,20/day and60second resend
+cooldown. API fixture setup and native cases share the allowance. Readiness
+and the long soak must preserve a session and make no OTP requests. Before
+repeated switching/login gates, inspect the fictional fixture's rate window
+read-only using its unchanged ownership validator. If consumed, record BLOCKED
+until the natural reset and schedule one normal request afterward. Never reset
+counters or weaken limits. The generic mobile countdown can show60seconds for
+a longer server quota window; it is not permission to spam retries. Separate
+fixtures keep their own counts. No real provider or fixed challenge is used.
 
 ## Before preparing a long plan
 
@@ -97,7 +112,11 @@ rejected the permission; the initial denial and EACCES attempt remain recorded.
 Another operator may instead choose and verify a narrower compatible PDF SEND
 reader. The permission is not required by the warehouse app itself.
 
-Return to the warehouse app, use Share PDF, choose Librera FD and Scroll mode.
+Return to the warehouse app, open the saved invoice, select **Overview**,
+scroll to Actions and use Share PDF; it is absent from Breakdown. Wait for the
+actual Android share chooser after PDF generation; checking viewer focus
+immediately can fail before the asynchronous share appears. Choose Librera FD
+and Scroll mode.
 Verify the displayed invoice number, totals and line parameters against the
 saved record; installation/handler discovery alone is insufficient. Preserve
 private screenshots and, when checking an export, its hash/text. Do not select
@@ -276,7 +295,7 @@ Config fields:
 | orderLabel / invoiceLabel | Exact expected loaded native labels from the prepared fictional data |
 | startRecord | New private0600 start record, created only at actual launch |
 | managedUnits | Object with core, switch and fault names from the persistent fixture supervisor |
-| prerequisites | Current artifact audit, two native receipt results, current PDF, clean switching, completed readiness and short-helper rehearsal JSON paths |
+| prerequisites | Current artifact audit, two native receipt results, current PDF, clean switching, completed readiness, persistent stale-warning native result and short-helper rehearsal JSON paths |
 
 Export owning paths explicitly for backend observer commands. A review checkout
 may contain tooling but does not own the running fixture. The first invocation
