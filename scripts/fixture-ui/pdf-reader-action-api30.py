@@ -5,7 +5,7 @@ from pathlib import Path
 spec=importlib.util.spec_from_file_location('pdf_select',Path(__file__).with_name('pdf-reader-select-api30.py'));m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m);p=m.p
 os.umask(0o077)
 def main(path,label):
- assert label in {'Menu','Copy to Downloads','Copy to downloads'};tag={'Menu':'menu','Copy to Downloads':'export','Copy to downloads':'export'}[label]
+ assert label in {'Menu','Copy to Downloads','Copy to downloads','ⓘ File info'};tag={'Menu':'menu','Copy to Downloads':'export','Copy to downloads':'export','ⓘ File info':'info'}[label]
  c=json.loads(p.soak.private(path).read_text());cfg,i=p.soak.config(c['soakConfig']);d=p.PDF(cfg,i,'unused',0);e=Path(c['caseDirectory']);out=e/('reader-'+tag+'-result.json');assert not out.exists();cap=json.loads(p.soak.private(c['documentCapture']).read_text());lock=os.open(Path(c['soakConfig']).parent/'fixture-session-actor.lock',os.O_RDWR|os.O_NOFOLLOW);fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
  def capture():
   d.health();w=d.adb('shell','dumpsys','window');assert any('mCurrentFocus=' in x and p.READER+'/' in x for x in w.splitlines());assert d.adb('shell','sha256sum',cap['remotePath']).split()[0]==cap['sha256'];raw=d.adb('exec-out','env','CLASSPATH=/system/framework/uiautomator.jar:'+cap['remotePath'],'app_process','/system/bin','FixtureDocumentCapture');match=re.search(r'(<hierarchy\b.*?</hierarchy>)',raw,re.S);assert match;return match.group(1)
