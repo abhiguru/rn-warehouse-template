@@ -24,6 +24,7 @@ import xml.etree.ElementTree as ET
 from dispatch_case_controls import owned_reverse_route
 from fixture_observation import decode_observation
 from navigation_controls import point, settings, disconnect, reconnect, malformed_origins, allowed_origin
+from emulator_offline_network import original_airplane,airplane,disconnected,reject_fixture_loopback,restore_fixture_loopback
 
 spec = importlib.util.spec_from_file_location('fixture_soak', Path(__file__).with_name('soak-api30.py'))
 soak = importlib.util.module_from_spec(spec); spec.loader.exec_module(soak)
@@ -110,7 +111,7 @@ def main(path):
     assert case['artifactSHA256'] == c['apkSHA256']
     names = ['fixture-navigation-observe.mjs', 'fixture-navigation-guards.mjs', 'fixture-session-guards.mjs',
              'fixture-ui/navigation-api30.py', 'fixture-ui/navigation_controls.py', 'fixture-ui/dispatch_case_controls.py',
-             'fixture-ui/soak-api30.py', 'fixture-ui/fixture_observation.py']
+             'fixture-ui/soak-api30.py', 'fixture-ui/fixture_observation.py', 'fixture-ui/emulator_offline_network.py']
     assert set(case['toolingSHA256']) == set(names)
     assert all(digest(scripts / n) == case['toolingSHA256'][n] for n in names)
     for name in ['databaseHelper', 'httpObserver']:
@@ -126,6 +127,7 @@ def main(path):
     driver.state.update(case=case['case'], phases=[], configSHA256=digest(path), driverSHA256=digest(__file__))
     driver.save()
     radios = None; network_touched = False; network_restored = False
+    plane_attempted=False;plane_restored=False;rule_attempted=False;rule_restored=False;uid=None;marker=None
 
     def transport(origin, port, ca, instance):
         host = origin.removeprefix('https://')
@@ -184,9 +186,15 @@ def main(path):
         if case['case'] == 'offline-orders':
             driver.wait('Orders tab'); fresh_orders()
             radios = settings(driver.adb)
+            original_plane=original_airplane(driver.adb)
+            match=re.fullmatch(r'package:in\.gurucold\.warehouse\.fixture uid:(\d+)',driver.adb('shell','pm','list','packages','-U',soak.PACKAGE));assert match
+            uid=int(match.group(1));attempt=evidence.name[-2:];assert attempt in ['02','03'];marker='whvm-offline-0106-'+attempt
+            driver.state.update(originalAirplane=original_plane,offlineFixtureUID=uid,ownedLoopbackRule=marker);driver.save()
             with (evidence/'network-before.json').open('x') as f: json.dump(radios,f)
             network_touched = True; disconnect(driver.adb,radios,18443)
-            connectivity = driver.adb('shell', 'dumpsys', 'connectivity')
+            plane_attempted=True;driver.state['airplaneChangeAttempted']=True;driver.save();airplane(driver.adb,'0','1')
+            rule_attempted=True;driver.state['loopbackRuleAttempted']=True;driver.save();reject_fixture_loopback(driver.adb,uid,marker)
+            connectivity = disconnected(driver.adb)
             assert len(connectivity) <= 65536, 'Bounded Android network observation required'
             with (evidence/'connectivity-after-disconnect.txt').open('x') as f: f.write(connectivity)
             driver.state['androidDefaultNetwork'] = next((x.strip() for x in connectivity.splitlines() if x.startswith('Active default network:')), 'UNKNOWN'); driver.save()
@@ -199,6 +207,8 @@ def main(path):
             observation = decode_observation(result.returncode,result.stdout.decode(errors='replace'))
             assert observation['status'] == 'WAIT' and observation.get('successfulOrdersRequests',0) == 0, 'Outage not established'
             driver.state['phases'].append('OFFLINE_STALE_WARNING_NO_CURRENT_REQUEST')
+            restore_fixture_loopback(driver.adb,uid,marker);rule_restored=True
+            airplane(driver.adb,'1','0');plane_restored=True
             reconnect(driver.adb,radios,18443); network_restored = True
             deadline = time.monotonic()+30
             while 'No internet connection' in labels(driver.snapshot()):
@@ -263,6 +273,14 @@ def main(path):
     finally:
         if network_touched and not network_restored:
             try:
+                if rule_attempted and not rule_restored:
+                    rows=driver.adb('shell','iptables','-S','OUTPUT')
+                    if marker in rows:restore_fixture_loopback(driver.adb,uid,marker)
+                    rule_restored=True
+                if plane_attempted and not plane_restored:
+                    current=driver.adb('shell','settings','get','global','airplane_mode_on');assert current in ['0','1']
+                    if current=='1':airplane(driver.adb,'1','0')
+                    plane_restored=True
                 reconnect(driver.adb,radios,18443); driver.state['networkRestored']=True
             except Exception: driver.state.update(status='FAIL',networkRestored=False)
         driver.save(); os.close(fd)
