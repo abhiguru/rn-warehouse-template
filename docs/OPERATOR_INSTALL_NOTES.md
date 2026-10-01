@@ -33,7 +33,7 @@ The operator resumed after the VM resource change. The guest now exposes eight
 CPUs and usable KVM. See [CPU_UPGRADE_RESUME.md](CPU_UPGRADE_RESUME.md) for the
 preserved pause, interrupted attempt and scoped post-reboot results. The first eight-hour attempt FAILED in block05 after its terminal-backed
 bridges disappeared. Four blocks passed; later blocks and final reconciliation
-did not run. The corrected supervised run is not yet started. See the current
+did not run. The corrected supervised run started13:17IST1October and remains RUNNING at the saved launch checkpoint. See the current
 1October checkpoint below; earlier RUNNING observations are historical.
 
 ## Current exact-artifact checkpoint — 2026-10-01
@@ -48,18 +48,15 @@ did not run. The corrected supervised run is not yet started. See the current
 | Saved invoice/private PDF SEND/render/export | PASS, scoped |626; actual new artifact/new exported%PDF number20261005/tax9/discount-2.5/total182/three lines/hash; driver failures preserved |
 | Clean authenticated core/switch/core round trip | PASS |623c after natural quota reset: both real mock verifiers, separate profile/data/cache, primary return/invoice and both cold persistence;623a/b failures retained |
 | Three cold launches/30minute readiness | PASS |Three cold launches;1802.6seconds/30cycles on current2026100101 artifact, completed629 |
-| Final current short read/preflight/frozen plan | FAIL630; separate633 pending |Captured baselines and restarted owned helpers; immediate fault IPC connect raced startup. Bounded owned readiness correction; failed attempt preserved |
-| New8hour read soak | NOT STARTED |Automatic631 launch only after all8 current-artifact prerequisite files PASS; no completed eight-hour acceptance |
+| Final current short read/preflight/frozen plan | PASS633; FAIL630 retained |Bounded owned IPC/listener readiness, preserved baselines/session/OTP reconciliation, full preflight,60second native read/verify,54 frozen bindings |
+| New8hour read soak | RUNNING |Actual631 start13:17IST, activePID2211555, two PASS preflights, first native block RUNNING; completion/aggregate pending |
 | Physical/provider/cellular/noUSB/revocation/release cases | OPEN |Current run is isolated emulator/mock delivery; backend dependency gate FAIL and documented hardware/auth gaps remain |
 
-The automatic preparation/launch jobs are owned user units
-warehouse-fixture-prepare-2026100101 and warehouse-fixture-autostart-2026100101,
-Restart=no/KillMode=control-group, private logs,70/100minute caps. They preserve
-failed results and stop before dependent work; no automatic case replay. These
-are prerequisite jobs, not evidence that the8hour unit has started. The future
-warehouse-fixture-overnight-2026100101 unit is created only by actual successful
-launch; its private start result must include an activePID, passed preflights
-and first native block RUNNING. No timer or reboot is scheduled.
+Preparation629 completed PASS. Original630 failed at IPC startup readiness;
+separate633 final gates PASS and actual631 launch verified. Failed evidence is
+retained. The supervised eight-hour unit has Restart=no/KillMode=control-group
+and a10-hour cap. No timer or reboot is scheduled. See the renewed launch
+record below for exact frozen inputs and remaining acceptance.
 
 ## Historical pre-overnight blocker checkpoint — 2026-09-30
 
@@ -1887,3 +1884,50 @@ ADB restart. New artifact readiness has three cold launches PASS and its actual
 will start the8hour unit only after completed readiness, short-read verification,
 preflight and all8 prerequisite files PASS. No completed long-run PASS or actual
 8hour start at this checkpoint; earlier timed-blocker sections are historical.
+
+## Renewed eight-hour run started — 2026-10-01 13:17 IST
+
+Separate corrected final gates633 PASS: bounded owned service/IPC/listener
+readiness and relay DISARMED, preserved business/native-session/verified-OTP
+count reconciliation, complete preflight, actual60second native read rehearsal
+and its verify. Original630 ENOENT failure and successful captured baselines
+remain retained; no transaction was replayed. All eight current-artifact
+prerequisites PASS. Current readiness629 completed three cold launches and
+1802.6seconds/30cycles. This corrects the earlier RUNNING/pending checkpoints.
+
+Actual start2026-10-01T07:47:00.288137Z (13:17:00IST), active PID2211555,
+unit `warehouse-fixture-overnight-2026100101.service`, first native block
+soak-01 RUNNING after two PASS preflights.54 inputs frozen; plan SHA256
+b18bcbd1cc1159a5e94f1ac196c58ee5ddca381a8fd26ddbe2ece19cf0150542.
+Nine3200second read blocks plus postconditions/aggregate; no completed8hour
+PASS yet. Native time alone ends no earlier than21:17IST; checks add time.
+The runner has a10-hour cap, Restart=no and stops at the first failure.
+No timer, automatic failed-case resume, authentication reset or write replay.
+
+Runtime source remains clean backend7e3f66a in new fictional2026100101 state
+plus documented subnet overlay; separately owned secondary retains declared
+transport/DNS overlays. Current emulator APK sourcee217c1f/code2026100101,
+SHA256238ba669f3e14e1e0ea6d0dd396b8766fe5ce1482eae48e264a9af2f95900ed0.
+Plan froze backend toolinge85b152b2df5f5d6c8cb7fe81fd8e53f129ac1b4 and
+mobile tooling73dc51c1b3911508c1f3a2d3a046685902f6ece8. Later documentation-only
+commits do not change frozen executable inputs. Both private CAs expire
+2026-10-02T05:43:04Z; helper12-hour windows cover this run and its cap.
+
+Inspect the exact unit and protected631 start result/overnight ledger/results;
+keep raw logs, phone/device/session values and hashes private. Do not run another
+UI actor or edit bound inputs. Ordinary health/stop:
+
+```bash
+systemctl --user show warehouse-fixture-overnight-2026100101.service \
+  --property=ActiveState,SubState,MainPID,NRestarts,Result
+systemctl --user stop warehouse-fixture-overnight-2026100101.service
+```
+
+Next: observe without interacting with the emulator. If it fails, preserve the
+ledger and diagnose/reconcile before a new separately frozen attempt. If it
+finishes, require all nine block verifies and final business/session/duration/
+actual-request/refresh-rotation aggregate PASS, then publish sanitized results.
+A start or compilation is not end-to-end acceptance. Real SMS/current revoked
+sessions, physical phone/Wi-Fi/cellular/noUSB, same-origin/unsaved-form switching,
+current native dispatch faults, undefined related-GRN Breakdown label and
+existing security/release gates remain open. Test1/pilot/recovery unchanged.
