@@ -15,8 +15,14 @@ try {
   assertReleased(c);
   const ui = privateJSON(c.soakConfig);
   const secondary = c.origin === 'https://backend-switch.example.test';
+  const replacement = c.replacementFixture === true;
+  if (Object.hasOwn(c,'replacementFixture')) assert.equal(typeof c.replacementFixture,'boolean');
   assert.ok(secondary || c.origin === 'https://backend-core.example.test');
-  assert.ok((secondary ? ['919888888881','919888888882','919888888883','919888888884'] :
+  if (replacement) {
+    assert.equal(secondary,false);assert.equal(c.phone,'919888888891');assert.equal(c.profileName,'Replacement Demo Administrator');assert.equal(c.role,'admin');
+    const prepared=privateJSON(c.replacementPrepared);assert.equal(prepared.status,'PASS');assert.equal(prepared.artifactSHA256,ui.apkSHA256);assert.equal(prepared.heldReplacementUnit,ui.managedUnits.core);assert.equal(prepared.replacementInstanceId,c.instanceId);
+    assert.equal(privateJSON(resolve(ui.backendState,'public/instance.json')).instanceId,c.instanceId);
+  } else assert.ok((secondary ? ['919888888881','919888888882','919888888883','919888888884'] :
     ['919888888871','919888888872','919888888873','919888888874']).includes(c.phone));
   const checkout = secondary ? ui.secondaryBackendCheckout : ui.backendCheckout;
   const guard = resolve(checkout, secondary ? 'scripts/switch-fixture-common.mjs' : 'tests/operator-fixture.mjs');
@@ -28,6 +34,13 @@ try {
     const sql = `BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY;
 SET LOCAL statement_timeout='10s';
 SELECT jsonb_build_object(
+'otherAuthHash',encode(extensions.digest(jsonb_build_object(
+'profiles',(SELECT jsonb_agg(to_jsonb(x) ORDER BY id) FROM public.user_profiles x WHERE mobile<>'${c.phone}'),
+'sessions',(SELECT jsonb_agg(to_jsonb(x) ORDER BY id) FROM warehouse_security.refresh_sessions x WHERE user_id NOT IN (SELECT auth_user_id FROM public.user_profiles WHERE mobile='${c.phone}')),
+'otps',(SELECT jsonb_agg(to_jsonb(x) ORDER BY id) FROM public.otp_verifications x WHERE phone_number<>'${c.phone}'),
+'quotas',(SELECT jsonb_agg(to_jsonb(x) ORDER BY phone_number) FROM public.otp_rate_limits x WHERE phone_number<>'${c.phone}'),
+'assignments',(SELECT jsonb_agg(to_jsonb(x) ORDER BY id) FROM public.users_customers_new x))::text,'sha256'),'hex'),
+'primaryAdministratorPresent',EXISTS(SELECT 1 FROM public.user_profiles WHERE mobile='919888888871'),
 'profile',(SELECT jsonb_build_object('id',id,'name',name,'role',role,'active',active,'status',enrollment_status) FROM public.user_profiles WHERE mobile='${c.phone}'),
 'sessions',(SELECT coalesce(jsonb_agg(jsonb_build_object('id',s.id,'created',s.created_at,'expires',s.expires_at) ORDER BY s.id),'[]') FROM warehouse_security.refresh_sessions s JOIN public.user_profiles p ON p.auth_user_id=s.user_id WHERE p.mobile='${c.phone}'),
 'otpVerified',(SELECT count(*) FROM public.otp_verifications WHERE phone_number='${c.phone}' AND verified_at IS NOT NULL),
@@ -44,11 +57,13 @@ COMMIT;`;
       { input: sql, encoding: 'utf8', timeout: 15000, env: {...process.env, PGPASSWORD:env.POSTGRES_PASSWORD} });
     assert.equal(q.status,0,'PRIVATE_AUTH_OBSERVATION_FAILED');
     const snapshot = JSON.parse(q.stdout);
+    if (replacement) {assert.equal(snapshot.primaryAdministratorPresent,false);assert.equal(snapshot.profile?.name,c.profileName);assert.equal(snapshot.profile?.role,'admin');assert.equal(snapshot.profile?.active,true);}
     if (phase === 'before') {
       assert.ok((snapshot.quota?.hourly ?? 0)<5 && (snapshot.quota?.daily ?? 0)<20,'ORDINARY_AUTH_QUOTA_EXHAUSTED');
     } else {
       const before = privateJSON(resolve(c.caseDirectory,'auth-before.json')).snapshot;
       assert.equal(snapshot.businessHash,before.businessHash,'AUTH_CHANGED_BUSINESS_DATA');
+      assert.equal(snapshot.otherAuthHash,before.otherAuthHash,'AUTH_CHANGED_UNRELATED_ACCOUNTS');
       assert.equal(snapshot.otpVerified,before.otpVerified+1,'ONE_ORDINARY_VERIFICATION_REQUIRED');
       assert.equal(snapshot.profile?.name,c.profileName,'PROFILE_NAME_MISMATCH');
       if (c.expected === 'authenticated') {
