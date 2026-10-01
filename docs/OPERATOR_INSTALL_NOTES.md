@@ -2352,3 +2352,32 @@ No new RPC/schema or authentication bypass; installed APK/soak unchanged.
 Native same-origin replacement, SecureStore failure behavior on a device and
 complete concurrent bootstrap/switch acceptance remain pending. Local cleanup
 does not establish remote revocation of the former instance.
+
+### Guarded navigation/offline driver preparation653 — 2026-10-01
+
+Review source8f1f15b lacked a bounded native read/offline and cancel/confirm/same-server
+driver. Added four navigation cases and one prepared no-image partial-dispatch
+offline error/reconnect/explicit retry case. All require successful soak release,
+private source/artifact/owner/session bindings and the exclusive session actor lock.
+Independent read-only business/auth/OTP comparisons gate acceptance. Offline writes
+require a completed UI error plus zero-write SQL proof before reconnect/retry;
+uncertain first requests remain disconnected for reconciliation. No OTP/login,
+seeding, pilot use, fault arming or automatic resume. No runtime files changed.
+
+Trigger: `npm run test:setup` PASS75; five pure Python control tests PASS and new
+Python/Node syntax PASS. Four actual entrypoint attempts against the active soak
+returned BLOCKED before ADB/SQL/socket/attempt creation. Private sentinel ADB stayed
+untouched; no case directory created; all54 frozen inputs unchanged. Full-schema
+SQL/native/radio/selectors/cleanup integration NOT TESTED. Navigation cancellation
+does not establish unsaved-form preservation; offline dispatch is a bounded
+no-image case, not independent same-key HTTP observation or durable queue acceptance.
+Use [navigation/offline driver instructions](OPERATOR_NAVIGATION_DRIVERS.md) for
+exact private config fields, source bindings, execution order and limitations.
+
+CI observation at14:07UTC: backendb401af6c87ef8f823c6ab3cc506c7ad20da5b0b2
+[36869491629](https://github.com/abhiguru/supabase-warehouse-template/actions/runs/36869491629)
+all7PASS; mobile switch3dc2023ff4c11274c9ff0da26367c8479bb9d692
+[36869482636](https://github.com/abhiguru/rn-warehouse-template/actions/runs/36869482636)
+and mobile70c3073914eea2b52d6955848716ec8d0aa17909
+[36871398156](https://github.com/abhiguru/rn-warehouse-template/actions/runs/36871398156)
+all4PASS each. These debug/source jobs do not establish current native acceptance.

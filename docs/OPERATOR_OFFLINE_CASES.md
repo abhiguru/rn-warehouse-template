@@ -33,6 +33,10 @@ writes. Order Realtime and the offline banner use the network hook directly.
 
 ## Post-soak test sequence
 
+Use the [guarded navigation/offline drivers](OPERATOR_NAVIGATION_DRIVERS.md)
+for source-prepared Orders and no-image partial-dispatch cases. Their active-run
+refusal checks PASS; complete-schema/native integration remains NOT TESTED.
+
 1. Release the fixture under the [acceptance plan](OPERATOR_NEXT_ACCEPTANCE.md).
    Preserve all nine blocks and final aggregate before changing the emulator.
    Build/audit/install a new APK containing650–651 and record the source pair,

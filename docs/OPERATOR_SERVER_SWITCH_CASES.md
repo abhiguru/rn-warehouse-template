@@ -31,6 +31,11 @@ prove revocation on the former server, which is no longer the discovered instanc
 
 ## Cases to execute once per affected artifact
 
+The [guarded navigation drivers](OPERATOR_NAVIGATION_DRIVERS.md) prepare same-server,
+cancel and confirmed-origin checks without login or business submits. Source/guard
+checks PASS; actual SQL/native runs remain NOT TESTED. Their read-only cancellation
+case does not establish unsaved-form behavior; retain those separate cases below.
+
 Prepare fictional unsaved GRN, dispatch, invoice and customer drafts through the
 supported UI. Record which drafts survive navigation before claiming the switch
 preserves or clears them; some forms reset on unmount. Do not submit documents

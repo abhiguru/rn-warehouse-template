@@ -57,3 +57,8 @@ animation callbacks. Combined source validation:281Jest tests/43suites,
 typecheck and lint0errors PASS. The [offline/reconnect cases](OPERATOR_OFFLINE_CASES.md)
 separate device disconnection, backend outage and explicit write retries; no
 durable offline GRN/dispatch queue or new native result is claimed.
+
+Preparation653 adds [guarded navigation/offline drivers](OPERATOR_NAVIGATION_DRIVERS.md).
+Four active-run refusals and setup75PASS; full-schema/native execution remains open.
+Cold-start identity correction652 has290Jest tests PASS; replacement authentication
+on a new audited native artifact still needs separately owned replacement state.

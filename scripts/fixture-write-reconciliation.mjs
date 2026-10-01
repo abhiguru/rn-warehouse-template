@@ -21,7 +21,7 @@ export function writeBaseline(c, s) {
   assert.match(s.unrelatedBusinessHash, digest);
 }
 
-function committed(c, before, s) {
+export function committed(c, before, s) {
   assert.equal(s.instanceId, c.instanceId, 'INSTANCE_MISMATCH');
   assert.equal(s.unrelatedBusinessHash, before.unrelatedBusinessHash, 'UNRELATED_BUSINESS_CHANGED');
   assert.equal(s.headerIds.length, 1, 'EXACTLY_ONE_HEADER_REQUIRED');
