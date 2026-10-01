@@ -37,7 +37,7 @@ class Draft(soak.Soak):
         t = self.snapshot()
         # GhostTextInput can accept its exact suggestion on the inspected tap
         # and blur. Require the labelled input value before skipping typing.
-        if exact_field_value(t, label, value):
+        if label == 'Vehicle registration' and exact_field_value(t, label, value):
             if 'mInputShown=true' in self.adb('shell', 'dumpsys', 'input_method'):
                 self.adb('shell', 'input', 'keyevent', '4')
             return
