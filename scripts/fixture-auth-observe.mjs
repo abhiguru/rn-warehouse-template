@@ -6,7 +6,7 @@ import { spawnSync } from 'node:child_process';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { assertReleased, privateJSON } from './fixture-session-guards.mjs';
-import { pendingReadOnlyMode, approvedEnrollmentExitMode } from './fixture-auth-controls.mjs';
+import { pendingReadOnlyMode, approvedEnrollmentExitMode, customerReadOnlyMode } from './fixture-auth-controls.mjs';
 process.umask(0o077);
 try {
   const [path, phase] = process.argv.slice(2);
@@ -19,6 +19,7 @@ try {
   const replacement = c.replacementFixture === true;
   const pendingReadOnly = pendingReadOnlyMode(c,secondary,replacement);
   const approvedExit = approvedEnrollmentExitMode(c,secondary,replacement);
+  const customerReadOnly = customerReadOnlyMode(c,secondary,replacement);
   if (Object.hasOwn(c,'replacementFixture')) assert.equal(typeof c.replacementFixture,'boolean');
   assert.ok(secondary || c.origin === 'https://backend-core.example.test');
   if (replacement) {
@@ -64,17 +65,18 @@ COMMIT;`;
     if (replacement) {assert.equal(snapshot.primaryAdministratorPresent,false);assert.equal(snapshot.profile?.name,c.profileName);assert.equal(snapshot.profile?.role,'admin');assert.equal(snapshot.profile?.active,true);}
     if (pendingReadOnly) {assert.equal(snapshot.profile?.status,'pending');assert.equal(snapshot.profile?.active,false);assert.deepEqual(snapshot.sessions,[]);}
     if (approvedExit) {assert.equal(snapshot.profile?.status,'approved');assert.equal(snapshot.profile?.active,true);assert.deepEqual(snapshot.sessions,[]);}
+    if (customerReadOnly) {assert.equal(snapshot.profile?.status,'approved');assert.equal(snapshot.profile?.active,true);assert.equal(snapshot.profile?.role,'customer');assert.equal(snapshot.sessions.length,1);assert.equal(snapshot.sessions[0].id,c.nativeSessionId);}
     if (phase === 'before') {
       assert.ok((snapshot.quota?.hourly ?? 0)<5 && (snapshot.quota?.daily ?? 0)<20,'ORDINARY_AUTH_QUOTA_EXHAUSTED');
     } else {
       const before = privateJSON(resolve(c.caseDirectory,'auth-before.json')).snapshot;
       assert.equal(snapshot.businessHash,before.businessHash,'AUTH_CHANGED_BUSINESS_DATA');
       assert.equal(snapshot.otherAuthHash,before.otherAuthHash,'AUTH_CHANGED_UNRELATED_ACCOUNTS');
-      if (pendingReadOnly) assert.deepEqual(snapshot,before,'PENDING_READ_CHANGED_STATE');
+      if (pendingReadOnly || customerReadOnly) assert.deepEqual(snapshot,before,'PENDING_READ_CHANGED_STATE');
       else if (approvedExit) {assert.equal(snapshot.otpVerified,before.otpVerified);assert.equal(before.enrollmentTokenCount,1);assert.equal(snapshot.enrollmentTokenCount,0);}
       else assert.equal(snapshot.otpVerified,before.otpVerified+1,'ONE_ORDINARY_VERIFICATION_REQUIRED');
       assert.equal(snapshot.profile?.name,c.profileName,'PROFILE_NAME_MISMATCH');
-      if (approvedExit) assert.deepEqual(snapshot.sessions,before.sessions);
+      if (approvedExit || customerReadOnly) assert.deepEqual(snapshot.sessions,before.sessions);
       else if (c.expected === 'authenticated') {
         assert.equal(snapshot.profile?.role,c.role); assert.equal(snapshot.profile?.active,true);
         const added = snapshot.sessions.filter(s=>!before.sessions.some(p=>p.id===s.id));
