@@ -96,3 +96,43 @@ build/preparation/run/safety margin. Preserve the completed source bindings and 
 certificate paths/configuration and record the next units/artifact bindings. Prepare any new certificates before the next APK build if
 the intended later run cannot meet its12-hour guard. This concerns disposable
 fixture TLS, not production provider/warehouse credential rotation.
+
+
+## VM-only campaign begun 1 October 2026
+
+The authorized campaign has a 48-hour deadline of 3 October 2026 16:27:13 UTC
+(21:57:13 IST). Use only the owned x86_64 VM and API30 emulators. ARM builds
+and physical acceptance are deferred. Preserve completion658 and its frozen
+inputs; its PASS remains attached to e217/code2026100101.
+
+Before the next candidate build, generate independent primary, switching and
+same-origin replacement certificates in new private directories, each valid for
+14 days and containing only its exact fictional DNS SAN. The fixture-only build
+helper accepts optional `WAREHOUSE_REPLACEMENT_FIXTURE_CA`; this adds a second
+independent public trust anchor to `backend-core.example.test` only. The optional
+switch anchor remains confined to `backend-switch.example.test`. Normal package
+IDs, wildcard/additional/wrong hosts, invalid dates, reused keys and overwriting
+an existing native trust policy are refused. These tests establish tooling
+behavior; compiled artifact and real replacement acceptance require later checks.
+
+For the authorized build use a clean pinned application checkout, applying only
+the separately recorded fixture tooling overlay. Export all three absolute CA
+paths and `WAREHOUSE_FIXTURE_MIN_VALID_HOURS=168`, then use the documented Expo
+prebuild and x86_64 release commands with Gradle's two-worker/3GiB limits. Recheck
+25GiB free immediately before compilation. Record the application commit, tooling
+commit, overlay hashes, new increasing build ID, signer and exact APK hash.
+Do not copy private key material into the checkout or APK.
+
+Take a consistent private backup with each retiring fixture's owning checkout
+before sequential replacement. Require archive checksum and pg_restore catalog
+readability, preserving all prior state; this is not a restore test. New helper
+units keep the existing 12-hour cap and require actual TLS/IPC readiness. Freeze
+bounded stages separately within the runner's 24-hour timeout limit. The final
+candidate needs its own eight-hour soak after affected native gates pass.
+
+After the final APK freezes, authenticate a reserved fictional expiry account on
+its own newly created API30 AVD, record real server expiry, stop it cleanly and
+schedule one bounded check for expiry plus ten minutes. Preserve its storage;
+never change timestamps, reset quotas or clone authenticated device state.
+The appointment can fall after the execution campaign; its eventual result
+remains pending until the actual check executes.

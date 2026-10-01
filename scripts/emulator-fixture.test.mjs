@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync, rmSync, mkdirSync, copyFileSync, writeFileSy
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { validateFixtureTarget, validateSwitchingFixtureTarget, validateCertificateHorizon } from './prepare-emulator-fixture.mjs';
+import { validateFixtureTarget, validateSwitchingFixtureTarget, validateCertificateHorizon, validateReplacementFixtureTarget, validateIndependentFixtureKeys } from './prepare-emulator-fixture.mjs';
 import { validateEntries, validateText } from './artifact-audit.mjs';
 
 test('fixture certificate overlay rejects normal warehouse packages before parsing any certificate', () => {
@@ -104,5 +104,58 @@ test('fixture trust requires the correct hostname and a currently valid CA', () 
         assert.throws(() => validateFixtureTarget(gradle, pem, Date.now() + 3 * 86400000));
       } else assert.throws(() => validateFixtureTarget(gradle, pem));
     }
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+
+test('replacement trust is optional, exact-host, independent and confined to the core domain', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'warehouse-replacement-overlay-test-'));
+  const gradle = 'applicationId "in.gurucold.warehouse.fixture"';
+  try {
+    const scripts = join(dir, 'scripts'), app = join(dir, 'android/app');
+    mkdirSync(scripts); mkdirSync(join(app, 'src/main'), { recursive: true });
+    for (const name of ['prepare-emulator-fixture.mjs', 'is-main.mjs']) copyFileSync(new URL(name, import.meta.url), join(scripts, name));
+    writeFileSync(join(app, 'build.gradle'), gradle);
+    const manifest = join(app, 'src/main/AndroidManifest.xml');
+    const original = '<manifest><application android:name="fixture" /></manifest>';
+    writeFileSync(manifest, original);
+    const cert = (name, domain, key) => {
+      const path = join(dir, name+'.pem');
+      const args = ['req', '-x509', ...(key ? ['-key', key] : ['-newkey', 'rsa:2048', '-nodes', '-keyout', join(dir, name+'-key.pem')]),
+        '-days', '14', '-out', path, '-subj', `/CN=${domain}`, '-addext', `subjectAltName=DNS:${domain}`, '-addext', 'basicConstraints=critical,CA:TRUE'];
+      assert.equal(spawnSync('openssl', args, { stdio: 'ignore' }).status, 0);
+      return path;
+    };
+    const primary = cert('primary', 'backend-core.example.test');
+    const switching = cert('switching', 'backend-switch.example.test');
+    const replacement = cert('replacement', 'backend-core.example.test');
+    const reused = cert('reused', 'backend-core.example.test', join(dir, 'primary-key.pem'));
+    const wrong = cert('wrong', 'backend-switch.example.test');
+    const wildcard = cert('wildcard', '*.example.test');
+    const pem = readFileSync(replacement);
+    assert.throws(() => validateReplacementFixtureTarget('applicationId "com.warehouse.manager"', pem), /normal warehouse APK/);
+    assert.throws(() => validateReplacementFixtureTarget(gradle, readFileSync(wrong)));
+    assert.throws(() => validateReplacementFixtureTarget(gradle, readFileSync(wildcard)), /exact fictional hostname/);
+    assert.throws(() => validateReplacementFixtureTarget(gradle, pem, Date.now()+15*86400000));
+    assert.throws(() => validateIndependentFixtureKeys([readFileSync(primary), readFileSync(reused)]), /independent TLS keys/);
+    const run = ca => spawnSync(process.execPath, [join(scripts, 'prepare-emulator-fixture.mjs')], {
+      env: { ...process.env, WAREHOUSE_FIXTURE_CA: primary, WAREHOUSE_SWITCH_FIXTURE_CA: switching,
+        WAREHOUSE_REPLACEMENT_FIXTURE_CA: ca, WAREHOUSE_FIXTURE_MIN_VALID_HOURS: '72' }, encoding: 'utf8' });
+    for (const invalid of [reused, switching, wrong, wildcard]) {
+      assert.notEqual(run(invalid).status, 0);
+      assert.equal(readFileSync(manifest, 'utf8'), original, 'Refusal must precede native mutation');
+      assert.ok(!existsSync(join(app, 'src/main/res')));
+    }
+    assert.equal(run(replacement).status, 0);
+    const xml = readFileSync(join(app, 'src/main/res/xml/warehouse_fixture_network_security.xml'), 'utf8');
+    const domains = xml.match(/<domain-config[\s\S]*?<\/domain-config>/g);
+    assert.equal(domains.length, 2);
+    assert.match(domains[0], /backend-core\.example\.test/);
+    assert.match(domains[0], /@raw\/warehouse_replacement_fixture_ca/);
+    assert.ok(!domains[1].includes('warehouse_replacement_fixture_ca'));
+    assert.ok(!xml.match(/includeSubdomains="true"|cleartextTrafficPermitted="true"/));
+    assert.equal(readFileSync(join(app, 'src/main/res/raw/warehouse_replacement_fixture_ca.crt'), 'utf8'), pem.toString());
+    assert.doesNotThrow(() => validateEntries(['res/raw/warehouse_replacement_fixture_ca.crt']));
+    assert.notEqual(run(replacement).status, 0, 'Do not overwrite generated trust');
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });

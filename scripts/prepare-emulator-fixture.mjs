@@ -20,6 +20,15 @@ export function validateFixtureTarget(gradle, pem, now = Date.now()) {
   validateDomainTarget(gradle, pem, 'backend-core.example.test', now);
 }
 
+export function validateReplacementFixtureTarget(gradle, pem, now = Date.now()) {
+  validateDomainTarget(gradle, pem, 'backend-core.example.test', now);
+}
+
+export function validateIndependentFixtureKeys(pems) {
+  const keys = pems.map(pem => new X509Certificate(pem).publicKey.export({ type: 'spki', format: 'der' }).toString('hex'));
+  assert.equal(new Set(keys).size, keys.length, 'Instances must have independent TLS keys');
+}
+
 export function validateSwitchingFixtureTarget(gradle, pem, now = Date.now()) {
   validateDomainTarget(gradle, pem, 'backend-switch.example.test', now);
 }
@@ -28,7 +37,8 @@ function validateDomainTarget(gradle, pem, domain, now) {
   assert.match(gradle, /applicationId\s+["']in\.gurucold\.warehouse\.fixture["']/,
     'Refusing certificate overlay for a normal warehouse APK');
   const ca = new X509Certificate(pem);
-  assert.equal(ca.checkHost(domain), domain);
+  assert.equal(ca.subjectAltName, `DNS:${domain}`, 'Fixture certificate must name only the exact fictional hostname');
+  assert.equal(ca.checkHost(domain, { wildcards: false, subject: 'never' }), domain);
   assert.ok(ca.ca && Date.parse(ca.validFrom) <= now && Date.parse(ca.validTo) > now);
 }
 
@@ -51,9 +61,19 @@ if (switchingPath) {
   switchingPem = readFileSync(switchingPath);
   validateSwitchingFixtureTarget('applicationId "in.gurucold.warehouse.fixture"', switchingPem);
   validateCertificateHorizon(switchingPem, hours);
-  const publicKey = cert => new X509Certificate(cert).publicKey.export({ type: 'spki', format: 'der' });
-  assert.ok(!publicKey(pem).equals(publicKey(switchingPem)), 'Instances must have independent TLS keys');
+
 }
+let replacementPem;
+const replacementPath = process.env.WAREHOUSE_REPLACEMENT_FIXTURE_CA;
+if (replacementPath) {
+  assert.ok(isAbsolute(replacementPath), 'Absolute separate replacement certificate path required');
+  const rs = lstatSync(replacementPath);
+  assert.ok(rs.isFile() && !rs.isSymbolicLink() && rs.uid === process.getuid());
+  replacementPem = readFileSync(replacementPath);
+  validateReplacementFixtureTarget('applicationId "in.gurucold.warehouse.fixture"', replacementPem);
+  validateCertificateHorizon(replacementPem, hours);
+}
+validateIndependentFixtureKeys([pem, switchingPem, replacementPem].filter(Boolean));
 if (process.argv.includes('--check-certificate')) {
   validateFixtureTarget('applicationId "in.gurucold.warehouse.fixture"', pem);
   console.log(`Fixture certificate covers ${hours} hours; expires ${expiry}`);
@@ -69,13 +89,14 @@ for (const dir of ['raw', 'xml']) mkdirSync(resolve(app, 'src/main/res', dir), {
 // A public certificate is not key material. Keep its conventional .crt suffix
 // so the normal artifact audit can still reject every unexpected .pem/key file.
 writeFileSync(resolve(app, 'src/main/res/raw/warehouse_fixture_ca.crt'), pem);
+if (replacementPem) writeFileSync(resolve(app, 'src/main/res/raw/warehouse_replacement_fixture_ca.crt'), replacementPem);
 if (switchingPem) writeFileSync(resolve(app, 'src/main/res/raw/warehouse_switch_fixture_ca.crt'), switchingPem);
 writeFileSync(resolve(app, 'src/main/res/xml/warehouse_fixture_network_security.xml'), `<?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
   <base-config cleartextTrafficPermitted="false"><trust-anchors><certificates src="system" /></trust-anchors></base-config>
   <domain-config cleartextTrafficPermitted="false">
     <domain includeSubdomains="false">backend-core.example.test</domain>
-    <trust-anchors><certificates src="@raw/warehouse_fixture_ca" /></trust-anchors>
+    <trust-anchors><certificates src="@raw/warehouse_fixture_ca" />${replacementPem ? '<certificates src="@raw/warehouse_replacement_fixture_ca" />' : ''}</trust-anchors>
   </domain-config>
 ${switchingPem ? `  <domain-config cleartextTrafficPermitted="false">
     <domain includeSubdomains="false">backend-switch.example.test</domain>
