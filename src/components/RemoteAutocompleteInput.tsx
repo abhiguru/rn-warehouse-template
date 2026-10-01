@@ -105,6 +105,7 @@ interface RemoteAutocompleteInputProps<T> {
   onSelect: (item: T) => void;
   /** Render function for dropdown items */
   renderItem: (item: T) => React.ReactNode;
+  getItemAccessibilityLabel?: (item: T) => string;
   /** Key extractor for dropdown items */
   keyExtractor: (item: T) => string;
   /** z-index for dropdown positioning */
@@ -145,6 +146,7 @@ export function RemoteAutocompleteInput<T>({
   fetchData,
   onSelect,
   renderItem,
+  getItemAccessibilityLabel,
   keyExtractor,
   zIndex = 1000,
   containerStyle,
@@ -407,6 +409,8 @@ export function RemoteAutocompleteInput<T>({
                   pressed && { backgroundColor: colors.gray100 },
                   index === suggestions.length - 1 && styles.dropdownItemLast,
                 ]}
+                accessibilityRole="button"
+                accessibilityLabel={getItemAccessibilityLabel?.(item)}
                 onPress={() => handleSelectItem(item)}
               >
                 {renderItem(item)}

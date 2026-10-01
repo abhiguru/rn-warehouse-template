@@ -115,6 +115,7 @@ export const QuantityWeightFields = forwardRef<QuantityWeightFieldsRef, Quantity
           </View>
           <TextInput
             ref={qtyInputRef}
+            accessibilityLabel="Receipt item quantity"
             style={[
               styles.input,
               qtyError && styles.inputError,
@@ -145,6 +146,7 @@ export const QuantityWeightFields = forwardRef<QuantityWeightFieldsRef, Quantity
           </View>
           <TextInput
             ref={weightInputRef}
+            accessibilityLabel="Receipt item weight"
             style={[
               styles.input,
               weightError && styles.inputError,

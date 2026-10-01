@@ -230,6 +230,7 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
                   <Icon name="clipboard-text" size={18} color={colors.gray400} style={styles.inputIcon} />
                   <TextInput
                     style={[styles.grNoTextInput, { color: colors.textPrimary }]}
+                    accessibilityLabel="Receipt number"
                     value={header.gr_no}
                     onChangeText={(text) => handleGrNoChange(text.toUpperCase())}
                     placeholder="GRN####"

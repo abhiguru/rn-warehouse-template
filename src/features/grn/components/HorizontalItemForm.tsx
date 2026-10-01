@@ -268,6 +268,8 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                     </TouchableOpacity>
                     <TouchableOpacity
                         style={[styles.saveButton, !isValid && styles.saveButtonDisabled]}
+                        accessibilityRole="button"
+                        accessibilityLabel="Save receipt item"
                         onPress={onSaveItem}
                         disabled={!isValid}
                         activeOpacity={0.7}
