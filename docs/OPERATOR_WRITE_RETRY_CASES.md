@@ -212,3 +212,57 @@ execution or released-fixture SQL run has occurred. Selector visibility, scrolli
 keyboard behavior and complete UI-to-SQL integration remain NOT TESTED. Stop and
 record any native mismatch before correcting the reviewed driver; never silently
 patch a running case.
+
+## Bounded native submission runner642 (prepared, not executed)
+
+After a new audited APK and the reviewed relay are installed on the released
+fixture, the prepared next stage is:
+
+```sh
+python3 scripts/fixture-ui/dispatch-case-api30.py /absolute/private/case.json
+```
+
+Use the **same unchanged private config** as draft preparation. It now needs
+`toolingSHA256`, a map of relative script names to SHA-256 values. Freeze the exact
+11 entries listed by `required` in the runner before preparing the draft: the
+observation/snapshot/verification/reconciliation/session-guard modules, both
+native drivers and their control modules, soak helper and observation decoder.
+The runner verifies all bindings before ADB and before each submission. Do not
+edit config or scripts between preparing and submitting a case. Record the source
+pair, actual APK audit, declared fixture overlays and backend guard hash too.
+
+A successful draft must be less than15minutes old, match config/driver hashes and
+have its review digest unchanged. The runner reacquires the common actor lock,
+creates an exclusive `case-started.json` marker, rechecks emulator/API30/SELinux,
+installed artifact SHA and443→18643, then verifies discovery over both18443 and
+18643 with the pinned CA, hostname and expected instance UUID. All sockets connect
+to loopback; no external DNS/production backend is queried. A new `pre-submit`
+read-only snapshot must equal baseline before arming the one-shot fault.
+
+The runner opens the app's confirmation and requires the exact reserved dispatch
+number and **one item** in its confirmation message. It persists an attempt marker
+before tapping Submit. After the native Error, it saves independent relay/database
+observations and runs `fixture-dispatch-verify.mjs ... loss`. Only a PASS permits
+one unchanged-form retry. The retry requires the same review digest, another exact
+confirmation, native Dispatch Created Successfully, independent subsequent-request
+observation and `... retry` database reconciliation. There is no third submission,
+form edit, session issuance, new operation-key generation or failed-case resume.
+
+The verifier reads only designated native booleans from UI evidence; UI files
+cannot overwrite database snapshots or relay observations. The runner never
+constructs a successful database result from an expected value. `case-started.json`
+always blocks another invocation; inspect and preserve uncertainty instead of
+removing that marker to retry. Read-only reconciliation can be performed separately.
+
+Before cleanup, private relay status/observations are saved, then disarm and
+restore443→18443 are attempted. Cleanup failure makes the result FAIL. The runner
+does not discard or cold-launch an uncertain draft/write. After successful cleanup,
+a separate normal-route cold launch/read-health check is still required before
+another case. This driver is not an eight-hour plan and is not scheduled to run.
+
+Validation642: setup68PASS includes four new Python confirmation/two-attempt guard
+tests; Python syntax PASS. Its real entrypoint with sentinel ADB returned BLOCKED
+before ADB, locks, attempt markers, socket/SQL access during the active soak.
+Actual SQL, pinned discovery integration, native selectors, transport fault/retry
+and cleanup execution remain NOT TESTED. The runner's source preparation closes
+the missing-runner implementation task, not the installed-artifact acceptance gate.

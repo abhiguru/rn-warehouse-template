@@ -2096,3 +2096,18 @@ Earlier mobile tooling CI87c6d40/90b2d90 completed successfully. Backend observe
 on0dc7392 failed Container source dependency audit; contract and redacted scan
 passed, dependent migrations/isolated install/Grafana jobs were skipped. This is
 not an all-pass backend gate. Existing dependency findings remain open.
+
+### Native submission/retry runner preparation642 — 2026-10-01
+
+Separate source worktree based one4c5526, Ubuntu24.04.3/Node22.23.3/Python3.12.
+Added guarded submission runner with immutable attempt markers, exact one-item
+confirmation, pre-retry database proof, independently observed same-key retry,
+pinned loopback discovery/identity checks and bounded cleanup. Snapshot adapter
+adds pre-submit equality; draft now records config SHA. Main commands/config and
+remaining integration limits are in [write retry cases](OPERATOR_WRITE_RETRY_CASES.md).
+
+`npm run test:setup` PASS68 including four additional Python case-control tests;
+Python syntax PASS. Actual runner refusal while soak active PASS before any ADB,
+lock, marker or backend/socket access. No native case, business write or new APK
+installation occurred. SQL/native/transport/cleanup integration NOT TESTED. Normal
+read-health after cleanup remains a separate required check. No new suite scheduled.

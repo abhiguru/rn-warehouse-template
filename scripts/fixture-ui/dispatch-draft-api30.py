@@ -73,7 +73,8 @@ def main(path):
     evidence.mkdir(mode=0o700)
     driver.e, driver.file = evidence, evidence / 'draft-result.json'
     driver.state.update(scope='fictional non-submitting draft only', phases=[],
-                        driverSHA256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest())
+                        driverSHA256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+                        configSHA256=hashlib.sha256(Path(path).read_bytes()).hexdigest())
     driver.save()
     route_changed = False
     try:

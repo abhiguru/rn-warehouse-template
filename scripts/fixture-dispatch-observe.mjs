@@ -12,7 +12,7 @@ import { writeBaseline } from './fixture-write-reconciliation.mjs';
 process.umask(0o077);
 try {
   const [configPath, phase] = process.argv.slice(2);
-  assert.ok(['guard', 'baseline', 'after-draft', 'after-loss', 'after-retry'].includes(phase));
+  assert.ok(['guard', 'baseline', 'after-draft', 'pre-submit', 'after-loss', 'after-retry'].includes(phase));
   const c = dispatchConfig(privateJSON(configPath));
   assertReleased(c); // Before backend import, socket/SQL access or evidence creation.
   if (phase !== 'guard') {
@@ -41,7 +41,7 @@ try {
     });
     const fault = await control('status'), observations = await control('observations');
     let key = null;
-    if (['baseline', 'after-draft'].includes(phase)) {
+    if (['baseline', 'after-draft', 'pre-submit'].includes(phase)) {
       assert.equal(fault.state, 'DISARMED');
       assert.deepEqual(observations, { observations: [], overflow: false });
     } else {
@@ -57,8 +57,8 @@ try {
       env: { ...process.env, PGPASSWORD: env.POSTGRES_PASSWORD } });
     assert.equal(r.status, 0, 'PRIVATE_READONLY_OBSERVATION_FAILED');
     const snapshot = JSON.parse(r.stdout.trim()); dispatchSnapshotShape(c, snapshot, phase === 'baseline');
-    if (['baseline', 'after-draft'].includes(phase)) writeBaseline(c, snapshot);
-    if (phase === 'after-draft') assert.deepEqual(snapshot, privateJSON(resolve(c.caseDirectory, 'baseline.json')).snapshot, 'DRAFT_CHANGED_BUSINESS_DATA');
+    if (['baseline', 'after-draft', 'pre-submit'].includes(phase)) writeBaseline(c, snapshot);
+    if (['after-draft', 'pre-submit'].includes(phase)) assert.deepEqual(snapshot, privateJSON(resolve(c.caseDirectory, 'baseline.json')).snapshot, 'DRAFT_CHANGED_BUSINESS_DATA');
     // Detect requests/control changes during the SQL observation window.
     assert.deepEqual(await control('status'), fault, 'CONTROL_CHANGED_DURING_SNAPSHOT');
     assert.deepEqual(await control('observations'), observations, 'REQUEST_DURING_SNAPSHOT');
