@@ -3,7 +3,7 @@
 import fcntl,hashlib,importlib.util,json,os,re,sys
 from pathlib import Path
 from dispatch_case_controls import owned_reverse_route
-from invoice_read_controls import read_control
+from invoice_read_controls import read_control,visible_bounds,financial_row
 spec=importlib.util.spec_from_file_location('invoice_auth',Path(__file__).with_name('auth-api30.py'));auth=importlib.util.module_from_spec(spec);spec.loader.exec_module(auth);soak=auth.soak
 os.umask(0o077)
 class Invoice(auth.Auth):
@@ -13,7 +13,10 @@ class Invoice(auth.Auth):
     def visible(self,label):
         for _ in range(8):
             t=self.snapshot()
-            if any(label in [n.get('text'),n.get('content-desc')] for n in t.iter('node')):return t
+            for n in t.iter('node'):
+                if label in [n.get('text'),n.get('content-desc')]:
+                    try:visible_bounds(n);return t
+                    except AssertionError:pass
             self.adb('shell','input','swipe','360','1000','360','550','350')
         raise AssertionError('Bounded invoice read label unavailable')
 
@@ -33,7 +36,7 @@ def main(path):
             d.state['currentInvoice']=row['number'];d.save();d.health()
             d.adb('shell','am','start','-W','-a','android.intent.action.VIEW','-d','warehouse-fixture://invoice-details/'+row['id'],soak.PACKAGE)
             d.wait('Total amount: ₹'+str(row['total']));d.wait('Tax amount: ₹'+str(row['tax']));d.archive(row['record']+'-overview-header')
-            d.tap_read('Breakdown tab',row['record']);d.visible('Charges Breakdown');d.archive(row['record']+'-breakdown')
+            d.tap_read('Breakdown tab',row['record']);d.visible('CHARGES BREAKDOWN');financial_row(d.visible('Total Amount'),'Total Amount',row['total']);financial_row(d.visible('Tax Amount'),'Tax Amount',row['tax']);d.archive(row['record']+'-breakdown')
             d.visible('View GRN '+row['record']);d.tap_read('View GRN '+row['record'],row['record']);t=d.wait('Overview tab')
             assert any(row['record'] in n.get('text','') or row['record'] in n.get('content-desc','') for n in t.iter('node')),'Matched fictional GRN destination required'
             tabs=[n for n in t.iter('node') if n.get('content-desc')=='Overview tab'];assert len(tabs)==1 and tabs[0].get('selected')=='true','GRN must open Overview'
