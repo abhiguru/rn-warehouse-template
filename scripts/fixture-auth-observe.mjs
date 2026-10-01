@@ -6,7 +6,7 @@ import { spawnSync } from 'node:child_process';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { assertReleased, privateJSON } from './fixture-session-guards.mjs';
-import { pendingReadOnlyMode } from './fixture-auth-controls.mjs';
+import { pendingReadOnlyMode, approvedEnrollmentExitMode } from './fixture-auth-controls.mjs';
 process.umask(0o077);
 try {
   const [path, phase] = process.argv.slice(2);
@@ -18,6 +18,7 @@ try {
   const secondary = c.origin === 'https://backend-switch.example.test';
   const replacement = c.replacementFixture === true;
   const pendingReadOnly = pendingReadOnlyMode(c,secondary,replacement);
+  const approvedExit = approvedEnrollmentExitMode(c,secondary,replacement);
   if (Object.hasOwn(c,'replacementFixture')) assert.equal(typeof c.replacementFixture,'boolean');
   assert.ok(secondary || c.origin === 'https://backend-core.example.test');
   if (replacement) {
@@ -42,6 +43,7 @@ SELECT jsonb_build_object(
 'otps',(SELECT jsonb_agg(to_jsonb(x) ORDER BY id) FROM public.otp_verifications x WHERE phone_number<>'${c.phone}'),
 'quotas',(SELECT jsonb_agg(to_jsonb(x) ORDER BY phone_number) FROM public.otp_rate_limits x WHERE phone_number<>'${c.phone}'),
 'assignments',(SELECT jsonb_agg(to_jsonb(x) ORDER BY id) FROM public.users_customers_new x))::text,'sha256'),'hex'),
+'enrollmentTokenCount',(SELECT count(*) FROM warehouse_security.enrollment_tokens t JOIN public.user_profiles p ON t.user_id=p.auth_user_id WHERE p.mobile='${c.phone}'),
 'primaryAdministratorPresent',EXISTS(SELECT 1 FROM public.user_profiles WHERE mobile='919888888871'),
 'profile',(SELECT jsonb_build_object('id',id,'name',name,'role',role,'active',active,'status',enrollment_status) FROM public.user_profiles WHERE mobile='${c.phone}'),
 'sessions',(SELECT coalesce(jsonb_agg(jsonb_build_object('id',s.id,'created',s.created_at,'expires',s.expires_at) ORDER BY s.id),'[]') FROM warehouse_security.refresh_sessions s JOIN public.user_profiles p ON p.auth_user_id=s.user_id WHERE p.mobile='${c.phone}'),
@@ -61,6 +63,7 @@ COMMIT;`;
     const snapshot = JSON.parse(q.stdout);
     if (replacement) {assert.equal(snapshot.primaryAdministratorPresent,false);assert.equal(snapshot.profile?.name,c.profileName);assert.equal(snapshot.profile?.role,'admin');assert.equal(snapshot.profile?.active,true);}
     if (pendingReadOnly) {assert.equal(snapshot.profile?.status,'pending');assert.equal(snapshot.profile?.active,false);assert.deepEqual(snapshot.sessions,[]);}
+    if (approvedExit) {assert.equal(snapshot.profile?.status,'approved');assert.equal(snapshot.profile?.active,true);assert.deepEqual(snapshot.sessions,[]);}
     if (phase === 'before') {
       assert.ok((snapshot.quota?.hourly ?? 0)<5 && (snapshot.quota?.daily ?? 0)<20,'ORDINARY_AUTH_QUOTA_EXHAUSTED');
     } else {
@@ -68,9 +71,11 @@ COMMIT;`;
       assert.equal(snapshot.businessHash,before.businessHash,'AUTH_CHANGED_BUSINESS_DATA');
       assert.equal(snapshot.otherAuthHash,before.otherAuthHash,'AUTH_CHANGED_UNRELATED_ACCOUNTS');
       if (pendingReadOnly) assert.deepEqual(snapshot,before,'PENDING_READ_CHANGED_STATE');
+      else if (approvedExit) {assert.equal(snapshot.otpVerified,before.otpVerified);assert.equal(before.enrollmentTokenCount,1);assert.equal(snapshot.enrollmentTokenCount,0);}
       else assert.equal(snapshot.otpVerified,before.otpVerified+1,'ONE_ORDINARY_VERIFICATION_REQUIRED');
       assert.equal(snapshot.profile?.name,c.profileName,'PROFILE_NAME_MISMATCH');
-      if (c.expected === 'authenticated') {
+      if (approvedExit) assert.deepEqual(snapshot.sessions,before.sessions);
+      else if (c.expected === 'authenticated') {
         assert.equal(snapshot.profile?.role,c.role); assert.equal(snapshot.profile?.active,true);
         const added = snapshot.sessions.filter(s=>!before.sessions.some(p=>p.id===s.id));
         assert.equal(added.length,1,'ONE_NEW_NATIVE_SESSION_REQUIRED');
