@@ -29,7 +29,9 @@ def main(path):
   assert d.adb('emu','avd','name').splitlines()[0]=='TestWarehouseFixture_API30' and d.adb('shell','getprop','ro.build.version.sdk')=='30' and d.adb('shell','getenforce')=='Enforcing'
   installed=d.adb('shell','pm','path',soak.PACKAGE);assert re.fullmatch(r'package:/data/app/[^\n]+',installed);assert d.adb('shell','sha256sum',installed[8:]).split()[0]==c['apkSHA256'];nav.owned_reverse_route(d.adb('reverse','--list'),18443);d.health(True);observe('before')
   d.cold();d.wait('Orders tab')
-  # The app's accessible profile control exists on the main header.
+  # Owned primary Orders avatar is observed as C; require its header bounds.
+  tree=d.wait('Refresh orders');nodes=[n for n in tree.iter('node') if n.get('content-desc')=='C' and n.get('clickable')=='true'];assert len(nodes)==1 and nodes[0].get('class')=='android.view.ViewGroup' and nodes[0].get('bounds')=='[616,75][693,138]'
+  d.adb('shell','input','tap',*map(str,auth.point(tree,'C')))
   tree=d.wait('View profile for '+case['profileName']);d.adb('shell','input','tap',*map(str,auth.point(tree,'View profile for '+case['profileName'])))
   for _ in range(6):
    if any('Sign out'==n.get('content-desc') for n in d.snapshot().iter('node')):break
