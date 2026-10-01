@@ -44,6 +44,7 @@ import { PrintRangeDialog } from '@/components/PrintRangeDialog';
 import { Portal, Snackbar } from 'react-native-paper';
 import { useAppSelector } from '@/store/hooks';
 import { usePermissions } from '@/hooks/usePermissions';
+import { useGRNDetailTab } from '@/hooks/useGRNDetailTab';
 import { ImageOverlay, ImageData } from '@/components/ImageOverlay';
 import {
   GRNHeroHeader,
@@ -120,13 +121,13 @@ const FIORI_STATIC = {
 } as const;
 
 function GRNDetailScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, tab } = useLocalSearchParams<{ id: string; tab?: string | string[] }>();
   const { user, session, userProfile } = useAppSelector((state) => state.auth);
   const insets = useSafeAreaInsets();
   const FIORI = useFioriColors();
 
   // State
-  const [activeTab, setActiveTab] = useState<TabKey>('items');
+  const [activeTab, setActiveTab] = useGRNDetailTab(id, tab);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);

@@ -74,7 +74,7 @@ it.each([undefined, ''])('shows the saved GRN number when nested number is %s an
     [node.props.children].flat().join('') === 'GRN IRP05'
   )).toBe(true);
   await act(async () => { link!.props.onPress(); });
-  expect(router.push).toHaveBeenCalledWith(`/grn-details/${grnId}`);
+  expect(router.push).toHaveBeenCalledWith(`/grn-details/${grnId}?tab=overview`);
 });
 
 it('retains the legacy nested GRN number and UUID navigation', async () => {
@@ -83,7 +83,7 @@ it('retains the legacy nested GRN number and UUID navigation', async () => {
     .find(node => node.props.accessibilityLabel === 'View GRN LEGACY01');
   expect(link).toBeDefined();
   await act(async () => { link!.props.onPress(); });
-  expect(router.push).toHaveBeenCalledWith(`/grn-details/${grnId}`);
+  expect(router.push).toHaveBeenCalledWith(`/grn-details/${grnId}?tab=overview`);
 });
 
 it('does not invent a navigation target from the printed number when the UUID is absent', async () => {

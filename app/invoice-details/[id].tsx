@@ -180,7 +180,7 @@ function InvoiceDetailScreen() {
 
   // Handle GRN navigation
   const handleViewGRN = (grnId: string) => {
-    router.push(`/grn-details/${grnId}`);
+    router.push(`/grn-details/${grnId}?tab=overview`);
   };
 
   // Handle Dispatch navigation
