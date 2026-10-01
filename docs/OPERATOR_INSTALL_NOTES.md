@@ -1993,3 +1993,27 @@ No receipt, dispatch or invoice needs to be recreated for this read-only check.
 The [next acceptance plan](OPERATOR_NEXT_ACCEPTANCE.md) records dependent work,
 blocking resources and reuse rules. Historical626 undefined-label evidence is
 retained above; the installed e217 artifact still contains that defect.
+
+
+## Post-soak session-driver preparation637 — 2026-10-01
+
+Separate source worktree based on GRN candidate/docs5619ac8, Ubuntu24.04.3,
+Node22.23.3/npm10.9.9/Python3.12. Added guarded backend observation/ordinary
+customer disable and native cold-restoration drivers; see the runnable sequence,
+private config schema and pending preparation in
+[OPERATOR_SESSION_CASES.md](OPERATOR_SESSION_CASES.md).
+
+Expected an active soak to prevent any session-case side effect. Actual negative
+check against the live run returned BLOCKED before ADB, SQL/HTTP action or attempt
+creation. A sentinel ADB executable was not invoked; all54 frozen inputs remained
+unchanged. Guard regressions8/full setup56/syntax/lint PASS (0errors/1468warnings).
+No session account was prepared, disabled or expired and no new APK installed.
+SQL/HTTP/native integration remains NOT TESTED; this is preparation evidence.
+
+Source inspection established access expiry normally renews through a valid
+refresh session, already measured by the ongoing soak. Refresh sessions expire
+seven days after issuance; natural-expiry acceptance is BLOCKED until that age,
+not accelerated by changing policy/time. Revocation uses the ordinary authenticated
+admin enrollment decision against reserved fictional customer874 only. Its
+private token, UUID binding, exclusive emulator and artifact audit are still
+prerequisites. No automatic next-case launch is scheduled.
