@@ -23,8 +23,8 @@ os.umask(0o077)
 
 
 class Draft(soak.Soak):
-    def tap(self, label):
-        xy = point(self.wait(label), label)
+    def tap(self, label, button=False):
+        xy = point(self.wait(label), label, button=button)
         self.adb('shell', 'input', 'tap', *map(str, xy))
 
     def fill(self, label, value):
@@ -96,7 +96,7 @@ def main(path):
         driver.tap('Dispatch tab'); driver.tap('Create Dispatch')
         driver.fill('Dispatch number', case['record'])
         driver.tap('Select customer...'); driver.fill('Search customers...', 'Backend Test Customer A')
-        driver.tap('Backend Test Customer A')
+        driver.tap('Backend Test Customer A', button=True)
         driver.fill('Vehicle registration', 'TEST FIXTURE')
         t = driver.snapshot()
         if any(n.get('text') == 'Select supervisor...' for n in t.iter('node')):

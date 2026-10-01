@@ -305,3 +305,22 @@ scratch database; [reproduction instructions](DISPATCH_SQL_ADAPTER_CHECK.md) inc
 isolation and cleanup. Baseline/commit/cache/stock shapes and negative predicates
 were checked; reused state was refused. This reduces SQL-syntax uncertainty but
 does not close released-fixture CLI, complete-schema/RPC/RLS or native integration.
+
+
+## VM-only campaign integration checkpoint
+
+The new 2fb/code2026100102 x86_64 fixture APK passed exact compiled audit and
+owned API30 installation/readback. Clean bed4 installation, ordinary native
+administrator login and independent reserved-stock preparation passed. The
+actual guarded dispatch observer now passes a baseline against this populated
+complete-schema fixture, closing that prerequisite in its executed scope.
+
+The first non-submitting FXF411 draft failed at customer selection: the native
+picker exposes an EditText, a semantic Button and its child TextView with the
+same customer name. Its private after-draft snapshot equals baseline, proving no
+business change; the owned normal route was restored. Failed UI evidence is
+retained. The corrected selector explicitly requires the customer result's unique
+Button role; it still refuses two Buttons and does not choose a fallback control.
+The regression reproduces the earlier failure and passes after correction.
+A new attempt requires fresh config/source hashes and a separate evidence directory.
+Native lost-response/retry acceptance is still pending at this checkpoint.

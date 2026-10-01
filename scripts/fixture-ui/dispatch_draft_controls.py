@@ -5,10 +5,12 @@ FORBIDDEN = {'Submit', 'Submit Dispatch', 'Confirm Submission', 'Update', 'Updat
              'Discard', 'Delete', 'Send OTP', 'Verify', 'Retry'}
 
 
-def point(tree, label, editable=False):
+def point(tree, label, editable=False, button=False):
     assert label not in FORBIDDEN, 'Draft preparation cannot submit, authenticate or discard'
     nodes = [n for n in tree.iter('node') if label in [n.get('text'), n.get('content-desc')]
              and (n.get('class') == 'android.widget.EditText') == editable]
+    assert not (button and editable), 'Conflicting control roles'
+    if button: nodes = [n for n in nodes if n.get('class') == 'android.widget.Button']
     # Never choose between duplicate controls or guess off-screen coordinates.
     assert len(nodes) == 1, 'Unique native control required'
     n = nodes[0]

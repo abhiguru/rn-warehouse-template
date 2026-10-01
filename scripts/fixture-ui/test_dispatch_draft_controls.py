@@ -32,6 +32,15 @@ class Controls(unittest.TestCase):
         for t in [tree(enabled='false'), tree(bounds='[0,0][0,0]'), tree(bounds='[0,0][800,1200]'), tree(kind='android.widget.EditText')]:
             with self.assertRaises(AssertionError): point(t, 'Create Dispatch')
 
+    def test_explicit_picker_button_ignores_its_text_and_search_field(self):
+        t = tree('Backend Test Customer A')
+        for kind in ['android.widget.TextView','android.widget.EditText']:
+            ET.SubElement(t,'node',{'text':'Backend Test Customer A','bounds':'[1,2][100,200]','enabled':'true','class':kind})
+        with self.assertRaises(AssertionError): point(t,'Backend Test Customer A')
+        self.assertEqual(point(t,'Backend Test Customer A',button=True),(50,101))
+        t.append(list(t)[0])
+        with self.assertRaises(AssertionError): point(t,'Backend Test Customer A',button=True)
+
     def test_review_requires_both_reserved_documents(self):
         t = tree('Submit Dispatch')
         for label in ['FXF901', 'FXF900/10']: ET.SubElement(t, 'node', {'text': label})
