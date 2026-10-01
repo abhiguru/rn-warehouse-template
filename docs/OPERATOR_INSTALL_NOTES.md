@@ -2052,3 +2052,12 @@ record their result separately from future native evidence.
 
 Validation: `node --test scripts/fixture-write-reconciliation.test.mjs` PASS6;
 `npm run test:setup` PASS62/62, no failures/skips. No native/SQL/HTTP test executed.
+
+### Retry observer source correction639 — 2026-10-01
+
+Backend candidate0dc7392 implements the independent bounded observation identified
+in638; relay17/backend80 tests PASS. Mobile predicates now require empty
+pre-retry observations and exactly one matching post-loss request afterward,
+rejecting overflow, concurrency, changed keys and extra requests. Setup63/63 PASS.
+No live relay/device change: native draft/SQL adapters and post-soak deployment
+still pending; the source fix does not close installed-artifact native acceptance.

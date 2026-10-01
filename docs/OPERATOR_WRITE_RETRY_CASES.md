@@ -52,15 +52,15 @@ cannot independently establish the second request used the same key. Their saved
 transaction/stock/cache evidence remains historical evidence, but do not treat
 that comparison as a separate wire observation of the retry.
 
-**BLOCKED: add bounded, redacted retry-request observation to the reviewed relay
-or another guarded test observer before wiring this specification into an
-unattended native driver.** Record only the matching fictional RPC/document/key
+**Source correction639: backend commit0dc7392 adds bounded, redacted retry-request
+observations. Relay tests17 and full backend tests80 PASS. Deployment and native
+adapter integration remain BLOCKED until exclusive fixture access.** Record only the matching fictional RPC/document/key
 and ordering, never authorization headers, complete bodies or OTPs. Test that
 changed keys and unrelated requests cannot satisfy the observation. Install any
 relay change only after the active soak releases its infrastructure. The current
 running relay and its source bindings have not been changed by this preparation.
 
-Native draft preparation, SQL snapshot adaptation, the retry observer, exclusive
+Native draft preparation, SQL snapshot adaptation, deploying the reviewed observer, exclusive
 case runner and cleanup integration still need implementation/validation. The
 pure validator does not acquire locks, inspect a device, authenticate, query SQL,
 change a route, arm faults or authorize any write. Callers must provide actual
@@ -79,12 +79,21 @@ npm run test:setup
 and `retryEvidence`. Its unit fixtures define the precise evidence shape. Snapshot
 `unrelatedBusinessHash` must exclude only the reserved operation's expected rows
 and affected stock; its SQL definition must be reviewed with the future adapter.
-`observedRequestKey` must come from the retry request, not a repeated `status` read.
+`requestObservations` must come from the relay's separate `observations` command,
+not a repeated `status` read. Before retry it must be empty without overflow;
+after retry it must contain exactly one sequence1 observation for the bound
+RPC/document/drop state/key with `sameKey:true`, without overflow. A MATCHED-state
+concurrent request, extra retry or changed key fails the predicate.
 The one-line/integral case restriction is deliberate; fractional/invalid quantities,
 concurrent mutations, image retry and offline-before-submit need separate cases.
 
-Six regression tests cover both RPCs and loss phases, occupied records, untriggered
+Seven regression tests cover both RPCs and loss phases, occupied records, untriggered
 or mismatched faults, unexpected first commits, duplicate cache/stock changes,
 missing/changed retry keys, changed forms/artifacts and replacement document IDs.
 PASS of these source checks does not prove native reconnect or exactly-once
 behavior in the installed app. No current business case was rerun in preparation.
+
+Preparation639: mobile setup63/63 PASS. The source validator consumes the independent
+observation envelope, including the empty pre-retry boundary. No live relay was
+replaced and no native write case ran. Backend observer source0dc7392 remains a
+review candidate until post-soak installation and exact-artifact native validation.

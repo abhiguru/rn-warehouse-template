@@ -7,8 +7,8 @@ function fixture(kind, phase) {
   const before = { instanceId: id, headerIds: [], lineIds: [], quantity: 0, stock: kind === 'receipt' ? 0 : 10, cacheCount: 0, invoices: 0, unrelatedBusinessHash: 'b'.repeat(64) };
   const saved = { ...before, headerIds: [id], lineIds: ['22222222-2222-4222-8222-222222222222'], quantity: 2, stock: kind === 'receipt' ? 2 : 8, cacheCount: 1, cacheSuccess: true, cachedHeaderId: id };
   const fault = { record: c.record, path: kind === 'receipt' ? '/rest/v1/rpc/save_grn' : '/rest/v1/rpc/create_dispatch_with_stock_check', state: phase === 'before-upstream' ? 'DROPPED_BEFORE_UPSTREAM' : 'DROPPED_AFTER_UPSTREAM_SUCCESS', key: `warehouse-${kind === 'receipt' ? 'grn' : 'dispatch'}-${'c'.repeat(64)}` };
-  const loss = { artifactSHA256: c.artifactSHA256, fault, nativeError: true, snapshot: phase === 'before-upstream' ? before : saved };
-  const retry = { artifactSHA256: c.artifactSHA256, observedRequestKey: fault.key, unchangedForm: true, nativeSuccess: true, snapshot: saved };
+  const loss = { artifactSHA256: c.artifactSHA256, fault, nativeError: true, requestObservations: { observations: [], overflow: false }, snapshot: phase === 'before-upstream' ? before : saved };
+  const retry = { artifactSHA256: c.artifactSHA256, requestObservations: { overflow: false, observations: [{ sequence: 1, path: fault.path, record: c.record, stateWhenObserved: fault.state, key: fault.key, sameKey: true }] }, unchangedForm: true, nativeSuccess: true, snapshot: saved };
   return { c, before, loss, retry };
 }
 for (const kind of ['receipt', 'dispatch']) for (const phase of ['before-upstream', 'after-upstream-success']) {
@@ -30,9 +30,18 @@ test('occupied records and untriggered/wrong fault evidence fail closed', () => 
 });
 test('unchanged retained relay key alone cannot establish same-key native retry', () => {
   const { c, before, loss, retry } = fixture('receipt', 'after-upstream-success');
-  for (const patch of [{ observedRequestKey: undefined }, { observedRequestKey: 'new-key' }, { unchangedForm: false }, { nativeSuccess: false }, { artifactSHA256: 'f'.repeat(64) }]) {
+  for (const patch of [{ requestObservations: undefined }, { requestObservations: { ...retry.requestObservations, overflow: true } }, { unchangedForm: false }, { nativeSuccess: false }, { artifactSHA256: 'f'.repeat(64) }]) {
     assert.throws(() => retryEvidence(c, before, loss, { ...retry, ...patch }));
   }
   const replaced = { ...retry.snapshot, headerIds: ['33333333-3333-4333-8333-333333333333'], cachedHeaderId: '33333333-3333-4333-8333-333333333333' };
   assert.throws(() => retryEvidence(c, before, loss, { ...retry, snapshot: replaced }), /RETRY_CHANGED/);
+});
+
+test('retry observer rejects duplicate, concurrent, unrelated and changed-key requests', () => {
+  const { c, before, loss, retry } = fixture('dispatch', 'after-upstream-success');
+  const o = retry.requestObservations.observations[0];
+  assert.throws(() => retryEvidence(c, before, { ...loss, requestObservations: retry.requestObservations }, retry), /REQUEST_BEFORE_RECONCILIATION/);
+  for (const observations of [[], [o, o], [{ ...o, sequence: 2 }], [{ ...o, path: '/wrong' }], [{ ...o, record: 'FXF902' }], [{ ...o, stateWhenObserved: 'MATCHED' }], [{ ...o, sameKey: false }], [{ ...o, key: 'warehouse-dispatch-' + 'd'.repeat(64) }]]) {
+    assert.throws(() => retryEvidence(c, before, loss, { ...retry, requestObservations: { overflow: false, observations } }));
+  }
 });

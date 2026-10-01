@@ -46,6 +46,7 @@ export function lossEvidence(c, before, evidence) {
   assert.equal(f.state, c.phase === 'before-upstream' ? 'DROPPED_BEFORE_UPSTREAM' : 'DROPPED_AFTER_UPSTREAM_SUCCESS', 'FAULT_NOT_TRIGGERED');
   assert.match(f.key, new RegExp(`^warehouse-${c.kind === 'receipt' ? 'grn' : 'dispatch'}-[a-f0-9]{64}$`));
   assert.equal(evidence.nativeError, true, 'NATIVE_ERROR_REQUIRED');
+  assert.deepEqual(evidence.requestObservations, { observations: [], overflow: false }, 'REQUEST_BEFORE_RECONCILIATION');
   if (c.phase === 'before-upstream') assert.deepEqual(evidence.snapshot, before, 'UNEXPECTED_FIRST_COMMIT');
   else committed(c, before, evidence.snapshot);
 }
@@ -53,8 +54,16 @@ export function lossEvidence(c, before, evidence) {
 export function retryEvidence(c, before, loss, retry) {
   lossEvidence(c, before, loss);
   assert.equal(retry.artifactSHA256, c.artifactSHA256, 'ARTIFACT_MISMATCH');
-  // Must come from the retry request, not the relay's retained first-request key.
-  assert.equal(retry.observedRequestKey, loss.fault.key, 'RETRY_KEY_MISMATCH');
+  // Consume the separate relay observation, never its retained first-fault key.
+  assert.equal(retry.requestObservations?.overflow, false, 'OBSERVATION_OVERFLOW');
+  assert.equal(retry.requestObservations.observations.length, 1, 'ONE_RETRY_REQUEST_REQUIRED');
+  const observation = retry.requestObservations.observations[0];
+  assert.equal(observation.sequence, 1, 'RETRY_SEQUENCE_MISMATCH');
+  assert.equal(observation.path, loss.fault.path, 'RETRY_PATH_MISMATCH');
+  assert.equal(observation.record, c.record, 'RETRY_RECORD_MISMATCH');
+  assert.equal(observation.stateWhenObserved, loss.fault.state, 'RETRY_BEFORE_LOSS');
+  assert.equal(observation.sameKey, true, 'RETRY_KEY_MISMATCH');
+  assert.equal(observation.key, loss.fault.key, 'RETRY_KEY_MISMATCH');
   assert.equal(retry.unchangedForm, true, 'FORM_CHANGED');
   assert.equal(retry.nativeSuccess, true, 'NATIVE_SUCCESS_REQUIRED');
   committed(c, before, retry.snapshot);
