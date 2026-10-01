@@ -16,7 +16,7 @@ test('receipt SQL is readonly, uses the real nested cache result and binds its i
 });
 
 test('native receipt controls refuse submissions in draft and enforce reconciliation before one retry', () => {
-  for (const name of ['test_receipt_draft_controls.py','test_receipt_case_controls.py']) {
+  for (const name of ['test_receipt_draft_controls.py','test_receipt_case_controls.py','test_receipt_image_controls.py']) {
     const r=spawnSync('python3',[fileURLToPath(new URL('./fixture-ui/'+name,import.meta.url))],{encoding:'utf8',timeout:10000});
     assert.equal(r.status,0,r.stderr);
   }

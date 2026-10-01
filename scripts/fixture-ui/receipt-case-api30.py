@@ -34,6 +34,7 @@ def main(path):
     c, inputs = soak.config(case['soakConfig'])
     assert case['backendCheckout'] == c['backendCheckout'] and case['backendState'] == c['backendState']
     assert case['artifactSHA256'] == c['apkSHA256']
+    assert case.get('imagePolicy') == 'deferred-single-book-image', 'Native receipt requires a book image; image-free campaign case is blocked'
     driver = soak.Soak(c, inputs, 'unused', 0)
     scripts = Path(__file__).parent.parent
 
@@ -51,6 +52,7 @@ def main(path):
                 'fixture-ui/receipt-draft-api30.py',
                 'fixture-ui/receipt_draft_controls.py', 'fixture-ui/dispatch_draft_controls.py', 'fixture-ui/soak-api30.py',
                 'fixture-ui/fixture_observation.py', 'fixture-ui/auth-api30.py']
+    required += ['fixture-ui/receipt-image-picker-api30.py', 'fixture-ui/receipt_image_controls.py']
     assert set(case['toolingSHA256']) == set(required), 'Complete case source bindings required'
     def bindings():
         assert all(digest(scripts / name) == case['toolingSHA256'][name] for name in required), 'Case tooling changed'
@@ -59,11 +61,14 @@ def main(path):
     fd = os.open(lock, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
     soak.private(lock); fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
     evidence = soak.private(case['caseDirectory'], True)
-    draft = json.loads(soak.private(evidence / 'draft-result.json').read_text())
+    draft = json.loads(soak.private(evidence / 'prepared-review-with-image.json').read_text())
+    assert draft.get('deferredBookImage') is True
+    assert draft['imageDriverSHA256'] == digest(Path(__file__).with_name('receipt-image-picker-api30.py'))
+    assert draft['imageFixtureSHA256'] == case['imageFixtureSHA256']
     assert draft['status'] == 'PASS' and draft['businessWriteAttempted'] is False and draft['routeHeldForGuardedCase']
     assert draft['configSHA256'] == digest(path)
     assert draft['driverSHA256'] == digest(Path(__file__).with_name('receipt-draft-api30.py'))
-    assert 0 <= time.time() - (evidence / 'draft-result.json').stat().st_mtime < 900, 'Fresh draft required'
+    assert 0 <= time.time() - (evidence / 'prepared-review-with-image.json').stat().st_mtime < 900, 'Fresh draft required'
     # An interrupted invocation cannot be resumed, even if it failed before Submit.
     with (evidence / 'case-started.json').open('x') as f:
         json.dump({'driverSHA256': digest(__file__), 'configSHA256': digest(path), 'utcEpoch': time.time()}, f)
