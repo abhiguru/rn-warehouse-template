@@ -34,6 +34,10 @@ def digest(path): return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
 class Navigation(soak.Soak):
+    def wait(self, label):
+        self.state['lastWait'] = label; self.save()
+        return super().wait(label)
+
     def snapshot(self):
         self.health(True)
         cap = self.i['uiCapture']
@@ -180,6 +184,10 @@ def main(path):
             radios = settings(driver.adb)
             with (evidence/'network-before.json').open('x') as f: json.dump(radios,f)
             network_touched = True; disconnect(driver.adb,radios,18443)
+            connectivity = driver.adb('shell', 'dumpsys', 'connectivity')
+            assert len(connectivity) <= 65536, 'Bounded Android network observation required'
+            with (evidence/'connectivity-after-disconnect.txt').open('x') as f: f.write(connectivity)
+            driver.state['androidDefaultNetwork'] = next((x.strip() for x in connectivity.splitlines() if x.startswith('Active default network:')), 'UNKNOWN'); driver.save()
             driver.wait('No internet connection')
             since = datetime.datetime.now(datetime.timezone.utc).isoformat()
             driver.tap('Refresh orders')
