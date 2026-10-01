@@ -1,6 +1,6 @@
 import unittest
 import xml.etree.ElementTree as ET
-from dispatch_draft_controls import point, draft_labels
+from dispatch_draft_controls import point, draft_labels, grn_search_controls, selected_lot_labels
 
 
 def tree(label='Create Dispatch', bounds='[1,2][100,200]', enabled='true', kind='android.widget.Button'):
@@ -40,6 +40,19 @@ class Controls(unittest.TestCase):
         self.assertEqual(point(t,'Backend Test Customer A',button=True),(50,101))
         t.append(list(t)[0])
         with self.assertRaises(AssertionError): point(t,'Backend Test Customer A',button=True)
+
+    def test_real_prefix_search_and_exact_auto_selected_lot(self):
+        self.assertEqual(grn_search_controls('FXF410'), ('Use GRN prefix F', ['Enter GRN digit '+x for x in '410']))
+        for receipt in ['FXF41', 'FXF4100', 'ABC410']:
+            with self.assertRaises(AssertionError): grn_search_controls(receipt)
+        t = tree('Backend Test Potatoes')
+        ET.SubElement(t, 'node', {'text': 'Qty: 20 · Stock: 20'})
+        selected_lot_labels(t, 20)
+        list(t)[1].set('text', 'Qty: 20 · Stock: 19')
+        with self.assertRaises(AssertionError): selected_lot_labels(t, 20)
+        list(t)[1].set('text', 'Qty: 20 · Stock: 20')
+        ET.SubElement(t, 'node', {'text': 'Select lot'})
+        with self.assertRaises(AssertionError): selected_lot_labels(t, 20)
 
     def test_review_requires_both_reserved_documents(self):
         t = tree('Submit Dispatch')

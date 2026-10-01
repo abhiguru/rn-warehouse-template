@@ -14,7 +14,7 @@ from pathlib import Path
 import re
 import sys
 import time
-from dispatch_draft_controls import point, draft_labels
+from dispatch_draft_controls import point, draft_labels, grn_search_controls, selected_lot_labels
 
 spec = importlib.util.spec_from_file_location('fixture_soak', Path(__file__).with_name('soak-api30.py'))
 soak = importlib.util.module_from_spec(spec)
@@ -103,17 +103,12 @@ def main(path):
             driver.tap('Select supervisor...'); driver.tap('Core Demo Administrator')
         driver.tap('Go to Items step')
         driver.tap('Select GR No')
-        driver.tap('Use GRN prefix FXF')
-        for digit in case['sourceReceipt'][3:]: driver.tap('Enter GRN digit ' + digit)
+        prefix, digits = grn_search_controls(case['sourceReceipt'])
+        driver.tap(prefix)
+        for label in digits: driver.tap(label)
         driver.tap(case['sourceReceipt'])
-        driver.tap('Select item'); driver.tap('Backend Test Potatoes')
-        # The app can auto-select a single lot; otherwise select its exact visible label.
-        t = driver.snapshot()
-        if any(n.get('text') == 'Select lot' for n in t.iter('node')):
-            driver.tap('Select lot')
-            label = 'GRN Qty: ' + str(case['sourceQuantity'])
-            if case['sourcePackageMark']: label += ' - ' + case['sourcePackageMark']
-            driver.tap(label)
+        lot_label = f"Qty: {case['sourceQuantity']} · Stock: {case['sourceQuantity']}"
+        selected_lot_labels(driver.wait(lot_label), case['sourceQuantity'])
         driver.fill('Dispatch quantity', str(case['quantity']))
         driver.tap('Save dispatch item')
         driver.wait('Adding Item 2')

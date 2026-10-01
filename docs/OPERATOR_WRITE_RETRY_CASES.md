@@ -324,3 +324,9 @@ Button role; it still refuses two Buttons and does not choose a fallback control
 The regression reproduces the earlier failure and passes after correction.
 A new attempt requires fresh config/source hashes and a separate evidence directory.
 Native lost-response/retry acceptance is still pending at this checkpoint.
+
+The populated API30 draft integration also exposed the real GRN picker's
+single-character prefix and automatic first available lot selection. The bounded
+reserved-receipt driver now uses that prefix and requires the exact untouched
+quantity/stock label and item before entering a quantity. Earlier draft failures
+remain preserved; no submission occurred in either attempt.

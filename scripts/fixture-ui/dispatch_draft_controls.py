@@ -27,3 +27,17 @@ def draft_labels(tree, record, receipt, source_quantity):
     assert record in labels and f'{receipt}/{source_quantity}' in labels and 'Submit Dispatch' in labels, 'Bound review required'
     assert not labels.intersection({'Error', 'Confirm Submission', 'Dispatch Created Successfully!', 'Send OTP'}), 'Unexpected draft screen'
     return sorted(labels)
+
+
+def grn_search_controls(receipt):
+    assert re.fullmatch(r'FXF[0-9]{3}', receipt), 'Reserved fictional receipt required'
+    # The backend returns the first character as the prefix. Its substring
+    # search matches F410 inside FXF410; the exact receipt is selected afterward.
+    return ('Use GRN prefix F', ['Enter GRN digit ' + x for x in receipt[3:]])
+
+
+def selected_lot_labels(tree, quantity):
+    assert isinstance(quantity, int) and quantity > 0
+    labels = {v for n in tree.iter('node') for v in [n.get('text'), n.get('content-desc')] if v}
+    assert {'Backend Test Potatoes', f'Qty: {quantity} · Stock: {quantity}'} <= labels, 'Exact unused source lot required'
+    assert not labels.intersection({'Select item', 'Select lot', 'Error'}), 'Auto-selected lot required'
