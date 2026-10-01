@@ -550,10 +550,12 @@ export const verifyOTP = async (
 };
 
 // Sign out helper - clear stored tokens and Supabase session
-export const signOut = async () => {
+export const signOut = async (options?: { localOnly?: boolean }) => {
   // Queue the read before invalidating pending work; preserve the credential for
   // server revocation while local cleanup proceeds independently of the network.
-  const storedPromise = serializeCredentials(readStoredToken);
+  // Discovery of a replacement at the same URL must never disclose the old
+  // refresh credential to the new instance through a revocation request.
+  const storedPromise = options?.localOnly ? undefined : serializeCredentials(readStoredToken);
   advanceSessionGeneration();
   const cleanup = serializeCredentials(async () => {
     await clearStoredTokensRaw();
@@ -561,7 +563,7 @@ export const signOut = async () => {
   });
   const stored = await storedPromise;
   await cleanup;
-  if (stored.refreshToken) await revokeSession(stored.refreshToken);
+  if (stored?.refreshToken) await revokeSession(stored.refreshToken);
   return { success: true };
 };
 

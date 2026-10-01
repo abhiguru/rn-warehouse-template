@@ -274,6 +274,11 @@ correction649, **Use this server** asks for confirmation when either the origin
 or instance identity changes. **Cancel** preserves the current session and drafts;
 **Change server** clears them and requires a fresh login. Selecting the same
 origin and instance preserves them. Finish any active save before switching.
+On builds containing652, a replacement at the same origin clears credentials
+locally before adopting its identity; old refresh/enrollment credentials are never
+sent to that replacement for logout. Re-authenticate against the displayed new
+identity. Ordinary logout and different-origin switching retain old-server
+revocation attempts.
 See [server-switch acceptance](OPERATOR_SERVER_SWITCH_CASES.md) for unsaved-form
 and replacement-instance cases. The installed e217 APK predates this correction;
 build/audit the reviewed correction with a new identifier before testing it.
@@ -2318,3 +2323,32 @@ has now completed all four jobs PASS, including explicit SDK preparation, Androi
 debug compilation and artifact audit. This supersedes648/649's pending observation
 and preserves14129f2's failed archive attempt. It does not establish the archive's
 original root cause or new native acceptance. Later649/newer-head CI is separate.
+
+### Replacement identity cleanup652 — 2026-10-01
+
+Source review of70c3073 found that a discovered replacement at the same origin
+used ordinary logout. With a previously initialized client, that could send the
+old refresh credential through `logout_session` to the new instance. Manual
+replacement selection could likewise send an old pending-enrollment token.
+A mocked credential/RPC regression failed on old source, reproducing the remote
+call. No native credential disclosure or real replacement was exercised.
+
+Added explicit local-only logout for replacement discovery/selection, including
+the usual local profile/config/form/cache cleanup and local enrollment removal.
+Normal sign-out/different-origin switches retain old-server revocation. Extracted
+the public discovery boundary into `verifySelectedOperator`: matching identities
+preserve state, failed/incompatible discovery preserves selection, replacements
+wait for cleanup before saving, and superseded discovery/cleanup does not adopt
+an old identity. Bootstrap invalidates its run when unmounted.
+
+Trigger: targeted `customSession` replacement regression RED1 (26 other cases
+intentionally not selected), then complete customSession/bootstrap/switch group
+PASS46. Initial bootstrap fixture used padded anon-key encoding and failed five
+cases, including a wait that timed out; corrected the fictional fixture, not the
+validator. Initial typecheck rejected a union combining selection/superseded;
+separate discriminants corrected it. Failed attempts retained privately.
+Full Jest290/44suites PASS, corrected typecheck PASS, lint0errors/1463warnings.
+No new RPC/schema or authentication bypass; installed APK/soak unchanged.
+Native same-origin replacement, SecureStore failure behavior on a device and
+complete concurrent bootstrap/switch acceptance remain pending. Local cleanup
+does not establish remote revocation of the former instance.

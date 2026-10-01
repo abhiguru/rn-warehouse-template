@@ -22,6 +22,13 @@ the owned route afterward. This remains a setup blocker; two different origins
 do not establish same-origin replacement. Do not fabricate an identity response
 or change database/session timestamps to obtain a pass.
 
+Build correction652 before replacement checks. Discovery now completes local
+cleanup before adopting the new identity. It clears the old access/refresh and
+pending-enrollment credentials without sending them to the replacement at that
+URL. Ordinary logout and a switch between different origins still attempt
+revocation against the old instance. This local replacement cleanup does not
+prove revocation on the former server, which is no longer the discovered instance.
+
 ## Cases to execute once per affected artifact
 
 Prepare fictional unsaved GRN, dispatch, invoice and customer drafts through the
@@ -35,7 +42,7 @@ the real-reducer regression; native screens do not expose a rollback test comman
 | Check a different server, then Cancel confirmation | Identity is displayed; confirmation explains logout and draft loss; old session and retained drafts remain; no destination commit | Source PASS; native NOT TESTED |
 | Confirm a different origin | All old drafts/caches cleared, new identity displayed, fresh login required; no old data after cold launch | Source PASS with mocked credentials/cache calls; native NOT TESTED |
 | Select the same origin and instance | No destructive confirmation/logout; existing session and drafts preserved | Source PASS; native NOT TESTED |
-| Confirm a new instance at the same origin | Same cleanup and fresh-login requirements as a different origin | Source PASS; native BLOCKED pending separately provisioned replacement |
+| Confirm a new instance at the same origin | Local cleanup before adopting identity, no old credential sent to replacement, fresh login | Source PASS652; native BLOCKED pending separately provisioned replacement |
 | Save already in progress when confirming | Switch refused; original mutation allowed to finish and reconciled; no blind retry | Source PASS for both mutation gates; native NOT TESTED |
 | Discovery fails or staging storage fails | Existing server/session/drafts remain; actionable error; no silent switch | Staging source PASS; discovery validation has separate unit coverage; native NOT TESTED |
 | Cancel by leaving the selection screen | Old callback cannot activate a warehouse after unmount | Source PASS; native NOT TESTED |

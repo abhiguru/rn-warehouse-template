@@ -357,9 +357,9 @@ export const fetchUserProfile = createAsyncThunk(
 
 export const logout = createAsyncThunk(
   'auth/logout',
-  async (_, { dispatch }) => {
+  async (options: { localOnly?: boolean } | undefined, { dispatch }) => {
     // Invalidate old asynchronous work before the first await.
-    const signingOut = signOut();
+    const signingOut = signOut(options);
     const generation = getSessionGeneration();
     dispatch(clearFullConfig());
     await ConfigService.clearAuthenticatedCache();

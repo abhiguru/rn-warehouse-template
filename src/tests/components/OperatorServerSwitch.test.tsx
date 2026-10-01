@@ -13,7 +13,7 @@ import customerReducer, { updateFormData } from '@/store/slices/customerFormSlic
 import ConfigService from '@/services/configService';
 import { clearAutocompleteCache } from '@/services/autocomplete-service';
 import { queryClient } from '@/lib/queryClient';
-import { beginOperatorSwitch, endOperatorSwitch, getPendingEnrollmentToken, signOutPendingEnrollment } from '@/config/supabaseConfig';
+import { beginOperatorSwitch, clearPendingEnrollment, endOperatorSwitch, getPendingEnrollmentToken, signOutPendingEnrollment } from '@/config/supabaseConfig';
 import { commitStagedOperatorServer, discoverOperator, getActiveOperatorServer, stageOperatorServer } from '@/config/operatorServer';
 
 jest.mock('react-native', () => {
@@ -131,10 +131,13 @@ it.each(['different origin', 'replacement at the same origin'])('clears old form
   jest.mocked(discoverOperator).mockResolvedValue({ server: target, config: {} as never });
   jest.mocked(getPendingEnrollmentToken).mockResolvedValue('fictional-pending-token');
   jest.mocked(signOutPendingEnrollment).mockImplementation(async () => { events.push('pending signout'); });
+  jest.mocked(clearPendingEnrollment).mockImplementation(async () => { events.push('pending clear'); });
   await choose();
   expect(events).toEqual([]);
   await confirm();
-  expect(events).toEqual(['stage', 'logout', 'pending signout', 'cancel queries', 'clear queries', 'clear autocomplete', 'clear config', 'commit']);
+  expect(events).toEqual(['stage', 'logout', kind === 'different origin' ? 'pending signout' : 'pending clear', 'cancel queries', 'clear queries', 'clear autocomplete', 'clear config', 'commit']);
+  expect(logout).toHaveBeenCalledWith(kind === 'different origin' ? undefined : { localOnly: true });
+  if (kind === 'replacement at the same origin') expect(signOutPendingEnrollment).not.toHaveBeenCalled();
   expect(commitStagedOperatorServer).toHaveBeenCalledWith(target);
   expect(router.replace).toHaveBeenCalledWith('/login');
   expect(endOperatorSwitch).toHaveBeenCalledTimes(1);

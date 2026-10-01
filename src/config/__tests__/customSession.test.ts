@@ -120,6 +120,15 @@ it('rejects a partial secure session without its expiry completion marker', asyn
   expect(await getStoredToken()).toEqual({ isValid: false });
 });
 
+it('clears a replaced instance locally without sending its old refresh credential', async () => {
+  await storeTokens(jwt(), 'a'.repeat(64), Date.now() + 3600000);
+  await signOut({ localOnly: true });
+  expect(await getStoredToken()).toEqual({ isValid: false });
+  expect(secure.size).toBe(0);
+  expect(rpc).not.toHaveBeenCalled();
+  expect(global.fetch).not.toHaveBeenCalled();
+});
+
 it('does not use legacy credentials if secure migration fails', async () => {
   await AsyncStorage.multiSet([
     ['auth_token', btoa(jwt())],

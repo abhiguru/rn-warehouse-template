@@ -78,9 +78,10 @@ export function OperatorServerSelection({ initial = false }: { initial?: boolean
       }
       await stageOperatorServer(selected.server);
       sessionCleared = true;
-      await dispatch(logout()).unwrap();
+      const replacedAtSameOrigin = previous?.origin === selected.server.origin && previous.instanceId !== selected.server.instanceId;
+      await dispatch(logout(replacedAtSameOrigin ? { localOnly: true } : undefined)).unwrap();
       if (await getPendingEnrollmentToken()) {
-        if (previous) await signOutPendingEnrollment();
+        if (previous && !replacedAtSameOrigin) await signOutPendingEnrollment();
         else await clearPendingEnrollment();
       }
       await queryClient.cancelQueries();
