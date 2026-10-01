@@ -281,6 +281,14 @@ build/audit the reviewed correction with a new identifier before testing it.
 Real authentication needs explicit SMS permission and owned phones; input OTPs
 locally, never in chat/logs. Historical device tests do not count for this APK.
 
+For offline checks, keep a valid unsaved form open and distinguish device
+disconnection from warehouse unreachability. Current GRN/dispatch forms do not
+provide a durable offline queue. Preserve failed or uncertain submissions and
+reconcile records/stock before a manual unchanged retry. Use the
+[offline/reconnect sequence](OPERATOR_OFFLINE_CASES.md); a banner or airplane-mode
+toggle alone is insufficient with an ADB reverse route. Native acceptance of
+corrections650–651 requires a newly built and audited APK after the active soak.
+
 ## Findings
 
 | Environment / trigger | Expected versus actual | Correction | Verification and limitation |
@@ -2261,3 +2269,52 @@ including the source audit and isolated operator installation. Mobile86bde05
 passed the explicit SDK prerequisite step and three non-Android jobs; Android
 assembly/audit remained pending at this observation. Preserve the earlier failed
 archive download. These results do not upgrade the currently installed artifacts.
+
+### Connection-status ordering correction650 — 2026-10-01
+
+Reviewing3dc2023 on Ubuntu24.04.3, Node22.23.3/npm10.9.9 found an unguarded
+`NetInfo.fetch().then(...)` alongside the native connection listener. A delayed
+startup result could replace a newer offline or reconnect event, and rejection
+was unhandled. Callbacks also processed state after unmount. The new code
+subscribes first, accepts the initial result only until an event arrives, handles
+observation failure without claiming the warehouse is down, and ignores results
+after unmount. This corrects the app's initial promise/event ordering; it does not
+prove ordering inside the native NetInfo library or API reachability.
+
+Trigger: `npm test -- --watch=false --runTestsByPath
+src/hooks/__tests__/useNetworkStatus.test.ts`. Controlled promises/native events
+reproduce six failures with two initial-state cases already passing. The first
+post-fix attempt passed seven cases but the unmount fixture failed because Babel
+evaluated its object-literal getter during construction. The corrected fixture
+uses `Object.defineProperty`; rerunning it against old source gives6FAIL/2PASS,
+then corrected source8PASS. All attempts are retained privately. The existing
+order lifecycle test passes separately. No radio/device/warehouse was changed.
+
+### Offline banner cancellation correction651 — 2026-10-01
+
+The banner ignored the animation completion's `finished` flag and had no cleanup
+for an obsolete hide. On another disconnect, a stale callback could remove and
+then recreate the warning. Initial tests inspected only the final visible state
+and found two cleanup failures; stronger coverage of actual unmounts reproduced
+four failures with one ordinary-reconnect case passing. This is a transient
+removal/restart defect, not evidence of a permanently hidden native warning.
+
+The effect now stops its own animation on replacement/unmount and accepts a hide
+completion only while current, finished and online. Trigger: `npm test --
+--watch=false --runTestsByPath src/tests/components/OfflineBanner.test.tsx`;
+corrected5PASS with mocked animation completions, including obsolete success,
+cancel, a subsequent normal reconnect and unmount. Installed React Native0.81.5
+source confirms cancellation may invoke completion with `finished:false`.
+
+Combined validation650–651: full Jest281/43suites PASS; typecheck PASS;
+lint0errors/1463existingwarnings. Setup72 evidence648 remains unchanged, not
+rerun. Main instructions now link the bounded offline/native sequence and explain
+the lack of a durable GRN/dispatch queue. Native checks and a new APK remain
+pending; all active-soak inputs/services and the installed e217 APK are unchanged.
+
+CI follow-up: mobile86bde058194ea46fb68cb7b74b73ac404273c84d
+[36867225316](https://github.com/abhiguru/rn-warehouse-template/actions/runs/36867225316)
+has now completed all four jobs PASS, including explicit SDK preparation, Android
+debug compilation and artifact audit. This supersedes648/649's pending observation
+and preserves14129f2's failed archive attempt. It does not establish the archive's
+original root cause or new native acceptance. Later649/newer-head CI is separate.

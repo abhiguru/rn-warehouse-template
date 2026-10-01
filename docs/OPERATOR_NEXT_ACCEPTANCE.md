@@ -45,6 +45,11 @@ acceptance. No branch merge, release or production-readiness claim is authorized
 - Follow [session cases](OPERATOR_SESSION_CASES.md) for reserved-account preparation.
   Normal access renewal is already covered by the soak; do not alter timestamps,
   authentication policy or OTP counters to simulate seven-day refresh expiry.
+- Follow [offline/reconnect cases](OPERATOR_OFFLINE_CASES.md) for zero-write
+  evidence before a manual retry and separate device/network/backend-outage
+  results. Include650–651's connection-ordering/banner fixes in the new APK;
+  source tests pass but current native acceptance is open. An ADB reverse route
+  may remain reachable when an emulator reports offline.
 - Unsaved-form switching must verify the app's supported confirmation/cancellation
   behavior, account/cache/draft clearing and fresh authentication. Record an
   operator decision if the intended policy is undocumented. Correction649 adds

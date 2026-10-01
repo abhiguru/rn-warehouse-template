@@ -7,8 +7,8 @@
  * Issue: I1 - No Network State Monitoring
  */
 
-import { useState, useEffect, useCallback } from 'react';
-import NetInfo, { NetInfoState, NetInfoSubscription } from '@react-native-community/netinfo';
+import { useState, useEffect } from 'react';
+import NetInfo, { NetInfoState } from '@react-native-community/netinfo';
 
 export interface NetworkStatus {
   isConnected: boolean;
@@ -37,9 +37,11 @@ export function useNetworkStatus(): NetworkStatus {
   });
 
   useEffect(() => {
-    let unsubscribe: NetInfoSubscription | null = null;
+    let active = true;
+    let receivedEvent = false;
 
     const handleNetworkChange = (state: NetInfoState) => {
+      if (!active) return;
       setStatus({
         isConnected: state.isConnected ?? false,
         isInternetReachable: state.isInternetReachable,
@@ -48,16 +50,23 @@ export function useNetworkStatus(): NetworkStatus {
       });
     };
 
-    // Get initial state
-    NetInfo.fetch().then(handleNetworkChange);
-
-    // Subscribe to changes
-    unsubscribe = NetInfo.addEventListener(handleNetworkChange);
+    // Subscribe first: native events may arrive synchronously or while the
+    // initial fetch is pending. A startup snapshot must not replace newer data.
+    const unsubscribe = NetInfo.addEventListener(state => {
+      receivedEvent = true;
+      handleNetworkChange(state);
+    });
+    void NetInfo.fetch().then(state => {
+      if (!receivedEvent) handleNetworkChange(state);
+    }).catch(() => {
+      // Failure to observe connectivity does not prove the warehouse is down.
+      // Keep the unknown/optimistic initial status and wait for a native event.
+      if (active && !receivedEvent) setStatus(current => ({ ...current, isLoading: false }));
+    });
 
     return () => {
-      if (unsubscribe) {
-        unsubscribe();
-      }
+      active = false;
+      unsubscribe();
     };
   }, []);
 

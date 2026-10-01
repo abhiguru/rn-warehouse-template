@@ -51,3 +51,9 @@ rollback/error state on full reset. Eleven new source regressions pass; the
 [server-switch cases](OPERATOR_SERVER_SWITCH_CASES.md) still require a new audited
 APK and exclusive fixtures after the soak. Historical round-trip evidence does
 not establish unsaved-form cancellation or same-origin replacement acceptance.
+
+Corrections650–651 guard initial network-state ordering and stale offline-banner
+animation callbacks. Combined source validation:281Jest tests/43suites,
+typecheck and lint0errors PASS. The [offline/reconnect cases](OPERATOR_OFFLINE_CASES.md)
+separate device disconnection, backend outage and explicit write retries; no
+durable offline GRN/dispatch queue or new native result is claimed.
