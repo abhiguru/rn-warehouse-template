@@ -15,7 +15,9 @@ class Controls(unittest.TestCase):
         self.assertEqual(point(tree,'Use this server'),(25,25))
         with self.assertRaises(AssertionError):point(tree,'Send OTP')
         with self.assertRaises(AssertionError):point(tree,'Delete Account')
-        tree.append(ET.fromstring('<node text="Use this server"/>'))
+        tree.append(ET.fromstring('<node text="Use this server" class="android.widget.TextView"/>'))
+        self.assertEqual(point(tree,'Use this server'),(25,25))
+        tree.append(ET.fromstring('<node text="Use this server" class="android.widget.Button"/>'))
         with self.assertRaises(AssertionError):point(tree,'Use this server')
 
     def test_reconnect_never_overwrites_an_occupied_route(self):
