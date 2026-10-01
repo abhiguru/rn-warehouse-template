@@ -61,7 +61,7 @@ COMMIT;`;
     writeFileSync(resolve(c.caseDirectory,`auth-${phase}.json`),JSON.stringify({snapshot},null,2)+'\n',{flag:'wx',mode:0o600});
   }
   console.log(JSON.stringify({status:'PASS',phase,scope:'ordinary-native-auth-observation'}));
-} catch (error) {
+} catch {
   console.error(JSON.stringify({status:'FAIL',category:'AUTH_OBSERVATION_REFUSED'}));
   process.exitCode=1;
 }
