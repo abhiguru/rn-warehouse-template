@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';import{createHash}from'node:crypto';import{readFileSync,writeFileSync,lstatSync,realpathSync}from'node:fs';import{resolve}from'node:path';import{pathToFileURL}from'node:url';import{spawnSync}from'node:child_process';import{privateJSON,assertReleased}from'./fixture-session-guards.mjs';
 process.umask(0o077);
 try{
- const[path,phase]=process.argv.slice(2),c=privateJSON(path);assert.equal(c.scope,'isolated-fictional-replacement-case');assert.ok(['guard','before','after','failure'].includes(phase));assertReleased(c);assert.notEqual(c.primary.instanceId,c.replacement.instanceId);assert.equal(c.origin,'https://backend-core.example.test');const snapshots={};
+ const[path,phase]=process.argv.slice(2),c=privateJSON(path);assert.ok(['isolated-fictional-replacement-case','isolated-fictional-replacement-return-case'].includes(c.scope));assert.ok(['guard','before','after','failure'].includes(phase));assertReleased(c);assert.notEqual(c.primary.instanceId,c.replacement.instanceId);assert.equal(c.origin,'https://backend-core.example.test');const snapshots={};
  for(const role of ['primary','replacement']){
   const f=c[role],guard=resolve(f.checkout,'tests/operator-fixture.mjs');assert.equal(createHash('sha256').update(readFileSync(guard)).digest('hex'),f.guardSHA256);const manifest=privateJSON(resolve(f.state,'public/instance.json'));assert.equal(manifest.instanceId,f.instanceId);assert.equal(manifest.canonicalOrigin,c.origin);process.env.WAREHOUSE_STATE_DIR=f.state;const{operatorFixture}=await import(pathToFileURL(guard).href),{env}=operatorFixture();
   if(phase==='guard')continue;
