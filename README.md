@@ -3,6 +3,9 @@
 The operator branch connects to an independent warehouse backend through its
 canonical HTTPS origin. Start with the [current developer handoff](docs/DEVELOPER_HANDOFF.md)
 and [fresh operator installation notes](docs/OPERATOR_INSTALL_NOTES.md).
+The [acceptance matrix](docs/OPERATOR_ACCEPTANCE_MATRIX.md) records exact installed
+source/artifact scope and cases that remain open; historical device results do
+not validate the current operator candidate.
 The operator changes are under review; the source-demo evidence below does not
 validate the changed runtime.
 

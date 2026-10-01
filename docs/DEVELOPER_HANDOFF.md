@@ -15,7 +15,9 @@ and backend [PR #68](https://github.com/abhiguru/supabase-warehouse-template/pul
 merged at `f18f51d4625e7f8c0d977ac69645804e318a9d49`. Mobile candidate is
 `8240cce9121a797fd0cf2e00e568a61985814ddb`; do not assume it is on mobile `main`.
 See [OPERATOR_INSTALL_NOTES.md](OPERATOR_INSTALL_NOTES.md) for this fresh VM
-attempt, its installation findings and the current acceptance matrix.
+attempt and installation findings. The [dated acceptance matrix](OPERATOR_ACCEPTANCE_MATRIX.md)
+separates installed artifacts, newer source fixes, required cases and blockers;
+consult the private soak ledger for live progress.
 Record exact backend/mobile commits and native build IDs for every VM or physical
 device acceptance run. Source checks and an Android artifact audit do not prove
 real SMS, iPhone, lifecycle recovery or server-switch isolation on a device.

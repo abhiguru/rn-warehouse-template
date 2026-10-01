@@ -40,7 +40,12 @@ A later source-only GRN-link correction is recorded at the end of this ledger.
 Its candidate has not been installed; current native/soak results remain scoped
 to the artifact in the table below.
 
-## Current exact-artifact checkpoint — 2026-10-01
+## Exact-artifact launch checkpoint — 2026-10-01 13:17 IST
+
+This is the preserved launch snapshot. Read the later
+[acceptance matrix](OPERATOR_ACCEPTANCE_MATRIX.md) for scoped fixes/blockers and
+the private soak ledger for live progress. Source audit fixes do not replace
+the installed runtime or clear its security/release gates.
 
 | Case | Status | Evidence and scope |
 | --- | --- | --- |
@@ -1713,7 +1718,7 @@ release gaps remain separate. Inspect the unit and private ledger at completion;
 require all steps/postconditions and the final aggregate to PASS before claiming
 long acceptance. Never rerun interrupted writes or alter bound files to recover.
 
-## Current overnight status — 2026-10-01: FAIL, stopped
+## Historical first overnight result — 2026-10-01: FAIL, stopped
 
 The supervised run started at 00:30:19 IST and stopped at 04:46:13 IST on
 1 October (`warehouse-fixture-overnight-3014.service`, exit status 1, no restart).
@@ -2405,3 +2410,19 @@ Trigger: targeted Jest5PASS, full Jest295/45suites PASS, typecheck PASS, lint
 APK rebuild, offline radio case or production policy change; new-artifact
 acceptance remains open. Native NetInfo is not bridged to QueryClient's online
 manager; this correction does not claim that query reconnect events work on-device.
+
+### Acceptance-scope audit655 — 2026-10-01
+
+The top launch checkpoint could be mistaken for live telemetry; its dependency
+FAIL reflected an older source while later CI/source corrections were below it.
+Preserved the table as a dated13:17IST launch snapshot and renamed the first
+failed overnight heading as historical. Added a linked26-row acceptance index
+with exact backend/mobile/artifact boundaries, scope, result and remaining
+prerequisite. Required cases use PASS/FAIL/BLOCKED/NOT TESTED; the incomplete
+full soak is NOT TESTED with actual progress, not an inherited/skipped PASS.
+Current review code2fbf238 is source-only; installed e217/physical8d are unchanged.
+
+Verification: all26 result/scope rows audited, local links resolve, protected-input
+scan PASS. Seven completed native blocks and no failed checks were observed at
+14:44UTC; final aggregate pending. No case rerun, source acceptance transferred
+to hardware or historical failure removed. See [acceptance index](OPERATOR_ACCEPTANCE_MATRIX.md).
