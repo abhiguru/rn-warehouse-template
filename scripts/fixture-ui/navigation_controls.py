@@ -2,12 +2,12 @@
 import re
 
 ALLOWED = {'Change Warehouse Server', 'Change warehouse server', 'Check server',
-           'Use this server', 'Change server', 'Cancel', 'Refresh orders', 'Orders tab'}
+           'Use this server', 'CHANGE SERVER', 'CANCEL', 'Refresh orders', 'Orders tab'}
 
 def point(tree, label, editable=False):
     assert label == 'Server origin' if editable else label in ALLOWED
     nodes = [n for n in tree.iter('node') if label in [n.get('text'), n.get('content-desc')]]
-    if not editable and label in {'Change Warehouse Server', 'Change warehouse server', 'Check server', 'Use this server', 'Change server', 'Cancel'}:
+    if not editable and label in {'Change Warehouse Server', 'Change warehouse server', 'Check server', 'Use this server', 'CHANGE SERVER', 'CANCEL'}:
         nodes = [n for n in nodes if n.get('class') == 'android.widget.Button']
     assert len(nodes) == 1, 'Exact unique navigation control required'
     n = nodes[0]

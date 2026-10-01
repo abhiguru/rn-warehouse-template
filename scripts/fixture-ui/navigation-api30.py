@@ -222,7 +222,7 @@ def main(path):
             if not same:
                 driver.wait('Change Warehouse Server')
                 assert f'Changing to {name} will sign you out and discard unsaved forms. You will need to sign in again.' in labels(driver.snapshot())
-                driver.tap('Cancel' if case['case']=='cancel-switch' else 'Change server')
+                driver.tap('CANCEL' if case['case']=='cancel-switch' else 'CHANGE SERVER')
             if case['case']=='confirm-switch':
                 driver.wait('Send OTP'); driver.cold(); driver.wait('Send OTP')
                 assert 'Choose your warehouse server' not in labels(driver.snapshot())

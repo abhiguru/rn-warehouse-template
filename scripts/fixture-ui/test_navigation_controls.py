@@ -20,6 +20,15 @@ class Controls(unittest.TestCase):
         tree.append(ET.fromstring('<node text="Use this server" class="android.widget.Button"/>'))
         with self.assertRaises(AssertionError):point(tree,'Use this server')
 
+    def test_android_confirmation_uses_exact_uppercase_button_roles(self):
+        tree=ET.fromstring('<hierarchy><node text="CANCEL" enabled="true" class="android.widget.Button" bounds="[1,1][50,50]"/><node text="CHANGE SERVER" enabled="true" class="android.widget.Button" bounds="[51,1][100,50]"/></hierarchy>')
+        self.assertEqual(point(tree,'CANCEL'),(25,25))
+        self.assertEqual(point(tree,'CHANGE SERVER'),(75,25))
+        for label in ['Cancel','Change server']:
+            with self.assertRaises(AssertionError):point(tree,label)
+        tree.append(ET.fromstring('<node text="CANCEL" class="android.widget.TextView"/>'))
+        self.assertEqual(point(tree,'CANCEL'),(25,25))
+
     def test_reconnect_never_overwrites_an_occupied_route(self):
         calls=[]
         def adb(*args):calls.append(args);return 'owner tcp:443 tcp:9999'
