@@ -2,7 +2,8 @@
 from dispatch_case_controls import owned_reverse_route
 
 
-def cleanup_case(route_verified, touched_control, record, phase, control, adb, save):
+def cleanup_case(route_verified, touched_control, record, phase, control, adb, save, path="/rest/v1/rpc/create_dispatch_with_stock_check"):
+    assert path in {"/rest/v1/rpc/create_dispatch_with_stock_check", "/rest/v1/rpc/save_grn"}, "Only guarded fixture write paths"
     result = {'status': 'PASS'}
     in_flight = False
     control_settled = not touched_control
@@ -17,7 +18,7 @@ def cleanup_case(route_verified, touched_control, record, phase, control, adb, s
                 control_settled = True
             else:
                 assert status.get('record') == record and status.get('phase') == phase
-                assert status.get('path') == '/rest/v1/rpc/create_dispatch_with_stock_check'
+                assert status.get('path') == path
                 assert not in_flight, 'Do not disturb an in-flight operation'
                 assert control({'action': 'disarm'})['state'] == 'DISARMED'
                 result['faultDisarmed'] = True
