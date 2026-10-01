@@ -39,9 +39,9 @@ Physical APK SHA256:
 | Installed e217 saved invoice/private PDF view/export | PASS |626; new number20261005/tax9/discount-2.5/total182/three lines/hash | Older half-cent results stay on their own artifact |
 | Fractional tax/discount/duration contract source | PASS | Existing arithmetic regressions/scoped native history | Distinguish header ceil/discount contract from summed line tax; production policy separate |
 | Installed e217 stale Orders, cold launch/read readiness | PASS |622,629,633; actual Orders200 and bounded lifecycle/read evidence | New APK must verify affected behavior |
-| Full current eight-hour read/refresh soak | NOT TESTED | Final aggregate pending at14:44UTC:01–07 PASS,08 RUNNING, zero failed checks |09/final reconciliation plus duration/request/session/business checks; historical3014 overnight FAIL retained |
+| Completed e217 eight-hour read/refresh soak | PASS |658: final15:48:30UTC/21:18:30IST;9blocks/21checks,28,804.866seconds/459cycles/9credential rotations, business reconciliation PASS | Scoped to e217/code2026100101; new artifact needs its own acceptance; historical3014 overnight FAIL retained |
 | New cold identity/switch/network/banner/query-write source | PASS |652 full290;654 full295/45suites, typecheck, lint0errors/1463warnings; RED→GREEN retained | Mocked native boundaries/fake transports do not close native acceptance |
-| Guarded session/write/navigation/offline driver preparation | PASS |637–643/653, setup75/refusals/pure controls; scratch SQL647 | Complete-schema SQL/selectors/radios/cleanup NOT TESTED; new APK/private bindings |
+| Guarded session/write/navigation/offline driver preparation | PASS |637–643/653, setup77/refusals/pure controls; full empty-schema SQL657 PASS | Populated guarded-CLI/native/selectors/radios/cleanup NOT TESTED; new APK/private bindings |
 | Current native direct partial dispatch before/after response loss | NOT TESTED | API625/historical native3012 do not close it | Prepared drivers, deployed reviewed observer, fresh reserved stock/documents |
 | New native device-offline error/no replay/reconciled retry | NOT TESTED | Prepared Orders/no-image dispatch cases; response loss is separate | Actual disconnect/zero-write proof; preserve uncertain requests |
 | New native same/cancel/confirm origin switching | NOT TESTED | Source649/652, guarded653 drivers | New APK/exact fictional session/two owned origins; confirm logout last |
@@ -50,12 +50,12 @@ Physical APK SHA256:
 | Disabled/revoked native session | NOT TESTED | Reserved637 driver prepared; older API/logout scope separate | Ordinary reserved enrollment/login and exact artifact/session |
 | Naturally expired refresh session | BLOCKED | Seven-day expiry not yet reached | Wait for actual age; never alter clock/timestamp/TTL or bypass auth |
 | Current normal physical APK/QR/Wi-Fi/cellular/noUSB/Metro | NOT TESTED | Earlier physical Wi-Fi/QR/login stays on8d/code3001; emulator uses ADB reverse | New normal artifact/selected phone, camera/cellular/owned OTP locally |
-| Source CI/dependency correction | PASS | Backendbed4/b401 all7; completed mobile GRN/switch/network/SDK heads all4 | New2fb CI separate; debug build is not native acceptance |
+| Source CI/dependency correction | PASS | Backendbed4/b401 all7; completed mobile GRN/switch/network/SDK heads all4 | 2fb all4PASS; latest pre-checkpoint mobile802706 all4/backend3a434 all7PASS; debug build is not native acceptance |
 | Installed-image security/release readiness | BLOCKED | Source audit correction does not close existing image/runtime gates | Authorized rebuilt-image acceptance; deferred research stays excluded |
 | Recovery/printing/sensors/iPhone/alerts/rotation/image research | NOT TESTED | Explicitly excluded/closed | Separate authorized scope; no merge/release/cutover |
 
-The full incomplete soak uses NOT TESTED with actual progress in its evidence
-column, never a skipped PASS. Reviewed GRN CI
+Completion658 supersedes earlier pending snapshots without erasing their history.
+The completed soak is scoped to its exact old artifact. Reviewed GRN CI
 [36854228659](https://github.com/abhiguru/rn-warehouse-template/actions/runs/36854228659)
 all4 PASS. Mobile network70c3073
 [36871398156](https://github.com/abhiguru/rn-warehouse-template/actions/runs/36871398156),
@@ -67,7 +67,8 @@ and docsb401
 [36869491629](https://github.com/abhiguru/supabase-warehouse-template/actions/runs/36869491629)
 all7 PASS. Historical failed CI/installed attempts and skipped jobs remain recorded.
 
-Next: finish the current soak, verify release, build/audit the new candidate and
-execute freshly bound guarded cases one at a time. A new artifact cannot inherit
+Next: release guard PASS; preserve completion658, prepare new fixture TLS/helper
+lifetimes, build/audit the new candidate and execute freshly bound guarded cases
+one at a time. A new artifact cannot inherit
 the e217 soak. Source-check reproduction is separate from a complete new-candidate
 installation/standalone acceptance claim, which requires fresh evidence.

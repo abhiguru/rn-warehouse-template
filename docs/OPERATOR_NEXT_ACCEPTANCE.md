@@ -1,19 +1,20 @@
-# Next operator acceptance after the active soak
+# Next operator acceptance after the completed soak
 
 Current plan, 2026-10-01. This is not an acceptance result. Historical preparations,
 failed attempts and validation are retained in
 [OPERATOR_INSTALL_NOTES.md](OPERATOR_INSTALL_NOTES.md). Read the private live soak
 ledger for current status; do not use a documentation checkpoint as live telemetry.
 
-The active soak exclusively owns its emulator, fixture sessions, services and54
-frozen inputs. No concurrent UI actor, authentication mutation, replacement APK,
-backend reconfiguration or bound-source edit is allowed while it runs.
+Completion658: all9blocks/final reconciliation and21checks PASS at21:18IST
+1October; the actual exclusive-release guard now passes. Preserve all54 frozen
+inputs and completed evidence. Any future run again owns its emulator/sessions/
+services exclusively; check the real guard before native operations.
 
 ## Order and blockers
 
 | Priority | Required work | Blocking prerequisite | Current evidence |
 | --- | --- | --- | --- |
-| 1 | Complete nine native blocks plus final duration/request/session/business/refresh reconciliation | Active run must finish; a failed/stopped unit is not a successful release | RUNNING at this checkpoint; earlier passed blocks remain valid, final aggregate pending |
+| 1 | Preserve completed soak evidence, then prepare next helper/TLS horizon before new APK trust | New bounded owned helper plan and certificates sufficient for build/preparation/run/safety; old evidence stays immutable |658 PASS:9blocks/final,21checks,459cycles,8hours4.866seconds; release guard PASS |
 | 2 | Build/audit the current reviewed mobile candidate with a new ID, including GRN-link fix, dispatch accessibility labels, logging correction and switch cleanup; verify Breakdown IRP05 label, GRN UUID navigation and Overview | Exclusive emulator; new APK not built/audited/installed | GRN source636 and CI36854228659 PASS; newer source checks are scoped separately; native new-artifact case NOT TESTED |
 | 3 | Native direct partial dispatch before/after response loss with proof before retry, one independently observed same-key retry and stock/cache reconciliation | New APK, reviewed relay, fresh reserved stock/documents, exact private config and12source bindings; populated-fixture SQL/native/cleanup integration | Drivers640–643 prepared and guarded; setup69PASS, refusal/mocked cleanup and scratch SQL647PASS; current native acceptance NOT TESTED, API625 and historical native3012 do not close it |
 | 4 | Revoked/expired sessions, offline-before-submit/reconnect, unsaved-form switch and same-origin replacement | Reserved session customer/private bindings; seven-day natural refresh expiry; new APK, complete-schema/native driver integration and fresh replacement state | Session637 and navigation/offline653 drivers prepared with release refusals; no current native case. Read-only switching does not establish unsaved-form behavior; lost-response tests do not establish device disconnection |
@@ -74,8 +75,8 @@ changes remain outside this exercise. Preserve every historical failure and gate
 
 Source work652–656 is saved: local-only replacement cleanup, guarded offline/switch
 drivers, one-attempt query writes, scoped acceptance index and clean-source guide
-checks. Pin explicit mobile2fbf238/backendbed4 as documented; new APK/complete-schema
-driver integration/full local new-backend setup remain gated. Clean source checks
+checks. Pin explicit mobile2fbf238/backendbed4 as documented; new APK/populated-fixture/native
+driver integration/full local new-backend setup remain unperformed. Clean source checks
 and configuration-only rerun PASS do not close standalone/native acceptance.
 
 
@@ -88,10 +89,10 @@ See [repeatable schema check](OBSERVER_SCHEMA_CHECK.md); do not rerun unchanged 
 
 Small prerequisites before another long run: current helper units have12-hour caps
 and stop around00:56IST2October; current fixture CAs expire11:13IST2October.
-They cover the present soak, but must be replaced by a newly bounded owned helper
+They covered the completed soak, but must be replaced by a newly bounded owned helper
 plan and sufficient certificate horizon for the next run. At15:28UTC there were
 14.24certificate hours remaining. Recheck at build and actual launch; include
-build/preparation/run/safety margin. Do not change current units/certificates/
-trust while frozen. Prepare any new certificates before the next APK build if
+build/preparation/run/safety margin. Preserve the completed source bindings and trust evidence; use new private
+certificate paths/configuration and record the next units/artifact bindings. Prepare any new certificates before the next APK build if
 the intended later run cannot meet its12-hour guard. This concerns disposable
 fixture TLS, not production provider/warehouse credential rotation.
