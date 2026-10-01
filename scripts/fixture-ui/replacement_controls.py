@@ -2,8 +2,8 @@
 import re
 
 def observations(rows,began):
- requests=[x for x in rows if x.get('atUTC','')>=began and x.get('event') in {'request','upgrade-request'}]
- assert requests and sum(x.get('path')=='/functions/v1/get-public-config' for x in requests)>=2,'Two actual native cold discoveries required'
+ requests=[x for x in rows if x.get('atUTC','')>=began and (isinstance(x.get('method'),str) or x.get('event')=='upgrade-request')]
+ assert requests and sum(x.get('path')=='/functions/v1/get-public-config' and x.get('event')=='complete' and x.get('status')==200 for x in requests)>=2,'Two actual native cold discoveries required'
  for x in requests:
   assert x.get('authorizationPresent') is False and x.get('credentialQueryPresent') is False,'Credential-bearing replacement traffic refused'
  return requests

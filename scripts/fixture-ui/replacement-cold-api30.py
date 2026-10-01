@@ -40,6 +40,7 @@ def main(path):
   unit_guard(case['oldPrimaryUnit'],case['oldPrimaryUnitSHA256']);q=subprocess.run(['systemctl','--user','stop',case['oldPrimaryUnit']],capture_output=True,timeout=30);assert q.returncode==0;d.state['oldPrimaryStopped']=True;d.save();d.state['replacementStartAttempted']=True;d.save();helper(case['replacementHelpers'],'start');d.state['replacementStarted']=True;d.save();d.c=config_for('replacementConfig');readiness(case['replacementCA'],case['replacement']['instanceId'],case['replacementSocket']);d.state['actualTLSIPCReadiness']=True;d.state['nativeBeganUTC']=utc();d.save()
   for n in [1,2]:
    d.adb('shell','monkey','-p',soak.PACKAGE,'-c','android.intent.category.LAUNCHER','1');tree=d.wait('Send OTP');assert not any(x.get('text')=='Orders tab' for x in tree.iter('node'));d.archive('replacement-cold-login-'+str(n));d.adb('shell','am','force-stop',soak.PACKAGE);meta=stored('replacement-cold-'+str(n));identity(meta['selected'],case['replacement']['instanceId']);empty_credentials(meta)
+  time.sleep(16) # Let every bounded 15-second proxy request finish/abort before checking traffic.
   observe('after');rows=[];log=soak.private(case['replacementLog']);assert log.stat().st_size<33554432
   for line in log.read_text().splitlines():
    if line.startswith('{'):rows.append(json.loads(line))

@@ -2,7 +2,7 @@ import unittest
 from replacement_controls import observations,identity,empty_credentials,discovery
 class ReplacementControls(unittest.TestCase):
  def test_one_discovery_or_missing_transport_fields_refused(self):
-  row={'atUTC':'2026-10-01T23:00:00Z','event':'request','path':'/functions/v1/get-public-config','authorizationPresent':False,'credentialQueryPresent':False}
+  row={'atUTC':'2026-10-01T23:00:00Z','event':'complete','method':'GET','status':200,'path':'/functions/v1/get-public-config','authorizationPresent':False,'credentialQueryPresent':False}
   with self.assertRaises(AssertionError):observations([row],'2026-10-01T22:59:00Z')
   self.assertEqual(len(observations([row,row],'2026-10-01T22:59:00Z')),2)
   for key in ['authorizationPresent','credentialQueryPresent']:
