@@ -297,3 +297,11 @@ because prefix counts can duplicate keypad digits. Preserve strict ambiguity
 failure; do not fall back to coordinates or choose the first matching number.
 Source setup69/typecheck/targeted lint pass; actual Android exposure is NOT TESTED.
 Recompute frozen source hashes before preparing the next fresh case.
+
+### Scratch SQL compatibility647
+
+The generated query now has a PASS against a separate network-disabled PostgreSQL15.8
+scratch database; [reproduction instructions](DISPATCH_SQL_ADAPTER_CHECK.md) include
+isolation and cleanup. Baseline/commit/cache/stock shapes and negative predicates
+were checked; reused state was refused. This reduces SQL-syntax uncertainty but
+does not close released-fixture CLI, complete-schema/RPC/RLS or native integration.

@@ -2167,3 +2167,19 @@ and verifies the named button selection, including disabled-button rejection.
 typecheck PASS, targeted component lint0errors/3existingwarnings, Python syntaxPASS.
 This does not establish actual Android accessibility exposure; a newly built APK
 and native selector verification remain required. Active emulator/runtime untouched.
+
+### Dispatch SQL compatibility647 — 2026-10-01
+
+Added an explicit guarded scratch SQL check and
+[complete reproduction instructions](DISPATCH_SQL_ADAPTER_CHECK.md). It uses a new
+pinned PostgreSQL15.8 container with networknone/noports, read-only root, private
+tmpfs state and1CPU/512MiB limit. It rejects existing schemas or mismatched
+container ownership/isolation, without using or weakening the core fixture guard.
+
+Generated snapshot SQL and synthetic reconciliation checks PASS; reused-state
+refusal PASS. Exact query/JSON shapes, one commit, stock/cache changes, unrelated
+business data and wrong-stock-line rejection were checked. Initial numeric summary
+count8 was replaced with nine named checks; original output retained. The minimal
+schema and synthetic UI flags do not establish full schema/RPC/RLS or native
+acceptance. No installed warehouse was queried or changed. Only the new scratch
+container was removed after evidence capture; active soak inputs remain unchanged.
