@@ -330,3 +330,10 @@ single-character prefix and automatic first available lot selection. The bounded
 reserved-receipt driver now uses that prefix and requires the exact untouched
 quantity/stock label and item before entering a quantity. Earlier draft failures
 remain preserved; no submission occurred in either attempt.
+
+The first bounded lost-response dispatch case reached its real confirmation
+dialog, then refused the duplicated Submit Button/child-text label before the
+write. Its relay and independent business/stock/cache evidence showed no request
+or change. That case remains BLOCKED after two corrected campaign reruns. The
+confirmation selector now requires the exact native Button for Submit/OK and
+continues to refuse competing Buttons; independent reserved cases use new bindings.

@@ -14,6 +14,8 @@ def submission_point(tree, label, record):
         assert record in labels and 'Confirm Submission' not in labels
     # Reuse strict unique/enabled/bounds validation without broadening draft taps.
     nodes = [n for n in tree.iter('node') if label in [n.get('text'), n.get('content-desc')]]
+    if label in {'Submit', 'OK'}:
+        nodes = [n for n in nodes if n.get('class') == 'android.widget.Button']
     assert len(nodes) == 1 and nodes[0].get('class') != 'android.widget.EditText'
     n = nodes[0]
     assert n.get('enabled') == 'true'
