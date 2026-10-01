@@ -553,7 +553,7 @@ function InvoiceDetailScreen() {
   // Prepare related documents for breakdown tab
   const relatedDocuments = [
     ...(invoice.grn?.id
-      ? [{ id: invoice.grn.id, number: invoice.grn.number, type: 'grn' as const }]
+      ? [{ id: invoice.grn.id, number: invoice.grn.number || invoice.gr_no || '', type: 'grn' as const }]
       : []),
     // Add dispatch documents from line items
     ...Array.from(
