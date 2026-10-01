@@ -34,10 +34,10 @@ def main(path):
         assert d.adb('shell','sha256sum','/sdcard/Pictures/'+fixture.name).split()[0]==case['imageFixtureSHA256'];d.wait('Create GRN')
         for _ in range(7):
             t=d.snapshot()
-            try:point(t,'Add Photos',fixture.name);break
+            try:point(t,'Add Photos ',fixture.name);break
             except AssertionError:d.adb('shell','input','swipe','360','1000','360','500','350')
         else:raise AssertionError('Visible Add Photos not available')
-        d.tap_image('Add Photos',fixture.name);d.tap_image('PHOTO LIBRARY',fixture.name);d.external=True
+        d.tap_image('Add Photos ',fixture.name);d.tap_image('PHOTO LIBRARY',fixture.name);d.external=True
         t=d.wait(fixture.name);d.archive('picker-before-exact-file');d.tap_image(fixture.name,fixture.name);time.sleep(1)
         window=d.adb('shell','dumpsys','window')
         if any(package+'/' in window for package in PICKER_PACKAGES):

@@ -8,6 +8,11 @@ class GalleryControls(unittest.TestCase):
         with self.assertRaises(AssertionError):foreground('mCurrentFocus=Window{1 u0 com.android.documentsui/Picker}','in.gurucold.warehouse.fixture')
         for label in ['Camera','Delete','Allow','Send OTP','Create GRN']:
             with self.assertRaises(AssertionError):point(ET.fromstring('<hierarchy/>'),label,'WAREHOUSE_FIXTURE_FXF502.png')
+    def test_exact_native_photo_label_includes_displayed_trailing_space(self):
+        t=ET.fromstring('<hierarchy><node text="Add Photos " class="android.widget.TextView" enabled="true" bounds="[1,1][50,50]"/></hierarchy>')
+        self.assertEqual(point(t,'Add Photos ','WAREHOUSE_FIXTURE_FXF502.png'),(25,25))
+        with self.assertRaises(AssertionError):point(t,'Add Photos','WAREHOUSE_FIXTURE_FXF502.png')
+
     def test_library_action_requires_exact_source_dialog(self):
         t=ET.fromstring('<hierarchy><node text="PHOTO LIBRARY" class="android.widget.Button" enabled="true" bounds="[1,1][50,50]"/></hierarchy>')
         with self.assertRaises(AssertionError):point(t,'PHOTO LIBRARY','WAREHOUSE_FIXTURE_FXF502.png')

@@ -5,11 +5,11 @@ PICKER_PACKAGES={'com.android.documentsui','com.google.android.documentsui'}
 
 def point(tree,label,filename):
     assert re.fullmatch(r'WAREHOUSE_FIXTURE_FXF502\.png',filename)
-    assert label in {'Add Photos','PHOTO LIBRARY',filename,'OPEN','Open'}, 'Unsupported gallery action'
+    assert label in {'Add Photos ','PHOTO LIBRARY',filename,'OPEN','Open'}, 'Unsupported gallery action'
     labels={v for n in tree.iter('node') for v in [n.get('text'),n.get('content-desc')] if v}
     if label=='PHOTO LIBRARY':assert {'Add Image','Choose image source'}<=labels
     nodes=[n for n in tree.iter('node') if label in [n.get('text'),n.get('content-desc')]]
-    if label=='Add Photos':nodes=[n for n in nodes if n.get('class')=='android.widget.TextView']
+    if label=='Add Photos ':nodes=[n for n in nodes if n.get('class')=='android.widget.TextView']
     elif label in {'PHOTO LIBRARY','OPEN','Open'}:nodes=[n for n in nodes if n.get('class')=='android.widget.Button']
     assert len(nodes)==1 and nodes[0].get('enabled')=='true', 'Exact unique enabled gallery control required'
     m=re.fullmatch(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]',nodes[0].get('bounds',''));assert m
