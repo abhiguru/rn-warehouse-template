@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """One ordinary native logout, cold login requirement and independent revocation."""
-import datetime,fcntl,hashlib,importlib.util,json,os,re,sqlite3,subprocess,sys,time
+import datetime,fcntl,hashlib,importlib.util,json,os,re,sqlite3,subprocess,sys,time,traceback
 from pathlib import Path
 from logout_controls import confirm_point
 spec_auth=importlib.util.spec_from_file_location("auth",Path(__file__).with_name("auth-api30.py"));auth=importlib.util.module_from_spec(spec_auth);spec_auth.loader.exec_module(auth)
@@ -31,7 +31,7 @@ def main(path):
   d.cold();d.wait('Orders tab')
   # Owned primary Orders avatar is observed as C; require its header bounds.
   tree=d.wait('Refresh orders');nodes=[n for n in tree.iter('node') if n.get('content-desc')=='C' and n.get('clickable')=='true'];assert len(nodes)==1 and nodes[0].get('class')=='android.view.ViewGroup' and nodes[0].get('bounds')=='[616,75][693,138]'
-  d.adb('shell','input','tap',*map(str,auth.point(tree,'C')))
+  d.adb('shell','input','tap','654','106')
   tree=d.wait('View profile for '+case['profileName']);d.adb('shell','input','tap',*map(str,auth.point(tree,'View profile for '+case['profileName'])))
   for _ in range(6):
    if any('Sign out'==n.get('content-desc') for n in d.snapshot().iter('node')):break
@@ -42,7 +42,8 @@ def main(path):
   for n in range(2):
    d.cold();tree=d.wait('Send OTP');assert not any(x.get('text')=='Orders tab' for x in tree.iter('node'))
   observe('after');d.state.update(status='PASS',coldLoginRequirements=2,persistedSelection=persisted);d.save()
- except Exception:d.state.update(status='FAIL',reason='Lifecycle stopped; preserve attempt; no login or replay');d.save();raise
+ except Exception as error:
+  last=traceback.extract_tb(error.__traceback__)[-1];d.state.update(status='FAIL',exceptionType=type(error).__name__,failureSite=Path(last.filename).name+':'+str(last.lineno),reason='Logout stopped; preserve attempt; no login or replay');d.save();raise
  finally:os.close(fd)
 if __name__=='__main__':
  try:assert len(sys.argv)==2;main(sys.argv[1]);print('{"status":"PASS","scope":"ordinary native logout and cold login requirement"}')
