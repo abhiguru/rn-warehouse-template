@@ -2017,3 +2017,18 @@ not accelerated by changing policy/time. Revocation uses the ordinary authentica
 admin enrollment decision against reserved fictional customer874 only. Its
 private token, UUID binding, exclusive emulator and artifact audit are still
 prerequisites. No automatic next-case launch is scheduled.
+
+
+### GRN-fix CI review completed — 2026-10-01
+
+[CI36854228659](https://github.com/abhiguru/rn-warehouse-template/actions/runs/36854228659)
+completed PASS on exact head5619ac8962096fa3c1479f358cbfa92370c8567a, containing
+application fix0445227. All four jobs passed: lint/type/tests/setup/Expo/Android
+JS bundle, Android debug artifact build/audit, dependency audit and redacted
+source/history scan. This closes the pending CI review for that candidate.
+It does not establish standalone new-APK installation/native GRN navigation,
+physical acceptance or the later session-tooling head's CI. Those remain separate.
+The bounded private CI observer saved exact-head/job results; no action was
+replayed in the eight-hour suite. The operator session driver preparation is
+sourcecec94766bf6a025d712482c441f58b8e5409c37b, with56setup/syntax/lint PASS and
+live/native integration still NOT TESTED.
