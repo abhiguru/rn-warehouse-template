@@ -10,7 +10,12 @@ class Gallery(auth.Auth):
     external=False
     def snapshot(self):
         self.health();window=self.adb('shell','dumpsys','window');foreground(window,soak.PACKAGE,self.external)
-        cap=self.i['uiCapture'];raw=self.adb('exec-out','env','CLASSPATH=/system/framework/uiautomator.jar:'+cap['remotePath'],'app_process','/system/bin','FixtureUiCapture');m=re.search(r'(<hierarchy\b.*?</hierarchy>)',raw,re.S);assert m
+        picker=any(package+'/' in window for package in PICKER_PACKAGES)
+        cap=self.gallery_capture if picker else self.i['uiCapture']
+        assert hashlib.sha256(soak.private(cap['jar']).read_bytes()).hexdigest()==cap['sha256']
+        assert self.adb('shell','sha256sum',cap['remotePath']).split()[0]==cap['sha256']
+        main='FixtureGalleryCapture' if picker else 'FixtureUiCapture'
+        raw=self.adb('exec-out','env','CLASSPATH=/system/framework/uiautomator.jar:'+cap['remotePath'],'app_process','/system/bin',main);m=re.search(r'(<hierarchy\b.*?</hierarchy>)',raw,re.S);assert m
         return ET.fromstring(m.group(1))
     def tap_image(self,label,filename):
         self.state['lastAction']=label;self.save();self.adb('shell','input','tap',*map(str,point(self.wait(label),label,filename)))
@@ -23,7 +28,12 @@ class Gallery(auth.Auth):
 def main(path):
     case=json.loads(soak.private(path).read_text());c,i=soak.config(case['soakConfig']);assert case['imagePolicy']=='deferred-single-book-image' and case['record']=='FXF502'
     fixture=soak.private(case['imageFixture']);assert fixture.name=='WAREHOUSE_FIXTURE_FXF502.png' and hashlib.sha256(fixture.read_bytes()).hexdigest()==case['imageFixtureSHA256']
-    d=Gallery(c,i,'unused',0);helper=str(Path(__file__).parent.parent/'fixture-receipt-observe.mjs')
+    d=Gallery(c,i,'unused',0)
+    d.gallery_capture=json.loads(soak.private(case['galleryCapture']).read_text())
+    assert d.gallery_capture['api']==30 and d.gallery_capture['mainClass']=='FixtureGalleryCapture'
+    assert d.gallery_capture['viewport']==[720,1280]
+    assert d.gallery_capture['sourceSHA256']==hashlib.sha256(Path(__file__).with_name('FixtureGalleryCapture.java').read_bytes()).hexdigest()
+    helper=str(Path(__file__).parent.parent/'fixture-receipt-observe.mjs')
     def observe(phase):
         q=d.backend_process(helper,[str(Path(path).resolve()),phase]);assert q.returncode==0,'Independent deferred-image observation refused'
     observe('guard');f=os.open(Path(case['soakConfig']).parent/'fixture-session-actor.lock',os.O_RDWR|os.O_NOFOLLOW);fcntl.flock(f,fcntl.LOCK_EX|fcntl.LOCK_NB)
@@ -38,6 +48,8 @@ def main(path):
             except AssertionError:d.adb('shell','input','swipe','360','1000','360','500','350')
         else:raise AssertionError('Visible Add Photos not available')
         d.tap_image('Add Photos ',fixture.name);d.tap_image('PHOTO LIBRARY',fixture.name);d.external=True
+        t=d.wait('Recent');labels={v for n in t.iter('node') for v in [n.get('text'),n.get('content-desc')] if v}
+        if 'List view' in labels:d.tap_image('List view',fixture.name)
         t=d.wait(fixture.name);d.archive('picker-before-exact-file');d.tap_image(fixture.name,fixture.name);time.sleep(1)
         window=d.adb('shell','dumpsys','window')
         if any(package+'/' in window for package in PICKER_PACKAGES):

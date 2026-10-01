@@ -52,7 +52,7 @@ def main(path):
                 'fixture-ui/receipt-draft-api30.py',
                 'fixture-ui/receipt_draft_controls.py', 'fixture-ui/dispatch_draft_controls.py', 'fixture-ui/soak-api30.py',
                 'fixture-ui/fixture_observation.py', 'fixture-ui/auth-api30.py']
-    required += ['fixture-ui/receipt-image-picker-api30.py', 'fixture-ui/receipt_image_controls.py']
+    required += ['fixture-ui/receipt-image-picker-api30.py', 'fixture-ui/receipt_image_controls.py', 'fixture-ui/FixtureGalleryCapture.java']
     assert set(case['toolingSHA256']) == set(required), 'Complete case source bindings required'
     def bindings():
         assert all(digest(scripts / name) == case['toolingSHA256'][name] for name in required), 'Case tooling changed'
