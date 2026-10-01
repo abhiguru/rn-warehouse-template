@@ -97,3 +97,68 @@ Preparation639: mobile setup63/63 PASS. The source validator consumes the indepe
 observation envelope, including the empty pre-retry boundary. No live relay was
 replaced and no native write case ran. Backend observer source0dc7392 remains a
 review candidate until post-soak installation and exact-artifact native validation.
+
+## Read-only partial-dispatch adapter640
+
+`scripts/fixture-dispatch-observe.mjs` now prepares database observations for
+**direct partial dispatch only**. It does not prepare forms, arm/disarm the relay,
+retry writes, verify an installed APK, perform native actions or aggregate a case
+PASS. The SQL adapter is source-reviewed against the recorded backend schema;
+actual SQL execution against a released fixture remains NOT TESTED.
+
+Create a private0600 JSON config under an owned0700 directory outside Git, with:
+
+| Field | Required value |
+| --- | --- |
+| scope / kind | `isolated-fictional-dispatch-observation` / `dispatch` |
+| record / sourceReceipt | Separate reserved `FXF` numbers (2–5digits), independently checked unused dispatch and owned source receipt |
+| stockLineId / instanceId | Exact private source-line UUID and owned fixture instance UUID |
+| quantity | Positive integral quantity strictly less than source stock |
+| phase | `before-upstream` or `after-upstream-success` |
+| artifactSHA256 | Exact audited installed artifact hash; the native runner must independently verify it |
+| fixtureGuardSHA256 | Hash of the unchanged owning backend `tests/operator-fixture.mjs` |
+| backendCheckout / backendState | Absolute paths to the owning isolated fixture checkout and state |
+| faultSocket | Absolute protected socket path for the reviewed relay with observations support |
+| caseDirectory | New existing owned0700 directory for this attempt, outside Git |
+| priorRunUnit / priorRunLedger / priorPlanSHA256 | Completed successful soak unit, private ledger path and exact frozen plan hash |
+
+After the release guard, artifact/transport checks, fixture ownership and exclusive
+case lock have passed, run through the same effective Docker access used by the
+fixture. Use absolute Node22 and config paths; keep command output private:
+
+```sh
+node scripts/fixture-dispatch-observe.mjs /absolute/private/case.json guard
+node scripts/fixture-dispatch-observe.mjs /absolute/private/case.json baseline
+# Native driver prepares the unused form, arms and submits once, observes error.
+node scripts/fixture-dispatch-observe.mjs /absolute/private/case.json after-loss
+# Validate lossEvidence with actual UI evidence BEFORE allowing unchanged retry.
+# Native driver retries once and records actual success plus unchanged form proof.
+node scripts/fixture-dispatch-observe.mjs /absolute/private/case.json after-retry
+# Validate retryEvidence and preserve the complete case before cleanup.
+```
+
+Each phase saves its own exclusive-create0600 JSON; an existing file is never
+replaced. Output `PASS` is explicitly scoped `readonly-observation-only`, not a
+native/business-case result. The adapter checks unchanged relay status and
+observations around one repeatable-read, read-only SQL transaction (10s statement
+limit/15s child timeout). It never places the database password in argv or prints
+raw database/transport failures. Never substitute expected UI booleans into the
+saved evidence merely to make a predicate pass.
+
+`sourceBound` proves the stock line belongs to the reserved, undeleted receipt;
+`wrongStockLines` must remain zero. The unrelated-business digest includes complete
+receipts and every receipt-line field except the selected stock value, other
+dispatches/lines, all invoices/lines, orders/items, auto-invoice errors and Storage
+object metadata. Only the target dispatch/lines and selected stock value are
+excluded. It does not claim coverage of all database tables, authentication,
+Storage bytes or images; those require separate evidence. Target cache lookup
+matches the observed key or the target header UUID, and verifies the dispatch RPC
+and cached header. Do not use this direct partial-dispatch adapter for cart-driven
+writes, final depletion, receipts or image mutations.
+
+Validation640: three new input/stock/SQL-construction regressions; setup66/66 PASS.
+The real CLI with a deliberately nonexistent backend path refused the active soak
+as BLOCKED before backend import, socket/SQL access or output-directory creation.
+That guard config is marked TEST ONLY and must never become a live case config.
+Native draft driver, independent artifact/transport binding, exclusive orchestration
+and actual SQL/native integration remain pending. No warehouse transaction ran.

@@ -62,3 +62,5 @@ claim follows from these source checks or a successful emulator soak.
 Prepared session-case drivers and their pending setup/native checks are documented in [OPERATOR_SESSION_CASES.md](OPERATOR_SESSION_CASES.md). The active soak already covers normal renewal; do not repeat it merely to add an expiry checkbox. Natural refresh expiry requires the actual seven-day lifetime.
 
 The [write retry specification](OPERATOR_WRITE_RETRY_CASES.md) provides tested pure reconciliation predicates. Backend observer source0dc7392 closes the missing-source blocker; deployment and native adapter integration remain pending. Retained relay status alone is insufficient.
+
+Read-only direct partial-dispatch adapter640 is prepared with setup66PASS and active-run refusal verified. Its SQL/native integration, draft driver and exclusive case orchestration remain pending; observation-only PASS is not case acceptance.

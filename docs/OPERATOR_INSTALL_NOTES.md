@@ -2061,3 +2061,16 @@ pre-retry observations and exactly one matching post-loss request afterward,
 rejecting overflow, concurrency, changed keys and extra requests. Setup63/63 PASS.
 No live relay/device change: native draft/SQL adapters and post-soak deployment
 still pending; the source fix does not close installed-artifact native acceptance.
+
+### Read-only dispatch adapter preparation640 — 2026-10-01
+
+Separate mobile review checkout based on d907c90; Node22.23.3/Ubuntu24.04.3.
+Added guarded repeatable-read dispatch snapshots and strictly reserved source-line
+binding. `npm run test:setup` PASS66, including three new boundary regressions.
+Actual CLI negative test returned BLOCKED for active soak before backend import,
+SQL/socket access or evidence-directory creation. No live SQL/native case executed.
+
+The [main write-retry sequence](OPERATOR_WRITE_RETRY_CASES.md) documents exact config,
+phase commands, hash coverage and limits. This adapter covers direct partial
+fictional dispatch, not receipt/image/cart/final-dispatch policy. Native driver,
+exclusive orchestration and released-fixture SQL integration remain NOT TESTED.
