@@ -1,6 +1,6 @@
 import unittest
 import xml.etree.ElementTree as ET
-from navigation_controls import point, disconnect, reconnect
+from navigation_controls import point, disconnect, reconnect, allowed_origin, malformed_origins
 
 class Controls(unittest.TestCase):
     def test_foreign_ports_and_unknown_radio_inputs_refused_before_adb(self):
@@ -28,6 +28,16 @@ class Controls(unittest.TestCase):
             with self.assertRaises(AssertionError):point(tree,label)
         tree.append(ET.fromstring('<node text="CANCEL" class="android.widget.TextView"/>'))
         self.assertEqual(point(tree,'CANCEL'),(25,25))
+
+    def test_only_exact_fictional_malformed_origins_are_allowed(self):
+        for value,message in malformed_origins():
+            allowed_origin(value);self.assertTrue(message)
+        for value in ['https://production.example','https://backend-core.example.test.evil','https://backend-core.example.test/other']:
+            with self.assertRaises(AssertionError):allowed_origin(value)
+        tree=ET.fromstring('<hierarchy><node text="OK" enabled="true" class="android.widget.Button" bounds="[1,1][50,50]"/></hierarchy>')
+        with self.assertRaises(AssertionError):point(tree,'OK')
+        tree.append(ET.fromstring('<node text="Server Unavailable"/>'))
+        self.assertEqual(point(tree,'OK'),(25,25))
 
     def test_reconnect_never_overwrites_an_occupied_route(self):
         calls=[]

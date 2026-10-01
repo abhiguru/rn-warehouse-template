@@ -2,12 +2,14 @@
 import re
 
 ALLOWED = {'Change Warehouse Server', 'Change warehouse server', 'Check server',
-           'Use this server', 'CHANGE SERVER', 'CANCEL', 'Refresh orders', 'Orders tab'}
+           'Use this server', 'CHANGE SERVER', 'CANCEL', 'OK', 'Refresh orders', 'Orders tab'}
 
 def point(tree, label, editable=False):
     assert label == 'Server origin' if editable else label in ALLOWED
+    if label == 'OK':
+        assert any(n.get('text') == 'Server Unavailable' for n in tree.iter('node')), 'Only bound discovery error acknowledgement'
     nodes = [n for n in tree.iter('node') if label in [n.get('text'), n.get('content-desc')]]
-    if not editable and label in {'Change Warehouse Server', 'Change warehouse server', 'Check server', 'Use this server', 'CHANGE SERVER', 'CANCEL'}:
+    if not editable and label in {'Change Warehouse Server', 'Change warehouse server', 'Check server', 'Use this server', 'CHANGE SERVER', 'CANCEL', 'OK'}:
         nodes = [n for n in nodes if n.get('class') == 'android.widget.Button']
     assert len(nodes) == 1, 'Exact unique navigation control required'
     n = nodes[0]
@@ -63,3 +65,13 @@ def reconnect(adb, original, port):
         adb('shell', 'svc', service, 'enable' if original[name] == '1' else 'disable')
     for name in original:
         assert adb('shell', 'settings', 'get', 'global', name) == original[name]
+
+
+def malformed_origins():
+    error='Configure an HTTP(S) origin without credentials, a path, or query parameters.'
+    return [('http://backend-core.example.test','Enter an HTTPS server origin.'),
+            ('https://backend-core.example.test/path',error),
+            ('https://backend-core.example.test?fixture=1',error)]
+
+def allowed_origin(value):
+    assert value in {'https://backend-core.example.test','https://backend-switch.example.test',*[v for v,_ in malformed_origins()]}, 'Only exact fictional origins and bounded malformed cases'

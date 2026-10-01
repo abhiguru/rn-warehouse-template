@@ -23,7 +23,7 @@ import time
 import xml.etree.ElementTree as ET
 from dispatch_case_controls import owned_reverse_route
 from fixture_observation import decode_observation
-from navigation_controls import point, settings, disconnect, reconnect
+from navigation_controls import point, settings, disconnect, reconnect, malformed_origins, allowed_origin
 
 spec = importlib.util.spec_from_file_location('fixture_soak', Path(__file__).with_name('soak-api30.py'))
 soak = importlib.util.module_from_spec(spec); spec.loader.exec_module(soak)
@@ -74,7 +74,7 @@ class Navigation(soak.Soak):
         self.state['publicSelectionMatches']=True
 
     def fill_origin(self, value):
-        assert value in {'https://backend-core.example.test', 'https://backend-switch.example.test'}
+        allowed_origin(value)
         self.adb('shell', 'input', 'tap', *map(str, point(self.wait('Server origin'), 'Server origin', True)))
         fields = [n for n in self.snapshot().iter('node') if n.get('class') == 'android.widget.EditText' and n.get('focused') == 'true']
         assert len(fields) == 1 and fields[0].get('content-desc') == 'Server origin'
@@ -204,6 +204,21 @@ def main(path):
             while 'No internet connection' in labels(driver.snapshot()):
                 assert time.monotonic()<deadline; time.sleep(1)
             fresh_orders(); driver.state['phases'].append('RECONNECT_CURRENT_ORDERS200')
+        elif case['case'] == 'malformed-server':
+            driver.wait('View profile for '+case['profileName'])
+            for _ in range(7):
+                if 'Change Warehouse Server' in labels(driver.snapshot()): break
+                driver.adb('shell','input','swipe','360','1050','360','450','400')
+            driver.tap('Change Warehouse Server')
+            for origin,message in malformed_origins():
+                driver.fill_origin(origin);driver.tap('Check server')
+                driver.wait('Server Unavailable');driver.wait(message)
+                assert 'Use this server' not in labels(driver.snapshot()), 'Invalid discovery candidate appeared'
+                driver.tap('OK')
+                driver.state['phases'].append('MALFORMED_ORIGIN_REFUSED:'+origin);driver.save()
+            driver.cold();driver.wait('Orders tab');fresh_orders()
+            driver.selected_server(evidence,'https://backend-core.example.test',case['instanceId'])
+            driver.state['phases'].append('SELECTION_SESSION_PRESERVED_COLD_READ')
         else:
             driver.wait('View profile for '+case['profileName'])
             for _ in range(7):

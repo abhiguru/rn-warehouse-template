@@ -1,4 +1,11 @@
-# Operator acceptance checkpoint — 2026-10-01
+# Current VM campaign
+
+The active VM-only campaign and newer artifact results are recorded in
+[the campaign checkpoint](OPERATOR_VM_ACCEPTANCE_20261001.md). The tables below
+retain the earlier installed-artifact history; they do not describe the current
+fictional fixtures or transfer the old soak PASS to new APKs.
+
+# Historical operator acceptance checkpoint — 2026-10-01
 
 This dated index separates source, API, emulator and physical evidence. Consult
 the private soak ledger for live progress. Preserve all failed attempts in
