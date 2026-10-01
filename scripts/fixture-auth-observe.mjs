@@ -6,6 +6,7 @@ import { spawnSync } from 'node:child_process';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { assertReleased, privateJSON } from './fixture-session-guards.mjs';
+import { pendingReadOnlyMode } from './fixture-auth-controls.mjs';
 process.umask(0o077);
 try {
   const [path, phase] = process.argv.slice(2);
@@ -16,6 +17,7 @@ try {
   const ui = privateJSON(c.soakConfig);
   const secondary = c.origin === 'https://backend-switch.example.test';
   const replacement = c.replacementFixture === true;
+  const pendingReadOnly = pendingReadOnlyMode(c,secondary,replacement);
   if (Object.hasOwn(c,'replacementFixture')) assert.equal(typeof c.replacementFixture,'boolean');
   assert.ok(secondary || c.origin === 'https://backend-core.example.test');
   if (replacement) {
@@ -58,13 +60,15 @@ COMMIT;`;
     assert.equal(q.status,0,'PRIVATE_AUTH_OBSERVATION_FAILED');
     const snapshot = JSON.parse(q.stdout);
     if (replacement) {assert.equal(snapshot.primaryAdministratorPresent,false);assert.equal(snapshot.profile?.name,c.profileName);assert.equal(snapshot.profile?.role,'admin');assert.equal(snapshot.profile?.active,true);}
+    if (pendingReadOnly) {assert.equal(snapshot.profile?.status,'pending');assert.equal(snapshot.profile?.active,false);assert.deepEqual(snapshot.sessions,[]);}
     if (phase === 'before') {
       assert.ok((snapshot.quota?.hourly ?? 0)<5 && (snapshot.quota?.daily ?? 0)<20,'ORDINARY_AUTH_QUOTA_EXHAUSTED');
     } else {
       const before = privateJSON(resolve(c.caseDirectory,'auth-before.json')).snapshot;
       assert.equal(snapshot.businessHash,before.businessHash,'AUTH_CHANGED_BUSINESS_DATA');
       assert.equal(snapshot.otherAuthHash,before.otherAuthHash,'AUTH_CHANGED_UNRELATED_ACCOUNTS');
-      assert.equal(snapshot.otpVerified,before.otpVerified+1,'ONE_ORDINARY_VERIFICATION_REQUIRED');
+      if (pendingReadOnly) assert.deepEqual(snapshot,before,'PENDING_READ_CHANGED_STATE');
+      else assert.equal(snapshot.otpVerified,before.otpVerified+1,'ONE_ORDINARY_VERIFICATION_REQUIRED');
       assert.equal(snapshot.profile?.name,c.profileName,'PROFILE_NAME_MISMATCH');
       if (c.expected === 'authenticated') {
         assert.equal(snapshot.profile?.role,c.role); assert.equal(snapshot.profile?.active,true);
