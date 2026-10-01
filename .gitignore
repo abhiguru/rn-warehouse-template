@@ -41,3 +41,5 @@ npm-debug.*
 
 # Backup files
 *.backup.*
+# Local Python fixture helper bytecode is not source or evidence.
+scripts/fixture-ui/__pycache__/
