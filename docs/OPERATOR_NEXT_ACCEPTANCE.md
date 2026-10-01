@@ -70,3 +70,10 @@ authentication stays blocked; isolated fictional evidence is separate. Do not
 request the same missing input again. Printing, sensors, iPhone, external alerts,
 rotation, deferred image-security research, recovery rehearsal and production/pilot
 changes remain outside this exercise. Preserve every historical failure and gate.
+
+
+Source work652–656 is saved: local-only replacement cleanup, guarded offline/switch
+drivers, one-attempt query writes, scoped acceptance index and clean-source guide
+checks. Pin explicit mobile2fbf238/backendbed4 as documented; new APK/complete-schema
+driver integration/full local new-backend setup remain gated. Clean source checks
+and configuration-only rerun PASS do not close standalone/native acceptance.
