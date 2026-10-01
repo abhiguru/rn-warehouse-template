@@ -18,3 +18,10 @@ test('stock source mismatch, wrong dispatched line and final depletion are refus
   dispatchSnapshotShape(c, s, true);
   for (const patch of [{ sourceLineCount: 2 }, { sourceQuantity: 11 }, { sourcePackageMark: 'wrong' }, { sourceBound: false }, { wrongStockLines: 1 }, { stock: 2 }, { stock: 0 }]) assert.throws(() => dispatchSnapshotShape(c, { ...s, ...patch }, true));
 });
+
+test('only the selected receipt audit timestamp is omitted from the unrelated hash', () => {
+  const q = dispatchSnapshotSQL(c);
+  assert.match(q, /CASE WHEN gr_no='FXF900' THEN to_jsonb\(g\)-'updated_at' ELSE to_jsonb\(g\) END/);
+  assert.ok(!q.includes("to_jsonb(g)-'updated_by'"));
+  assert.ok(!q.includes("to_jsonb(g)-'out_of_stock'"));
+});

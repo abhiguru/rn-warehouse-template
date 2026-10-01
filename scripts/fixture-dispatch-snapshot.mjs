@@ -41,7 +41,7 @@ SELECT jsonb_build_object(
  'cacheSuccess',(SELECT bool_and(response->>'success'='true' AND rpc_function='create_dispatch_with_stock_check') FROM cache),
  'cachedHeaderId',(SELECT min(response->>'dispatch_id') FROM cache),
  'unrelatedBusinessHash',encode(extensions.digest(jsonb_build_object(
-  'receipts',(SELECT jsonb_agg(to_jsonb(g) ORDER BY id) FROM public.goodsreceived g),
+  'receipts',(SELECT jsonb_agg(CASE WHEN gr_no='${c.sourceReceipt}' THEN to_jsonb(g)-'updated_at' ELSE to_jsonb(g) END ORDER BY id) FROM public.goodsreceived g),
   'receiptLines',(SELECT jsonb_agg(CASE WHEN id='${c.stockLineId}' THEN to_jsonb(t)-'stock' ELSE to_jsonb(t) END ORDER BY id) FROM public.goodsreceived_trl t),
   'dispatch',(SELECT jsonb_agg(to_jsonb(d) ORDER BY id) FROM public.dispatch d WHERE disp_no<>'${c.record}'),
   'dispatchLines',(SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM public.dispatch_trl t WHERE disp_id NOT IN (SELECT id FROM target)),

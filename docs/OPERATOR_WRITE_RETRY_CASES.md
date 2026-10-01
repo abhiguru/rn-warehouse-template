@@ -337,3 +337,13 @@ write. Its relay and independent business/stock/cache evidence showed no request
 or change. That case remains BLOCKED after two corrected campaign reruns. The
 confirmation selector now requires the exact native Button for Submit/OK and
 continues to refuse competing Buttons; independent reserved cases use new bindings.
+
+The separate after-commit integration produced the injected native network error,
+one successful dispatch, stock 20→17 and one cached result. Its observer stopped
+before retry because the source receipt audit timestamp changes when dispatch
+updates out_of_stock. A read-only reconstruction changing only that timestamp
+exactly reproduced the preserved pre-write hash. The committed document is
+preserved and the stopped runner is not resumed. Future fresh cases omit only
+that selected receipt's updated_at from the unrelated hash; all other receipt
+fields and all other receipts remain included. This evidence does not establish
+a successful unchanged retry for that stopped case.
