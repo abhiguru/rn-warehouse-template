@@ -298,6 +298,7 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                             value={currentItem.item_name}
                             placeholder="Type to search..."
                             fetchData={searchItems}
+                            suggestionPlacement="inline"
                             getItemAccessibilityLabel={(item) => `Select receipt item ${item.name}`}
                             onSelect={(item) => {
                                 if (item) {
