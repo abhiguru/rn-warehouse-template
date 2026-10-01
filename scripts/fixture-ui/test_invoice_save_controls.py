@@ -13,4 +13,8 @@ class SaveControls(unittest.TestCase):
  def test_duplicate_create_refused(self):
   t=E.fromstring('<hierarchy><node text="Create" enabled="true" class="android.widget.Button" bounds="[10,10][40,40]"/><node text="Create" enabled="true" class="android.widget.Button" bounds="[50,10][80,40]"/></hierarchy>')
   with self.assertRaises(AssertionError):point(t,'Create')
+ def test_one_parent_child_control_allowed_but_two_controls_refused(self):
+  t=E.fromstring('<hierarchy><node text="Search and select GRN..." enabled="true" bounds="[51,827][606,877]"><node text="Search and select GRN..." enabled="true" bounds="[51,827][606,877]"/></node></hierarchy>');self.assertEqual(point(t,'Search and select GRN...'),(328,852))
+  t[0][0].set('bounds','[52,827][606,877]')
+  with self.assertRaises(AssertionError):point(t,'Search and select GRN...')
 if __name__=='__main__':unittest.main()
