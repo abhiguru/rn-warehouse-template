@@ -2151,3 +2151,19 @@ backendbed4eee local dependency-gate correction without clearing image/runtime g
 Validation645: `npm test -- --watch=false` PASS257/40suites, typecheck PASS,
 lint0errors/1463warnings. The unchanged setup scripts retain643's69PASS evidence;
 no duplicate fixture/native run was performed.
+
+### GRN keypad selector correction646 — 2026-10-01
+
+The dispatch GRN picker renders prefix counts next to numeric keypad buttons;
+a count such as9 can duplicate the keypad's9 text. The strict draft selector
+correctly refuses duplicate controls, so text-only digit taps could block an
+unattended draft. Added explicit button accessibility names `Use GRN prefix …`
+and `Enter GRN digit …`, and updated the draft driver to select those names.
+Handlers, search behavior and displayed values are unchanged.
+
+A synthetic native hierarchy regression reproduces the duplicate-label refusal
+and verifies the named button selection, including disabled-button rejection.
+`npm run test:setup` PASS69 (the existing Python test group now has5cases),
+typecheck PASS, targeted component lint0errors/3existingwarnings, Python syntaxPASS.
+This does not establish actual Android accessibility exposure; a newly built APK
+and native selector verification remain required. Active emulator/runtime untouched.

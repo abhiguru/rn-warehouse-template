@@ -103,8 +103,8 @@ def main(path):
             driver.tap('Select supervisor...'); driver.tap('Core Demo Administrator')
         driver.tap('Go to Items step')
         driver.tap('Select GR No')
-        driver.tap('FXF')
-        for digit in case['sourceReceipt'][3:]: driver.tap(digit)
+        driver.tap('Use GRN prefix FXF')
+        for digit in case['sourceReceipt'][3:]: driver.tap('Enter GRN digit ' + digit)
         driver.tap(case['sourceReceipt'])
         driver.tap('Select item'); driver.tap('Backend Test Potatoes')
         # The app can auto-select a single lot; otherwise select its exact visible label.

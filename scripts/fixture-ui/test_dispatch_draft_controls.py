@@ -15,6 +15,15 @@ class Controls(unittest.TestCase):
         t = tree(); t.append(list(t)[0])
         with self.assertRaises(AssertionError): point(t, 'Create Dispatch')
 
+    def test_digit_accessibility_label_disambiguates_prefix_count(self):
+        t = tree('9')
+        key = ET.SubElement(t, 'node', {'text': '9', 'content-desc': 'Enter GRN digit 9',
+                             'enabled': 'true', 'bounds': '[200,400][300,500]', 'class': 'android.widget.Button'})
+        with self.assertRaises(AssertionError): point(t, '9')
+        self.assertEqual(point(t, 'Enter GRN digit 9'), (250,450))
+        key.set('enabled', 'false')
+        with self.assertRaises(AssertionError): point(t, 'Enter GRN digit 9')
+
     def test_mutation_and_auth_controls_refused(self):
         for label in ['Submit', 'Submit Dispatch', 'Discard', 'Send OTP', 'Retry']:
             with self.assertRaises(AssertionError): point(tree(label), label)
