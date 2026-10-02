@@ -1,5 +1,6 @@
 // Bounded fixture transport and native child. No tokens, OTP or raw requests in evidence.
 import assert from 'node:assert/strict';
+import {setTimeout,clearTimeout} from 'node:timers';
 import {readFileSync,writeFileSync,renameSync,mkdirSync,lstatSync,realpathSync} from 'node:fs';
 import {resolve,dirname} from 'node:path';
 import {fileURLToPath,pathToFileURL} from 'node:url';
