@@ -52,3 +52,5 @@ test('reverse GRN switch binds independent genuine instances and exact administr
  for(const change of [{draftKind:'customer'},{profileId:c.profileId},{origin:c.origin},{targetInstanceId:c.targetInstanceId},{confirmedDraftSwitchBack:'true'}])assert.throws(()=>confirmedDraftConfig({...reverse,...change}));
  const reversedBefore=globalThis.structuredClone(before);reversedBefore.source.instanceId=reverse.instanceId;reversedBefore.source.profile={id:reverse.profileId,role:'admin',active:true,status:'approved'};reversedBefore.destination.instanceId=reverse.targetInstanceId;confirmedDraftBefore(reverse,reversedBefore);
 });
+
+test('reverse invoice switch accepts only genuine independently owned warehouse identities',()=>{const reverse={...c,confirmedDraftSwitchBack:true,draftKind:'invoice',origin:c.targetOrigin,instanceId:c.targetInstanceId,targetOrigin:c.origin,targetInstanceId:c.instanceId,profileId:'8f5c3a24-ae9f-4cc8-952f-e42cfb5ddd29'};confirmedDraftConfig(reverse);for(const change of [{draftKind:'dispatch'},{profileId:c.profileId},{targetOrigin:c.targetOrigin}])assert.throws(()=>confirmedDraftConfig({...reverse,...change}));});

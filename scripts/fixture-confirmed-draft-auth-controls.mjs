@@ -9,7 +9,7 @@ export function confirmedDraftAuthMode(c,secondary,replacement){
  assert.equal(c.origin,returning?'https://backend-core.example.test':'https://backend-switch.example.test');assert.equal(c.instanceId,returning?'b0ec3933-5258-4bd5-87f4-d57b13a78971':'c7ee3314-4dee-4361-81df-7821cdcb1b4a');
  assert.equal(c.phone,returning?'919888888874':'919888888881');assert.equal(c.profileName,returning?'New customer':'Switch Demo Administrator');assert.equal(c.profileId,returning?'947136fa-997b-4a83-819d-1b8bd3ecba68':'8f5c3a24-ae9f-4cc8-952f-e42cfb5ddd29');
  assert.equal(c.role,returning?'supervisor':'admin');assert.equal(c.expected,'authenticated');
- if(returning)assert.equal(c.confirmedDraftKind,'grn');assert.equal(c.artifactSHA256,'a7df6781bdcd889eb9ccaa01ee0973890effd4d187bb6ac45f100284e1b04b69');
+ if(returning)assert.ok(['grn','invoice'].includes(c.confirmedDraftKind));assert.equal(c.artifactSHA256,'a7df6781bdcd889eb9ccaa01ee0973890effd4d187bb6ac45f100284e1b04b69');
  assert.ok(['customer','grn','dispatch','invoice'].includes(c.confirmedDraftKind));
  assert.ok(Number.isSafeInteger(c.expectedProcessPID)&&c.expectedProcessPID>0);
  for(const key of ['pendingReadOnly','approvedEnrollmentExit','customerReadOnly','disabledAuthentication','rejectedAuthentication','customerBApprovedAuthentication'])assert.notEqual(c[key],true);

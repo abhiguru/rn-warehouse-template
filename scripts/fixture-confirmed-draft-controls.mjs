@@ -21,7 +21,7 @@ export function confirmedDraftConfig(c){
  assert.equal(c.targetOrigin,returning?'https://backend-core.example.test':'https://backend-switch.example.test');
  assert.equal(c.targetInstanceId,returning?'b0ec3933-5258-4bd5-87f4-d57b13a78971':'c7ee3314-4dee-4361-81df-7821cdcb1b4a');
  assert.equal(c.profileId,returning?'8f5c3a24-ae9f-4cc8-952f-e42cfb5ddd29':'947136fa-997b-4a83-819d-1b8bd3ecba68');
- if(returning)assert.equal(c.draftKind,'grn');
+ if(returning)assert.ok(['grn','invoice'].includes(c.draftKind));
  assert.match(c.sessionId,uuid);
  assert.ok(['customer','grn','dispatch','invoice'].includes(c.draftKind));
  for(const k of ['backendCheckout','backendState','targetBackendCheckout','targetBackendState','soakConfig','caseDirectory'])assert.ok(isAbsolute(c[k]),'ABSOLUTE_OWNED_PATH_REQUIRED');
