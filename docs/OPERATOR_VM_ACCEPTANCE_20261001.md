@@ -1089,3 +1089,20 @@ evidence. This does not establish full multi-step draft payload acceptance,
 in-flight requests/uploads/saves, positive invoice arithmetic/save/PDF workflows
 or the capped baseline cases. Those remain separately open or blocked. Final
 readiness, new soak and delayed-expiry appointment remain unstarted.
+
+Independent four-header-draft audit PASS. Private
+four-confirmed-header-drafts0110-final-proof.json SHA256
+3332ce0beff49affce8b2940cf42dfec4348a5c4ef1af4df9680a06ed9b5ff74
+binds each actual source draft, original native result, corrected reconciliation
+where applicable, ordinary auth before/after, same-process cleared-form XML,
+cold Orders XML and immutable continuation ledger. It checks one confirmation,
+zero business writes, one ordinary verification/session per continuation,
+unchanged prior sessions and protected state, exact process continuity before
+cold restart and exact destination selection. Customer's original FAIL remains
+bound and preserved. Scope is four header drafts only.
+
+Confirmed in-flight Orders switching remains NOT TESTED. Existing fixture
+Orders transport accepts at most five seconds and its proxy has a fifteen-second
+deadline. A longer confirmation-spanning hold requires separately guarded
+source changes, real timing evidence and helper replacement/reconciliation;
+none was installed or represented as a native pass at this checkpoint.
