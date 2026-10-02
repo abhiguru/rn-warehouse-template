@@ -1,0 +1,19 @@
+import assert from 'node:assert/strict';
+import {spawnSync} from 'node:child_process';
+import {queueStorageHash} from './fixture-queue-processing-snapshot.mjs';
+export function receiptQuantityConfig(c){
+ const exact={scope:'isolated-fictional-native-receipt-quantity-rejection',profileId:'947136fa-997b-4a83-819d-1b8bd3ecba68',profileName:'New customer',role:'supervisor',origin:'https://backend-core.example.test',instanceId:'b0ec3933-5258-4bd5-87f4-d57b13a78971',record:'FXV991',versionCode:2026100110,applicationCommit:'c422f62cd36cb407e7ed7bfce28c4db5189e2bd5'};
+ for(const[k,v]of Object.entries(exact))assert.equal(c[k],v);assert.deepEqual(c.quantities,['0','-1','1.5']);assert.match(c.artifactSHA256,/^[a-f0-9]{64}$/);assert.notEqual(c.artifactSHA256,'08271dada3bf90ed6912db71c0e08f95487a906d12a765bcaa706338bdf12fb7');assert.match(c.sessionId,/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/);return c;
+}
+export function receiptQuantitySQL(c){
+ receiptQuantityConfig(c);const tables=['goodsreceived','goodsreceived_trl','dispatch','dispatch_trl','invoice','invoice_trl','orders','order_items','stock_movements','grn_images','dispatch_images','idempotency_keys','auto_invoice_errors','customers','items'];const pairs=tables.map(t=>`'${t}',(SELECT jsonb_agg(to_jsonb(x) ORDER BY id) FROM public.${t} x)`).join(',');
+ return `BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY;SET LOCAL statement_timeout='10s';SELECT jsonb_build_object(
+ 'profile',(SELECT jsonb_build_object('id',id,'name',name,'role',role,'active',active,'status',enrollment_status) FROM public.user_profiles WHERE mobile='919888888874'),
+ 'nativeSessionPresent',EXISTS(SELECT 1 FROM warehouse_security.refresh_sessions s JOIN public.user_profiles p ON p.auth_user_id=s.user_id WHERE p.mobile='919888888874' AND s.id='${c.sessionId}' AND s.expires_at>now()),
+ 'recordAbsent',NOT EXISTS(SELECT 1 FROM public.goodsreceived WHERE gr_no='${c.record}'),
+ 'businessHash',encode(extensions.digest(jsonb_build_object(${pairs},'storage',(SELECT jsonb_agg(to_jsonb(x) ORDER BY id) FROM storage.objects x))::text,'sha256'),'hex'),
+ 'authHash',encode(extensions.digest(jsonb_build_object('profiles',(SELECT jsonb_agg(to_jsonb(x) ORDER BY id) FROM public.user_profiles x),'sessions',(SELECT jsonb_agg(to_jsonb(x) ORDER BY id) FROM warehouse_security.refresh_sessions x),'assignments',(SELECT jsonb_agg(to_jsonb(x) ORDER BY id) FROM public.users_customers_new x),'otps',(SELECT jsonb_agg(to_jsonb(x) ORDER BY id) FROM public.otp_verifications x),'quotas',(SELECT jsonb_agg(to_jsonb(x) ORDER BY phone_number) FROM public.otp_rate_limits x),'enrollments',(SELECT jsonb_agg(to_jsonb(x) ORDER BY token_hash) FROM warehouse_security.enrollment_tokens x))::text,'sha256'),'hex'));COMMIT;`;
+}
+export function receiptQuantityBefore(c,s){receiptQuantityConfig(c);assert.deepEqual(s.profile,{id:c.profileId,name:c.profileName,role:c.role,active:true,status:'approved'});assert.equal(s.nativeSessionPresent,true);assert.equal(s.recordAbsent,true);for(const k of ['businessHash','authHash','storageHash'])assert.match(s[k],/^[a-f0-9]{64}$/);}
+export function receiptQuantityAfter(c,b,a){receiptQuantityBefore(c,b);receiptQuantityBefore(c,a);assert.deepEqual(a,b,'Receipt invalid-quantity case changed protected state; stop without replay');return{status:'PASS',scope:'protected SQL and stored bytes unchanged; native rejection evidence separate'};}
+export function receiptQuantitySnapshot(c,env){const q=spawnSync('docker',['exec','-i','-e','PGPASSWORD',env.WAREHOUSE_PROJECT_NAME+'-db-1','psql','-X','-qAt','-U','supabase_admin','-d','postgres','-v','ON_ERROR_STOP=1'],{input:receiptQuantitySQL(c),encoding:'utf8',timeout:15000,maxBuffer:1048576,env:{...process.env,PGPASSWORD:env.POSTGRES_PASSWORD}});assert.equal(q.status,0,'Owned read-only receipt quantity snapshot refused');const s=JSON.parse(q.stdout);s.storageHash=queueStorageHash(c.backendState);return s;}

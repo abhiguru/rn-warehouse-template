@@ -4,7 +4,7 @@ This campaign remains in progress. It uses the existing x86_64 VM and the owned 
 
 The completed eight-hour soak belongs exclusively to the older APK, build 2026100101. Its immutable plan, 54 bound inputs and PASS ledger remain preserved. None of its acceptance transfers to a later APK. The final new-artifact soak has **not started**; unresolved native writes and missing acceptance cases still block its gates.
 
-## Current evidence checkpoint, 2 October 19:13 UTC
+## Historical APK9 evidence checkpoint, 2 October 19:13 UTC
 
 The installed standalone x86_64 candidate is APK2026100109, application source
 `696165f4a4494c8b5652e4e98965ad05d600d10e`, SHA256
@@ -834,3 +834,38 @@ observer/driver and actual native execution still await the audited new APK.
 The build remains RUNNING. Monitor20:08UTC flags low swap during the bounded
 build; no emulator or additional heavy work is running. No build/native PASS
 is inferred from partial progress.
+
+## APK10 compiled audit and owned installation PASS
+
+Clean source c422f62 produced standalone x86_64 build2026100110. Exact SHA256
+`a7df6781bdcd889eb9ccaa01ee0973890effd4d187bb6ac45f100284e1b04b69`.
+Compiled audit, signature/package/version/ABI, bundled JavaScript, picker
+RN_SERIALIZABLE_STATE compile audit and all three fictional trust anchors
+PASS. Private build0110 retains commands, overlays, bindings and artifact.
+The build completed without competing native actor. Resource pressure during
+compile was caused by available RAM below the monitor's3GiB threshold; low
+swap was observed but is not that monitor's pressure predicate. Memory
+recovered after build completion before restart.
+
+The original owned AVD restarted under new capped supervisor
+`warehouse-fixture-emulator-vm2026100110-01.service`; exact stopped archive
+remains retained. Default shell UID/base hosts after boot were reconciled,
+then only proven prior root and two fictional bind mounts were restored,
+without remount/verity/reboot changes; SELinux remains enforcing. APK10
+installed in place after private app-storage preservation. Installed
+read-back SHA matches the exact audited artifact; normal fictional TLS and
+old APK identity were independently checked before upgrade. Separate
+`emulator-inputs0110.json` / `native-config0110.json` retain bindings. No
+logout, wipe, clone or restore occurred.
+
+Read-only monitor19 now watches the new supervisor; monitor18 logs/config are
+preserved. No native APK9 result transfers to APK10; cold authenticated
+readiness and native invalid-receipt acceptance remain pending. Dependency
+gate stays BLOCKED, and final readiness/soak/expiry appointment remain open.
+
+Receipt SQL/storage observer source is prepared for the exact corrected
+source/version and passed two refusal tests plus focused lint. It protects
+receipt/stock/cart/dispatch/invoice/image/cache/movement/customer/item/storage
+rows and all authentication rows, plus actual stored-byte hashes. Live
+observer and native driver execution remain pending; no invalid-receipt PASS
+is claimed.
