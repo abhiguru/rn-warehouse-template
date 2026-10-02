@@ -306,3 +306,9 @@ A distinct supervisor-only GRN header driver now requires the bound generated de
 All 188 tooling tests, Python syntax and lint passed. The generated-number implementation is read-only; its expected default must still be reconciled against current populated state before preparing a native attempt. This remains source preparation only, with ordinary supervisor preparation and native execution pending. Receipt creation/image acceptance and capped earlier attempts remain unchanged.
 
 The subsequent actual read-only generated-number checkpoint found zero eligible single-letter numeric GRNs and unchanged results across two snapshots. Under the reviewed number-generation contract this establishes the current `A0001` default without invoking a write or reserving a document number. Private evidence: `grn-generated-default-readonly01.json`. The native driver still requires an exact visible match before editing; future fixture changes require a fresh check. Supervisor preparation and native cancellation remain pending.
+
+## Unsaved dispatch cancellation source preparation
+
+A distinct supervisor-only dispatch-header driver edits only initially empty optional notes to `Fixture VM0109 unsaved dispatch`, cancels genuine different-warehouse selection, and requires the exact enabled visible marker to remain. The optional-fields toggle is uniquely matched to its nearest bounded clickable ancestor; occupied, duplicated, disabled and offscreen fields/controls are refused. It does not edit the dispatch number, select customer/stock, advance to review, save or submit. SQL preservation and normal-route cold Orders checks follow abandoning only the owned in-memory marker.
+
+All 190 tooling tests, Python syntax and lint passed. Native execution remains pending ordinary supervisor preparation. The driver does not rerun or clear capped before-upstream, after-commit or offline dispatch cases, and no dispatch commit is claimed.
