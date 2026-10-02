@@ -1,26 +1,31 @@
 # Warehouse switching acceptance
 
-Correction649 adds confirmation before discarding local state when a warehouse
-changes and clears dispatch rollback data on full reset. Source tests pass;
-native acceptance below is **NOT TESTED** on this correction. Historical normal
-round-trip623c applies to its older APK and does not cover these cases.
+The reviewed application confirms before discarding local state when a warehouse
+changes and clears dispatch rollback data on full reset. Acceptance below is
+scoped to each installed artifact. APK 0109 is the current x86_64 fixture candidate,
+not a frozen final artifact. See the chronological
+[VM acceptance ledger](OPERATOR_VM_ACCEPTANCE_20261001.md) for preserved failures,
+source/tooling identifiers and remaining gates. Historical passes do not transfer
+to APK 0109 or establish unsaved/in-flight behavior.
 
 ## Prerequisites
 
-Wait for the active soak to release the emulator and fixtures; require its final
-reconciliation, not merely a stopped unit. Build/audit/install a new APK containing
-649 plus the GRN/link/accessibility fixes under the
-[operator build instructions](OPERATOR_INSTALL_NOTES.md#reproducible-local-standalone-test-apk).
-Record the exact source pair, local overlays, APK hash/build ID and emulator OS.
-Use only the owned fictional core/switch fixtures and ordinary fixture
-authentication. Never use the live pilot or reuse another instance's credentials.
+The older soak completed and released its fixtures; retain its immutable evidence.
+Before each bounded stage, verify released-run guards, exclusive ownership,
+current artifact hash and the supervised helper/configuration bindings. Follow
+[operator build instructions](OPERATOR_INSTALL_NOTES.md#reproducible-local-standalone-test-apk)
+for any new candidate. Native builds require 25 GiB free and one heavy build at a
+time, with Gradle's two-worker limit. No new final soak has started. Record the
+exact source pair, declared overlays, tooling, APK hash/build ID and emulator OS.
+Use only owned fictional core/switch fixtures and ordinary fixture authentication.
 
-Changing to a replacement identity at the same origin needs a third, separately
-owned empty state with new credentials and identity. Verify listener/route
-ownership before temporary routing, preserve the old instance and restore only
-the owned route afterward. This remains a setup blocker; two different origins
-do not establish same-origin replacement. Do not fabricate an identity response
-or change database/session timestamps to obtain a pass.
+The genuine same-origin replacement warehouse is separately provisioned with
+independent credentials and identity. Its native replacement/return pass is
+scoped to APK 0106, with no pending-enrollment state at that time. Preserve both
+warehouses and historical logs; use only proven-owned routes. Replacement results
+must never be inferred from fabricated discovery or changed database/session
+timestamps. Current routes point to the original primary and switching warehouse;
+temporary delayed/incompatible helpers were retired with evidence preserved.
 
 Build correction652 before replacement checks. Discovery now completes local
 cleanup before adopting the new identity. It clears the old access/refresh and
@@ -31,10 +36,13 @@ prove revocation on the former server, which is no longer the discovered instanc
 
 ## Cases to execute once per affected artifact
 
-The [guarded navigation drivers](OPERATOR_NAVIGATION_DRIVERS.md) prepare same-server,
-cancel and confirmed-origin checks without login or business submits. Source/guard
-checks PASS; actual SQL/native runs remain NOT TESTED. Their read-only cancellation
-case does not establish unsaved-form behavior; retain those separate cases below.
+The [guarded navigation drivers](OPERATOR_NAVIGATION_DRIVERS.md) provide bounded
+same-server, cancellation and confirmed-origin checks. The baseline same-server,
+confirmed-switch, switch-back and replacement cases reached their campaign attempt
+caps; preserve their exact older-artifact passes and do not create aliases for
+additional runs. Distinct unsaved-draft drivers are prepared but require ordinary
+supervisor preparation. The current customer session and exhausted administrator
+quota are explicitly refused before OTP or attempt creation.
 
 Prepare fictional unsaved GRN, dispatch, invoice and customer drafts through the
 supported UI. Record which drafts survive navigation before claiming the switch
@@ -42,16 +50,25 @@ preserves or clears them; some forms reset on unmount. Do not submit documents
 merely to create these drafts. In-memory rollback reset is covered separately by
 the real-reducer regression; native screens do not expose a rollback test command.
 
-| Case | Expected behavior | Current evidence |
+| Case | Expected behavior | Verified evidence and remaining scope |
 | --- | --- | --- |
-| Check a different server, then Cancel confirmation | Identity is displayed; confirmation explains logout and draft loss; old session and retained drafts remain; no destination commit | Source PASS; native NOT TESTED |
-| Confirm a different origin | All old drafts/caches cleared, new identity displayed, fresh login required; no old data after cold launch | Source PASS with mocked credentials/cache calls; native NOT TESTED |
-| Select the same origin and instance | No destructive confirmation/logout; existing session and drafts preserved | Source PASS; native NOT TESTED |
-| Confirm a new instance at the same origin | Local cleanup before adopting identity, no old credential sent to replacement, fresh login | Source PASS652; native BLOCKED pending separately provisioned replacement |
-| Save already in progress when confirming | Switch refused; original mutation allowed to finish and reconciled; no blind retry | Source PASS for both mutation gates; native NOT TESTED |
-| Discovery fails or staging storage fails | Existing server/session/drafts remain; actionable error; no silent switch | Staging source PASS; discovery validation has separate unit coverage; native NOT TESTED |
-| Cancel by leaving the selection screen | Old callback cannot activate a warehouse after unmount | Source PASS; native NOT TESTED |
-| Switch back and cold launch | Correct identity, fresh authentication where required, no cross-instance cached data | Historical623c only; new artifact NOT TESTED |
+| Discover a different server, then cancel confirmation | Display identity and warning; preserve old session and selection | APK 0109 PASS, `stage-cancel-switch-0109-v3`; unsaved-draft preservation remains pending |
+| Confirm a different origin | Clear old drafts/caches, adopt genuine identity and require destination authentication | APK 0108 PASS, `stage-confirm-switch-0108-v3`; no transfer to APK 0109 or unsaved/in-flight cases |
+| Select the same origin and instance | Preserve session and selected warehouse without destructive confirmation | APK 0103 PASS, `stage-same-server-0103-v3`; no APK 0109 acceptance claim |
+| Confirm a new instance at the same origin | Local cleanup before identity adoption; no old credentials forwarded | APK 0106 scoped PASS, `stage-replacement-cold-0106-v3`; pending-enrollment cleanup and APK 0109 acceptance remain open |
+| Save already in progress when confirming | Refuse switch; reconcile original mutation without blind retry | Source tests PASS; native NOT TESTED |
+| Discovery transport failure | Preserve current warehouse/session and allow owned route recovery | APK 0109 PASS, `stage-discovery-failure-0109-v1`; storage staging failures remain source-only |
+| Genuine compatibility rejection | Reject an independently installed server requiring a newer client | APK 0109 PASS, `stage-compatibility-0109-v1`; genuine server minimum 0.2.0, no selection or OTP |
+| Leave selection before delayed discovery completes | Prevent stale preview/alert or selection activation | APK 0109 PASS, `stage-late-discovery-0109-v2`; genuine delayed TLS response |
+| Enter selection while an Orders response is pending | Keep selection visible when the genuine response arrives | APK 0109 PASS, `stage-orders-selection-race-0109-v3`; no confirmed switch, save or upload |
+| Switch back and cold launch | Restore correct identity and require fresh authentication where applicable | APK 0108 PASS, `stage-switch-back-0108-v3`; no transfer to APK 0109 |
+| Cancel switching with unsaved GRN, dispatch, invoice or customer drafts | Preserve supported draft fields through cancellation | Guarded source preparation/refusals PASS; native PENDING ordinary supervisor preparation |
+
+These nine historical native stage plans and step-log hashes were revalidated on
+2 October 2026; private proof `switching-guide-evidence-revalidation01.json`.
+This revalidation checks preserved evidence, not new execution. All capped
+failures remain in the campaign ledger. Pending cases and final readiness remain
+open; do not shorten the final eight-hour soak or bypass its gates.
 
 Keep protected session/database comparisons, screenshots and device identifiers
 outside Git. Record PASS/FAIL/BLOCKED/NOT TESTED with the exact case/artifact.
