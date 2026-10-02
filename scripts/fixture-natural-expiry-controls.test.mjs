@@ -11,3 +11,10 @@ test('expiry execution refuses early/late checks, ownership conflicts and unexpi
  const a=naturalExpiryAppointment(c,proof()),current={serverNowUTC:a.notBeforeUTC,ownershipMatches:true,competingRun:false,artifactMatches:true,bindingsMatch:true,session:{id:c.sessionId,expiresAtUTC:'2026-10-10T10:00:00Z'},certificateExpiresAtUTC:'2026-10-15T16:00:00Z'};naturalExpiryExecution(a,current);
  for(const edit of [{serverNowUTC:'2026-10-10T10:09:59Z'},{serverNowUTC:a.deadlineUTC},{competingRun:true},{ownershipMatches:false},{artifactMatches:false},{bindingsMatch:false},{session:{...current.session,expiresAtUTC:'2026-10-10T11:00:00Z'}}])assert.throws(()=>naturalExpiryExecution(a,{...current,...edit}));
 });
+
+test('expiry execution rejects earlier changed expiry and tampered appointment windows',()=>{
+ const a=naturalExpiryAppointment(c,proof()),current={serverNowUTC:a.notBeforeUTC,ownershipMatches:true,competingRun:false,artifactMatches:true,bindingsMatch:true,session:{id:c.sessionId,expiresAtUTC:a.sessionExpiresAtUTC},certificateExpiresAtUTC:'2026-10-15T16:00:00Z'};
+ assert.throws(()=>naturalExpiryExecution(a,{...current,session:{...current.session,expiresAtUTC:'2026-10-09T10:00:00Z'}}));
+ assert.throws(()=>naturalExpiryExecution({...a,notBeforeUTC:'2026-10-10T10:00:00Z'},current));
+ assert.throws(()=>naturalExpiryExecution({...a,deadlineUTC:'2026-10-10T12:10:00Z'},current));
+});

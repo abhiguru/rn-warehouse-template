@@ -17,11 +17,15 @@ export function naturalExpiryAppointment(c,proof) {
  assert.ok(issued<=stopped&&stopped<=observed&&observed<expires,'Preserved unexpired dedicated session required');
  const scheduled=expires+600000,deadline=scheduled+3600000;
  assert.ok(instant(proof.certificateExpiresAtUTC)>deadline,'Certificate must cover the actual appointment');
- return {status:'PREPARED',sessionId:c.sessionId,avd:proof.device.avd,notBeforeUTC:new Date(scheduled).toISOString(),deadlineUTC:new Date(deadline).toISOString(),maximumExecutionSeconds:3600};
+ return {status:'PREPARED',sessionId:c.sessionId,sessionExpiresAtUTC:new Date(expires).toISOString(),avd:proof.device.avd,notBeforeUTC:new Date(scheduled).toISOString(),deadlineUTC:new Date(deadline).toISOString(),maximumExecutionSeconds:3600};
 }
 
 export function naturalExpiryExecution(appointment,current) {
  assert.equal(appointment.status,'PREPARED');assert.equal(appointment.maximumExecutionSeconds,3600);
+ const expires=instant(appointment.sessionExpiresAtUTC);
+ assert.equal(instant(appointment.notBeforeUTC),expires+600000,'Appointment must retain expiry plus ten minutes');
+ assert.equal(instant(appointment.deadlineUTC),expires+4200000,'Appointment must retain its one-hour deadline');
+ assert.equal(instant(current.session.expiresAtUTC),expires,'Session expiry changed after preservation');
  const now=instant(current.serverNowUTC);assert.ok(now>=instant(appointment.notBeforeUTC),'Do not shorten natural expiry');
  assert.ok(now<instant(appointment.deadlineUTC),'One bounded appointment; no indefinite retries');
  assert.equal(current.ownershipMatches,true);assert.equal(current.competingRun,false);assert.equal(current.artifactMatches,true);assert.equal(current.bindingsMatch,true);
