@@ -102,3 +102,11 @@ test('supervisor reads preserve the exact reserved session and logout revokes it
  for(const role of ['staff','customer','admin'])assert.throws(()=>navigationBefore(config,{...snapshot,profile:{...snapshot.profile,role}}));
  assert.match(navigationSnapshotSQL(config),/mobile='919888888874'/);
 });
+
+test('reserved customer PDF binds only the saved rounding invoice and refuses switches/logout or administrator role',()=>{
+ const config={...c(),reservedCustomerPDF:true,kind:'native-pdf-send',profileId:'947136fa-997b-4a83-819d-1b8bd3ecba68',profileName:'New customer',invoiceId:'b515e2b0-bde6-11f1-b80b-1f1c1f6b3e0c',invoiceNumber:20261010};
+ const snapshot={...before(),profile:{id:config.profileId,name:'New customer',role:'customer',active:true}};
+ navigationBefore(config,snapshot);navigationAfter(config,snapshot,snapshot);assert.match(navigationSnapshotSQL(config),/mobile='919888888874'/);
+ for(const edit of [{case:'confirm-switch'},{case:'customer-logout'},{kind:'other'},{invoiceNumber:20261001},{invoiceId:id(4)},{profileId:id(4)},{reservedCustomerPDF:'true'}])assert.throws(()=>navigationConfig({...config,...edit}));
+ assert.throws(()=>navigationBefore(config,{...snapshot,profile:{...snapshot.profile,role:'admin'}}));
+});

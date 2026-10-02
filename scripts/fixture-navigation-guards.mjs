@@ -13,8 +13,24 @@ export function customerLifecycleMode(c) {
   }
   return enabled;
 }
+export function customerPDFMode(c) {
+  if(Object.hasOwn(c,'reservedCustomerPDF'))assert.equal(typeof c.reservedCustomerPDF,'boolean');
+  const enabled=c.reservedCustomerPDF===true;
+  if(enabled){
+    assert.equal(c.case,'same-server');assert.equal(c.kind,'native-pdf-send');
+    assert.equal(c.profileId,'947136fa-997b-4a83-819d-1b8bd3ecba68');
+    assert.equal(c.profileName,'New customer');
+    assert.equal(c.invoiceId,'b515e2b0-bde6-11f1-b80b-1f1c1f6b3e0c');
+    assert.equal(c.invoiceNumber,20261010);
+  }
+  return enabled;
+}
+function customerReadMode(c) {
+  const lifecycle=customerLifecycleMode(c),pdf=customerPDFMode(c);
+  assert.ok(!(lifecycle&&pdf),'ONE_RESERVED_CUSTOMER_READ_MODE');return lifecycle||pdf;
+}
 export function navigationConfig(c) {
-  const customerLifecycle=customerLifecycleMode(c);
+  const customerLifecycle=customerReadMode(c);
   assert.equal(c.scope, 'isolated-fictional-navigation-case');
   assert.ok(['offline-orders', 'same-server', 'cancel-switch', 'confirm-switch', 'switch-back', 'malformed-server', 'cold-lifecycle', 'ordinary-logout', 'customer-logout', 'staff-logout', 'supervisor-reads', 'supervisor-logout'].includes(c.case));
   for (const name of ['backendCheckout', 'backendState', 'soakConfig', 'artifactAudit', 'caseDirectory'])
@@ -28,7 +44,7 @@ export function navigationConfig(c) {
 
 export function navigationSnapshotSQL(c) {
   navigationConfig(c);
-  const customerLifecycle=customerLifecycleMode(c);
+  const customerLifecycle=customerReadMode(c);
   return `BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY;
 SET LOCAL statement_timeout='10s';
 SELECT jsonb_build_object(
@@ -65,7 +81,7 @@ COMMIT;`;
 
 export function navigationBefore(c, s) {
   navigationConfig(c);
-  const customerLifecycle=customerLifecycleMode(c);
+  const customerLifecycle=customerReadMode(c);
   assert.equal(s.profile?.id, c.profileId);
   assert.equal(s.profile?.name, c.profileName);
   assert.equal(s.profile?.role, customerLifecycle || c.case === 'customer-logout' ? 'customer' : c.case === 'staff-logout' ? 'staff' : ['supervisor-reads','supervisor-logout'].includes(c.case) ? 'supervisor' : 'admin');

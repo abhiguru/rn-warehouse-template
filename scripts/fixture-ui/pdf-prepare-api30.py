@@ -3,6 +3,7 @@
 import fcntl,hashlib,importlib.util,json,os,re,subprocess,sys,time,traceback,xml.etree.ElementTree as ET
 from pathlib import Path
 from pdf_read_controls import point,READER
+from pdf_device_preservation import preserve
 from dispatch_case_controls import owned_reverse_route
 spec=importlib.util.spec_from_file_location('pdf_auth',Path(__file__).with_name('auth-api30.py'));auth=importlib.util.module_from_spec(spec);spec.loader.exec_module(auth);soak=auth.soak
 os.umask(0o077)
@@ -41,7 +42,11 @@ def main(path):
             p=d.adb('shell','pm','path',package);assert re.fullmatch(r'package:/data/app/[^\n]+',p);assert d.adb('shell','sha256sum',p[8:]).split()[0]==expected
         assert c['apkSHA256']==case['artifactSHA256'];owned_reverse_route(d.adb('reverse','--list'),18443)
         filename='Invoice_'+str(case['invoiceNumber'])+'_FY2026-2027.pdf';cache='/data/user/0/'+soak.PACKAGE+'/cache/'+filename;export='/sdcard/Download/Librera/'+filename
-        d.adb('shell','test','!','-e',cache);d.adb('shell','test','!','-e',export);d.state['deviceStartedEpoch']=int(d.adb('shell','date','+%s'));d.save()
+        if case.get('preserveExistingPDFDeviceFiles') is True:
+            d.state['priorDevicePDFs']=preserve(d,case,e,{'cache':cache,'export':export});d.save()
+        else:
+            d.adb('shell','test','!','-e',cache);d.adb('shell','test','!','-e',export)
+        d.state['deviceStartedEpoch']=int(d.adb('shell','date','+%s'));d.save()
         d.health();d.adb('shell','am','force-stop',soak.PACKAGE);d.adb('shell','am','start','-W','-a','android.intent.action.VIEW','-d','warehouse-fixture://invoice-details/'+case['invoiceId'],soak.PACKAGE)
         d.wait('Total amount: ₹'+str(case['invoiceTotal']));d.wait('Tax amount: ₹'+str(case['invoiceTax']));d.tap_pdf('Overview tab');d.visible('Share PDF');d.archive('native-before-PDF-generation')
         d.state.update(documentGenerationAttempted=True,failurePhase='ONE_NATIVE_SHARE');d.save();d.tap_pdf('Share PDF');d.external=True
