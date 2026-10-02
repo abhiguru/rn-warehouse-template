@@ -35,9 +35,19 @@ export function customerOfflineMode(c) {
   }
   return enabled;
 }
+export function customerReceiptDenialMode(c) {
+  if(Object.hasOwn(c,'reservedCustomerReceiptDenial'))assert.equal(typeof c.reservedCustomerReceiptDenial,'boolean');
+  const enabled=c.reservedCustomerReceiptDenial===true;
+  if(enabled){
+    assert.equal(c.case,'same-server');assert.equal(c.kind,'native-receipt-denial');
+    assert.equal(c.profileId,'947136fa-997b-4a83-819d-1b8bd3ecba68');assert.equal(c.profileName,'New customer');
+    assert.equal(c.targetReceiptId,'a24c256a-bdf3-11f1-97aa-57de57b8fb69');
+  }
+  return enabled;
+}
 function customerReadMode(c) {
-  const lifecycle=customerLifecycleMode(c),pdf=customerPDFMode(c),offline=customerOfflineMode(c);
-  assert.ok([lifecycle,pdf,offline].filter(Boolean).length<=1,'ONE_RESERVED_CUSTOMER_READ_MODE');return lifecycle||pdf||offline;
+  const lifecycle=customerLifecycleMode(c),pdf=customerPDFMode(c),offline=customerOfflineMode(c),denial=customerReceiptDenialMode(c);
+  assert.ok([lifecycle,pdf,offline,denial].filter(Boolean).length<=1,'ONE_RESERVED_CUSTOMER_READ_MODE');return lifecycle||pdf||offline||denial;
 }
 export function navigationConfig(c) {
   const customerLifecycle=customerReadMode(c);
