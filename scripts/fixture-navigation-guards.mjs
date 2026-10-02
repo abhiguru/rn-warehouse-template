@@ -60,8 +60,19 @@ export function customerLateDiscoveryMode(c) {
 }
 function customerReadMode(c) {
   const lifecycle=customerLifecycleMode(c),pdf=customerPDFMode(c),offline=customerOfflineMode(c),denial=customerReceiptDenialMode(c);
-  const late=customerLateDiscoveryMode(c),discovery=customerDiscoveryMode(c);
-  assert.ok([lifecycle,pdf,offline,denial,late,discovery].filter(Boolean).length<=1,'ONE_RESERVED_CUSTOMER_READ_MODE');return lifecycle||pdf||offline||denial||late||discovery;
+  const late=customerLateDiscoveryMode(c),discovery=customerDiscoveryMode(c),cancel=customerCancelSwitchMode(c);
+  assert.ok([lifecycle,pdf,offline,denial,late,discovery,cancel].filter(Boolean).length<=1,'ONE_RESERVED_CUSTOMER_READ_MODE');return lifecycle||pdf||offline||denial||late||discovery||cancel;
+}
+export function customerCancelSwitchMode(c) {
+  if(Object.hasOwn(c,'reservedCustomerCancelSwitch'))assert.equal(typeof c.reservedCustomerCancelSwitch,'boolean');
+  const enabled=c.reservedCustomerCancelSwitch===true;
+  if(enabled){
+    assert.equal(c.case,'cancel-switch');assert.equal(c.kind,'native-customer-cancel-switch');
+    assert.equal(c.profileId,'947136fa-997b-4a83-819d-1b8bd3ecba68');assert.equal(c.profileName,'New customer');
+    assert.equal(c.origin,'https://backend-core.example.test');assert.equal(c.instanceId,'b0ec3933-5258-4bd5-87f4-d57b13a78971');
+    assert.equal(c.artifactSHA256,'08271dada3bf90ed6912db71c0e08f95487a906d12a765bcaa706338bdf12fb7');
+  }
+  return enabled;
 }
 export function customerDiscoveryMode(c) {
   if(Object.hasOwn(c,'reservedCustomerDiscovery'))assert.equal(typeof c.reservedCustomerDiscovery,'boolean');

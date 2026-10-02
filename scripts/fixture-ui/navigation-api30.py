@@ -255,9 +255,12 @@ def main(path):
                 driver.selected_server(evidence,'https://backend-core.example.test',case['instanceId'])
             driver.state['phases'].append('SELECTION_SESSION_PRESERVED_COLD_READ')
         else:
-            if selection_start(driver.snapshot(),case['profileName'])=='orders':
+            customer_cancel=case.get('reservedCustomerCancelSwitch') is True
+            if customer_cancel:
                 driver.cold();driver.wait('Orders tab');driver.adb('shell','am','start','-W','-a','android.intent.action.VIEW','-d','warehouse-fixture://settings','-p',soak.PACKAGE)
-            driver.wait('View profile for '+case['profileName'])
+            elif selection_start(driver.snapshot(),case['profileName'])=='orders':
+                driver.cold();driver.wait('Orders tab');driver.adb('shell','am','start','-W','-a','android.intent.action.VIEW','-d','warehouse-fixture://settings','-p',soak.PACKAGE)
+            driver.wait('Settings' if customer_cancel else 'View profile for '+case['profileName'])
             for _ in range(7):
                 if 'Change Warehouse Server' in labels(driver.snapshot()): break
                 driver.adb('shell','input','swipe','360','1050','360','450','400')
@@ -289,7 +292,8 @@ def main(path):
                 if same: driver.wait('Change Warehouse Server')
                 else: driver.wait('Use this server')
                 driver.cold(); driver.wait('Orders tab'); fresh_orders()
-                driver.selected_server(evidence,'https://backend-core.example.test',case['instanceId'])
+                if not customer_cancel:
+                    driver.selected_server(evidence,'https://backend-core.example.test',case['instanceId'])
                 driver.state['phases'].append('OLD_SESSION_PRESERVED_FRESH_COLD_READ')
         guard_command('after')
         disarmed_relay()

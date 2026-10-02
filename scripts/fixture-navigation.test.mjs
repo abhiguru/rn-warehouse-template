@@ -10,6 +10,13 @@ const c = () => ({ scope:'isolated-fictional-navigation-case', case:'same-server
   profileName:'Core Demo Administrator', artifactSHA256:'a'.repeat(64), fixtureGuardSHA256:'b'.repeat(64) });
 const before = () => ({ profile:{id:id(2),name:'Core Demo Administrator',role:'admin',active:true},
   nativeSessionPresent:true,otpCount:2,businessHash:'c'.repeat(64),otherAuthHash:'d'.repeat(64) });
+test('customer cancellation permits genuine discovery and cancellation only',()=>{
+ const config={...c(),case:'cancel-switch',kind:'native-customer-cancel-switch',reservedCustomerCancelSwitch:true,origin:'https://backend-core.example.test',instanceId:'b0ec3933-5258-4bd5-87f4-d57b13a78971',profileId:'947136fa-997b-4a83-819d-1b8bd3ecba68',profileName:'New customer',artifactSHA256:'08271dada3bf90ed6912db71c0e08f95487a906d12a765bcaa706338bdf12fb7'};
+ const snapshot={...before(),profile:{id:config.profileId,name:'New customer',role:'customer',active:true}};
+ navigationBefore(config,snapshot);navigationAfter(config,snapshot,snapshot);assert.match(navigationSnapshotSQL(config),/mobile='919888888874'/);
+ for(const edit of [{case:'confirm-switch'},{case:'same-server'},{kind:'other'},{origin:'https://foreign.example.test'},{profileId:id(2)},{artifactSHA256:'a'.repeat(64)},{reservedCustomerCancelSwitch:'true'},{reservedCustomerDiscovery:true}])assert.throws(()=>navigationConfig({...config,...edit}));
+ assert.throws(()=>navigationAfter(config,snapshot,{...snapshot,nativeSessionPresent:false}));
+});
 test('customer malformed discovery binds exact role, origins and artifact without permitting switching',()=>{
  const config={...c(),case:'malformed-server',kind:'native-malformed-discovery',reservedCustomerDiscovery:true,origin:'https://backend-core.example.test',instanceId:'b0ec3933-5258-4bd5-87f4-d57b13a78971',profileId:'947136fa-997b-4a83-819d-1b8bd3ecba68',profileName:'New customer',artifactSHA256:'08271dada3bf90ed6912db71c0e08f95487a906d12a765bcaa706338bdf12fb7'};
  const snapshot={...before(),profile:{id:config.profileId,name:'New customer',role:'customer',active:true}};
