@@ -13,3 +13,24 @@ export function queueBefore(c,s){
  return {status:'PASS',scope:'queue fixture precondition only; submission not authorized'};
 }
 export function queuePreparationUnchanged(c,b,a){queueBefore(c,b);queueBefore(c,a);assert.deepEqual(a,b,'Queue preparation changed protected state; stop without submission');return{status:'PASS',scope:'queue preparation only; no native dispatch acceptance'};}
+
+const protectedTables=['goodsreceived','goodsreceived_trl','dispatch','dispatch_trl','invoice','invoice_trl','orders','order_items','stock_movements','grn_images','dispatch_images','idempotency_keys','auto_invoice_errors','customers','items','storage.objects'];
+function rowMaps(s){assert.deepEqual(Object.keys(s.protectedRows).sort(),[...protectedTables].sort());const maps={};for(const t of protectedTables){maps[t]={};assert.ok(Array.isArray(s.protectedRows[t])&&s.protectedRows[t].length<=10000);for(const r of s.protectedRows[t]){assert.match(r.id,UUID);assert.match(r.sha256,/^[a-f0-9]{64}$/);assert.ok(!Object.hasOwn(maps[t],r.id));maps[t][r.id]=r.sha256;}}return maps;}
+function sameExcept(a,b,fields){const x={...a},y={...b};for(const k of fields){delete x[k];delete y[k];}assert.deepEqual(x,y);}
+export function queueCommitReconciled(c,b,a){
+ queueBefore(c,b);assert.deepEqual(b.dispatches,[]);assert.deepEqual(b.dispatchLines,[]);assert.deepEqual(b.movements,[]);assert.deepEqual(b.caches,[]);
+ assert.deepEqual(a.profile,b.profile);assert.equal(a.nativeSessionPresent,true);assert.equal(a.authHash,b.authHash);assert.equal(a.storageHash,b.storageHash);assert.equal(a.recordAbsent,false);
+ assert.equal(a.dispatches.length,1);assert.equal(a.dispatchLines.length,1);assert.equal(a.movements.length,1);assert.equal(a.caches.length,1);
+ const d=a.dispatches[0],l=a.dispatchLines[0],m=a.movements[0],k=a.caches[0];for(const r of[d,l,m,k])assert.match(r.id,UUID);
+ assert.equal(d.disp_no,c.record);assert.equal(d.customer_id,c.customerId);assert.equal(d.source_order_id,c.cartId);assert.equal(d.source_order_no,b.order.order_no);assert.equal(d.created_by,c.profileId);assert.equal(d.updated_by,c.profileId);assert.equal(d.deleted_at,null);assert.equal(d.deleted_by,null);
+ assert.equal(l.disp_id,d.id);assert.equal(l.gr_id,c.sourceGRNId);assert.equal(l.gr_trl_id,c.lotId);assert.equal(l.disp_qty,2);
+ assert.equal(m.reference_id,d.id);assert.equal(m.reference_type,'dispatch');assert.equal(m.gr_trl_id,c.lotId);assert.equal(m.movement_type,'dispatch');assert.equal(m.quantity,2);assert.equal(m.balance_before,8);assert.equal(m.balance_after,6);assert.equal(m.created_by,c.profileId);
+ assert.equal(k.rpc_function,'create_dispatch_with_stock_check');assert.equal(k.created_by,c.profileId);assert.ok(typeof k.idempotency_key==='string'&&k.idempotency_key.length>=16&&k.idempotency_key.length<=200);assert.equal(k.response.success,true);assert.equal(k.response.dispatch_id,d.id);assert.equal(k.response.source_order_cleared,true);assert.deepEqual(k.response.invoice_data,{});assert.equal(k.response.dispatch_items.length,1);assert.equal(k.response.dispatch_items[0].id,l.id);assert.equal(k.response.dispatch_items[0].disp_qty,2);assert.equal(k.response.dispatch_items[0].remaining_stock,6);
+ assert.equal(a.items.length,0);assert.equal(a.lots.length,1);sameExcept(b.lots[0],a.lots[0],['stock']);assert.equal(a.lots[0].stock,6);
+ sameExcept(b.order,a.order,['updated_at','updated_by']);assert.equal(a.order.updated_by,c.profileId);assert.equal(a.order.status,'OPEN');assert.equal(a.order.deleted_at,null);
+ sameExcept(b.receipt,a.receipt,['updated_at','updated_by']);assert.equal(a.receipt.updated_by,c.profileId);assert.equal(a.receipt.out_of_stock,false);
+ const bm=rowMaps(b),am=rowMaps(a),expected={goodsreceived:[c.sourceGRNId],goodsreceived_trl:[c.lotId],orders:[c.cartId],order_items:[c.orderItemId],dispatch:[d.id],dispatch_trl:[l.id],stock_movements:[m.id],idempotency_keys:[k.id]};
+ for(const[t,ids]of Object.entries(expected))for(const id of ids){if(['dispatch','dispatch_trl','stock_movements','idempotency_keys'].includes(t)){assert.ok(!Object.hasOwn(bm[t],id));assert.ok(Object.hasOwn(am[t],id));}else{assert.ok(Object.hasOwn(bm[t],id));if(t==='order_items')assert.ok(!Object.hasOwn(am[t],id));else assert.ok(Object.hasOwn(am[t],id));}delete bm[t][id];delete am[t][id];}
+ assert.deepEqual(am,bm,'Unrelated business/object rows changed; stop without retry');
+ return{status:'PASS',scope:'one queue dispatch, stock 8 to 6, matched line removed, persistent order OPEN; unrelated business/auth/storage preserved',dispatchId:d.id};
+}

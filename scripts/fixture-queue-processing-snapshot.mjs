@@ -7,6 +7,7 @@ import {queueConfig} from './fixture-queue-processing-controls.mjs';
 export function queueSQL(c){
  queueConfig(c);
  const business=['goodsreceived','goodsreceived_trl','dispatch','dispatch_trl','invoice','invoice_trl','orders','order_items','stock_movements','grn_images','dispatch_images','idempotency_keys','auto_invoice_errors','customers','items'];
+ const protectedPairs=[...business,'storage.objects'].map(t=>{const table=t.includes('.')?t:'public.'+t;return `'${t}',(SELECT coalesce(jsonb_agg(jsonb_build_object('id',x.id,'sha256',encode(extensions.digest(to_jsonb(x)::text,'sha256'),'hex')) ORDER BY x.id),'[]') FROM ${table} x)`;}).join(',');
  const pairs=business.map(t=>`'${t}',(SELECT jsonb_agg(to_jsonb(x) ORDER BY id) FROM public.${t} x)`).join(',');
  return `BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY;SET LOCAL statement_timeout='10s';SELECT jsonb_build_object(
  'profile',(SELECT jsonb_build_object('id',id,'role',role,'active',active,'status',enrollment_status) FROM public.user_profiles WHERE mobile='919888888874'),
@@ -19,6 +20,8 @@ export function queueSQL(c){
  'dispatches',(SELECT coalesce(jsonb_agg(to_jsonb(d) ORDER BY id),'[]') FROM public.dispatch d WHERE disp_no='${c.record}'),
  'dispatchLines',(SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY t.id),'[]') FROM public.dispatch_trl t JOIN public.dispatch d ON d.id=t.disp_id WHERE d.disp_no='${c.record}'),
  'movements',(SELECT coalesce(jsonb_agg(to_jsonb(m) ORDER BY m.id),'[]') FROM public.stock_movements m JOIN public.dispatch d ON d.id=m.reference_id WHERE d.disp_no='${c.record}' AND m.reference_type='dispatch'),
+ 'caches',(SELECT coalesce(jsonb_agg(to_jsonb(k) ORDER BY k.id),'[]') FROM public.idempotency_keys k WHERE k.response->>'dispatch_id' IN(SELECT id::text FROM public.dispatch WHERE disp_no='${c.record}')),
+ 'protectedRows',jsonb_build_object(${protectedPairs}),
  'businessHash',encode(extensions.digest(jsonb_build_object(${pairs},'storage',(SELECT jsonb_agg(to_jsonb(x) ORDER BY id) FROM storage.objects x))::text,'sha256'),'hex'),
  'authHash',encode(extensions.digest(jsonb_build_object('profiles',(SELECT jsonb_agg(to_jsonb(x) ORDER BY id) FROM public.user_profiles x),'sessions',(SELECT jsonb_agg(to_jsonb(x) ORDER BY id) FROM warehouse_security.refresh_sessions x),'assignments',(SELECT jsonb_agg(to_jsonb(x) ORDER BY id) FROM public.users_customers_new x),'otps',(SELECT jsonb_agg(to_jsonb(x) ORDER BY id) FROM public.otp_verifications x),'quotas',(SELECT jsonb_agg(to_jsonb(x) ORDER BY phone_number) FROM public.otp_rate_limits x),'enrollments',(SELECT jsonb_agg(to_jsonb(x) ORDER BY token_hash) FROM warehouse_security.enrollment_tokens x))::text,'sha256'),'hex'));COMMIT;`;
 }

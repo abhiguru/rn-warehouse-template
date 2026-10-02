@@ -700,3 +700,15 @@ one stored-byte change/symlink refusal test). No native queue action, OTP or
 application write occurred. Commit reconciliation and bounded native
 submission orchestration remain unfinished; no queue-processing PASS is
 claimed.
+
+Queue reconciliation source now checks exactly one matching dispatch, line,
+stock movement and cached success; stock eight to six; only the matched cart
+line removed; persistent order still OPEN; unchanged order notes and source
+receipt fields except legitimate update audit columns. Per-row hashes across
+16 business/storage tables protect every unrelated row, while complete auth
+and stored-byte hashes remain unchanged. Five JavaScript tests PASS, including
+duplicate/wrong-stock/stale-cache/unrelated-state refusals. The expanded
+observer independently captured identical live preconditions twice, preserved
+in private `queue-processing-full-snapshot02.json`. Commit reconciliation has
+unit evidence only: no native dispatch has occurred, and orchestration and
+actual successful-response reconciliation remain required.
