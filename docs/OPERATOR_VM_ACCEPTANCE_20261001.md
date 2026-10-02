@@ -761,3 +761,25 @@ After the test-only global qualification, full source lint PASS and all258
 setup/fixture tests PASS under documented Node22. Private logs
 `queue-current-source-lint01.log` and `queue-current-setup-tests01.log` retain
 complete output. No application/runner input or native evidence changed.
+
+## Receipt fractional quantity source correction
+
+Review found that GRN item admission and pre-schema conversion used
+`parseInt`, turning entered1.5 into1 before the existing integer validator
+could reject it. Recorded installed application source696165f contains that
+path. Review source now uses the existing quantity schema for Save admission
+and preserves the entered numeric value through validation and both item-save
+and Review navigation. This changes no API or database schema and introduces
+no new business rule. Ten focused tests reject empty/zero/negative/fractional/
+malformed/nonfinite inputs and preserve ordinary positive whole counts.
+Full application tests313/49suites PASS, full lint PASS and TypeScript PASS
+under documented Node22. Private logs `receipt-quantity-full-app-tests01.log`
+and `receipt-quantity-source-validation01.log` retain results.
+
+This is source-only verification. Installed APK9 remains byte-identical and
+retains its original source behavior; no native invalid-receipt PASS is
+claimed. A new audited artifact and native zero/negative/fractional acceptance
+are required. Disk remains below the25GiB new-build floor; no floor waiver or
+unrelated cache/state deletion occurred. Existing receipt attempt caps remain
+unchanged; this is the distinct invalid-quantity workflow, not a fourth
+receipt-creation or lost-response attempt.

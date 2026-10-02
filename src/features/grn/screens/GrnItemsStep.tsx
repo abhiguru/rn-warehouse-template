@@ -35,7 +35,7 @@ import { deleteGRNImage, uploadGRNItemImage, validateImageFile } from '@/feature
 import { isTemporaryGRNImageId } from '@/features/grn/services/imageId';
 import ItemsSummaryBottomSheet from '@/features/grn/components/ItemsSummaryBottomSheet';
 import { HorizontalItemForm, ItemFormData, HorizontalItemFormRef } from '@/features/grn/components/HorizontalItemForm';
-import { validateStep2 } from '@/features/grn/schemas/grnValidation';
+import { validateStep2, isValidReceiptQuantity } from '@/features/grn/schemas/grnValidation';
 
 const EMPTY_GRN_ITEM = (): ItemFormData => ({
   grn_trl_id: `item-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
@@ -109,7 +109,7 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
       currentItem.item_table_id &&
       currentItem.item_name &&
       currentItem.qty &&
-      parseInt(currentItem.qty) > 0 &&
+      isValidReceiptQuantity(currentItem.qty) &&
       isRackValid(currentItem.rack)
     );
   }, [currentItem.item_table_id, currentItem.item_name, currentItem.qty, currentItem.rack]);
@@ -243,8 +243,8 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
       item_table_id: currentItem.item_table_id,
       item_name: currentItem.item_name,
       packaging: currentItem.packaging,
-      qty: parseInt(currentItem.qty) || 0,
-      stock: parseInt(currentItem.qty) || 0,
+      qty: Number(currentItem.qty) || 0,
+      stock: Number(currentItem.qty) || 0,
       weight: parseInt(currentItem.weight) || 0,
       rack: currentItem.rack,
       package_mark: currentItem.package_mark,
@@ -279,7 +279,7 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
     }
 
     const hasDispatches = !isCreateMode && currentItem.grn_trl_id && itemsWithDispatchesOnLoad.has(currentItem.grn_trl_id);
-    const parsedQty = parseInt(currentItem.qty) || 0;
+    const parsedQty = Number(currentItem.qty) || 0;
     // Use the original stock value from the Map (preserved from initial load)
     const originalStock = itemsWithDispatchesOnLoad.get(currentItem.grn_trl_id);
     const preservedStock = hasDispatches && originalStock !== undefined ? originalStock : parsedQty;
@@ -510,7 +510,7 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
     allItemsToSave.forEach((itemToSave) => {
       const existingInStore = items.find((item) => item.grn_trl_id === itemToSave.grn_trl_id);
       const hasDispatches = !isCreateMode && itemsWithDispatchesOnLoad.has(itemToSave.grn_trl_id);
-      const parsedQty = parseInt(itemToSave.qty) || 0;
+      const parsedQty = Number(itemToSave.qty) || 0;
       const stockValue = hasDispatches
         ? existingInStore?.stock ?? parsedQty
         : parsedQty;
