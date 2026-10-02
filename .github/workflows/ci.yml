@@ -89,6 +89,16 @@ jobs:
       - name: Assemble debug APK
         run: ./gradlew assembleDebug
         working-directory: android
+      - name: Audit picker React Native ABI compile options
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          compile_commands=(android/app/.cxx/Debug/*/*/compile_commands.json android/app/.cxx/RelWithDebInfo/*/*/compile_commands.json)
+          test "${#compile_commands[@]}" -gt 0
+          for command_file in "${compile_commands[@]}"; do
+            node scripts/audit-picker-native-compile.mjs "$command_file"
+          done
       - name: Audit APK contents, permissions and notices
         run: npm run audit:artifact -- android/app/build/outputs/apk/debug/app-debug.apk
 
