@@ -20,6 +20,8 @@ import stat
 import subprocess
 import sys
 import time
+import traceback
+from selection_start_controls import selection_start
 import xml.etree.ElementTree as ET
 from dispatch_case_controls import owned_reverse_route
 from fixture_observation import decode_observation
@@ -111,7 +113,7 @@ def main(path):
     assert case['artifactSHA256'] == c['apkSHA256']
     names = ['fixture-navigation-observe.mjs', 'fixture-navigation-guards.mjs', 'fixture-session-guards.mjs',
              'fixture-ui/navigation-api30.py', 'fixture-ui/navigation_controls.py', 'fixture-ui/dispatch_case_controls.py',
-             'fixture-ui/soak-api30.py', 'fixture-ui/fixture_observation.py', 'fixture-ui/emulator_offline_network.py']
+             'fixture-ui/soak-api30.py', 'fixture-ui/fixture_observation.py', 'fixture-ui/emulator_offline_network.py', 'fixture-ui/selection_start_controls.py']
     assert set(case['toolingSHA256']) == set(names)
     assert all(digest(scripts / n) == case['toolingSHA256'][n] for n in names)
     for name in ['databaseHelper', 'httpObserver']:
@@ -215,6 +217,8 @@ def main(path):
                 assert time.monotonic()<deadline; time.sleep(1)
             fresh_orders(); driver.state['phases'].append('RECONNECT_CURRENT_ORDERS200')
         elif case['case'] == 'malformed-server':
+            if selection_start(driver.snapshot(),case['profileName'])=='orders':
+                driver.cold();driver.adb('shell','am','start','-W','-a','android.intent.action.VIEW','-d','warehouse-fixture://settings','-p',soak.PACKAGE)
             driver.wait('View profile for '+case['profileName'])
             for _ in range(7):
                 if 'Change Warehouse Server' in labels(driver.snapshot()): break
@@ -230,6 +234,8 @@ def main(path):
             driver.selected_server(evidence,'https://backend-core.example.test',case['instanceId'])
             driver.state['phases'].append('SELECTION_SESSION_PRESERVED_COLD_READ')
         else:
+            if selection_start(driver.snapshot(),case['profileName'])=='orders':
+                driver.cold();driver.adb('shell','am','start','-W','-a','android.intent.action.VIEW','-d','warehouse-fixture://settings','-p',soak.PACKAGE)
             driver.wait('View profile for '+case['profileName'])
             for _ in range(7):
                 if 'Change Warehouse Server' in labels(driver.snapshot()): break
@@ -267,7 +273,8 @@ def main(path):
         guard_command('after')
         disarmed_relay()
         driver.state['status']='PASS'
-    except Exception:
+    except Exception as error:
+        last=traceback.extract_tb(error.__traceback__)[-1];driver.state.update(exceptionType=type(error).__name__,failureSite=Path(last.filename).name+':'+str(last.lineno))
         driver.state.update(status='FAIL',reason='Navigation stopped; preserve evidence; no replay or login')
         raise
     finally:
