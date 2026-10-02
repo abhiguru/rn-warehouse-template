@@ -6,12 +6,12 @@ import {pathToFileURL} from 'node:url';
 import {spawnSync} from 'node:child_process';
 import {privateJSON,assertReleased} from './fixture-session-guards.mjs';
 import {navigationSnapshotSQL,navigationBefore} from './fixture-navigation-guards.mjs';
-import {receiptDenialConfig,receiptDenialTarget,receiptDenialPreserved,receiptRpcCounts} from './fixture-receipt-denial-controls.mjs';
+import {receiptDenialConfig,receiptDenialExpected,receiptDenialTarget,receiptDenialPreserved,receiptRpcCounts} from './fixture-receipt-denial-controls.mjs';
 process.umask(0o077);
 try {
  const [path,phase,since]=process.argv.slice(2),c=receiptDenialConfig(privateJSON(path));assertReleased(c);assert.ok(['guard','before','after','http'].includes(phase));
  const prerequisite=privateJSON(c.prerequisiteEvidence);assert.equal(prerequisite.status,'PASS');assert.equal(prerequisite.readOnly,true);
- assert.ok(prerequisite.snapshot.receipts.some(x=>x.id===c.targetReceiptId&&x.record==='FXC702'&&x.customer==='Backend Test Customer B'));
+ const expected=receiptDenialExpected(c);assert.ok(prerequisite.snapshot.receipts.some(x=>x.id===c.targetReceiptId&&x.record===expected.record&&x.customer===expected.customer));
  if(phase==='guard'){console.log('{"status":"PASS","scope":"receipt-denial-release-and-target-guard"}');}
  else {
   const guard=resolve(c.backendCheckout,'tests/operator-fixture.mjs');assert.equal(createHash('sha256').update(readFileSync(guard)).digest('hex'),c.fixtureGuardSHA256);assert.equal(privateJSON(resolve(c.backendState,'public/instance.json')).instanceId,c.instanceId);

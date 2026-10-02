@@ -45,6 +45,17 @@ export function customerReceiptDenialMode(c) {
   }
   return enabled;
 }
+export function reciprocalReceiptDenialMode(c) {
+ if(Object.hasOwn(c,'reciprocalCustomerReceiptDenial'))assert.equal(typeof c.reciprocalCustomerReceiptDenial,'boolean');
+ const enabled=c.reciprocalCustomerReceiptDenial===true;
+ if(enabled){
+  assert.equal(c.reservedCustomerReceiptDenial===true,false);assert.equal(c.case,'same-server');assert.equal(c.kind,'native-reciprocal-receipt-denial');
+  assert.equal(c.profileId,'34d9d337-ec2e-4bed-b555-0e8b63dd3aef');assert.equal(c.profileName,'Customer B');
+  assert.equal(c.targetReceiptId,'a2489c56-bdf3-11f1-97a8-8b3d06ae4c97');
+  assert.equal(c.artifactSHA256,'08271dada3bf90ed6912db71c0e08f95487a906d12a765bcaa706338bdf12fb7');
+ }
+ return enabled;
+}
 export function customerLateDiscoveryMode(c) {
   if(Object.hasOwn(c,'reservedCustomerLateDiscovery'))assert.equal(typeof c.reservedCustomerLateDiscovery,'boolean');
   const enabled=c.reservedCustomerLateDiscovery===true;
@@ -60,8 +71,8 @@ export function customerLateDiscoveryMode(c) {
 }
 function customerReadMode(c) {
   const lifecycle=customerLifecycleMode(c),pdf=customerPDFMode(c),offline=customerOfflineMode(c),denial=customerReceiptDenialMode(c);
-  const late=customerLateDiscoveryMode(c),discovery=customerDiscoveryMode(c),cancel=customerCancelSwitchMode(c),failure=customerDiscoveryFailureMode(c);
-  assert.ok([lifecycle,pdf,offline,denial,late,discovery,cancel,failure].filter(Boolean).length<=1,'ONE_RESERVED_CUSTOMER_READ_MODE');return lifecycle||pdf||offline||denial||late||discovery||cancel||failure;
+  const late=customerLateDiscoveryMode(c),discovery=customerDiscoveryMode(c),cancel=customerCancelSwitchMode(c),failure=customerDiscoveryFailureMode(c),reciprocal=reciprocalReceiptDenialMode(c);
+  assert.ok([lifecycle,pdf,offline,denial,late,discovery,cancel,failure,reciprocal].filter(Boolean).length<=1,'ONE_RESERVED_CUSTOMER_READ_MODE');return lifecycle||pdf||offline||denial||late||discovery||cancel||failure||reciprocal;
 }
 export function customerDiscoveryFailureMode(c) {
   if(Object.hasOwn(c,'reservedCustomerDiscoveryFailure'))assert.equal(typeof c.reservedCustomerDiscoveryFailure,'boolean');
@@ -106,7 +117,7 @@ export function navigationConfig(c) {
     assert.ok(isAbsolute(c[name]), 'ABSOLUTE_CASE_PATH_REQUIRED');
   for (const name of ['instanceId', 'profileId', 'sessionId']) assert.match(c[name], uuid);
   for (const name of ['artifactSHA256', 'fixtureGuardSHA256']) assert.match(c[name], hash);
-  assert.equal(c.profileName, c.case === 'switch-back' ? 'Switch Demo Administrator' : customerLifecycle || ['customer-logout','staff-logout', 'supervisor-reads', 'supervisor-logout'].includes(c.case) ? 'New customer' : 'Core Demo Administrator');
+  assert.equal(c.profileName, reciprocalReceiptDenialMode(c) ? 'Customer B' : c.case === 'switch-back' ? 'Switch Demo Administrator' : customerLifecycle || ['customer-logout','staff-logout', 'supervisor-reads', 'supervisor-logout'].includes(c.case) ? 'New customer' : 'Core Demo Administrator');
   if (['staff-logout','supervisor-reads','supervisor-logout'].includes(c.case)) assert.equal(c.profileId, '947136fa-997b-4a83-819d-1b8bd3ecba68');
   return c;
 }
