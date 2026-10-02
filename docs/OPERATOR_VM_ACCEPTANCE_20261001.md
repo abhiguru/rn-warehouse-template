@@ -519,3 +519,25 @@ Independent SQL confirmed business, profile, unrelated authentication and OTP
 state unchanged and the native supervisor session retained. No save or additional
 OTP was attempted. Evidence: `native-unsaved-customer-draft0109-01/`.
 Invoice, GRN and dispatch draft cases remain separate unexecuted acceptance work.
+
+### Invoice draft cancellation and first GRN draft attempt
+
+The first native unsaved invoice-header case passed using frozen tooling
+`115886b`: invoice number `20261991` was entered without submission, retained
+through genuine switching-instance discovery and cancellation, and observed
+again after returning to the form. Core public selection persisted. A normal
+cold restart abandoned the local draft, followed by successful Orders HTTP200
+and independent unchanged business/authentication/OTP reconciliation. Evidence:
+`native-unsaved-invoice-draft0109-01/`. No invoice was saved.
+
+The unexecuted GRN driver was first corrected to open `grn-form/step1` and admit
+its exact generated value before editing. Its first native attempt, frozen
+`4f8a00b`, then failed waiting for the nonexistent `Enter receipt number` label,
+before any draft edit or submission. Actual source exposes `Receipt number`.
+The failed attempt is preserved in `native-unsaved-grn-draft0109-01/`; a separate
+read-only after observation passed against its before snapshot, confirming
+unchanged protected business/profile/authentication/OTP state and retained native
+session. Review correction `61eaeeb` uses the actual accessibility label and
+passed syntax/control tests. No corrected native rerun has occurred yet; at most
+two corrected reruns remain for this campaign. Generated-number acceptance must
+still pass against the actual field before any edit.
