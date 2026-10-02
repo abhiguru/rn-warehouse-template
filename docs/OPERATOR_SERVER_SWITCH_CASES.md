@@ -232,3 +232,22 @@ header draft is separately proven. Dispatch/invoice drafts and in-flight
 request/upload/save switching remain open. Existing exhausted baseline cases
 remain closed; this independent unsaved-GRN case does not reopen them.
 All291 source tests, focused lint and Python syntax passed before freeze.
+
+APK10 confirmed dispatch-notes draft acceptance01 PASS, 2026-10-02UTC.
+Frozen1bc59a4 created the actual unsaved notes marker from the normally
+authenticated primary supervisor, confirmed genuine switching identity once,
+required destination login in the same process and cleared old credential keys.
+Source logout/history removal, unchanged protected state/stored bytes and
+unchanged destination reconciled before authentication; no old credential was
+forwarded. One ordinary destination administrator OTP/login then proved cleared
+notes in the preserved process before cold restart, persisted destination
+selection and explicit authenticated cold Orders200. Exactly one fixed seven-day
+session and one verification were added; old sessions and unrelated auth/business
+and objects remained unchanged. Zero dispatch submissions or business replay.
+Both immutable stages and independent postconditions PASS. Private evidence:
+confirmed-dispatch-draft0110-01, confirmed-dispatch-draft-destination-auth0110-01
+and their corresponding stage-...-evidence/ledger.json. The emulator now holds
+the new switching administrator session. Customer, GRN and dispatch header
+drafts each have independent APK10 evidence; invoice and in-flight request,
+upload and save switching remain open. Exhausted positive-dispatch/fault cases
+remain closed; this unsaved-notes check does not substitute for them.
