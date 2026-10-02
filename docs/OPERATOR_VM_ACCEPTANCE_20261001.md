@@ -4,6 +4,34 @@ This campaign remains in progress. It uses the existing x86_64 VM and the owned 
 
 The completed eight-hour soak belongs exclusively to the older APK, build 2026100101. Its immutable plan, 54 bound inputs and PASS ledger remain preserved. None of its acceptance transfers to a later APK. The final new-artifact soak has **not started**; unresolved native writes and missing acceptance cases still block its gates.
 
+## Current APK10 checkpoint, 2 October 21:36 UTC
+
+Installed x86_64 build `2026100110` remains application source
+`c422f62cd36cb407e7ed7bfce28c4db5189e2bd5`, SHA256
+`a7df6781bdcd889eb9ccaa01ee0973890effd4d187bb6ac45f100284e1b04b69`.
+Newer fixture tooling and documentation do not change those application bytes.
+The exact private proof catalog `requirements-evidence-checkpoint-20261002T2136.json`
+records inspected proof digests and statuses, including the preserved FAIL.
+
+| Requirement | Current evidence and remaining gate |
+| --- | --- |
+| Clean backend and independent fixtures | Existing pinned installation/reproduction evidence and four independent identities remain preserved. Application `bed4eeee` plus declared overlays; fixture tooling recorded separately. |
+| APK10 build/install | Compiled audit, signer/trust/ABI/standalone bundle and installed hash PASS. Final acceptance freeze is not declared. |
+| Native invalid receipt quantities | APK10 PASS for literal 0, -1 and 1.5, disabled item Save and unchanged protected SQL/stored bytes; no positive receipt/image claim. |
+| Historical queue, PDFs, Realtime, draft cancellation and dispatch admission | Inspected PASS proofs remain scoped to APK9 and the exact tested workflows. They do not transfer to APK10. |
+| Fresh race fixture | Ordinary API FXQ993 quantity/stock3 prepared once and reconciled, with only its new API session removed. This is not native receipt acceptance. |
+| Native controlled concurrency | BLOCKED after three preserved attempts; no native submission or competitor write. Final preparation equality FAIL is retained; separate SQL diagnosis proves legitimate native refresh rotation. No fourth run. |
+| Lost-response/offline writes, positive native receipt/cart/image and selected invoice navigation | Existing attempt-limited FAIL/PARTIAL/BLOCKED results preserved with successful document numbers and stock. No alias/replay. |
+| Confirmed switching during requests/uploads/saves | UNTESTED; cancellation and historical switching evidence do not prove these distinct cases. |
+| Reserved revocation | UNSTARTED; dependent closure and ordinary customer-role/login prerequisites remain incomplete. |
+| Normal-route cleanup | Fresh normal10 twelve-hour helper, actual TLS/IPC preflight, cold Orders HTTP200, exact unchanged-state cleanup PASS. This is health/cleanup evidence only. |
+| Complete source tooling | Node22 mobile setup 271/271 and backend unit 97/97 PASS; redacted source/history scans PASS in both repositories. |
+| Exact published CI | Mobile `ccd5c4e`, run37067496315: lint/types and scan PASS, dependencies FAIL, Android debug audit still live. Backend `33825bd`, run37067498320: six jobs PASS, isolated installation still live. Remote CI jobs do not establish physical or ARM acceptance. |
+| Dependency gate | BLOCKED. The [primary node-forge advisory](https://github.com/advisories/GHSA-86w9-cpqp-85rv), rechecked now, still lists affected versions through1.4.0 and no patched version. No audit waiver or dependency substitution. |
+| Final readiness/eight-hour soak | UNSTARTED; native and dependency gates remain unresolved. Older build0101 soak remains separate PASS. |
+| Dedicated natural expiry | UNSCHEDULED; final freeze and a dedicated owned AVD/session are still required. Original native session is not an expiry appointment. |
+| Hardware/provider/production acceptance | Explicitly deferred or excluded according to approved VM-only scope. No ARM build/device, physical camera/network/no-USB or production acceptance claim. |
+
 ## Historical APK9 evidence checkpoint, 2 October 19:13 UTC
 
 The installed standalone x86_64 candidate is APK2026100109, application source
