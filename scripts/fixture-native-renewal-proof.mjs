@@ -1,0 +1,15 @@
+import assert from 'node:assert/strict';
+import {spawnSync} from 'node:child_process';
+export function nativeRenewalSQL(c){
+ assert.equal(c.scope,'readonly-native-refresh-rotation-proof');assert.equal(c.sessionId,'9207d184-ddde-4d5e-bab4-cba48f73287d');assert.match(c.beforeAuthHash,/^[a-f0-9]{64}$/);assert.match(c.afterAuthHash,/^[a-f0-9]{64}$/);
+ const auth=rotated=>`jsonb_build_object('profiles',(SELECT jsonb_agg(to_jsonb(x) ORDER BY id) FROM public.user_profiles x),'sessions',(SELECT jsonb_agg(${rotated?`CASE WHEN x.id='${c.sessionId}' THEN jsonb_set(to_jsonb(x),'{token_hash}',to_jsonb(old.token_hash)) ELSE to_jsonb(x) END`:'to_jsonb(x)'} ORDER BY id) FROM warehouse_security.refresh_sessions x),'otps',(SELECT jsonb_agg(to_jsonb(x) ORDER BY id) FROM public.otp_verifications x),'quotas',(SELECT jsonb_agg(to_jsonb(x) ORDER BY phone_number) FROM public.otp_rate_limits x),'assignments',(SELECT jsonb_agg(to_jsonb(x) ORDER BY id) FROM public.users_customers_new x),'enrollments',(SELECT jsonb_agg(to_jsonb(x) ORDER BY token_hash) FROM warehouse_security.enrollment_tokens x))`;
+ return `BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY;SET LOCAL statement_timeout='10s';SELECT jsonb_build_object(
+ 'currentAuthHashMatches',encode(extensions.digest((${auth(false)})::text,'sha256'),'hex')='${c.afterAuthHash}',
+ 'matchingPriorNativeRotationHashes',(SELECT count(*) FROM warehouse_security.consumed_refresh_tokens old WHERE old.session_id='${c.sessionId}' AND encode(extensions.digest((${auth(true)})::text,'sha256'),'hex')='${c.beforeAuthHash}'),
+ 'session',(SELECT jsonb_build_object('id',s.id,'createdAt',s.created_at,'expiresAt',s.expires_at,'active',p.active,'role',p.role) FROM warehouse_security.refresh_sessions s JOIN public.user_profiles p ON p.auth_user_id=s.user_id WHERE s.id='${c.sessionId}' AND p.id='947136fa-997b-4a83-819d-1b8bd3ecba68' AND s.expires_at>now()));COMMIT;`;
+}
+export function nativeRenewalProof(c,env,http){
+ const sql=nativeRenewalSQL(c);assert.ok(Array.isArray(http));assert.equal(http.length,1);assert.equal(http[0].path,'/rest/v1/rpc/refresh_jwt_token');assert.equal(http[0].method,'POST');assert.equal(http[0].event,'complete');assert.equal(http[0].status,200);
+ const r=spawnSync('docker',['exec','-i','-e','PGPASSWORD',env.WAREHOUSE_PROJECT_NAME+'-db-1','psql','-X','-qAt','-U','supabase_admin','-d','postgres','-v','ON_ERROR_STOP=1'],{input:sql,encoding:'utf8',timeout:15000,maxBuffer:65536,env:{...process.env,PGPASSWORD:env.POSTGRES_PASSWORD}});assert.equal(r.status,0,'Read-only native rotation proof refused');const s=JSON.parse(r.stdout);assert.equal(s.currentAuthHashMatches,true);assert.equal(s.matchingPriorNativeRotationHashes,1);assert.equal(s.session.id,c.sessionId);assert.equal(s.session.active,true);assert.equal(s.session.role,'supervisor');
+ return {scope:c.scope,sessionId:c.sessionId,beforeAuthHash:c.beforeAuthHash,afterAuthHash:c.afterAuthHash,beforeUTC:c.beforeUTC,afterUTC:c.afterUTC,status:'PASS',matchingPriorNativeRotationHashes:1,refreshHTTPCount:1,refreshHTTPStatus:200,refreshAtUTC:http[0].atUTC,sessionExpiryUTC:s.session.expiresAt,sessionIssuedUTC:s.session.createdAt};
+}
