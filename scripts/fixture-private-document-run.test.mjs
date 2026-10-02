@@ -3,7 +3,7 @@ import {runPrivateDocumentDenial} from './fixture-private-document-run.mjs';
 function fixture(fault){
  const c={scope:'isolated-fictional-b-private-document-denial',phone:'919888888873',profileId:'34d9d337-ec2e-4bed-b555-0e8b63dd3aef',instanceId:'b0ec3933-5258-4bd5-87f4-d57b13a78971',artifactSHA256:'08271dada3bf90ed6912db71c0e08f95487a906d12a765bcaa706338bdf12fb7',documentPath:'invoice/b515e2b0-bde6-11f1-b80b-1f1c1f6b3e0c/11111111-1111-4111-8111-111111111111.pdf',deadlineUTC:new Date(Date.now()+60000).toISOString()};
  let s={profile:{id:c.profileId,role:'customer',active:true,status:'approved'},sessions:[{id:'native',rowHash:'old'}],quota:{hourly:0,daily:0},verifiedOTPs:1,businessHash:'business',storageHash:'storage',otherAuthHash:'other',profileHash:'profile',assignmentsHash:'assignments',enrollmentHash:'enrollment'};const calls=[],events=[];
- const d={verifyOwnership:async()=>{},verifyDocument:async()=>{},snapshot:async()=>structuredClone(s),record:async e=>events.push(e),challenge:async()=> '123456',call:async(route,body)=>{
+ const d={verifyOwnership:async()=>{},verifyDocument:async()=>{},snapshot:async()=>globalThis.structuredClone(s),record:async e=>events.push(e),challenge:async()=> '123456',call:async(route)=>{
   calls.push(route);
   if(route.endsWith('/request'))return {status:200,body:{success:true}};
   if(route.endsWith('/verify')){s={...s,sessions:[...s.sessions,{id:'new',rowHash:'new'}],quota:{hourly:1,daily:1},verifiedOTPs:2};return {status:200,body:{success:true,data:{user:{id:c.profileId,role:'customer'},session:{access_token:'mock-access',refresh_token:'mock-refresh'}}}};}
