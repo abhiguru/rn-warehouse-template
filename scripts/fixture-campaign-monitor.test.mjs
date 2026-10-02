@@ -1,0 +1,2 @@
+import test from 'node:test';import assert from 'node:assert/strict';import{spawnSync}from'node:child_process';import{fileURLToPath}from'node:url';
+test('monitor includes stage101, refuses scope overflow and never treats active actors as historical',()=>{const q=spawnSync('python3',['-B',fileURLToPath(new URL('./fixture-ui/test_campaign_monitor_scope.py',import.meta.url))],{encoding:'utf8',timeout:10000});assert.equal(q.status,0,q.stderr);});

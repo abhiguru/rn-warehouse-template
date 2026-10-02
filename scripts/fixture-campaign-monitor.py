@@ -4,6 +4,14 @@ import datetime,hashlib,json,os,re,shutil,subprocess,sys,time
 from pathlib import Path
 os.umask(0o077)
 
+MAX_STAGE_PLANS=256
+MAX_BOUND_FILES=4096
+
+def bounded_paths(paths,limit=MAX_STAGE_PLANS):
+    result=sorted(paths)
+    assert len(result)<=limit,'MONITOR_SCOPE_LIMIT_EXCEEDED'
+    return result
+
 def private(path):
     path=Path(path);assert path.is_absolute() and path.resolve()==path
     for p in [path,path.parent]:
@@ -43,11 +51,11 @@ def sample(c,cycle):
             path=root/name/'fixture-ca.pem';out=run(['openssl','x509','-in',str(path),'-noout','-enddate']);expiry=datetime.datetime.strptime(out.strip().split('=',1)[1],'%b %d %H:%M:%S %Y %Z').replace(tzinfo=datetime.timezone.utc)
             row['certificates'][name]={'sha256':hashlib.file_digest(path.open('rb'),'sha256').hexdigest(),'remainingSeconds':int((expiry-datetime.datetime.now(datetime.timezone.utc)).total_seconds())}
         except Exception:row['certificates'][name]={'status':'PROBE_UNAVAILABLE'}
-    for path in sorted(root.glob('stage-*-evidence/ledger.json'))[:100]:
+    for path in bounded_paths(root.glob('stage-*-evidence/ledger.json')):
         try:v=private(path);row['stages'][path.parent.name]={'steps':[{k:s.get(k) for k in ['id','status']} for s in v.get('steps',[])],'checks':[{k:s.get(k) for k in ['label','status']} for s in v.get('checks',[])]}
         except Exception:row['stages'][path.parent.name]={'status':'CONCURRENT_OR_UNREADABLE_LEDGER'}
     if cycle%10==0:
-        actual={};errors=[];critical=[];plans=[Path(c['olderPlan']),*sorted(root.glob('stage-*.json'))[:100]]
+        actual={};errors=[];critical=[];plans=[Path(c['olderPlan']),*bounded_paths(root.glob('stage-*.json'))]
         for path in plans:
             historical=False
             try:
@@ -58,7 +66,7 @@ def sample(c,cycle):
                 for binding in private(path)['bindings']:
                     name=binding['path']
                     if name not in actual:
-                        assert len(actual)<1500
+                        assert len(actual)<MAX_BOUND_FILES
                         file=Path(name);assert file.stat().st_size<=1024**3
                         actual[name]=hashlib.file_digest(file.open('rb'),'sha256').hexdigest()
                     if actual[name]!=binding['sha256']:
