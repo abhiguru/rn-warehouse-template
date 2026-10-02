@@ -18,3 +18,8 @@ def point(tree,label):
  m=re.fullmatch(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]',targets[0].get('bounds',''));assert m
  x,y,xx,yy=map(int,m.groups());assert 0<=x<xx<=720 and 0<=y<yy<=1280
  return (x+xx)//2,(y+yy)//2
+
+def retryable_cold_focus(window,error,cold_starting):
+ if not cold_starting or error!='Unowned or unsupported gallery foreground':return False
+ rows=[line for line in window.splitlines() if 'mCurrentFocus=' in line]
+ return len(rows)==1 and any(re.search(r'\s'+re.escape(package)+r'/',rows[0]) for package in ['com.android.documentsui','com.google.android.documentsui','com.android.launcher3'])

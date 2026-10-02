@@ -2,12 +2,18 @@
 """Ordinary native receipt with one owned synthetic attachment; one submit only."""
 import fcntl,hashlib,importlib.util,json,os,re,sys,time,traceback
 from pathlib import Path
-from normal_receipt_controls import point
+from normal_receipt_controls import point,retryable_cold_focus
 from dispatch_case_controls import owned_reverse_route
 from receipt_draft_controls import point as draft_point,review_labels
 spec=importlib.util.spec_from_file_location('gallery',Path(__file__).with_name('receipt-image-picker-api30.py'));gallery=importlib.util.module_from_spec(spec);spec.loader.exec_module(gallery);auth=gallery.auth;soak=gallery.soak
 os.umask(0o077)
 class Receipt(gallery.Gallery):
+ cold_starting=False
+ def snapshot(self):
+  try:return super().snapshot()
+  except AssertionError as error:
+   if retryable_cold_focus(self.adb('shell','dumpsys','window'),str(error),self.cold_starting):raise AssertionError('Actual fixture foreground required') from None
+   raise
  def wait_file(self,filename):
   assert filename=='WAREHOUSE_FIXTURE_FXN801.png';end=time.monotonic()+60
   while time.monotonic()<end:
@@ -37,7 +43,7 @@ def main(path):
   assert d.gallery_capture['sourceSHA256']==hashlib.sha256(Path(__file__).with_name('FixtureGalleryCapture.java').read_bytes()).hexdigest();assert d.gallery_capture['api']==30 and d.gallery_capture['viewport']==[720,1280]
   assert d.adb('emu','avd','name').splitlines()[0]=='TestWarehouseFixture_API30' and d.adb('shell','getprop','ro.build.version.sdk')=='30' and d.adb('shell','getenforce')=='Enforcing';p=d.adb('shell','pm','path',soak.PACKAGE);assert re.fullmatch(r'package:/data/app/[^\n]+',p) and d.adb('shell','sha256sum',p[8:]).split()[0]==case['artifactSHA256']==c['apkSHA256'];owned_reverse_route(d.adb('reverse','--list'),18443);d.health();observe('baseline')
   image=soak.private(case['imageFixture']);assert image.name=='WAREHOUSE_FIXTURE_FXN801.png' and hashlib.sha256(image.read_bytes()).hexdigest()==case['imageFixtureSHA256'];assert d.adb('shell','sha256sum','/sdcard/Pictures/'+image.name).split()[0]==case['imageFixtureSHA256']
-  d.adb('shell','am','force-stop',soak.PACKAGE);d.adb('shell','monkey','-p',soak.PACKAGE,'-c','android.intent.category.LAUNCHER','1');d.wait('Orders tab');d.adb('shell','am','start','-W','-a','android.intent.action.VIEW','-d','warehouse-fixture://grn-form/step1','-p',soak.PACKAGE)
+  d.cold_starting=True;d.adb('shell','am','force-stop',soak.PACKAGE);d.adb('shell','monkey','-p',soak.PACKAGE,'-c','android.intent.category.LAUNCHER','1');d.wait('Orders tab');d.cold_starting=False;d.adb('shell','am','start','-W','-a','android.intent.action.VIEW','-d','warehouse-fixture://grn-form/step1','-p',soak.PACKAGE)
   d.fill_draft('Receipt number',case['record']);d.tap_draft('Select sender...');d.fill_draft('Search customers...','Backend Test Customer A');d.tap_draft('Backend Test Customer A');d.wait('Core Demo Administrator')
   if 'mInputShown=true' in d.adb('shell','dumpsys','input_method'):d.adb('shell','input','keyevent','4')
   d.tap_draft('Go to Items step');d.fill_draft('Type to search...','Backend Test Potatoes');d.tap_draft('Select receipt item Backend Test Potatoes');d.fill_draft('Receipt item quantity','4');d.fill_draft('Receipt item weight','10');d.tap_draft('Save receipt item');d.tap_draft('Go to Review step');review_labels(d.wait('Create GRN'),case['record'],4,10);observe('draft');d.archive('normal-receipt-draft')
