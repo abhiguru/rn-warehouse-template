@@ -29,3 +29,8 @@ test('lost B approval response preserves the attempt and refuses automatic clean
  await assert.rejects(runBApproval(cfg,deps,state));assert.equal(state.approvalAttempted,true);assert.equal(calls.filter(x=>x.endsWith('/operator_review_enrollment')).length,1);assert.equal(calls.some(x=>x.endsWith('/logout_session')),false);
  await assert.rejects(runBApproval(cfg,deps,state));assert.equal(calls.length,3);assert.doesNotMatch(JSON.stringify(records),/123456|private-access|private-refresh/);
 });
+
+test('ordinary B preparation preserves existing session row digests before role/account cleanup',()=>{
+ const before={...snapshot(),adminSessions:[{id:'old',rowSHA256:'a'.repeat(64)}]},authenticated={...before,adminHourly:1,adminDaily:1,adminOTPCount:21,adminSessions:[...before.adminSessions,{id:'new',rowSHA256:'b'.repeat(64)}]};
+ assert.equal(bApprovalAfterLogin(c,before,authenticated),'new');assert.throws(()=>bApprovalAfterLogin(c,before,{...authenticated,adminSessions:[{id:'old',rowSHA256:'f'.repeat(64)},authenticated.adminSessions[1]]}));
+});

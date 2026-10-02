@@ -13,7 +13,7 @@ SELECT jsonb_build_object(
  'assignments',(SELECT coalesce(jsonb_agg(to_jsonb(a) ORDER BY id),'[]') FROM public.users_customers_new a WHERE user_profile_id='${c.profileId}'),
  'admin',(SELECT jsonb_build_object('id',id,'role',role,'active',active) FROM public.user_profiles WHERE id='${c.adminProfileId}' AND mobile='${c.adminPhone}'),
  'adminStaticHash',(SELECT encode(extensions.digest((to_jsonb(p)-'mobile_verified_at'-'updated_at')::text,'sha256'),'hex') FROM public.user_profiles p WHERE id='${c.adminProfileId}'),
- 'adminSessions',(SELECT coalesce(jsonb_agg(jsonb_build_object('id',s.id,'issuedAt',s.created_at,'expiresAt',s.expires_at) ORDER BY s.id),'[]') FROM warehouse_security.refresh_sessions s JOIN public.user_profiles p ON s.user_id=p.auth_user_id WHERE p.id='${c.adminProfileId}'),
+ 'adminSessions',(SELECT coalesce(jsonb_agg(jsonb_build_object('id',s.id,'issuedAt',s.created_at,'expiresAt',s.expires_at,'rowSHA256',encode(extensions.digest(to_jsonb(s)::text,'sha256'),'hex')) ORDER BY s.id),'[]') FROM warehouse_security.refresh_sessions s JOIN public.user_profiles p ON s.user_id=p.auth_user_id WHERE p.id='${c.adminProfileId}'),
  'targetOTPCount',(SELECT count(*) FROM public.otp_verifications WHERE phone_number='${c.phone}'),
  'adminOTPCount',(SELECT count(*) FROM public.otp_verifications WHERE phone_number='${c.adminPhone}' AND verified_at IS NOT NULL),
  'adminHourly',coalesce((SELECT CASE WHEN last_reset_hour+interval '1 hour'<=now() THEN 0 ELSE hourly_count END FROM public.otp_rate_limits WHERE phone_number='${c.adminPhone}'),0),
