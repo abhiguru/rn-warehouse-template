@@ -234,9 +234,12 @@ def main(path):
                     driver.state['rapidCycles'].append({'cycle':cycle+1,'startedUTC':started,'completedUTC':datetime.datetime.now(datetime.timezone.utc).isoformat(),'actualDefaultNetworkAbsent':True,'freshOrders200':True,'ownedNetworkRestored':True});driver.state['networkRestored']=True;driver.save()
                 driver.state['phases'].append('THREE_BOUNDED_RAPID_CONNECTIVITY_CYCLES_AND_FRESH_READS')
         elif case['case'] == 'malformed-server':
-            if selection_start(driver.snapshot(),case['profileName'])=='orders':
+            customer_discovery=case.get('reservedCustomerDiscovery') is True
+            if customer_discovery:
                 driver.cold();driver.wait('Orders tab');driver.adb('shell','am','start','-W','-a','android.intent.action.VIEW','-d','warehouse-fixture://settings','-p',soak.PACKAGE)
-            driver.wait('View profile for '+case['profileName'])
+            elif selection_start(driver.snapshot(),case['profileName'])=='orders':
+                driver.cold();driver.wait('Orders tab');driver.adb('shell','am','start','-W','-a','android.intent.action.VIEW','-d','warehouse-fixture://settings','-p',soak.PACKAGE)
+            driver.wait('Settings' if customer_discovery else 'View profile for '+case['profileName'])
             for _ in range(7):
                 if 'Change Warehouse Server' in labels(driver.snapshot()): break
                 driver.adb('shell','input','swipe','360','1050','360','450','400')
@@ -248,7 +251,8 @@ def main(path):
                 driver.tap('OK')
                 driver.state['phases'].append('MALFORMED_ORIGIN_REFUSED:'+origin);driver.save()
             driver.cold();driver.wait('Orders tab');fresh_orders()
-            driver.selected_server(evidence,'https://backend-core.example.test',case['instanceId'])
+            if not customer_discovery:
+                driver.selected_server(evidence,'https://backend-core.example.test',case['instanceId'])
             driver.state['phases'].append('SELECTION_SESSION_PRESERVED_COLD_READ')
         else:
             if selection_start(driver.snapshot(),case['profileName'])=='orders':
