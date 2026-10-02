@@ -34,3 +34,14 @@ test('helper cap and monotonic lifetime cannot be extended or inferred from a li
  confirmedHelperWindow(p,1100,600);
  for(const [props,uptime,remaining] of [[{...p,RuntimeMaxUSec:'24h'},1100,600],[{...p,ActiveEnterTimestampMonotonic:'0'},1100,600],[p,999,600],[p,43600,600],[p,1100,601],[p,1100,0],[p,NaN,600]])assert.throws(()=>confirmedHelperWindow(props,uptime,remaining));
 });
+
+import {reconciledObservationFailure} from './fixture-confirmed-draft-auth-controls.mjs';
+test('read-only reconciled observation failure preserves FAIL and rejects ambiguous writes or credential forwarding',()=>{
+ const hash='9'.repeat(64),binding={confirmedObservationRecovery:true,confirmedCaseSHA256:hash};
+ const failed={...native,status:'FAIL',exceptionType:'AssertionError',configSHA256:hash};
+ const baseline={configSHA256:hash,snapshot:before};
+ const proof={diagnosticOnly:true,originalAttemptStatus:'FAIL',configSHA256:hash,snapshot:after,events:{source:[{event:'complete',method:'POST',path:'/rest/v1/rpc/logout_session',status:200,authorizationPresent:true,credentialQueryPresent:false}],destination:[]},result:confirmedDraftReconcile(c,before,after,native)};
+ assert.equal(reconciledObservationFailure(binding,c,baseline,proof,failed).status,'PASS');assert.equal(failed.status,'FAIL');
+ for(const change of [{status:'PASS'},{exceptionType:'TimeoutError'},{confirmationAttempts:2},{businessSubmitAttempts:1},{otpRequests:1},{destinationProcessPID:124},{oldCredentialStoragePresent:true}])assert.throws(()=>reconciledObservationFailure(binding,c,baseline,proof,{...failed,...change}));
+ for(const mutate of [p=>p.configSHA256='0'.repeat(64),p=>p.snapshot.destination.authExceptNativeHash='0'.repeat(64),p=>p.events.source[0].status=500,p=>p.events.source[0].event='upstream-timeout',p=>p.events.destination.push({authorizationPresent:true,credentialQueryPresent:false}),p=>p.diagnosticOnly=false]){const changed=globalThis.structuredClone(proof);mutate(changed);assert.throws(()=>reconciledObservationFailure(binding,c,baseline,changed,failed));}
+});

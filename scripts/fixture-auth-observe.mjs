@@ -6,7 +6,7 @@ import { spawnSync } from 'node:child_process';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { assertReleased, privateJSON } from './fixture-session-guards.mjs';
-import {confirmedDraftAuthMode,confirmedDraftAuthBefore,confirmedDraftAuthAfter} from './fixture-confirmed-draft-auth-controls.mjs';
+import {confirmedDraftAuthMode,confirmedDraftAuthBefore,confirmedDraftAuthAfter,reconciledObservationFailure} from './fixture-confirmed-draft-auth-controls.mjs';
 import {confirmedDraftConfig} from './fixture-confirmed-draft-controls.mjs';
 import {confirmedDraftSnapshot} from './fixture-confirmed-draft-snapshot.mjs';
 import { pendingReadOnlyMode, approvedEnrollmentExitMode, customerReadOnlyMode, disabledAuthenticationMode, rejectedAuthenticationMode, approvedBAuthenticationMode, approvedBAuthenticationBefore, approvedBAuthenticationAfter } from './fixture-auth-controls.mjs';
@@ -24,8 +24,14 @@ try {
   if(draftAuth){
     assert.equal(createHash('sha256').update(readFileSync(c.confirmedCase)).digest('hex'),c.confirmedCaseSHA256);
     confirmed=confirmedDraftConfig(privateJSON(c.confirmedCase));assert.equal(confirmed.targetOrigin,c.origin);assert.equal(confirmed.targetInstanceId,c.instanceId);assert.equal(confirmed.draftKind,c.confirmedDraftKind);assert.equal(confirmed.artifactSHA256,c.artifactSHA256);
-    const proofPath=resolve(confirmed.caseDirectory,'confirmed-after.json');assert.equal(createHash('sha256').update(readFileSync(proofPath)).digest('hex'),c.confirmedReconciliationSHA256);confirmedProof=privateJSON(proofPath);assert.equal(confirmedProof.result.status,'PASS');assert.equal(confirmedProof.result.scope,'confirmed-switch-pre-authentication-reconciliation-only');
-    const native=privateJSON(resolve(confirmed.caseDirectory,'confirmed-native-result.json'));assert.equal(native.status,'PASS');assert.equal(native.postConfirmationColdLaunchAttempts,0);assert.equal(native.draftProcessPID,c.expectedProcessPID);assert.equal(native.destinationProcessPID,c.expectedProcessPID);
+    const proofPath=c.confirmedObservationRecovery===true?c.confirmedIndependentReconciliation:resolve(confirmed.caseDirectory,'confirmed-after.json');assert.equal(createHash('sha256').update(readFileSync(proofPath)).digest('hex'),c.confirmedReconciliationSHA256);confirmedProof=privateJSON(proofPath);assert.equal(confirmedProof.result.status,'PASS');assert.equal(confirmedProof.result.scope,'confirmed-switch-pre-authentication-reconciliation-only');
+    const native=privateJSON(resolve(confirmed.caseDirectory,'confirmed-native-result.json'));if(c.confirmedObservationRecovery===true){
+      const nativePath=resolve(confirmed.caseDirectory,'confirmed-native-result.json'),beforePath=resolve(confirmed.caseDirectory,'confirmed-before.json');
+      assert.equal(createHash('sha256').update(readFileSync(nativePath)).digest('hex'),c.failedNativeResultSHA256);
+      assert.equal(createHash('sha256').update(readFileSync(beforePath)).digest('hex'),c.confirmedBeforeSHA256);
+      reconciledObservationFailure(c,confirmed,privateJSON(beforePath),confirmedProof,native);
+    }else{assert.equal(native.status,'PASS');}
+    assert.equal(native.postConfirmationColdLaunchAttempts,0);assert.equal(native.draftProcessPID,c.expectedProcessPID);assert.equal(native.destinationProcessPID,c.expectedProcessPID);
   }
   const pendingReadOnly = pendingReadOnlyMode(c,secondary,replacement);
   const approvedExit = approvedEnrollmentExitMode(c,secondary,replacement);

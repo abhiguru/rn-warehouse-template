@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {confirmedDraftReconcile} from './fixture-confirmed-draft-controls.mjs';
 export function confirmedDraftAuthMode(c,secondary,replacement){
  if(Object.hasOwn(c,'confirmedDraftDestinationAuthentication'))assert.equal(typeof c.confirmedDraftDestinationAuthentication,'boolean');
  const enabled=c.confirmedDraftDestinationAuthentication===true;if(!enabled)return false;
@@ -32,4 +33,17 @@ export function confirmedDraftAuthAfter(c,b,a){
  assert.ok(Number.isFinite(Date.parse(added[0].created))&&Number.isFinite(Date.parse(added[0].expires)));
  assert.equal(Date.parse(added[0].expires)-Date.parse(added[0].created),7*86400000,'ORDINARY_FIXED_SESSION_EXPIRY_REQUIRED');
  return added[0].id;
+}
+
+export function reconciledObservationFailure(c,confirmed,before,proof,native){
+ assert.equal(c.confirmedObservationRecovery,true);
+ assert.equal(native.status,'FAIL');assert.equal(native.exceptionType,'AssertionError');
+ assert.equal(proof.diagnosticOnly,true);assert.equal(proof.originalAttemptStatus,'FAIL');
+ assert.equal(proof.configSHA256,c.confirmedCaseSHA256);assert.equal(before.configSHA256,c.confirmedCaseSHA256);
+ assert.equal(native.configSHA256,c.confirmedCaseSHA256);
+ const events=proof.events;assert.ok(Array.isArray(events.source)&&Array.isArray(events.destination));
+ for(const rows of Object.values(events))for(const e of rows){assert.equal(typeof e.authorizationPresent,'boolean');assert.equal(typeof e.credentialQueryPresent,'boolean');}
+ const logout=events.source.filter(e=>e.path==='/rest/v1/rpc/logout_session');assert.equal(logout.length,1);assert.equal(logout[0].event,'complete');assert.equal(logout[0].method,'POST');
+ const result=confirmedDraftReconcile(confirmed,before.snapshot,proof.snapshot,{...native,sourceLogoutCompletions:1,sourceLogoutStatus:logout[0].status,destinationAuthenticatedRequests:events.destination.filter(e=>e.authorizationPresent||e.credentialQueryPresent).length});
+ assert.deepEqual(proof.result,result);return result;
 }
