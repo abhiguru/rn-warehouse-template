@@ -218,7 +218,7 @@ def main(path):
             fresh_orders(); driver.state['phases'].append('RECONNECT_CURRENT_ORDERS200')
         elif case['case'] == 'malformed-server':
             if selection_start(driver.snapshot(),case['profileName'])=='orders':
-                driver.cold();driver.adb('shell','am','start','-W','-a','android.intent.action.VIEW','-d','warehouse-fixture://settings','-p',soak.PACKAGE)
+                driver.cold();driver.wait('Orders tab');driver.adb('shell','am','start','-W','-a','android.intent.action.VIEW','-d','warehouse-fixture://settings','-p',soak.PACKAGE)
             driver.wait('View profile for '+case['profileName'])
             for _ in range(7):
                 if 'Change Warehouse Server' in labels(driver.snapshot()): break
@@ -235,7 +235,7 @@ def main(path):
             driver.state['phases'].append('SELECTION_SESSION_PRESERVED_COLD_READ')
         else:
             if selection_start(driver.snapshot(),case['profileName'])=='orders':
-                driver.cold();driver.adb('shell','am','start','-W','-a','android.intent.action.VIEW','-d','warehouse-fixture://settings','-p',soak.PACKAGE)
+                driver.cold();driver.wait('Orders tab');driver.adb('shell','am','start','-W','-a','android.intent.action.VIEW','-d','warehouse-fixture://settings','-p',soak.PACKAGE)
             driver.wait('View profile for '+case['profileName'])
             for _ in range(7):
                 if 'Change Warehouse Server' in labels(driver.snapshot()): break
