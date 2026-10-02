@@ -32,6 +32,17 @@ class QR(auth.Auth):
         assert len(values)==1,'Exact owned camera permission required'
         return values[0]=='true'
 
+    def archive_camera(self,label):
+        # Only the synthetic-camera modal may produce an image artifact. Other
+        # screens retain the authentication helper's masked XML evidence.
+        tree=self.snapshot()
+        labels={v for n in tree.iter('node') for v in [n.get('text'),n.get('content-desc')] if v}
+        self.archive(label)
+        if 'Cancel' in labels:
+            q=subprocess.run([self.c['adb'],'-s',self.i['serial'],'exec-out','screencap','-p'],capture_output=True,timeout=15)
+            assert q.returncode==0 and q.stdout.startswith(b'\x89PNG\r\n\x1a\n')
+            (self.e/(label+'.png')).write_bytes(q.stdout)
+
 
 def main(path):
     case=json.loads(auth.soak.private(path).read_text());ui=json.loads(auth.soak.private(case['soakConfig']).read_text())
@@ -63,6 +74,7 @@ def main(path):
         assert d.camera_permission() is True
         d.tap('Change warehouse server');d.wait('Choose your warehouse server');d.archive('qr-selection-before-scan')
         d.state['failurePhase']='ONE_SYNTHETIC_QR_SCAN';d.save();d.tap('Scan QR code')
+        d.archive_camera('qr-camera-opened')
         tree=d.wait('Use this server')
         labels={v for n in tree.iter('node') for v in [n.get('text'),n.get('content-desc')] if v}
         assert case['origin'] in labels and case['displayName'] in labels,'Genuine QR discovery identity must be displayed'
@@ -77,6 +89,8 @@ def main(path):
         d.state['failurePhase']='POST_QR_RECONCILIATION';d.save();observe('after')
         d.state.update(status='PASS',nativeScanPASS=True,syntheticEmulatorEvidenceOnly=True,selectedServerUnchanged=True,newOTPs=0,cameraPermissionRestored=True,completedAt=datetime.datetime.now(datetime.timezone.utc).isoformat());d.save()
     except Exception:
+        try:d.archive_camera('qr-failed-native-screen')
+        except Exception:pass # Preserve stop; health failures must not be bypassed.
         d.state.update(status='FAIL',reason='QR stopped; preserve evidence and do not automatically retry');d.save();raise
     finally:
         if changed_permission:
