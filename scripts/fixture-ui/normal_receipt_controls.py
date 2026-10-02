@@ -10,7 +10,7 @@ def point(tree,label):
  if label=='View GRN List':assert 'GRN Created Successfully!' in labels
  parents={c:p for p in tree.iter() for c in p};targets=[]
  for n in tree.iter('node'):
-  if label not in [n.get('text'),n.get('content-desc')]:continue
+  if label not in [n.get('text'),n.get('content-desc')] and not (label=='WAREHOUSE_FIXTURE_FXN801.png' and n.get('content-desc','').startswith(label+', ')):continue
   while n is not None and n.get('clickable')!='true':n=parents.get(n)
   assert n is not None and n.get('enabled')=='true'
   if n not in targets:targets.append(n)

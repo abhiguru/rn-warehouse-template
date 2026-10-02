@@ -13,4 +13,11 @@ class Controls(unittest.TestCase):
   with self.assertRaises(AssertionError):point(self.tree(label),label)
   self.assertEqual(point(self.tree(label,'<node text="Recent"/>'),label),(150,250))
   with self.assertRaises(AssertionError):point(self.tree(label,'<node text="Recent"/><node text="'+label+'" clickable="true" enabled="true" bounds="[300,200][400,300]"/>'),label)
-if __name__=='__main__':unittest.main()
+class GridCaption(unittest.TestCase):
+ def test_matches_metadata_caption_without_accepting_similar_or_preview_names(self):
+  filename='WAREHOUSE_FIXTURE_FXN801.png'
+  def tree(caption):return ET.fromstring('<hierarchy><node text="Recent"/><node clickable="true" enabled="true" bounds="[42,350][244,553]"><node content-desc="'+caption+'"/></node></hierarchy>')
+  self.assertEqual(point(tree(filename+', 826 B, 1:17 AM'),filename),(143,451))
+  for caption in [filename+'.backup, 826 B','Preview the file '+filename,'WAREHOUSE_FIXTURE_FXF502.png, 826 B']:
+   with self.assertRaises(AssertionError):point(tree(caption),filename)
+if __name__=='__main__' :unittest.main()

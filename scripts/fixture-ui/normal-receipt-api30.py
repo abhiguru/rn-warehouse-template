@@ -8,7 +8,14 @@ from receipt_draft_controls import point as draft_point,review_labels
 spec=importlib.util.spec_from_file_location('gallery',Path(__file__).with_name('receipt-image-picker-api30.py'));gallery=importlib.util.module_from_spec(spec);spec.loader.exec_module(gallery);auth=gallery.auth;soak=gallery.soak
 os.umask(0o077)
 class Receipt(gallery.Gallery):
- def tap_normal(self,label):self.state['lastAction']=label;self.save();self.adb('shell','input','tap',*map(str,point(self.wait(label),label)))
+ def wait_file(self,filename):
+  assert filename=='WAREHOUSE_FIXTURE_FXN801.png';end=time.monotonic()+60
+  while time.monotonic()<end:
+   tree=self.snapshot()
+   try:point(tree,filename);return tree
+   except AssertionError:time.sleep(.5)
+  raise AssertionError('Exact owned indexed image unavailable; no fallback')
+ def tap_normal(self,label):self.state['lastAction']=label;self.save();self.adb('shell','input','tap',*map(str,point(self.wait_file(label) if label=='WAREHOUSE_FIXTURE_FXN801.png' else self.wait(label),label)))
  def tap_draft(self,label):self.state['lastAction']=label;self.save();self.adb('shell','input','tap',*map(str,draft_point(self.wait(label),label)))
  def fill_draft(self,label,value):
   assert re.fullmatch(r'[A-Za-z0-9 ]{1,60}',value);tree=self.wait(label);self.state['lastAction']='bounded input: '+label;self.save();self.adb('shell','input','tap',*map(str,draft_point(tree,label,True)));fields=[n for n in self.snapshot().iter('node') if n.get('class')=='android.widget.EditText' and n.get('focused')=='true'];assert len(fields)==1;old=fields[0].get('text','');assert len(old)<=128;self.adb('shell','input','keyevent','123')
@@ -40,7 +47,7 @@ def main(path):
   else:raise AssertionError('Visible image action unavailable')
   d.tap_normal('Add Photos ');d.tap_normal('PHOTO LIBRARY');d.external=True;t=d.wait('Recent');labels={v for n in t.iter('node') for v in [n.get('text'),n.get('content-desc')] if v}
   if 'Grid view' in labels:d.tap_normal('Grid view')
-  d.wait(image.name);d.archive('normal-grid-exact-file');d.tap_normal(image.name);time.sleep(1);window=d.adb('shell','dumpsys','window')
+  d.wait_file(image.name);d.archive('normal-grid-exact-file');d.tap_normal(image.name);time.sleep(1);window=d.adb('shell','dumpsys','window')
   if any(p+'/' in window for p in gallery.PICKER_PACKAGES):
    labels={v for n in d.snapshot().iter('node') for v in [n.get('text'),n.get('content-desc')] if v};buttons=[v for v in ['OPEN','Open'] if v in labels];assert len(buttons)==1;d.tap_normal(buttons[0])
   d.external=False;d.wait('GRN Images (1)');d.archive('normal-attached-synthetic-image');observe('image');review_labels(d.wait('Create GRN'),case['record'],4,10);observe('pre-submit');d.tap_normal('Create GRN');d.wait('Confirm Create');d.state.update(businessWriteAttempted=True,submittedRecord=case['record'],intendedQuantity=4,submitAttempts=1);d.save();d.tap_normal('Create');d.wait('GRN Created Successfully!');d.archive('normal-receipt-native-success');observe('committed');d.state.update(status='PASS',phases=['NORMAL_NATIVE_REVIEW','GRID_SYNTHETIC_ATTACHMENT','ONE_CONFIRMED_NATIVE_SUBMISSION','SQL_STOCK_CACHE_AND_STORED_IMAGE_RECONCILED'],artifactSHA256=c['apkSHA256'],driverSHA256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),limitations=['Stored image upload verified; native image render and reciprocal denial remain separate']);d.save()
