@@ -71,3 +71,15 @@ test('reserved customer logout binds its role and phone and revokes only its ses
  assert.throws(()=>navigationAfter(config,snapshot,snapshot));
  assert.throws(()=>navigationAfter(config,snapshot,{...snapshot,nativeSessionPresent:false,businessHash:'changed'}));
 });
+
+test('temporary reserved staff cleanup binds exact profile and revokes only its session', () => {
+ const profileId='947136fa-997b-4a83-819d-1b8bd3ecba68';
+ const config={...c(),case:'staff-logout',profileId,profileName:'New customer'};
+ const snapshot={...before(),profile:{id:profileId,name:'New customer',role:'staff',active:true}};
+ navigationBefore(config,snapshot);navigationAfter(config,snapshot,{...snapshot,nativeSessionPresent:false});
+ assert.match(navigationSnapshotSQL(config),/mobile='919888888874'/);
+ for(const role of ['customer','admin','supervisor'])assert.throws(()=>navigationBefore(config,{...snapshot,profile:{...snapshot.profile,role}}));
+ assert.throws(()=>navigationConfig({...config,profileId:id(2)}));
+ assert.throws(()=>navigationAfter(config,snapshot,snapshot));
+ assert.throws(()=>navigationAfter(config,snapshot,{...snapshot,nativeSessionPresent:false,otherAuthHash:'changed'}));
+});
