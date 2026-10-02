@@ -825,3 +825,12 @@ Gradle actor, current helper discovery and binding integrity. SDK/certificate
 horizon/prebuild/native trust PASS; capped x86_64 release Gradle is RUNNING.
 The new APK is not yet audited or installed, and no native results transfer.
 Final readiness, soak and dedicated expiry appointment remain open.
+
+Receipt quantity native selectors are prepared for build2026100110 source
+c422f62 only: exact entered0/-1/1.5, selected fictional item and disabled
+Save receipt item, with ambiguity/truncation/enabled-save/confirmation refusals.
+Two focused Python tests PASS. These are source tests only; the receipt
+observer/driver and actual native execution still await the audited new APK.
+The build remains RUNNING. Monitor20:08UTC flags low swap during the bounded
+build; no emulator or additional heavy work is running. No build/native PASS
+is inferred from partial progress.
