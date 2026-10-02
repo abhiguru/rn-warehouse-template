@@ -879,3 +879,22 @@ protected SQL/auth/stored-byte snapshots surround the case and cold normal
 Orders cleanup; failed reconciliation retains the snapshot without replay.
 Syntax and focused lint PASS. Four pure source tests (two Python/two JS)
 previously PASS. Live native attempt remains pending at this checkpoint.
+
+## Native receipt invalid quantities PASS, APK10
+
+Frozen10ee710 first native attempt on exact APK10 PASS: genuine GRN header
+FXV991/customerA/catalog selection, entered0/-1/1.5, each exact displayed
+quantity and Save receipt item disabled. Private native XML independently
+confirms all three values and disabled controls. No item save, receipt
+confirmation/submission or OTP occurred. Full protected SQL/auth/stored-byte
+before/after/final snapshots are identical, including retained valid reserved
+supervisor session. Normal cold cleanup produced actual Orders200.
+Private `receipt-quantity-rejection0110-final-proof.json` binds source,
+artifact/config and every evidence file. One attempt, zero saves/submits/OTPs.
+
+This verifies the source fractional-truncation correction natively on APK10
+and zero/negative admission. It does not establish normal receipt creation,
+image upload or lost-response acceptance, and it does not reopen exhausted
+receipt cases. APK9 acceptance remains historical and scoped; no result
+transfers. Dependency/readiness/native remaining gates, soak and dedicated
+expiry scheduling remain open.
