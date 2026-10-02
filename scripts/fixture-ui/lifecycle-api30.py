@@ -25,7 +25,7 @@ def main(path):
  try:
   audit=json.loads(soak.private(case['artifactAudit']).read_text());assert audit['status']=='PASS' and audit.get('sha256',audit.get('artifact',{}).get('sha256'))==c['apkSHA256']
   assert d.adb('emu','avd','name').splitlines()[0]=='TestWarehouseFixture_API30' and d.adb('shell','getprop','ro.build.version.sdk')=='30' and d.adb('shell','getenforce')=='Enforcing'
-  installed=d.adb('shell','pm','path',soak.PACKAGE);assert re.fullmatch(r'package:/data/app/[^\n]+',installed);assert d.adb('shell','sha256sum',installed[8:]).split()[0]==c['apkSHA256'];nav.owned_reverse_route(d.adb('reverse','--list'),18443);d.health(True);observe('before')
+  installed=d.adb('shell','pm','path',soak.PACKAGE);assert re.fullmatch(r'package:/data/app/[^\n]+',installed);assert d.adb('shell','sha256sum',installed[8:]).split()[0]==c['apkSHA256'];nav.owned_reverse_route(d.adb('reverse','--list'),18443);d.health();observe('before')
   for n in range(1,4):
    persisted=selection();d.cold();read('COLD_'+str(n));d.adb('shell','input','keyevent','3');time.sleep(2);d.adb('shell','monkey','-p',soak.PACKAGE,'-c','android.intent.category.LAUNCHER','1');read('FOREGROUND_'+str(n))
   observe('after');d.state.update(status='PASS',coldLaunches=3,foregroundRecoveries=3,persistedSelection=persisted);d.save()
