@@ -669,3 +669,22 @@ The exact documented fixture Node runtime then ran the full suite successfully:
 `quantity-supervisor-setup-tests02-node22.log`. Use the documented runtime/PATH
 for reproduction; the unsupported-runtime result does not establish an
 application regression or waive any artifact/dependency gate.
+
+## Queue preparation checkpoint, 2 October 19:25 UTC
+
+An actor-locked, ownership-guarded read-only inventory independently read the
+primary fixture twice with identical results. The preserved ordinary API cart
+has one FXC701 line requesting two units, with eight in stock. The current
+native supervisor session is valid and proposed dispatch FXQ992 is absent.
+Private `queue-processing-readonly-inventory01.json` preserves the complete
+order/line/lot precondition; no OTP, application write or dispatch occurred.
+
+Review tooling now binds that exact lot and order-item identity, rejects changed
+quantity/stock/session/ownership and refuses changes during preparation. Two
+JavaScript guard tests PASS, including provenance and hidden-state drift
+refusals. The guards also passed against the actual preserved inventory.
+Existing two Python selector tests cover queue expansion and generation
+controls. These are preparation evidence only: native queue processing remains
+unexecuted, and its SQL/storage observer and submission orchestration are
+still required. The cart remains explicitly API-created; this is not another
+native cart-creation attempt or a native cart PASS.
