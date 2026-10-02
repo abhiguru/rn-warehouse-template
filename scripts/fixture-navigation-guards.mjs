@@ -120,15 +120,25 @@ export function customerDiscoveryMode(c) {
   }
   return enabled;
 }
+export function unsavedCustomerDraftMode(c){
+ const enabled=c.case==='unsaved-customer-draft-cancel';
+ if(enabled){
+  assert.equal(c.kind,'native-unsaved-customer-draft');assert.equal(c.profileId,'947136fa-997b-4a83-819d-1b8bd3ecba68');assert.equal(c.profileName,'New customer');
+  assert.equal(c.draftMarker,'Fixture VM0109 unsaved customer');assert.equal(c.origin,'https://backend-core.example.test');assert.equal(c.instanceId,'b0ec3933-5258-4bd5-87f4-d57b13a78971');
+  assert.equal(c.targetOrigin,'https://backend-switch.example.test');assert.equal(c.targetInstanceId,'c7ee3314-4dee-4361-81df-7821cdcb1b4a');
+  assert.equal(c.artifactSHA256,'08271dada3bf90ed6912db71c0e08f95487a906d12a765bcaa706338bdf12fb7');assert.equal(customerReadMode(c),false);
+ }
+ return enabled;
+}
 export function navigationConfig(c) {
-  const customerLifecycle=customerReadMode(c);
+  const customerLifecycle=customerReadMode(c);unsavedCustomerDraftMode(c);
   assert.equal(c.scope, 'isolated-fictional-navigation-case');
-  assert.ok(['offline-orders', 'same-server', 'cancel-switch', 'confirm-switch', 'switch-back', 'malformed-server', 'cold-lifecycle', 'ordinary-logout', 'customer-logout', 'staff-logout', 'supervisor-reads', 'supervisor-logout'].includes(c.case));
+  assert.ok(['offline-orders', 'same-server', 'cancel-switch', 'confirm-switch', 'switch-back', 'malformed-server', 'cold-lifecycle', 'ordinary-logout', 'customer-logout', 'staff-logout', 'supervisor-reads', 'supervisor-logout','unsaved-customer-draft-cancel'].includes(c.case));
   for (const name of ['backendCheckout', 'backendState', 'soakConfig', 'artifactAudit', 'caseDirectory'])
     assert.ok(isAbsolute(c[name]), 'ABSOLUTE_CASE_PATH_REQUIRED');
   for (const name of ['instanceId', 'profileId', 'sessionId']) assert.match(c[name], uuid);
   for (const name of ['artifactSHA256', 'fixtureGuardSHA256']) assert.match(c[name], hash);
-  assert.equal(c.profileName, reciprocalReceiptDenialMode(c)||customerInvoiceDenialMode(c) ? 'Customer B' : c.case === 'switch-back' ? 'Switch Demo Administrator' : customerLifecycle || ['customer-logout','staff-logout', 'supervisor-reads', 'supervisor-logout'].includes(c.case) ? 'New customer' : 'Core Demo Administrator');
+  assert.equal(c.profileName, reciprocalReceiptDenialMode(c)||customerInvoiceDenialMode(c) ? 'Customer B' : c.case === 'switch-back' ? 'Switch Demo Administrator' : customerLifecycle || ['customer-logout','staff-logout', 'supervisor-reads', 'supervisor-logout','unsaved-customer-draft-cancel'].includes(c.case) ? 'New customer' : 'Core Demo Administrator');
   if (['staff-logout','supervisor-reads','supervisor-logout'].includes(c.case)) assert.equal(c.profileId, '947136fa-997b-4a83-819d-1b8bd3ecba68');
   return c;
 }
@@ -140,7 +150,7 @@ export function navigationSnapshotSQL(c) {
 SET LOCAL statement_timeout='10s';
 SELECT jsonb_build_object(
  'profile',(SELECT jsonb_build_object('id',id,'active',active,'role',role,'name',name)
-   FROM public.user_profiles WHERE id='${c.profileId}' AND mobile='${c.case === 'switch-back' ? '919888888881' : customerLifecycle || ['customer-logout','staff-logout', 'supervisor-reads', 'supervisor-logout'].includes(c.case) ? '919888888874' : '919888888871'}'),
+   FROM public.user_profiles WHERE id='${c.profileId}' AND mobile='${c.case === 'switch-back' ? '919888888881' : customerLifecycle || ['customer-logout','staff-logout', 'supervisor-reads', 'supervisor-logout','unsaved-customer-draft-cancel'].includes(c.case) ? '919888888874' : '919888888871'}'),
  'nativeSessionPresent',EXISTS(SELECT 1 FROM warehouse_security.refresh_sessions s
    JOIN public.user_profiles p ON p.auth_user_id=s.user_id
    WHERE p.id='${c.profileId}' AND s.id='${c.sessionId}' AND s.expires_at>now()),
@@ -175,7 +185,7 @@ export function navigationBefore(c, s) {
   const customerLifecycle=customerReadMode(c);
   assert.equal(s.profile?.id, c.profileId);
   assert.equal(s.profile?.name, c.profileName);
-  assert.equal(s.profile?.role, customerLifecycle || c.case === 'customer-logout' ? 'customer' : c.case === 'staff-logout' ? 'staff' : ['supervisor-reads','supervisor-logout'].includes(c.case) ? 'supervisor' : 'admin');
+  assert.equal(s.profile?.role, customerLifecycle || c.case === 'customer-logout' ? 'customer' : c.case === 'staff-logout' ? 'staff' : ['supervisor-reads','supervisor-logout','unsaved-customer-draft-cancel'].includes(c.case) ? 'supervisor' : 'admin');
   assert.equal(s.profile?.active, true);
   assert.equal(s.nativeSessionPresent, true, 'MATCHED_NATIVE_SESSION_REQUIRED');
   for (const name of ['businessHash', 'otherAuthHash']) assert.match(s[name], hash);
