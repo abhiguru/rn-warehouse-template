@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Late genuine Orders reply after entering server selection; no selection/save."""
-import datetime,fcntl,hashlib,importlib.util,json,os,re,sys,time
+import datetime,fcntl,hashlib,importlib.util,json,os,re,sys,time,traceback
+from orders_race_controls import orders_read_settlement
 from pathlib import Path
 spec=importlib.util.spec_from_file_location('nav',Path(__file__).with_name('navigation-api30.py'));nav=importlib.util.module_from_spec(spec);spec.loader.exec_module(nav)
 os.umask(0o077)
@@ -9,7 +10,7 @@ def main(path):
  c=json.loads(nav.soak.private(path).read_text());assert c['reservedCustomerOrdersSelectionRace'] is True and c['kind']=='native-orders-selection-response-race'
  deadline=datetime.datetime.fromisoformat(c['deadlineUTC'].replace('Z','+00:00')).timestamp();assert 0<deadline-time.time()<=600;scripts=Path(__file__).parent.parent
  cfg,i=nav.soak.config(c['soakConfig']);assert i['serial']=='emulator-5556' and c['artifactSHA256']==cfg['apkSHA256']
- names=['fixture-navigation-observe.mjs','fixture-navigation-guards.mjs','fixture-session-guards.mjs','fixture-orders-race-controls.mjs','fixture-orders-race-verify.mjs','fixture-ui/orders-selection-race-api30.py','fixture-ui/navigation-api30.py','fixture-ui/navigation_controls.py','fixture-ui/soak-api30.py','fixture-ui/dispatch_case_controls.py','fixture-ui/fixture_observation.py','fixture-ui/emulator_offline_network.py','fixture-ui/selection_start_controls.py']
+ names=['fixture-navigation-observe.mjs','fixture-navigation-guards.mjs','fixture-session-guards.mjs','fixture-orders-race-controls.mjs','fixture-orders-race-verify.mjs','fixture-ui/orders-selection-race-api30.py','fixture-ui/orders_race_controls.py','fixture-ui/navigation-api30.py','fixture-ui/navigation_controls.py','fixture-ui/soak-api30.py','fixture-ui/dispatch_case_controls.py','fixture-ui/fixture_observation.py','fixture-ui/emulator_offline_network.py','fixture-ui/selection_start_controls.py']
  assert set(c['toolingSHA256'])==set(names) and all(digest(scripts/n)==c['toolingSHA256'][n] for n in names)
  helper=json.loads(nav.soak.private(c['helperConfig']).read_text());assert digest(c['helperConfig'])==c['helperConfigSHA256'];assert len(helper['services'])==1 and helper['services'][0]['ordersReadDelayMs']==5000
  unit='warehouse-fixture-core-'+helper['runId']+'.service';assert cfg['managedUnits']['core']==unit and c['helperLog']==str(Path(helper['logDir'])/(unit+'.log'));nav.soak.private(c['helperLog'])
@@ -34,6 +35,19 @@ def main(path):
     if x.get('event')=='complete' and x.get('method')=='POST' and x.get('path')=='/rest/v1/rpc/get_orders_list' and x.get('status')==200 and datetime.datetime.fromisoformat(x['atUTC'].replace('Z','+00:00'))>=datetime.datetime.fromisoformat(since):completed=True
    if v['status']=='PASS' and completed:return
    assert time.monotonic()<end;time.sleep(.25)
+ def settled_startup():
+  end=time.monotonic()+25;previous=None
+  while True:
+   raw=Path(c['helperLog']).read_text();assert len(raw)<=1048576;events=[]
+   for line in raw.splitlines():
+    try:events.append(json.loads(line))
+    except ValueError:continue
+   settlement=orders_read_settlement(events)
+   if settlement['settled'] and settlement==previous:
+    nav.point(d.wait('Refresh orders'),'Refresh orders')
+    with (e/'startup-read-settlement.json').open('x') as f:f.write(json.dumps(settlement)+'\n')
+    return
+   previous=settlement;assert time.monotonic()<end;time.sleep(.25)
  def delayed_start(since):
   end=time.monotonic()+10
   while True:
@@ -48,8 +62,8 @@ def main(path):
  try:
   observe('guard');assert d.adb('emu','avd','name').splitlines()[0]=='TestWarehouseFixture_API30';assert d.adb('shell','getprop','ro.build.version.sdk')=='30';assert d.adb('shell','getenforce')=='Enforcing'
   p=d.adb('shell','pm','path',nav.soak.PACKAGE);assert re.fullmatch(r'package:/data/app/[^\n]+',p);assert d.adb('shell','sha256sum',p[8:]).split()[0]==c['artifactSHA256'];nav.owned_reverse_route(d.adb('reverse','--list'),18443)
-  since=datetime.datetime.now(datetime.timezone.utc).isoformat();d.cold();d.wait('Orders tab');orders200(since);observe('before')
-  since=datetime.datetime.now(datetime.timezone.utc).isoformat();d.tap('Refresh orders');delayed_start(since)
+  since=datetime.datetime.now(datetime.timezone.utc).isoformat();d.cold();d.wait('Orders tab');orders200(since);settled_startup();observe('before');d.state['lastPhase']='SETTLED_STARTUP_SQL_BASELINE';d.save()
+  since=datetime.datetime.now(datetime.timezone.utc).isoformat();d.tap('Refresh orders');d.state['lastPhase']='EXPLICIT_REFRESH_TAPPED';d.save();delayed_start(since);d.state['lastPhase']='ACTUAL_DELAYED_READ_STARTED';d.save()
   d.adb('shell','am','start','-W','-a','android.intent.action.VIEW','-d','warehouse-fixture://operator-server','-p',nav.soak.PACKAGE);tree=d.wait('Choose your warehouse server');entered=datetime.datetime.now(datetime.timezone.utc).isoformat()
   for n in tree.iter('node'):
    for key in ['text','content-desc']:n.set(key,re.sub(r'\b(?:91)?\d{10}\b','[private phone]',n.get(key,'')))
@@ -62,7 +76,8 @@ def main(path):
    labels=nav.labels(d.wait('Choose your warehouse server'));assert 'Orders tab' not in labels and 'Server Unavailable' not in labels;time.sleep(.5)
   d.selected_server(e,c['origin'],c['instanceId']);since=datetime.datetime.now(datetime.timezone.utc).isoformat();d.cold();d.wait('Orders tab');orders200(since);observe('after')
   d.state.update(status='PASS',lateOrdersResponseSelectionPreserved=True,normalRouteColdOrders200=True,scope='late Orders response after entering selection only; confirmed switching separate');d.save();print('{"status":"PASS","scope":"late genuine Orders response on selection screen"}')
- except Exception as error:d.state.update(status='FAIL',exceptionType=type(error).__name__,reason='Preserve race attempt; no automatic retry or selection');d.save();raise
+ except Exception as error:
+  site=traceback.extract_tb(error.__traceback__)[-1];d.state.update(failureSite=Path(site.filename).name+':'+str(site.lineno));d.state.update(status='FAIL',exceptionType=type(error).__name__,reason='Preserve race attempt; no automatic retry or selection');d.save();raise
  finally:os.close(fd)
 if __name__=='__main__':
  try:main(str(Path(sys.argv[1]).resolve()))
