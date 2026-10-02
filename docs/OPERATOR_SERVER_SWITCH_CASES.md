@@ -40,7 +40,7 @@ The [guarded navigation drivers](OPERATOR_NAVIGATION_DRIVERS.md) provide bounded
 same-server, cancellation and confirmed-origin checks. The baseline same-server,
 confirmed-switch, switch-back and replacement cases reached their campaign attempt
 caps; preserve their exact older-artifact passes and do not create aliases for
-additional runs. Distinct cancellation tests for unsaved customer, invoice, GRN and dispatch drafts passed on APK0109 with the ordinary supervisor session. Confirmed switching with those drafts and switching during saves/uploads remain untested. Their missing evidence must not be replaced by the cancellation passes. The installed APK010 has its own acceptance scope; older results do not transfer.
+additional runs. Distinct cancellation tests for unsaved customer, invoice, GRN and dispatch drafts passed on APK0109 with the ordinary supervisor session. Confirmed switching with those drafts and switching during saves/uploads remain untested. Their missing evidence must not be replaced by the cancellation passes. The installed APK10 has its own acceptance scope; older results do not transfer.
 
 Prepare fictional unsaved GRN, dispatch, invoice and customer drafts through the
 supported UI. Record which drafts survive navigation before claiming the switch
