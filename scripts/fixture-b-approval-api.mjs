@@ -11,7 +11,7 @@ import {bApprovalConfig,bApprovalBefore} from './fixture-b-approval-controls.mjs
 import {bApprovalSnapshot} from './fixture-b-approval-snapshot.mjs';
 import {runBApproval} from './fixture-b-approval-run.mjs';
 process.umask(0o077);
-let state,out;
+let state,out,phase='SOURCE_GUARD';
 try{
  const [path,mode]=process.argv.slice(2);assert.ok(['guard','execute'].includes(mode));
  const c=bApprovalConfig(privateJSON(path));assertReleased(c);const ui=privateJSON(c.soakConfig);
@@ -30,7 +30,7 @@ try{
  const guard=resolve(ui.backendCheckout,'tests/operator-fixture.mjs');assert.equal(createHash('sha256').update(readFileSync(guard)).digest('hex'),c.fixtureGuardSHA256);
  if(mode==='guard'){console.log('{"status":"PASS","scope":"B approval source/release/deadline guard only"}');}
  else{
-  const fd=Number(process.env.WAREHOUSE_B_APPROVAL_ACTOR_FD);assert.ok(Number.isSafeInteger(fd)&&fd>=3);
+  phase='ACTOR_LOCK';const fd=Number(process.env.WAREHOUSE_B_APPROVAL_ACTOR_FD);assert.ok(Number.isSafeInteger(fd)&&fd>=3);
   const lock=resolve(dirname(c.soakConfig),'fixture-session-actor.lock'),a=lstatSync(lock),b=fstatSync(fd);
   assert.ok(a.isFile()&&!a.isSymbolicLink()&&a.uid===process.getuid()&&(a.mode&0o077)===0&&realpathSync(lock)===lock&&a.ino===b.ino&&a.dev===b.dev);
   const acquired=spawnSync('/usr/bin/flock',['--nonblock','3'],{stdio:['ignore','pipe','pipe',fd],timeout:5000});assert.equal(acquired.status,0,'No competing actor permitted');
@@ -51,7 +51,7 @@ try{
    const tls=await call('/functions/v1/get-public-config');assert.equal(tls.data.instanceId,c.instanceId);assert.equal(tls.data.canonicalOrigin,c.origin);
    const socket=lstatSync(c.otpSocket);assert.ok(socket.isSocket()&&socket.uid===process.getuid()&&(socket.mode&0o077)===0&&realpathSync(c.otpSocket)===c.otpSocket);
   };
-  await verifyOwnership();const before=bApprovalSnapshot(c,env);bApprovalBefore(c,before); // Quota refusal precedes attempt directory/OTP.
+  phase='OWNED_TLS_AND_IPC';await verifyOwnership();phase='READONLY_SQL';const before=bApprovalSnapshot(c,env);phase='PRE_OTP_QUOTA_AND_STATE';bApprovalBefore(c,before); // Quota refusal precedes attempt directory/OTP.
   mkdirSync(c.caseDirectory,{mode:0o700});out=resolve(c.caseDirectory,'b-approval-result.json');state={status:'RUNNING',otpAttempted:false,approvalAttempted:false,phases:[]};
   const record=async event=>{state.phases.push(event);writeFileSync(out,JSON.stringify(state,null,2)+'\n',{mode:0o600});};
   const challenge=phone=>new Promise((done,reject)=>{
@@ -61,4 +61,4 @@ try{
   const result=await runBApproval(c,{verifyOwnership,snapshot:async()=>bApprovalSnapshot(c,env),call,challenge,record},state);
   writeFileSync(resolve(c.caseDirectory,'b-approval-preservation.json'),JSON.stringify(result,null,2)+'\n',{flag:'wx',mode:0o600});state.status='PASS';await record({phase:'FINAL_APPROVAL_PRESERVATION_PASS'});console.log('{"status":"PASS","scope":"ordinary owned B approval only"}');
  }
-}catch(error){if(state){state.status='FAIL';state.exceptionType=error.name;state.reason='Preserve evidence and uncertain state; no automatic retry or cleanup';writeFileSync(out,JSON.stringify(state,null,2)+'\n',{mode:0o600});}console.error('{"status":"FAIL","category":"B_APPROVAL_REFUSED_OR_STOPPED"}');process.exitCode=1;}
+}catch(error){if(state){state.status='FAIL';state.exceptionType=error.name;state.reason='Preserve evidence and uncertain state; no automatic retry or cleanup';writeFileSync(out,JSON.stringify(state,null,2)+'\n',{mode:0o600});}console.error(JSON.stringify({status:'FAIL',category:'B_APPROVAL_REFUSED_OR_STOPPED',phase,refusal:error.message?.includes('Ordinary administrator quota exhausted')?'ORDINARY_ADMINISTRATOR_QUOTA_EXHAUSTED':'OWNERSHIP_OR_STATE_REFUSED'}));process.exitCode=1;}
