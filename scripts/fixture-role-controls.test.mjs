@@ -1,3 +1,4 @@
+import {spawnSync} from 'node:child_process';import {mkdtempSync,writeFileSync,rmSync} from 'node:fs';import {tmpdir} from 'node:os';import {join} from 'node:path';
 import test from 'node:test';import assert from 'node:assert/strict';import {rolePreparation,roleBefore,roleAfter,roleAuthenticated,roleCommitted} from './fixture-role-controls.mjs';
 const c={scope:'isolated-fictional-role-preparation',phone:'919888888874',profileId:'947136fa-997b-4a83-819d-1b8bd3ecba68',profileName:'New customer',action:'prepare-staff'};const b={target:{id:c.profileId,name:c.profileName,role:'customer',active:true,status:'approved'},targetSessions:[],adminHourly:0,adminDaily:2,admin:{role:'admin',active:true},targetOtherFieldsHash:'a'.repeat(64),targetAssignmentsHash:'b'.repeat(64),otherAuthHash:'c'.repeat(64),businessHash:'d'.repeat(64),adminSessions:['owned-native'],targetOTPs:1,adminOTPs:3};
 test('only reserved logged-out approved profile and ordinary available quota can change role',()=>{roleBefore(c,b);for(const change of [{phone:'919888888873'},{profileId:'11111111-1111-1111-1111-111111111111'},{action:'promote-admin'}])assert.throws(()=>rolePreparation({...c,...change}));assert.throws(()=>roleBefore(c,{...b,targetSessions:['active']}));assert.throws(()=>roleBefore(c,{...b,adminHourly:5}));assert.throws(()=>roleBefore(c,{...b,businessHash:undefined}));assert.throws(()=>roleBefore(c,{...b,adminDaily:-1}));});
@@ -16,4 +17,10 @@ test('ordinary login and committed role must reconcile before temporary-session 
  assert.equal(roleAuthenticated(c,before,authenticated),fresh.id);assert.equal(roleCommitted(c,before,authenticated,committed),fresh.id);
  for(const patch of [{adminSessions:[fresh]},{adminSessions:[old]},{adminSessions:[old,fresh,fresh]},{adminSessions:[old,{id:'bad'}]},{targetOTPs:2},{businessHash:'e'.repeat(64)}])assert.throws(()=>roleAuthenticated(c,before,{...authenticated,...patch}));
  for(const patch of [{target:b.target},{adminSessions:[old]},{otherAuthHash:'e'.repeat(64)},{targetAssignmentsHash:'e'.repeat(64)}])assert.throws(()=>roleCommitted(c,before,authenticated,{...committed,...patch}));
+});
+
+test('role stage refuses malformed configuration before authentication or attempt creation',()=>{
+ const dir=mkdtempSync(join(tmpdir(),'fixture-role-refusal-'));try{const f=join(dir,'config.json');writeFileSync(f,JSON.stringify({scope:'wrong',secret:'PRIVATE_SENTINEL'}),{mode:0o600});
+ const q=spawnSync(process.execPath,['scripts/fixture-role-prepare.mjs',f,'guard'],{encoding:'utf8',timeout:5000});assert.equal(q.status,1);assert.match(q.stderr,/SOURCE_GUARD/);assert.ok(!q.stderr.includes('PRIVATE_SENTINEL'));
+ }finally{rmSync(dir,{recursive:true,force:true});}
 });
