@@ -783,3 +783,22 @@ are required. Disk remains below the25GiB new-build floor; no floor waiver or
 unrelated cache/state deletion occurred. Existing receipt attempt caps remain
 unchanged; this is the distinct invalid-quantity workflow, not a fourth
 receipt-creation or lost-response attempt.
+
+## Build-space prerequisite recovered through local preservation
+
+Six obsolete owned generated intermediate trees (build2026100101–0103 and
+2026093012–3014) were preserved in private local archives. Before retirement,
+ownership/no-symlink and absence of private JSON plan references were checked.
+Every archived file's bytes and catalog matched its original; six standalone
+APK hashes remained unchanged. Only verified redundant generated intermediate
+copies were retired. Current build0109, source checkouts, standalone artifacts,
+warehouse/AVD state, credentials, transactions, failures and old-soak evidence
+remain preserved. No archive transfer or restore occurred.
+
+Private preservation01/02 manifests and
+`build-space-after-preservation01.json` bind all checks. Disk now exceeds the
+25GiB new-build floor (approximately25.37GiB); no new build has started.
+The source receipt fix still requires clean build/install/audit/native
+verification. Current source CI37056571885/c422f62 has lint/typechecks and
+redacted scan PASS, dependency FAIL, Android audit still running. No final
+readiness, soak or expiry-freeze claim is made.
