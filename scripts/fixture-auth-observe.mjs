@@ -6,7 +6,7 @@ import { spawnSync } from 'node:child_process';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { assertReleased, privateJSON } from './fixture-session-guards.mjs';
-import { pendingReadOnlyMode, approvedEnrollmentExitMode, customerReadOnlyMode } from './fixture-auth-controls.mjs';
+import { pendingReadOnlyMode, approvedEnrollmentExitMode, customerReadOnlyMode, disabledAuthenticationMode } from './fixture-auth-controls.mjs';
 process.umask(0o077);
 try {
   const [path, phase] = process.argv.slice(2);
@@ -20,6 +20,8 @@ try {
   const pendingReadOnly = pendingReadOnlyMode(c,secondary,replacement);
   const approvedExit = approvedEnrollmentExitMode(c,secondary,replacement);
   const customerReadOnly = customerReadOnlyMode(c,secondary,replacement);
+  const disabled = disabledAuthenticationMode(c,secondary,replacement);
+  assert.ok(['authenticated','pending'].includes(c.expected) || disabled, 'EXPLICIT_AUTH_MODE_REQUIRED');
   if (Object.hasOwn(c,'replacementFixture')) assert.equal(typeof c.replacementFixture,'boolean');
   assert.ok(secondary || c.origin === 'https://backend-core.example.test');
   if (replacement) {
@@ -68,6 +70,10 @@ COMMIT;`;
       { input: sql, encoding: 'utf8', timeout: 15000, env: {...process.env, PGPASSWORD:env.POSTGRES_PASSWORD} });
     assert.equal(q.status,0,'PRIVATE_AUTH_OBSERVATION_FAILED');
     const snapshot = JSON.parse(q.stdout);
+    if (disabled) {
+      assert.deepEqual(snapshot.profile,{id:c.profileId,name:c.profileName,role:'customer',active:false,status:'disabled'});
+      assert.deepEqual(snapshot.sessions,[]); assert.equal(snapshot.enrollmentTokenCount,0);
+    }
     if (replacement) {assert.equal(snapshot.primaryAdministratorPresent,false);assert.equal(snapshot.profile?.name,c.profileName);assert.equal(snapshot.profile?.role,'admin');assert.equal(snapshot.profile?.active,true);}
     if (pendingReadOnly) {assert.equal(snapshot.profile?.status,'pending');assert.equal(snapshot.profile?.active,false);assert.deepEqual(snapshot.sessions,[]);}
     if (approvedExit) {assert.equal(snapshot.profile?.status,'approved');assert.equal(snapshot.profile?.active,true);assert.deepEqual(snapshot.sessions,[]);}
@@ -88,6 +94,10 @@ COMMIT;`;
         const added = snapshot.sessions.filter(s=>!before.sessions.some(p=>p.id===s.id));
         assert.equal(added.length,1,'ONE_NEW_NATIVE_SESSION_REQUIRED');
         snapshot.nativeSession = added[0];
+      } else if (disabled) {
+        assert.deepEqual(snapshot.profile,before.profile);
+        assert.deepEqual(snapshot.sessions,before.sessions);
+        assert.equal(snapshot.enrollmentTokenCount,before.enrollmentTokenCount);
       } else assert.equal(snapshot.profile?.status,'pending');
     }
     writeFileSync(resolve(c.caseDirectory,`auth-${phase}.json`),JSON.stringify({snapshot},null,2)+'\n',{flag:'wx',mode:0o600});

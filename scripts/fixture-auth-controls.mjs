@@ -1,4 +1,16 @@
 import assert from 'node:assert/strict';
+export function disabledAuthenticationMode(c, secondary, replacement) {
+ if (Object.hasOwn(c, 'disabledAuthentication')) assert.equal(typeof c.disabledAuthentication, 'boolean');
+ const enabled = c.disabledAuthentication === true;
+ if (enabled) {
+  assert.equal(secondary, false); assert.equal(replacement, false);
+  assert.equal(c.phone, '919888888873'); assert.equal(c.profileName, 'Customer B');
+  assert.equal(c.profileId, '34d9d337-ec2e-4bed-b555-0e8b63dd3aef');
+  assert.equal(c.role, 'customer'); assert.equal(c.expected, 'disabled');
+  for (const key of ['pendingReadOnly', 'approvedEnrollmentExit', 'customerReadOnly']) assert.notEqual(c[key], true);
+ }
+ return enabled;
+}
 export function pendingReadOnlyMode(c,secondary,replacement) {
  if(Object.hasOwn(c,'pendingReadOnly')) assert.equal(typeof c.pendingReadOnly,'boolean');
  const enabled=c.pendingReadOnly===true;
