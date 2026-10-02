@@ -38,7 +38,7 @@ class QR(auth.Auth):
         tree=self.snapshot()
         labels={v for n in tree.iter('node') for v in [n.get('text'),n.get('content-desc')] if v}
         self.archive(label)
-        if 'Cancel' in labels:
+        if 'Cancel' in labels and not labels.intersection({'Send OTP','Verify Your Phone','Enrollment status'}):
             q=subprocess.run([self.c['adb'],'-s',self.i['serial'],'exec-out','screencap','-p'],capture_output=True,timeout=15)
             assert q.returncode==0 and q.stdout.startswith(b'\x89PNG\r\n\x1a\n')
             (self.e/(label+'.png')).write_bytes(q.stdout)

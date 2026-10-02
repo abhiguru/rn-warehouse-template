@@ -1,6 +1,7 @@
 import importlib.util
 from pathlib import Path
 import unittest
+import xml.etree.ElementTree as ET
 from unittest.mock import patch
 
 spec=importlib.util.spec_from_file_location('qr_driver',Path(__file__).with_name('qr-api30.py'))
@@ -8,6 +9,15 @@ qr=importlib.util.module_from_spec(spec);spec.loader.exec_module(qr)
 
 
 class QRControls(unittest.TestCase):
+    def test_authentication_screens_never_produce_unmasked_image_evidence(self):
+        driver=qr.QR.__new__(qr.QR);driver.archive=lambda label:None
+        for labels in [['Send OTP'],['Cancel','Send OTP'],['Cancel','Verify Your Phone'],['Cancel','Enrollment status']]:
+            tree=ET.Element('hierarchy')
+            for label in labels:ET.SubElement(tree,'node',text=label)
+            driver.snapshot=lambda:tree
+            with patch.object(qr.subprocess,'run') as run:
+                driver.archive_camera('test');run.assert_not_called()
+
     def test_activation_authentication_and_generic_permission_actions_refused(self):
         driver=qr.QR.__new__(qr.QR)
         with patch.object(qr.auth.Auth,'tap') as tap:
