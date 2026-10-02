@@ -9,16 +9,18 @@ from pathlib import Path
 import re
 import sys
 import time
+import traceback
 from dispatch_draft_controls import point, draft_labels, grn_search_controls, exact_field_value
 from dispatch_case_controls import submission_point,owned_reverse_route
 
-spec = importlib.util.spec_from_file_location('fixture_soak', Path(__file__).with_name('soak-api30.py'))
-soak = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(soak)
+spec = importlib.util.spec_from_file_location('fixture_auth', Path(__file__).with_name('auth-api30.py'))
+auth = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(auth)
+soak=auth.soak
 os.umask(0o077)
 
 
-class Draft(soak.Soak):
+class Draft(auth.Auth):
     def tap(self, label, button=False):
         self.state['lastAction'] = {'operation':'tap', 'control':label}; self.save()
         xy = point(self.wait(label), label, button=button)
@@ -126,7 +128,9 @@ def main(path):
         driver.wait('Dispatch Created Successfully!');driver.archive('normal-dispatch-native-success');backend('after-submit')
         driver.state.update(status='PASS',nativeSuccess=True,normalRoute=True,independentCommitReconciled=True)
         driver.state['phases'].append('ONE_NATIVE_NORMAL_DISPATCH_COMMIT_RECONCILED')
-    except Exception:
+    except Exception as error:
+        last=traceback.extract_tb(error.__traceback__)[-1]
+        driver.state.update(exceptionType=type(error).__name__,failureSite=Path(last.filename).name+':'+str(last.lineno))
         driver.state['status'] = 'FAIL'
         driver.state['reason'] = 'Normal dispatch stopped; preserve stock, document numbers and native state; no replay'
         if route_changed:
