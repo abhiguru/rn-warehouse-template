@@ -1065,3 +1065,27 @@ the new switching administrator session. Customer, GRN and dispatch header
 drafts each have independent APK10 evidence; invoice and in-flight request,
 upload and save switching remain open. Exhausted positive-dispatch/fault cases
 remain closed; this unsaved-notes check does not substitute for them.
+
+APK10 confirmed invoice-header draft switch-back01 PASS, 2026-10-02UTC.
+Frozen0551d91 entered the real unsaved invoice-number marker20261992 from the
+ordinary switching administrator session, confirmed genuine primary identity
+once and preserved the same process through primary login. Old credential keys
+and only the source session/history were removed normally. Independent actual
+SQL/stored-byte/safe-HTTP observations reconciled unchanged protected source
+and destination state with no old credential forwarding. One ordinary primary
+supervisor login then proved the invoice header clear before any cold launch,
+persisted primary selection and explicit authenticated cold Orders200. Exactly
+one new fixed seven-day session and verification were added; prior sessions
+and unrelated auth/business/stored objects stayed unchanged. No invoice save
+or business submission occurred. Both immutable stages and independent checks
+PASS: confirmed-invoice-draft-switchback0110-01 and
+confirmed-invoice-draft-primary-auth0110-01, with corresponding
+stage-...-evidence/ledger.json. The original emulator holds the new primary
+supervisor session. Complete293 source tests and focused lint passed.
+
+Customer, GRN, dispatch and invoice header drafts now each have independent
+APK10 confirmed-switch, ordinary-login, same-process-clearing and cold-read
+evidence. This does not establish full multi-step draft payload acceptance,
+in-flight requests/uploads/saves, positive invoice arithmetic/save/PDF workflows
+or the capped baseline cases. Those remain separately open or blocked. Final
+readiness, new soak and delayed-expiry appointment remain unstarted.
