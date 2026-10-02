@@ -2,8 +2,9 @@
 import datetime,re
 
 def card(tree,quantity):
-    assert quantity in [1,2]
+    assert quantity in [0,1,2]
     expected=f'Order for Backend Test Customer A, Active, 1 item · {quantity} unit'+('s' if quantity==2 else '')
+    if quantity==0:expected='Order for Backend Test Customer A, Empty, No items yet'
     nodes=[n for n in tree.iter('node') if n.get('content-desc','').startswith('Order for ')]
     matched=[n for n in nodes if n.get('content-desc')==expected or n.get('content-desc','').startswith(expected+', Location: ')]
     assert len(matched)==1,'Unique expected assigned-customer order card required'

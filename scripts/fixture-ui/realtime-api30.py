@@ -63,7 +63,7 @@ def main(path):
         end=time.monotonic()+30
         while not orders_http(since):assert time.monotonic()<end;time.sleep(1)
         # Baseline is fetched before the no-refresh delivery windows begin.
-        assert not any(n.get('content-desc','').startswith('Order for ') for n in driver.snapshot().iter('node')),'Fresh empty-cart native baseline required'
+        card(driver.snapshot(),0)
         emit({'status':'READY','window':'foreground','manualRefreshUsed':False});delivered('added')
         radios=settings(driver.adb);original_airplane(driver.adb)
         match=re.fullmatch(r'package:in\.gurucold\.warehouse\.fixture uid:(\d+)',driver.adb('shell','pm','list','packages','-U',nav.soak.PACKAGE));assert match;uid=int(match.group(1))
