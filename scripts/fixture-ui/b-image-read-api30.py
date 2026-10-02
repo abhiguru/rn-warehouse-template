@@ -29,7 +29,7 @@ def main(path):
   assert d.adb('emu','avd','name').splitlines()[0]=='TestWarehouseFixture_API30';assert d.adb('shell','getprop','ro.build.version.sdk')=='30';assert d.adb('shell','getenforce')=='Enforcing'
   p=d.adb('shell','pm','path',nav.soak.PACKAGE);assert re.fullmatch(r'package:/data/app/[^\n]+',p);assert d.adb('shell','sha256sum',p[8:]).split()[0]==c['artifactSHA256'];nav.owned_reverse_route(d.adb('reverse','--list'),18443);d.health(True);observe('before')
   d.cold();d.wait('Orders tab');since=datetime.datetime.now(datetime.timezone.utc).isoformat();d.state['imageReadAttempted']=True;d.save();d.adb('shell','am','start','-W','-a','android.intent.action.VIEW','-d','warehouse-fixture://grn-details/'+c['targetReceiptId'],'-p',nav.soak.PACKAGE)
-  d.wait('Images tab, 1 items');d.tap('Images tab, 1 items');d.wait('All (1)');d.wait('Header (1)');d.wait('Items (0)');d.archive('authorized-B-images-tab')
+  tree=d.wait('Images tab, 1 items');nodes=[n for n in tree.iter('node') if n.get('content-desc')=='Images tab, 1 items' and n.get('enabled')=='true'];assert len(nodes)==1;bounds=re.fullmatch(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]',nodes[0].get('bounds',''));assert bounds;x,y,xx,yy=map(int,bounds.groups());assert 0<=x<xx<=720 and 0<=y<yy<=1280;d.adb('shell','input','tap',str((x+xx)//2),str((y+yy)//2));d.wait('All (1)');d.wait('Header (1)');d.wait('Items (0)');d.archive('authorized-B-images-tab')
   end=time.monotonic()+30
   while observe('http',since)['status']!='PASS':assert time.monotonic()<end;time.sleep(.5)
   captures=[]
