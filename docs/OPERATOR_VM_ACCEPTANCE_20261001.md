@@ -569,3 +569,28 @@ completed: Android debug artifact audit, lint/typecheck and redacted source/hist
 scans PASS; dependencies FAIL. The CI debug artifact result is separate from the
 installed standalone release APK9 and does not waive the dependency gate or
 establish final readiness/soak acceptance.
+
+### Native zero and excess dispatch-item quantity rejection
+
+A distinct non-submitting native case tested the existing create-item quantity
+admission contract on the genuine FXF410 lot (quantity/stock20), with supervisor
+session and exact APK9 bindings. The first attempt `cd1381e` stopped after zero
+entry because the general input helper expected visible 0. Independent full SQL
+and stored-file reconciliation passed before cleanup or rerun. Actor-locked
+read-only diagnosis confirmed the actual field renders zero as the Qty placeholder
+with Save disabled, matching the application source. Failed evidence remains in
+`native-dispatch-quantity-rejection0109-01/` and its private diagnosis.
+
+The first corrected rerun, frozen tooling `6aae486`, passed actual native zero
+and21 admission checks. Explicit zero entry rendered the empty/Qty field with
+Save disabled;21 rendered as21, displayed Quantity exceeds available stock (20)
+and kept Save disabled. No item save, dispatch submission or OTP occurred. The
+independent before, after and post-cold-cleanup snapshots were identical: stock20,
+no FXQ991 record, valid native supervisor session, complete business/authentication
+hashes and all stored-file hashes preserved. Normal-route cold Orders200 passed.
+Evidence: `native-dispatch-quantity-rejection0109-02/` and
+`dispatch-quantity-rejection0109-final-proof.json`.
+
+This case establishes native invalid/excess item admission. It does not replay
+an exhausted lost-response/normal-dispatch case, issue an excess API write, or
+establish concurrent submission, receipt invalid-quantity or queue processing.
