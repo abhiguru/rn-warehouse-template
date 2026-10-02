@@ -4,7 +4,42 @@ This campaign remains in progress. It uses the existing x86_64 VM and the owned 
 
 The completed eight-hour soak belongs exclusively to the older APK, build 2026100101. Its immutable plan, 54 bound inputs and PASS ledger remain preserved. None of its acceptance transfers to a later APK. The final new-artifact soak has **not started**; unresolved native writes and missing acceptance cases still block its gates.
 
-## Source and artifact checkpoint
+## Current evidence checkpoint, 2 October 19:13 UTC
+
+The installed standalone x86_64 candidate is APK2026100109, application source
+`696165f4a4494c8b5652e4e98965ad05d600d10e`, SHA256
+`08271dada3bf90ed6912db71c0e08f95487a906d12a765bcaa706338bdf12fb7`.
+Application bytes remain separate from newer fixture tooling and documentation.
+The backend application remains `bed4eeee4a008073aa453c32da27cade50a32a2f`
+with recorded overlays; backend review head is `5e70e01`.
+
+| Requirement | Current evidence and remaining scope |
+| --- | --- |
+| Exact APK9 audit | PASS; immutable compiled audit and installed read-back are retained. This is not final freeze/readiness. |
+| B GRN PDF | PASS; genuine generation/download, Android SEND, approved Librera view/export and stored/native/export hashes. |
+| Reciprocal customer Realtime | PASS; actual A/B/admin channels, native B event-driven refetch, both writes reconciled and only new API sessions removed. |
+| Supervisor Realtime | PASS; explicit supervisor received both events; customer A only A; native supervisor refetched without manual refresh. |
+| Unsaved draft cancellation | All four PASS: customer, invoice, GRN and dispatch. First GRN selector failure preserved/reconciled before corrected pass. Confirmed and in-flight switching remain distinct. |
+| Native dispatch quantity admission | PASS for zero/excess21 against stock20; Save disabled, no item save/submission, all three SQL/object snapshots identical. First zero-rendering helper failure preserved. |
+| B account lifecycle | PASS ordinary native logout, administrator rejection and native rejected-login denial; B remains rejected/logged out. |
+| B image rendering | BLOCKED after three preserved/reconciled attempts. Independent private-image API denial PASS does not establish native rendering. |
+| Native receipt/cart and selected invoice/lost-response cases | Attempt-limited failures and partial results remain preserved below. No alias or fourth attempt is allowed. Successful/uncertain document numbers and stock remain retained. |
+| Remaining native business | Concurrency, queue processing and receipt invalid quantities remain unexecuted; existing source/API checks do not establish their native acceptance. |
+| Remaining switching | In-flight uploads/saves and confirmed request switching remain unexecuted. Older-artifact same/switch/replacement results retain their exact scope and do not transfer to APK9. |
+| Reserved account revocation | UNSTARTED; current reserved native role is supervisor, and dependent workflow closure is incomplete. No unsupported role/session substitution is permitted. |
+| Source verification | 253 setup tests PASS with documented fixture Node runtime; redacted source/history scans PASS. Unsupported Node18 failure remains retained. |
+| Final readiness / eight-hour soak | UNSTARTED; dependency and remaining native gates unresolved. Older-APK soak remains separate PASS. |
+| Dedicated natural expiry | UNSCHEDULED; requires final artifact freeze and a separate owned AVD/session. Current supervisor session is not this appointment. |
+
+Private `requirements-audit-20261002T1913.json` binds the inspected artifact and
+recent acceptance proofs. Runtime monitor reports owned API30 without ANR/crash
+or resource pressure; disk remains below the25GiB new-native-build floor. No
+state/cache deletion, build-floor waiver or final-completion claim is made.
+
+The tables below are the initial campaign checkpoint and historical evidence;
+subsequent dated results retain their exact artifact and attempt scopes.
+
+## Initial source and artifact checkpoint
 
 | Item | Recorded source or result |
 | --- | --- |
@@ -19,7 +54,7 @@ The completed eight-hour soak belongs exclusively to the older APK, build 202610
 
 Application changes and fixture tooling commits are recorded separately from generated native trust inputs. Every subsequent candidate needs its own compiled audit, increasing version code, install read-back and native evidence. Runtime tools are frozen in private directories; corrections belong in review source, followed by a new runtime and attempt.
 
-## Executed results
+## Initial executed results (historical)
 
 | Scope | Result and limits |
 | --- | --- |
