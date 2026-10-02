@@ -77,15 +77,18 @@ class Auth(soak.Soak):
 def main(path):
     case=json.loads(soak.private(path).read_text());ui=json.loads(soak.private(case['soakConfig']).read_text())
     scripts=Path(__file__).parent.parent
-    bounded=case.get('customerBApprovedAuthentication') is True or case.get('rejectedAuthentication') is True;deadline=None
+    draft_auth=case.get('confirmedDraftDestinationAuthentication') is True
+    bounded=draft_auth or case.get('customerBApprovedAuthentication') is True or case.get('rejectedAuthentication') is True;deadline=None
     if bounded:
         deadline=datetime.datetime.fromisoformat(case['deadlineUTC'].replace('Z','+00:00')).timestamp();assert 0<deadline-time.time()<=600
         campaign=json.loads(soak.private(case['campaignFile']).read_text());assert campaign['deadline']==case['campaignDeadlineUTC'];assert deadline<=datetime.datetime.fromisoformat(campaign['deadline'].replace('Z','+00:00')).timestamp()
         assert case['artifactSHA256']==ui['apkSHA256'];assert hashlib.sha256(Path(case['soakConfig']).read_bytes()).hexdigest()==case['soakConfigSHA256']
         names=['fixture-auth-observe.mjs','fixture-auth-controls.mjs','fixture-session-guards.mjs','fixture-ui/auth-api30.py','fixture-ui/soak-api30.py','fixture-ui/fixture_observation.py','fixture-soak-preflight.mjs','prepare-emulator-fixture.mjs','fixture-service-health.mjs','is-main.mjs']
+        names+=['fixture-confirmed-draft-auth-controls.mjs','fixture-confirmed-draft-controls.mjs','fixture-confirmed-draft-snapshot.mjs','fixture-queue-processing-snapshot.mjs','fixture-queue-processing-controls.mjs']
+        if draft_auth:names+=['fixture-ui/confirmed_draft_continuation_controls.py','fixture-ui/unsaved_dispatch_controls.py']
         assert set(case['toolingSHA256'])==set(names) and all(hashlib.sha256((scripts/n).read_bytes()).hexdigest()==case['toolingSHA256'][n] for n in names)
         helper=json.loads(soak.private(case['helperConfig']).read_text());assert hashlib.sha256(Path(case['helperConfig']).read_bytes()).hexdigest()==case['helperConfigSHA256'];assert helper['scope']=='isolated-fictional-fixture' and len(helper['services'])==1
-        h=helper['services'][0];assert h['kind']=='core' and h['state']==ui['backendState'] and h['owningCheckout']==ui['backendCheckout'] and h['ownerGuardSHA256']==case['fixtureGuardSHA256'] and h['socketPath']==case['otpSocket'] and h.get('ordersReadDelayMs',0)==0;assert ui['managedUnits']['core']=='warehouse-fixture-core-'+helper['runId']+'.service'
+        h=helper['services'][0];kind='switch' if draft_auth else 'core';assert h['kind']==kind and h['state']==ui['secondaryBackendState' if draft_auth else 'backendState'] and h['owningCheckout']==ui['secondaryBackendCheckout' if draft_auth else 'backendCheckout'] and h['ownerGuardSHA256']==case['fixtureGuardSHA256'] and h['socketPath']==case['otpSocket'] and h.get('ordersReadDelayMs',0)==0;assert ui['managedUnits'][kind]=='warehouse-fixture-'+kind+'-'+helper['runId']+'.service'
     def alive():
         if bounded:assert time.time()<deadline,'B authentication deadline'
     def observe(phase):
@@ -101,7 +104,7 @@ def main(path):
     e=Path(case['caseDirectory']);soak.private(e.parent,True);assert not e.exists(),'Preserve attempts; no resume';e.mkdir(mode=0o700)
     class BoundedAuth(Auth):
         def adb(self,*args):alive();return super().adb(*args)
-    driver=BoundedAuth(c,i,'unused',0);driver.e,driver.file=e,e/'auth-result.json';driver.state.update(phases=[],configSHA256=hashlib.sha256(Path(path).read_bytes()).hexdigest());driver.save()
+    driver=BoundedAuth(c,i,'unused',0);driver.e,driver.file=e,e/'auth-result.json';driver.state.update(phases=[],sameProcessDraftContinuation=draft_auth,configSHA256=hashlib.sha256(Path(path).read_bytes()).hexdigest());driver.save()
     try:
         if bounded:
             command=shlex.join([ui['node'],str(scripts/'fixture-soak-preflight.mjs'),case['soakConfig']]);q=subprocess.run(['/usr/bin/sg','docker','-c',command],capture_output=True,timeout=90,env={**os.environ,'PATH':str(Path(ui['node']).parent)+':'+os.environ['PATH']});assert q.returncode==0,'Actual normal helper readiness required'
@@ -111,8 +114,11 @@ def main(path):
         assert driver.adb('shell','getprop','ro.build.version.sdk')=='30' and driver.adb('shell','getenforce')=='Enforcing'
         installed=driver.adb('shell','pm','path',soak.PACKAGE);assert re.fullmatch(r'package:/data/app/[^\n]+',installed)
         assert driver.adb('shell','sha256sum',installed[8:]).split()[0]==c['apkSHA256']
-        driver.adb('shell','am','force-stop',soak.PACKAGE);driver.adb('shell','monkey','-p',soak.PACKAGE,'-c','android.intent.category.LAUNCHER','1')
-        tree=driver.wait('Send OTP');driver.archive('cold-login')
+        if draft_auth:
+            assert driver.adb('shell','pidof',soak.PACKAGE)==str(case['expectedProcessPID']),'Preserve confirmed draft process before OTP'
+        else:
+            driver.adb('shell','am','force-stop',soak.PACKAGE);driver.adb('shell','monkey','-p',soak.PACKAGE,'-c','android.intent.category.LAUNCHER','1')
+        tree=driver.wait('Send OTP');driver.archive('same-process-destination-login' if draft_auth else 'cold-login')
         driver.state['failurePhase']='FILL_FICTIONAL_PHONE';driver.save()
         driver.fill('Enter your mobile number',case['phone'][-10:])
         driver.state['failurePhase']='ORDINARY_OTP_REQUEST';driver.save()
@@ -139,6 +145,43 @@ def main(path):
             driver.state['phases'].append(case['expected'].upper()+'_DENIAL_AND_COLD_LOGIN')
         else:
             driver.wait('Orders tab' if case['expected']=='authenticated' else 'Enrollment status')
+        if draft_auth:
+            from confirmed_draft_continuation_controls import cleared_draft
+            from unsaved_dispatch_controls import optional_toggle_point
+            assert driver.adb('shell','pidof',soak.PACKAGE)==str(case['expectedProcessPID']),'Destination login replaced the draft process'
+            confirmed=json.loads(soak.private(case['confirmedCase']).read_text());kind=case['confirmedDraftKind'];assert confirmed['draftKind']==kind
+            driver.state['failurePhase']='SAME_PROCESS_EMPTY_DESTINATION_DRAFT';driver.save()
+            route=('customer' if kind=='customer' else kind)+'-form/step1';driver.adb('shell','am','start','-W','-a','android.intent.action.VIEW','-d','warehouse-fixture://'+route,'-p',soak.PACKAGE)
+            if kind=='dispatch':
+                driver.wait('Dispatch number')
+                for _ in range(7):
+                    if any(n.get('text')=='Show Optional Fields' for n in driver.snapshot().iter('node')):break
+                    driver.adb('shell','input','swipe','360','1050','360','450','400')
+                driver.adb('shell','input','tap',*map(str,optional_toggle_point(driver.wait('Show Optional Fields'))))
+                for _ in range(7):
+                    if any(n.get('text')=='Additional notes (max 250 characters)' for n in driver.snapshot().iter('node')):break
+                    driver.adb('shell','input','swipe','360','1050','360','450','400')
+            label={'customer':'Enter customer name','grn':'Receipt number','invoice':'Auto-generated, can be edited','dispatch':'Additional notes (max 250 characters)'}[kind]
+            tree=driver.wait(label);assert cleared_draft(tree,kind,confirmed['draftMarker']);driver.archive('same-process-destination-draft-cleared')
+            assert driver.adb('shell','pidof',soak.PACKAGE)==str(case['expectedProcessPID']);driver.state.update(destinationDraftClearedBeforeColdLaunch=True,draftProcessPID=case['expectedProcessPID'],postConfirmationColdLaunchAttempts=0);driver.save()
+        if draft_auth:
+            driver.state['failurePhase']='DESTINATION_COLD_PERSISTENCE_AFTER_DRAFT_PROOF';driver.save()
+            driver.adb('shell','am','force-stop',soak.PACKAGE);driver.adb('shell','monkey','-p',soak.PACKAGE,'-c','android.intent.category.LAUNCHER','1');driver.wait('Orders tab')
+            selected=driver.adb('shell',shlex.join(['/system/bin/sqlite3','-readonly','/data/user/0/'+soak.PACKAGE+'/databases/RKStorage',"SELECT value FROM catalystLocalStorage WHERE key='operator_server_v1';"]))
+            assert selected and len(selected)<=4096;selected=json.loads(selected);assert selected['origin']==case['origin'] and selected['instanceId']==case['instanceId']
+            log=Path(helper['logDir'])/('warehouse-fixture-switch-'+helper['runId']+'.service.log');st=log.lstat();assert not log.is_symlink() and st.st_uid==os.getuid() and st.st_mode&0o077==0
+            initial=log.read_bytes();assert len(initial)<=8388608;offset=len(initial);prefix=hashlib.sha256(initial).hexdigest();inode=st.st_ino
+            since=datetime.datetime.now(datetime.timezone.utc);driver.tap('Refresh orders')
+            end=time.monotonic()+25
+            while True:
+                assert log.stat().st_size<=8388608 and log.stat().st_ino==inode;raw=log.read_bytes();assert hashlib.sha256(raw[:offset]).hexdigest()==prefix;events=[]
+                for line in raw[offset:].decode().splitlines():
+                    if not line.startswith('{'):continue
+                    event=json.loads(line)
+                    if event.get('event')=='response-complete' and event.get('path')=='/rest/v1/rpc/get_orders_list' and datetime.datetime.fromisoformat(event['atUTC'].replace('Z','+00:00'))>=since:events.append(event)
+                if any(e.get('status')==200 and e.get('authorizationPresent') is True for e in events):break
+                assert time.monotonic()<end,'Actual destination cold authenticated Orders200 required';time.sleep(.5)
+            driver.archive('destination-cold-orders');driver.state.update(postConfirmationColdLaunchAttempts=1,destinationColdOrders200=True,destinationSelection={'origin':selected['origin'],'instanceId':selected['instanceId']});driver.save()
         driver.state['failurePhase']='POST_AUTH_RECONCILIATION';driver.save()
         observe('after');driver.archive('ordinary-login-result')
         driver.state.update(status='PASS',ordinaryAuthentication=True,newOTPs=1,completedAt=datetime.datetime.now(datetime.timezone.utc).isoformat());driver.save()

@@ -151,3 +151,27 @@ destination authentication. The earlier frozen tooling is retained; execution
 requires a new frozen revision. Fresh helper readiness passed after preserving
 the initial IDLE-versus-DISARMED assertion failure and explicitly initializing
 only the proven-empty new relay. No native switch, login or logout has occurred.
+
+Destination continuation tooling: `auth-api30.py` has an optional
+`confirmedDraftDestinationAuthentication` fixture-only mode. It binds the actual
+switching administrator, exact APK10, previous confirmation configuration and
+successful pre-authentication reconciliation, current app process ID and fresh
+switch helper/IPC identity. One ordinary OTP is requested and entered through
+private IPC/ADB stdin; no fixed code or quota reset is used. Before login it must
+prove that destination state still matches confirmation and source state is
+unchanged. Authentication must add exactly one fixed seven-day session and one
+verification, preserve every prior session, and leave unrelated auth, users,
+rotation history, configuration, business rows and stored bytes unchanged.
+
+The continuation opens the actual destination form and rejects the original
+source draft marker in the same app process. Only after that evidence may it
+cold-launch, verify public destination selection and require an explicit fresh
+authenticated destination Orders200 from the hash/inode-preserved safe helper
+log. Final independent authentication and both-warehouse reconciliation follow.
+It never saves a business record, repeats OTP, resumes or cleans up a failure.
+Three focused source tests (including native control refusals) and the existing
+nine authentication control tests passed. The expanded actual destination SQL,
+profile/quota and metadata digests passed read-only integration; private evidence
+`destination-auth-readonly-sql-validation01-proof.json` records zero native,
+OTP and session-creation attempts. Real confirmation/authentication/draft/cold
+execution remains NOT TESTED until the freshly frozen bounded stages run.
