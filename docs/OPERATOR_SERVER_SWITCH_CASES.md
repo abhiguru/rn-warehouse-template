@@ -101,3 +101,10 @@ authentication. Even a successful reconciliation reports draft acceptance
 `NOT_TESTED`: ordinary destination login and actual empty-draft UI evidence remain
 required. The missing confirmed-draft native driver and those executions remain
 open. These modules do not reopen exhausted baseline cases.
+
+Exact-head CI for observer revision `99babd3` exposed three ESLint `no-undef`
+errors for the bare `structuredClone` test global. The corrected tests use
+`globalThis.structuredClone`; focused tests, complete lint (zero errors) and
+typecheck passed locally. The failed CI log remains private. Backend CI for
+`071806b9eb2763dc2e147daf992f05b199226c65` completed successfully; its remote
+excluded suites do not establish additional VM native or physical acceptance.
