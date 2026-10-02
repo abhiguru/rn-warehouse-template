@@ -23,3 +23,7 @@ def foreground(window,fixture,external=False):
     rows=[x for x in window.splitlines() if 'mCurrentFocus=' in x];assert len(rows)==1
     allowed=PICKER_PACKAGES|{fixture} if external else {fixture}
     assert any(re.search(r'\s'+re.escape(package)+r'/',rows[0]) for package in allowed), 'Unowned or unsupported gallery foreground'
+
+def picker_focused(window):
+ rows=[line for line in window.splitlines() if 'mCurrentFocus=' in line];assert len(rows)==1
+ return any(re.search(r'\s'+re.escape(package)+r'/',rows[0]) for package in PICKER_PACKAGES)

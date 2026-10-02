@@ -1,5 +1,6 @@
 import unittest,xml.etree.ElementTree as ET
 from normal_receipt_controls import point,retryable_cold_focus
+from receipt_image_controls import picker_focused
 class Controls(unittest.TestCase):
  def tree(self,label,extra=''):
   return ET.fromstring('<hierarchy><node clickable="true" enabled="true" bounds="[100,200][200,300]"><node text="'+label+'"/></node>'+extra+'</hierarchy>')
@@ -25,4 +26,9 @@ class ColdReadiness(unittest.TestCase):
   error='Unowned or unsupported gallery foreground';window='mCurrentFocus=Window{u0 com.android.documentsui/Picker}'
   self.assertTrue(retryable_cold_focus(window,error,True))
   for w,e,starting in [(window,error,False),(window,'ANR detected',True),('mCurrentFocus=Window{u0 com.other.app/Screen}',error,True),(window+'\n'+window,error,True)]:self.assertFalse(retryable_cold_focus(w,e,starting))
-if __name__=='__main__'  :unittest.main()
+class CaptureSelection(unittest.TestCase):
+ def test_background_documents_window_does_not_select_picker_capture(self):
+  self.assertFalse(picker_focused('Window{background com.android.documentsui/Picker}\n mCurrentFocus=Window{u0 in.gurucold.warehouse.fixture/MainActivity}'))
+  self.assertTrue(picker_focused('mCurrentFocus=Window{u0 com.android.documentsui/Picker}'))
+  with self.assertRaises(AssertionError):picker_focused('No current focus')
+if __name__=='__main__'   :unittest.main()

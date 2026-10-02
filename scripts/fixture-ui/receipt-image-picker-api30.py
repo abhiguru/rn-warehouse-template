@@ -2,7 +2,7 @@
 """Attach one synthetic book image through native DocumentsUI; never submit."""
 import fcntl,hashlib,importlib.util,json,os,re,sys,time,xml.etree.ElementTree as ET
 from pathlib import Path
-from receipt_image_controls import point,foreground,PICKER_PACKAGES
+from receipt_image_controls import point,foreground,PICKER_PACKAGES,picker_focused
 from dispatch_case_controls import owned_reverse_route
 spec=importlib.util.spec_from_file_location('receipt_auth',Path(__file__).with_name('auth-api30.py'));auth=importlib.util.module_from_spec(spec);spec.loader.exec_module(auth);soak=auth.soak
 os.umask(0o077)
@@ -10,7 +10,7 @@ class Gallery(auth.Auth):
     external=False
     def snapshot(self):
         self.health();window=self.adb('shell','dumpsys','window');foreground(window,soak.PACKAGE,self.external)
-        picker=any(package+'/' in window for package in PICKER_PACKAGES)
+        picker=picker_focused(window)
         cap=self.gallery_capture if picker else self.i['uiCapture']
         assert hashlib.sha256(soak.private(cap['jar']).read_bytes()).hexdigest()==cap['sha256']
         assert self.adb('shell','sha256sum',cap['remotePath']).split()[0]==cap['sha256']
