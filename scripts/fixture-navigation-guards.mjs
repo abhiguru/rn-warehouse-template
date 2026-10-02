@@ -184,15 +184,20 @@ export function unsavedDispatchDraftMode(c){
  }
  return enabled;
 }
+export function customerBLogoutMode(c){
+ if(Object.hasOwn(c,'customerBLogout'))assert.equal(typeof c.customerBLogout,'boolean');const enabled=c.customerBLogout===true;
+ if(enabled){assert.equal(c.case,'customer-b-logout');assert.equal(c.kind,'native-customer-b-session-cleanup');assert.equal(c.cleanupPurpose,'before-ordinary-b-rejection');assert.equal(c.profileId,'34d9d337-ec2e-4bed-b555-0e8b63dd3aef');assert.equal(c.profileName,'Customer B');assert.equal(c.origin,'https://backend-core.example.test');assert.equal(c.instanceId,'b0ec3933-5258-4bd5-87f4-d57b13a78971');assert.equal(c.artifactSHA256,'08271dada3bf90ed6912db71c0e08f95487a906d12a765bcaa706338bdf12fb7');assert.equal(customerReadMode(c),false);}
+ if(c.case==='customer-b-logout')assert.equal(enabled,true);return enabled;
+}
 export function navigationConfig(c) {
-  const customerLifecycle=customerReadMode(c);unsavedCustomerDraftMode(c);unsavedInvoiceDraftMode(c);unsavedGRNDraftMode(c);unsavedDispatchDraftMode(c);
+  const customerLifecycle=customerReadMode(c);const bLogout=customerBLogoutMode(c);unsavedCustomerDraftMode(c);unsavedInvoiceDraftMode(c);unsavedGRNDraftMode(c);unsavedDispatchDraftMode(c);
   assert.equal(c.scope, 'isolated-fictional-navigation-case');
-  assert.ok(['offline-orders', 'same-server', 'cancel-switch', 'confirm-switch', 'switch-back', 'malformed-server', 'cold-lifecycle', 'ordinary-logout', 'customer-logout', 'staff-logout', 'supervisor-reads', 'supervisor-logout','unsaved-customer-draft-cancel','unsaved-invoice-draft-cancel','unsaved-grn-draft-cancel','unsaved-dispatch-draft-cancel','orders-selection-response-race'].includes(c.case));
+  assert.ok(['offline-orders', 'same-server', 'cancel-switch', 'confirm-switch', 'switch-back', 'malformed-server', 'cold-lifecycle', 'ordinary-logout', 'customer-logout', 'staff-logout', 'supervisor-reads', 'supervisor-logout','unsaved-customer-draft-cancel','unsaved-invoice-draft-cancel','unsaved-grn-draft-cancel','unsaved-dispatch-draft-cancel','orders-selection-response-race','customer-b-logout'].includes(c.case));
   for (const name of ['backendCheckout', 'backendState', 'soakConfig', 'artifactAudit', 'caseDirectory'])
     assert.ok(isAbsolute(c[name]), 'ABSOLUTE_CASE_PATH_REQUIRED');
   for (const name of ['instanceId', 'profileId', 'sessionId']) assert.match(c[name], uuid);
   for (const name of ['artifactSHA256', 'fixtureGuardSHA256']) assert.match(c[name], hash);
-  assert.equal(c.profileName, reciprocalReceiptDenialMode(c)||customerInvoiceDenialMode(c) ? 'Customer B' : c.case === 'switch-back' ? 'Switch Demo Administrator' : customerLifecycle || ['customer-logout','staff-logout', 'supervisor-reads', 'supervisor-logout','unsaved-customer-draft-cancel','unsaved-invoice-draft-cancel','unsaved-grn-draft-cancel','unsaved-dispatch-draft-cancel'].includes(c.case) ? 'New customer' : 'Core Demo Administrator');
+  assert.equal(c.profileName, bLogout||reciprocalReceiptDenialMode(c)||customerInvoiceDenialMode(c) ? 'Customer B' : c.case === 'switch-back' ? 'Switch Demo Administrator' : customerLifecycle || ['customer-logout','staff-logout', 'supervisor-reads', 'supervisor-logout','unsaved-customer-draft-cancel','unsaved-invoice-draft-cancel','unsaved-grn-draft-cancel','unsaved-dispatch-draft-cancel'].includes(c.case) ? 'New customer' : 'Core Demo Administrator');
   if (['staff-logout','supervisor-reads','supervisor-logout'].includes(c.case)) assert.equal(c.profileId, '947136fa-997b-4a83-819d-1b8bd3ecba68');
   return c;
 }
@@ -203,8 +208,8 @@ export function navigationSnapshotSQL(c) {
   return `BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY;
 SET LOCAL statement_timeout='10s';
 SELECT jsonb_build_object(
- 'profile',(SELECT jsonb_build_object('id',id,'active',active,'role',role,'name',name)
-   FROM public.user_profiles WHERE id='${c.profileId}' AND mobile='${c.case === 'switch-back' ? '919888888881' : customerLifecycle || ['customer-logout','staff-logout', 'supervisor-reads', 'supervisor-logout','unsaved-customer-draft-cancel','unsaved-invoice-draft-cancel','unsaved-grn-draft-cancel','unsaved-dispatch-draft-cancel'].includes(c.case) ? '919888888874' : '919888888871'}'),
+ 'profile',(SELECT jsonb_build_object('id',id,'active',active,'role',role,'name',name${customerBLogoutMode(c) ? ",'enrollmentStatus',enrollment_status" : ''})
+   FROM public.user_profiles WHERE id='${c.profileId}' AND mobile='${customerBLogoutMode(c) ? '919888888873' : c.case === 'switch-back' ? '919888888881' : customerLifecycle || ['customer-logout','staff-logout', 'supervisor-reads', 'supervisor-logout','unsaved-customer-draft-cancel','unsaved-invoice-draft-cancel','unsaved-grn-draft-cancel','unsaved-dispatch-draft-cancel'].includes(c.case) ? '919888888874' : '919888888871'}'),
  'nativeSessionPresent',EXISTS(SELECT 1 FROM warehouse_security.refresh_sessions s
    JOIN public.user_profiles p ON p.auth_user_id=s.user_id
    WHERE p.id='${c.profileId}' AND s.id='${c.sessionId}' AND s.expires_at>now()),
@@ -239,8 +244,8 @@ export function navigationBefore(c, s) {
   const customerLifecycle=customerReadMode(c);
   assert.equal(s.profile?.id, c.profileId);
   assert.equal(s.profile?.name, c.profileName);
-  assert.equal(s.profile?.role, customerLifecycle || c.case === 'customer-logout' ? 'customer' : c.case === 'staff-logout' ? 'staff' : ['supervisor-reads','supervisor-logout','unsaved-customer-draft-cancel','unsaved-invoice-draft-cancel','unsaved-grn-draft-cancel','unsaved-dispatch-draft-cancel'].includes(c.case) ? 'supervisor' : 'admin');
-  assert.equal(s.profile?.active, true);
+  assert.equal(s.profile?.role, customerBLogoutMode(c) || customerLifecycle || c.case === 'customer-logout' ? 'customer' : c.case === 'staff-logout' ? 'staff' : ['supervisor-reads','supervisor-logout','unsaved-customer-draft-cancel','unsaved-invoice-draft-cancel','unsaved-grn-draft-cancel','unsaved-dispatch-draft-cancel'].includes(c.case) ? 'supervisor' : 'admin');
+  assert.equal(s.profile?.active, true);if(customerBLogoutMode(c))assert.equal(s.profile.enrollmentStatus,'approved');
   assert.equal(s.nativeSessionPresent, true, 'MATCHED_NATIVE_SESSION_REQUIRED');
   for (const name of ['businessHash', 'otherAuthHash']) assert.match(s[name], hash);
   assert.ok(Number.isSafeInteger(s.otpCount) && s.otpCount >= 0);
@@ -250,6 +255,6 @@ export function navigationAfter(c, before, after) {
   navigationBefore(c, before);
   for (const key of ['profile', 'businessHash', 'otherAuthHash', 'otpCount'])
     assert.deepEqual(after[key], before[key], 'UNEXPECTED_NAVIGATION_STATE_CHANGE');
-  assert.equal(after.nativeSessionPresent, !['confirm-switch','switch-back','ordinary-logout','customer-logout', 'staff-logout', 'supervisor-logout'].includes(c.case),
-    ['confirm-switch','switch-back','ordinary-logout','customer-logout', 'staff-logout', 'supervisor-logout'].includes(c.case) ? 'OLD_SESSION_NOT_REVOKED' : 'NATIVE_SESSION_LOST');
+  assert.equal(after.nativeSessionPresent, !['confirm-switch','switch-back','ordinary-logout','customer-logout','customer-b-logout', 'staff-logout', 'supervisor-logout'].includes(c.case),
+    ['confirm-switch','switch-back','ordinary-logout','customer-logout','customer-b-logout', 'staff-logout', 'supervisor-logout'].includes(c.case) ? 'OLD_SESSION_NOT_REVOKED' : 'NATIVE_SESSION_LOST');
 }

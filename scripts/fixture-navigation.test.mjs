@@ -132,3 +132,11 @@ test('reserved customer offline and rapid cycles refuse other modes, artifacts a
  for(const edit of [{case:'confirm-switch'},{case:'ordinary-logout'},{rapidNetworkCycles:4},{rapidNetworkCycles:'3'},{artifactSHA256:'a'.repeat(64)},{profileId:id(4)},{reservedCustomerOffline:'true'}])assert.throws(()=>navigationConfig({...config,...edit}));
  assert.throws(()=>navigationBefore(config,{...snapshot,profile:{...snapshot.profile,role:'admin'}}));
 });
+
+test('B session cleanup binds its own exact identity and revokes only that native session',()=>{
+ const config={...c(),case:'customer-b-logout',customerBLogout:true,kind:'native-customer-b-session-cleanup',cleanupPurpose:'before-ordinary-b-rejection',profileId:'34d9d337-ec2e-4bed-b555-0e8b63dd3aef',profileName:'Customer B',origin:'https://backend-core.example.test',instanceId:'b0ec3933-5258-4bd5-87f4-d57b13a78971',artifactSHA256:'08271dada3bf90ed6912db71c0e08f95487a906d12a765bcaa706338bdf12fb7'};
+ const snapshot={...before(),profile:{id:config.profileId,name:'Customer B',role:'customer',active:true,enrollmentStatus:'approved'}};navigationBefore(config,snapshot);navigationAfter(config,snapshot,{...snapshot,nativeSessionPresent:false});assert.match(navigationSnapshotSQL(config),/mobile='919888888873'/);
+ for(const patch of [{case:'customer-logout'},{customerBLogout:false},{customerBLogout:'true'},{profileId:id(2)},{profileName:'New customer'},{artifactSHA256:'f'.repeat(64)},{cleanupPurpose:'generic-logout'},{reciprocalCustomerReceiptDenial:true}])assert.throws(()=>navigationConfig({...config,...patch}));
+ assert.throws(()=>navigationAfter(config,snapshot,snapshot));assert.throws(()=>navigationAfter(config,snapshot,{...snapshot,nativeSessionPresent:false,otherAuthHash:'changed'}));
+});
+test('native logout requires unique enabled fixed avatar and confirmation controls',()=>{const r=spawnSync('/usr/bin/python3',['-B',fileURLToPath(new URL('./fixture-ui/test_logout_controls.py',import.meta.url))],{encoding:'utf8',timeout:5000});assert.equal(r.status,0,r.stderr);});
