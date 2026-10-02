@@ -748,3 +748,16 @@ There were two native attempts, one total submission and zero OTP requests.
 No replay occurred. This accepts native queue processing of the preserved
 ordinary API-created fixture; exhausted native customer cart creation remains
 BLOCKED and is not rerun or reclassified.
+
+Current-head CI37055632071 (b9fa7a0) found a test-source lint error: three
+unqualified `structuredClone` references lacked the configured global
+declaration. Review tests now use the established `globalThis.structuredClone`
+form. This changes no runner, native artifact, business state or acceptance
+evidence. The failed CI remains preserved; source validation follows before
+publication. Its source/history scan PASS; dependency gate FAIL; Android
+audit was still running when inspected.
+
+After the test-only global qualification, full source lint PASS and all258
+setup/fixture tests PASS under documented Node22. Private logs
+`queue-current-source-lint01.log` and `queue-current-setup-tests01.log` retain
+complete output. No application/runner input or native evidence changed.
