@@ -11,5 +11,5 @@ test('image HTTP evidence matches only the declared signed image read and remove
  const raw='"GET /storage/v1/object/sign/grn-images/'+c.imagePath+'?token=PRIVATE_SIGNED_VALUE HTTP/1.1" 200\n"GET /storage/v1/object/sign/grn-images/foreign.png?token=OTHER HTTP/1.1" 200';const counts=bImageHTTPCounts(c,raw);assert.deepEqual(counts,{successful:1,failed:0});assert.doesNotMatch(JSON.stringify(counts),/PRIVATE|token|OTHER/);assert.deepEqual(bImageHTTPCounts(c,raw.replace('" 200','" 403')),{successful:0,failed:1});
 });
 test('native screenshot matcher requires the exact visible checkerboard and rejects ambiguity',()=>{
- const q=spawnSync('python3',[fileURLToPath(new URL('./fixture-ui/test_b_image_render_controls.py',import.meta.url))],{encoding:'utf8',timeout:20000});assert.equal(q.status,0,q.stderr);
+ const q=spawnSync('/usr/bin/python3',[fileURLToPath(new URL('./fixture-ui/test_b_image_render_controls.py',import.meta.url))],{encoding:'utf8',timeout:20000});assert.equal(q.status,0,q.stderr);
 });

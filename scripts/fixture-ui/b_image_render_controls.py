@@ -1,5 +1,6 @@
 """Recognize the exact fictional 4x4 checkerboard in an owned screenshot."""
 import io
+import PIL
 from PIL import Image
 COLORS=((35,105,210),(235,160,40))
 def near(pixel,color):return all(abs(a-b)<=8 for a,b in zip(pixel,color))
@@ -13,4 +14,4 @@ def checkerboard_png(data):
   for col in range(4):
    x=left+int((col+.5)*width/4);y=top+int((row+.5)*height/4)
    assert near(im.getpixel((x,y)),COLORS[(row+col)%2]),'Exact checkerboard samples required'
- return {'bounds':[left,top,right,bottom],'checkerboardSamples':16,'dimensions':[720,1280]}
+ return {'bounds':[left,top,right,bottom],'checkerboardSamples':16,'dimensions':[720,1280],'decoder':'Pillow','decoderVersion':PIL.__version__}

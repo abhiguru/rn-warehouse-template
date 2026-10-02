@@ -47,6 +47,12 @@ jobs:
       - name: Test
         run: npm test
 
+      - name: Native fixture screenshot decoder
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-pil
+          /usr/bin/python3 -c "import PIL; print('Fixture decoder Pillow', PIL.__version__)"
+
       - name: Bootstrap regression tests
         run: npm run test:setup
 
