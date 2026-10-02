@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """One authorized B image render; no upload, OTP or business write."""
-import datetime,fcntl,hashlib,importlib.util,json,os,re,subprocess,sys,time
+import datetime,fcntl,hashlib,importlib.util,json,os,re,subprocess,sys,time,traceback
 from pathlib import Path
 from b_image_render_controls import checkerboard_png
 spec=importlib.util.spec_from_file_location('nav',Path(__file__).with_name('navigation-api30.py'));nav=importlib.util.module_from_spec(spec);spec.loader.exec_module(nav)
@@ -16,6 +16,11 @@ def main(path):
  fd=os.open(Path(c['soakConfig']).parent/'fixture-session-actor.lock',os.O_RDWR|os.O_NOFOLLOW);fcntl.flock(fd,fcntl.LOCK_EX|fcntl.LOCK_NB)
  class ImageRead(nav.Navigation):
   def adb(self,*args):assert time.time()<deadline;return super().adb(*args)
+  def snapshot(self):
+   try:return super().snapshot()
+   except AssertionError as error:
+    if str(error)=='Bounded hierarchy required':raise AssertionError('Bounded fixture snapshot unavailable') from error
+    raise
  d=ImageRead(cfg,i,'unused',0);e=Path(c['caseDirectory']);assert not e.exists();e.mkdir(mode=0o700);d.e=e;d.file=e/'b-image-native-result.json';d.state.update(phases=[],imageReadAttempted=False,otpRequested=False,uploadAttempted=False);d.save()
  def observe(phase,since=None):
   q=d.backend_process(str(scripts/'fixture-b-native-image-observe.mjs'),[path,phase]+([since] if since else []),timeout=25);assert q.returncode in ([0,3] if phase=='http' else [0]);return json.loads(q.stdout)
@@ -24,7 +29,7 @@ def main(path):
   assert d.adb('emu','avd','name').splitlines()[0]=='TestWarehouseFixture_API30';assert d.adb('shell','getprop','ro.build.version.sdk')=='30';assert d.adb('shell','getenforce')=='Enforcing'
   p=d.adb('shell','pm','path',nav.soak.PACKAGE);assert re.fullmatch(r'package:/data/app/[^\n]+',p);assert d.adb('shell','sha256sum',p[8:]).split()[0]==c['artifactSHA256'];nav.owned_reverse_route(d.adb('reverse','--list'),18443);d.health(True);observe('before')
   d.cold();d.wait('Orders tab');since=datetime.datetime.now(datetime.timezone.utc).isoformat();d.state['imageReadAttempted']=True;d.save();d.adb('shell','am','start','-W','-a','android.intent.action.VIEW','-d','warehouse-fixture://grn-details/'+c['targetReceiptId'],'-p',nav.soak.PACKAGE)
-  d.wait('Images');d.tap('Images');d.wait('All (1)');d.wait('Header (1)');d.wait('Items (0)');d.archive('authorized-B-images-tab')
+  d.wait('Images tab, 1 items');d.tap('Images tab, 1 items');d.wait('All (1)');d.wait('Header (1)');d.wait('Items (0)');d.archive('authorized-B-images-tab')
   end=time.monotonic()+30
   while observe('http',since)['status']!='PASS':assert time.monotonic()<end;time.sleep(.5)
   captures=[]
@@ -39,7 +44,7 @@ def main(path):
    if v['status']=='PASS':break
    assert v['status']=='WAIT' and time.monotonic()<end;time.sleep(.5)
   observe('after');d.state.update(status='PASS',normalRouteColdOrders200=True,scope='authorized native B image rendering only; upload and reciprocal denial separate');d.save();print('{"status":"PASS","scope":"authorized native B image rendering only"}')
- except Exception as error:d.state.update(status='FAIL',exceptionType=type(error).__name__,reason='Preserve evidence and state; no upload, login, replay or automatic cleanup');d.save();raise
+ except Exception as error:d.state.update(status='FAIL',exceptionType=type(error).__name__,failureSite=Path(traceback.extract_tb(error.__traceback__)[-1].filename).name+':'+str(traceback.extract_tb(error.__traceback__)[-1].lineno),reason='Preserve evidence and state; no upload, login, replay or automatic cleanup');d.save();raise
  finally:os.close(fd)
 if __name__=='__main__':
  try:assert len(sys.argv)==2;main(str(Path(sys.argv[1]).resolve()))
