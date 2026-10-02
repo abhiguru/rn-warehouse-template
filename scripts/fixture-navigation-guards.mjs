@@ -45,9 +45,23 @@ export function customerReceiptDenialMode(c) {
   }
   return enabled;
 }
+export function customerLateDiscoveryMode(c) {
+  if(Object.hasOwn(c,'reservedCustomerLateDiscovery'))assert.equal(typeof c.reservedCustomerLateDiscovery,'boolean');
+  const enabled=c.reservedCustomerLateDiscovery===true;
+  if(enabled){
+    assert.equal(c.case,'same-server');assert.equal(c.kind,'native-late-discovery');
+    assert.equal(c.profileId,'947136fa-997b-4a83-819d-1b8bd3ecba68');assert.equal(c.profileName,'New customer');
+    assert.equal(c.origin,'https://backend-core.example.test');assert.equal(c.instanceId,'b0ec3933-5258-4bd5-87f4-d57b13a78971');
+    assert.equal(c.targetOrigin,'https://backend-switch.example.test');assert.equal(c.targetInstanceId,'c7ee3314-4dee-4361-81df-7821cdcb1b4a');
+    assert.equal(c.discoveryDelayMs,3000);
+    assert.equal(c.artifactSHA256,'08271dada3bf90ed6912db71c0e08f95487a906d12a765bcaa706338bdf12fb7');
+  }
+  return enabled;
+}
 function customerReadMode(c) {
   const lifecycle=customerLifecycleMode(c),pdf=customerPDFMode(c),offline=customerOfflineMode(c),denial=customerReceiptDenialMode(c);
-  assert.ok([lifecycle,pdf,offline,denial].filter(Boolean).length<=1,'ONE_RESERVED_CUSTOMER_READ_MODE');return lifecycle||pdf||offline||denial;
+  const late=customerLateDiscoveryMode(c);
+  assert.ok([lifecycle,pdf,offline,denial,late].filter(Boolean).length<=1,'ONE_RESERVED_CUSTOMER_READ_MODE');return lifecycle||pdf||offline||denial||late;
 }
 export function navigationConfig(c) {
   const customerLifecycle=customerReadMode(c);
