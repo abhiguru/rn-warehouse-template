@@ -25,9 +25,19 @@ export function customerPDFMode(c) {
   }
   return enabled;
 }
+export function customerOfflineMode(c) {
+  if(Object.hasOwn(c,'reservedCustomerOffline'))assert.equal(typeof c.reservedCustomerOffline,'boolean');
+  const enabled=c.reservedCustomerOffline===true;
+  if(enabled){assert.equal(c.case,'offline-orders');assert.equal(c.profileId,'947136fa-997b-4a83-819d-1b8bd3ecba68');assert.equal(c.profileName,'New customer');}
+  if(Object.hasOwn(c,'rapidNetworkCycles')){
+    assert.equal(c.rapidNetworkCycles,3);assert.equal(enabled,true);
+    assert.equal(c.artifactSHA256,'08271dada3bf90ed6912db71c0e08f95487a906d12a765bcaa706338bdf12fb7');
+  }
+  return enabled;
+}
 function customerReadMode(c) {
-  const lifecycle=customerLifecycleMode(c),pdf=customerPDFMode(c);
-  assert.ok(!(lifecycle&&pdf),'ONE_RESERVED_CUSTOMER_READ_MODE');return lifecycle||pdf;
+  const lifecycle=customerLifecycleMode(c),pdf=customerPDFMode(c),offline=customerOfflineMode(c);
+  assert.ok([lifecycle,pdf,offline].filter(Boolean).length<=1,'ONE_RESERVED_CUSTOMER_READ_MODE');return lifecycle||pdf||offline;
 }
 export function navigationConfig(c) {
   const customerLifecycle=customerReadMode(c);

@@ -110,3 +110,11 @@ test('reserved customer PDF binds only the saved rounding invoice and refuses sw
  for(const edit of [{case:'confirm-switch'},{case:'customer-logout'},{kind:'other'},{invoiceNumber:20261001},{invoiceId:id(4)},{profileId:id(4)},{reservedCustomerPDF:'true'}])assert.throws(()=>navigationConfig({...config,...edit}));
  assert.throws(()=>navigationBefore(config,{...snapshot,profile:{...snapshot.profile,role:'admin'}}));
 });
+
+test('reserved customer offline and rapid cycles refuse other modes, artifacts and unbounded counts',()=>{
+ const config={...c(),case:'offline-orders',reservedCustomerOffline:true,rapidNetworkCycles:3,profileId:'947136fa-997b-4a83-819d-1b8bd3ecba68',profileName:'New customer',artifactSHA256:'08271dada3bf90ed6912db71c0e08f95487a906d12a765bcaa706338bdf12fb7'};
+ const snapshot={...before(),profile:{id:config.profileId,name:'New customer',role:'customer',active:true}};
+ navigationBefore(config,snapshot);navigationAfter(config,snapshot,snapshot);assert.match(navigationSnapshotSQL(config),/mobile='919888888874'/);
+ for(const edit of [{case:'confirm-switch'},{case:'ordinary-logout'},{rapidNetworkCycles:4},{rapidNetworkCycles:'3'},{artifactSHA256:'a'.repeat(64)},{profileId:id(4)},{reservedCustomerOffline:'true'}])assert.throws(()=>navigationConfig({...config,...edit}));
+ assert.throws(()=>navigationBefore(config,{...snapshot,profile:{...snapshot.profile,role:'admin'}}));
+});

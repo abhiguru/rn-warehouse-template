@@ -190,7 +190,7 @@ def main(path):
             radios = settings(driver.adb)
             original_plane=original_airplane(driver.adb)
             match=re.fullmatch(r'package:in\.gurucold\.warehouse\.fixture uid:(\d+)',driver.adb('shell','pm','list','packages','-U',soak.PACKAGE));assert match
-            uid=int(match.group(1));attempt=evidence.name[-2:];assert attempt in ['02','03'];marker='whvm-offline-0106-'+attempt
+            uid=int(match.group(1));attempt=evidence.name[-2:];assert attempt in ['02','03'];marker=('whvm-offline-0109-' if case.get('reservedCustomerOffline') is True else 'whvm-offline-0106-')+attempt
             driver.state.update(originalAirplane=original_plane,offlineFixtureUID=uid,ownedLoopbackRule=marker);driver.save()
             with (evidence/'network-before.json').open('x') as f: json.dump(radios,f)
             network_touched = True; disconnect(driver.adb,radios,18443)
@@ -215,7 +215,24 @@ def main(path):
             deadline = time.monotonic()+30
             while 'No internet connection' in labels(driver.snapshot()):
                 assert time.monotonic()<deadline; time.sleep(1)
-            fresh_orders(); driver.state['phases'].append('RECONNECT_CURRENT_ORDERS200')
+            fresh_orders(); driver.state['phases'].append('RECONNECT_CURRENT_ORDERS200');driver.state['networkRestored']=True;driver.save()
+            if case.get('rapidNetworkCycles')==3:
+                driver.state['rapidCycles']=[]
+                for cycle in range(3):
+                    started=datetime.datetime.now(datetime.timezone.utc).isoformat()
+                    network_restored=False;plane_restored=False;rule_restored=False;driver.state['networkRestored']=False;driver.save()
+                    disconnect(driver.adb,radios,18443);airplane(driver.adb,'0','1');reject_fixture_loopback(driver.adb,uid,marker)
+                    observed=disconnected(driver.adb)
+                    (evidence/('rapid-'+str(cycle+1)+'-actual-disconnection.txt')).write_text(observed)
+                    restore_fixture_loopback(driver.adb,uid,marker);rule_restored=True
+                    airplane(driver.adb,'1','0');plane_restored=True
+                    reconnect(driver.adb,radios,18443);network_restored=True
+                    end=time.monotonic()+30
+                    while 'No internet connection' in labels(driver.snapshot()):
+                        assert time.monotonic()<end;time.sleep(.5)
+                    fresh_orders();driver.health(True)
+                    driver.state['rapidCycles'].append({'cycle':cycle+1,'startedUTC':started,'completedUTC':datetime.datetime.now(datetime.timezone.utc).isoformat(),'actualDefaultNetworkAbsent':True,'freshOrders200':True,'ownedNetworkRestored':True});driver.state['networkRestored']=True;driver.save()
+                driver.state['phases'].append('THREE_BOUNDED_RAPID_CONNECTIVITY_CYCLES_AND_FRESH_READS')
         elif case['case'] == 'malformed-server':
             if selection_start(driver.snapshot(),case['profileName'])=='orders':
                 driver.cold();driver.wait('Orders tab');driver.adb('shell','am','start','-W','-a','android.intent.action.VIEW','-d','warehouse-fixture://settings','-p',soak.PACKAGE)
