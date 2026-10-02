@@ -60,8 +60,21 @@ export function customerLateDiscoveryMode(c) {
 }
 function customerReadMode(c) {
   const lifecycle=customerLifecycleMode(c),pdf=customerPDFMode(c),offline=customerOfflineMode(c),denial=customerReceiptDenialMode(c);
-  const late=customerLateDiscoveryMode(c),discovery=customerDiscoveryMode(c),cancel=customerCancelSwitchMode(c);
-  assert.ok([lifecycle,pdf,offline,denial,late,discovery,cancel].filter(Boolean).length<=1,'ONE_RESERVED_CUSTOMER_READ_MODE');return lifecycle||pdf||offline||denial||late||discovery||cancel;
+  const late=customerLateDiscoveryMode(c),discovery=customerDiscoveryMode(c),cancel=customerCancelSwitchMode(c),failure=customerDiscoveryFailureMode(c);
+  assert.ok([lifecycle,pdf,offline,denial,late,discovery,cancel,failure].filter(Boolean).length<=1,'ONE_RESERVED_CUSTOMER_READ_MODE');return lifecycle||pdf||offline||denial||late||discovery||cancel||failure;
+}
+export function customerDiscoveryFailureMode(c) {
+  if(Object.hasOwn(c,'reservedCustomerDiscoveryFailure'))assert.equal(typeof c.reservedCustomerDiscoveryFailure,'boolean');
+  const enabled=c.reservedCustomerDiscoveryFailure===true;
+  if(enabled){
+    assert.equal(c.case,'same-server');assert.equal(c.kind,'native-discovery-failure');
+    assert.equal(c.profileId,'947136fa-997b-4a83-819d-1b8bd3ecba68');assert.equal(c.profileName,'New customer');
+    assert.equal(c.origin,'https://backend-core.example.test');assert.equal(c.instanceId,'b0ec3933-5258-4bd5-87f4-d57b13a78971');
+    assert.equal(c.targetOrigin,'https://backend-switch.example.test');assert.equal(c.targetInstanceId,'c7ee3314-4dee-4361-81df-7821cdcb1b4a');
+    assert.equal(c.networkMarker,'whvm-discovery-0109-01');
+    assert.equal(c.artifactSHA256,'08271dada3bf90ed6912db71c0e08f95487a906d12a765bcaa706338bdf12fb7');
+  }
+  return enabled;
 }
 export function customerCancelSwitchMode(c) {
   if(Object.hasOwn(c,'reservedCustomerCancelSwitch'))assert.equal(typeof c.reservedCustomerCancelSwitch,'boolean');
