@@ -10,6 +10,15 @@ const c = () => ({ scope:'isolated-fictional-navigation-case', case:'same-server
   profileName:'Core Demo Administrator', artifactSHA256:'a'.repeat(64), fixtureGuardSHA256:'b'.repeat(64) });
 const before = () => ({ profile:{id:id(2),name:'Core Demo Administrator',role:'admin',active:true},
   nativeSessionPresent:true,otpCount:2,businessHash:'c'.repeat(64),otherAuthHash:'d'.repeat(64) });
+test('reserved customer lifecycle binds one account and refuses logout/switch modes or another role',()=>{
+ const config={...c(),case:'cold-lifecycle',reservedCustomerLifecycle:true,profileId:'947136fa-997b-4a83-819d-1b8bd3ecba68',profileName:'New customer'};
+ const snapshot={...before(),profile:{id:config.profileId,name:'New customer',role:'customer',active:true}};
+ navigationBefore(config,snapshot);navigationAfter(config,snapshot,snapshot);
+ assert.match(navigationSnapshotSQL(config),/mobile='919888888874'/);
+ for(const edit of [{case:'confirm-switch'},{case:'customer-logout'},{profileId:id(2)},{profileName:'Other'},{reservedCustomerLifecycle:'true'}])assert.throws(()=>navigationConfig({...config,...edit}));
+ assert.throws(()=>navigationBefore(config,{...snapshot,profile:{...snapshot.profile,role:'admin'}}));
+ assert.throws(()=>navigationAfter(config,snapshot,{...snapshot,nativeSessionPresent:false}));
+});
 test('navigation cases reject non-fixture scope, identities and injection', () => {
   navigationConfig(c());
   for (const edit of [{scope:'production'}, {case:'login'}, {profileName:'Other'}, {instanceId:"x';DELETE"}, {backendState:'relative'}])

@@ -3,25 +3,37 @@ import { isAbsolute } from 'node:path';
 
 const uuid = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
 const hash = /^[a-f0-9]{64}$/;
+export function customerLifecycleMode(c) {
+  if (Object.hasOwn(c,'reservedCustomerLifecycle')) assert.equal(typeof c.reservedCustomerLifecycle,'boolean');
+  const enabled=c.reservedCustomerLifecycle===true;
+  if (enabled) {
+    assert.equal(c.case,'cold-lifecycle');
+    assert.equal(c.profileId,'947136fa-997b-4a83-819d-1b8bd3ecba68');
+    assert.equal(c.profileName,'New customer');
+  }
+  return enabled;
+}
 export function navigationConfig(c) {
+  const customerLifecycle=customerLifecycleMode(c);
   assert.equal(c.scope, 'isolated-fictional-navigation-case');
   assert.ok(['offline-orders', 'same-server', 'cancel-switch', 'confirm-switch', 'switch-back', 'malformed-server', 'cold-lifecycle', 'ordinary-logout', 'customer-logout', 'staff-logout', 'supervisor-reads', 'supervisor-logout'].includes(c.case));
   for (const name of ['backendCheckout', 'backendState', 'soakConfig', 'artifactAudit', 'caseDirectory'])
     assert.ok(isAbsolute(c[name]), 'ABSOLUTE_CASE_PATH_REQUIRED');
   for (const name of ['instanceId', 'profileId', 'sessionId']) assert.match(c[name], uuid);
   for (const name of ['artifactSHA256', 'fixtureGuardSHA256']) assert.match(c[name], hash);
-  assert.equal(c.profileName, c.case === 'switch-back' ? 'Switch Demo Administrator' : ['customer-logout','staff-logout', 'supervisor-reads', 'supervisor-logout'].includes(c.case) ? 'New customer' : 'Core Demo Administrator');
+  assert.equal(c.profileName, c.case === 'switch-back' ? 'Switch Demo Administrator' : customerLifecycle || ['customer-logout','staff-logout', 'supervisor-reads', 'supervisor-logout'].includes(c.case) ? 'New customer' : 'Core Demo Administrator');
   if (['staff-logout','supervisor-reads','supervisor-logout'].includes(c.case)) assert.equal(c.profileId, '947136fa-997b-4a83-819d-1b8bd3ecba68');
   return c;
 }
 
 export function navigationSnapshotSQL(c) {
   navigationConfig(c);
+  const customerLifecycle=customerLifecycleMode(c);
   return `BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY;
 SET LOCAL statement_timeout='10s';
 SELECT jsonb_build_object(
  'profile',(SELECT jsonb_build_object('id',id,'active',active,'role',role,'name',name)
-   FROM public.user_profiles WHERE id='${c.profileId}' AND mobile='${c.case === 'switch-back' ? '919888888881' : ['customer-logout','staff-logout', 'supervisor-reads', 'supervisor-logout'].includes(c.case) ? '919888888874' : '919888888871'}'),
+   FROM public.user_profiles WHERE id='${c.profileId}' AND mobile='${c.case === 'switch-back' ? '919888888881' : customerLifecycle || ['customer-logout','staff-logout', 'supervisor-reads', 'supervisor-logout'].includes(c.case) ? '919888888874' : '919888888871'}'),
  'nativeSessionPresent',EXISTS(SELECT 1 FROM warehouse_security.refresh_sessions s
    JOIN public.user_profiles p ON p.auth_user_id=s.user_id
    WHERE p.id='${c.profileId}' AND s.id='${c.sessionId}' AND s.expires_at>now()),
@@ -29,7 +41,10 @@ SELECT jsonb_build_object(
  'otherAuthHash',encode(extensions.digest(jsonb_build_object(
    'profiles',(SELECT jsonb_agg(to_jsonb(p) ORDER BY id) FROM public.user_profiles p),
    'sessions',(SELECT jsonb_agg(to_jsonb(s) ORDER BY id) FROM warehouse_security.refresh_sessions s WHERE id<>'${c.sessionId}'),
-   'assignments',(SELECT jsonb_agg(to_jsonb(a) ORDER BY id) FROM public.users_customers_new a)
+   'assignments',(SELECT jsonb_agg(to_jsonb(a) ORDER BY id) FROM public.users_customers_new a),
+   'otps',(SELECT jsonb_agg(to_jsonb(a) ORDER BY id) FROM public.otp_verifications a),
+   'quotas',(SELECT jsonb_agg(to_jsonb(a) ORDER BY phone_number) FROM public.otp_rate_limits a),
+   'enrollment',(SELECT jsonb_agg(to_jsonb(a) ORDER BY token_hash) FROM warehouse_security.enrollment_tokens a)
  )::text,'sha256'),'hex'),
  'businessHash',encode(extensions.digest(jsonb_build_object(
    'receipts',(SELECT jsonb_agg(to_jsonb(g) ORDER BY id) FROM public.goodsreceived g),
@@ -41,6 +56,8 @@ SELECT jsonb_build_object(
    'orders',(SELECT jsonb_agg(to_jsonb(o) ORDER BY id) FROM public.orders o),
    'orderItems',(SELECT jsonb_agg(to_jsonb(o) ORDER BY id) FROM public.order_items o),
    'images',(SELECT jsonb_agg(to_jsonb(g) ORDER BY id) FROM public.grn_images g),
+   'dispatchImages',(SELECT jsonb_agg(to_jsonb(g) ORDER BY id) FROM public.dispatch_images g),
+   'idempotency',(SELECT jsonb_agg(to_jsonb(g) ORDER BY id) FROM public.idempotency_keys g),
    'storage',(SELECT jsonb_agg(to_jsonb(o) ORDER BY id) FROM storage.objects o)
  )::text,'sha256'),'hex'));
 COMMIT;`;
@@ -48,9 +65,10 @@ COMMIT;`;
 
 export function navigationBefore(c, s) {
   navigationConfig(c);
+  const customerLifecycle=customerLifecycleMode(c);
   assert.equal(s.profile?.id, c.profileId);
   assert.equal(s.profile?.name, c.profileName);
-  assert.equal(s.profile?.role, c.case === 'customer-logout' ? 'customer' : c.case === 'staff-logout' ? 'staff' : ['supervisor-reads','supervisor-logout'].includes(c.case) ? 'supervisor' : 'admin');
+  assert.equal(s.profile?.role, customerLifecycle || c.case === 'customer-logout' ? 'customer' : c.case === 'staff-logout' ? 'staff' : ['supervisor-reads','supervisor-logout'].includes(c.case) ? 'supervisor' : 'admin');
   assert.equal(s.profile?.active, true);
   assert.equal(s.nativeSessionPresent, true, 'MATCHED_NATIVE_SESSION_REQUIRED');
   for (const name of ['businessHash', 'otherAuthHash']) assert.match(s[name], hash);
