@@ -19,6 +19,8 @@ export function concurrencyStockProof(c,before,after){
  assert.equal(after.nativeRecordCount,0);assert.equal(after.competitorRecordCount,1);
  assert.equal(after.dispatchQuantity,2);assert.equal(after.movementCount,1);assert.equal(after.movementBefore,3);assert.equal(after.movementAfter,1);assert.equal(after.successfulCacheCount,1);
  for(const key of ['unrelatedRowsHash','authHash','storageHash']){assert.match(before[key],/^[a-f0-9]{64}$/);assert.equal(after[key],before[key]);}
- assert.equal(after.nativeSessionPresent,true);
+ assert.equal(after.nativeSessionPresent,true);assert.equal(before.lotBound,true);assert.equal(after.lotBound,true);assert.match(before.lotMetadataHash,/^[a-f0-9]{64}$/);assert.equal(after.lotMetadataHash,before.lotMetadataHash);
+ assert.equal(after.dispatches.length,1);const d=after.dispatches[0];assert.equal(d.disp_no,c.competitorRecord);assert.equal(d.customer_id,c.customerId);assert.equal(d.created_by,c.competitorProfileId);assert.equal(d.source_order_id,null);assert.equal(d.deleted_at,null);
+ assert.equal(after.lines.length,1);const l=after.lines[0];assert.equal(l.disp_id,d.id);assert.equal(l.gr_id,c.sourceGRNId);assert.equal(l.gr_trl_id,c.lotId);assert.equal(l.disp_qty,2);
  return {status:'PASS',scope:'one competitor commit and native stale-stock rejection; UI/HTTP evidence required separately'};
 }
