@@ -40,10 +40,10 @@ def main(path):
         for package,expected in [(soak.PACKAGE,c['apkSHA256']),(READER,cap['approvedReader']['apkSHA256'])]:
             p=d.adb('shell','pm','path',package);assert re.fullmatch(r'package:/data/app/[^\n]+',p);assert d.adb('shell','sha256sum',p[8:]).split()[0]==expected
         assert c['apkSHA256']==case['artifactSHA256'];owned_reverse_route(d.adb('reverse','--list'),18443)
-        filename='Invoice_20261001_FY2026-2027.pdf';cache='/data/user/0/'+soak.PACKAGE+'/cache/'+filename;export='/sdcard/Download/Librera/'+filename
+        filename='Invoice_'+str(case['invoiceNumber'])+'_FY2026-2027.pdf';cache='/data/user/0/'+soak.PACKAGE+'/cache/'+filename;export='/sdcard/Download/Librera/'+filename
         d.adb('shell','test','!','-e',cache);d.adb('shell','test','!','-e',export);d.state['deviceStartedEpoch']=int(d.adb('shell','date','+%s'));d.save()
         d.health();d.adb('shell','am','force-stop',soak.PACKAGE);d.adb('shell','am','start','-W','-a','android.intent.action.VIEW','-d','warehouse-fixture://invoice-details/'+case['invoiceId'],soak.PACKAGE)
-        d.wait('Total amount: ₹147');d.wait('Tax amount: ₹7');d.tap_pdf('Overview tab');d.visible('Share PDF');d.archive('native-before-PDF-generation')
+        d.wait('Total amount: ₹'+str(case['invoiceTotal']));d.wait('Tax amount: ₹'+str(case['invoiceTax']));d.tap_pdf('Overview tab');d.visible('Share PDF');d.archive('native-before-PDF-generation')
         d.state.update(documentGenerationAttempted=True,failurePhase='ONE_NATIVE_SHARE');d.save();d.tap_pdf('Share PDF');d.external=True
         end=time.monotonic()+45
         while time.monotonic()<end:
@@ -53,7 +53,7 @@ def main(path):
         else:raise AssertionError('Actual Android PDF chooser unavailable')
         d.archive('actual-native-PDF-chooser');observe('after-generation');v=json.loads(soak.private(e/'pdf-after-generation.json').read_text())['generated']
         q=subprocess.run([c['adb'],'-s',i['serial'],'exec-out','cat',cache],capture_output=True,timeout=20);assert q.returncode==0 and 1000<len(q.stdout)<=1048576;assert hashlib.sha256(q.stdout).hexdigest()==v['sha256'];p=e/'native-downloaded-invoice.pdf';assert not p.exists();p.write_bytes(q.stdout)
-        q=subprocess.run(['/usr/bin/pdftotext','-layout',str(p),'-'],capture_output=True,text=True,timeout=20);assert q.returncode==0;assert all(x in q.stdout for x in ['20261001','Backend Test Customer A']);assert re.search(r'\bTax:\s*7\b',q.stdout) and re.search(r'\bTotal:\s*147\b',q.stdout);(e/'native-downloaded-invoice.txt').write_text(q.stdout)
+        q=subprocess.run(['/usr/bin/pdftotext','-layout',str(p),'-'],capture_output=True,text=True,timeout=20);assert q.returncode==0;assert all(x in q.stdout for x in [str(case['invoiceNumber']),'Backend Test Customer A']);assert re.search(r'\bTax:\s*'+str(case['invoiceTax'])+r'\b',q.stdout) and re.search(r'\bTotal:\s*'+str(case['invoiceTotal'])+r'\b',q.stdout);(e/'native-downloaded-invoice.txt').write_text(q.stdout)
         prepared={'status':'PASS','artifactSHA256':c['apkSHA256'],'configSHA256':hashlib.sha256(Path(path).read_bytes()).hexdigest(),'prepareDriverSHA256':hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),'generated':v,'filename':filename,'exportPath':export,'deviceStartedEpoch':d.state['deviceStartedEpoch'],'currentForeground':'owned Android ChooserActivity','newPDFObjects':1,'readerNotSelected':True,'permissionsUnchanged':True};p=e/'prepared-native-PDF.json';assert not p.exists();p.write_text(json.dumps(prepared,indent=2)+'\n');d.state.update(status='PASS',phases=['ONE_NATIVE_PDF_GENERATED_DOWNLOADED_CHOOSER_PREPARED'],storedBytesMatchNativeDownload=True,chooserHeldForGuardedReader=True);d.save()
     except Exception as error:
         last=traceback.extract_tb(error.__traceback__)[-1];d.state.update(status='FAIL',reason='PDF preparation stopped; preserve generated objects and native state; no regeneration/resume',failureSite=Path(last.filename).name+':'+str(last.lineno),exceptionType=type(error).__name__);d.save();raise

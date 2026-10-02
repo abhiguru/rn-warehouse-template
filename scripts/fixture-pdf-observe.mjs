@@ -7,13 +7,14 @@ import { pathToFileURL } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { privateJSON, assertReleased } from './fixture-session-guards.mjs';
 import { navigationConfig, navigationSnapshotSQL, navigationBefore, navigationAfter } from './fixture-navigation-guards.mjs';
+import {pdfInvoice} from './fixture-pdf-controls.mjs';
 process.umask(0o077);
 try {
   const [path,phase]=process.argv.slice(2),c=navigationConfig(privateJSON(path));
   assert.equal(c.kind,'native-pdf-send');assert.equal(c.case,'same-server');
   assert.ok(['guard','before','after-generation','after'].includes(phase));
   assert.match(c.invoiceId,/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/);
-  assert.equal(c.invoiceNumber,20261001);assert.equal(c.invoiceTotal,147);assert.equal(c.invoiceTax,7);
+  const expectedInvoice=pdfInvoice(c);
   assertReleased(c);
   if(phase!=='guard') {
     const e=resolve(c.caseDirectory),st=lstatSync(e);assert.ok(st.isDirectory()&&st.uid===process.getuid()&&(st.mode&0o077)===0&&realpathSync(e)===e);
@@ -27,7 +28,7 @@ try {
      'documents',(SELECT coalesce(jsonb_agg(jsonb_build_object('id',o.id,'name',o.name,'size',(o.metadata->>'size')::bigint,'mime',o.metadata->>'mimetype','rowHash',encode(extensions.digest(to_jsonb(o)::text,'sha256'),'hex')) ORDER BY o.id),'[]') FROM storage.objects o WHERE bucket_id='documents' AND name LIKE '${prefix}%'));COMMIT;`);
     const q=spawnSync('docker',['exec','-i','-e','PGPASSWORD',env.WAREHOUSE_PROJECT_NAME+'-db-1','psql','-X','-qAt','-U','supabase_admin','-d','postgres','-v','ON_ERROR_STOP=1'],{input:sql,encoding:'utf8',timeout:15000,maxBuffer:1048576,env:{...process.env,PGPASSWORD:env.POSTGRES_PASSWORD}});assert.equal(q.status,0,'PRIVATE_READONLY_PDF_OBSERVATION_FAILED');
     const rows=q.stdout.trim().split('\n').map(x=>JSON.parse(x));assert.equal(rows.length,2);const snapshot=rows[0],details=rows[1];
-    assert.deepEqual(details.invoice,{id:c.invoiceId,number:c.invoiceNumber,year:2026,total:147,tax:7});navigationBefore(c,snapshot);
+    assert.deepEqual(details.invoice,expectedInvoice);navigationBefore(c,snapshot);
     const root=resolve(c.backendState,'data/storage'),files={};let bytes=0;
     function walk(dir){for(const name of readdirSync(dir)){const file=resolve(dir,name),s=lstatSync(file);assert.ok(!s.isSymbolicLink());if(s.isDirectory())walk(file);else{assert.ok(s.isFile()&&s.size<=10485760&&Object.keys(files).length<1000&&(bytes+=s.size)<=268435456);files[file.slice(root.length+1)]={size:s.size,sha256:createHash('sha256').update(readFileSync(file)).digest('hex')};}}}walk(root);
     let generated=null;

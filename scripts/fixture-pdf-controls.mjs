@@ -1,0 +1,2 @@
+import assert from 'node:assert/strict';
+export function pdfInvoice(c){assert.match(c.invoiceId,/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/);const expected=c.invoiceNumber===20261001?{total:147,tax:7}:c.invoiceNumber===20261010?{total:179,tax:9}:null;assert.ok(expected,'Unreserved invoice refused');assert.equal(c.invoiceTotal,expected.total);assert.equal(c.invoiceTax,expected.tax);if(c.invoiceNumber===20261010)assert.equal(c.invoiceId,'b515e2b0-bde6-11f1-b80b-1f1c1f6b3e0c');return {id:c.invoiceId,number:c.invoiceNumber,year:2026,...expected};}
