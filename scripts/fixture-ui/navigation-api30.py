@@ -15,7 +15,6 @@ from pathlib import Path
 import re
 import socket
 import ssl
-import sqlite3
 import stat
 import subprocess
 import sys
@@ -58,22 +57,21 @@ class Navigation(soak.Soak):
         self.adb('shell', 'monkey', '-p', soak.PACKAGE, '-c', 'android.intent.category.LAUNCHER', '1')
 
     def selected_server(self, evidence, expected_origin, expected_id):
-        # Read only this owned fixture app. Do not enable root or make a private
-        # key/session query; retain the bounded DB/WAL copy outside Git.
+        # Query only public selection on-device; never copy token-bearing DB/WAL.
+        import shlex
+        assert expected_origin in {'https://backend-core.example.test','https://backend-switch.example.test'}
+        assert re.fullmatch(r'[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}',expected_id)
         assert self.adb('shell', 'id', '-u') == '0', 'Existing root-readable fictional emulator required'
-        directory = evidence / 'selected-server-copy'; directory.mkdir(mode=0o700)
         base = '/data/user/0/' + soak.PACKAGE + '/databases/RKStorage'
-        for suffix in ['', '-wal', '-shm']:
-            result = subprocess.run([self.c['adb'], '-s', self.i['serial'], 'exec-out', 'cat', base+suffix],
-                                    capture_output=True, timeout=20)
-            if suffix and result.returncode: continue
-            assert result.returncode == 0 and len(result.stdout) <= 2*1024*1024, 'Bounded fixture persistence copy required'
-            (directory/('RKStorage'+suffix)).write_bytes(result.stdout)
-        with sqlite3.connect('file:'+str(directory/'RKStorage')+'?mode=ro', uri=True) as db:
-            rows = db.execute("SELECT value FROM catalystLocalStorage WHERE key='operator_server_v1'").fetchall()
-        assert len(rows) == 1
-        saved = json.loads(rows[0][0])
+        assert self.adb('shell', 'command', '-v', 'sqlite3') == '/system/bin/sqlite3', 'Owned on-device readonly query required'
+        raw = self.adb('shell', shlex.join(['/system/bin/sqlite3', '-readonly', base,
+                       "SELECT value FROM catalystLocalStorage WHERE key='operator_server_v1';"]))
+        assert raw and len(raw) <= 4096, 'Bounded public selection required'
+        saved = json.loads(raw)
         assert saved['origin'] == expected_origin and saved['instanceId'] == expected_id, 'Selected instance not persisted'
+        with (evidence/'selected-server-public.json').open('x') as f:
+            f.write(json.dumps({'status':'PASS','origin':saved['origin'],'instanceId':saved['instanceId'],
+                                'scope':'readonly on-device public selection only'})+'\n')
         self.state['publicSelectionMatches']=True
 
     def fill_origin(self, value):
