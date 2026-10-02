@@ -54,8 +54,14 @@ SELECT jsonb_build_object(
 'grn',(SELECT jsonb_agg(to_jsonb(g) ORDER BY id) FROM public.goodsreceived g),
 'lines',(SELECT jsonb_agg(to_jsonb(g) ORDER BY id) FROM public.goodsreceived_trl g),
 'dispatch',(SELECT jsonb_agg(to_jsonb(d) ORDER BY id) FROM public.dispatch d),
+'dispatchLines',(SELECT jsonb_agg(to_jsonb(d) ORDER BY id) FROM public.dispatch_trl d),
 'invoices',(SELECT jsonb_agg(to_jsonb(i) ORDER BY id) FROM public.invoice i),
+'invoiceLines',(SELECT jsonb_agg(to_jsonb(i) ORDER BY id) FROM public.invoice_trl i),
+'images',(SELECT jsonb_agg(to_jsonb(i) ORDER BY id) FROM public.grn_images i),
+'dispatchImages',(SELECT jsonb_agg(to_jsonb(i) ORDER BY id) FROM public.dispatch_images i),
+'idempotency',(SELECT jsonb_agg(to_jsonb(i) ORDER BY id) FROM public.idempotency_keys i),
 'orders',(SELECT jsonb_agg(to_jsonb(o) ORDER BY id) FROM public.orders o),
+'orderItems',(SELECT jsonb_agg(to_jsonb(o) ORDER BY id) FROM public.order_items o),
 'storage',(SELECT jsonb_agg(to_jsonb(o) ORDER BY id) FROM storage.objects o))::text,'sha256'),'hex'));
 COMMIT;`;
     const q = spawnSync('docker', ['exec','-i','-e','PGPASSWORD',`${env.WAREHOUSE_PROJECT_NAME}-db-1`,'psql','-X','-qAt','-U','supabase_admin','-d','postgres','-v','ON_ERROR_STOP=1'],
