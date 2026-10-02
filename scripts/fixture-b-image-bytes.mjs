@@ -1,0 +1,2 @@
+// Deterministic 64x64 RGB checkerboard PNG for fictional B fixture preparation.
+export const bFixturePNG=()=>Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAAZ0lEQVR42u3ZsQkAIAwEwOxi42pu5Uyu4RLOkIAgePD1kyufRBsrlT17Krf7AwAAAAAAAAAAAACgDHjtoGw/AAAAAAAAAAAAAEAdYJEBAAAAAAAAAAAA+A9YZAAAAAAAAAAAAADfAQ5/jIlp/CIe6QAAAABJRU5ErkJggg==','base64');
