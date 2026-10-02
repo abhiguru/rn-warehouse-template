@@ -688,3 +688,15 @@ controls. These are preparation evidence only: native queue processing remains
 unexecuted, and its SQL/storage observer and submission orchestration are
 still required. The cart remains explicitly API-created; this is not another
 native cart-creation attempt or a native cart PASS.
+
+The next queue observer checkpoint captures the exact target receipt, cart,
+line, lot, dispatch lines and stock movements in a bounded repeatable-read
+read-only transaction. Full business and authentication hashes and sorted
+stored-file byte hashes protect preparation. The observer ran twice against
+the owned live fixture under the actor lock; both complete snapshots were
+identical. Private `queue-processing-full-snapshot01.json` preserves the
+actual SQL/storage result. Three JavaScript tests PASS (two fixture guards and
+one stored-byte change/symlink refusal test). No native queue action, OTP or
+application write occurred. Commit reconciliation and bounded native
+submission orchestration remain unfinished; no queue-processing PASS is
+claimed.
