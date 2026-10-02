@@ -83,3 +83,21 @@ failed attempt remains preserved and its business/auth invariants are checked
 before the final permitted corrected rerun.
 
 Current VM-only checkpoint: APK10 is installed and normal-route cleanup/TLS readiness passed. Dependency and native gates remain unresolved; there is no final freeze, new eight-hour soak or dedicated expiry appointment. Server-switch baseline case caps remain closed. Native save/upload failure injection requires safely prepared/reconciled original writes; exhausted positive-write/image prerequisites must not be bypassed with another case name. No unsupported injection or unexecuted workflow is counted as PASS or as three failed attempts.
+
+Confirmed-draft observer preparation on 2026-10-02: the dedicated
+`fixture-confirmed-draft-controls.mjs` and `fixture-confirmed-draft-snapshot.mjs`
+bind APK10, the real core/switch identities and the reserved supervisor session.
+Five source refusal/reconciliation tests passed. Two consecutive actual read-only
+snapshots of both populated warehouses matched, including stored-object bytes,
+stock movements, users, quotas, enrollment and refresh rotation history. Private
+evidence is `confirmed-draft-observer01.json` in the campaign directory. The initial
+SQL failure assumed a GoTrue `auth.identities` table; the corrected query follows
+the actual custom-auth schema. The failed scripts and database error remain private.
+
+This observer preparation made no native attempt, login, logout or business write.
+Its confirmation reconciliation requires one native confirmation, one successful
+source logout, no credential forwarding and unchanged destination state before
+authentication. Even a successful reconciliation reports draft acceptance
+`NOT_TESTED`: ordinary destination login and actual empty-draft UI evidence remain
+required. The missing confirmed-draft native driver and those executions remain
+open. These modules do not reopen exhausted baseline cases.
