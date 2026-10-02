@@ -83,7 +83,7 @@ def main(path):
         assert q.returncode==0,'Ordinary auth ownership/quota/reconciliation refused'
     observe('guard') # Real release and ownership checks precede ADB and attempt creation.
     c,i=soak.config(case['soakConfig'])
-    assert case['expected'] in ['authenticated','pending','disabled']
+    assert case['expected'] in ['authenticated','pending','disabled','rejected']
     fd=os.open(Path(case['soakConfig']).parent/'fixture-session-actor.lock',os.O_RDWR|os.O_CREAT|os.O_NOFOLLOW,0o600)
     fcntl.flock(fd,fcntl.LOCK_EX|fcntl.LOCK_NB)
     e=Path(case['caseDirectory']);soak.private(e.parent,True);assert not e.exists(),'Preserve attempts; no resume';e.mkdir(mode=0o700)
@@ -113,14 +113,14 @@ def main(path):
         code=reply.get('code','');assert re.fullmatch(r'\d{6}',code),'Fresh mock challenge unavailable'
         q=subprocess.run([c['adb'],'-s',i['serial'],'shell','sh'],input=('input text '+code+'\n').encode(),capture_output=True,timeout=15)
         del code,reply;assert q.returncode==0,'Private challenge entry failed'
-        if case['expected']=='disabled':
-            driver.wait('Verification Failed');driver.archive('disabled-verification-denied')
+        if case['expected'] in ['disabled','rejected']:
+            driver.wait('Verification Failed');driver.archive(case['expected']+'-verification-denied')
             assert not any(n.get('text') in ['Orders tab','Enrollment status'] or n.get('content-desc')=='Orders tab' for n in driver.snapshot().iter('node'))
             driver.tap('OK')
             driver.adb('shell','am','force-stop',soak.PACKAGE)
             driver.adb('shell','monkey','-p',soak.PACKAGE,'-c','android.intent.category.LAUNCHER','1')
-            driver.wait('Send OTP');driver.archive('disabled-cold-login-required')
-            driver.state['phases'].append('DISABLED_DENIAL_AND_COLD_LOGIN')
+            driver.wait('Send OTP');driver.archive(case['expected']+'-cold-login-required')
+            driver.state['phases'].append(case['expected'].upper()+'_DENIAL_AND_COLD_LOGIN')
         else:
             driver.wait('Orders tab' if case['expected']=='authenticated' else 'Enrollment status')
         driver.state['failurePhase']='POST_AUTH_RECONCILIATION';driver.save()

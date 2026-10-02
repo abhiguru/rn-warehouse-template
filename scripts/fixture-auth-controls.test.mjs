@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {pendingReadOnlyMode,approvedEnrollmentExitMode,customerReadOnlyMode,disabledAuthenticationMode} from './fixture-auth-controls.mjs';
+import {pendingReadOnlyMode,approvedEnrollmentExitMode,customerReadOnlyMode,disabledAuthenticationMode,rejectedAuthenticationMode} from './fixture-auth-controls.mjs';
 const c=()=>({pendingReadOnly:true,phone:'919888888874',profileName:'New customer',expected:'pending'});
 test('disabled login binds the genuine disabled B account and refuses other accounts or modes',()=>{
  const config={disabledAuthentication:true,phone:'919888888873',profileName:'Customer B',profileId:'34d9d337-ec2e-4bed-b555-0e8b63dd3aef',role:'customer',expected:'disabled',existingEnrollmentTokenCount:1};
@@ -27,4 +27,11 @@ test('customer read admission binds its one native session and refuses staff or 
  const config={...c(),pendingReadOnly:false,customerReadOnly:true,expected:'authenticated',role:'customer',nativeSessionId:'00000000-0000-4000-8000-000000000001'};assert.equal(customerReadOnlyMode(config,false,false),true);
  for(const edit of [{customerReadOnly:'true'},{approvedEnrollmentExit:true},{pendingReadOnly:true},{role:'admin'},{phone:'919888888871'},{nativeSessionId:"x';DELETE"}])assert.throws(()=>customerReadOnlyMode({...config,...edit},false,false));
  assert.throws(()=>customerReadOnlyMode(config,true,false));assert.throws(()=>customerReadOnlyMode(config,false,true));assert.equal(customerReadOnlyMode({},false,false),false);
+});
+
+test('rejected authentication requires actual B rejection and rejects disabled or other fixture modes',()=>{
+ const config={rejectedAuthentication:true,phone:'919888888873',profileName:'Customer B',profileId:'34d9d337-ec2e-4bed-b555-0e8b63dd3aef',role:'customer',expected:'rejected',existingEnrollmentTokenCount:1};
+ assert.equal(rejectedAuthenticationMode(config,false,false),true);
+ for(const edit of [{rejectedAuthentication:'true'},{phone:'919888888874'},{profileId:'00000000-0000-4000-8000-000000000001'},{profileName:'Other'},{role:'admin'},{expected:'disabled'},{existingEnrollmentTokenCount:0},{disabledAuthentication:true},{pendingReadOnly:true},{approvedEnrollmentExit:true},{customerReadOnly:true}])assert.throws(()=>rejectedAuthenticationMode({...config,...edit},false,false));
+ assert.throws(()=>rejectedAuthenticationMode(config,true,false));assert.throws(()=>rejectedAuthenticationMode(config,false,true));assert.equal(rejectedAuthenticationMode({},false,false),false);
 });
