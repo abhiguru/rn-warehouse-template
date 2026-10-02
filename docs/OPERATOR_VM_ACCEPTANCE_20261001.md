@@ -986,3 +986,36 @@ The bounded read-only renewal proof adapter is implemented and verified against 
 The renewal proof is integrated into review coordinator preparation: unchanged snapshots pass directly; any difference requires the independent exact-session SQL/HTTP proof and unchanged all other fields. The post-write baseline is the independently reconciled prepared state. Native snapshots now include session identity/issue/expiry metadata; two actual populated snapshots passed and retained stock3/no dispatches/fixed expiry, without native execution. Nine focused integration/refusal tests and lint passed, including that proven renewal cannot bypass the actual hold gate or conceal stock changes. Old frozen runtime/attempts remain untouched, and no fourth native run is authorized or performed.
 
 Renewal-aware complete source validation: Node22 setup suite 277/277 PASS and pinned redacted source/all-history scans PASS. Exact published CI runs remain live and were inspected at their actual steps: mobile37067496315 assembling debug APK since21:34:03Z; backend37067498320 monitoring targets/local delivery since21:42:25Z. No restart/cancellation or debug-to-installed-release evidence transfer. Independent monitor shows healthy owned API30/no ANR/crash/resource pressure; switch/fault lifetimes must be renewed through fresh identities before any stage exceeds remaining caps. Current final-freeze, eight-hour soak and dedicated expiry prerequisites remain unresolved.
+
+## APK10 customer confirmed draft acceptance, 2026-10-02 23:39 UTC
+
+Exact APK SHA256 a7df6781bdcd889eb9ccaa01ee0973890effd4d187bb6ac45f100284e1b04b69.
+Fresh customer header-draft switch attempt01 reached the destination login in
+the same process with old credential keys absent. The original runner remains
+FAIL because its observer expected response-complete instead of the installed
+pinned helper's complete event. Separate read-only reconciliation passed normal
+logout/history removal, unchanged source protected state and stored bytes,
+unchanged destination state and no forwarded credentials. Failure is retained.
+
+Continuation frozen at52e949c recomputed reconciliation and bound original
+config/native failure/before snapshot/independent proof by hash. One ordinary
+destination login passed with one OTP verification and exactly one new fixed
+seven-day session. The real customer form was clear in the preserved process
+before cold launch. Destination selection persisted and an explicit fresh
+authenticated Orders200 completed after cold launch. Existing sessions, unrelated
+authentication, business and stored bytes remained unchanged. Independent
+postcondition and immutable stage ledger PASS at23:39:01UTC. Private evidence:
+confirmed-customer-draft-destination-auth0110-01 and
+stage-confirmed-customer-draft-destination-auth0110-01-evidence/ledger.json.
+
+Scope: customer header draft only; GRN, dispatch, invoice and in-flight switching
+remain untested. The old primary native session was normally removed; the
+original emulator now holds the new switching-warehouse administrator session.
+No business submission or replay occurred. All289 source tests passed.
+
+Current backend review CI37074367623 completed PASS at
+4cc2c02fe513c3a9b0e9c6c5b42dcd560487ebbb, including isolated installation,
+contract, migrations and secret scanning. Remote architecture jobs are CI
+evidence only. Mobile CI37078661884 atc48cdc516eba14d76a7e42c94682585a5bd7915e
+has a passing secret scan and failing dependency gate; remaining jobs were still
+running at this checkpoint. Final freeze/readiness/soak/expiry gates remain open.
