@@ -23,7 +23,7 @@ try {
   const draftAuth=confirmedDraftAuthMode(c,secondary,replacement);let confirmed,confirmedProof;
   if(draftAuth){
     assert.equal(createHash('sha256').update(readFileSync(c.confirmedCase)).digest('hex'),c.confirmedCaseSHA256);
-    confirmed=confirmedDraftConfig(privateJSON(c.confirmedCase));assert.equal(confirmed.targetOrigin,c.origin);assert.equal(confirmed.targetInstanceId,c.instanceId);assert.equal(confirmed.draftKind,c.confirmedDraftKind);assert.equal(confirmed.artifactSHA256,c.artifactSHA256);
+    confirmed=confirmedDraftConfig(privateJSON(c.confirmedCase));assert.equal(confirmed.targetOrigin,c.origin);assert.equal(confirmed.targetInstanceId,c.instanceId);assert.equal(confirmed.draftKind,c.confirmedDraftKind);assert.equal(confirmed.confirmedDraftSwitchBack===true,c.confirmedDraftSwitchBack===true);assert.equal(confirmed.artifactSHA256,c.artifactSHA256);
     const proofPath=c.confirmedObservationRecovery===true?c.confirmedIndependentReconciliation:resolve(confirmed.caseDirectory,'confirmed-after.json');assert.equal(createHash('sha256').update(readFileSync(proofPath)).digest('hex'),c.confirmedReconciliationSHA256);confirmedProof=privateJSON(proofPath);assert.equal(confirmedProof.result.status,'PASS');assert.equal(confirmedProof.result.scope,'confirmed-switch-pre-authentication-reconciliation-only');
     const native=privateJSON(resolve(confirmed.caseDirectory,'confirmed-native-result.json'));if(c.confirmedObservationRecovery===true){
       const nativePath=resolve(confirmed.caseDirectory,'confirmed-native-result.json'),beforePath=resolve(confirmed.caseDirectory,'confirmed-before.json');
@@ -98,9 +98,9 @@ COMMIT;`;
       const destination=confirmedDraftSnapshot(confirmed,'destination',env);
       assert.equal(destination.businessHash,confirmedProof.snapshot.destination.businessHash);assert.equal(destination.storageHash,confirmedProof.snapshot.destination.storageHash);
       if(phase==='before')assert.deepEqual(destination,confirmedProof.snapshot.destination,'DESTINATION_CHANGED_BEFORE_ORDINARY_AUTH');
-      process.env.WAREHOUSE_STATE_DIR=confirmed.backendState;const {env:sourceEnv}=(await import(pathToFileURL(resolve(confirmed.backendCheckout,'tests/operator-fixture.mjs')).href)).operatorFixture();
+      process.env.WAREHOUSE_STATE_DIR=confirmed.backendState;const returning=confirmed.confirmedDraftSwitchBack===true;const sourceModule=await import(pathToFileURL(resolve(confirmed.backendCheckout,returning?'scripts/switch-fixture-common.mjs':'tests/operator-fixture.mjs')).href);const {env:sourceEnv}=returning?sourceModule.switchingFixture():sourceModule.operatorFixture();
       assert.deepEqual(confirmedDraftSnapshot(confirmed,'source',sourceEnv),confirmedProof.snapshot.source,'SOURCE_CHANGED_DURING_DESTINATION_AUTH');
-      process.env.WAREHOUSE_STATE_DIR=ui.secondaryBackendState;
+      process.env.WAREHOUSE_STATE_DIR=secondary?ui.secondaryBackendState:ui.backendState;
     }
     if (denied) {
       assert.deepEqual(snapshot.profile,{id:c.profileId,name:c.profileName,role:'customer',active:false,status:c.expected});

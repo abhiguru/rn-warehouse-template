@@ -32,31 +32,31 @@ try{
  assert.deepEqual(Object.keys(c.toolingSHA256).sort(),[...confirmedDraftTooling].sort());
  for(const name of confirmedDraftTooling)assert.equal(digest(readFileSync(resolve(scripts,name))),c.toolingSHA256[name],'FROZEN_TOOLING_CHANGED');
  assert.equal(digest(readFileSync(c.soakConfig)),c.soakConfigSHA256);
- const ui=privateJSON(c.soakConfig);assert.equal(ui.apkSHA256,c.artifactSHA256);
+ const returning=c.confirmedDraftSwitchBack===true;const ui=privateJSON(c.soakConfig);assert.equal(ui.apkSHA256,c.artifactSHA256);
  verifyManagedHelpers(ui.managedUnits);
  const uptime=Number(readFileSync('/proc/uptime','utf8').split(' ')[0]);
  for(const unit of Object.values(ui.managedUnits)){
   const r=spawnSync('systemctl',['--user','show',unit,'--property=RuntimeMaxUSec,ActiveEnterTimestampMonotonic'],{encoding:'utf8',timeout:5000,maxBuffer:16384});assert.equal(r.status,0);
   confirmedHelperWindow(Object.fromEntries(r.stdout.trim().split('\n').map(s=>s.split('='))),uptime,(Date.parse(c.deadlineUTC)-Date.now())/1000);
  }
- for(const [a,b] of [['backendCheckout','backendCheckout'],['backendState','backendState'],['targetBackendCheckout','secondaryBackendCheckout'],['targetBackendState','secondaryBackendState']])assert.equal(c[a],ui[b]);
+ for(const [a,b] of [['backendCheckout','backendCheckout'],['backendState','backendState'],['targetBackendCheckout','secondaryBackendCheckout'],['targetBackendState','secondaryBackendState']])assert.equal(c[a],ui[returning?({backendCheckout:'secondaryBackendCheckout',backendState:'secondaryBackendState',secondaryBackendCheckout:'backendCheckout',secondaryBackendState:'backendState'}[b]):b]);
  for(const side of ['source','destination']){
   const h=privateJSON(c[side+'HelperConfig']);assert.equal(digest(readFileSync(c[side+'HelperConfig'])),c[side+'HelperConfigSHA256']);
   assert.equal(h.scope,'isolated-fictional-fixture');assert.equal(h.services.length,1);
-  const service=h.services[0],source=side==='source';assert.equal(service.kind,source?'core':'switch');assert.equal(service.observeAuthenticationPresence,true);
+  const service=h.services[0],source=side==='source';assert.equal(service.kind,(source!==returning)?'core':'switch');assert.equal(service.observeAuthenticationPresence,true);
   assert.equal(service.state,c[source?'backendState':'targetBackendState']);assert.equal(service.owningCheckout,c[source?'backendCheckout':'targetBackendCheckout']);
   assert.equal(service.ownerGuardSHA256,c[source?'fixtureGuardSHA256':'targetFixtureGuardSHA256']);
   assert.equal(c[side+'HTTPLog'],resolve(h.logDir,`warehouse-fixture-${service.kind}-${h.runId}.service.log`));
   assert.equal(ui.managedUnits[service.kind],`warehouse-fixture-${service.kind}-${h.runId}.service`);
   privateLog(c[side+'HTTPLog']);
  }
- const guards=[resolve(c.backendCheckout,'tests/operator-fixture.mjs'),resolve(c.targetBackendCheckout,'scripts/switch-fixture-common.mjs')];
+ const guards=[resolve(c.backendCheckout,returning?'scripts/switch-fixture-common.mjs':'tests/operator-fixture.mjs'),resolve(c.targetBackendCheckout,returning?'tests/operator-fixture.mjs':'scripts/switch-fixture-common.mjs')];
  for(const [guard,sha] of [[guards[0],c.fixtureGuardSHA256],[guards[1],c.targetFixtureGuardSHA256]])assert.equal(digest(readFileSync(guard)),sha);
  for(const [state,id] of [[c.backendState,c.instanceId],[c.targetBackendState,c.targetInstanceId]])assert.equal(JSON.parse(readFileSync(resolve(state,'public/instance.json'))).instanceId,id);
  if(phase!=='guard'){
   const st=lstatSync(c.caseDirectory);assert.ok(st.isDirectory()&&!st.isSymbolicLink()&&st.uid===process.getuid()&&(st.mode&0o777)===0o700);assert.equal(realpathSync(c.caseDirectory),resolve(c.caseDirectory));
-  process.env.WAREHOUSE_STATE_DIR=c.backendState;const source=(await import(pathToFileURL(guards[0]))).operatorFixture().env;
-  process.env.WAREHOUSE_STATE_DIR=c.targetBackendState;const destination=(await import(pathToFileURL(guards[1]))).switchingFixture().env;
+  process.env.WAREHOUSE_STATE_DIR=c.backendState;const sourceModule=await import(pathToFileURL(guards[0]));const source=(returning?sourceModule.switchingFixture():sourceModule.operatorFixture()).env;
+  process.env.WAREHOUSE_STATE_DIR=c.targetBackendState;const destinationModule=await import(pathToFileURL(guards[1]));const destination=(returning?destinationModule.operatorFixture():destinationModule.switchingFixture()).env;
   const snapshot={source:confirmedDraftSnapshot(c,'source',source),destination:confirmedDraftSnapshot(c,'destination',destination)};
   if(phase==='before'){
    confirmedDraftBefore(c,snapshot);const logs={};

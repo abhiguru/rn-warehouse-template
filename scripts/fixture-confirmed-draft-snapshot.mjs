@@ -10,7 +10,7 @@ export function confirmedDraftSQL(c,side){
  // This candidate uses custom OTP auth; it has auth.users, not GoTrue identities.
  const auth=[['profiles','public.user_profiles','id'],['users','auth.users','id'],['assignments','public.users_customers_new','id'],['otps','public.otp_verifications','id'],['quotas','public.otp_rate_limits','phone_number'],['enrollments','warehouse_security.enrollment_tokens','token_hash'],['sessions','warehouse_security.refresh_sessions','id'],['consumed','warehouse_security.consumed_refresh_tokens','token_hash']].map(([key,t,order])=>`'${key}',(SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY x.${order}),'[]') FROM ${t} x${source&&key==='sessions'?` WHERE x.id<>'${c.sessionId}'`:source&&key==='consumed'?` WHERE x.session_id<>'${c.sessionId}'`:''})`).join(',');
  const native=source?`,
- 'profile',(SELECT jsonb_build_object('id',id,'role',role,'active',active,'status',enrollment_status) FROM public.user_profiles WHERE id='${c.profileId}' AND mobile='919888888874'),
+ 'profile',(SELECT jsonb_build_object('id',id,'role',role,'active',active,'status',enrollment_status) FROM public.user_profiles WHERE id='${c.profileId}' AND mobile='${c.confirmedDraftSwitchBack===true?'919888888881':'919888888874'}'),
  'nativeSessionId',(SELECT s.id FROM warehouse_security.refresh_sessions s JOIN public.user_profiles p ON p.auth_user_id=s.user_id WHERE s.id='${c.sessionId}' AND p.id='${c.profileId}'),
  'nativeSessionUnexpired',EXISTS(SELECT 1 FROM warehouse_security.refresh_sessions s JOIN public.user_profiles p ON p.auth_user_id=s.user_id WHERE s.id='${c.sessionId}' AND p.id='${c.profileId}' AND s.expires_at>now()),
  'nativeSessionIssuedUTC',(SELECT created_at FROM warehouse_security.refresh_sessions WHERE id='${c.sessionId}'),

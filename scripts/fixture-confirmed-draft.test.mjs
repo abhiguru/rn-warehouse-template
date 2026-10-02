@@ -45,3 +45,10 @@ test('read-only reconciled observation failure preserves FAIL and rejects ambigu
  for(const change of [{status:'PASS'},{exceptionType:'TimeoutError'},{confirmationAttempts:2},{businessSubmitAttempts:1},{otpRequests:1},{destinationProcessPID:124},{oldCredentialStoragePresent:true}])assert.throws(()=>reconciledObservationFailure(binding,c,baseline,proof,{...failed,...change}));
  for(const mutate of [p=>p.configSHA256='0'.repeat(64),p=>p.snapshot.destination.authExceptNativeHash='0'.repeat(64),p=>p.events.source[0].status=500,p=>p.events.source[0].event='upstream-timeout',p=>p.events.destination.push({authorizationPresent:true,credentialQueryPresent:false}),p=>p.diagnosticOnly=false]){const changed=globalThis.structuredClone(proof);mutate(changed);assert.throws(()=>reconciledObservationFailure(binding,c,baseline,changed,failed));}
 });
+
+test('reverse GRN switch binds independent genuine instances and exact administrator',()=>{
+ const reverse={...c,confirmedDraftSwitchBack:true,draftKind:'grn',origin:c.targetOrigin,instanceId:c.targetInstanceId,targetOrigin:c.origin,targetInstanceId:c.instanceId,profileId:'8f5c3a24-ae9f-4cc8-952f-e42cfb5ddd29'};
+ confirmedDraftConfig(reverse);assert.ok(confirmedDraftSQL(reverse,'source').includes("mobile='919888888881'"));
+ for(const change of [{draftKind:'customer'},{profileId:c.profileId},{origin:c.origin},{targetInstanceId:c.targetInstanceId},{confirmedDraftSwitchBack:'true'}])assert.throws(()=>confirmedDraftConfig({...reverse,...change}));
+ const reversedBefore=globalThis.structuredClone(before);reversedBefore.source.instanceId=reverse.instanceId;reversedBefore.source.profile={id:reverse.profileId,role:'admin',active:true,status:'approved'};reversedBefore.destination.instanceId=reverse.targetInstanceId;confirmedDraftBefore(reverse,reversedBefore);
+});

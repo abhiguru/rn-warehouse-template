@@ -14,11 +14,14 @@ export function confirmedHelperWindow(p,uptimeSeconds,remainingSeconds){
 export function confirmedDraftConfig(c){
  assert.equal(c.scope,'isolated-fictional-confirmed-draft-switch');
  assert.equal(c.artifactSHA256,'a7df6781bdcd889eb9ccaa01ee0973890effd4d187bb6ac45f100284e1b04b69');
- assert.equal(c.origin,'https://backend-core.example.test');
- assert.equal(c.instanceId,'b0ec3933-5258-4bd5-87f4-d57b13a78971');
- assert.equal(c.targetOrigin,'https://backend-switch.example.test');
- assert.equal(c.targetInstanceId,'c7ee3314-4dee-4361-81df-7821cdcb1b4a');
- assert.equal(c.profileId,'947136fa-997b-4a83-819d-1b8bd3ecba68');
+ if(Object.hasOwn(c,'confirmedDraftSwitchBack'))assert.equal(typeof c.confirmedDraftSwitchBack,'boolean');
+ const returning=c.confirmedDraftSwitchBack===true;
+ assert.equal(c.origin,returning?'https://backend-switch.example.test':'https://backend-core.example.test');
+ assert.equal(c.instanceId,returning?'c7ee3314-4dee-4361-81df-7821cdcb1b4a':'b0ec3933-5258-4bd5-87f4-d57b13a78971');
+ assert.equal(c.targetOrigin,returning?'https://backend-core.example.test':'https://backend-switch.example.test');
+ assert.equal(c.targetInstanceId,returning?'b0ec3933-5258-4bd5-87f4-d57b13a78971':'c7ee3314-4dee-4361-81df-7821cdcb1b4a');
+ assert.equal(c.profileId,returning?'8f5c3a24-ae9f-4cc8-952f-e42cfb5ddd29':'947136fa-997b-4a83-819d-1b8bd3ecba68');
+ if(returning)assert.equal(c.draftKind,'grn');
  assert.match(c.sessionId,uuid);
  assert.ok(['customer','grn','dispatch','invoice'].includes(c.draftKind));
  for(const k of ['backendCheckout','backendState','targetBackendCheckout','targetBackendState','soakConfig','caseDirectory'])assert.ok(isAbsolute(c[k]),'ABSOLUTE_OWNED_PATH_REQUIRED');
@@ -32,7 +35,7 @@ export function confirmedDraftBefore(c,before){
   assert.equal(before[side]?.instanceId,c[side==='source'?'instanceId':'targetInstanceId']);
   for(const k of ['businessHash','authExceptNativeHash','storageHash'])assert.match(before[side][k],hash);
  }
- assert.deepEqual(before.source.profile,{id:c.profileId,role:'supervisor',active:true,status:'approved'});
+ assert.deepEqual(before.source.profile,{id:c.profileId,role:c.confirmedDraftSwitchBack===true?'admin':'supervisor',active:true,status:'approved'});
  assert.equal(before.source.nativeSessionId,c.sessionId);
  assert.equal(before.source.nativeSessionUnexpired,true);
  for(const k of ['nativeSessionIssuedUTC','nativeSessionExpiryUTC'])assert.ok(Number.isFinite(Date.parse(before.source[k])),'ACTUAL_SESSION_DATES_REQUIRED');

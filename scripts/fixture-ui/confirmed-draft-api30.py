@@ -84,9 +84,10 @@ def main(path):
         p=d.adb('shell','pm','path',nav.soak.PACKAGE);assert re.fullmatch(r'package:/data/app/[^\n]+',p)
         assert d.adb('shell','sha256sum',p[8:]).split()[0]==c['artifactSHA256']
         nav.owned_reverse_route(d.adb('reverse','--list'),18443);d.health();observe('before')
-        discover(c['origin'],18443,cfg['primaryCA'],c['instanceId'])
-        target_name=discover(c['targetOrigin'],18444,cfg['secondaryCA'],c['targetInstanceId'])
-        assert target_name=='Fictional Switching Warehouse'
+        returning=c.get('confirmedDraftSwitchBack') is True
+        discover(c['origin'],18444 if returning else 18443,cfg['secondaryCA' if returning else 'primaryCA'],c['instanceId'])
+        target_name=discover(c['targetOrigin'],18443 if returning else 18444,cfg['primaryCA' if returning else 'secondaryCA'],c['targetInstanceId'])
+        assert target_name==('Fictional Core Warehouse' if returning else 'Fictional Switching Warehouse')
         d.cold();d.wait('Orders tab');assert credential_presence(d.adb),'Ordinary source session required'
         original=e/'original-selection';original.mkdir(mode=0o700);d.selected_server(original,c['origin'],c['instanceId'])
         kind=c['draftKind'];route(('customer' if kind=='customer' else kind)+'-form/step1')

@@ -88,7 +88,7 @@ def main(path):
         if draft_auth:names+=['fixture-ui/confirmed_draft_continuation_controls.py','fixture-ui/unsaved_dispatch_controls.py']
         assert set(case['toolingSHA256'])==set(names) and all(hashlib.sha256((scripts/n).read_bytes()).hexdigest()==case['toolingSHA256'][n] for n in names)
         helper=json.loads(soak.private(case['helperConfig']).read_text());assert hashlib.sha256(Path(case['helperConfig']).read_bytes()).hexdigest()==case['helperConfigSHA256'];assert helper['scope']=='isolated-fictional-fixture' and len(helper['services'])==1
-        h=helper['services'][0];kind='switch' if draft_auth else 'core';assert h['kind']==kind and h['state']==ui['secondaryBackendState' if draft_auth else 'backendState'] and h['owningCheckout']==ui['secondaryBackendCheckout' if draft_auth else 'backendCheckout'] and h['ownerGuardSHA256']==case['fixtureGuardSHA256'] and h['socketPath']==case['otpSocket'] and h.get('ordersReadDelayMs',0)==0;assert ui['managedUnits'][kind]=='warehouse-fixture-'+kind+'-'+helper['runId']+'.service'
+        h=helper['services'][0];helper_kind='switch' if draft_auth and case['origin']=='https://backend-switch.example.test' else 'core';assert h['kind']==helper_kind and h['state']==ui['secondaryBackendState' if helper_kind=='switch' else 'backendState'] and h['owningCheckout']==ui['secondaryBackendCheckout' if helper_kind=='switch' else 'backendCheckout'] and h['ownerGuardSHA256']==case['fixtureGuardSHA256'] and h['socketPath']==case['otpSocket'] and h.get('ordersReadDelayMs',0)==0;assert ui['managedUnits'][helper_kind]=='warehouse-fixture-'+helper_kind+'-'+helper['runId']+'.service'
     def alive():
         if bounded:assert time.time()<deadline,'B authentication deadline'
     def observe(phase):
@@ -169,7 +169,7 @@ def main(path):
             driver.adb('shell','am','force-stop',soak.PACKAGE);driver.adb('shell','monkey','-p',soak.PACKAGE,'-c','android.intent.category.LAUNCHER','1');driver.wait('Orders tab')
             selected=driver.adb('shell',shlex.join(['/system/bin/sqlite3','-readonly','/data/user/0/'+soak.PACKAGE+'/databases/RKStorage',"SELECT value FROM catalystLocalStorage WHERE key='operator_server_v1';"]))
             assert selected and len(selected)<=4096;selected=json.loads(selected);assert selected['origin']==case['origin'] and selected['instanceId']==case['instanceId']
-            log=Path(helper['logDir'])/('warehouse-fixture-switch-'+helper['runId']+'.service.log');st=log.lstat();assert not log.is_symlink() and st.st_uid==os.getuid() and st.st_mode&0o077==0
+            log=Path(helper['logDir'])/('warehouse-fixture-'+helper_kind+'-'+helper['runId']+'.service.log');st=log.lstat();assert not log.is_symlink() and st.st_uid==os.getuid() and st.st_mode&0o077==0
             initial=log.read_bytes();assert len(initial)<=8388608;offset=len(initial);prefix=hashlib.sha256(initial).hexdigest();inode=st.st_ino
             since=datetime.datetime.now(datetime.timezone.utc);driver.tap('Refresh orders')
             end=time.monotonic()+25
