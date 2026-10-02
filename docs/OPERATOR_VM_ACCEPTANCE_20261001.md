@@ -594,3 +594,30 @@ Evidence: `native-dispatch-quantity-rejection0109-02/` and
 This case establishes native invalid/excess item admission. It does not replay
 an exhausted lost-response/normal-dispatch case, issue an excess API write, or
 establish concurrent submission, receipt invalid-quantity or queue processing.
+
+### Actual supervisor Realtime delivery and customer isolation
+
+Frozen tooling `51f685f` passed the distinct supervisor Realtime case on APK9.
+The actual backend staff policy permits admin/supervisor; this case uses the
+explicit supervisor role, not literal staff or an administrator substitute.
+Ordinary A, supervisor and administrator API logins were independently reconciled
+while preserving the existing native supervisor session and old administrator
+sessions. Original full cart rows/notes were preserved before two normal
+administrator note updates; each update reconciled against protected SQL and
+complete stored-file hashes.
+
+Live supervisor and administrator subscriptions each received both cart events;
+A received only A, no B and no unexpected events. Heartbeat-backed live checks
+continued through observation and native evidence. The native supervisor showed
+both genuine customer cards and Queue navigation, then performed a fresh Orders
+RPC200 after the event with no manual refresh. Final state reconciliation passed,
+followed by removal of only the three new API sessions. Rejected/logged-out B,
+unrelated authentication/business records, stored objects and the original native
+supervisor session remained unchanged. Evidence: `supervisor-realtime0109-01/`
+and `supervisor-realtime0109-final-proof.json`.
+
+The frozen adapter's terminal stdout retained a generic reciprocal-isolation
+label from shared tooling. Role-specific `final-acceptance.json`, live counts and
+native proof define the actual acceptance scope above; review source corrects
+that stdout label. This result does not establish queue processing, concurrent
+writes or literal-staff access, and does not transfer the earlier B-native case.
