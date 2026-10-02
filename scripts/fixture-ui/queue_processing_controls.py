@@ -33,3 +33,10 @@ def generate_dispatch(tree):
  assert not labels.intersection({'Some Items Skipped','Cannot Create Dispatch','Confirm Submission','Submit'})
  nodes=[n for n in tree.iter('node') if n.get('content-desc')=='Generate dispatch']
  assert len(nodes)==1;return control_point(nodes[0])
+
+def queue_review(tree):
+ labels={v for n in tree.iter('node') for v in [n.get('text'),n.get('content-desc')] if v}
+ assert {'FXQ992','FXC701/8','2 qty','To: Backend Test Customer A','Submit Dispatch'}<=labels
+ assert not labels.intersection({'Confirm Submission','Error','Send OTP','Some Items Skipped','Dispatch Created Successfully!'})
+ assert not any(x.startswith('To: ') and x!='To: Backend Test Customer A' for x in labels)
+ return {'record':'FXQ992','receipt':'FXC701','sourceQuantity':8,'dispatchQuantity':2,'customer':'Backend Test Customer A'}

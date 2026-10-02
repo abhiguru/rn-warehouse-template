@@ -1,5 +1,5 @@
 import unittest,xml.etree.ElementTree as ET
-from queue_processing_controls import expand_customer,generate_dispatch
+from queue_processing_controls import expand_customer,generate_dispatch,queue_review
 class Queue(unittest.TestCase):
  def tree(self,expanded=False,enabled='true'):
   root=ET.Element('hierarchy')
@@ -15,4 +15,12 @@ class Queue(unittest.TestCase):
   with self.assertRaises(AssertionError):generate_dispatch(t)
   t=self.tree(True);ET.SubElement(t,'node',{'text':'Some Items Skipped'})
   with self.assertRaises(AssertionError):generate_dispatch(t)
+ def test_exact_review_and_foreign_refusal(self):
+  t=ET.Element('hierarchy')
+  for x in ['FXQ992','FXC701/8','2 qty','To: Backend Test Customer A','Submit Dispatch']:ET.SubElement(t,'node',{'text':x})
+  self.assertEqual(queue_review(t)['dispatchQuantity'],2)
+  list(t)[3].set('text','To: Backend Test Customer B')
+  with self.assertRaises(AssertionError):queue_review(t)
+  list(t)[3].set('text','To: Backend Test Customer A');list(t)[2].set('text','3 qty')
+  with self.assertRaises(AssertionError):queue_review(t)
 if __name__=='__main__':unittest.main()

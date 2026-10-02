@@ -720,3 +720,14 @@ independent SQL commit reconciliation and cold Orders/empty-queue evidence.
 Failed reconciliation retains the actual snapshot and prohibits replay.
 Source syntax checks pass. This orchestration is not yet executed; its live
 result remains open. Existing failed native cart cases are unaffected.
+
+The first native queue attempt (frozen54b8d8c) reached genuine queue expansion,
+dispatch generation and correct FXQ992/FXC701/8/two-unit review, then refused
+the customer selector before any confirmation or submission. Actual review
+uses `To: Backend Test Customer A`, rather than the header's bare name.
+Private `native-queue-processing0109-01` and read-only review diagnosis are
+preserved. Independent full SQL/auth/stored-byte reconciliation PASS against
+the initial snapshot; no OTP or operation occurred. The exact review selector
+is corrected in review source, including foreign-customer/quantity refusals.
+This is one initial failure; at most two corrected reruns remain, and no
+queue-processing acceptance is transferred from preparation.

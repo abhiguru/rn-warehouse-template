@@ -2,7 +2,7 @@
 """One guarded native queue dispatch; no retry, OTP or route edits."""
 import datetime,fcntl,importlib.util,json,os,re,shlex,sys,time,traceback
 from pathlib import Path
-from queue_processing_controls import queue_config,expand_customer,generate_dispatch
+from queue_processing_controls import queue_config,expand_customer,generate_dispatch,queue_review
 from dispatch_draft_controls import draft_labels
 from dispatch_case_controls import owned_reverse_route,submission_point
 spec=importlib.util.spec_from_file_location('normal',Path(__file__).with_name('normal-dispatch-api30.py'));normal=importlib.util.module_from_spec(spec);spec.loader.exec_module(normal)
@@ -24,7 +24,7 @@ def main(path):
   raw=d.adb('shell',shlex.join(['/system/bin/sqlite3','-readonly','/data/user/0/'+normal.soak.PACKAGE+'/databases/RKStorage',"SELECT value FROM catalystLocalStorage WHERE key='operator_server_v1';"]));assert len(raw)<=4096;selected=json.loads(raw);assert selected['origin']==case['origin'] and selected['instanceId']==case['instanceId']
   d.tap('Queue tab');tree=d.wait('Backend Test Customer A, 1 items, expand');d.adb('shell','input','tap',*map(str,expand_customer(tree)));tree=d.wait('Generate dispatch');d.adb('shell','input','tap',*map(str,generate_dispatch(tree)))
   d.fill('Dispatch number',case['record']);d.wait('Backend Test Customer A');d.fill('Vehicle registration','TEST FIXTURE');d.wait('New customer');d.tap('Go to Items step');d.tap('Go to Review step')
-  tree=d.wait('Submit Dispatch');labels=set(draft_labels(tree,case['record'],case['sourceReceipt'],8));assert '2 qty' in labels and 'Backend Test Customer A' in labels;observe('prepared');d.archive('queue-before-submit')
+  tree=d.wait('Submit Dispatch');draft_labels(tree,case['record'],case['sourceReceipt'],8);queue_review(tree);observe('prepared');d.archive('queue-before-submit')
   xy=submission_point(d.wait('Submit Dispatch'),'Submit Dispatch',case['record']);d.adb('shell','input','tap',*map(str,xy))
   xy=submission_point(d.wait('Submit'),'Submit',case['record']);assert d.state['submissionAttempts']==0;d.state.update(submissionAttempts=1,businessWriteAttempted=True);d.save();d.adb('shell','input','tap',*map(str,xy))
   d.wait('Dispatch Created Successfully!');d.archive('queue-native-success');observe('committed');d.adb('shell','am','force-stop',normal.soak.PACKAGE);d.adb('shell','monkey','-p',normal.soak.PACKAGE,'-c','android.intent.category.LAUNCHER','1');d.wait('Orders tab');since=datetime.datetime.now(datetime.timezone.utc).isoformat();d.tap('Refresh orders');end=time.monotonic()+25
