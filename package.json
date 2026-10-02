@@ -40,7 +40,7 @@
     "@react-native-community/datetimepicker": "8.4.4",
     "@react-native-community/netinfo": "11.4.1",
     "@react-native-community/slider": "5.0.1",
-    "@react-native-picker/picker": "2.11.1",
+    "@react-native-picker/picker": "2.11.4",
     "@reduxjs/toolkit": "^2.0.1",
     "@sentry/react-native": "~7.2.0",
     "@shopify/flash-list": "2.0.2",
@@ -157,5 +157,12 @@
     "transformIgnorePatterns": [
       "node_modules/(?!((jest-)?react-native|@react-native(-community)?|expo(nent)?|@expo(nent)?/.*|@gorhom/.*|@reduxjs/toolkit|immer|@sentry/react-native|react-navigation|@react-navigation/.*|react-native-svg|decode-uri-component))"
     ]
+  },
+  "expo": {
+    "install": {
+      "exclude": [
+        "@react-native-picker/picker"
+      ]
+    }
   }
 }
