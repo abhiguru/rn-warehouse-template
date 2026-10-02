@@ -3,8 +3,9 @@ import assert from 'node:assert/strict';
 import {pendingReadOnlyMode,approvedEnrollmentExitMode,customerReadOnlyMode,disabledAuthenticationMode} from './fixture-auth-controls.mjs';
 const c=()=>({pendingReadOnly:true,phone:'919888888874',profileName:'New customer',expected:'pending'});
 test('disabled login binds the genuine disabled B account and refuses other accounts or modes',()=>{
- const config={disabledAuthentication:true,phone:'919888888873',profileName:'Customer B',profileId:'34d9d337-ec2e-4bed-b555-0e8b63dd3aef',role:'customer',expected:'disabled'};
+ const config={disabledAuthentication:true,phone:'919888888873',profileName:'Customer B',profileId:'34d9d337-ec2e-4bed-b555-0e8b63dd3aef',role:'customer',expected:'disabled',existingEnrollmentTokenCount:1};
  assert.equal(disabledAuthenticationMode(config,false,false),true);
+ assert.throws(()=>disabledAuthenticationMode({...config,existingEnrollmentTokenCount:0},false,false));
  for(const edit of [{disabledAuthentication:'true'},{phone:'919888888874'},{profileId:'00000000-0000-4000-8000-000000000001'},{profileName:'Other'},{role:'admin'},{expected:'authenticated'},{pendingReadOnly:true},{approvedEnrollmentExit:true},{customerReadOnly:true}]) assert.throws(()=>disabledAuthenticationMode({...config,...edit},false,false));
  assert.throws(()=>disabledAuthenticationMode(config,true,false));assert.throws(()=>disabledAuthenticationMode(config,false,true));
  assert.equal(disabledAuthenticationMode({},false,false),false);

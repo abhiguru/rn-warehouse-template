@@ -6,6 +6,7 @@ export function disabledAuthenticationMode(c, secondary, replacement) {
   assert.equal(secondary, false); assert.equal(replacement, false);
   assert.equal(c.phone, '919888888873'); assert.equal(c.profileName, 'Customer B');
   assert.equal(c.profileId, '34d9d337-ec2e-4bed-b555-0e8b63dd3aef');
+  assert.equal(c.existingEnrollmentTokenCount, 1);
   assert.equal(c.role, 'customer'); assert.equal(c.expected, 'disabled');
   for (const key of ['pendingReadOnly', 'approvedEnrollmentExit', 'customerReadOnly']) assert.notEqual(c[key], true);
  }

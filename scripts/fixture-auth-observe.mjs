@@ -72,7 +72,7 @@ COMMIT;`;
     const snapshot = JSON.parse(q.stdout);
     if (disabled) {
       assert.deepEqual(snapshot.profile,{id:c.profileId,name:c.profileName,role:'customer',active:false,status:'disabled'});
-      assert.deepEqual(snapshot.sessions,[]); assert.equal(snapshot.enrollmentTokenCount,0);
+      assert.deepEqual(snapshot.sessions,[]); assert.equal(snapshot.enrollmentTokenCount,c.existingEnrollmentTokenCount);
     }
     if (replacement) {assert.equal(snapshot.primaryAdministratorPresent,false);assert.equal(snapshot.profile?.name,c.profileName);assert.equal(snapshot.profile?.role,'admin');assert.equal(snapshot.profile?.active,true);}
     if (pendingReadOnly) {assert.equal(snapshot.profile?.status,'pending');assert.equal(snapshot.profile?.active,false);assert.deepEqual(snapshot.sessions,[]);}
