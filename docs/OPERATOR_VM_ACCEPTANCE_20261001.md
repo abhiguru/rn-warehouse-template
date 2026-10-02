@@ -24,7 +24,8 @@ with recorded overlays; backend review head is `5e70e01`.
 | B account lifecycle | PASS ordinary native logout, administrator rejection and native rejected-login denial; B remains rejected/logged out. |
 | B image rendering | BLOCKED after three preserved/reconciled attempts. Independent private-image API denial PASS does not establish native rendering. |
 | Native receipt/cart and selected invoice/lost-response cases | Attempt-limited failures and partial results remain preserved below. No alias or fourth attempt is allowed. Successful/uncertain document numbers and stock remain retained. |
-| Remaining native business | Concurrency, queue processing and receipt invalid quantities remain unexecuted; existing source/API checks do not establish their native acceptance. |
+| Native queue processing | PASS on corrected attempt02: one genuine queue dispatch, stock8 to6, matched line removed/order OPEN, native cold empty queue/Orders200, unrelated state preserved. API-created cart provenance remains explicit. |
+| Remaining native business | Concurrency and receipt invalid quantities remain unexecuted; existing source/API checks do not establish their native acceptance. |
 | Remaining switching | In-flight uploads/saves and confirmed request switching remain unexecuted. Older-artifact same/switch/replacement results retain their exact scope and do not transfer to APK9. |
 | Reserved account revocation | UNSTARTED; current reserved native role is supervisor, and dependent workflow closure is incomplete. No unsupported role/session substitution is permitted. |
 | Source verification | 253 setup tests PASS with documented fixture Node runtime; redacted source/history scans PASS. Unsupported Node18 failure remains retained. |
@@ -731,3 +732,19 @@ the initial snapshot; no OTP or operation occurred. The exact review selector
 is corrected in review source, including foreign-customer/quantity refusals.
 This is one initial failure; at most two corrected reruns remain, and no
 queue-processing acceptance is transferred from preparation.
+
+## Native queue processing PASS, 02 October 19:40 UTC
+
+Frozen71fd3da corrected attempt02 PASS: genuine Queue expansion and Generate
+dispatch, exact FXQ992 / FXC701/8 / two-unit review, unchanged preparation,
+one native confirmation and success. Independent SQL proves exactly one
+dispatch, matching line, stock movement and its own cached success. Stock8
+to6; only matched order item removed; persistent cart remains OPEN. Cold
+launch produced Orders200 and `No Orders in Queue`. Full auth/stored bytes
+and every unrelated row in the protected business/storage tables are
+unchanged. Private `queue-processing0109-final-proof.json` binds all evidence,
+config/source/artifact and the preserved initial failure/reconciliation.
+There were two native attempts, one total submission and zero OTP requests.
+No replay occurred. This accepts native queue processing of the preserved
+ordinary API-created fixture; exhausted native customer cart creation remains
+BLOCKED and is not rerun or reclassified.
