@@ -712,3 +712,11 @@ observer independently captured identical live preconditions twice, preserved
 in private `queue-processing-full-snapshot02.json`. Commit reconciliation has
 unit evidence only: no native dispatch has occurred, and orchestration and
 actual successful-response reconciliation remain required.
+
+The source-bound queue observer and native driver are now implemented: exact
+artifact/AVD/TLS/release/deadline checks, genuine queue expansion/generation,
+review of FXC701/8 and two units, unchanged preparation, one confirmation,
+independent SQL commit reconciliation and cold Orders/empty-queue evidence.
+Failed reconciliation retains the actual snapshot and prohibits replay.
+Source syntax checks pass. This orchestration is not yet executed; its live
+result remains open. Existing failed native cart cases are unaffected.
