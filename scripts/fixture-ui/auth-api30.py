@@ -178,7 +178,7 @@ def main(path):
                 for line in raw[offset:].decode().splitlines():
                     if not line.startswith('{'):continue
                     event=json.loads(line)
-                    if event.get('event')=='response-complete' and event.get('path')=='/rest/v1/rpc/get_orders_list' and datetime.datetime.fromisoformat(event['atUTC'].replace('Z','+00:00'))>=since:events.append(event)
+                    if event.get('event')=='complete' and event.get('path')=='/rest/v1/rpc/get_orders_list' and datetime.datetime.fromisoformat(event['atUTC'].replace('Z','+00:00'))>=since:events.append(event)
                 if any(e.get('status')==200 and e.get('authorizationPresent') is True for e in events):break
                 assert time.monotonic()<end,'Actual destination cold authenticated Orders200 required';time.sleep(.5)
             driver.archive('destination-cold-orders');driver.state.update(postConfirmationColdLaunchAttempts=1,destinationColdOrders200=True,destinationSelection={'origin':selected['origin'],'instanceId':selected['instanceId']});driver.save()

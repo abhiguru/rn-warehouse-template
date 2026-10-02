@@ -175,3 +175,17 @@ profile/quota and metadata digests passed read-only integration; private evidenc
 `destination-auth-readonly-sql-validation01-proof.json` records zero native,
 OTP and session-creation attempts. Real confirmation/authentication/draft/cold
 execution remains NOT TESTED until the freshly frozen bounded stages run.
+
+Actual APK10 customer draft confirmation attempt 01 reached the genuine
+destination login in the original process, with one confirmation, zero business
+submissions and zero OTP requests. Its frozen observer refused because it
+expected `response-complete`; the installed pinned helper emits `complete`
+from the actual HTTP response finish event. The original native result and
+runner ledger remain FAIL. A separate read-only corrected reconciliation proved
+normal source logout/history removal, unchanged protected source business/auth
+and stored bytes, unchanged destination state and no old credential forwarding.
+Private evidence: `confirmed-customer-draft0110-01-independent-reconciliation.json`.
+The preserved process is awaiting a separately guarded continuation; no
+destination authentication or draft-clearing acceptance is claimed. Reviewed
+fixture consumers now match the installed helper contract, including its exact
+error event names. Eleven focused tests passed after the correction.

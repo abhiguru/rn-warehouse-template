@@ -68,9 +68,9 @@ try{
    for(const side of ['source','destination']){
     const l=privateLog(c[side+'HTTPLog']),old=before.logs[side];assert.equal(l.inode,old.inode);assert.ok(l.bytes.length>=old.offset);assert.equal(digest(l.bytes.subarray(0,old.offset)),old.prefixSHA256,'HTTP_EVIDENCE_REPLACED');
     const tail=l.bytes.subarray(old.offset).toString();assert.ok(!tail||tail.endsWith('\n'),'HTTP_EVENT_STILL_PENDING');
-    events[side]=tail.split('\n').filter(Boolean).map(line=>{const e=JSON.parse(line);assert.ok(['response-complete','upgrade-request','client-response-closed','client-request-aborted','upstream-error','upstream-timeout','upstream-response-aborted','upstream-response-error'].includes(e.event));assert.equal(typeof e.authorizationPresent,'boolean');assert.equal(typeof e.credentialQueryPresent,'boolean');return e;});
+    events[side]=tail.split('\n').filter(Boolean).map(line=>{const e=JSON.parse(line);assert.ok(['complete','upgrade-request','client-response-closed','client-request-aborted','upstream-unavailable','client-request-error','upstream-timeout','upstream-response-aborted','upstream-response-error'].includes(e.event));assert.equal(typeof e.authorizationPresent,'boolean');assert.equal(typeof e.credentialQueryPresent,'boolean');return e;});
    }
-   const logout=events.source.filter(e=>e.path==='/rest/v1/rpc/logout_session');assert.equal(logout.length,1,'ONE_INDEPENDENT_LOGOUT_REQUIRED');assert.equal(logout[0].event,'response-complete');assert.equal(logout[0].method,'POST');
+   const logout=events.source.filter(e=>e.path==='/rest/v1/rpc/logout_session');assert.equal(logout.length,1,'ONE_INDEPENDENT_LOGOUT_REQUIRED');assert.equal(logout[0].event,'complete');assert.equal(logout[0].method,'POST');
    const observed={...native,sourceLogoutCompletions:logout.length,sourceLogoutStatus:logout[0].status,destinationAuthenticatedRequests:events.destination.filter(e=>e.authorizationPresent||e.credentialQueryPresent).length};
    const result=confirmedDraftReconcile(c,before.snapshot,snapshot,observed);
    writeFileSync(resolve(c.caseDirectory,'confirmed-after.json'),JSON.stringify({configSHA256:before.configSHA256,result,snapshot,events}),{flag:'wx',mode:0o600});
