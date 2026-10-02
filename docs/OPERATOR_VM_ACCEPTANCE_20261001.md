@@ -493,3 +493,29 @@ before/after observations confirmed no new session, unchanged rejected profile,
 retained enrollment token/assignments, and unchanged unrelated authentication
 and business records. Evidence: `native-auth-rejected-b0109-01/`. No quotas,
 credentials or timestamps were reset; B remains rejected and logged out.
+
+### Supervisor preparation and unsaved customer draft cancellation
+
+The logged-out reserved account was prepared as supervisor through the normal
+administrator `update_user_role` API using frozen tooling `115886b`. One ordinary
+administrator login and one role update reconciled before logout; only that new
+API session was removed. Existing administrator sessions, target assignments,
+other authentication and business records were preserved. This was a prerequisite
+for previously unexecuted draft cases, rather than a rerun of an exhausted case.
+Evidence: `reserved-supervisor-draft-prerequisite01/`.
+
+One ordinary native supervisor login issued exactly one reconciled session.
+Evidence: `native-auth-reserved-supervisor0109-03/`. The dedicated expiry test
+still requires a separate owned AVD and final frozen artifact; this session does
+not constitute that appointment.
+
+The first real unsaved customer-master form cancellation passed on APK9. The
+native form contained `Fixture VM0109 unsaved customer` without submission;
+genuine switching-warehouse discovery and Use prompted the server-change dialog.
+Cancellation returned to the original form with the exact draft retained in two
+observations. Public core selection persisted, then a normal cold restart
+abandoned only the in-memory draft and performed a fresh successful Orders read.
+Independent SQL confirmed business, profile, unrelated authentication and OTP
+state unchanged and the native supervisor session retained. No save or additional
+OTP was attempted. Evidence: `native-unsaved-customer-draft0109-01/`.
+Invoice, GRN and dispatch draft cases remain separate unexecuted acceptance work.
