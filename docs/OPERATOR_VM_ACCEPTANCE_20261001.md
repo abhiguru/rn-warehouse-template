@@ -442,3 +442,29 @@ Tooling156854d passed ordinary A access-denial checks against the genuine confir
 ## Current tooling and CI correction, 2 October
 
 The full documented setup/tooling suite passed231 tests after private-image integration. Exact prior CI37043008068/head1e6e18b completed source/history scans PASS, dependencies FAIL, lint FAIL and Android job FAIL. Lint errors were confined to new mocked tests: structuredClone was absent from the configured lint globals and a body parameter was unused. The tests now use globalThis.structuredClone and omit that parameter; changed-source lint and all9 affected no-replay/refusal tests pass. The Android job stopped during pinned NDK27.0.12077973 acquisition with ZipFile unknown archive, before artifact auditing. The failed log is preserved privately; this is not a compiled artifact failure or a readiness PASS. Current a794b46 CI37043682017 remained running at review. The dependency gate remains unresolved. No VM build, quota reset, runtime-input edit or additional native rendering attempt was performed.
+
+### Reciprocal Realtime isolation, APK 2026100109
+
+The independently authenticated A, B and administrator subscriptions passed the
+live reciprocal isolation case using frozen tooling `05a2542`. Two normal
+administrator updates changed only the notes of the existing fictional A/B
+carts. Original notes and complete cart rows were preserved privately before
+writes. Each update reconciled against independent SQL and full stored-object
+hashes; unrelated business and authentication state remained unchanged.
+
+A received its own update and no B update; B received its own update and no A
+update; the administrator received both. Subscriptions remained live throughout
+the bounded observation and native phase, with heartbeat acknowledgement guards.
+Native B retained its single B-only Orders card and performed a fresh successful
+Orders RPC after the event without manual refresh. Notes are not displayed on
+that card: this evidence establishes native event-driven refetch, rather than
+claiming visible note rendering. Final acceptance and cleanup reconciled; only
+the three newly issued API sessions were logged out. The original native B
+session and all pre-existing administrator sessions were preserved.
+
+Private evidence: `vm-campaign-20261001/realtime-isolation0109-01/`, including
+`result.json`, `original-notes-and-state.json`, per-write snapshots,
+`wire-isolation.json`, native phase results and `final-acceptance.json`.
+No retry, automatic rollback, quota reset or additional native login occurred.
+This result does not complete the remaining staff, business, switching or final
+soak acceptance gates.
