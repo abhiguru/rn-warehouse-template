@@ -77,7 +77,7 @@ class Auth(soak.Soak):
 def main(path):
     case=json.loads(soak.private(path).read_text());ui=json.loads(soak.private(case['soakConfig']).read_text())
     scripts=Path(__file__).parent.parent
-    bounded=case.get('customerBApprovedAuthentication') is True;deadline=None
+    bounded=case.get('customerBApprovedAuthentication') is True or case.get('rejectedAuthentication') is True;deadline=None
     if bounded:
         deadline=datetime.datetime.fromisoformat(case['deadlineUTC'].replace('Z','+00:00')).timestamp();assert 0<deadline-time.time()<=600
         campaign=json.loads(soak.private(case['campaignFile']).read_text());assert campaign['deadline']==case['campaignDeadlineUTC'];assert deadline<=datetime.datetime.fromisoformat(campaign['deadline'].replace('Z','+00:00')).timestamp()
