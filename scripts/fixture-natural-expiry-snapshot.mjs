@@ -11,6 +11,7 @@ SELECT jsonb_build_object(
 'serverNowUTC',now(),
 'profile',(SELECT jsonb_build_object('id',id,'name',name,'role',role,'active',active,'status',enrollment_status) FROM public.user_profiles WHERE id='${c.profileId}' AND mobile='${c.phone}'),
 'session',(SELECT jsonb_build_object('id',s.id,'issuedAtUTC',s.created_at,'expiresAtUTC',s.expires_at,'expired',s.expires_at<=now()) FROM warehouse_security.refresh_sessions s JOIN public.user_profiles p ON p.auth_user_id=s.user_id WHERE s.id='${c.sessionId}' AND p.id='${c.profileId}'),
+'targetSessionHash',encode(extensions.digest(coalesce((SELECT to_jsonb(s) FROM warehouse_security.refresh_sessions s WHERE s.id='${c.sessionId}'),'null'::jsonb)::text,'sha256'),'hex'),
 'otherSessionsHash',encode(extensions.digest((SELECT coalesce(jsonb_agg(to_jsonb(s) ORDER BY id),'[]') FROM warehouse_security.refresh_sessions s WHERE id<>'${c.sessionId}')::text,'sha256'),'hex'),
 'authenticationHash',encode(extensions.digest(jsonb_build_object(
  'profiles',(SELECT jsonb_agg(to_jsonb(p) ORDER BY id) FROM public.user_profiles p),
@@ -24,4 +25,19 @@ COMMIT;`;
 export function naturalExpirySnapshot(c,env,execute=spawnSync) {
  const q=execute('docker',['exec','-i','-e','PGPASSWORD',env.WAREHOUSE_PROJECT_NAME+'-db-1','psql','-X','-qAt','-U','supabase_admin','-d','postgres','-v','ON_ERROR_STOP=1'],{input:naturalExpirySnapshotSQL(c),encoding:'utf8',timeout:15000,maxBuffer:1048576,env:{...process.env,PGPASSWORD:env.POSTGRES_PASSWORD}});
  assert.equal(q.status,0,'Owned readonly natural-expiry snapshot failed');return JSON.parse(q.stdout);
+}
+
+export function naturalExpiryAfter(c,before,after,native) {
+ naturalExpirySnapshotSQL(c);
+ assert.equal(before.profile?.id,c.profileId);assert.equal(before.profile?.active,true);assert.equal(before.profile?.status,'approved');
+ assert.equal(before.session?.id,c.sessionId);assert.equal(before.session?.expired,true,'Actual expired session required before boot');
+ assert.ok(Date.parse(before.session.expiresAtUTC)<=Date.parse(before.serverNowUTC));
+ assert.ok(Number.isFinite(Date.parse(after.serverNowUTC))&&Date.parse(after.serverNowUTC)>=Date.parse(before.serverNowUTC));
+ for(const key of ['targetSessionHash','otherSessionsHash','authenticationHash','businessHash']) {
+  assert.match(before[key],/^[a-f0-9]{64}$/);assert.equal(after[key],before[key],'Unexpected expiry authentication or business mutation');
+ }
+ assert.deepEqual(after.profile,before.profile);assert.deepEqual(after.session,before.session);
+ assert.equal(native.loginRequired,true);assert.equal(native.protectedTabsVisible,false);assert.equal(native.OTPRequested,false);
+ assert.equal(native.artifactMatches,true);assert.equal(native.ownedDedicatedAVD,true);assert.equal(native.selectedServerMatches,true);
+ return {status:'PASS',scope:'dedicated naturally expired session native and SQL reconciliation only'};
 }
