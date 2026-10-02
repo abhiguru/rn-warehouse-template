@@ -121,8 +121,8 @@ configuration/directory, an existing ordinary supervisor session, normal route,
 the actor lock, actual TLS discovery and the exact installed APK10 hash.
 
 The driver has a ten-minute deadline, no business submit, no OTP, no destination
-login, no automatic cleanup and no resume. It requires immediate and cold
-destination login, public selected identity, on-device credential-key absence,
+login, no automatic cleanup and no resume. It requires immediate destination login in the same actual app process, public
+selected identity, on-device credential-key absence,
 one independently observed source logout and no credential-bearing destination
 request before independently reconciling both warehouses and stored bytes. The
 credential observer returns only key presence and row counts; values are neither
@@ -132,10 +132,22 @@ Eight focused source/entrypoint/lifetime tests passed, including refusal before
 SQL/native/attempt access during an active soak. Native confirmation is still
 NOT TESTED: source tests and the credential-presence probe do not close it.
 
-After successful pre-authentication reconciliation, preserve destination login
-and selection. A separately guarded ordinary destination login, actual empty
-draft UI checks and authentication reconciliation remain necessary before
-confirmed-draft acceptance can pass. Current running helpers do not include the
-new switching observation; they must be released and replaced under fresh
-supervised identities before an attempt. No helper or historical attempt was
-changed during driver preparation, and no exhausted case is reopened.
+After successful pre-authentication reconciliation, preserve destination login,
+selection and the actual app process. A separately guarded ordinary destination
+login and actual empty-draft UI checks must run in that same process before any
+cold launch; otherwise process death itself could erase the draft and weaken the
+switch evidence. Cold persistence and authentication reconciliation then remain
+necessary before confirmed-draft acceptance can pass. Fresh normal11/observe08 helpers now include the new switching observation, and
+renew04 is explicitly disarmed. Separate helper-transition evidence preserves
+old units/configurations/logs and proves actual TLS/IPC readiness and identical
+warehouse/stored-byte snapshots. The initial IDLE assertion failure remains
+preserved. Original app storage/session are retained; the app is stopped without
+logout. No historical attempt or exhausted case was changed or reopened.
+
+Driver preparation correction: before any native confirmation attempt, removed
+the immediate post-switch cold restart and added exact before/after process-ID
+checks. Source refusal tests reject a process replacement or cold launch before
+destination authentication. The earlier frozen tooling is retained; execution
+requires a new frozen revision. Fresh helper readiness passed after preserving
+the initial IDLE-versus-DISARMED assertion failure and explicitly initializing
+only the proven-empty new relay. No native switch, login or logout has occurred.

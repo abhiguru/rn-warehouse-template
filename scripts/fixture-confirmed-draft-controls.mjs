@@ -47,7 +47,9 @@ export function confirmedDraftReconcile(c,before,after,native){
  assert.equal(native.otpRequests,0);
  assert.equal(native.destinationLoginAttempts,0,'RECONCILE_BEFORE_DESTINATION_AUTHENTICATION');
  assert.equal(native.destinationLoginRequired,true);
- assert.equal(native.coldDestinationLoginRequired,true);
+ assert.equal(native.postConfirmationColdLaunchAttempts,0,'PRESERVE_DRAFT_CAUSAL_EVIDENCE');
+ assert.ok(Number.isSafeInteger(native.draftProcessPID)&&native.draftProcessPID>0);
+ assert.equal(native.destinationProcessPID,native.draftProcessPID,'SAME_PROCESS_REQUIRED_BEFORE_DESTINATION_AUTHENTICATION');
  assert.deepEqual(native.selection,{origin:c.targetOrigin,instanceId:c.targetInstanceId});
  assert.equal(native.oldCredentialStoragePresent,false);
  assert.equal(native.destinationAuthenticatedRequests,0,'OLD_CREDENTIAL_FORWARDING');
@@ -61,5 +63,5 @@ export function confirmedDraftReconcile(c,before,after,native){
  assert.equal(after.source.nativeSessionUnexpired,false);
  assert.equal(after.source.nativeHistoryCount,0,'OLD_ROTATION_HISTORY_SURVIVED');
  assert.deepEqual(after.destination,before.destination,'DESTINATION_CHANGED_BEFORE_LOGIN');
- return {status:'PASS',scope:'confirmed-switch-pre-authentication-reconciliation-only',draftAcceptance:'NOT_TESTED',requiredNext:'Ordinary destination login, exact empty-draft native checks and independently reconciled authentication'};
+ return {status:'PASS',scope:'confirmed-switch-pre-authentication-reconciliation-only',draftAcceptance:'NOT_TESTED',requiredNext:'Ordinary destination login and exact empty-draft UI checks in the preserved process, then cold persistence and independently reconciled authentication'};
 }

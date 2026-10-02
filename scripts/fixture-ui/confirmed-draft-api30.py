@@ -114,18 +114,18 @@ def main(path):
             for _ in old:d.adb('shell','input','keyevent','67')
         d.adb('shell','input','text',c['draftMarker'].replace(' ','%s'));marker()
         if 'mInputShown=true' in d.adb('shell','dumpsys','input_method'):d.adb('shell','input','keyevent','4')
-        marker();d.archive('real-unsaved-draft');d.state['phases'].append('ACTUAL_UNSAVED_DRAFT_NO_SUBMISSION');d.save()
+        marker();d.archive('real-unsaved-draft');d.state['phases'].append('ACTUAL_UNSAVED_DRAFT_NO_SUBMISSION');pid=d.adb('shell','pidof',nav.soak.PACKAGE);assert re.fullmatch(r'[1-9]\d*',pid);d.state['draftProcessPID']=int(pid);d.save()
         route('operator-server');d.wait('Choose your warehouse server');d.fill_origin(c['targetOrigin']);d.tap('Check server');d.wait(target_name);d.wait(c['targetOrigin']);d.tap('Use this server');d.wait('Change Warehouse Server')
         warning=f'Changing to {target_name} will sign you out and discard unsaved forms. You will need to sign in again.'
         assert warning in nav.labels(d.snapshot());d.archive('switch-warning')
         d.state['confirmationAttempts']=1;d.save();d.tap('CHANGE SERVER')
         d.wait('Send OTP');d.archive('destination-login');d.state['destinationLoginRequired']=True;d.save()
         assert not credential_presence(d.adb),'Old credential keys survived'
-        d.cold();d.wait('Send OTP');d.archive('cold-destination-login');assert not credential_presence(d.adb)
+        pid=d.adb('shell','pidof',nav.soak.PACKAGE);assert re.fullmatch(r'[1-9]\d*',pid) and int(pid)==d.state['draftProcessPID'],'Keep the actual draft process alive until destination authentication and empty-form checks'
         d.selected_server(e,c['targetOrigin'],c['targetInstanceId'])
-        d.state.update(coldDestinationLoginRequired=True,selection={'origin':c['targetOrigin'],'instanceId':c['targetInstanceId']},oldCredentialStoragePresent=False,status='RECONCILIATION_PENDING');d.save()
+        d.state.update(postConfirmationColdLaunchAttempts=0,destinationProcessPID=int(pid),selection={'origin':c['targetOrigin'],'instanceId':c['targetInstanceId']},oldCredentialStoragePresent=False,status='RECONCILIATION_PENDING');d.save()
         observe('after')
-        d.state.update(status='PASS',scope='confirmed-switch-pre-authentication-reconciliation-only',draftAcceptance='NOT_TESTED',requiredNext='Separately guarded ordinary destination login and actual empty-draft UI checks; preserve current destination selection')
+        d.state.update(status='PASS',scope='confirmed-switch-pre-authentication-reconciliation-only',draftAcceptance='NOT_TESTED',requiredNext='Separately guarded ordinary destination login and actual empty-draft UI checks in this same process, then cold persistence; preserve destination selection and process')
         d.save();print(json.dumps({'status':'PASS','scope':d.state['scope'],'draftAcceptance':'NOT_TESTED'}))
     except Exception as error:
         d.state.update(status='FAIL',exceptionType=type(error).__name__,reason='Preserve draft/session/selection and evidence; no replay, destination authentication or automatic cleanup')
