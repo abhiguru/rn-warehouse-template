@@ -7,6 +7,7 @@ export async function runRealtime(c,d,state) {
  try {
   const ready=await d.receive();assert.equal(ready.window,'foreground');assert.equal(ready.status,'READY');
   caller=await d.authenticate();previous=caller.baseline;
+  await d.evidence('authenticated-baseline',caller.baseline);
   state.ordinaryCallerAuthentication=true;state.baselineSQLValidated=true;await d.save(state);
   for(const [index,phase] of ['added','edited'].entries()) {
    const currentReady=index===0?ready:await d.receive();
