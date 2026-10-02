@@ -6,7 +6,7 @@ import { spawnSync } from 'node:child_process';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { assertReleased, privateJSON } from './fixture-session-guards.mjs';
-import { pendingReadOnlyMode, approvedEnrollmentExitMode, customerReadOnlyMode, disabledAuthenticationMode, rejectedAuthenticationMode } from './fixture-auth-controls.mjs';
+import { pendingReadOnlyMode, approvedEnrollmentExitMode, customerReadOnlyMode, disabledAuthenticationMode, rejectedAuthenticationMode, approvedBAuthenticationMode, approvedBAuthenticationBefore, approvedBAuthenticationAfter } from './fixture-auth-controls.mjs';
 process.umask(0o077);
 try {
   const [path, phase] = process.argv.slice(2);
@@ -22,7 +22,7 @@ try {
   const customerReadOnly = customerReadOnlyMode(c,secondary,replacement);
   const disabled = disabledAuthenticationMode(c,secondary,replacement);
   const rejected = rejectedAuthenticationMode(c,secondary,replacement);
-  const denied = disabled || rejected;
+  const denied = disabled || rejected;const bApproved=approvedBAuthenticationMode(c,secondary,replacement);
   assert.ok(['authenticated','pending'].includes(c.expected) || denied, 'EXPLICIT_AUTH_MODE_REQUIRED');
   if (Object.hasOwn(c,'replacementFixture')) assert.equal(typeof c.replacementFixture,'boolean');
   assert.ok(secondary || c.origin === 'https://backend-core.example.test');
@@ -42,6 +42,9 @@ try {
     const sql = `BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY;
 SET LOCAL statement_timeout='10s';
 SELECT jsonb_build_object(
+'profileStaticHash',(SELECT encode(extensions.digest((to_jsonb(p)-'mobile_verified'-'mobile_verified_at'-'updated_at')::text,'sha256'),'hex') FROM public.user_profiles p WHERE mobile='${c.phone}'),
+'enrollmentHash',encode(extensions.digest(coalesce((SELECT jsonb_agg(to_jsonb(t) ORDER BY token_hash) FROM warehouse_security.enrollment_tokens t),'[]')::text,'sha256'),'hex'),
+'targetAssignments',(SELECT coalesce(jsonb_agg(jsonb_build_object('userProfileId',a.user_profile_id,'customerId',a.customer_id,'active',a.active) ORDER BY a.id),'[]') FROM public.users_customers_new a WHERE a.user_profile_id=(SELECT id FROM public.user_profiles WHERE mobile='${c.phone}')),
 'otherAuthHash',encode(extensions.digest(jsonb_build_object(
 'profiles',(SELECT jsonb_agg(to_jsonb(x) ORDER BY id) FROM public.user_profiles x WHERE mobile<>'${c.phone}'),
 'sessions',(SELECT jsonb_agg(to_jsonb(x) ORDER BY id) FROM warehouse_security.refresh_sessions x WHERE user_id NOT IN (SELECT auth_user_id FROM public.user_profiles WHERE mobile='${c.phone}')),
@@ -51,7 +54,7 @@ SELECT jsonb_build_object(
 'enrollmentTokenCount',(SELECT count(*) FROM warehouse_security.enrollment_tokens t JOIN public.user_profiles p ON t.user_id=p.auth_user_id WHERE p.mobile='${c.phone}'),
 'primaryAdministratorPresent',EXISTS(SELECT 1 FROM public.user_profiles WHERE mobile='919888888871'),
 'profile',(SELECT jsonb_build_object('id',id,'name',name,'role',role,'active',active,'status',enrollment_status) FROM public.user_profiles WHERE mobile='${c.phone}'),
-'sessions',(SELECT coalesce(jsonb_agg(jsonb_build_object('id',s.id,'created',s.created_at,'expires',s.expires_at) ORDER BY s.id),'[]') FROM warehouse_security.refresh_sessions s JOIN public.user_profiles p ON p.auth_user_id=s.user_id WHERE p.mobile='${c.phone}'),
+'sessions',(SELECT coalesce(jsonb_agg(jsonb_build_object('id',s.id,'created',s.created_at,'expires',s.expires_at,'rowSHA256',encode(extensions.digest(to_jsonb(s)::text,'sha256'),'hex')) ORDER BY s.id),'[]') FROM warehouse_security.refresh_sessions s JOIN public.user_profiles p ON p.auth_user_id=s.user_id WHERE p.mobile='${c.phone}'),
 'otpVerified',(SELECT count(*) FROM public.otp_verifications WHERE phone_number='${c.phone}' AND verified_at IS NOT NULL),
 'quota',(SELECT jsonb_build_object('hourly',CASE WHEN last_reset_hour+interval '1 hour'<=now() THEN 0 ELSE hourly_count END,'daily',CASE WHEN last_reset_day+interval '1 day'<=now() THEN 0 ELSE daily_count END,'hourResetsAt',last_reset_hour+interval '1 hour') FROM public.otp_rate_limits WHERE phone_number='${c.phone}'),
 'businessHash',encode(extensions.digest(jsonb_build_object(
@@ -69,7 +72,7 @@ SELECT jsonb_build_object(
 'storage',(SELECT jsonb_agg(to_jsonb(o) ORDER BY id) FROM storage.objects o))::text,'sha256'),'hex'));
 COMMIT;`;
     const q = spawnSync('docker', ['exec','-i','-e','PGPASSWORD',`${env.WAREHOUSE_PROJECT_NAME}-db-1`,'psql','-X','-qAt','-U','supabase_admin','-d','postgres','-v','ON_ERROR_STOP=1'],
-      { input: sql, encoding: 'utf8', timeout: 15000, env: {...process.env, PGPASSWORD:env.POSTGRES_PASSWORD} });
+      { input: sql, encoding: 'utf8', timeout: 15000, maxBuffer:1024*1024, env: {...process.env, PGPASSWORD:env.POSTGRES_PASSWORD} });
     assert.equal(q.status,0,'PRIVATE_AUTH_OBSERVATION_FAILED');
     const snapshot = JSON.parse(q.stdout);
     if (denied) {
@@ -81,9 +84,11 @@ COMMIT;`;
     if (approvedExit) {assert.equal(snapshot.profile?.status,'approved');assert.equal(snapshot.profile?.active,true);assert.deepEqual(snapshot.sessions,[]);}
     if (customerReadOnly) {assert.equal(snapshot.profile?.status,'approved');assert.equal(snapshot.profile?.active,true);assert.equal(snapshot.profile?.role,'customer');assert.equal(snapshot.sessions.length,1);assert.equal(snapshot.sessions[0].id,c.nativeSessionId);}
     if (phase === 'before') {
+      if(bApproved)approvedBAuthenticationBefore(c,snapshot);
       assert.ok((snapshot.quota?.hourly ?? 0)<5 && (snapshot.quota?.daily ?? 0)<20,'ORDINARY_AUTH_QUOTA_EXHAUSTED');
     } else {
       const before = privateJSON(resolve(c.caseDirectory,'auth-before.json')).snapshot;
+      if(bApproved)approvedBAuthenticationAfter(c,before,snapshot);
       assert.equal(snapshot.businessHash,before.businessHash,'AUTH_CHANGED_BUSINESS_DATA');
       assert.equal(snapshot.otherAuthHash,before.otherAuthHash,'AUTH_CHANGED_UNRELATED_ACCOUNTS');
       if (pendingReadOnly || customerReadOnly) assert.deepEqual(snapshot,before,'PENDING_READ_CHANGED_STATE');
