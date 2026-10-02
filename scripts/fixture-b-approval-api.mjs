@@ -16,18 +16,26 @@ try{
  const [path,mode]=process.argv.slice(2);assert.ok(['guard','execute'].includes(mode));
  const c=bApprovalConfig(privateJSON(path));assertReleased(c);const ui=privateJSON(c.soakConfig);
  const scripts=dirname(fileURLToPath(import.meta.url));
+ const digest=p=>createHash('sha256').update(readFileSync(p)).digest('hex');
  const names=['fixture-b-approval-api.mjs','fixture-b-approval-controls.mjs','fixture-b-approval-run.mjs','fixture-b-approval-snapshot.mjs','fixture-session-guards.mjs','fixture-ui/b-approval-api30.py'];
  assert.deepEqual(Object.keys(c.toolingSHA256).sort(),[...names].sort());
  for(const name of names)assert.equal(createHash('sha256').update(readFileSync(resolve(scripts,name))).digest('hex'),c.toolingSHA256[name]);
  for(const key of ['caseDirectory','soakConfig','otpSocket'])assert.ok(isAbsolute(c[key]));
  assert.ok(isAbsolute(c.helperConfig));assert.equal(createHash('sha256').update(readFileSync(c.helperConfig)).digest('hex'),c.helperConfigSHA256);
- const helper=privateJSON(c.helperConfig);assert.equal(helper.services.length,1);assert.equal(helper.services[0].kind,'core');
+ const helper=privateJSON(c.helperConfig);assert.equal(helper.scope,'isolated-fictional-fixture');assert.equal(helper.services.length,1);assert.equal(helper.services[0].kind,'core');
  assert.equal(c.otpSocket,helper.services[0].socketPath);assert.equal(ui.managedUnits.core,'warehouse-fixture-core-'+helper.runId+'.service');
  assert.equal(helper.services[0].state,ui.backendState);
  assert.ok(isAbsolute(c.campaignFile));assert.equal(privateJSON(c.campaignFile).deadline,c.campaignDeadlineUTC);
  const deadline=Date.parse(c.deadlineUTC);assert.ok(deadline>Date.now()&&deadline-Date.now()<=3600000);
  assert.ok(deadline<=Date.parse(c.campaignDeadlineUTC));
- const guard=resolve(ui.backendCheckout,'tests/operator-fixture.mjs');assert.equal(createHash('sha256').update(readFileSync(guard)).digest('hex'),c.fixtureGuardSHA256);
+ const guard=resolve(ui.backendCheckout,'tests/operator-fixture.mjs');
+ const verifyBindings=()=>{
+  assert.ok(Date.now()<deadline);assertReleased(c);
+  assert.equal(digest(c.soakConfig),c.soakConfigSHA256);assert.equal(digest(c.helperConfig),c.helperConfigSHA256);assert.equal(digest(guard),c.fixtureGuardSHA256);
+  for(const name of names)assert.equal(digest(resolve(scripts,name)),c.toolingSHA256[name]);
+  assert.equal(privateJSON(c.campaignFile).deadline,c.campaignDeadlineUTC);
+  const h=privateJSON(c.helperConfig).services[0];assert.equal(h.owningCheckout,ui.backendCheckout);assert.equal(h.ownerGuardSHA256,c.fixtureGuardSHA256);assert.equal(h.state,ui.backendState);assert.equal(h.socketPath,c.otpSocket);assert.equal(h.ordersReadDelayMs??0,0);
+ };verifyBindings();
  if(mode==='guard'){console.log('{"status":"PASS","scope":"B approval source/release/deadline guard only"}');}
  else{
   phase='ACTOR_LOCK';const fd=Number(process.env.WAREHOUSE_B_APPROVAL_ACTOR_FD);assert.ok(Number.isSafeInteger(fd)&&fd>=3);
@@ -37,17 +45,17 @@ try{
   process.env.WAREHOUSE_STATE_DIR=ui.backendState;const{operatorFixture}=await import(pathToFileURL(guard).href);const{env,anon}=operatorFixture();
   const ca=readFileSync(ui.primaryCA);
   const call=(route,body,token)=>new Promise((done,reject)=>{
-   assert.ok(Date.now()<deadline);assert.ok(['/functions/v1/get-public-config','/functions/v1/operator-otp/request','/functions/v1/operator-otp/verify','/rest/v1/rpc/operator_review_enrollment','/rest/v1/rpc/logout_session'].includes(route));
+   verifyBindings();assert.ok(['/functions/v1/get-public-config','/functions/v1/operator-otp/request','/functions/v1/operator-otp/verify','/rest/v1/rpc/operator_review_enrollment','/rest/v1/rpc/logout_session'].includes(route));
    const data=body===undefined?undefined:JSON.stringify(body);
    const q=request({hostname:'127.0.0.1',port:18443,servername:'backend-core.example.test',ca,timeout:15000,path:route,method:data?'POST':'GET',headers:{Host:'backend-core.example.test',apikey:anon,...(token?{Authorization:'Bearer '+token}:{}),...(data?{'Content-Type':'application/json','Content-Length':Buffer.byteLength(data)}:{})}},r=>{
     let buffer='';r.on('data',p=>{buffer+=p;if(Buffer.byteLength(buffer)>65536)q.destroy(new Error('Bounded response exceeded'));});r.on('error',reject);r.on('end',()=>{try{assert.equal(r.statusCode,200);done(JSON.parse(buffer));}catch{reject(new Error('Owned API response refused'));}});
    });q.on('error',reject);q.on('timeout',()=>q.destroy(new Error('Owned API timeout')));q.end(data);
   });
   const verifyOwnership=async()=>{
-   assert.ok(Date.now()<deadline);assertReleased(c);operatorFixture();
+   verifyBindings();operatorFixture();
    assert.equal(privateJSON(resolve(ui.backendState,'public/instance.json')).instanceId,c.instanceId);
-   const q=spawnSync('systemctl',['--user','show',ui.managedUnits.core,'-p','ActiveState','-p','SubState','-p','Restart','-p','NRestarts'],{encoding:'utf8',timeout:5000});assert.equal(q.status,0);
-   const props=Object.fromEntries(q.stdout.trim().split('\n').map(x=>x.split('=')));assert.equal(props.ActiveState,'active');assert.equal(props.SubState,'running');assert.equal(props.Restart,'no');assert.equal(props.NRestarts,'0');
+   const q=spawnSync('systemctl',['--user','show',ui.managedUnits.core,'-p','ActiveState','-p','SubState','-p','Restart','-p','NRestarts','-p','RuntimeMaxUSec','-p','ExecStart'],{encoding:'utf8',timeout:5000});assert.equal(q.status,0);
+   const props=Object.fromEntries(q.stdout.trim().split('\n').map(x=>{const n=x.indexOf('=');return [x.slice(0,n),x.slice(n+1)];}));assert.equal(props.ActiveState,'active');assert.equal(props.SubState,'running');assert.equal(props.Restart,'no');assert.equal(props.NRestarts,'0');assert.equal(props.RuntimeMaxUSec,'12h');assert.ok(props.ExecStart.includes(resolve(helper.services[0].checkout,'scripts/emulator-fixture-bridge.mjs')));
    const tls=await call('/functions/v1/get-public-config');assert.equal(tls.data.instanceId,c.instanceId);assert.equal(tls.data.canonicalOrigin,c.origin);
    const socket=lstatSync(c.otpSocket);assert.ok(socket.isSocket()&&socket.uid===process.getuid()&&(socket.mode&0o077)===0&&realpathSync(c.otpSocket)===c.otpSocket);
   };
@@ -55,10 +63,10 @@ try{
   mkdirSync(c.caseDirectory,{mode:0o700});out=resolve(c.caseDirectory,'b-approval-result.json');state={status:'RUNNING',otpAttempted:false,approvalAttempted:false,phases:[]};
   const record=async event=>{state.phases.push(event);writeFileSync(out,JSON.stringify(state,null,2)+'\n',{mode:0o600});};
   const challenge=phone=>new Promise((done,reject)=>{
-   assert.equal(phone,c.adminPhone);assert.ok(Date.now()<deadline);const s=createConnection(c.otpSocket);let buffer='';s.setTimeout(5000);s.on('connect',()=>s.write(JSON.stringify({phone})+'\n'));
+   assert.equal(phone,c.adminPhone);verifyBindings();const s=createConnection(c.otpSocket);let buffer='';s.setTimeout(5000);s.on('connect',()=>s.write(JSON.stringify({phone})+'\n'));
    s.on('data',p=>{buffer+=p;if(Buffer.byteLength(buffer)>2048){s.destroy(new Error('Bounded challenge exceeded'));return;}if(buffer.includes('\n')){s.end();try{const code=JSON.parse(buffer).code;assert.match(code,/^\d{6}$/);done(code);}catch{reject(new Error('Owned challenge unavailable'));}}});s.on('error',reject);s.on('timeout',()=>s.destroy(new Error('Owned challenge timeout')));s.on('end',()=>{if(!buffer.includes('\n'))reject(new Error('Incomplete challenge'));});
   });
-  const result=await runBApproval(c,{verifyOwnership,snapshot:async()=>bApprovalSnapshot(c,env),call,challenge,record},state);
+  const result=await runBApproval(c,{verifyOwnership,snapshot:async()=>{verifyBindings();return bApprovalSnapshot(c,env);},call,challenge,record},state);
   writeFileSync(resolve(c.caseDirectory,'b-approval-preservation.json'),JSON.stringify(result,null,2)+'\n',{flag:'wx',mode:0o600});state.status='PASS';await record({phase:'FINAL_APPROVAL_PRESERVATION_PASS'});console.log('{"status":"PASS","scope":"ordinary owned B approval only"}');
  }
 }catch(error){if(state){state.status='FAIL';state.exceptionType=error.name;state.reason='Preserve evidence and uncertain state; no automatic retry or cleanup';writeFileSync(out,JSON.stringify(state,null,2)+'\n',{mode:0o600});}console.error(JSON.stringify({status:'FAIL',category:'B_APPROVAL_REFUSED_OR_STOPPED',phase,refusal:error.message?.includes('Ordinary administrator quota exhausted')?'ORDINARY_ADMINISTRATOR_QUOTA_EXHAUSTED':'OWNERSHIP_OR_STATE_REFUSED'}));process.exitCode=1;}
