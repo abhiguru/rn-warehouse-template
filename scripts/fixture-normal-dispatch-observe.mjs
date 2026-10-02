@@ -6,7 +6,7 @@ import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { assertReleased, privateJSON } from './fixture-session-guards.mjs';
-import { navigationConfig, navigationSnapshotSQL, navigationBefore, navigationAfter } from './fixture-navigation-guards.mjs';
+import { navigationSnapshotSQL } from './fixture-navigation-guards.mjs';
 import {normalDispatch,snapshotCase,normalBefore,normalAfter} from './fixture-normal-dispatch-controls.mjs';
 import {dispatchSnapshotSQL} from './fixture-dispatch-snapshot.mjs';
 process.umask(0o077);

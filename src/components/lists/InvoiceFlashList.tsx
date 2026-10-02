@@ -688,6 +688,7 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({
               iconColor={colors.white}
               style={[styles.addBtn, { backgroundColor: colors.primary }]}
               onPress={handleCreateInvoice}
+              accessibilityLabel="Create Invoice"
             />
           )}
           <View style={styles.filterBtnContainer}>
