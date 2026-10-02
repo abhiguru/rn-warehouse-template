@@ -8,7 +8,10 @@ os.umask(0o077)
 def number(value):
  assert isinstance(value,int) and 0<=value<1000000
  digits=str(value)
- return digits if len(digits)<=3 else number(value//1000)+','+digits[-3:]
+ if len(digits)<=3:return digits
+ head,tail=digits[:-3],digits[-3:];groups=[]
+ while len(head)>2:groups.insert(0,head[-2:]);head=head[:-2]
+ return ','.join([head,*groups,tail])
 def customer_label(row):return f"{row['name']}, {row['items']} item{'s' if row['items']!=1 else ''} • {row['grns']} GRN{'s' if row['grns']!=1 else ''}, {number(row['stock'])} units"
 def main(path):
  case=json.loads(soak.private(path).read_text());assert case['kind']=='native-inventory-read';c,i=soak.config(case['soakConfig']);assert case['artifactSHA256']==c['apkSHA256'];d=auth.Auth(c,i,'unused',0);helper=str(Path(__file__).parent.parent/'fixture-inventory-observe.mjs')
