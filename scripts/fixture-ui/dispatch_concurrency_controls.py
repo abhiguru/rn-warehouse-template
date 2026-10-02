@@ -10,3 +10,9 @@ def stale_stock_error(tree):
     assert 'Insufficient stock: Backend Test Potatoes (Available: 1, Requested: 2)' in labels
     assert 'Dispatch Created Successfully!' not in labels
     return {'status':'PASS','scope':'actual native stale-stock error only; independent SQL/HTTP reconciliation required'}
+
+def grn_controls(receipt):
+    assert receipt=='FXQ993','Exact fresh fictional receipt required'
+    # The existing picker searches substring F and returns at most 50 numbers
+    # descending. The genuine FXQ993 is selected by its exact displayed label.
+    return ('Use GRN prefix F',[])

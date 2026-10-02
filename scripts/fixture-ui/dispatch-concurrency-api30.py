@@ -2,8 +2,7 @@
 """Phased native race driver, one submit, no retry or autonomous cleanup."""
 import datetime,importlib.util,json,os,re,sys,time
 from pathlib import Path
-from dispatch_concurrency_controls import config,stale_stock_error
-from dispatch_draft_controls import grn_search_controls
+from dispatch_concurrency_controls import config,stale_stock_error,grn_controls
 from dispatch_case_controls import owned_reverse_route,submission_point
 spec=importlib.util.spec_from_file_location('normal',Path(__file__).with_name('normal-dispatch-api30.py'));normal=importlib.util.module_from_spec(spec);spec.loader.exec_module(normal)
 os.umask(0o077)
@@ -34,7 +33,7 @@ def main(path,phase):
         elif phase=='prepare':
             d.adb('shell','am','force-stop',normal.soak.PACKAGE);d.adb('shell','monkey','-p',normal.soak.PACKAGE,'-c','android.intent.category.LAUNCHER','1');d.wait('Orders tab')
             d.adb('shell','am','start','-W','-a','android.intent.action.VIEW','-d','warehouse-fixture://dispatch-form/step1','-p',normal.soak.PACKAGE)
-            d.fill('Dispatch number',case['record']);d.tap('Select customer...');d.fill('Search customers...','Backend Test Customer A');d.tap('Backend Test Customer A',button=True);d.fill('Vehicle registration','TEST FIXTURE');d.wait('New customer');d.tap('Go to Items step');d.tap('Select GR No');prefix,digits=grn_search_controls(case['sourceReceipt']);d.tap(prefix)
+            d.fill('Dispatch number',case['record']);d.tap('Select customer...');d.fill('Search customers...','Backend Test Customer A');d.tap('Backend Test Customer A',button=True);d.fill('Vehicle registration','TEST FIXTURE');d.wait('New customer');d.tap('Go to Items step');d.tap('Select GR No');prefix,digits=grn_controls(case['sourceReceipt']);d.tap(prefix)
             for label in digits:d.tap(label)
             d.tap(case['sourceReceipt']);d.wait('Qty: 3 · Stock: 3');d.wait('Backend Test Potatoes');d.fill('Dispatch quantity','2');d.state['itemSaveAttempts']=1;d.save();d.tap('Save dispatch item');d.wait('Adding Item 2');d.tap('Go to Review step');d.wait('Submit Dispatch');d.archive('race-prepared-review');d.state.update(status='PREPARED',prepared=True)
         else:
