@@ -1,4 +1,4 @@
-import test from 'node:test';import assert from 'node:assert/strict';import {rolePreparation,roleBefore,roleAfter} from './fixture-role-controls.mjs';
+import test from 'node:test';import assert from 'node:assert/strict';import {rolePreparation,roleBefore,roleAfter,roleAuthenticated,roleCommitted} from './fixture-role-controls.mjs';
 const c={scope:'isolated-fictional-role-preparation',phone:'919888888874',profileId:'947136fa-997b-4a83-819d-1b8bd3ecba68',profileName:'New customer',action:'prepare-staff'};const b={target:{id:c.profileId,name:c.profileName,role:'customer',active:true,status:'approved'},targetSessions:[],adminHourly:0,adminDaily:2,admin:{role:'admin',active:true},targetOtherFieldsHash:'a'.repeat(64),targetAssignmentsHash:'b'.repeat(64),otherAuthHash:'c'.repeat(64),businessHash:'d'.repeat(64),adminSessions:['owned-native'],targetOTPs:1,adminOTPs:3};
 test('only reserved logged-out approved profile and ordinary available quota can change role',()=>{roleBefore(c,b);for(const change of [{phone:'919888888873'},{profileId:'11111111-1111-1111-1111-111111111111'},{action:'promote-admin'}])assert.throws(()=>rolePreparation({...c,...change}));assert.throws(()=>roleBefore(c,{...b,targetSessions:['active']}));assert.throws(()=>roleBefore(c,{...b,adminHourly:5}));assert.throws(()=>roleBefore(c,{...b,businessHash:undefined}));assert.throws(()=>roleBefore(c,{...b,adminDaily:-1}));});
 test('role change preserves assignments, all other profile fields and unrelated warehouse/authentication state',()=>{const a={...b,target:{...b.target,role:'staff'},adminOTPs:4};roleAfter(c,b,a);for(const change of [{targetAssignmentsHash:'changed'},{targetOtherFieldsHash:'changed'},{businessHash:'changed'},{adminSessions:[]},{adminOTPs:5}])assert.throws(()=>roleAfter(c,b,{...a,...change}));roleAfter({...c,action:'restore-customer'},{...b,target:{...b.target,role:'staff'}},{...a,target:{...b.target,role:'customer'}});});
@@ -8,4 +8,12 @@ test('queue fixture explicitly uses supervisor and preserves reversible legacy s
  roleAfter({...c,action:'prepare-supervisor'},b,{...b,target:{...b.target,role:'supervisor'},adminOTPs:4});
  roleAfter({...c,action:'restore-supervisor-customer'},{...b,target:{...b.target,role:'supervisor'}},{...b,adminOTPs:4});
  assert.throws(()=>roleBefore({...c,action:'restore-supervisor-customer'},{...b,target:{...b.target,role:'staff'}}));
+});
+
+test('ordinary login and committed role must reconcile before temporary-session cleanup',()=>{
+ const old={id:'11111111-1111-1111-1111-111111111111'},fresh={id:'22222222-2222-2222-2222-222222222222'};
+ const before={...b,adminSessions:[old]},authenticated={...before,adminOTPs:4,adminSessions:[old,fresh]},committed={...authenticated,target:{...b.target,role:'staff'}};
+ assert.equal(roleAuthenticated(c,before,authenticated),fresh.id);assert.equal(roleCommitted(c,before,authenticated,committed),fresh.id);
+ for(const patch of [{adminSessions:[fresh]},{adminSessions:[old]},{adminSessions:[old,fresh,fresh]},{adminSessions:[old,{id:'bad'}]},{targetOTPs:2},{businessHash:'e'.repeat(64)}])assert.throws(()=>roleAuthenticated(c,before,{...authenticated,...patch}));
+ for(const patch of [{target:b.target},{adminSessions:[old]},{otherAuthHash:'e'.repeat(64)},{targetAssignmentsHash:'e'.repeat(64)}])assert.throws(()=>roleCommitted(c,before,authenticated,{...committed,...patch}));
 });
