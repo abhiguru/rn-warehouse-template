@@ -29,7 +29,7 @@ def disconnected(adb,seconds=30):
 
 def rule(uid,marker):
     assert isinstance(uid,int) and 10000<=uid<=19999
-    assert re.fullmatch(r'whvm-offline-0106-0[23]',marker)
+    assert re.fullmatch(r'(?:whvm-offline-0106-0[23]|whvm-realtime-0109-0[123])',marker)
     return ['-m','owner','--uid-owner',str(uid),'-d','127.0.0.1/32','-p','tcp','--dport','443','-m','comment','--comment',marker,'-j','REJECT','--reject-with','tcp-reset']
 
 def reject_fixture_loopback(adb,uid,marker):

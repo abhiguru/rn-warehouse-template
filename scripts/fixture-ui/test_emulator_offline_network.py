@@ -6,6 +6,11 @@ class OwnedOffline(unittest.TestCase):
             calls=[]
             with self.assertRaises(AssertionError):restore_fixture_loopback(lambda *x:calls.append(x),uid,marker)
             self.assertFalse(calls)
+    def test_realtime_marker_is_narrow_and_retains_original_offline_scope(self):
+        for marker in ['whvm-realtime-0109-01','whvm-realtime-0109-02','whvm-realtime-0109-03','whvm-offline-0106-02']:
+            self.assertIn(marker,rule(10130,marker))
+        for marker in ['whvm-realtime-0109-04','whvm-realtime-0108-01','whvm-realtime-0109-01-other']:
+            with self.assertRaises(AssertionError):rule(10130,marker)
     def test_wrong_rule_uid_refuses_delete(self):
         calls=[]
         def adb(*args):
