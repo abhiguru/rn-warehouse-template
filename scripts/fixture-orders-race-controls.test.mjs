@@ -14,3 +14,10 @@ test('Orders race mode binds exact customer, delay and APK',()=>{
 });
 
 test('startup settlement refuses a second pending read before explicit refresh',()=>{const q=spawnSync('/usr/bin/python3',['-B','-m','unittest','test_orders_race_controls.py'],{cwd:new URL('./fixture-ui/',import.meta.url),encoding:'utf8',timeout:5000});assert.equal(q.status,0,q.stderr);});
+
+test('serial post-completion refetch is distinct; overlapping reads remain ambiguous',()=>{
+ const later=[{...events[0],atUTC:'2026-10-02T13:00:07Z'},{...events[1],atUTC:'2026-10-02T13:00:12Z'}];
+ const result=ordersSelectionTimeline([...events,...later],'2026-10-02T13:00:00Z','2026-10-02T13:00:03Z');
+ assert.equal(result.responseCompletedUTC,events[1].atUTC);assert.equal(result.laterReadStarts,1);
+ assert.throws(()=>ordersSelectionTimeline([...events,{...later[0],atUTC:'2026-10-02T13:00:04Z'},later[1]],'2026-10-02T13:00:00Z','2026-10-02T13:00:03Z'));
+});
