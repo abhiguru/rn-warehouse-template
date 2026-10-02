@@ -108,3 +108,34 @@ errors for the bare `structuredClone` test global. The corrected tests use
 typecheck passed locally. The failed CI log remains private. Backend CI for
 `071806b9eb2763dc2e147daf992f05b199226c65` completed successfully; its remote
 excluded suites do not establish additional VM native or physical acceptance.
+
+The reusable `fixture-ui/confirmed-draft-api30.py` driver now prepares one real
+customer, GRN, dispatch or invoice header draft, checks the actual warning and
+confirms once. Its `fixture-confirmed-draft-observe.mjs` observer binds exact
+source files, UI configuration, original fixture guards, distinct helper
+configuration/log identities and log prefixes/inodes. Both bridges must run the
+new optional credential-presence observation tooling. All helpers must retain
+their 12-hour cap and have sufficient actual monotonic lifetime for the bounded
+case. A live listener alone is insufficient. Each case requires a new protected
+configuration/directory, an existing ordinary supervisor session, normal route,
+the actor lock, actual TLS discovery and the exact installed APK10 hash.
+
+The driver has a ten-minute deadline, no business submit, no OTP, no destination
+login, no automatic cleanup and no resume. It requires immediate and cold
+destination login, public selected identity, on-device credential-key absence,
+one independently observed source logout and no credential-bearing destination
+request before independently reconciling both warehouses and stored bytes. The
+credential observer returns only key presence and row counts; values are neither
+extracted nor copied. Its actual read-only integration on the original owned
+emulator passed (`confirmed-credential-key-observer01.json` private evidence).
+Eight focused source/entrypoint/lifetime tests passed, including refusal before
+SQL/native/attempt access during an active soak. Native confirmation is still
+NOT TESTED: source tests and the credential-presence probe do not close it.
+
+After successful pre-authentication reconciliation, preserve destination login
+and selection. A separately guarded ordinary destination login, actual empty
+draft UI checks and authentication reconciliation remain necessary before
+confirmed-draft acceptance can pass. Current running helpers do not include the
+new switching observation; they must be released and replaced under fresh
+supervised identities before an attempt. No helper or historical attempt was
+changed during driver preparation, and no exhausted case is reopened.

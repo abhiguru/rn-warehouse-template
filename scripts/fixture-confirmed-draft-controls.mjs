@@ -3,6 +3,14 @@ import assert from 'node:assert/strict';
 import {isAbsolute} from 'node:path';
 const hash=/^[a-f0-9]{64}$/;
 const uuid=/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/;
+export function confirmedHelperWindow(p,uptimeSeconds,remainingSeconds){
+ assert.equal(p.RuntimeMaxUSec,'12h','UNCHANGED_HELPER_CAP_REQUIRED');
+ assert.ok(Number.isFinite(uptimeSeconds)&&uptimeSeconds>0);
+ assert.ok(Number.isFinite(remainingSeconds)&&remainingSeconds>0&&remainingSeconds<=600);
+ const start=Number(p.ActiveEnterTimestampMonotonic)/1000000;
+ assert.ok(Number.isFinite(start)&&start>0&&start<=uptimeSeconds,'ACTUAL_HELPER_START_REQUIRED');
+ assert.ok(start+43200-uptimeSeconds>remainingSeconds+60,'FRESH_HELPER_WINDOW_REQUIRED');
+}
 export function confirmedDraftConfig(c){
  assert.equal(c.scope,'isolated-fictional-confirmed-draft-switch');
  assert.equal(c.artifactSHA256,'a7df6781bdcd889eb9ccaa01ee0973890effd4d187bb6ac45f100284e1b04b69');
