@@ -1,0 +1,8 @@
+import assert from 'node:assert/strict';
+export function inventoryHTTP(text){
+ const paths=['get_all_stock_summary','get_customer_stock_summary'];const result={all:0,customer:0,failures:[]};
+ for(const line of text.split('\n')){const m=line.match(/"(?:GET|POST) \/rest\/v1\/rpc\/(get_all_stock_summary|get_customer_stock_summary)(?:\?[^ ]*)? HTTP\/[\d.]+" (\d{3})\b/);if(!m)continue;const status=Number(m[2]);if(status===200)result[m[1]===paths[0]?'all':'customer']++;else if(status>=400)result.failures.push({rpc:m[1],status});}
+ return result;
+}
+export function inventoryCase(c){assert.equal(c.kind,'native-inventory-read');assert.equal(c.case,'same-server');assert.equal(c.customerId,'a823809c-bdb6-11f1-b1be-47a66d90b06d');assert.equal(c.customerName,'Backend Test Customer A');return c;}
+export function inventorySQL(c){inventoryCase(c);return `SELECT jsonb_build_object('customers',(SELECT coalesce(jsonb_agg(x ORDER BY x->>'name'),'[]') FROM (SELECT jsonb_build_object('id',c.id,'name',c.name,'stock',sum(gt.stock),'items',count(DISTINCT gt.item_id),'grns',count(DISTINCT g.id)) x FROM public.customers c JOIN public.goodsreceived g ON g.customer_id=c.id AND g.deleted_at IS NULL JOIN public.goodsreceived_trl gt ON gt.gr_id=g.id WHERE c.active AND gt.stock>0 GROUP BY c.id,c.name) q),'items',(SELECT coalesce(jsonb_agg(x ORDER BY x->>'name'),'[]') FROM (SELECT jsonb_build_object('name',i.name,'stock',sum(gt.stock),'grns',count(DISTINCT g.id)) x FROM public.goodsreceived g JOIN public.goodsreceived_trl gt ON gt.gr_id=g.id JOIN public.items i ON i.id=gt.item_id WHERE g.customer_id='${c.customerId}' AND g.deleted_at IS NULL AND gt.stock>0 GROUP BY i.id,i.name) q));`;}
