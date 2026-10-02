@@ -869,3 +869,13 @@ receipt/stock/cart/dispatch/invoice/image/cache/movement/customer/item/storage
 rows and all authentication rows, plus actual stored-byte hashes. Live
 observer and native driver execution remain pending; no invalid-receipt PASS
 is claimed.
+
+Receipt invalid-quantity observer/driver are now implemented with exact APK10
+source/version, owned fixtures/helper and transitive tool hashes, release
+checks, at most ten-minute deadline and one native actor. Genuine GRN header
+and catalog selection precede entered0/-1/1.5 and disabled-save captures;
+there is no item save, receipt confirmation/submission or OTP action. Full
+protected SQL/auth/stored-byte snapshots surround the case and cold normal
+Orders cleanup; failed reconciliation retains the snapshot without replay.
+Syntax and focused lint PASS. Four pure source tests (two Python/two JS)
+previously PASS. Live native attempt remains pending at this checkpoint.
