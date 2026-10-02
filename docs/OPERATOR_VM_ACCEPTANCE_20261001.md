@@ -541,3 +541,31 @@ session. Review correction `61eaeeb` uses the actual accessibility label and
 passed syntax/control tests. No corrected native rerun has occurred yet; at most
 two corrected reruns remain for this campaign. Generated-number acceptance must
 still pass against the actual field before any edit.
+
+### Corrected GRN and dispatch draft cancellation; exact review CI
+
+The first corrected GRN rerun passed using frozen tooling `729be7d`. Actual
+Receipt number/default A0001 admission preceded entering FXS991 without save.
+Genuine switching discovery, Use and cancellation preserved the draft, core
+selection and supervisor session. Cold cleanup and fresh Orders HTTP200 were
+followed by unchanged independent state reconciliation. The first failed attempt
+and its after reconciliation remain preserved. Evidence:
+`native-unsaved-grn-draft0109-02/`.
+
+The first dispatch-notes draft case also passed with tooling `729be7d`. The
+supported optional-fields control exposed notes; the exact fictional draft
+survived genuine switching discovery and cancellation. No customer/stock
+selection, submission or additional OTP occurred. Cold cleanup, Orders HTTP200
+and unchanged independent state reconciliation passed. Evidence:
+`native-unsaved-dispatch-draft0109-01/`.
+
+Private `four-draft-cancellations0109-final-proof.json` binds the actual customer,
+invoice, GRN and dispatch PASS results. These cover cancellation with unsaved
+forms; confirmed switching, in-flight requests/uploads/saves and expiry remain
+separate requirements.
+
+Exact mobile review CI `37047636531` at `22c125e8dfdac2603b449218d969d1dc7c2f8dcc`
+completed: Android debug artifact audit, lint/typecheck and redacted source/history
+scans PASS; dependencies FAIL. The CI debug artifact result is separate from the
+installed standalone release APK9 and does not waive the dependency gate or
+establish final readiness/soak acceptance.
