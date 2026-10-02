@@ -621,3 +621,16 @@ label from shared tooling. Role-specific `final-acceptance.json`, live counts an
 native proof define the actual acceptance scope above; review source corrects
 that stdout label. This result does not establish queue processing, concurrent
 writes or literal-staff access, and does not transfer the earlier B-native case.
+
+### Current tooling verification runtime
+
+After quantity-rejection and supervisor Realtime integration, redacted source
+and complete-history scans passed. An initial setup-suite invocation accidentally
+used system Node18.19.1:247 tests were reported,241 passed and6 failed, including
+unsupported TypeScript loading and ESM require errors. Its private log remains
+`quantity-supervisor-setup-tests01.log`; this failed verification is not erased.
+The exact documented fixture Node runtime then ran the full suite successfully:
+253 tests PASS,0 failures. Evidence:
+`quantity-supervisor-setup-tests02-node22.log`. Use the documented runtime/PATH
+for reproduction; the unsupported-runtime result does not establish an
+application regression or waive any artifact/dependency gate.
