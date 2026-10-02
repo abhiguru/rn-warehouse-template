@@ -1,4 +1,4 @@
-import assert from 'node:assert/strict';import{setTimeout,clearTimeout}from'node:timers';
+import assert from 'node:assert/strict';import{setTimeout,clearTimeout,setInterval,clearInterval}from'node:timers';
 
 // Credentials and event payloads remain in memory. The adapter owns TLS/source
 // bindings, actor locking, ordinary authentication and independent SQL evidence.
@@ -16,8 +16,9 @@ export function joinIsolationChannel(WebSocket,c){
    headers:{Host:'backend-core.example.test',apikey:c.anon,Authorization:'Bearer '+c.token},
   });
   const ref='isolation-'+c.role,topic='realtime:public:orders';let joined=false,ready=false,settled=false,closed=false,failure=false,messages=0,bytes=0;
-  const counts={A:0,B:0,foreign:0};
-  const stop=()=>{closed=true;socket.terminate();};
+  const counts={A:0,B:0,foreign:0};let heartbeat,heartbeatRef=0,pendingHeartbeat;
+  const pulse=()=>{try{assert.ok(!closed&&!failure&&Date.now()<Date.parse(c.deadlineUTC));assert.equal(pendingHeartbeat,undefined,'Missing heartbeat acknowledgement');pendingHeartbeat='heartbeat-'+(++heartbeatRef);socket.send(JSON.stringify({topic:'phoenix',event:'heartbeat',ref:pendingHeartbeat,payload:{}}));}catch{fail();}};
+  const stop=()=>{closed=true;clearInterval(heartbeat);socket.terminate();};
   const fail=()=>{const pending=!settled;settled=true;failure=true;clearTimeout(timer);stop();if(pending)reject(new Error('Owned Realtime channel refused'));};
   const timer=setTimeout(fail,Math.min(15000,Date.parse(c.deadlineUTC)-Date.now()));
   const control={close:()=>{clearTimeout(timer);stop();},evidence:()=>{
@@ -30,7 +31,9 @@ export function joinIsolationChannel(WebSocket,c){
   socket.on('message',raw=>{
    try{
     assert.ok(++messages<=1000&&(bytes+=raw.length)<=1048576&&raw.length<=65536);
-    const m=JSON.parse(raw.toString());assert.equal(m.topic,topic);
+    const m=JSON.parse(raw.toString());
+    if(m.topic==='phoenix'){assert.equal(m.event,'phx_reply');assert.equal(m.ref,pendingHeartbeat);assert.equal(m.payload?.status,'ok');pendingHeartbeat=undefined;return;}
+    assert.equal(m.topic,topic);
     if(m.event==='phx_reply'&&m.ref===ref){assert.equal(m.payload?.status,'ok');joined=true;}
     if(m.event==='system'){assert.equal(m.payload?.status,'ok');ready=true;}
     if(m.event==='phx_error'||m.event==='phx_close')throw new Error('Subscription ended');
@@ -40,7 +43,7 @@ export function joinIsolationChannel(WebSocket,c){
      else if(row.id===c.cartB&&row.note===c.markerB)counts.B++;
      else counts.foreign++;
     }
-    if(joined&&ready&&!settled){settled=true;clearTimeout(timer);resolve(control);}
+    if(joined&&ready&&!settled){settled=true;clearTimeout(timer);heartbeat=setInterval(pulse,10000);heartbeat.unref();resolve(control);}
    }catch{fail();}
   });
  });

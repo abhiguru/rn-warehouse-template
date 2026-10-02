@@ -18,3 +18,5 @@ test('disconnect and malformed or oversized payloads invalidate negative evidenc
 });
 
 test('pre-readiness disconnect refuses once without recursive recovery',async()=>{class EarlyClose extends Socket{send(){this.emit('close');}}await assert.rejects(joinIsolationChannel(EarlyClose,{...base,role:'B'}),/Owned Realtime channel refused/);});
+
+test('unmatched heartbeat acknowledgement invalidates live negative evidence',async()=>{Socket.sockets=[];const channel=await joinIsolationChannel(Socket,{...base,role:'B'});try{Socket.sockets[0].message({topic:'phoenix',event:'phx_reply',ref:'unrequested-heartbeat',payload:{status:'ok'}});assert.throws(()=>channel.evidence(),/Live acknowledged/);}finally{channel.close();}});

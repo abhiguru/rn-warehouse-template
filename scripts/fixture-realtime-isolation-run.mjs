@@ -33,7 +33,7 @@ export async function runRealtimeIsolation(c,d,state){
   const observation=await d.observe(channels);
   assert.equal(observation.status,'PASS');assert.ok(observation.durationMs>=10000&&observation.durationMs<=60000);assert.equal(observation.continuousLiveChecks,true);
   const wire=reciprocalIsolationEvidence(channels);await d.evidence('wire-isolation',wire);
-  const native=await d.native('after');assert.equal(native.status,'PASS');assert.equal(native.customer,'B');assert.equal(native.artifactSHA256,c.artifactSHA256);assert.equal(native.foreignContent,false);assert.equal(native.ownChangeObserved,true);assert.equal(native.manualRefresh,false);
+  const native=await d.native('after');assert.equal(native.status,'PASS');assert.equal(native.customer,'B');assert.equal(native.artifactSHA256,c.artifactSHA256);assert.equal(native.foreignContent,false);assert.equal(native.ownEventRefetchObserved,true);assert.equal(native.manualRefresh,false);
   const final=await d.snapshot();assert.deepEqual(final,previous,'State changed during native/wire observation');
   // Re-check channels after native observation, before accepting negative proof.
   reciprocalIsolationEvidence(channels);await d.evidence('accepted-state',final);
