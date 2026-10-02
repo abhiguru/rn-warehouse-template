@@ -83,3 +83,13 @@ test('temporary reserved staff cleanup binds exact profile and revokes only its 
  assert.throws(()=>navigationAfter(config,snapshot,snapshot));
  assert.throws(()=>navigationAfter(config,snapshot,{...snapshot,nativeSessionPresent:false,otherAuthHash:'changed'}));
 });
+
+test('supervisor reads preserve the exact reserved session and logout revokes it',()=>{
+ const profileId='947136fa-997b-4a83-819d-1b8bd3ecba68';const config={...c(),case:'supervisor-reads',profileId,profileName:'New customer'};
+ const snapshot={...before(),profile:{id:profileId,name:'New customer',role:'supervisor',active:true}};
+ navigationAfter(config,snapshot,snapshot);
+ assert.throws(()=>navigationAfter(config,snapshot,{...snapshot,nativeSessionPresent:false}));
+ navigationAfter({...config,case:'supervisor-logout'},snapshot,{...snapshot,nativeSessionPresent:false});
+ for(const role of ['staff','customer','admin'])assert.throws(()=>navigationBefore(config,{...snapshot,profile:{...snapshot.profile,role}}));
+ assert.match(navigationSnapshotSQL(config),/mobile='919888888874'/);
+});
