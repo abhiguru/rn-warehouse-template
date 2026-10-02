@@ -25,6 +25,10 @@ test('lost committed disable stops before cleanup/native and cannot be replayed'
  await assert.rejects(runRevocation(config,t.deps,state));assert.deepEqual(t.counts(),{disables:1,native:0});assert.equal(state.disableAttempted,true);
  await assert.rejects(runRevocation(config,t.deps,state));assert.deepEqual(t.counts(),{disables:1,native:0});
 });
+test('pending dependency closure stops before ordinary authentication',async()=>{
+ const t=transport(),state={otpAttempted:false,disableAttempted:false};t.deps.verifyDependencies=async()=>{throw new Error('pending workflow');};
+ await assert.rejects(runRevocation({...c,deadlineUTC:new Date(Date.now()+60000).toISOString()},t.deps,state));assert.equal(state.otpAttempted,false);assert.equal(state.disableAttempted,false);assert.deepEqual(t.counts(),{disables:0,native:0});
+});
 test('revocation admin authenticates once with in-memory credentials and sanitized records',async()=>{
  const b=before(),after={...b,adminQuota:{hourly:1,daily:1},adminOTPCount:21,adminSessions:[{id:id(3)}]};let snapshots=0;const records=[],calls=[];
  const deps={snapshot:async()=>snapshots++?after:b,record:async x=>records.push(x),challenge:async()=> '123456',call:async(path,body)=>{calls.push({path,body});return path.endsWith('/request')?{success:true}:{success:true,data:{user:{id:c.adminProfileId,name:'Core Demo Administrator',role:'admin',active:true},session:{access_token:'private-access',refresh_token:'private-refresh'}}};}};

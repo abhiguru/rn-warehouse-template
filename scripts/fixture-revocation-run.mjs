@@ -8,6 +8,7 @@ export async function runRevocation(c,deps,state) {
  const deadline=Date.parse(c.deadlineUTC);assert.ok(deadline>Date.now()&&deadline-Date.now()<=3600000,'One-hour bounded revocation stage required');
  let auth;
  try {
+  await deps.verifyDependencies(); // Do not consume quota for pending workflows.
   auth=await authenticateRevocationAdministrator(c,deps,state);
   await deps.call('/rest/v1/rpc/check_session',{},auth.access);
   assert.deepEqual(await deps.snapshot(),auth.baseline,'State changed before disable');
