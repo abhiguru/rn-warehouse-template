@@ -7,7 +7,7 @@ export function joinIsolationChannel(WebSocket,c){
  assert.ok(Date.parse(c.deadlineUTC)>Date.now());
  assert.ok(typeof c.token==='string'&&c.token.length>0&&c.token.length<16384);
  assert.ok(typeof c.anon==='string'&&c.anon.length>0&&c.anon.length<16384);
- assert.ok(['A','B','admin'].includes(c.role));
+ assert.ok(['A','B','admin','supervisor'].includes(c.role));
  assert.equal(c.cartA,'ce9cb158-bdb6-11f1-8391-8b2b4fd918b0');
  assert.equal(c.cartB,'f3346be6-bdb6-11f1-97b0-638c3f007281');
  return new Promise((resolve,reject)=>{
@@ -56,4 +56,13 @@ export function reciprocalIsolationEvidence(channels){
  assert.equal(a.B,0,'A received B event');assert.equal(b.A,0,'B received A event');
  for(const c of [a,b,admin])assert.equal(c.foreign,0,'Unexpected event; preserve and stop');
  return {status:'PASS',scope:'live reciprocal wire delivery/denial counts only; SQL and native checks separate',channels:[a,b,admin]};
+}
+
+export function supervisorIsolationEvidence(channels){
+ const [a,supervisor,admin]=channels.map(c=>c.evidence());
+ assert.deepEqual([a.role,supervisor.role,admin.role],['A','supervisor','admin']);
+ assert.ok(a.A>0&&supervisor.A>0&&supervisor.B>0&&admin.A>0&&admin.B>0,'Actual supervisor and administrator positive controls required for both carts');
+ assert.equal(a.B,0,'Customer A received B event');
+ for(const c of [a,supervisor,admin])assert.equal(c.foreign,0,'Unexpected event; preserve and stop');
+ return {status:'PASS',scope:'explicit supervisor wire delivery and customer denial only; native and state acceptance separate',channels:[a,supervisor,admin]};
 }
