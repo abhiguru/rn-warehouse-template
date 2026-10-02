@@ -1,5 +1,88 @@
 # Independent operator mobile handoff
 
+## Current VM-only campaign handoff — 2 October 2026
+
+For this active campaign, use [OPERATOR_VM_ACCEPTANCE_20261001.md](OPERATOR_VM_ACCEPTANCE_20261001.md).
+The instructions below retain earlier installation history; their physical-device,
+SMS and tunnel work is outside this campaign. Current review is draft
+[PR34](https://github.com/abhiguru/rn-warehouse-template/pull/34) with backend draft
+[PR79](https://github.com/abhiguru/supabase-warehouse-template/pull/79).
+No merge, release, restore, host reboot or production contact is authorized.
+
+Installed application source is `c422f62cd36cb407e7ed7bfce28c4db5189e2bd5`,
+version0.1.0/code2026100110, package `in.gurucold.warehouse.fixture`, x86_64 only.
+APK SHA256 is `a7df6781bdcd889eb9ccaa01ee0973890effd4d187bb6ac45f100284e1b04b69`;
+fixture signer fingerprint is
+`fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c`.
+Later review commits change fixture tooling/docs; they do not update installed bytes.
+The compiled audit, installed read-back and source/build logs are under the private
+campaign root `/home/jay/warehouse-install-private/vm-campaign-20261001/build0110`.
+The artifact is `/home/jay/warehouse-artifacts/fixture/fixture-c422f62-build2026100110-x86_64.apk`.
+
+Reproduce in a fresh pinned checkout and separate empty disposable backend state,
+following backend `bed4eeee4a008073aa453c32da27cade50a32a2f` operator installation
+instructions and recording every declared port/subnet/container/native overlay.
+Do not carry generated configuration from an existing warehouse. Backend setup,
+migrations, bootstrap, identity and local doctor must pass before Android build.
+Use Node22.23.3/JDK17 and the documented SDK/NDK prerequisites. Require25GiB free
+before native generation and compilation; stop/preserve the owned AVD before a
+heavy build and use one build at a time. Do not clear unrelated caches or state.
+
+After clean `npm ci` and the documented setup/unit/lint/type/SDK/Expo/contract and
+redacted source/history checks, configure the fixture-only identity and three
+independent fictional certificate inputs in the process environment:
+
+```bash
+export WAREHOUSE_ANDROID_PACKAGE=in.gurucold.warehouse.fixture
+export WAREHOUSE_APP_NAME='Fictional Core Warehouse'
+export WAREHOUSE_APP_SCHEME=warehouse-fixture
+export WAREHOUSE_ANDROID_VERSION_CODE="$UNUSED_INCREASING_BUILD_ID"
+export WAREHOUSE_FIXTURE_CA="$PRIVATE_PRIMARY_CERT"
+export WAREHOUSE_SWITCH_FIXTURE_CA="$PRIVATE_SWITCH_CERT"
+export WAREHOUSE_REPLACEMENT_FIXTURE_CA="$PRIVATE_REPLACEMENT_CERT"
+export WAREHOUSE_FIXTURE_MIN_VALID_HOURS=168
+export WAREHOUSE_FIXTURE_BUNDLE_WORKERS=2
+export EXPO_PUBLIC_CONFIG_API_URL=https://backend-core.example.test
+node scripts/check-android-sdk.mjs
+node scripts/prepare-emulator-fixture.mjs --check-certificate
+npx --no-install expo prebuild --platform android --clean --no-install
+node scripts/prepare-emulator-fixture.mjs
+(cd android && ./gradlew :app:assembleRelease -PreactNativeArchitectures=x86_64 -Porg.gradle.workers.max=2 '-Porg.gradle.jvmargs=-Xmx3072m -XX:MaxMetaspaceSize=768m')
+node scripts/artifact-audit.mjs android/app/build/outputs/apk/release/app-release.apk
+```
+
+Allocate the identifier and create private certificate inputs before these commands;
+never overwrite an old artifact. Certificates must be independent fourteen-day
+fictional certificates with exact permitted hosts and private key permissions.
+Record fingerprints/expiry, source/tooling/overlay commits, full command, compiled
+trust/JS/permissions/ABI, signer/package/version and SHA256. Run the picker native
+compile audit against the actual generated `compile_commands.json`, then inspect
+signer and manifest with the installed SDK tools. Install only on the owned API30
+AVD after state preservation; pull back the installed APK and compare hashes.
+Metro must be absent. This workflow produced APK10 from clean source; it does not
+waive the currently failing dependency audit or prove physical no-USB operation.
+
+Current VM services and read-only health/stop instructions are in the backend
+campaign ledger. Use its current private helper config with the guarded supervisor
+`status`; starting a helper requires a new config/runId/socket/log identity and
+actual TLS/IPC readiness, retaining the12-hour cap. The current AVD is
+`TestWarehouseFixture_API30`/emulator-5556 under
+`warehouse-fixture-emulator-vm2026100110-01.service`; do not wipe or clone it.
+Librera's existing approved permissions belong only to this original disposable AVD.
+
+Native invalid receipt quantities PASS on APK10. Queue/PDF/Realtime/draft and other
+historical PASS evidence remains scoped to older artifacts. Concurrency is BLOCKED
+with three preserved failures and no fourth attempt, stock3 and no dispatch commit;
+its legitimate-refresh observer correction is separately source/SQL tested.
+Other exhausted cases and untested switching prerequisites remain in the matrix.
+The older build0101 eight-hour soak remains separate PASS. Final candidate freeze,
+30-minute readiness and new eight-hour soak are UNSTARTED. Dedicated natural
+expiry is UNSCHEDULED because final freeze is not yet satisfied: no appointment
+may reuse the original AVD/session or shorten/alter expiry. After an eligible freeze,
+use a new owned API30 AVD, ordinary reserved-account authentication, recorded real
+expiry, clean stop/storage preservation and a single one-hour check at expiry+10min.
+
+
 The current app selects an operator's canonical HTTPS origin before login.
 Manual entry and QR discovery show the warehouse identity. Credentials, pending
 enrollment and business state belong to one selected instance; a server switch
