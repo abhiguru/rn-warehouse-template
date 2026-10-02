@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 export function concurrencyConfig(c){
- const exact={scope:'isolated-fictional-native-dispatch-concurrency',origin:'https://backend-core.example.test',instanceId:'b0ec3933-5258-4bd5-87f4-d57b13a78971',artifactSHA256:'a7df6781bdcd889eb9ccaa01ee0973890effd4d187bb6ac45f100284e1b04b69',profileId:'947136fa-997b-4a83-819d-1b8bd3ecba68',competitorProfileId:'f94caa4f-0051-4660-920a-5f41aac86fa7',customerId:'a823809c-bdb6-11f1-b1be-47a66d90b06d',record:'FXQ994',competitorRecord:'FXQ995',sourceReceipt:'FXQ993',sourceQuantity:3,quantity:2,expectedStock:3};
+ const exact={scope:'isolated-fictional-native-dispatch-concurrency',origin:'https://backend-core.example.test',instanceId:'b0ec3933-5258-4bd5-87f4-d57b13a78971',artifactSHA256:'a7df6781bdcd889eb9ccaa01ee0973890effd4d187bb6ac45f100284e1b04b69',profileId:'947136fa-997b-4a83-819d-1b8bd3ecba68',competitorProfileId:'f94caa4f-0051-4660-920a-5f41aac86fa7',customerId:'a823809c-bdb6-11f1-b1be-47a66d90b06d',record:'FXQ994',competitorRecord:'FXQ995',sourceReceipt:'FXQ993',sourceQuantity:3,quantity:2,expectedStock:3,lotId:'400e423c-bea4-11f1-903b-c7dfaaa1d594',sourceGRNId:'400db20e-bea4-11f1-903a-6ffba93074e5'};
  for(const [k,v] of Object.entries(exact))assert.equal(c[k],v,'CONCURRENCY_BINDING_REQUIRED:'+k);
  for(const k of ['lotId','sourceGRNId','sessionId'])assert.match(c[k],/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/);
  assert.notEqual(c.lotId,'a248cdd4-bdf3-11f1-97a9-efb90ed37151','Fresh isolated stock required');
