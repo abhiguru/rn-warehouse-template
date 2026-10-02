@@ -1019,3 +1019,30 @@ contract, migrations and secret scanning. Remote architecture jobs are CI
 evidence only. Mobile CI37078661884 atc48cdc516eba14d76a7e42c94682585a5bd7915e
 has a passing secret scan and failing dependency gate; remaining jobs were still
 running at this checkpoint. Final freeze/readiness/soak/expiry gates remain open.
+
+APK10 reverse GRN header-draft switch and continuation01 PASS, 2026-10-02UTC.
+Frozen tooling1bc59a4 bound the normally authenticated switching administrator
+session created by the customer-draft continuation. Actual unsaved receipt
+header FXS992 was entered without a receipt submission. One genuine switch
+confirmation returned to primary login in the same process, removed old
+credential keys and normally removed only that source session/history. Actual
+source/destination SQL, stored bytes and safe HTTP evidence reconciled with no
+forwarded credentials or unrelated changes. Pre-auth stage and independent
+postcondition PASS; no corrected rerun was needed.
+
+One ordinary primary supervisor OTP/login then cleared the GRN header in the
+preserved process before cold launch. Primary public selection persisted and
+an explicit authenticated Orders200 completed after cold launch. Exactly one
+new fixed seven-day primary session/verification was observed; historical
+sessions and unrelated authentication/business/stored bytes were preserved.
+Immutable stage and independent verification PASS. Private evidence directories:
+confirmed-grn-draft-switchback0110-01, confirmed-grn-draft-primary-auth0110-01,
+and each corresponding stage-...-evidence/ledger.json. Original emulator now
+holds this new primary supervisor session; previous source sessions were
+normally logged out. No session reset, business write or fixed OTP occurred.
+
+This covers the GRN header draft plus actual confirmed switch-back. Customer
+header draft is separately proven. Dispatch/invoice drafts and in-flight
+request/upload/save switching remain open. Existing exhausted baseline cases
+remain closed; this independent unsaved-GRN case does not reopen them.
+All291 source tests, focused lint and Python syntax passed before freeze.
