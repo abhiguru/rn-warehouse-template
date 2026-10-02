@@ -28,7 +28,12 @@ def main(path):
   d.tap(case['sourceReceipt']);d.wait('Qty: 20 · Stock: 20');d.wait('Backend Test Potatoes')
   proofs=[]
   for quantity in case['quantities']:
-   d.fill('Dispatch quantity',str(quantity));proof=rejected_quantity(d.snapshot(),quantity);proofs.append(proof);d.archive('quantity-'+str(quantity)+'-disabled-save');d.state['phases'].append(proof);d.save()
+   if quantity==0:
+    tree=d.wait('Dispatch quantity');d.adb('shell','input','tap',*map(str,normal.point(tree,'Dispatch quantity',editable=True)));fields=[n for n in d.snapshot().iter('node') if n.get('class')=='android.widget.EditText' and n.get('focused')=='true'];assert len(fields)==1 and fields[0].get('content-desc')=='Dispatch quantity' and fields[0].get('text','') in ['', 'Qty'];d.adb('shell','input','text','0')
+    rejected_quantity(d.snapshot(),0)
+    if 'mInputShown=true' in d.adb('shell','dumpsys','input_method'):d.adb('shell','input','keyevent','4')
+   else:d.fill('Dispatch quantity',str(quantity))
+   proof=rejected_quantity(d.snapshot(),quantity);proofs.append(proof);d.archive('quantity-'+str(quantity)+'-disabled-save');d.state['phases'].append(proof);d.save()
   observe('after');d.adb('shell','am','force-stop',normal.soak.PACKAGE);d.adb('shell','monkey','-p',normal.soak.PACKAGE,'-c','android.intent.category.LAUNCHER','1');d.wait('Orders tab');since=datetime.datetime.now(datetime.timezone.utc).isoformat();d.tap('Refresh orders');end=time.monotonic()+25
   while True:
    q=d.backend_process(c['httpObserver'],[since],timeout=20);v=normal.auth.soak.decode_observation(q.returncode,q.stdout.decode(errors='replace'))

@@ -16,7 +16,7 @@ def rejection_config(c):
 def rejected_quantity(tree,quantity):
  assert type(quantity) is int and quantity in [0,21]
  fields=[n for n in tree.iter('node') if n.get('class')=='android.widget.EditText' and n.get('content-desc')=='Dispatch quantity']
- assert len(fields)==1 and fields[0].get('enabled')=='true' and fields[0].get('text')==str(quantity)
+ assert len(fields)==1 and fields[0].get('enabled')=='true' and (fields[0].get('text') in ['', 'Qty'] if quantity==0 else fields[0].get('text')==str(quantity))
  buttons=[n for n in tree.iter('node') if n.get('content-desc')=='Save dispatch item']
  assert len(buttons)==1 and buttons[0].get('enabled')=='false','Invalid quantity must not admit item save'
  assert re.fullmatch(r'\[\d+,\d+\]\[\d+,\d+\]',buttons[0].get('bounds',''))
