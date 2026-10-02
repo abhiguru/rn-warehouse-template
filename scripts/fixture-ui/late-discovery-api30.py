@@ -21,8 +21,8 @@ def main(path):
  try:
   observe('guard');assert d.adb('emu','avd','name').splitlines()[0]=='TestWarehouseFixture_API30';assert d.adb('shell','getprop','ro.build.version.sdk')=='30';assert d.adb('shell','getenforce')=='Enforcing'
   package=d.adb('shell','pm','path',nav.soak.PACKAGE);assert re.fullmatch(r'package:/data/app/[^\n]+',package);assert d.adb('shell','sha256sum',package[8:]).split()[0]==cfg['apkSHA256']
-  nav.owned_reverse_route(d.adb('reverse','--list'),18443);d.health(True);d.wait('Orders tab');observe('before')
-  d.adb('shell','am','start','-W','-a','android.intent.action.VIEW','-d','warehouse-fixture://settings','-p',nav.soak.PACKAGE);d.wait('View profile for '+c['profileName'])
+  nav.owned_reverse_route(d.adb('reverse','--list'),18443);d.health(True);d.cold();d.wait('Orders tab');observe('before')
+  d.adb('shell','am','start','-W','-a','android.intent.action.VIEW','-d','warehouse-fixture://settings','-p',nav.soak.PACKAGE);d.wait('Settings')
   for _ in range(7):
    if 'Change Warehouse Server' in nav.labels(d.snapshot()):break
    d.adb('shell','input','swipe','360','1050','360','450','400')
@@ -32,12 +32,12 @@ def main(path):
    events=local('events',offset)['events']
    if events:assert len(events)==1 and events[0]['event']=='discovery-delay-start';break
    assert time.monotonic()<deadline;time.sleep(.1)
-  d.adb('shell','input','keyevent','4');d.wait('View profile for '+c['profileName']);left=datetime.datetime.now(datetime.timezone.utc).isoformat()
+  d.adb('shell','input','keyevent','4');d.wait('Settings');d.wait('Change Warehouse Server');left=datetime.datetime.now(datetime.timezone.utc).isoformat()
   deadline=time.monotonic()+12
   while len(local('events',offset)['events'])<2:assert time.monotonic()<deadline;time.sleep(.2)
   ordering=local('ordering',offset,left);(e/'late-discovery-ordering.json').write_text(json.dumps(ordering)+'\n')
   for _ in range(2):
-   labels=nav.labels(d.snapshot());assert 'View profile for '+c['profileName'] in labels;assert not labels.intersection({'Use this server','Server Unavailable','Choose your warehouse server'});time.sleep(.5)
+   labels=nav.labels(d.snapshot());assert {'Settings','Change Warehouse Server'}.issubset(labels);assert not labels.intersection({'Use this server','Server Unavailable','Choose your warehouse server'});time.sleep(.5)
   d.cold();d.wait('Orders tab');since=datetime.datetime.now(datetime.timezone.utc).isoformat();d.tap('Refresh orders');d.wait('Backend Test Customer A');deadline=time.monotonic()+25
   while True:
    q=d.backend_process(cfg['httpObserver'],[since],timeout=15);v=nav.decode_observation(q.returncode,q.stdout.decode(errors='replace'))
