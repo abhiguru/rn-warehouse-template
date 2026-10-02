@@ -7,7 +7,7 @@ spec_auth=importlib.util.spec_from_file_location("auth",Path(__file__).with_name
 spec=importlib.util.spec_from_file_location('navigation',Path(__file__).with_name('navigation-api30.py'));nav=importlib.util.module_from_spec(spec);spec.loader.exec_module(nav);soak=nav.soak
 os.umask(0o077)
 def main(path):
- case=json.loads(soak.private(path).read_text());assert case['case']=='ordinary-logout';c,i=soak.config(case['soakConfig']);d=nav.Navigation(c,i,'unused',0);scripts=Path(__file__).parent.parent
+ case=json.loads(soak.private(path).read_text());assert case['case'] in ['ordinary-logout','customer-logout'];c,i=soak.config(case['soakConfig']);d=nav.Navigation(c,i,'unused',0);scripts=Path(__file__).parent.parent
  def observe(phase):
   q=d.backend_process(str(scripts/'fixture-navigation-observe.mjs'),[str(Path(path).resolve()),phase]);assert q.returncode==0,'Released owned fixture and independent state required'
  observe('guard')
@@ -27,10 +27,10 @@ def main(path):
  try:
   audit=json.loads(soak.private(case['artifactAudit']).read_text());assert audit['status']=='PASS' and audit.get('sha256',audit.get('artifact',{}).get('sha256'))==c['apkSHA256']
   assert d.adb('emu','avd','name').splitlines()[0]=='TestWarehouseFixture_API30' and d.adb('shell','getprop','ro.build.version.sdk')=='30' and d.adb('shell','getenforce')=='Enforcing'
-  installed=d.adb('shell','pm','path',soak.PACKAGE);assert re.fullmatch(r'package:/data/app/[^\n]+',installed);assert d.adb('shell','sha256sum',installed[8:]).split()[0]==c['apkSHA256'];nav.owned_reverse_route(d.adb('reverse','--list'),18443);d.health(True);observe('before')
+  installed=d.adb('shell','pm','path',soak.PACKAGE);assert re.fullmatch(r'package:/data/app/[^\n]+',installed);assert d.adb('shell','sha256sum',installed[8:]).split()[0]==c['apkSHA256'];nav.owned_reverse_route(d.adb('reverse','--list'),18443);d.health();observe('before')
   d.cold();d.wait('Orders tab')
-  # Owned primary Orders avatar is observed as C; require its header bounds.
-  tree=d.wait('Refresh orders');nodes=[n for n in tree.iter('node') if n.get('content-desc')=='C' and n.get('clickable')=='true'];assert len(nodes)==1 and nodes[0].get('class')=='android.view.ViewGroup' and nodes[0].get('bounds')=='[616,75][693,138]'
+  # Exact admitted profile avatar and header bounds; never select a generic icon.
+  avatar='N' if case['case']=='customer-logout' else 'C';tree=d.wait('Refresh orders');nodes=[n for n in tree.iter('node') if n.get('content-desc')==avatar and n.get('clickable')=='true'];assert len(nodes)==1 and nodes[0].get('class')=='android.view.ViewGroup' and nodes[0].get('bounds')=='[616,75][693,138]'
   d.adb('shell','input','tap','654','106')
   tree=d.wait('View profile for '+case['profileName']);d.adb('shell','input','tap',*map(str,auth.point(tree,'View profile for '+case['profileName'])))
   for _ in range(6):

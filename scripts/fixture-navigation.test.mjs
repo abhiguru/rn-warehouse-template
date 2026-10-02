@@ -58,3 +58,16 @@ test('ordinary logout revokes only its matched native session and preserves unre
   assert.throws(()=>navigationAfter(config,before(),before()));
   assert.throws(()=>navigationAfter(config,before(),{...before(),nativeSessionPresent:false,otherAuthHash:'changed'}));
 });
+
+// Customer logout is a separate role-specific case, never an administrator rerun.
+test('reserved customer logout binds its role and phone and revokes only its session', () => {
+ const config={...c(),case:'customer-logout',profileName:'New customer'};
+ const snapshot={...before(),profile:{...before().profile,name:'New customer',role:'customer'}};
+ navigationBefore(config,snapshot);
+ assert.match(navigationSnapshotSQL(config),/mobile='919888888874'/);
+ navigationAfter(config,snapshot,{...snapshot,nativeSessionPresent:false});
+ assert.throws(()=>navigationBefore(config,{...snapshot,profile:{...snapshot.profile,role:'admin'}}));
+ assert.throws(()=>navigationConfig({...config,profileName:'Core Demo Administrator'}));
+ assert.throws(()=>navigationAfter(config,snapshot,snapshot));
+ assert.throws(()=>navigationAfter(config,snapshot,{...snapshot,nativeSessionPresent:false,businessHash:'changed'}));
+});
