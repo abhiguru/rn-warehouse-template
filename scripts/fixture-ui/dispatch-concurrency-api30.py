@@ -8,7 +8,7 @@ from dispatch_case_controls import owned_reverse_route,submission_point
 spec=importlib.util.spec_from_file_location('normal',Path(__file__).with_name('normal-dispatch-api30.py'));normal=importlib.util.module_from_spec(spec);spec.loader.exec_module(normal)
 os.umask(0o077)
 def main(path,phase):
-    assert phase in {'prepare','submit'};case=config(json.loads(normal.soak.private(path).read_text()));c,i=normal.soak.config(case['soakConfig']);deadline=datetime.datetime.fromisoformat(case['deadlineUTC'].replace('Z','+00:00')).timestamp();assert 0<deadline-time.time()<=600
+    assert phase in {'prepare','submit','cleanup'};case=config(json.loads(normal.soak.private(path).read_text()));c,i=normal.soak.config(case['soakConfig']);deadline=datetime.datetime.fromisoformat(case['deadlineUTC'].replace('Z','+00:00')).timestamp();assert 0<deadline-time.time()<=600
     fd=int(os.environ['WAREHOUSE_DISPATCH_CONCURRENCY_ACTOR_FD']);assert fd>=3;lock=Path(path).parent/'fixture-session-actor.lock';a=lock.lstat();b=os.fstat(fd);assert a.st_uid==os.getuid() and not lock.is_symlink() and a.st_mode&0o077==0 and (a.st_ino,a.st_dev)==(b.st_ino,b.st_dev)
     class Bounded(normal.Draft):
         def adb(self,*args):assert time.time()<deadline;return super().adb(*args)
@@ -17,13 +17,21 @@ def main(path,phase):
     else:normal.soak.private(e,True)
     d.e=e;d.file=e/'result.json'
     if phase=='prepare':d.state.update(status='RUNNING',submissionAttempts=0,itemSaveAttempts=0,otpRequests=0,prepared=False)
-    else:d.state=json.loads(normal.soak.private(d.file).read_text());assert d.state['prepared'] and d.state['submissionAttempts']==0 and d.state['status']=='PREPARED'
+    else:d.state=json.loads(normal.soak.private(d.file).read_text());assert d.state['prepared'];assert (phase=='submit' and d.state['submissionAttempts']==0 and d.state['status']=='PREPARED') or (phase=='cleanup' and d.state['submissionAttempts']==1 and d.state['status']=='NATIVE_ERROR_OBSERVED')
     d.save()
     try:
         assert i['serial']=='emulator-5556' and d.adb('emu','avd','name').splitlines()[0]=='TestWarehouseFixture_API30';assert d.adb('shell','getprop','ro.build.version.sdk')=='30';assert d.adb('shell','getenforce')=='Enforcing'
         apk=d.adb('shell','pm','path',normal.soak.PACKAGE);assert re.fullmatch(r'package:/data/app/[^\n]+',apk);assert d.adb('shell','sha256sum',apk[8:]).split()[0]==case['artifactSHA256'];owned_reverse_route(d.adb('reverse','--list'),18443);d.health(True)
         audit=json.loads(normal.soak.private(case['artifactAudit']).read_text());assert audit['status']=='PASS' and audit.get('sha256',audit.get('artifact',{}).get('sha256'))==case['artifactSHA256']
-        if phase=='prepare':
+        if phase=='cleanup':
+            baseline=Path(case['helperLog']).stat().st_size;assert baseline<=8388608
+            d.adb('shell','am','force-stop',normal.soak.PACKAGE);d.adb('shell','monkey','-p',normal.soak.PACKAGE,'-c','android.intent.category.LAUNCHER','1');d.wait('Orders tab');d.tap('Refresh orders');end=time.monotonic()+25
+            while True:
+                raw=Path(case['helperLog']).read_bytes();assert baseline<=len(raw)<=8388608;events=[json.loads(line) for line in raw[baseline:].decode().splitlines() if line]
+                if any(x.get('event')=='complete' and x.get('path')=='/rest/v1/rpc/get_orders_list' and x.get('status')==200 for x in events):break
+                assert time.monotonic()<end;time.sleep(.2)
+            d.archive('race-normal-cold-orders');d.state.update(status='COLD_READ_PASS',normalRouteColdOrders200=True)
+        elif phase=='prepare':
             d.adb('shell','am','force-stop',normal.soak.PACKAGE);d.adb('shell','monkey','-p',normal.soak.PACKAGE,'-c','android.intent.category.LAUNCHER','1');d.wait('Orders tab')
             d.adb('shell','am','start','-W','-a','android.intent.action.VIEW','-d','warehouse-fixture://dispatch-form/step1','-p',normal.soak.PACKAGE)
             d.fill('Dispatch number',case['record']);d.tap('Select customer...');d.fill('Search customers...','Backend Test Customer A');d.tap('Backend Test Customer A',button=True);d.fill('Vehicle registration','TEST FIXTURE');d.wait('New customer');d.tap('Go to Items step');d.tap('Select GR No');prefix,digits=grn_search_controls(case['sourceReceipt']);d.tap(prefix)
