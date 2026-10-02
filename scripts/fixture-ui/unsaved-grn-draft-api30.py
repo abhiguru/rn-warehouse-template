@@ -37,8 +37,8 @@ def main(path):
  try:
   assert d.adb('emu','avd','name').splitlines()[0]=='TestWarehouseFixture_API30';assert d.adb('shell','getprop','ro.build.version.sdk')=='30';assert d.adb('shell','getenforce')=='Enforcing'
   p=d.adb('shell','pm','path',nav.soak.PACKAGE);assert re.fullmatch(r'package:/data/app/[^\n]+',p);assert d.adb('shell','sha256sum',p[8:]).split()[0]==c['artifactSHA256'];nav.owned_reverse_route(d.adb('reverse','--list'),18443);d.health(True);observe('before');d.cold();d.wait('Orders tab')
-  open_route('customer-form/step1');tree=d.wait('Enter receipt number');d.adb('shell','input','tap',*map(str,grn_number_point(tree,c['expectedGeneratedNumber'])))
-  fields=[n for n in d.snapshot().iter('node') if n.get('class')=='android.widget.EditText' and n.get('focused')=='true'];assert len(fields)==1 and fields[0].get('text','') in ['', 'Enter receipt number'],'Do not overwrite an existing draft'
+  open_route('grn-form/step1');tree=d.wait('Enter receipt number');d.adb('shell','input','tap',*map(str,grn_number_point(tree,c['expectedGeneratedNumber'])))
+  fields=[n for n in d.snapshot().iter('node') if n.get('class')=='android.widget.EditText' and n.get('focused')=='true'];assert len(fields)==1 and fields[0].get('text','')==c['expectedGeneratedNumber'],'Do not overwrite an existing draft'
   d.adb('shell','input','keyevent','123')
   for _ in c['expectedGeneratedNumber']:d.adb('shell','input','keyevent','67')
   d.adb('shell','input','text',c['draftMarker']);draft_present()
