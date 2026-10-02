@@ -93,10 +93,21 @@ export function customerCompatibilityMode(c) {
  }
  return enabled;
 }
+export function customerOrdersSelectionRaceMode(c){
+ if(Object.hasOwn(c,'reservedCustomerOrdersSelectionRace'))assert.equal(typeof c.reservedCustomerOrdersSelectionRace,'boolean');
+ const enabled=c.reservedCustomerOrdersSelectionRace===true;
+ if(enabled){
+  assert.equal(c.case,'orders-selection-response-race');assert.equal(c.kind,'native-orders-selection-response-race');
+  assert.equal(c.profileId,'947136fa-997b-4a83-819d-1b8bd3ecba68');assert.equal(c.profileName,'New customer');
+  assert.equal(c.origin,'https://backend-core.example.test');assert.equal(c.instanceId,'b0ec3933-5258-4bd5-87f4-d57b13a78971');assert.equal(c.ordersReadDelayMs,5000);
+  assert.equal(c.artifactSHA256,'08271dada3bf90ed6912db71c0e08f95487a906d12a765bcaa706338bdf12fb7');
+ }
+ return enabled;
+}
 function customerReadMode(c) {
   const lifecycle=customerLifecycleMode(c),pdf=customerPDFMode(c),offline=customerOfflineMode(c),denial=customerReceiptDenialMode(c);
-  const late=customerLateDiscoveryMode(c),discovery=customerDiscoveryMode(c),cancel=customerCancelSwitchMode(c),failure=customerDiscoveryFailureMode(c),reciprocal=reciprocalReceiptDenialMode(c),invoiceDenial=customerInvoiceDenialMode(c),compatibility=customerCompatibilityMode(c);
-  assert.ok([lifecycle,pdf,offline,denial,late,discovery,cancel,failure,reciprocal,invoiceDenial,compatibility].filter(Boolean).length<=1,'ONE_RESERVED_CUSTOMER_READ_MODE');return lifecycle||pdf||offline||denial||late||discovery||cancel||failure||reciprocal||invoiceDenial||compatibility;
+  const late=customerLateDiscoveryMode(c),discovery=customerDiscoveryMode(c),cancel=customerCancelSwitchMode(c),failure=customerDiscoveryFailureMode(c),reciprocal=reciprocalReceiptDenialMode(c),invoiceDenial=customerInvoiceDenialMode(c),compatibility=customerCompatibilityMode(c),ordersRace=customerOrdersSelectionRaceMode(c);
+  assert.ok([lifecycle,pdf,offline,denial,late,discovery,cancel,failure,reciprocal,invoiceDenial,compatibility,ordersRace].filter(Boolean).length<=1,'ONE_RESERVED_CUSTOMER_READ_MODE');return lifecycle||pdf||offline||denial||late||discovery||cancel||failure||reciprocal||invoiceDenial||compatibility||ordersRace;
 }
 export function customerDiscoveryFailureMode(c) {
   if(Object.hasOwn(c,'reservedCustomerDiscoveryFailure'))assert.equal(typeof c.reservedCustomerDiscoveryFailure,'boolean');
@@ -176,7 +187,7 @@ export function unsavedDispatchDraftMode(c){
 export function navigationConfig(c) {
   const customerLifecycle=customerReadMode(c);unsavedCustomerDraftMode(c);unsavedInvoiceDraftMode(c);unsavedGRNDraftMode(c);unsavedDispatchDraftMode(c);
   assert.equal(c.scope, 'isolated-fictional-navigation-case');
-  assert.ok(['offline-orders', 'same-server', 'cancel-switch', 'confirm-switch', 'switch-back', 'malformed-server', 'cold-lifecycle', 'ordinary-logout', 'customer-logout', 'staff-logout', 'supervisor-reads', 'supervisor-logout','unsaved-customer-draft-cancel','unsaved-invoice-draft-cancel','unsaved-grn-draft-cancel','unsaved-dispatch-draft-cancel'].includes(c.case));
+  assert.ok(['offline-orders', 'same-server', 'cancel-switch', 'confirm-switch', 'switch-back', 'malformed-server', 'cold-lifecycle', 'ordinary-logout', 'customer-logout', 'staff-logout', 'supervisor-reads', 'supervisor-logout','unsaved-customer-draft-cancel','unsaved-invoice-draft-cancel','unsaved-grn-draft-cancel','unsaved-dispatch-draft-cancel','orders-selection-response-race'].includes(c.case));
   for (const name of ['backendCheckout', 'backendState', 'soakConfig', 'artifactAudit', 'caseDirectory'])
     assert.ok(isAbsolute(c[name]), 'ABSOLUTE_CASE_PATH_REQUIRED');
   for (const name of ['instanceId', 'profileId', 'sessionId']) assert.match(c[name], uuid);
