@@ -468,3 +468,28 @@ Private evidence: `vm-campaign-20261001/realtime-isolation0109-01/`, including
 No retry, automatic rollback, quota reset or additional native login occurred.
 This result does not complete the remaining staff, business, switching or final
 soak acceptance gates.
+
+### Ordinary B logout, rejection and native denied login
+
+After the receipt, invoice, private-document and reciprocal Realtime dependencies
+passed, the existing B native session was signed out through the normal UI.
+Frozen tooling `22c125e` verified the exact APK, owned API30, current normal
+helper, supported profile controls, one confirmed sign-out, two cold launches
+requiring login, persisted public server selection and independent SQL showing
+only the matched B session removed. Evidence: `native-b-logout0109-01/`.
+
+The normal administrator `operator_review_enrollment` API then rejected B using
+an evidence-bound closure of the completed dependency cases. One ordinary
+administrator OTP/login preceded one supported rejection. SQL confirmed B
+inactive/rejected, its assignment inactive and no B sessions, while unrelated
+authentication/business state and old administrator sessions remained unchanged.
+Only the new administrator session was logged out after reconciliation.
+Evidence: `ordinary-api-b-rejection0109-01/b-rejection-preservation.json`.
+
+Frozen tooling `794a197` applied the existing bounded source/helper/deadline
+guards to rejected-B authentication. One ordinary native B OTP attempt produced
+Verification Failed, followed by a cold launch requiring login. Independent
+before/after observations confirmed no new session, unchanged rejected profile,
+retained enrollment token/assignments, and unchanged unrelated authentication
+and business records. Evidence: `native-auth-rejected-b0109-01/`. No quotas,
+credentials or timestamps were reset; B remains rejected and logged out.
