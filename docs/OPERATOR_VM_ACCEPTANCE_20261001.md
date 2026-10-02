@@ -802,3 +802,26 @@ The source receipt fix still requires clean build/install/audit/native
 verification. Current source CI37056571885/c422f62 has lint/typechecks and
 redacted scan PASS, dependency FAIL, Android audit still running. No final
 readiness, soak or expiry-freeze claim is made.
+
+## Fresh receipt-fix candidate build2026100110 started
+
+Unused increasing identifier2026100110 is allocated to a clean detached
+checkout of application/tooling c422f62. Fresh `npm ci` PASS; all eight
+nondependency source gates PASS (application/setup tests, lint, typecheck, SDK
+compatibility, Expo Doctor, redacted scan and exact backend contract). The
+dependency audit remains independently BLOCKED; there is no waiver. Three
+certificate inputs are copied explicitly and bound; no application overlays.
+
+Further obsolete owned generated library build/.cxx outputs were privately
+archived and every content checksum/catalog verified before redundant copies
+were retired. Package sources, standalone APKs, current build0109 and all
+warehouse/native/evidence state remain preserved. Private library-preservation
+01/02 manifests retain these checks. The exact owned APK9 AVD was then stopped
+cleanly without logout/wipe/restore/reboot, and its complete stopped storage
+archive passed checksum/readable catalog.
+
+Private build0110 guard passed at25.2179GiB free with no competing emulator or
+Gradle actor, current helper discovery and binding integrity. SDK/certificate
+horizon/prebuild/native trust PASS; capped x86_64 release Gradle is RUNNING.
+The new APK is not yet audited or installed, and no native results transfer.
+Final readiness, soak and dedicated expiry appointment remain open.
