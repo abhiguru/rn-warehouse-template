@@ -898,3 +898,15 @@ image upload or lost-response acceptance, and it does not reopen exhausted
 receipt cases. APK9 acceptance remains historical and scoped; no result
 transfers. Dependency/readiness/native remaining gates, soak and dedicated
 expiry scheduling remain open.
+
+Latest published-head CI37060527407/dd0d59b has lint/type and redacted source/
+history scan PASS, dependency FAIL and Android audit still running when
+inspected. All260 setup/fixture tests PASS locally after native receipt
+acceptance (private `receipt-native-complete-setup-tests01.log`).
+
+Controlled native concurrency remains unexecuted. Backend review now contains
+a disabled-by-default five-second maximum matcher for one declared native
+dispatch/account/customer/lot/quantity, with two refusal tests PASS. Active
+helpers are unchanged; transport integration, genuinely fresh fixture,
+ordinary API competitor and native/SQL reconciliation are still required.
+No OTP, fixture provisioning or dispatch occurred in this preparation.
