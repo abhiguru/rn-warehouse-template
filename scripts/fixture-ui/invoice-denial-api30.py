@@ -27,7 +27,7 @@ def main(path):
   nav.owned_reverse_route(d.adb('reverse','--list'),18443);d.health(True);d.wait('Orders tab');observe('before')
   since=datetime.datetime.now(datetime.timezone.utc).isoformat();d.state['nativeTargetRequestAttempted']=True;d.save()
   d.adb('shell','am','start','-W','-a','android.intent.action.VIEW','-d','warehouse-fixture://invoice-details/'+c['targetInvoiceId'],'-p',nav.soak.PACKAGE)
-  d.wait('Error');d.tap('OK');d.wait('Invoice Not Found');d.wait('The requested invoice could not be found.')
+  tree=d.wait('Error');assert any(n.get('text')=='Error' for n in tree.iter('node'));buttons=[n for n in tree.iter('node') if n.get('text')=='OK' and n.get('enabled')=='true' and n.get('class')=='android.widget.Button'];assert len(buttons)==1;bounds=re.fullmatch(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]',buttons[0].get('bounds',''));assert bounds;x,y,xx,yy=map(int,bounds.groups());assert 0<=x<xx<=720 and 0<=y<yy<=1280;d.adb('shell','input','tap',str((x+xx)//2),str((y+yy)//2));d.wait('Invoice Not Found');d.wait('The requested invoice could not be found.')
   for _ in range(2):
    tree=d.snapshot();labels=nav.labels(tree);assert 'Invoice Not Found' in labels and 'The requested invoice could not be found.' in labels
    assert not any(denied_record in x or denied_customer in x for x in labels),'Other-customer invoice content exposed';assert not any('Share PDF' in x or 'Total amount:' in x or 'Breakdown tab' in x for x in labels),'Unauthorized document controls exposed';time.sleep(.5)
