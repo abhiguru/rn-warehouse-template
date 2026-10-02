@@ -189,3 +189,19 @@ The preserved process is awaiting a separately guarded continuation; no
 destination authentication or draft-clearing acceptance is claimed. Reviewed
 fixture consumers now match the installed helper contract, including its exact
 error event names. Eleven focused tests passed after the correction.
+
+APK10 confirmed customer-draft continuation 01 PASS (2026-10-02 UTC).
+Reviewed tooling 52e949c binds the original failed native result and separate
+independent reconciliation by SHA-256, and recomputes the full protected-state
+and credential-forwarding checks before OTP. It does not rewrite the original
+FAIL ledger, repeat confirmation or submit a business record. One ordinary
+destination administrator OTP/login succeeded. The customer form was clear in
+the preserved source-draft process before any cold launch; subsequent cold
+persistence and explicit authenticated destination Orders200 passed. Exactly
+one new fixed seven-day destination session and one verification were observed;
+existing sessions, unrelated authentication, business rows and stored bytes
+remained unchanged. Immutable stage and independent postcondition PASS:
+`stage-confirmed-customer-draft-destination-auth0110-01-evidence/ledger.json`.
+This proves the customer header-draft case only. GRN, dispatch, invoice and
+in-flight switching require their own native evidence. All 289 source tests
+passed before freezing this continuation.
