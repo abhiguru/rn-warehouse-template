@@ -1267,3 +1267,19 @@ reconciled; only the three newly issued API sessions were normally logged out.
 Original native supervisor session remains present. Private supervisor-realtime0110-final-proof.json
 SHA256 e2bdaf51267575027e0536a4df718b32986611fa6a7120b30263a91ffcadf96e. This does not establish reconnect/resubscription, reciprocal
 native B, literal staff, cart/queue processing or complete Realtime-group closure.
+
+
+APK2026100110 supervisor Realtime disconnect/reconnect PASS on final
+bounded attempt03, frozen toolinge1d427c. Two stable Android observations
+established no default network; exact fixture-UID TLS loopback rejection and
+removed reverse route established device disconnection. Owned rule, airplane,
+radios and reverse were restored to recorded values before a fresh B event.
+Native supervisor then refetched Orders200 without manual Refresh. Live wire
+controls preserved A-only versus supervisor/admin-both delivery. Both fresh
+0110RA/RB note updates reconciled against SQL/stored bytes. Three ordinary
+API logins were normally logged out only after acceptance; old authentication
+and the existing native supervisor session remained preserved. Original cart
+rows/notes remain in private snapshots, with no replay of0110A/B or0109 markers.
+Private supervisor-realtime-reconnect0110-final-proof.json SHA256 8c36869546b8741ac2ce5100394e7be8ebd087310a657279f05985127a0ee8df.
+This is emulator reconnect evidence, not physical network, reciprocal native B,
+literal staff or complete business/isolation acceptance.
