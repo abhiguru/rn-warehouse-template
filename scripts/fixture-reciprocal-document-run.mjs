@@ -1,3 +1,4 @@
+import {currentADocumentDenialMode} from './fixture-private-image-run.mjs';
 import assert from 'node:assert/strict';
 
 // Transport adapter must hold the actor lock and validate owned TLS, immutable
@@ -7,16 +8,17 @@ export async function runPrivateDocumentDenial(c,d,state){
  assert.equal(c.phone,'919888888872');
  assert.equal(c.profileId,'79764e1a-3aed-4cac-9a25-42ccdafb79ac');
  assert.equal(c.instanceId,'b0ec3933-5258-4bd5-87f4-d57b13a78971');
- assert.equal(c.artifactSHA256,'08271dada3bf90ed6912db71c0e08f95487a906d12a765bcaa706338bdf12fb7');
+ const current=currentADocumentDenialMode(c);
+ assert.equal(c.artifactSHA256,current?'a7df6781bdcd889eb9ccaa01ee0973890effd4d187bb6ac45f100284e1b04b69':'08271dada3bf90ed6912db71c0e08f95487a906d12a765bcaa706338bdf12fb7');
  assert.match(c.documentPath,/^grn\/a24c256a-bdf3-11f1-97aa-57de57b8fb69\/[a-f0-9-]{36}\.pdf$/);
  assert.equal(state.otpAttempted,false);
  const gate=async()=>{assert.ok(Date.now()<Date.parse(c.deadlineUTC));await d.verifyOwnership();};
- const preserved=(b,a)=>{for(const key of ['nativeBSessionPresent','businessHash','storageHash','otherAuthHash','profileHash','assignmentsHash','enrollmentHash'])assert.deepEqual(a[key],b[key],key+' changed');};
+ const preserved=(b,a)=>{for(const key of [current?'nativeASessionPresent':'nativeBSessionPresent','businessHash','storageHash','otherAuthHash','profileHash','assignmentsHash','enrollmentHash'])assert.deepEqual(a[key],b[key],key+' changed');};
  let access,refresh;
  await gate();const before=await d.snapshot();
  assert.deepEqual(before.profile,{id:c.profileId,role:'customer',active:true,status:'approved'});
  assert.ok(before.quota.hourly<5&&before.quota.daily<20);
- assert.equal(before.nativeBSessionPresent,true,'Existing native B session required');
+ assert.equal(before[current?'nativeASessionPresent':'nativeBSessionPresent'],true,'Existing matched native session required');
  await d.verifyDocument(c.documentPath);
  try{
   state.otpAttempted=true;await d.record({phase:'ONE_ORDINARY_A_API_OTP_ATTEMPT'});

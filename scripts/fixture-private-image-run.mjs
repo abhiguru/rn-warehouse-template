@@ -57,9 +57,21 @@ export function currentAImageDenialMode(c){
  if(Object.hasOwn(c,'currentAImageDenial'))assert.equal(typeof c.currentAImageDenial,'boolean');
  const enabled=c.currentAImageDenial===true;
  if(enabled){
+  assert.notEqual(c.currentADocumentDenial,true);
   assert.equal(c.scope,'isolated-fictional-a-private-image-denial');assert.equal(c.phone,'919888888872');assert.equal(c.profileId,'79764e1a-3aed-4cac-9a25-42ccdafb79ac');
   assert.equal(c.artifactSHA256,'a7df6781bdcd889eb9ccaa01ee0973890effd4d187bb6ac45f100284e1b04b69');
   assert.match(c.nativeSessionId,/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/);assert.equal(c.noAutomaticRetry,true);
  }
  return enabled;
 }
+
+export function currentADocumentDenialMode(c){
+ if(Object.hasOwn(c,'currentADocumentDenial'))assert.equal(typeof c.currentADocumentDenial,'boolean');
+ const enabled=c.currentADocumentDenial===true;
+ if(enabled){
+  assert.equal(c.scope,'isolated-fictional-a-private-document-denial');assert.notEqual(c.currentAImageDenial,true);
+  currentAImageDenialMode({...c,scope:'isolated-fictional-a-private-image-denial',currentADocumentDenial:false,currentAImageDenial:true});
+ }
+ return enabled;
+}
+export function currentAPrivateDenialMode(c){return currentAImageDenialMode(c)||currentADocumentDenialMode(c);}
