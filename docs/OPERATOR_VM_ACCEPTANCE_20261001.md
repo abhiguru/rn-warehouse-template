@@ -1688,3 +1688,29 @@ smoke published in backend57eef6b. Backend9c11104 CI has validation/migrations/
 contract/scans/Grafana PASS; isolated installation still runs. New-head CI must
 be reviewed independently. Mobile dependency/native/final acceptance gates
 remain open; do not transfer this isolated image result to installed services.
+
+
+## Unused tunnel dependency removal — 2026-10-03
+
+The mobile review now removes unused `@expo/ngrok` and its UUID override;
+standalone Expo/Gradle and owned ADB emulator routing do not use this package.
+`http-cache-semantics`, `cacheable-request` and ngrok binaries leave the lockfile.
+Expo54.0.37 and React Native0.81.5 are unchanged. No installed APK, service,
+network route, database, authentication quota or native attempt was changed.
+
+Clean npm installation, all347 setup tests, all323 application tests,
+SDK compatibility, typecheck, lint, source/history scan and Android JavaScript
+export PASS. Full audit decreases54→50 high findings; production remains26 high.
+Official npm/GitHub metadata still reports no patched node-forge1.4.0 or
+braces3.0.3 release. Dependency CI therefore remains an expected blocker,
+without any audit waiver or forced framework downgrade. This is one removed
+development dependency path, not complete dependency acceptance.
+
+Private evidence: mobile-dependency-followup-20261003-01 under the existing
+campaign root. Previous logs and failures remain preserved. Backend cache/staff
+head75a6fb1 has allseven exact CI jobs PASS. New backend migrations remain
+uninstalled on the preserved warehouses. Native staff acceptance requires both
+that installation and a newly audited APK; no previous artifact result transfers.
+The existing 16:27:13UTC deadline, exhausted native case limits, administrator
+natural reset16:53:18UTC, final readiness, new eight-hour soak and dedicated
+natural-expiry appointment remain unchanged. Full campaign completion is false.

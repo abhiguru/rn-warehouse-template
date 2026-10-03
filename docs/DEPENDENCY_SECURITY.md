@@ -7,6 +7,33 @@ pending mobile authentication/privacy fixes and backend follow-up commits
 are outside the immutable `v0.2.1-demo` tags. Local follow-up results do
 not establish merged-main CI or physical-device acceptance.
 
+## VM campaign follow-up — 2026-10-03
+
+The current SDK54 review candidate removes the unused `@expo/ngrok` development
+dependency and its scoped UUID override. Repository scripts, the standalone
+Expo/Gradle workflow and owned emulator routes do not use Expo tunnel mode.
+The lockfile therefore no longer includes `http-cache-semantics`,
+`cacheable-request`, or the ngrok binaries. This does not change any external
+network route or Test1 service. The existing Xcode UUID compatibility regression
+remains in place.
+
+A clean `npm ci` passes. The full `npm audit --json` changes from **54 to 50 high
+findings**; `npm audit --omit=dev --json` still reports **26 high findings**.
+The dependency gate remains **BLOCKED**. Official npm registry and GitHub
+advisory metadata rechecked on 2026-10-03 still list node-forge1.4.0 and
+braces3.0.3 as the latest releases, with no patched version for
+[GHSA-86w9-cpqp-85rv](https://github.com/advisories/GHSA-86w9-cpqp-85rv) or
+[GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm).
+Expo CLI/code-signing and Metro/Jest keep these packages in the supported tree.
+The proposed forced Expo44 downgrade is not a compatible security fix.
+No audit threshold, waiver or cryptographic implementation changed.
+
+SDK compatibility, setup regressions, all 323 application tests and typecheck
+pass for this removal. Lint, source/history scan and Android JavaScript export also pass. Exact source
+CI results are recorded in the dated VM acceptance ledger. No replacement APK is built or
+installed for this change; previous artifact/native results remain scoped to
+those original bytes. The zero-vulnerability result below is historical.
+
 ## Current result
 
 Native follow-up: explicitly depend on SDK 54's `expo-font ~14.0.12` so the
