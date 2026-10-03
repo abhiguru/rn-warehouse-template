@@ -1311,3 +1311,16 @@ hash and separately requires it to equal the native supervisor after submit.
 Older administrator/fault/concurrency guards are unchanged. Complete source
 validation310/310 passed. Final FXF962 remains unsubmitted and requires a new
 immutable stage after this correction; it is not an FXF961 retry.
+
+
+2026-10-03 final normal dispatch FXF962 native PASS, frozen tooling a1d7572.
+One seven-unit submission depleted the independently prepared source from
+7 to 0, with one header, one line, one matching cached success and out-of-stock
+true. Protected authentication, unrelated business and caches reconciled.
+A separate cold launch then returned normal-route authenticated Orders200;
+full source/destination state and stored bytes remained unchanged, with no
+OTP or business submission. FXF961 original native FAIL remains preserved;
+its separate exact-once reconciliation is not relabelled or replayed.
+Private normal-dispatch-pair0110-final-proof.json SHA256 a8d812b934fe367a6b1e64878ca484c75fddd6c85fea0c93ca31f4877afddc61.
+This closes this normal pair only, not concurrency, lost-response retries or
+complete dispatch-group acceptance. Final readiness/soak remain unstarted.
