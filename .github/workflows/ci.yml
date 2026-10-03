@@ -117,7 +117,17 @@ jobs:
           node-version: '22'
           cache: npm
       - run: npm ci
-      - run: npm audit --audit-level=high
+      - name: Verify dependency security backport regressions
+        run: node --test scripts/security-backports.test.mjs scripts/audit-dependencies.test.mjs
+      - name: Audit dependencies and verify every local security backport
+        run: npm run audit:dependencies -- --report-dir "$RUNNER_TEMP/dependency-security-report"
+      - name: Preserve raw audit and installed-source verification
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-security-report
+          path: ${{ runner.temp }}/dependency-security-report
+          if-no-files-found: warn
 
   secrets:
     name: Redacted source and history scan

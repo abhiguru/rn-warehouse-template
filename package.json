@@ -30,8 +30,10 @@
     "update-supabase-keys": "bash scripts/update-supabase-keys.sh",
     "doctor": "node scripts/doctor.mjs",
     "audit:artifact": "node scripts/artifact-audit.mjs",
-    "postinstall": "node scripts/patch-expo-metro.mjs && node scripts/patch-navigation-decoder.mjs",
-    "prepare": "husky"
+    "postinstall": "node scripts/patch-expo-metro.mjs && node scripts/patch-navigation-decoder.mjs && node scripts/patch-security-backports.mjs",
+    "prepare": "husky",
+    "audit:dependencies": "node scripts/audit-dependencies.mjs",
+    "verify:backports": "node scripts/patch-security-backports.mjs --verify"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",

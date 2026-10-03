@@ -1,5 +1,44 @@
 # Independent operator mobile handoff
 
+## Verified security backports and extended campaign — 3 October 2026
+
+The user explicitly extended the campaign beyond its original 48-hour deadline
+until blockers are removed and the full eight-hour soak starts. The separate
+native attempt limits and fixture protections remain in force.
+
+Mobile source now applies two local dependency repairs during npm postinstall.
+The node-forge 1.4.0 RSA parser change is byte-identical to upstream PR #1152,
+commit ceba34402e329f0365134f23fe19898756527d65 (still open/unmerged). The local
+braces 3.0.3 correction bounds parser and direct AST walker depth, including
+parentheses and cycles. Original package versions and lockfile identities stay
+visible. Every installed copy must match reviewed original/patched checksums;
+unexpected versions, source changes and symlink targets are refused before any
+patch writes.
+
+The user specifically approved replacing the raw-only npm audit CI gate with
+source-verified backport evaluation. `npm run audit:dependencies` retains the
+raw npm report: 50 high findings remain in published-package metadata. The
+approved gate reports PASS_WITH_VERIFIED_BACKPORTS only when all high/critical
+paths resolve to the two repaired advisories and every affected installed copy
+is verified. It rejects unknown advisories, changed ranges, missing patches,
+unverified copies, unresolved graph cycles, inconsistent counts and audit errors.
+CI retains both raw report and source-verification artifacts. This is local
+backport acceptance, not a claim that upstream published patched releases.
+
+Security regressions reproduce the original defects and pass after patching.
+Valid native PKCS1/PSS signatures and normal brace/micromatch behavior pass.
+Clean installation, 360 setup tests, 323 application tests, SDK compatibility,
+typecheck, lint, source/history scan and standalone Android JS export PASS.
+The first malformed RSA fixture used the wrong padding API; its failed baseline
+is preserved beside the corrected baseline and passing patched regression.
+No new fixture APK or native result is claimed by these source checks.
+
+Backend staff/cache source 75a6fb1 has all seven exact CI jobs PASS. Mobile 5218899
+(the prior removal of unused tunnel tooling) finished CI with Android debug
+artifact audit, lint/types/tests and scans PASS, dependencies FAIL. That earlier
+result remains historical and does not establish CI for these new backports.
+Current private evidence is extension-20261003-01 under the campaign root.
+
 ## Approved staff GRN policy, 3 October2026
 
 The operator chose staff access to view, create and edit GRNs, with deletion
