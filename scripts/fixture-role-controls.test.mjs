@@ -38,3 +38,13 @@ test('role observer is bounded read-only SQL with fixed identity and no credenti
  const observed=roleSnapshot(c,{WAREHOUSE_PROJECT_NAME:'owned',POSTGRES_PASSWORD:'PRIVATE_SENTINEL'},(program,args,options)=>{assert.equal(program,'docker');assert.equal(options.timeout,15000);assert.equal(options.maxBuffer,1048576);assert.ok(!JSON.stringify(args).includes('PRIVATE_SENTINEL'));assert.ok(!options.input.includes('PRIVATE_SENTINEL'));return {status:0,stdout:JSON.stringify(b)};});assert.deepEqual(observed,b);
  assert.throws(()=>roleSnapshot(c,{WAREHOUSE_PROJECT_NAME:'owned'},()=>({status:1,stdout:'PRIVATE_SENTINEL'})),/Owned read-only role snapshot failed/);
 });
+
+test('current staff-control preparation is reversible and requires exact APK10 scope',()=>{
+ const config={...c,action:'prepare-supervisor-staff',currentStaffControls:true,noAutomaticRetry:true,artifactSHA256:'a7df6781bdcd889eb9ccaa01ee0973890effd4d187bb6ac45f100284e1b04b69'};
+ const before={...b,target:{...b.target,role:'supervisor'}};
+ const after={...before,target:{...before.target,role:'staff'},adminOTPs:before.adminOTPs+1};
+ roleAfter(config,before,after);assert.deepEqual(rolePreparation({...config,action:'restore-staff-supervisor'}),{before:'staff',after:'supervisor'});
+ roleAfter({...config,action:'restore-staff-supervisor'},after,{...after,target:before.target,adminOTPs:after.adminOTPs+1});
+ for(const patch of [{currentStaffControls:false},{artifactSHA256:'f'.repeat(64)},{noAutomaticRetry:false},{phone:'919888888873'}])assert.throws(()=>rolePreparation({...config,...patch}));
+ assert.throws(()=>roleBefore(config,{...before,targetSessions:[record('22222222-2222-2222-2222-222222222222')]}));
+});
