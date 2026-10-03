@@ -13,10 +13,10 @@ def main(path):
  denied_customer='Backend Test Customer A' if reciprocal else 'Backend Test Customer B'
  denied_record='FXC701' if reciprocal else 'FXC702'
  bounded=c.get('genuineCustomerAReceiptDenial') is True
- deadline=None
+ campaign_deadline=None
  if bounded:
-  deadline=datetime.datetime.fromisoformat(c['deadlineUTC'].replace('Z','+00:00')).timestamp();assert 0<deadline-time.time()<=600
-  campaign=json.loads(nav.soak.private(c['campaignFile']).read_text());assert campaign['deadline']==c['campaignDeadlineUTC'];assert deadline<=datetime.datetime.fromisoformat(campaign['deadline'].replace('Z','+00:00')).timestamp()
+  campaign_deadline=datetime.datetime.fromisoformat(c['deadlineUTC'].replace('Z','+00:00')).timestamp();assert 0<campaign_deadline-time.time()<=600
+  campaign=json.loads(nav.soak.private(c['campaignFile']).read_text());assert campaign['deadline']==c['campaignDeadlineUTC'];assert campaign_deadline<=datetime.datetime.fromisoformat(campaign['deadline'].replace('Z','+00:00')).timestamp()
  cfg,i=nav.soak.config(c['soakConfig']);assert c['artifactSHA256']==cfg['apkSHA256'];assert i['serial']=='emulator-5556'
  names=['fixture-receipt-denial-observe.mjs','fixture-receipt-denial-controls.mjs','fixture-navigation-guards.mjs','fixture-session-guards.mjs','fixture-ui/receipt-denial-api30.py','fixture-ui/navigation-api30.py','fixture-ui/navigation_controls.py','fixture-ui/soak-api30.py','fixture-ui/dispatch_case_controls.py','fixture-ui/fixture_observation.py','fixture-ui/emulator_offline_network.py','fixture-ui/selection_start_controls.py']
  assert all(c['toolingSHA256'].get(n)==digest(scripts/n) for n in names)
@@ -24,7 +24,7 @@ def main(path):
  fd=os.open(Path(path).parent/'fixture-session-actor.lock',os.O_RDWR|os.O_NOFOLLOW);fcntl.flock(fd,fcntl.LOCK_EX|fcntl.LOCK_NB)
  class BoundedNavigation(nav.Navigation):
   def adb(self,*args):
-   if bounded:assert time.time()<deadline,'Native isolation deadline'
+   if bounded:assert time.time()<campaign_deadline,'Native isolation deadline'
    return super().adb(*args)
  e=Path(c['caseDirectory']);assert not e.exists();e.mkdir(mode=0o700);d=BoundedNavigation(cfg,i,'unused',0);d.e=e;d.file=e/'receipt-denial-result.json';d.state.update(phases=[],nativeTargetRequestAttempted=False);d.save()
  def observe(phase,since=None):

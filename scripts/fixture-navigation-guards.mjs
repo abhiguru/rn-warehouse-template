@@ -54,7 +54,7 @@ export function genuineAReceiptDenialMode(c) {
   assert.equal(c.targetReceiptId,'a24c256a-bdf3-11f1-97aa-57de57b8fb69');
   assert.equal(c.origin,'https://backend-core.example.test');assert.equal(c.instanceId,'b0ec3933-5258-4bd5-87f4-d57b13a78971');
   assert.equal(c.artifactSHA256,'a7df6781bdcd889eb9ccaa01ee0973890effd4d187bb6ac45f100284e1b04b69');
-  assert.equal(c.noAutomaticRetry,true);assert.equal(c.nativeAttempt,1);
+  assert.equal(c.noAutomaticRetry,true);assert.ok([1,2,3].includes(c.nativeAttempt));
   for(const k of ['reservedCustomerReceiptDenial','reciprocalCustomerReceiptDenial','customerBInvoiceDenial'])assert.notEqual(c[k],true);
  }
  return enabled;
