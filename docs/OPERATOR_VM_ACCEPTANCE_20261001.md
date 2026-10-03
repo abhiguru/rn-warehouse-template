@@ -1178,3 +1178,18 @@ path completed the authorized cleanup. Current core confirmread14 controller
 is consumed (all subsequent reads normal); switch observe08/fault renew04 are
 unchanged and monitor26 covers current units. App now runs on primary with its
 existing supervisor session. No restored archive, timestamps or quotas changed.
+
+
+Current APK2026100110 supervisor reads PASS on final authorized attempt03.
+Frozen tooling28ce721, exact installed APK SHA256
+a7df6781bdcd889eb9ccaa01ee0973890effd4d187bb6ac45f100284e1b04b69.
+Actual native cold Orders200 and Queue200 passed, with visible Create GRN,
+Create Dispatch and Create Invoice controls. No business submission or OTP.
+Independent before/after navigation SQL snapshots matched exactly, including
+profile, business/storage metadata hash, other authentication hash and OTP count;
+matched existing native session remained present. This observer does not hash
+stored-object bytes and does not establish business write permissions, queue
+processing, reciprocal isolation or Realtime. Prior attempt01 FAIL and APK9
+attempt02 PASS remain preserved separately; no older result was transferred.
+Private supervisor-reads0110-final-proof.json SHA256 8d37f054932aa123802b9f5e2a86fe266f9b65e056d84ff89e7605994b07823b.
+Immutable stage-supervisor-read-0110-v3-evidence ledger and checks passed.
