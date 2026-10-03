@@ -10,3 +10,12 @@ test('invoice-only continuation requires genuine reconciled depleted fixture and
  assert.throws(()=>bInvoiceCompletionBefore(config,{...snapshot,invoices:[{id:'already-saved'}]},prior));
  assert.throws(()=>bInvoiceCompletionBefore(config,{...snapshot,receipts:[{...snapshot.receipts[0],customer_id:'other-customer'}]},prior));
 });
+
+test('refused read-only preview removes only its own new session without an invoice write',async()=>{
+ const {completeBInvoiceFixture}=await import('./fixture-b-invoice-completion.mjs');
+ const prior={status:'PASS',scope:'independent actual post-failure committed dispatch reconciliation; original stage FAIL retained',writeReplayed:false,invoiceCount:0,stock:0,outOfStock:true,receiptId:'grn',dispatchId:'dispatch'};
+ const before={adminActive:true,adminRole:'admin',quota:{hourly:1,daily:17},verifiedOTPs:17,adminSessions:[{id:'failed-old',hash:'preserved'}],adminStaticHash:'profile',unrelatedRowsHash:'business',unrelatedAuthHash:'other-auth',storageHash:'bytes',authHash:'auth',receipts:[{id:'grn',gr_no:c.receiptNumber,customer_id:c.customerId,out_of_stock:true}],lots:[{id:'lot',stock:0,qty:1}],dispatches:[{id:'dispatch',disp_no:c.dispatchNumber,customer_id:c.customerId}],dispatchLines:[{id:'line',disp_qty:1,gr_trl_id:'lot',gr_id:'grn'}],dispatchMovements:[{}],movements:[],caches:[{},{}],invoices:[],invoiceLines:[]};
+ const authenticated={...before,verifiedOTPs:18,quota:{hourly:2,daily:18},adminSessions:[...before.adminSessions,{id:'new',hash:'new'}]};let snapshots=0,calls=0,logouts=0;const labels=[];const state={attempts:{authentication:0,receipt:0,dispatch:0,invoice:0}};
+ await assert.rejects(completeBInvoiceFixture({...c,continuationAfterReconciledDispatch:true},{verifyOwnership:async()=>{},verifyPriorState:async()=>{},snapshot:async()=>{snapshots++;return snapshots===1?before:snapshots===4?{...authenticated,adminSessions:before.adminSessions}:authenticated;},evidence:async label=>labels.push(label),record:async()=>{},authenticate:async()=>({sessionId:'new',access:'memory-only',refresh:'new-memory-only'}),preview:async()=>({success:false}),call:async()=>{calls++;assert.fail('Invoice after preview refusal');},logout:async token=>{assert.equal(token,'new-memory-only');logouts++;}},state,prior));
+ assert.equal(calls,0);assert.equal(logouts,1);assert.equal(state.attempts.invoice,0);assert.equal(state.previewRefusalCleanup,true);assert.ok(labels.includes('preview'));assert.ok(labels.includes('preview-refused-cleanup'));
+});
