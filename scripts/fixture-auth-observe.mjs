@@ -1,3 +1,4 @@
+import { currentAdministratorMode, currentAdministratorBefore, currentAdministratorAfter } from './fixture-current-admin-auth.mjs';
 import { verifyCampaignDeadline } from './fixture-campaign-deadline.mjs';
 // Ordinary native fixture authentication: read-only ownership/quota/session observations.
 import assert from 'node:assert/strict';
@@ -44,6 +45,7 @@ try {
   const customerReadOnly = customerReadOnlyMode(c,secondary,replacement);const genuineARead=genuineAReadOnlyMode(c,secondary,replacement);
   const disabled = disabledAuthenticationMode(c,secondary,replacement);
   const rejected = rejectedAuthenticationMode(c,secondary,replacement);
+  const adminAuth=currentAdministratorMode(c,secondary,replacement);
   const staffAuth=currentStaffAuthenticationMode(c,secondary,replacement);const denied = disabled || rejected;const bApproved=approvedBAuthenticationMode(c,secondary,replacement);const aApproved=approvedAAuthenticationMode(c,secondary,replacement);
   assert.ok(['authenticated','pending'].includes(c.expected) || denied, 'EXPLICIT_AUTH_MODE_REQUIRED');
   if (Object.hasOwn(c,'replacementFixture')) assert.equal(typeof c.replacementFixture,'boolean');
@@ -120,6 +122,7 @@ COMMIT;`;
     if (phase === 'before') {
       if(bApproved)approvedBAuthenticationBefore(c,snapshot);
       if(staffAuth)currentStaffAuthenticationBefore(c,snapshot);
+      if(adminAuth)currentAdministratorBefore(c,snapshot);
       if(aApproved)approvedAAuthenticationBefore(c,snapshot);
       if(draftAuth)confirmedDraftAuthBefore(c,snapshot);
       assert.ok((snapshot.quota?.hourly ?? 0)<5 && (snapshot.quota?.daily ?? 0)<20,'ORDINARY_AUTH_QUOTA_EXHAUSTED');
@@ -127,6 +130,7 @@ COMMIT;`;
       const before = privateJSON(resolve(c.caseDirectory,'auth-before.json')).snapshot;
       if(bApproved)approvedBAuthenticationAfter(c,before,snapshot);
       if(staffAuth)currentStaffAuthenticationAfter(c,before,snapshot);
+      if(adminAuth)currentAdministratorAfter(c,before,snapshot);
       if(aApproved)approvedAAuthenticationAfter(c,before,snapshot);
       if(draftAuth)confirmedDraftAuthAfter(c,before,snapshot);
       assert.equal(snapshot.businessHash,before.businessHash,'AUTH_CHANGED_BUSINESS_DATA');

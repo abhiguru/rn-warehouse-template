@@ -78,7 +78,7 @@ def main(path):
     case=json.loads(soak.private(path).read_text());ui=json.loads(soak.private(case['soakConfig']).read_text())
     scripts=Path(__file__).parent.parent
     draft_auth=case.get('confirmedDraftDestinationAuthentication') is True
-    bounded=draft_auth or case.get('currentStaffAuthentication') is True or case.get('customerAApprovedAuthentication') is True or case.get('customerBApprovedAuthentication') is True or case.get('rejectedAuthentication') is True;deadline=None
+    bounded=draft_auth or case.get('currentAdministratorAuthentication') is True or case.get('currentStaffAuthentication') is True or case.get('customerAApprovedAuthentication') is True or case.get('customerBApprovedAuthentication') is True or case.get('rejectedAuthentication') is True;deadline=None
     if bounded:
         deadline=datetime.datetime.fromisoformat(case['deadlineUTC'].replace('Z','+00:00')).timestamp();assert 0<deadline-time.time()<=600
         if 'extensionPlan' not in case:
@@ -91,6 +91,7 @@ def main(path):
         if draft_auth:names+=['fixture-ui/confirmed_draft_continuation_controls.py','fixture-ui/unsaved_dispatch_controls.py']
         if 'extensionPlan' in case:names+=['fixture-campaign-deadline.mjs']
         if case.get('currentStaffAuthentication') is True:names+=['fixture-current-candidate.mjs']
+        if case.get('currentAdministratorAuthentication') is True:names+=['fixture-current-candidate.mjs','fixture-current-admin-auth.mjs']
         assert set(case['toolingSHA256'])==set(names) and all(hashlib.sha256((scripts/n).read_bytes()).hexdigest()==case['toolingSHA256'][n] for n in names)
         helper=json.loads(soak.private(case['helperConfig']).read_text());assert hashlib.sha256(Path(case['helperConfig']).read_bytes()).hexdigest()==case['helperConfigSHA256'];assert helper['scope']=='isolated-fictional-fixture' and len(helper['services'])==1
         h=helper['services'][0];helper_kind='switch' if draft_auth and case['origin']=='https://backend-switch.example.test' else 'core';assert h['kind']==helper_kind and h['state']==ui['secondaryBackendState' if helper_kind=='switch' else 'backendState'] and h['owningCheckout']==ui['secondaryBackendCheckout' if helper_kind=='switch' else 'backendCheckout'] and h['ownerGuardSHA256']==case['fixtureGuardSHA256'] and h['socketPath']==case['otpSocket'] and h.get('ordersReadDelayMs',0)==0;assert ui['managedUnits'][helper_kind]=='warehouse-fixture-'+helper_kind+'-'+helper['runId']+'.service'
