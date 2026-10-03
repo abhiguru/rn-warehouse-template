@@ -1549,3 +1549,27 @@ audit, lint/types and scans PASS; dependencies FAIL. Back end0e046cb/run37096889
 contract/scans PASS, validationFAIL and dependent checks skipped. New heads need
 their own exact CI review. Final readiness/eight-hour soak and dedicated expiry
 appointment remain gated and unstarted.
+
+## Guarded B invoice PDF preparation tooling, 3 October 2026
+
+The genuine B invoice fixture has a separate ordinary supervisor API driver:
+`fixture-b-invoice-pdf-api.mjs`, `fixture-b-invoice-pdf-run.mjs`,
+`fixture-b-invoice-pdf-snapshot.mjs` and `fixture-ui/b-invoice-pdf-api30.py`.
+It binds the actual invoice preparation proof, exact APK10, helper/CA/source,
+released historical runner and campaign deadline. The wrapper holds both owned
+actor locks. Execution allows one ordinary login and one generation request,
+requires an absent target PDF, downloads only the exact returned same-origin
+signed object, and compares the actual downloaded bytes with the new stored
+file. Existing metadata, stored files, business/pricing rows, other accounts,
+assignments, enrollment and old sessions are protected. Only the new supervisor
+API session is normally logged out after complete reconciliation. Uncertain
+failure preserves an actual read-only snapshot without replay or cleanup.
+
+Source validation under documented Node22 passed343/343 fixture tests, lint
+(zero errors, existing warnings) and typecheck. An initial test-key parse error
+and full-suite failure under the VM's default Node18 remain in private evidence.
+Read-only prerequisite observer failures used `status` rather than the schema's
+`enrollment_status`; corrected observation proves active approved supervisor,
+ordinary-auth budget available and no target PDF. This tooling alone does not
+claim executed PDF generation, A-to-B PDF denial, native PDF acceptance, final
+freeze or workflow-group closure.
