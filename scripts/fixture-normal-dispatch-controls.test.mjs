@@ -9,3 +9,8 @@ test('committed stock, depletion flag, duplicate cache and unrelated state must 
  for(const change of [{sourceOutOfStock:true},{cacheCount:2},{stock:6},{unrelatedBusinessHash:'0'.repeat(64)}])assert.throws(()=>normalAfter(c,before,{...after,dispatch:{...after.dispatch,...change}},true));assert.throws(()=>normalAfter(c,before,{...after,unrelatedCacheHash:'0'.repeat(64)},true));
  const final={...c,record:'FXF902',quantity:7,expectedStock:7};const b={...before,dispatch:{...dispatch,stock:7}};const a={...after,dispatch:{...after.dispatch,quantity:7,stock:0,sourceOutOfStock:true}};normalAfter(final,b,a,true);assert.throws(()=>normalAfter(final,b,{...a,dispatch:{...a.dispatch,sourceOutOfStock:false}},true));
 });
+
+test('current supervisor normal dispatch is exact-artifact and disjoint from consumed records/fault cases',()=>{
+ const current={...c,currentSupervisorDispatch:true,artifactSHA256:'a7df6781bdcd889eb9ccaa01ee0973890effd4d187bb6ac45f100284e1b04b69',profileId:'947136fa-997b-4a83-819d-1b8bd3ecba68',profileName:'New customer',instanceId:'b0ec3933-5258-4bd5-87f4-d57b13a78971',sourceReceipt:'FXF960',record:'FXF961'};normalDispatch(current);normalDispatch({...current,record:'FXF962',quantity:7,expectedStock:7});
+ for(const change of [{record:'FXF901'},{record:'FXF421'},{sourceReceipt:'FXF900'},{artifactSHA256:'a'.repeat(64)},{profileName:'Core Demo Administrator'},{currentSupervisorDispatch:'true'}])assert.throws(()=>normalDispatch({...current,...change}));
+});

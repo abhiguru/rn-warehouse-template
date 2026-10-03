@@ -58,7 +58,10 @@ def main(path):
     c, inputs = soak.config(case['soakConfig'])
     assert case['backendCheckout'] == c['backendCheckout'] and case['backendState'] == c['backendState']
     assert case['artifactSHA256'] == c['apkSHA256']
-    assert case['sourceQuantity']==10 and case['quantity'] in {3,7} and case['record'] in {'FXF901','FXF902'}
+    assert case['sourceQuantity']==10 and case['quantity'] in {3,7}
+    if case.get('currentSupervisorDispatch') is True:
+        assert case['artifactSHA256']=='a7df6781bdcd889eb9ccaa01ee0973890effd4d187bb6ac45f100284e1b04b69' and case['record'] in {'FXF961','FXF962'}
+    else:assert case['record'] in {'FXF901','FXF902'}
     assert re.fullmatch(r'[A-Za-z0-9 -]{0,30}', case['sourcePackageMark'])
     driver = Draft(c, inputs, 'unused', 0)
     helper = str(Path(__file__).parent.parent / 'fixture-normal-dispatch-observe.mjs')
@@ -106,8 +109,8 @@ def main(path):
         driver.fill('Vehicle registration', 'TEST FIXTURE')
         # useDispatchForm populates the authenticated supervisor asynchronously.
         # Wait for that bound administrator instead of chasing a placeholder.
-        driver.state['lastAction'] = {'operation':'wait', 'control':'Core Demo Administrator'}; driver.save()
-        driver.wait('Core Demo Administrator')
+        driver.state['lastAction'] = {'operation':'wait', 'control':case['profileName']}; driver.save()
+        driver.wait(case['profileName'])
         driver.tap('Go to Items step')
         driver.tap('Select GR No')
         prefix, digits = grn_search_controls(case['sourceReceipt'])
