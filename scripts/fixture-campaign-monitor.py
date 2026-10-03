@@ -5,9 +5,9 @@ from pathlib import Path
 os.umask(0o077)
 
 MAX_STAGE_PLANS=256
-# Expanded frozen runtimes currently bind 7,848 unique files (~587 MB).
-# Hashes stream from disk; this finite cap covers the 256-plan campaign.
-MAX_BOUND_FILES=16384
+# The extended campaign retains old frozen inputs and adds clean build/upgrade
+# checkouts. Hashes stream from disk; keep a finite cap without dropping history.
+MAX_BOUND_FILES=32768
 
 def bounded_paths(paths,limit=MAX_STAGE_PLANS):
     result=sorted(paths)
