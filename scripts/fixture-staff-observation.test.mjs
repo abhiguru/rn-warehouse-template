@@ -8,3 +8,11 @@ test('literal staff requires exact artifact, identity and matched session rather
  for(const patch of [{artifactSHA256:'f'.repeat(64)},{case:'supervisor-reads'},{profileName:'Customer A'},{currentStaffControls:false},{nativeAttempt:4},{noAutomaticRetry:false}])assert.throws(()=>staffReadCase({...c,...patch}));
  assert.deepEqual(staffHTTP('"POST /rest/v1/rpc/get_orders_list?token=PRIVATE HTTP/1.1" 200'),{reads:1,failures:[]});
 });
+
+import { CURRENT_FIXTURE_SHA256, CURRENT_FIXTURE_BINDING } from './fixture-current-candidate.mjs';
+test('new staff candidate requires the exact installed source pair and preserves attempt caps',()=>{
+ const next={...c,artifactSHA256:CURRENT_FIXTURE_SHA256,candidateBinding:{...CURRENT_FIXTURE_BINDING},nativeAttempt:2};
+ staffReadCase(navigationConfig(next));
+ for(const patch of [{candidateBinding:undefined},{candidateBinding:{...CURRENT_FIXTURE_BINDING,versionCode:2026100312}},{candidateBinding:{...CURRENT_FIXTURE_BINDING,package:'in.gurucold.warehouse'}},{candidateBinding:{...CURRENT_FIXTURE_BINDING,backendSource:'f'.repeat(40)}},{artifactSHA256:'f'.repeat(64)},{nativeAttempt:4},{nativeAttempt:0},{origin:'https://pilot.example.com'},{profileId:'00000000-0000-4000-8000-000000000001'}])assert.throws(()=>staffReadCase({...next,...patch}));
+ assert.throws(()=>staffReadCase({...c,candidateBinding:CURRENT_FIXTURE_BINDING}));
+});

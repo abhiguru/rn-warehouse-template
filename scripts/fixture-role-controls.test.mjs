@@ -48,3 +48,12 @@ test('current staff-control preparation is reversible and requires exact APK10 s
  for(const patch of [{currentStaffControls:false},{artifactSHA256:'f'.repeat(64)},{noAutomaticRetry:false},{phone:'919888888873'}])assert.throws(()=>rolePreparation({...config,...patch}));
  assert.throws(()=>roleBefore(config,{...before,targetSessions:[record('22222222-2222-2222-2222-222222222222')]}));
 });
+
+import { CURRENT_FIXTURE_SHA256, CURRENT_FIXTURE_BINDING } from './fixture-current-candidate.mjs';
+test('current installed staff preparation retains logged-out state, quota and exact candidate guards',()=>{
+ const next={...c,action:'prepare-supervisor-staff',currentStaffControls:true,noAutomaticRetry:true,artifactSHA256:CURRENT_FIXTURE_SHA256,candidateBinding:{...CURRENT_FIXTURE_BINDING},origin:'https://backend-core.example.test',instanceId:'b0ec3933-5258-4bd5-87f4-d57b13a78971'};
+ const before={...b,target:{...b.target,role:'supervisor'}};
+ roleBefore(next,before);roleAfter(next,before,{...before,target:{...before.target,role:'staff'},adminOTPs:before.adminOTPs+1});
+ for(const patch of [{candidateBinding:undefined},{candidateBinding:{...CURRENT_FIXTURE_BINDING,package:'production'}},{noAutomaticRetry:false}])assert.throws(()=>rolePreparation({...next,...patch}));
+ assert.throws(()=>roleBefore(next,{...before,targetSessions:[record('22222222-2222-2222-2222-222222222222')]}));
+});

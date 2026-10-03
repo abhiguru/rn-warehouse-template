@@ -381,3 +381,13 @@ rejected/inactive. Admin daily count20: its natural reset16:53:18UTC is after th
 16:27:13UTC campaign deadline, so no more administrator OTP requests. No counter
 reset or blind old-session cleanup. Source339 fixture tests/lint PASS; final
 freeze/soak/expiry and full group closure remain unestablished.
+
+## Installed candidate and staff tooling continuation (3 October 2026)
+
+The owned primary now runs backend application `75a6fb1badeff39b727099d9d67f3c9e84a2cf12` after a consistent private backup. Source replacement preserved identity, credentials, 85 business/auth tables and 17 stored objects except the intended refresh-queue initialization. The original API30 emulator has standalone x86_64 APK2026100311 from mobile application `78fe59284cbd476bd7661d6ae5b0b8b189abb3c4`, SHA-256 `8649a9ea301248d5e314063cb7f567d641639fd2f8164df39b27ede993bce80b`; compiled audits and installed byte read-back passed with app storage preserved. Two failed pre-install controllers remain recorded. This establishes installation, while native workflow acceptance remains incomplete.
+
+Staff-only fixture tooling now admits that exact application/source pair through an explicit candidate binding. Legacy artifact admission remains available for preserved historical cases; wrong hashes, normal package names, changed source pairs, ARM architecture, identities and fourth native attempts are refused. Other capped workflow guards retain their prior admission rules. The role-preparation driver accepts a separately hash-bound, explicitly approved campaign extension while retaining the original campaign file, one-hour stage bound, source/ownership guards and normal authentication limits.
+
+All 365 setup regression tests and the source/history secret scan pass for these tooling changes. A read-only inventory confirmed the reserved account is currently an approved, logged-out supervisor; it must be changed through the normal administrator API before staff acceptance. Administrator and customer A daily/hourly windows have naturally elapsed; their effective budgets are available. No counters were reset and no OTP or session was issued by this inventory.
+
+Next steps remain guarded role preparation, ordinary native staff login and its remaining read attempts, corrected workflow drivers and specifically reopened capped cases, revocation, final readiness, the complete eight-hour soak, and the dedicated natural-refresh-expiry appointment. No soak has started.

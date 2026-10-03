@@ -1,3 +1,4 @@
+import { verifyCampaignDeadline } from './fixture-campaign-deadline.mjs';
 // One guarded normal administrator API login/role-change/logout. Tokens and OTP stay in memory.
 import assert from 'node:assert/strict';import{readFileSync,mkdirSync,writeFileSync,lstatSync,fstatSync,realpathSync}from'node:fs';import{resolve,dirname,isAbsolute}from'node:path';import{pathToFileURL,fileURLToPath}from'node:url';import{createHash}from'node:crypto';import{spawnSync}from'node:child_process';import{request}from'node:https';import{createConnection}from'node:net';
 import{roleSnapshot}from'./fixture-role-snapshot.mjs';
@@ -5,10 +6,10 @@ import{assertReleased,privateJSON}from'./fixture-session-guards.mjs';import{role
 process.umask(0o077);let dir,state,phase='SOURCE_GUARD';const save=()=>writeFileSync(resolve(dir,'role-preparation-result.json'),JSON.stringify(state,null,2)+'\n',{mode:0o600});
 try{
  const [path,mode]=process.argv.slice(2);assert.ok(['guard','execute'].includes(mode));const c=privateJSON(path);const roles=rolePreparation(c);assertReleased(c);const ui=privateJSON(c.soakConfig);
- const scripts=dirname(fileURLToPath(import.meta.url));const names=['fixture-role-prepare.mjs','fixture-role-controls.mjs','fixture-role-snapshot.mjs','fixture-session-guards.mjs','fixture-ui/role-prepare-api30.py'];
+ const scripts=dirname(fileURLToPath(import.meta.url));const names=['fixture-role-prepare.mjs','fixture-campaign-deadline.mjs','fixture-current-candidate.mjs','fixture-role-controls.mjs','fixture-role-snapshot.mjs','fixture-session-guards.mjs','fixture-ui/role-prepare-api30.py'];
  const digest=p=>createHash('sha256').update(readFileSync(p)).digest('hex');
  const deadline=Date.parse(c.deadlineUTC);const verifyBindings=()=>{
-  assert.ok(Number.isFinite(deadline)&&deadline>Date.now()&&deadline-Date.now()<=3600000);assert.ok(deadline<=Date.parse(c.campaignDeadlineUTC));assert.equal(privateJSON(c.campaignFile).deadline,c.campaignDeadlineUTC);
+  assert.ok(Number.isFinite(deadline)&&deadline>Date.now()&&deadline-Date.now()<=3600000);assert.ok(deadline<=Date.parse(c.campaignDeadlineUTC));verifyCampaignDeadline(c,privateJSON,digest);
   assert.equal(digest(resolve(ui.backendCheckout,'tests/operator-fixture.mjs')),c.fixtureGuardSHA256);assert.equal(digest(c.soakConfig),c.soakConfigSHA256);assert.equal(digest(c.helperConfig),c.helperConfigSHA256);
   assert.deepEqual(Object.keys(c.toolingSHA256).sort(),[...names].sort());for(const n of names)assert.equal(digest(resolve(scripts,n)),c.toolingSHA256[n]);
   const helper=privateJSON(c.helperConfig);assert.equal(helper.scope,'isolated-fictional-fixture');assert.equal(helper.services.length,1);const h=helper.services[0];assert.equal(h.kind,'core');assert.equal(h.state,ui.backendState);assert.equal(h.socketPath,c.otpSocket);assert.equal(h.ownerGuardSHA256,c.fixtureGuardSHA256);assert.equal(h.owningCheckout,ui.backendCheckout);assert.equal(h.ordersReadDelayMs??0,0);assert.equal(ui.managedUnits.core,'warehouse-fixture-core-'+helper.runId+'.service');
