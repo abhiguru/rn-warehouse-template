@@ -1193,3 +1193,14 @@ processing, reciprocal isolation or Realtime. Prior attempt01 FAIL and APK9
 attempt02 PASS remain preserved separately; no older result was transferred.
 Private supervisor-reads0110-final-proof.json SHA256 8d37f054932aa123802b9f5e2a86fe266f9b65e056d84ff89e7605994b07823b.
 Immutable stage-supervisor-read-0110-v3-evidence ledger and checks passed.
+
+
+APK2026100110 dispatch quantity rejection PASS on final permitted attempt03,
+frozen tooling1e9516e. Actual native quantities0 and21 against preserved FXF410
+stock20 kept Save dispatch item disabled. Zero item saves, submissions and OTPs.
+Independent protected SQL and stored-object byte hashes matched at before,
+after and final; normal-route authenticated cold Orders200 passed. FXQ991 stayed
+absent and stock20 unchanged. This does not establish valid dispatch writes,
+concurrency or lost-response acceptance. Previous attempt01 failure and APK9
+attempt02 pass remain separate. Private dispatch-quantity-rejection0110-final-proof.json
+SHA256 c904ec79dd7981d53d93528465040cc3809643a7aeeb32223e60f7266f11211e. No further quantity-case native rerun is authorized.
