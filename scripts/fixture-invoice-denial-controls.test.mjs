@@ -19,3 +19,11 @@ test('reciprocal receipt and invoice SQL bind the actual B phone with its B prof
  const reserved={...receipt,kind:'native-receipt-denial',reservedCustomerReceiptDenial:true,profileId:'947136fa-997b-4a83-819d-1b8bd3ecba68',profileName:'New customer',targetReceiptId:'a24c256a-bdf3-11f1-97aa-57de57b8fb69'};delete reserved.reciprocalCustomerReceiptDenial;
  assert.ok(navigationSnapshotSQL(reserved).includes("WHERE id='"+reserved.profileId+"' AND mobile='919888888874'"));
 });
+
+test('current genuine A invoice denial binds real B invoice, A phone and protected stored bytes/pricing',()=>{
+ const a={...c,kind:'native-genuine-a-invoice-denial',customerBInvoiceDenial:false,genuineCustomerAInvoiceDenial:true,profileId:'79764e1a-3aed-4cac-9a25-42ccdafb79ac',profileName:'Customer A',targetInvoiceId:'11111111-1111-4111-8111-111111111111',targetInvoiceNumber:20261031,artifactSHA256:'a7df6781bdcd889eb9ccaa01ee0973890effd4d187bb6ac45f100284e1b04b69',noAutomaticRetry:true,nativeAttempt:1};
+ invoiceDenialConfig(a);assert.match(navigationSnapshotSQL(a),/mobile='919888888872'/);const target={id:a.targetInvoiceId,number:20261031,customer:'Backend Test Customer B',nativeAssigned:false};invoiceDenialTarget(a,target);
+ const snapshot={profile:{id:a.profileId,name:a.profileName,role:'customer',active:true},nativeSessionPresent:true,otpCount:7,businessHash:'c'.repeat(64),otherAuthHash:'d'.repeat(64),storageHash:'e'.repeat(64),pricingHash:'f'.repeat(64)};invoiceDenialPreserved(a,{snapshot,target},{snapshot,target});
+ for(const patch of [{customerBInvoiceDenial:true},{profileId:c.profileId},{profileName:'New customer'},{artifactSHA256:c.artifactSHA256},{nativeAttempt:4},{noAutomaticRetry:false},{targetInvoiceNumber:20261010}])assert.throws(()=>invoiceDenialConfig({...a,...patch}));
+ assert.throws(()=>invoiceDenialTarget(a,{...target,nativeAssigned:true}));assert.throws(()=>invoiceDenialPreserved(a,{snapshot,target},{snapshot:{...snapshot,storageHash:'0'.repeat(64)},target}));assert.throws(()=>invoiceDenialPreserved(a,{snapshot,target},{snapshot:{...snapshot,pricingHash:'0'.repeat(64)},target}));
+});

@@ -45,6 +45,11 @@ export function customerReceiptDenialMode(c) {
   }
   return enabled;
 }
+export function genuineAInvoiceDenialMode(c){
+ if(Object.hasOwn(c,'genuineCustomerAInvoiceDenial'))assert.equal(typeof c.genuineCustomerAInvoiceDenial,'boolean');const enabled=c.genuineCustomerAInvoiceDenial===true;
+ if(enabled){assert.equal(c.case,'same-server');assert.equal(c.kind,'native-genuine-a-invoice-denial');assert.equal(c.profileId,'79764e1a-3aed-4cac-9a25-42ccdafb79ac');assert.equal(c.profileName,'Customer A');assert.match(c.targetInvoiceId,uuid);assert.equal(c.targetInvoiceNumber,20261031);assert.equal(c.origin,'https://backend-core.example.test');assert.equal(c.instanceId,'b0ec3933-5258-4bd5-87f4-d57b13a78971');assert.equal(c.artifactSHA256,'a7df6781bdcd889eb9ccaa01ee0973890effd4d187bb6ac45f100284e1b04b69');assert.equal(c.noAutomaticRetry,true);assert.ok([1,2,3].includes(c.nativeAttempt));for(const k of ['customerBInvoiceDenial','genuineCustomerAReceiptDenial','reservedCustomerReceiptDenial','reciprocalCustomerReceiptDenial','reservedCustomerPDF'])assert.notEqual(c[k],true);}
+ return enabled;
+}
 export function genuineAReceiptDenialMode(c) {
  if(Object.hasOwn(c,'genuineCustomerAReceiptDenial'))assert.equal(typeof c.genuineCustomerAReceiptDenial,'boolean');
  const enabled=c.genuineCustomerAReceiptDenial===true;
@@ -129,7 +134,7 @@ export function customerBGRNPDFMode(c){
  if(c.case==='customer-b-grn-pdf')assert.equal(enabled,true);return enabled;
 }
 function customerReadMode(c) {
-  const genuineA=genuineAReceiptDenialMode(c);const lifecycle=customerLifecycleMode(c),pdf=customerPDFMode(c),offline=customerOfflineMode(c),denial=customerReceiptDenialMode(c);
+  const genuineA=genuineAReceiptDenialMode(c)||genuineAInvoiceDenialMode(c);const lifecycle=customerLifecycleMode(c),pdf=customerPDFMode(c),offline=customerOfflineMode(c),denial=customerReceiptDenialMode(c);
   const late=customerLateDiscoveryMode(c),discovery=customerDiscoveryMode(c),cancel=customerCancelSwitchMode(c),failure=customerDiscoveryFailureMode(c),reciprocal=reciprocalReceiptDenialMode(c),invoiceDenial=customerInvoiceDenialMode(c),compatibility=customerCompatibilityMode(c),ordersRace=customerOrdersSelectionRaceMode(c),bImage=customerBImageReadMode(c),bPDF=customerBGRNPDFMode(c);
   assert.ok([genuineA,lifecycle,pdf,offline,denial,late,discovery,cancel,failure,reciprocal,invoiceDenial,compatibility,ordersRace,bImage,bPDF].filter(Boolean).length<=1,'ONE_RESERVED_CUSTOMER_READ_MODE');return genuineA||lifecycle||pdf||offline||denial||late||discovery||cancel||failure||reciprocal||invoiceDenial||compatibility||ordersRace||bImage||bPDF;
 }
@@ -231,7 +236,7 @@ export function navigationConfig(c) {
     assert.ok(isAbsolute(c[name]), 'ABSOLUTE_CASE_PATH_REQUIRED');
   for (const name of ['instanceId', 'profileId', 'sessionId']) assert.match(c[name], uuid);
   for (const name of ['artifactSHA256', 'fixtureGuardSHA256']) assert.match(c[name], hash);
-  assert.equal(c.profileName, genuineAReceiptDenialMode(c)||genuineALogoutMode(c) ? 'Customer A' : bLogout||reciprocalReceiptDenialMode(c)||customerInvoiceDenialMode(c)||customerBImageReadMode(c)||customerBGRNPDFMode(c) ? 'Customer B' : c.case === 'switch-back' ? 'Switch Demo Administrator' : customerLifecycle || ['customer-logout','staff-logout', 'staff-reads','supervisor-reads', 'supervisor-logout','unsaved-customer-draft-cancel','unsaved-invoice-draft-cancel','unsaved-grn-draft-cancel','unsaved-dispatch-draft-cancel'].includes(c.case) ? 'New customer' : 'Core Demo Administrator');
+  assert.equal(c.profileName, genuineAReceiptDenialMode(c)||genuineAInvoiceDenialMode(c)||genuineALogoutMode(c) ? 'Customer A' : bLogout||reciprocalReceiptDenialMode(c)||customerInvoiceDenialMode(c)||customerBImageReadMode(c)||customerBGRNPDFMode(c) ? 'Customer B' : c.case === 'switch-back' ? 'Switch Demo Administrator' : customerLifecycle || ['customer-logout','staff-logout', 'staff-reads','supervisor-reads', 'supervisor-logout','unsaved-customer-draft-cancel','unsaved-invoice-draft-cancel','unsaved-grn-draft-cancel','unsaved-dispatch-draft-cancel'].includes(c.case) ? 'New customer' : 'Core Demo Administrator');
   if (['staff-logout','staff-reads','supervisor-reads','supervisor-logout'].includes(c.case)) assert.equal(c.profileId, '947136fa-997b-4a83-819d-1b8bd3ecba68');
   return c;
 }
@@ -243,7 +248,7 @@ export function navigationSnapshotSQL(c) {
 SET LOCAL statement_timeout='10s';
 SELECT jsonb_build_object(
  'profile',(SELECT jsonb_build_object('id',id,'active',active,'role',role,'name',name${customerBLogoutMode(c) ? ",'enrollmentStatus',enrollment_status" : ''})
-   FROM public.user_profiles WHERE id='${c.profileId}' AND mobile='${genuineAReceiptDenialMode(c)||genuineALogoutMode(c) ? '919888888872' : customerBLogoutMode(c)||reciprocalReceiptDenialMode(c)||customerInvoiceDenialMode(c)||customerBImageReadMode(c)||customerBGRNPDFMode(c) ? '919888888873' : c.case === 'switch-back' ? '919888888881' : customerLifecycle || ['customer-logout','staff-logout', 'staff-reads','supervisor-reads', 'supervisor-logout','unsaved-customer-draft-cancel','unsaved-invoice-draft-cancel','unsaved-grn-draft-cancel','unsaved-dispatch-draft-cancel'].includes(c.case) ? '919888888874' : '919888888871'}'),
+   FROM public.user_profiles WHERE id='${c.profileId}' AND mobile='${genuineAReceiptDenialMode(c)||genuineAInvoiceDenialMode(c)||genuineALogoutMode(c) ? '919888888872' : customerBLogoutMode(c)||reciprocalReceiptDenialMode(c)||customerInvoiceDenialMode(c)||customerBImageReadMode(c)||customerBGRNPDFMode(c) ? '919888888873' : c.case === 'switch-back' ? '919888888881' : customerLifecycle || ['customer-logout','staff-logout', 'staff-reads','supervisor-reads', 'supervisor-logout','unsaved-customer-draft-cancel','unsaved-invoice-draft-cancel','unsaved-grn-draft-cancel','unsaved-dispatch-draft-cancel'].includes(c.case) ? '919888888874' : '919888888871'}'),
  'nativeSessionPresent',EXISTS(SELECT 1 FROM warehouse_security.refresh_sessions s
    JOIN public.user_profiles p ON p.auth_user_id=s.user_id
    WHERE p.id='${c.profileId}' AND s.id='${c.sessionId}' AND s.expires_at>now()),
