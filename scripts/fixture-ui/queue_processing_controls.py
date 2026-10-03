@@ -8,8 +8,10 @@ def queue_config(c):
  assert c['customerId']=='a823809c-bdb6-11f1-b1be-47a66d90b06d'
  assert c['customerName']=='Backend Test Customer A'
  assert c['sourceReceipt']=='FXC701' and c['sourceGRNId']=='a2489c56-bdf3-11f1-97a8-8b3d06ae4c97'
- assert c['record']=='FXQ992' and c['quantity']==2
- assert c['artifactSHA256']=='08271dada3bf90ed6912db71c0e08f95487a906d12a765bcaa706338bdf12fb7'
+ current=c.get('currentArtifactQueue') is True
+ assert c['record']==('FXQ996' if current else 'FXQ992') and c['quantity']==2
+ if current:assert c['expectedStock']==6
+ assert c['artifactSHA256']==('a7df6781bdcd889eb9ccaa01ee0973890effd4d187bb6ac45f100284e1b04b69' if current else '08271dada3bf90ed6912db71c0e08f95487a906d12a765bcaa706338bdf12fb7')
  assert c['origin']=='https://backend-core.example.test' and c['instanceId']=='b0ec3933-5258-4bd5-87f4-d57b13a78971'
  assert c['orderProvenance']=='preserved ordinary API fixture; native customer creation not accepted'
  return c
@@ -34,9 +36,10 @@ def generate_dispatch(tree):
  nodes=[n for n in tree.iter('node') if n.get('content-desc')=='Generate dispatch']
  assert len(nodes)==1;return control_point(nodes[0])
 
-def queue_review(tree):
+def queue_review(tree,case=None):
+ record=queue_config(case)['record'] if case is not None else 'FXQ992'
  labels={v for n in tree.iter('node') for v in [n.get('text'),n.get('content-desc')] if v}
- assert {'FXQ992','FXC701/8','2 qty','To: Backend Test Customer A','Submit Dispatch'}<=labels
+ assert {record,'FXC701/8','2 qty','To: Backend Test Customer A','Submit Dispatch'}<=labels
  assert not labels.intersection({'Confirm Submission','Error','Send OTP','Some Items Skipped','Dispatch Created Successfully!'})
  assert not any(x.startswith('To: ') and x!='To: Backend Test Customer A' for x in labels)
- return {'record':'FXQ992','receipt':'FXC701','sourceQuantity':8,'dispatchQuantity':2,'customer':'Backend Test Customer A'}
+ return {'record':record,'receipt':'FXC701','sourceQuantity':8,'dispatchQuantity':2,'customer':'Backend Test Customer A'}
