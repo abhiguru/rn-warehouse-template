@@ -1573,3 +1573,22 @@ Read-only prerequisite observer failures used `status` rather than the schema's
 ordinary-auth budget available and no target PDF. This tooling alone does not
 claim executed PDF generation, A-to-B PDF denial, native PDF acceptance, final
 freeze or workflow-group closure.
+
+The first bounded B invoice PDF preparation stage subsequently PASSed. It made
+one ordinary supervisor login and one generation request for invoice20261031,
+then downloaded20,809 actual PDF bytes with SHA-256
+`ebeb9b37e023389438ce07868aa08f32cf7c083b487488c38b02fa7f8bebebab`.
+The new private object and stored-file bytes matched; all prior metadata/files,
+business/pricing, other authentication and old sessions were preserved. Only
+its new supervisor API session was logged out. Actual SQL/bytes readback and
+stage postcondition PASSed. This is API generation/download evidence only.
+
+Separate `fixture-a-invoice-document-*` tooling prepares ordinary customer A
+transport tests against that genuine B document: direct private-object read
+must deny without PDF bytes, and invoice generation20261031/FY2026 must404.
+It requires the matched current A native session and preserves it plus old API
+sessions. Each request has independent SQL/auth/business/pricing/storage
+reconciliation; only a newly created API session is logged out after both
+required denials. Wrong identity/artifact/document/attempt and exposed bytes
+refuse. Source347/347 fixture tests, lint and typecheck PASS under Node22.
+This paragraph records prepared tooling, not executed A-to-B PDF acceptance.
