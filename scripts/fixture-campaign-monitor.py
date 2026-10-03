@@ -5,7 +5,9 @@ from pathlib import Path
 os.umask(0o077)
 
 MAX_STAGE_PLANS=256
-MAX_BOUND_FILES=4096
+# Expanded frozen runtimes currently bind 7,848 unique files (~587 MB).
+# Hashes stream from disk; this finite cap covers the 256-plan campaign.
+MAX_BOUND_FILES=16384
 
 def bounded_paths(paths,limit=MAX_STAGE_PLANS):
     result=sorted(paths)
@@ -77,7 +79,7 @@ def sample(c,cycle):
                 error={'plan':path.name,'category':'PLAN_OR_BOUND_FILE_UNREADABLE','terminalHistoricalPlan':historical}
                 errors.append(error)
                 if not historical:critical.append(error)
-        row['integrity']={'boundFiles':len(actual),'errors':errors,'currentOrPreservedSoakErrors':critical,'historicalChangesNeverAuthorizeResume':True}
+        row['integrity']={'boundFiles':len(actual),'maximumBoundFiles':MAX_BOUND_FILES,'errors':errors,'currentOrPreservedSoakErrors':critical,'historicalChangesNeverAuthorizeResume':True}
     # The serial is fixed; never enumerate or contact other devices.
     try:
         a=[c['adb'],'-s','emulator-5556'];name=run(a+['emu','avd','name'],5).splitlines()[0]
