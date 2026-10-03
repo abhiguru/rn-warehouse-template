@@ -12,7 +12,7 @@ def main(path):
  d=BoundedStaff(c,i,'unused',0);helper=str(Path(__file__).parent.parent/'fixture-staff-observe.mjs')
  def observe(phase,*args):
   q=d.backend_process(helper,[str(Path(path).resolve()),phase,*args]);assert q.returncode==0,'Independent staff observer refused';return json.loads(q.stdout)
- observe('guard');fd=os.open(Path(path).parent/'fixture-session-actor.lock',os.O_RDWR|os.O_NOFOLLOW);fcntl.flock(fd,fcntl.LOCK_EX|fcntl.LOCK_NB);e=Path(case['caseDirectory']);soak.private(e.parent,True);assert not e.exists();e.mkdir(mode=0o700);d.e=e;d.file=e/'staff-read-result.json';d.state.update(phases=[],businessWriteAttempted=False,otpRequests=0,configSHA256=hashlib.sha256(Path(path).read_bytes()).hexdigest());d.save()
+ observe('guard');fd=os.open(Path(case['soakConfig']).parent/'fixture-session-actor.lock',os.O_RDWR|os.O_NOFOLLOW);st=os.fstat(fd);assert st.st_uid==os.getuid() and st.st_mode&0o077==0;fcntl.flock(fd,fcntl.LOCK_EX|fcntl.LOCK_NB);e=Path(case['caseDirectory']);soak.private(e.parent,True);assert not e.exists();e.mkdir(mode=0o700);d.e=e;d.file=e/'staff-read-result.json';d.state.update(phases=[],businessWriteAttempted=False,otpRequests=0,configSHA256=hashlib.sha256(Path(path).read_bytes()).hexdigest());d.save()
  def fresh(label):
   since=datetime.datetime.now(datetime.timezone.utc).isoformat();d.tap(label);deadline=time.monotonic()+20
   while time.monotonic()<deadline:
