@@ -1,7 +1,11 @@
 # rn-warehouse-template
 
 The operator branch connects to an independent warehouse backend through its
-canonical HTTPS origin. Start with the [current developer handoff](docs/DEVELOPER_HANDOFF.md).
+canonical HTTPS origin. Start with the [current developer handoff](docs/DEVELOPER_HANDOFF.md)
+and [fresh operator installation notes](docs/OPERATOR_INSTALL_NOTES.md).
+The [acceptance matrix](docs/OPERATOR_ACCEPTANCE_MATRIX.md) records exact installed
+source/artifact scope and cases that remain open; historical device results do
+not validate the current operator candidate.
 The operator changes are under review; the source-demo evidence below does not
 validate the changed runtime.
 
@@ -59,6 +63,9 @@ implicitly adopt an emulator owned by another checkout or user.
 ```bash
 git clone https://github.com/abhiguru/rn-warehouse-template.git
 cd rn-warehouse-template
+git switch --detach 8240cce9121a797fd0cf2e00e568a61985814ddb
+git rev-parse HEAD
+git status --porcelain
 npm ci
 node scripts/create-env.mjs
 npm run typecheck
@@ -71,6 +78,11 @@ npm run test:setup
 It never inspects Docker, reads service-role credentials, or overwrites an existing
 environment file.
 
+Require a clean checkout of this exact candidate: it is published in draft
+[PR #33](https://github.com/abhiguru/rn-warehouse-template/pull/33), not mobile
+`main`. The backend baseline is `f18f51d4625e7f8c0d977ac69645804e318a9d49`
+(merged PR #68). Stop if either commit is unavailable; explain before substituting.
+Complete backend local/public doctor before beginning Android installation.
 Use the immutable `v0.2.2-demo` tag only to reproduce the historical demo.
 
 ## Connect a compatible backend
@@ -97,6 +109,13 @@ that login or warehouse APIs work. No keys need to be copied into the app: it
 fetches its public anon key dynamically. `update-supabase-keys` is a deprecated
 alias for this check and no longer reads Docker.
 
+## Build a standalone operator test app
+
+Follow the [local standalone APK sequence](docs/OPERATOR_INSTALL_NOTES.md#reproducible-local-standalone-test-apk)
+for JDK/SDK installation, a separate native test identity, bundled release-variant
+build, artifact audit and device acceptance without Metro. This is a local test
+artifact; production signing and distribution remain open.
+
 ## Run a native debug build
 
 ```bash
@@ -112,8 +131,10 @@ permissions, or build settings. The API-36 emulator debug build and supported
 source-demo workflows were verified on the historical pair. Physical Samsung Android 15/API-35 and
 iPhone 15/iOS 26.6.2 runs are recorded separately. See
 [NATIVE_ACCEPTANCE.md](docs/NATIVE_ACCEPTANCE.md).
-The current operator authentication and server-selection flow has not yet been
-tested on a VM, physical device, or live MSG91 delivery.
+Dated operator authentication, server-selection and provider results are in
+[OPERATOR_INSTALL_NOTES.md](docs/OPERATOR_INSTALL_NOTES.md). Each result applies
+only to its recorded source, artifact and device; consult its current matrix
+and [next acceptance plan](docs/OPERATOR_NEXT_ACCEPTANCE.md) for open cases.
 
 For a bundle-only check:
 

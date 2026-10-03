@@ -4,7 +4,7 @@
  * Follows GRN form service patterns adapted for dispatch requirements
  */
 
-import * as Crypto from 'expo-crypto';
+import { submissionIdempotencyKey } from '@/utils/submissionIdempotency';
 import { beginOperatorMutation, getAuthenticatedClient } from '@/config/supabaseConfig';
 import { executeRPC, createErrorResponse } from '@/utils/serviceErrorHandler';
 import type {
@@ -201,8 +201,7 @@ export const createDispatch = async (payload: {
   let finishMutation: (() => void) | undefined;
   try {
     finishMutation = beginOperatorMutation();
-    console.log('[DispatchFormService] Creating dispatch with payload:', {
-      header: payload.header,
+    console.log('[DispatchFormService] Creating dispatch:', {
       itemCount: payload.items.length,
       imageCount: payload.images?.length || 0,
     });
@@ -210,7 +209,7 @@ export const createDispatch = async (payload: {
     const authenticatedClient = await getAuthenticatedClient();
 
     // Transform data to match RPC function format
-    const rpcPayload: CreateDispatchPayload = {
+    const rpcBody = {
       p_dispatch_data: {
         disp_no: payload.header.disp_no,
         disp_date: payload.header.disp_date, // ISO timestamp
@@ -229,11 +228,13 @@ export const createDispatch = async (payload: {
       })),
       p_generate_invoice: true, // Auto-generate invoice
       p_retry_count: 0, // Required to disambiguate function overload
-      p_idempotency_key: Crypto.randomUUID(),
+    };
+    const rpcPayload: CreateDispatchPayload = {
+      ...rpcBody,
+      p_idempotency_key: await submissionIdempotencyKey('dispatch', rpcBody),
     };
 
     console.log('[DispatchFormService] Calling create_dispatch_with_stock_check RPC');
-    console.log('[DispatchFormService] RPC payload:', JSON.stringify(rpcPayload, null, 2));
 
     const { data, error } = await authenticatedClient.rpc(
       'create_dispatch_with_stock_check',
@@ -241,21 +242,21 @@ export const createDispatch = async (payload: {
     );
 
     if (error) {
-      console.error('[DispatchFormService] ❌ RPC Error:', error);
+      console.error('[DispatchFormService] Create RPC failed');
       throw new Error(error.message || 'Failed to create dispatch');
     }
 
     // Check if RPC returned success: false (business logic error, not Postgres error)
     if (data && data.success === false) {
-      console.error('[DispatchFormService] ❌ RPC returned failure:', data);
+      console.error('[DispatchFormService] Create RPC returned failure');
       throw new Error(data.error || data.message || 'Failed to create dispatch');
     }
 
-    console.log('[DispatchFormService] ✅ Dispatch created successfully:', data);
+    console.log('[DispatchFormService] Dispatch created successfully');
 
     // Upload deferred images if any
     if (payload.images && payload.images.length > 0 && data.dispatch_id) {
-      console.log('[DispatchFormService] Uploading deferred images for dispatch:', data.dispatch_id);
+      console.log('[DispatchFormService] Uploading deferred images');
 
       const imageUploadResult = await uploadDeferredDispatchImages(
         data.dispatch_id,
@@ -263,7 +264,7 @@ export const createDispatch = async (payload: {
       );
 
       if (!imageUploadResult.success) {
-        console.warn('[DispatchFormService] Some images failed to upload:', imageUploadResult.errors);
+        console.warn('[DispatchFormService] Some deferred images failed to upload');
         // Don't fail the dispatch creation, just log the warning
       } else {
         console.log('[DispatchFormService] All images uploaded successfully:', imageUploadResult.uploadedCount);
@@ -280,7 +281,7 @@ export const createDispatch = async (payload: {
       source_order_id: data.source_order_id,
     };
   } catch (error: any) {
-    console.error('[DispatchFormService] Exception creating dispatch:', error);
+    console.error('[DispatchFormService] Create dispatch failed');
 
     // Parse error message for user-friendly display
     let errorMessage = 'Failed to create dispatch';
@@ -511,7 +512,7 @@ export const deleteDispatch = async (
     }
   );
 
-  console.log('[DispatchFormService] RPC Result:', JSON.stringify(result, null, 2));
+  console.log('[DispatchFormService] Delete RPC completed:', { success: result.success });
 
   if (!result.success) {
     console.error('[DispatchFormService] ❌ Delete dispatch failed:', result.error);

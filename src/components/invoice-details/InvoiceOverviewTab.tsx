@@ -17,6 +17,7 @@ import {
   ActionsSection,
 } from '@/components/common/overview-tab';
 import { useListColors } from '@/hooks/useListColors';
+import { savedInvoiceAmounts } from '@/utils/invoiceCalculations';
 import { formatCurrency } from '@/utils/formatters';
 
 // ============================================================================
@@ -336,6 +337,8 @@ export const InvoiceOverviewTab: React.FC<InvoiceOverviewTabProps> = ({
     );
   };
 
+  const saved = savedInvoiceAmounts(financial_summary);
+
   // Financial Summary Card
   const FinancialSummaryCard = () => (
     <View style={[overviewStyles.card, colorStyles.card]}>
@@ -353,22 +356,22 @@ export const InvoiceOverviewTab: React.FC<InvoiceOverviewTabProps> = ({
 
       <View style={dynamicStyles.financialContainer}>
         <View style={styles.financialRow}>
-          <Text style={dynamicStyles.financialLabel}>Subtotal</Text>
-          <Text style={dynamicStyles.financialValue}>{formatCurrency(financial_summary.subtotal)}</Text>
+          <Text style={dynamicStyles.financialLabel}>Net before tax</Text>
+          <Text style={dynamicStyles.financialValue}>{formatCurrency(saved.netBeforeTax)}</Text>
         </View>
 
-        {financial_summary.discount > 0 && (
+        {saved.hasAdjustment && (
           <View style={styles.financialRow}>
-            <Text style={dynamicStyles.financialLabel}>Discount</Text>
+            <Text style={dynamicStyles.financialLabel}>{saved.adjustmentLabel} (included)</Text>
             <Text style={[dynamicStyles.financialValue, { color: colors.error }]}>
-              - {formatCurrency(financial_summary.discount)}
+              {saved.adjustmentSign} {formatCurrency(saved.adjustmentAmount)}
             </Text>
           </View>
         )}
 
         {financial_summary.labour > 0 && (
           <View style={styles.financialRow}>
-            <Text style={dynamicStyles.financialLabel}>Labour Charges</Text>
+            <Text style={dynamicStyles.financialLabel}>Labour (included)</Text>
             <Text style={dynamicStyles.financialValue}>{formatCurrency(financial_summary.labour)}</Text>
           </View>
         )}

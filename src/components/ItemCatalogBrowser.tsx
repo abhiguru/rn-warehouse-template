@@ -914,6 +914,21 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
       {/* Fiori Divider */}
       <View style={[styles.headerDivider, { backgroundColor: colors.cellDivider }]} />
 
+      {/* Keep stock search available even when the current result is empty. */}
+      <View style={[styles.topSearchContainer, { backgroundColor: colors.cellBackground }]}>
+        <TextInput
+          accessibilityLabel="Search stock items"
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          placeholder={getSearchPlaceholder()}
+          placeholderTextColor={colors.gray500}
+          autoCapitalize="none"
+          autoCorrect={false}
+          returnKeyType="search"
+          style={[styles.topSearchInput, { color: colors.gray900, backgroundColor: colors.gray100 }]}
+        />
+      </View>
+
       {/* Recent Items Quick Add */}
       <RecentItemsQuickAdd
         customerId={customerId}
@@ -925,7 +940,7 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
         recentlyAddedItems={recentlyAddedItems.map(item => ({ id: item.id, name: item.name }))}
       />
     </>
-  ), [colors, onClose, handleAddItems, selectionSummary.count, customerId, handleRecentItemSelected, loading, customerAllItems, searchQuery, recentItemsRefreshTrigger, recentlyAddedItems]);
+  ), [colors, onClose, handleAddItems, selectionSummary.count, customerId, handleRecentItemSelected, loading, customerAllItems, searchQuery, getSearchPlaceholder, recentItemsRefreshTrigger, recentlyAddedItems]);
 
   // Memoized ListEmptyComponent
   const listEmptyComponent = useMemo(() => (

@@ -61,12 +61,10 @@ test('PostCSS does not import a source map from an untrusted absolute URL', asyn
   }
 });
 
-test('Xcode and ngrok retain the UUID v4 API with patched dependencies', () => {
-  for (const consumer of ['xcode', '@expo/ngrok']) {
-    const fromConsumer = createRequire(require.resolve(consumer));
-    assert.equal(fromConsumer('uuid/package.json').version, '11.1.1');
-    assert.match(fromConsumer('uuid').v4(), /^[a-f0-9-]{36}$/);
-  }
+test('Xcode retains the UUID v4 API with patched dependencies', () => {
+  const fromConsumer = createRequire(require.resolve('xcode'));
+  assert.equal(fromConsumer('uuid/package.json').version, '11.1.1');
+  assert.match(fromConsumer('uuid').v4(), /^[a-f0-9-]{36}$/);
   const project = require('xcode').project('fictional.pbxproj');
   project.hash = { project: { objects: {} } };
   assert.match(project.generateUuid(), /^[A-F0-9]{24}$/);

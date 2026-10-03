@@ -28,6 +28,7 @@ import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { printInvoiceRange } from '@/services/print-service';
 import { generateInvoicePDF } from '@/services/pdf-service';
 import { downloadAndSharePDF } from '@/utils/shareDocument';
+import { calculateInvoiceBreakdown } from '@/utils/invoiceCalculations';
 import { SavedInvoiceData } from '@/types/invoice.types';
 
 export default function InvoiceFormStep4() {
@@ -168,7 +169,7 @@ export default function InvoiceFormStep4() {
   };
 
   // Calculate subtotal
-  const subtotal = header.total + header.discount - header.labour - header.tax_amount;
+  const { subtotal, rounding } = calculateInvoiceBreakdown(items, header);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.gray50 }]}>
@@ -237,6 +238,10 @@ export default function InvoiceFormStep4() {
             <View style={styles.summaryRow}>
               <Text style={[styles.summaryLabel, { color: colors.gray600 }]}>Discount:</Text>
               <Text style={[styles.summaryValue, { color: colors.gray900 }]}>-₹{header.discount.toFixed(2)}</Text>
+            </View>
+            <View style={styles.summaryRow}>
+              <Text style={[styles.summaryLabel, { color: colors.gray600 }]}>Rounding adjustment:</Text>
+              <Text style={[styles.summaryValue, { color: colors.gray900 }]}>₹{rounding.toFixed(2)}</Text>
             </View>
             <View style={[styles.summaryRow, styles.totalRow, { borderTopColor: colors.cellDivider }]}>
               <Text style={[styles.totalLabel, { color: colors.gray900 }]}>Grand Total:</Text>

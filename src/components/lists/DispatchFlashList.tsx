@@ -725,6 +725,7 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
               size={22}
               iconColor={colors.textInverse}
               style={[styles.addBtn, { backgroundColor: colors.primary }]}
+              accessibilityLabel="Create Dispatch"
               onPress={handleCreateDispatch}
             />
           )}

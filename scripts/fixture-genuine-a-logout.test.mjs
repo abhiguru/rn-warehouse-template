@@ -1,0 +1,8 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {navigationConfig,navigationBefore,navigationAfter,navigationSnapshotSQL} from './fixture-navigation-guards.mjs';
+const c={scope:'isolated-fictional-navigation-case',case:'customer-logout',kind:'native-genuine-a-logout',genuineALogout:true,noAutomaticRetry:true,nativeAttempt:1,origin:'https://backend-core.example.test',instanceId:'b0ec3933-5258-4bd5-87f4-d57b13a78971',profileId:'79764e1a-3aed-4cac-9a25-42ccdafb79ac',profileName:'Customer A',sessionId:'11111111-1111-4111-8111-111111111111',artifactSHA256:'a7df6781bdcd889eb9ccaa01ee0973890effd4d187bb6ac45f100284e1b04b69',fixtureGuardSHA256:'a'.repeat(64),backendCheckout:'/owned/backend',backendState:'/owned/state',soakConfig:'/private/ui',artifactAudit:'/private/audit',caseDirectory:'/private/case'};
+test('genuine A logout binds exact native owner and only removes its session',()=>{
+ navigationConfig(c);assert.match(navigationSnapshotSQL(c),/mobile='919888888872'/);
+ const b={profile:{id:c.profileId,name:c.profileName,role:'customer',active:true},nativeSessionPresent:true,otpCount:4,businessHash:'b'.repeat(64),otherAuthHash:'c'.repeat(64)};navigationBefore(c,b);navigationAfter(c,b,{...b,nativeSessionPresent:false});assert.throws(()=>navigationAfter(c,b,b));assert.throws(()=>navigationAfter(c,b,{...b,nativeSessionPresent:false,otherAuthHash:'d'.repeat(64)}));
+ for(const patch of [{profileId:c.sessionId},{profileName:'New customer'},{case:'supervisor-logout'},{artifactSHA256:'f'.repeat(64)},{nativeAttempt:4},{genuineALogout:'true'},{reservedCustomerReceiptDenial:true}])assert.throws(()=>navigationConfig({...c,...patch}));
+});

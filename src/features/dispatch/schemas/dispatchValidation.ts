@@ -262,10 +262,6 @@ export const validateStep2 = async (
   console.log('[dispatchValidation] Items array?:', Array.isArray(data?.items));
   console.log('[dispatchValidation] Items length:', data?.items?.length ?? 'N/A');
 
-  if (data?.items?.length > 0) {
-    console.log('[dispatchValidation] First item:', JSON.stringify(data.items[0], null, 2));
-  }
-
   try {
     await step2Schema.validate(data, { abortEarly: false });
     console.log('[dispatchValidation] validateStep2 PASSED');
@@ -295,7 +291,7 @@ export const validateStep3 = async (data: {
   header: any;
   items: any[];
 }): Promise<{ isValid: boolean; errors: Record<string, string> }> => {
-  console.log('[validateStep3] 🔍 Called with header:', JSON.stringify(data.header, null, 2));
+  console.log('[validateStep3] Validating complete form');
   console.log('[validateStep3] 🔍 header.disp_date:', data.header?.disp_date, 'type:', typeof data.header?.disp_date);
   console.log('[validateStep3] 🔍 Items count:', data.items?.length);
 

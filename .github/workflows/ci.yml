@@ -4,7 +4,8 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
+    # The operator review is stacked on the unmerged mobile candidate.
+    branches: [main, codex/operator-mobile]
 
 permissions:
   contents: read
@@ -46,6 +47,12 @@ jobs:
       - name: Test
         run: npm test
 
+      - name: Native fixture screenshot decoder
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-pil
+          /usr/bin/python3 -c "import PIL; print('Fixture decoder Pillow', PIL.__version__)"
+
       - name: Bootstrap regression tests
         run: npm run test:setup
 
@@ -69,11 +76,35 @@ jobs:
           distribution: temurin
           java-version: '17'
       - run: npm ci
+      - name: Install and verify pinned Android SDK prerequisites
+        timeout-minutes: 12
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdk_root="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          test -n "$sdk_root"
+          sdk_manager="$sdk_root/cmdline-tools/latest/bin/sdkmanager"
+          test -x "$sdk_manager"
+          "$sdk_manager" --sdk_root="$sdk_root" \
+            'platform-tools' 'platforms;android-36' \
+            'build-tools;36.0.0' 'build-tools;35.0.0' \
+            'ndk;27.1.12297006' 'ndk;27.0.12077973' 'cmake;3.22.1' </dev/null
+          ANDROID_HOME="$sdk_root" node scripts/check-android-sdk.mjs
       - name: Generate Android project
         run: npx expo prebuild --platform android --clean --no-install
       - name: Assemble debug APK
         run: ./gradlew assembleDebug
         working-directory: android
+      - name: Audit picker React Native ABI compile options
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          compile_commands=(android/app/.cxx/Debug/*/*/compile_commands.json android/app/.cxx/RelWithDebInfo/*/*/compile_commands.json)
+          test "${#compile_commands[@]}" -gt 0
+          for command_file in "${compile_commands[@]}"; do
+            node scripts/audit-picker-native-compile.mjs "$command_file"
+          done
       - name: Audit APK contents, permissions and notices
         run: npm run audit:artifact -- android/app/build/outputs/apk/debug/app-debug.apk
 
@@ -86,7 +117,17 @@ jobs:
           node-version: '22'
           cache: npm
       - run: npm ci
-      - run: npm audit --audit-level=high
+      - name: Verify dependency security backport regressions
+        run: node --test scripts/security-backports.test.mjs scripts/audit-dependencies.test.mjs
+      - name: Audit dependencies and verify every local security backport
+        run: npm run audit:dependencies -- --report-dir "$RUNNER_TEMP/dependency-security-report"
+      - name: Preserve raw audit and installed-source verification
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-security-report
+          path: ${{ runner.temp }}/dependency-security-report
+          if-no-files-found: warn
 
   secrets:
     name: Redacted source and history scan

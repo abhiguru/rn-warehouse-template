@@ -236,6 +236,8 @@ const CustomKeyboard = memo<CustomKeyboardProps>(({
             {prefixes.map((prefixItem) => (
               <TouchableOpacity
                 key={prefixItem.prefix}
+                accessibilityRole="button"
+                accessibilityLabel={`Use GRN prefix ${prefixItem.prefix}`}
                 style={keyboardStyles.quickInputButton}
                 onPress={() => handlePrefixTap(prefixItem.prefix)}
                 activeOpacity={0.7}
@@ -247,6 +249,8 @@ const CustomKeyboard = memo<CustomKeyboardProps>(({
             {['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'].map((char) => (
               <TouchableOpacity
                 key={char}
+                accessibilityRole="button"
+                accessibilityLabel={`Enter GRN digit ${char}`}
                 style={[keyboardStyles.quickInputButton, keyboardStyles.numericButton]}
                 onPress={() => handleKeyPress(char)}
                 activeOpacity={0.7}

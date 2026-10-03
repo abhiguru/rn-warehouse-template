@@ -146,7 +146,6 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
 
     // Debug logging
     useEffect(() => {
-        console.log('[DispatchReviewStep] Header data on mount:', JSON.stringify(header, null, 2));
         console.log('[DispatchReviewStep] Items count:', items.length);
         if (isCreateMode) {
             console.log('[DispatchReviewStep] Images count:', images.length);

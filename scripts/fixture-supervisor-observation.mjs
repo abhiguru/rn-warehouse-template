@@ -1,0 +1,3 @@
+import assert from 'node:assert/strict';
+export function supervisorHTTP(text){const result={reads:0,failures:[]};for(const line of text.split('\n')){const m=line.match(/"(?:GET|POST) \/rest\/v1\/rpc\/get_orders_list(?:\?[^ ]*)? HTTP\/[\d.]+" (\d{3})\b/);if(!m)continue;const status=Number(m[1]);if(status===200)result.reads++;else if(status>=400)result.failures.push({rpc:'get_orders_list',status});}return result;}
+export function supervisorReadCase(c){assert.equal(c.case,'supervisor-reads');assert.equal(c.kind,'native-supervisor-read');assert.equal(c.profileId,'947136fa-997b-4a83-819d-1b8bd3ecba68');return c;}

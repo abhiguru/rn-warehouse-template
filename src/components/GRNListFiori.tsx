@@ -1043,6 +1043,7 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({
               iconColor={colors.textInverse}
               style={[styles.addBtn, { backgroundColor: colors.primary }]}
               onPress={handleCreateGRN}
+              accessibilityLabel="Create GRN"
             />
           )}
           <View style={styles.filterBtnContainer}>

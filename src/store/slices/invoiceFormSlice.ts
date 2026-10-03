@@ -174,7 +174,7 @@ const invoiceFormSlice = createSlice({
     updateDiscount: (state, action: PayloadAction<number>) => {
       state.header.discount = roundMoney(action.payload);
       const headerTotals = calculateHeaderTotals(state.items, state.header.discount);
-      state.header.total = headerTotals.total;
+      Object.assign(state.header, headerTotals);
     },
 
     // Recalculate all totals (called after any item changes)
@@ -341,14 +341,7 @@ const invoiceFormSlice = createSlice({
       }
 
       // Calculate initial totals with proper rounding
-      const subtotal = roundMoney(state.items.reduce((sum, item) => sum + item.amount, 0));
-      const totalLabour = roundMoney(state.items.reduce((sum, item) => sum + item.labour_amount, 0));
-      const totalTax = roundMoney(state.items.reduce((sum, item) => sum + item.tax_amount, 0));
-      const grandTotal = roundMoney(subtotal + totalLabour + totalTax - state.header.discount);
-
-      state.header.labour = totalLabour;
-      state.header.tax_amount = totalTax;
-      state.header.total = grandTotal;
+      Object.assign(state.header, calculateHeaderTotals(state.items, state.header.discount));
     },
 
     // Load invoice data for edit mode
@@ -424,7 +417,7 @@ const invoiceFormSlice = createSlice({
 
     // Update all item durations (for one_time_charge toggle)
     updateAllDurations: (state, action: PayloadAction<number>) => {
-      const newDuration = Math.round(action.payload);
+      const newDuration = action.payload;
 
       // Update all items with new duration and recalculate
       state.items.forEach((item, index) => {
@@ -448,14 +441,7 @@ const invoiceFormSlice = createSlice({
       });
 
       // Recalculate header totals
-      const subtotal = roundMoney(state.items.reduce((sum, item) => sum + item.amount, 0));
-      const totalLabour = roundMoney(state.items.reduce((sum, item) => sum + item.labour_amount, 0));
-      const totalTax = roundMoney(state.items.reduce((sum, item) => sum + item.tax_amount, 0));
-      const grandTotal = roundMoney(subtotal + totalLabour + totalTax - state.header.discount);
-
-      state.header.labour = totalLabour;
-      state.header.tax_amount = totalTax;
-      state.header.total = grandTotal;
+      Object.assign(state.header, calculateHeaderTotals(state.items, state.header.discount));
     },
 
     // Restore original durations from cache (for one_time_charge toggle off)
@@ -483,14 +469,7 @@ const invoiceFormSlice = createSlice({
       });
 
       // Recalculate header totals
-      const subtotal = roundMoney(state.items.reduce((sum, item) => sum + item.amount, 0));
-      const totalLabour = roundMoney(state.items.reduce((sum, item) => sum + item.labour_amount, 0));
-      const totalTax = roundMoney(state.items.reduce((sum, item) => sum + item.tax_amount, 0));
-      const grandTotal = roundMoney(subtotal + totalLabour + totalTax - state.header.discount);
-
-      state.header.labour = totalLabour;
-      state.header.tax_amount = totalTax;
-      state.header.total = grandTotal;
+      Object.assign(state.header, calculateHeaderTotals(state.items, state.header.discount));
     },
 
     resetForm: () => {

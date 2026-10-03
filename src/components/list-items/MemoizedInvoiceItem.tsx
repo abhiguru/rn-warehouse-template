@@ -13,6 +13,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import { savedInvoiceAmounts } from '@/utils/invoiceCalculations';
 import { formatCurrency, formatDate } from '@/utils/formatters';
 import type { Invoice } from '@/services/invoice-service';
 import type { ListColors } from '@/hooks/useListColors';
@@ -48,9 +49,9 @@ const InvoiceItemContent: React.FC<MemoizedInvoiceItemProps> = ({
   colors,
 }) => {
   // Calculate values
-  const subtotal = invoice.total - invoice.tax_amount;
+  const saved = savedInvoiceAmounts(invoice);
   const hasLabour = invoice.labour > 0;
-  const hasDiscount = invoice.discount > 0;
+  const hasDiscount = saved.hasAdjustment;
 
   // Build comprehensive accessibility label
   const accessibilityDescription = [
@@ -60,7 +61,7 @@ const InvoiceItemContent: React.FC<MemoizedInvoiceItemProps> = ({
     `Date: ${formatDate(invoice.invoice_date, 'medium')}`,
     invoice.grn?.gr_no ? `GRN: ${invoice.grn.gr_no}` : null,
     hasLabour ? `Labour: ${formatCurrency(invoice.labour)}` : null,
-    hasDiscount ? `Discount: ${formatCurrency(invoice.discount)}` : null,
+    hasDiscount ? `${saved.adjustmentLabel}: ${formatCurrency(saved.adjustmentAmount)}` : null,
   ].filter(Boolean).join(', ');
 
   return (
@@ -112,9 +113,9 @@ const InvoiceItemContent: React.FC<MemoizedInvoiceItemProps> = ({
       <View style={[styles.metricsBar, { backgroundColor: colors.gray50 }]}>
         <View style={styles.metric}>
           <Text style={[styles.metricValue, { color: colors.textPrimary }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
-            {formatCurrency(subtotal)}
+            {formatCurrency(saved.netBeforeTax)}
           </Text>
-          <Text style={[styles.metricLabel, { color: colors.textTertiary }]}>Subtotal</Text>
+          <Text style={[styles.metricLabel, { color: colors.textTertiary }]}>Net before tax</Text>
         </View>
         <View style={[styles.metricDivider, { backgroundColor: colors.gray200 }]} />
         <View style={styles.metric}>
@@ -144,9 +145,9 @@ const InvoiceItemContent: React.FC<MemoizedInvoiceItemProps> = ({
                 adjustsFontSizeToFit
                 minimumFontScale={0.7}
               >
-                -{formatCurrency(invoice.discount)}
+                {saved.adjustmentSign}{formatCurrency(saved.adjustmentAmount)}
               </Text>
-              <Text style={[styles.metricLabel, { color: colors.textTertiary }]}>Discount</Text>
+              <Text style={[styles.metricLabel, { color: colors.textTertiary }]}>{saved.adjustmentLabel}</Text>
             </View>
           </>
         )}

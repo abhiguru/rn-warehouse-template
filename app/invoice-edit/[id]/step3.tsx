@@ -303,6 +303,7 @@ export default function InvoiceEditStep3() {
         {/* Calculation Summary with Discount */}
         <InvoiceCalculationSummary
           header={header}
+          items={items}
           onDiscountChange={handleDiscountChange}
         />
 

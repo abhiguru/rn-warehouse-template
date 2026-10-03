@@ -180,7 +180,7 @@ function InvoiceDetailScreen() {
 
   // Handle GRN navigation
   const handleViewGRN = (grnId: string) => {
-    router.push(`/grn-details/${grnId}`);
+    router.push(`/grn-details/${grnId}?tab=overview`);
   };
 
   // Handle Dispatch navigation
@@ -553,7 +553,7 @@ function InvoiceDetailScreen() {
   // Prepare related documents for breakdown tab
   const relatedDocuments = [
     ...(invoice.grn?.id
-      ? [{ id: invoice.grn.id, number: invoice.grn.number, type: 'grn' as const }]
+      ? [{ id: invoice.grn.id, number: invoice.grn.number || invoice.gr_no || '', type: 'grn' as const }]
       : []),
     // Add dispatch documents from line items
     ...Array.from(

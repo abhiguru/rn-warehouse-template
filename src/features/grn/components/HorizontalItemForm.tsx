@@ -268,6 +268,8 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                     </TouchableOpacity>
                     <TouchableOpacity
                         style={[styles.saveButton, !isValid && styles.saveButtonDisabled]}
+                        accessibilityRole="button"
+                        accessibilityLabel="Save receipt item"
                         onPress={onSaveItem}
                         disabled={!isValid}
                         activeOpacity={0.7}
@@ -296,6 +298,8 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                             value={currentItem.item_name}
                             placeholder="Type to search..."
                             fetchData={searchItems}
+                            suggestionPlacement="inline"
+                            getItemAccessibilityLabel={(item) => `Select receipt item ${item.name}`}
                             onSelect={(item) => {
                                 if (item) {
                                     onFieldChange('item_table_id', item.id);
@@ -342,6 +346,7 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                         </View>
                         <TextInput
                             ref={qtyInputRef}
+                            accessibilityLabel="Receipt item quantity"
                             style={[
                                 styles.input,
                                 { backgroundColor: colors.cellBackground, borderColor: colors.gray200, color: colors.textPrimary },
@@ -389,6 +394,7 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                         </View>
                         <TextInput
                             ref={weightInputRef}
+                            accessibilityLabel="Receipt item weight"
                             style={[
                                 styles.input,
                                 { backgroundColor: colors.cellBackground, borderColor: colors.gray200, color: colors.textPrimary },

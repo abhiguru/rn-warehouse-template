@@ -58,6 +58,17 @@ export const step1Schema = yup.object().shape({
     .max(10, 'Maximum 10 images allowed'),
 });
 
+// Use the same rules for item admission and final schema validation.
+export const receiptQuantitySchema = yup
+  .number()
+  .required('Quantity is required')
+  .positive('Quantity must be positive')
+  .integer('Quantity must be a whole number')
+  .min(1, 'Quantity must be at least 1');
+
+export const isValidReceiptQuantity = (value: string): boolean =>
+  receiptQuantitySchema.isValidSync(value);
+
 // Step 2: Items Schema
 export const itemSchema = yup.object().shape({
   item_table_id: yup
@@ -74,12 +85,7 @@ export const itemSchema = yup.object().shape({
     .string()
     .max(20, 'Packaging must be at most 20 characters'),
 
-  qty: yup
-    .number()
-    .required('Quantity is required')
-    .positive('Quantity must be positive')
-    .integer('Quantity must be a whole number')
-    .min(1, 'Quantity must be at least 1'),
+  qty: receiptQuantitySchema,
 
   stock: yup
     .number()

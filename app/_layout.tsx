@@ -75,7 +75,8 @@ import { resetForm as resetDispatch } from '@/store/slices/dispatchFormSlice';
 import { resetForm as resetInvoice } from '@/store/slices/invoiceFormSlice';
 import { resetForm as resetCustomer } from '@/store/slices/customerFormSlice';
 import { OperatorServerSelection } from '@/components/OperatorServerSelection';
-import { discoverOperator, loadOperatorServer, onOperatorServerChange, saveOperatorServer } from '@/config/operatorServer';
+import { onOperatorServerChange } from '@/config/operatorServer';
+import { verifySelectedOperator } from '@/config/operatorBootstrap';
 import { clearAutocompleteCache } from '@/services/autocomplete-service';
 import {
   selectThemePreference,
@@ -425,7 +426,8 @@ function BootstrapApp() {
 
   useEffect(() => {
     void bootstrapApp();
-    return onOperatorServerChange(() => { void bootstrapApp(); });
+    const unsubscribe = onOperatorServerChange(() => { void bootstrapApp(); });
+    return () => { bootstrapRun.current += 1; unsubscribe(); };
   }, []);
 
   const bootstrapApp = async () => {
@@ -437,15 +439,9 @@ function BootstrapApp() {
     setNeedsSelection(false);
 
     try {
-      const selected = await loadOperatorServer();
-      if (!selected) {
-        if (run === bootstrapRun.current) { setNeedsSelection(true); setIsReady(true); }
-        return;
-      }
-      const discovered = await discoverOperator(selected.origin);
-      if (run !== bootstrapRun.current) return;
-      if (selected.instanceId !== discovered.server.instanceId) {
-        await store.dispatch(logout()).unwrap();
+      const result = await verifySelectedOperator(() => run === bootstrapRun.current, async () => {
+        // The URL now serves another instance; revoke nothing through it.
+        await store.dispatch(logout({ localOnly: true })).unwrap();
         await clearPendingEnrollment();
         await queryClient.cancelQueries();
         queryClient.clear();
@@ -455,8 +451,13 @@ function BootstrapApp() {
         store.dispatch(resetInvoice());
         store.dispatch(resetCustomer());
         await ConfigService.clearCache();
+      });
+      if (result.kind === 'superseded') return;
+      if (result.kind === 'selection') {
+        if (run === bootstrapRun.current) { setNeedsSelection(true); setIsReady(true); }
+        return;
       }
-      await saveOperatorServer(discovered.server, false);
+      const discovered = result.discovery;
       console.log('[Bootstrap] Starting app bootstrap');
 
       // STEP 1: Fetch public config (always refresh to get latest keys)

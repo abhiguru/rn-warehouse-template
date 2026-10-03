@@ -58,10 +58,15 @@ it('calculates order summaries through authenticated queries', async () => {
   expect(from).toHaveBeenCalledWith('order_items');
 });
 
-it('checks existing dispatches through authenticated queries', async () => {
-  chain.limit.mockResolvedValue({ data: [{ id: 'dispatch' }], error: null });
+it('checks existing dispatches through the authenticated GRN summary', async () => {
+  rpc.mockResolvedValue({
+    data: { success: true, data: { grn: { dispatches_summary: { total_dispatches: 1 } } } },
+    error: null,
+  });
   expect(await checkItemsHaveDispatches('grn')).toMatchObject({ success: true, hasDispatches: true });
-  expect(from).toHaveBeenCalledWith('dispatch_trl');
+  expect(getAuthenticatedClient).toHaveBeenCalled();
+  expect(rpc).toHaveBeenCalledWith('get_grn_details', { p_grn_id: 'grn' });
+  expect(from).not.toHaveBeenCalled();
 });
 
 it('does not query business data when authentication fails', async () => {

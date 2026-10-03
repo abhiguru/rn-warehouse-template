@@ -1,4 +1,5 @@
-import * as Crypto from 'expo-crypto';
+import { getGRNDispatchPresence } from './dispatchPresence';
+import { submissionIdempotencyKey } from '@/utils/submissionIdempotency';
 import { beginOperatorMutation, getAuthenticatedClient, getCurrentConfig } from '@/config/supabaseConfig';
 import { GRNHeaderData, GRNItemData, GRNImageData } from '@/store/slices/grnFormSlice';
 import { savePendingImageMetadata, uploadDeferredImages } from './imageUploadService';
@@ -316,7 +317,7 @@ export const createGRN = async (payload: CreateGRNPayload) => {
 
     // Call the enhanced save_grn RPC function using authenticated client
     const authenticatedClient = await getAuthenticatedClient();
-    const { data, error } = await authenticatedClient.rpc('save_grn', {
+    const rpcPayload = {
       p_gr_no: grNumber,
       p_date: payload.header.date,
       p_customer_id: payload.header.customer_id,
@@ -331,7 +332,10 @@ export const createGRN = async (payload: CreateGRNPayload) => {
       p_pricing_mode: payload.header.pricing_mode || 'MONTHLY',
       p_items: rpcItems,
       p_images: rpcImages,
-      p_idempotency_key: Crypto.randomUUID(),
+    };
+    const { data, error } = await authenticatedClient.rpc('save_grn', {
+      ...rpcPayload,
+      p_idempotency_key: await submissionIdempotencyKey('grn', rpcPayload),
     });
 
     console.log('[GRNFormService] Enhanced RPC Response:', { data, error });
@@ -1166,18 +1170,9 @@ export const loadGRNData = async (grnId: string) => {
 // Check if items have dispatches
 export const checkItemsHaveDispatches = async (grnId: string) => {
   try {
-    const { data, error } = await (await getAuthenticatedClient())
-      .from('dispatch_trl')
-      .select('id')
-      .eq('gr_id', grnId)
-      .limit(1);
-
-    if (error) throw error;
-
-    return {
-      success: true,
-      hasDispatches: data && data.length > 0,
-    };
+    const client = await getAuthenticatedClient();
+    const hasDispatches = await getGRNDispatchPresence(grnId, (name, args) => client.rpc(name, args));
+    return { success: true, hasDispatches };
   } catch (error) {
     console.error('[GRNFormService] Error checking dispatches:', error);
     return {

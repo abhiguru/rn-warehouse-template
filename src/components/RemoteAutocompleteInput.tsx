@@ -105,6 +105,7 @@ interface RemoteAutocompleteInputProps<T> {
   onSelect: (item: T) => void;
   /** Render function for dropdown items */
   renderItem: (item: T) => React.ReactNode;
+  getItemAccessibilityLabel?: (item: T) => string;
   /** Key extractor for dropdown items */
   keyExtractor: (item: T) => string;
   /** z-index for dropdown positioning */
@@ -113,6 +114,8 @@ interface RemoteAutocompleteInputProps<T> {
   containerStyle?: StyleProp<ViewStyle>;
   /** Custom input style */
   inputStyle?: StyleProp<ViewStyle>;
+  /** Place suggestions in normal layout inside a clipping scroll container. */
+  suggestionPlacement?: 'overlay' | 'inline';
   /** Custom dropdown list style */
   listStyle?: StyleProp<ViewStyle>;
   /** Debounce delay in milliseconds */
@@ -145,11 +148,13 @@ export function RemoteAutocompleteInput<T>({
   fetchData,
   onSelect,
   renderItem,
+  getItemAccessibilityLabel,
   keyExtractor,
   zIndex = 1000,
   containerStyle,
   inputStyle,
   listStyle,
+  suggestionPlacement = 'overlay',
   debounceMs = 400,
   minChars = 1,
   readOnly = false,
@@ -395,7 +400,7 @@ export function RemoteAutocompleteInput<T>({
 
       {/* Floating Suggestions List */}
       {showList && suggestions.length > 0 && (
-        <View style={[styles.dropdownContainer, { backgroundColor: colors.cellBackground, borderColor: colors.gray200 }, listStyle]}>
+        <View style={[styles.dropdownContainer, suggestionPlacement === 'inline' && styles.dropdownInline, { backgroundColor: colors.cellBackground, borderColor: colors.gray200 }, listStyle]}>
           <FlatList
             data={suggestions}
             keyExtractor={keyExtractor}
@@ -407,6 +412,8 @@ export function RemoteAutocompleteInput<T>({
                   pressed && { backgroundColor: colors.gray100 },
                   index === suggestions.length - 1 && styles.dropdownItemLast,
                 ]}
+                accessibilityRole="button"
+                accessibilityLabel={getItemAccessibilityLabel?.(item)}
                 onPress={() => handleSelectItem(item)}
               >
                 {renderItem(item)}
@@ -422,7 +429,7 @@ export function RemoteAutocompleteInput<T>({
 
       {/* Empty State */}
       {showList && !isLoading && suggestions.length === 0 && query.length >= minChars && (
-        <View style={[styles.dropdownContainer, { backgroundColor: colors.cellBackground, borderColor: colors.gray200 }, listStyle, styles.emptyState]}>
+        <View style={[styles.dropdownContainer, suggestionPlacement === 'inline' && styles.dropdownInline, { backgroundColor: colors.cellBackground, borderColor: colors.gray200 }, listStyle, styles.emptyState]}>
           <Ionicons
             name="search-outline"
             size={24}
@@ -523,6 +530,10 @@ const styles = StyleSheet.create({
       },
     }),
     zIndex: 1000,
+  },
+  dropdownInline: {
+    position: 'relative',
+    top: 0,
   },
   dropdownList: {
     maxHeight: FIORI.dropdownMaxHeight,

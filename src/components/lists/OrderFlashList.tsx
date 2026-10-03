@@ -210,7 +210,8 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
         setIsLoading(true);
       }
       // isSilent: no loading indicator — data refreshes quietly in background
-      setError(null);
+      // A retry does not make retained data current. Clear the warning only
+      // after a successful response replaces the displayed orders.
 
       // Build filters
       const filters: OrderFilters = {};
@@ -245,6 +246,7 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
           });
         }
         setOrders(filteredOrders);
+        setError(null);
         setRefreshTimestamp(Date.now());
         setHasMore(false);
       } else {
@@ -555,6 +557,15 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
       </View>
 
       {/* Filter Badge */}
+      {error && (
+        <View accessibilityRole="alert" style={{ padding: 12, backgroundColor: colors.cellBackground }}>
+          <Text style={{ color: colors.textPrimary }}>{error}</Text>
+          <Text style={{ color: colors.textSecondary }}>
+            Showing previously loaded orders. Refresh to get current data.
+          </Text>
+        </View>
+      )}
+
       {showWithItemsOnly && (
         <View
           style={[styles.filterChipContainer, { backgroundColor: colors.cellBackground }]}

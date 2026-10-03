@@ -111,6 +111,7 @@ export interface UseDispatchFormReturn {
   images: DispatchImageData[];
   dispatchId: string | null;
   isLoading: boolean;
+  isGeneratingNumber: boolean;
   isSaving: boolean;
   validationErrors: Record<string, string>;
   isCreateMode: boolean;
@@ -189,6 +190,8 @@ export function useDispatchForm({
   // Local state
   const [validationErrors, setLocalValidationErrors] = useState<Record<string, string>>({});
 
+  const [isGeneratingNumber, setIsGeneratingNumber] = useState(isCreateMode && !header.disp_no);
+
   // AbortController for cancelling pending dispatch number change operations
   const dispNoChangeAbortRef = useRef<AbortController | null>(null);
 
@@ -224,6 +227,7 @@ export function useDispatchForm({
     // Generate dispatch number
     if (!header.disp_no && !hasGeneratedDispNo.current) {
       hasGeneratedDispNo.current = true;
+      setIsGeneratingNumber(true);
       try {
         const disp_no = await getNextDispatchNumber();
         // Check if session changed before updating state (prevents stale updates after navigation)
@@ -237,7 +241,11 @@ export function useDispatchForm({
         if (globalSessionId === currentSessionId) {
           Alert.alert('Error', 'Failed to generate dispatch number');
         }
+      } finally {
+        setIsGeneratingNumber(false);
       }
+    } else {
+      setIsGeneratingNumber(false);
     }
 
     // Check session again before supervisor update
@@ -469,13 +477,12 @@ export function useDispatchForm({
 
     switch (step) {
       case 1:
-        console.log('[useDispatchForm] Validating step 1 - header:', JSON.stringify(header, null, 2));
+        console.log('[useDispatchForm] Validating step 1');
         result = await validateStep1(header);
         console.log('[useDispatchForm] Step 1 validation result:', result);
         break;
       case 2:
         console.log('[useDispatchForm] Validating step 2 - items count:', items.length);
-        console.log('[useDispatchForm] Items data:', JSON.stringify(items, null, 2));
         // NOTE: validateStep2 expects { items: [...] } not just the array
         result = await validateStep2({ items });
         console.log('[useDispatchForm] Step 2 validation result:', result);
@@ -483,7 +490,6 @@ export function useDispatchForm({
       case 3:
         console.log('[useDispatchForm] Validating step 3 - header + items');
         console.log('[useDispatchForm] 🔍 Header disp_date:', header.disp_date, 'type:', typeof header.disp_date);
-        console.log('[useDispatchForm] 🔍 Header full:', JSON.stringify(header, null, 2));
         console.log('[useDispatchForm] 🔍 Items count:', items.length);
         if (items.length > 0) {
           console.log('[useDispatchForm] 🔍 First item grns_date:', items[0].grns_date);
@@ -744,6 +750,7 @@ export function useDispatchForm({
     images,
     dispatchId,
     isLoading: dispatchFormState.is_loading,
+    isGeneratingNumber,
     isSaving: dispatchFormState.is_saving,
     validationErrors,
     isCreateMode,

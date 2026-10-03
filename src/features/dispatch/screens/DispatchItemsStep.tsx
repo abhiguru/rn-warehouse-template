@@ -749,6 +749,7 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
                 )}
                 <TouchableOpacity
                     style={[styles.addPillButton, (!isCurrentItemValid || isAddingItem) && styles.addPillButtonDisabled]}
+                    accessibilityLabel="Save dispatch item"
                     onPress={handleAddItem}
                     activeOpacity={0.8}
                     disabled={!isCurrentItemValid || isAddingItem}
@@ -979,6 +980,7 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
                                 />
                                 <TextInput
                                     ref={quantityInputRef}
+                                    accessibilityLabel="Dispatch quantity"
                                     style={[
                                         styles.input,
                                         { color: colors.gray900 },

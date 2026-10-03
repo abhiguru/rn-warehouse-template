@@ -72,6 +72,7 @@ export const ItemSearchField: React.FC<ItemSearchFieldProps> = ({
         fetchData={searchItems}
         onSelect={onSelect}
         renderItem={renderItem}
+        getItemAccessibilityLabel={(item) => `Select receipt item ${item.name}`}
         keyExtractor={keyExtractor}
         zIndex={zIndex}
       />

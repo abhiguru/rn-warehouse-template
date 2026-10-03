@@ -32,23 +32,31 @@ export const OfflineBanner: React.FC<OfflineBannerProps> = ({
   const translateY = React.useRef(new Animated.Value(-50)).current;
 
   React.useEffect(() => {
+    let current = true;
+    let animation: Animated.CompositeAnimation | undefined;
     if (isOffline) {
       setVisible(true);
-      Animated.spring(translateY, {
+      animation = Animated.spring(translateY, {
         toValue: 0,
         useNativeDriver: true,
         tension: 100,
         friction: 10,
-      }).start();
+      });
     } else if (visible) {
-      Animated.timing(translateY, {
+      animation = Animated.timing(translateY, {
         toValue: -50,
         duration: 200,
         useNativeDriver: true,
-      }).start(() => {
-        setVisible(false);
       });
     }
+    animation?.start(({ finished }) => {
+      // A cancelled or obsolete hide must not remove a newer offline warning.
+      if (current && finished && !isOffline) setVisible(false);
+    });
+    return () => {
+      current = false;
+      animation?.stop();
+    };
   }, [isOffline, visible, translateY]);
 
   if (!visible) return null;
