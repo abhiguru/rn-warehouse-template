@@ -12,3 +12,14 @@ test('reciprocal native receipt denial binds genuine B account and existing A re
  const snapshot={profile:{id:config.profileId,name:config.profileName,role:'customer',active:true},nativeSessionPresent:true,otpCount:7,businessHash:'c'.repeat(64),otherAuthHash:'d'.repeat(64)};receiptDenialPreserved(config,{snapshot,target},{snapshot,target});
  assert.throws(()=>receiptDenialTarget(config,{...target,nativeAssigned:true}));
 });
+
+test('genuine A APK10 isolation requires exact artifact and identity and preserves customer state',()=>{
+ const config={...c(),reservedCustomerReceiptDenial:false,genuineCustomerAReceiptDenial:true,kind:'native-genuine-a-receipt-denial',profileId:'79764e1a-3aed-4cac-9a25-42ccdafb79ac',profileName:'Customer A',artifactSHA256:'a7df6781bdcd889eb9ccaa01ee0973890effd4d187bb6ac45f100284e1b04b69',nativeAttempt:1,noAutomaticRetry:true};
+ receiptDenialConfig(config);
+ const target={id:config.targetReceiptId,record:'FXC702',customer:'Backend Test Customer B',nativeAssigned:false};
+ const snapshot={profile:{id:config.profileId,name:config.profileName,role:'customer',active:true},nativeSessionPresent:true,otpCount:7,businessHash:'c'.repeat(64),otherAuthHash:'d'.repeat(64)};
+ receiptDenialPreserved(config,{snapshot,target},{snapshot,target});
+ for(const edit of [{profileId:c().profileId},{profileName:'New customer'},{artifactSHA256:'a'.repeat(64)},{reservedCustomerReceiptDenial:true},{reservedCustomerPDF:true},{nativeAttempt:4},{noAutomaticRetry:false},{targetReceiptId:id}])assert.throws(()=>receiptDenialConfig({...config,...edit}));
+ assert.throws(()=>receiptDenialTarget(config,{...target,nativeAssigned:true}));
+ assert.throws(()=>receiptDenialPreserved(config,{snapshot,target},{snapshot:{...snapshot,nativeSessionPresent:false},target}));
+});

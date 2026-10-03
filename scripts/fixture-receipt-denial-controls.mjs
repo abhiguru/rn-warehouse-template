@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
-import {navigationConfig,customerReceiptDenialMode,navigationBefore,navigationAfter,reciprocalReceiptDenialMode} from './fixture-navigation-guards.mjs';
-export function receiptDenialConfig(c){navigationConfig(c);assert.equal(customerReceiptDenialMode(c)||reciprocalReceiptDenialMode(c),true);assert.equal(c.origin,'https://backend-core.example.test');assert.equal(c.instanceId,'b0ec3933-5258-4bd5-87f4-d57b13a78971');return c;}
+import {navigationConfig,customerReceiptDenialMode,navigationBefore,navigationAfter,reciprocalReceiptDenialMode,genuineAReceiptDenialMode} from './fixture-navigation-guards.mjs';
+export function receiptDenialConfig(c){navigationConfig(c);assert.equal(customerReceiptDenialMode(c)||reciprocalReceiptDenialMode(c)||genuineAReceiptDenialMode(c),true);assert.equal(c.origin,'https://backend-core.example.test');assert.equal(c.instanceId,'b0ec3933-5258-4bd5-87f4-d57b13a78971');return c;}
 export function receiptDenialExpected(c){receiptDenialConfig(c);return reciprocalReceiptDenialMode(c)?{record:'FXC701',customer:'Backend Test Customer A',ownCustomer:'Backend Test Customer B'}:{record:'FXC702',customer:'Backend Test Customer B',ownCustomer:'Backend Test Customer A'};}
 export function receiptDenialTarget(c,target){const expected=receiptDenialExpected(c);assert.deepEqual(target,{id:c.targetReceiptId,record:expected.record,customer:expected.customer,nativeAssigned:false});}
 export function receiptDenialPreserved(c,before,after){receiptDenialTarget(c,before.target);receiptDenialTarget(c,after.target);navigationBefore(c,before.snapshot);navigationAfter(c,before.snapshot,after.snapshot);}
