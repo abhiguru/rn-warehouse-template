@@ -108,3 +108,21 @@ export function genuineAReadOnlyMode(c,secondary,replacement){
  }
  return enabled;
 }
+
+export function currentStaffAuthenticationMode(c,secondary,replacement){
+ if(Object.hasOwn(c,'currentStaffAuthentication'))assert.equal(typeof c.currentStaffAuthentication,'boolean');
+ const enabled=c.currentStaffAuthentication===true;
+ if(enabled){
+  assert.equal(secondary,false);assert.equal(replacement,false);assert.equal(c.kind,'native-current-staff-login');assert.equal(c.phone,'919888888874');assert.equal(c.profileId,'947136fa-997b-4a83-819d-1b8bd3ecba68');assert.equal(c.profileName,'New customer');assert.equal(c.role,'staff');assert.equal(c.expected,'authenticated');assert.equal(c.origin,'https://backend-core.example.test');assert.equal(c.instanceId,'b0ec3933-5258-4bd5-87f4-d57b13a78971');assert.equal(c.noAutomaticRetry,true);assert.equal(c.artifactSHA256,'a7df6781bdcd889eb9ccaa01ee0973890effd4d187bb6ac45f100284e1b04b69');
+  for(const k of ['pendingReadOnly','approvedEnrollmentExit','customerReadOnly','disabledAuthentication','rejectedAuthentication','customerAApprovedAuthentication','customerBApprovedAuthentication','genuineAReadOnly','confirmedDraftDestinationAuthentication'])assert.notEqual(c[k],true);
+ }
+ return enabled;
+}
+export function currentStaffAuthenticationBefore(c,s){
+ assert.equal(currentStaffAuthenticationMode(c,false,false),true);assert.deepEqual(s.profile,{id:c.profileId,name:c.profileName,role:'staff',active:true,status:'approved'});assert.deepEqual(s.sessions,[]);assert.ok((s.quota?.hourly??0)<5&&(s.quota?.daily??0)<20,'ORDINARY_AUTH_QUOTA_EXHAUSTED');
+}
+export function currentStaffAuthenticationAfter(c,b,a){
+ currentStaffAuthenticationBefore(c,b);
+ for(const k of ['profile','profileStaticHash','businessHash','otherAuthHash','targetAssignments','enrollmentHash','enrollmentTokenCount','usersHash','consumedHash','authConfigHash'])assert.deepEqual(a[k],b[k]);
+ assert.equal(a.otpVerified,b.otpVerified+1);assert.equal(a.quota.hourly,(b.quota?.hourly??0)+1);assert.equal(a.quota.daily,(b.quota?.daily??0)+1);assert.equal(a.sessions.length,1);assert.match(a.sessions[0].id,/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/);assert.match(a.sessions[0].rowSHA256,/^[a-f0-9]{64}$/);return a.sessions[0].id;
+}

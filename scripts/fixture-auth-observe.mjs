@@ -9,7 +9,7 @@ import { assertReleased, privateJSON } from './fixture-session-guards.mjs';
 import {confirmedDraftAuthMode,confirmedDraftAuthBefore,confirmedDraftAuthAfter,reconciledObservationFailure} from './fixture-confirmed-draft-auth-controls.mjs';
 import {confirmedDraftConfig} from './fixture-confirmed-draft-controls.mjs';
 import {confirmedDraftSnapshot} from './fixture-confirmed-draft-snapshot.mjs';
-import { pendingReadOnlyMode, approvedEnrollmentExitMode, customerReadOnlyMode, disabledAuthenticationMode, rejectedAuthenticationMode, approvedBAuthenticationMode, approvedBAuthenticationBefore, approvedBAuthenticationAfter, approvedAAuthenticationMode, approvedAAuthenticationBefore, approvedAAuthenticationAfter, genuineAReadOnlyMode } from './fixture-auth-controls.mjs';
+import { pendingReadOnlyMode, approvedEnrollmentExitMode, customerReadOnlyMode, disabledAuthenticationMode, rejectedAuthenticationMode, approvedBAuthenticationMode, approvedBAuthenticationBefore, approvedBAuthenticationAfter, approvedAAuthenticationMode, approvedAAuthenticationBefore, approvedAAuthenticationAfter, genuineAReadOnlyMode, currentStaffAuthenticationMode, currentStaffAuthenticationBefore, currentStaffAuthenticationAfter } from './fixture-auth-controls.mjs';
 process.umask(0o077);
 try {
   const [path, phase] = process.argv.slice(2);
@@ -38,7 +38,7 @@ try {
   const customerReadOnly = customerReadOnlyMode(c,secondary,replacement);const genuineARead=genuineAReadOnlyMode(c,secondary,replacement);
   const disabled = disabledAuthenticationMode(c,secondary,replacement);
   const rejected = rejectedAuthenticationMode(c,secondary,replacement);
-  const denied = disabled || rejected;const bApproved=approvedBAuthenticationMode(c,secondary,replacement);const aApproved=approvedAAuthenticationMode(c,secondary,replacement);
+  const staffAuth=currentStaffAuthenticationMode(c,secondary,replacement);const denied = disabled || rejected;const bApproved=approvedBAuthenticationMode(c,secondary,replacement);const aApproved=approvedAAuthenticationMode(c,secondary,replacement);
   assert.ok(['authenticated','pending'].includes(c.expected) || denied, 'EXPLICIT_AUTH_MODE_REQUIRED');
   if (Object.hasOwn(c,'replacementFixture')) assert.equal(typeof c.replacementFixture,'boolean');
   assert.ok(secondary || c.origin === 'https://backend-core.example.test');
@@ -113,12 +113,14 @@ COMMIT;`;
     if (customerReadOnly) {assert.equal(snapshot.profile?.status,'approved');assert.equal(snapshot.profile?.active,true);assert.equal(snapshot.profile?.role,'customer');assert.equal(snapshot.sessions.length,1);assert.equal(snapshot.sessions[0].id,c.nativeSessionId);}
     if (phase === 'before') {
       if(bApproved)approvedBAuthenticationBefore(c,snapshot);
+      if(staffAuth)currentStaffAuthenticationBefore(c,snapshot);
       if(aApproved)approvedAAuthenticationBefore(c,snapshot);
       if(draftAuth)confirmedDraftAuthBefore(c,snapshot);
       assert.ok((snapshot.quota?.hourly ?? 0)<5 && (snapshot.quota?.daily ?? 0)<20,'ORDINARY_AUTH_QUOTA_EXHAUSTED');
     } else {
       const before = privateJSON(resolve(c.caseDirectory,'auth-before.json')).snapshot;
       if(bApproved)approvedBAuthenticationAfter(c,before,snapshot);
+      if(staffAuth)currentStaffAuthenticationAfter(c,before,snapshot);
       if(aApproved)approvedAAuthenticationAfter(c,before,snapshot);
       if(draftAuth)confirmedDraftAuthAfter(c,before,snapshot);
       assert.equal(snapshot.businessHash,before.businessHash,'AUTH_CHANGED_BUSINESS_DATA');
