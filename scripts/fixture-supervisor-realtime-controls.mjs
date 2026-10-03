@@ -5,8 +5,11 @@ export function supervisorConfig(c){
  assert.equal(c.instanceId,'b0ec3933-5258-4bd5-87f4-d57b13a78971');
  assert.equal(c.cartA,'ce9cb158-bdb6-11f1-8391-8b2b4fd918b0');
  assert.equal(c.cartB,'f3346be6-bdb6-11f1-97b0-638c3f007281');
- assert.equal(c.markerA,'FixtureSupervisorRealtime0109A');
- assert.equal(c.markerB,'FixtureSupervisorRealtime0109B');return c;
+ if(Object.hasOwn(c,'currentArtifactRealtime'))assert.equal(typeof c.currentArtifactRealtime,'boolean');
+ const current=c.currentArtifactRealtime===true;
+ if(current)assert.equal(c.artifactSHA256,'a7df6781bdcd889eb9ccaa01ee0973890effd4d187bb6ac45f100284e1b04b69');
+ assert.equal(c.markerA,current?'FixtureSupervisorRealtime0110A':'FixtureSupervisorRealtime0109A');
+ assert.equal(c.markerB,current?'FixtureSupervisorRealtime0110B':'FixtureSupervisorRealtime0109B');return c;
 }
 export function claimSupervisorWrite(c,state,role,channels){
  supervisorConfig(c);assert.ok(Date.now()<Date.parse(c.deadlineUTC));
