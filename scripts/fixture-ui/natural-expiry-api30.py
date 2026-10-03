@@ -2,6 +2,7 @@
 """One dedicated naturally expired session check; no OTP, login or retries."""
 import datetime,fcntl,hashlib,json,os,re,shlex,subprocess,sys,time,xml.etree.ElementTree as ET
 from pathlib import Path
+from expiry_helper_controls import helper_config,inspect_helper,free_helper_endpoints,helper_ready
 os.umask(0o077)
 PACKAGE='in.gurucold.warehouse.fixture'
 def digest(p):return hashlib.sha256(Path(p).read_bytes()).hexdigest()
@@ -17,16 +18,20 @@ def main(path):
  scripts=Path(__file__).parent.parent
  for p,h in c['toolingSHA256'].items():assert digest(scripts/p)==h
  assert c['toolingSHA256']['fixture-ui/natural-expiry-api30.py']==digest(__file__)
+ assert c['toolingSHA256']['fixture-ui/expiry_helper_controls.py']==digest(Path(__file__).with_name('expiry_helper_controls.py'))
  def run(args,timeout=25):
   remaining=(deadline-datetime.datetime.now(datetime.timezone.utc)).total_seconds();assert remaining>0
   q=subprocess.run(args,capture_output=True,timeout=min(timeout,remaining));assert q.returncode==0,'Owned expiry operation refused';return q.stdout.decode(errors='replace').strip()
  def observe(phase):
   return run(['/usr/bin/sg','docker','-c',shlex.join([c['node'],str(scripts/'fixture-natural-expiry-observe.mjs'),path,phase])],45)
  def adb(*args):return run([c['adb'],'-s',c['serial'],*args])
+ h=helper_config(c,private,digest)
  observe('guard')
  lock=private(c['actorLock']);fd=os.open(lock,os.O_RDWR|os.O_NOFOLLOW);fcntl.flock(fd,fcntl.LOCK_EX|fcntl.LOCK_NB)
+ helper_started=False
  try:
   observe('guard')
+  inspect_helper(run,h,True);free_helper_endpoints(h)
   proof=json.loads(private(c['preparationProof']).read_text());assert proof['device']['avd']==c['avd']
   assert c['preservedAVDFiles'] and len(c['preservedAVDFiles'])<=256
   avdroot=private(c['avdDirectory'],True);assert avdroot.name==c['avd']+'.avd'
@@ -42,7 +47,13 @@ def main(path):
   state={'status':'RUNNING','bootAttempted':False,'OTPRequested':False,'automaticRetry':False}
   def save():
    (e/'executor-status.json').write_text(json.dumps(state,indent=2)+'\n')
-  save();observe('before');state['bootAttempted']=True;save();run(['systemctl','--user','start',c['emulatorUnit']],30)
+  save();observe('before');run(['systemctl','--user','start',h['unit']],30);helper_started=True
+  inspect_helper(run,h,False)
+  ready_end=time.monotonic()+30
+  while True:
+   try:helper_ready(h,'b0ec3933-5258-4bd5-87f4-d57b13a78971');break
+   except (OSError,AssertionError):assert time.monotonic()<ready_end;time.sleep(.5)
+  state['dedicatedHelperReady']=True;save();state['bootAttempted']=True;save();run(['systemctl','--user','start',c['emulatorUnit']],30)
   boot_end=min(time.monotonic()+300,time.monotonic()+(deadline-datetime.datetime.now(datetime.timezone.utc)).total_seconds())
   while True:
    try:
@@ -76,11 +87,16 @@ def main(path):
   stop_end=time.monotonic()+30
   while run(['systemctl','--user','show',c['emulatorUnit'],'-p','ActiveState','--value'])!='inactive':
    assert time.monotonic()<stop_end,'Owned clean stop not verified';time.sleep(.5)
-  state.update(status='PASS',cleanStopVerified=True);save();print('{"status":"PASS","scope":"dedicated natural-expiry native acceptance"}')
+  inspect_helper(run,h,False);run(['systemctl','--user','stop',h['unit']],20);inspect_helper(run,h,True);helper_started=False
+  state.update(status='PASS',cleanStopVerified=True,dedicatedHelperStopped=True);save();print('{"status":"PASS","scope":"dedicated natural-expiry native acceptance"}')
  except Exception as error:
   if 'state' in locals():state.update(status='BLOCKED',exceptionType=type(error).__name__,reason='Preserve partial expiry attempt; no automatic retry');save()
   raise
- finally:os.close(fd)
+ finally:
+  try:
+   if helper_started:
+    inspect_helper(run,h,False);run(['systemctl','--user','stop',h['unit']],20);inspect_helper(run,h,True)
+  finally:os.close(fd)
 if __name__=='__main__':
  try:main(str(Path(sys.argv[1]).resolve()))
  except Exception:print('{"status":"BLOCKED","category":"DEDICATED_NATURAL_EXPIRY_STOPPED","automaticRetry":false}');sys.exit(2)

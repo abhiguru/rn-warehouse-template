@@ -1225,3 +1225,19 @@ group closure. BLOCKED group proofs also require their own three-attempt/no-more
 metadata. Focused refusals and all301 source tests passed; private output is
 revocation-exact-group-full-source-tests01.log. No complete-group proof or native
 revocation was produced, and existing frozen runtimes remain unchanged.
+
+
+Delayed-expiry helper lifetime correction in review tooling: appointment
+configuration now requires an independently named core-expiry unit, inactive
+with Restart=no, NRestarts=0, control-group ownership and a one-hour external
+cap. Unit fragment, configuration, certificate and helper source must be bound.
+Only normal primary owner/state/guard/socket configuration is admitted;
+replacement, read delays and concurrency injection refuse. Under the existing
+appointment actor lock, execution requires free owned TLS/IPC endpoints, starts
+that unit once, verifies certificate-authenticated actual discovery and IPC
+connection readiness, then boots the dedicated AVD. PASS requires both device
+and helper clean stop. Existing twelve-hour campaign helpers are not extended
+or replaced. New helper state refusals2/2, complete source suite301/301 and final
+expiry integration tests12/12 passed. This is source evidence only: no dedicated
+unit, AVD/session or timer was created; actual appointment integration remains
+unverified and scheduling is still prohibited until final freeze gates pass.
