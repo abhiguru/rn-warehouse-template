@@ -92,13 +92,16 @@ def main(path):
         def read_events():
             log=nav.soak.private(c['sourceHTTPLog']);raw=log.read_text();assert len(raw)<=8388608
             return [json.loads(line) for line in raw.splitlines() if line.startswith('{')]
-        def settled_reads():
-            end=time.monotonic()+45
-            while True:
-                events=read_events();starts=[x for x in events if x.get('event')=='confirmed-orders-delay-start'];ends=[x for x in events if x.get('path')=='/rest/v1/rpc/get_orders_list' and x.get('event') in ['complete','client-response-closed','client-request-aborted']]
-                if starts and ends and datetime.datetime.fromisoformat(ends[-1]['atUTC'].replace('Z','+00:00'))>=datetime.datetime.fromisoformat(starts[-1]['atUTC'].replace('Z','+00:00')):break
-                assert time.monotonic()<end,'Actual startup read settlement required';time.sleep(.5)
-        if c.get('confirmedOrdersResponseSwitch') is True:settled_reads()
+        def read_control(request):
+            helper=json.loads(nav.soak.private(c['sourceHelperConfig']).read_text());sock=Path(helper['services'][0]['socketPath']);st=sock.lstat();assert st.st_uid==os.getuid() and st.st_mode&0o777==0o600
+            with socket.socket(socket.AF_UNIX) as control:
+                control.settimeout(5);control.connect(str(sock));control.sendall((json.dumps(request)+'\n').encode());raw=b''
+                while True:
+                    part=control.recv(1024)
+                    if not part:break
+                    raw+=part;assert len(raw)<=1024
+            return json.loads(raw)
+        if c.get('confirmedOrdersResponseSwitch') is True:assert read_control({'action':'confirmed-orders-status'})=={'state':'READY','attemptId':None}
 
         original=e/'original-selection';original.mkdir(mode=0o700);d.selected_server(original,c['origin'],c['instanceId'])
         kind=c['draftKind'];route(('customer' if kind=='customer' else kind)+'-form/step1')
@@ -128,11 +131,14 @@ def main(path):
         if 'mInputShown=true' in d.adb('shell','dumpsys','input_method'):d.adb('shell','input','keyevent','4')
         marker();d.archive('real-unsaved-draft');d.state['phases'].append('ACTUAL_UNSAVED_DRAFT_NO_SUBMISSION');pid=d.adb('shell','pidof',nav.soak.PACKAGE);assert re.fullmatch(r'[1-9]\d*',pid);d.state['draftProcessPID']=int(pid);d.save()
         if c.get('confirmedOrdersResponseSwitch') is True:
-            route('orders');d.wait('Orders tab');settled_reads();d.wait('Refresh orders')
-            since=datetime.datetime.now(datetime.timezone.utc).isoformat();d.state['readRequestedUTC']=since;d.save();d.tap('Refresh orders')
+            route('orders');d.wait('Orders tab');d.wait('Refresh orders')
+            since=datetime.datetime.now(datetime.timezone.utc).isoformat();d.state.update(readRequestedUTC=since,confirmedReadAttemptId=c['confirmedReadAttemptId']);d.save()
+            armed=read_control({'action':'arm-confirmed-orders-read','attemptId':c['confirmedReadAttemptId'],'deadlineUTC':(datetime.datetime.now(datetime.timezone.utc)+datetime.timedelta(seconds=60)).isoformat()});assert armed=={'state':'ARMED','attemptId':c['confirmedReadAttemptId']}
+            with (e/'one-shot-arm-proof.json').open('x') as f:json.dump(armed,f)
+            d.tap('Refresh orders')
             end=time.monotonic()+10
             while True:
-                starts=[x for x in read_events() if x.get('event')=='confirmed-orders-delay-start' and datetime.datetime.fromisoformat(x['atUTC'].replace('Z','+00:00'))>=datetime.datetime.fromisoformat(since)]
+                starts=[x for x in read_events() if x.get('confirmedReadAttemptId')==c['confirmedReadAttemptId'] and x.get('event')=='confirmed-orders-delay-start' and datetime.datetime.fromisoformat(x['atUTC'].replace('Z','+00:00'))>=datetime.datetime.fromisoformat(since)]
                 if starts:assert len(starts)==1 and starts[0]['status']==200 and starts[0]['delayMs']==30000;break
                 assert time.monotonic()<end,'Actual pending authenticated read required';time.sleep(.1)
         route('operator-server');d.wait('Choose your warehouse server');d.fill_origin(c['targetOrigin']);d.tap('Check server');d.wait(target_name);d.wait(c['targetOrigin']);d.tap('Use this server');d.wait('Change Warehouse Server')
@@ -147,9 +153,10 @@ def main(path):
         if c.get('confirmedOrdersResponseSwitch') is True:
             end=time.monotonic()+45
             while True:
-                settled=[x for x in read_events() if x.get('path')=='/rest/v1/rpc/get_orders_list' and x.get('event') in ['complete','client-response-closed','client-request-aborted','upstream-timeout','upstream-unavailable'] and datetime.datetime.fromisoformat(x['atUTC'].replace('Z','+00:00'))>=datetime.datetime.fromisoformat(d.state['readRequestedUTC'])]
+                settled=[x for x in read_events() if x.get('confirmedReadAttemptId')==c['confirmedReadAttemptId'] and x.get('path')=='/rest/v1/rpc/get_orders_list' and x.get('event') in ['complete','client-response-closed','client-request-aborted','upstream-timeout','upstream-unavailable'] and datetime.datetime.fromisoformat(x['atUTC'].replace('Z','+00:00'))>=datetime.datetime.fromisoformat(d.state['readRequestedUTC'])]
                 if settled:break
                 assert time.monotonic()<end,'Actual old-read settlement required';time.sleep(.5)
+            assert read_control({'action':'confirmed-orders-status'})=={'state':'CONSUMED','attemptId':c['confirmedReadAttemptId']}
             d.wait('Send OTP');d.archive('destination-login-after-read-settlement')
         observe('after')
         d.state.update(status='PASS',scope='confirmed-switch-pre-authentication-reconciliation-only',draftAcceptance='NOT_TESTED',requiredNext='Separately guarded ordinary destination login and actual empty-draft UI checks in this same process, then cold persistence; preserve destination selection and process')

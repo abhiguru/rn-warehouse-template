@@ -46,7 +46,7 @@ try{
   const h=privateJSON(c[side+'HelperConfig']);assert.equal(digest(readFileSync(c[side+'HelperConfig'])),c[side+'HelperConfigSHA256']);
   assert.equal(h.scope,'isolated-fictional-fixture');assert.equal(h.services.length,1);
   const service=h.services[0],source=side==='source';assert.equal(service.kind,(source!==returning)?'core':'switch');assert.equal(service.observeAuthenticationPresence,true);
-  if(source&&c.confirmedOrdersResponseSwitch===true)assert.equal(service.confirmedOrdersReadDelayMs,30000);else assert.equal(service.confirmedOrdersReadDelayMs??0,0);
+  if(source&&c.confirmedOrdersResponseSwitch===true){assert.equal(service.confirmedOrdersReadDelayMs,30000);assert.equal(digest(readFileSync(resolve(service.checkout,'scripts/fixture-confirmed-orders-delay.mjs'))),c.confirmedReadControlSHA256);}else assert.equal(service.confirmedOrdersReadDelayMs??0,0);
   assert.equal(service.state,c[source?'backendState':'targetBackendState']);assert.equal(service.owningCheckout,c[source?'backendCheckout':'targetBackendCheckout']);
   assert.equal(service.ownerGuardSHA256,c[source?'fixtureGuardSHA256':'targetFixtureGuardSHA256']);
   assert.equal(c[side+'HTTPLog'],resolve(h.logDir,`warehouse-fixture-${service.kind}-${h.runId}.service.log`));
