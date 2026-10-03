@@ -31,6 +31,21 @@ def terminal_plan(ledger,locked):
     steps=ledger.get('steps',[])
     return not locked and ((bool(steps) and all(x.get('status') in terminal for x in steps)) or (not any(x.get('status')=='RUNNING' for x in steps) and any(x.get('status') in terminal-{'PASS'} for x in ledger.get('checks',[]))))
 
+def monitor_deadline(campaign,extension=None,now=None):
+    original=datetime.datetime.fromisoformat(campaign['deadline'])
+    assert (original-datetime.datetime.fromisoformat(campaign['startedAt'])).total_seconds()==172800
+    if extension is None:return original
+    assert extension['scope']=='authorized-vm-campaign-extension'
+    assert extension['supersedesDeadline']==campaign['deadline']
+    assert re.fullmatch(r'[a-f0-9]{64}',extension['authorizationSHA256'])
+    start=datetime.datetime.fromisoformat(extension['startedAt'])
+    end=datetime.datetime.fromisoformat(extension['deadline'])
+    assert start.tzinfo is not None and end.tzinfo is not None
+    assert start>=original and 0<(end-start).total_seconds()<=86400
+    now=now or datetime.datetime.now(datetime.timezone.utc)
+    assert start<=now<end,'Extension monitor is not within its bounded window'
+    return end
+
 def sample(c,cycle):
     root=Path(c['root']);row={'utc':datetime.datetime.now(datetime.timezone.utc).isoformat(),'readOnly':True,'services':{},'stages':{},'certificates':{}}
     row['diskAvailableBytes']=shutil.disk_usage(root).free
@@ -91,7 +106,12 @@ def sample(c,cycle):
 
 def main(path):
     c=private(path);assert c['scope']=='isolated-fictional-vm-monitor';root=Path(c['root']);assert root==Path('/home/jay/warehouse-install-private/vm-campaign-20261001')
-    campaign=private(root/'campaign.json');deadline=datetime.datetime.fromisoformat(campaign['deadline']);assert (deadline-datetime.datetime.fromisoformat(campaign['startedAt'])).total_seconds()==172800
+    campaign=private(root/'campaign.json')
+    extension=private(c['extensionPlan']) if c.get('extensionPlan') else None
+    if extension:
+        private(extension['authorization'])
+        assert hashlib.file_digest(Path(extension['authorization']).open('rb'),'sha256').hexdigest()==extension['authorizationSHA256']
+    deadline=monitor_deadline(campaign,extension)
     assert c['adb']=='/home/jay/Android/Sdk/platform-tools/adb' and 30<=c['intervalSeconds']<=300
     output=Path(c['output']);assert output.parent==root and not output.exists()
     with output.open('x') as log:
