@@ -1283,3 +1283,31 @@ rows/notes remain in private snapshots, with no replay of0110A/B or0109 markers.
 Private supervisor-realtime-reconnect0110-final-proof.json SHA256 8c36869546b8741ac2ce5100394e7be8ebd087310a657279f05985127a0ee8df.
 This is emulator reconnect evidence, not physical network, reciprocal native B,
 literal staff or complete business/isolation acceptance.
+
+
+Fresh normal-dispatch stock preparation on APK10 fixtures PASS: FXF960 has
+one10-unit lot, created through one ordinary administrator OTP/login and one
+API save_grn with independent before/auth/write/logout SQL and stored-byte
+reconciliation. Only its new API session was removed. This is API fixture
+preparation, not native receipt acceptance; prior fixtures/transactions remain.
+
+Native partial FXF961 attempted exactly one3-unit submission and displayed
+Dispatch Created Successfully, then its post-submit observer refused
+UNRELATED_BUSINESS_CHANGED. Original native/immutable ledger remain FAIL.
+Independent SQL found one header, one line, one matching cached success and
+stock10→7. Exact source-row comparison against preserved preparation found
+only receipt updated_at/updated_by and lot stock changed. The intended updater
+is the actual native supervisor, differing from the administrator fixture
+creator; the old observer allowed updated_at but omitted this actor change.
+Hash-bound reconstruction changed only that source updated_by to its recorded
+original for comparison, recomputed all original auth/cache/unrelated-state
+checks and passed. Live stored-object hashes were unchanged. No operation was
+replayed or document erased. Private normal-partial-dispatch0110-independent-final-proof01.json
+SHA2565405bba39ca83e50d43526cac4064bbd869a31244ebe37f23ab2ab538b3bb44d.
+This is separate exact-once reconciliation, not a relabelled native PASS.
+
+Review tooling now excludes only the bound source updater from the unrelated
+hash and separately requires it to equal the native supervisor after submit.
+Older administrator/fault/concurrency guards are unchanged. Complete source
+validation310/310 passed. Final FXF962 remains unsubmitted and requires a new
+immutable stage after this correction; it is not an FXF961 retry.
