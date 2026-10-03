@@ -1,5 +1,19 @@
 # Independent operator mobile handoff
 
+## Approved staff GRN policy, 3 October2026
+
+The operator chose staff access to view, create and edit GRNs, with deletion
+reserved for administrators/supervisors. Backend migration18 grants the scoped
+GRN RPC/read surface and required customer/attachment lookups; unrelated role
+permissions remain governed by their existing checks. The GRN activity screen
+includes staff, and the edit dispatch-presence helper reads the GRN-authorized
+summary and rejects malformed/denied responses.
+
+Ten focused mobile tests, typecheck and lint passed locally; existing lint
+warnings remain. The policy decision is resolved. Backend final migration CI
+and native acceptance remain outstanding; no new APK was built or installed.
+Historical staff-policy blocker notes below retain the prior observations.
+
 ## Current VM campaign checkpoint, 3 October 2026
 
 User-resumed after resource resize:31GiB RAM/about115GiB free disk/unused swap.

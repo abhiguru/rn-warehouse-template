@@ -243,11 +243,11 @@ export default function GRNActivityScreen() {
   const params = useLocalSearchParams<{ customerId?: string; customerName?: string }>();
 
   // Role-based access (J12 fix)
-  const {
-    isStaff,
-    singleAssignedCustomerId,
-    shouldShowListView,
-  } = useRoleBasedAccess();
+  const access = useRoleBasedAccess();
+  // Staff have warehouse-wide GRN access; other reports keep their own policy.
+  const isStaff = access.isStaff || access.role === 'staff';
+  const singleAssignedCustomerId = isStaff ? null : access.singleAssignedCustomerId;
+  const shouldShowListView = isStaff || access.shouldShowListView;
 
   const [data, setData] = useState<GRNActivityData | null>(null);
   const [allCustomersData, setAllCustomersData] = useState<AllGRNActivityData | null>(null);

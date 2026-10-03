@@ -1,3 +1,4 @@
+import { getGRNDispatchPresence } from './dispatchPresence';
 import { submissionIdempotencyKey } from '@/utils/submissionIdempotency';
 import { beginOperatorMutation, getAuthenticatedClient, getCurrentConfig } from '@/config/supabaseConfig';
 import { GRNHeaderData, GRNItemData, GRNImageData } from '@/store/slices/grnFormSlice';
@@ -1169,18 +1170,9 @@ export const loadGRNData = async (grnId: string) => {
 // Check if items have dispatches
 export const checkItemsHaveDispatches = async (grnId: string) => {
   try {
-    const { data, error } = await (await getAuthenticatedClient())
-      .from('dispatch_trl')
-      .select('id')
-      .eq('gr_id', grnId)
-      .limit(1);
-
-    if (error) throw error;
-
-    return {
-      success: true,
-      hasDispatches: data && data.length > 0,
-    };
+    const client = await getAuthenticatedClient();
+    const hasDispatches = await getGRNDispatchPresence(grnId, (name, args) => client.rpc(name, args));
+    return { success: true, hasDispatches };
   } catch (error) {
     console.error('[GRNFormService] Error checking dispatches:', error);
     return {
