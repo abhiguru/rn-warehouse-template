@@ -7,16 +7,17 @@ export async function runPrivateDocumentDenial(c,d,state){
  assert.equal(c.phone,'919888888872');
  assert.equal(c.profileId,'79764e1a-3aed-4cac-9a25-42ccdafb79ac');
  assert.equal(c.instanceId,'b0ec3933-5258-4bd5-87f4-d57b13a78971');
- assert.equal(c.artifactSHA256,'08271dada3bf90ed6912db71c0e08f95487a906d12a765bcaa706338bdf12fb7');
+ const current=currentAImageDenialMode(c);
+ assert.equal(c.artifactSHA256,current?'a7df6781bdcd889eb9ccaa01ee0973890effd4d187bb6ac45f100284e1b04b69':'08271dada3bf90ed6912db71c0e08f95487a906d12a765bcaa706338bdf12fb7');
  assert.match(c.imagePath,/^headers\/a24c256a-bdf3-11f1-97aa-57de57b8fb69\/[a-f0-9-]{36}_fixture-b-0109\.png$/);
  assert.equal(state.otpAttempted,false);
  const gate=async()=>{assert.ok(Date.now()<Date.parse(c.deadlineUTC));await d.verifyOwnership();};
- const preserved=(b,a)=>{for(const key of ['nativeBSessionPresent','businessHash','storageHash','otherAuthHash','profileHash','assignmentsHash','enrollmentHash'])assert.deepEqual(a[key],b[key],key+' changed');};
+ const preserved=(b,a)=>{for(const key of [current?'nativeASessionPresent':'nativeBSessionPresent','businessHash','storageHash','otherAuthHash','profileHash','assignmentsHash','enrollmentHash'])assert.deepEqual(a[key],b[key],key+' changed');};
  let access,refresh;
  await gate();const before=await d.snapshot();
  assert.deepEqual(before.profile,{id:c.profileId,role:'customer',active:true,status:'approved'});
  assert.ok(before.quota.hourly<5&&before.quota.daily<20);
- assert.equal(before.nativeBSessionPresent,true,'Existing native B session required');
+ assert.equal(before[current?'nativeASessionPresent':'nativeBSessionPresent'],true,'Existing matched native session required');
  await d.verifyImage(c.imagePath);
  try{
   state.otpAttempted=true;await d.record({phase:'ONE_ORDINARY_A_API_OTP_ATTEMPT'});
@@ -50,4 +51,15 @@ export async function runPrivateDocumentDenial(c,d,state){
   return {status:'PASS',scope:'A-to-B existing private B image direct-read/signing denial only',before,authenticated,final};
  }catch(error){await d.record({phase:'STOPPED_NO_REPLAY_OR_CLEANUP',exceptionType:error.name});throw error;}
  finally{access=refresh=undefined;}
+}
+
+export function currentAImageDenialMode(c){
+ if(Object.hasOwn(c,'currentAImageDenial'))assert.equal(typeof c.currentAImageDenial,'boolean');
+ const enabled=c.currentAImageDenial===true;
+ if(enabled){
+  assert.equal(c.scope,'isolated-fictional-a-private-image-denial');assert.equal(c.phone,'919888888872');assert.equal(c.profileId,'79764e1a-3aed-4cac-9a25-42ccdafb79ac');
+  assert.equal(c.artifactSHA256,'a7df6781bdcd889eb9ccaa01ee0973890effd4d187bb6ac45f100284e1b04b69');
+  assert.match(c.nativeSessionId,/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/);assert.equal(c.noAutomaticRetry,true);
+ }
+ return enabled;
 }
