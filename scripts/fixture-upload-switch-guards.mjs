@@ -41,6 +41,8 @@ export function uploadSwitchTarget(c,target){
 }
 export function uploadSwitchAfter(c,before,after){
  uploadSwitchTarget(c,before.target);
+ assert.equal(before.protected.nativeSessionPresent,true);assert.match(before.protected.stateHash,sha);
+ assert.deepEqual(before.targetStorage,[],'FRESH_TARGET_STORAGE_REQUIRED');
  assert.deepEqual({...after.target,images:[]},before.target,'RECEIPT_AND_STOCK_MUST_REMAIN_UNCHANGED');
  assert.equal(after.target.images.length,1);
  const image=after.target.images[0];assert.match(image.id,uuid);
@@ -48,6 +50,8 @@ export function uploadSwitchAfter(c,before,after){
  assert.equal(image.mimeType,'image/webp');assert.equal(image.fileSize,c.compressedFileSize);
  assert.equal(image.grnId,c.targetReceiptId);assert.equal(image.imageType,'header');assert.equal(image.itemId,null);
  assert.match(image.path,new RegExp('^headers/'+c.targetReceiptId+'/[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}_FXS993-switch-upload\\.webp$'));
+ assert.equal(after.targetStorage.length,1);assert.match(after.targetStorage[0].id,uuid);
+ assert.deepEqual(after.targetStorage[0],{id:after.targetStorage[0].id,bucket:'grn-images',name:image.path});
  assert.deepEqual(after.protected,before.protected,'UNRELATED_STATE_OR_AUTH_CHANGED');
  const old=before.files,files=after.files;
  assert.ok(old&&files&&typeof old==='object'&&typeof files==='object');

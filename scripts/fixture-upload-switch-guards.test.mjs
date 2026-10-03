@@ -9,10 +9,10 @@ test('new upload case pins exact installed artifact/account/fixture and never re
 });
 test('final reconciliation refuses duplicate/uncertain uploads, stock changes and loss of old stored bytes',()=>{
  const c=config(),path='headers/'+id+'/'+id+'_FXS993-switch-upload.webp';
- const before={target:{receiptId:id,record:c.record,customerId:'a823809c-bdb6-11f1-b1be-47a66d90b06d',items:[{id,received:1,available:1}],images:[]},protected:{session:'unchanged',otherBusiness:'unchanged'},files:{old:{size:10,sha256:'a'.repeat(64)}}};
- const after={target:{...before.target,images:[{id,status:'confirmed',tokenPresent:false,mimeType:'image/webp',fileSize:1234,grnId:id,imageType:'header',itemId:null,path}]},protected:{...before.protected},files:{...before.files,['stub/stub/grn-images/'+path+'/version']:{size:1234,sha256:'b'.repeat(64)}}};
+ const before={targetStorage:[],target:{receiptId:id,record:c.record,customerId:'a823809c-bdb6-11f1-b1be-47a66d90b06d',items:[{id,received:1,available:1}],images:[]},protected:{nativeSessionPresent:true,stateHash:'a'.repeat(64)},files:{old:{size:10,sha256:'a'.repeat(64)}}};
+ const after={targetStorage:[{id,bucket:'grn-images',name:path}],target:{...before.target,images:[{id,status:'confirmed',tokenPresent:false,mimeType:'image/webp',fileSize:1234,grnId:id,imageType:'header',itemId:null,path}]},protected:{...before.protected},files:{...before.files,['stub/stub/grn-images/'+path+'/version']:{size:1234,sha256:'b'.repeat(64)}}};
  assert.equal(uploadSwitchAfter(c,before,after).newConfirmedImages,1);
- for(const mutate of[a=>a.target.images.push({...a.target.images[0]}),a=>a.target.images[0].status='pending',a=>a.target.images[0].tokenPresent=true,a=>a.target.items[0].available=0,a=>delete a.files.old,a=>a.files.old.sha256='c'.repeat(64),a=>a.protected.session='new',a=>a.files.extra={size:1,sha256:'d'.repeat(64)}]){
+ for(const mutate of[a=>a.targetStorage=[],a=>a.targetStorage[0].name='other',a=>a.target.images.push({...a.target.images[0]}),a=>a.target.images[0].status='pending',a=>a.target.images[0].tokenPresent=true,a=>a.target.items[0].available=0,a=>delete a.files.old,a=>a.files.old.sha256='c'.repeat(64),a=>a.protected.session='new',a=>a.files.extra={size:1,sha256:'d'.repeat(64)}]){
   const changed=structuredClone(after);mutate(changed);assert.throws(()=>uploadSwitchAfter(c,before,changed));
  }
 });
