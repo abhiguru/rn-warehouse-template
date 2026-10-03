@@ -1152,3 +1152,29 @@ Final allowed corrected attempt03 must expect the documented refusal, record
 the actual alert during the held read, reconcile unchanged selection/session,
 then verify normal-route cold reads. No application behavior needs relaxing to
 make the switch occur; earlier successful header-draft switches were idle.
+
+In-flight Orders case is BLOCKED after final attempt03; no fourth native run.
+The actual Operation In Progress alert was captured at00:39:18.044916UTC
+while the identified read (start00:38:53.799UTC) remained pending until
+HTTP200 at00:39:23.803UTC. Zero completed switches, business submissions or
+OTP requests. The run then failed at OK because the existing general navigation
+selector intentionally acknowledges only Server Unavailable discovery errors.
+A separate exact operation-refusal selector is now source-tested; the discovery
+guard was not broadened and this does not reopen the exhausted case.299 complete
+source tests passed. Actual acknowledgement/cold completion in that native
+case remains unproven. All three failures and both earlier independent proofs
+are preserved. Private confirmed-orders-read-switch0110-capped-final-proof.json
+SHA256 15ca26b5c7f690bbf53a095af7af08090dc0631147c5bd408aebe94ecef38a9a binds these results with noFurtherNativeAttempts=true.
+
+Separately labelled normal cleanup PASS: the owned app was cold-launched
+without OTP, logout, confirmation, arming or business replay. Primary public
+selection and actual authenticated normal Orders200 passed. Independent before
+and after SQL/storage snapshots were exactly equal to the actual case03
+baseline, including complete protected authentication and native session state.
+The cleanup result remains originalAcceptance=BLOCKED and does not relabel any
+failure. Initial private cleanup module-import failure occurred before locks,
+native actions or directory creation and is retained; corrected module search
+path completed the authorized cleanup. Current core confirmread14 controller
+is consumed (all subsequent reads normal); switch observe08/fault renew04 are
+unchanged and monitor26 covers current units. App now runs on primary with its
+existing supervisor session. No restored archive, timestamps or quotas changed.

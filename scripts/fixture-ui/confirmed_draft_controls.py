@@ -18,3 +18,14 @@ def credential_presence(adb):
     legacy = adb('shell', shlex.join(['/system/bin/sqlite3', '-readonly', database, query]))
     assert re.fullmatch(r'\d{1,3}', legacy)
     return value == 'PRESENT' or int(legacy) != 0
+
+
+def read_refusal_acknowledgement(tree):
+    import re
+    labels={n.get('text') for n in tree.iter('node')}
+    assert 'Operation In Progress' in labels and 'Finish the current operation before switching servers.' in labels,'Exact owned read-refusal alert required'
+    nodes=[n for n in tree.iter('node') if n.get('text')=='OK' and n.get('class')=='android.widget.Button']
+    assert len(nodes)==1 and nodes[0].get('enabled')=='true'
+    m=re.fullmatch(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]',nodes[0].get('bounds',''));assert m
+    x,y,xx,yy=map(int,m.groups());assert 0<=x<xx<=720 and 0<=y<yy<=1280
+    return (x+xx)//2,(y+yy)//2

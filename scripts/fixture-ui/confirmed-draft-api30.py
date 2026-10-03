@@ -19,7 +19,7 @@ import ssl
 import subprocess
 import sys
 import time
-from confirmed_draft_controls import credential_presence
+from confirmed_draft_controls import credential_presence,read_refusal_acknowledgement
 from unsaved_customer_controls import customer_name_point
 from unsaved_grn_controls import grn_number_point
 from unsaved_invoice_controls import invoice_number_point
@@ -157,7 +157,7 @@ def main(path):
                 if settled:break
                 assert time.monotonic()<end,'Actual identified read settlement required';time.sleep(.5)
             assert read_control({'action':'confirmed-orders-status'})=={'state':'CONSUMED','attemptId':c['confirmedReadAttemptId']}
-            d.tap('OK');d.cold();d.wait('Orders tab');d.wait('Refresh orders');since=datetime.datetime.now(datetime.timezone.utc).isoformat();d.tap('Refresh orders');end=time.monotonic()+25
+            d.adb('shell','input','tap',*map(str,read_refusal_acknowledgement(d.snapshot())));d.cold();d.wait('Orders tab');d.wait('Refresh orders');since=datetime.datetime.now(datetime.timezone.utc).isoformat();d.tap('Refresh orders');end=time.monotonic()+25
             while True:
                 normal=[x for x in read_events() if x.get('event')=='complete' and x.get('path')=='/rest/v1/rpc/get_orders_list' and x.get('status')==200 and x.get('authorizationPresent') is True and x.get('confirmedReadAttemptId') is None and datetime.datetime.fromisoformat(x['atUTC'].replace('Z','+00:00'))>=datetime.datetime.fromisoformat(since)]
                 if normal:break

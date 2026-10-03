@@ -17,3 +17,18 @@ test('actual operation refusal must be visible during the read and preserve full
  for(const patch of [{refusalVisibleUTC:'2026-10-03T00:00:32Z'},{sourceLogoutCompletions:1},{destinationAuthenticatedRequests:1},{actualSwitchCompletions:1},{sourceCredentialStoragePresent:false},{sourceProcessPIDBeforeCold:124},{normalRouteColdOrders200:false},{postConfirmationColdLaunchAttempts:0},{operationRefused:false}])assert.throws(()=>refusal(config,before,before,{...observed,...patch},[start,end]));
  const changed=globalThis.structuredClone(before);changed.destination.authHash='changed';assert.throws(()=>refusal(config,before,changed,observed,[start,end]));
 });
+
+import {spawnSync} from 'node:child_process';
+test('read-refusal acknowledgement is narrowly matched and cannot weaken discovery OK guards',()=>{
+ const script=`import xml.etree.ElementTree as E
+from confirmed_draft_controls import read_refusal_acknowledgement as point
+t=E.fromstring('<hierarchy><node text="Operation In Progress"/><node text="Finish the current operation before switching servers."/><node text="OK" class="android.widget.Button" enabled="true" bounds="[540,707][652,791]"/></hierarchy>')
+assert point(t)==(596,749)
+for title in ['Server Unavailable','Switch Failed','Application Not Responding']:
+ t[0].set('text',title)
+ try:point(t)
+ except AssertionError:pass
+ else:raise AssertionError('unrelated alert accepted')
+`;
+ const r=spawnSync('python3',['-B','-c',script],{cwd:new URL('./fixture-ui/',import.meta.url),encoding:'utf8',timeout:10000});assert.equal(r.status,0,r.stderr);
+});
