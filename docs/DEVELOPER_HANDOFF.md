@@ -16,6 +16,21 @@ refusals. Added mocked provider-contract coverage subsequently passes118/118.
 These checks do not close installed APK native groups or change the deadline.
 
 
+Fresh backend final local monitoring attempt3 PASSed: five pinned amd64 images
+exported/read back, Prometheus/Alertmanager configuration, all five scrape
+targets and actual local-only alert delivery. Both earlier timeout/OOM failures
+are preserved; new4GiB/two-CPU/one-worker builder stopped normally. All85
+tables/five files/configuration/identity stayed unchanged. This is private
+backend monitoring evidence, not external alerts or native acceptance.
+
+A consistent private local backup of that populated fresh fixture then PASSed
+seven checksums/readable database and stored-object catalogs, identical protected
+state and post-backup doctor. Only its own write-facing services were briefly
+stopped and normally restarted. No restoration/transfer/original-warehouse
+change. Six older private archives revalidated separately after resize.
+Backend documentation9b4b2b9 records complete scoped results and image IDs.
+The emulator remains stopped; no new Android refresh-expiry appointment exists.
+
 The VM-only campaign remains incomplete, with deadline 16:27:13 UTC today.
 Installed x86_64 APK2026100110 is application c422f62, SHA256
 a7df6781bdcd889eb9ccaa01ee0973890effd4d187bb6ac45f100284e1b04b69; backend
