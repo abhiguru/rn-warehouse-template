@@ -1204,3 +1204,14 @@ absent and stock20 unchanged. This does not establish valid dispatch writes,
 concurrency or lost-response acceptance. Previous attempt01 failure and APK9
 attempt02 pass remain separate. Private dispatch-quantity-rejection0110-final-proof.json
 SHA256 c904ec79dd7981d53d93528465040cc3809643a7aeeb32223e60f7266f11211e. No further quantity-case native rerun is authorized.
+
+
+Current-artifact revocation prerequisite audit (2026-10-03 01:10 UTC):
+not eligible; no dependency closure or account mutation was performed. The eight
+required groups are receipts, orders, dispatch, invoices, documents, Realtime,
+switching and isolation. Current APK quantity admission/read/header-switch
+proofs are narrower than complete workflow acceptance. Older document, Realtime
+and reciprocal isolation results remain historical; the capped read-refusal
+proof does not close all switching. No narrow PASS/BLOCKED result is promoted
+to an entire group. Private current-artifact-revocation-prerequisite-audit-20261003T0110.json
+SHA256 f3fd47c5cb7f371901a68635ef8ec36ca50f576054b7586b38bd44b93305acdf. Final freeze/readiness, soak and expiry appointment remain open.
