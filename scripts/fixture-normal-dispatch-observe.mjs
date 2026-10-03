@@ -7,8 +7,7 @@ import { pathToFileURL } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { assertReleased, privateJSON } from './fixture-session-guards.mjs';
 import { navigationSnapshotSQL } from './fixture-navigation-guards.mjs';
-import {normalDispatch,snapshotCase,normalBefore,normalAfter,normalNavigation,normalDispatchSQL} from './fixture-normal-dispatch-controls.mjs';
-import {dispatchSnapshotSQL} from './fixture-dispatch-snapshot.mjs';
+import {normalDispatch,normalBefore,normalAfter,normalNavigation,normalDispatchSQL} from './fixture-normal-dispatch-controls.mjs';
 process.umask(0o077);
 try {
   const [path, phase] = process.argv.slice(2);

@@ -1324,3 +1324,11 @@ its separate exact-once reconciliation is not relabelled or replayed.
 Private normal-dispatch-pair0110-final-proof.json SHA256 a8d812b934fe367a6b1e64878ca484c75fddd6c85fea0c93ca31f4877afddc61.
 This closes this normal pair only, not concurrency, lost-response retries or
 complete dispatch-group acceptance. Final readiness/soak remain unstarted.
+
+
+Exact mobile documentation-head d66bf3c CI run37088802017 reported two
+unused imports in fixture-normal-dispatch-observe.mjs after the supervisor
+adapter update. Those obsolete imports are removed in review source; targeted
+ESLint and five normal-dispatch control tests pass. Frozen runtime a1d7572
+and completed native results remain unchanged. Dependency failure persists;
+new exact-head CI must be reviewed separately before any readiness claim.
