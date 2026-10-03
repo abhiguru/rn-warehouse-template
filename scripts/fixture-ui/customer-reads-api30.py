@@ -6,7 +6,7 @@ from fixture_observation import decode_observation
 spec=importlib.util.spec_from_file_location('auth',Path(__file__).with_name('auth-api30.py'));auth=importlib.util.module_from_spec(spec);spec.loader.exec_module(auth);soak=auth.soak
 os.umask(0o077)
 def main(path):
- case=json.loads(soak.private(path).read_text());assert case['customerReadOnly'] is True;c,i=soak.config(case['soakConfig']);d=auth.Auth(c,i,'unused',0);scripts=Path(__file__).parent.parent
+ case=json.loads(soak.private(path).read_text());assert case.get('customerReadOnly') is True or case.get('genuineAReadOnly') is True;c,i=soak.config(case['soakConfig']);d=auth.Auth(c,i,'unused',0);scripts=Path(__file__).parent.parent
  def observe(phase):
   q=d.backend_process(str(scripts/'fixture-auth-observe.mjs'),[str(Path(path).resolve()),phase]);assert q.returncode==0,'Customer observer refused'
  observe('guard');fd=os.open(Path(path).parent/'fixture-session-actor.lock',os.O_RDWR|os.O_NOFOLLOW);fcntl.flock(fd,fcntl.LOCK_EX|fcntl.LOCK_NB);e=Path(case['caseDirectory']);soak.private(e.parent,True);assert not e.exists();e.mkdir(mode=0o700);d.e=e;d.file=e/'customer-reads-result.json';d.state.update(phases=[],otpRequests=0,businessWrites=0,configSHA256=hashlib.sha256(Path(path).read_bytes()).hexdigest());d.save()

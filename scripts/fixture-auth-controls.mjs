@@ -65,7 +65,7 @@ export function approvedBAuthenticationAfter(c,b,a){
 export function approvedAAuthenticationMode(c,secondary,replacement) {
  if(Object.hasOwn(c,'customerAApprovedAuthentication')) assert.equal(typeof c.customerAApprovedAuthentication,'boolean');
  const enabled=c.customerAApprovedAuthentication===true;
- if(!secondary&&!replacement&&c.phone==='919888888872'&&c.expected==='authenticated') assert.equal(enabled,true,'FIXED_APPROVED_A_MODE_REQUIRED');
+ if(!secondary&&!replacement&&c.phone==='919888888872'&&c.expected==='authenticated'&&c.genuineAReadOnly!==true) assert.equal(enabled,true,'FIXED_APPROVED_A_MODE_REQUIRED');
  if(enabled) {
   assert.equal(secondary,false);assert.equal(replacement,false);
   assert.equal(c.kind,'native-approved-customer-a-login');assert.equal(c.phone,'919888888872');
@@ -96,4 +96,15 @@ export function approvedAAuthenticationAfter(c,b,a) {
  const added=a.sessions.filter(x=>!b.sessions.some(old=>old.id===x.id));assert.equal(a.sessions.length,b.sessions.length+1);assert.equal(added.length,1);
  const row=added[0];assert.match(row.id,/^[a-f0-9-]{36}$/);assert.match(row.rowSHA256,/^[a-f0-9]{64}$/);
  assert.ok(Number.isFinite(Date.parse(row.created))&&Number.isFinite(Date.parse(row.expires))&&Date.parse(row.expires)>Date.parse(row.created));return row.id;
+}
+
+export function genuineAReadOnlyMode(c,secondary,replacement){
+ if(Object.hasOwn(c,'genuineAReadOnly'))assert.equal(typeof c.genuineAReadOnly,'boolean');
+ const enabled=c.genuineAReadOnly===true;
+ if(enabled){
+  approvedAAuthenticationMode({...c,customerAApprovedAuthentication:true,kind:'native-approved-customer-a-login'},secondary,replacement);
+  assert.equal(c.kind,'native-genuine-a-read-controls');assert.notEqual(c.customerAApprovedAuthentication,true);assert.equal(c.noAutomaticRetry,true);
+  assert.match(c.nativeSessionId,/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/);
+ }
+ return enabled;
 }

@@ -9,7 +9,7 @@ import { assertReleased, privateJSON } from './fixture-session-guards.mjs';
 import {confirmedDraftAuthMode,confirmedDraftAuthBefore,confirmedDraftAuthAfter,reconciledObservationFailure} from './fixture-confirmed-draft-auth-controls.mjs';
 import {confirmedDraftConfig} from './fixture-confirmed-draft-controls.mjs';
 import {confirmedDraftSnapshot} from './fixture-confirmed-draft-snapshot.mjs';
-import { pendingReadOnlyMode, approvedEnrollmentExitMode, customerReadOnlyMode, disabledAuthenticationMode, rejectedAuthenticationMode, approvedBAuthenticationMode, approvedBAuthenticationBefore, approvedBAuthenticationAfter, approvedAAuthenticationMode, approvedAAuthenticationBefore, approvedAAuthenticationAfter } from './fixture-auth-controls.mjs';
+import { pendingReadOnlyMode, approvedEnrollmentExitMode, customerReadOnlyMode, disabledAuthenticationMode, rejectedAuthenticationMode, approvedBAuthenticationMode, approvedBAuthenticationBefore, approvedBAuthenticationAfter, approvedAAuthenticationMode, approvedAAuthenticationBefore, approvedAAuthenticationAfter, genuineAReadOnlyMode } from './fixture-auth-controls.mjs';
 process.umask(0o077);
 try {
   const [path, phase] = process.argv.slice(2);
@@ -35,7 +35,7 @@ try {
   }
   const pendingReadOnly = pendingReadOnlyMode(c,secondary,replacement);
   const approvedExit = approvedEnrollmentExitMode(c,secondary,replacement);
-  const customerReadOnly = customerReadOnlyMode(c,secondary,replacement);
+  const customerReadOnly = customerReadOnlyMode(c,secondary,replacement);const genuineARead=genuineAReadOnlyMode(c,secondary,replacement);
   const disabled = disabledAuthenticationMode(c,secondary,replacement);
   const rejected = rejectedAuthenticationMode(c,secondary,replacement);
   const denied = disabled || rejected;const bApproved=approvedBAuthenticationMode(c,secondary,replacement);const aApproved=approvedAAuthenticationMode(c,secondary,replacement);
@@ -109,6 +109,7 @@ COMMIT;`;
     if (replacement) {assert.equal(snapshot.primaryAdministratorPresent,false);assert.equal(snapshot.profile?.name,c.profileName);assert.equal(snapshot.profile?.role,'admin');assert.equal(snapshot.profile?.active,true);}
     if (pendingReadOnly) {assert.equal(snapshot.profile?.status,'pending');assert.equal(snapshot.profile?.active,false);assert.deepEqual(snapshot.sessions,[]);}
     if (approvedExit) {assert.equal(snapshot.profile?.status,'approved');assert.equal(snapshot.profile?.active,true);assert.deepEqual(snapshot.sessions,[]);}
+    if(genuineARead){assert.deepEqual(snapshot.profile,{id:c.profileId,name:c.profileName,role:'customer',active:true,status:'approved'});assert.ok(snapshot.sessions.some(x=>x.id===c.nativeSessionId),'MATCHED_GENUINE_A_NATIVE_SESSION_REQUIRED');}
     if (customerReadOnly) {assert.equal(snapshot.profile?.status,'approved');assert.equal(snapshot.profile?.active,true);assert.equal(snapshot.profile?.role,'customer');assert.equal(snapshot.sessions.length,1);assert.equal(snapshot.sessions[0].id,c.nativeSessionId);}
     if (phase === 'before') {
       if(bApproved)approvedBAuthenticationBefore(c,snapshot);
@@ -122,11 +123,11 @@ COMMIT;`;
       if(draftAuth)confirmedDraftAuthAfter(c,before,snapshot);
       assert.equal(snapshot.businessHash,before.businessHash,'AUTH_CHANGED_BUSINESS_DATA');
       assert.equal(snapshot.otherAuthHash,before.otherAuthHash,'AUTH_CHANGED_UNRELATED_ACCOUNTS');
-      if (pendingReadOnly || customerReadOnly) assert.deepEqual(snapshot,before,'PENDING_READ_CHANGED_STATE');
+      if (pendingReadOnly || customerReadOnly || genuineARead) assert.deepEqual(snapshot,before,'PENDING_READ_CHANGED_STATE');
       else if (approvedExit) {assert.equal(snapshot.otpVerified,before.otpVerified);assert.equal(before.enrollmentTokenCount,1);assert.equal(snapshot.enrollmentTokenCount,0);}
       else assert.equal(snapshot.otpVerified,before.otpVerified+1,'ONE_ORDINARY_VERIFICATION_REQUIRED');
       assert.equal(snapshot.profile?.name,c.profileName,'PROFILE_NAME_MISMATCH');
-      if (approvedExit || customerReadOnly) assert.deepEqual(snapshot.sessions,before.sessions);
+      if (approvedExit || customerReadOnly || genuineARead) assert.deepEqual(snapshot.sessions,before.sessions);
       else if (c.expected === 'authenticated') {
         assert.equal(snapshot.profile?.role,c.role); assert.equal(snapshot.profile?.active,true);
         const added = snapshot.sessions.filter(s=>!before.sessions.some(p=>p.id===s.id));
