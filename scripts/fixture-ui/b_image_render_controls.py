@@ -15,3 +15,22 @@ def checkerboard_png(data):
    x=left+int((col+.5)*width/4);y=top+int((row+.5)*height/4)
    assert near(im.getpixel((x,y)),COLORS[(row+col)%2]),'Exact checkerboard samples required'
  return {'bounds':[left,top,right,bottom],'checkerboardSamples':16,'dimensions':[720,1280],'decoder':'Pillow','decoderVersion':PIL.__version__}
+
+
+def archive_hierarchy(tree, directory, label):
+ """Archive only the owned fictional image screen, without overwriting evidence."""
+ import os,re,copy,xml.etree.ElementTree as ET
+ from pathlib import Path
+ assert label=='authorized-B-images-tab','Only the bound image-screen archive is allowed'
+ directory=Path(directory);st=directory.lstat()
+ assert directory.is_absolute() and directory.is_dir() and not directory.is_symlink()
+ assert st.st_uid==os.getuid() and st.st_mode&0o077==0
+ assert directory.resolve()==directory
+ redacted=copy.deepcopy(tree)
+ for node in redacted.iter('node'):
+  for field in ['text','content-desc']:
+   node.set(field,re.sub(r'\b(?:91)?\d{10}\b|\b\d{6}\b','[private digits]',node.get(field,'')))
+ path=directory/(label+'.xml')
+ fd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+ with os.fdopen(fd,'w') as output:output.write(ET.tostring(redacted,encoding='unicode'))
+ return path

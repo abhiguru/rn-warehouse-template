@@ -2,7 +2,7 @@
 """One authorized B image render; no upload, OTP or business write."""
 import datetime,fcntl,hashlib,importlib.util,json,os,re,subprocess,sys,time,traceback
 from pathlib import Path
-from b_image_render_controls import checkerboard_png
+from b_image_render_controls import checkerboard_png,archive_hierarchy
 spec=importlib.util.spec_from_file_location('nav',Path(__file__).with_name('navigation-api30.py'));nav=importlib.util.module_from_spec(spec);spec.loader.exec_module(nav)
 os.umask(0o077)
 def digest(p):return hashlib.sha256(Path(p).read_bytes()).hexdigest()
@@ -15,6 +15,7 @@ def main(path):
  for n in ['databaseHelper','httpObserver']:assert c[n+'SHA256']==digest(cfg[n])
  fd=os.open(Path(c['soakConfig']).parent/'fixture-session-actor.lock',os.O_RDWR|os.O_NOFOLLOW);fcntl.flock(fd,fcntl.LOCK_EX|fcntl.LOCK_NB)
  class ImageRead(nav.Navigation):
+  def archive(self,label):return archive_hierarchy(self.snapshot(),self.e,label)
   def adb(self,*args):assert time.time()<deadline;return super().adb(*args)
   def snapshot(self):
    try:return super().snapshot()

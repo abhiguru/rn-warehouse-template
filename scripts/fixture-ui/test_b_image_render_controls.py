@@ -1,6 +1,6 @@
 import io,unittest
 from PIL import Image
-from b_image_render_controls import checkerboard_png,COLORS
+from b_image_render_controls import checkerboard_png,COLORS,archive_hierarchy
 class RenderChecks(unittest.TestCase):
  def encode(self,im):
   out=io.BytesIO();im.save(out,format='PNG');return out.getvalue()
@@ -20,4 +20,24 @@ class RenderChecks(unittest.TestCase):
   with self.assertRaises(AssertionError):checkerboard_png(self.encode(im))
   im=self.fixture();im.paste(COLORS[1],(500,800,550,850))
   with self.assertRaises(AssertionError):checkerboard_png(self.encode(im))
+class ArchiveChecks(unittest.TestCase):
+ def test_redacts_private_digits_and_preserves_original_tree_and_file(self):
+  import tempfile,pathlib,xml.etree.ElementTree as ET
+  with tempfile.TemporaryDirectory() as directory:
+   tree=ET.fromstring('<hierarchy><node text="919888888873" content-desc="123456"/></hierarchy>')
+   path=archive_hierarchy(tree,pathlib.Path(directory),'authorized-B-images-tab')
+   self.assertEqual(tree[0].get('text'),'919888888873')
+   saved=path.read_text();self.assertNotIn('919888888873',saved);self.assertNotIn('123456',saved);self.assertIn('[private digits]',saved)
+   self.assertEqual(path.stat().st_mode&0o077,0)
+   with self.assertRaises(FileExistsError):archive_hierarchy(tree,pathlib.Path(directory),'authorized-B-images-tab')
+   self.assertEqual(path.read_text(),saved)
+ def test_other_labels_and_public_directories_refused(self):
+  import tempfile,pathlib,xml.etree.ElementTree as ET
+  with tempfile.TemporaryDirectory() as directory:
+   path=pathlib.Path(directory);tree=ET.fromstring('<hierarchy/>')
+   with self.assertRaises(AssertionError):archive_hierarchy(tree,path,'../other')
+   path.chmod(0o755)
+   with self.assertRaises(AssertionError):archive_hierarchy(tree,path,'authorized-B-images-tab')
+   path.chmod(0o700)
+
 if __name__=='__main__':unittest.main()
