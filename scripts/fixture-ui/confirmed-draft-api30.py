@@ -53,7 +53,7 @@ def main(path):
             assert time.time()<deadline,'Stop at the configured deadline'
             return super().adb(*args)
         def archive(self,label):
-            assert label in ['real-unsaved-draft','switch-warning','destination-login','cold-destination-login']
+            assert label in ['real-unsaved-draft','switch-warning','destination-login','cold-destination-login','destination-login-after-read-settlement']
             tree=self.snapshot()
             for n in tree.iter('node'):
                 for key in ['text','content-desc']:
@@ -89,6 +89,17 @@ def main(path):
         target_name=discover(c['targetOrigin'],18443 if returning else 18444,cfg['primaryCA' if returning else 'secondaryCA'],c['targetInstanceId'])
         assert target_name==('Fictional Core Warehouse' if returning else 'Fictional Switching Warehouse')
         d.cold();d.wait('Orders tab');assert credential_presence(d.adb),'Ordinary source session required'
+        def read_events():
+            log=nav.soak.private(c['sourceHTTPLog']);raw=log.read_text();assert len(raw)<=8388608
+            return [json.loads(line) for line in raw.splitlines() if line.startswith('{')]
+        def settled_reads():
+            end=time.monotonic()+45
+            while True:
+                events=read_events();starts=[x for x in events if x.get('event')=='confirmed-orders-delay-start'];ends=[x for x in events if x.get('path')=='/rest/v1/rpc/get_orders_list' and x.get('event') in ['complete','client-response-closed','client-request-aborted']]
+                if starts and ends and datetime.datetime.fromisoformat(ends[-1]['atUTC'].replace('Z','+00:00'))>=datetime.datetime.fromisoformat(starts[-1]['atUTC'].replace('Z','+00:00')):break
+                assert time.monotonic()<end,'Actual startup read settlement required';time.sleep(.5)
+        if c.get('confirmedOrdersResponseSwitch') is True:settled_reads()
+
         original=e/'original-selection';original.mkdir(mode=0o700);d.selected_server(original,c['origin'],c['instanceId'])
         kind=c['draftKind'];route(('customer' if kind=='customer' else kind)+'-form/step1')
         if kind=='customer':
@@ -116,15 +127,30 @@ def main(path):
         d.adb('shell','input','text',c['draftMarker'].replace(' ','%s'));marker()
         if 'mInputShown=true' in d.adb('shell','dumpsys','input_method'):d.adb('shell','input','keyevent','4')
         marker();d.archive('real-unsaved-draft');d.state['phases'].append('ACTUAL_UNSAVED_DRAFT_NO_SUBMISSION');pid=d.adb('shell','pidof',nav.soak.PACKAGE);assert re.fullmatch(r'[1-9]\d*',pid);d.state['draftProcessPID']=int(pid);d.save()
+        if c.get('confirmedOrdersResponseSwitch') is True:
+            route('orders');d.wait('Orders tab');settled_reads();d.wait('Refresh orders')
+            since=datetime.datetime.now(datetime.timezone.utc).isoformat();d.state['readRequestedUTC']=since;d.save();d.tap('Refresh orders')
+            end=time.monotonic()+10
+            while True:
+                starts=[x for x in read_events() if x.get('event')=='confirmed-orders-delay-start' and datetime.datetime.fromisoformat(x['atUTC'].replace('Z','+00:00'))>=datetime.datetime.fromisoformat(since)]
+                if starts:assert len(starts)==1 and starts[0]['status']==200 and starts[0]['delayMs']==30000;break
+                assert time.monotonic()<end,'Actual pending authenticated read required';time.sleep(.1)
         route('operator-server');d.wait('Choose your warehouse server');d.fill_origin(c['targetOrigin']);d.tap('Check server');d.wait(target_name);d.wait(c['targetOrigin']);d.tap('Use this server');d.wait('Change Warehouse Server')
         warning=f'Changing to {target_name} will sign you out and discard unsaved forms. You will need to sign in again.'
         assert warning in nav.labels(d.snapshot());d.archive('switch-warning')
-        d.state['confirmationAttempts']=1;d.save();d.tap('CHANGE SERVER')
+        d.state['confirmationAttempts']=1;d.state['confirmationAttemptUTC']=datetime.datetime.now(datetime.timezone.utc).isoformat();d.save();d.tap('CHANGE SERVER')
         d.wait('Send OTP');d.archive('destination-login');d.state['destinationLoginRequired']=True;d.save()
         assert not credential_presence(d.adb),'Old credential keys survived'
         pid=d.adb('shell','pidof',nav.soak.PACKAGE);assert re.fullmatch(r'[1-9]\d*',pid) and int(pid)==d.state['draftProcessPID'],'Keep the actual draft process alive until destination authentication and empty-form checks'
         d.selected_server(e,c['targetOrigin'],c['targetInstanceId'])
         d.state.update(postConfirmationColdLaunchAttempts=0,destinationProcessPID=int(pid),selection={'origin':c['targetOrigin'],'instanceId':c['targetInstanceId']},oldCredentialStoragePresent=False,status='RECONCILIATION_PENDING');d.save()
+        if c.get('confirmedOrdersResponseSwitch') is True:
+            end=time.monotonic()+45
+            while True:
+                settled=[x for x in read_events() if x.get('path')=='/rest/v1/rpc/get_orders_list' and x.get('event') in ['complete','client-response-closed','client-request-aborted','upstream-timeout','upstream-unavailable'] and datetime.datetime.fromisoformat(x['atUTC'].replace('Z','+00:00'))>=datetime.datetime.fromisoformat(d.state['readRequestedUTC'])]
+                if settled:break
+                assert time.monotonic()<end,'Actual old-read settlement required';time.sleep(.5)
+            d.wait('Send OTP');d.archive('destination-login-after-read-settlement')
         observe('after')
         d.state.update(status='PASS',scope='confirmed-switch-pre-authentication-reconciliation-only',draftAcceptance='NOT_TESTED',requiredNext='Separately guarded ordinary destination login and actual empty-draft UI checks in this same process, then cold persistence; preserve destination selection and process')
         d.save();print(json.dumps({'status':'PASS','scope':d.state['scope'],'draftAcceptance':'NOT_TESTED'}))

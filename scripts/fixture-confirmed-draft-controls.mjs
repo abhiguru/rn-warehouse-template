@@ -13,6 +13,8 @@ export function confirmedHelperWindow(p,uptimeSeconds,remainingSeconds){
 }
 export function confirmedDraftConfig(c){
  assert.equal(c.scope,'isolated-fictional-confirmed-draft-switch');
+ if(Object.hasOwn(c,'confirmedOrdersResponseSwitch'))assert.equal(typeof c.confirmedOrdersResponseSwitch,'boolean');
+ if(c.confirmedOrdersResponseSwitch===true){assert.notEqual(c.confirmedDraftSwitchBack,true);assert.equal(c.draftKind,'customer');}
  assert.equal(c.artifactSHA256,'a7df6781bdcd889eb9ccaa01ee0973890effd4d187bb6ac45f100284e1b04b69');
  if(Object.hasOwn(c,'confirmedDraftSwitchBack'))assert.equal(typeof c.confirmedDraftSwitchBack,'boolean');
  const returning=c.confirmedDraftSwitchBack===true;
