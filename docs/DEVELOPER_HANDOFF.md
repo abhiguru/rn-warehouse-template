@@ -9,6 +9,24 @@ application remains bed4eeee plus declared overlays. See the dated acceptance
 matrix for exact native scope. No final freeze, new eight-hour soak or dedicated
 natural-expiry appointment exists. Historical results below do not transfer.
 
+Independent fresh backend application079ab4a now PASSed setup/migrations/
+bootstrap/doctor, business API, reciprocal customer Realtime, ordinary final
+OTP/account/image cases, Studio/metadata, gateway CORS/payload/DNS, retention
+preview, bounded load and current mobile live contract. Repeat setup preserved
+85 tables and five actual stored files, configuration and identity, with only
+the existing sms_config.updated_at update. Test tooling1c2b724 and helper3ae80ae
+are separate from the application. Verified TLS19543/IPC returned the genuine
+new instance; original emulator routing remained unchanged. Backend3ae80ae CI
+run37108193432 passed all seven jobs. Backend documentation832c4f7 records
+private install-result03/business-result01/supporting-result02/TLS proof02.
+These results do not establish current native workflow or switching acceptance.
+
+At08:34UTC less than eight hours remained before the16:27:13UTC deadline.
+A new full eight-hour soak plus readiness/reconciliation cannot fit; it remains
+unstarted. No final freeze or dedicated natural-expiry appointment is established.
+The private immutable matrix20261003T083815Z contains29 rows/80 bindings and
+retains prior failures and the separate older APK soak evidence.
+
 Current original owned API30 emulator is logged out after normal removal of the
 temporary genuine A native session. Two cold launches require login and Core
 selection persists. Account remains active; its two older API sessions are
@@ -45,7 +63,8 @@ root/health/missing-route HTTP smoke PASS. The first wrong runtime-user override
 failure is preserved; correction used the declared Dockerfile user without
 changing permissions. Aggregate metadata-native-tooling-image-final-proof01.json
 binds18 evidence files. Reviewed backend smoke/handoff57eef6b. This does
-not establish installation into a warehouse or full backend reproduction.
+not establish original-warehouse replacement; subsequent independent fresh
+backend reproduction is recorded above.
 Do not use audit fix --force, downgrade Expo/nodemon or waive gates. Backend
 storage busboy3.2.2 patch now has isolated image build/parser/integration PASS; it is not installed storage-service acceptance.
 The installed application remains bed4eeee plus its four declared overlays.
