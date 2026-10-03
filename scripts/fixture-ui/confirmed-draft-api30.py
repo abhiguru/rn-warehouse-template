@@ -53,7 +53,7 @@ def main(path):
             assert time.time()<deadline,'Stop at the configured deadline'
             return super().adb(*args)
         def archive(self,label):
-            assert label in ['real-unsaved-draft','switch-warning','destination-login','cold-destination-login','destination-login-after-read-settlement']
+            assert label in ['real-unsaved-draft','switch-warning','destination-login','cold-destination-login','destination-login-after-read-settlement','read-switch-refused','source-cold-orders']
             tree=self.snapshot()
             for n in tree.iter('node'):
                 for key in ['text','content-desc']:
@@ -83,7 +83,8 @@ def main(path):
         assert d.adb('shell','getprop','ro.build.version.sdk')=='30' and d.adb('shell','getenforce')=='Enforcing'
         p=d.adb('shell','pm','path',nav.soak.PACKAGE);assert re.fullmatch(r'package:/data/app/[^\n]+',p)
         assert d.adb('shell','sha256sum',p[8:]).split()[0]==c['artifactSHA256']
-        nav.owned_reverse_route(d.adb('reverse','--list'),18443);d.health();observe('before')
+        nav.owned_reverse_route(d.adb('reverse','--list'),18443);d.health()
+        if c.get('confirmedOrdersResponseSwitch') is not True:observe('before')
         returning=c.get('confirmedDraftSwitchBack') is True
         discover(c['origin'],18444 if returning else 18443,cfg['secondaryCA' if returning else 'primaryCA'],c['instanceId'])
         target_name=discover(c['targetOrigin'],18443 if returning else 18444,cfg['primaryCA' if returning else 'secondaryCA'],c['targetInstanceId'])
@@ -131,7 +132,7 @@ def main(path):
         if 'mInputShown=true' in d.adb('shell','dumpsys','input_method'):d.adb('shell','input','keyevent','4')
         marker();d.archive('real-unsaved-draft');d.state['phases'].append('ACTUAL_UNSAVED_DRAFT_NO_SUBMISSION');pid=d.adb('shell','pidof',nav.soak.PACKAGE);assert re.fullmatch(r'[1-9]\d*',pid);d.state['draftProcessPID']=int(pid);d.save()
         if c.get('confirmedOrdersResponseSwitch') is True:
-            route('orders');d.wait('Orders tab');d.wait('Refresh orders')
+            route('orders');d.wait('Orders tab');d.wait('Refresh orders');observe('before')
             since=datetime.datetime.now(datetime.timezone.utc).isoformat();d.state.update(readRequestedUTC=since,confirmedReadAttemptId=c['confirmedReadAttemptId']);d.save()
             armed=read_control({'action':'arm-confirmed-orders-read','attemptId':c['confirmedReadAttemptId'],'deadlineUTC':(datetime.datetime.now(datetime.timezone.utc)+datetime.timedelta(seconds=60)).isoformat()});assert armed=={'state':'ARMED','attemptId':c['confirmedReadAttemptId']}
             with (e/'one-shot-arm-proof.json').open('x') as f:json.dump(armed,f)
@@ -145,19 +146,29 @@ def main(path):
         warning=f'Changing to {target_name} will sign you out and discard unsaved forms. You will need to sign in again.'
         assert warning in nav.labels(d.snapshot());d.archive('switch-warning')
         d.state['confirmationAttempts']=1;d.state['confirmationAttemptUTC']=datetime.datetime.now(datetime.timezone.utc).isoformat();d.save();d.tap('CHANGE SERVER')
+        if c.get('confirmedOrdersResponseSwitch') is True:
+            d.wait('Operation In Progress');d.wait('Finish the current operation before switching servers.')
+            d.state['refusalVisibleUTC']=datetime.datetime.now(datetime.timezone.utc).isoformat();d.archive('read-switch-refused')
+            pid=d.adb('shell','pidof',nav.soak.PACKAGE);assert pid==str(d.state['draftProcessPID']);assert credential_presence(d.adb)
+            d.selected_server(e,c['origin'],c['instanceId']);d.state.update(operationRefused=True,actualSwitchCompletions=0,sourceCredentialStoragePresent=True,sourceProcessPIDBeforeCold=int(pid),selection={'origin':c['origin'],'instanceId':c['instanceId']});d.save()
+            end=time.monotonic()+45
+            while True:
+                settled=[x for x in read_events() if x.get('confirmedReadAttemptId')==c['confirmedReadAttemptId'] and x.get('event') in ['complete','client-response-closed','client-request-aborted','upstream-timeout','upstream-unavailable']]
+                if settled:break
+                assert time.monotonic()<end,'Actual identified read settlement required';time.sleep(.5)
+            assert read_control({'action':'confirmed-orders-status'})=={'state':'CONSUMED','attemptId':c['confirmedReadAttemptId']}
+            d.tap('OK');d.cold();d.wait('Orders tab');d.wait('Refresh orders');since=datetime.datetime.now(datetime.timezone.utc).isoformat();d.tap('Refresh orders');end=time.monotonic()+25
+            while True:
+                normal=[x for x in read_events() if x.get('event')=='complete' and x.get('path')=='/rest/v1/rpc/get_orders_list' and x.get('status')==200 and x.get('authorizationPresent') is True and x.get('confirmedReadAttemptId') is None and datetime.datetime.fromisoformat(x['atUTC'].replace('Z','+00:00'))>=datetime.datetime.fromisoformat(since)]
+                if normal:break
+                assert time.monotonic()<end,'Normal cold authenticated Orders200 required';time.sleep(.5)
+            check=e/'cold-source-selection';check.mkdir(mode=0o700);d.selected_server(check,c['origin'],c['instanceId']);d.archive('source-cold-orders');d.state.update(normalRouteColdOrders200=True,postConfirmationColdLaunchAttempts=1,status='RECONCILIATION_PENDING');d.save();observe('after')
+            d.state.update(status='PASS',scope='confirmed-orders-switch-refusal-and-cold-restoration',draftAcceptance='NOT_TESTED');d.save();print(json.dumps({'status':'PASS','scope':d.state['scope']}));return
         d.wait('Send OTP');d.archive('destination-login');d.state['destinationLoginRequired']=True;d.save()
         assert not credential_presence(d.adb),'Old credential keys survived'
         pid=d.adb('shell','pidof',nav.soak.PACKAGE);assert re.fullmatch(r'[1-9]\d*',pid) and int(pid)==d.state['draftProcessPID'],'Keep the actual draft process alive until destination authentication and empty-form checks'
         d.selected_server(e,c['targetOrigin'],c['targetInstanceId'])
         d.state.update(postConfirmationColdLaunchAttempts=0,destinationProcessPID=int(pid),selection={'origin':c['targetOrigin'],'instanceId':c['targetInstanceId']},oldCredentialStoragePresent=False,status='RECONCILIATION_PENDING');d.save()
-        if c.get('confirmedOrdersResponseSwitch') is True:
-            end=time.monotonic()+45
-            while True:
-                settled=[x for x in read_events() if x.get('confirmedReadAttemptId')==c['confirmedReadAttemptId'] and x.get('path')=='/rest/v1/rpc/get_orders_list' and x.get('event') in ['complete','client-response-closed','client-request-aborted','upstream-timeout','upstream-unavailable'] and datetime.datetime.fromisoformat(x['atUTC'].replace('Z','+00:00'))>=datetime.datetime.fromisoformat(d.state['readRequestedUTC'])]
-                if settled:break
-                assert time.monotonic()<end,'Actual old-read settlement required';time.sleep(.5)
-            assert read_control({'action':'confirmed-orders-status'})=={'state':'CONSUMED','attemptId':c['confirmedReadAttemptId']}
-            d.wait('Send OTP');d.archive('destination-login-after-read-settlement')
         observe('after')
         d.state.update(status='PASS',scope='confirmed-switch-pre-authentication-reconciliation-only',draftAcceptance='NOT_TESTED',requiredNext='Separately guarded ordinary destination login and actual empty-draft UI checks in this same process, then cold persistence; preserve destination selection and process')
         d.save();print(json.dumps({'status':'PASS','scope':d.state['scope'],'draftAcceptance':'NOT_TESTED'}))

@@ -8,7 +8,7 @@ import {spawnSync} from 'node:child_process';
 import {privateJSON,assertReleased} from './fixture-session-guards.mjs';
 import {confirmedDraftConfig,confirmedDraftBefore,confirmedDraftReconcile,confirmedHelperWindow} from './fixture-confirmed-draft-controls.mjs';
 import {verifyManagedHelpers} from './fixture-service-health.mjs';
-import {confirmedOrdersSwitchTimeline} from './fixture-confirmed-orders-switch-controls.mjs';
+import {confirmedOrdersSwitchRefusal} from './fixture-confirmed-orders-switch-controls.mjs';
 import {confirmedDraftSnapshot} from './fixture-confirmed-draft-snapshot.mjs';
 process.umask(0o077);
 const digest=b=>createHash('sha256').update(b).digest('hex');
@@ -73,10 +73,11 @@ try{
     const tail=l.bytes.subarray(old.offset).toString();assert.ok(!tail||tail.endsWith('\n'),'HTTP_EVENT_STILL_PENDING');
     events[side]=tail.split('\n').filter(Boolean).map(line=>{const e=JSON.parse(line);assert.ok([...(c.confirmedOrdersResponseSwitch===true?['confirmed-orders-delay-start']:[]),'complete','upgrade-request','client-response-closed','client-request-aborted','upstream-unavailable','client-request-error','upstream-timeout','upstream-response-aborted','upstream-response-error'].includes(e.event));assert.equal(typeof e.authorizationPresent,'boolean');assert.equal(typeof e.credentialQueryPresent,'boolean');return e;});
    }
-   const logout=events.source.filter(e=>e.path==='/rest/v1/rpc/logout_session');assert.equal(logout.length,1,'ONE_INDEPENDENT_LOGOUT_REQUIRED');assert.equal(logout[0].event,'complete');assert.equal(logout[0].method,'POST');
-   const observed={...native,sourceLogoutCompletions:logout.length,sourceLogoutStatus:logout[0].status,destinationAuthenticatedRequests:events.destination.filter(e=>e.authorizationPresent||e.credentialQueryPresent).length};
-   const result=confirmedDraftReconcile(c,before.snapshot,snapshot,observed);
-   if(c.confirmedOrdersResponseSwitch===true)result.ordersSwitch=confirmedOrdersSwitchTimeline(c,native,events.source);
+   const logout=events.source.filter(e=>e.path==='/rest/v1/rpc/logout_session');
+   const observed={...native,sourceLogoutCompletions:logout.length,destinationAuthenticatedRequests:events.destination.filter(e=>e.authorizationPresent||e.credentialQueryPresent).length};
+   let result;
+   if(c.confirmedOrdersResponseSwitch===true)result=confirmedOrdersSwitchRefusal(c,before.snapshot,snapshot,observed,events.source);
+   else{assert.equal(logout.length,1,'ONE_INDEPENDENT_LOGOUT_REQUIRED');assert.equal(logout[0].event,'complete');assert.equal(logout[0].method,'POST');observed.sourceLogoutStatus=logout[0].status;result=confirmedDraftReconcile(c,before.snapshot,snapshot,observed);}
    writeFileSync(resolve(c.caseDirectory,'confirmed-after.json'),JSON.stringify({configSHA256:before.configSHA256,result,snapshot,events}),{flag:'wx',mode:0o600});
   }
  }

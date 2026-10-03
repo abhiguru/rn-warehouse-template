@@ -9,3 +9,15 @@ export function confirmedOrdersSwitchTimeline(c,native,events){
  if(delivered)assert.ok(Date.parse(end.atUTC)-Date.parse(start.atUTC)>=29900&&Date.parse(end.atUTC)-Date.parse(start.atUTC)<45000);
  return {status:'PASS',scope:'confirmed-switch-during-authenticated-orders-read',requestStartedUTC:start.atUTC,confirmationAttemptUTC:native.confirmationAttemptUTC,settledUTC:end.atUTC,settlement:delivered?'delivered-after-confirmation':'cancelled-during-switch',lateDelivery:delivered};
 }
+
+export function confirmedOrdersSwitchRefusal(c,before,after,native,events){
+ const timeline=confirmedOrdersSwitchTimeline(c,native,events);
+ assert.equal(native.confirmationAttempts,1);assert.equal(native.businessSubmitAttempts,0);assert.equal(native.otpRequests,0);assert.equal(native.actualSwitchCompletions,0);
+ assert.equal(native.sourceCredentialStoragePresent,true);assert.deepEqual(native.selection,{origin:c.origin,instanceId:c.instanceId});
+ assert.ok(Number.isSafeInteger(native.draftProcessPID)&&native.draftProcessPID>0);assert.equal(native.sourceProcessPIDBeforeCold,native.draftProcessPID);
+ assert.equal(native.operationRefused,true);const visible=Date.parse(native.refusalVisibleUTC);assert.ok(Number.isFinite(visible)&&visible>=Date.parse(native.confirmationAttemptUTC)&&visible<Date.parse(timeline.settledUTC),'ALERT_MUST_BE_VISIBLE_WHILE_READ_PENDING');
+ assert.equal(native.sourceLogoutCompletions,0);assert.equal(native.destinationAuthenticatedRequests,0);
+ assert.equal(native.normalRouteColdOrders200,true);assert.equal(native.postConfirmationColdLaunchAttempts,1);
+ assert.deepEqual(after,before,'REFUSED_SWITCH_CHANGED_WAREHOUSE_STATE');
+ return {status:'PASS',scope:'confirmed-orders-switch-refusal-and-cold-restoration',draftAcceptance:'NOT_TESTED',ordersSwitch:timeline};
+}
