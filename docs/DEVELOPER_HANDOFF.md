@@ -2,6 +2,20 @@
 
 ## Current VM campaign checkpoint, 3 October 2026
 
+User-resumed after resource resize:31GiB RAM/about115GiB free disk/unused swap.
+Original and fresh backend local doctors PASS. Fresh85 tables/five actual files,
+configuration and identity match pre-restart state exactly; prior99 matrix file
+bindings verified. Emulator remains stopped; no stale helper or write replay.
+New read-only monitor28 uses frozen e1194f8, deadline16:27:13UTC, first pass
+14,370 bound files/17 retained historical changes/zero current integrity errors.
+The old helper/monitor lifetime observations below are historical after reboot.
+Fresh backend monitoring has a new two-hour-bounded serial pinned image-build
+stage; no runtime acceptance is claimed while its build remains live.
+Backend source regressions115/115 include eight auth-driver unsafe-binding
+refusals. Added mocked provider-contract coverage subsequently passes118/118.
+These checks do not close installed APK native groups or change the deadline.
+
+
 The VM-only campaign remains incomplete, with deadline 16:27:13 UTC today.
 Installed x86_64 APK2026100110 is application c422f62, SHA256
 a7df6781bdcd889eb9ccaa01ee0973890effd4d187bb6ac45f100284e1b04b69; backend
