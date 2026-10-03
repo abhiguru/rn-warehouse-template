@@ -11,7 +11,7 @@ fixture tooling and installed runtime evidence remain separate.
 
 | Requirement | Verified current scope and remaining gate |
 | --- | --- |
-| Backend reproduction | Pinnedbed4 installation/repeat setup PASS with separate state; busboy3.2.2 source patch audit/parser PASS, not rebuilt or installed. Current metadata audit BLOCKED. |
+| Backend reproduction | Pinnedbed4 installation/repeat setup PASS with separate state; busboy3.2.2 source audit and isolated image build/parser/Fastify integration PASS, not installed into a warehouse service. Current metadata audit BLOCKED. |
 | Exact APK10 | Compiled trust/ABI/signer/standalone JS and installed hash PASS; final acceptance freeze absent. |
 | Native business | Invalid receipt/dispatch quantities PASS; normal partial/final dispatch reconciliation and final dispatch PASS; queue PASS with explicit API cart preparation. Positive native receipt/cart/image and selected invoice/fault/concurrency/offline cases remain capped incomplete. |
 | Invoice/PDF | Existing rounding invoice179/tax9, generation/download/SEND/Librera view/export PASS. Full arithmetic/save/list/Breakdown/GRN-navigation contract acceptance incomplete. |
@@ -1609,3 +1609,19 @@ tests, lint and typecheck PASS at tooling55cab9e. These are API PDF evidence,
 not native B PDF viewing, complete reciprocal workflow closure or final freeze.
 Final readiness/eight-hour soak and delayed natural-expiry appointment remain
 gated by unresolved native workflows, staff policy and dependency audits.
+
+## Isolated patched storage image evidence, 3 October 2026
+
+Backend fix3df69a2 now has an independently built local amd64 image,
+`sha256:dba23152b96787abecb0ce93e769f2b3ea6a0da1c1f91ef8080d72c1d120ed2d`,
+from a clean pinned checkout. Its installed lock matches the source and busboy
+is3.2.2. Three bounded parser cases and actual Fastify multipart injection PASS;
+1,166 precompiled application files and65 native binaries match the pinned base.
+First smoke EACCES remains preserved; corrected owning-UID/no-network/read-only
+smoke PASSed without host-permission relaxation or rebuild. Actual fixture
+SQL/auth/business/pricing/stored-byte reconciliation remains PASS. No warehouse
+service/volume/port or old image tag was changed. This is build/module evidence,
+not installed storage-service or full backend reproduction acceptance. Private
+proof: `storage-busboy-image-build-final-proof01.json`; reproducible bounded
+commands and reusable smoke source are in backend draft PR79. All other final
+gates remain unchanged.
