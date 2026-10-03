@@ -1241,3 +1241,16 @@ or replaced. New helper state refusals2/2, complete source suite301/301 and fina
 expiry integration tests12/12 passed. This is source evidence only: no dedicated
 unit, AVD/session or timer was created; actual appointment integration remains
 unverified and scheduling is still prohibited until final freeze gates pass.
+
+
+Dedicated-expiry helper integration follow-up: source inspection showed the
+real supervisor starts emulator-fixture-bridge.mjs directly, not a supervisor
+command carrying the configuration argument. The guard now checks exact
+configuration-derived unit name/bridge path, working directory, owned
+environment and no drop-in overrides. Wrong state, replacement environment
+and changed ownership refuse (2 Python tests PASS). The new readiness function
+also passed an actual read-only certificate-verified primary discovery200/UUID
+and IPC connection on existing confirmread14, with no OTP or service start.
+Private expiry-helper-real-readiness-probe01.json records this narrow result;
+it is not dedicated-unit or naturally expired session acceptance. Final
+appointment creation remains gated and unperformed.

@@ -1,5 +1,5 @@
 """Dedicated expiry helper lifecycle; no replacement, restart or authentication."""
-import json,re,socket,ssl
+import json,re,shlex,socket,ssl
 from pathlib import Path
 
 def helper_config(c,private,digest):
@@ -9,22 +9,29 @@ def helper_config(c,private,digest):
  for key in ['configuration','fragment','certificate','healthSource']:
   p=private(h[key]);assert bound[str(p)]==digest(p)
  cfg=json.loads(private(h['configuration']).read_text());assert cfg['scope']=='isolated-fictional-fixture' and len(cfg['services'])==1
+ assert h['unit']=='warehouse-fixture-core-'+cfg['runId']+'.service'
  s=cfg['services'][0];assert s['kind']=='core' and s['owningCheckout']==c['backendCheckout'] and s['state']==c['backendState'] and s['ownerGuardSHA256']==c['fixtureGuardSHA256']
  assert not s.get('replacementAuthentication') and not s.get('dispatchConcurrency')
  for key in ['ordersReadDelayMs','discoveryDelayMs','confirmedOrdersReadDelayMs']:assert s.get(key,0)==0
  assert h['ipc']==s['socketPath'] and h['certificate']==c['certificate']
+ assert h['healthSource']==str(Path(s['checkout'])/'scripts/emulator-fixture-bridge.mjs')
+ h=dict(h,checkout=s['checkout'],environment={'WAREHOUSE_STATE_DIR':s['state'],'WAREHOUSE_FIXTURE_TLS_DIR':s['tlsDir'],'WAREHOUSE_FIXTURE_SOCKET':s['socketPath'],'WAREHOUSE_FIXTURE_OWNING_CHECKOUT':s['owningCheckout'],'WAREHOUSE_FIXTURE_OWNER_GUARD_SHA256':s['ownerGuardSHA256']})
  return h
 
 def helper_state(text,h,inactive):
  p=dict(x.split('=',1) for x in text.splitlines())
  assert p['Restart']=='no' and p['NRestarts']=='0' and p['KillMode']=='control-group' and p['RuntimeMaxUSec']=='1h'
- assert p['FragmentPath']==h['fragment'] and h['configuration'] in p['ExecStart'] and h['healthSource'] in p['ExecStart']
+ assert p['FragmentPath']==h['fragment'] and h['healthSource'] in p['ExecStart']
+ assert p['DropInPaths']=='' and p['WorkingDirectory']==h['checkout']
+ environment=dict(x.split('=',1) for x in shlex.split(p['Environment']))
+ for k,v in h['environment'].items():assert environment.get(k)==v
+ assert not set(k for k in environment if k.startswith('WAREHOUSE_'))-set(h['environment'])-{'WAREHOUSE_FIXTURE_OBSERVE_AUTH_PRESENCE'}
  assert p['ActiveState']==('inactive' if inactive else 'active')
  if not inactive:assert p['SubState']=='running' and int(p['MainPID'])>0
  return p
 
 def inspect_helper(run,h,inactive):
- return helper_state(run(['systemctl','--user','show',h['unit'],'-p','ActiveState','-p','SubState','-p','MainPID','-p','Restart','-p','NRestarts','-p','KillMode','-p','RuntimeMaxUSec','-p','FragmentPath','-p','ExecStart']),h,inactive)
+ return helper_state(run(['systemctl','--user','show',h['unit'],'-p','ActiveState','-p','SubState','-p','MainPID','-p','Restart','-p','NRestarts','-p','KillMode','-p','RuntimeMaxUSec','-p','FragmentPath','-p','ExecStart','-p','Environment','-p','DropInPaths','-p','WorkingDirectory']),h,inactive)
 
 def free_helper_endpoints(h):
  assert not Path(h['ipc']).exists()

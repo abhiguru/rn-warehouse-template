@@ -24,7 +24,8 @@ try{
  for(const key of ['configuration','fragment','certificate','healthSource']){assert.ok(bound.has(dedicated[key]),'Dedicated helper input unbound');}
  assert.equal(dedicated.certificate,native.certificate);
  const dedicatedConfig=privateJSON(dedicated.configuration);assert.equal(dedicatedConfig.scope,'isolated-fictional-fixture');assert.equal(dedicatedConfig.services.length,1);
- const service=dedicatedConfig.services[0];assert.equal(service.kind,'core');assert.equal(service.owningCheckout,native.backendCheckout);assert.equal(service.state,native.backendState);assert.equal(service.ownerGuardSHA256,native.fixtureGuardSHA256);assert.equal(service.socketPath,dedicated.ipc);
+ assert.equal(dedicated.unit,'warehouse-fixture-core-'+dedicatedConfig.runId+'.service');
+ const service=dedicatedConfig.services[0];assert.equal(service.kind,'core');assert.equal(service.owningCheckout,native.backendCheckout);assert.equal(service.state,native.backendState);assert.equal(service.ownerGuardSHA256,native.fixtureGuardSHA256);assert.equal(service.socketPath,dedicated.ipc);assert.equal(dedicated.healthSource,resolve(service.checkout,'scripts/emulator-fixture-bridge.mjs'));
  for(const key of ['replacementAuthentication','dispatchConcurrency','ordersReadDelayMs','discoveryDelayMs','confirmedOrdersReadDelayMs'])assert.ok(!service[key],'Normal dedicated helper only');
  const helperProperties=Object.fromEntries(command('systemctl',['--user','show',dedicated.unit,'-p','ActiveState','-p','Restart','-p','NRestarts','-p','FragmentPath','-p','RuntimeMaxUSec','-p','KillMode']).split('\n').map(x=>x.split('=')));
  assert.equal(helperProperties.ActiveState,'inactive');assert.equal(helperProperties.Restart,'no');assert.equal(helperProperties.NRestarts,'0');assert.equal(helperProperties.RuntimeMaxUSec,'1h');assert.equal(helperProperties.KillMode,'control-group');assert.equal(helperProperties.FragmentPath,dedicated.fragment);
