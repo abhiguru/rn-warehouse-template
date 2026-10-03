@@ -1628,3 +1628,22 @@ commands and reusable smoke source are in backend draft PR79. All other final
 gates remain unchanged.
 
 Current temporary A native cleanup attempt3 PASSed: one ordinary confirmed logout, two cold login requirements, selected Core persistence, zero OTP/business writes and unchanged protected SQL/authentication/actual stored bytes. Account remains active; older API sessions preserved. First refusal and attempt2 PASS remain historical. No fourth attempt. Private proof: `genuine-a-logout0110-final-proof03.json`.
+
+
+## Metadata dependency correction, 3 October 06:38 UTC
+
+Backend review9c11104347606dcf62f13a4a9edf85256b3e8170 replaces cpy-cli/nodemon
+with native Node build-asset and development-watch helpers. The full metadata
+audit now reports0 vulnerabilities, from8 high; all170 production lock entries
+and every retained package entry are unchanged. Backend tests105/105 and clean
+pinned metadata check/build/upstream tests12/12 PASS. Exact worker bytes and20
+compiled SQL modules reconcile. Both backend container dependency audits PASS.
+The first post-build asset observer mistakenly required raw SQL files; preserve
+its failure and corrected source-based verification. No service was replaced.
+
+Private evidence: metadata-native-tooling0110-01 under the campaign root. A new
+metadata image build is supervised under a fresh owned tag with both actor locks,
+30-minute lifetime, Docker2GiB/2CPU limits and no warehouse volumes or ports.
+Its result remains pending at this checkpoint. Mobile dependency findings,
+capped native gaps, staff policy decision and final freeze/soak/expiry remain
+open. Installed APK2026100110 and backend runtime remain unchanged.
