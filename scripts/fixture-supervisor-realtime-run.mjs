@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { supervisorConfig, claimSupervisorWrite, reconcileSupervisorNote } from './fixture-supervisor-realtime-controls.mjs';
+import { supervisorConfig, claimSupervisorWrite, reconcileSupervisorNote, supervisorReconnectProof } from './fixture-supervisor-realtime-controls.mjs';
 import { authenticateSupervisorAccount, logoutSupervisorAccount } from './fixture-supervisor-realtime-auth.mjs';
 import { supervisorIsolationEvidence } from './fixture-realtime-isolation-wire.mjs';
 
@@ -21,6 +21,9 @@ export async function runSupervisorRealtime(c,d,state){
   for(const role of ['A','supervisor','admin'])channels.push(await d.join(role,credentials[role].access));
   let previous=authenticated;
   for(const role of ['A','B']){
+   if(role==='B'&&c.supervisorReconnect===true){
+    const cycle=supervisorReconnectProof(c,await d.native('cycle'));await d.evidence('native-network-cycle',cycle);
+   }
    await d.verifyOwnership();const claim=claimSupervisorWrite(c,state,role,channels.map(x=>x.evidence()));
    await d.record({phase:'NOTE_WRITE_CLAIMED_NO_REPLAY',...claim});
    const response=await d.patch(claim.cartId,claim.marker,credentials.admin.access);

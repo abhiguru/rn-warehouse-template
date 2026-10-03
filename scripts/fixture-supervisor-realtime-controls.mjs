@@ -7,9 +7,11 @@ export function supervisorConfig(c){
  assert.equal(c.cartB,'f3346be6-bdb6-11f1-97b0-638c3f007281');
  if(Object.hasOwn(c,'currentArtifactRealtime'))assert.equal(typeof c.currentArtifactRealtime,'boolean');
  const current=c.currentArtifactRealtime===true;
+ if(Object.hasOwn(c,'supervisorReconnect'))assert.equal(typeof c.supervisorReconnect,'boolean');
+ const reconnect=c.supervisorReconnect===true;if(reconnect)assert.equal(current,true);
  if(current)assert.equal(c.artifactSHA256,'a7df6781bdcd889eb9ccaa01ee0973890effd4d187bb6ac45f100284e1b04b69');
- assert.equal(c.markerA,current?'FixtureSupervisorRealtime0110A':'FixtureSupervisorRealtime0109A');
- assert.equal(c.markerB,current?'FixtureSupervisorRealtime0110B':'FixtureSupervisorRealtime0109B');return c;
+ assert.equal(c.markerA,current?(reconnect?'FixtureSupervisorRealtime0110RA':'FixtureSupervisorRealtime0110A'):'FixtureSupervisorRealtime0109A');
+ assert.equal(c.markerB,current?(reconnect?'FixtureSupervisorRealtime0110RB':'FixtureSupervisorRealtime0110B'):'FixtureSupervisorRealtime0109B');return c;
 }
 export function claimSupervisorWrite(c,state,role,channels){
  supervisorConfig(c);assert.ok(Date.now()<Date.parse(c.deadlineUTC));
@@ -31,4 +33,11 @@ export function reconcileSupervisorNote(c,before,previous,after,role){
   if(target===role)assert.equal(a.note,c['marker'+role]);else assert.deepEqual(a,p,'Other cart changed');
  }
  return {status:'PASS',role,cartId:c['cart'+role],scope:'one reconciled note update; wire/native evidence separate'};
+}
+
+export function supervisorReconnectProof(c,cycle){
+ supervisorConfig(c);assert.equal(c.supervisorReconnect,true);
+ assert.equal(cycle.artifactSHA256,c.artifactSHA256);assert.equal(cycle.status,'PASS');
+ assert.equal(cycle.actualDeviceDisconnection,true);assert.equal(cycle.ownedNetworkRestored,true);assert.equal(cycle.manualRefresh,false);
+ return cycle;
 }

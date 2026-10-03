@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import{supervisorConfig,claimSupervisorWrite,reconcileSupervisorNote}from'./fixture-supervisor-realtime-controls.mjs';
+import{supervisorConfig,supervisorReconnectProof,claimSupervisorWrite,reconcileSupervisorNote}from'./fixture-supervisor-realtime-controls.mjs';
 const c={scope:'isolated-fictional-supervisor-realtime',origin:'https://backend-core.example.test',instanceId:'b0ec3933-5258-4bd5-87f4-d57b13a78971',cartA:'ce9cb158-bdb6-11f1-8391-8b2b4fd918b0',cartB:'f3346be6-bdb6-11f1-97b0-638c3f007281',markerA:'FixtureSupervisorRealtime0109A',markerB:'FixtureSupervisorRealtime0109B',deadlineUTC:new Date(Date.now()+60000).toISOString()};
 const channels=['A','supervisor','admin'].map(role=>({role,joined:true,databaseReady:true,live:true}));
 test('write claims require live controls, preserved notes and native readiness, and cannot replay',()=>{const s={status:'RUNNING',authenticationReconciled:true,nativeSupervisorReady:true,oldNotesPreserved:true,writes:[]};assert.throws(()=>claimSupervisorWrite(c,s,'A',channels.map(x=>({...x,live:false}))));assert.deepEqual(s.writes,[]);claimSupervisorWrite(c,s,'A',channels);assert.throws(()=>claimSupervisorWrite(c,s,'A',channels));claimSupervisorWrite(c,s,'B',channels);assert.throws(()=>claimSupervisorWrite(c,s,'B',channels));});
@@ -9,4 +9,11 @@ test('current APK Realtime mode binds fresh markers and exact audited artifact',
  const current={...c,currentArtifactRealtime:true,artifactSHA256:'a7df6781bdcd889eb9ccaa01ee0973890effd4d187bb6ac45f100284e1b04b69',markerA:'FixtureSupervisorRealtime0110A',markerB:'FixtureSupervisorRealtime0110B'};
  supervisorConfig(current);
  for(const change of [{artifactSHA256:'a'.repeat(64)},{markerA:c.markerA},{markerB:c.markerB},{currentArtifactRealtime:'true'}])assert.throws(()=>supervisorConfig({...current,...change}));
+});
+
+test('reconnect requires exact current marker pair, real disconnection and proven restoration before B write',()=>{
+ const current={...c,currentArtifactRealtime:true,supervisorReconnect:true,artifactSHA256:'a7df6781bdcd889eb9ccaa01ee0973890effd4d187bb6ac45f100284e1b04b69',markerA:'FixtureSupervisorRealtime0110RA',markerB:'FixtureSupervisorRealtime0110RB'};
+ const proof={status:'PASS',artifactSHA256:current.artifactSHA256,actualDeviceDisconnection:true,ownedNetworkRestored:true,manualRefresh:false};supervisorReconnectProof(current,proof);
+ for(const edit of [{status:'FAIL'},{artifactSHA256:'a'.repeat(64)},{actualDeviceDisconnection:false},{ownedNetworkRestored:false},{manualRefresh:true}])assert.throws(()=>supervisorReconnectProof(current,{...proof,...edit}));
+ for(const edit of [{markerA:'FixtureSupervisorRealtime0110A'},{currentArtifactRealtime:false},{supervisorReconnect:'true'}])assert.throws(()=>supervisorConfig({...current,...edit}));
 });
