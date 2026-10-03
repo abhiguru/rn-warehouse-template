@@ -18,15 +18,30 @@ export function revocationClosure(c,closure) {
  }
  return closure;
 }
+export function revocationGroupProof(c,group,value,reconciliation=false) {
+ revocationConfig(c);
+ assert.equal(value.artifactSHA256,c.artifactSHA256,'Dependency artifact must match the installed candidate');
+ assert.equal(value.profileId,c.profileId,'Dependency profile must match the reserved account');
+ assert.equal(value.workflowGroup,group.id,'A narrow or different workflow cannot close this group');
+ assert.equal(value.scope,reconciliation ? 'fictional-native-workflow-group-reconciliation' : 'fictional-native-workflow-group-proof','Explicit complete-group evidence required');
+ if(reconciliation) assert.equal(value.status,'PASS','Unreconciled writes prohibit revocation');
+ else {
+  assert.equal(value.status,group.status,'Group result must match its independently recorded proof');
+  if(group.status==='BLOCKED') {
+   assert.equal(value.attempts,3);
+   assert.equal(value.noFurtherNativeAttempts,true);
+  }
+ }
+ return value;
+}
 export function verifyRevocationDependencies(c) {
  const closure=revocationClosure(c,privateJSON(c.dependencyClosureFile));
  for(const group of closure.groups){
   for(const proof of group.evidence){
    const value=privateJSON(proof.path);assert.equal(createHash('sha256').update(readFileSync(proof.path)).digest('hex'),proof.sha256,'Dependency evidence changed');
-   if(group.status==='PASS')assert.equal(value.status,'PASS','Dependency PASS requires actual result');
-   else assert.ok(['PASS','FAIL','BLOCKED','PARTIAL_BLOCKED'].includes(value.status),'Running dependency prohibits revocation');
+   revocationGroupProof(c,group,value);
   }
-  if(group.reconciliation){const proof=group.reconciliation;const value=privateJSON(proof.path);assert.equal(createHash('sha256').update(readFileSync(proof.path)).digest('hex'),proof.sha256);assert.equal(value.status,'PASS','Unreconciled writes prohibit revocation');}
+  if(group.reconciliation){const proof=group.reconciliation;const value=privateJSON(proof.path);assert.equal(createHash('sha256').update(readFileSync(proof.path)).digest('hex'),proof.sha256);revocationGroupProof(c,group,value,true);}
  }
  return {status:'PASS',scope:'all-dependent-workflows-reviewed-before-revocation'};
 }

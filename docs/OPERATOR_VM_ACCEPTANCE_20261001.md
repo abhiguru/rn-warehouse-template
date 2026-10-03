@@ -1215,3 +1215,13 @@ and reciprocal isolation results remain historical; the capped read-refusal
 proof does not close all switching. No narrow PASS/BLOCKED result is promoted
 to an entire group. Private current-artifact-revocation-prerequisite-audit-20261003T0110.json
 SHA256 f3fd47c5cb7f371901a68635ef8ec36ca50f576054b7586b38bd44b93305acdf. Final freeze/readiness, soak and expiry appointment remain open.
+
+
+Revocation evidence guard correction: every group proof and reconciliation now
+requires the exact candidate artifact, reserved profile, explicit workflowGroup
+and complete-group scope. PASS/FAIL labels and matching file hashes alone no
+longer admit older artifacts or narrow read-refusal/quantity proofs as entire
+group closure. BLOCKED group proofs also require their own three-attempt/no-more
+metadata. Focused refusals and all301 source tests passed; private output is
+revocation-exact-group-full-source-tests01.log. No complete-group proof or native
+revocation was produced, and existing frozen runtimes remain unchanged.
