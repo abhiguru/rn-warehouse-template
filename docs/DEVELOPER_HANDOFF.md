@@ -10,8 +10,13 @@ includes staff, and the edit dispatch-presence helper reads the GRN-authorized
 summary and rejects malformed/denied responses.
 
 Ten focused mobile tests, typecheck and lint passed locally; existing lint
-warnings remain. The policy decision is resolved. Backend final migration CI
-and native acceptance remain outstanding; no new APK was built or installed.
+warnings remain. CI run37121658351 exposed one older authentication test still
+mocking the replaced dispatch-table query. After correcting it to require the
+authenticated GRN-detail RPC, all 50 suites/323 tests passed locally. That CI
+failure remains preserved. The policy decision is resolved. Backend migration
+CI failed a legacy-list count assertion: its source correction initializes the
+previously unseeded refresh queue and awaits an authorized database validation
+attempt. Native acceptance remains outstanding; no new APK was built or installed.
 Historical staff-policy blocker notes below retain the prior observations.
 
 ## Current VM campaign checkpoint, 3 October 2026
