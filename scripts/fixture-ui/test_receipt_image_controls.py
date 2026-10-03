@@ -25,4 +25,13 @@ class GalleryControls(unittest.TestCase):
         t=ET.fromstring('<hierarchy><node text="PHOTO LIBRARY" class="android.widget.Button" enabled="true" bounds="[1,1][50,50]"/></hierarchy>')
         with self.assertRaises(AssertionError):point(t,'PHOTO LIBRARY','WAREHOUSE_FIXTURE_FXF502.png')
         t.extend([ET.fromstring('<node text="Add Image"/>'),ET.fromstring('<node text="Choose image source"/>')]);self.assertEqual(point(t,'PHOTO LIBRARY','WAREHOUSE_FIXTURE_FXF502.png'),(25,25))
+    def test_exact_file_selection_works_in_grid_and_list_without_view_toggle(self):
+        filename='WAREHOUSE_FIXTURE_FXF502.png'
+        for container in ['android.widget.GridView','android.widget.ListView']:
+            t=ET.fromstring('<hierarchy><node text="Recent"/><node class="'+container+'"><node text="'+filename+'" class="android.widget.TextView" enabled="true" bounds="[10,100][200,180]"/></node></hierarchy>')
+            self.assertEqual(point(t,filename,filename),(105,140))
+            with self.assertRaises(AssertionError):point(t,'WAREHOUSE_FIXTURE_OTHER.png',filename)
+            t[1].append(ET.fromstring('<node text="'+filename+'" enabled="true" bounds="[10,200][200,280]"/>'))
+            with self.assertRaises(AssertionError):point(t,filename,filename)
+
 if __name__=='__main__':unittest.main()

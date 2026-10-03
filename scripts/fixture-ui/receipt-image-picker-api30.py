@@ -48,8 +48,8 @@ def main(path):
             except AssertionError:d.adb('shell','input','swipe','360','1000','360','500','350')
         else:raise AssertionError('Visible Add Photos not available')
         d.tap_image('Add Photos ',fixture.name);d.tap_image('PHOTO LIBRARY',fixture.name);d.external=True
-        t=d.wait('Recent');labels={v for n in t.iter('node') for v in [n.get('text'),n.get('content-desc')] if v}
-        if 'List view' in labels:d.tap_image('List view',fixture.name)
+        # Exact file selection works in either layout; do not mutate optional view state.
+        d.wait('Recent');d.archive('picker-entry-current-layout')
         t=d.wait(fixture.name);d.archive('picker-before-exact-file');d.tap_image(fixture.name,fixture.name);time.sleep(1)
         window=d.adb('shell','dumpsys','window')
         if any(package+'/' in window for package in PICKER_PACKAGES):
