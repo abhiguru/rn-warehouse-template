@@ -1254,3 +1254,16 @@ and IPC connection on existing confirmread14, with no OTP or service start.
 Private expiry-helper-real-readiness-probe01.json records this narrow result;
 it is not dedicated-unit or naturally expired session acceptance. Final
 appointment creation remains gated and unperformed.
+
+
+APK2026100110 supervisor foreground Realtime PASS, frozen tooling0efdaf5.
+Three ordinary API logins (A/supervisor/admin) were reconciled, followed by
+two fresh exact note updates0110A/0110B. Prior full cart rows/notes are preserved
+in the original snapshot; markers0109 were not replayed. Live supervisor/admin
+subscriptions received both events, A only its own event, with bounded live
+negative controls. Actual native supervisor refetched Orders200 after the event
+without manual Refresh. Protected SQL/stored bytes and old authentication
+reconciled; only the three newly issued API sessions were normally logged out.
+Original native supervisor session remains present. Private supervisor-realtime0110-final-proof.json
+SHA256 e2bdaf51267575027e0536a4df718b32986611fa6a7120b30263a91ffcadf96e. This does not establish reconnect/resubscription, reciprocal
+native B, literal staff, cart/queue processing or complete Realtime-group closure.
