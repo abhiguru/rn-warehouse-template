@@ -33,7 +33,9 @@ def main(path):
  try:
   assert d.adb('emu','avd','name').splitlines()[0]=='TestWarehouseFixture_API30';assert d.adb('shell','getprop','ro.build.version.sdk')=='30';assert d.adb('shell','getenforce')=='Enforcing'
   package=d.adb('shell','pm','path',nav.soak.PACKAGE);assert re.fullmatch(r'package:/data/app/[^\n]+',package);assert d.adb('shell','sha256sum',package[8:]).split()[0]==cfg['apkSHA256']
-  nav.owned_reverse_route(d.adb('reverse','--list'),18443);d.health(True);d.wait('Orders tab');observe('before')
+  nav.owned_reverse_route(d.adb('reverse','--list'),18443);d.health(True);
+  if bounded:d.cold()
+  d.wait('Orders tab');observe('before')
   since=datetime.datetime.now(datetime.timezone.utc).isoformat();d.state['nativeTargetRequestAttempted']=True;d.save()
   d.adb('shell','am','start','-W','-a','android.intent.action.VIEW','-d','warehouse-fixture://grn-details/'+c['targetReceiptId'],'-p',nav.soak.PACKAGE)
   d.wait('Failed to Load');d.wait('GRN not found or access denied')
