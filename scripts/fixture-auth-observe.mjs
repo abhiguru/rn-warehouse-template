@@ -1,3 +1,4 @@
+import { verifyCampaignDeadline } from './fixture-campaign-deadline.mjs';
 // Ordinary native fixture authentication: read-only ownership/quota/session observations.
 import assert from 'node:assert/strict';
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -16,6 +17,11 @@ try {
   assert.ok(['guard', 'before', 'after'].includes(phase));
   const c = privateJSON(path);
   assert.equal(c.scope, 'isolated-fictional-native-authentication');
+  if (Object.hasOwn(c, 'extensionPlan')) {
+    verifyCampaignDeadline(c, privateJSON, p => createHash('sha256').update(readFileSync(p)).digest('hex'));
+    const deadline=Date.parse(c.deadlineUTC);
+    assert.ok(Number.isFinite(deadline) && deadline>Date.now() && deadline-Date.now()<=600000 && deadline<=Date.parse(c.campaignDeadlineUTC));
+  }
   assertReleased(c);
   const ui = privateJSON(c.soakConfig);
   const secondary = c.origin === 'https://backend-switch.example.test';
