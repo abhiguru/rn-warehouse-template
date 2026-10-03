@@ -213,15 +213,25 @@ export function customerBLogoutMode(c){
  if(enabled){assert.equal(c.case,'customer-b-logout');assert.equal(c.kind,'native-customer-b-session-cleanup');assert.equal(c.cleanupPurpose,'before-ordinary-b-rejection');assert.equal(c.profileId,'34d9d337-ec2e-4bed-b555-0e8b63dd3aef');assert.equal(c.profileName,'Customer B');assert.equal(c.origin,'https://backend-core.example.test');assert.equal(c.instanceId,'b0ec3933-5258-4bd5-87f4-d57b13a78971');assert.equal(c.artifactSHA256,'08271dada3bf90ed6912db71c0e08f95487a906d12a765bcaa706338bdf12fb7');assert.equal(customerReadMode(c),false);}
  if(c.case==='customer-b-logout')assert.equal(enabled,true);return enabled;
 }
+export function genuineALogoutMode(c){
+ if(Object.hasOwn(c,'genuineALogout'))assert.equal(typeof c.genuineALogout,'boolean');
+ const enabled=c.genuineALogout===true;
+ if(enabled){
+  assert.equal(c.case,'customer-logout');assert.equal(c.kind,'native-genuine-a-logout');assert.equal(c.profileId,'79764e1a-3aed-4cac-9a25-42ccdafb79ac');assert.equal(c.profileName,'Customer A');
+  assert.equal(c.origin,'https://backend-core.example.test');assert.equal(c.instanceId,'b0ec3933-5258-4bd5-87f4-d57b13a78971');assert.equal(c.artifactSHA256,'a7df6781bdcd889eb9ccaa01ee0973890effd4d187bb6ac45f100284e1b04b69');
+  assert.equal(c.noAutomaticRetry,true);assert.ok([1,2,3].includes(c.nativeAttempt));assert.equal(customerReadMode(c),false);assert.notEqual(c.customerBLogout,true);
+ }
+ return enabled;
+}
 export function navigationConfig(c) {
-  const customerLifecycle=customerReadMode(c);const bLogout=customerBLogoutMode(c);unsavedCustomerDraftMode(c);unsavedInvoiceDraftMode(c);unsavedGRNDraftMode(c);unsavedDispatchDraftMode(c);
+  const customerLifecycle=customerReadMode(c);genuineALogoutMode(c);const bLogout=customerBLogoutMode(c);unsavedCustomerDraftMode(c);unsavedInvoiceDraftMode(c);unsavedGRNDraftMode(c);unsavedDispatchDraftMode(c);
   assert.equal(c.scope, 'isolated-fictional-navigation-case');
   assert.ok(['offline-orders', 'same-server', 'cancel-switch', 'confirm-switch', 'switch-back', 'malformed-server', 'cold-lifecycle', 'ordinary-logout', 'customer-logout', 'staff-logout', 'supervisor-reads', 'supervisor-logout','unsaved-customer-draft-cancel','unsaved-invoice-draft-cancel','unsaved-grn-draft-cancel','unsaved-dispatch-draft-cancel','orders-selection-response-race','customer-b-logout','customer-b-image-read','customer-b-grn-pdf'].includes(c.case));
   for (const name of ['backendCheckout', 'backendState', 'soakConfig', 'artifactAudit', 'caseDirectory'])
     assert.ok(isAbsolute(c[name]), 'ABSOLUTE_CASE_PATH_REQUIRED');
   for (const name of ['instanceId', 'profileId', 'sessionId']) assert.match(c[name], uuid);
   for (const name of ['artifactSHA256', 'fixtureGuardSHA256']) assert.match(c[name], hash);
-  assert.equal(c.profileName, genuineAReceiptDenialMode(c) ? 'Customer A' : bLogout||reciprocalReceiptDenialMode(c)||customerInvoiceDenialMode(c)||customerBImageReadMode(c)||customerBGRNPDFMode(c) ? 'Customer B' : c.case === 'switch-back' ? 'Switch Demo Administrator' : customerLifecycle || ['customer-logout','staff-logout', 'supervisor-reads', 'supervisor-logout','unsaved-customer-draft-cancel','unsaved-invoice-draft-cancel','unsaved-grn-draft-cancel','unsaved-dispatch-draft-cancel'].includes(c.case) ? 'New customer' : 'Core Demo Administrator');
+  assert.equal(c.profileName, genuineAReceiptDenialMode(c)||genuineALogoutMode(c) ? 'Customer A' : bLogout||reciprocalReceiptDenialMode(c)||customerInvoiceDenialMode(c)||customerBImageReadMode(c)||customerBGRNPDFMode(c) ? 'Customer B' : c.case === 'switch-back' ? 'Switch Demo Administrator' : customerLifecycle || ['customer-logout','staff-logout', 'supervisor-reads', 'supervisor-logout','unsaved-customer-draft-cancel','unsaved-invoice-draft-cancel','unsaved-grn-draft-cancel','unsaved-dispatch-draft-cancel'].includes(c.case) ? 'New customer' : 'Core Demo Administrator');
   if (['staff-logout','supervisor-reads','supervisor-logout'].includes(c.case)) assert.equal(c.profileId, '947136fa-997b-4a83-819d-1b8bd3ecba68');
   return c;
 }
@@ -233,7 +243,7 @@ export function navigationSnapshotSQL(c) {
 SET LOCAL statement_timeout='10s';
 SELECT jsonb_build_object(
  'profile',(SELECT jsonb_build_object('id',id,'active',active,'role',role,'name',name${customerBLogoutMode(c) ? ",'enrollmentStatus',enrollment_status" : ''})
-   FROM public.user_profiles WHERE id='${c.profileId}' AND mobile='${genuineAReceiptDenialMode(c) ? '919888888872' : customerBLogoutMode(c)||reciprocalReceiptDenialMode(c)||customerInvoiceDenialMode(c)||customerBImageReadMode(c)||customerBGRNPDFMode(c) ? '919888888873' : c.case === 'switch-back' ? '919888888881' : customerLifecycle || ['customer-logout','staff-logout', 'supervisor-reads', 'supervisor-logout','unsaved-customer-draft-cancel','unsaved-invoice-draft-cancel','unsaved-grn-draft-cancel','unsaved-dispatch-draft-cancel'].includes(c.case) ? '919888888874' : '919888888871'}'),
+   FROM public.user_profiles WHERE id='${c.profileId}' AND mobile='${genuineAReceiptDenialMode(c)||genuineALogoutMode(c) ? '919888888872' : customerBLogoutMode(c)||reciprocalReceiptDenialMode(c)||customerInvoiceDenialMode(c)||customerBImageReadMode(c)||customerBGRNPDFMode(c) ? '919888888873' : c.case === 'switch-back' ? '919888888881' : customerLifecycle || ['customer-logout','staff-logout', 'supervisor-reads', 'supervisor-logout','unsaved-customer-draft-cancel','unsaved-invoice-draft-cancel','unsaved-grn-draft-cancel','unsaved-dispatch-draft-cancel'].includes(c.case) ? '919888888874' : '919888888871'}'),
  'nativeSessionPresent',EXISTS(SELECT 1 FROM warehouse_security.refresh_sessions s
    JOIN public.user_profiles p ON p.auth_user_id=s.user_id
    WHERE p.id='${c.profileId}' AND s.id='${c.sessionId}' AND s.expires_at>now()),

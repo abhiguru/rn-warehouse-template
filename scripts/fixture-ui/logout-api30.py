@@ -42,7 +42,7 @@ def main(path):
   installed=d.adb('shell','pm','path',soak.PACKAGE);assert re.fullmatch(r'package:/data/app/[^\n]+',installed);assert d.adb('shell','sha256sum',installed[8:]).split()[0]==c['apkSHA256'];nav.owned_reverse_route(d.adb('reverse','--list'),18443);d.health();observe('before')
   d.cold();d.wait('Orders tab')
   # Exact admitted profile avatar and header bounds; never select a generic icon.
-  avatar='N' if case['case'] in ['customer-logout','staff-logout','supervisor-logout'] else 'C';tree=d.wait('Refresh orders');d.adb('shell','input','tap',*map(str,avatar_point(tree,avatar)))
+  avatar='C' if case.get('genuineALogout') is True else 'N' if case['case'] in ['customer-logout','staff-logout','supervisor-logout'] else 'C';tree=d.wait('Refresh orders');d.adb('shell','input','tap',*map(str,avatar_point(tree,avatar)))
   tree=d.wait('View profile for '+case['profileName']);d.adb('shell','input','tap',*map(str,auth.point(tree,'View profile for '+case['profileName'])))
   for _ in range(6):
    if any('Sign out'==n.get('content-desc') for n in d.snapshot().iter('node')):break
