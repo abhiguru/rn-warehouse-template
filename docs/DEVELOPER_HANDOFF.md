@@ -40,7 +40,11 @@ Mobile production audit still reports26 high dependency paths. Backend review
 helpers; the full metadata audit fell from8 high to0 while all170 production
 lock entries and retained entries stay unchanged. Backend source tests105/105
 and pinned upstream check/build/tests12/12 PASS; both container audits report0.
-A separate supervised isolated metadata image build is in progress. This does
+The clean9c11104 isolated metadata image build and exact-image bounded
+root/health/missing-route HTTP smoke PASS. The first wrong runtime-user override
+failure is preserved; correction used the declared Dockerfile user without
+changing permissions. Aggregate metadata-native-tooling-image-final-proof01.json
+binds18 evidence files. Reviewed backend smoke/handoff57eef6b. This does
 not establish installation into a warehouse or full backend reproduction.
 Do not use audit fix --force, downgrade Expo/nodemon or waive gates. Backend
 storage busboy3.2.2 patch now has isolated image build/parser/integration PASS; it is not installed storage-service acceptance.

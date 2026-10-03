@@ -1647,3 +1647,20 @@ metadata image build is supervised under a fresh owned tag with both actor locks
 Its result remains pending at this checkpoint. Mobile dependency findings,
 capped native gaps, staff policy decision and final freeze/soak/expiry remain
 open. Installed APK2026100110 and backend runtime remain unchanged.
+
+
+### Metadata image checkpoint, 3 October 06:45 UTC
+
+The supervised clean9c11104 image build PASSed, with no restart. Exact amd64 image
+SHA256dc02e8f3ecd25b33798dddb9c6dc355fa82f58d49d4faf0d5732262adf16e786
+PASSed actual Fastify root200/health200/missing404 in a no-network, read-only,
+capability-dropped512MiB/2CPU probe using the declared image user. InitialUID1000
+override could not read the root-owned private manifest and failed import
+resolution; preserved alongside corrected attempt2. No permissions changed.
+The exact installed image lock matches source. No warehouse service was
+replaced. Aggregate metadata-native-tooling-image-final-proof01.json binds18
+files and explicitly excludes installation/full reproduction. Reusable runtime
+smoke published in backend57eef6b. Backend9c11104 CI has validation/migrations/
+contract/scans/Grafana PASS; isolated installation still runs. New-head CI must
+be reviewed independently. Mobile dependency/native/final acceptance gates
+remain open; do not transfer this isolated image result to installed services.
