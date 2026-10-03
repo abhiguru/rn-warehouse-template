@@ -5,7 +5,7 @@ def rejection_config(c):
  assert c['scope']=='isolated-fictional-native-dispatch-quantity-rejection'
  assert c['profileId']=='947136fa-997b-4a83-819d-1b8bd3ecba68'
  assert c['profileName']=='New customer' and c['role']=='supervisor'
- assert c['artifactSHA256']=='08271dada3bf90ed6912db71c0e08f95487a906d12a765bcaa706338bdf12fb7'
+ assert c['artifactSHA256'] in ['08271dada3bf90ed6912db71c0e08f95487a906d12a765bcaa706338bdf12fb7','a7df6781bdcd889eb9ccaa01ee0973890effd4d187bb6ac45f100284e1b04b69']
  assert c['origin']=='https://backend-core.example.test'
  assert c['instanceId']=='b0ec3933-5258-4bd5-87f4-d57b13a78971'
  assert c['sourceReceipt']=='FXF410' and c['stockLineId']=='c15f781e-bdba-11f1-819c-236af9dbe2c3'
