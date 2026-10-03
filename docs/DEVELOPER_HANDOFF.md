@@ -203,3 +203,11 @@ Correction654 makes query-based writes one attempt per explicit action and avoid
 paused reconnect execution. Five real-client regressions PASS; full295Jest tests,
 typecheck and lint0errors PASS. The unused dispatch-delete hook is hardened;
 current direct document services and installed soak APK are unchanged.
+
+Literal-staff APK10 check (3 October): ordinary login and logout PASS; cold
+Orders200/no Queue PASS, GRN denied with Staff access required. Mobile/backend
+permission-policy mismatch remains BLOCKED. Normal administrator API restored
+reserved profile947 to active/approved supervisor; no target native session,
+original emulator logged out. Business/assignments/other accounts/stored bytes
+preserved. Role-cycle hash qualification and failed attempt retained privately.
+Reviewed fixture tooling7b717d0 has328 passing source tests.
