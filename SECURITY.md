@@ -10,7 +10,7 @@ Please do not open a public issue for a suspected vulnerability. Use GitHub's
 private vulnerability reporting for this repository, or write to the security
 contact below.
 
-Security contact: SECURITY_CONTACT_MAILBOX
+Security contact: abhinavguru@gmail.com
 
 Include the affected version, reproduction steps, impact, and any suggested
 mitigation. Please allow a reasonable amount of time for investigation before
