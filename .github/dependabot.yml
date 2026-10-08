@@ -1,0 +1,28 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      npm-dependencies:
+        patterns:
+          - "*"
+    # These packages are pinned by the postinstall security backports
+    # (scripts/security-backports.json, applied by
+    # scripts/patch-security-backports.mjs and re-checked by
+    # `npm run verify:backports`). A Dependabot bump of any of them makes the
+    # exact-pin patches fail closed, so they are updated by hand together with
+    # the backport manifest.
+    ignore:
+      - dependency-name: "@expo/cli"
+      - dependency-name: "query-string"
+      - dependency-name: "node-forge"
+      - dependency-name: "braces"
+      - dependency-name: "sprintf-js"
+      - dependency-name: "metro-file-map"
+      - dependency-name: "metro*"
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly

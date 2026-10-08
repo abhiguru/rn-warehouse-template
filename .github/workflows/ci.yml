@@ -1,0 +1,133 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    name: Lint & Type Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Expo SDK dependency compatibility
+        run: npx expo install --check
+        env:
+          EXPO_NO_TELEMETRY: '1'
+
+      - name: Expo project diagnostics
+        run: npx expo-doctor
+        env:
+          EXPO_NO_TELEMETRY: '1'
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Bootstrap regression tests
+        run: npm run test:setup
+
+      - name: Android JavaScript bundle
+        run: npx expo export --platform android
+
+  android-artifact:
+    name: Android debug artifact audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - run: npm ci
+      - name: Install and verify pinned Android SDK prerequisites
+        timeout-minutes: 12
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdk_root="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          test -n "$sdk_root"
+          sdk_manager="$sdk_root/cmdline-tools/latest/bin/sdkmanager"
+          test -x "$sdk_manager"
+          "$sdk_manager" --sdk_root="$sdk_root" \
+            'platform-tools' 'platforms;android-36' \
+            'build-tools;36.0.0' 'build-tools;35.0.0' \
+            'ndk;27.1.12297006' 'ndk;27.0.12077973' 'cmake;3.22.1' </dev/null
+          ANDROID_HOME="$sdk_root" node scripts/check-android-sdk.mjs
+      - name: Generate Android project
+        run: npx expo prebuild --platform android --clean --no-install
+      - name: Assemble debug APK
+        run: ./gradlew assembleDebug
+        working-directory: android
+      - name: Audit picker React Native ABI compile options
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          compile_commands=(android/app/.cxx/Debug/*/*/compile_commands.json android/app/.cxx/RelWithDebInfo/*/*/compile_commands.json)
+          test "${#compile_commands[@]}" -gt 0
+          for command_file in "${compile_commands[@]}"; do
+            node scripts/audit-picker-native-compile.mjs "$command_file"
+          done
+      - name: Audit APK contents, permissions and notices
+        run: npm run audit:artifact -- android/app/build/outputs/apk/debug/app-debug.apk
+
+  dependencies:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Verify dependency security backport regressions
+        run: node --test scripts/security-backports.test.mjs scripts/audit-dependencies.test.mjs
+      - name: Audit dependencies and verify every local security backport
+        run: npm run audit:dependencies -- --report-dir "$RUNNER_TEMP/dependency-security-report"
+      - name: Preserve raw audit and installed-source verification
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-security-report
+          path: ${{ runner.temp }}/dependency-security-report
+          if-no-files-found: warn
+
+  secrets:
+    name: Redacted source and history scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - run: bash scripts/scan-secrets.sh

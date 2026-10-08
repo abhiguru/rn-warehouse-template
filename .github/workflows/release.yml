@@ -1,0 +1,47 @@
+name: Release validation
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    name: Validate release tag
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Semantic version tag gate
+        run: bash scripts/check-release.sh
+      - run: npm ci
+      - run: npx expo install --check
+      - run: npm test -- --silent
+      - run: npm run typecheck
+      - run: npx eslint . --quiet
+      - run: npm run test:setup
+      - name: Audit dependencies and verify every local security backport
+        run: npm run audit:dependencies -- --report-dir "$RUNNER_TEMP/dependency-security-report"
+      - name: Preserve raw audit and installed-source verification
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-security-report
+          path: ${{ runner.temp }}/dependency-security-report
+          if-no-files-found: warn
+      - run: npx expo export --platform android --max-workers 2
+        env:
+          EXPO_NO_DOTENV: '1'
+          EXPO_NO_TELEMETRY: '1'
+      # Validation only. A maintainer publishes the GitHub release manually
+      # after this run passes. No credentials or native binaries are uploaded.

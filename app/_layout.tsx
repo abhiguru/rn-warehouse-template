@@ -1,0 +1,595 @@
+import 'react-native-gesture-handler';
+import { LogBox, Platform } from 'react-native';
+import * as SystemUI from 'expo-system-ui';
+import * as NavigationBar from 'expo-navigation-bar';
+
+// Suppress LogBox error overlay for network/RPC errors in development
+// These are handled gracefully by the app's error handling
+LogBox.ignoreLogs([
+  'ERROR [ServiceErrorHandler]',
+  'RPC error:',
+  'Could not find the function',
+  'Network request failed',
+]);
+import { en, registerTranslation } from 'react-native-paper-dates';
+
+// Register English locale for react-native-paper-dates (pure JS date picker)
+registerTranslation('en', en);
+
+// Set the native root background before React renders on supported platforms.
+// Android edge-to-edge mode rejects this call.
+if (Platform.OS !== 'android') {
+  SystemUI.setBackgroundColorAsync('#11222c');
+}
+
+import React, { useEffect, useState, useMemo, useRef } from 'react';
+
+// Type declaration for React Native's global ErrorUtils
+interface ErrorUtilsType {
+  setGlobalHandler: (
+    handler: (error: Error, isFatal?: boolean) => void
+  ) => void;
+  getGlobalHandler: () =>
+    ((error: Error, isFatal?: boolean) => void) | undefined;
+}
+
+declare const ErrorUtils: ErrorUtilsType | undefined;
+import { Stack } from 'expo-router';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
+import {
+  SafeAreaProvider,
+  useSafeAreaInsets,
+} from 'react-native-safe-area-context';
+import {
+  View,
+  ActivityIndicator,
+  AppState,
+  Text,
+  useColorScheme,
+  Image,
+} from 'react-native';
+import {
+  DarkTheme,
+  DefaultTheme,
+  ThemeProvider,
+} from '@react-navigation/native';
+import { Provider } from 'react-redux';
+import { PersistGate } from 'redux-persist/integration/react';
+import { PaperProvider, MD3LightTheme, MD3DarkTheme } from 'react-native-paper';
+import { QueryClientProvider } from '@tanstack/react-query';
+import { store, persistor } from '@/store';
+import { queryClient } from '@/lib/queryClient';
+import theme, { getThemeColors, colors, darkColors } from '@/theme';
+import ConfigService from '@/services/configService';
+import { initializeSupabase } from '@/config/supabaseConfig';
+import { clearPendingEnrollment } from '@/config/supabaseConfig';
+import ConfigErrorScreen from '@/components/ConfigErrorScreen';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { OfflineBanner } from '@/components/OfflineBanner';
+import { createLogger } from '@/utils/logger';
+import { useAppDispatch, useAppSelector } from '@/store/hooks';
+import { initializeAuth } from '@/store/slices/authSlice';
+import { logout } from '@/store/slices/authSlice';
+import { clearSessionScopedState } from '@/store/sessionScopedState';
+import { sweepSharedDocuments } from '@/utils/shareDocument';
+import { OperatorServerSelection } from '@/components/OperatorServerSelection';
+import { onOperatorServerChange } from '@/config/operatorServer';
+import { verifySelectedOperator, verifyForegroundOperator } from '@/config/operatorBootstrap';
+import { operatorResumeGate } from '@/config/operatorResume';
+import { createResumeLifecycle } from '@/config/resumeLifecycle';
+import { isNativeHandoffActive } from '@/config/nativeHandoff';
+import { hasActiveOperatorMutation } from '@/config/supabaseConfig';
+import {
+  selectThemePreference,
+  selectResolvedThemeMode,
+} from '@/store/slices/themeSlice';
+import {
+  initializeSentry,
+  captureException,
+  captureMessage,
+  Sentry,
+} from '@/config/sentryConfig';
+import { UpdatePrompt } from '@/components/UpdatePrompt';
+import { AppStateManager } from '@/components/AppStateManager';
+import { ForceUpdateModal } from '@/components/ForceUpdateModal';
+import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
+import { useColdStartDeepLink } from '@/hooks/useColdStartDeepLink';
+
+// Initialize Sentry/GlitchTip crash reporting immediately (before any React code)
+// Only initialize when DSN is configured via EXPO_PUBLIC_SENTRY_DSN env var
+if (process.env.EXPO_PUBLIC_SENTRY_DSN) {
+  initializeSentry();
+}
+
+// Global error logger
+const errorLogger = createLogger('GlobalError');
+
+// Global error handler for uncaught exceptions
+// This catches errors that occur outside of React's error boundary
+if (typeof ErrorUtils !== 'undefined' && ErrorUtils) {
+  const originalHandler = ErrorUtils.getGlobalHandler();
+
+  ErrorUtils.setGlobalHandler((error: Error, isFatal?: boolean) => {
+    // Log the error with our secure logger
+    errorLogger.error(`Uncaught ${isFatal ? 'FATAL' : ''} error:`, {
+      name: error?.name,
+      message: error?.message,
+      stack: error?.stack?.substring(0, 500), // Limit stack trace length
+    });
+
+    // Send to GlitchTip crash reporting
+    captureException(error, { isFatal, source: 'GlobalErrorHandler' });
+
+    // Call the original handler (shows red screen in dev)
+    if (originalHandler) {
+      originalHandler(error, isFatal);
+    }
+  });
+}
+
+// Handle unhandled promise rejections
+if (typeof global !== 'undefined') {
+  // React Native uses a polyfill that exposes tracking-rejection event
+  const originalRejectionHandler = (global as any).onunhandledrejection;
+
+  (global as any).onunhandledrejection = (event: {
+    reason: any;
+    promise: Promise<any>;
+  }) => {
+    const reason = event?.reason;
+    errorLogger.error('Unhandled promise rejection:', {
+      message: reason?.message || String(reason),
+      stack: reason?.stack?.substring(0, 500),
+    });
+
+    // Send to GlitchTip crash reporting
+    if (reason instanceof Error) {
+      captureException(reason, {
+        type: 'unhandledRejection',
+        source: 'PromiseRejectionHandler',
+      });
+    } else {
+      captureMessage(`Unhandled rejection: ${String(reason)}`, 'error');
+    }
+
+    // Call original handler if it exists
+    if (originalRejectionHandler) {
+      originalRejectionHandler(event);
+    }
+  };
+}
+
+// Create Material Design 3 theme based on color mode
+const createPaperTheme = (isDark: boolean) => {
+  const baseTheme = isDark ? MD3DarkTheme : MD3LightTheme;
+  const themeColors = isDark ? darkColors : colors;
+
+  return {
+    ...baseTheme,
+    colors: {
+      ...baseTheme.colors,
+      primary: themeColors.primary, // Brand primary color
+      primaryContainer: themeColors.orange[100],
+      secondary: themeColors.orange[700],
+      secondaryContainer: themeColors.orange[50],
+      tertiary: themeColors.blue[500],
+      tertiaryContainer: themeColors.blue[50],
+      surface: isDark ? themeColors.gray[100] : themeColors.white,
+      surfaceVariant: themeColors.gray[isDark ? 200 : 50],
+      background: themeColors.gray[isDark ? 50 : 50],
+      error: themeColors.semantic.error,
+      errorContainer: themeColors.red[50],
+      onPrimary: isDark ? themeColors.gray[900] : '#ffffff',
+      onSecondary: isDark ? themeColors.gray[900] : '#ffffff',
+      onTertiary: isDark ? themeColors.gray[900] : '#ffffff',
+      onSurface: themeColors.gray[900],
+      onSurfaceVariant: themeColors.gray[600],
+      onError: '#ffffff',
+      outline: themeColors.gray[300],
+      outlineVariant: themeColors.gray[200],
+      inverseSurface: themeColors.gray[isDark ? 50 : 900],
+      inverseOnSurface: themeColors.gray[isDark ? 900 : 50],
+      inversePrimary: themeColors.orange[300],
+      shadow: isDark ? '#000000' : themeColors.black,
+      scrim: isDark ? '#000000' : themeColors.black,
+      backdrop: isDark ? 'rgba(0, 0, 0, 0.6)' : 'rgba(0, 0, 0, 0.4)',
+    },
+    roundness: 12, // Border radius for Material Design components
+  };
+};
+
+// Light theme (default, used before Redux is ready)
+const paperTheme = createPaperTheme(false);
+
+// Generic loading artwork; replace this asset when branding the template.
+const splashImage = require('../assets/splash-icon-1024.png');
+
+// Splash/loading screen
+const SplashScreen = () => (
+  <View
+    style={{
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      backgroundColor: '#000000',
+    }}
+  >
+    <Image
+      source={splashImage}
+      style={{ width: '100%', height: '80%' }}
+      resizeMode="contain"
+    />
+  </View>
+);
+
+// Inner component that applies safe area to the navigation stack
+// Must be inside SafeAreaProvider to use useSafeAreaInsets
+function NavigationStack({ screenBackground }: { screenBackground: string }) {
+  const insets = useSafeAreaInsets();
+
+  // Only apply bottom safe area padding on Android (iOS handles it natively)
+  const androidBottomPadding = Platform.OS === 'android' ? insets.bottom : 0;
+
+  return (
+    <Stack
+      screenOptions={{
+        headerShown: false,
+        contentStyle: {
+          backgroundColor: screenBackground,
+          // Apply bottom safe area padding for Android system nav bar only
+          paddingBottom: androidBottomPadding,
+        },
+        // Expo Go limitation: can't fix native background color
+        // 'none' minimizes flash visibility (instant swap vs animated)
+        animation: 'none',
+      }}
+    >
+      {/* Tab group - main app screens (tabs handle their own safe area) */}
+      <Stack.Screen
+        name="(tabs)"
+        options={{
+          headerShown: false,
+          // Tabs have their own safe area handling via FioriTabBar
+          contentStyle: { backgroundColor: screenBackground, paddingBottom: 0 },
+        }}
+      />
+
+      {/* Auth screens */}
+      <Stack.Screen name="login" options={{ title: 'Sign In' }} />
+      <Stack.Screen name="otp" options={{ title: 'Verify OTP' }} />
+      <Stack.Screen name="pending-enrollment" options={{ title: 'Enrollment Pending' }} />
+      <Stack.Screen name="operator-server" options={{ title: 'Warehouse Server' }} />
+      <Stack.Screen name="enrollment-review" options={{ title: 'Enrollment Review' }} />
+
+      {/* Detail screens */}
+      <Stack.Screen name="grn-details/[id]" options={{ headerShown: false }} />
+      <Stack.Screen name="dispatch-details/[id]" options={{ headerShown: false }} />
+      <Stack.Screen name="invoice-details/[id]" options={{ headerShown: false }} />
+
+      {/* Form screens */}
+      <Stack.Screen name="grn-form" options={{ headerShown: false }} />
+      <Stack.Screen
+        name="grn-edit"
+        options={{ title: 'Edit GRN', headerShown: false }}
+      />
+      <Stack.Screen name="dispatch-form" options={{ headerShown: false }} />
+      <Stack.Screen name="dispatch-edit" options={{ headerShown: false }} />
+      <Stack.Screen name="invoice-form" options={{ headerShown: false }} />
+      <Stack.Screen name="invoice-edit" options={{ headerShown: false }} />
+
+      {/* Other screens */}
+      <Stack.Screen name="settings" options={{ headerShown: false }} />
+      <Stack.Screen name="profile" options={{ headerShown: false }} />
+      <Stack.Screen name="customers" options={{ headerShown: false }} />
+      <Stack.Screen name="sensors" options={{ headerShown: false }} />
+
+      {/* Legal screens */}
+      <Stack.Screen name="terms-of-service" options={{ headerShown: false }} />
+      <Stack.Screen name="privacy-policy" options={{ headerShown: false }} />
+
+      {/* Report screens */}
+      <Stack.Screen
+        name="reports/stock-summary"
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="reports/dispatch-activity"
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="reports/operations-dashboard"
+        options={{ headerShown: false }}
+      />
+    </Stack>
+  );
+}
+
+// Themed content component that uses Redux state for theme
+function ThemedContent() {
+  const dispatch = useAppDispatch();
+  const [authCheckSettled, setAuthCheckSettled] = useState(false);
+  const themePreference = useAppSelector(selectThemePreference);
+  const systemColorScheme = useColorScheme();
+  const resolvedMode = selectResolvedThemeMode(
+    themePreference,
+    systemColorScheme
+  );
+  const isDarkMode = resolvedMode === 'dark';
+
+  // Restore credentials before any route screen can redirect an initially
+  // empty Redux auth state. Deep links can bypass the tab layout, so auth
+  // restoration belongs at the root navigation boundary.
+  useEffect(() => {
+    let mounted = true;
+    void dispatch(initializeAuth())
+      .unwrap()
+      // initializeAuth records its failure in Redux; the root only needs to
+      // release the navigation gate after the attempt settles.
+      .catch(() => undefined)
+      .finally(() => {
+        if (mounted) setAuthCheckSettled(true);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [dispatch]);
+
+  // I10: Handle cold start deep links only after the root auth check settles.
+  useColdStartDeepLink(authCheckSettled);
+
+  // Memoize the paper theme to avoid recreating on every render
+  const currentPaperTheme = useMemo(
+    () => createPaperTheme(isDarkMode),
+    [isDarkMode]
+  );
+  const themeColors = isDarkMode ? darkColors : colors;
+
+  // Background color that matches the theme
+  // Note: In darkColors, gray scale is inverted (gray[50] is dark, gray[900] is light)
+  // So we use gray[50] for both modes as it represents the "background" color
+  const screenBackground = themeColors.gray[50];
+
+  // Keep the platform-specific system background in sync with theme changes.
+  useEffect(() => {
+    if (Platform.OS === 'android') {
+      // Set navigation bar button style (light icons for dark bg, dark icons for light bg)
+      NavigationBar.setButtonStyleAsync(isDarkMode ? 'light' : 'dark');
+    } else {
+      SystemUI.setBackgroundColorAsync(screenBackground);
+    }
+  }, [screenBackground, isDarkMode]);
+
+  // Create custom navigation theme to match our app colors
+  const navigationTheme = useMemo(() => {
+    const baseTheme = isDarkMode ? DarkTheme : DefaultTheme;
+    return {
+      ...baseTheme,
+      colors: {
+        ...baseTheme.colors,
+        background: screenBackground,
+        card: screenBackground,
+        primary: themeColors.primary,
+        text: themeColors.gray[900],
+        border: themeColors.gray[200],
+      },
+    };
+  }, [isDarkMode, screenBackground, themeColors]);
+
+  if (!authCheckSettled) {
+    return (
+      <View
+        style={{
+          flex: 1,
+          justifyContent: 'center',
+          alignItems: 'center',
+          backgroundColor: screenBackground,
+        }}
+      >
+        <EdgeToEdgeStatusBar
+          barStyle={isDarkMode ? 'light-content' : 'dark-content'}
+        />
+        <ActivityIndicator size="large" color={themeColors.primary} />
+      </View>
+    );
+  }
+
+  return (
+    // ThemeProvider ensures React Navigation uses our colors (prevents white flash)
+    <ThemeProvider value={navigationTheme}>
+      {/* Root View fills entire screen INCLUDING status bar area */}
+      <View style={{ flex: 1, backgroundColor: screenBackground }}>
+        <EdgeToEdgeStatusBar
+          barStyle={isDarkMode ? 'light-content' : 'dark-content'}
+        />
+        <PaperProvider theme={currentPaperTheme}>
+          <SafeAreaProvider>
+            <GestureHandlerRootView style={{ flex: 1 }}>
+              <ForceUpdateModal />
+              <OfflineBanner />
+              <UpdatePrompt />
+              <BottomSheetModalProvider>
+                <NavigationStack screenBackground={screenBackground} />
+              </BottomSheetModalProvider>
+            </GestureHandlerRootView>
+          </SafeAreaProvider>
+        </PaperProvider>
+      </View>
+    </ThemeProvider>
+  );
+}
+
+async function clearReplacedOperatorInstance() {
+  // The URL now serves another instance; revoke nothing through it.
+  await store.dispatch(logout({ localOnly: true })).unwrap();
+  await clearPendingEnrollment();
+  await clearSessionScopedState(store.dispatch);
+  await ConfigService.clearCache();
+}
+
+// Bootstrap component (inside providers)
+function BootstrapApp() {
+  const [isReady, setIsReady] = useState(false);
+  const [needsSelection, setNeedsSelection] = useState(false);
+  const [configError, setConfigError] = useState<string | null>(null);
+  // The configuration error screen can open server selection. Credentials
+  // stay untouched until the operator confirms a change there; a committed
+  // change re-runs the bootstrap, which clears this flag.
+  const [changingServer, setChangingServer] = useState(false);
+  const bootstrapRun = useRef(0);
+
+  useEffect(() => {
+    // Documents handed to the share sheet in an earlier run are not session
+    // data for this one; remove them before anything else starts.
+    void sweepSharedDocuments();
+    void bootstrapApp();
+    const unsubscribe = onOperatorServerChange(() => { void bootstrapApp(); });
+    const removeVerifier = operatorResumeGate.installVerifier(async current => {
+      const run = bootstrapRun.current;
+      return verifyForegroundOperator(
+        () => current() && run === bootstrapRun.current,
+        clearReplacedOperatorInstance,
+        config => initializeSupabase(config.supabaseUrl, config.anonKey)
+      );
+    });
+    // Suspend credentialed work for a real background stay only: not for the
+    // 'inactive' blip of a system dialog, and not for a camera, picker, share
+    // or multi-request upload round trip that returns within the grace window.
+    const lifecycle = AppState.addEventListener(
+      'change',
+      createResumeLifecycle({
+        gate: operatorResumeGate,
+        isHandoffActive: () => isNativeHandoffActive() || hasActiveOperatorMutation(),
+        initialState: AppState.currentState,
+      })
+    );
+    return () => {
+      bootstrapRun.current += 1;
+      lifecycle.remove(); removeVerifier(); unsubscribe(); operatorResumeGate.suspend();
+    };
+  }, []);
+
+  const bootstrapApp = async () => {
+    const run = ++bootstrapRun.current;
+    // A retry must leave the prior error state before starting. Otherwise a
+    // successful refresh completes behind the still-mounted error screen.
+    setConfigError(null);
+    setIsReady(false);
+    setNeedsSelection(false);
+    setChangingServer(false);
+
+    try {
+      const result = await verifySelectedOperator(() => run === bootstrapRun.current, async () => {
+        await clearReplacedOperatorInstance();
+      });
+      if (result.kind === 'superseded') return;
+      if (result.kind === 'selection') {
+        if (run === bootstrapRun.current) { setNeedsSelection(true); setIsReady(true); }
+        return;
+      }
+      const discovered = result.discovery;
+      console.log('[Bootstrap] Starting app bootstrap');
+
+      // STEP 1: Fetch public config (always refresh to get latest keys)
+      console.log('[Bootstrap] Fetching public config from API...');
+      let publicConfig;
+      try {
+        // Always refresh on app start to ensure we have the latest anon key
+        publicConfig = discovered.config;
+        console.log('[Bootstrap] Config received:', {
+          supabaseUrl: publicConfig.supabaseUrl,
+          environment: publicConfig.environment,
+          version: publicConfig.version,
+        });
+      } catch (error: any) {
+        console.error('[Bootstrap] Config fetch failed:', error);
+        setConfigError(
+          'Configuration API is unreachable. Please check your internet connection.'
+        );
+        setIsReady(true);
+        return;
+      }
+
+      // STEP 2: Initialize Supabase with fresh keys
+      console.log(
+        '[Bootstrap] Initializing Supabase client with fresh keys...'
+      );
+      try {
+        initializeSupabase(publicConfig.supabaseUrl, publicConfig.anonKey);
+        console.log('[Bootstrap] Supabase client initialized successfully');
+      } catch (error: any) {
+        console.error('[Bootstrap] Supabase initialization failed:', error);
+        setConfigError('Failed to initialize Supabase client');
+        setIsReady(true);
+        return;
+      }
+
+      console.log('[Bootstrap] Bootstrap complete - app ready');
+
+      // DEBUG: Add minimum splash display time to see the animation
+      // Remove this in production
+      if (__DEV__) {
+        console.log('[Bootstrap] Waiting for splash animation...');
+        await new Promise(resolve => setTimeout(resolve, 3000)); // 3 second minimum
+      }
+
+      if (run === bootstrapRun.current) { setConfigError(null); setIsReady(true); }
+    } catch (error: any) {
+      console.error('[Bootstrap] Unexpected bootstrap error:', error);
+      if (run === bootstrapRun.current) {
+        setConfigError(error instanceof Error ? error.message : 'Could not verify the selected server.');
+        setIsReady(true);
+      }
+    }
+  };
+
+  if (!isReady) {
+    return <SplashScreen />;
+  }
+
+  if (needsSelection) return <OperatorServerSelection initial />;
+
+  if (configError) {
+    if (changingServer) {
+      return <OperatorServerSelection initial onCancel={() => setChangingServer(false)} />;
+    }
+    return (
+      <ConfigErrorScreen
+        error={configError}
+        onRetry={bootstrapApp}
+        onChangeServer={() => setChangingServer(true)}
+      />
+    );
+  }
+
+  // Return actual app content wrapped in ErrorBoundary for crash protection
+  return (
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <AppStateManager>
+          <ThemedContent />
+        </AppStateManager>
+      </QueryClientProvider>
+    </ErrorBoundary>
+  );
+}
+
+function RootLayout() {
+  if (__DEV__) console.log('[RootLayout] Configuring Material Design 3 theme');
+
+  // StatusBar translucency is set via the StatusBar component's translucent prop in ThemedContent
+  // expo-status-bar's StatusBar is translucent by default on Android
+
+  return (
+    <Provider store={store}>
+      <PersistGate loading={<SplashScreen />} persistor={persistor}>
+        <BootstrapApp />
+      </PersistGate>
+    </Provider>
+  );
+}
+
+// Wrap with Sentry for automatic error boundary and crash reporting (only when DSN configured)
+export default process.env.EXPO_PUBLIC_SENTRY_DSN
+  ? Sentry.wrap(RootLayout)
+  : RootLayout;

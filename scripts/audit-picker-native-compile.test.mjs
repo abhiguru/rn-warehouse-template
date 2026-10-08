@@ -1,0 +1,4 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {auditPickerCompile} from './audit-picker-native-compile.mjs';
+const entry=command=>({file:'/owned/node_modules/@react-native-picker/picker/android/Props.cpp',command});
+test('audits every picker translation unit and accepts command or argument arrays',()=>{assert.equal(auditPickerCompile([entry('clang -DRN_SERIALIZABLE_STATE -c Props.cpp'),{...entry(''),arguments:['clang','-DRN_SERIALIZABLE_STATE=1','-c','Other.cpp']}]).pickerTranslationUnits,2);});
+test('rejects one missing or disabled ABI definition and empty picker evidence',()=>{for(const commands of [[],[entry('clang -c Props.cpp')],[entry('clang -DRN_SERIALIZABLE_STATE=0 -c Props.cpp')],[entry('clang -DRN_SERIALIZABLE_STATE -c Props.cpp'),entry('clang -c Other.cpp')]])assert.throws(()=>auditPickerCompile(commands));});
