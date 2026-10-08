@@ -53,7 +53,8 @@ copied into the app: it fetches its public anon key dynamically.
   app keeps in SecureStore. Token refresh is single-flight, and a definitive
   rejection ends the device session exactly once. Logout, switching servers and a
   forced logout clear the business caches, form drafts and shared documents.
-- The configuration error screen offers **Change server**.
+- The configuration error screen offers **Change server**. Choosing the origin
+  already in use returns to Settings without a prompt or a sign-out.
 - There is no fixed OTP or demo account. A new customer's verified phone enters
   pending enrollment until an administrator approves it in
   **Settings → Enrollment Review**; rejected or disabled accounts cannot sign in.
@@ -72,6 +73,12 @@ this SDK and does not validate native plugins, permissions or build settings.
 For a bundle-only check run `npx expo export --platform android`. Cloud builds
 need your own EAS project and signing credentials; no signing assets or project
 ownership are included.
+
+`npm run android` installs a **debug** build that loads its JavaScript from
+Metro, so it cannot run on its own on a phone. For device acceptance build a
+standalone release APK (debug-signed, test only); see
+[DEVICE_ACCEPTANCE.md](docs/DEVICE_ACCEPTANCE.md) for the steps, the Gradle heap
+setting and `adb` practicalities.
 
 ## Application code
 
@@ -105,6 +112,8 @@ validation run passes.
 
 - [DEVELOPER_HANDOFF.md](docs/DEVELOPER_HANDOFF.md): contributor guide (server
   selection, credentials, session-scoped state, CI).
+- [DEVICE_ACCEPTANCE.md](docs/DEVICE_ACCEPTANCE.md): building the standalone
+  APK and exercising it on a phone (release vs debug build, Gradle heap, `adb`).
 - [DEPENDENCY_SECURITY.md](docs/DEPENDENCY_SECURITY.md): dependency audit and
   the local security backports.
 - [TELEMETRY_AND_PRIVACY.md](docs/TELEMETRY_AND_PRIVACY.md): optional telemetry
