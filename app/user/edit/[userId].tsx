@@ -37,6 +37,7 @@ import {
 } from '@/types/user.types';
 
 import { showAlert } from '@/utils/alert';
+import { formatMobile } from '@/utils/formatters';
 const UserEditScreen: React.FC = () => {
   const { userId } = useLocalSearchParams<{ userId: string }>();
   const styles = useThemedStyles(makeStyles);
@@ -360,13 +361,6 @@ const UserEditScreen: React.FC = () => {
     </View>
   );
 };
-
-/** "+91 98765 43210" for a stored 10-digit (or 91-prefixed) number. */
-function formatMobile(mobile: string): string {
-  const digits = mobile.replace(/\D/g, '').replace(/^91(?=\d{10}$)/, '');
-  if (digits.length !== 10) return `+91 ${digits}`;
-  return `+91 ${digits.slice(0, 5)} ${digits.slice(5)}`;
-}
 
 const makeStyles = (t: ThemeTokens) => ({
   flex: {

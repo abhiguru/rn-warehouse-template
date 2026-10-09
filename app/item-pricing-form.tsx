@@ -52,6 +52,7 @@ import { mapCustomerSearchResponse } from '@/features/item-pricing/utils/custome
 import { createLogger } from '@/utils/logger';
 
 import { showAlert } from '@/utils/alert';
+import { formatDate } from '@/utils/formatters';
 const itemPricingFormLogger = createLogger('ItemPricingForm');
 
 interface Item {
@@ -413,15 +414,6 @@ const ItemPricingFormScreen: React.FC = () => {
     ),
     [t]
   );
-
-  // Format date for display: "9 Oct 2026" (style guide §12.3)
-  const formatDate = (date: Date): string => {
-    return date.toLocaleDateString('en-IN', {
-      day: 'numeric',
-      month: 'short',
-      year: 'numeric',
-    });
-  };
 
   // Handle shared date picker
   const handleDatePress = (field: 'from' | 'to') => {

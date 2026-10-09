@@ -35,6 +35,7 @@ import {
 } from '@/types/customer.types';
 
 import { showAlert } from '@/utils/alert';
+import { formatMobile } from '@/utils/formatters';
 // =============================================================================
 // COMPONENT
 // =============================================================================
@@ -236,7 +237,6 @@ export function CustomerReviewStep({
         completedSteps={getCompletedSteps(CUSTOMER_STEP_NUMBERS.REVIEW)}
         onCancel={handleCancel}
         onStepPress={handleStepIndicatorPress}
-        colorScheme="teal"
         entityName="Customer"
         entityId={isCreateMode ? undefined : formData.name || 'Editing'}
       />
@@ -448,14 +448,6 @@ export function CustomerReviewStep({
       </View>
     </View>
   );
-}
-
-/** "+91 98765 43210" for a stored 10-digit (or 91-prefixed) number. */
-function formatMobile(mobile: string | undefined): string | undefined {
-  if (!mobile) return undefined;
-  const digits = mobile.replace(/\D/g, '').replace(/^91(?=\d{10}$)/, '');
-  if (digits.length !== 10) return `+91 ${digits}`;
-  return `+91 ${digits.slice(0, 5)} ${digits.slice(5)}`;
 }
 
 // =============================================================================

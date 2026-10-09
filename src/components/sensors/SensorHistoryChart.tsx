@@ -36,7 +36,7 @@ import {
   type ThemeTokens,
 } from '@/theme/tokens';
 import type { SensorHistoryReading, SensorChartDataPoint } from '@/types/sensor-history.types';
-import { formatDate, formatDateTime, formatTemperature, toDate } from '@/utils/formatters';
+import { formatCount, formatDate, formatDateTime, formatTemperature, toDate } from '@/utils/formatters';
 
 /** A limit drawn on the temperature scale as a dashed, labelled line. */
 export interface SensorChartThreshold {
@@ -158,7 +158,7 @@ export function summariseReadings(readings: SensorHistoryReading[], intervalLabe
     );
   }
   const count = readings.length;
-  parts.push(`${count} ${count === 1 ? 'reading' : 'readings'}, ${intervalLabel.toLowerCase()} averages.`);
+  parts.push(`${formatCount(count, 'reading')}, ${intervalLabel.toLowerCase()} averages.`);
   return parts.join(' ');
 }
 

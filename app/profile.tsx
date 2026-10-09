@@ -29,8 +29,19 @@ import {
   typography,
   type ThemeTokens,
 } from '@/theme/tokens';
-
 import { showAlert } from '@/utils/alert';
+import { avatarColors, avatarInitials } from '@/utils/avatar';
+import { formatMobile } from '@/utils/formatters';
+import { StatusTag } from '@/components/ui/StatusTag';
+
+/** Roles are categories, not statuses: staff roles informative, others neutral (as in the users list). */
+const ROLE_TONE: Record<string, 'informative' | 'neutral'> = {
+  admin: 'informative',
+  supervisor: 'informative',
+  staff: 'neutral',
+  customer: 'neutral',
+};
+
 const UserProfileScreen: React.FC = () => {
   const dispatch = useAppDispatch();
   const { user, userProfile } = useAppSelector((state) => state.auth);
@@ -79,6 +90,10 @@ const UserProfileScreen: React.FC = () => {
       console.log('[Profile] No user ID available for edit');
     }
   };
+
+  // The profile avatar is larger than the shared sizes, so it uses the shared
+  // colours and initials on its own circle (same person, same colour everywhere).
+  const avatarTone = avatarColors(userProfile?.id ?? userProfile?.name, t);
 
   const roleLabel = userProfile?.role
     ? userProfile.role.charAt(0).toUpperCase() + userProfile.role.slice(1)
@@ -147,9 +162,13 @@ const UserProfileScreen: React.FC = () => {
         {/* Profile Header */}
         <View style={styles.profileHeader}>
           <View style={styles.avatarContainer}>
-            <View style={styles.avatar} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-              <Text style={styles.avatarText}>
-                {(userProfile?.name || 'U').charAt(0).toUpperCase()}
+            <View
+              style={[styles.avatar, { backgroundColor: avatarTone.background }]}
+              accessibilityElementsHidden
+              importantForAccessibility="no-hide-descendants"
+            >
+              <Text style={[styles.avatarText, { color: avatarTone.text }]} maxFontSizeMultiplier={1}>
+                {avatarInitials(userProfile?.name || 'User')}
               </Text>
             </View>
             <Pressable
@@ -167,17 +186,12 @@ const UserProfileScreen: React.FC = () => {
             {userProfile?.name || 'User'}
           </Text>
 
-          <View style={styles.roleBadge}>
-            <Icon
-              name="shield-check"
-              size={iconSize.sm}
-              color={t.status.informative.text}
-              style={styles.roleBadgeIcon}
-            />
-            <Text style={styles.roleText} maxFontSizeMultiplier={1.6}>
-              {roleLabel}
-            </Text>
-          </View>
+          <StatusTag
+            status={ROLE_TONE[userProfile?.role ?? ''] ?? 'neutral'}
+            label={roleLabel}
+            icon={null}
+            style={styles.roleTag}
+          />
         </View>
 
         {/* Profile Sections */}
@@ -318,13 +332,6 @@ const UserProfileScreen: React.FC = () => {
   );
 };
 
-/** "+91 98765 43210" for a stored 10-digit (or 91-prefixed) number. */
-function formatMobile(mobile: string): string {
-  const digits = mobile.replace(/\D/g, '').replace(/^91(?=\d{10}$)/, '');
-  if (digits.length !== 10) return mobile;
-  return `+91 ${digits.slice(0, 5)} ${digits.slice(5)}`;
-}
-
 // ============================================================================
 // STYLES
 // ============================================================================
@@ -397,11 +404,9 @@ const makeStyles = (t: ThemeTokens) => ({
     borderRadius: radius.pill,
     justifyContent: 'center' as const,
     alignItems: 'center' as const,
-    backgroundColor: t.brand.fill,
   },
   avatarText: {
     ...typography.title1,
-    color: t.brand.onFill,
   },
   editAvatarButton: {
     position: 'absolute' as const,
@@ -422,21 +427,8 @@ const makeStyles = (t: ThemeTokens) => ({
     textAlign: 'center' as const,
     marginBottom: space.sm,
   },
-  roleBadge: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    paddingHorizontal: space.md,
-    paddingVertical: space.s6,
-    borderRadius: radius.pill,
-    backgroundColor: t.status.informative.background,
-  },
-  roleBadgeIcon: {
-    marginRight: space.xs,
-  },
-  roleText: {
-    ...typography.footnote,
-    fontWeight: fontWeight.semibold,
-    color: t.status.informative.text,
+  roleTag: {
+    alignSelf: 'center' as const,
   },
 
   // Section (grouped list, style guide §14.12)

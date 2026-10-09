@@ -532,7 +532,7 @@ function FioriCustomerCard({ customer, onPress, onToggleActive }: FioriCustomerC
       >
         <Icon
           name={customer.active ? 'account-off-outline' : 'account-check-outline'}
-          size={iconSize.md}
+          size={iconSize.lg}
           color={customer.active ? t.destructive.onFill : t.brand.onFill}
         />
         <Text
@@ -748,23 +748,23 @@ const makeStyles = (t: ThemeTokens) => ({
     flex: 1,
   },
 
-  // Swipe action (same size and colours as the item pricing rows)
+  // Swipe action: labelled, same shape as the item list's swipe actions
   swipeActionsContainer: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
-    paddingLeft: space.xs,
-    paddingRight: space.sm,
+    paddingLeft: space.sm,
+    paddingRight: space.xs,
     marginBottom: space.sm,
   },
   swipeAction: {
-    minWidth: touchTarget * 2,
-    minHeight: touchTarget,
-    paddingHorizontal: space.md,
-    paddingVertical: space.sm,
-    borderRadius: radius.button,
+    minWidth: 72,
+    height: '100%' as const,
+    minHeight: layout.objectCellMinHeight,
+    paddingHorizontal: space.sm,
+    borderRadius: radius.card,
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
-    gap: space.xxs,
+    gap: space.xs,
   },
   swipeDeactivate: {
     backgroundColor: t.destructive.fill,

@@ -39,6 +39,7 @@ import {
 import { ThemePreference } from '@/store/slices/themeSlice';
 
 import { showAlert } from '@/utils/alert';
+import { Avatar } from '@/components/ui/Avatar';
 const THEME_OPTIONS: {
   value: ThemePreference;
   label: string;
@@ -219,11 +220,7 @@ const SettingsScreen: React.FC = () => {
           accessibilityLabel={`${userProfile?.name || 'User'}, ${roleLabel}`}
           accessibilityHint="Opens your profile"
         >
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>
-              {(userProfile?.name || 'U').charAt(0).toUpperCase()}
-            </Text>
-          </View>
+          <Avatar name={userProfile?.name || 'User'} id={userProfile?.id} size="lg" />
           <View style={styles.profileInfo}>
             <Text style={styles.profileName}>{userProfile?.name || 'User'}</Text>
             <Text style={styles.profileRole}>{roleLabel}</Text>
@@ -737,18 +734,6 @@ const makeStyles = (t: ThemeTokens) => ({
     padding: space.lg,
     borderRadius: radius.card,
     backgroundColor: t.surface.card,
-  },
-  avatar: {
-    width: layout.avatar.lg,
-    height: layout.avatar.lg,
-    borderRadius: radius.pill,
-    justifyContent: 'center' as const,
-    alignItems: 'center' as const,
-    backgroundColor: t.brand.fill,
-  },
-  avatarText: {
-    ...typography.title2,
-    color: t.brand.onFill,
   },
   profileInfo: {
     flex: 1,

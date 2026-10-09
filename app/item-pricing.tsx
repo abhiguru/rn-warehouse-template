@@ -39,6 +39,8 @@ import { ListSkeletonCard } from '@/components/list/ListSkeletonCard';
 import { createLogger } from '@/utils/logger';
 
 import { showAlert } from '@/utils/alert';
+import { Avatar } from '@/components/ui/Avatar';
+import { formatCount, formatDate } from '@/utils/formatters';
 const itemPricingScreenLogger = createLogger('ItemPricingScreen');
 
 // Section type for grouped pricing data
@@ -488,10 +490,10 @@ const ItemPricingScreen: React.FC = () => {
             renderFilterChip(
               'effective',
               effectiveFrom && effectiveTo
-                ? `${formatDay(effectiveFrom)} to ${formatDay(effectiveTo)}`
+                ? `${formatDate(effectiveFrom)} to ${formatDate(effectiveTo)}`
                 : effectiveFrom
-                  ? `From ${formatDay(effectiveFrom)}`
-                  : `Until ${formatDay(effectiveTo!)}`,
+                  ? `From ${formatDate(effectiveFrom)}`
+                  : `Until ${formatDate(effectiveTo!)}`,
               () => {
                 updateFilter('effectiveFrom', undefined);
                 updateFilter('effectiveTo', undefined);
@@ -614,7 +616,7 @@ const ItemPricingScreen: React.FC = () => {
             pressed && styles.sectionHeaderPressed,
           ]}
           accessibilityRole="button"
-          accessibilityLabel={`${info.section.title}, ${count} ${count === 1 ? 'price' : 'prices'}`}
+          accessibilityLabel={`${info.section.title}, ${formatCount(count, 'price')}`}
           accessibilityState={{ expanded: isExpanded }}
         >
           <View style={styles.sectionHeaderIcon}>
@@ -702,11 +704,7 @@ const ItemPricingScreen: React.FC = () => {
               accessibilityRole="button"
               accessibilityLabel="Settings"
             >
-              <View style={styles.profileAvatar}>
-                <Text style={styles.profileAvatarText}>
-                  {(userProfile.name || 'U').charAt(0).toUpperCase()}
-                </Text>
-              </View>
+              <Avatar name={userProfile.name} id={userProfile.id} size="sm" />
             </Pressable>
           )}
         </View>
@@ -848,11 +846,6 @@ const ItemPricingScreen: React.FC = () => {
   );
 };
 
-/** "9 Oct 2026" (style guide §12.3). */
-function formatDay(iso: string): string {
-  return new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
-}
-
 const makeStyles = (t: ThemeTokens) => ({
   container: {
     flex: 1,
@@ -906,19 +899,6 @@ const makeStyles = (t: ThemeTokens) => ({
   filterBadgeText: {
     ...typography.caption2,
     fontWeight: fontWeight.bold,
-    color: t.brand.onFill,
-  },
-  profileAvatar: {
-    width: layout.avatar.sm,
-    height: layout.avatar.sm,
-    borderRadius: radius.pill,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    backgroundColor: t.brand.fill,
-  },
-  profileAvatarText: {
-    ...typography.subhead,
-    fontWeight: fontWeight.semibold,
     color: t.brand.onFill,
   },
 

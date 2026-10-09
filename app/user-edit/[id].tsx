@@ -43,6 +43,9 @@ import {
   typography,
   type ThemeTokens,
 } from '@/theme/tokens';
+import { Avatar } from '@/components/ui/Avatar';
+import { StatusTag } from '@/components/ui/StatusTag';
+import { formatMobile } from '@/utils/formatters';
 
 import { showAlert } from '@/utils/alert';
 /** Roles are categories, not statuses: staff roles informative, others neutral. */
@@ -414,7 +417,6 @@ export default function UserEditScreen() {
     );
   }
 
-  const roleTone = t.status[ROLE_TONE[selectedRole] ?? 'neutral'];
   const roleLabel = selectedRole.charAt(0).toUpperCase() + selectedRole.slice(1);
   const roleLocked = !canEdit || isSelfEdit;
 
@@ -429,9 +431,7 @@ export default function UserEditScreen() {
         {/* User Info Card */}
         <View style={styles.card} accessible accessibilityLabel={`${user.name || 'Unknown user'}, ${formatMobile(user.mobile)}`}>
           <View style={styles.userHeader}>
-            <View style={[styles.avatar, { backgroundColor: t.avatar[avatarIndex(user.id, t.avatar.length)] }]}>
-              <Text style={styles.avatarText}>{(user.name || 'U').charAt(0).toUpperCase()}</Text>
-            </View>
+            <Avatar name={user.name || 'Unknown user'} id={user.id} size="lg" style={styles.avatar} />
             <View style={styles.flex}>
               <Text style={styles.userName}>{user.name || 'Unknown user'}</Text>
               <Text style={styles.userMobile}>{formatMobile(user.mobile)}</Text>
@@ -463,11 +463,7 @@ export default function UserEditScreen() {
               <Text style={styles.fieldLabel}>User role</Text>
             </View>
             <View style={styles.fieldRight}>
-              <View style={[styles.roleBadge, { backgroundColor: roleTone.background }]}>
-                <Text style={[styles.roleBadgeText, { color: roleTone.text }]} maxFontSizeMultiplier={1.6}>
-                  {roleLabel}
-                </Text>
-              </View>
+              <StatusTag status={ROLE_TONE[selectedRole] ?? 'neutral'} label={roleLabel} icon={null} />
               {!roleLocked && (
                 <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />
               )}
@@ -622,26 +618,6 @@ export default function UserEditScreen() {
 }
 
 // =============================================================================
-// HELPERS
-// =============================================================================
-
-/** "+91 98765 43210" for a stored 10-digit (or 91-prefixed) number. */
-function formatMobile(mobile: string): string {
-  const digits = mobile.replace(/\D/g, '').replace(/^91(?=\d{10}$)/, '');
-  if (digits.length !== 10) return `+91 ${digits}`;
-  return `+91 ${digits.slice(0, 5)} ${digits.slice(5)}`;
-}
-
-/** Stable avatar colour index for an id (style guide §3.2). */
-function avatarIndex(id: string, count: number): number {
-  let hash = 0;
-  for (let i = 0; i < id.length; i++) {
-    hash = (hash * 31 + id.charCodeAt(i)) | 0;
-  }
-  return Math.abs(hash) % count;
-}
-
-// =============================================================================
 // STYLES
 // =============================================================================
 
@@ -724,16 +700,7 @@ const makeStyles = (t: ThemeTokens) => ({
     alignItems: 'center' as const,
   },
   avatar: {
-    width: layout.avatar.lg,
-    height: layout.avatar.lg,
-    borderRadius: radius.pill,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
     marginRight: space.md,
-  },
-  avatarText: {
-    ...typography.title2,
-    color: t.mode === 'light' ? t.text.primary : t.overlay.onImage,
   },
   userName: {
     ...typography.title3,
@@ -801,15 +768,6 @@ const makeStyles = (t: ThemeTokens) => ({
     ...typography.footnote,
     color: t.text.secondary,
     marginTop: space.xxs,
-  },
-  roleBadge: {
-    paddingHorizontal: space.sm,
-    paddingVertical: space.xxs,
-    borderRadius: radius.field,
-  },
-  roleBadgeText: {
-    ...typography.footnote,
-    fontWeight: fontWeight.semibold,
   },
   helperText: {
     ...typography.footnote,

@@ -35,6 +35,9 @@ import {
   typography,
   type ThemeTokens,
 } from '@/theme/tokens';
+import { Avatar } from '@/components/ui/Avatar';
+import { StatusTag } from '@/components/ui/StatusTag';
+import { formatCount, formatMobile } from '@/utils/formatters';
 
 // =============================================================================
 // TYPES
@@ -292,7 +295,7 @@ export default function UsersScreen() {
             <View style={styles.titleContainer} accessible accessibilityRole="header">
               <Text style={styles.title}>Users</Text>
               {state.totalCount > 0 && (
-                <Text style={styles.subtitle}>{countFormat.format(state.totalCount)} total</Text>
+                <Text style={styles.subtitle}>{formatCount(state.totalCount, 'user')}</Text>
               )}
             </View>
           ),
@@ -332,24 +335,6 @@ export default function UsersScreen() {
 // HELPERS
 // =============================================================================
 
-const countFormat = new Intl.NumberFormat('en-IN');
-
-/** "+91 98765 43210" for a stored 10-digit (or 91-prefixed) number. */
-function formatMobile(mobile: string): string {
-  const digits = mobile.replace(/\D/g, '').replace(/^91(?=\d{10}$)/, '');
-  if (digits.length !== 10) return `+91 ${digits}`;
-  return `+91 ${digits.slice(0, 5)} ${digits.slice(5)}`;
-}
-
-/** Stable avatar colour index for an id (style guide §3.2). */
-function avatarIndex(id: string, count: number): number {
-  let hash = 0;
-  for (let i = 0; i < id.length; i++) {
-    hash = (hash * 31 + id.charCodeAt(i)) | 0;
-  }
-  return Math.abs(hash) % count;
-}
-
 /** Roles are categories, not statuses: staff roles informative, others neutral. */
 const ROLE_TONE: Record<UserRole, 'informative' | 'neutral'> = {
   admin: 'informative',
@@ -370,13 +355,12 @@ interface FioriUserCardProps {
 function FioriUserCard({ user, onPress }: FioriUserCardProps) {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
-  const tone = t.status[ROLE_TONE[user.role] ?? 'neutral'];
   const roleLabel = user.role.charAt(0).toUpperCase() + user.role.slice(1);
   const name = user.name || 'Unknown user';
   const mobile = user.mobile ? formatMobile(user.mobile) : null;
   const assigned =
     user.assigned_customers_count > 0
-      ? `${user.assigned_customers_count} ${user.assigned_customers_count === 1 ? 'customer' : 'customers'} assigned`
+      ? `${formatCount(user.assigned_customers_count, 'customer')} assigned`
       : null;
   const rowLabel = [name, roleLabel, user.active ? null : 'Inactive', mobile, assigned]
     .filter(Boolean)
@@ -391,13 +375,7 @@ function FioriUserCard({ user, onPress }: FioriUserCardProps) {
       accessibilityHint="Opens the user for editing"
     >
       {/* Fiori Object Cell: Leading Avatar */}
-      <View
-        style={[styles.avatar, { backgroundColor: t.avatar[avatarIndex(user.id, t.avatar.length)] }]}
-        accessibilityElementsHidden
-        importantForAccessibility="no-hide-descendants"
-      >
-        <Text style={styles.avatarText}>{name.charAt(0).toUpperCase()}</Text>
-      </View>
+      <Avatar name={name} id={user.id} style={styles.avatar} />
 
       {/* Fiori Object Cell: Main Content */}
       <View style={styles.cardContent}>
@@ -405,19 +383,8 @@ function FioriUserCard({ user, onPress }: FioriUserCardProps) {
           {name}
         </Text>
         <View style={styles.tagRow}>
-          <View style={[styles.tag, { backgroundColor: tone.background }]}>
-            <Text style={[styles.tagText, { color: tone.text }]} maxFontSizeMultiplier={1.6}>
-              {roleLabel}
-            </Text>
-          </View>
-          {!user.active && (
-            <View style={[styles.tag, styles.tagWithIcon, { backgroundColor: t.status.neutral.background }]}>
-              <Icon name="circle-outline" size={iconSize.sm - 4} color={t.status.neutral.text} />
-              <Text style={[styles.tagText, { color: t.status.neutral.text }]} maxFontSizeMultiplier={1.6}>
-                Inactive
-              </Text>
-            </View>
-          )}
+          <StatusTag status={ROLE_TONE[user.role] ?? 'neutral'} label={roleLabel} icon={null} />
+          {!user.active && <StatusTag status="neutral" label="Inactive" />}
         </View>
 
         {/* Subheadline - Contact Details */}
@@ -504,16 +471,7 @@ const makeStyles = (t: ThemeTokens) => ({
     backgroundColor: t.surface.cardPressed,
   },
   avatar: {
-    width: layout.avatar.md,
-    height: layout.avatar.md,
-    borderRadius: radius.pill,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
     marginRight: space.md,
-  },
-  avatarText: {
-    ...typography.headline,
-    color: t.mode === 'light' ? t.text.primary : t.overlay.onImage,
   },
   cardContent: {
     flex: 1,
@@ -531,20 +489,6 @@ const makeStyles = (t: ThemeTokens) => ({
     flexDirection: 'row' as const,
     flexWrap: 'wrap' as const,
     gap: space.s6,
-  },
-  tag: {
-    paddingHorizontal: space.s6,
-    paddingVertical: space.xxs,
-    borderRadius: radius.field,
-  },
-  tagWithIcon: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: space.xs,
-  },
-  tagText: {
-    ...typography.caption1,
-    fontWeight: fontWeight.semibold,
   },
   attributeStack: {
     gap: space.xs,

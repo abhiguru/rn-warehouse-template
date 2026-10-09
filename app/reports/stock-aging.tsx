@@ -411,7 +411,7 @@ const StockEntryRow: React.FC<StockEntryRowProps> = ({ item, isExpanded, onToggl
               <View style={styles.detailDivider} />
               <DetailRow
                 label="Dispatched"
-                value={`${formatNumber(dispatch.total_dispatched)} in ${dispatch.dispatch_count} ${dispatch.dispatch_count === 1 ? 'dispatch' : 'dispatches'}`}
+                value={`${formatNumber(dispatch.total_dispatched)} in ${formatCount(dispatch.dispatch_count, 'dispatch', 'dispatches')}`}
                 styles={styles}
               />
               {dispatch.last_dispatch_date && (

@@ -156,7 +156,7 @@ const CustomerOrderGroupCardContent: React.FC<CustomerOrderGroupCardProps> = ({
 
       showAlert(
         'Some items will be skipped',
-        `These items can't be dispatched:\n\n${skippedNames}\n\nCreate a dispatch with ${items.length} ${items.length === 1 ? 'item' : 'items'}?`,
+        `These items can't be dispatched:\n\n${skippedNames}\n\nCreate a dispatch with ${formatCount(items.length, 'item')}?`,
         [
           { text: 'Cancel', style: 'cancel' },
           {

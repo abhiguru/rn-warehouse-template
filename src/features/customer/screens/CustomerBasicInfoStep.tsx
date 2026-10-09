@@ -127,7 +127,6 @@ export function CustomerBasicInfoStep({ mode, customerId }: CustomerBasicInfoSte
         completedSteps={getCompletedSteps(CUSTOMER_STEP_NUMBERS.BASIC)}
         onCancel={handleCancel}
         onStepPress={handleStepIndicatorPress}
-        colorScheme="teal"
         entityName="Customer"
         entityId={isCreateMode ? undefined : formData.name || 'Editing'}
       />
