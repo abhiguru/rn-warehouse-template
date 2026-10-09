@@ -87,7 +87,8 @@ const ItemPricingCard = memo<ItemPricingCardProps>(
           accessibilityRole="button"
           accessibilityLabel={`View price for ${weightLabel}`}
         >
-          <Icon name="eye-outline" color={t.icon.primary} size={iconSize.md} />
+          <Icon name="eye-outline" color={t.text.primary} size={iconSize.lg} />
+          <Text style={styles.swipeLabel} maxFontSizeMultiplier={1.4}>View</Text>
         </Pressable>
         {canManage && (
           <Pressable
@@ -96,7 +97,8 @@ const ItemPricingCard = memo<ItemPricingCardProps>(
             accessibilityRole="button"
             accessibilityLabel={`Edit price for ${weightLabel}`}
           >
-            <Icon name="pencil-outline" color={t.brand.onFill} size={iconSize.md} />
+            <Icon name="pencil-outline" color={t.brand.onFill} size={iconSize.lg} />
+            <Text style={[styles.swipeLabel, styles.swipeLabelOnBrand]} maxFontSizeMultiplier={1.4}>Edit</Text>
           </Pressable>
         )}
         {canManage && (
@@ -106,7 +108,8 @@ const ItemPricingCard = memo<ItemPricingCardProps>(
             accessibilityRole="button"
             accessibilityLabel={`Delete price for ${weightLabel}`}
           >
-            <Icon name="trash-can-outline" color={t.destructive.onFill} size={iconSize.md} />
+            <Icon name="trash-can-outline" color={t.destructive.onFill} size={iconSize.lg} />
+            <Text style={[styles.swipeLabel, styles.swipeLabelOnDestructive]} maxFontSizeMultiplier={1.4}>Delete</Text>
           </Pressable>
         )}
       </View>
@@ -351,19 +354,33 @@ const makeStyles = (t: ThemeTokens) => ({
   },
 
   // Swipe Actions
+  // Swipe actions (guide §13.6): at least 72 wide, full row height, icon over a label
   swipeActionsContainer: {
     flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    paddingRight: space.sm,
+    alignItems: 'stretch' as const,
+    paddingRight: space.md,
     paddingLeft: space.xs,
     gap: space.xs,
   },
   swipeAction: {
-    width: touchTarget,
-    height: touchTarget,
+    minWidth: 72,
+    minHeight: touchTarget,
+    paddingHorizontal: space.sm,
     justifyContent: 'center' as const,
     alignItems: 'center' as const,
+    gap: space.xxs,
     borderRadius: radius.button,
+  },
+  swipeLabel: {
+    ...typography.caption1,
+    fontWeight: fontWeight.semibold,
+    color: t.text.primary,
+  },
+  swipeLabelOnBrand: {
+    color: t.brand.onFill,
+  },
+  swipeLabelOnDestructive: {
+    color: t.destructive.onFill,
   },
   swipeView: {
     backgroundColor: t.surface.cardActive,
