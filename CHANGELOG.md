@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased — invoice discount reason (2026-10-09)
+
+- The invoice review step has a "Discount reason" field whenever there is a
+  discount, and the reason is sent with the invoice (`discount_reason`). Staff
+  must fill it before submitting a new or changed discount; an edit that keeps
+  the saved discount does not ask again. Matches backend migration 30, which
+  records the reason and who set the discount; older backends ignore the field.
+
 ## Unreleased — dispatch photos after submit, registration suggestions (2026-10-09)
 
 - A submitted dispatch's Images tab has an Add Photo button for admin,

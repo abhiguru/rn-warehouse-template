@@ -24,6 +24,10 @@ export interface InvoiceHeaderData {
   gr_no: string;
   one_time_charge: boolean;
   discount: number;
+  /** Why the discount was given; the server requires it from staff when the discount changes. */
+  discount_reason?: string;
+  /** Discount stored on the server when an existing invoice was loaded (client only, never sent). */
+  saved_discount?: number;
   labour: number; // Calculated sum
   tax_amount: number; // Calculated sum
   total: number; // Calculated grand total
@@ -140,6 +144,7 @@ export interface CreateInvoicePayload {
     inv_fin_year: number; // Convert from string to number
     inv_date: string; // ISO date string
     discount: number;
+    discount_reason?: string | null;
     labour: number;
     tax_amount: number;
     total: number;

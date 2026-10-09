@@ -357,8 +357,13 @@ const invoiceFormSlice = createSlice({
       // Set invoice ID to enable edit mode
       state.invoice_id = action.payload.invoiceId;
 
-      // Replace entire header with loaded data (no preservation needed in edit mode)
-      state.header = action.payload.header;
+      // Replace entire header with loaded data (no preservation needed in edit mode).
+      // Remember the stored discount: only a changed discount needs a new reason.
+      state.header = {
+        ...action.payload.header,
+        discount_reason: action.payload.header.discount_reason || '',
+        saved_discount: action.payload.header.discount || 0,
+      };
 
       // Replace all items
       state.items = action.payload.items;

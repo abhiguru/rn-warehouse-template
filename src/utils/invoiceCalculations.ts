@@ -11,6 +11,19 @@ import type { InvoiceHeaderData, InvoiceItemData } from '@/types/invoice.types';
  * Round money values to 2 decimal places
  * Prevents floating-point precision errors in currency calculations
  */
+/**
+ * Staff must give a reason whenever they change an invoice's discount
+ * (server migration 30). An unchanged discount keeps its recorded reason.
+ */
+export function discountNeedsReason(
+  header: { discount: number; saved_discount?: number; discount_reason?: string },
+  role: string | null | undefined
+): boolean {
+  if (role !== 'staff') return false;
+  if (roundMoney(header.discount || 0) === roundMoney(header.saved_discount || 0)) return false;
+  return !(header.discount_reason || '').trim();
+}
+
 export function roundMoney(value: number): number {
   // Compensate only for binary representation noise at a decimal half-cent.
   // PostgreSQL NUMERIC rounds ties away from zero, including surcharges.
