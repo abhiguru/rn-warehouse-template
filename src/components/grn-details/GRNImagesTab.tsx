@@ -1,34 +1,28 @@
 /**
- * GRNImagesTab Component
+ * GRNImagesTab: the Images tab of the GRN object page (style guide §13.10).
  *
- * Compact grid layout for all GRN images (header + item images)
- * Features:
- * - Category filters (All, Header, Items)
- * - 3-column grid optimized for mobile
- * - Tap to view full screen
+ * Three-column grid of square thumbnails with 4 px gaps, quick filter chips
+ * (All, Header, Items), an add action for editors and a remove button on each
+ * thumbnail when the grid is editable. Tap a thumbnail to view it full screen.
  */
 
 import React, { useState, useMemo } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  FlatList,
-  Dimensions,
-} from 'react-native';
+import { View, Text, Pressable, FlatList, Dimensions, ActivityIndicator } from 'react-native';
 import { Image } from 'expo-image';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { useListColors, ListColors } from '@/hooks/useListColors';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { fontWeight, iconSize, radius, space, touchTarget, typography } from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
 
-// Add logging for debugging image load issues
 const LOG_PREFIX = '[GRNImagesTab]';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const NUM_COLUMNS = 3;
-const GRID_PADDING = 8;
-const IMAGE_GAP = 4;
+const GRID_PADDING = space.sm;
+const IMAGE_GAP = space.xs;
 const IMAGE_SIZE = (SCREEN_WIDTH - GRID_PADDING * 2 - IMAGE_GAP * (NUM_COLUMNS - 1)) / NUM_COLUMNS;
+/** Visible circle of the remove button; its touch area is touchTarget. */
+const REMOVE_CIRCLE = 28;
 
 // Using snake_case to match backend RPC types
 export interface GRNImageData {
@@ -49,84 +43,232 @@ interface GRNImagesTabProps {
 
 type FilterType = 'all' | 'header' | 'item';
 
-// Individual image component with loading state
+const fill = { position: 'absolute' as const, top: 0, left: 0, right: 0, bottom: 0 };
+
+const makeStyles = (t: ThemeTokens) => ({
+  container: { flex: 1, backgroundColor: t.background.base },
+
+  // Quick filter chips (style guide §13.5)
+  filterRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.sm,
+    paddingLeft: space.lg,
+    paddingRight: space.xs,
+    paddingVertical: space.xxs,
+    backgroundColor: t.surface.header,
+    borderBottomWidth: 1,
+    borderBottomColor: t.border.divider,
+  },
+  filterChip: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.xs,
+    paddingHorizontal: space.md,
+    paddingVertical: space.s6,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: t.border.button,
+    backgroundColor: t.surface.card,
+  },
+  filterChipSelected: { backgroundColor: t.brand.subtle, borderColor: t.brand.subtle },
+  filterChipPressed: { backgroundColor: t.surface.cardPressed },
+  filterText: { ...typography.caption1, color: t.text.primary },
+  filterTextSelected: { color: t.brand.tint, fontWeight: fontWeight.semibold },
+  addIconButton: {
+    marginLeft: 'auto' as const,
+    width: touchTarget,
+    height: touchTarget,
+    borderRadius: radius.pill,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+  },
+  addIconButtonPressed: { backgroundColor: t.brand.subtle },
+
+  // Grid
+  grid: { padding: GRID_PADDING },
+  row: { gap: IMAGE_GAP, marginBottom: IMAGE_GAP },
+  imageWrapper: {
+    width: IMAGE_SIZE,
+    height: IMAGE_SIZE,
+    borderRadius: radius.card,
+    overflow: 'hidden' as const,
+    backgroundColor: t.surface.cardActive,
+  },
+  imagePressable: { width: '100%' as const, height: '100%' as const },
+  image: { width: '100%' as const, height: '100%' as const },
+  pressedOverlay: { ...fill, backgroundColor: t.interaction.pressedOverlay },
+  placeholder: {
+    ...fill,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    backgroundColor: t.surface.cardActive,
+  },
+  badge: {
+    position: 'absolute' as const,
+    top: space.xs,
+    right: space.xs,
+    width: 20,
+    height: 20,
+    borderRadius: radius.pill,
+    backgroundColor: t.overlay.scrim,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+  },
+  labelOverlay: {
+    position: 'absolute' as const,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: t.overlay.scrim,
+    paddingHorizontal: space.xs,
+    paddingVertical: space.xxs,
+  },
+  labelText: { ...typography.caption2, color: t.overlay.onImage },
+  removeButton: {
+    position: 'absolute' as const,
+    right: 0,
+    bottom: 0,
+    width: touchTarget,
+    height: touchTarget,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+  },
+  removeCircle: {
+    width: REMOVE_CIRCLE,
+    height: REMOVE_CIRCLE,
+    borderRadius: radius.pill,
+    backgroundColor: t.overlay.scrim,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+  },
+  removeCirclePressed: { backgroundColor: t.destructive.fill },
+
+  // Empty state (style guide §13.6)
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    padding: space.xxxl,
+    gap: space.sm,
+    backgroundColor: t.background.base,
+  },
+  emptyTitle: { ...typography.title3, color: t.text.primary, marginTop: space.sm, textAlign: 'center' as const },
+  emptySubtitle: { ...typography.subhead, color: t.text.secondary, textAlign: 'center' as const },
+  uploadButton: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    gap: space.sm,
+    marginTop: space.lg,
+    minHeight: 48,
+    minWidth: 120,
+    paddingHorizontal: space.lg,
+    borderRadius: radius.button,
+    backgroundColor: t.brand.fill,
+  },
+  uploadButtonPressed: { backgroundColor: t.brand.fillPressed },
+  uploadButtonDisabled: { opacity: t.interaction.disabledOpacity },
+  uploadButtonText: { ...typography.callout, color: t.brand.onFill },
+});
+
+type Styles = ReturnType<typeof makeStyles>;
+
+function imageLabel(item: GRNImageData): string {
+  return item.category === 'header' ? 'GRN photo' : `Photo of ${item.item_name || 'item'}`;
+}
+
+// Individual image tile with loading and error placeholders
 const ImageTile: React.FC<{
   item: GRNImageData;
-  index: number;
   onPress: () => void;
   onDelete?: () => void;
-  colors: ListColors;
-}> = ({ item, index, onPress, onDelete, colors }) => {
+  styles: Styles;
+  t: ThemeTokens;
+}> = ({ item, onPress, onDelete, styles, t }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
+  const label = imageLabel(item);
 
   return (
-    <TouchableOpacity
-      style={[styles.imageWrapper, { backgroundColor: colors.gray200 }]}
-      onPress={onPress}
-      activeOpacity={0.8}
-    >
-      <Image
-        source={{ uri: item.image_url }}
-        style={styles.image}
-        contentFit="cover"
-        cachePolicy="memory-disk"
-        transition={150}
-        onLoadStart={() => {
-          setIsLoading(true);
-          setHasError(false);
-        }}
-        onLoad={() => {
-          setIsLoading(false);
-          if (__DEV__) console.log(`${LOG_PREFIX} ✅ Image loaded:`, item.id);
-        }}
-        onError={(error) => {
-          setIsLoading(false);
-          setHasError(true);
-          console.error(`${LOG_PREFIX} ❌ Image failed to load:`, {
-            id: item.id,
-            url: item.image_url?.substring(0, 100),
-            error
-          });
-        }}
-      />
+    <View style={styles.imageWrapper}>
+      <Pressable
+        onPress={onPress}
+        accessibilityRole="imagebutton"
+        accessibilityLabel={label}
+        accessibilityHint="Opens the photo full screen"
+        style={styles.imagePressable}
+      >
+        {({ pressed }) => (
+          <>
+            <Image
+              source={{ uri: item.image_url }}
+              style={styles.image}
+              contentFit="cover"
+              cachePolicy="memory-disk"
+              transition={150}
+              onLoadStart={() => {
+                setIsLoading(true);
+                setHasError(false);
+              }}
+              onLoad={() => {
+                setIsLoading(false);
+                if (__DEV__) console.log(`${LOG_PREFIX} Image loaded:`, item.id);
+              }}
+              onError={(error) => {
+                setIsLoading(false);
+                setHasError(true);
+                console.error(`${LOG_PREFIX} Image failed to load:`, {
+                  id: item.id,
+                  url: item.image_url?.substring(0, 100),
+                  error,
+                });
+              }}
+            />
 
-      {/* Loading indicator */}
-      {isLoading && (
-        <View style={[styles.loadingOverlay, { backgroundColor: colors.gray100 }]}>
-          <Icon name="image-outline" size={24} color={colors.gray400} />
-        </View>
-      )}
+            {(isLoading || hasError) && (
+              <View style={styles.placeholder}>
+                <Icon
+                  name={hasError ? 'image-broken-variant' : 'image-outline'}
+                  size={iconSize.lg}
+                  color={t.icon.secondary}
+                />
+              </View>
+            )}
 
-      {/* Error indicator */}
-      {hasError && (
-        <View style={[styles.errorOverlay, { backgroundColor: colors.gray200 }]}>
-          <Icon name="image-broken-variant" size={24} color={colors.gray500} />
-        </View>
-      )}
-
-      <View style={styles.badge}>
-        <Icon
-          name={item.category === 'header' ? 'file-document' : 'package-variant'}
-          size={10}
-          color="#fff"
-        />
-      </View>
-      {item.item_name && (
-        <View style={styles.labelOverlay}>
-          <Text style={styles.labelText} numberOfLines={1}>{item.item_name}</Text>
-        </View>
-      )}
+            <View style={styles.badge}>
+              <Icon
+                name={item.category === 'header' ? 'file-document-outline' : 'cube-outline'}
+                size={12}
+                color={t.overlay.onImage}
+              />
+            </View>
+            {item.item_name ? (
+              <View style={styles.labelOverlay}>
+                <Text style={styles.labelText} numberOfLines={1}>
+                  {item.item_name}
+                </Text>
+              </View>
+            ) : null}
+            {pressed && <View style={styles.pressedOverlay} />}
+          </>
+        )}
+      </Pressable>
       {onDelete && (
-        <TouchableOpacity
-          accessibilityLabel={`Delete ${item.file_name || 'image'}`}
-          style={styles.deleteButton}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Delete ${label.charAt(0).toLowerCase()}${label.slice(1)}`}
+          style={styles.removeButton}
           onPress={onDelete}
         >
-          <Icon name="trash-can-outline" size={16} color="#fff" />
-        </TouchableOpacity>
+          {({ pressed }) => (
+            <View style={[styles.removeCircle, pressed && styles.removeCirclePressed]}>
+              <Icon name="trash-can-outline" size={iconSize.sm} color={t.overlay.onImage} />
+            </View>
+          )}
+        </Pressable>
       )}
-    </TouchableOpacity>
+    </View>
   );
 };
 
@@ -137,8 +279,8 @@ export const GRNImagesTab: React.FC<GRNImagesTabProps> = ({
   onDeleteImage,
   isUploading = false,
 }) => {
-  // Theme colors for dark mode support
-  const colors = useListColors();
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
   const [filter, setFilter] = useState<FilterType>('all');
 
   const headerCount = useMemo(() => images.filter(img => img.category === 'header').length, [images]);
@@ -151,65 +293,96 @@ export const GRNImagesTab: React.FC<GRNImagesTabProps> = ({
 
   if (images.length === 0) {
     return (
-      <View style={[styles.emptyContainer, { backgroundColor: colors.cellBackground }]}>
-        <Icon name="image-off-outline" size={48} color={colors.gray400} />
-        <Text style={[styles.emptyTitle, { color: colors.gray900 }]}>No Images</Text>
-        <Text style={[styles.emptySubtitle, { color: colors.gray500 }]}>No images uploaded for this GRN</Text>
+      <View style={styles.emptyContainer}>
+        <Icon name="image-off-outline" size={iconSize.hero} color={t.icon.secondary} />
+        <Text style={styles.emptyTitle} accessibilityRole="header">
+          No images
+        </Text>
+        <Text style={styles.emptySubtitle}>
+          {onUpload
+            ? 'Photos of this GRN appear here. Add one to keep a record of the goods.'
+            : 'No photos have been added to this GRN.'}
+        </Text>
         {onUpload && (
-          <TouchableOpacity
-            accessibilityLabel="Add GRN image"
-            style={[styles.uploadButton, { backgroundColor: colors.primary }]}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={isUploading ? 'Uploading image' : 'Add image'}
+            accessibilityState={{ disabled: isUploading, busy: isUploading }}
+            style={({ pressed }) => [
+              styles.uploadButton,
+              pressed && styles.uploadButtonPressed,
+              isUploading && styles.uploadButtonDisabled,
+            ]}
             onPress={onUpload}
             disabled={isUploading}
           >
-            <Icon name="image-plus" size={18} color="#fff" />
-            <Text style={styles.uploadButtonText}>{isUploading ? 'Uploading…' : 'Add Image'}</Text>
-          </TouchableOpacity>
+            {isUploading ? (
+              <ActivityIndicator size="small" color={t.brand.onFill} />
+            ) : (
+              <Icon name="image-plus" size={iconSize.md} color={t.brand.onFill} />
+            )}
+            <Text style={styles.uploadButtonText}>{isUploading ? 'Uploading…' : 'Add image'}</Text>
+          </Pressable>
         )}
       </View>
     );
   }
 
-  const FilterButton = ({ type, label, count }: { type: FilterType; label: string; count: number }) => (
-    <TouchableOpacity
-      style={[styles.filterButton, { backgroundColor: colors.gray100 }, filter === type && { backgroundColor: colors.primary }]}
-      onPress={() => setFilter(type)}
-      activeOpacity={0.7}
-    >
-      <Text style={[styles.filterText, { color: colors.gray500 }, filter === type && { color: colors.cellBackground }]}>
-        {label} ({count})
-      </Text>
-    </TouchableOpacity>
-  );
-
-  const renderImage = ({ item, index }: { item: GRNImageData; index: number }) => {
+  const FilterButton = ({ type, label, count }: { type: FilterType; label: string; count: number }) => {
+    const selected = filter === type;
     return (
-      <ImageTile
-        item={item}
-        index={index}
-        onPress={() => onImagePress?.(filteredImages, index)}
-        onDelete={onDeleteImage ? () => onDeleteImage(item) : undefined}
-        colors={colors}
-      />
+      <Pressable
+        style={({ pressed }) => [
+          styles.filterChip,
+          pressed && !selected && styles.filterChipPressed,
+          selected && styles.filterChipSelected,
+        ]}
+        onPress={() => setFilter(type)}
+        hitSlop={{ top: space.sm, bottom: space.sm }}
+        accessibilityRole="button"
+        accessibilityLabel={`${label}, ${count} ${count === 1 ? 'image' : 'images'}`}
+        accessibilityState={{ selected }}
+      >
+        {selected && <Icon name="check" size={iconSize.sm} color={t.brand.tint} />}
+        <Text style={[styles.filterText, selected && styles.filterTextSelected]} maxFontSizeMultiplier={1.6}>
+          {label} ({count})
+        </Text>
+      </Pressable>
     );
   };
 
+  const renderImage = ({ item, index }: { item: GRNImageData; index: number }) => (
+    <ImageTile
+      item={item}
+      onPress={() => onImagePress?.(filteredImages, index)}
+      onDelete={onDeleteImage ? () => onDeleteImage(item) : undefined}
+      styles={styles}
+      t={t}
+    />
+  );
+
   return (
-    <View style={[styles.container, { backgroundColor: colors.cellBackground }]}>
-      {/* Filter Row */}
-      <View style={[styles.filterRow, { borderBottomColor: colors.gray100 }]}>
+    <View style={styles.container}>
+      {/* Quick filters and add action */}
+      <View style={styles.filterRow}>
         <FilterButton type="all" label="All" count={images.length} />
         <FilterButton type="header" label="Header" count={headerCount} />
         <FilterButton type="item" label="Items" count={itemCount} />
         {onUpload && (
-          <TouchableOpacity
-            accessibilityLabel="Add GRN image"
-            style={[styles.compactUploadButton, { backgroundColor: colors.primary }]}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={isUploading ? 'Uploading image' : 'Add image'}
+            accessibilityState={{ disabled: isUploading, busy: isUploading }}
+            style={({ pressed }) => [styles.addIconButton, pressed && styles.addIconButtonPressed]}
             onPress={onUpload}
             disabled={isUploading}
           >
-            <Icon name="image-plus" size={16} color="#fff" />
-          </TouchableOpacity>
+            {isUploading ? (
+              <ActivityIndicator size="small" color={t.brand.tint} />
+            ) : (
+              <Icon name="image-plus" size={iconSize.lg} color={t.brand.tint} />
+            )}
+          </Pressable>
         )}
       </View>
 
@@ -226,130 +399,3 @@ export const GRNImagesTab: React.FC<GRNImagesTabProps> = ({
     </View>
   );
 };
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-
-  // Filter Row
-  filterRow: {
-    flexDirection: 'row',
-    paddingHorizontal: GRID_PADDING,
-    paddingVertical: 6,
-    borderBottomWidth: 1,
-  },
-  filterButton: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 14,
-    marginRight: 6,
-  },
-  filterText: {
-    fontSize: 12,
-    fontWeight: '500',
-  },
-
-  // Grid
-  grid: {
-    padding: GRID_PADDING,
-  },
-  row: {
-    gap: IMAGE_GAP,
-    marginBottom: IMAGE_GAP,
-  },
-  imageWrapper: {
-    width: IMAGE_SIZE,
-    height: IMAGE_SIZE,
-    borderRadius: 6,
-    overflow: 'hidden',
-  },
-  image: {
-    width: '100%',
-    height: '100%',
-  },
-  badge: {
-    position: 'absolute',
-    top: 4,
-    right: 4,
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  labelOverlay: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    paddingHorizontal: 4,
-    paddingVertical: 2,
-  },
-  labelText: {
-    color: '#fff',
-    fontSize: 9,
-    fontWeight: '500',
-  },
-
-  // Loading/Error states
-  loadingOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  errorOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-
-  // Empty State
-  emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 32,
-  },
-  emptyTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginTop: 12,
-  },
-  emptySubtitle: {
-    fontSize: 13,
-    marginTop: 4,
-  },
-  uploadButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 20,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 8,
-  },
-  uploadButtonText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  compactUploadButton: {
-    marginLeft: 'auto',
-    padding: 7,
-    borderRadius: 14,
-  },
-  deleteButton: {
-    position: 'absolute',
-    right: 4,
-    bottom: 4,
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: 'rgba(190, 30, 45, 0.9)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-});

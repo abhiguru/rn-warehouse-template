@@ -1,103 +1,19 @@
 /**
- * GRNHeroHeader Component - 100% SAP Fiori Compliant
+ * GRNHeroHeader: the object page header of a GRN (style guide §13.8, §14.2).
  *
- * KPI Header for GRN details screen showing key metrics
- * Based on SAP Fiori for iOS Design Guidelines
- *
- *
- * Features:
- * - Three KPI metrics with semantic colors
- * - Segmented progress bar showing stock/dispatch breakdown
- * - Fiori semantic status colors
- * - Platform-specific shadows
- * - Accessible labels
+ * Sits on surface.card: document type, GRN number, customer and date, a stock
+ * status tag (icon plus word), the three key quantities, and a segmented bar
+ * showing how the received quantity splits into stock and dispatched.
  */
 
 import React from 'react';
-import { View, Text, StyleSheet, Platform } from 'react-native';
+import { View, Text } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { FioriSegmentedProgress } from '@/components/FioriLinearProgress';
-import { useListColors } from '@/hooks/useListColors';
-
-// ============================================================================
-// FIORI DESIGN TOKENS
-// Based on SAP Fiori for iOS Design Guidelines
-// ============================================================================
-const FIORI = {
-  // Spacing
-  spacing: {
-    xs: 4,
-    sm: 8,
-    md: 12,
-    lg: 16,
-  },
-  // Dimensions
-  dimensions: {
-    kpiCardRadius: 10,
-    kpiIconSize: 20,
-    containerPadding: 16,
-  },
-  // Typography - Fiori iOS
-  typography: {
-    kpiValue: {
-      fontSize: 20,
-      fontWeight: '700' as const,
-      letterSpacing: 0.35,
-    },
-    kpiLabel: {
-      fontSize: 11,
-      fontWeight: '500' as const,
-      letterSpacing: 0.07,
-    },
-    kpiUnit: {
-      fontSize: 12,
-      fontWeight: '400' as const,
-    },
-    sectionLabel: {
-      fontSize: 13,
-      fontWeight: '600' as const,
-      letterSpacing: 0.5,
-    },
-    percentageLabel: {
-      fontSize: 12,
-      fontWeight: '600' as const,
-    },
-  },
-  // Colors - Fiori Semantic
-  colors: {
-    // Backgrounds
-    background: '#F7F9FA', // Fiori grouped background
-    kpiCardBackground: '#FFFFFF',
-    kpiCardBorder: '#E5E5E5',
-    // Semantic Status Colors (Fiori Object Cell spec)
-    primary: '#f69000', // Brand orange - Total quantity
-    positive: '#36A41D', // Fiori Positive - Stock available (changed from teal)
-    critical: '#E9730C', // Fiori Critical - Low stock warning
-    negative: '#D32030', // Fiori Negative - Empty/error
-    informative: '#0057D2', // Fiori Informative - Dispatched
-    neutral: '#7e8e9d', // Fiori Neutral - Secondary text
-    // Text
-    textPrimary: '#1D2D3E',
-    textSecondary: '#556B82',
-    textTertiary: '#7e8e9d',
-    // Progress segments
-    stockSegment: '#36A41D', // Fiori Positive green
-    dispatchSegment: '#0057D2', // Fiori Informative blue
-    progressTrack: '#E5E5E5',
-  },
-  // Shadow - Fiori elevation
-  shadow: Platform.select({
-    ios: {
-      shadowColor: '#000000',
-      shadowOffset: { width: 0, height: 1 },
-      shadowOpacity: 0.08,
-      shadowRadius: 4,
-    },
-    android: {
-      elevation: 2,
-    },
-  }),
-} as const;
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { fontWeight, iconSize, layout, radius, space, typography } from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
+import { parseLocalISODate } from '@/utils/formatters';
 
 // ============================================================================
 // TYPES
@@ -111,233 +27,224 @@ interface GRNHeroHeaderProps {
   customer_name?: string;
 }
 
+type StockStatus = 'negative' | 'critical' | 'positive';
+
+const STATUS_ICON: Record<StockStatus, string> = {
+  negative: 'alert-circle',
+  critical: 'alert',
+  positive: 'check-circle',
+};
+
+const STATUS_LABEL: Record<StockStatus, string> = {
+  negative: 'No stock left',
+  critical: 'Low stock',
+  positive: 'In stock',
+};
+
+const numberFormat = new Intl.NumberFormat('en-IN');
+
+/** "9 Oct 2026" (style guide §12.3). Date-only strings are read in local time. */
+export function formatGRNDate(value?: string | null): string | null {
+  if (!value) return null;
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(value) ? parseLocalISODate(value) : new Date(value);
+  if (isNaN(date.getTime())) return null;
+  return date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+// ============================================================================
+// STYLES
+// ============================================================================
+const makeStyles = (t: ThemeTokens) => ({
+  container: {
+    backgroundColor: t.surface.card,
+    paddingHorizontal: layout.marginCompact,
+    paddingTop: space.md,
+    paddingBottom: space.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: t.border.divider,
+  },
+  titleRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'flex-start' as const,
+    justifyContent: 'space-between' as const,
+    gap: space.sm,
+  },
+  titleBlock: { flex: 1 },
+  docType: { ...typography.footnote, color: t.text.secondary },
+  number: { ...typography.title2, color: t.text.primary },
+  meta: { ...typography.subhead, color: t.text.secondary, marginTop: space.xxs },
+  tag: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.xs,
+    paddingHorizontal: space.sm,
+    paddingVertical: space.xs,
+    borderRadius: radius.field,
+    marginTop: space.xs,
+  },
+  tagText: { ...typography.caption1, fontWeight: fontWeight.semibold },
+  facts: {
+    flexDirection: 'row' as const,
+    marginTop: space.lg,
+    gap: space.sm,
+  },
+  fact: { flex: 1 },
+  factLabel: { ...typography.footnote, color: t.text.secondary },
+  factValue: {
+    ...typography.title3,
+    color: t.text.primary,
+    fontVariant: ['tabular-nums' as const],
+  },
+  progressSection: { marginTop: space.md },
+  legendRow: {
+    flexDirection: 'row' as const,
+    flexWrap: 'wrap' as const,
+    columnGap: space.lg,
+    rowGap: space.xs,
+    marginBottom: space.sm,
+  },
+  legendItem: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.xs,
+  },
+  legendDot: { width: space.sm, height: space.sm, borderRadius: radius.pill },
+  legendText: { ...typography.footnote, color: t.text.secondary },
+  legendValue: {
+    ...typography.footnote,
+    fontWeight: fontWeight.semibold,
+    color: t.text.primary,
+    fontVariant: ['tabular-nums' as const],
+  },
+});
+
 // ============================================================================
 // COMPONENT
 // ============================================================================
 export const GRNHeroHeader: React.FC<GRNHeroHeaderProps> = ({
+  gr_no,
+  date,
   total_qty,
   total_stock,
   total_dispatched,
+  customer_name,
 }) => {
-  // Theme colors for dark mode support
-  const colors = useListColors();
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
 
   // Ensure all numeric values are valid numbers (handle null/undefined)
   const safeQty = Number(total_qty) || 0;
   const safeStock = Number(total_stock) || 0;
   const safeDispatched = Number(total_dispatched) || 0;
 
-  // Calculate percentages for display
   const stockPercentage = safeQty > 0 ? Math.round((safeStock / safeQty) * 100) : 0;
   const dispatchPercentage = safeQty > 0 ? Math.round((safeDispatched / safeQty) * 100) : 0;
 
-  // Determine stock status color based on level (Fiori semantic)
-  const getStockStatusColor = () => {
-    if (safeStock === 0) return colors.error; // Empty - Red
-    if (safeQty > 0 && safeStock < safeQty * 0.2) return colors.warning; // Low - Orange
-    return colors.success; // Good - Green
-  };
+  // Stock level: empty is negative, under 20% is critical, otherwise positive.
+  let stockStatus: StockStatus | null = null;
+  if (safeQty > 0) {
+    if (safeStock === 0) stockStatus = 'negative';
+    else if (safeStock < safeQty * 0.2) stockStatus = 'critical';
+    else stockStatus = 'positive';
+  }
 
-  const stockColor = getStockStatusColor();
+  const formattedDate = formatGRNDate(date);
+  const meta = [customer_name, formattedDate].filter(Boolean).join(' · ');
 
-  // KPI Card Component - Fiori Style (Vertical Layout for better readability)
-  const KPICard = ({
-    icon,
-    iconColor,
-    value,
-    label,
-    valueColor,
-    accessibilityLabel,
-  }: {
-    icon: string;
-    iconColor: string;
-    value: number;
-    label: string;
-    valueColor?: string;
-    accessibilityLabel: string;
-  }) => (
-    <View
-      style={[styles.kpiCard, { backgroundColor: colors.cellBackground, borderColor: colors.cellDivider }]}
-      accessible={true}
-      accessibilityLabel={accessibilityLabel}
-      accessibilityRole="text"
-    >
-      {/* Icon - Top */}
-      <Icon name={icon} size={FIORI.dimensions.kpiIconSize} color={iconColor} />
+  const stockSegmentColor = t.chart[0];
+  const dispatchSegmentColor = t.chart[1];
 
-      {/* Value - Center (single line) */}
-      <Text
-        style={[styles.kpiValue, { color: colors.gray900 }, valueColor ? { color: valueColor } : null]}
-        numberOfLines={1}
-        adjustsFontSizeToFit
-        minimumFontScale={0.7}
-      >
-        {value}
-      </Text>
-
-      {/* Label - Bottom */}
-      <Text style={[styles.kpiLabel, { color: colors.gray600 }]} numberOfLines={1}>{label}</Text>
-    </View>
-  );
+  const facts = [
+    { key: 'qty', label: 'Received', value: safeQty },
+    { key: 'stock', label: 'In stock', value: safeStock },
+    { key: 'dispatched', label: 'Dispatched', value: safeDispatched },
+  ];
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.gray50 }]}>
-      {/* KPI Cards Row */}
-      <View style={styles.kpiRow}>
-        {/* Total Quantity KPI */}
-        <KPICard
-          icon="package-variant"
-          iconColor={colors.primary}
-          value={safeQty}
-          label="Total Qty"
-          accessibilityLabel={`Total quantity: ${safeQty} items`}
-        />
-
-        {/* In Stock KPI */}
-        <KPICard
-          icon="cube-outline"
-          iconColor={stockColor}
-          value={safeStock}
-          label="In Stock"
-          valueColor={stockColor}
-          accessibilityLabel={`In stock: ${safeStock} items, ${stockPercentage}% of total`}
-        />
-
-        {/* Dispatched KPI */}
-        <KPICard
-          icon="truck-delivery-outline"
-          iconColor={colors.teal}
-          value={safeDispatched}
-          label="Dispatched"
-          valueColor={colors.teal}
-          accessibilityLabel={`Dispatched: ${safeDispatched} items, ${dispatchPercentage}% of total`}
-        />
-      </View>
-
-      {/* Stock Distribution Progress Bar */}
-      <View style={styles.progressSection}>
-        {/* Progress Labels */}
-        <View style={styles.progressLabelsRow}>
-          <View style={styles.progressLabelItem}>
-            <View style={[styles.progressLabelDot, { backgroundColor: colors.success }]} />
-            <Text style={[styles.progressLabelText, { color: colors.gray600 }]}>
-              Stock <Text style={[styles.progressPercentage, { color: colors.gray900 }]}>{stockPercentage}%</Text>
+    <View style={styles.container}>
+      <View style={styles.titleRow}>
+        <View
+          style={styles.titleBlock}
+          accessible
+          accessibilityRole="header"
+          accessibilityLabel={[`GRN ${gr_no}`, customer_name, formattedDate].filter(Boolean).join(', ')}
+        >
+          <Text style={styles.docType}>GRN</Text>
+          <Text style={styles.number}>{gr_no}</Text>
+          {meta ? (
+            <Text style={styles.meta} numberOfLines={2}>
+              {meta}
             </Text>
-          </View>
-          <View style={styles.progressLabelItem}>
-            <View style={[styles.progressLabelDot, { backgroundColor: colors.teal }]} />
-            <Text style={[styles.progressLabelText, { color: colors.gray600 }]}>
-              Dispatched <Text style={[styles.progressPercentage, { color: colors.gray900 }]}>{dispatchPercentage}%</Text>
-            </Text>
-          </View>
+          ) : null}
         </View>
 
-        {/* Segmented Progress Bar */}
-        <View style={styles.progressBarContainer}>
+        {stockStatus && (
+          <View
+            style={[styles.tag, { backgroundColor: t.status[stockStatus].background }]}
+            accessible
+            accessibilityLabel={`Status: ${STATUS_LABEL[stockStatus]}`}
+          >
+            <Icon name={STATUS_ICON[stockStatus]} size={iconSize.sm} color={t.status[stockStatus].text} />
+            <Text
+              style={[styles.tagText, { color: t.status[stockStatus].text }]}
+              maxFontSizeMultiplier={1.6}
+            >
+              {STATUS_LABEL[stockStatus]}
+            </Text>
+          </View>
+        )}
+      </View>
+
+      {/* Key facts */}
+      <View style={styles.facts}>
+        {facts.map(fact => (
+          <View
+            key={fact.key}
+            style={styles.fact}
+            accessible
+            accessibilityLabel={`${fact.label}: ${numberFormat.format(fact.value)}`}
+          >
+            <Text style={styles.factLabel} numberOfLines={1}>
+              {fact.label}
+            </Text>
+            <Text style={styles.factValue}>{numberFormat.format(fact.value)}</Text>
+          </View>
+        ))}
+      </View>
+
+      {/* Stock and dispatch split */}
+      {safeQty > 0 && (
+        <View
+          style={styles.progressSection}
+          accessible
+          accessibilityLabel={`${stockPercentage}% in stock, ${dispatchPercentage}% dispatched`}
+        >
+          <View style={styles.legendRow}>
+            <View style={styles.legendItem}>
+              <View style={[styles.legendDot, { backgroundColor: stockSegmentColor }]} />
+              <Text style={styles.legendText}>
+                In stock <Text style={styles.legendValue}>{stockPercentage}%</Text>
+              </Text>
+            </View>
+            <View style={styles.legendItem}>
+              <View style={[styles.legendDot, { backgroundColor: dispatchSegmentColor }]} />
+              <Text style={styles.legendText}>
+                Dispatched <Text style={styles.legendValue}>{dispatchPercentage}%</Text>
+              </Text>
+            </View>
+          </View>
+
           <FioriSegmentedProgress
             segments={[
-              {
-                value: safeStock,
-                color: colors.success,
-              },
-              {
-                value: safeDispatched,
-                color: colors.teal,
-              },
+              { value: safeStock, color: stockSegmentColor },
+              { value: safeDispatched, color: dispatchSegmentColor },
             ]}
             total={safeQty}
             size="prominent"
             showLabels={false}
           />
         </View>
-      </View>
+      )}
     </View>
   );
 };
-
-// ============================================================================
-// STYLES - 100% FIORI COMPLIANT
-// ============================================================================
-const styles = StyleSheet.create({
-  // Container
-  container: {
-    paddingHorizontal: FIORI.dimensions.containerPadding,
-    paddingVertical: FIORI.spacing.md,
-    ...FIORI.shadow,
-  },
-
-  // KPI Row - Horizontal layout
-  kpiRow: {
-    flexDirection: 'row',
-    gap: FIORI.spacing.sm,
-  },
-
-  // KPI Card - Fiori Card style (Vertical layout)
-  kpiCard: {
-    flex: 1,
-    borderRadius: FIORI.dimensions.kpiCardRadius,
-    borderWidth: 1,
-    paddingVertical: FIORI.spacing.sm,
-    paddingHorizontal: FIORI.spacing.xs,
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 72,
-  },
-
-  // KPI Value - Large number (single line)
-  kpiValue: {
-    ...FIORI.typography.kpiValue,
-    textAlign: 'center',
-    marginTop: FIORI.spacing.xs,
-  },
-
-  // KPI Label - Small text
-  kpiLabel: {
-    ...FIORI.typography.kpiLabel,
-    textAlign: 'center',
-    marginTop: 2,
-  },
-
-  // Progress Section
-  progressSection: {
-    marginTop: FIORI.spacing.md,
-  },
-
-  // Progress Labels Row
-  progressLabelsRow: {
-    flexDirection: 'row',
-    justifyContent: 'flex-start',
-    gap: FIORI.spacing.lg,
-    marginBottom: FIORI.spacing.sm,
-  },
-
-  // Progress Label Item
-  progressLabelItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: FIORI.spacing.xs,
-  },
-
-  // Progress Label Dot
-  progressLabelDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-
-  // Progress Label Text
-  progressLabelText: {
-    ...FIORI.typography.kpiLabel,
-  },
-
-  // Progress Percentage
-  progressPercentage: {
-    ...FIORI.typography.percentageLabel,
-  },
-
-  // Progress Bar Container
-  progressBarContainer: {
-    // The FioriSegmentedProgress handles its own styling
-  },
-});

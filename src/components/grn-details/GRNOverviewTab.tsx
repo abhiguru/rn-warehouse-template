@@ -6,8 +6,8 @@
 
 import React from 'react';
 import { View, ScrollView } from 'react-native';
+import { useTokens } from '@/hooks/useTheme';
 import {
-  FIORI,
   overviewStyles,
   useOverviewColors,
   SectionHeader,
@@ -65,6 +65,8 @@ export const GRNOverviewTab: React.FC<GRNOverviewTabProps> = ({
   is_print_loading = false,
 }) => {
   const colorStyles = useOverviewColors();
+  const t = useTokens();
+  const isOneTime = pricing_mode?.toUpperCase() === 'ONE_TIME';
 
   return (
     <ScrollView
@@ -83,9 +85,9 @@ export const GRNOverviewTab: React.FC<GRNOverviewTabProps> = ({
               name={customer_details.name}
               phone={customer_details.mobile || undefined}
               email={customer_details.email || undefined}
-              iconName="account"
-              iconColor={FIORI.colors.primary}
-              iconBgColor={FIORI.colors.primaryLight}
+              iconName="account-outline"
+              iconColor={t.brand.tint}
+              iconBgColor={t.brand.subtle}
             />
           )}
 
@@ -94,9 +96,9 @@ export const GRNOverviewTab: React.FC<GRNOverviewTabProps> = ({
               type="Supervisor"
               name={supervisor_details.name}
               phone={supervisor_details.mobile || undefined}
-              iconName="account-supervisor"
-              iconColor={FIORI.colors.info}
-              iconBgColor={FIORI.colors.infoLight}
+              iconName="account-supervisor-outline"
+              iconColor={t.status.neutral.text}
+              iconBgColor={t.status.neutral.background}
             />
           )}
         </>
@@ -105,12 +107,12 @@ export const GRNOverviewTab: React.FC<GRNOverviewTabProps> = ({
       {/* SECTION: VEHICLE INFORMATION */}
       {registration && (
         <>
-          <SectionHeader title="Vehicle Information" />
+          <SectionHeader title="Vehicle" />
           <View style={overviewStyles.chipsCard}>
             <InfoChip
-              icon="truck"
+              icon="truck-outline"
               label={registration}
-              iconColor={FIORI.colors.success}
+              iconColor={t.status.neutral.text}
             />
           </View>
         </>
@@ -119,12 +121,12 @@ export const GRNOverviewTab: React.FC<GRNOverviewTabProps> = ({
       {/* SECTION: BILLING TYPE */}
       {pricing_mode && (
         <>
-          <SectionHeader title="Billing Type" />
+          <SectionHeader title="Billing" />
           <View style={overviewStyles.chipsCard}>
             <InfoChip
-              icon={pricing_mode.toUpperCase() === 'ONE_TIME' ? 'calendar-check' : 'calendar-sync'}
-              label={pricing_mode.toUpperCase() === 'ONE_TIME' ? 'One-Time Charge' : 'Monthly Recurring'}
-              iconColor={pricing_mode.toUpperCase() === 'ONE_TIME' ? FIORI.colors.info : FIORI.colors.primary}
+              icon={isOneTime ? 'calendar-check' : 'calendar-sync'}
+              label={isOneTime ? 'One-time charge' : 'Monthly recurring'}
+              iconColor={t.status.neutral.text}
             />
           </View>
         </>
