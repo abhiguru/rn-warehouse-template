@@ -72,6 +72,8 @@ export interface ThemeTokens {
     sheet: string;
     header: string;
     tabBar: string;
+    /** Inverse surface for snackbars and tooltips; pair with text.inverse. */
+    inverse: string;
   };
   text: {
     primary: string;
@@ -124,6 +126,13 @@ export interface ThemeTokens {
     informative: StatusTokens;
     neutral: StatusTokens;
   };
+  /** Switches, sliders and similar controls. */
+  control: {
+    /** Switch thumb and slider knob. */
+    thumb: string;
+    /** Switch track when off (3:1 on surfaces). Track on is brand.fill. */
+    trackOff: string;
+  };
   interaction: {
     /** Keyboard/accessibility focus ring. */
     focus: string;
@@ -140,6 +149,8 @@ export interface ThemeTokens {
     onImage: string;
     /** Translucent button background on brand headers. */
     onBrandSubtle: string;
+    /** Full-screen photo viewer backdrop (the one place pure black is used). */
+    imageBackdrop: string;
   };
   /** Elevation levels 0-4 (Fiori: 0 headers, 1 raised rows, 2 cards, 3 toasts/menus, 4 popovers/sheets). */
   shadow: [ShadowToken, ShadowToken, ShadowToken, ShadowToken, ShadowToken];
@@ -233,6 +244,7 @@ export function buildTokens(brand: Brand, mode: Mode): ThemeTokens {
       sheet: h.surface,
       header: h.surface,
       tabBar: h.surface,
+      inverse: h.text,
     },
     text: {
       primary: h.text,
@@ -263,6 +275,10 @@ export function buildTokens(brand: Brand, mode: Mode): ThemeTokens {
       informative: { ...h.informative },
       neutral: { ...h.neutral },
     },
+    control: {
+      thumb: '#FFFFFF',
+      trackOff: light ? '#788FA6' : '#8396A8',
+    },
     interaction: {
       focus: h.focus,
       focusWidth: 2,
@@ -273,6 +289,7 @@ export function buildTokens(brand: Brand, mode: Mode): ThemeTokens {
       scrim: h.blockLayer,
       onImage: '#FFFFFF',
       onBrandSubtle: light ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.12)',
+      imageBackdrop: '#000000',
     },
     shadow: shadows(mode),
     chart: light ? horizonChart.light : horizonChart.dark,

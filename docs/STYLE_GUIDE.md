@@ -209,6 +209,7 @@ Generated from `buildTokens()`. Regenerate this section whenever `semantic.ts` c
 | `surface.sheet` | `#FFFFFF` | `#1D232A` | `#FFFFFF` | `#1D232A` |
 | `surface.header` | `#FFFFFF` | `#1D232A` | `#FFFFFF` | `#1D232A` |
 | `surface.tabBar` | `#FFFFFF` | `#1D232A` | `#FFFFFF` | `#1D232A` |
+| `surface.inverse` | `#131E29` | `#F5F6F7` | `#131E29` | `#F5F6F7` |
 
 #### text
 
@@ -263,6 +264,13 @@ Generated from `buildTokens()`. Regenerate this section whenever `semantic.ts` c
 | `status.neutral.background` | `#EFF1F2` | `#242E38` | `#EFF1F2` | `#242E38` |
 | `status.neutral.border` | `#788FA6` | `#A9B4BE` | `#788FA6` | `#A9B4BE` |
 
+#### control
+
+| Token | Orange light | Orange dark | GCSA light | GCSA dark |
+|---|---|---|---|---|
+| `control.thumb` | `#FFFFFF` | `#FFFFFF` | `#FFFFFF` | `#FFFFFF` |
+| `control.trackOff` | `#788FA6` | `#8396A8` | `#788FA6` | `#8396A8` |
+
 #### interaction
 
 | Token | Orange light | Orange dark | GCSA light | GCSA dark |
@@ -277,6 +285,7 @@ Generated from `buildTokens()`. Regenerate this section whenever `semantic.ts` c
 | `overlay.scrim` | `rgba(0,0,0,0.4)` | `rgba(0,0,0,0.6)` | `rgba(0,0,0,0.4)` | `rgba(0,0,0,0.6)` |
 | `overlay.onImage` | `#FFFFFF` | `#FFFFFF` | `#FFFFFF` | `#FFFFFF` |
 | `overlay.onBrandSubtle` | `rgba(255,255,255,0.2)` | `rgba(255,255,255,0.12)` | `rgba(255,255,255,0.2)` | `rgba(255,255,255,0.12)` |
+| `overlay.imageBackdrop` | `#000000` | `#000000` | `#000000` | `#000000` |
 
 #### Key contrast pairs
 
@@ -311,6 +320,8 @@ Elevation tokens `shadow[0]` to `shadow[4]`, `interaction.focusWidth` (2), `inte
 | `surface.selected` | Selected rows in a multi-select list | Brand highlight |
 | `surface.field` / `fieldReadOnly` | Editable and read-only input backgrounds | Cards |
 | `surface.sheet` / `header` / `tabBar` | Bottom sheets and dialogs, app bars, the tab bar | |
+| `surface.inverse` | Snackbars and tooltips, with `text.inverse` | Cards |
+| `control.thumb` / `trackOff` | Switch thumb and slider knob; switch track when off (track on is `brand.fill`) | Text |
 | `text.primary` | Titles, values, body text | Text on a brand fill |
 | `text.secondary` | Labels, secondary lines, timestamps, section headers | Disabled text |
 | `text.placeholder` | Input placeholders | Values |
@@ -342,6 +353,7 @@ Elevation tokens `shadow[0]` to `shadow[4]`, `interaction.focusWidth` (2), `inte
 | `overlay.scrim` | Dim layer behind dialogs and sheets | |
 | `overlay.onImage` | Text and icons over photos and dark gradients | |
 | `overlay.onBrandSubtle` | Translucent buttons on a brand-filled header | |
+| `overlay.imageBackdrop` | Full-screen photo viewer | Any other background |
 
 ### 3.5 Status colours
 
@@ -744,7 +756,7 @@ Rules: label above the field, never only a placeholder. Height 44 minimum, radiu
 
 | Component | Spec |
 |---|---|
-| `ui/Switch.tsx` | Track on `brand.fill`, off `border.button`; thumb white; label on the left in `body`; the whole row toggles. `useBrandColor={false}` uses `status.positive.element` for a plain on/off. |
+| `ui/Switch.tsx` | Track on `brand.fill`, off `control.trackOff`; thumb `control.thumb`; label on the left in `body`; the whole row toggles. `useBrandColor={false}` uses `status.positive.element` for a plain on/off. |
 | `ui/RadioButton.tsx` (`RadioButton`, `RadioGroup`) | Ring 20 px, 2 px `border.field`; selected ring and dot `brand.tint`; label `body`; the whole row is the target. |
 | `SegmentedControl` (same file) | Container `border.button`; selected segment `brand.fill` with `brand.onFill`; others `text.primary`; at most four segments, otherwise use a radio list. |
 | `ButtonGroup` (same file) | Like segmented control but allows multi-select; selected options get a check icon. |
@@ -809,7 +821,7 @@ The three `FioriDataTable` copies follow one spec and are merged during migratio
 | Filter screens (`filters/GenericFilterModal.tsx`, `filters/fields/*`, `DispatchFilterOverlay.tsx`, `GRNFilterOverlay.tsx`) | Full-height sheet: fields grouped by section headers, "Reset" tertiary in the header, "Show results" primary at the bottom with the result count when known. |
 | Message strip (inline, `fiori/InlineValidation.tsx`) | `status.*.background`, 1 px `status.*.border`, `radius.button`, icon plus text in `status.*.text`. Variants `helper` (no container, `text.secondary`), `success`, `warning`, `error`. |
 | Banners (`OfflineBanner.tsx`, `TokenExpiryBanner.tsx`) | Full-width under the header. Offline: `status.neutral.background`, `cloud-off-outline`. Session expiring: `status.critical.background` with a "Sign in again" tertiary action. Never cover content; push it down. |
-| Snackbar / toast | Inverse surface: `text.primary` as the background with `text.inverse` text (16.86:1 light, 14.64:1 dark), `shadow[3]`, `radius.button`, above the tab bar, 4 seconds. One optional action in `text.inverse`, weight 600, underlined. Never for errors that need action; use a message strip or dialog for those. |
+| Snackbar / toast | `surface.inverse` background with `text.inverse` text (16.86:1 light, 14.64:1 dark), `shadow[3]`, `radius.button`, above the tab bar, 4 seconds. One optional action in `text.inverse`, weight 600, underlined. Never for errors that need action; use a message strip or dialog for those. |
 | Full-screen states (`MaintenanceScreen.tsx`, `ConfigErrorScreen.tsx`, `InvalidRouteScreen.tsx`, `BiometricLockScreen.tsx`) | Centred empty-state layout on `background.base` with a hero icon, title, plain message and one primary action. |
 
 ### 13.10 Media
@@ -818,7 +830,7 @@ The three `FioriDataTable` copies follow one spec and are merged during migratio
 |---|---|
 | `CachedImage.tsx` | Placeholder `surface.cardActive` with an `image-outline` icon in `icon.secondary` while loading or on failure. `radius.card` in grids. |
 | `grn/components/ImagePreviewGrid.tsx`, `*-details/*ImagesTab.tsx` | Three columns on phones, 4 px gaps, square thumbnails; a remove button on editable grids as a 44 px target with a scrim circle and `overlay.onImage` icon. |
-| `ImageOverlay.tsx` | Black backdrop (photo viewing is the one place pure black is allowed), close and share in `overlay.onImage`, pinch to zoom, swipe down to close. |
+| `ImageOverlay.tsx` | `overlay.imageBackdrop` (photo viewing is the one place pure black is allowed), close and share in `overlay.onImage`, pinch to zoom, swipe down to close. |
 
 ### 13.11 Data visualisation
 
