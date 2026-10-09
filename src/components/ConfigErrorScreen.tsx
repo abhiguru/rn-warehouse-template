@@ -8,7 +8,7 @@
 
 import React, { useState } from 'react';
 import { Platform, ScrollView, Text, View } from 'react-native';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, layout, radius, space, typography } from '@/theme/tokens';

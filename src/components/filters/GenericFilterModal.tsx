@@ -12,7 +12,6 @@ import React, { useCallback, useContext, useEffect, useMemo, useState, useRef } 
 import {
   View,
   StyleSheet,
-  Vibration,
   Pressable,
   Text,
   BackHandler,
@@ -70,6 +69,7 @@ import { DateRangeFilterField } from './fields/DateRangeFilterField';
 import { RadioFilterField } from './fields/RadioFilterField';
 import { AutocompleteFilterField } from './fields/AutocompleteFilterField';
 import { AutocompleteBottomSheet } from './AutocompleteBottomSheet';
+import { formatCount } from '@/utils/formatters';
 
 /** Field configs use MaterialCommunityIcons names; fall back to a document glyph. */
 const fieldIcon = (iconName?: string): string => iconName || 'file-document-outline';
@@ -121,9 +121,6 @@ export const GenericFilterModal: React.FC<GenericFilterModalProps> = ({
 
   // Helper function to update local filters (not Redux yet)
   const updateLocalFilter = useCallback((field: string, value: FilterValueType) => {
-    // Haptic feedback for filter changes
-    Vibration.vibrate(5);
-
     // Serialize Date objects to ISO strings
     let serializedValue = value;
     if (value instanceof Date) {
@@ -164,7 +161,6 @@ export const GenericFilterModal: React.FC<GenericFilterModalProps> = ({
   // Apply filters: commit local changes to Redux and close modal
   const handleApply = useCallback(() => {
     logger.info(`[APPLY_FILTERS] Applying ${Object.keys(localFilters).length} filters`);
-    Vibration.vibrate(10);
     dispatch(setFilterValues({
       key: config.persistKey,
       values: localFilters,
@@ -178,7 +174,6 @@ export const GenericFilterModal: React.FC<GenericFilterModalProps> = ({
   // Close modal: discard local changes, revert to Redux state
   const handleClose = useCallback(() => {
     logger.info(`[CLOSE_MODAL] Closing modal without applying changes`);
-    Vibration.vibrate(5);
     setLocalFilters(filterValues);
     setHasPendingChanges(false);
     logger.debug(`[CLOSE_MODAL] Calling bottomSheetRef.close()`);
@@ -188,7 +183,6 @@ export const GenericFilterModal: React.FC<GenericFilterModalProps> = ({
   // Reset filters: clear both Redux and local state
   const handleReset = useCallback(() => {
     logger.info(`[RESET_FILTERS] Resetting all filters`);
-    Vibration.vibrate(10);
     dispatch(clearFilterAction({ key: config.persistKey }));
     setLocalFilters({});
     setHasPendingChanges(false);
@@ -228,7 +222,7 @@ export const GenericFilterModal: React.FC<GenericFilterModalProps> = ({
           // Create a range section with both From and To
           sections.push({
             key: `section-${index}`,
-            title: field.label.replace(' From', ' Range'), // "GRN Number From" -> "GRN Number Range"
+            title: field.label.replace(/ from$/i, ' range'), // "GRN number from" -> "GRN number range"
             fields: [field, toField],
           });
           processedKeys.add(fieldKey);
@@ -719,7 +713,7 @@ export const GenericFilterModal: React.FC<GenericFilterModalProps> = ({
             onPress={hasPendingChanges ? handleApply : handleClose}
             accessibilityLabel={
               pendingFilterCount > 0
-                ? `Show results, ${pendingFilterCount} filter${pendingFilterCount !== 1 ? 's' : ''}`
+                ? `Show results, ${formatCount(pendingFilterCount, 'filter')}`
                 : 'Show results'
             }
           >

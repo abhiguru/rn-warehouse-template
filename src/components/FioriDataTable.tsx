@@ -169,7 +169,7 @@ const numberFormat = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 }
 
 /** Display text for a plain cell value (§12.3 formats). */
 export function formatCellValue(value: unknown, dataType?: FioriDataTableDataType): string {
-  if (value === null || value === undefined || value === '') return '-';
+  if (value === null || value === undefined || value === '') return '—';
   if (dataType === 'currency') {
     const amount = Number(value);
     return Number.isFinite(amount) ? formatCurrency(amount, { minimumFractionDigits: 2 }) : String(value);

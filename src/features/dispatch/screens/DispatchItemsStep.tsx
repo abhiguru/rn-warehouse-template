@@ -9,16 +9,15 @@
 import React, { useState, useRef, useCallback, useMemo } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import {
-    View,
-    Text,
-    StyleSheet,
-    TextInput,
-    Pressable,
-    Alert,
-    Platform,
-    Vibration,
-    Keyboard,
-    ActivityIndicator,
+  View,
+  Text,
+  StyleSheet,
+  TextInput,
+  Pressable,
+  Platform,
+  Vibration,
+  Keyboard,
+  ActivityIndicator,
 } from 'react-native';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -53,6 +52,8 @@ import { DISPATCH_STEPS, DISPATCH_STEP_NUMBERS, getDispatchCompletedSteps } from
 import { getUserFriendlyError } from '@/utils/errorHandler';
 import { areAllAvailableLotsAlreadyAdded } from '@/features/dispatch/utils/lotAvailability';
 
+import { showAlert } from '@/utils/alert';
+import { formatCount, formatWeight } from '@/utils/formatters';
 type DispatchItemsStepProps = {
     mode: 'create' | 'edit';
 };
@@ -192,7 +193,7 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
                 const result = await getGRNDetailByNumber(grn.gr_no, true);
 
                 if (!result.success || !result.data) {
-                    Alert.alert("Couldn't load the GRN", 'Check your connection and try again.');
+                    showAlert("Couldn't load the GRN", 'Check your connection and try again.');
                     return;
                 }
 
@@ -270,7 +271,7 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
                 });
             } catch (error) {
                 console.error('[DispatchItemsStep] Error loading GRN:', error);
-                Alert.alert("Couldn't load the GRN", getUserFriendlyError('grn', 'load'));
+                showAlert("Couldn't load the GRN", getUserFriendlyError('grn', 'load'));
             } finally {
                 setIsLoadingGRN(false);
             }
@@ -411,7 +412,7 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
 
             if (!validation.isValid) {
                 setValidationErrors(validation.errors);
-                Alert.alert('Check the item', 'Fix the fields marked in red, then try again.');
+                showAlert('Check the item', 'Fix the fields marked in red, then try again.');
                 return;
             }
 
@@ -423,7 +424,7 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
             const duplicateCheck = checkDuplicateLots(allItems);
 
             if (duplicateCheck.hasDuplicates) {
-                Alert.alert(
+                showAlert(
                     'Lot already added',
                     'This lot is already in the dispatch. Each lot can be dispatched once.'
                 );
@@ -552,7 +553,7 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
         const validation = await validateSingleItem(currentItem);
         if (!validation.isValid) {
             setShowUnsavedEditDialog(false);
-            Alert.alert('Check the item', 'Fix the fields marked in red before you save.');
+            showAlert('Check the item', 'Fix the fields marked in red before you save.');
             return;
         }
         setShowUnsavedEditDialog(false);
@@ -633,7 +634,7 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
         const isEditing = editingItemId !== null;
 
         if (savedItems.length === 0 && !isCurrentItemValid) {
-            Alert.alert('Add an item first', 'Add at least one item before you continue.');
+            showAlert('Add an item first', 'Add at least one item before you continue.');
             return;
         }
 
@@ -642,7 +643,7 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
 
             if (!validation.isValid) {
                 setValidationErrors(validation.errors);
-                Alert.alert('Check the item', 'Fix the fields marked in red, then try again.');
+                showAlert('Check the item', 'Fix the fields marked in red, then try again.');
                 return;
             }
 
@@ -653,7 +654,7 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
             const duplicateCheck = checkDuplicateLots(allItems);
 
             if (duplicateCheck.hasDuplicates) {
-                Alert.alert(
+                showAlert(
                     'Lot already added',
                     'This lot is already in the dispatch. Each lot can be dispatched once.'
                 );
@@ -763,7 +764,7 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
                     accessibilityRole={savedItems.length > 0 ? 'button' : 'header'}
                     accessibilityLabel={
                         savedItems.length > 0
-                            ? `${itemTitle}. View all ${savedItems.length} ${savedItems.length === 1 ? 'item' : 'items'}`
+                            ? `${itemTitle}. View all ${formatCount(savedItems.length, 'item')}`
                             : itemTitle
                     }
                 >
@@ -778,7 +779,7 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
                             <View style={styles.heroSubtitleContainer}>
                                 <Icon name="format-list-bulleted" size={iconSize.sm} color={t.brand.tint} />
                                 <Text style={styles.heroSubtitle}>
-                                    View all {savedItems.length} {savedItems.length === 1 ? 'item' : 'items'}
+                                    View all {formatCount(savedItems.length, 'item')}
                                 </Text>
                             </View>
                         )}
@@ -1077,7 +1078,7 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
                                     <Icon name="warehouse" size={iconSize.sm} color={t.icon.secondary} />
                                     <Text style={styles.detailLabel}>In stock</Text>
                                     <Text style={styles.detailValue}>
-                                        {currentItem.grnItems_stock} {currentItem.grnItems_stock === 1 ? 'bag' : 'bags'}
+                                        {formatCount(currentItem.grnItems_stock, 'bag')}
                                     </Text>
                                 </View>
                                 {currentItem.grnItems_package_mark && (
@@ -1097,7 +1098,7 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
                                 <View style={styles.detailItem}>
                                     <Icon name="weight" size={iconSize.sm} color={t.icon.secondary} />
                                     <Text style={styles.detailLabel}>Weight</Text>
-                                    <Text style={styles.detailValue}>{currentItem.grnItems_weight} kg</Text>
+                                    <Text style={styles.detailValue}>{formatWeight(currentItem.grnItems_weight)}</Text>
                                 </View>
                             </View>
                         </View>
@@ -1175,13 +1176,13 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
             <ConfirmDialog
                 visible={showDiscardDialog}
                 title="Discard this dispatch?"
-                message={`The ${savedItems.length} ${savedItems.length === 1 ? 'item' : 'items'} you added will be lost.`}
+                message={`The ${formatCount(savedItems.length, 'item')} you added will be lost.`}
                 confirmText="Discard dispatch"
                 cancelText="Keep editing"
                 onConfirm={handleDiscardConfirm}
                 onCancel={() => setShowDiscardDialog(false)}
                 variant="danger"
-                icon="trash-outline"
+                icon="trash-can-outline"
             />
 
             <ConfirmDialog
@@ -1205,7 +1206,7 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
                 onConfirm={handleUnsavedBackConfirm}
                 onCancel={() => setShowUnsavedBackDialog(false)}
                 variant="warning"
-                icon="arrow-back-circle-outline"
+                icon="arrow-left-circle-outline"
             />
 
             <ConfirmDialog

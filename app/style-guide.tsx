@@ -8,10 +8,11 @@
  */
 import React, { useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
-import { Stack, router } from 'expo-router';
+import { Stack } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useTheme, useThemedStyles } from '@/hooks/useTheme';
+import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
 import {
   AA,
   BRANDS,
@@ -24,7 +25,28 @@ import {
   type ThemeTokens,
   type TypographyStyle,
 } from '@/theme/tokens';
-import { Card, Input, RadioGroup, Switch } from '@/components/ui';
+import { Avatar, Card, Input, RadioGroup, SegmentedControl, StatusTag, Switch } from '@/components/ui';
+import StockIndicator from '@/components/StockIndicator';
+import { FioriLinearProgress } from '@/components/FioriLinearProgress';
+import StepIndicator from '@/components/StepIndicator';
+import FilterChip from '@/components/FilterChip';
+import { StepperInput } from '@/components/fiori/StepperInput';
+import { KPICard } from '@/components/reports/KPICard';
+import { ListEmptyState } from '@/components/list/ListEmptyState';
+import { SkeletonBox } from '@/components/skeletons/SkeletonBox';
+import { ConfirmDialog, type ConfirmVariant } from '@/components/ConfirmDialog';
+import { showAlert } from '@/utils/alert';
+import {
+  formatCount,
+  formatCurrency,
+  formatDate,
+  formatDateTime,
+  formatMobile,
+  formatRelativeTime,
+  formatSectionDate,
+  formatTemperature,
+  formatWeight,
+} from '@/utils/formatters';
 import { Button } from '@/components/ui/Button';
 import { InlineValidation } from '@/components/fiori/InlineValidation';
 import { KeyValueCell } from '@/components/fiori/KeyValueCell';
@@ -40,6 +62,18 @@ const STATUS_ICON: Record<(typeof STATUS)[number], string> = {
 };
 
 const makeStyles = (t: ThemeTokens) => ({
+  wrapRow: {
+    flexDirection: 'row' as const,
+    flexWrap: 'wrap' as const,
+    alignItems: 'center' as const,
+    gap: space.sm,
+  },
+  // KPICard fills a row (flex: 1), as it does inside KPIGrid.
+  half: {
+    flexBasis: '47%' as const,
+    flexGrow: 1,
+    flexDirection: 'row' as const,
+  },
   screen: { flex: 1, backgroundColor: t.background.base },
   content: { padding: space.lg, gap: space.xxl },
   header: {
@@ -130,6 +164,9 @@ export default function StyleGuideScreen() {
   const [switchOn, setSwitchOn] = useState(true);
   const [radio, setRadio] = useState('a');
   const [field, setField] = useState('');
+  const [segment, setSegment] = useState('120');
+  const [stepper, setStepper] = useState(25);
+  const [dialog, setDialog] = useState<ConfirmVariant | null>(null);
 
   if (!__DEV__) {
     return (
@@ -145,9 +182,7 @@ export default function StyleGuideScreen() {
       <Stack.Screen options={{ headerShown: false }} />
       <EdgeToEdgeStatusBar barStyle={t.statusBarStyle} />
       <View style={[styles.header, { paddingTop: insets.top + space.sm }]}>
-        <Pressable onPress={() => router.back()} accessibilityRole="button" accessibilityLabel="Back" hitSlop={8}>
-          <Icon name="arrow-left" size={iconSize.lg} color={t.icon.primary} />
-        </Pressable>
+        <HeaderBackButton />
         <Text style={styles.headerTitle} accessibilityRole="header">Style guide</Text>
       </View>
       <ScrollView contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + space.xxxl }]}>
@@ -260,6 +295,107 @@ export default function StyleGuideScreen() {
           <InlineValidation variant="warning" message="Warning message" visible />
           <InlineValidation variant="success" message="Success message" visible />
           <InlineValidation variant="helper" message="Helper message" visible />
+        </Section>
+
+        <Section title="Selection" styles={styles}>
+          <SegmentedControl label="Period" value={segment} onValueChange={setSegment}
+            options={[{ value: '120', label: '120 days' }, { value: '240', label: '240 days' }, { value: '364', label: '364 days' }]} />
+          <StepperInput label="Quantity" value={stepper} onValueChange={setStepper} min={0} max={100} suffix="bags" />
+        </Section>
+
+        <Section title="Tags, avatars and indicators" styles={styles}>
+          <View style={styles.wrapRow}>
+            <StatusTag status="positive" label="In stock" />
+            <StatusTag status="critical" label="Low stock" />
+            <StatusTag status="negative" label="Out of stock" />
+            <StatusTag status="informative" label="Printing" />
+            <StatusTag status="neutral" label="Fully dispatched" icon="check-all" />
+            <StatusTag status="neutral" label="Staff" icon={null} />
+          </View>
+          <View style={styles.wrapRow}>
+            <Avatar name="Sunrise Agro Foods" id="customer-1" size="sm" />
+            <Avatar name="Green Valley Traders" id="customer-2" />
+            <Avatar name="Dev Administrator" id="user-1" size="lg" />
+          </View>
+          <View style={styles.wrapRow}>
+            <FilterChip label="Last 7 days" onRemove={() => {}} />
+            <FilterChip label="In stock" onRemove={() => {}} />
+          </View>
+          <StockIndicator currentStock={150} originalStock={200} />
+          <StockIndicator currentStock={20} originalStock={200} />
+          <StockIndicator currentStock={0} originalStock={200} />
+          <FioriLinearProgress progress={0.6} label="Uploading photos" showPercentage />
+          <FioriLinearProgress progress={1} variant="success" label="Uploaded" />
+          <FioriLinearProgress progress={0.3} variant="error" label="Upload failed" />
+        </Section>
+
+        <Section title="Steps" styles={styles}>
+          <StepIndicator
+            steps={[{ label: 'GRN details' }, { label: 'Items' }, { label: 'Review' }]}
+            currentStep={2}
+            completedSteps={[1]}
+          />
+        </Section>
+
+        <Section title="Reports" styles={styles}>
+          <View style={styles.wrapRow}>
+            <View style={styles.half}><KPICard icon="account-group" value={5} label="Customers" variant="primary" /></View>
+            <View style={styles.half}><KPICard icon="warehouse" value="995" unit="bags" label="In stock" variant="success" /></View>
+            <View style={styles.half}><KPICard icon="alert" value={3} label="Low stock items" variant="warning" /></View>
+            <View style={styles.half}><KPICard icon="truck-delivery-outline" value={12} label="Dispatches" variant="neutral" /></View>
+          </View>
+        </Section>
+
+        <Section title="Dialogs and alerts" styles={styles}>
+          <Button type="secondary" size="fullWidth" onPress={() => setDialog('default')}>Confirm dialog</Button>
+          <Button type="secondary" size="fullWidth" onPress={() => setDialog('warning')}>Warning dialog</Button>
+          <Button type="secondary" variant="negative" size="fullWidth" onPress={() => setDialog('danger')}>Danger dialog</Button>
+          <Button type="secondary" size="fullWidth"
+            onPress={() => showAlert('Delete GRN 311?', 'Its items will be removed from stock.', [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Delete GRN', style: 'destructive' },
+            ])}>
+            Alert with two buttons
+          </Button>
+          <Button type="secondary" size="fullWidth"
+            onPress={() => showAlert('Save this item?', 'You changed the quantity.', [
+              { text: 'Keep editing', style: 'cancel' },
+              { text: 'Discard item', style: 'destructive' },
+              { text: 'Save item' },
+            ])}>
+            Alert with three buttons
+          </Button>
+          <ConfirmDialog
+            visible={dialog !== null}
+            variant={dialog ?? 'default'}
+            title={dialog === 'danger' ? 'Delete dispatch DD0006?' : dialog === 'warning' ? 'Leave without saving?' : 'Create this GRN?'}
+            message={dialog === 'danger' ? 'This cannot be undone.' : 'You can change it later.'}
+            confirmText={dialog === 'danger' ? 'Delete dispatch' : dialog === 'warning' ? 'Leave' : 'Create GRN'}
+            cancelText="Cancel"
+            onConfirm={() => setDialog(null)}
+            onCancel={() => setDialog(null)}
+          />
+        </Section>
+
+        <Section title="States" styles={styles}>
+          <ListEmptyState activeFilterCount={0} emptyIcon="truck-delivery-outline" emptyTitle="No dispatches yet"
+            emptySubtitle="Dispatches you create appear here." />
+          <ListEmptyState activeFilterCount={2} filteredTitle="No GRNs match your filters" />
+          <SkeletonBox height={16} width="60%" />
+          <SkeletonBox height={16} width="40%" />
+        </Section>
+
+        <Section title="Formats" styles={styles}>
+          <KeyValueCell keyLabel="formatDate" value={formatDate(new Date(2026, 8, 22))} showDivider />
+          <KeyValueCell keyLabel="formatDate short" value={formatDate(new Date(), 'short')} showDivider />
+          <KeyValueCell keyLabel="formatDateTime" value={formatDateTime(new Date(2026, 9, 9, 16, 5))} showDivider />
+          <KeyValueCell keyLabel="formatSectionDate" value={formatSectionDate('2026-10-06')} showDivider />
+          <KeyValueCell keyLabel="formatRelativeTime" value={formatRelativeTime(new Date(Date.now() - 5 * 60000).toISOString())} showDivider />
+          <KeyValueCell keyLabel="formatMobile" value={formatMobile('9876543210')} showDivider />
+          <KeyValueCell keyLabel="formatCurrency" value={formatCurrency(123456.5, { minimumFractionDigits: 2 })} showDivider />
+          <KeyValueCell keyLabel="formatWeight" value={formatWeight(1250.5)} showDivider />
+          <KeyValueCell keyLabel="formatTemperature" value={formatTemperature(-18.5)} showDivider />
+          <KeyValueCell keyLabel="formatCount" value={`${formatCount(1, 'item')} · ${formatCount(120, 'bag')}`} />
         </Section>
 
         <Section title="Content" styles={styles}>

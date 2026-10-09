@@ -15,7 +15,6 @@ import {
   FlatList,
   RefreshControl,
   Pressable,
-  Vibration,
   LayoutAnimation,
   ActivityIndicator,
 } from 'react-native';
@@ -55,10 +54,11 @@ import { PrintRangeDialog } from '@/components/PrintRangeDialog';
 import PrintJobsBottomSheet, { PrintJobsBottomSheetRef } from '@/components/PrintJobsBottomSheet';
 import { Button } from '@/components/ui/Button';
 import { printGRNRange } from '@/services/print-service';
-import { getStockStatus, StockStatus } from '@/utils/stockStatus';
+import { getGRNStockStatus, type GRNStockStatus } from '@/features/grn/utils/grnStockStatus';
+import { StatusTag, Avatar } from '@/components/ui';
 import { createLogger } from '@/utils/logger';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
-import { iconSize, type ThemeTokens } from '@/theme/tokens';
+import { iconSize } from '@/theme/tokens';
 
 // Filter configuration
 import { GRN_FILTER_CONFIG } from '@/config/filterConfigs';
@@ -67,47 +67,27 @@ import { GRN_FILTER_CONFIG } from '@/config/filterConfigs';
 import { makeGRNListStyles, type GRNListStyles } from './GRNListFiori.styles';
 
 // Shared formatters
-import { formatSectionDate, formatNumber } from '@/utils/formatters';
+import { formatSectionDate, formatNumber, formatCount, formatDate, formatWeight } from '@/utils/formatters';
 
+import { Fab } from '@/components/ui/Fab';
+import { SortBar, type SortOption } from '@/components/list/SortBar';
 const logger = createLogger('GRNListFiori');
 
 // Sort configuration
 type SortField = 'grNo' | 'date';
 type SortOrder = 'asc' | 'desc';
 
-const SORT_OPTIONS: Array<{ field: SortField; label: string; a11y: string; icon: string }> = [
+const SORT_OPTIONS: SortOption<SortField>[] = [
   { field: 'grNo', label: 'GRN no.', a11y: 'GRN number', icon: 'numeric' },
   { field: 'date', label: 'Date', a11y: 'date', icon: 'calendar-outline' },
 ];
 
-/** Status icons from the style guide (3.5). */
-const STATUS_ICON: Record<StockStatus, string> = {
-  positive: 'check-circle',
-  critical: 'alert',
-  negative: 'alert-circle',
-  neutral: 'circle-outline',
-};
+/** Status when nothing was received (no quantity to judge stock against). */
+const NO_QUANTITY_STATUS: GRNStockStatus = { status: 'neutral', label: 'No quantity', icon: 'circle-outline' };
 
-/** Status tokens for a stock status. */
-const statusTokens = (t: ThemeTokens, status: StockStatus) => t.status[status];
-
-/** "1 item", "12 items" (guide 12.3). */
-const pluralize = (count: number, singular: string, plural: string) =>
-  `${formatNumber(count)} ${count === 1 ? singular : plural}`;
-
-/** "9 Oct 2026" (guide 12.3). */
-const formatDisplayDate = (date: string) => {
-  const d = new Date(date);
-  if (isNaN(d.getTime())) return '';
-  return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
-};
-
-/** Stable avatar colour index from a string (guide 3.2). */
-const avatarIndex = (key: string, count: number) => {
-  let hash = 0;
-  for (let i = 0; i < key.length; i += 1) hash = (hash * 31 + key.charCodeAt(i)) | 0;
-  return Math.abs(hash) % count;
-};
+/** Stock status of a GRN or item: fully dispatched is neutral, then the app low-stock rule. */
+const stockStatusFor = (stock: number, qty: number): GRNStockStatus =>
+  getGRNStockStatus(stock, qty) ?? NO_QUANTITY_STATUS;
 
 // Type for grouped GRN data
 interface GRNGroupData {
@@ -118,24 +98,6 @@ interface GRNGroupData {
   customerName: string;
   items: GRNItem[];
 }
-
-// ============================================================================
-// STATUS TAG
-// ============================================================================
-const StatusTag = memo<{ status: StockStatus; label: string; styles: GRNListStyles }>(({ status, label, styles }) => {
-  const t = useTokens();
-  const s = statusTokens(t, status);
-  return (
-    <View style={[styles.statusTag, { backgroundColor: s.background }]}>
-      <Icon name={STATUS_ICON[status]} size={iconSize.sm} color={s.text} />
-      <Text style={[styles.statusTagText, { color: s.text }]} maxFontSizeMultiplier={1.6}>
-        {label}
-      </Text>
-    </View>
-  );
-});
-
-StatusTag.displayName = 'StatusTag';
 
 // ============================================================================
 // SKELETON CARD
@@ -229,14 +191,12 @@ const GRNCardFiori = memo<GRNCardProps>(({
   const totalStock = group.items.reduce((sum, item) => sum + (item.stock || 0), 0);
 
   // Fiori semantic status for the whole GRN
-  const stockStatus = getStockStatus(totalStock, totalQty);
-  const status = statusTokens(t, stockStatus.status);
-  const displayDate = formatDisplayDate(group.date);
-  const itemCountLabel = pluralize(group.items.length, 'item', 'items');
-  const weightLabel = `${formatNumber(Math.round(totalWeight))} kg`;
+  const stockStatus = stockStatusFor(totalStock, totalQty);
+  const displayDate = formatDate(group.date, 'short');
+  const itemCountLabel = formatCount(group.items.length, 'item');
+  const weightLabel = formatWeight(Math.round(totalWeight));
 
   const handleSwipeAction = (action: 'view' | 'edit' | 'print') => {
-    Vibration.vibrate(10);
     swipeableRef.current?.close();
     if (action === 'view') onViewDetails(group);
     else if (action === 'edit') onEdit(group);
@@ -304,9 +264,9 @@ const GRNCardFiori = memo<GRNCardProps>(({
             ].filter(Boolean).join(', ')}
             accessibilityHint="Opens the GRN. Swipe left for more actions."
           >
-            {/* Status icon */}
-            <View style={[styles.statusIconContainer, { backgroundColor: status.background }]}>
-              <Icon name={stockStatus.icon} size={iconSize.md} color={status.text} />
+            {/* Object icon (§13.6): the GRN glyph; stock status is the tag on the right */}
+            <View style={styles.statusIconContainer}>
+              <Icon name="package-down" size={iconSize.md} color={t.brand.tint} />
             </View>
 
             {/* Main content */}
@@ -339,7 +299,7 @@ const GRNCardFiori = memo<GRNCardProps>(({
             <View style={styles.attributeStack}>
               <Text style={styles.stockValueText}>{formatNumber(totalStock)}</Text>
               <Text style={styles.stockLabel}>in stock</Text>
-              <StatusTag status={stockStatus.status} label={stockStatus.label} styles={styles} />
+              <StatusTag status={stockStatus.status} label={stockStatus.label} icon={stockStatus.icon} />
               <Text style={styles.weightText}>{weightLabel}</Text>
             </View>
           </Pressable>
@@ -355,8 +315,7 @@ const GRNCardFiori = memo<GRNCardProps>(({
               </View>
 
               {group.items.map((item, idx) => {
-                const itemStatus = getStockStatus(item.stock, item.qty);
-                const itemTokens = statusTokens(t, itemStatus.status);
+                const itemStatus = stockStatusFor(item.stock, item.qty);
                 return (
                   <View
                     key={`${item.id}-${idx}`}
@@ -365,8 +324,8 @@ const GRNCardFiori = memo<GRNCardProps>(({
                     accessibilityLabel={[
                       item.item_name,
                       item.package_mark,
-                      pluralize(item.qty || 0, 'bag', 'bags'),
-                      `${formatNumber(Math.round(item.weight || 0))} kg`,
+                      formatCount(item.qty || 0, 'bag'),
+                      formatWeight(Math.round(item.weight || 0)),
                       `${formatNumber(item.stock || 0)} in stock, ${itemStatus.label}`,
                     ].filter(Boolean).join(', ')}
                   >
@@ -381,15 +340,7 @@ const GRNCardFiori = memo<GRNCardProps>(({
                       {formatNumber(Math.round(item.weight || 0))}
                     </Text>
                     <View style={[styles.tableCell, styles.colStock]}>
-                      <View style={[styles.statusTag, { backgroundColor: itemTokens.background }]}>
-                        <Icon name={STATUS_ICON[itemStatus.status]} size={iconSize.sm} color={itemTokens.text} />
-                        <Text
-                          style={[styles.statusTagText, { color: itemTokens.text, fontVariant: ['tabular-nums'] }]}
-                          maxFontSizeMultiplier={1.6}
-                        >
-                          {formatNumber(item.stock)}
-                        </Text>
-                      </View>
+                      <StatusTag status={itemStatus.status} label={formatNumber(item.stock)} icon={itemStatus.icon} />
                     </View>
                   </View>
                 );
@@ -402,7 +353,6 @@ const GRNCardFiori = memo<GRNCardProps>(({
             <Pressable
               onPress={(e) => {
                 e.stopPropagation();
-                Vibration.vibrate(5);
                 LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
                 setIsExpanded(prev => !prev);
               }}
@@ -439,9 +389,6 @@ interface FilterChipsProps {
   clearAllFilters: () => void;
   styles: GRNListStyles;
 }
-
-const formatChipDate = (date: string) =>
-  new Date(date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 
 const FilterChips: React.FC<FilterChipsProps> = memo(({
   filters,
@@ -540,8 +487,8 @@ const FilterChips: React.FC<FilterChipsProps> = memo(({
 
   // Date range chip
   if (filters.dateFrom || filters.dateTo) {
-    const fromDate = filters.dateFrom ? formatChipDate(filters.dateFrom) : null;
-    const toDate = filters.dateTo ? formatChipDate(filters.dateTo) : null;
+    const fromDate = filters.dateFrom ? formatDate(filters.dateFrom) : null;
+    const toDate = filters.dateTo ? formatDate(filters.dateTo) : null;
     chips.push({
       key: 'date-range',
       label: fromDate && toDate ? `${fromDate} to ${toDate}` : fromDate ? `From ${fromDate}` : `Until ${toDate}`,
@@ -559,7 +506,7 @@ const FilterChips: React.FC<FilterChipsProps> = memo(({
         <View style={styles.filterCountBadge}>
           <Icon name="filter-variant" size={iconSize.sm} color={t.icon.secondary} />
           <Text style={styles.filterCountText}>
-            {activeFilterCount === 1 ? '1 filter applied' : `${activeFilterCount} filters applied`}
+            {`${formatCount(activeFilterCount, 'filter')} applied`}
           </Text>
         </View>
         <Pressable
@@ -632,7 +579,7 @@ const EmptyState: React.FC<EmptyStateProps> = memo(({ activeFilterCount, onCreat
           Clear filters
         </Button>
       ) : canCreate ? (
-        <Button type="primary" variant="tint" leftIcon="add" onPress={onCreateGRN}>
+        <Button type="primary" variant="tint" leftIcon="plus" onPress={onCreateGRN}>
           Create GRN
         </Button>
       ) : null}
@@ -846,7 +793,6 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({
       logger.error('Cannot navigate: grnId is undefined', group);
       return;
     }
-    Vibration.vibrate(10);
     router.push(`/grn-details/${group.grnId}`);
   }, []);
 
@@ -861,7 +807,6 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({
   }, []);
 
   const handleCreateGRN = useCallback(() => {
-    Vibration.vibrate(10);
     router.push('/grn-form/step1');
   }, []);
 
@@ -904,7 +849,6 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({
 
   // Toggle expand/collapse all cards
   const handleToggleAllExpanded = useCallback(() => {
-    Vibration.vibrate(5);
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setAllExpanded(prev => !prev);
     setExpandKey(prev => prev + 1);
@@ -1010,7 +954,7 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({
           style={styles.sectionHeader}
           accessible
           accessibilityRole="header"
-          accessibilityLabel={`${item.title}, ${pluralize(item.count, 'GRN', 'GRNs')}`}
+          accessibilityLabel={`${item.title}, ${formatCount(item.count, 'GRN')}`}
         >
           <Text style={styles.sectionTitle}>{item.title}</Text>
           <View style={styles.sectionBadge}>
@@ -1046,7 +990,6 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({
   }, [loadingMore, styles, t]);
 
   const userName = userProfile?.name || 'User';
-  const avatarColor = t.avatar[avatarIndex(userName, t.avatar.length)];
 
   const renderHeader = (interactive: boolean) => (
     <View style={styles.header}>
@@ -1075,11 +1018,7 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({
           accessibilityRole="button"
           accessibilityLabel="Open settings"
         >
-          <View style={[styles.avatar, { backgroundColor: avatarColor }]}>
-            <Text style={styles.avatarText} maxFontSizeMultiplier={1.6}>
-              {userName.charAt(0).toUpperCase()}
-            </Text>
-          </View>
+          <Avatar name={userName} id={userProfile?.id} size="sm" />
         </Pressable>
       </View>
     </View>
@@ -1117,76 +1056,17 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({
         styles={styles}
       />
 
-      {/* Sort row */}
-      <View style={styles.sortRow}>
-        <View style={styles.sortLabel}>
-          <Icon name="sort" size={iconSize.sm} color={t.icon.secondary} />
-          <Text style={styles.sortLabelText}>Sort by</Text>
-        </View>
-        <View style={styles.sortOptions}>
-          {SORT_OPTIONS.map((option) => {
-            const selected = sortBy === option.field;
-            return (
-              <Pressable
-                key={option.field}
-                style={({ pressed }) => [
-                  styles.chip,
-                  pressed && styles.chipPressed,
-                  selected && styles.chipSelected,
-                ]}
-                hitSlop={{ top: 8, bottom: 8 }}
-                onPress={() => {
-                  Vibration.vibrate(5);
-                  if (sortBy === option.field) {
-                    setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc');
-                  } else {
-                    setSortBy(option.field);
-                    setSortOrder('desc');
-                  }
-                }}
-                accessibilityRole="button"
-                accessibilityLabel={
-                  selected
-                    ? `Sort by ${option.a11y}, ${sortOrder === 'desc' ? 'newest first' : 'oldest first'}`
-                    : `Sort by ${option.a11y}`
-                }
-                accessibilityHint={selected ? 'Reverses the order' : undefined}
-                accessibilityState={{ selected }}
-              >
-                <Icon
-                  name={option.icon}
-                  size={iconSize.sm}
-                  color={selected ? t.brand.tint : t.icon.secondary}
-                />
-                <Text style={[styles.chipText, selected && styles.chipTextSelected]} maxFontSizeMultiplier={1.6}>
-                  {option.label}
-                </Text>
-                {selected && (
-                  <Icon
-                    name={sortOrder === 'desc' ? 'arrow-down' : 'arrow-up'}
-                    size={iconSize.sm}
-                    color={t.brand.tint}
-                  />
-                )}
-              </Pressable>
-            );
-          })}
-        </View>
-        {/* Expand all / collapse all: icon button so the sort chips keep one row on phones */}
-        <Pressable
-          style={({ pressed }) => [styles.expandAllBtn, pressed && styles.chipPressed]}
-          onPress={handleToggleAllExpanded}
-          accessibilityRole="button"
-          accessibilityLabel={allExpanded ? 'Collapse all GRNs' : 'Expand all GRNs'}
-          accessibilityState={{ expanded: allExpanded }}
-        >
-          <Icon
-            name={allExpanded ? 'unfold-less-horizontal' : 'unfold-more-horizontal'}
-            size={iconSize.lg}
-            color={t.brand.tint}
-          />
-        </Pressable>
-      </View>
+      {/* Sort bar (guide §14.5) */}
+      <SortBar
+        options={SORT_OPTIONS}
+        field={sortBy}
+        order={sortOrder}
+        onFieldChange={field => { setSortBy(field); setSortOrder('desc'); }}
+        onOrderToggle={() => setSortOrder(prev => (prev === 'desc' ? 'asc' : 'desc'))}
+        expanded={allExpanded}
+        onExpandToggle={handleToggleAllExpanded}
+        itemsLabel="GRNs"
+      />
 
       {/* Main content */}
       {flattenedData.length > 0 ? (
@@ -1224,14 +1104,7 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({
 
       {/* Create GRN (floating action button, guide 14.1) */}
       {canCreateGRN && (
-        <Pressable
-          style={({ pressed }) => [styles.fab, pressed && styles.fabPressed]}
-          onPress={handleCreateGRN}
-          accessibilityRole="button"
-          accessibilityLabel="Create GRN"
-        >
-          <Icon name="plus" size={iconSize.lg} color={t.brand.onFill} />
-        </Pressable>
+        <Fab label="Create GRN" onPress={handleCreateGRN} />
       )}
 
       {/* Filter modal - only render the Portal when visible to avoid Android gesture handler issues */}

@@ -13,13 +13,13 @@ import {
   Text,
   StyleSheet,
   Pressable,
-  Alert,
   LayoutAnimation,
   ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { formatRelativeTime } from '@/utils/formatters';
+import { formatCount, formatNumber, formatRelativeTime } from '@/utils/formatters';
+import { Avatar, StatusTag } from '@/components/ui';
 import { useAppDispatch } from '@/store/hooks';
 import { loadFromOrder } from '@/store/slices/dispatchFormSlice';
 import { convertOrderToDispatchData, canConvertToDispatch } from '@/utils/orderToDispatchConverter';
@@ -37,6 +37,7 @@ import {
   type ThemeTokens,
 } from '@/theme/tokens';
 
+import { showAlert } from '@/utils/alert';
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -48,11 +49,6 @@ export interface CustomerOrderGroupCardProps {
   isExpanded: boolean;
   /** Callback when expand/collapse is toggled */
   onToggleExpand: (orderId: string) => void;
-  /**
-   * @deprecated Ignored. The card reads the semantic tokens itself; kept so
-   * existing callers that still pass their list colours compile.
-   */
-  colors?: unknown;
 }
 
 // ============================================================================
@@ -129,7 +125,7 @@ const CustomerOrderGroupCardContent: React.FC<CustomerOrderGroupCardProps> = ({
     if (__DEV__) console.log('[CustomerOrderGroupCard] Generate Dispatch pressed for order:', orderToDispatch.id);
 
     if (!canDispatch) {
-      Alert.alert(
+      showAlert(
         "Can't create a dispatch",
         'No items in this order have stock available. Each item needs a GRN with stock.',
         [{ text: 'OK' }]
@@ -152,9 +148,9 @@ const CustomerOrderGroupCardContent: React.FC<CustomerOrderGroupCardProps> = ({
         .map(s => `• ${s.item.grn_item?.name || 'Unknown item'}: ${s.reason}`)
         .join('\n');
 
-      Alert.alert(
+      showAlert(
         'Some items will be skipped',
-        `These items can't be dispatched:\n\n${skippedNames}\n\nCreate a dispatch with ${items.length} ${items.length === 1 ? 'item' : 'items'}?`,
+        `These items can't be dispatched:\n\n${skippedNames}\n\nCreate a dispatch with ${formatCount(items.length, 'item')}?`,
         [
           { text: 'Cancel', style: 'cancel' },
           {
@@ -187,7 +183,9 @@ const CustomerOrderGroupCardContent: React.FC<CustomerOrderGroupCardProps> = ({
   }, [order.customer_id, router]);
 
   const customerName = order.customer?.name || 'Unknown customer';
-  const avatarColor = t.avatar[avatarIndex(order.customer_id || order.id, t.avatar.length)];
+  // Same wording as the order rows: "3 items · 45 units".
+  const itemsLabel = formatCount(itemCount, 'item');
+  const unitsLabel = formatCount(totalQty, 'unit');
 
   return (
     <View style={styles.card}>
@@ -196,13 +194,11 @@ const CustomerOrderGroupCardContent: React.FC<CustomerOrderGroupCardProps> = ({
         onPress={handleToggle}
         style={({ pressed }) => [styles.header, pressed && styles.headerPressed]}
         accessibilityRole="button"
-        accessibilityLabel={`${customerName}, ${formatCount(itemCount, 'item')}, quantity ${totalQty}, open`}
+        accessibilityLabel={`${customerName}, ${itemsLabel}, ${unitsLabel}, open`}
         accessibilityState={{ expanded: isExpanded }}
       >
         {/* Customer Avatar */}
-        <View style={[styles.avatar, { backgroundColor: avatarColor }]}>
-          <Text style={styles.avatarText}>{customerName.charAt(0).toUpperCase()}</Text>
-        </View>
+        <Avatar name={customerName} id={order.customer_id || order.id} />
 
         {/* Customer Info */}
         <View style={styles.customerInfo}>
@@ -211,20 +207,15 @@ const CustomerOrderGroupCardContent: React.FC<CustomerOrderGroupCardProps> = ({
           </Text>
           <View style={styles.metaRow}>
             <Icon name="package-variant" size={iconSize.sm} color={t.icon.secondary} />
-            <Text style={styles.metaText}>{formatCount(itemCount, 'item')}</Text>
+            <Text style={styles.metaText}>{itemsLabel}</Text>
             <Text style={styles.metaText}>·</Text>
-            <Text style={styles.metaText}>Qty {numberFormat.format(totalQty)}</Text>
+            <Text style={styles.metaText}>{unitsLabel}</Text>
           </View>
         </View>
 
         {/* Status Tag + Chevron */}
         <View style={styles.rightSection}>
-          <View style={styles.statusBadge}>
-            <Icon name="circle-outline" size={iconSize.sm - 4} color={t.status.neutral.text} />
-            <Text style={styles.statusText} maxFontSizeMultiplier={1.6}>
-              Open
-            </Text>
-          </View>
+          <StatusTag status="neutral" label="Open" />
           <Icon
             name={isExpanded ? 'chevron-up' : 'chevron-down'}
             size={iconSize.lg}
@@ -283,13 +274,13 @@ const CustomerOrderGroupCardContent: React.FC<CustomerOrderGroupCardProps> = ({
                         <Icon name="alert" size={iconSize.sm} color={t.status.critical.text} />
                       )}
                       <Text style={[styles.stockValue, !hasEnoughStock && styles.stockValueLow]}>
-                        {numberFormat.format(currentStock)}
+                        {formatNumber(currentStock)}
                       </Text>
                     </View>
 
                     {/* Quantity Column */}
                     <View style={[styles.tableCell, styles.colQty]}>
-                      <Text style={styles.qtyText}>{numberFormat.format(requestedQty)}</Text>
+                      <Text style={styles.qtyText}>{formatNumber(requestedQty)}</Text>
                     </View>
                   </View>
                 );
@@ -365,26 +356,6 @@ const CustomerOrderGroupCardContent: React.FC<CustomerOrderGroupCardProps> = ({
 };
 
 // ============================================================================
-// HELPERS
-// ============================================================================
-
-const numberFormat = new Intl.NumberFormat('en-IN');
-
-/** "1 item", "3 items". */
-function formatCount(n: number, noun: string): string {
-  return `${numberFormat.format(n)} ${noun}${n === 1 ? '' : 's'}`;
-}
-
-/** Stable avatar colour index for an id (style guide §3.2). */
-function avatarIndex(id: string, count: number): number {
-  let hash = 0;
-  for (let i = 0; i < id.length; i++) {
-    hash = (hash * 31 + id.charCodeAt(i)) | 0;
-  }
-  return Math.abs(hash) % count;
-}
-
-// ============================================================================
 // MEMOIZATION
 // ============================================================================
 
@@ -427,17 +398,6 @@ const makeStyles = (t: ThemeTokens) => ({
   headerPressed: {
     backgroundColor: t.surface.cardPressed,
   },
-  avatar: {
-    width: layout.avatar.md,
-    height: layout.avatar.md,
-    borderRadius: radius.pill,
-    justifyContent: 'center' as const,
-    alignItems: 'center' as const,
-  },
-  avatarText: {
-    ...typography.headline,
-    color: t.mode === 'light' ? t.text.primary : t.overlay.onImage,
-  },
   customerInfo: {
     flex: 1,
     gap: space.xxs,
@@ -461,20 +421,6 @@ const makeStyles = (t: ThemeTokens) => ({
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
     gap: space.sm,
-  },
-  statusBadge: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: space.xs,
-    paddingHorizontal: space.s6,
-    paddingVertical: space.xxs,
-    borderRadius: radius.field,
-    backgroundColor: t.status.neutral.background,
-  },
-  statusText: {
-    ...typography.caption1,
-    fontWeight: fontWeight.semibold,
-    color: t.status.neutral.text,
   },
   expandedContent: {
     borderTopWidth: StyleSheet.hairlineWidth,

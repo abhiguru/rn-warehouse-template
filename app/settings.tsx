@@ -12,7 +12,6 @@ import {
   StyleSheet,
   Pressable,
   ScrollView,
-  Alert,
   Modal,
   ActivityIndicator,
   TextInput,
@@ -24,6 +23,7 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useAppSelector, useAppDispatch } from '@/store/hooks';
 import { logout, deleteAccount } from '@/store/slices/authSlice';
 import { useTheme, useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
 import {
   BRANDS,
   BRAND_LABELS,
@@ -39,6 +39,8 @@ import {
 } from '@/theme/tokens';
 import { ThemePreference } from '@/store/slices/themeSlice';
 
+import { showAlert } from '@/utils/alert';
+import { Avatar } from '@/components/ui';
 const THEME_OPTIONS: {
   value: ThemePreference;
   label: string;
@@ -86,7 +88,7 @@ const SettingsScreen: React.FC = () => {
       await dispatch(logout()).unwrap();
       router.replace('/login');
     } catch {
-      Alert.alert("Couldn't sign out", 'Check your connection and try again.');
+      showAlert("Couldn't sign out", 'Check your connection and try again.');
       setShowLogoutModal(false);
     } finally {
       setLoggingOut(false);
@@ -191,15 +193,7 @@ const SettingsScreen: React.FC = () => {
 
       {/* Fiori Navigation Bar */}
       <View style={styles.navigationBar}>
-        <Pressable
-          style={styles.navBackButton}
-          onPress={() => router.back()}
-          accessibilityRole="button"
-          accessibilityLabel="Back"
-        >
-          <Icon name="chevron-left" size={iconSize.xl} color={tokens.brand.tint} />
-          <Text style={styles.navBackText}>Back</Text>
-        </Pressable>
+        <HeaderBackButton style={styles.navBackButton} />
         <Text style={styles.navTitle} accessibilityRole="header">
           Settings
         </Text>
@@ -219,11 +213,7 @@ const SettingsScreen: React.FC = () => {
           accessibilityLabel={`${userProfile?.name || 'User'}, ${roleLabel}`}
           accessibilityHint="Opens your profile"
         >
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>
-              {(userProfile?.name || 'U').charAt(0).toUpperCase()}
-            </Text>
-          </View>
+          <Avatar name={userProfile?.name || 'User'} id={userProfile?.id} size="lg" />
           <View style={styles.profileInfo}>
             <Text style={styles.profileName}>{userProfile?.name || 'User'}</Text>
             <Text style={styles.profileRole}>{roleLabel}</Text>
@@ -705,15 +695,7 @@ const makeStyles = (t: ThemeTokens) => ({
     borderBottomColor: t.border.divider,
   },
   navBackButton: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    minHeight: touchTarget,
-    paddingRight: space.lg,
     minWidth: 80,
-  },
-  navBackText: {
-    ...typography.body,
-    color: t.brand.tint,
   },
   navTitle: {
     ...typography.headline,
@@ -737,18 +719,6 @@ const makeStyles = (t: ThemeTokens) => ({
     padding: space.lg,
     borderRadius: radius.card,
     backgroundColor: t.surface.card,
-  },
-  avatar: {
-    width: layout.avatar.lg,
-    height: layout.avatar.lg,
-    borderRadius: radius.pill,
-    justifyContent: 'center' as const,
-    alignItems: 'center' as const,
-    backgroundColor: t.brand.fill,
-  },
-  avatarText: {
-    ...typography.title2,
-    color: t.brand.onFill,
   },
   profileInfo: {
     flex: 1,

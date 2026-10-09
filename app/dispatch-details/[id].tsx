@@ -13,7 +13,7 @@
  */
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { View, Alert, Text, Platform, Pressable } from 'react-native';
+import { View, Text, Platform, Pressable } from 'react-native';
 import { DetailSkeleton } from '@/components/skeletons';
 import { isAbortError } from '@/hooks/useAbortableFetch';
 import { useLocalSearchParams, router, Stack } from 'expo-router';
@@ -21,6 +21,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
 import { iconSize, radius, space, touchTarget, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
@@ -51,6 +52,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { withNativeHandoff } from '@/config/nativeHandoff';
 import { uploadDispatchImage } from '@/features/dispatch/services/dispatchImageService';
 
+import { showAlert } from '@/utils/alert';
 // ============================================================================
 // STYLES (docs/STYLE_GUIDE.md §14.2 object page)
 // ============================================================================
@@ -118,18 +120,6 @@ const makeStyles = (t: ThemeTokens) => ({
   tertiaryButtonText: {
     ...typography.callout,
     color: t.brand.tint,
-  },
-  backButton: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    minHeight: touchTarget,
-    paddingRight: space.sm,
-    marginLeft: -space.sm,
-  },
-  backButtonText: {
-    ...typography.body,
-    color: t.brand.tint,
-    marginLeft: -space.xs,
   },
   headerTitle: {
     ...typography.headline,
@@ -276,7 +266,7 @@ function DispatchDetailScreen() {
       const result = await deleteDispatch(id, userProfile.id);
 
       if (result.success) {
-        Alert.alert(
+        showAlert(
           'Dispatch deleted',
           data?.dispatch.disp_no ? `Dispatch ${data.dispatch.disp_no} is deleted.` : 'The dispatch is deleted.',
           [
@@ -292,18 +282,18 @@ function DispatchDetailScreen() {
       } else {
         // Handle invoice blocking case specially
         if (result.blockingReason === 'invoices_exist') {
-          Alert.alert(
+          showAlert(
             "Can't delete dispatch",
             `${result.error}\n\n${result.instructions || 'Delete its invoices first, then try again.'}`,
             [{ text: 'Close' }]
           );
         } else {
-          Alert.alert("Couldn't delete dispatch", result.error || result.message || 'Try again.');
+          showAlert("Couldn't delete dispatch", result.error || result.message || 'Try again.');
         }
       }
     } catch (error) {
       console.error('[DispatchDetailScreen] Error deleting dispatch:', error);
-      Alert.alert("Couldn't delete dispatch", 'Check your connection and try again.');
+      showAlert("Couldn't delete dispatch", 'Check your connection and try again.');
     }
   };
 
@@ -319,7 +309,7 @@ function DispatchDetailScreen() {
       const pdfResult = await generateDispatchPDF(data.dispatch.disp_no);
 
       if (!pdfResult.success || !pdfResult.pdfUrl) {
-        Alert.alert("Couldn't create the PDF", 'Check your connection and try again.');
+        showAlert("Couldn't create the PDF", 'Check your connection and try again.');
         return;
       }
 
@@ -332,11 +322,11 @@ function DispatchDetailScreen() {
       );
 
       if (!shareResult.success) {
-        Alert.alert("Couldn't share the PDF", 'Try again.');
+        showAlert("Couldn't share the PDF", 'Try again.');
       }
     } catch (error) {
       console.error('[DispatchDetailScreen] Share PDF error:', error);
-      Alert.alert("Couldn't share the PDF", 'Try again.');
+      showAlert("Couldn't share the PDF", 'Try again.');
     } finally {
       setIsShareLoading(false);
     }
@@ -545,16 +535,7 @@ function DispatchDetailScreen() {
           headerTitleAlign: 'center',
           // Custom back button to ensure it always works
           headerLeft: () => (
-            <Pressable
-              onPress={() => router.back()}
-              style={styles.backButton}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              accessibilityRole="button"
-              accessibilityLabel="Go back"
-            >
-              <Icon name="chevron-left" size={iconSize.lg + 4} color={t.brand.tint} />
-              <Text style={styles.backButtonText}>Back</Text>
-            </Pressable>
+            <HeaderBackButton />
           ),
           headerTitle: () => (
             <Text style={styles.headerTitle} numberOfLines={1} accessibilityRole="header">

@@ -10,6 +10,7 @@ import {
   InvoiceHeaderData,
 } from '@/types/invoice.types';
 
+import { toLocalISODate } from '@/utils/formatters';
 /**
  * Get the next available invoice number
  * Uses optimized get_next_invoice_number RPC that returns formatted string (e.g., "I0000554")
@@ -548,7 +549,7 @@ export const loadInvoiceData = async (
       customer_name: header.customer_name || '',
       gr_id: header.gr_id || '',
       gr_no: header.gr_no || '',
-      inv_date: header.inv_date ? header.inv_date.split('T')[0] : new Date().toISOString().split('T')[0],
+      inv_date: header.inv_date ? header.inv_date.split('T')[0] : toLocalISODate(new Date()),
       inv_fin_year: finYear,
       inv_no: typeof header.inv_no === 'string' ? parseInt(header.inv_no.replace(/\D/g, ''), 10) || 0 : header.inv_no || 0,
       one_time_charge: Boolean(header.one_time_charge),

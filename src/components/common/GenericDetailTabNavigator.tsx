@@ -13,16 +13,20 @@ import {
   Text,
   StyleSheet,
   Pressable,
-  Vibration,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize as iconSizes, radius, space, touchTarget, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
+import { formatCount } from '@/utils/formatters';
 
 /** Default tab glyph size. */
 const DEFAULT_TAB_ICON_SIZE = iconSizes.md;
-/** Count badge minimum size (style guide 13.5). */
+/**
+ * Count badge minimum size (style guide 13.5). The tab badge is a plain count
+ * (how many records the tab holds), so it uses brand.fill / brand.onFill.
+ * "Needs action" counts use destructive.fill / destructive.onFill instead.
+ */
 const BADGE_SIZE = 18;
 
 // ============================================================================
@@ -80,9 +84,9 @@ export function GenericDetailTabNavigator<T extends string>({
   const t = useTokens();
   const dynamicStyles = useThemedStyles(makeStyles);
 
+  // No haptic on tab change: haptics are only for saves and toggles (§9).
   const handleTabPress = (tabKey: T) => {
     if (tabKey !== activeTab) {
-      Vibration.vibrate(10);
       onTabChange(tabKey);
     }
   };
@@ -118,7 +122,7 @@ export function GenericDetailTabNavigator<T extends string>({
               accessibilityRole="tab"
               accessibilityState={{ selected: isActive }}
               accessibilityLabel={`${tab.label}${
-                tab.badgeCount ? `, ${tab.badgeCount} ${tab.badgeCount === 1 ? 'item' : 'items'}` : ''
+                tab.badgeCount ? `, ${formatCount(tab.badgeCount, 'item')}` : ''
               }`}
             >
               <View style={styles.iconContainer}>

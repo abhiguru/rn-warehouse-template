@@ -13,11 +13,11 @@
 import React from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { formatNumber, formatRelativeTime } from '@/utils/formatters';
+import { formatCount, formatRelativeTime } from '@/utils/formatters';
+import { StatusTag, type StatusKind, Avatar } from '@/components/ui';
 import type { Order } from '@/types/order.types';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import {
-  fontWeight,
   iconSize,
   layout,
   radius,
@@ -39,20 +39,6 @@ export interface MemoizedOrderItemProps {
   onViewDetails?: (order: Order) => void;
   /** Callback for convert to dispatch action */
   onConvertToDispatch?: (order: Order) => void;
-  /**
-   * @deprecated Colours come from the theme tokens; kept so existing callers
-   * still compile. Ignored.
-   */
-  colors?: unknown;
-}
-
-type StatusKind = 'positive' | 'neutral';
-
-/** Stable avatar colour index for a customer (style guide §3.2). */
-function avatarIndex(key: string, count: number): number {
-  let hash = 0;
-  for (let i = 0; i < key.length; i++) hash = (hash * 31 + key.charCodeAt(i)) | 0;
-  return Math.abs(hash) % count;
 }
 
 // ============================================================================
@@ -70,32 +56,21 @@ const OrderItemContent: React.FC<MemoizedOrderItemProps> = ({
   const totalQty = order.quantity_sum ?? order.total_quantity ?? 0;
   const hasItems = itemCount > 0;
 
-  // Customer initials for avatar
   const customerName = order.customer?.name || 'Unknown';
-  const initials = customerName
-    .split(' ')
-    .map(word => word.charAt(0))
-    .join('')
-    .substring(0, 2)
-    .toUpperCase();
 
   // Check if order is dispatched
   const isDispatched = (order.status || '').toUpperCase() === 'DISPATCHED';
 
   // Status per style guide §3.5: dispatched orders are positive, open ones neutral.
-  const statusConfig: { kind: StatusKind; icon: string; label: string } = isDispatched
-    ? { kind: 'positive', icon: 'check-circle', label: 'Dispatched' }
+  const statusConfig: { kind: StatusKind; label: string } = isDispatched
+    ? { kind: 'positive', label: 'Dispatched' }
     : hasItems
-      ? { kind: 'neutral', icon: 'circle-outline', label: 'Open' }
-      : { kind: 'neutral', icon: 'circle-outline', label: 'Empty' };
-  const status = t.status[statusConfig.kind];
+      ? { kind: 'neutral', label: 'Open' }
+      : { kind: 'neutral', label: 'Empty' };
 
-  // Avatar colour from a stable hash of the customer (style guide §3.2)
-  const avatarBackground = t.avatar[avatarIndex(order.customer_id || customerName, t.avatar.length)];
-
-  // Build subtitle: "3 items • 45 units" or "No items"
+  // Build subtitle: "3 items · 45 units" (the unit differs per item, so "units") or "No items yet"
   const subtitle = hasItems
-    ? `${formatNumber(itemCount)} item${itemCount !== 1 ? 's' : ''} · ${formatNumber(totalQty)} unit${totalQty !== 1 ? 's' : ''}`
+    ? `${formatCount(itemCount, 'item')} · ${formatCount(totalQty, 'unit')}`
     : 'No items yet';
 
   // Build footnote: "Mumbai · 2h ago" or just "2h ago"
@@ -123,11 +98,7 @@ const OrderItemContent: React.FC<MemoizedOrderItemProps> = ({
       {/* SAP Fiori Object Cell Layout */}
       <View style={styles.objectCellRow}>
         {/* Detail Image: Customer Avatar (44pt) */}
-        <View style={[styles.avatar, { backgroundColor: avatarBackground }]}>
-          <Text style={styles.avatarText} maxFontSizeMultiplier={1.6}>
-            {initials}
-          </Text>
-        </View>
+        <Avatar name={customerName} id={order.customer_id || null} style={styles.avatar} />
 
         {/* Main Content: Title + Subtitle + Footnote */}
         <View style={styles.mainContent}>
@@ -149,12 +120,7 @@ const OrderItemContent: React.FC<MemoizedOrderItemProps> = ({
 
         {/* Attribute: Status Badge + Chevron */}
         <View style={styles.attributeArea}>
-          <View style={[styles.statusBadge, { backgroundColor: status.background }]}>
-            <Icon name={statusConfig.icon} size={iconSize.sm} color={status.text} />
-            <Text style={[styles.statusBadgeText, { color: status.text }]} maxFontSizeMultiplier={1.6}>
-              {statusConfig.label}
-            </Text>
-          </View>
+          <StatusTag status={statusConfig.kind} label={statusConfig.label} />
           <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />
         </View>
       </View>
@@ -240,17 +206,7 @@ const makeStyles = (t: ThemeTokens) => ({
 
   // Detail Image: Avatar - 44pt circular
   avatar: {
-    width: layout.avatar.md,
-    height: layout.avatar.md,
-    borderRadius: radius.pill,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
     marginRight: space.md,
-  },
-  // Initials: ink on the light avatar palette, white on the dark one (§3.2)
-  avatarText: {
-    ...typography.headline,
-    color: t.mode === 'dark' ? t.overlay.onImage : t.text.primary,
   },
 
   // Main Content - Fiori spec: Title + Subtitle + Footnote
@@ -282,20 +238,6 @@ const makeStyles = (t: ThemeTokens) => ({
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
     gap: space.sm,
-  },
-
-  // Status tag (style guide §13.5)
-  statusBadge: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: space.xs,
-    paddingHorizontal: space.s6,
-    paddingVertical: space.xxs,
-    borderRadius: radius.field,
-  },
-  statusBadgeText: {
-    ...typography.caption1,
-    fontWeight: fontWeight.semibold,
   },
 
   // Description/Note - bottom section inside the card

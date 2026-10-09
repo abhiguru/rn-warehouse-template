@@ -8,7 +8,7 @@
  */
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { View, Alert, Text, Pressable, Platform } from 'react-native';
+import { View, Text, Platform } from 'react-native';
 import { DetailSkeleton } from '@/components/skeletons';
 import { isAbortError } from '@/hooks/useAbortableFetch';
 import { useLocalSearchParams, router, Stack } from 'expo-router';
@@ -47,11 +47,14 @@ import {
   GRNImageData,
 } from '@/components/grn-details';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
-import { iconSize, radius, space, touchTarget, typography } from '@/theme/tokens';
+import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
+import { iconSize, radius, space, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { Button } from '@/components/ui/Button';
 import { deleteGRNImage, uploadGRNImage } from '@/features/grn/services/imageUploadService';
 
+import { showAlert } from '@/utils/alert';
+import { formatCount } from '@/utils/formatters';
 const makeStyles = (t: ThemeTokens) => ({
   container: {
     flex: 1,
@@ -90,22 +93,8 @@ const makeStyles = (t: ThemeTokens) => ({
     gap: space.sm,
   },
   // Header back button
-  backButton: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    minHeight: touchTarget,
-    paddingRight: space.sm,
-    marginLeft: -space.sm,
-    borderRadius: radius.button,
-  },
-  backButtonPressed: {
-    opacity: 0.6,
-  },
-  backButtonText: {
-    ...typography.body,
-    color: t.brand.tint,
-    marginLeft: -space.xs,
-  },
+  // Custom back button (same on every headerless screen): platform glyph,
+  // brand.tint, the word "Back", at least touchTarget in size (§8)
   // Native stack titles accept only font size, weight and colour.
   headerTitle: {
     fontSize: typography.headline.fontSize,
@@ -242,7 +231,7 @@ function GRNDetailScreen() {
   const handleDeleteImage = (image: GRNImageData) => {
     if (imageMutationRef.current) return;
     imageMutationRef.current = true;
-    Alert.alert('Delete this image?', 'The image is removed from the GRN permanently.', [
+    showAlert('Delete this image?', 'The image is removed from the GRN permanently.', [
       { text: 'Cancel', style: 'cancel', onPress: () => { imageMutationRef.current = false; } },
       {
         text: 'Delete image',
@@ -427,7 +416,7 @@ function GRNDetailScreen() {
   // Handle delete GRN
   const handleDeleteGRN = () => {
     const grnLabel = data?.grn?.gr_no ? `GRN ${data.grn.gr_no}` : 'this GRN';
-    Alert.alert(
+    showAlert(
       `Delete ${grnLabel}?`,
       "Its items are removed from stock. This can't be undone.\n\nA GRN with dispatches or invoices can't be deleted.",
       [
@@ -444,10 +433,10 @@ function GRNDetailScreen() {
               if (result.success) {
                 const message = result.message || (data?.grn?.gr_no ? `GRN ${data.grn.gr_no} deleted.` : 'GRN deleted.');
                 const details = result.deleted_counts
-                  ? `\n\nRemoved:\n• ${result.deleted_counts.grn_items} items\n• ${result.deleted_counts.order_items} order items\n• ${result.deleted_counts.stock_movements} stock movements\n• ${result.deleted_counts.images} images`
+                  ? `\n\nRemoved:\n• ${formatCount(result.deleted_counts.grn_items, 'item')}\n• ${formatCount(result.deleted_counts.order_items, 'order item')}\n• ${formatCount(result.deleted_counts.stock_movements, 'stock movement')}\n• ${formatCount(result.deleted_counts.images, 'image')}`
                   : '';
 
-                Alert.alert('GRN deleted', message + details, [
+                showAlert('GRN deleted', message + details, [
                   { text: 'Done', onPress: () => router.back() },
                 ]);
               } else {
@@ -456,9 +445,9 @@ function GRNDetailScreen() {
                 if (result.blocking_dependencies) {
                   const deps = result.blocking_dependencies;
                   if (deps.invoiced_dispatches) {
-                    errorMessage += `\n\n${deps.invoiced_dispatches} dispatch items have been invoiced.`;
+                    errorMessage += `\n\n${formatCount(deps.invoiced_dispatches, 'dispatch item')} invoiced.`;
                   } else if (deps.dispatches) {
-                    errorMessage += `\n\n${deps.dispatches} dispatch items exist.`;
+                    errorMessage += `\n\n${formatCount(deps.dispatches, 'dispatch item')} recorded.`;
                   }
 
                   if (result.instructions) {
@@ -466,11 +455,11 @@ function GRNDetailScreen() {
                   }
                 }
 
-                Alert.alert("Couldn't delete the GRN", errorMessage);
+                showAlert("Couldn't delete the GRN", errorMessage);
               }
             } catch (error) {
               console.error('[GRNDetailScreen] Delete error:', error);
-              Alert.alert(
+              showAlert(
                 "Couldn't delete the GRN",
                 'Check your connection and try again.'
               );
@@ -492,7 +481,7 @@ function GRNDetailScreen() {
       const pdfResult = await generateGRNPDF(data.grn.gr_no);
 
       if (!pdfResult.success || !pdfResult.pdfUrl) {
-        Alert.alert("Couldn't create the PDF", pdfResult.error || 'Try again in a moment.');
+        showAlert("Couldn't create the PDF", pdfResult.error || 'Try again in a moment.');
         return;
       }
 
@@ -504,11 +493,11 @@ function GRNDetailScreen() {
       );
 
       if (!shareResult.success) {
-        Alert.alert("Couldn't share the PDF", shareResult.error || 'Try again in a moment.');
+        showAlert("Couldn't share the PDF", shareResult.error || 'Try again in a moment.');
       }
     } catch (error) {
       console.error('[GRNDetailScreen] Share PDF error:', error);
-      Alert.alert("Couldn't share the PDF", 'Check your connection and try again.');
+      showAlert("Couldn't share the PDF", 'Check your connection and try again.');
     } finally {
       setIsShareLoading(false);
     }
@@ -655,16 +644,7 @@ function GRNDetailScreen() {
           title: `GRN ${grn.gr_no}`,
           // Custom back button so Back always returns, even after a deep link
           headerLeft: () => (
-            <Pressable
-              onPress={() => router.back()}
-              style={({ pressed }) => [styles.backButton, pressed && styles.backButtonPressed]}
-              hitSlop={{ top: space.sm, bottom: space.sm, left: space.sm, right: space.sm }}
-              accessibilityRole="button"
-              accessibilityLabel="Go back"
-            >
-              <Icon name="chevron-left" size={28} color={t.brand.tint} />
-              <Text style={styles.backButtonText}>Back</Text>
-            </Pressable>
+            <HeaderBackButton />
           ),
         }}
       />

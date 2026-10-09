@@ -22,6 +22,7 @@ import {
   type ThemeTokens,
 } from '@/theme/tokens';
 import type { ReportDefinition } from '@/types/report.types';
+import { Avatar } from '@/components/ui';
 
 // Define all available reports
 const CUSTOMER_REPORTS: ReportDefinition[] = [
@@ -126,7 +127,8 @@ const makeStyles = (t: ThemeTokens) =>
       flex: 1,
     },
     headerTitle: {
-      ...typography.title2,
+      // Top-level tab title (guide §13.8): large title on every tab.
+      ...typography.largeTitle,
       color: t.text.primary,
     },
     headerSubtitle: {
@@ -143,19 +145,6 @@ const makeStyles = (t: ThemeTokens) =>
     },
     profileButtonPressed: {
       backgroundColor: t.brand.subtle,
-    },
-    profileAvatar: {
-      width: layout.avatar.sm + space.xs,
-      height: layout.avatar.sm + space.xs,
-      borderRadius: radius.pill,
-      justifyContent: 'center',
-      alignItems: 'center',
-    },
-    profileAvatarText: {
-      ...typography.callout,
-      fontWeight: fontWeight.semibold,
-      // Avatar initials: text.primary on light avatars, overlay.onImage on dark ones (guide §3.2)
-      color: t.mode === 'dark' ? t.overlay.onImage : t.text.primary,
     },
     scrollView: {
       flex: 1,
@@ -215,15 +204,6 @@ const makeStyles = (t: ThemeTokens) =>
   });
 
 type Styles = ReturnType<typeof makeStyles>;
-
-/** Stable avatar colour index for a person (guide §3.2). */
-function avatarIndex(key: string, count: number): number {
-  let hash = 0;
-  for (let i = 0; i < key.length; i++) {
-    hash = (hash * 31 + key.charCodeAt(i)) | 0;
-  }
-  return Math.abs(hash) % count;
-}
 
 interface ReportCardProps {
   report: ReportDefinition;
@@ -324,16 +304,7 @@ export default function ReportsScreen() {
             accessibilityRole="button"
             accessibilityLabel="Profile and settings"
           >
-            <View
-              style={[
-                styles.profileAvatar,
-                { backgroundColor: t.avatar[avatarIndex(userProfile?.id || userProfile?.name || 'U', t.avatar.length)] },
-              ]}
-            >
-              <Text style={styles.profileAvatarText} maxFontSizeMultiplier={1.6}>
-                {(userProfile?.name || 'U').charAt(0).toUpperCase()}
-              </Text>
-            </View>
+            <Avatar name={userProfile?.name} id={userProfile?.id} size="sm" />
           </Pressable>
         </View>
       </View>

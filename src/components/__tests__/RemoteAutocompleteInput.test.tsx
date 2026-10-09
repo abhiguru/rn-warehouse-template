@@ -3,7 +3,7 @@ import { ActivityIndicator, Text, TextInput } from 'react-native';
 import { act, create } from 'react-test-renderer';
 import { RemoteAutocompleteInput } from '../RemoteAutocompleteInput';
 
-jest.mock('@expo/vector-icons', () => ({ Ionicons: 'Ionicons' }));
+jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
   useAppSelector: (selector: (state: unknown) => unknown) =>

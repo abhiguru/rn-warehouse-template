@@ -33,19 +33,12 @@ import type {
   RecentActivityItem,
   ReportPeriod,
 } from '@/types/report.types';
-import { formatNumber, parseLocalISODate } from '@/utils/formatters';
+import { formatDate, formatNumber } from '@/utils/formatters';
 import { createLogger } from '@/utils/logger';
 
 const logger = createLogger('OperationsDashboard');
 
 const LOAD_ERROR = "Couldn't load the operations dashboard. Check your connection and try again.";
-
-/** "9 Oct 2026" (guide §12.3) */
-function formatDay(isoDate: string): string {
-  const date = /^\d{4}-\d{2}-\d{2}$/.test(isoDate) ? parseLocalISODate(isoDate) : new Date(isoDate);
-  if (isNaN(date.getTime())) return '';
-  return date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
-}
 
 const oneDecimal = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 1 });
 
@@ -327,7 +320,7 @@ export default function OperationsDashboardScreen() {
     ];
   }, [data?.kpis]);
 
-  const subtitle = `${formatDay(dateRange.from)} – ${formatDay(dateRange.to)}`;
+  const subtitle = `${formatDate(dateRange.from)} – ${formatDate(dateRange.to)}`;
 
   const refreshControl = (
     <RefreshControl

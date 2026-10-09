@@ -14,7 +14,6 @@ import {
   RefreshControl,
   Pressable,
   ActivityIndicator,
-  Alert,
 } from 'react-native';
 import { Swipeable } from 'react-native-gesture-handler';
 import { useIsFocused } from '@react-navigation/native';
@@ -28,6 +27,7 @@ import {
   DEFAULT_ITEM_FILTERS,
 } from '@/types/item.types';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
 import {
   fontWeight,
   iconSize,
@@ -39,6 +39,9 @@ import {
   type ThemeTokens,
 } from '@/theme/tokens';
 
+import { showAlert } from '@/utils/alert';
+import { Avatar, StatusTag } from '@/components/ui';
+import { formatCount } from '@/utils/formatters';
 // =============================================================================
 // TYPES
 // =============================================================================
@@ -174,7 +177,7 @@ export default function ItemsScreen() {
           }));
         } else {
           // Show error to user
-          Alert.alert(
+          showAlert(
             currentActive ? "Couldn't deactivate the item" : "Couldn't activate the item",
             result.message || 'Try again in a moment.',
             [{ text: 'OK' }]
@@ -182,10 +185,29 @@ export default function ItemsScreen() {
         }
       } catch (error) {
         console.error('[Items] Toggle active error:', error);
-        Alert.alert("Couldn't update the item", 'Check your connection and try again.', [{ text: 'OK' }]);
+        showAlert("Couldn't update the item", 'Check your connection and try again.', [{ text: 'OK' }]);
       }
     },
     []
+  );
+
+  // Deactivating asks first (like customers); activating again happens straight away.
+  const handleToggleActiveRequest = useCallback(
+    (item: ItemListItem) => {
+      if (!item.active) {
+        handleToggleActive(item.id, false);
+        return;
+      }
+      showAlert(`Deactivate ${item.name}?`, undefined, [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Deactivate item',
+          style: 'destructive',
+          onPress: () => handleToggleActive(item.id, true),
+        },
+      ]);
+    },
+    [handleToggleActive]
   );
 
   const handleAddItem = useCallback(() => {
@@ -194,7 +216,7 @@ export default function ItemsScreen() {
 
   const handleDeleteItem = useCallback(
     async (item: ItemListItem) => {
-      Alert.alert(
+      showAlert(
         `Delete ${item.name}?`,
         'The item will be removed from your catalogue.',
         [
@@ -213,31 +235,30 @@ export default function ItemsScreen() {
                     data: prev.data.filter((i) => i.id !== item.id),
                     totalCount: prev.totalCount - 1,
                   }));
-                  Alert.alert('Item deleted', `${item.name} deleted.`);
+                  showAlert('Item deleted', `${item.name} deleted.`);
                 } else {
                   // Check if blocked due to references
                   if (result.references) {
                     const refs = result.references;
-                    const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
                     let message = 'This item is used in:\n\n';
                     if (refs.grn_count > 0) {
-                      message += `• ${plural(refs.grn_count, 'GRN', 'GRNs')}\n`;
+                      message += `• ${formatCount(refs.grn_count, 'GRN')}\n`;
                     }
                     if (refs.dispatch_count > 0) {
-                      message += `• ${plural(refs.dispatch_count, 'dispatch', 'dispatches')}\n`;
+                      message += `• ${formatCount(refs.dispatch_count, 'dispatch', 'dispatches')}\n`;
                     }
                     if (refs.invoice_count > 0) {
-                      message += `• ${plural(refs.invoice_count, 'invoice', 'invoices')}\n`;
+                      message += `• ${formatCount(refs.invoice_count, 'invoice')}\n`;
                     }
                     message += '\nDeactivate the item instead to hide it from searches.';
-                    Alert.alert("Can't delete this item", message);
+                    showAlert("Can't delete this item", message);
                   } else {
-                    Alert.alert("Couldn't delete the item", result.message || 'Try again in a moment.');
+                    showAlert("Couldn't delete the item", result.message || 'Try again in a moment.');
                   }
                 }
               } catch (error) {
                 console.error('[Items] Delete error:', error);
-                Alert.alert("Couldn't delete the item", 'Check your connection and try again.');
+                showAlert("Couldn't delete the item", 'Check your connection and try again.');
               }
             },
           },
@@ -256,11 +277,11 @@ export default function ItemsScreen() {
       <FioriItemCard
         item={item}
         onPress={() => handleEditItem(item.id)}
-        onToggleActive={() => handleToggleActive(item.id, item.active)}
+        onToggleActive={() => handleToggleActiveRequest(item)}
         onDelete={() => handleDeleteItem(item)}
       />
     ),
-    [handleEditItem, handleToggleActive, handleDeleteItem]
+    [handleEditItem, handleToggleActiveRequest, handleDeleteItem]
   );
 
   const keyExtractor = useCallback((item: ItemListItem) => item.id, []);
@@ -337,22 +358,13 @@ export default function ItemsScreen() {
           headerTintColor: t.brand.tint,
           headerTitleAlign: 'center',
           headerLeft: () => (
-            <Pressable
-              onPress={() => router.back()}
-              style={styles.backButton}
-              hitSlop={space.sm}
-              accessibilityRole="button"
-              accessibilityLabel="Back"
-            >
-              <Icon name="chevron-left" size={iconSize.xl} color={t.brand.tint} />
-              <Text style={styles.backButtonText}>Back</Text>
-            </Pressable>
+            <HeaderBackButton />
           ),
           headerTitle: () => (
             <View style={styles.titleContainer} accessible accessibilityRole="header">
               <Text style={styles.headerTitle}>Items</Text>
               {state.totalCount > 0 && (
-                <Text style={styles.headerSubtitle}>{countFormat.format(state.totalCount)} total</Text>
+                <Text style={styles.headerSubtitle}>{formatCount(state.totalCount, 'item')}</Text>
               )}
             </View>
           ),
@@ -400,21 +412,6 @@ export default function ItemsScreen() {
 }
 
 // =============================================================================
-// HELPERS
-// =============================================================================
-
-const countFormat = new Intl.NumberFormat('en-IN');
-
-/** Stable avatar colour index for an id (style guide §3.2). */
-function avatarIndex(id: string, count: number): number {
-  let hash = 0;
-  for (let i = 0; i < id.length; i++) {
-    hash = (hash * 31 + id.charCodeAt(i)) | 0;
-  }
-  return Math.abs(hash) % count;
-}
-
-// =============================================================================
 // FIORI ITEM CARD COMPONENT (Object Cell Layout)
 // =============================================================================
 
@@ -429,7 +426,7 @@ function FioriItemCard({ item, onPress, onToggleActive, onDelete }: FioriItemCar
   const swipeableRef = useRef<Swipeable | null>(null);
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
-  const avatarColor = t.avatar[avatarIndex(item.id, t.avatar.length)];
+  const actionLabel = item.active ? 'Deactivate' : 'Activate';
   const rowLabel = [item.name, item.active ? null : 'Inactive', item.packaging, item.description]
     .filter(Boolean)
     .join(', ');
@@ -439,8 +436,35 @@ function FioriItemCard({ item, onPress, onToggleActive, onDelete }: FioriItemCar
     onDelete();
   };
 
+  const handleToggle = () => {
+    swipeableRef.current?.close();
+    onToggleActive();
+  };
+
   const renderRightActions = () => (
     <View style={styles.swipeActionsContainer}>
+      <Pressable
+        style={({ pressed }) => [
+          styles.swipeAction,
+          item.active ? styles.swipeDeactivate : styles.swipeActivate,
+          pressed && (item.active ? styles.swipeActionPressed : styles.swipeActivatePressed),
+        ]}
+        onPress={handleToggle}
+        accessibilityRole="button"
+        accessibilityLabel={`${actionLabel} ${item.name}`}
+      >
+        <Icon
+          name={item.active ? 'archive-arrow-down-outline' : 'archive-arrow-up-outline'}
+          size={iconSize.lg}
+          color={item.active ? t.destructive.onFill : t.brand.onFill}
+        />
+        <Text
+          style={[styles.swipeActionText, !item.active && styles.swipeActivateText]}
+          maxFontSizeMultiplier={1.4}
+        >
+          {actionLabel}
+        </Text>
+      </Pressable>
       <Pressable
         style={({ pressed }) => [styles.swipeAction, pressed && styles.swipeActionPressed]}
         onPress={handleDelete}
@@ -466,30 +490,25 @@ function FioriItemCard({ item, onPress, onToggleActive, onDelete }: FioriItemCar
         onPress={onPress}
         accessibilityRole="button"
         accessibilityLabel={rowLabel}
-        accessibilityHint="Opens the item for editing. Swipe left to delete."
+        accessibilityHint={`Opens the item for editing. Swipe left to ${actionLabel.toLowerCase()} or delete.`}
+        accessibilityActions={[
+          { name: 'toggleActive', label: actionLabel },
+          { name: 'delete', label: 'Delete' },
+        ]}
+        onAccessibilityAction={(event) => {
+          if (event.nativeEvent.actionName === 'toggleActive') onToggleActive();
+          if (event.nativeEvent.actionName === 'delete') onDelete();
+        }}
       >
         {/* Fiori Object Cell: Leading Avatar */}
-        <View
-          style={[styles.avatar, { backgroundColor: avatarColor }]}
-          accessibilityElementsHidden
-          importantForAccessibility="no-hide-descendants"
-        >
-          <Text style={styles.avatarText}>{(item.name || 'I').charAt(0).toUpperCase()}</Text>
-        </View>
+        <Avatar name={item.name} id={item.id} style={styles.avatar} />
 
         {/* Fiori Object Cell: Main Content */}
         <View style={styles.cardContent}>
           <Text style={[styles.headline, !item.active && styles.textInactive]} numberOfLines={2}>
             {item.name}
           </Text>
-          {!item.active && (
-            <View style={styles.statusBadge}>
-              <Icon name="circle-outline" size={iconSize.sm - 4} color={t.status.neutral.text} />
-              <Text style={styles.statusBadgeText} maxFontSizeMultiplier={1.6}>
-                Inactive
-              </Text>
-            </View>
-          )}
+          {!item.active && <StatusTag status="neutral" label="Inactive" />}
 
           {/* Subheadline - Item Details */}
           <View style={styles.attributeStack}>
@@ -510,22 +529,8 @@ function FioriItemCard({ item, onPress, onToggleActive, onDelete }: FioriItemCar
           </View>
         </View>
 
-        {/* Fiori Object Cell: Trailing Actions */}
-        <View style={styles.trailingActions}>
-          <Pressable
-            style={({ pressed }) => [styles.actionButton, pressed && styles.actionButtonPressed]}
-            onPress={onToggleActive}
-            accessibilityRole="button"
-            accessibilityLabel={item.active ? `Deactivate ${item.name}` : `Activate ${item.name}`}
-          >
-            <Icon
-              name={item.active ? 'eye-off-outline' : 'eye-outline'}
-              size={iconSize.md}
-              color={item.active ? t.icon.primary : t.status.positive.text}
-            />
-          </Pressable>
-          <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />
-        </View>
+        {/* Fiori Object Cell: Chevron */}
+        <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />
       </Pressable>
     </Swipeable>
   );
@@ -549,18 +554,6 @@ const makeStyles = (t: ThemeTokens) => ({
   },
 
   // Header
-  backButton: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    minHeight: touchTarget,
-    paddingRight: space.sm,
-    marginLeft: -space.sm,
-  },
-  backButtonText: {
-    ...typography.body,
-    color: t.brand.tint,
-    marginLeft: -space.xs,
-  },
   titleContainer: {
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
@@ -598,16 +591,7 @@ const makeStyles = (t: ThemeTokens) => ({
     backgroundColor: t.surface.cardPressed,
   },
   avatar: {
-    width: layout.avatar.md,
-    height: layout.avatar.md,
-    borderRadius: radius.pill,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
     marginRight: space.md,
-  },
-  avatarText: {
-    ...typography.headline,
-    color: t.mode === 'light' ? t.text.primary : t.overlay.onImage,
   },
   cardContent: {
     flex: 1,
@@ -621,21 +605,6 @@ const makeStyles = (t: ThemeTokens) => ({
   textInactive: {
     color: t.text.secondary,
   },
-  statusBadge: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    alignSelf: 'flex-start' as const,
-    gap: space.xs,
-    paddingHorizontal: space.s6,
-    paddingVertical: space.xxs,
-    borderRadius: radius.field,
-    backgroundColor: t.status.neutral.background,
-  },
-  statusBadgeText: {
-    ...typography.caption1,
-    fontWeight: fontWeight.semibold,
-    color: t.status.neutral.text,
-  },
   attributeStack: {
     gap: space.xs,
   },
@@ -648,21 +617,6 @@ const makeStyles = (t: ThemeTokens) => ({
     ...typography.subhead,
     color: t.text.secondary,
     flex: 1,
-  },
-  trailingActions: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: space.xs,
-  },
-  actionButton: {
-    width: touchTarget,
-    height: touchTarget,
-    borderRadius: radius.button,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-  },
-  actionButtonPressed: {
-    backgroundColor: t.surface.cardPressed,
   },
 
   // Empty / error / loading states
@@ -744,16 +698,30 @@ const makeStyles = (t: ThemeTokens) => ({
     paddingRight: layout.marginCompact,
     paddingLeft: space.sm,
     marginBottom: space.sm,
+    gap: space.sm,
   },
   swipeAction: {
-    width: 72,
+    minWidth: 72,
     height: '100%' as const,
     minHeight: layout.objectCellMinHeight,
     justifyContent: 'center' as const,
     alignItems: 'center' as const,
+    paddingHorizontal: space.sm,
     borderRadius: radius.card,
     gap: space.xs,
     backgroundColor: t.destructive.fill,
+  },
+  swipeDeactivate: {
+    backgroundColor: t.destructive.fill,
+  },
+  swipeActivate: {
+    backgroundColor: t.brand.fill,
+  },
+  swipeActivatePressed: {
+    backgroundColor: t.brand.fillPressed,
+  },
+  swipeActivateText: {
+    color: t.brand.onFill,
   },
   swipeActionPressed: {
     backgroundColor: t.destructive.fillPressed,

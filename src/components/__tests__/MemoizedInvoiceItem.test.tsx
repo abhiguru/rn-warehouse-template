@@ -59,12 +59,11 @@ it.each<[keyof Invoice, unknown]>([
   expect(invoiceItemPropsAreEqual(props(), props({ [field]: value } as Partial<Invoice>))).toBe(false);
 });
 
-it('re-renders when the customer name, GRN number, callback, print flag or theme changed', () => {
+it('re-renders when the customer name, GRN number, callback or print flag changed', () => {
   expect(invoiceItemPropsAreEqual(props(), props({ customer: { name: 'Other Customer' } } as Partial<Invoice>))).toBe(false);
   expect(invoiceItemPropsAreEqual(props(), props({ grn: { gr_no: 'FXG002' } } as Partial<Invoice>))).toBe(false);
   expect(invoiceItemPropsAreEqual(props(), { ...props(), onPress: jest.fn() })).toBe(false);
   expect(invoiceItemPropsAreEqual(props(), { ...props(), canPrint: false })).toBe(false);
-  expect(invoiceItemPropsAreEqual(props(), { ...props(), colors: {} as MemoizedInvoiceItemProps['colors'] })).toBe(false);
 });
 
 describe.each(BRANDS.flatMap(brand => (['light', 'dark'] as Mode[]).map(mode => [brand, mode] as const)))(

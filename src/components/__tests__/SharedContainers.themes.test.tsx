@@ -28,12 +28,8 @@ import {
   InfoChip,
   NotesSection,
   SectionHeader,
-  FIORI,
 } from '../common/overview-tab';
 import { formatContactPhone } from '../common/overview-tab/ContactCard';
-import { useListColors } from '@/hooks/useListColors';
-import { FIORI_DIMENSIONS, FIORI_TYPOGRAPHY } from '@/constants/fioriDesignTokens';
-import { commonStyles, useCommonStyles } from '@/styles';
 
 type MockState = {
   theme: { preference: string; brand: string };
@@ -322,35 +318,11 @@ describe.each(THEMES)('shared containers in %s %s', (brand, mode) => {
     expect(texts(tree)).toEqual(expect.arrayContaining(['CUSTOMER', '+91 98765 43210', 'Edit GRN', 'Delete GRN']));
     act(() => tree.unmount());
   });
-
-  it('legacy adapters are derived from tokens', () => {
-    let palette: ReturnType<typeof useListColors> | undefined;
-    let common: ReturnType<typeof useCommonStyles> | undefined;
-    function Probe() {
-      palette = useListColors();
-      common = useCommonStyles();
-      return null;
-    }
-    const tree = render(<Probe />);
-    expect(palette!.primary).toBe(t.brand.fill);
-    expect(palette!.cellBackground).toBe(t.surface.card);
-    expect(palette!.textSecondary).toBe(t.text.secondary);
-    expect(flatStyle(common!.screenGray).backgroundColor).toBe(t.background.base);
-    act(() => tree.unmount());
-  });
 });
 
-describe('static legacy exports', () => {
-  it('keep their shapes', () => {
-    expect(FIORI.spacing.lg).toBe(16);
-    expect(FIORI.colors.cardBackground).toBe(getTokens('orange', 'light').surface.card);
-    expect(FIORI_DIMENSIONS.objectCellMinHeight).toBe(72);
-    expect(FIORI_TYPOGRAPHY.caption.fontSize).toBe(12);
-    expect(commonStyles.flex1).toEqual({ flex: 1 });
-  });
-
+describe('value formats', () => {
   it('formats table and phone values per the style guide', () => {
-    expect(formatCellValue(null)).toBe('-');
+    expect(formatCellValue(null)).toBe('—');
     expect(formatCellValue(12.5, 'percent')).toBe('12.5%');
     expect(formatContactPhone('+91 98765-43210')).toBe('+91 98765 43210');
     expect(formatContactPhone('080 1234')).toBe('080 1234');

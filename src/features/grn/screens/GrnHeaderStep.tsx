@@ -5,7 +5,6 @@ import {
   TextInput,
   Pressable,
   Switch,
-  Alert,
   LayoutAnimation,
   Keyboard,
   ActivityIndicator,
@@ -23,10 +22,14 @@ import { useGRNForm } from '@/hooks';
 import { CustomerSearchBottomSheet, CustomerSearchBottomSheetRef } from '@/components/CustomerSearchBottomSheet';
 import { SupervisorBottomSheet } from '@/features/grn/components/SupervisorBottomSheet';
 import { GRNStepIndicator } from '@/components/GRNStepIndicator';
+import WizardBottomBar from '@/components/WizardBottomBar';
+import { formatDate } from '@/utils/formatters';
 import { GRN_STEPS, STEP_NUMBERS, getCompletedSteps } from '@/constants/grnSteps';
 import { GhostTextInput, GhostTextInputRef } from '@/components/GhostTextInput';
 import { getTopVehicleSuggestion } from '@/services/vehicle-suggestion-service';
 
+import { showAlert } from '@/utils/alert';
+import { StatusTag } from '@/components/ui';
 type GrnHeaderStepProps = {
   mode: 'create' | 'edit';
 };
@@ -93,7 +96,7 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
     };
 
     if (hasUnsavedData()) {
-      Alert.alert(
+      showAlert(
         isCreateMode ? 'Discard this GRN?' : 'Discard changes to this GRN?',
         isCreateMode
           ? 'The details you entered will be lost.'
@@ -163,8 +166,10 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
 
   // Navigation - simplified with hook
   const handleNext = async () => {
-    const success = await navigateToStep(2);
-    // navigateToStep handles validation, error alerts, and routing internally
+    Keyboard.dismiss();
+    // navigateToStep validates step 1 (same check as the swipe), shows the
+    // error alert, and routes on success.
+    await navigateToStep(STEP_NUMBERS.ITEMS);
   };
 
   const handleStepIndicatorPress = useCallback(async (stepNumber: number) => {
@@ -390,11 +395,7 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
             </Text>
           </View>
           {(header.note || header.leon) && !showOptionalFields ? (
-            <View style={styles.optionalBadge}>
-              <Text style={styles.optionalBadgeText} maxFontSizeMultiplier={1.6}>
-                Has data
-              </Text>
-            </View>
+            <StatusTag status="neutral" label="Has data" icon={null} />
           ) : null}
         </Pressable>
 
@@ -467,6 +468,12 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
         )}
       </KeyboardAwareScrollView>
 
+      <WizardBottomBar
+        currentStep={STEP_NUMBERS.HEADER}
+        totalSteps={GRN_STEPS.length}
+        onNext={handleNext}
+      />
+
       <DatePickerModal
         locale="en"
         mode="single"
@@ -505,14 +512,9 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
   );
 }
 
-const SHORT_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-
-/** "9 Oct 2026", the style guide date format. */
+/** "9 Oct 2026" (§12.3); today when no date is set yet. */
 function formatHeaderDate(value: string | undefined): string {
-  const date = value ? new Date(value) : new Date();
-  if (isNaN(date.getTime())) return '';
-  // Three-letter months on every engine (en-IN prints "Sept" on some).
-  return `${date.getDate()} ${SHORT_MONTHS[date.getMonth()]} ${date.getFullYear()}`;
+  return formatDate(value || new Date());
 }
 
 const makeStyles = (t: ThemeTokens) => ({
@@ -634,13 +636,6 @@ const makeStyles = (t: ThemeTokens) => ({
   optionalTogglePressed: { backgroundColor: t.brand.subtle },
   optionalToggleLeft: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: space.sm },
   optionalToggleText: { ...typography.callout, color: t.brand.tint },
-  optionalBadge: {
-    paddingHorizontal: space.sm,
-    paddingVertical: space.xxs,
-    borderRadius: radius.field,
-    backgroundColor: t.status.neutral.background,
-  },
-  optionalBadgeText: { ...typography.caption1, fontWeight: fontWeight.semibold, color: t.status.neutral.text },
   warningBanner: {
     flexDirection: 'row' as const,
     alignItems: 'flex-start' as const,

@@ -6,7 +6,6 @@ import {
   Text,
   ScrollView,
   StyleSheet,
-  Alert,
   RefreshControl,
   Pressable,
   TextInput,
@@ -39,6 +38,7 @@ import CustomerOrderSummary from './CustomerOrderSummary';
 import RecentDispatchesSection from './RecentDispatchesSection';
 import { searchService, SearchResult } from '@/services/search-service';
 
+import { showAlert } from '@/utils/alert';
 interface OrderManagementProps {
   customerId?: string;
   onOpenItemCatalog?: () => void;
@@ -85,7 +85,7 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
       const orderResult = await OrderService.getOrCreateOrder(custId);
       
       if (!orderResult.success) {
-        Alert.alert("Couldn't open the order", orderResult.message || 'Check your connection and try again.');
+        showAlert("Couldn't open the order", orderResult.message || 'Check your connection and try again.');
         return;
       }
 
@@ -122,11 +122,11 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
           error: orderDetailsResult.error,
           message: orderDetailsResult.message
         });
-        Alert.alert("Couldn't load the order", 'Check your connection and try again.');
+        showAlert("Couldn't load the order", 'Check your connection and try again.');
       }
     } catch (error) {
       console.error('[OrderManagement] Error initializing order:', error);
-      Alert.alert("Couldn't open the order", 'Check your connection and try again.');
+      showAlert("Couldn't open the order", 'Check your connection and try again.');
     } finally {
       setLoading(false);
     }
@@ -213,11 +213,11 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
         await onRefresh();
         return true;
       }
-      Alert.alert("Couldn't change the quantity", result.message || 'Check your connection and try again.');
+      showAlert("Couldn't change the quantity", result.message || 'Check your connection and try again.');
       return false;
     } catch (error) {
       console.error('[OrderManagement] Update quantity error:', error);
-      Alert.alert("Couldn't change the quantity", 'Check your connection and try again.');
+      showAlert("Couldn't change the quantity", 'Check your connection and try again.');
       return false;
     }
   }, [order, onRefresh]);
@@ -227,7 +227,7 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
     if (!order) return;
 
     const itemName = item.grn_item?.name || 'this item';
-    Alert.alert(
+    showAlert(
       `Remove ${itemName}?`,
       `${itemName} will be taken off this order.`,
       [
@@ -241,11 +241,11 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
               if (result.success) {
                 await onRefresh();
               } else {
-                Alert.alert("Couldn't remove the item", result.message || 'Check your connection and try again.');
+                showAlert("Couldn't remove the item", result.message || 'Check your connection and try again.');
               }
             } catch (error) {
               console.error('[OrderManagement] Remove item error:', error);
-              Alert.alert("Couldn't remove the item", 'Check your connection and try again.');
+              showAlert("Couldn't remove the item", 'Check your connection and try again.');
             }
           }
         }
@@ -326,14 +326,14 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
       }
 
       if (failureCount > 0) {
-        Alert.alert(
+        showAlert(
           "Some items weren't updated",
           'Check the order and try again.'
         );
       }
     } catch (error) {
       console.error('[OrderManagement] Update items error:', error);
-      Alert.alert("Couldn't update the order", 'Check your connection and try again.');
+      showAlert("Couldn't update the order", 'Check your connection and try again.');
     }
   }, [order, onRefresh]);
 
@@ -402,7 +402,7 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
             <Button
               type="primary"
               size="standalone"
-              leftIcon="add"
+              leftIcon="plus"
               onPress={() => setShowItemCatalog(true)}
               accessibilityLabel="Add items to order"
             >

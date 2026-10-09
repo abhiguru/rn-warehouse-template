@@ -7,12 +7,13 @@
  */
 
 import React from 'react';
-import { View, Text, Pressable, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, Pressable, ActivityIndicator } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { iconSize } from '@/theme/tokens';
 import { overviewStyles, useOverviewColors } from './FioriStyles';
 import { SectionHeader } from './SectionHeader';
 
+import { showAlert } from '@/utils/alert';
 interface ActionsSectionProps {
   /** Entity type label for edit/delete buttons (e.g., "GRN", "Dispatch", "Invoice") */
   entityType: string;
@@ -71,7 +72,7 @@ export const ActionsSection: React.FC<ActionsSectionProps> = ({
 
   const handleDeletePress = () => {
     const objectName = entityNumber ? `${entityType} ${entityNumber}` : `this ${entityType}`;
-    Alert.alert(
+    showAlert(
       `Delete ${objectName}?`,
       "It will be removed for everyone. You can't undo this.",
       [

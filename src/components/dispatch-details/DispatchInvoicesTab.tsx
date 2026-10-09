@@ -12,7 +12,7 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, layout, radius, space, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
-import { formatInvoiceAmount } from '@/utils/invoiceCalculations';
+import { formatCount, formatCurrency } from '@/utils/formatters';
 
 // Using snake_case to match backend RPC types
 export interface InvoiceSummary {
@@ -161,7 +161,7 @@ export const DispatchInvoicesTab: React.FC<DispatchInvoicesTabProps> = ({
         <View
           style={styles.summaryCard}
           accessible
-          accessibilityLabel={`${invoiceSummary.total_invoices} ${countLabel.toLowerCase()}`}
+          accessibilityLabel={formatCount(invoiceSummary.total_invoices, 'invoice')}
         >
           <View style={[styles.iconCircle, styles.iconCircleNeutral]}>
             <Icon name="file-document-multiple-outline" size={iconSize.lg} color={t.status.neutral.text} />
@@ -173,12 +173,12 @@ export const DispatchInvoicesTab: React.FC<DispatchInvoicesTabProps> = ({
         <View
           style={styles.summaryCard}
           accessible
-          accessibilityLabel={`Total amount ${formatInvoiceAmount(invoiceSummary.total_amount)}`}
+          accessibilityLabel={`Total amount ${formatCurrency(invoiceSummary.total_amount, { maximumFractionDigits: 0 })}`}
         >
           <View style={[styles.iconCircle, styles.iconCircleBrand]}>
             <Icon name="currency-inr" size={iconSize.lg} color={t.brand.tint} />
           </View>
-          <Text style={styles.summaryValue}>{formatInvoiceAmount(invoiceSummary.total_amount)}</Text>
+          <Text style={styles.summaryValue}>{formatCurrency(invoiceSummary.total_amount, { maximumFractionDigits: 0 })}</Text>
           <Text style={styles.summaryLabel}>Total amount</Text>
         </View>
       </View>

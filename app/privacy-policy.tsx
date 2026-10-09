@@ -6,15 +6,13 @@
  * typography.body in text.primary on a surface.card column.
  */
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
-import { router } from 'expo-router';
+import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
 import {
   fontWeight,
-  iconSize,
   layout,
   radius,
   space,
@@ -91,15 +89,7 @@ export default function PrivacyPolicyScreen() {
 
       {/* Navigation Bar */}
       <View style={styles.navigationBar}>
-        <Pressable
-          style={styles.navBackButton}
-          onPress={() => router.back()}
-          accessibilityRole="button"
-          accessibilityLabel="Back"
-        >
-          <Icon name="chevron-left" size={iconSize.xl} color={t.brand.tint} />
-          <Text style={styles.navBackText}>Back</Text>
-        </Pressable>
+        <HeaderBackButton style={styles.navBackButton} />
         <Text
           style={styles.navTitle}
           accessibilityRole="header"
@@ -402,14 +392,7 @@ const makeStyles = (t: ThemeTokens) => ({
     borderBottomColor: t.border.divider,
   },
   navBackButton: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    minHeight: touchTarget,
     minWidth: 80,
-  },
-  navBackText: {
-    ...typography.body,
-    color: t.brand.tint,
   },
   navTitle: {
     ...typography.headline,

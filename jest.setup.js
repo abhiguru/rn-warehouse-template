@@ -7,3 +7,8 @@ jest.mock('expo-secure-store', () => ({
   getItemAsync: jest.fn(() => Promise.resolve(null)),
   deleteItemAsync: jest.fn(() => Promise.resolve()),
 }));
+
+// Icons render as plain host elements in tests. Loading the real icon sets pulls in
+// expo-font, which needs native modules. Individual tests may still override these.
+jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
+jest.mock('@expo/vector-icons', () => ({ MaterialCommunityIcons: 'MaterialCommunityIcons', Ionicons: 'Ionicons' }));

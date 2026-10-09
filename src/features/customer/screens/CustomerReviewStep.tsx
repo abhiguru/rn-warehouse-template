@@ -12,7 +12,6 @@ import {
   StyleSheet,
   Pressable,
   ScrollView,
-  Alert,
   ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -35,6 +34,8 @@ import {
   CustomerDocumentImage,
 } from '@/types/customer.types';
 
+import { showAlert } from '@/utils/alert';
+import { formatMobile } from '@/utils/formatters';
 // =============================================================================
 // COMPONENT
 // =============================================================================
@@ -81,7 +82,7 @@ export function CustomerReviewStep({
     };
 
     if (isDirty) {
-      Alert.alert(
+      showAlert(
         isCreateMode ? 'Discard this customer?' : 'Discard your changes?',
         'Your unsaved changes will be lost.',
         [
@@ -124,7 +125,7 @@ export function CustomerReviewStep({
   // Document handling
   const handleAddDocument = useCallback(async () => {
     if (formData.document_images.length >= 10) {
-      Alert.alert('Document limit reached', 'A customer can have up to 10 documents. Remove one to add another.');
+      showAlert('Document limit reached', 'A customer can have up to 10 documents. Remove one to add another.');
       return;
     }
 
@@ -154,7 +155,7 @@ export function CustomerReviewStep({
       }
     } catch (error) {
       console.error('[CustomerReviewStep] Image picker error:', error);
-      Alert.alert("Couldn't add photos", 'Try again, or choose different photos.');
+      showAlert("Couldn't add photos", 'Try again, or choose different photos.');
     } finally {
       setIsPickingImage(false);
     }
@@ -162,7 +163,7 @@ export function CustomerReviewStep({
 
   const handleRemoveDocument = useCallback(
     (uri: string) => {
-      Alert.alert(
+      showAlert(
         'Remove this document?',
         'It will not be saved with the customer.',
         [
@@ -236,7 +237,6 @@ export function CustomerReviewStep({
         completedSteps={getCompletedSteps(CUSTOMER_STEP_NUMBERS.REVIEW)}
         onCancel={handleCancel}
         onStepPress={handleStepIndicatorPress}
-        colorScheme="teal"
         entityName="Customer"
         entityId={isCreateMode ? undefined : formData.name || 'Editing'}
       />
@@ -375,7 +375,7 @@ export function CustomerReviewStep({
                     pressed && styles.addDocumentButtonPressed,
                   ]}
                   onPress={() =>
-                    Alert.alert(
+                    showAlert(
                       'Uploads unavailable',
                       "Customer document uploads aren't available in the local demo."
                     )
@@ -448,14 +448,6 @@ export function CustomerReviewStep({
       </View>
     </View>
   );
-}
-
-/** "+91 98765 43210" for a stored 10-digit (or 91-prefixed) number. */
-function formatMobile(mobile: string | undefined): string | undefined {
-  if (!mobile) return undefined;
-  const digits = mobile.replace(/\D/g, '').replace(/^91(?=\d{10}$)/, '');
-  if (digits.length !== 10) return `+91 ${digits}`;
-  return `+91 ${digits.slice(0, 5)} ${digits.slice(5)}`;
 }
 
 // =============================================================================

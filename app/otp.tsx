@@ -9,7 +9,6 @@ import {
   Text,
   TextInput,
   StyleSheet,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -33,24 +32,20 @@ import { Button } from '@/components/ui/Button';
 import { parseErrorToFriendly } from '@/utils/errorHandler';
 import { useRateLimitCountdown } from '@/hooks/useRateLimitCountdown';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
 import {
   fontWeight,
   iconSize,
   layout,
   radius,
   space,
-  touchTarget,
   typography,
   type ThemeTokens,
 } from '@/theme/tokens';
 
+import { showAlert } from '@/utils/alert';
+import { formatMobile } from '@/utils/formatters';
 const CODE_LENGTH = 6;
-
-/** "+919876543210" -> "+91 98765 43210" (style guide §12.3). */
-const formatPhoneForDisplay = (phone: string) => {
-  const match = /^\+91(\d{5})(\d{5})$/.exec(phone);
-  return match ? `+91 ${match[1]} ${match[2]}` : phone;
-};
 
 export default function OTPScreen() {
   const [otpCode, setOtpCode] = useState('');
@@ -130,7 +125,7 @@ export default function OTPScreen() {
 
   const handleVerifyOTPWithCode = async (code: string) => {
     if (code.length !== CODE_LENGTH) {
-      Alert.alert('Enter the full code', 'Enter all 6 digits of the code we sent you.');
+      showAlert('Enter the full code', 'Enter all 6 digits of the code we sent you.');
       return;
     }
 
@@ -158,10 +153,10 @@ export default function OTPScreen() {
         const friendlyMessage = parseErrorToFriendly(
           (result as { success: false; error: string }).error
         );
-        Alert.alert("Couldn't verify the code", friendlyMessage);
+        showAlert("Couldn't verify the code", friendlyMessage);
       }
     } catch {
-      Alert.alert("Couldn't verify the code", 'Check your connection and try again.');
+      showAlert("Couldn't verify the code", 'Check your connection and try again.');
     } finally {
       dispatch(setVerifyingOTP(false));
     }
@@ -184,22 +179,22 @@ export default function OTPScreen() {
         setExpiryTimer(300); // Reset to 5 minutes
         setOtpCode('');
         setFocusedIndex(0);
-        Alert.alert(
+        showAlert(
           'Code sent',
-          `A new code was sent to ${formatPhoneForDisplay(phoneNumber)}.`
+          `A new code was sent to ${formatMobile(phoneNumber)}.`
         );
       } else {
         if (handleRateLimitError(result.error)) {
           return;
         }
         const friendlyMessage = parseErrorToFriendly(result.error);
-        Alert.alert("Couldn't send the code", friendlyMessage);
+        showAlert("Couldn't send the code", friendlyMessage);
       }
     } catch (error) {
       if (handleRateLimitError(error)) {
         return;
       }
-      Alert.alert("Couldn't send the code", 'Check your connection and try again.');
+      showAlert("Couldn't send the code", 'Check your connection and try again.');
     } finally {
       dispatch(setAuthenticating(false));
     }
@@ -217,7 +212,7 @@ export default function OTPScreen() {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const displayPhone = formatPhoneForDisplay(phoneNumber);
+  const displayPhone = formatMobile(phoneNumber);
 
   return (
     <View style={[styles.container, { paddingTop: insets.top + space.sm }]}>
@@ -241,15 +236,7 @@ export default function OTPScreen() {
       />
 
       {/* Navigation bar - back button, outside the ScrollView */}
-      <Pressable
-        style={({ pressed }) => [styles.backButtonNav, pressed && styles.backButtonPressed]}
-        onPress={handleBack}
-        accessibilityRole="button"
-        accessibilityLabel="Back"
-      >
-        <Icon name="chevron-left" size={iconSize.lg} color={t.brand.tint} />
-        <Text style={styles.backButtonText}>Back</Text>
-      </Pressable>
+      <HeaderBackButton onPress={handleBack} style={styles.backButton} />
 
       <KeyboardAvoidingView
         style={styles.keyboardView}
@@ -451,24 +438,12 @@ const makeStyles = (t: ThemeTokens) => ({
   },
 
   // Navigation bar - back button
-  backButtonNav: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
+  // Custom back button (same on every headerless screen): platform glyph,
+  // brand.tint, the word "Back", at least touchTarget in size (§8)
+  backButton: {
     alignSelf: 'flex-start' as const,
-    minHeight: touchTarget,
-    paddingLeft: space.xs,
-    paddingRight: space.md,
     marginLeft: space.xs,
-    borderRadius: radius.button,
-  },
-  backButtonPressed: {
-    backgroundColor: t.brand.subtle,
-  },
-
-  backButtonText: {
-    ...typography.body,
-    color: t.brand.tint,
-    marginLeft: space.xxs,
+    paddingLeft: space.xs,
   },
 
   content: {

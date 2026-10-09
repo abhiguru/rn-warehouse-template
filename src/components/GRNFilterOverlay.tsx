@@ -41,6 +41,7 @@ import {
 } from '@/theme/tokens';
 import DateRangePicker from './DateRangePicker';
 import FilterChip from './FilterChip';
+import { formatDate, toDate } from '@/utils/formatters';
 
 export interface GRNFilterState {
   dateFrom?: string;
@@ -253,13 +254,8 @@ const makeStyles = (t: ThemeTokens) => ({
   },
 });
 
-/** Shows a stored date as "9 Oct 2026" (style guide 12.3). */
-const formatDate = (date?: string) => {
-  if (!date) return undefined;
-  const d = new Date(date);
-  if (isNaN(d.getTime())) return undefined;
-  return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
-};
+/** Shows a stored date as "9 Oct 2026" (style guide 12.3); undefined when unset. */
+const formatFilterDate = (date?: string) => (date && toDate(date) ? formatDate(date) : undefined);
 
 export default function GRNFilterOverlay({
   visible,
@@ -302,7 +298,7 @@ export default function GRNFilterOverlay({
 
   const renderDateField = (which: 'from' | 'to') => {
     const label = which === 'from' ? 'From' : 'To';
-    const value = formatDate(which === 'from' ? filters.dateFrom : filters.dateTo);
+    const value = formatFilterDate(which === 'from' ? filters.dateFrom : filters.dateTo);
     return (
       <Pressable
         style={({ pressed }) => [styles.field, pressed && styles.fieldPressed]}

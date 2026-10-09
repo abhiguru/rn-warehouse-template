@@ -11,7 +11,6 @@ import {
   Pressable,
   StyleSheet,
   ActivityIndicator,
-  Alert,
   FlatList,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -37,6 +36,8 @@ import {
   CustomerAssignment
 } from '@/types/user.types';
 
+import { showAlert } from '@/utils/alert';
+import { formatMobile } from '@/utils/formatters';
 const UserEditScreen: React.FC = () => {
   const { userId } = useLocalSearchParams<{ userId: string }>();
   const styles = useThemedStyles(makeStyles);
@@ -72,7 +73,7 @@ const UserEditScreen: React.FC = () => {
 
     if (!userId) {
       console.log('[UserEditScreen] No userId provided, going back');
-      Alert.alert("Couldn't open the profile", 'Go back and try again.');
+      showAlert("Couldn't open the profile", 'Go back and try again.');
       router.back();
       return;
     }
@@ -90,7 +91,7 @@ const UserEditScreen: React.FC = () => {
       });
       
       if (!result.success || !result.data) {
-        Alert.alert("Couldn't load the profile", result.message || 'Check your connection and try again.');
+        showAlert("Couldn't load the profile", result.message || 'Check your connection and try again.');
         router.back();
         return;
       }
@@ -116,7 +117,7 @@ const UserEditScreen: React.FC = () => {
       });
     } catch (error) {
       console.error('[UserEditScreen] Load error:', error);
-      Alert.alert("Couldn't load the profile", 'Check your connection and try again.');
+      showAlert("Couldn't load the profile", 'Check your connection and try again.');
       router.back();
     } finally {
       setLoading(false);
@@ -151,7 +152,7 @@ const UserEditScreen: React.FC = () => {
           console.log('[UserEditScreen] Updated Redux userProfile:', updatedProfile.name);
         }
 
-        Alert.alert(
+        showAlert(
           'Profile saved',
           'Your profile has been updated.',
           [
@@ -162,11 +163,11 @@ const UserEditScreen: React.FC = () => {
           ]
         );
       } else {
-        Alert.alert("Couldn't save your profile", result.message || 'Try again in a moment.');
+        showAlert("Couldn't save your profile", result.message || 'Try again in a moment.');
       }
     } catch (error) {
       console.error('[UserEditScreen] Save error:', error);
-      Alert.alert("Couldn't save your profile", 'Check your connection and try again.');
+      showAlert("Couldn't save your profile", 'Check your connection and try again.');
     } finally {
       setSaving(false);
     }
@@ -360,13 +361,6 @@ const UserEditScreen: React.FC = () => {
     </View>
   );
 };
-
-/** "+91 98765 43210" for a stored 10-digit (or 91-prefixed) number. */
-function formatMobile(mobile: string): string {
-  const digits = mobile.replace(/\D/g, '').replace(/^91(?=\d{10}$)/, '');
-  if (digits.length !== 10) return `+91 ${digits}`;
-  return `+91 ${digits.slice(0, 5)} ${digits.slice(5)}`;
-}
 
 const makeStyles = (t: ThemeTokens) => ({
   flex: {

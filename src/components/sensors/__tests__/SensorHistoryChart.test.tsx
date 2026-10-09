@@ -6,6 +6,7 @@ import {
   formatHumidity,
   formatTemperature,
   summariseReadings,
+  temperatureDomain,
 } from '../SensorHistoryChart';
 import type { SensorHistoryReading } from '@/types/sensor-history.types';
 
@@ -46,7 +47,8 @@ describe('sensor formatting', () => {
   it('formats temperatures with one decimal, degree sign and a true minus', () => {
     expect(formatTemperature(-18.5)).toBe('−18.5°C');
     expect(formatTemperature(4)).toBe('4.0°C');
-    expect(formatTemperature(null)).toBe('–');
+    expect(formatTemperature(null)).toBe('—');
+    expect(formatHumidity(null)).toBe('—');
     expect(formatHumidity(85.6)).toBe('86%');
   });
 
@@ -74,7 +76,9 @@ describe.each(THEMES)('SensorHistoryChart in %s %s', (brand, mode) => {
     ));
     const chart = tree.root.findAll(n => (n.type as unknown) === 'LineChart')[0];
     expect(chart.props.color).toBe(t.chart[0]);
-    expect(chart.props.color2).toBe(t.chart[1]);
+    // Humidity has its own right-hand axis in percent (guide §13.11).
+    expect(chart.props.secondaryLineConfig.color).toBe(t.chart[1]);
+    expect(chart.props.secondaryYAxis.yAxisLabelSuffix).toBe('%');
     expect(chart.props.xAxisColor).toBe(t.border.divider);
     expect(chart.props.yAxisColor).toBe(t.border.divider);
     expect(chart.props.rulesColor).toBe(t.border.divider);
@@ -103,6 +107,54 @@ describe.each(THEMES)('SensorHistoryChart in %s %s', (brand, mode) => {
   it('shows an empty state without readings', () => {
     const tree = render(brand, mode, <SensorHistoryChart readings={[]} aggregationInterval="1 day" periodDays={7} />);
     expect(texts(tree)).toContain('No history for this period');
+    act(() => tree.unmount());
+  });
+});
+
+describe('temperature axis and missing readings', () => {
+  const COLD_ROOM: SensorHistoryReading[] = [
+    { timestamp: '2026-10-01T04:00:00Z', temperature: -21.4, humidity: 70 },
+    { timestamp: '2026-10-02T04:00:00Z', temperature: -18.2, humidity: 75 },
+    { timestamp: '2026-10-03T04:00:00Z', temperature: null, humidity: null },
+    { timestamp: '2026-10-04T04:00:00Z', temperature: -19.6, humidity: 72 },
+  ];
+
+  it('takes the axis from the data and keeps zero off it when all readings are below zero', () => {
+    const domain = temperatureDomain(COLD_ROOM);
+    expect(domain.min).toBeLessThanOrEqual(-21.4);
+    expect(domain.max).toBeGreaterThanOrEqual(-18.2);
+    expect(domain.max).toBeLessThan(0);
+    expect(domain.min).toBeGreaterThan(-30);
+  });
+
+  it('includes zero when the readings cross it', () => {
+    const domain = temperatureDomain(READINGS);
+    expect(domain.min).toBeLessThanOrEqual(-18.5);
+    expect(domain.max).toBeGreaterThanOrEqual(2.25);
+    expect(domain.min).toBeLessThan(0);
+    expect(domain.max).toBeGreaterThan(0);
+  });
+
+  it('keeps thresholds on the axis', () => {
+    const domain = temperatureDomain(COLD_ROOM, [-15]);
+    expect(domain.max).toBeGreaterThanOrEqual(-15);
+  });
+
+  it('draws negative readings below the axis start and leaves a gap for a missing reading', () => {
+    const tree = render('orange', 'light', (
+      <SensorHistoryChart readings={COLD_ROOM} aggregationInterval="1 day" periodDays={7} />
+    ));
+    const chart = tree.root.findAll(n => (n.type as unknown) === 'LineChart')[0];
+    expect(chart.props.yAxisOffset).toBeLessThanOrEqual(-21.4);
+    expect(chart.props.yAxisOffset + chart.props.maxValue).toBeLessThan(0);
+    expect(chart.props.interpolateMissingValues).toBe(false);
+    expect(chart.props.data.map((p: { value?: number }) => p.value)).toEqual([-21.4, -18.2, undefined, -19.6]);
+    expect(chart.props.secondaryData[2].value).toBeUndefined();
+    // Humidity values are plotted in percent on the secondary axis, unscaled.
+    expect(chart.props.secondaryData[0].value).toBe(70);
+    expect(chart.props.secondaryYAxis.maxValue).toBeGreaterThanOrEqual(75);
+    expect(chart.props.formatYLabel('-20')).toBe('\u221220');
+    expect(chart.props.data[0].label).toBe('1 Oct');
     act(() => tree.unmount());
   });
 });

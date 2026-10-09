@@ -29,6 +29,7 @@ import {
   typography,
 } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
+import { formatCount } from '@/utils/formatters';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const NUM_COLUMNS = 3;
@@ -206,7 +207,7 @@ export const DispatchImagesTab: React.FC<DispatchImagesTabProps> = ({
     </Pressable>
   );
 
-  const countLabel = `${images.length} ${images.length === 1 ? 'photo' : 'photos'}`;
+  const countLabel = formatCount(images.length, 'photo');
 
   return (
     <View style={styles.container}>

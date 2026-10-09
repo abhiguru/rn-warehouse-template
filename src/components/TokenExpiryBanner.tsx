@@ -12,7 +12,7 @@
 
 import React from 'react';
 import { View, Text, Pressable } from 'react-native';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useRouter } from 'expo-router';
 import { useAppSelector, useAppDispatch } from '@/store/hooks';
 import { clearTokenExpiryStates, clearAuthError, logout, setConfigFetchFailed } from '@/store/slices/authSlice';

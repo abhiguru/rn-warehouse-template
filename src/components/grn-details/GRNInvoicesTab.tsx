@@ -12,7 +12,7 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, layout, radius, space, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
-import { formatInvoiceAmount } from '@/utils/invoiceCalculations';
+import { formatCount, formatCurrency } from '@/utils/formatters';
 
 // Using snake_case to match backend RPC types
 interface InvoiceSummary {
@@ -163,7 +163,7 @@ export const GRNInvoicesTab: React.FC<GRNInvoicesTabProps> = ({
           <View
             style={styles.summaryCard}
             accessible
-            accessibilityLabel={`${total_invoices} ${total_invoices === 1 ? 'invoice' : 'invoices'}`}
+            accessibilityLabel={formatCount(total_invoices, 'invoice')}
           >
             <View style={[styles.iconCircle, styles.iconCircleNeutral]}>
               <Icon name="file-document-multiple-outline" size={iconSize.lg} color={t.status.neutral.text} />
@@ -175,24 +175,24 @@ export const GRNInvoicesTab: React.FC<GRNInvoicesTabProps> = ({
           <View
             style={styles.summaryCard}
             accessible
-            accessibilityLabel={`Amount before tax ${formatInvoiceAmount(total_amount)}`}
+            accessibilityLabel={`Amount before tax ${formatCurrency(total_amount, { maximumFractionDigits: 0 })}`}
           >
             <View style={[styles.iconCircle, styles.iconCircleBrand]}>
               <Icon name="currency-inr" size={iconSize.lg} color={t.brand.tint} />
             </View>
-            <Text style={styles.summaryValue}>{formatInvoiceAmount(total_amount)}</Text>
+            <Text style={styles.summaryValue}>{formatCurrency(total_amount, { maximumFractionDigits: 0 })}</Text>
             <Text style={styles.summaryLabel}>Amount before tax</Text>
           </View>
 
           <View
             style={[styles.summaryCard, styles.summaryCardFull]}
             accessible
-            accessibilityLabel={`Total with tax ${formatInvoiceAmount(total_with_tax || 0)}`}
+            accessibilityLabel={`Total with tax ${formatCurrency(total_with_tax || 0, { maximumFractionDigits: 0 })}`}
           >
             <View style={[styles.iconCircle, styles.iconCircleBrand]}>
               <Icon name="cash-multiple" size={iconSize.lg} color={t.brand.tint} />
             </View>
-            <Text style={styles.summaryValue}>{formatInvoiceAmount(total_with_tax || 0)}</Text>
+            <Text style={styles.summaryValue}>{formatCurrency(total_with_tax || 0, { maximumFractionDigits: 0 })}</Text>
             <Text style={styles.summaryLabel}>Total with tax</Text>
           </View>
         </View>

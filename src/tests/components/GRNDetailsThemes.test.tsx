@@ -48,7 +48,7 @@ describe.each(THEMES)('GRN details in %s %s', (brand, mode) => {
     expect(all).toContain('Z0797');
     expect(all).toContain('Patel Traders · 9 Oct 2026');
     expect(all).toContain('Low stock');
-    const tag = tree.root.findByProps({ accessibilityLabel: 'Status: Low stock' });
+    const tag = tree.root.findByProps({ accessibilityLabel: 'Low stock' });
     expect(StyleSheet.flatten(tag.props.style).backgroundColor).toBe(t.status.critical.background);
     act(() => tree.unmount());
   });
@@ -60,7 +60,9 @@ describe.each(THEMES)('GRN details in %s %s', (brand, mode) => {
       mode
     );
     const all = texts(tree);
-    expect(all).toContain('Out of stock');
+    // Everything dispatched is the normal end of a GRN: neutral, not an error
+    expect(all).toContain('Fully dispatched');
+    expect(all).not.toContain('Out of stock');
     expect(all).toContain('1,250.5 kg');
     expect(all).toContain('Rack B-14');
     const card = tree.root.findAll(n => (n.type as unknown) === 'View')[0];

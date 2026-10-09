@@ -23,13 +23,13 @@ import type { FilterConfig } from '@/types/filter.types';
 export const GRN_FILTER_CONFIG: FilterConfig = {
   persistKey: 'grn-list-mobile-v2',
   debounceMs: 500,
-  title: 'Filter GRN Items',
+  title: 'Filter GRNs',
   fields: [
     // GRN Number Range at top - non-collapsible
     {
       type: 'autocomplete',
       key: 'grNoFrom',
-      label: 'GRN Number From',
+      label: 'GRN number from',
       autocompleteType: 'grn',
       placeholder: 'Start of range...',
       icon: 'file-document',
@@ -39,7 +39,7 @@ export const GRN_FILTER_CONFIG: FilterConfig = {
     {
       type: 'autocomplete',
       key: 'grNoTo',
-      label: 'GRN Number To',
+      label: 'GRN number to',
       autocompleteType: 'grn',
       placeholder: 'End of range...',
       icon: 'file-document',
@@ -69,19 +69,19 @@ export const GRN_FILTER_CONFIG: FilterConfig = {
     {
       type: 'radio',
       key: 'stockStatus',
-      label: 'Stock Status',
+      label: 'Stock status',
       icon: 'chart-bar',
       options: [
-        { label: 'All Items', value: 'all' },
-        { label: 'In Stock', value: 'in_stock', description: 'Items with stock > 0' },
-        { label: 'Out of Stock', value: 'out_of_stock', description: 'Items with stock = 0' },
+        { label: 'All items', value: 'all' },
+        { label: 'In stock', value: 'in_stock', description: 'Items with stock > 0' },
+        { label: 'Out of stock', value: 'out_of_stock', description: 'Items with stock = 0' },
       ],
       defaultValue: 'all',
     },
     {
       type: 'number-range',
       key: ['weightMin', 'weightMax'],
-      label: 'Weight Range (kg)',
+      label: 'Weight range (kg)',
       icon: 'weight-kilogram',
       placeholder: ['Min weight', 'Max weight'],
       minValue: 0,
@@ -96,7 +96,7 @@ export const GRN_FILTER_CONFIG: FilterConfig = {
     {
       type: 'date-range',
       key: ['dateFrom', 'dateTo'],
-      label: 'Date Range',
+      label: 'Date range',
       icon: 'calendar-range',
       placeholder: ['From date', 'To date'],
     },
@@ -134,7 +134,7 @@ export const DISPATCH_FILTER_CONFIG: FilterConfig = {
     {
       type: 'autocomplete',
       key: 'dispNoFrom',
-      label: 'Dispatch No From',
+      label: 'Dispatch number from',
       autocompleteType: 'dispatch',
       placeholder: 'Start of range...',
       icon: 'file-document',
@@ -144,7 +144,7 @@ export const DISPATCH_FILTER_CONFIG: FilterConfig = {
     {
       type: 'autocomplete',
       key: 'dispNoTo',
-      label: 'Dispatch No To',
+      label: 'Dispatch number to',
       autocompleteType: 'dispatch',
       placeholder: 'End of range...',
       icon: 'file-document',
@@ -154,7 +154,7 @@ export const DISPATCH_FILTER_CONFIG: FilterConfig = {
     {
       type: 'number-range',
       key: ['weightMin', 'weightMax'],
-      label: 'Weight Range (kg)',
+      label: 'Weight range (kg)',
       icon: 'weight-kilogram',
       placeholder: ['Min weight', 'Max weight'],
       minValue: 0,
@@ -169,7 +169,7 @@ export const DISPATCH_FILTER_CONFIG: FilterConfig = {
     {
       type: 'date-range',
       key: ['dateFrom', 'dateTo'],
-      label: 'Date Range',
+      label: 'Date range',
       icon: 'calendar-range',
       placeholder: ['From date', 'To date'],
     },
@@ -197,7 +197,7 @@ export const INVOICE_FILTER_CONFIG: FilterConfig = {
     {
       type: 'autocomplete',
       key: 'invoiceNoFrom',
-      label: 'Invoice No From',
+      label: 'Invoice number from',
       autocompleteType: 'invoice',
       placeholder: 'Start of range...',
       icon: 'file-document',
@@ -207,7 +207,7 @@ export const INVOICE_FILTER_CONFIG: FilterConfig = {
     {
       type: 'autocomplete',
       key: 'invoiceNoTo',
-      label: 'Invoice No To',
+      label: 'Invoice number to',
       autocompleteType: 'invoice',
       placeholder: 'End of range...',
       icon: 'file-document',
@@ -217,7 +217,7 @@ export const INVOICE_FILTER_CONFIG: FilterConfig = {
     {
       type: 'radio',
       key: 'paymentStatus',
-      label: 'Payment Status',
+      label: 'Payment status',
       icon: 'cash-multiple',
       options: [
         { label: 'All', value: 'all' },
@@ -230,7 +230,7 @@ export const INVOICE_FILTER_CONFIG: FilterConfig = {
     {
       type: 'number-range',
       key: ['amountMin', 'amountMax'],
-      label: 'Amount Range',
+      label: 'Amount range',
       icon: 'currency-inr',
       placeholder: ['Min amount', 'Max amount'],
       minValue: 0,
@@ -238,7 +238,7 @@ export const INVOICE_FILTER_CONFIG: FilterConfig = {
     {
       type: 'date-range',
       key: ['dateFrom', 'dateTo'],
-      label: 'Date Range',
+      label: 'Date range',
       icon: 'calendar-range',
       placeholder: ['From date', 'To date'],
     },

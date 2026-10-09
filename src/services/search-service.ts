@@ -1,6 +1,7 @@
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
 import { executeRPC, createErrorResponse } from '@/utils/serviceErrorHandler';
 
+import { toLocalISODate } from '@/utils/formatters';
 export interface SearchResult {
   label: string;
   value: string;
@@ -270,8 +271,8 @@ class SearchService {
       getAuthenticatedClient,
       'get_grn_list',
       {
-        p_date_from: oneYearAgo.toISOString().split('T')[0],
-        p_date_to: oneYearAhead.toISOString().split('T')[0],
+        p_date_from: toLocalISODate(oneYearAgo),
+        p_date_to: toLocalISODate(oneYearAhead),
         p_sort_by: 'gr_no',
         p_sort_order: 'asc',
         p_limit: 20,

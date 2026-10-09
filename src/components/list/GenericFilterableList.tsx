@@ -47,7 +47,7 @@ import {
   SectionListRenderItem,
 } from 'react-native';
 import { FlashList, ListRenderItem } from '@shopify/flash-list';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
@@ -55,13 +55,13 @@ import { fontWeight, iconSize, layout, motion, radius, space, touchTarget, typog
 import type { ThemeTokens } from '@/theme/tokens';
 import { ListSkeletonCard } from './ListSkeletonCard';
 import { ListEmptyState, ListEmptyStateProps } from './ListEmptyState';
+import { formatCount } from '@/utils/formatters';
 
 /** Space below the last row so it clears the tab bar and a floating action button. */
 const BOTTOM_CLEARANCE = 80;
 /** Minimum size of a count badge (§13.5). */
 const BADGE_MIN = 18;
 
-const countFormat = new Intl.NumberFormat('en-IN');
 
 /**
  * Props for GenericFilterableList component
@@ -162,7 +162,7 @@ const ListHeader = memo<{
         )}
         {totalCount !== undefined && totalCount > 0 && (
           <Text style={styles.headerCount}>
-            {countFormat.format(totalCount)} {totalCount === 1 ? 'item' : 'items'}
+            {formatCount(totalCount, 'item')}
           </Text>
         )}
       </View>

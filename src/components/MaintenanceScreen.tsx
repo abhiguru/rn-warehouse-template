@@ -7,19 +7,17 @@
 
 import React from 'react';
 import { Linking, Pressable, ScrollView, Text, View } from 'react-native';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSupport, useEnvironment } from '@/hooks/useConfig';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, layout, radius, space, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
-
-const buildDateFormat = new Intl.DateTimeFormat('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+import { formatDate, toDate } from '@/utils/formatters';
 
 function formatBuildDate(value: string): string {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? '' : `\nBuilt ${buildDateFormat.format(date)}`;
+  return toDate(value) ? `\nBuilt ${formatDate(value)}` : '';
 }
 
 const makeStyles = (t: ThemeTokens) => ({

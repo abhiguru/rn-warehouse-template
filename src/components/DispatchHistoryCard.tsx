@@ -20,31 +20,12 @@ import {
 } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { CustomerDispatchItem } from '@/types/order.types';
+import { formatDate, formatCount } from '@/utils/formatters';
 
 interface DispatchHistoryCardProps {
   dispatch: CustomerDispatchItem;
   onPress?: (dispatch: CustomerDispatchItem) => void;
 }
-
-const formatDate = (dateString: string) => {
-  const date = new Date(dateString);
-  const today = new Date();
-  const yesterday = new Date(today);
-  yesterday.setDate(yesterday.getDate() - 1);
-
-  // Reset time parts for comparison
-  const resetTime = (d: Date) => {
-    d.setHours(0, 0, 0, 0);
-    return d;
-  };
-
-  if (resetTime(new Date(date)).getTime() === resetTime(new Date(today)).getTime()) {
-    return 'Today';
-  } else if (resetTime(new Date(date)).getTime() === resetTime(new Date(yesterday)).getTime()) {
-    return 'Yesterday';
-  }
-  return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
-};
 
 const makeStyles = (t: ThemeTokens) => ({
   cardContainer: {
@@ -240,8 +221,8 @@ const DispatchHistoryCard: React.FC<DispatchHistoryCardProps> = ({
     router.push(`/dispatch-details/${dispatch.dispatch_id}`);
   };
 
-  const dateLabel = formatDate(dispatch.disp_date);
-  const bags = `${dispatch.disp_quantity} ${dispatch.disp_quantity === 1 ? 'bag' : 'bags'}`;
+  const dateLabel = formatDate(dispatch.disp_date, 'short');
+  const bags = formatCount(dispatch.disp_quantity, 'bag');
 
   return (
     <View style={styles.cardContainer}>

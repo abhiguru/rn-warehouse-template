@@ -5,7 +5,6 @@ import {
   Pressable,
   StyleSheet,
   LayoutAnimation,
-  Vibration,
 } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -22,6 +21,7 @@ import {
 } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { CustomerDispatchItem } from '@/types/order.types';
+import { formatCount, formatDate, formatWeight } from '@/utils/formatters';
 
 export interface DispatchGroup {
   dispatchId: string;
@@ -224,12 +224,8 @@ const DispatchGroupCardComponent: React.FC<DispatchGroupCardProps> = ({
 
   const hasItems = useMemo(() => items.length > 0, [items]);
 
-  const formattedDate = new Date(dispatch.dispDate).toLocaleDateString('en-GB', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  });
-  const itemCountLabel = `${items.length} ${items.length === 1 ? 'item' : 'items'}`;
+  const formattedDate = formatDate(dispatch.dispDate, 'short');
+  const itemCountLabel = formatCount(items.length, 'item');
 
   return (
     <View style={styles.container}>
@@ -288,7 +284,7 @@ const DispatchGroupCardComponent: React.FC<DispatchGroupCardProps> = ({
               key={`${dispatch.dispatchId}-item-${item.id}-${idx}`}
               style={[styles.tableRow, idx > 0 && styles.tableRowDivider]}
               accessible
-              accessibilityLabel={`${item.grnItems_item_name}${item.grnItems_rack ? `, rack ${item.grnItems_rack}` : ''}, ${Math.round(item.grnItems_weight || 0)} kg, GRN ${item.grns_gr_no}, ${item.disp_quantity} dispatched`}
+              accessibilityLabel={`${item.grnItems_item_name}${item.grnItems_rack ? `, rack ${item.grnItems_rack}` : ''}, ${formatWeight(item.grnItems_weight, 0)}, GRN ${item.grns_gr_no}, ${item.disp_quantity} dispatched`}
             >
               <View style={[styles.tableCell, styles.colItem]}>
                 <View style={styles.itemNameRow}>
@@ -324,7 +320,6 @@ const DispatchGroupCardComponent: React.FC<DispatchGroupCardProps> = ({
         <Pressable
           onPress={(e) => {
             e.stopPropagation();
-            Vibration.vibrate(5);
             LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
             setIsExpanded(prev => !prev);
           }}

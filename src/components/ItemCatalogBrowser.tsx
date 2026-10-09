@@ -6,7 +6,6 @@ import {
   TextInput,
   StyleSheet,
   ActivityIndicator,
-  Alert,
   BackHandler,
   Platform,
   Animated,
@@ -29,13 +28,15 @@ import {
   typography,
   type ThemeTokens,
 } from '@/theme/tokens';
-import { parseLocalISODate } from '@/utils/formatters';
+import { formatCount, formatDate, formatNumber, formatWeight } from '@/utils/formatters';
+import { StatusTag } from '@/components/ui';
 import { OrderService } from '@/services/order-service';
 import { StockService } from '@/services/stock-service';
 import { SessionRecentItemsService } from '@/services/session-recent-items-service';
 import { GRNItem, Catalog, EnhancedSearchFilters, SearchMetadata } from '@/types/order.types';
 import RecentItemsQuickAdd, { QuickAddItem } from './RecentItemsQuickAdd';
 
+import { showAlert } from '@/utils/alert';
 type StockStatus = 'positive' | 'critical' | 'negative';
 
 // Status words and icons per guide §3.5 (stock level: low stock is critical).
@@ -44,23 +45,7 @@ const STOCK_LABEL: Record<StockStatus, string> = {
   critical: 'Low stock',
   negative: 'Out of stock',
 };
-const STOCK_ICON: Record<StockStatus, string> = {
-  positive: 'check-circle',
-  critical: 'alert',
-  negative: 'alert-circle',
-};
-
-const COUNT_FORMAT = new Intl.NumberFormat('en-IN');
-const WEIGHT_FORMAT = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 });
-const formatCount = (n: number) => COUNT_FORMAT.format(n);
-const formatBags = (n: number) => `${COUNT_FORMAT.format(n)} ${n === 1 ? 'bag' : 'bags'}`;
-
-/** "9 Oct 2026" (guide §12.3). Date-only strings are read in local time. */
-const formatItemDate = (value: string): string | null => {
-  const date = /^\d{4}-\d{2}-\d{2}$/.test(value) ? parseLocalISODate(value) : new Date(value);
-  if (isNaN(date.getTime())) return null;
-  return date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
-};
+const formatBags = (n: number) => formatCount(n, 'bag');
 
 interface ItemCatalogBrowserProps {
   isVisible: boolean;
@@ -259,12 +244,12 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
         });
       } else {
         console.error('[ItemCatalogBrowser] Failed to load items:', result.message);
-        Alert.alert("Couldn't load items", 'Check your connection and try again.');
+        showAlert("Couldn't load items", 'Check your connection and try again.');
       }
     } catch (error) {
       if (!isCurrent()) return;
       console.error('[ItemCatalogBrowser] Error fetching items:', error);
-      Alert.alert("Couldn't load items", 'Check your connection and try again.');
+      showAlert("Couldn't load items", 'Check your connection and try again.');
     } finally {
       if (isCurrent()) setLoading(false);
     }
@@ -616,7 +601,7 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
     }));
 
     if (itemsToAdd.length === 0) {
-      Alert.alert('No items selected', 'Choose a quantity for at least one item, then tap Add.');
+      showAlert('No items selected', 'Choose a quantity for at least one item, then tap Add.');
       return;
     }
 
@@ -657,7 +642,7 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
     const { current_count, total_count, search_type } = searchMetadata;
     const searchTypeText = search_type === 'weight' || search_type === 'weight_range' ? 'by weight' : 'by name/package';
     
-    return `${current_count} of ${total_count} items ${searchTypeText}`;
+    return `${formatNumber(current_count)} of ${formatCount(total_count, 'item')} ${searchTypeText}`;
   }, [searchMetadata]);
 
   // Weight range slider handlers - only update temp values during sliding
@@ -780,8 +765,8 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
     const stockStatus = getStockStatus(item.current_stock, item.original_quantity);
     const status = t.status[stockStatus];
     const stockWord = STOCK_LABEL[stockStatus];
-    const grnDate = item.grn_date ? formatItemDate(item.grn_date) : null;
-    const weightText = item.weight ? `${WEIGHT_FORMAT.format(item.weight)} kg` : null;
+    const grnDate = item.grn_date ? formatDate(item.grn_date, 'short') : null;
+    const weightText = item.weight ? formatWeight(item.weight) : null;
     const rowLabel = [
       item.name,
       item.package_mark ? `mark ${item.package_mark}` : null,
@@ -878,16 +863,11 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
                 styles.stockValueText,
                 flashingItems.has(item.id) && styles.stockValueFlash,
               ]}>
-                {formatCount(item.current_stock)}
+                {formatNumber(item.current_stock)}
               </Animated.Text>
               <Text style={styles.stockLabel}>of {formatBags(item.original_quantity)}</Text>
             </View>
-            <View style={[styles.statusBadge, { backgroundColor: status.background }]}>
-              <Icon name={STOCK_ICON[stockStatus]} size={iconSize.sm} color={status.text} />
-              <Text style={[styles.statusBadgeText, { color: status.text }]} maxFontSizeMultiplier={1.6}>
-                {stockWord}
-              </Text>
-            </View>
+            <StatusTag status={stockStatus} label={stockWord} style={styles.statusBadge} />
           </View>
         </View>
 
@@ -914,7 +894,7 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
                   accessibilityLabel={`${formatBags(quantity)} of ${item.name} selected`}
                   accessibilityLiveRegion="polite"
                 >
-                  {formatCount(quantity)}
+                  {formatNumber(quantity)}
                 </Text>
                 {stepper(quantity + 1, '+', `Add 1 bag of ${item.name}`, item.current_stock === 0)}
                 {stepper(
@@ -993,7 +973,7 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
           accessibilityLabel={
             selectionSummary.count === 0
               ? 'Add items to order'
-              : `Add ${selectionSummary.count} ${selectionSummary.count === 1 ? 'item' : 'items'} to order`
+              : `Add ${formatCount(selectionSummary.count, 'item')} to order`
           }
         >
           <Text style={styles.headerButtonTextAction}>
@@ -1312,15 +1292,7 @@ const makeStyles = (t: ThemeTokens) => ({
   footerItem: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: space.xs },
   footerText: { ...typography.footnote, color: t.text.secondary },
   attributeStack: { alignItems: 'flex-end' as const, gap: space.sm, minWidth: 60 },
-  statusBadge: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: space.xs,
-    paddingHorizontal: space.sm,
-    paddingVertical: space.xxs,
-    borderRadius: radius.field,
-  },
-  statusBadgeText: { ...typography.caption1, fontWeight: fontWeight.semibold },
+  statusBadge: { alignSelf: 'flex-end' as const },
   stockValueContainer: { alignItems: 'flex-end' as const },
   stockValueText: {
     ...typography.headline,

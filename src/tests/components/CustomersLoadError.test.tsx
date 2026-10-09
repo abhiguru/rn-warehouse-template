@@ -4,6 +4,7 @@ import { act, create } from 'react-test-renderer';
 import CustomersScreen from '../../../app/customers';
 import { customerService } from '@/services/customer-service';
 import { BRANDS, getTokens, type Mode } from '@/theme/tokens';
+import { showAlert } from '@/utils/alert';
 
 let mockState = { theme: { preference: 'light', brand: 'orange' } };
 jest.mock('@/store/hooks', () => ({
@@ -15,8 +16,14 @@ jest.mock('@react-navigation/native', () => ({ useIsFocused: () => true }));
 jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) }));
 jest.mock('@/services/customer-service', () => ({
-  customerService: { getCustomerList: jest.fn(), toggleCustomerActive: jest.fn() },
+  customerService: {
+    getCustomerList: jest.fn(),
+    toggleCustomerActive: jest.fn(),
+    inactivateCustomer: jest.fn(),
+    restoreCustomer: jest.fn(),
+  },
 }));
+jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
 
 const shownText = (tree: ReturnType<typeof create>) =>
   tree.root.findAllByType(Text).map(node => [node.props.children].flat().join('')).join(' | ');
@@ -67,6 +74,54 @@ describe.each(BRANDS.flatMap(brand => MODES.map(mode => [brand, mode] as const))
       .findAll(node => typeof node.type === 'string' && node.props.style)
       .map(node => [node.props.style].flat(Infinity).find(s => s && s.backgroundColor)?.backgroundColor);
     expect(backgrounds).toContain(tokens.background.base);
+    await act(async () => { tree.unmount(); });
+  });
+});
+
+describe('customer active toggle', () => {
+  const customers = [
+    { id: 'c1', name: 'Patel Traders', mobile: '9876543210', city: 'Rajkot', email: null, active: true },
+    { id: 'c2', name: 'Shah Cold Store', mobile: null, city: null, email: null, active: false },
+  ];
+  const rowFor = (tree: ReturnType<typeof create>, name: string) =>
+    tree.root.findAll(node =>
+      typeof node.props.accessibilityLabel === 'string' &&
+      node.props.accessibilityLabel.startsWith(name) &&
+      typeof node.props.onAccessibilityAction === 'function')[0];
+
+  beforeEach(() => {
+    jest.mocked(showAlert).mockReset();
+    jest.mocked(customerService.inactivateCustomer).mockReset().mockResolvedValue({ success: true } as never);
+    jest.mocked(customerService.restoreCustomer).mockReset().mockResolvedValue({ success: true } as never);
+    jest.mocked(customerService.getCustomerList).mockResolvedValue({
+      success: true, data: customers, pagination: { total_count: 2 },
+    } as never);
+  });
+
+  it('asks before deactivating, and only deactivates on confirm', async () => {
+    let tree!: ReturnType<typeof create>;
+    await act(async () => { tree = create(<CustomersScreen />); });
+    const row = rowFor(tree, 'Patel Traders');
+    expect(row.props.accessibilityActions).toEqual([{ name: 'toggleActive', label: 'Deactivate' }]);
+    await act(async () => { row.props.onAccessibilityAction({ nativeEvent: { actionName: 'toggleActive' } }); });
+    expect(showAlert).toHaveBeenCalledTimes(1);
+    const [title, , buttons] = jest.mocked(showAlert).mock.calls[0];
+    expect(title).toBe('Deactivate Patel Traders?');
+    expect(buttons?.map(b => b.text)).toEqual(['Cancel', 'Deactivate customer']);
+    expect(customerService.inactivateCustomer).not.toHaveBeenCalled();
+    await act(async () => { buttons?.[1].onPress?.(); });
+    expect(customerService.inactivateCustomer).toHaveBeenCalledWith('c1');
+    await act(async () => { tree.unmount(); });
+  });
+
+  it('activates an inactive customer without asking', async () => {
+    let tree!: ReturnType<typeof create>;
+    await act(async () => { tree = create(<CustomersScreen />); });
+    const row = rowFor(tree, 'Shah Cold Store');
+    expect(row.props.accessibilityActions).toEqual([{ name: 'toggleActive', label: 'Activate' }]);
+    await act(async () => { row.props.onAccessibilityAction({ nativeEvent: { actionName: 'toggleActive' } }); });
+    expect(showAlert).not.toHaveBeenCalled();
+    expect(customerService.restoreCustomer).toHaveBeenCalledWith('c2');
     await act(async () => { tree.unmount(); });
   });
 });

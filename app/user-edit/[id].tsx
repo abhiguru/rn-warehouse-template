@@ -16,10 +16,9 @@ import {
   StyleSheet,
   Pressable,
   ActivityIndicator,
-  Alert,
   Switch,
 } from 'react-native';
-import { router, Stack, useLocalSearchParams } from 'expo-router';
+import { Stack, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -34,6 +33,7 @@ import { useAppSelector } from '@/store/hooks';
 import { RolePickerBottomSheet } from '@/components/RolePickerBottomSheet';
 import { SearchableBottomSheet } from '@/components/common';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
 import {
   fontWeight,
   iconSize,
@@ -44,7 +44,10 @@ import {
   typography,
   type ThemeTokens,
 } from '@/theme/tokens';
+import { Avatar, StatusTag } from '@/components/ui';
+import { formatMobile } from '@/utils/formatters';
 
+import { showAlert } from '@/utils/alert';
 /** Roles are categories, not statuses: staff roles informative, others neutral. */
 const ROLE_TONE: Record<UserRole, 'informative' | 'neutral'> = {
   admin: 'informative',
@@ -147,13 +150,13 @@ export default function UserEditScreen() {
         if (response.success) {
           setSelectedRole(newRole);
           setUser((prev) => (prev ? { ...prev, role: newRole } : null));
-          Alert.alert('Role changed', `${user.name || 'This user'} is now ${newRole === 'admin' ? 'an' : 'a'} ${newRole}.`);
+          showAlert('Role changed', `${user.name || 'This user'} is now ${newRole === 'admin' ? 'an' : 'a'} ${newRole}.`);
         } else {
-          Alert.alert("Couldn't change the role", response.error || 'Try again in a moment.');
+          showAlert("Couldn't change the role", response.error || 'Try again in a moment.');
         }
       } catch (err) {
         console.error('[UserEdit] Role update error:', err);
-        Alert.alert("Couldn't change the role", 'Check your connection and try again.');
+        showAlert("Couldn't change the role", 'Check your connection and try again.');
       } finally {
         setSaving(false);
       }
@@ -167,7 +170,7 @@ export default function UserEditScreen() {
 
       // Confirm deactivation
       if (!newActive) {
-        Alert.alert(
+        showAlert(
           `Deactivate ${user.name}?`,
           "They won't be able to use the app until you activate them again.",
           [
@@ -199,13 +202,13 @@ export default function UserEditScreen() {
       if (response.success) {
         setIsActive(active);
         setUser((prev) => (prev ? { ...prev, active } : null));
-        Alert.alert(active ? 'User activated' : 'User deactivated', `${user.name || 'This user'} ${active ? 'can use the app again.' : "can't use the app now."}`);
+        showAlert(active ? 'User activated' : 'User deactivated', `${user.name || 'This user'} ${active ? 'can use the app again.' : "can't use the app now."}`);
       } else {
-        Alert.alert("Couldn't change the status", response.error || 'Try again in a moment.');
+        showAlert("Couldn't change the status", response.error || 'Try again in a moment.');
       }
     } catch (err) {
       console.error('[UserEdit] Status update error:', err);
-      Alert.alert("Couldn't change the status", 'Check your connection and try again.');
+      showAlert("Couldn't change the status", 'Check your connection and try again.');
     } finally {
       setSaving(false);
     }
@@ -217,7 +220,7 @@ export default function UserEditScreen() {
 
       // Check if already assigned
       if (assignedCustomers.some((c) => c.customer_id === customer.id)) {
-        Alert.alert('Already assigned', `${customer.name} is already assigned to this user.`);
+        showAlert('Already assigned', `${customer.name} is already assigned to this user.`);
         return;
       }
 
@@ -239,13 +242,13 @@ export default function UserEditScreen() {
             assigned_by_name: userProfile?.name || null,
           };
           setAssignedCustomers((prev) => [...prev, newAssignment]);
-          Alert.alert('Customer assigned', `${customer.name} assigned.`);
+          showAlert('Customer assigned', `${customer.name} assigned.`);
         } else {
-          Alert.alert("Couldn't assign the customer", response.error || 'Try again in a moment.');
+          showAlert("Couldn't assign the customer", response.error || 'Try again in a moment.');
         }
       } catch (err) {
         console.error('[UserEdit] Assign customer error:', err);
-        Alert.alert("Couldn't assign the customer", 'Check your connection and try again.');
+        showAlert("Couldn't assign the customer", 'Check your connection and try again.');
       } finally {
         setSaving(false);
         setShowCustomerSearch(false);
@@ -258,7 +261,7 @@ export default function UserEditScreen() {
     async (customerId: string, customerName: string) => {
       if (!user) return;
 
-      Alert.alert(
+      showAlert(
         `Remove ${customerName}?`,
         `${customerName} will no longer be assigned to this user.`,
         [
@@ -278,16 +281,16 @@ export default function UserEditScreen() {
                   setAssignedCustomers((prev) =>
                     prev.filter((c) => c.customer_id !== customerId)
                   );
-                  Alert.alert('Customer removed', `${customerName} removed.`);
+                  showAlert('Customer removed', `${customerName} removed.`);
                 } else {
-                  Alert.alert(
+                  showAlert(
                     "Couldn't remove the customer",
                     response.error || 'Try again in a moment.'
                   );
                 }
               } catch (err) {
                 console.error('[UserEdit] Remove customer error:', err);
-                Alert.alert("Couldn't remove the customer", 'Check your connection and try again.');
+                showAlert("Couldn't remove the customer", 'Check your connection and try again.');
               } finally {
                 setSaving(false);
               }
@@ -355,16 +358,7 @@ export default function UserEditScreen() {
     headerTintColor: t.brand.tint,
     headerTitleAlign: 'center' as const,
     headerLeft: () => (
-      <Pressable
-        onPress={() => router.back()}
-        style={styles.backButton}
-        hitSlop={space.sm}
-        accessibilityRole="button"
-        accessibilityLabel="Back"
-      >
-        <Icon name="chevron-left" size={iconSize.xl} color={t.brand.tint} />
-        <Text style={styles.backButtonText}>Back</Text>
-      </Pressable>
+      <HeaderBackButton />
     ),
     headerTitle: () => (
       <Text style={styles.title} accessibilityRole="header">
@@ -414,7 +408,6 @@ export default function UserEditScreen() {
     );
   }
 
-  const roleTone = t.status[ROLE_TONE[selectedRole] ?? 'neutral'];
   const roleLabel = selectedRole.charAt(0).toUpperCase() + selectedRole.slice(1);
   const roleLocked = !canEdit || isSelfEdit;
 
@@ -429,9 +422,7 @@ export default function UserEditScreen() {
         {/* User Info Card */}
         <View style={styles.card} accessible accessibilityLabel={`${user.name || 'Unknown user'}, ${formatMobile(user.mobile)}`}>
           <View style={styles.userHeader}>
-            <View style={[styles.avatar, { backgroundColor: t.avatar[avatarIndex(user.id, t.avatar.length)] }]}>
-              <Text style={styles.avatarText}>{(user.name || 'U').charAt(0).toUpperCase()}</Text>
-            </View>
+            <Avatar name={user.name || 'Unknown user'} id={user.id} size="lg" style={styles.avatar} />
             <View style={styles.flex}>
               <Text style={styles.userName}>{user.name || 'Unknown user'}</Text>
               <Text style={styles.userMobile}>{formatMobile(user.mobile)}</Text>
@@ -463,11 +454,7 @@ export default function UserEditScreen() {
               <Text style={styles.fieldLabel}>User role</Text>
             </View>
             <View style={styles.fieldRight}>
-              <View style={[styles.roleBadge, { backgroundColor: roleTone.background }]}>
-                <Text style={[styles.roleBadgeText, { color: roleTone.text }]} maxFontSizeMultiplier={1.6}>
-                  {roleLabel}
-                </Text>
-              </View>
+              <StatusTag status={ROLE_TONE[selectedRole] ?? 'neutral'} label={roleLabel} icon={null} />
               {!roleLocked && (
                 <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />
               )}
@@ -622,26 +609,6 @@ export default function UserEditScreen() {
 }
 
 // =============================================================================
-// HELPERS
-// =============================================================================
-
-/** "+91 98765 43210" for a stored 10-digit (or 91-prefixed) number. */
-function formatMobile(mobile: string): string {
-  const digits = mobile.replace(/\D/g, '').replace(/^91(?=\d{10}$)/, '');
-  if (digits.length !== 10) return `+91 ${digits}`;
-  return `+91 ${digits.slice(0, 5)} ${digits.slice(5)}`;
-}
-
-/** Stable avatar colour index for an id (style guide §3.2). */
-function avatarIndex(id: string, count: number): number {
-  let hash = 0;
-  for (let i = 0; i < id.length; i++) {
-    hash = (hash * 31 + id.charCodeAt(i)) | 0;
-  }
-  return Math.abs(hash) % count;
-}
-
-// =============================================================================
 // STYLES
 // =============================================================================
 
@@ -658,18 +625,6 @@ const makeStyles = (t: ThemeTokens) => ({
     alignItems: 'center' as const,
     paddingHorizontal: space.xxl,
     gap: space.sm,
-  },
-  backButton: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    minHeight: touchTarget,
-    paddingRight: space.sm,
-    marginLeft: -space.sm,
-  },
-  backButtonText: {
-    ...typography.body,
-    color: t.brand.tint,
-    marginLeft: -space.xs,
   },
   title: {
     ...typography.headline,
@@ -724,16 +679,7 @@ const makeStyles = (t: ThemeTokens) => ({
     alignItems: 'center' as const,
   },
   avatar: {
-    width: layout.avatar.lg,
-    height: layout.avatar.lg,
-    borderRadius: radius.pill,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
     marginRight: space.md,
-  },
-  avatarText: {
-    ...typography.title2,
-    color: t.mode === 'light' ? t.text.primary : t.overlay.onImage,
   },
   userName: {
     ...typography.title3,
@@ -801,15 +747,6 @@ const makeStyles = (t: ThemeTokens) => ({
     ...typography.footnote,
     color: t.text.secondary,
     marginTop: space.xxs,
-  },
-  roleBadge: {
-    paddingHorizontal: space.sm,
-    paddingVertical: space.xxs,
-    borderRadius: radius.field,
-  },
-  roleBadgeText: {
-    ...typography.footnote,
-    fontWeight: fontWeight.semibold,
   },
   helperText: {
     ...typography.footnote,

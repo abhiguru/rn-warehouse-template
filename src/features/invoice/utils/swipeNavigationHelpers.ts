@@ -1,7 +1,8 @@
-import { Alert } from 'react-native';
+
 import { validateStep1, validateStep2 } from '../schemas/invoiceValidation';
 import type { InvoiceHeaderData, InvoiceItemData } from '@/types/invoice.types';
 
+import { showAlert } from '@/utils/alert';
 /**
  * Check if navigation from Step 1 is allowed
  * Validates all Step 1 fields and checks for items
@@ -18,13 +19,13 @@ export const canNavigateFromStep1 = async (
       ? `Please fix: ${errorFields.join(', ')}`
       : 'Please fill all required fields correctly';
 
-    Alert.alert('Validation Error', errorMessage);
+    showAlert('Validation Error', errorMessage);
     return false;
   }
 
   // Check if items are loaded from GRN selection
   if (!items || items.length === 0) {
-    Alert.alert('No Items', 'Please select a GRN with dispatch items');
+    showAlert('No Items', 'Please select a GRN with dispatch items');
     return false;
   }
 
@@ -44,7 +45,7 @@ export const canNavigateFromStep2 = async (
     const errorCount = Object.keys(validation.errors).length;
     const errorMessage = `${errorCount} validation error(s) found. Please check all item fields.`;
 
-    Alert.alert('Validation Error', errorMessage);
+    showAlert('Validation Error', errorMessage);
     return false;
   }
 

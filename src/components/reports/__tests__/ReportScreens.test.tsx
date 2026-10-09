@@ -250,7 +250,7 @@ describe('sensor row status', () => {
     expect(rowStatus(DEVICE)).toEqual({ kind: 'critical', label: 'Warning' });
     expect(rowStatus({ ...DEVICE, health_status: 'critical' })).toEqual({ kind: 'negative', label: 'Critical' });
     expect(rowStatus({ ...DEVICE, health_status: 'healthy', connectivity_status: 'OFFLINE' }).label).toBe('Offline');
-    expect(rowStatus({ ...DEVICE, health_status: 'healthy', battery_status: 'LOW' }).label).toBe('Low battery');
+    expect(rowStatus({ ...DEVICE, health_status: 'healthy', battery_status: 'LOW' }).label).toBe('Battery low');
   });
 });
 

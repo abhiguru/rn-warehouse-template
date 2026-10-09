@@ -27,22 +27,13 @@ import {
 import type { ThemeTokens } from '@/theme/tokens';
 import { DispatchRecord } from '@/services/grn-detail-service';
 import { GRNItem } from './GRNItemsTab';
+import { formatCount, formatDate, formatWeight } from '@/utils/formatters';
 
 interface GRNItemDispatchTableProps {
   item: GRNItem;
   dispatches: DispatchRecord[];
   defaultExpanded?: boolean;
 }
-
-// Format date for display (guide §12.3: 9 Oct 2026)
-const formatDate = (dateString: string) => {
-  const date = new Date(dateString);
-  return date.toLocaleDateString('en-GB', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  });
-};
 
 const makeStyles = (t: ThemeTokens) => ({
   container: {
@@ -179,7 +170,7 @@ export const GRNItemDispatchTable: React.FC<GRNItemDispatchTableProps> = ({
   // Calculate totals
   const totalDispatched = dispatches.reduce((sum, d) => sum + d.disp_quantity, 0);
   const totalQty = item.qty || 0;
-  const countLabel = `${dispatches.length} ${dispatches.length === 1 ? 'dispatch' : 'dispatches'}`;
+  const countLabel = formatCount(dispatches.length, 'dispatch', 'dispatches');
 
   return (
     <View style={styles.container}>
@@ -206,7 +197,7 @@ export const GRNItemDispatchTable: React.FC<GRNItemDispatchTableProps> = ({
                 <Text style={styles.metaText}>{item.package_mark}</Text>
               )}
               {item.weight && (
-                <Text style={styles.metaText}>{item.weight} kg</Text>
+                <Text style={styles.metaText}>{formatWeight(item.weight)}</Text>
               )}
             </View>
           </View>
@@ -249,14 +240,14 @@ export const GRNItemDispatchTable: React.FC<GRNItemDispatchTableProps> = ({
                   style={({ pressed }) => [styles.tableRow, pressed && styles.tableRowPressed]}
                   onPress={() => handleDispatchPress(dispatch)}
                   accessibilityRole="button"
-                  accessibilityLabel={`Dispatch ${dispatch.disp_no}, ${formatDate(dispatch.disp_date)}, ${dispatch.disp_quantity} ${dispatch.disp_quantity === 1 ? 'bag' : 'bags'}`}
+                  accessibilityLabel={`Dispatch ${dispatch.disp_no}, ${formatDate(dispatch.disp_date, 'short')}, ${formatCount(dispatch.disp_quantity, 'bag')}`}
                   accessibilityHint="Opens the dispatch"
                 >
                   <Text style={[styles.dataCell, styles.dispNoCell]}>
                     {dispatch.disp_no}
                   </Text>
                   <Text style={[styles.dataCell, styles.dateCell]}>
-                    {formatDate(dispatch.disp_date)}
+                    {formatDate(dispatch.disp_date, 'short')}
                   </Text>
                   <Text style={[styles.dataCell, styles.qtyCell]}>
                     {dispatch.disp_quantity}

@@ -13,7 +13,6 @@ import {
   Text,
   StyleSheet,
   ScrollView,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -26,6 +25,7 @@ import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
 import {
   fontWeight,
   iconSize,
@@ -39,6 +39,7 @@ import {
 import { itemService } from '@/services/item-service';
 import type { ItemFormData, ItemValidationErrors } from '@/types/item.types';
 
+import { showAlert } from '@/utils/alert';
 const ItemFormScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
   const styles = useThemedStyles(makeStyles);
@@ -107,7 +108,7 @@ const ItemFormScreen: React.FC = () => {
       });
 
       if (result.success) {
-        Alert.alert('Item added', `${formData.name.trim()} has been added.`, [
+        showAlert('Item added', `${formData.name.trim()} has been added.`, [
           { text: 'OK', onPress: () => router.back() },
         ]);
       } else {
@@ -117,12 +118,12 @@ const ItemFormScreen: React.FC = () => {
             result.message?.toLowerCase().includes('already exists')) {
           setErrors({ name: 'An item with this name already exists. Use a different name.' });
         } else {
-          Alert.alert("Couldn't add the item", result.message || 'Try again in a moment.');
+          showAlert("Couldn't add the item", result.message || 'Try again in a moment.');
         }
       }
     } catch (err) {
       console.error('[ItemForm] Save error:', err);
-      Alert.alert("Couldn't add the item", 'Check your connection and try again.');
+      showAlert("Couldn't add the item", 'Check your connection and try again.');
     } finally {
       setSaving(false);
     }
@@ -132,14 +133,7 @@ const ItemFormScreen: React.FC = () => {
     <View style={styles.container}>
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + space.xs }]}>
-        <Pressable
-          style={styles.iconButton}
-          onPress={() => router.back()}
-          accessibilityRole="button"
-          accessibilityLabel="Back"
-        >
-          <Icon name="arrow-left" size={iconSize.lg} color={t.icon.primary} />
-        </Pressable>
+        <HeaderBackButton />
         <Text style={styles.headerTitle} accessibilityRole="header" numberOfLines={1}>
           Add item
         </Text>
@@ -311,12 +305,6 @@ const makeStyles = (t: ThemeTokens) => ({
     backgroundColor: t.surface.header,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: t.border.divider,
-  },
-  iconButton: {
-    minWidth: touchTarget,
-    minHeight: touchTarget,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
   },
   headerTitle: {
     ...typography.headline,

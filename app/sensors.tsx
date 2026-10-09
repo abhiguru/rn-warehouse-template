@@ -37,6 +37,9 @@ import {
 import { SensorService } from '@/services/sensor-service';
 import { SensorDevice, SensorDashboard } from '@/types/sensor.types';
 import { createLogger } from '@/utils/logger';
+import { formatRelativeTime, formatTemperature, formatTime } from '@/utils/formatters';
+import { StatusTag, STATUS_ICONS, type StatusKind } from '@/components/ui';
+import { formatHumidity } from '@/components/sensors/SensorHistoryChart';
 
 const logger = createLogger('SensorsScreen');
 
@@ -47,16 +50,6 @@ const LOAD_ERROR = "Couldn't load sensor data. Check your connection and try aga
 // ============================================================================
 // Status and formatting helpers (guide §3.5, §12.3)
 // ============================================================================
-
-type StatusKind = 'negative' | 'critical' | 'positive' | 'informative' | 'neutral';
-
-const STATUS_ICON: Record<StatusKind, string> = {
-  negative: 'alert-circle',
-  critical: 'alert',
-  positive: 'check-circle',
-  informative: 'information',
-  neutral: 'circle-outline',
-};
 
 const SEVERITY: Record<StatusKind, number> = {
   negative: 4,
@@ -89,7 +82,7 @@ export function healthStatus(health: SensorDevice['health_status']): SensorStatu
 export function batteryStatus(battery: SensorDevice['battery_status']): SensorStatus | null {
   switch (battery) {
     case 'LOW':
-      return { kind: 'critical', label: 'Low battery' };
+      return { kind: 'critical', label: 'Battery low' };
     case 'CRITICAL':
       return { kind: 'negative', label: 'Battery critical' };
     default:
@@ -105,40 +98,6 @@ export function rowStatus(device: SensorDevice): SensorStatus {
   const battery = batteryStatus(device.battery_status);
   if (battery) candidates.push(battery);
   return candidates.reduce((worst, s) => (SEVERITY[s.kind] > SEVERITY[worst.kind] ? s : worst));
-}
-
-const MINUS = '−';
-
-/** −18.5°C */
-function formatTemperature(value: number | null | undefined): string {
-  if (value === null || value === undefined || isNaN(value)) return '–';
-  return `${value < 0 ? MINUS : ''}${Math.abs(value).toFixed(1)}°C`;
-}
-
-/** 85% */
-function formatHumidity(value: number | null | undefined): string {
-  if (value === null || value === undefined || isNaN(value)) return '–';
-  return `${Math.round(value)}%`;
-}
-
-/** "5 min ago", "3 h ago", then "9 Oct 2026, 4:05 pm" */
-function formatWhen(iso: string): string {
-  const date = new Date(iso);
-  if (isNaN(date.getTime())) return '';
-  const minutes = Math.floor((Date.now() - date.getTime()) / 60000);
-  if (minutes >= 0 && minutes < 1) return 'Just now';
-  if (minutes >= 0 && minutes < 60) return `${minutes} min ago`;
-  if (minutes >= 0 && minutes < 24 * 60) return `${Math.floor(minutes / 60)} h ago`;
-  const day = date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
-  const time = date.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true }).toLowerCase();
-  return `${day}, ${time}`;
-}
-
-/** "4:05 pm" */
-function formatClock(iso: string): string {
-  const date = new Date(iso);
-  if (isNaN(date.getTime())) return '';
-  return date.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true }).toLowerCase();
 }
 
 // ============================================================================
@@ -205,19 +164,6 @@ const makeStyles = (t: ThemeTokens) =>
       flexDirection: 'row',
       flexWrap: 'wrap',
       gap: space.sm,
-    },
-    tag: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      alignSelf: 'flex-start',
-      gap: space.xs,
-      paddingHorizontal: space.sm,
-      paddingVertical: space.xxs,
-      borderRadius: radius.field,
-    },
-    tagText: {
-      ...typography.caption1,
-      fontWeight: fontWeight.semibold,
     },
     pollingInfo: {
       flexDirection: 'row',
@@ -335,20 +281,6 @@ const makeStyles = (t: ThemeTokens) =>
       color: t.text.primary,
     },
   });
-
-type Styles = ReturnType<typeof makeStyles>;
-
-function StatusTag({ status, styles, t }: { status: SensorStatus; styles: Styles; t: ThemeTokens }) {
-  const tone = t.status[status.kind];
-  return (
-    <View style={[styles.tag, { backgroundColor: tone.background }]}>
-      <Icon name={STATUS_ICON[status.kind]} size={iconSize.sm} color={tone.text} />
-      <Text style={[styles.tagText, { color: tone.text }]} maxFontSizeMultiplier={1.6}>
-        {status.label}
-      </Text>
-    </View>
-  );
-}
 
 const SensorsScreen: React.FC = () => {
   const styles = useThemedStyles(makeStyles);
@@ -518,14 +450,14 @@ const SensorsScreen: React.FC = () => {
           {renderTile(
             'Online',
             dashboard.online_sensors,
-            STATUS_ICON.positive,
+            STATUS_ICONS.positive,
             t.status.positive.text,
             t.status.positive.background
           )}
           {renderTile(
             'Offline',
             dashboard.offline_sensors,
-            STATUS_ICON.negative,
+            STATUS_ICONS.negative,
             t.status.negative.text,
             t.status.negative.background
           )}
@@ -534,7 +466,7 @@ const SensorsScreen: React.FC = () => {
         {alerts.length > 0 && (
           <View style={styles.alertsRow}>
             {alerts.map(alert => (
-              <StatusTag key={alert.label} status={alert} styles={styles} t={t} />
+              <StatusTag key={alert.label} status={alert.kind} label={alert.label} />
             ))}
           </View>
         )}
@@ -545,13 +477,13 @@ const SensorsScreen: React.FC = () => {
             <Text style={styles.pollingText}>{`Next update in ${seconds} s`}</Text>
           </View>
           {dashboard.most_recent_sync && (
-            <Text style={styles.pollingText}>{`Last sync ${formatClock(dashboard.most_recent_sync)}`}</Text>
+            <Text style={styles.pollingText}>{`Last sync ${formatTime(dashboard.most_recent_sync)}`}</Text>
           )}
         </View>
 
         {errorVisible && (
           <View style={styles.messageStrip} accessibilityLiveRegion="polite">
-            <Icon name={STATUS_ICON.negative} size={iconSize.md} color={t.status.negative.text} />
+            <Icon name={STATUS_ICONS.negative} size={iconSize.md} color={t.status.negative.text} />
             <Text style={styles.messageText}>{LOAD_ERROR}</Text>
             <Pressable
               style={styles.stripAction}
@@ -612,7 +544,7 @@ const SensorsScreen: React.FC = () => {
             <Text style={styles.deviceLocation} numberOfLines={1}>
               {device.location}
             </Text>
-            <StatusTag status={status} styles={styles} t={t} />
+            <StatusTag status={status.kind} label={status.label} />
           </View>
           <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />
         </View>
@@ -635,7 +567,7 @@ const SensorsScreen: React.FC = () => {
             </View>
 
             {device.latest_reading_timestamp && (
-              <Text style={styles.timestampText}>{`Updated ${formatWhen(device.latest_reading_timestamp)}`}</Text>
+              <Text style={styles.timestampText}>{`Updated ${formatRelativeTime(device.latest_reading_timestamp)}`}</Text>
             )}
           </>
         ) : (
@@ -643,7 +575,7 @@ const SensorsScreen: React.FC = () => {
             <Icon name="cloud-off-outline" size={iconSize.xl} color={t.icon.secondary} />
             <Text style={styles.offlineText}>{device.is_stale ? 'No recent data' : 'Offline'}</Text>
             {device.last_reading_at && (
-              <Text style={styles.timestampText}>{`Last seen ${formatWhen(device.last_reading_at)}`}</Text>
+              <Text style={styles.timestampText}>{`Last seen ${formatRelativeTime(device.last_reading_at)}`}</Text>
             )}
           </View>
         )}

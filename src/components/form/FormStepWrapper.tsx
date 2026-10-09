@@ -34,7 +34,6 @@ import {
   Text,
   StyleSheet,
   Pressable,
-  Alert,
   Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -46,6 +45,7 @@ import { Button } from '@/components/ui/Button';
 import BaseStepIndicator from '../StepIndicator';
 import SwipeableFormStep from '../SwipeableFormStep';
 
+import { showAlert } from '@/utils/alert';
 /**
  * Step indicator configuration
  */
@@ -236,7 +236,7 @@ export const FormStepWrapper = memo<FormStepWrapperProps>(({
   // Handle cancel with confirmation
   const handleCancel = useCallback(() => {
     if (hasUnsavedChanges) {
-      Alert.alert(
+      showAlert(
         'Discard changes?',
         unsavedChangesMessage,
         [

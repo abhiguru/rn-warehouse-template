@@ -22,7 +22,7 @@ import {
   Pressable,
   Platform,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { iconSize, radius, space, touchTarget, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
@@ -205,7 +205,7 @@ export function Input({
             accessibilityRole="button"
             hitSlop={CLEAR_HIT_SLOP}
           >
-            <Ionicons name="close-circle" size={iconSize.md} color={t.icon.secondary} />
+            <Icon name="close-circle" size={iconSize.md} color={t.icon.secondary} />
           </Pressable>
         )}
 
@@ -218,7 +218,7 @@ export function Input({
           {message ? (
             <View style={styles.messageRow}>
               {message.isError && (
-                <Ionicons
+                <Icon
                   name="alert-circle"
                   size={iconSize.sm}
                   color={t.status.negative.text}

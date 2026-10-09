@@ -41,6 +41,8 @@ import type {
   SensorHistorySummary,
 } from '@/types/sensor-history.types';
 import { createLogger } from '@/utils/logger';
+import { formatCount, formatDateTime } from '@/utils/formatters';
+import { StatusTag, type StatusKind } from '@/components/ui';
 
 const logger = createLogger('SensorDetail');
 
@@ -71,15 +73,6 @@ const getDaysOfDataAvailable = (earliestReadingAt: string | null): number => {
 // ============================================================================
 // Status (guide §3.5)
 // ============================================================================
-
-type StatusKind = 'negative' | 'critical' | 'positive' | 'neutral';
-
-const STATUS_ICON: Record<StatusKind, string> = {
-  negative: 'alert-circle',
-  critical: 'alert',
-  positive: 'check-circle',
-  neutral: 'circle-outline',
-};
 
 interface SensorStatus {
   kind: StatusKind;
@@ -119,18 +112,9 @@ function batteryStatus(device: SensorDevice): SensorStatus {
   }
 }
 
-/** "9 Oct 2026, 4:05 pm" */
-function formatDateTime(iso: string): string {
-  const date = new Date(iso);
-  if (isNaN(date.getTime())) return '–';
-  const day = date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
-  const time = date.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true }).toLowerCase();
-  return `${day}, ${time}`;
-}
-
 /** Humidity statistics keep one decimal in the report summary (guide §12.3). */
 function formatHumidityStat(value: number | null | undefined): string {
-  if (value === null || value === undefined || isNaN(value)) return '–';
+  if (value === null || value === undefined || isNaN(value)) return '—';
   return `${value.toFixed(1)}%`;
 }
 
@@ -182,18 +166,6 @@ const makeStyles = (t: ThemeTokens) =>
       flexDirection: 'row',
       flexWrap: 'wrap',
       gap: space.sm,
-    },
-    tag: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: space.xs,
-      paddingHorizontal: space.sm,
-      paddingVertical: space.xxs,
-      borderRadius: radius.field,
-    },
-    tagText: {
-      ...typography.caption1,
-      fontWeight: fontWeight.semibold,
     },
     keyValueRow: {
       flexDirection: 'row',
@@ -365,18 +337,6 @@ const makeStyles = (t: ThemeTokens) =>
   });
 
 type Styles = ReturnType<typeof makeStyles>;
-
-function StatusTag({ status, styles, t }: { status: SensorStatus; styles: Styles; t: ThemeTokens }) {
-  const tone = t.status[status.kind];
-  return (
-    <View style={[styles.tag, { backgroundColor: tone.background }]}>
-      <Icon name={STATUS_ICON[status.kind]} size={iconSize.sm} color={tone.text} />
-      <Text style={[styles.tagText, { color: tone.text }]} maxFontSizeMultiplier={1.6}>
-        {status.label}
-      </Text>
-    </View>
-  );
-}
 
 function KeyValue({ label, value, styles, accessory }: {
   label: string; value: string; styles: Styles; accessory?: React.ReactNode;
@@ -561,7 +521,7 @@ const SensorDetailScreen: React.FC = () => {
       </View>
 
       <Text style={styles.readingsCount}>
-        {`Based on ${new Intl.NumberFormat('en-IN').format(summary.total_readings)} ${summary.total_readings === 1 ? 'reading' : 'readings'}`}
+        {`Based on ${formatCount(summary.total_readings, 'reading')}`}
       </Text>
     </View>
   );
@@ -638,7 +598,7 @@ const SensorDetailScreen: React.FC = () => {
             </View>
 
             <View style={styles.tagRow}>
-              <StatusTag status={health} styles={styles} t={t} />
+              <StatusTag status={health.kind} label={health.label} />
             </View>
 
             {/* Current Readings */}
@@ -668,13 +628,13 @@ const SensorDetailScreen: React.FC = () => {
                 label="Connection"
                 value={connection.label}
                 styles={styles}
-                accessory={<StatusTag status={connection} styles={styles} t={t} />}
+                accessory={<StatusTag status={connection.kind} label={connection.label} />}
               />
               <KeyValue
                 label="Battery"
                 value={battery.label}
                 styles={styles}
-                accessory={<StatusTag status={battery} styles={styles} t={t} />}
+                accessory={<StatusTag status={battery.kind} label={battery.label} />}
               />
               {device.latest_reading_timestamp && (
                 <KeyValue

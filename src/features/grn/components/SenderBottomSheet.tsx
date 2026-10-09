@@ -11,8 +11,9 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { searchService } from '@/services/search-service';
 import { SearchableBottomSheet } from '@/components/common';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
-import { iconSize, layout, radius, space, typography, touchTarget } from '@/theme/tokens';
+import { iconSize, layout, space, typography, touchTarget } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
+import { Avatar } from '@/components/ui';
 
 const RECENT_SENDERS_KEY = 'recent_senders';
 
@@ -34,13 +35,6 @@ interface SenderBottomSheetProps {
   };
 }
 
-/** Stable avatar colour index from an id, so a sender keeps the same colour. */
-function avatarIndex(id: string, count: number): number {
-  let h = 0;
-  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) | 0;
-  return Math.abs(h) % count;
-}
-
 const makeStyles = (t: ThemeTokens) => ({
   customerItem: {
     flexDirection: 'row' as const,
@@ -52,17 +46,6 @@ const makeStyles = (t: ThemeTokens) => ({
     backgroundColor: t.surface.sheet,
   },
   customerItemPressed: { backgroundColor: t.surface.cardPressed },
-  customerAvatar: {
-    width: layout.avatar.sm + space.sm,
-    height: layout.avatar.sm + space.sm,
-    borderRadius: radius.pill,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-  },
-  customerAvatarText: {
-    ...typography.headline,
-    color: t.mode === 'dark' ? t.overlay.onImage : t.text.primary,
-  },
   customerContent: { flex: 1 },
   customerMeta: {
     flexDirection: 'row' as const,
@@ -109,13 +92,7 @@ export const SenderBottomSheet: React.FC<SenderBottomSheetProps> = ({
         accessibilityRole="button"
         accessibilityLabel={item.address ? `${item.name}, ${item.address}` : item.name}
       >
-        <View
-          style={[styles.customerAvatar, { backgroundColor: t.avatar[avatarIndex(item.id, t.avatar.length)] }]}
-          accessible={false}
-          importantForAccessibility="no"
-        >
-          <Text style={styles.customerAvatarText}>{item.name.charAt(0).toUpperCase()}</Text>
-        </View>
+        <Avatar name={item.name} id={item.id} />
         <View style={styles.customerContent}>
           <Text style={styles.customerName} numberOfLines={2}>{item.name}</Text>
           {item.address ? (

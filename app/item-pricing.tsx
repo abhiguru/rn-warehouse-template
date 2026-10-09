@@ -6,7 +6,6 @@ import {
   FlatList,
   StyleSheet,
   RefreshControl,
-  Alert,
   Pressable,
   LayoutAnimation,
   ActivityIndicator,
@@ -17,6 +16,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
 import {
   fontWeight,
   iconSize,
@@ -39,6 +39,9 @@ import { ListEmptyState } from '@/components/list/ListEmptyState';
 import { ListSkeletonCard } from '@/components/list/ListSkeletonCard';
 import { createLogger } from '@/utils/logger';
 
+import { showAlert } from '@/utils/alert';
+import { Avatar } from '@/components/ui';
+import { formatCount, formatDate } from '@/utils/formatters';
 const itemPricingScreenLogger = createLogger('ItemPricingScreen');
 
 // Section type for grouped pricing data
@@ -290,7 +293,7 @@ const ItemPricingScreen: React.FC = () => {
             success: result.success,
             message: errorMsg
           });
-          Alert.alert("Couldn't load prices", errorMsg);
+          showAlert("Couldn't load prices", errorMsg);
         }
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : String(err);
@@ -299,7 +302,7 @@ const ItemPricingScreen: React.FC = () => {
           error: errorMessage,
           type: typeof err
         });
-        Alert.alert("Couldn't load prices", 'Check your connection and try again.');
+        showAlert("Couldn't load prices", 'Check your connection and try again.');
       } finally {
         const totalDuration = Date.now() - startTime;
         itemPricingScreenLogger.info(`[${fetchId}] === TOTAL LOAD TIME: ${totalDuration}ms ===`);
@@ -331,12 +334,12 @@ const ItemPricingScreen: React.FC = () => {
         setDeleteDialogVisible(false);
         setPriceToDelete(null);
       } else {
-        Alert.alert("Couldn't delete the price", result.message || 'Try again in a moment.');
+        showAlert("Couldn't delete the price", result.message || 'Try again in a moment.');
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);
       itemPricingScreenLogger.error('Delete error:', { error: errorMessage, type: typeof err });
-      Alert.alert("Couldn't delete the price", 'Check your connection and try again.');
+      showAlert("Couldn't delete the price", 'Check your connection and try again.');
     } finally {
       setDeleting(false);
     }
@@ -488,10 +491,10 @@ const ItemPricingScreen: React.FC = () => {
             renderFilterChip(
               'effective',
               effectiveFrom && effectiveTo
-                ? `${formatDay(effectiveFrom)} to ${formatDay(effectiveTo)}`
+                ? `${formatDate(effectiveFrom)} to ${formatDate(effectiveTo)}`
                 : effectiveFrom
-                  ? `From ${formatDay(effectiveFrom)}`
-                  : `Until ${formatDay(effectiveTo!)}`,
+                  ? `From ${formatDate(effectiveFrom)}`
+                  : `Until ${formatDate(effectiveTo!)}`,
               () => {
                 updateFilter('effectiveFrom', undefined);
                 updateFilter('effectiveTo', undefined);
@@ -614,7 +617,7 @@ const ItemPricingScreen: React.FC = () => {
             pressed && styles.sectionHeaderPressed,
           ]}
           accessibilityRole="button"
-          accessibilityLabel={`${info.section.title}, ${count} ${count === 1 ? 'price' : 'prices'}`}
+          accessibilityLabel={`${info.section.title}, ${formatCount(count, 'price')}`}
           accessibilityState={{ expanded: isExpanded }}
         >
           <View style={styles.sectionHeaderIcon}>
@@ -653,14 +656,7 @@ const ItemPricingScreen: React.FC = () => {
     <View style={[styles.header, { paddingTop: insets.top + space.sm }]}>
       <View style={styles.headerContent}>
         <View style={styles.titleRow}>
-          <Pressable
-            style={styles.iconButton}
-            onPress={() => router.back()}
-            accessibilityRole="button"
-            accessibilityLabel="Back"
-          >
-            <Icon name="arrow-left" size={iconSize.lg} color={t.icon.primary} />
-          </Pressable>
+          <HeaderBackButton />
           <Text style={styles.title} accessibilityRole="header" numberOfLines={1}>
             Item pricing
           </Text>
@@ -702,11 +698,7 @@ const ItemPricingScreen: React.FC = () => {
               accessibilityRole="button"
               accessibilityLabel="Settings"
             >
-              <View style={styles.profileAvatar}>
-                <Text style={styles.profileAvatarText}>
-                  {(userProfile.name || 'U').charAt(0).toUpperCase()}
-                </Text>
-              </View>
+              <Avatar name={userProfile.name} id={userProfile.id} size="sm" />
             </Pressable>
           )}
         </View>
@@ -763,15 +755,15 @@ const ItemPricingScreen: React.FC = () => {
       ) : (
         <ListEmptyState
           activeFilterCount={activeFilterCount}
-          emptyIcon="cash-outline"
-          filteredIcon="filter-outline"
+          emptyIcon="cash"
+          filteredIcon="filter-variant"
           emptyTitle="No prices yet"
           filteredTitle="No prices match these filters"
           emptySubtitle={canManagePrices() ? 'Prices you add appear here.' : 'No prices have been set up yet.'}
           filteredSubtitle="Try fewer filters."
           showCreateButton={canManagePrices() && activeFilterCount === 0}
           createButtonLabel="Add price"
-          createButtonIcon="add"
+          createButtonIcon="plus"
           onCreatePress={handleCreatePrice}
         />
       )}
@@ -848,11 +840,6 @@ const ItemPricingScreen: React.FC = () => {
   );
 };
 
-/** "9 Oct 2026" (style guide §12.3). */
-function formatDay(iso: string): string {
-  return new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
-}
-
 const makeStyles = (t: ThemeTokens) => ({
   container: {
     flex: 1,
@@ -906,19 +893,6 @@ const makeStyles = (t: ThemeTokens) => ({
   filterBadgeText: {
     ...typography.caption2,
     fontWeight: fontWeight.bold,
-    color: t.brand.onFill,
-  },
-  profileAvatar: {
-    width: layout.avatar.sm,
-    height: layout.avatar.sm,
-    borderRadius: radius.pill,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    backgroundColor: t.brand.fill,
-  },
-  profileAvatarText: {
-    ...typography.subhead,
-    fontWeight: fontWeight.semibold,
     color: t.brand.onFill,
   },
 

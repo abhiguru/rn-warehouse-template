@@ -33,8 +33,6 @@ import {
   getItemType,
   DEFAULT_LIST_CONFIG,
   SectionData,
-  useLegacyRowPalette,
-  listAvatarIndex,
 } from './types';
 
 // Services
@@ -53,7 +51,10 @@ import type { AutocompleteSelection, FilterValues, FilterValueType } from '@/typ
 
 // Config
 import { INVOICE_FILTER_CONFIG } from '@/config/filterConfigs';
-import { formatSectionDate } from '@/utils/formatters';
+import { formatCount, formatCurrency, formatDate, formatSectionDate, toLocalISODate } from '@/utils/formatters';
+import { ListEmptyState } from '@/components/list/ListEmptyState';
+import { ErrorStateView } from '@/components/ErrorBoundary';
+import { Avatar } from '@/components/ui/Avatar';
 import { createLogger } from '@/utils/logger';
 
 // Theme
@@ -61,6 +62,7 @@ import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, layout, radius, space, touchTarget, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 
+import { FAB_CLEARANCE } from '@/components/ui/Fab';
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -72,7 +74,8 @@ export interface InvoiceFlashListProps {
   initialFilters?: Record<string, any>;
 }
 
-const inr = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 });
+/** Amounts in filter chips: summary money, no decimals (§12.3). */
+const inr = (amount: number) => formatCurrency(amount, { maximumFractionDigits: 0 });
 
 // ============================================================================
 // SECTION HEADER COMPONENT (Memoized)
@@ -91,7 +94,7 @@ const SectionHeader = React.memo<SectionHeaderProps>(({ title, count }) => {
       style={styles.sectionHeader}
       accessible
       accessibilityRole="header"
-      accessibilityLabel={`${title}, ${count} ${count === 1 ? 'invoice' : 'invoices'}`}
+      accessibilityLabel={`${title}, ${formatCount(count, 'invoice')}`}
     >
       <Text style={styles.sectionTitle}>{title}</Text>
       <View style={styles.sectionBadge}>
@@ -114,58 +117,26 @@ interface EmptyStateProps {
   onCreateInvoice: () => void;
 }
 
-// Empty state: hero icon, title3 title, subhead message, one action (style guide §13.6)
+// Empty state: the shared ListEmptyState with the invoice wording (style guide §13.6)
 const EmptyState = React.memo<EmptyStateProps>(({
   hasFilters,
   onClearFilters,
   canCreate,
   onCreateInvoice,
-}) => {
-  const styles = useThemedStyles(makeStyles);
-  const t = useTokens();
-  return (
-    <View style={styles.emptyContainer}>
-      <Icon
-        name="file-document-outline"
-        size={iconSize.hero}
-        color={t.icon.secondary}
-        accessible={false}
-        importantForAccessibility="no"
-      />
-      <Text style={styles.emptyTitle} accessibilityRole="header">
-        {hasFilters ? 'No invoices match these filters' : 'No invoices yet'}
-      </Text>
-      <Text style={styles.emptySubtitle}>
-        {hasFilters
-          ? 'Try fewer filters, or clear them to see all invoices.'
-          : canCreate
-            ? 'Invoices you create appear here.'
-            : 'Invoices appear here once they are created.'}
-      </Text>
-      {hasFilters && (
-        <Pressable
-          style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryButtonPressed]}
-          onPress={onClearFilters}
-          accessibilityRole="button"
-          accessibilityLabel="Clear filters"
-        >
-          <Text style={styles.secondaryButtonText}>Clear filters</Text>
-        </Pressable>
-      )}
-      {canCreate && !hasFilters && (
-        <Pressable
-          style={({ pressed }) => [styles.primaryButton, pressed && styles.primaryButtonPressed]}
-          onPress={onCreateInvoice}
-          accessibilityRole="button"
-          accessibilityLabel="Create invoice"
-        >
-          <Icon name="plus" size={iconSize.md} color={t.brand.onFill} />
-          <Text style={styles.primaryButtonText}>Create invoice</Text>
-        </Pressable>
-      )}
-    </View>
-  );
-});
+}) => (
+  <ListEmptyState
+    activeFilterCount={hasFilters ? 1 : 0}
+    emptyIcon="file-document-outline"
+    emptyTitle="No invoices yet"
+    emptySubtitle={canCreate ? 'Invoices you create appear here.' : 'Invoices appear here once they are created.'}
+    filteredTitle="No invoices match these filters"
+    filteredSubtitle="Try fewer filters, or clear them to see all invoices."
+    onClearFilters={onClearFilters}
+    showCreateButton={canCreate}
+    createButtonLabel="Create invoice"
+    onCreatePress={onCreateInvoice}
+  />
+));
 
 EmptyState.displayName = 'EmptyState';
 
@@ -241,10 +212,10 @@ const FilterChips: React.FC<FilterChipsProps> = memo(({
 
   // Amount range chip
   if (filters.amountMin || filters.amountMax) {
-    const min = inr.format(Number(filters.amountMin || 0));
+    const min = inr(Number(filters.amountMin || 0));
     chips.push({
       key: 'amount-range',
-      label: filters.amountMax ? `${min} – ${inr.format(Number(filters.amountMax))}` : `${min} or more`,
+      label: filters.amountMax ? `${min} – ${inr(Number(filters.amountMax))}` : `${min} or more`,
       icon: 'currency-inr',
       onRemove: () => {
         updateFilter('amountMin', undefined);
@@ -255,9 +226,8 @@ const FilterChips: React.FC<FilterChipsProps> = memo(({
 
   // Date range chip
   if (filters.dateFrom || filters.dateTo) {
-    const dateOptions: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'short', year: 'numeric' };
-    const fromDate = filters.dateFrom ? new Date(filters.dateFrom as string).toLocaleDateString('en-IN', dateOptions) : '';
-    const toDate = filters.dateTo ? new Date(filters.dateTo as string).toLocaleDateString('en-IN', dateOptions) : '';
+    const fromDate = filters.dateFrom ? formatDate(filters.dateFrom as string) : '';
+    const toDate = filters.dateTo ? formatDate(filters.dateTo as string) : '';
     chips.push({
       key: 'date-range',
       label: fromDate && toDate ? `${fromDate} – ${toDate}` : fromDate ? `From ${fromDate}` : `Until ${toDate}`,
@@ -275,7 +245,7 @@ const FilterChips: React.FC<FilterChipsProps> = memo(({
         <View style={styles.filterCountBadge}>
           <Icon name="filter-variant" size={iconSize.sm} color={t.brand.tint} />
           <Text style={styles.filterCountText}>
-            {activeFilterCount} {activeFilterCount === 1 ? 'filter' : 'filters'}
+            {formatCount(activeFilterCount, 'filter')}
           </Text>
         </View>
         <Pressable
@@ -324,7 +294,6 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({
   // Theme
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
-  const rowColors = useLegacyRowPalette();
 
   // User state & permissions
   const { userProfile } = useAppSelector(state => state.auth);
@@ -451,14 +420,14 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({
       // Date range filters
       if (filters.dateFrom) {
         const dateFrom = filters.dateFrom instanceof Date
-          ? filters.dateFrom.toISOString().split('T')[0]
+          ? toLocalISODate(filters.dateFrom)
           : filters.dateFrom;
         params.p_date_from = dateFrom;
         console.log('[InvoiceFlashList] Applied dateFrom:', params.p_date_from);
       }
       if (filters.dateTo) {
         const dateTo = filters.dateTo instanceof Date
-          ? filters.dateTo.toISOString().split('T')[0]
+          ? toLocalISODate(filters.dateTo)
           : filters.dateTo;
         params.p_date_to = dateTo;
         console.log('[InvoiceFlashList] Applied dateTo:', params.p_date_to);
@@ -628,10 +597,9 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({
         invoice={item.data}
         onPress={handleInvoicePress}
         canPrint={canPrint || false}
-        colors={rowColors}
       />
     );
-  }, [handleInvoicePress, canPrint, rowColors]);
+  }, [handleInvoicePress, canPrint]);
 
   // ============================================================================
   // LIST FOOTER
@@ -652,7 +620,6 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({
   // ============================================================================
 
   const userName = userProfile?.name || 'U';
-  const avatarColor = t.avatar[listAvatarIndex(userName, t.avatar.length)];
 
   const filterButton = (
     <View style={styles.filterBtnContainer}>
@@ -689,20 +656,12 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({
         <View style={styles.header}>
           <Text style={styles.headerTitle} accessibilityRole="header">Invoices</Text>
         </View>
-        <View style={styles.errorState}>
-          <Icon name="alert-circle-outline" size={iconSize.hero} color={t.status.negative.text} />
-          <Text style={styles.errorTitle} accessibilityRole="header">Couldn't load invoices</Text>
-          <Text style={styles.errorMessage}>Check your connection and try again.</Text>
-          <Pressable
-            style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryButtonPressed]}
-            onPress={handleRefresh}
-            accessibilityRole="button"
-            accessibilityLabel="Try again"
-          >
-            <Icon name="refresh" size={iconSize.md} color={t.brand.tint} />
-            <Text style={styles.secondaryButtonText}>Try again</Text>
-          </Pressable>
-        </View>
+        <ErrorStateView
+          presentation="inline"
+          title="Couldn't load invoices"
+          message="Check your connection and try again."
+          onRetry={handleRefresh}
+        />
       </View>
     );
   }
@@ -744,17 +703,6 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({
       <View style={styles.header}>
         <Text style={styles.headerTitle} accessibilityRole="header">Invoices</Text>
         <View style={styles.headerActions}>
-          {canCreateInvoice && (
-            <IconButton
-              icon="plus"
-              size={iconSize.lg}
-              iconColor={t.brand.onFill}
-              containerColor={t.brand.fill}
-              style={styles.addBtn}
-              onPress={handleCreateInvoice}
-              accessibilityLabel="Create invoice"
-            />
-          )}
           {filterButton}
           <Pressable
             onPress={navigateToSettings}
@@ -762,11 +710,7 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({
             accessibilityRole="button"
             accessibilityLabel="Open settings"
           >
-            <View style={[styles.profileAvatar, { backgroundColor: avatarColor }]}>
-              <Text style={styles.profileAvatarText} maxFontSizeMultiplier={1.6}>
-                {userName.charAt(0).toUpperCase()}
-              </Text>
-            </View>
+            <Avatar name={userName} id={userProfile?.id} size="sm" />
           </Pressable>
         </View>
       </View>
@@ -785,7 +729,7 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({
         renderItem={renderItem}
         keyExtractor={keyExtractor}
         getItemType={getItemType}
-        extraData={{ canPrint, handleInvoicePress, rowColors }}
+        extraData={{ canPrint, handleInvoicePress }}
         contentContainerStyle={styles.listContent}
         refreshControl={
           <RefreshControl
@@ -852,8 +796,8 @@ const makeStyles = (t: ThemeTokens) => ({
     borderBottomColor: t.border.divider,
   },
   headerTitle: {
-    ...typography.title3,
-    fontWeight: fontWeight.bold,
+    // Top-level tab title (guide §13.8): large title on every tab.
+    ...typography.largeTitle,
     color: t.text.primary,
     flexShrink: 1,
   },
@@ -877,7 +821,8 @@ const makeStyles = (t: ThemeTokens) => ({
   filterBtnContainer: {
     position: 'relative' as const,
   },
-  // Plain count badge: brand.fill with brand.onFill (§13.5)
+  // Plain count badge (active filters): brand.fill with brand.onFill. "Needs action"
+  // counts use destructive.fill with destructive.onFill instead (§13.5).
   filterBadge: {
     position: 'absolute' as const,
     top: space.xxs,
@@ -890,19 +835,6 @@ const makeStyles = (t: ThemeTokens) => ({
     height: touchTarget,
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
-  },
-  profileAvatar: {
-    width: layout.avatar.sm,
-    height: layout.avatar.sm,
-    borderRadius: radius.pill,
-    justifyContent: 'center' as const,
-    alignItems: 'center' as const,
-  },
-  profileAvatarText: {
-    ...typography.subhead,
-    fontWeight: fontWeight.semibold,
-    // Avatar initials: text.primary in light mode, white in dark mode (§3.2)
-    color: t.mode === 'dark' ? t.overlay.onImage : t.text.primary,
   },
   // Applied filters bar (§13.5)
   filterChipsContainer: {
@@ -964,7 +896,9 @@ const makeStyles = (t: ThemeTokens) => ({
     flexShrink: 1,
   },
   listContent: {
-    paddingVertical: space.sm,
+    paddingTop: space.sm,
+    // Room for the floating create button on the tab screen
+    paddingBottom: FAB_CLEARANCE,
   },
   // Section header: footnote, capitals, text.secondary, letter spacing 0.5 (§4, §13.6)
   sectionHeader: {
@@ -982,18 +916,18 @@ const makeStyles = (t: ThemeTokens) => ({
     letterSpacing: 0.5,
     color: t.text.secondary,
   },
-  // Plain count: neutral tag
+  // Plain count badge: brand.fill with brand.onFill (§13.5)
   sectionBadge: {
     borderRadius: radius.pill,
     paddingHorizontal: space.sm,
     paddingVertical: space.xxs,
-    backgroundColor: t.status.neutral.background,
+    backgroundColor: t.brand.fill,
   },
   sectionCount: {
     ...typography.caption1,
     fontWeight: fontWeight.semibold,
     fontVariant: ['tabular-nums' as const],
-    color: t.status.neutral.text,
+    color: t.brand.onFill,
   },
   footerLoader: {
     flexDirection: 'row' as const,
@@ -1005,88 +939,6 @@ const makeStyles = (t: ThemeTokens) => ({
   footerLoaderText: {
     ...typography.footnote,
     color: t.text.secondary,
-  },
-  // Empty and error states (§13.6)
-  emptyContainer: {
-    flex: 1,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    padding: space.xxxl,
-    gap: space.sm,
-  },
-  emptyTitle: {
-    ...typography.title3,
-    color: t.text.primary,
-    textAlign: 'center' as const,
-    marginTop: space.lg,
-  },
-  emptySubtitle: {
-    ...typography.subhead,
-    color: t.text.secondary,
-    textAlign: 'center' as const,
-    marginBottom: space.lg,
-    maxWidth: 320,
-  },
-  errorState: {
-    flex: 1,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    padding: space.xxxl,
-    gap: space.sm,
-  },
-  errorTitle: {
-    ...typography.title3,
-    color: t.text.primary,
-    textAlign: 'center' as const,
-    marginTop: space.lg,
-  },
-  errorMessage: {
-    ...typography.subhead,
-    color: t.text.secondary,
-    textAlign: 'center' as const,
-    marginBottom: space.lg,
-    maxWidth: 320,
-  },
-  // Primary button (§13.1)
-  primaryButton: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    minHeight: touchTarget,
-    minWidth: 120,
-    paddingHorizontal: space.xxl,
-    paddingVertical: space.sm,
-    borderRadius: radius.button,
-    backgroundColor: t.brand.fill,
-    gap: space.sm,
-  },
-  primaryButtonPressed: {
-    backgroundColor: t.brand.fillPressed,
-  },
-  primaryButtonText: {
-    ...typography.callout,
-    color: t.brand.onFill,
-  },
-  // Secondary button: outline border.button, label brand.tint, pressed brand.subtle (§13.1, §10)
-  secondaryButton: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    minHeight: touchTarget,
-    minWidth: 120,
-    paddingHorizontal: space.xxl,
-    paddingVertical: space.sm,
-    borderRadius: radius.button,
-    borderWidth: 1,
-    borderColor: t.border.button,
-    gap: space.sm,
-  },
-  secondaryButtonPressed: {
-    backgroundColor: t.brand.subtle,
-  },
-  secondaryButtonText: {
-    ...typography.callout,
-    color: t.brand.tint,
   },
   // Snackbar: inverse surface (§13.9)
   snackbar: {

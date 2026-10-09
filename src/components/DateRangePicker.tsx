@@ -19,6 +19,7 @@
 
 import React, { useCallback } from 'react';
 import { DatePickerModal } from 'react-native-paper-dates';
+import { toDate, toLocalISODate } from '@/utils/formatters';
 
 interface DateRangePickerProps {
   visible: boolean;
@@ -42,18 +43,14 @@ export default function DateRangePicker({
   // Parse date string to Date object
   const parseDate = (dateStr?: string): Date | undefined => {
     if (!dateStr) return undefined;
-    const date = new Date(dateStr);
-    return isNaN(date.getTime()) ? undefined : date;
+    return toDate(dateStr) ?? undefined;
   };
 
   const handleConfirm = useCallback(
     (params: { date: Date | undefined }) => {
       if (params.date) {
-        // Format as YYYY-MM-DD
-        const year = params.date.getFullYear();
-        const month = String(params.date.getMonth() + 1).padStart(2, '0');
-        const day = String(params.date.getDate()).padStart(2, '0');
-        onSelect(`${year}-${month}-${day}`);
+        // Local calendar date as YYYY-MM-DD
+        onSelect(toLocalISODate(params.date));
       }
       onClose();
     },

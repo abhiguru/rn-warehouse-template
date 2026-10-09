@@ -11,14 +11,14 @@ import {
   ScrollView,
   RefreshControl,
   Text,
-  Pressable,
   ActivityIndicator,
   StyleSheet,
 } from 'react-native';
 import { Portal, Snackbar } from 'react-native-paper';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
-import { fontWeight, iconSize, radius, space, touchTarget, typography } from '@/theme/tokens';
+import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
+import { fontWeight, iconSize, radius, space, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import {
   getInvoiceDetails,
@@ -30,20 +30,15 @@ import {
 } from '@/services/invoice-service';
 import { isAbortError } from '@/hooks/useAbortableFetch';
 import { formatInvoiceAmount, formatInvoiceDeduction } from '@/utils/invoiceCalculations';
+import { formatCount, formatDate, toDate, formatNumber } from '@/utils/formatters';
 
 interface InvoiceDetailsProps {
   invoiceId: string;
   onBack?: () => void;
 }
 
-const formatDisplayDate = (value?: string) => {
-  if (!value) return '';
-  const date = new Date(value);
-  if (isNaN(date.getTime())) return '';
-  return date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
-};
+const formatDisplayDate = (value?: string) => (toDate(value) ? formatDate(value) : '');
 
-const formatQty = (value?: number) => new Intl.NumberFormat('en-IN').format(value || 0);
 
 const makeStyles = (t: ThemeTokens) => ({
   container: { flex: 1, backgroundColor: t.background.base },
@@ -57,14 +52,6 @@ const makeStyles = (t: ThemeTokens) => ({
   },
   loadingText: { ...typography.body, color: t.text.secondary },
   topBar: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: space.sm },
-  backButton: {
-    width: touchTarget,
-    height: touchTarget,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    borderRadius: radius.pill,
-  },
-  backButtonPressed: { backgroundColor: t.surface.cardPressed },
   pageTitle: { ...typography.title2, color: t.text.primary, flex: 1 },
   card: {
     backgroundColor: t.surface.card,
@@ -281,14 +268,7 @@ const InvoiceDetails: React.FC<InvoiceDetailsProps> = ({ invoiceId, onBack }) =>
       <>
         <View style={styles.topBar}>
           {onBack && (
-            <Pressable
-              onPress={onBack}
-              style={({ pressed }) => [styles.backButton, pressed && styles.backButtonPressed]}
-              accessibilityRole="button"
-              accessibilityLabel="Go back"
-            >
-              <Icon name="arrow-left" size={iconSize.lg} color={t.icon.primary} />
-            </Pressable>
+            <HeaderBackButton onPress={onBack} />
           )}
           <Text style={styles.pageTitle} accessibilityRole="header">Invoice details</Text>
         </View>
@@ -345,7 +325,7 @@ const InvoiceDetails: React.FC<InvoiceDetailsProps> = ({ invoiceId, onBack }) =>
         <Text style={styles.sectionHeader} accessibilityRole="header">Line items</Text>
         {itemsSummary && (
           <Text style={styles.summaryLine}>
-            {`${itemsSummary.totalItems} ${itemsSummary.totalItems === 1 ? 'item' : 'items'} · ${formatInvoiceAmount(itemsSummary.totalAmount)}`}
+            {`${formatCount(itemsSummary.totalItems, 'item')} · ${formatInvoiceAmount(itemsSummary.totalAmount)}`}
           </Text>
         )}
 
@@ -361,7 +341,7 @@ const InvoiceDetails: React.FC<InvoiceDetailsProps> = ({ invoiceId, onBack }) =>
               <Text style={styles.itemCharge}>{formatInvoiceAmount(item.charge)}</Text>
             </View>
             <Text style={styles.itemSubtitle}>
-              {`${item.duration} (${item.noOfDays} ${item.noOfDays === 1 ? 'day' : 'days'})`}
+              {`${item.duration} (${formatCount(item.noOfDays, 'day')})`}
             </Text>
 
             <View style={styles.detailsGrid}>
@@ -383,11 +363,11 @@ const InvoiceDetails: React.FC<InvoiceDetailsProps> = ({ invoiceId, onBack }) =>
               </View>
               <View style={styles.detailItem}>
                 <Text style={styles.detailLabel}>Dispatch qty</Text>
-                <Text style={styles.detailValue}>{formatQty(item.dispatchQty)}</Text>
+                <Text style={styles.detailValue}>{formatNumber(item.dispatchQty)}</Text>
               </View>
               <View style={styles.detailItem}>
                 <Text style={styles.detailLabel}>GRN qty</Text>
-                <Text style={styles.detailValue}>{formatQty(item.grnQuantity)}</Text>
+                <Text style={styles.detailValue}>{formatNumber(item.grnQuantity)}</Text>
               </View>
               <View style={styles.detailItem}>
                 <Text style={styles.detailLabel}>Tax</Text>
@@ -400,8 +380,8 @@ const InvoiceDetails: React.FC<InvoiceDetailsProps> = ({ invoiceId, onBack }) =>
         {itemsSummary && (
           <View style={styles.card}>
             <Text style={[styles.infoValue, styles.emphasis]} accessibilityRole="header">Items summary</Text>
-            {renderAmountRow('Total items', formatQty(itemsSummary.totalItems))}
-            {renderAmountRow('Total dispatch qty', formatQty(itemsSummary.totalDispatchQty))}
+            {renderAmountRow('Total items', formatNumber(itemsSummary.totalItems))}
+            {renderAmountRow('Total dispatch qty', formatNumber(itemsSummary.totalDispatchQty))}
             <View style={styles.totalRow}>
               <Text style={styles.totalLabel}>Total amount</Text>
               <Text style={styles.totalValue}>{formatInvoiceAmount(itemsSummary.totalAmount)}</Text>

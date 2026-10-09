@@ -9,8 +9,9 @@
  * - 24pt icons, caption2 labels that are always visible
  * - Selected: filled icon and label in brand.tint
  * - Unselected: outline icon in icon.secondary, label in text.secondary
- * - Minimum touch targets, selection haptics
- * - Count badges for items that need action
+ * - Minimum touch targets; no haptic on tab change (haptics only on save and toggle, §9)
+ * - Count badges: these mean "needs action", so they use destructive.fill with
+ *   destructive.onFill. Plain counts elsewhere use brand.fill with brand.onFill (§13.5).
  *
  * @example
  * ```tsx
@@ -27,7 +28,6 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { useRoleBasedAccess } from '@/hooks/useRoleBasedAccess';
-import { triggerSelection } from '@/hooks/useHaptics';
 import {
   fontWeight,
   iconSize,
@@ -130,7 +130,6 @@ export default function FioriTabBar({
             });
 
             if (!isFocused && !event.defaultPrevented) {
-              triggerSelection();
               navigation.navigate(route.name, route.params);
             }
           };
@@ -225,7 +224,8 @@ const makeStyles = (t: ThemeTokens) => ({
     fontWeight: fontWeight.semibold,
   },
 
-  // Count badge for items that need action
+  // "Needs action" count badge: destructive.fill with destructive.onFill. Plain counts
+  // use brand.fill with brand.onFill instead (§13.5).
   badge: {
     position: 'absolute' as const,
     top: -space.xs,

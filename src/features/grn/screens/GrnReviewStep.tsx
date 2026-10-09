@@ -3,8 +3,6 @@ import {
   View,
   Text,
   ScrollView,
-  Alert,
-  ActivityIndicator,
   Pressable,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -14,7 +12,6 @@ import type { ThemeTokens } from '@/theme/tokens';
 import { triggerSuccess, triggerError, triggerWarning } from '@/hooks/useHaptics';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Snackbar } from 'react-native-paper';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppSelector, useAppDispatch } from '@/store/hooks';
 import {
   GRNImageData,
@@ -42,17 +39,14 @@ import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { generateGRNPDF } from '@/services/pdf-service';
 import { downloadAndSharePDF } from '@/utils/shareDocument';
 
-const numberFormat = new Intl.NumberFormat('en-IN');
-const weightFormat = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 });
+import { showAlert } from '@/utils/alert';
+import WizardBottomBar from '@/components/WizardBottomBar';
+import { formatCount, formatDate, formatNumber, formatWeight } from '@/utils/formatters';
+import { StatusTag } from '@/components/ui';
 
-const SHORT_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-
-/** "9 Oct 2026", the style guide date format. */
+/** "9 Oct 2026" (§12.3); today when no date is set yet. */
 function formatReviewDate(value: string | undefined): string {
-  const date = value ? new Date(value) : new Date();
-  if (isNaN(date.getTime())) return '';
-  // Three-letter months on every engine (en-IN prints "Sept" on some).
-  return `${date.getDate()} ${SHORT_MONTHS[date.getMonth()]} ${date.getFullYear()}`;
+  return formatDate(value || new Date());
 }
 
 const STOCK_PROTECTED_TITLE = 'Some items are already dispatched';
@@ -83,7 +77,6 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
   } = useGRNForm({ mode, grnIdParam: id });
 
   const dispatch = useAppDispatch();
-  const insets = useSafeAreaInsets();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [localValidationErrors, setLocalValidationErrors] = useState<Record<string, string>>({});
@@ -104,9 +97,9 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
   }, [header, items]);
 
   const handleCancel = () => {
-    Alert.alert(
+    showAlert(
       isCreateMode ? 'Discard this GRN?' : 'Discard changes to this GRN?',
-      `${items.length} ${items.length === 1 ? 'item' : 'items'} ${isCreateMode ? 'and the GRN details' : 'and your changes'} will be lost.`,
+      `${formatCount(items.length, 'item')} ${isCreateMode ? 'and the GRN details' : 'and your changes'} will be lost.`,
       [
         { text: 'Keep editing', style: 'cancel' },
         {
@@ -175,7 +168,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
         }
       });
 
-      Alert.alert('Check the GRN details', errorMessages.join('\n') || 'Go back and fix the highlighted fields.');
+      showAlert('Check the GRN details', errorMessages.join('\n') || 'Go back and fix the highlighted fields.');
       return false;
     }
 
@@ -189,7 +182,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
     if (!isValid) return;
 
     if (!header.gr_images || header.gr_images.length === 0) {
-      Alert.alert(
+      showAlert(
         'Add a photo of the GRN',
         `Attach a photo of the GRN book entry for GRN ${header.gr_no}.`
       );
@@ -240,12 +233,12 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
         setShowSuccessDialog(true);
       } else {
         triggerError();
-        Alert.alert(SAVE_FAILED_TITLE, result.error || CONNECTION_HINT);
+        showAlert(SAVE_FAILED_TITLE, result.error || CONNECTION_HINT);
       }
     } catch (error) {
       triggerError();
       console.error('[GrnReviewStep] Submission error:', error);
-      Alert.alert(SAVE_FAILED_TITLE, CONNECTION_HINT);
+      showAlert(SAVE_FAILED_TITLE, CONNECTION_HINT);
     } finally {
       setIsSubmitting(false);
     }
@@ -253,7 +246,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
 
   const performUpdate = async () => {
     if (!grnId) {
-      Alert.alert(SAVE_FAILED_TITLE, 'Go back to the GRN list and open this GRN again.');
+      showAlert(SAVE_FAILED_TITLE, 'Go back to the GRN list and open this GRN again.');
       return;
     }
 
@@ -315,9 +308,9 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
         triggerError();
         const errorMessage = result.error || CONNECTION_HINT;
         if (errorMessage.includes('Stock Protection') || errorMessage.includes('STOCK_PROTECTED') || errorMessage.includes('dispatches exist')) {
-          Alert.alert(STOCK_PROTECTED_TITLE, STOCK_PROTECTED_MESSAGE);
+          showAlert(STOCK_PROTECTED_TITLE, STOCK_PROTECTED_MESSAGE);
         } else {
-          Alert.alert(SAVE_FAILED_TITLE, errorMessage);
+          showAlert(SAVE_FAILED_TITLE, errorMessage);
         }
       }
     } catch (error) {
@@ -325,9 +318,9 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
       console.error('[GrnReviewStep] Update error:', error);
       const errorMessage = error instanceof Error ? error.message : '';
       if (errorMessage.includes('Stock Protection') || errorMessage.includes('STOCK_PROTECTED') || errorMessage.includes('dispatches exist')) {
-        Alert.alert(STOCK_PROTECTED_TITLE, STOCK_PROTECTED_MESSAGE);
+        showAlert(STOCK_PROTECTED_TITLE, STOCK_PROTECTED_MESSAGE);
       } else {
-        Alert.alert(SAVE_FAILED_TITLE, CONNECTION_HINT);
+        showAlert(SAVE_FAILED_TITLE, CONNECTION_HINT);
       }
     } finally {
       dispatch(setIsSaving(false));
@@ -388,7 +381,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
 
   const imageUploadGrnId = isCreateMode ? (grnId || tempGrnId) ?? undefined : grnId ?? undefined;
   const isSubmittingState = isCreateMode ? isSubmitting : isSaving;
-  const ctaLabel = isCreateMode ? 'Create GRN' : 'Update GRN';
+  const ctaLabel = isCreateMode ? 'Create GRN' : 'Save GRN';
 
   // ============================================================================
   // FIORI BUILDING BLOCKS (plain render helpers, so rows are not remounted)
@@ -401,7 +394,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
     <View style={styles.sectionHeader}>
       <Text style={styles.sectionHeaderText} accessibilityRole="header">
         {title.toUpperCase()}
-        {options?.count !== undefined ? ` (${numberFormat.format(options.count)})` : ''}
+        {options?.count !== undefined ? ` (${formatNumber(options.count)})` : ''}
       </Text>
       {options?.onEdit ? (
         <Pressable
@@ -440,11 +433,11 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
       `Item ${index + 1}`,
       item.item_name,
       item.packaging,
-      `quantity ${numberFormat.format(qty)}`,
-      hasWeight ? `${weightFormat.format(weight)} kilograms each` : undefined,
+      `quantity ${formatNumber(qty)}`,
+      hasWeight ? `${formatWeight(weight)} each` : undefined,
       rack ? `rack ${rack}` : undefined,
       packageMark ? `mark ${packageMark}` : undefined,
-      imageCount > 0 ? `${imageCount} ${imageCount === 1 ? 'photo' : 'photos'}` : undefined,
+      imageCount > 0 ? formatCount(imageCount, 'photo') : undefined,
       isProtected ? 'already dispatched, quantity locked' : undefined,
     ].filter(Boolean);
 
@@ -471,51 +464,20 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
           ) : null}
 
           <View style={styles.objectCellFootnote}>
-            {hasWeight && (
-              <View style={styles.objectCellChip}>
-                <Icon name="weight-kilogram" size={iconSize.sm} color={t.icon.secondary} />
-                <Text style={styles.objectCellChipText} maxFontSizeMultiplier={1.6}>
-                  {weightFormat.format(weight)} kg
-                </Text>
-              </View>
-            )}
-            {rack ? (
-              <View style={styles.objectCellChip}>
-                <Icon name="view-grid-outline" size={iconSize.sm} color={t.icon.secondary} />
-                <Text style={styles.objectCellChipText} maxFontSizeMultiplier={1.6}>
-                  Rack {rack}
-                </Text>
-              </View>
-            ) : null}
-            {packageMark ? (
-              <View style={styles.objectCellChip}>
-                <Icon name="label-outline" size={iconSize.sm} color={t.icon.secondary} />
-                <Text style={styles.objectCellChipText} numberOfLines={1} maxFontSizeMultiplier={1.6}>
-                  {packageMark}
-                </Text>
-              </View>
-            ) : null}
+            {hasWeight && <StatusTag status="neutral" label={formatWeight(weight)} icon="weight-kilogram" />}
+            {rack ? <StatusTag status="neutral" label={`Rack ${rack}`} icon="view-grid-outline" /> : null}
+            {packageMark ? <StatusTag status="neutral" label={`Mark ${packageMark}`} icon="label-outline" /> : null}
             {imageCount > 0 && (
-              <View style={styles.objectCellChip}>
-                <Icon name="camera-outline" size={iconSize.sm} color={t.icon.secondary} />
-                <Text style={styles.objectCellChipText} maxFontSizeMultiplier={1.6}>
-                  {imageCount} {imageCount === 1 ? 'photo' : 'photos'}
-                </Text>
-              </View>
+              <StatusTag status="neutral" label={formatCount(imageCount, 'photo')} icon="camera-outline" />
             )}
           </View>
         </View>
 
         <View style={styles.objectCellStatus}>
-          <Text style={styles.qtyValue}>{numberFormat.format(qty)}</Text>
+          <Text style={styles.qtyValue}>{formatNumber(qty)}</Text>
           <Text style={styles.qtyLabel}>Qty</Text>
           {isProtected && (
-            <View style={styles.protectedTag}>
-              <Icon name="lock-outline" size={iconSize.sm} color={t.status.critical.text} />
-              <Text style={styles.protectedTagText} maxFontSizeMultiplier={1.6}>
-                Dispatched
-              </Text>
-            </View>
+            <StatusTag status="critical" label="Quantity locked" icon="lock-outline" />
           )}
         </View>
       </View>
@@ -523,13 +485,13 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
   };
 
   const renderSummaryKPI = (icon: string, label: string, value: number) => (
-    <View style={styles.summaryKPI} accessible accessibilityLabel={`${label}, ${numberFormat.format(value)}`}>
+    <View style={styles.summaryKPI} accessible accessibilityLabel={`${label}, ${formatNumber(value)}`}>
       <View style={styles.summaryKPIIcon}>
         <Icon name={icon} size={iconSize.md} color={t.brand.tint} />
       </View>
       <View style={styles.summaryKPIContent}>
         <Text style={styles.summaryKPILabel}>{label}</Text>
-        <Text style={styles.summaryKPIValue}>{numberFormat.format(value)}</Text>
+        <Text style={styles.summaryKPIValue}>{formatNumber(value)}</Text>
       </View>
     </View>
   );
@@ -568,12 +530,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
               {header.leon
                 ? renderKeyValue(
                     'Leon',
-                    <View style={styles.statusTag}>
-                      <Icon name="check-circle" size={iconSize.sm} color={t.status.positive.text} />
-                      <Text style={styles.statusTagText} maxFontSizeMultiplier={1.6}>
-                        On
-                      </Text>
-                    </View>
+                    <StatusTag status="positive" label="On" />
                   )
                 : null}
 
@@ -669,48 +626,28 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
         </ScrollView>
 
         {/* Bottom action bar */}
-        <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, space.lg) }]}>
-          <Pressable
-            style={({ pressed }) => [
-              styles.primaryButton,
-              pressed && styles.primaryButtonPressed,
-            ]}
-            onPress={handleSubmit}
-            disabled={isSubmittingState}
-            accessibilityRole="button"
-            accessibilityLabel={ctaLabel}
-            accessibilityState={{ disabled: isSubmittingState, busy: isSubmittingState }}
-          >
-            {isSubmittingState ? (
-              <>
-                <ActivityIndicator size="small" color={t.brand.onFill} />
-                <Text style={styles.primaryButtonText}>{isCreateMode ? 'Creating GRN…' : 'Saving GRN…'}</Text>
-              </>
-            ) : (
-              <>
-                <Icon
-                  name={isCreateMode ? 'check-circle-outline' : 'content-save-outline'}
-                  size={iconSize.lg}
-                  color={t.brand.onFill}
-                />
-                <Text style={styles.primaryButtonText}>{ctaLabel}</Text>
-              </>
-            )}
-          </Pressable>
-        </View>
+        <WizardBottomBar
+          currentStep={STEP_NUMBERS.REVIEW}
+          totalSteps={GRN_STEPS.length}
+          onPrevious={handlePrevious}
+          onNext={handleSubmit}
+          nextLabel={ctaLabel}
+          isLoading={isSubmittingState}
+          loadingLabel={isCreateMode ? 'Creating GRN…' : 'Saving GRN…'}
+        />
       </View>
 
       {/* Confirm Submit Dialog */}
       <ConfirmDialog
         visible={showConfirmDialog}
         title={isCreateMode ? 'Create this GRN?' : 'Save changes to this GRN?'}
-        message={`${isCreateMode ? 'Create' : 'Save'} ${header.gr_no ? `GRN ${header.gr_no}` : 'this GRN'} with ${numberFormat.format(totalItems)} ${totalItems === 1 ? 'item' : 'items'}?`}
+        message={`${isCreateMode ? 'Create' : 'Save'} ${header.gr_no ? `GRN ${header.gr_no}` : 'this GRN'} with ${formatCount(totalItems, 'item')}?`}
         confirmText={isCreateMode ? 'Create GRN' : 'Save GRN'}
         cancelText="Cancel"
         onConfirm={handleConfirmSubmit}
         onCancel={() => setShowConfirmDialog(false)}
         variant="default"
-        icon={isCreateMode ? 'add-circle' : 'create'}
+        icon={isCreateMode ? 'plus-circle' : 'pencil-outline'}
       />
 
       <DocumentSuccessDialog
@@ -840,16 +777,6 @@ const makeStyles = (t: ThemeTokens) => ({
   keyValueValue: { ...typography.body, color: t.text.primary, textAlign: 'right' as const, flexShrink: 1 },
   keyValueValueEmphasized: { fontWeight: fontWeight.semibold },
 
-  statusTag: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: space.xs,
-    paddingHorizontal: space.sm,
-    paddingVertical: space.xxs,
-    borderRadius: radius.field,
-    backgroundColor: t.status.positive.background,
-  },
-  statusTagText: { ...typography.caption1, fontWeight: fontWeight.semibold, color: t.status.positive.text },
 
   notesSection: {
     marginTop: space.sm,
@@ -897,20 +824,6 @@ const makeStyles = (t: ThemeTokens) => ({
     gap: space.s6,
     marginTop: space.xs,
   },
-  objectCellChip: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: space.xs,
-    paddingHorizontal: space.sm,
-    paddingVertical: space.xxs,
-    borderRadius: radius.field,
-    backgroundColor: t.status.neutral.background,
-  },
-  objectCellChipText: {
-    ...typography.caption1,
-    color: t.status.neutral.text,
-    fontVariant: ['tabular-nums' as const],
-  },
   objectCellStatus: { alignItems: 'flex-end' as const, gap: space.xxs },
   qtyValue: {
     ...typography.headline,
@@ -918,16 +831,6 @@ const makeStyles = (t: ThemeTokens) => ({
     fontVariant: ['tabular-nums' as const],
   },
   qtyLabel: { ...typography.caption1, color: t.text.secondary },
-  protectedTag: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: space.xxs,
-    paddingHorizontal: space.s6,
-    paddingVertical: space.xxs,
-    borderRadius: radius.field,
-    backgroundColor: t.status.critical.background,
-  },
-  protectedTagText: { ...typography.caption1, fontWeight: fontWeight.semibold, color: t.status.critical.text },
 
   emptyState: {
     alignItems: 'center' as const,
@@ -966,25 +869,6 @@ const makeStyles = (t: ThemeTokens) => ({
     color: t.text.primary,
     fontVariant: ['tabular-nums' as const],
   },
-
-  footer: {
-    paddingHorizontal: space.lg,
-    paddingTop: space.md,
-    backgroundColor: t.surface.card,
-    ...t.shadow[3],
-  },
-  primaryButton: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    gap: space.sm,
-    minHeight: 48,
-    borderRadius: radius.button,
-    paddingHorizontal: space.lg,
-    backgroundColor: t.brand.fill,
-  },
-  primaryButtonPressed: { backgroundColor: t.brand.fillPressed },
-  primaryButtonText: { ...typography.callout, fontWeight: fontWeight.semibold, color: t.brand.onFill },
 
   snackbar: { backgroundColor: t.surface.inverse, borderRadius: radius.button, ...t.shadow[3] },
   snackbarText: { ...typography.subhead, color: t.text.inverse },

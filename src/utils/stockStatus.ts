@@ -1,19 +1,30 @@
 /**
- * Stock Status Utility for SAP Fiori Design
+ * Stock status: the one rule for every screen (docs/STYLE_GUIDE.md §3.5).
  *
- * Maps stock quantities to SAP Fiori semantic status types
- * for consistent visual indication across the app.
+ * - No stock left (0 or less): "Out of stock", negative.
+ * - Less than LOW_STOCK_RATIO (20%) of the original quantity left: "Low stock", critical.
+ * - Otherwise: "In stock", positive. When the original quantity is unknown (0),
+ *   any stock above 0 counts as in stock.
+ *
+ * StockIndicator and the list rows and headers read their status from here.
  */
 
 import { getTokens, type ThemeTokens } from '@/theme/tokens';
 
-// SAP Fiori semantic status types
+/** Below this share of the original quantity, stock is low (critical). */
+export const LOW_STOCK_RATIO = 0.2;
+
+// SAP Fiori semantic status types ('neutral' kept for colour lookups by callers)
 export type StockStatus = 'positive' | 'critical' | 'negative' | 'neutral';
 
+/** The levels the stock rule returns. */
+export type StockLevel = 'positive' | 'critical' | 'negative';
+
 export interface StockStatusResult {
-  status: StockStatus;
+  status: StockLevel;
   label: string;
   icon: string;
+  /** Remaining stock as a whole percentage of the original quantity, 0 to 100. */
   percentage: number;
 }
 
@@ -28,62 +39,56 @@ export interface StockStatusColors {
   border: string;
 }
 
+/** The status word for each level. */
+export const STOCK_LABELS: Record<StockLevel, string> = {
+  positive: 'In stock',
+  critical: 'Low stock',
+  negative: 'Out of stock',
+};
+
+/** The standard §3.5 icon for each level (the same as StatusTag's STATUS_ICONS). */
+export const STOCK_ICONS: Record<StockLevel, string> = {
+  positive: 'check-circle',
+  critical: 'alert',
+  negative: 'alert-circle',
+};
+
 /**
- * Calculate stock status based on current stock and total quantity
- *
- * @param stock - Current stock count
- * @param qty - Total quantity
- * @returns StockStatusResult with status, label, icon, and percentage
+ * The stock level for the remaining and the original quantity.
  *
  * @example
- * getStockStatus(100, 100) // { status: 'positive', label: 'Full', ... }
- * getStockStatus(50, 100)  // { status: 'critical', label: 'Partial', ... }
- * getStockStatus(0, 100)   // { status: 'negative', label: 'Empty', ... }
+ * getStockLevel(0, 100)  // 'negative'
+ * getStockLevel(19, 100) // 'critical'
+ * getStockLevel(20, 100) // 'positive'
+ */
+export function getStockLevel(stock: number, originalQty: number): StockLevel {
+  const safeStock = Number(stock) || 0;
+  const safeQty = Number(originalQty) || 0;
+  if (safeStock <= 0) return 'negative';
+  if (safeQty > 0 && safeStock < safeQty * LOW_STOCK_RATIO) return 'critical';
+  return 'positive';
+}
+
+/** True when the stock is low (critical) under the one rule. */
+export function isLowStock(stock: number, originalQty: number): boolean {
+  return getStockLevel(stock, originalQty) === 'critical';
+}
+
+/**
+ * Stock status with its word, icon and remaining percentage.
+ *
+ * @example
+ * getStockStatus(100, 100) // { status: 'positive', label: 'In stock', percentage: 100, ... }
+ * getStockStatus(10, 100)  // { status: 'critical', label: 'Low stock', percentage: 10, ... }
+ * getStockStatus(0, 100)   // { status: 'negative', label: 'Out of stock', percentage: 0, ... }
  */
 export function getStockStatus(stock: number, qty: number): StockStatusResult {
-  // Handle undefined/null/NaN
   const safeStock = Number(stock) || 0;
   const safeQty = Number(qty) || 0;
-
-  // No data case
-  if (safeQty === 0) {
-    return {
-      status: 'neutral',
-      label: 'N/A',
-      icon: 'help-circle-outline',
-      percentage: 0,
-    };
-  }
-
-  const percentage = Math.round((safeStock / safeQty) * 100);
-
-  // Empty stock
-  if (safeStock === 0) {
-    return {
-      status: 'negative',
-      label: 'Empty',
-      icon: 'package-variant-closed-remove',
-      percentage: 0,
-    };
-  }
-
-  // Full stock
-  if (safeStock >= safeQty) {
-    return {
-      status: 'positive',
-      label: 'Full',
-      icon: 'package-variant',
-      percentage: 100,
-    };
-  }
-
-  // Partial stock (0 < stock < qty)
-  return {
-    status: 'critical',
-    label: 'Partial',
-    icon: 'package-variant-minus',
-    percentage,
-  };
+  const status = getStockLevel(safeStock, safeQty);
+  const percentage =
+    safeQty > 0 ? Math.max(0, Math.min(100, Math.round((safeStock / safeQty) * 100))) : 0;
+  return { status, label: STOCK_LABELS[status], icon: STOCK_ICONS[status], percentage };
 }
 
 /** Fallback when no tokens are passed: the template's default (Orange light) theme. */

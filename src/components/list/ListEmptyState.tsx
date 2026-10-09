@@ -11,7 +11,7 @@
 
 import React, { memo } from 'react';
 import { View, Text, Pressable } from 'react-native';
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, layout, radius, space, touchTarget, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
@@ -19,7 +19,7 @@ import type { ThemeTokens } from '@/theme/tokens';
 export interface ListEmptyStateProps {
   /** Number of active filters (affects messaging) */
   activeFilterCount: number;
-  /** Icon to show when no filters applied (MaterialCommunityIcons name; Ionicons names still work) */
+  /** Icon to show when no filters applied (MaterialCommunityIcons name) */
   emptyIcon?: string;
   /** Icon to show when filters are active but no results */
   filteredIcon?: string;
@@ -35,7 +35,7 @@ export interface ListEmptyStateProps {
   showCreateButton?: boolean;
   /** Create button label */
   createButtonLabel?: string;
-  /** Create button icon (MaterialCommunityIcons name; Ionicons names still work) */
+  /** Create button icon (MaterialCommunityIcons name) */
   createButtonIcon?: string;
   /** Called when create button pressed */
   onCreatePress?: () => void;
@@ -45,22 +45,8 @@ export interface ListEmptyStateProps {
   clearFiltersLabel?: string;
 }
 
-type GlyphMap = Record<string, unknown> | undefined;
-
-/** Render a glyph from MaterialCommunityIcons, falling back to Ionicons for older names. */
 function Glyph({ name, size, color }: { name: string; size: number; color: string }) {
-  const mci = (MaterialCommunityIcons as unknown as { glyphMap?: GlyphMap }).glyphMap;
-  const ion = (Ionicons as unknown as { glyphMap?: GlyphMap }).glyphMap;
-  if (mci && !(name in mci) && ion && name in ion) {
-    return <Ionicons name={name as keyof typeof Ionicons.glyphMap} size={size} color={color} />;
-  }
-  return (
-    <MaterialCommunityIcons
-      name={name as keyof typeof MaterialCommunityIcons.glyphMap}
-      size={size}
-      color={color}
-    />
-  );
+  return <Icon name={name} size={size} color={color} />;
 }
 
 const makeStyles = (t: ThemeTokens) => ({

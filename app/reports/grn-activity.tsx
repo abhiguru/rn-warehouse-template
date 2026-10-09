@@ -46,23 +46,11 @@ import type {
   AllGRNActivityData,
   CustomerGRNSummary,
 } from '@/types/report.types';
-import { formatNumber, formatSectionDate } from '@/utils/formatters';
+import { formatCount, formatDate, formatNumber, formatSectionDate } from '@/utils/formatters';
+import { StatusTag, Avatar } from '@/components/ui';
 
 const NO_CUSTOMER_ERROR = 'No customer assigned to your account';
 
-/** "9 Oct 2026" (style guide 12.3). */
-const formatDisplayDate = (date: string | Date | null | undefined) => {
-  if (!date) return '';
-  const d = typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date)
-    ? new Date(`${date}T00:00:00`)
-    : new Date(date);
-  if (isNaN(d.getTime())) return '';
-  return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
-};
-
-/** "1 bag", "120 bags" (style guide 12.3). */
-const pluralize = (count: number, singular: string, plural: string) =>
-  `${formatNumber(count)} ${count === 1 ? singular : plural}`;
 
 const makeStyles = (t: ThemeTokens) => ({
   container: { flex: 1, backgroundColor: t.background.base },
@@ -141,17 +129,6 @@ const makeStyles = (t: ThemeTokens) => ({
   title: { ...typography.headline, color: t.text.primary, flexShrink: 1 },
   subtitle: { ...typography.subhead, color: t.text.secondary },
 
-  imageCountBadge: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: space.xxs,
-    paddingHorizontal: space.s6,
-    paddingVertical: space.xxs,
-    borderRadius: radius.field,
-    backgroundColor: t.status.neutral.background,
-  },
-  imageCountText: { ...typography.caption1, color: t.status.neutral.text, fontVariant: ['tabular-nums' as const] },
-
   stockInfo: { alignItems: 'flex-end' as const },
   stockValue: { ...typography.headline, color: t.text.primary, fontVariant: ['tabular-nums' as const] },
   stockLabel: { ...typography.caption1, color: t.text.secondary, fontVariant: ['tabular-nums' as const] },
@@ -166,15 +143,6 @@ const makeStyles = (t: ThemeTokens) => ({
     paddingBottom: space.md,
     paddingLeft: space.lg + layout.avatar.md + space.md,
   },
-  statusTag: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: space.xs,
-    paddingHorizontal: space.sm,
-    paddingVertical: space.xxs,
-    borderRadius: radius.field,
-  },
-  statusTagText: { ...typography.caption1, fontWeight: fontWeight.semibold },
   dispatchCount: { ...typography.footnote, color: t.text.secondary },
 
   // Customers list
@@ -192,13 +160,6 @@ const makeStyles = (t: ThemeTokens) => ({
     paddingHorizontal: space.lg,
     gap: space.md,
     backgroundColor: t.surface.card,
-  },
-  customerAvatar: {
-    width: layout.avatar.md,
-    height: layout.avatar.md,
-    borderRadius: radius.pill,
-    justifyContent: 'center' as const,
-    alignItems: 'center' as const,
   },
   customerContent: { flex: 1, gap: space.xxs },
   customerQty: { alignItems: 'flex-end' as const },
@@ -242,16 +203,15 @@ interface GRNCardProps {
 const GRNCard: React.FC<GRNCardProps> = ({ grn, styles }) => {
   const t = useTokens();
   const invoiced = grn.invoice_status.is_invoiced;
-  const invoiceStatus = invoiced ? t.status.positive : t.status.critical;
   const invoiceLabel = invoiced
     ? grn.invoice_status.invoice_number
       ? `Invoice ${grn.invoice_status.invoice_number}`
       : 'Invoiced'
     : 'Not invoiced';
   const dispatchCount = grn.dispatch_summary.dispatch_count;
-  const dispatchLabel = dispatchCount > 0 ? pluralize(dispatchCount, 'dispatch', 'dispatches') : null;
+  const dispatchLabel = dispatchCount > 0 ? formatCount(dispatchCount, 'dispatch', 'dispatches') : null;
   const people = [grn.sender_name || 'Sender not recorded', grn.supervisor_name].filter(Boolean).join(' · ');
-  const stockLabel = `${formatNumber(grn.dispatch_summary.current_stock)} of ${pluralize(grn.total_qty, 'bag', 'bags')} in stock`;
+  const stockLabel = `${formatNumber(grn.dispatch_summary.current_stock)} of ${formatCount(grn.total_qty, 'bag')} in stock`;
 
   const handlePress = () => {
     if (grn.grn_id) {
@@ -270,7 +230,7 @@ const GRNCard: React.FC<GRNCardProps> = ({ grn, styles }) => {
         stockLabel,
         invoiceLabel,
         dispatchLabel,
-        grn.image_count > 0 ? pluralize(grn.image_count, 'photo', 'photos') : null,
+        grn.image_count > 0 ? formatCount(grn.image_count, 'photo') : null,
       ].filter(Boolean).join(', ')}
       accessibilityHint="Opens the GRN"
     >
@@ -285,10 +245,7 @@ const GRNCard: React.FC<GRNCardProps> = ({ grn, styles }) => {
               GRN {grn.gr_no}
             </Text>
             {grn.image_count > 0 && (
-              <View style={styles.imageCountBadge}>
-                <Icon name="camera-outline" size={iconSize.sm} color={t.status.neutral.text} />
-                <Text style={styles.imageCountText} maxFontSizeMultiplier={1.6}>{grn.image_count}</Text>
-              </View>
+              <StatusTag status="neutral" label={formatNumber(grn.image_count)} icon="camera-outline" />
             )}
           </View>
           <Text style={styles.subtitle} numberOfLines={2}>
@@ -305,12 +262,7 @@ const GRNCard: React.FC<GRNCardProps> = ({ grn, styles }) => {
       </View>
 
       <View style={styles.statusRow}>
-        <View style={[styles.statusTag, { backgroundColor: invoiceStatus.background }]}>
-          <Icon name={invoiced ? 'check-circle' : 'alert'} size={iconSize.sm} color={invoiceStatus.text} />
-          <Text style={[styles.statusTagText, { color: invoiceStatus.text }]} maxFontSizeMultiplier={1.6}>
-            {invoiceLabel}
-          </Text>
-        </View>
+        <StatusTag status={invoiced ? 'positive' : 'critical'} label={invoiceLabel} />
         {dispatchLabel && <Text style={styles.dispatchCount}>{dispatchLabel}</Text>}
       </View>
     </Pressable>
@@ -324,19 +276,12 @@ interface CustomerCardProps {
   styles: Styles;
 }
 
-const avatarIndex = (key: string, count: number) => {
-  let hash = 0;
-  for (let i = 0; i < key.length; i += 1) hash = (hash * 31 + key.charCodeAt(i)) | 0;
-  return Math.abs(hash) % count;
-};
-
 const CustomerCard: React.FC<CustomerCardProps> = ({ customer, onPress, styles }) => {
   const t = useTokens();
-  const latest = formatDisplayDate(customer.latest_grn_date);
-  const grnCount = pluralize(customer.grn_count, 'GRN', 'GRNs');
-  const subtitle = latest ? `${grnCount} · Latest ${latest}` : grnCount;
-  const bags = pluralize(customer.total_quantity, 'bag', 'bags');
-  const initialColor = t.mode === 'dark' ? t.overlay.onImage : t.text.primary;
+  const latest = customer.latest_grn_date ? formatDate(customer.latest_grn_date, 'short') : '';
+  const grnCount = formatCount(customer.grn_count, 'GRN');
+  const subtitle = latest && latest !== '—' ? `${grnCount} · Latest ${latest}` : grnCount;
+  const bags = formatCount(customer.total_quantity, 'bag');
   return (
     <Pressable
       style={({ pressed }) => [styles.customerRow, pressed && styles.cardPressed]}
@@ -345,14 +290,7 @@ const CustomerCard: React.FC<CustomerCardProps> = ({ customer, onPress, styles }
       accessibilityLabel={`${customer.customer_name}, ${subtitle}, ${bags}`}
       accessibilityHint="Shows this customer's GRNs"
     >
-      <View
-        style={[
-          styles.customerAvatar,
-          { backgroundColor: t.avatar[avatarIndex(customer.customer_id, t.avatar.length)] },
-        ]}
-      >
-        <Icon name="account-outline" size={iconSize.lg} color={initialColor} />
-      </View>
+      <Avatar name={customer.customer_name} id={customer.customer_id} />
       <View style={styles.customerContent}>
         <Text style={styles.title} numberOfLines={2}>
           {customer.customer_name}
@@ -581,7 +519,7 @@ export default function GRNActivityScreen() {
 
 
   const { from, to } = getDateRangeForPeriod(selectedPeriod);
-  const dateRangeText = `${formatDisplayDate(from)} to ${formatDisplayDate(to)}`;
+  const dateRangeText = `${formatDate(from)} to ${formatDate(to)}`;
 
   const isListView = shouldShowListView && viewMode === 'all';
   const hasData = isListView ? allCustomersData : data;

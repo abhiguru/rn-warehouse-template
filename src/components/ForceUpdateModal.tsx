@@ -12,7 +12,7 @@
 
 import React from 'react';
 import { View, Text, Modal, Platform, Pressable } from 'react-native';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useForceUpdate } from '@/hooks/useForceUpdate';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, layout, radius, space, touchTarget, typography } from '@/theme/tokens';

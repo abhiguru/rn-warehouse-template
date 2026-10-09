@@ -57,7 +57,8 @@ import type {
   MonthlyTrendPoint,
   CustomerActivityPeriod,
 } from '@/types/report.types';
-import { formatNumber, formatCurrency, parseLocalISODate } from '@/utils/formatters';
+import { formatCount, formatCurrency, formatDate, formatMonth, formatNumber, toDate } from '@/utils/formatters';
+import { Avatar, StatusTag, type StatusKind } from '@/components/ui';
 import { createLogger } from '@/utils/logger';
 
 const logger = createLogger('CustomerActivity');
@@ -69,16 +70,6 @@ const NO_CUSTOMER = 'No customer is linked to your account. Ask your facility to
 // ============================================================================
 // Status (guide §3.5)
 // ============================================================================
-
-type StatusKind = 'negative' | 'critical' | 'positive' | 'informative' | 'neutral';
-
-const STATUS_ICON: Record<StatusKind, string> = {
-  negative: 'alert-circle',
-  critical: 'alert',
-  positive: 'check-circle',
-  informative: 'information',
-  neutral: 'circle-outline',
-};
 
 interface StatusInfo {
   kind: StatusKind;
@@ -119,58 +110,22 @@ const PERIOD_OPTIONS: { id: CustomerActivityPeriod; days: number }[] = [
 // Helper Functions
 // ============================================================================
 
-function toDate(value: string): Date {
-  return /^\d{4}-\d{2}-\d{2}$/.test(value) ? parseLocalISODate(value) : new Date(value);
-}
-
-/** "9 Oct 2026" (guide §12.3) */
-function formatDay(value: string): string {
-  if (!value) return '';
-  const date = toDate(value);
-  if (isNaN(date.getTime())) return '';
-  return date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
-}
-
-/** "Active today" or "Last active 9 Oct 2026" */
+/** "Active today" or "Last active 9 Oct" (row date, guide §12.3) */
 function formatLastActivity(value: string): string {
-  if (!value) return '';
   const date = toDate(value);
-  if (isNaN(date.getTime())) return '';
+  if (!date) return '';
   if (date.toDateString() === new Date().toDateString()) return 'Active today';
-  return `Last active ${formatDay(value)}`;
+  return `Last active ${formatDate(date, 'short')}`;
 }
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-
-function formatShortMonth(monthStr: string): string {
-  const [, month] = monthStr.split('-');
-  return MONTHS[parseInt(month, 10) - 1] || monthStr;
-}
-
-/** "Oct 2026" */
+/** "Oct 2026" for a "2026-10" trend month (guide §12.3). */
 function formatMonthYear(monthStr: string): string {
-  const [year, month] = monthStr.split('-');
-  const name = MONTHS[parseInt(month, 10) - 1];
-  return name ? `${name} ${year}` : monthStr;
+  return toDate(`${monthStr}-01`) ? formatMonth(`${monthStr}-01`, 'short') : monthStr;
 }
 
-function plural(count: number, one: string, many: string): string {
-  return `${formatNumber(count)} ${count === 1 ? one : many}`;
-}
-
-/** Stable avatar colour index for a customer (guide §3.2). */
-function avatarIndex(key: string, count: number): number {
-  let hash = 0;
-  for (let i = 0; i < key.length; i++) {
-    hash = (hash * 31 + key.charCodeAt(i)) | 0;
-  }
-  return Math.abs(hash) % count;
-}
-
-function initials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return '?';
-  return (parts[0][0] + (parts.length > 1 ? parts[parts.length - 1][0] : '')).toUpperCase();
+/** "Oct": the month alone, for chart axis labels. */
+function formatShortMonth(monthStr: string): string {
+  return toDate(`${monthStr}-01`) ? formatMonth(`${monthStr}-01`, 'narrow') : monthStr;
 }
 
 // ============================================================================
@@ -231,18 +186,6 @@ const makeStyles = (t: ThemeTokens) =>
       backgroundColor: t.surface.card,
     },
     customerCardPressed: { backgroundColor: t.surface.cardPressed },
-    customerAvatar: {
-      width: layout.avatar.md,
-      height: layout.avatar.md,
-      borderRadius: radius.pill,
-      justifyContent: 'center',
-      alignItems: 'center',
-    },
-    customerInitials: {
-      ...typography.subhead,
-      fontWeight: fontWeight.semibold,
-      color: t.mode === 'dark' ? t.overlay.onImage : t.text.primary,
-    },
     customerContent: { flex: 1 },
     customerName: { ...typography.headline, color: t.text.primary },
     customerSubtitle: { ...typography.subhead, color: t.text.secondary, marginTop: space.xxs },
@@ -372,7 +315,7 @@ const makeStyles = (t: ThemeTokens) =>
     // Aging buckets
     bucketRow: { gap: space.xs },
     bucketTop: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
-    bucketLabel: { ...typography.subhead, color: t.text.primary, flex: 1 },
+    bucketLabel: { flex: 1 },
     bucketValue: { ...typography.subhead, fontWeight: fontWeight.semibold, color: t.text.primary, fontVariant: ['tabular-nums'] },
     bucketCount: { ...typography.footnote, color: t.text.secondary, fontVariant: ['tabular-nums'], minWidth: 56, textAlign: 'right' },
     bucketTrack: {
@@ -419,15 +362,6 @@ const makeStyles = (t: ThemeTokens) =>
     previewItemSublabel: { ...typography.caption1, color: t.text.secondary },
     previewItemRight: { alignItems: 'flex-end', gap: space.xxs },
     previewItemValue: { ...typography.subhead, fontWeight: fontWeight.semibold, color: t.text.primary, fontVariant: ['tabular-nums'] },
-    tag: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: space.xxs,
-      paddingHorizontal: space.s6,
-      paddingVertical: space.xxs,
-      borderRadius: radius.field,
-    },
-    tagText: { ...typography.caption1, fontWeight: fontWeight.semibold },
   });
 
 type Styles = ReturnType<typeof makeStyles>;
@@ -435,18 +369,6 @@ type Styles = ReturnType<typeof makeStyles>;
 // ============================================================================
 // Components
 // ============================================================================
-
-function StatusTag({ status, styles, t }: { status: StatusInfo; styles: Styles; t: ThemeTokens }) {
-  const tone = t.status[status.kind];
-  return (
-    <View style={[styles.tag, { backgroundColor: tone.background }]}>
-      <Icon name={STATUS_ICON[status.kind]} size={iconSize.sm} color={tone.text} />
-      <Text style={[styles.tagText, { color: tone.text }]} maxFontSizeMultiplier={1.6}>
-        {status.label}
-      </Text>
-    </View>
-  );
-}
 
 const SectionHeader: React.FC<{
   title: string;
@@ -492,8 +414,8 @@ const CustomerCard: React.FC<CustomerCardProps> = ({ customer, onPress, styles, 
   const subtitle = [customer.customer_city, formatLastActivity(customer.last_activity_date)]
     .filter(Boolean)
     .join(' · ');
-  const grns = plural(customer.total_grns, 'GRN', 'GRNs');
-  const dispatches = plural(customer.total_dispatches, 'dispatch', 'dispatches');
+  const grns = formatCount(customer.total_grns, 'GRN');
+  const dispatches = formatCount(customer.total_dispatches, 'dispatch', 'dispatches');
   const invoiced = `${formatCurrency(customer.total_invoice_amount, { maximumFractionDigits: 0 })} invoiced`;
   const stock = formatNumber(customer.current_stock);
 
@@ -505,16 +427,7 @@ const CustomerCard: React.FC<CustomerCardProps> = ({ customer, onPress, styles, 
       accessibilityLabel={`${customer.customer_name}, ${subtitle}, ${stock} in stock, ${grns}, ${dispatches}, ${invoiced}`}
       accessibilityHint="Opens this customer's activity"
     >
-      <View
-        style={[
-          styles.customerAvatar,
-          { backgroundColor: t.avatar[avatarIndex(customer.customer_id, t.avatar.length)] },
-        ]}
-      >
-        <Text style={styles.customerInitials} maxFontSizeMultiplier={1.6}>
-          {initials(customer.customer_name)}
-        </Text>
-      </View>
+      <Avatar name={customer.customer_name} id={customer.customer_id} />
       <View style={styles.customerContent}>
         <Text style={styles.customerName} numberOfLines={2}>
           {customer.customer_name}
@@ -810,9 +723,9 @@ const StockTrendChart: React.FC<StockTrendChartProps> = ({ trends, styles, t }) 
               <Text style={styles.summaryLabel}>Highest</Text>
               <Text style={styles.summaryValue}>{formatNumber(maxValue)}</Text>
             </View>
-            <View style={styles.summaryItem} accessible accessibilityLabel={`Period ${plural(fullscreenLineData.length, 'month', 'months')}`}>
+            <View style={styles.summaryItem} accessible accessibilityLabel={`Period ${formatCount(fullscreenLineData.length, 'month')}`}>
               <Text style={styles.summaryLabel}>Period</Text>
-              <Text style={styles.summaryValue}>{plural(fullscreenLineData.length, 'month', 'months')}</Text>
+              <Text style={styles.summaryValue}>{formatCount(fullscreenLineData.length, 'month')}</Text>
             </View>
           </View>
         </View>
@@ -845,8 +758,9 @@ const AgingBucketBar: React.FC<AgingBucketBarProps> = ({ bucket, data, maxPercen
       accessibilityLabel={`${label}: ${percentage.toFixed(1)}%, ${formatNumber(quantity)} units`}
     >
       <View style={styles.bucketTop}>
-        <Icon name={STATUS_ICON[kind]} size={iconSize.sm} color={tone.text} />
-        <Text style={styles.bucketLabel}>{label}</Text>
+        <View style={styles.bucketLabel}>
+          <StatusTag status={kind} label={label} />
+        </View>
         <Text style={styles.bucketValue}>{`${percentage.toFixed(1)}%`}</Text>
         <Text style={styles.bucketCount}>{formatNumber(quantity)}</Text>
       </View>
@@ -928,7 +842,7 @@ const PreviewItem: React.FC<PreviewItemProps> = ({ label, sublabel, value, statu
     </View>
     <View style={styles.previewItemRight}>
       <Text style={styles.previewItemValue}>{value}</Text>
-      {status && <StatusTag status={status} styles={styles} t={t} />}
+      {status && <StatusTag status={status.kind} label={status.label} />}
     </View>
   </View>
 );
@@ -1308,7 +1222,7 @@ export default function CustomerActivityScreen() {
               <QuickAccessCard
                 icon="package-down"
                 title="Recent GRNs"
-                countLabel={plural(grnCount, 'GRN', 'GRNs')}
+                countLabel={formatCount(grnCount, 'GRN')}
                 onPress={() => navigateToReport('grn-activity')}
                 styles={styles}
                 t={t}
@@ -1317,7 +1231,7 @@ export default function CustomerActivityScreen() {
                   <PreviewItem
                     key={grn.grn_id}
                     label={`GRN ${grn.gr_no}`}
-                    sublabel={formatDay(grn.grn_date)}
+                    sublabel={formatDate(grn.grn_date, 'short')}
                     value={`${formatNumber(grn.current_stock)} of ${formatNumber(grn.total_qty)} in stock`}
                     styles={styles}
                     t={t}
@@ -1329,7 +1243,7 @@ export default function CustomerActivityScreen() {
               <QuickAccessCard
                 icon="truck-delivery-outline"
                 title="Recent dispatches"
-                countLabel={plural(dispatchCount, 'dispatch', 'dispatches')}
+                countLabel={formatCount(dispatchCount, 'dispatch', 'dispatches')}
                 onPress={() => navigateToReport('dispatch-activity')}
                 styles={styles}
                 t={t}
@@ -1338,7 +1252,7 @@ export default function CustomerActivityScreen() {
                   <PreviewItem
                     key={disp.dispatch_id}
                     label={`Dispatch ${disp.dispatch_no}`}
-                    sublabel={formatDay(disp.dispatch_date)}
+                    sublabel={formatDate(disp.dispatch_date, 'short')}
                     value={formatNumber(disp.total_qty)}
                     styles={styles}
                     t={t}
@@ -1350,7 +1264,7 @@ export default function CustomerActivityScreen() {
               <QuickAccessCard
                 icon="cube-outline"
                 title="Top stock items"
-                countLabel={plural(itemCount, 'item', 'items')}
+                countLabel={formatCount(itemCount, 'item')}
                 onPress={() => navigateToReport('stock-aging')}
                 styles={styles}
                 t={t}
@@ -1359,7 +1273,7 @@ export default function CustomerActivityScreen() {
                   <PreviewItem
                     key={`${item.item_name}-${idx}`}
                     label={item.item_name}
-                    sublabel={plural(item.grn_count, 'GRN', 'GRNs')}
+                    sublabel={formatCount(item.grn_count, 'GRN')}
                     value={formatNumber(item.total_stock)}
                     styles={styles}
                     t={t}
@@ -1371,7 +1285,7 @@ export default function CustomerActivityScreen() {
               <QuickAccessCard
                 icon="file-document-outline"
                 title="Recent invoices"
-                countLabel={plural(invoiceCount, 'invoice', 'invoices')}
+                countLabel={formatCount(invoiceCount, 'invoice')}
                 onPress={() => navigateToReport('invoice-history')}
                 styles={styles}
                 t={t}
@@ -1380,7 +1294,7 @@ export default function CustomerActivityScreen() {
                   <PreviewItem
                     key={inv.invoice_id}
                     label={`Invoice ${inv.invoice_number}`}
-                    sublabel={formatDay(inv.invoice_date)}
+                    sublabel={formatDate(inv.invoice_date, 'short')}
                     value={formatCurrency(inv.net_total, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     status={invoiceStatus(inv.status)}
                     styles={styles}

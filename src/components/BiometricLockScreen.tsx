@@ -8,7 +8,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Text, View } from 'react-native';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button } from '@/components/ui/Button';
 import { BrandMark } from '@/components/BrandMark';
@@ -33,7 +33,7 @@ interface BiometricLockScreenProps {
 /**
  * Get icon name for biometric type
  */
-function getBiometricIcon(type: BiometricType): keyof typeof MaterialCommunityIcons.glyphMap {
+function getBiometricIcon(type: BiometricType): string {
   switch (type) {
     case 'face':
       return 'face-recognition';

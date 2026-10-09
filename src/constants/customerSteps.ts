@@ -12,15 +12,15 @@ import { StepConfig } from '@/components/StepIndicator';
  */
 export const CUSTOMER_STEPS: StepConfig[] = [
   {
-    label: 'Basic Information',
+    label: 'Basic information',
     shortLabel: 'Basic',
   },
   {
-    label: 'Address & Tax Details',
+    label: 'Address and tax details',
     shortLabel: 'Details',
   },
   {
-    label: 'Documents & Review',
+    label: 'Documents and review',
     shortLabel: 'Review',
   },
 ];
@@ -92,9 +92,9 @@ export function getStepRoutePath(
  * Step titles for review display
  */
 export const CUSTOMER_STEP_TITLES = {
-  [CUSTOMER_STEP_NUMBERS.BASIC]: 'Basic Information',
-  [CUSTOMER_STEP_NUMBERS.DETAILS]: 'Address & Tax Details',
-  [CUSTOMER_STEP_NUMBERS.REVIEW]: 'Documents & Review',
+  [CUSTOMER_STEP_NUMBERS.BASIC]: 'Basic information',
+  [CUSTOMER_STEP_NUMBERS.DETAILS]: 'Address and tax details',
+  [CUSTOMER_STEP_NUMBERS.REVIEW]: 'Documents and review',
 } as const;
 
 /**

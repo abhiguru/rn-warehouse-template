@@ -8,12 +8,13 @@
  */
 
 import React from 'react';
-import { View, Text, Pressable, StyleSheet, Platform, ActivityIndicator } from 'react-native';
+import { View, Text, Pressable, StyleSheet, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
 import { iconSize, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 
 export interface ReportHeaderAction {
@@ -44,8 +45,6 @@ interface ReportHeaderProps {
   /** Further right-side actions, shown after `actionIcon` */
   actions?: ReportHeaderAction[];
 }
-
-const BACK_ICON = Platform.OS === 'ios' ? 'chevron-left' : 'arrow-left';
 
 const makeStyles = (t: ThemeTokens) =>
   StyleSheet.create({
@@ -123,8 +122,9 @@ export const ReportHeader: React.FC<ReportHeaderProps> = ({
     ...(actionIcon && onAction ? [{ icon: actionIcon, label: actionLabel || title, onPress: onAction }] : []),
     ...actions,
   ];
-  // Both sides share one width so the title stays centred.
-  const sideWidth = { width: Math.max(1, allActions.length) * touchTarget };
+  // Both sides share one width so the title stays centred; the labelled
+  // back button needs two touch targets.
+  const sideWidth = { width: Math.max(showBack ? 2 : 1, allActions.length) * touchTarget };
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -132,14 +132,7 @@ export const ReportHeader: React.FC<ReportHeaderProps> = ({
       <View style={styles.content}>
         <View style={[styles.side, sideWidth]}>
           {showBack && (
-            <Pressable
-              style={({ pressed }) => [styles.navButton, pressed && styles.navButtonPressed]}
-              onPress={handleBack}
-              accessibilityLabel="Back"
-              accessibilityRole="button"
-            >
-              <Icon name={BACK_ICON} size={iconSize.lg} color={t.brand.tint} />
-            </Pressable>
+            <HeaderBackButton onPress={handleBack} />
           )}
         </View>
 

@@ -47,7 +47,6 @@ export const GRNStepIndicator: React.FC<GRNStepIndicatorProps> = ({
           : 'The details you entered will be lost.')
       }
       onStepPress={onStepPress}
-      colorScheme="teal"
     />
   );
 };

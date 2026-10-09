@@ -9,7 +9,7 @@ import {
   typography,
   type ThemeTokens,
 } from '@/theme/tokens';
-import { parseLocalISODate } from '@/utils/formatters';
+import { formatDate, toDate } from '@/utils/formatters';
 
 // Step names are nouns (style guide §14.3).
 export const INVOICE_STEPS: StepConfig[] = [
@@ -37,10 +37,7 @@ export function getCompletedSteps(currentStep: number): number[] {
  * Date-only strings are read in local time so the day never shifts.
  */
 export function formatInvoiceDate(value: string | null | undefined): string {
-  if (!value) return '';
-  const date = /^\d{4}-\d{2}-\d{2}$/.test(value) ? parseLocalISODate(value) : new Date(value);
-  if (isNaN(date.getTime())) return '';
-  return date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+  return toDate(value) ? formatDate(value) : '';
 }
 
 /**

@@ -67,10 +67,6 @@ export interface StepIndicatorProps {
   completedSteps: number[];
   /** Callback when a step is pressed (optional) */
   onStepPress?: (stepNumber: number) => void;
-  /** Kept for compatibility; both variants use the brand tokens. */
-  variant?: 'primary' | 'secondary';
-  /** Kept for compatibility; completed steps always show a check. */
-  showCompletedIcon?: boolean;
 }
 
 type StepState = 'completed' | 'current' | 'upcoming';

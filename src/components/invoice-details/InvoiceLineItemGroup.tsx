@@ -16,13 +16,12 @@ import {
   Pressable,
   ScrollView,
   LayoutAnimation,
-  Vibration,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, layout, radius, space, touchTarget, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
-import { formatNumber, formatDate } from '@/utils/formatters';
+import { formatNumber, formatDate, formatCount, formatWeight } from '@/utils/formatters';
 import { formatInvoiceAmount } from '@/utils/invoiceCalculations';
 
 // Read-only compact table metrics (§5.2 density, §13.7)
@@ -299,7 +298,7 @@ const InvoiceLineItemGroupComponent: React.FC<InvoiceLineItemGroupProps> = ({
 
   const dispatchItems = group.dispatch_items ?? [];
   const dispatchCount = dispatchItems.length;
-  const dispatchCountText = `${dispatchCount} ${dispatchCount === 1 ? 'dispatch' : 'dispatches'}`;
+  const dispatchCountText = formatCount(dispatchCount, 'dispatch', 'dispatches');
 
   return (
     <View style={styles.card}>
@@ -337,7 +336,7 @@ const InvoiceLineItemGroupComponent: React.FC<InvoiceLineItemGroupProps> = ({
             {group.weight > 0 && (
               <View style={styles.metricItem}>
                 <Icon name="weight" size={iconSize.sm} color={t.icon.secondary} />
-                <Text style={styles.metricValue}>{`${formatNumber(group.weight)} kg`}</Text>
+                <Text style={styles.metricValue}>{formatWeight(group.weight)}</Text>
               </View>
             )}
             <View style={styles.metricItem}>
@@ -415,20 +414,19 @@ const InvoiceLineItemGroupComponent: React.FC<InvoiceLineItemGroupProps> = ({
                     ]}
                     onPress={() => {
                       if (item.dispatch_id && item.on_view_dispatch) {
-                        Vibration.vibrate(10);
                         item.on_view_dispatch(item.dispatch_id);
                       }
                     }}
                     disabled={!canOpen}
                     accessibilityRole={canOpen ? 'link' : undefined}
-                    accessibilityLabel={`Dispatch ${item.dispatch_no || ''}, ${formatDate(item.dispatch_date)}`}
+                    accessibilityLabel={`Dispatch ${item.dispatch_no || ''}, ${formatDate(item.dispatch_date, 'short')}`}
                     accessibilityHint={canOpen ? 'Opens the dispatch' : undefined}
                   >
                     <Text style={[styles.dispatchNoText, !canOpen && styles.dispatchNoTextPlain]}>
                       {item.dispatch_no || '—'}
                     </Text>
                     <Text style={styles.dispatchDateText}>
-                      {formatDate(item.dispatch_date)}
+                      {formatDate(item.dispatch_date, 'short')}
                     </Text>
                   </Pressable>
                 );

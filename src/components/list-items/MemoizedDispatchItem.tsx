@@ -11,10 +11,10 @@
  */
 
 import React, { useState, useCallback, useEffect } from 'react';
-import { View, Text, StyleSheet, Pressable, LayoutAnimation, Vibration } from 'react-native';
+import { View, Text, StyleSheet, Pressable, LayoutAnimation } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { formatNumber, formatDate } from '@/utils/formatters';
+import { formatDate, formatCount, formatWeight } from '@/utils/formatters';
 import type { Dispatch } from '@/services/dispatch-service';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import {
@@ -46,11 +46,6 @@ export interface MemoizedDispatchItemProps {
   onPrint?: (dispatch: Dispatch) => void;
   /** Whether print action is available */
   canPrint?: boolean;
-  /**
-   * @deprecated Colours now come from the semantic tokens. Still accepted so
-   * existing callers keep compiling; it only triggers a re-render on change.
-   */
-  colors?: unknown;
   /** Global expand state from parent */
   globalExpanded?: boolean;
   /** Key to trigger sync with global state (increments on toggle) */
@@ -302,12 +297,11 @@ const DispatchItemContent: React.FC<MemoizedDispatchItemProps> = ({
   const totalWeight = dispatch.total_weight || 0;
   const totalItems = dispatch.total_items || (dispatch.items?.length ?? 0);
   const hasItems = dispatch.items && dispatch.items.length > 0;
-  const itemsLabel = `${totalItems} ${totalItems === 1 ? 'item' : 'items'}`;
-  const bagsLabel = `${formatNumber(totalQty)} ${totalQty === 1 ? 'bag' : 'bags'}`;
+  const itemsLabel = formatCount(totalItems, 'item');
+  const bagsLabel = formatCount(totalQty, 'bag');
   const dateLabel = formatDate(dispatch.disp_date, 'short');
 
   const handleToggleExpand = useCallback(() => {
-    Vibration.vibrate(5);
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setIsExpanded(prev => !prev);
   }, []);
@@ -318,7 +312,7 @@ const DispatchItemContent: React.FC<MemoizedDispatchItemProps> = ({
     dispatch.customer_name,
     itemsLabel,
     bagsLabel,
-    `${formatNumber(Math.round(totalWeight))} kg`,
+    formatWeight(totalWeight, 0),
     dispatch.registration ? `Vehicle ${dispatch.registration}` : null,
     dateLabel,
     statusConfig.label,
@@ -368,7 +362,7 @@ const DispatchItemContent: React.FC<MemoizedDispatchItemProps> = ({
           <View style={styles.attributeStack}>
             <Text style={styles.quantityValue}>{bagsLabel}</Text>
             <Text style={styles.weightText}>
-              {formatNumber(Math.round(totalWeight))} kg
+              {formatWeight(totalWeight, 0)}
             </Text>
             <View style={[styles.statusTag, { backgroundColor: status.background }]}>
               <Icon name={statusConfig.icon} size={iconSize.sm} color={status.text} />
@@ -398,7 +392,7 @@ const DispatchItemContent: React.FC<MemoizedDispatchItemProps> = ({
               key={`${dispatch.dispatch_id}-item-${item.grn_item_id}-${idx}`}
               style={[styles.tableRow, idx > 0 && styles.tableRowDivider]}
               accessible
-              accessibilityLabel={`${item.item_name}${item.rack ? `, rack ${item.rack}` : ''}, ${Math.round(item.weight || 0)} kg, GRN ${item.gr_no}, ${item.disp_qty} dispatched`}
+              accessibilityLabel={`${item.item_name}${item.rack ? `, rack ${item.rack}` : ''}, ${formatWeight(item.weight, 0)}, GRN ${item.gr_no}, ${item.disp_qty} dispatched`}
             >
               <View style={[styles.tableCell, styles.colItem]}>
                 <View style={styles.itemNameRow}>
@@ -473,8 +467,7 @@ const areEqual = (
     // Compare callback references
     prevProps.onPress === nextProps.onPress &&
     prevProps.canPrint === nextProps.canPrint &&
-    // Legacy colours prop (same reference means same theme); tokens re-render via the store
-    prevProps.colors === nextProps.colors &&
+
     // Compare global expand state
     prevProps.globalExpanded === nextProps.globalExpanded &&
     prevProps.globalExpandedKey === nextProps.globalExpandedKey

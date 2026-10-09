@@ -22,6 +22,7 @@ import {
 } from '@/utils/invoiceCalculations';
 import { formatDate } from '@/utils/formatters';
 import type { Invoice } from '@/services/invoice-service';
+import { StatusTag } from '@/components/ui/StatusTag';
 
 // ============================================================================
 // TYPES
@@ -40,11 +41,6 @@ export interface MemoizedInvoiceItemProps {
   onPrint?: (invoice: Invoice) => void;
   /** Whether print action is available */
   canPrint?: boolean;
-  /**
-   * Deprecated: the cell reads theme tokens itself. Still accepted (and
-   * compared) so existing list callers keep working.
-   */
-  colors?: unknown;
 }
 
 // ============================================================================
@@ -59,7 +55,7 @@ const makeStyles = (t: ThemeTokens) => ({
     marginVertical: space.xs,
     padding: space.lg,
     minHeight: layout.objectCellMinHeight,
-    ...t.shadow[1],
+    ...t.shadow[2],
   },
   cardPressed: {
     backgroundColor: t.surface.cardPressed,
@@ -68,6 +64,14 @@ const makeStyles = (t: ThemeTokens) => ({
     flexDirection: 'row' as const,
     alignItems: 'flex-start' as const,
     gap: space.md,
+  },
+  iconContainer: {
+    width: layout.avatar.md,
+    height: layout.avatar.md,
+    borderRadius: radius.pill,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    backgroundColor: t.brand.subtle,
   },
   cardInfo: {
     flex: 1,
@@ -135,34 +139,6 @@ const makeStyles = (t: ThemeTokens) => ({
     gap: space.sm,
     marginTop: space.md,
   },
-  neutralTag: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    backgroundColor: t.status.neutral.background,
-    borderRadius: radius.field,
-    paddingHorizontal: space.s6,
-    paddingVertical: space.xxs,
-    gap: space.xs,
-  },
-  neutralTagText: {
-    ...typography.caption1,
-    fontWeight: fontWeight.semibold,
-    color: t.status.neutral.text,
-  },
-  infoTag: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    backgroundColor: t.status.informative.background,
-    borderRadius: radius.field,
-    paddingHorizontal: space.s6,
-    paddingVertical: space.xxs,
-    gap: space.xs,
-  },
-  infoTagText: {
-    ...typography.caption1,
-    fontWeight: fontWeight.semibold,
-    color: t.status.informative.text,
-  },
 });
 
 // ============================================================================
@@ -185,7 +161,7 @@ const InvoiceItemContent: React.FC<MemoizedInvoiceItemProps> = ({
     ? formatInvoiceDeduction(saved.adjustmentAmount)
     : `+${formatInvoiceAmount(saved.adjustmentAmount)}`;
   const customerName = invoice.customer?.name || 'Customer not set';
-  const invoiceDate = formatDate(invoice.invoice_date, 'medium');
+  const invoiceDate = formatDate(invoice.invoice_date, 'short');
 
   // One element for screen readers (style guide §11.3)
   const accessibilityDescription = [
@@ -208,11 +184,15 @@ const InvoiceItemContent: React.FC<MemoizedInvoiceItemProps> = ({
       accessibilityHint="Opens the invoice"
     >
       <View style={styles.cardHeader}>
+        {/* Object icon (§13.6), as on GRN and dispatch rows */}
+        <View style={styles.iconContainer}>
+          <Icon name="file-document-outline" size={iconSize.md} color={t.brand.tint} />
+        </View>
         <View style={styles.cardInfo}>
           <Text style={styles.customerName} numberOfLines={2}>
-            {customerName}
+            Invoice {invoice.invoice_number}
           </Text>
-          <Text style={styles.invoiceNumber}>Invoice {invoice.invoice_number}</Text>
+          <Text style={styles.invoiceNumber} numberOfLines={2}>{customerName}</Text>
           <View style={styles.metaRow}>
             <Icon name="calendar-outline" size={iconSize.sm} color={t.icon.secondary} />
             <Text style={styles.metaText}>{invoiceDate}</Text>
@@ -260,17 +240,9 @@ const InvoiceItemContent: React.FC<MemoizedInvoiceItemProps> = ({
 
       {/* Financial year and origin */}
       <View style={styles.tagRow}>
-        <View style={styles.neutralTag}>
-          <Icon name="calendar-check" size={iconSize.sm} color={t.status.neutral.text} />
-          <Text style={styles.neutralTagText} maxFontSizeMultiplier={1.6}>
-            FY {invoice.financial_year}
-          </Text>
-        </View>
+        <StatusTag status="neutral" icon="calendar-check" label={`FY ${invoice.financial_year}`} />
         {invoice.is_auto_generated && (
-          <View style={styles.infoTag}>
-            <Icon name="auto-fix" size={iconSize.sm} color={t.status.informative.text} />
-            <Text style={styles.infoTagText} maxFontSizeMultiplier={1.6}>Auto-generated</Text>
-          </View>
+          <StatusTag status="informative" icon="auto-fix" label="Auto-generated" />
         )}
       </View>
     </Pressable>
@@ -302,8 +274,7 @@ export const invoiceItemPropsAreEqual = (
     prevInvoice.customer?.name === nextInvoice.customer?.name &&
     prevInvoice.grn?.gr_no === nextInvoice.grn?.gr_no &&
     prevProps.onPress === nextProps.onPress &&
-    prevProps.canPrint === nextProps.canPrint &&
-    prevProps.colors === nextProps.colors
+    prevProps.canPrint === nextProps.canPrint
   );
 };
 

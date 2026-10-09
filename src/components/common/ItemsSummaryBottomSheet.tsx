@@ -16,7 +16,6 @@ import {
   View,
   Text,
   StyleSheet,
-  Alert,
   Modal,
   ScrollView,
   Pressable,
@@ -28,6 +27,7 @@ import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, radius, space, touchTarget, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 
+import { showAlert } from '@/utils/alert';
 /** Total badge configuration */
 export interface TotalBadge {
   icon: string;
@@ -118,7 +118,7 @@ function ItemsSummaryBottomSheetInner<T>(
 
       // Check if item is protected
       if (checkItemProtected(item)) {
-        Alert.alert(
+        showAlert(
           `Can't delete this ${entityName}`,
           `"${itemName}" is partly dispatched, so it can't be removed.`,
           [{ text: 'OK', style: 'default' }]
@@ -126,7 +126,7 @@ function ItemsSummaryBottomSheetInner<T>(
         return;
       }
 
-      Alert.alert(
+      showAlert(
         `Delete ${entityName}?`,
         `"${itemName}" will be removed from this list.`,
         [

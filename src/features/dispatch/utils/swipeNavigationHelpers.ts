@@ -3,10 +3,11 @@
  * Provides validation functions for step navigation with swipe gestures
  */
 
-import { Alert } from 'react-native';
+
 import { validateStep1, validateStep2 } from '@/features/dispatch/schemas/dispatchValidation';
 import type { DispatchHeaderData, DispatchItemData } from '@/types/dispatch.types';
 
+import { showAlert } from '@/utils/alert';
 /**
  * Validate Step 1 header data before allowing swipe to Step 2
  * @param header - Dispatch header data to validate
@@ -18,7 +19,7 @@ export const canNavigateFromDispatchStep1 = async (header: DispatchHeaderData): 
     return true;
   } catch (error: any) {
     const errorMessage = error?.message || 'Please fill all required fields correctly';
-    Alert.alert('Validation Error', errorMessage);
+    showAlert('Validation Error', errorMessage);
     return false;
   }
 };
@@ -32,7 +33,7 @@ export const canNavigateFromDispatchStep2 = async (items: DispatchItemData[]): P
   try {
     // Check if at least one item exists
     if (!items || items.length === 0) {
-      Alert.alert('Validation Error', 'Please add at least one item to the dispatch');
+      showAlert('Validation Error', 'Please add at least one item to the dispatch');
       return false;
     }
 
@@ -41,7 +42,7 @@ export const canNavigateFromDispatchStep2 = async (items: DispatchItemData[]): P
     return true;
   } catch (error: any) {
     const errorMessage = error?.message || 'Please check the items and try again';
-    Alert.alert('Validation Error', errorMessage);
+    showAlert('Validation Error', errorMessage);
     return false;
   }
 };
@@ -83,7 +84,7 @@ export const showUnsavedItemsAlert = (
   onDiscard: () => void,
   onCancel: () => void
 ) => {
-  Alert.alert(
+  showAlert(
     'Unsaved Changes',
     'You have unsaved item changes. What would you like to do?',
     [

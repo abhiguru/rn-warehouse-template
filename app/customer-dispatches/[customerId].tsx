@@ -8,10 +8,11 @@ import {
   RefreshControl,
   ActivityIndicator,
 } from 'react-native';
-import { useLocalSearchParams, router } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
 import {
   fontWeight,
   iconSize,
@@ -28,6 +29,7 @@ import { CustomerDispatchItem } from '@/types/order.types';
 import DispatchGroupCard, { DispatchGroup } from '@/components/DispatchGroupCard';
 import { GenericFilterModal, useFilterState, FilterConfig } from '@/components/filters';
 import { getAutocompleteSelections, getStringValue, getNumberValue, isDateFilterValue } from '@/types/filter.types';
+import { formatCount, formatSectionDate, toLocalISODate, toDate } from '@/utils/formatters';
 
 interface DispatchWithItems {
   dispatch: DispatchGroup;
@@ -290,70 +292,15 @@ const CustomerDispatches: React.FC = () => {
 
   // Second: Group dispatch groups by date sections with immutable keys
   const sections = useMemo((): DispatchSection[] => {
-    // Helper to get immutable section key (YYYY-MM format)
-    const getSectionKey = (date: Date): string => {
-      const dispatchDate = new Date(date);
-      const year = dispatchDate.getFullYear();
-      const month = String(dispatchDate.getMonth() + 1).padStart(2, '0');
-      return `${year}-${month}`;
-    };
-
-    // Helper to convert section key to display label
-    const getSectionDisplayLabel = (key: string): string => {
-      const [year, month] = key.split('-').map(Number);
-      const sectionDate = new Date(year, month - 1);
-      const now = new Date();
-      const today = new Date(now);
-      today.setHours(0, 0, 0, 0);
-
-      const sectionStart = new Date(year, month - 1, 1);
-      sectionStart.setHours(0, 0, 0, 0);
-
-      const diffMs = today.getTime() - sectionStart.getTime();
-      const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-
-      let label = '';
-
-      // Today (same month and year, within 1 day)
-      if (sectionDate.getMonth() === today.getMonth() &&
-          sectionDate.getFullYear() === today.getFullYear() &&
-          diffDays <= 1) {
-        label = 'Today';
-      }
-      // This Week (2-7 days ago, same month)
-      else if (sectionDate.getMonth() === today.getMonth() &&
-          sectionDate.getFullYear() === today.getFullYear() &&
-          diffDays >= 2 && diffDays <= 7) {
-        label = 'This week';
-      }
-      // This Month (current month, older than 7 days)
-      else if (sectionDate.getMonth() === today.getMonth() &&
-          sectionDate.getFullYear() === today.getFullYear()) {
-        label = 'This month';
-      }
-      // Last Month
-      else {
-        const lastMonth = new Date(today);
-        lastMonth.setMonth(lastMonth.getMonth() - 1);
-        if (sectionDate.getMonth() === lastMonth.getMonth() &&
-            sectionDate.getFullYear() === lastMonth.getFullYear()) {
-          label = 'Last month';
-        } else {
-          // Specific month and year (e.g., "March 2025")
-          const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
-                             'July', 'August', 'September', 'October', 'November', 'December'];
-          label = `${monthNames[month - 1]} ${year}`;
-        }
-      }
-
-      return label;
-    };
+    // Day sections keyed by the local date (YYYY-MM-DD), titled
+    // "Today", "Yesterday" or "Tue, 6 Oct" (style guide §12.3)
+    const getSectionKey = (date: Date): string => toLocalISODate(date);
 
     // Group dispatches by immutable section key
     const sectionMap = new Map<string, DispatchWithItems[]>();
 
     dispatchGroups.forEach((dispatchGroup) => {
-      const sectionKey = getSectionKey(new Date(dispatchGroup.dispatch.dispDate));
+      const sectionKey = getSectionKey(toDate(dispatchGroup.dispatch.dispDate) ?? new Date(NaN));
 
       if (!sectionMap.has(sectionKey)) {
         sectionMap.set(sectionKey, []);
@@ -367,7 +314,7 @@ const CustomerDispatches: React.FC = () => {
 
     // Convert to sections array with display labels
     const sectionsArray: DispatchSection[] = sortedKeys.map(key => ({
-      title: getSectionDisplayLabel(key),
+      title: formatSectionDate(key),
       data: sectionMap.get(key)!,
     }));
 
@@ -384,14 +331,6 @@ const CustomerDispatches: React.FC = () => {
         return 'calendar-today';
       case 'Yesterday':
         return 'calendar-minus';
-      case 'This week':
-        return 'calendar-week';
-      case 'Last week':
-        return 'calendar-range';
-      case 'This month':
-        return 'calendar-month';
-      case 'Last month':
-        return 'calendar-arrow-left';
       default:
         return 'calendar-blank-outline';
     }
@@ -406,7 +345,7 @@ const CustomerDispatches: React.FC = () => {
         style={styles.sectionHeader}
         accessible
         accessibilityRole="header"
-        accessibilityLabel={`${section.title}, ${dispatchCount} ${dispatchCount === 1 ? 'dispatch' : 'dispatches'}`}
+        accessibilityLabel={`${section.title}, ${formatCount(dispatchCount, 'dispatch', 'dispatches')}`}
       >
         <Icon name={getSectionIcon(section.title)} size={iconSize.sm} color={t.icon.secondary} />
         <Text style={styles.sectionHeaderText}>{section.title}</Text>
@@ -599,14 +538,7 @@ const CustomerDispatches: React.FC = () => {
       <EdgeToEdgeStatusBar barStyle={t.statusBarStyle} />
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + space.sm }]}>
-        <Pressable
-          onPress={() => router.back()}
-          style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
-          accessibilityLabel="Back"
-          accessibilityRole="button"
-        >
-          <Icon name="arrow-left" size={iconSize.lg} color={t.brand.tint} />
-        </Pressable>
+        <HeaderBackButton />
         <View style={styles.headerContent}>
           <Text style={styles.title} accessibilityRole="header" numberOfLines={2}>
             Dispatch history
@@ -618,7 +550,7 @@ const CustomerDispatches: React.FC = () => {
           style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
           accessibilityLabel={
             activeFilterCount > 0
-              ? `Filter dispatches, ${activeFilterCount} ${activeFilterCount === 1 ? 'filter' : 'filters'} set`
+              ? `Filter dispatches, ${formatCount(activeFilterCount, 'filter')} set`
               : 'Filter dispatches'
           }
           accessibilityHint="Filter dispatches by item, GRN or date"

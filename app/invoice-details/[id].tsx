@@ -6,7 +6,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { View, Alert, Text, Pressable } from 'react-native';
+import { View, Text, Pressable } from 'react-native';
 import { DetailSkeleton } from '@/components/skeletons';
 import { useLocalSearchParams, router, Stack } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -38,9 +38,12 @@ import {
   InvoiceLineItem,
 } from '@/components/invoice-details';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
 import { iconSize, layout, radius, space, touchTarget, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 
+import { showAlert } from '@/utils/alert';
+import { formatDate } from '@/utils/formatters';
 // ============================================================================
 // STYLES
 // ============================================================================
@@ -74,15 +77,6 @@ const makeStyles = (t: ThemeTokens) => ({
   secondaryButtonPressed: { backgroundColor: t.brand.subtle },
   secondaryButtonText: { ...typography.callout, color: t.brand.tint },
   navBar: { backgroundColor: t.surface.header },
-  backButton: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    minHeight: touchTarget,
-    minWidth: touchTarget,
-    paddingRight: space.sm,
-    marginLeft: -space.xs,
-  },
-  backButtonText: { ...typography.body, color: t.brand.tint },
   headerTitleContainer: { alignItems: 'center' as const, justifyContent: 'center' as const },
   headerTitle: { ...typography.headline, color: t.text.primary, textAlign: 'center' as const },
   headerSubtitle: {
@@ -136,7 +130,7 @@ function InvoiceDetailScreen() {
       if (result.success && result.data) {
         setData(result.data);
       } else {
-        Alert.alert("Couldn't load invoice", parseErrorToFriendly(result.error || result.message, 'Invoice'));
+        showAlert("Couldn't load invoice", parseErrorToFriendly(result.error || result.message, 'Invoice'));
         return;
       }
 
@@ -154,7 +148,7 @@ function InvoiceDetailScreen() {
       }
     } catch (error) {
       console.error('[InvoiceDetailScreen] Exception:', error);
-      Alert.alert("Couldn't load invoice", getUserFriendlyError('invoice', 'load'));
+      showAlert("Couldn't load invoice", getUserFriendlyError('invoice', 'load'));
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -195,7 +189,7 @@ function InvoiceDetailScreen() {
     const invoiceNumber = data.header.invoice_number;
     const customerName = data.header.customer?.name || data.header.invoice_customer_name;
 
-    Alert.alert(
+    showAlert(
       `Delete invoice ${invoiceNumber}?`,
       `Invoice ${invoiceNumber}${customerName ? ` for ${customerName}` : ''} will be deleted. This can't be undone.`,
       [
@@ -209,7 +203,7 @@ function InvoiceDetailScreen() {
               const result = await deleteInvoice(invoiceId);
 
               if (result.success) {
-                Alert.alert(
+                showAlert(
                   `Invoice ${invoiceNumber} deleted.`,
                   undefined,
                   [
@@ -222,11 +216,11 @@ function InvoiceDetailScreen() {
                   ]
                 );
               } else {
-                Alert.alert("Couldn't delete invoice", parseErrorToFriendly(result.error, 'Invoice'));
+                showAlert("Couldn't delete invoice", parseErrorToFriendly(result.error, 'Invoice'));
               }
             } catch (error) {
               console.error('[InvoiceDetailScreen] Delete error:', error);
-              Alert.alert("Couldn't delete invoice", getUserFriendlyError('invoice', 'delete'));
+              showAlert("Couldn't delete invoice", getUserFriendlyError('invoice', 'delete'));
             } finally {
               setIsDeleting(false);
             }
@@ -245,7 +239,7 @@ function InvoiceDetailScreen() {
     const shareError = "Couldn't share the invoice PDF. Check your connection and try again.";
 
     if (!invoiceNo || !finYear) {
-      Alert.alert("Couldn't share invoice", 'This invoice is missing its number or financial year. Reload it and try again.');
+      showAlert("Couldn't share invoice", 'This invoice is missing its number or financial year. Reload it and try again.');
       return;
     }
 
@@ -262,7 +256,7 @@ function InvoiceDetailScreen() {
       const pdfResult = await generateInvoicePDF(invoiceNo, finYearNum);
 
       if (!pdfResult.success || !pdfResult.pdfUrl) {
-        Alert.alert("Couldn't share invoice", shareError);
+        showAlert("Couldn't share invoice", shareError);
         return;
       }
 
@@ -275,11 +269,11 @@ function InvoiceDetailScreen() {
       );
 
       if (!shareResult.success) {
-        Alert.alert("Couldn't share invoice", shareError);
+        showAlert("Couldn't share invoice", shareError);
       }
     } catch (error) {
       console.error('[InvoiceDetailScreen] Share PDF error:', error);
-      Alert.alert("Couldn't share invoice", shareError);
+      showAlert("Couldn't share invoice", shareError);
     } finally {
       setIsShareLoading(false);
     }
@@ -455,11 +449,7 @@ function InvoiceDetailScreen() {
     invoice.total;
 
   // Date per style guide §12.3, e.g. "9 Oct 2026"
-  const formattedDate = new Date(invoice.invoice_date || new Date()).toLocaleDateString('en-IN', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  });
+  const formattedDate = formatDate(invoice.invoice_date || new Date());
 
 
   const grnNumber = invoice.gr_no || invoice.grn?.number;
@@ -475,16 +465,7 @@ function InvoiceDetailScreen() {
           headerTitleAlign: 'center',
           // Custom back button to ensure it always works
           headerLeft: () => (
-            <Pressable
-              onPress={() => router.back()}
-              style={styles.backButton}
-              hitSlop={space.sm}
-              accessibilityRole="button"
-              accessibilityLabel="Go back"
-            >
-              <Icon name="chevron-left" size={iconSize.lg} color={t.brand.tint} />
-              <Text style={styles.backButtonText}>Back</Text>
-            </Pressable>
+            <HeaderBackButton />
           ),
           headerTitle: () => (
             <View

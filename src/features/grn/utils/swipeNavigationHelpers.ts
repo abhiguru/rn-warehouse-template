@@ -1,6 +1,7 @@
-import { Alert } from 'react-native';
+
 import { validateStep1 } from '../schemas/grnValidation';
 
+import { showAlert } from '@/utils/alert';
 /**
  * Check if navigation from Step 1 is allowed
  * Validates all Step 1 fields
@@ -15,7 +16,7 @@ export const canNavigateFromStep1 = async (header: any): Promise<boolean> => {
       ? messages.map(message => `• ${message}`).join('\n')
       : 'Fill in the required fields.';
 
-    Alert.alert('Check the GRN details', errorMessage);
+    showAlert('Check the GRN details', errorMessage);
     return false;
   }
 
@@ -91,7 +92,7 @@ export const showUnsavedDataAlert = (
   onDiscard: () => void,
   onCancel: () => void
 ): void => {
-  Alert.alert(
+  showAlert(
     'Save this item?',
     "The item you're adding hasn't been saved yet.",
     [

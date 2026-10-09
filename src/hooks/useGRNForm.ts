@@ -39,7 +39,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert } from 'react-native';
+
 import { router } from 'expo-router';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import {
@@ -71,6 +71,7 @@ import { validateStep1, validateStep2, validateStep3 } from '@/features/grn/sche
 import { getNextGRNNumber, createGRN, updateGRN, loadGRNData as loadGRNDataService, checkGrnExists } from '@/features/grn/services/grnFormService';
 import { generateTempGRNId } from '@/features/grn/services/imageUploadService';
 
+import { showAlert } from '@/utils/alert';
 /** Plain-language list of validation messages for an alert (never raw field keys). */
 function describeValidationErrors(errors: Record<string, string>): string {
   const messages = Array.from(new Set(Object.values(errors).filter(Boolean)));
@@ -225,7 +226,7 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
       } catch (error) {
         console.error('[useGRNForm] Failed to generate GRN number:', error);
         if (globalSessionId === currentSessionId) {
-          Alert.alert("Couldn't get a GRN number", 'Check your connection and try again.');
+          showAlert("Couldn't get a GRN number", 'Check your connection and try again.');
         }
       } finally {
         setIsGeneratingNumber(false);
@@ -292,13 +293,13 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
         }));
       } else {
         if (globalSessionId === currentSessionId) {
-          Alert.alert("Couldn't load the GRN", result.error || 'Check your connection and try again.');
+          showAlert("Couldn't load the GRN", result.error || 'Check your connection and try again.');
         }
       }
     } catch (error) {
       console.error('[useGRNForm] Failed to load GRN:', error);
       if (globalSessionId === currentSessionId) {
-        Alert.alert("Couldn't load the GRN", 'Check your connection and try again.');
+        showAlert("Couldn't load the GRN", 'Check your connection and try again.');
       }
     } finally {
       dispatch(setIsLoading(false));
@@ -481,7 +482,7 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
     for (let step = currentStep; step < targetStep; step++) {
       const validation = await validateCurrentStep(step);
       if (!validation.isValid) {
-        Alert.alert('Check the GRN details', describeValidationErrors(validation.errors));
+        showAlert('Check the GRN details', describeValidationErrors(validation.errors));
         return false;
       }
     }
@@ -525,7 +526,7 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
     // Validate step 3
     const validation = await validateCurrentStep(3);
     if (!validation.isValid) {
-      Alert.alert('Check the GRN details', describeValidationErrors(validation.errors));
+      showAlert('Check the GRN details', describeValidationErrors(validation.errors));
       return { success: false, error: 'Validation failed' };
     }
 
@@ -544,13 +545,13 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
       if (result.success) {
         return { success: true, grnId: result.data?.id };
       } else {
-        Alert.alert("Couldn't save the GRN", result.error || 'Check your connection and try again.');
+        showAlert("Couldn't save the GRN", result.error || 'Check your connection and try again.');
         return { success: false, error: result.error };
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       console.error('[useGRNForm] Submit error:', error);
-      Alert.alert("Couldn't save the GRN", 'Check your connection and try again.');
+      showAlert("Couldn't save the GRN", 'Check your connection and try again.');
       return { success: false, error: errorMessage };
     } finally {
       dispatch(setIsSaving(false));

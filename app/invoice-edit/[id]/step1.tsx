@@ -6,7 +6,6 @@ import {
   TextInput,
   Pressable,
   Switch,
-  Alert,
   ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -46,6 +45,7 @@ import {
 } from '@/constants/invoiceSteps';
 import { canNavigateFromStep1 } from '@/features/invoice/utils/swipeNavigationHelpers';
 
+import { showAlert } from '@/utils/alert';
 export default function InvoiceEditStep1() {
   const dispatch = useAppDispatch();
   const styles = useThemedStyles(makeInvoiceWizardStyles);
@@ -153,7 +153,7 @@ export default function InvoiceEditStep1() {
   const handleGRNSelect = async (grn: InvoiceableGrn) => {
     // Warn user if changing GRN (will affect invoice totals and items)
     if (header.gr_id && header.gr_id !== grn.id) {
-      Alert.alert(
+      showAlert(
         'Change the GRN?',
         'All items on this invoice will be replaced with the new GRN\'s items and the totals recalculated. You can\'t undo this.',
         [
@@ -205,7 +205,7 @@ export default function InvoiceEditStep1() {
             customer_name: '',
           })
         );
-        Alert.alert("Couldn't load the GRN", response.message || 'Check your connection and try again.');
+        showAlert("Couldn't load the GRN", response.message || 'Check your connection and try again.');
       }
     } catch (error: any) {
       console.error('[InvoiceEditStep1] Error loading GRN data:', error);
@@ -220,7 +220,7 @@ export default function InvoiceEditStep1() {
           customer_name: '',
         })
       );
-      Alert.alert("Couldn't load the GRN", 'Check your connection and try again.');
+      showAlert("Couldn't load the GRN", 'Check your connection and try again.');
     } finally {
       dispatch(setIsLoadingItems(false));
     }
@@ -243,7 +243,7 @@ export default function InvoiceEditStep1() {
         ? 'Every item will be charged for 1 month.'
         : 'Items will be charged for the months they were stored.';
 
-      Alert.alert(value ? 'Turn on one-time charge?' : 'Turn off one-time charge?', message, [
+      showAlert(value ? 'Turn on one-time charge?' : 'Turn off one-time charge?', message, [
         { text: 'Cancel', style: 'cancel' },
         {
           text: value ? 'Turn on' : 'Turn off',
@@ -275,13 +275,13 @@ export default function InvoiceEditStep1() {
           ? 'Fix the highlighted field, then continue.'
           : `Fix the ${errorCount} highlighted fields, then continue.`;
 
-      Alert.alert('Check the invoice details', errorMessage);
+      showAlert('Check the invoice details', errorMessage);
       return;
     }
 
     // Check if items are loaded
     if (!items || items.length === 0) {
-      Alert.alert('No items to invoice', 'Select a GRN that has dispatched items, then continue.');
+      showAlert('No items to invoice', 'Select a GRN that has dispatched items, then continue.');
       return;
     }
 

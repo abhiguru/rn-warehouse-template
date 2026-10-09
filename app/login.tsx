@@ -8,7 +8,6 @@ import {
   View,
   Text,
   StyleSheet,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -42,6 +41,7 @@ import {
   type ThemeTokens,
 } from '@/theme/tokens';
 
+import { showAlert } from '@/utils/alert';
 const APP_NAME = process.env.EXPO_PUBLIC_APP_NAME || 'Warehouse Manager';
 
 export default function LoginScreen() {
@@ -99,12 +99,12 @@ export default function LoginScreen() {
     }
 
     if (!phoneNumber.trim()) {
-      Alert.alert('Enter your mobile number', 'Enter your 10-digit mobile number to get a code.');
+      showAlert('Enter your mobile number', 'Enter your 10-digit mobile number to get a code.');
       return;
     }
 
     if (!validatePhoneNumber(phoneNumber)) {
-      Alert.alert('Check your mobile number', 'Enter a 10-digit mobile number.');
+      showAlert('Check your mobile number', 'Enter a 10-digit mobile number.');
       return;
     }
 
@@ -123,7 +123,7 @@ export default function LoginScreen() {
         if (handleRateLimitError(result.error)) {
           return;
         }
-        Alert.alert(
+        showAlert(
           "Couldn't send the code",
           result.error || 'Check your connection and try again.'
         );
@@ -132,7 +132,7 @@ export default function LoginScreen() {
       if (handleRateLimitError(error)) {
         return;
       }
-      Alert.alert("Couldn't send the code", 'Check your connection and try again.');
+      showAlert("Couldn't send the code", 'Check your connection and try again.');
     } finally {
       dispatch(setAuthenticating(false));
     }

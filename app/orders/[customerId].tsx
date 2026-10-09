@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, ActivityIndicator, Text, Pressable, Platform } from 'react-native';
+import { View, ActivityIndicator, Text, Pressable } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { Stack } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -11,6 +11,7 @@ import ChangeLogBottomSheet from '@/components/ChangeLogBottomSheet';
 import { ChangeLogService } from '@/services/change-log-service';
 import type { ChangeLogEntry, ChangeLogAnalytics, CustomerSummary } from '@/types/order.types';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
 import { iconSize, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -147,18 +148,7 @@ export default function CustomerOrderScreen() {
         {/* Object page header (style guide §13.8): surface.header, brand.tint actions */}
         <View style={styles.customHeader}>
           <View style={[styles.customHeaderContent, { paddingTop: insets.top }]}>
-            <Pressable
-              style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
-              onPress={() => router.back()}
-              accessibilityRole="button"
-              accessibilityLabel="Back"
-            >
-              <Icon
-                name={Platform.OS === 'ios' ? 'chevron-left' : 'arrow-left'}
-                size={iconSize.lg}
-                color={t.brand.tint}
-              />
-            </Pressable>
+            <HeaderBackButton />
             <View style={styles.headerTitleContainer}>
               <Text style={styles.headerTitle} numberOfLines={2} accessibilityRole="header">
                 Order for {customerName}
@@ -257,6 +247,8 @@ const makeStyles = (t: ThemeTokens) => ({
     ...typography.headline,
     color: t.text.primary,
   },
+  // Custom back button (same on every headerless screen): platform glyph,
+  // brand.tint, the word "Back", at least touchTarget in size (§8)
   iconButton: {
     width: touchTarget,
     height: touchTarget,

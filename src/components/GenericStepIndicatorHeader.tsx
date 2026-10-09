@@ -16,7 +16,6 @@ import {
   StyleSheet,
   Animated,
   Pressable,
-  Alert,
   ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -35,12 +34,7 @@ import {
 } from '@/theme/tokens';
 import type { StepConfig } from '@/components/StepIndicator';
 
-/**
- * Kept for compatibility. Both schemes now use the brand tokens: step and
- * progress colours never change per document type.
- */
-export type StepColorScheme = 'teal' | 'blue';
-
+import { showAlert } from '@/utils/alert';
 type StepState = 'completed' | 'current' | 'upcoming';
 
 const STATE_WORD: Record<StepState, string> = {
@@ -72,8 +66,6 @@ export interface GenericStepIndicatorHeaderProps {
   cancelMessage?: string;
   /** Optional callback when step pill is tapped (for navigation) */
   onStepPress?: (stepNumber: number) => void;
-  /** Kept for compatibility; steps and progress use the brand tokens */
-  colorScheme?: StepColorScheme;
 }
 
 // ============================================================================
@@ -105,7 +97,6 @@ export const GenericStepIndicatorHeader: React.FC<GenericStepIndicatorHeaderProp
   cancelTitle,
   cancelMessage = 'The details you entered will be lost.',
   onStepPress,
-  colorScheme: _colorScheme = 'teal',
 }) => {
   const insets = useSafeAreaInsets();
   const t = useTokens();
@@ -149,7 +140,7 @@ export const GenericStepIndicatorHeader: React.FC<GenericStepIndicatorHeaderProp
   }, []);
 
   const handleCancelPress = () => {
-    Alert.alert(
+    showAlert(
       cancelTitle || `Discard this ${entityName}?`,
       cancelMessage,
       [

@@ -14,6 +14,7 @@ import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { iconSize, layout, radius, space, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { calculateItemAmounts, roundMoney, formatInvoiceAmount } from '@/utils/invoiceCalculations';
+import { formatNumber } from '@/utils/formatters';
 
 // Legacy interface for backward compatibility
 export interface InvoiceLineItem {
@@ -148,7 +149,6 @@ export const groupItemsByGrnItem = (
   return Array.from(groupMap.values());
 };
 
-const formatCount = (value: number) => new Intl.NumberFormat('en-IN').format(value);
 
 const makeStyles = (t: ThemeTokens) => ({
   container: { flex: 1, backgroundColor: t.background.base },
@@ -303,11 +303,11 @@ export const InvoiceLineItemsTab: React.FC<InvoiceLineItemsTabProps> = ({
           </View>
 
           <View style={styles.summaryContent}>
-            {renderSummaryRow('Total items', formatCount(total_items ?? groupedItems.length))}
-            {renderSummaryRow('GRN items', formatCount(groupedItems.length))}
-            {renderSummaryRow('Dispatch entries', formatCount(items.length))}
+            {renderSummaryRow('Total items', formatNumber(total_items ?? groupedItems.length))}
+            {renderSummaryRow('GRN items', formatNumber(groupedItems.length))}
+            {renderSummaryRow('Dispatch entries', formatNumber(items.length))}
             {total_dispatch_qty !== undefined &&
-              renderSummaryRow('Total dispatch qty', formatCount(total_dispatch_qty))}
+              renderSummaryRow('Total dispatch qty', formatNumber(total_dispatch_qty))}
             {total_amount !== undefined && (
               <View
                 style={[styles.summaryRow, styles.summaryRowTotal]}

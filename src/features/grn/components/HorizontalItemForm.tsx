@@ -1,15 +1,13 @@
 import React, { useRef, useCallback, useMemo, useImperativeHandle, forwardRef, useState, useEffect } from 'react';
 import {
-    View,
-    Text,
-    TextInput,
-    StyleSheet,
-    ScrollView,
-    Pressable,
-    Keyboard,
-    Platform,
-    Vibration,
-    Alert,
+  View,
+  Text,
+  TextInput,
+  StyleSheet,
+  ScrollView,
+  Pressable,
+  Keyboard,
+  Platform,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { Image } from 'expo-image';
@@ -20,6 +18,8 @@ import type { ThemeTokens } from '@/theme/tokens';
 import { GRNImageData } from '@/store/slices/grnFormSlice';
 import { searchItems } from '@/services/item-search-service';
 
+import { showAlert } from '@/utils/alert';
+import { formatCount } from '@/utils/formatters';
 const FIELD_WIDTH_LARGE = 220; // Width for item name field
 const FIELD_WIDTH_QTY_WEIGHT = 117; // Qty & Weight reduced by 35% (was 180)
 const FIELD_WIDTH_RACK = 196; // Rack reduced by 30% (was 280), chips will wrap
@@ -228,7 +228,6 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
             // Update the combined rack value
             const combined = buildRackValue(rackTextOnly, floor, selectedChamber);
             onFieldChange('rack', combined || rackTextOnly);
-            Vibration.vibrate(5);
         }, [rackTextOnly, selectedChamber, onFieldChange]);
 
         // Handle chamber chip selection (radio-style)
@@ -237,7 +236,6 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
             // Update the combined rack value
             const combined = buildRackValue(rackTextOnly, selectedFloor, chamber);
             onFieldChange('rack', combined || rackTextOnly);
-            Vibration.vibrate(5);
         }, [rackTextOnly, selectedFloor, onFieldChange]);
 
         const imageCount = currentItem.trl_images?.length || 0;
@@ -286,7 +284,7 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                         accessibilityRole={canViewAll ? 'button' : 'header'}
                         accessibilityLabel={
                             canViewAll
-                                ? `${isEditing ? 'Editing' : 'New'} item ${itemNumber}. View ${savedItemsCount} saved ${savedItemsCount === 1 ? 'item' : 'items'}`
+                                ? `${isEditing ? 'Editing' : 'New'} item ${itemNumber}. View ${formatCount(savedItemsCount, 'saved item')}`
                                 : `${isEditing ? 'Editing' : 'New'} item ${itemNumber}`
                         }
                     >
@@ -530,7 +528,7 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                             <Pressable
                                 onPress={() => {
                                     if (imageCount >= 2) {
-                                        Alert.alert('Photo limit reached', 'You can add up to 2 photos per item.');
+                                        showAlert('Photo limit reached', 'You can add up to 2 photos per item.');
                                         return;
                                     }
                                     onImagePick();

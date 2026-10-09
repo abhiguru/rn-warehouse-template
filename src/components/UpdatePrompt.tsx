@@ -11,7 +11,7 @@
 import React, { useEffect } from 'react';
 import { View, Text, Modal, ActivityIndicator, Pressable, StyleSheet } from 'react-native';
 import { Portal } from 'react-native-paper';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useOTAUpdates } from '@/hooks/useOTAUpdates';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, layout, radius, space, touchTarget, typography } from '@/theme/tokens';

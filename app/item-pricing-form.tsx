@@ -4,7 +4,6 @@ import {
   Text,
   TextInput,
   StyleSheet,
-  Alert,
   AccessibilityInfo,
   Platform,
   Pressable,
@@ -28,6 +27,7 @@ import type { DateTimePickerEvent } from '@react-native-community/datetimepicker
 import DateTimePicker from '@react-native-community/datetimepicker';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
 import {
   fontWeight,
   iconSize,
@@ -52,6 +52,8 @@ import { getAuthenticatedClient } from '@/config/supabaseConfig';
 import { mapCustomerSearchResponse } from '@/features/item-pricing/utils/customerSearch';
 import { createLogger } from '@/utils/logger';
 
+import { showAlert } from '@/utils/alert';
+import { formatDate, toLocalISODate } from '@/utils/formatters';
 const itemPricingFormLogger = createLogger('ItemPricingForm');
 
 interface Item {
@@ -197,12 +199,12 @@ const ItemPricingFormScreen: React.FC = () => {
         itemPricingFormLogger.debug('State updated with price data');
       } else {
         itemPricingFormLogger.error('Price not found for ID:', priceId);
-        Alert.alert("Couldn't find this price", 'It may have been deleted.');
+        showAlert("Couldn't find this price", 'It may have been deleted.');
         router.back();
       }
     } catch (err) {
       itemPricingFormLogger.error('Load error:', err);
-      Alert.alert("Couldn't load the price", 'Check your connection and try again.');
+      showAlert("Couldn't load the price", 'Check your connection and try again.');
       router.back();
     } finally {
       setLoading(false);
@@ -343,7 +345,7 @@ const ItemPricingFormScreen: React.FC = () => {
     if (messages.length > 0) {
       const summary = messages.length === 1 ? 'Fix 1 field.' : `Fix ${messages.length} fields.`;
       AccessibilityInfo.announceForAccessibility(`${summary} ${messages.join(' ')}`);
-      Alert.alert('Check the highlighted fields', messages.join('\n'));
+      showAlert('Check the highlighted fields', messages.join('\n'));
       return;
     }
 
@@ -359,17 +361,17 @@ const ItemPricingFormScreen: React.FC = () => {
           weight_max: parseFloat(weightMax),
           labour_rate: parseFloat(labourRate),
           tax_percent: parseFloat(taxPercent),
-          effective_from: effectiveFrom.toISOString().split('T')[0],
-          effective_to: effectiveTo ? effectiveTo.toISOString().split('T')[0] : null,
+          effective_from: toLocalISODate(effectiveFrom),
+          effective_to: effectiveTo ? toLocalISODate(effectiveTo) : null,
         };
 
         const result = await createItemStoragePrice(payload);
         if (result.success) {
-          Alert.alert('Price saved', `The price for ${selectedItem!.name} has been added.`, [
+          showAlert('Price saved', `The price for ${selectedItem!.name} has been added.`, [
             { text: 'OK', onPress: () => router.back() },
           ]);
         } else {
-          Alert.alert("Couldn't save the price", result.message || 'Try again in a moment.');
+          showAlert("Couldn't save the price", result.message || 'Try again in a moment.');
         }
       } else if (formMode === 'edit' && priceId) {
         const payload: UpdateItemPricingPayload = {
@@ -379,22 +381,22 @@ const ItemPricingFormScreen: React.FC = () => {
           weight_max: parseFloat(weightMax),
           labour_rate: parseFloat(labourRate),
           tax_percent: parseFloat(taxPercent),
-          effective_from: effectiveFrom.toISOString().split('T')[0],
-          effective_to: effectiveTo ? effectiveTo.toISOString().split('T')[0] : null,
+          effective_from: toLocalISODate(effectiveFrom),
+          effective_to: effectiveTo ? toLocalISODate(effectiveTo) : null,
         };
 
         const result = await updateItemStoragePrice(priceId, payload);
         if (result.success) {
-          Alert.alert('Price saved', `The price for ${selectedItem?.name ?? 'this item'} has been updated.`, [
+          showAlert('Price saved', `The price for ${selectedItem?.name ?? 'this item'} has been updated.`, [
             { text: 'OK', onPress: () => router.back() },
           ]);
         } else {
-          Alert.alert("Couldn't save the price", result.message || 'Try again in a moment.');
+          showAlert("Couldn't save the price", result.message || 'Try again in a moment.');
         }
       }
     } catch (err) {
       itemPricingFormLogger.error('Save error:', err);
-      Alert.alert("Couldn't save the price", 'Check your connection and try again.');
+      showAlert("Couldn't save the price", 'Check your connection and try again.');
     } finally {
       setSaving(false);
     }
@@ -413,15 +415,6 @@ const ItemPricingFormScreen: React.FC = () => {
     ),
     [t]
   );
-
-  // Format date for display: "9 Oct 2026" (style guide §12.3)
-  const formatDate = (date: Date): string => {
-    return date.toLocaleDateString('en-IN', {
-      day: 'numeric',
-      month: 'short',
-      year: 'numeric',
-    });
-  };
 
   // Handle shared date picker
   const handleDatePress = (field: 'from' | 'to') => {
@@ -549,14 +542,7 @@ const ItemPricingFormScreen: React.FC = () => {
       <View style={styles.container}>
         {/* Header */}
         <View style={[styles.header, { paddingTop: insets.top + space.xs }]}>
-          <Pressable
-            style={styles.iconButton}
-            onPress={() => router.back()}
-            accessibilityRole="button"
-            accessibilityLabel="Back"
-          >
-            <Icon name="arrow-left" size={iconSize.lg} color={t.icon.primary} />
-          </Pressable>
+          <HeaderBackButton />
           <Text style={styles.headerTitle} accessibilityRole="header" numberOfLines={1}>
             {getTitle()}
           </Text>

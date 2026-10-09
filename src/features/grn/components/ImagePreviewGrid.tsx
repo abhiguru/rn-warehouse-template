@@ -5,7 +5,6 @@ import {
   StyleSheet,
   Text,
   Dimensions,
-  Alert,
   ActivityIndicator,
   type LayoutChangeEvent,
 } from 'react-native';
@@ -18,6 +17,7 @@ import { GRNImageData } from '@/store/slices/grnFormSlice';
 import { deleteGRNImage } from '../services/imageUploadService';
 import { getSupabaseClient } from '@/config/supabaseConfig';
 
+import { showAlert } from '@/utils/alert';
 interface ImagePreviewGridProps {
   // Legacy support for string URLs
   images?: string[];
@@ -108,7 +108,7 @@ export const ImagePreviewGrid: React.FC<ImagePreviewGridProps> = ({
   const handleRemove = (index: number) => {
     if (!editable || !onRemove) return;
 
-    Alert.alert(
+    showAlert(
       'Remove photo?',
       'You can add it again later.',
       [
@@ -136,7 +136,7 @@ export const ImagePreviewGrid: React.FC<ImagePreviewGridProps> = ({
       imageUrl: imageData.imageUrl?.substring(0, 80) + '...',
     });
 
-    Alert.alert(
+    showAlert(
       'Remove photo?',
       'You can add it again later.',
       [
@@ -182,7 +182,7 @@ export const ImagePreviewGrid: React.FC<ImagePreviewGridProps> = ({
               }
             } catch (error) {
               console.error('[ImagePreviewGrid] Delete error:', error);
-              Alert.alert(
+              showAlert(
                 "Couldn't remove the photo",
                 'Check your connection and try again.'
               );

@@ -22,11 +22,10 @@ import {
   StyleSheet,
   Pressable,
   LayoutAnimation,
-  Vibration,
 } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { formatNumber, formatDate } from '@/utils/formatters';
+import { formatDate, formatCount, formatWeight } from '@/utils/formatters';
 import type { RecentDispatchedOrder } from '@/types/dispatch.types';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import {
@@ -40,6 +39,7 @@ import {
   typography,
 } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
+import { StatusTag } from '@/components/ui/StatusTag';
 
 // ============================================================================
 // TYPES
@@ -50,11 +50,6 @@ export interface RecentDispatchedOrderCardProps {
   dispatch: RecentDispatchedOrder;
   /** Callback when card is pressed (navigates to dispatch details) */
   onPress: (dispatch: RecentDispatchedOrder) => void;
-  /**
-   * @deprecated Colours now come from the semantic tokens. Still accepted so
-   * existing callers keep compiling.
-   */
-  colors?: unknown;
 }
 
 // ============================================================================
@@ -144,19 +139,7 @@ const makeStyles = (t: ThemeTokens) => ({
     color: t.text.secondary,
   },
   statusTag: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: space.xs,
-    paddingHorizontal: space.s6,
-    paddingVertical: space.xxs,
-    borderRadius: radius.field,
     marginTop: space.xs,
-    backgroundColor: t.status.positive.background,
-  },
-  statusTagText: {
-    ...typography.caption1,
-    fontWeight: fontWeight.semibold,
-    color: t.status.positive.text,
   },
   // Data table (guide §13.7)
   expandedSection: {
@@ -278,12 +261,11 @@ const RecentDispatchedOrderCardContent: React.FC<RecentDispatchedOrderCardProps>
 
   const hasItems = dispatch.items && dispatch.items.length > 0;
   const itemCount = dispatch.item_count || dispatch.items?.length || 0;
-  const itemsLabel = `${itemCount} ${itemCount === 1 ? 'item' : 'items'}`;
-  const bagsLabel = `${formatNumber(dispatch.total_qty)} ${dispatch.total_qty === 1 ? 'bag' : 'bags'}`;
+  const itemsLabel = formatCount(itemCount, 'item');
+  const bagsLabel = formatCount(dispatch.total_qty, 'bag');
   const dateLabel = formatDate(dispatch.disp_date, 'short');
 
   const handleToggleExpand = useCallback(() => {
-    Vibration.vibrate(5);
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setIsExpanded(prev => !prev);
   }, []);
@@ -360,12 +342,7 @@ const RecentDispatchedOrderCardContent: React.FC<RecentDispatchedOrderCardProps>
           <View style={styles.attributeStack}>
             <Text style={styles.quantityValue}>{bagsLabel}</Text>
             <Text style={styles.itemCountText}>{itemsLabel}</Text>
-            <View style={styles.statusTag}>
-              <Icon name="check-circle" size={iconSize.sm} color={t.status.positive.text} />
-              <Text style={styles.statusTagText} maxFontSizeMultiplier={1.6}>
-                Dispatched
-              </Text>
-            </View>
+            <StatusTag status="positive" label="Dispatched" style={styles.statusTag} />
           </View>
         </View>
       </Pressable>
@@ -385,7 +362,7 @@ const RecentDispatchedOrderCardContent: React.FC<RecentDispatchedOrderCardProps>
               key={`${dispatch.dispatch_id}-item-${idx}`}
               style={[styles.tableRow, idx > 0 && styles.tableRowDivider]}
               accessible
-              accessibilityLabel={`${item.item_name}${item.rack ? `, rack ${item.rack}` : ''}, ${Math.round(item.weight || 0)} kg, GRN ${item.gr_no}, ${item.disp_qty} dispatched`}
+              accessibilityLabel={`${item.item_name}${item.rack ? `, rack ${item.rack}` : ''}, ${formatWeight(item.weight, 0)}, GRN ${item.gr_no}, ${item.disp_qty} dispatched`}
             >
               <View style={[styles.tableCell, styles.colItem]}>
                 <View style={styles.itemNameRow}>
@@ -454,8 +431,7 @@ const areEqual = (
     prevDispatch.item_count === nextDispatch.item_count &&
     prevDispatch.registration === nextDispatch.registration &&
     prevDispatch.disp_date === nextDispatch.disp_date &&
-    prevProps.onPress === nextProps.onPress &&
-    prevProps.colors === nextProps.colors
+    prevProps.onPress === nextProps.onPress
   );
 };
 

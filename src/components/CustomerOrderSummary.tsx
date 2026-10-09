@@ -7,7 +7,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { Order } from '@/types/order.types';
-import { formatNumber } from '@/utils/formatters';
+import { formatCount, formatRelativeTime } from '@/utils/formatters';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import {
   fontWeight,
@@ -59,27 +59,14 @@ const CustomerOrderSummary: React.FC<CustomerOrderSummaryProps> = ({ order }) =>
     });
   }
 
-  const lastUpdated = order.updated_at || order.created_at;
-  const now = new Date();
-  const lastUpdatedDate = new Date(lastUpdated);
-  const diffMs = now.getTime() - lastUpdatedDate.getTime();
-  const diffMins = Math.floor(diffMs / 60000);
-
   // Relative time under 24 hours, then the date (style guide §12.3)
-  let timeAgo = '';
-  if (diffMins < 1) {
-    timeAgo = 'just now';
-  } else if (diffMins < 60) {
-    timeAgo = `${diffMins} min ago`;
-  } else if (diffMins < 24 * 60) {
-    timeAgo = `${Math.floor(diffMins / 60)} h ago`;
-  } else {
-    timeAgo = lastUpdatedDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
-  }
+  const relative = formatRelativeTime(order.updated_at || order.created_at);
+  const timeAgo = relative === 'Just now' ? 'just now' : relative;
   const updatedBy = order.updated_by_display_name || order.updated_by_name;
   const savedText = `Saved ${timeAgo}${updatedBy ? ` · ${updatedBy}` : ''}`;
-  const itemsText = `${formatNumber(activeItemCount)} ${activeItemCount === 1 ? 'item' : 'items'}`;
-  const quantityText = `${formatNumber(activeQuantity)} ${activeQuantity === 1 ? 'unit' : 'units'}`;
+  const itemsText = formatCount(activeItemCount, 'item');
+  // Units differ per item, so the total stays in plain "units"
+  const quantityText = formatCount(activeQuantity, 'unit');
 
   return (
     <View

@@ -4,13 +4,14 @@
  * Style guide §13.9 (dialogs) and §14.3 (wizard): surface.sheet over the scrim,
  * radius.card, shadow[4], success icon in status.positive.text, title3 title,
  * the document number and total, and the follow-up actions. The Android back
- * button closes it (same as "View invoices").
+ * button closes it (same as "View invoices"). "Create another invoice" is
+ * offered only when creating; after an edit it would just return to the list.
  */
 
 import React from 'react';
 import { View, Text, Modal, Pressable, ActivityIndicator, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import {
   fontWeight,
@@ -191,7 +192,6 @@ export const InvoiceSuccessDialog: React.FC<InvoiceSuccessDialogProps> = ({
   const message = isEditMode
     ? `Invoice ${invoiceData.invoice_no} has been updated.`
     : `Invoice ${invoiceData.invoice_no} has been saved.`;
-  const anotherLabel = isEditMode ? 'Edit another invoice' : 'Create another invoice';
   const total = formatInvoiceAmount(invoiceData.total);
 
   return (
@@ -290,13 +290,17 @@ export const InvoiceSuccessDialog: React.FC<InvoiceSuccessDialogProps> = ({
                 </Pressable>
               )}
 
-              <Pressable
-                style={({ pressed }) => [styles.button, styles.secondaryButton, pressed && styles.secondaryButtonPressed]}
-                onPress={onCreateAnother}
-                accessibilityRole="button"
-              >
-                <Text style={styles.secondaryButtonText}>{anotherLabel}</Text>
-              </Pressable>
+              {/* In edit mode "another" would only return to the list, the
+                  same as "View invoices", so it is not offered. */}
+              {!isEditMode && (
+                <Pressable
+                  style={({ pressed }) => [styles.button, styles.secondaryButton, pressed && styles.secondaryButtonPressed]}
+                  onPress={onCreateAnother}
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.secondaryButtonText}>Create another invoice</Text>
+                </Pressable>
+              )}
             </View>
           </ScrollView>
         </View>

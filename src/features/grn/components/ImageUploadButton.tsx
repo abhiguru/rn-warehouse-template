@@ -3,7 +3,6 @@ import {
   Pressable,
   Text,
   View,
-  Alert,
   ActivityIndicator,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
@@ -24,6 +23,7 @@ import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, radius, space, touchTarget, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 
+import { showAlert } from '@/utils/alert';
 // Type for custom upload function metadata (supports both camelCase and snake_case)
 type CustomUploadMetadata = {
   // camelCase (GRN format)
@@ -127,7 +127,7 @@ export const ImageUploadButton: React.FC<ImageUploadButtonProps> = ({
     // Validate image before upload
     const validation = validateImageFile(asset);
     if (!validation.valid) {
-      Alert.alert("Can't use this photo", validation.error);
+      showAlert("Can't use this photo", validation.error);
       return;
     }
 
@@ -221,7 +221,7 @@ export const ImageUploadButton: React.FC<ImageUploadButtonProps> = ({
       onImageUploadError?.(tempImageId, errorMessage);
 
       // Show error to user (the raw cause is logged above, not shown)
-      Alert.alert("Couldn't upload the photo", 'Check your connection and try again.');
+      showAlert("Couldn't upload the photo", 'Check your connection and try again.');
 
       // Legacy support: remove failed upload from URLs
       if (onImagesSelected && !onImageUploadError) {
@@ -258,7 +258,7 @@ export const ImageUploadButton: React.FC<ImageUploadButtonProps> = ({
 
   const pickImages = async () => {
     if (remainingSlots <= 0) {
-      Alert.alert('Photo limit reached', `You can add up to ${maxImages} photos.`);
+      showAlert('Photo limit reached', `You can add up to ${maxImages} photos.`);
       return;
     }
 
@@ -280,14 +280,14 @@ export const ImageUploadButton: React.FC<ImageUploadButtonProps> = ({
       }
     } catch (error) {
       console.error('[ImageUpload] Error picking images:', error);
-      Alert.alert("Couldn't open your photos", 'Try again.');
+      showAlert("Couldn't open your photos", 'Try again.');
     }
   };
 
   // Open custom camera modal with flash control
   const takePhoto = () => {
     if (remainingSlots <= 0) {
-      Alert.alert('Photo limit reached', `You can add up to ${maxImages} photos.`);
+      showAlert('Photo limit reached', `You can add up to ${maxImages} photos.`);
       return;
     }
     setShowCameraModal(true);
@@ -323,12 +323,12 @@ export const ImageUploadButton: React.FC<ImageUploadButtonProps> = ({
       await uploadImage(asset);
     } catch (error) {
       console.error('[ImageUpload] Error processing captured photo:', error);
-      Alert.alert("Couldn't use the photo", 'Take the photo again.');
+      showAlert("Couldn't use the photo", 'Take the photo again.');
     }
   };
 
   const showImageOptions = () => {
-    Alert.alert(
+    showAlert(
       'Add photo',
       'Take a new photo or choose one from your library.',
       [

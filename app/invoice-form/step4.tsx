@@ -10,7 +10,6 @@ import {
   View,
   Text,
   Pressable,
-  Alert,
   ScrollView,
   ActivityIndicator,
 } from 'react-native';
@@ -38,6 +37,7 @@ import {
 } from '@/utils/invoiceCalculations';
 import { SavedInvoiceData } from '@/types/invoice.types';
 
+import { showAlert } from '@/utils/alert';
 const makeHeaderStyles = (t: ThemeTokens) => ({
   header: {
     paddingHorizontal: layout.marginCompact,
@@ -96,12 +96,12 @@ export default function InvoiceFormStep4() {
   const handleSubmit = async () => {
     // Final validation check
     if (items.length === 0) {
-      Alert.alert('No items to invoice', 'Go back and select a GRN that has dispatched items.');
+      showAlert('No items to invoice', 'Go back and select a GRN that has dispatched items.');
       return;
     }
 
     if (!header.gr_id || !header.customer_id) {
-      Alert.alert('Select a GRN', 'Go back and select the GRN for this invoice.');
+      showAlert('Select a GRN', 'Go back and select the GRN for this invoice.');
       return;
     }
 
@@ -319,7 +319,7 @@ export default function InvoiceFormStep4() {
         onConfirm={handleConfirmSubmit}
         onCancel={() => setShowConfirmDialog(false)}
         variant="default"
-        icon="document-text"
+        icon="file-document-outline"
       />
 
       {/* Success Dialog */}

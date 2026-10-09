@@ -22,7 +22,8 @@ import {
   type ThemeTokens,
 } from '@/theme/tokens';
 import type { ItemStoragePrice } from '@/types/item-pricing.types';
-import { formatCurrency } from '@/utils/formatters';
+import { formatCurrency, formatDate } from '@/utils/formatters';
+import { Avatar, StatusTag } from '@/components/ui';
 
 interface ItemPricingCardProps {
   price: ItemStoragePrice;
@@ -34,16 +35,7 @@ interface ItemPricingCardProps {
   canManage?: boolean;
   isLastInSection?: boolean;
   isFirstForCustomer?: boolean; // Show customer header for first item in customer group
-  /**
-   * @deprecated Ignored. The card reads the semantic tokens itself; kept so
-   * existing callers that still pass list colours compile.
-   */
-  colors?: unknown;
 }
-
-/** "9 Oct 2026" (style guide §12.3). */
-const formatCompactDate = (dateStr: string) =>
-  new Date(dateStr).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 
 const ItemPricingCard = memo<ItemPricingCardProps>(
   ({ price, onPress, onView, onEdit, onDelete, index, canManage = true, isLastInSection = false, isFirstForCustomer = false }) => {
@@ -90,7 +82,8 @@ const ItemPricingCard = memo<ItemPricingCardProps>(
           accessibilityRole="button"
           accessibilityLabel={`View price for ${weightLabel}`}
         >
-          <Icon name="eye-outline" color={t.icon.primary} size={iconSize.md} />
+          <Icon name="eye-outline" color={t.text.primary} size={iconSize.lg} />
+          <Text style={styles.swipeLabel} maxFontSizeMultiplier={1.4}>View</Text>
         </Pressable>
         {canManage && (
           <Pressable
@@ -99,7 +92,8 @@ const ItemPricingCard = memo<ItemPricingCardProps>(
             accessibilityRole="button"
             accessibilityLabel={`Edit price for ${weightLabel}`}
           >
-            <Icon name="pencil-outline" color={t.brand.onFill} size={iconSize.md} />
+            <Icon name="pencil-outline" color={t.brand.onFill} size={iconSize.lg} />
+            <Text style={[styles.swipeLabel, styles.swipeLabelOnBrand]} maxFontSizeMultiplier={1.4}>Edit</Text>
           </Pressable>
         )}
         {canManage && (
@@ -109,7 +103,8 @@ const ItemPricingCard = memo<ItemPricingCardProps>(
             accessibilityRole="button"
             accessibilityLabel={`Delete price for ${weightLabel}`}
           >
-            <Icon name="trash-can-outline" color={t.destructive.onFill} size={iconSize.md} />
+            <Icon name="trash-can-outline" color={t.destructive.onFill} size={iconSize.lg} />
+            <Text style={[styles.swipeLabel, styles.swipeLabelOnDestructive]} maxFontSizeMultiplier={1.4}>Delete</Text>
           </Pressable>
         )}
       </View>
@@ -118,8 +113,8 @@ const ItemPricingCard = memo<ItemPricingCardProps>(
     // Check if price is expired
     const isExpired = !!price.effective_to && new Date(price.effective_to) < new Date();
     const isDefault = !price.customer_id;
-    const validity = `From ${formatCompactDate(price.effective_from)}${
-      price.effective_to ? ` to ${formatCompactDate(price.effective_to)}` : ''
+    const validity = `From ${formatDate(price.effective_from, 'short')}${
+      price.effective_to ? ` to ${formatDate(price.effective_to, 'short')}` : ''
     }`;
     const rowLabel = [
       weightLabel,
@@ -142,21 +137,17 @@ const ItemPricingCard = memo<ItemPricingCardProps>(
           {/* Customer Group Header - only show for first item in customer group */}
           {isFirstForCustomer && (
             <View style={styles.customerGroupHeader} accessible accessibilityRole="header">
-              <View style={[styles.customerAvatar, isDefault && styles.customerAvatarDefault]}>
-                <Icon
-                  name={isDefault ? 'earth' : 'account-outline'}
-                  size={iconSize.sm}
-                  color={isDefault ? t.brand.onFill : t.icon.primary}
-                />
-              </View>
+              {isDefault ? (
+                <View style={styles.defaultAvatar}>
+                  <Icon name="earth" size={iconSize.sm} color={t.brand.tint} />
+                </View>
+              ) : (
+                <Avatar name={price.customer_name} id={price.customer_id} size="sm" />
+              )}
               <Text style={styles.customerGroupName} numberOfLines={2}>
                 {price.customer_name || 'Default pricing'}
               </Text>
-              {isDefault && (
-                <View style={styles.defaultBadge}>
-                  <Text style={styles.defaultBadgeText} maxFontSizeMultiplier={1.6}>Base</Text>
-                </View>
-              )}
+              {isDefault && <StatusTag status="neutral" label="Base" icon={null} />}
             </View>
           )}
 
@@ -190,14 +181,7 @@ const ItemPricingCard = memo<ItemPricingCardProps>(
                     </View>
 
                     {/* Price Type Tag */}
-                    <View style={[styles.typeBadge, isOneTime ? styles.typeBadgeOneTime : styles.typeBadgeMonthly]}>
-                      <Text
-                        style={[styles.typeBadgeText, isOneTime ? styles.typeBadgeTextOneTime : styles.typeBadgeTextMonthly]}
-                        maxFontSizeMultiplier={1.6}
-                      >
-                        {typeLabel}
-                      </Text>
-                    </View>
+                    <StatusTag status={isOneTime ? 'neutral' : 'informative'} label={typeLabel} icon={null} />
 
                     {/* Right: Price */}
                     <Text style={styles.priceText}>{formatCurrency(price.unit_price)}</Text>
@@ -215,12 +199,7 @@ const ItemPricingCard = memo<ItemPricingCardProps>(
                     <Text style={styles.secondaryText}>Tax {price.tax_percent}%</Text>
                     <Text style={styles.separator}>·</Text>
                     <Text style={styles.secondaryText}>{validity}</Text>
-                    {isExpired && (
-                      <View style={styles.expiredBadge}>
-                        <Icon name="alert-circle" size={iconSize.sm - 4} color={t.status.negative.text} />
-                        <Text style={styles.expiredBadgeText} maxFontSizeMultiplier={1.6}>Expired</Text>
-                      </View>
-                    )}
+                    {isExpired && <StatusTag status="negative" label="Expired" style={styles.expiredTag} />}
                   </View>
                 </View>
               )}
@@ -288,33 +267,19 @@ const makeStyles = (t: ThemeTokens) => ({
     borderBottomColor: t.border.divider,
     gap: space.sm,
   },
-  customerAvatar: {
+  defaultAvatar: {
     width: layout.avatar.sm,
     height: layout.avatar.sm,
     borderRadius: radius.pill,
     justifyContent: 'center' as const,
     alignItems: 'center' as const,
-    backgroundColor: t.surface.cardActive,
-  },
-  customerAvatarDefault: {
-    backgroundColor: t.brand.fill,
+    backgroundColor: t.brand.subtle,
   },
   customerGroupName: {
     ...typography.subhead,
     fontWeight: fontWeight.semibold,
     flex: 1,
     color: t.text.primary,
-  },
-  defaultBadge: {
-    paddingHorizontal: space.s6,
-    paddingVertical: space.xxs,
-    borderRadius: radius.field,
-    backgroundColor: t.brand.subtle,
-  },
-  defaultBadgeText: {
-    ...typography.caption1,
-    fontWeight: fontWeight.semibold,
-    color: t.brand.tint,
   },
 
   // Object Cell - compact rows inside a customer group
@@ -355,29 +320,6 @@ const makeStyles = (t: ThemeTokens) => ({
     color: t.text.primary,
     fontVariant: ['tabular-nums' as const],
   },
-  typeBadge: {
-    paddingHorizontal: space.s6,
-    paddingVertical: space.xxs,
-    borderRadius: radius.field,
-    justifyContent: 'center' as const,
-    alignItems: 'center' as const,
-  },
-  typeBadgeOneTime: {
-    backgroundColor: t.status.neutral.background,
-  },
-  typeBadgeMonthly: {
-    backgroundColor: t.status.informative.background,
-  },
-  typeBadgeText: {
-    ...typography.caption1,
-    fontWeight: fontWeight.semibold,
-  },
-  typeBadgeTextOneTime: {
-    color: t.status.neutral.text,
-  },
-  typeBadgeTextMonthly: {
-    color: t.status.informative.text,
-  },
   priceText: {
     ...typography.headline,
     flex: 1,
@@ -385,20 +327,8 @@ const makeStyles = (t: ThemeTokens) => ({
     color: t.text.primary,
     fontVariant: ['tabular-nums' as const],
   },
-  expiredBadge: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: space.xxs,
+  expiredTag: {
     marginLeft: space.sm,
-    paddingHorizontal: space.s6,
-    paddingVertical: space.xxs,
-    borderRadius: radius.field,
-    backgroundColor: t.status.negative.background,
-  },
-  expiredBadgeText: {
-    ...typography.caption1,
-    fontWeight: fontWeight.semibold,
-    color: t.status.negative.text,
   },
 
   // Secondary Row
@@ -419,19 +349,33 @@ const makeStyles = (t: ThemeTokens) => ({
   },
 
   // Swipe Actions
+  // Swipe actions (guide §13.6): at least 72 wide, full row height, icon over a label
   swipeActionsContainer: {
     flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    paddingRight: space.sm,
+    alignItems: 'stretch' as const,
+    paddingRight: space.md,
     paddingLeft: space.xs,
     gap: space.xs,
   },
   swipeAction: {
-    width: touchTarget,
-    height: touchTarget,
+    minWidth: 72,
+    minHeight: touchTarget,
+    paddingHorizontal: space.sm,
     justifyContent: 'center' as const,
     alignItems: 'center' as const,
+    gap: space.xxs,
     borderRadius: radius.button,
+  },
+  swipeLabel: {
+    ...typography.caption1,
+    fontWeight: fontWeight.semibold,
+    color: t.text.primary,
+  },
+  swipeLabelOnBrand: {
+    color: t.brand.onFill,
+  },
+  swipeLabelOnDestructive: {
+    color: t.destructive.onFill,
   },
   swipeView: {
     backgroundColor: t.surface.cardActive,

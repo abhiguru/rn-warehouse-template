@@ -13,6 +13,8 @@ import { SearchableBottomSheet } from '@/components/common';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { iconSize, layout, space, typography, touchTarget } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
+import { Avatar } from '@/components/ui';
+import { formatMobile } from '@/utils/formatters';
 
 interface Supervisor {
   id: string;
@@ -119,15 +121,15 @@ export const SupervisorBottomSheet: React.FC<SupervisorBottomSheetProps> = ({
         style={({ pressed }) => [styles.supervisorItem, pressed && styles.supervisorItemPressed]}
         onPress={() => onItemSelect(item)}
         accessibilityRole="button"
-        accessibilityLabel={item.phone ? `${item.name}, ${item.phone}` : item.name}
+        accessibilityLabel={item.phone ? `${item.name}, ${formatMobile(item.phone)}` : item.name}
       >
-        <Icon name="account-outline" size={iconSize.lg} color={t.icon.secondary} />
+        <Avatar name={item.name} id={item.id || null} />
         <View style={styles.supervisorContent}>
           <Text style={styles.supervisorName} numberOfLines={2}>{item.name}</Text>
           {item.phone ? (
             <View style={styles.supervisorMeta}>
               <Icon name="phone-outline" size={iconSize.sm} color={t.icon.secondary} />
-              <Text style={styles.metaText}>{item.phone}</Text>
+              <Text style={styles.metaText}>{formatMobile(item.phone)}</Text>
             </View>
           ) : null}
         </View>

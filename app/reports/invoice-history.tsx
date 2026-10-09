@@ -39,24 +39,20 @@ import type {
   AllInvoiceHistoryData,
   CustomerInvoiceSummary,
 } from '@/types/report.types';
-import { formatDate } from '@/utils/formatters';
+import { formatDate, formatCount, formatCurrency, formatMonth } from '@/utils/formatters';
 import { formatInvoiceAmount } from '@/utils/invoiceCalculations';
+import { StatusTag } from '@/components/ui/StatusTag';
 
 // ============================================================================
 // Formatting
 // ============================================================================
 
-const summaryMoneyFormat = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 });
-
 /** Totals in summaries: Indian grouping, rupee sign, no decimals (style guide §12.3). */
-const formatSummaryAmount = (amount: number): string => `₹${summaryMoneyFormat.format(Math.round(amount || 0))}`;
+const formatSummaryAmount = (amount: number): string =>
+  formatCurrency(Math.round(amount || 0), { maximumFractionDigits: 0 });
 
-// Format month (2025-12 -> Dec 2025)
-const formatMonth = (monthStr: string): string => {
-  const [year, month] = monthStr.split('-');
-  const date = new Date(parseInt(year), parseInt(month) - 1);
-  return date.toLocaleDateString('en-IN', { month: 'short', year: 'numeric' });
-};
+/** Month row title (2025-12 -> "Dec 2025"). */
+const formatMonthRow = (monthStr: string): string => formatMonth(`${monthStr.slice(0, 7)}-01`, 'short');
 
 const LOAD_ERROR = "Couldn't load the invoice history. Check your connection and try again.";
 
@@ -169,19 +165,6 @@ const makeStyles = (t: ThemeTokens) => ({
     textAlign: 'right' as const,
   },
   amountLabel: { ...typography.footnote, color: t.text.secondary },
-  statusTag: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: space.xs,
-    paddingHorizontal: space.s6,
-    paddingVertical: space.xxs,
-    borderRadius: radius.field,
-  },
-  statusTagPaid: { backgroundColor: t.status.positive.background },
-  statusTagPending: { backgroundColor: t.status.critical.background },
-  statusTagText: { ...typography.caption1, fontWeight: fontWeight.semibold },
-  statusTagTextPaid: { color: t.status.positive.text },
-  statusTagTextPending: { color: t.status.critical.text },
 
   // Customers card
   customersCard: {
@@ -247,15 +230,15 @@ const MonthlyBreakdownCard: React.FC<MonthlyBreakdownCardProps> = ({ months, isE
       {isExpanded && (
         <View style={styles.monthlyContent}>
           {months.map((m, index) => {
-            const countLabel = `${m.invoice_count} ${m.invoice_count === 1 ? 'invoice' : 'invoices'}`;
+            const countLabel = formatCount(m.invoice_count, 'invoice');
             return (
               <View
                 key={m.month}
                 style={[styles.monthRow, index < months.length - 1 && styles.monthRowBorder]}
                 accessible
-                accessibilityLabel={`${formatMonth(m.month)}, ${countLabel}, ${formatSummaryAmount(m.total_amount)}`}
+                accessibilityLabel={`${formatMonthRow(m.month)}, ${countLabel}, ${formatSummaryAmount(m.total_amount)}`}
               >
-                <Text style={styles.monthLabel}>{formatMonth(m.month)}</Text>
+                <Text style={styles.monthLabel}>{formatMonthRow(m.month)}</Text>
                 <View style={styles.monthStats}>
                   <Text style={styles.monthAmount}>{formatSummaryAmount(m.total_amount)}</Text>
                   <Text style={styles.monthCount}>{countLabel}</Text>
@@ -279,8 +262,8 @@ const InvoiceCard: React.FC<InvoiceCardProps> = ({ invoice }) => {
   const t = useTokens();
   const isPaid = invoice.payment_status?.status === 'paid';
   const statusLabel = isPaid ? 'Paid' : 'Pending';
-  const itemsLabel = `${invoice.item_count} ${invoice.item_count === 1 ? 'item' : 'items'}`;
-  const subtitle = [formatDate(invoice.invoice_date, 'medium'), invoice.grn_ref ? `GRN ${invoice.grn_ref}` : null]
+  const itemsLabel = formatCount(invoice.item_count, 'item');
+  const subtitle = [formatDate(invoice.invoice_date, 'short'), invoice.grn_ref ? `GRN ${invoice.grn_ref}` : null]
     .filter(Boolean)
     .join(' · ');
 
@@ -313,19 +296,7 @@ const InvoiceCard: React.FC<InvoiceCardProps> = ({ invoice }) => {
         <View style={styles.amountInfo}>
           <Text style={styles.amountValue}>{formatInvoiceAmount(invoice.net_total)}</Text>
           <Text style={styles.amountLabel}>{itemsLabel}</Text>
-          <View style={[styles.statusTag, isPaid ? styles.statusTagPaid : styles.statusTagPending]}>
-            <Icon
-              name={isPaid ? 'check-circle' : 'alert'}
-              size={iconSize.sm}
-              color={isPaid ? t.status.positive.text : t.status.critical.text}
-            />
-            <Text
-              style={[styles.statusTagText, isPaid ? styles.statusTagTextPaid : styles.statusTagTextPending]}
-              maxFontSizeMultiplier={1.6}
-            >
-              {statusLabel}
-            </Text>
-          </View>
+          <StatusTag status={isPaid ? 'positive' : 'critical'} label={statusLabel} />
         </View>
 
         <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />
@@ -343,8 +314,8 @@ interface CustomerCardProps {
 const CustomerCard: React.FC<CustomerCardProps> = ({ customer, onPress }) => {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
-  const countLabel = `${customer.invoice_count} ${customer.invoice_count === 1 ? 'invoice' : 'invoices'}`;
-  const latest = customer.latest_invoice_date ? formatDate(customer.latest_invoice_date, 'medium') : null;
+  const countLabel = formatCount(customer.invoice_count, 'invoice');
+  const latest = customer.latest_invoice_date ? formatDate(customer.latest_invoice_date, 'short') : null;
 
   return (
     <Pressable

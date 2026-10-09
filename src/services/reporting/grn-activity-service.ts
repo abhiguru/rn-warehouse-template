@@ -20,6 +20,7 @@ import type {
   CustomerGRNSummary,
 } from '@/types/report.types';
 
+import { toLocalISODate } from '@/utils/formatters';
 /**
  * Default empty response for error cases
  */
@@ -55,14 +56,14 @@ const EMPTY_ALL_RESPONSE: AllGRNActivityData = {
 function getDateDaysAgo(days: number): string {
   const date = new Date();
   date.setDate(date.getDate() - days);
-  return date.toISOString().split('T')[0];
+  return toLocalISODate(date);
 }
 
 /**
  * Get today's date string
  */
 function getToday(): string {
-  return new Date().toISOString().split('T')[0];
+  return toLocalISODate(new Date());
 }
 
 export interface GRNActivityParams {

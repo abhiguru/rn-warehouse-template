@@ -21,6 +21,7 @@ import {
   typography,
   type ThemeTokens,
 } from '@/theme/tokens';
+import { formatNumber } from '@/utils/formatters';
 
 export type KPIVariant = 'primary' | 'secondary' | 'accent' | 'neutral' | 'success' | 'warning';
 
@@ -171,7 +172,7 @@ function variantColours(
 }
 
 const formatValue = (val: string | number): string =>
-  typeof val === 'number' ? new Intl.NumberFormat('en-IN').format(val) : val;
+  typeof val === 'number' ? formatNumber(val) : val;
 
 export const KPICard: React.FC<KPICardProps> = ({
   icon,

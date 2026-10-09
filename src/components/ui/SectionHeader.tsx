@@ -258,10 +258,11 @@ const makeStyles = (t: ThemeTokens) => ({
     color: t.text.secondary,
   },
 
-  // Count badge
+  // Plain count badge: brand.fill with brand.onFill. "Needs action" counts use
+  // destructive.fill with destructive.onFill instead (§13.5).
   countBadge: {
     marginLeft: space.sm,
-    backgroundColor: t.status.neutral.background,
+    backgroundColor: t.brand.fill,
     paddingHorizontal: space.sm,
     paddingVertical: space.xxs,
     borderRadius: radius.pill,
@@ -271,7 +272,7 @@ const makeStyles = (t: ThemeTokens) => ({
   countText: {
     ...typography.caption1,
     fontWeight: fontWeight.semibold,
-    color: t.status.neutral.text,
+    color: t.brand.onFill,
     fontVariant: ['tabular-nums' as const],
   },
 

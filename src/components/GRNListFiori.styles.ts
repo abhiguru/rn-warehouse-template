@@ -8,6 +8,7 @@
  */
 
 import { StyleSheet } from 'react-native';
+import { FAB_CLEARANCE } from '@/components/ui/Fab';
 import {
   fontWeight,
   layout,
@@ -42,7 +43,8 @@ export const makeGRNListStyles = (t: ThemeTokens) => ({
   },
 
   headerTitle: {
-    ...typography.title2,
+    // Top-level tab title (guide §13.8): large title on every tab.
+    ...typography.largeTitle,
     color: t.text.primary,
   },
 
@@ -81,21 +83,6 @@ export const makeGRNListStyles = (t: ThemeTokens) => ({
     ...typography.caption2,
     fontWeight: fontWeight.semibold,
     color: t.brand.onFill,
-  },
-
-  avatar: {
-    width: layout.avatar.sm,
-    height: layout.avatar.sm,
-    borderRadius: radius.pill,
-    justifyContent: 'center' as const,
-    alignItems: 'center' as const,
-  },
-
-  avatarText: {
-    ...typography.subhead,
-    fontWeight: fontWeight.semibold,
-    // Avatar initials: text.primary in light mode, white in dark (guide 3.2)
-    color: t.mode === 'dark' ? t.overlay.onImage : t.text.primary,
   },
 
   // =========================================================================
@@ -289,7 +276,7 @@ export const makeGRNListStyles = (t: ThemeTokens) => ({
     paddingHorizontal: layout.marginCompact,
     paddingTop: space.sm,
     // Room for the floating create button
-    paddingBottom: 56 + space.xxxl,
+    paddingBottom: FAB_CLEARANCE,
   },
 
   // =========================================================================
@@ -322,7 +309,8 @@ export const makeGRNListStyles = (t: ThemeTokens) => ({
   statusIconContainer: {
     width: layout.avatar.md,
     height: layout.avatar.md,
-    borderRadius: radius.button,
+    borderRadius: radius.pill,
+    backgroundColor: t.brand.subtle,
     justifyContent: 'center' as const,
     alignItems: 'center' as const,
   },
@@ -373,21 +361,6 @@ export const makeGRNListStyles = (t: ThemeTokens) => ({
     alignItems: 'flex-end' as const,
     gap: space.xs,
     minWidth: 72,
-  },
-
-  // Status tag (guide 13.5): status background + status text + icon
-  statusTag: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: space.xs,
-    paddingHorizontal: space.sm,
-    paddingVertical: space.xxs,
-    borderRadius: radius.field,
-  },
-
-  statusTagText: {
-    ...typography.caption1,
-    fontWeight: fontWeight.semibold,
   },
 
   stockValueText: {
@@ -649,26 +622,6 @@ export const makeGRNListStyles = (t: ThemeTokens) => ({
     color: t.text.secondary,
     textAlign: 'center' as const,
     marginBottom: space.lg,
-  },
-
-  // =========================================================================
-  // Floating create button (guide 14.1)
-  // =========================================================================
-  fab: {
-    position: 'absolute' as const,
-    right: layout.marginCompact,
-    bottom: layout.marginCompact,
-    width: 56,
-    height: 56,
-    borderRadius: radius.pill,
-    backgroundColor: t.brand.fill,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    ...t.shadow[3],
-  },
-
-  fabPressed: {
-    backgroundColor: t.brand.fillPressed,
   },
 
   // =========================================================================

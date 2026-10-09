@@ -44,7 +44,8 @@ export interface SensorHistoryResponse {
 
 // Chart data format for react-native-gifted-charts
 export interface SensorChartDataPoint {
-  value: number;
+  /** Undefined for a missing reading; the chart leaves a gap there. */
+  value: number | undefined;
   label: string;
   dataPointText?: string;
 }

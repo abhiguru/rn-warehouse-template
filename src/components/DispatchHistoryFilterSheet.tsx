@@ -29,6 +29,7 @@ import {
   typography,
 } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
+import { formatDate, formatCount } from '@/utils/formatters';
 
 export interface FilterValues {
   itemName: string;
@@ -45,10 +46,7 @@ interface DispatchHistoryFilterSheetProps {
   currentFilters: FilterValues;
 }
 
-const formatDateDisplay = (date: Date | null) => {
-  if (!date) return 'Choose date';
-  return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
-};
+const formatDateDisplay = (date: Date | null) => (date ? formatDate(date) : 'Choose date');
 
 const makeStyles = (t: ThemeTokens) => ({
   sheetBackground: {
@@ -414,7 +412,7 @@ const DispatchHistoryFilterSheet: React.FC<DispatchHistoryFilterSheetProps> = ({
                 <View
                   style={styles.filterBadge}
                   accessible
-                  accessibilityLabel={`${activeFilterCount} ${activeFilterCount === 1 ? 'filter' : 'filters'} set`}
+                  accessibilityLabel={`${formatCount(activeFilterCount, 'filter')} set`}
                 >
                   <Text style={styles.filterBadgeText} maxFontSizeMultiplier={1.6}>
                     {activeFilterCount}
