@@ -4,15 +4,13 @@
  * SAP Fiori-compliant bottom tab bar component designed to work with
  * Expo Router's Tabs component as a custom tabBar.
  *
- * Fiori Spec Compliance (03-tab-bar.md):
- * - 49pt height (compact width)
- * - 24pt icons
- * - 10pt labels
- * - Filled icons for active state (primary orange)
- * - Outline icons for inactive state (gray)
- * - 44pt minimum touch targets
- * - Haptic feedback on selection
- * - Badge support for notifications
+ * Style guide §13.8:
+ * - surface.tabBar with a top hairline in border.divider, 49pt plus the bottom inset
+ * - 24pt icons, caption2 labels that are always visible
+ * - Selected: filled icon and label in brand.tint
+ * - Unselected: outline icon in icon.secondary, label in text.secondary
+ * - Minimum touch targets, selection haptics
+ * - Count badges for items that need action
  *
  * @example
  * ```tsx
@@ -23,36 +21,25 @@
  */
 
 import React from 'react';
-import {
-  View,
-  TouchableOpacity,
-  Text,
-  StyleSheet,
-  Platform,
-  Vibration,
-} from 'react-native';
+import { View, Pressable, Text, StyleSheet, Platform } from 'react-native';
 import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import theme from '@/theme';
-import { useTheme } from '@/hooks/useTheme';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { useRoleBasedAccess } from '@/hooks/useRoleBasedAccess';
+import { triggerSelection } from '@/hooks/useHaptics';
+import {
+  fontWeight,
+  iconSize,
+  layout,
+  radius,
+  space,
+  touchTarget,
+  typography,
+  type ThemeTokens,
+} from '@/theme/tokens';
 
-// Fiori Tab Bar Dimensions (per spec)
-const FIORI_TAB_BAR = {
-  height: 49, // Compact width (iPhone)
-  iconSize: 24,
-  labelFontSize: 10,
-  touchTargetHeight: 44, // Accessibility requirement
-  badgeSize: 18,
-  badgeFontSize: 11,
-};
-
-// Badge colors per Fiori spec
-const BADGE_COLORS = {
-  background: '#D32030', // Red
-  text: '#FFFFFF', // White
-};
+const BADGE_SIZE = 18;
 
 // Icon mapping for each tab route
 const TAB_ICONS: Record<string, { outline: string; filled: string }> = {
@@ -79,7 +66,8 @@ export default function FioriTabBar({
   badges = {},
 }: FioriTabBarProps) {
   const insets = useSafeAreaInsets();
-  const { colors: themeColors, isDarkMode } = useTheme();
+  const t = useTokens();
+  const styles = useThemedStyles(makeStyles);
   const { canManageOrders } = useRoleBasedAccess();
 
   // Filter routes based on user role
@@ -93,21 +81,8 @@ export default function FioriTabBar({
     });
   }, [state.routes, canManageOrders]);
 
-  // Minimal additional padding for visual comfort
-  const additionalPadding = Platform.select({
-    ios: 4,
-    android: 6,
-    default: 6,
-  });
-
-  const bottomPadding = insets.bottom + additionalPadding;
-
-  // Haptic feedback on tab selection (Fiori spec)
-  const triggerHapticFeedback = () => {
-    if (Platform.OS === 'ios' || Platform.OS === 'android') {
-      Vibration.vibrate(10);
-    }
-  };
+  // Small extra padding when there is no home indicator inset
+  const bottomPadding = insets.bottom > 0 ? insets.bottom : Platform.OS === 'android' ? space.s6 : space.xs;
 
   // Render notification badge
   const renderBadge = (count: number) => {
@@ -116,33 +91,17 @@ export default function FioriTabBar({
     const displayCount = count > 99 ? '99+' : count.toString();
 
     return (
-      <View style={styles.badge}>
-        <Text style={styles.badgeText}>{displayCount}</Text>
+      <View style={styles.badge} importantForAccessibility="no-hide-descendants">
+        <Text style={styles.badgeText} maxFontSizeMultiplier={1.6}>
+          {displayCount}
+        </Text>
       </View>
     );
   };
 
   return (
-    <View
-      style={[
-        styles.container,
-        {
-          paddingBottom: bottomPadding,
-          // In dark mode, use gray[50] (dark) not gray[800] (light - scale is inverted)
-          backgroundColor: isDarkMode ? themeColors.gray[50] : themeColors.white,
-        },
-      ]}
-    >
-      <View
-        style={[
-          styles.tabBar,
-          {
-            backgroundColor: isDarkMode ? themeColors.gray[50] : themeColors.white,
-            borderTopColor: isDarkMode ? themeColors.gray[200] : themeColors.gray[200],
-          },
-        ]}
-        accessibilityRole="tablist"
-      >
+    <View style={[styles.container, { paddingBottom: bottomPadding }]}>
+      <View style={styles.tabBar} accessibilityRole="tablist">
         {visibleRoutes.map((route) => {
           const { options } = descriptors[route.key];
           const label =
@@ -171,7 +130,7 @@ export default function FioriTabBar({
             });
 
             if (!isFocused && !event.defaultPrevented) {
-              triggerHapticFeedback();
+              triggerSelection();
               navigation.navigate(route.name, route.params);
             }
           };
@@ -184,45 +143,33 @@ export default function FioriTabBar({
           };
 
           return (
-            <TouchableOpacity
+            <Pressable
               key={route.key}
-              style={styles.tab}
+              style={({ pressed }) => [styles.tab, pressed && styles.tabPressed]}
               onPress={onPress}
               onLongPress={onLongPress}
-              activeOpacity={0.7}
               accessibilityRole="tab"
-              accessibilityLabel={`${label} tab${badgeCount > 0 ? `, ${badgeCount} notifications` : ''}`}
-              accessibilityHint={
-                isFocused ? 'Currently selected' : `Navigate to ${label}`
-              }
+              accessibilityLabel={`${typeof label === 'string' ? label : route.name}${
+                badgeCount > 0 ? `, ${badgeCount} need action` : ''
+              }`}
               accessibilityState={{ selected: isFocused }}
             >
               <View style={styles.iconContainer}>
                 <Icon
                   name={isFocused ? icons.filled : icons.outline}
-                  size={FIORI_TAB_BAR.iconSize}
-                  color={
-                    isFocused
-                      ? themeColors.primary
-                      : isDarkMode
-                        ? themeColors.gray[400]
-                        : themeColors.gray[500]
-                  }
+                  size={iconSize.lg}
+                  color={isFocused ? t.brand.tint : t.icon.secondary}
                 />
                 {renderBadge(badgeCount)}
               </View>
               <Text
-                style={[
-                  styles.label,
-                  {
-                    color: isDarkMode ? themeColors.gray[400] : themeColors.gray[500],
-                  },
-                  isFocused && { color: themeColors.primary, fontWeight: '500' },
-                ]}
+                style={[styles.label, isFocused && styles.labelSelected]}
+                numberOfLines={1}
+                maxFontSizeMultiplier={1.6}
               >
                 {typeof label === 'string' ? label : route.name}
               </Text>
-            </TouchableOpacity>
+            </Pressable>
           );
         })}
       </View>
@@ -230,75 +177,74 @@ export default function FioriTabBar({
   );
 }
 
-const styles = StyleSheet.create({
-  // Outer container with safe area padding (colors applied inline)
-  container: {},
+const makeStyles = (t: ThemeTokens) => ({
+  // Outer container carries the bottom safe-area inset
+  container: {
+    backgroundColor: t.surface.tabBar,
+    ...t.shadow[2],
+  },
 
-  // Tab bar container per Fiori spec (colors applied inline)
   tabBar: {
-    flexDirection: 'row',
+    flexDirection: 'row' as const,
+    height: layout.tabBarHeight,
+    alignItems: 'center' as const,
+    justifyContent: 'space-around' as const,
+    backgroundColor: t.surface.tabBar,
     borderTopWidth: StyleSheet.hairlineWidth,
-    height: FIORI_TAB_BAR.height,
-    alignItems: 'center',
-    justifyContent: 'space-around',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: -1 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
-      },
-      android: {
-        elevation: 8,
-      },
-    }),
+    borderTopColor: t.border.divider,
   },
 
   // Tab item - each takes equal width
   tab: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: FIORI_TAB_BAR.touchTargetHeight,
-    paddingVertical: 4,
+    alignSelf: 'stretch' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    minHeight: Math.min(touchTarget, layout.tabBarHeight),
+    paddingVertical: space.xs,
+  },
+  tabPressed: {
+    backgroundColor: t.surface.cardPressed,
   },
 
   // Icon container - holds icon and optional badge
   iconContainer: {
-    position: 'relative',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 2,
+    position: 'relative' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    marginBottom: space.xxs,
   },
 
-  // Tab label (colors applied inline)
   label: {
-    fontSize: FIORI_TAB_BAR.labelFontSize,
-    fontWeight: '400',
-    textAlign: 'center',
+    ...typography.caption2,
+    color: t.text.secondary,
+    textAlign: 'center' as const,
+  },
+  labelSelected: {
+    color: t.brand.tint,
+    fontWeight: fontWeight.semibold,
   },
 
-  // Notification badge - red badge per Fiori spec
+  // Count badge for items that need action
   badge: {
-    position: 'absolute',
-    top: -4,
-    right: -8,
-    minWidth: FIORI_TAB_BAR.badgeSize,
-    height: FIORI_TAB_BAR.badgeSize,
-    borderRadius: FIORI_TAB_BAR.badgeSize / 2,
-    backgroundColor: BADGE_COLORS.background,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 4,
+    position: 'absolute' as const,
+    top: -space.xs,
+    right: -space.sm,
+    minWidth: BADGE_SIZE,
+    height: BADGE_SIZE,
+    borderRadius: radius.pill,
+    backgroundColor: t.destructive.fill,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    paddingHorizontal: space.xs,
     borderWidth: 1.5,
-    borderColor: '#FFFFFF',
+    borderColor: t.surface.tabBar,
   },
-
-  // Badge text - white, bold
   badgeText: {
-    color: BADGE_COLORS.text,
-    fontSize: FIORI_TAB_BAR.badgeFontSize,
-    fontWeight: '700',
-    textAlign: 'center',
+    ...typography.caption2,
+    color: t.destructive.onFill,
+    fontWeight: fontWeight.bold,
+    textAlign: 'center' as const,
+    fontVariant: ['tabular-nums' as const],
   },
 });

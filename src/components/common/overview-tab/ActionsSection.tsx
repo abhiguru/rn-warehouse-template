@@ -1,13 +1,15 @@
 /**
  * ActionsSection Component
  *
- * Reusable actions section for overview tabs (Share PDF, Edit, Delete)
- * Based on SAP Fiori for iOS Button Patterns
+ * Actions section for overview tabs (Share PDF, Print, Edit, Delete).
+ * Buttons follow docs/STYLE_GUIDE.md §13.1: Share and Print secondary tint,
+ * Edit primary, Delete secondary negative behind a confirmation.
  */
 
 import React from 'react';
 import { View, Text, Pressable, Alert, ActivityIndicator } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import { iconSize } from '@/theme/tokens';
 import { overviewStyles, useOverviewColors } from './FioriStyles';
 import { SectionHeader } from './SectionHeader';
 
@@ -68,14 +70,14 @@ export const ActionsSection: React.FC<ActionsSectionProps> = ({
   }
 
   const handleDeletePress = () => {
-    const entityLabel = entityNumber || `this ${entityType.toLowerCase()}`;
+    const objectName = entityNumber ? `${entityType} ${entityNumber}` : `this ${entityType}`;
     Alert.alert(
-      `Delete ${entityType}`,
-      `Are you sure you want to delete ${entityType} ${entityLabel}?\n\nThis action cannot be undone.`,
+      `Delete ${objectName}?`,
+      "It will be removed for everyone. You can't undo this.",
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Delete',
+          text: `Delete ${entityType}`,
           style: 'destructive',
           onPress: onDelete,
         },
@@ -100,15 +102,15 @@ export const ActionsSection: React.FC<ActionsSectionProps> = ({
             disabled={isShareLoading}
             accessibilityRole="button"
             accessibilityLabel="Share PDF"
-            accessibilityState={{ disabled: isShareLoading }}
+            accessibilityState={{ disabled: isShareLoading, busy: isShareLoading }}
           >
             {isShareLoading ? (
-              <ActivityIndicator size="small" color={colorStyles.iconSuccess} />
+              <ActivityIndicator size="small" color={colorStyles.iconBrand} />
             ) : (
-              <Icon name="share-variant" size={20} color={colorStyles.iconSuccess} />
+              <Icon name="share-variant-outline" size={iconSize.lg} color={colorStyles.iconBrand} />
             )}
             <Text style={[overviewStyles.secondaryTintButtonText, colorStyles.secondaryTintButtonText]}>
-              {isShareLoading ? 'Generating PDF...' : 'Share PDF'}
+              {isShareLoading ? 'Preparing PDF…' : 'Share PDF'}
             </Text>
           </Pressable>
         )}
@@ -126,15 +128,15 @@ export const ActionsSection: React.FC<ActionsSectionProps> = ({
             disabled={isPrintLoading}
             accessibilityRole="button"
             accessibilityLabel={`Print ${entityType}`}
-            accessibilityState={{ disabled: isPrintLoading }}
+            accessibilityState={{ disabled: isPrintLoading, busy: isPrintLoading }}
           >
             {isPrintLoading ? (
-              <ActivityIndicator size="small" color={colorStyles.iconSuccess} />
+              <ActivityIndicator size="small" color={colorStyles.iconBrand} />
             ) : (
-              <Icon name="printer" size={20} color={colorStyles.iconSuccess} />
+              <Icon name="printer-outline" size={iconSize.lg} color={colorStyles.iconBrand} />
             )}
             <Text style={[overviewStyles.secondaryTintButtonText, colorStyles.secondaryTintButtonText]}>
-              {isPrintLoading ? 'Printing...' : `Print ${entityType}`}
+              {isPrintLoading ? 'Printing…' : `Print ${entityType}`}
             </Text>
           </Pressable>
         )}
@@ -151,7 +153,7 @@ export const ActionsSection: React.FC<ActionsSectionProps> = ({
             accessibilityRole="button"
             accessibilityLabel={`Edit ${entityType}`}
           >
-            <Icon name="pencil" size={20} color="#fff" />
+            <Icon name="pencil-outline" size={iconSize.lg} color={colorStyles.iconOnFill} />
             <Text style={[overviewStyles.primaryButtonText, colorStyles.primaryButtonText]}>Edit {entityType}</Text>
           </Pressable>
         )}
@@ -169,14 +171,15 @@ export const ActionsSection: React.FC<ActionsSectionProps> = ({
             disabled={isDeleting}
             accessibilityRole="button"
             accessibilityLabel={`Delete ${entityType}`}
+            accessibilityState={{ disabled: isDeleting, busy: isDeleting }}
           >
             {isDeleting ? (
               <ActivityIndicator size="small" color={colorStyles.iconError} />
             ) : (
-              <Icon name="delete" size={20} color={colorStyles.iconError} />
+              <Icon name="trash-can-outline" size={iconSize.lg} color={colorStyles.iconError} />
             )}
             <Text style={[overviewStyles.secondaryNegativeButtonText, colorStyles.secondaryNegativeButtonText]}>
-              {isDeleting ? 'Deleting...' : `Delete ${entityType}`}
+              {isDeleting ? 'Deleting…' : `Delete ${entityType}`}
             </Text>
           </Pressable>
         )}

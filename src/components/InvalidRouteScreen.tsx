@@ -2,17 +2,21 @@
  * Invalid Route Screen
  *
  * PR12 Fix: Displays error when route parameters are invalid.
- * Used with useValidatedRouteParams hook.
+ * Used with useValidatedRouteParams hook. Full-screen state per
+ * docs/STYLE_GUIDE.md §13.9.
  */
 
 import React from 'react';
-import { View, Text, StyleSheet, Pressable, Platform } from 'react-native';
+import { ScrollView, Text, View } from 'react-native';
 import { router, Stack } from 'expo-router';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { useFioriColors } from '@/theme/fioriColors';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { fontWeight, iconSize, layout, radius, space, typography } from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
+import { StateActionButton } from '@/components/ErrorBoundary';
 
 export interface InvalidRouteScreenProps {
-  /** Error message to display */
+  /** Technical cause. Shown in development builds only. */
   error?: string | null;
   /** Title for the screen */
   title?: string;
@@ -24,14 +28,41 @@ export interface InvalidRouteScreenProps {
   onBack?: () => void;
 }
 
+const makeStyles = (t: ThemeTokens) => ({
+  screen: { flex: 1, backgroundColor: t.background.base },
+  scrollContent: {
+    flexGrow: 1,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    paddingHorizontal: layout.marginCompact,
+    paddingVertical: space.xxxl,
+  },
+  column: { width: '100%' as const, maxWidth: layout.maxFormWidth, alignItems: 'center' as const },
+  icon: { marginBottom: space.lg },
+  title: { ...typography.title2, color: t.text.primary, textAlign: 'center' as const, marginBottom: space.sm },
+  message: { ...typography.body, color: t.text.secondary, textAlign: 'center' as const, marginBottom: space.xxl },
+  devStrip: {
+    alignSelf: 'stretch' as const,
+    backgroundColor: t.status.negative.background,
+    borderColor: t.status.negative.border,
+    borderWidth: 1,
+    borderRadius: radius.button,
+    padding: space.md,
+    marginBottom: space.xxl,
+  },
+  devLabel: { ...typography.footnote, fontWeight: fontWeight.semibold, color: t.status.negative.text },
+  devText: { ...typography.footnote, color: t.status.negative.text },
+});
+
 export function InvalidRouteScreen({
   error,
-  title = 'Invalid Route',
-  message = 'The requested page could not be found or the URL is invalid.',
+  title = 'Page not found',
+  message = "This page doesn't exist or its link is incomplete. Go back and try again.",
   showBackButton = true,
   onBack,
 }: InvalidRouteScreenProps) {
-  const FIORI = useFioriColors();
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
 
   const handleBack = () => {
     if (onBack) {
@@ -45,128 +76,51 @@ export function InvalidRouteScreen({
     <>
       <Stack.Screen
         options={{
-          title: 'Error',
+          title,
           headerBackTitle: 'Back',
           headerShown: true,
         }}
       />
-      <View style={[styles.container, { backgroundColor: FIORI.colors.backgroundGrouped }]}>
-        <View style={styles.content}>
-          <View style={[styles.iconContainer, { backgroundColor: FIORI.colors.warningLight }]}>
-            <Icon
+      <View style={styles.screen}>
+        <ScrollView contentContainerStyle={styles.scrollContent}>
+          <View style={styles.column}>
+            <MaterialCommunityIcons
               name="alert-circle-outline"
-              size={48}
-              color={FIORI.colors.warning}
+              size={iconSize.hero}
+              color={t.status.negative.text}
+              style={styles.icon}
+              accessibilityElementsHidden
+              importantForAccessibility="no"
             />
+
+            <Text style={styles.title} accessibilityRole="header">
+              {title}
+            </Text>
+
+            <Text style={styles.message}>{message}</Text>
+
+            {__DEV__ && error ? (
+              <View style={styles.devStrip}>
+                <Text style={styles.devLabel}>Details (development builds only)</Text>
+                <Text style={styles.devText} selectable>
+                  {error}
+                </Text>
+              </View>
+            ) : null}
+
+            {showBackButton && (
+              <StateActionButton
+                icon="arrow-left"
+                label="Go back"
+                onPress={handleBack}
+                accessibilityLabel="Go back"
+              />
+            )}
           </View>
-
-          <Text style={[styles.title, { color: FIORI.colors.textPrimary }]}>
-            {title}
-          </Text>
-
-          <Text style={[styles.message, { color: FIORI.colors.textSecondary }]}>
-            {message}
-          </Text>
-
-          {error && (
-            <View style={[styles.errorBox, { backgroundColor: FIORI.colors.destructiveLight }]}>
-              <Text style={[styles.errorText, { color: FIORI.colors.destructive }]}>
-                {error}
-              </Text>
-            </View>
-          )}
-
-          {showBackButton && (
-            <Pressable
-              style={({ pressed }) => [
-                styles.button,
-                { backgroundColor: FIORI.colors.tint },
-                pressed && styles.buttonPressed,
-              ]}
-              onPress={handleBack}
-              accessibilityRole="button"
-              accessibilityLabel="Go back"
-            >
-              <Icon name="arrow-left" size={20} color="#FFFFFF" />
-              <Text style={styles.buttonText}>Go Back</Text>
-            </Pressable>
-          )}
-        </View>
+        </ScrollView>
       </View>
     </>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 24,
-  },
-  content: {
-    alignItems: 'center',
-    maxWidth: 320,
-  },
-  iconContainer: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 20,
-  },
-  title: {
-    fontSize: 20,
-    fontWeight: '600',
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  message: {
-    fontSize: 15,
-    lineHeight: 22,
-    textAlign: 'center',
-    marginBottom: 16,
-  },
-  errorBox: {
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 24,
-    width: '100%',
-  },
-  errorText: {
-    fontSize: 13,
-    fontWeight: '500',
-    textAlign: 'center',
-  },
-  button: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    height: 44,
-    paddingHorizontal: 24,
-    borderRadius: 8,
-    gap: 8,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
-      },
-      android: {
-        elevation: 2,
-      },
-    }),
-  },
-  buttonPressed: {
-    opacity: 0.8,
-  },
-  buttonText: {
-    fontSize: 17,
-    fontWeight: '600',
-    color: '#FFFFFF',
-  },
-});
 
 export default InvalidRouteScreen;

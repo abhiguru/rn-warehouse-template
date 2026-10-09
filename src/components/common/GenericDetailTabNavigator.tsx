@@ -6,65 +6,24 @@
  *
  */
 
-import React, { useMemo } from 'react';
+import React from 'react';
 import {
   View,
   ScrollView,
   Text,
   StyleSheet,
   Pressable,
-  Platform,
   Vibration,
-  ViewStyle,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { useListColors } from '@/hooks/useListColors';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { fontWeight, iconSize as iconSizes, radius, space, touchTarget, typography } from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
 
-// ============================================================================
-// FIORI DESIGN TOKENS (Static values only - colors are dynamic)
-// ============================================================================
-
-const FIORI_STATIC = {
-  dimensions: {
-    tabBarHeight: 56,
-    iconSize: 22,
-    touchTarget: 44,
-    badgeSize: 18,
-    badgeMinWidth: 18,
-  },
-  spacing: {
-    tabPaddingHorizontal: 16,
-    tabPaddingVertical: 8,
-    tabGap: 4,
-    iconLabelGap: 4,
-    containerPadding: 8,
-  },
-  typography: {
-    label: {
-      fontSize: 11,
-      fontWeight: '500' as const,
-      letterSpacing: 0.1,
-    },
-    labelActive: {
-      fontWeight: '600' as const,
-    },
-    badge: {
-      fontSize: 10,
-      fontWeight: '700' as const,
-    },
-  },
-  shadow: Platform.select({
-    ios: {
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 1 },
-      shadowOpacity: 0.06,
-      shadowRadius: 3,
-    },
-    android: {
-      elevation: 2,
-    },
-  }) as ViewStyle,
-} as const;
+/** Default tab glyph size. */
+const DEFAULT_TAB_ICON_SIZE = iconSizes.md;
+/** Count badge minimum size (style guide 13.5). */
+const BADGE_SIZE = 18;
 
 // ============================================================================
 // TYPES
@@ -89,7 +48,7 @@ export interface GenericDetailTabNavigatorProps<T extends string = string> {
   activeTab: T;
   /** Callback when tab is changed */
   onTabChange: (tab: T) => void;
-  /** Optional icon size override (default: 22) */
+  /** Optional icon size override (default: iconSize.md, 20) */
   iconSize?: number;
 }
 
@@ -116,10 +75,10 @@ export function GenericDetailTabNavigator<T extends string>({
   tabs,
   activeTab,
   onTabChange,
-  iconSize = FIORI_STATIC.dimensions.iconSize,
+  iconSize = DEFAULT_TAB_ICON_SIZE,
 }: GenericDetailTabNavigatorProps<T>) {
-  // Theme colors for dark mode support
-  const colors = useListColors();
+  const t = useTokens();
+  const dynamicStyles = useThemedStyles(makeStyles);
 
   const handleTabPress = (tabKey: T) => {
     if (tabKey !== activeTab) {
@@ -136,60 +95,8 @@ export function GenericDetailTabNavigator<T extends string>({
     return count > 99 ? '99+' : count.toString();
   };
 
-  // Dynamic styles based on theme
-  const dynamicStyles = useMemo(() => StyleSheet.create({
-    container: {
-      backgroundColor: colors.cellBackground,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.cellDivider,
-      ...FIORI_STATIC.shadow,
-    },
-    tabActive: {
-      backgroundColor: colors.primaryLight,
-    },
-    tabPressed: {
-      backgroundColor: colors.gray100,
-    },
-    badge: {
-      position: 'absolute',
-      top: -6,
-      right: -10,
-      backgroundColor: colors.error,
-      borderRadius: FIORI_STATIC.dimensions.badgeSize / 2,
-      minWidth: FIORI_STATIC.dimensions.badgeMinWidth,
-      height: FIORI_STATIC.dimensions.badgeSize,
-      paddingHorizontal: 4,
-      justifyContent: 'center',
-      alignItems: 'center',
-    },
-    badgeText: {
-      color: '#fff',
-      ...FIORI_STATIC.typography.badge,
-      textAlign: 'center',
-    },
-    label: {
-      ...FIORI_STATIC.typography.label,
-      color: colors.gray500,
-      textAlign: 'center',
-    },
-    labelActive: {
-      color: colors.primary,
-      ...FIORI_STATIC.typography.labelActive,
-    },
-    activeIndicator: {
-      position: 'absolute',
-      bottom: 0,
-      left: 16,
-      right: 16,
-      height: 3,
-      backgroundColor: colors.primary,
-      borderTopLeftRadius: 2,
-      borderTopRightRadius: 2,
-    },
-  }), [colors]);
-
   return (
-    <View style={dynamicStyles.container}>
+    <View style={dynamicStyles.container} accessibilityRole="tablist">
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -205,25 +112,26 @@ export function GenericDetailTabNavigator<T extends string>({
               key={tab.key}
               style={({ pressed }) => [
                 styles.tab,
-                isActive && dynamicStyles.tabActive,
                 pressed && !isActive && dynamicStyles.tabPressed,
               ]}
               onPress={() => handleTabPress(tab.key)}
               accessibilityRole="tab"
               accessibilityState={{ selected: isActive }}
-              accessibilityLabel={`${tab.label} tab${
-                tab.badgeCount ? `, ${tab.badgeCount} items` : ''
+              accessibilityLabel={`${tab.label}${
+                tab.badgeCount ? `, ${tab.badgeCount} ${tab.badgeCount === 1 ? 'item' : 'items'}` : ''
               }`}
             >
               <View style={styles.iconContainer}>
                 <Icon
                   name={iconName}
                   size={iconSize}
-                  color={isActive ? colors.primary : colors.gray500}
+                  color={isActive ? t.brand.tint : t.icon.secondary}
                 />
                 {tab.badgeCount !== undefined && tab.badgeCount > 0 && (
                   <View style={dynamicStyles.badge}>
-                    <Text style={dynamicStyles.badgeText}>{formatBadge(tab.badgeCount)}</Text>
+                    <Text style={dynamicStyles.badgeText} maxFontSizeMultiplier={1.6}>
+                      {formatBadge(tab.badgeCount)}
+                    </Text>
                   </View>
                 )}
               </View>
@@ -231,6 +139,7 @@ export function GenericDetailTabNavigator<T extends string>({
               <Text
                 style={[dynamicStyles.label, isActive && dynamicStyles.labelActive]}
                 numberOfLines={1}
+                maxFontSizeMultiplier={1.6}
               >
                 {tab.label}
               </Text>
@@ -245,31 +154,75 @@ export function GenericDetailTabNavigator<T extends string>({
 }
 
 // ============================================================================
-// STYLES (Static styles only - colors are in dynamic styles)
+// STYLES
 // ============================================================================
+
+const makeStyles = (t: ThemeTokens) => ({
+  container: {
+    backgroundColor: t.surface.header,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.divider,
+  },
+  tabPressed: {
+    backgroundColor: t.surface.cardPressed,
+  },
+  badge: {
+    position: 'absolute' as const,
+    top: -6,
+    right: -10,
+    backgroundColor: t.brand.fill,
+    borderRadius: radius.pill,
+    minWidth: BADGE_SIZE,
+    height: BADGE_SIZE,
+    paddingHorizontal: space.xs,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+  },
+  badgeText: {
+    ...typography.caption2,
+    fontWeight: fontWeight.bold,
+    color: t.brand.onFill,
+    textAlign: 'center' as const,
+    fontVariant: ['tabular-nums' as const],
+  },
+  label: {
+    ...typography.subhead,
+    fontWeight: fontWeight.semibold,
+    color: t.text.secondary,
+    textAlign: 'center' as const,
+  },
+  labelActive: {
+    color: t.brand.tint,
+  },
+  activeIndicator: {
+    position: 'absolute' as const,
+    bottom: 0,
+    left: space.lg,
+    right: space.lg,
+    height: 2,
+    backgroundColor: t.brand.tint,
+  },
+});
 
 const styles = StyleSheet.create({
   scrollContent: {
-    paddingHorizontal: FIORI_STATIC.spacing.containerPadding,
-    paddingVertical: FIORI_STATIC.spacing.containerPadding,
+    paddingHorizontal: space.sm,
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'stretch',
   },
   tab: {
     flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: FIORI_STATIC.dimensions.touchTarget,
+    minHeight: touchTarget + space.lg,
     minWidth: 64,
-    paddingHorizontal: FIORI_STATIC.spacing.tabPaddingHorizontal,
-    paddingVertical: FIORI_STATIC.spacing.tabPaddingVertical,
-    marginHorizontal: FIORI_STATIC.spacing.tabGap / 2,
-    borderRadius: 8,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.sm,
     position: 'relative',
   },
   iconContainer: {
     position: 'relative',
-    marginBottom: FIORI_STATIC.spacing.iconLabelGap,
+    marginBottom: space.xs,
   },
 });
 

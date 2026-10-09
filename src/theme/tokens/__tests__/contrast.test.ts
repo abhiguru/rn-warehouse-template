@@ -24,6 +24,8 @@ function pairs(brand: (typeof BRANDS)[number], mode: Mode) {
   }
   text('brand.onFill on brand.fill', t.brand.onFill, t.brand.fill);
   text('brand.onFill on brand.fillPressed', t.brand.onFill, t.brand.fillPressed);
+  text('text.inverse on surface.inverse', t.text.inverse, t.surface.inverse);
+  ui('control.trackOff on surface.card', t.control.trackOff, t.surface.card);
   text('destructive.onFill on destructive.fill', t.destructive.onFill, t.destructive.fill);
   text('destructive.onFill on destructive.fillPressed', t.destructive.onFill, t.destructive.fillPressed);
   text('brand.tint on brand.subtle', t.brand.tint, t.brand.subtle);

@@ -4,7 +4,7 @@
  * A section header for organizing content into logical groups.
  *
  * Features:
- * - Uppercase section title with 13pt font
+ * - Uppercase section title in footnote, text.secondary (style guide §13.6)
  * - Optional count badge
  * - Optional action button (text or icon)
  * - 44pt touch targets for buttons
@@ -16,49 +16,27 @@ import {
   View,
   Text,
   Pressable,
-  StyleSheet,
-  Platform,
   ViewStyle,
+  Insets,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { listColors } from '@/theme/listColors';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import {
+  fontWeight,
+  iconSize,
+  radius,
+  space,
+  touchTarget,
+  typography,
+  type ThemeTokens,
+} from '@/theme/tokens';
 
-// ============================================================================
-// FIORI CONSTANTS
-// ============================================================================
-
-const FIORI = {
-  header: {
-    minHeight: 32, // 32pt min (44pt with button)
-    minHeightWithButton: 44,
-    paddingHorizontal: 16,
-    paddingTop: 8,
-    paddingBottom: 4,
-  },
-  typography: {
-    title: {
-      fontSize: 13,
-      fontWeight: '600' as const,
-      letterSpacing: 0.5,
-      textTransform: 'uppercase' as const,
-    },
-    count: {
-      fontSize: 12,
-      fontWeight: '600' as const,
-    },
-    buttonText: {
-      fontSize: 14,
-      fontWeight: '600' as const,
-    },
-  },
-  button: {
-    height: 28, // Compact button height
-    paddingHorizontal: 12,
-    borderRadius: 14,
-    iconSize: 20,
-  },
-  touchTarget: 44,
-} as const;
+/** Visual height of a text action; the touch area is padded to touchTarget. */
+const TEXT_BUTTON_HEIGHT = 28;
+const TEXT_BUTTON_HIT_SLOP: Insets = {
+  top: (touchTarget - TEXT_BUTTON_HEIGHT) / 2,
+  bottom: (touchTarget - TEXT_BUTTON_HEIGHT) / 2,
+};
 
 // ============================================================================
 // TYPES
@@ -102,6 +80,8 @@ export const SectionHeader: React.FC<SectionHeaderProps> = ({
   grouped = false,
   testID,
 }) => {
+  const t = useTokens();
+  const styles = useThemedStyles(makeStyles);
   const hasButton = action && (action.label || action.icon);
 
   return (
@@ -112,15 +92,21 @@ export const SectionHeader: React.FC<SectionHeaderProps> = ({
         grouped && styles.containerGrouped,
         style,
       ]}
-      accessibilityRole="header"
       testID={testID}
     >
       {/* Title and Count */}
-      <View style={styles.titleContainer}>
+      <View
+        style={styles.titleContainer}
+        accessible
+        accessibilityRole="header"
+        accessibilityLabel={count !== undefined ? `${title}, ${count}` : title}
+      >
         <Text style={styles.title}>{title.toUpperCase()}</Text>
         {count !== undefined && (
           <View style={styles.countBadge}>
-            <Text style={styles.countText}>{count}</Text>
+            <Text style={styles.countText} maxFontSizeMultiplier={1.6}>
+              {count}
+            </Text>
           </View>
         )}
       </View>
@@ -136,12 +122,11 @@ export const SectionHeader: React.FC<SectionHeaderProps> = ({
             ]}
             accessibilityRole="button"
             accessibilityLabel={action.accessibilityLabel || `Add ${title.toLowerCase()}`}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
             <Icon
               name={action.icon}
-              size={FIORI.button.iconSize}
-              color={listColors.primary}
+              size={iconSize.md}
+              color={t.brand.tint}
             />
           </Pressable>
         ) : action.label ? (
@@ -153,6 +138,7 @@ export const SectionHeader: React.FC<SectionHeaderProps> = ({
             ]}
             accessibilityRole="button"
             accessibilityLabel={action.accessibilityLabel || action.label}
+            hitSlop={TEXT_BUTTON_HIT_SLOP}
           >
             <Text style={styles.buttonText}>{action.label}</Text>
           </Pressable>
@@ -193,7 +179,7 @@ export const SectionFooter: React.FC<SectionFooterProps> = ({
   style,
   testID,
 }) => {
-  const hasActions = leftAction || rightAction;
+  const styles = useThemedStyles(makeStyles);
 
   return (
     <View style={[styles.footer, style]} testID={testID}>
@@ -206,6 +192,7 @@ export const SectionFooter: React.FC<SectionFooterProps> = ({
             pressed && styles.buttonPressed,
           ]}
           accessibilityRole="button"
+          hitSlop={TEXT_BUTTON_HIT_SLOP}
         >
           <Text style={styles.buttonText}>{leftAction.label}</Text>
         </Pressable>
@@ -224,6 +211,7 @@ export const SectionFooter: React.FC<SectionFooterProps> = ({
             pressed && styles.buttonPressed,
           ]}
           accessibilityRole="button"
+          hitSlop={TEXT_BUTTON_HIT_SLOP}
         >
           <Text style={styles.buttonText}>{rightAction.label}</Text>
         </Pressable>
@@ -236,107 +224,105 @@ export const SectionFooter: React.FC<SectionFooterProps> = ({
 // STYLES
 // ============================================================================
 
-const styles = StyleSheet.create({
-  // Header Container
+const makeStyles = (t: ThemeTokens) => ({
+  // Header container: 16 side padding, 24 above, 8 below
   container: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    minHeight: FIORI.header.minHeight,
-    paddingHorizontal: FIORI.header.paddingHorizontal,
-    paddingTop: FIORI.header.paddingTop,
-    paddingBottom: FIORI.header.paddingBottom,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
+    paddingHorizontal: space.lg,
+    paddingTop: space.xxl,
+    paddingBottom: space.sm,
     backgroundColor: 'transparent',
   },
   containerWithButton: {
-    minHeight: FIORI.header.minHeightWithButton,
+    paddingTop: space.lg,
+    paddingBottom: space.xs,
+    minHeight: touchTarget,
   },
   containerGrouped: {
-    backgroundColor: listColors.gray50, // Grouped style: #F7F9FA
-    paddingTop: 16,
-    paddingBottom: 8,
+    backgroundColor: t.background.grouped,
   },
 
-  // Title Container
+  // Title
   titleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
     flex: 1,
   },
   title: {
-    ...FIORI.typography.title,
-    color: listColors.textSecondary, // Fiori: #556B82
+    ...typography.footnote,
+    fontWeight: fontWeight.semibold,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase' as const,
+    color: t.text.secondary,
   },
 
-  // Count Badge
+  // Count badge
   countBadge: {
-    marginLeft: 8,
-    backgroundColor: listColors.gray200,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 10,
+    marginLeft: space.sm,
+    backgroundColor: t.status.neutral.background,
+    paddingHorizontal: space.sm,
+    paddingVertical: space.xxs,
+    borderRadius: radius.pill,
     minWidth: 24,
-    alignItems: 'center',
+    alignItems: 'center' as const,
   },
   countText: {
-    ...FIORI.typography.count,
-    color: listColors.textSecondary,
+    ...typography.caption1,
+    fontWeight: fontWeight.semibold,
+    color: t.status.neutral.text,
+    fontVariant: ['tabular-nums' as const],
   },
 
-  // Icon Button
+  // Icon button
   iconButton: {
-    width: FIORI.touchTarget,
-    height: FIORI.touchTarget,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: -8, // Offset padding to align with edge
+    width: touchTarget,
+    height: touchTarget,
+    borderRadius: radius.pill,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    marginRight: -space.sm, // Offset padding to align with edge
   },
 
-  // Text Button
+  // Text button (tertiary)
   textButton: {
-    height: FIORI.button.height,
-    paddingHorizontal: FIORI.button.paddingHorizontal,
-    borderRadius: FIORI.button.borderRadius,
-    alignItems: 'center',
-    justifyContent: 'center',
+    minHeight: TEXT_BUTTON_HEIGHT,
+    paddingHorizontal: space.md,
+    borderRadius: radius.button,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
     backgroundColor: 'transparent',
   },
-
-  // Button Text
   buttonText: {
-    ...FIORI.typography.buttonText,
-    color: listColors.primary,
+    ...typography.subhead,
+    fontWeight: fontWeight.semibold,
+    color: t.brand.tint,
   },
-
-  // Button Pressed State
   buttonPressed: {
-    opacity: 0.7,
+    backgroundColor: t.brand.subtle,
   },
 
-  // Footer Container
+  // Footer
   footer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: FIORI.header.paddingHorizontal,
-    paddingTop: 4,
-    paddingBottom: 8,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
+    paddingHorizontal: space.lg,
+    paddingTop: space.xs,
+    paddingBottom: space.sm,
     backgroundColor: 'transparent',
   },
-
-  // Footer Text
   footerText: {
-    fontSize: 13,
-    color: listColors.textSecondary,
+    ...typography.footnote,
+    color: t.text.secondary,
   },
-
-  // Footer Button
   footerButton: {
-    height: FIORI.button.height,
-    paddingHorizontal: FIORI.button.paddingHorizontal,
-    borderRadius: FIORI.button.borderRadius,
-    alignItems: 'center',
-    justifyContent: 'center',
+    minHeight: TEXT_BUTTON_HEIGHT,
+    paddingHorizontal: space.md,
+    borderRadius: radius.button,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
   },
 });
 

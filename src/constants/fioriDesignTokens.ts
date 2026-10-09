@@ -1,125 +1,80 @@
 /**
- * SAP Fiori Design Tokens - Static Values
+ * Report dimension and typography constants (legacy adapter).
  *
- * This file centralizes dimensions and typography tokens used across
- * report screens following SAP Fiori design specifications.
- *
- * Colors are dynamic via useFioriColors hook from @/theme/fioriColors
- *
- * @see J15 - DRY Violation: FIORI_STATIC Constants Repeated 8 Times
+ * Kept for report components that have not moved to the metrics tokens yet.
+ * Every value comes from `src/theme/tokens/metrics.ts`; new code imports
+ * `typography`, `space`, `radius`, `layout`, `iconSize` and `touchTarget` from
+ * '@/theme/tokens' directly. Deleted in migration phase 6.
  */
+import { fontWeight, iconSize, layout, radius, space, touchTarget, typography } from '@/theme/tokens';
 
 // =============================================================================
 // DIMENSION TOKENS
 // =============================================================================
 
-/**
- * SAP Fiori dimension specifications for consistent UI sizing
- */
 export const FIORI_DIMENSIONS = {
-  /** Minimum height for ObjectCell components (72pt) */
-  objectCellMinHeight: 72,
+  /** Minimum height for object cells (72). */
+  objectCellMinHeight: layout.objectCellMinHeight,
 
-  /** Default image/avatar size in ObjectCell (44pt) */
-  objectCellImageSize: 44,
+  /** Image or avatar size in an object cell (44). */
+  objectCellImageSize: layout.avatar.md,
 
-  /** Border radius for images in ObjectCell (10pt) */
-  objectCellImageRadius: 10,
+  /** Radius of images in an object cell. */
+  objectCellImageRadius: radius.card,
 
-  /** Card corner radius (12pt) */
-  cardCornerRadius: 12,
+  /** Card corner radius. */
+  cardCornerRadius: radius.card,
 
-  /** Card horizontal/vertical padding (16pt) */
-  cardPadding: 16,
+  /** Card padding. */
+  cardPadding: space.lg,
 
-  /** Card body content padding (16pt) */
-  cardBodyPadding: 16,
+  /** Card body padding. */
+  cardBodyPadding: space.lg,
 
-  /** Section header minimum height (32pt) */
-  sectionHeaderHeight: 32,
+  /** Section header minimum height. */
+  sectionHeaderHeight: space.xxxl,
 
-  /** Minimum touch target size (44pt - iOS HIG) */
-  touchTarget: 44,
+  /** Minimum touch target (44 iOS, 48 Android). */
+  touchTarget,
 
-  /** Icon button size (24pt) */
-  iconButtonSize: 24,
+  /** Icon button glyph size. */
+  iconButtonSize: iconSize.lg,
 
-  /** Activity icon size for dashboard cards (36pt) */
-  activityIconSize: 36,
+  /** Activity icon size for dashboard cards. */
+  activityIconSize: iconSize.xl,
 } as const;
 
 // =============================================================================
 // TYPOGRAPHY TOKENS
 // =============================================================================
 
-/**
- * SAP Fiori typography specifications
- * Following Fiori Horizon theme typography scale
- */
 export const FIORI_TYPOGRAPHY = {
-  /** Section header style (uppercase, semibold, small) */
+  /** Section header: footnote, capitals, semibold. */
   sectionHeader: {
-    fontSize: 13,
-    fontWeight: '600' as const,
+    ...typography.footnote,
+    fontWeight: fontWeight.semibold,
     letterSpacing: 0.5,
     textTransform: 'uppercase' as const,
   },
 
-  /** Primary title style (16pt semibold) */
-  title: {
-    fontSize: 16,
-    fontWeight: '600' as const,
-    lineHeight: 22,
-  },
+  /** Object cell title. */
+  title: typography.headline,
 
-  /** Subtitle/secondary text style (14pt regular) */
-  subtitle: {
-    fontSize: 14,
-    lineHeight: 18,
-  },
+  /** Secondary line. */
+  subtitle: typography.subhead,
 
-  /** Footnote style for metadata (13pt) */
-  footnote: {
-    fontSize: 13,
-    lineHeight: 16,
-  },
+  /** Metadata. */
+  footnote: typography.footnote,
 
-  /** Caption style for small labels (12pt) */
-  caption: {
-    fontSize: 12,
-    lineHeight: 16,
-  },
+  /** Small labels. */
+  caption: typography.caption1,
 
-  /** Card title for dashboard widgets (17pt semibold) */
-  cardTitle: {
-    fontSize: 17,
-    fontWeight: '600' as const,
-  },
+  /** Dashboard card title. */
+  cardTitle: typography.headline,
 
-  /** Trend value for KPI display (22pt bold) */
-  trendValue: {
-    fontSize: 22,
-    fontWeight: '700' as const,
-  },
+  /** KPI trend value. */
+  trendValue: typography.title2,
 } as const;
-
-// =============================================================================
-// COMBINED EXPORT (for backward compatibility)
-// =============================================================================
-
-/**
- * Combined FIORI_STATIC object for backward compatibility
- * Use FIORI_DIMENSIONS and FIORI_TYPOGRAPHY for new code
- */
-export const FIORI_STATIC = {
-  dimensions: FIORI_DIMENSIONS,
-  typography: FIORI_TYPOGRAPHY,
-} as const;
-
-// =============================================================================
-// TYPE EXPORTS
-// =============================================================================
 
 export type FioriDimensions = typeof FIORI_DIMENSIONS;
 export type FioriTypography = typeof FIORI_TYPOGRAPHY;
-export type FioriStatic = typeof FIORI_STATIC;

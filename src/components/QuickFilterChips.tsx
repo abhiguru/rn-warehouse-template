@@ -1,14 +1,14 @@
+/**
+ * Quick period filter chips (docs/STYLE_GUIDE.md §13.5).
+ *
+ * Unselected: surface.card, 1 px border.button, text.primary.
+ * Selected: brand.subtle, brand.tint and a check icon.
+ */
 import React from 'react';
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  StyleSheet,
-  ScrollView,
-  Platform,
-} from 'react-native';
+import { View, Text, Pressable, ScrollView, StyleSheet, Insets } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { listColors } from '@/theme/listColors';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { fontWeight, iconSize, layout, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 
 export type QuickFilterPeriod = 'last7days' | 'last30days' | 'last3months' | 'alltime';
 
@@ -17,103 +17,66 @@ interface QuickFilterChipsProps {
   onSelectPeriod: (period: QuickFilterPeriod) => void;
 }
 
-// ============================================================================
-// SAP Fiori Chip Spec Constants (from 09-chip.md)
-// ============================================================================
-const FIORI = {
-  // Dimensions
-  chipHeight: 32,
-  chipMinWidth: 64,
-  chipPaddingHorizontal: 12,
-  chipPaddingHorizontalSelected: 16,
-  chipPaddingVertical: 6,
-  chipBorderRadius: 16, // Pill shape
-  chipSpacing: 8,
-  touchTarget: 44,
-
-  // Typography
-  fontSize: 14,
-  fontWeight: '500' as const,
-
-  // Icons
-  iconSize: 16,
-  iconTextGap: 4,
-
-  // Colors - Chips with Leading Icon (no checkmark)
-  colors: {
-    unselected: {
-      background: '#F2F2F7',
-      border: 'transparent',
-      text: listColors.textPrimary,
-      icon: listColors.gray600,
-    },
-    selected: {
-      background: listColors.primary,
-      border: 'transparent',
-      text: listColors.white,
-      icon: listColors.white,
-    },
-    pressed: {
-      unselected: '#E5E5E5',
-      selected: listColors.primaryDark,
-    },
-  },
+const CHIP_HEIGHT = 32;
+const CHIP_MIN_WIDTH = 64;
+const CHIP_HIT_SLOP: Insets = {
+  top: (touchTarget - CHIP_HEIGHT) / 2,
+  bottom: (touchTarget - CHIP_HEIGHT) / 2,
 };
+
+const FILTERS: Array<{ id: QuickFilterPeriod; label: string; iconName: string }> = [
+  { id: 'last7days', label: 'Last 7 days', iconName: 'calendar-week' },
+  { id: 'last30days', label: 'Last 30 days', iconName: 'calendar-month' },
+  { id: 'last3months', label: 'Last 3 months', iconName: 'calendar-range' },
+  { id: 'alltime', label: 'All time', iconName: 'calendar-star' },
+];
 
 const QuickFilterChips: React.FC<QuickFilterChipsProps> = ({
   selectedPeriod,
   onSelectPeriod,
 }) => {
-  const filters: Array<{ id: QuickFilterPeriod; label: string; iconName: string }> = [
-    { id: 'last7days', label: 'Last 7 Days', iconName: 'calendar-week' },
-    { id: 'last30days', label: 'Last 30 Days', iconName: 'calendar-month' },
-    { id: 'last3months', label: 'Last 3 Months', iconName: 'calendar-range' },
-    { id: 'alltime', label: 'All Time', iconName: 'calendar-star' },
-  ];
+  const t = useTokens();
+  const styles = useThemedStyles(makeStyles);
 
   return (
     <View
       style={styles.container}
       accessibilityRole="radiogroup"
-      accessibilityLabel="Quick filter by time period"
+      accessibilityLabel="Time period"
     >
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
-        {filters.map((filter) => {
+        {FILTERS.map((filter) => {
           const isSelected = selectedPeriod === filter.id;
           return (
-            <TouchableOpacity
+            <Pressable
               key={filter.id}
-              style={[
+              style={({ pressed }) => [
                 styles.chip,
                 isSelected && styles.chipSelected,
-                // Ensure 44pt touch target with wrapper padding
-                styles.touchWrapper,
+                pressed && (isSelected ? styles.chipSelectedPressed : styles.chipPressed),
               ]}
               onPress={() => onSelectPeriod(filter.id)}
-              activeOpacity={0.7}
-              accessible
+              hitSlop={CHIP_HIT_SLOP}
               accessibilityRole="radio"
               accessibilityLabel={filter.label}
-              accessibilityState={{ checked: isSelected }}
-              accessibilityHint={`Filter to show ${filter.label.toLowerCase()}`}
+              accessibilityState={{ checked: isSelected, selected: isSelected }}
             >
               <Icon
-                name={filter.iconName}
-                size={FIORI.iconSize}
-                color={
-                  isSelected
-                    ? FIORI.colors.selected.icon
-                    : FIORI.colors.unselected.icon
-                }
+                name={isSelected ? 'check' : filter.iconName}
+                size={iconSize.sm}
+                color={isSelected ? t.brand.tint : t.icon.secondary}
               />
-              <Text style={[styles.chipLabel, isSelected && styles.chipLabelSelected]}>
+              <Text
+                style={[styles.chipLabel, isSelected && styles.chipLabelSelected]}
+                maxFontSizeMultiplier={1.6}
+              >
                 {filter.label}
               </Text>
-            </TouchableOpacity>
+            </Pressable>
           );
         })}
       </ScrollView>
@@ -121,63 +84,52 @@ const QuickFilterChips: React.FC<QuickFilterChipsProps> = ({
   );
 };
 
-const styles = StyleSheet.create({
-  // SAP Fiori Container
+const makeStyles = (t: ThemeTokens) => ({
   container: {
-    backgroundColor: listColors.white,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: listColors.gray100,
+    backgroundColor: t.surface.header,
+    paddingVertical: space.xs,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.divider,
   },
   scrollContent: {
-    paddingHorizontal: 16,
-    gap: FIORI.chipSpacing,
-    // Add vertical padding to allow touch target expansion
-    paddingVertical: (FIORI.touchTarget - FIORI.chipHeight) / 2,
+    paddingHorizontal: layout.marginCompact,
+    gap: space.sm,
+    // Room for the padded touch area above and below each chip
+    paddingVertical: (touchTarget - CHIP_HEIGHT) / 2,
   },
-  // SAP Fiori Chip styles (with leading icon - no checkmark)
   chip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    height: FIORI.chipHeight,
-    minWidth: FIORI.chipMinWidth,
-    paddingHorizontal: FIORI.chipPaddingHorizontal,
-    backgroundColor: FIORI.colors.unselected.background,
-    borderRadius: FIORI.chipBorderRadius,
-    gap: FIORI.iconTextGap,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    minHeight: CHIP_HEIGHT,
+    minWidth: CHIP_MIN_WIDTH,
+    paddingHorizontal: space.md,
+    paddingVertical: space.s6,
+    backgroundColor: t.surface.card,
+    borderWidth: 1,
+    borderColor: t.border.button,
+    borderRadius: radius.pill,
+    gap: space.xs,
+  },
+  chipPressed: {
+    backgroundColor: t.surface.cardPressed,
   },
   chipSelected: {
-    backgroundColor: FIORI.colors.selected.background,
-    paddingHorizontal: FIORI.chipPaddingHorizontalSelected,
-    // Platform-specific shadow for selected chip
-    ...Platform.select({
-      ios: {
-        shadowColor: listColors.primary,
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.2,
-        shadowRadius: 4,
-      },
-      android: {
-        elevation: 3,
-      },
-    }),
+    backgroundColor: t.brand.subtle,
+    borderColor: t.brand.subtle,
   },
-  touchWrapper: {
-    // Ensure minimum 44pt touch target
-    minHeight: FIORI.touchTarget,
-    justifyContent: 'center',
+  chipSelectedPressed: {
+    backgroundColor: t.brand.subtleStrong,
+    borderColor: t.brand.subtleStrong,
   },
   chipLabel: {
-    fontSize: FIORI.fontSize,
-    fontWeight: FIORI.fontWeight,
-    color: FIORI.colors.unselected.text,
-    includeFontPadding: false,
-    textAlignVertical: 'center',
+    ...typography.caption1,
+    fontWeight: fontWeight.medium,
+    color: t.text.primary,
   },
   chipLabelSelected: {
-    color: FIORI.colors.selected.text,
-    fontWeight: '600',
+    color: t.brand.tint,
+    fontWeight: fontWeight.semibold,
   },
 });
 

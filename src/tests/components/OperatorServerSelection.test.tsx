@@ -13,10 +13,22 @@ jest.mock('react-native', () => {
   return {
     View: element('View'), Text: element('Text'), TextInput: element('TextInput'),
     Modal: element('Modal'), ActivityIndicator: element('ActivityIndicator'),
+    ScrollView: element('ScrollView'), KeyboardAvoidingView: element('KeyboardAvoidingView'),
+    Platform: { OS: 'ios', select: (options: Record<string, unknown>) => options.ios ?? options.default },
     Alert: { alert: jest.fn() }, StyleSheet: { create: (styles: unknown) => styles },
   };
 });
 jest.mock('expo-camera', () => ({ CameraView: () => null, useCameraPermissions: () => [{ granted: true }, jest.fn()] }));
+jest.mock('react-native-safe-area-context', () => {
+  const React = require('react');
+  return { SafeAreaView: ({ children, ...props }: Record<string, unknown>) => React.createElement('SafeAreaView', props, children) };
+});
+jest.mock('@expo/vector-icons', () => ({ MaterialCommunityIcons: 'MaterialCommunityIcons' }));
+jest.mock('@/components/EdgeToEdgeStatusBar', () => ({ EdgeToEdgeStatusBar: () => null }));
+jest.mock('@/hooks/useTheme', () => {
+  const tokens = jest.requireActual('@/theme/tokens').getTokens('orange', 'light');
+  return { useTokens: () => tokens, useThemedStyles: (factory: (t: unknown) => unknown) => factory(tokens) };
+});
 jest.mock('expo-router', () => ({ router: { back: jest.fn(), replace: jest.fn() } }));
 jest.mock('@/components/ui/Button', () => {
   const React = require('react');

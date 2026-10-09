@@ -1,22 +1,27 @@
 /**
  * SkeletonBox - Base animated skeleton component
  *
- * Provides a pulsing animated placeholder box that can be used
- * to build custom skeleton layouts.
+ * A pulsing placeholder block in surface.cardActive (docs/STYLE_GUIDE.md
+ * §13.6). Text lines use radius.field. The pulse stops when the device's
+ * Reduce Motion setting is on (§9).
  *
  * @module components/skeletons/SkeletonBox
  */
 
 import React, { memo, useEffect } from 'react';
-import { StyleSheet, ViewStyle, DimensionValue } from 'react-native';
+import { ViewStyle, DimensionValue } from 'react-native';
 import Animated, {
+  cancelAnimation,
   useAnimatedStyle,
+  useReducedMotion,
   useSharedValue,
   withRepeat,
   withTiming,
   Easing,
 } from 'react-native-reanimated';
-import { useListColors } from '@/hooks/useListColors';
+import { useThemedStyles } from '@/hooks/useTheme';
+import { radius } from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
 
 export interface SkeletonBoxProps {
   /** Width of the skeleton (number or percentage string) */
@@ -32,22 +37,33 @@ export interface SkeletonBoxProps {
 }
 
 const ANIMATION_DURATION = 1200;
+const RESTING_OPACITY = 0.7;
+
+const makeStyles = (t: ThemeTokens) => ({
+  base: {
+    overflow: 'hidden' as const,
+    backgroundColor: t.surface.cardActive,
+  },
+});
 
 export const SkeletonBox = memo<SkeletonBoxProps>(({
   width = '100%',
   height = 16,
-  borderRadius = 4,
+  borderRadius = radius.field,
   circular = false,
   style,
 }) => {
-  const colors = useListColors();
+  const styles = useThemedStyles(makeStyles);
+  const reduceMotion = useReducedMotion();
 
-  // Use consistent colors from useListColors hook
-  const skeletonColor = colors.gray200;
-
-  const opacity = useSharedValue(0.4);
+  const opacity = useSharedValue(reduceMotion ? RESTING_OPACITY : 0.4);
 
   useEffect(() => {
+    if (reduceMotion) {
+      cancelAnimation(opacity);
+      opacity.value = RESTING_OPACITY;
+      return;
+    }
     opacity.value = withRepeat(
       withTiming(1, {
         duration: ANIMATION_DURATION / 2,
@@ -56,7 +72,8 @@ export const SkeletonBox = memo<SkeletonBoxProps>(({
       -1,
       true
     );
-  }, [opacity]);
+    return () => cancelAnimation(opacity);
+  }, [opacity, reduceMotion]);
 
   const animatedStyle = useAnimatedStyle(() => ({
     opacity: opacity.value,
@@ -66,23 +83,17 @@ export const SkeletonBox = memo<SkeletonBoxProps>(({
     width: circular ? height : width,
     height,
     borderRadius: circular ? height / 2 : borderRadius,
-    backgroundColor: skeletonColor,
   };
 
   return (
     <Animated.View
       style={[styles.base, boxStyle, animatedStyle, style]}
       accessible={false}
+      importantForAccessibility="no"
     />
   );
 });
 
 SkeletonBox.displayName = 'SkeletonBox';
-
-const styles = StyleSheet.create({
-  base: {
-    overflow: 'hidden',
-  },
-});
 
 export default SkeletonBox;

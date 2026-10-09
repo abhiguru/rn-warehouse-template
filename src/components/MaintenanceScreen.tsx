@@ -1,71 +1,84 @@
 /**
  * Maintenance Mode Screen
  *
- * SAP Fiori Design System - Empty State Component
- *
- * Displayed when the app is in maintenance mode.
- * Shows maintenance message with support contact info.
+ * Full-screen state (docs/STYLE_GUIDE.md §13.9) shown when the app is in
+ * maintenance mode, with support contact links when configured.
  */
 
 import React from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  Pressable,
-  Linking,
-  Platform,
-  useColorScheme,
-} from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Linking, Pressable, ScrollView, Text, View } from 'react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSupport, useEnvironment } from '@/hooks/useConfig';
-import { colors, darkColors } from '@/theme';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { fontWeight, iconSize, layout, radius, space, typography } from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
+import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
 
-// ============================================================================
-// SAP Fiori Design Constants
-// ============================================================================
-const FIORI = {
-  // Container
-  container: {
-    padding: 24,
+const buildDateFormat = new Intl.DateTimeFormat('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+
+function formatBuildDate(value: string): string {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? '' : `\nBuilt ${buildDateFormat.format(date)}`;
+}
+
+const makeStyles = (t: ThemeTokens) => ({
+  screen: { flex: 1, backgroundColor: t.background.base },
+  scrollContent: {
+    flexGrow: 1,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    paddingHorizontal: layout.marginCompact,
+    paddingVertical: space.xxxl,
   },
-  // Illustration
-  illustration: {
-    containerSize: 120,
-    iconSize: 64,
+  column: { width: '100%' as const, maxWidth: layout.maxFormWidth, alignItems: 'center' as const },
+  icon: { marginBottom: space.lg },
+  title: { ...typography.title2, color: t.text.primary, textAlign: 'center' as const, marginBottom: space.sm },
+  message: { ...typography.body, color: t.text.secondary, textAlign: 'center' as const, marginBottom: space.xxl },
+  sectionHeader: {
+    ...typography.footnote,
+    fontWeight: fontWeight.semibold,
+    color: t.text.secondary,
+    textTransform: 'uppercase' as const,
+    letterSpacing: 0.5,
+    alignSelf: 'stretch' as const,
+    marginBottom: space.sm,
+    paddingHorizontal: space.lg,
   },
-  // Typography
-  typography: {
-    title: { fontSize: 20, fontWeight: '600' as const, lineHeight: 28 },
-    description: { fontSize: 14, fontWeight: '400' as const, lineHeight: 20 },
-    sectionTitle: { fontSize: 13, fontWeight: '600' as const },
-    sectionText: { fontSize: 12, fontWeight: '400' as const, lineHeight: 18 },
-    footer: { fontSize: 12, fontWeight: '400' as const },
-    envInfo: { fontSize: 11, fontWeight: '500' as const },
+  card: {
+    alignSelf: 'stretch' as const,
+    backgroundColor: t.surface.card,
+    borderRadius: radius.card,
+    overflow: 'hidden' as const,
+    ...t.shadow[2],
   },
-  // Button
-  button: {
-    height: 44,
-    borderRadius: 8,
-    fontSize: 15,
-    fontWeight: '600' as const,
+  row: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    minHeight: layout.rowMinHeight,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.md,
+    gap: space.md,
+    backgroundColor: t.surface.card,
   },
-  // Spacing
-  spacing: {
-    illustrationToTitle: 24,
-    titleToDescription: 8,
-    descriptionToContent: 24,
-    contentGap: 16,
-    buttonGap: 8,
+  rowPressed: { backgroundColor: t.surface.cardPressed },
+  rowDivider: { borderTopWidth: 1, borderTopColor: t.border.divider },
+  rowText: { ...typography.body, color: t.brand.tint, flex: 1 },
+  env: { ...typography.caption1, color: t.text.secondary, textAlign: 'center' as const, marginTop: space.xxl },
+  footer: {
+    borderTopWidth: 1,
+    borderTopColor: t.border.separator,
+    paddingVertical: space.lg,
+    paddingHorizontal: layout.marginCompact,
   },
-} as const;
+  footerText: { ...typography.footnote, color: t.text.secondary, textAlign: 'center' as const },
+});
 
 const MaintenanceScreen: React.FC = () => {
   const support = useSupport();
   const environment = useEnvironment();
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
-  const themeColors = isDark ? darkColors : colors;
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
 
   const handleEmailPress = () => {
     if (support?.email) {
@@ -79,277 +92,86 @@ const MaintenanceScreen: React.FC = () => {
     }
   };
 
+  const hasSupport = Boolean(support && (support.email || support.phone));
+
   return (
-    <View
-      style={[styles.container, { backgroundColor: themeColors.white }]}
-      accessible={true}
-      accessibilityLabel="Maintenance screen. The app is currently under maintenance."
-    >
-      <View style={styles.content}>
-        {/* Illustration - Fiori Information State */}
-        <View
-          style={[
-            styles.illustrationContainer,
-            { backgroundColor: themeColors.fiori.semantic.criticalLight },
-          ]}
-          accessible={false}
-        >
-          <Ionicons
-            name="construct-outline"
-            size={FIORI.illustration.iconSize}
-            color={themeColors.fiori.semantic.critical}
+    <SafeAreaView style={styles.screen}>
+      <EdgeToEdgeStatusBar barStyle={t.statusBarStyle} />
+      <ScrollView contentContainerStyle={styles.scrollContent}>
+        <View style={styles.column}>
+          <MaterialCommunityIcons
+            name="wrench-outline"
+            size={iconSize.hero}
+            color={t.status.informative.text}
+            style={styles.icon}
+            accessibilityElementsHidden
+            importantForAccessibility="no"
           />
-        </View>
 
-        {/* Title */}
-        <Text
-          style={[styles.title, { color: themeColors.fiori.text.primary }]}
-          accessibilityRole="header"
-        >
-          Under Maintenance
-        </Text>
+          <Text style={styles.title} accessibilityRole="header">
+            The app is under maintenance
+          </Text>
 
-        {/* Description */}
-        <Text
-          style={[styles.description, { color: themeColors.fiori.text.secondary }]}
-        >
-          We're currently performing scheduled maintenance to improve your
-          experience. We'll be back online shortly.
-        </Text>
+          <Text style={styles.message}>
+            We&apos;re making scheduled improvements. The app will be back shortly. Your saved
+            data is safe.
+          </Text>
 
-        {/* Support Info - Fiori Card style */}
-        {support && (support.email || support.phone) && (
-          <View style={[styles.supportSection, { backgroundColor: themeColors.gray[50] }]}>
-            <Ionicons
-              name="help-circle-outline"
-              size={20}
-              color={themeColors.fiori.text.secondary}
-              style={styles.sectionIcon}
-            />
-            <View style={styles.sectionContent}>
-              <Text
-                style={[styles.sectionTitle, { color: themeColors.fiori.text.primary }]}
-              >
-                Need Help?
+          {hasSupport && (
+            <>
+              <Text style={styles.sectionHeader} accessibilityRole="header">
+                Need help?
               </Text>
+              <View style={styles.card}>
+                {support?.email ? (
+                  <Pressable
+                    style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
+                    onPress={handleEmailPress}
+                    accessibilityRole="link"
+                    accessibilityLabel={`Email support at ${support.email}`}
+                    accessibilityHint="Opens your email app"
+                  >
+                    <MaterialCommunityIcons name="email-outline" size={iconSize.md} color={t.brand.tint} />
+                    <Text style={styles.rowText}>{support.email}</Text>
+                    <MaterialCommunityIcons name="chevron-right" size={iconSize.md} color={t.icon.secondary} />
+                  </Pressable>
+                ) : null}
 
-              {support.email && (
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.supportRow,
-                    pressed && { backgroundColor: themeColors.gray[100] },
-                  ]}
-                  onPress={handleEmailPress}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Email support at ${support.email}`}
-                  accessibilityHint="Opens email app"
-                >
-                  <Ionicons
-                    name="mail-outline"
-                    size={16}
-                    color={themeColors.primary}
-                    style={styles.supportIcon}
-                  />
-                  <Text style={[styles.supportText, { color: themeColors.primary }]}>
-                    {support.email}
-                  </Text>
-                  <Ionicons
-                    name="chevron-forward"
-                    size={16}
-                    color={themeColors.gray[400]}
-                  />
-                </Pressable>
-              )}
+                {support?.phone ? (
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.row,
+                      support.email ? styles.rowDivider : null,
+                      pressed && styles.rowPressed,
+                    ]}
+                    onPress={handlePhonePress}
+                    accessibilityRole="link"
+                    accessibilityLabel={`Call support at ${support.phone}`}
+                    accessibilityHint="Opens your phone app"
+                  >
+                    <MaterialCommunityIcons name="phone-outline" size={iconSize.md} color={t.brand.tint} />
+                    <Text style={styles.rowText}>{support.phone}</Text>
+                    <MaterialCommunityIcons name="chevron-right" size={iconSize.md} color={t.icon.secondary} />
+                  </Pressable>
+                ) : null}
+              </View>
+            </>
+          )}
 
-              {support.phone && (
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.supportRow,
-                    pressed && { backgroundColor: themeColors.gray[100] },
-                  ]}
-                  onPress={handlePhonePress}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Call support at ${support.phone}`}
-                  accessibilityHint="Opens phone app"
-                >
-                  <Ionicons
-                    name="call-outline"
-                    size={16}
-                    color={themeColors.primary}
-                    style={styles.supportIcon}
-                  />
-                  <Text style={[styles.supportText, { color: themeColors.primary }]}>
-                    {support.phone}
-                  </Text>
-                  <Ionicons
-                    name="chevron-forward"
-                    size={16}
-                    color={themeColors.gray[400]}
-                  />
-                </Pressable>
-              )}
-            </View>
-          </View>
-        )}
-
-        {/* Environment Info */}
-        {environment && (
-          <View style={styles.envSection}>
-            <Text style={[styles.envLabel, { color: themeColors.fiori.text.tertiary }]}>
-              {environment.name} • v{environment.version}
+          {environment ? (
+            <Text style={styles.env}>
+              {`${environment.name} · Version ${environment.version}`}
+              {environment.buildDate ? formatBuildDate(environment.buildDate) : ''}
             </Text>
-            {environment.buildDate && (
-              <Text style={[styles.envDate, { color: themeColors.fiori.text.tertiary }]}>
-                Built: {new Date(environment.buildDate).toLocaleString()}
-              </Text>
-            )}
-          </View>
-        )}
-      </View>
+          ) : null}
+        </View>
+      </ScrollView>
 
-      {/* Footer */}
-      <View style={[styles.footer, { borderTopColor: themeColors.gray[200] }]}>
-        <Ionicons
-          name="heart-outline"
-          size={14}
-          color={themeColors.fiori.text.tertiary}
-          style={styles.footerIcon}
-        />
-        <Text style={[styles.footerText, { color: themeColors.fiori.text.tertiary }]}>
-          Thank you for your patience!
-        </Text>
+      <View style={styles.footer}>
+        <Text style={styles.footerText}>Thank you for your patience.</Text>
       </View>
-    </View>
+    </SafeAreaView>
   );
 };
-
-// ============================================================================
-// Styles - SAP Fiori Design System
-// Colors are applied dynamically in JSX for dark mode support
-// ============================================================================
-const styles = StyleSheet.create({
-  // Container
-  container: {
-    flex: 1,
-    justifyContent: 'space-between',
-    paddingHorizontal: FIORI.container.padding,
-  },
-  content: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-
-  // Illustration Container - 120x120pt per Fiori spec
-  illustrationContainer: {
-    width: FIORI.illustration.containerSize,
-    height: FIORI.illustration.containerSize,
-    borderRadius: FIORI.illustration.containerSize / 2,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: FIORI.spacing.illustrationToTitle,
-  },
-
-  // Title - 20pt Semibold
-  title: {
-    fontSize: FIORI.typography.title.fontSize,
-    fontWeight: FIORI.typography.title.fontWeight,
-    lineHeight: FIORI.typography.title.lineHeight,
-    marginBottom: FIORI.spacing.titleToDescription,
-    textAlign: 'center',
-  },
-
-  // Description - 14pt Regular
-  description: {
-    fontSize: FIORI.typography.description.fontSize,
-    fontWeight: FIORI.typography.description.fontWeight,
-    lineHeight: FIORI.typography.description.lineHeight,
-    textAlign: 'center',
-    marginBottom: FIORI.spacing.descriptionToContent,
-    maxWidth: 320,
-  },
-
-  // Support Section - Fiori Card style
-  supportSection: {
-    flexDirection: 'row',
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: FIORI.spacing.contentGap,
-    width: '100%',
-    // Platform-specific shadows
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.05,
-        shadowRadius: 2,
-      },
-      android: {
-        elevation: 1,
-      },
-    }),
-  },
-  sectionIcon: {
-    marginRight: 12,
-    marginTop: 2,
-  },
-  sectionContent: {
-    flex: 1,
-  },
-  sectionTitle: {
-    fontSize: FIORI.typography.sectionTitle.fontSize,
-    fontWeight: FIORI.typography.sectionTitle.fontWeight,
-    marginBottom: 12,
-  },
-  supportRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 4,
-    borderRadius: 6,
-    marginBottom: 4,
-    minHeight: 44, // Fiori touch target
-  },
-  supportIcon: {
-    marginRight: 12,
-  },
-  supportText: {
-    flex: 1,
-    fontSize: FIORI.typography.sectionText.fontSize,
-    fontWeight: '500',
-    lineHeight: FIORI.typography.sectionText.lineHeight,
-  },
-
-  // Environment Info
-  envSection: {
-    marginTop: FIORI.spacing.contentGap,
-    alignItems: 'center',
-  },
-  envLabel: {
-    fontSize: FIORI.typography.envInfo.fontSize,
-    fontWeight: FIORI.typography.envInfo.fontWeight,
-  },
-  envDate: {
-    fontSize: FIORI.typography.envInfo.fontSize,
-    marginTop: 4,
-  },
-
-  // Footer
-  footer: {
-    flexDirection: 'row',
-    paddingVertical: 20,
-    borderTopWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  footerIcon: {
-    marginRight: 6,
-  },
-  footerText: {
-    fontSize: FIORI.typography.footer.fontSize,
-    fontWeight: FIORI.typography.footer.fontWeight,
-    fontStyle: 'italic',
-  },
-});
 
 export default MaintenanceScreen;

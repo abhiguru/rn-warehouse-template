@@ -5,7 +5,7 @@
  * for consistent visual indication across the app.
  */
 
-import { listColors } from '@/theme/listColors';
+import { getTokens, type ThemeTokens } from '@/theme/tokens';
 
 // SAP Fiori semantic status types
 export type StockStatus = 'positive' | 'critical' | 'negative' | 'neutral';
@@ -18,9 +18,13 @@ export interface StockStatusResult {
 }
 
 export interface StockStatusColors {
+  /** Bars, dots and icons beside a label (status.*.element). */
   main: string;
+  /** Tinted container behind status text (status.*.background). */
   light: string;
+  /** Status words and icons on surfaces (status.*.text). */
   dark: string;
+  /** Border of a status container (status.*.border). */
   border: string;
 }
 
@@ -82,45 +86,35 @@ export function getStockStatus(stock: number, qty: number): StockStatusResult {
   };
 }
 
+/** Fallback when no tokens are passed: the template's default (Orange light) theme. */
+const DEFAULT_TOKENS = getTokens('orange', 'light');
+
 /**
- * Get color palette for a stock status
+ * Get colours for a stock status from the semantic status tokens.
+ *
+ * Pass `tokens` from `useTokens()` so the colours follow the current brand and
+ * mode. Without it the light-mode values are returned.
  *
  * @param status - Stock status type
- * @returns Object with main, light, dark, and border colors
+ * @param tokens - Semantic tokens for the current theme
+ * @returns Object with main (element), light (background), dark (text) and border colours
  *
  * @example
- * const colors = getStatusColors('positive');
- * // { main: '#36A41D', light: '#F5FAE5', dark: '#256F14', border: '#5DC122' }
+ * const t = useTokens();
+ * const colors = getStatusColors('positive', t);
+ * // { main: t.status.positive.element, light: t.status.positive.background, ... }
  */
-export function getStatusColors(status: StockStatus): StockStatusColors {
-  const colorMap: Record<StockStatus, StockStatusColors> = {
-    positive: {
-      main: listColors.statusPositive,
-      light: listColors.statusPositiveLight,
-      dark: listColors.statusPositiveDark,
-      border: listColors.statusPositiveBorder,
-    },
-    critical: {
-      main: listColors.statusCritical,
-      light: listColors.statusCriticalLight,
-      dark: listColors.statusCriticalDark,
-      border: listColors.statusCriticalBorder,
-    },
-    negative: {
-      main: listColors.statusNegative,
-      light: listColors.statusNegativeLight,
-      dark: listColors.statusNegativeDark,
-      border: listColors.statusNegativeBorder,
-    },
-    neutral: {
-      main: listColors.statusNone,
-      light: listColors.statusNoneLight,
-      dark: listColors.textTertiary,
-      border: listColors.gray300,
-    },
+export function getStatusColors(
+  status: StockStatus,
+  tokens: ThemeTokens = DEFAULT_TOKENS
+): StockStatusColors {
+  const s = tokens.status[status];
+  return {
+    main: s.element,
+    light: s.background,
+    dark: s.text,
+    border: s.border,
   };
-
-  return colorMap[status];
 }
 
 /**
@@ -128,14 +122,16 @@ export function getStatusColors(status: StockStatus): StockStatusColors {
  *
  * @param stock - Current stock count
  * @param qty - Total quantity
+ * @param tokens - Semantic tokens for the current theme (from useTokens())
  * @returns Object with status info and color palette
  */
 export function getStockStatusWithColors(
   stock: number,
-  qty: number
+  qty: number,
+  tokens?: ThemeTokens
 ): StockStatusResult & { colors: StockStatusColors } {
   const statusResult = getStockStatus(stock, qty);
-  const colors = getStatusColors(statusResult.status);
+  const colors = getStatusColors(statusResult.status, tokens);
 
   return {
     ...statusResult,

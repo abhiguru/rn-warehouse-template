@@ -1,112 +1,111 @@
 /**
  * Autocomplete Filter Field Component
  *
- * Trigger button that opens autocomplete bottom sheet for selection.
- * Selected items are displayed as chips.
- * Mobile-First Design with Material Design 3 and react-native-paper.
+ * A field-like trigger that opens the autocomplete bottom sheet. Selected items
+ * show as applied-filter chips (style guide §13.2 and §13.5).
  */
 
 import React from 'react';
-import { View, StyleSheet, ScrollView, useColorScheme } from 'react-native';
-import { Text, Button, Chip, Surface } from 'react-native-paper';
+import { View, Text, Pressable, ScrollView, Insets } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { colors, darkColors } from '@/theme';
-import type { AutocompleteFilterFieldProps } from '@/types/filter.types';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import {
+  fontWeight,
+  iconSize,
+  radius,
+  space,
+  touchTarget,
+  typography,
+  type ThemeTokens,
+} from '@/theme/tokens';
+import type { AutocompleteFilterFieldProps, AutocompleteSelection } from '@/types/filter.types';
 import { getAutocompleteChipColor } from '@/services/filter-autocomplete-service';
+
+const CHIP_HEIGHT = 32;
+const REMOVE_HIT_SLOP: Insets = {
+  top: (touchTarget - iconSize.sm) / 2,
+  bottom: (touchTarget - iconSize.sm) / 2,
+  left: space.sm,
+  right: space.sm,
+};
 
 export const AutocompleteFilterField: React.FC<AutocompleteFilterFieldProps> = ({
   label,
   icon,
   placeholder,
-  autocompleteType,
+  autocompleteType: _autocompleteType,
   value,
   onPress,
   onRemoveSelection,
-  inlineChips = false, // New prop to control chip display mode
+  inlineChips = false, // Show chips inside the field instead of below it
 }) => {
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
-  const themeColors = isDark ? darkColors : colors;
+  const t = useTokens();
+  const styles = useThemedStyles(makeStyles);
 
   // Defensive: ensure value is always an array (handle legacy string values)
   const selections = Array.isArray(value) ? value : [];
   const hasSelections = selections.length > 0;
 
+  const renderChip = (selection: AutocompleteSelection) => {
+    const chipColors = getAutocompleteChipColor(selection.type, t);
+    return (
+      <View key={selection.id} style={[styles.chip, { backgroundColor: chipColors.backgroundColor }]}>
+        <Text
+          style={[styles.chipText, { color: chipColors.textColor }]}
+          numberOfLines={1}
+          maxFontSizeMultiplier={1.6}
+        >
+          {selection.label}
+        </Text>
+        {onRemoveSelection && (
+          <Pressable
+            onPress={() => onRemoveSelection(selection.id)}
+            hitSlop={REMOVE_HIT_SLOP}
+            accessibilityRole="button"
+            accessibilityLabel={`Remove filter ${selection.label}`}
+          >
+            <Icon name="close" size={iconSize.sm} color={chipColors.textColor} />
+          </Pressable>
+        )}
+      </View>
+    );
+  };
+
   return (
     <View style={styles.container}>
-      {/* Label - Only show for non-inline mode */}
+      {/* Label - only for the non-inline mode */}
       {!inlineChips && (
         <View style={styles.labelContainer}>
-          {icon && <Icon name={icon} size={18} color={isDark ? themeColors.gray[400] : colors.gray[600]} />}
-          <Text variant="labelLarge" style={[styles.label, { color: isDark ? themeColors.gray[100] : colors.gray[700] }]}>
-            {label}
-          </Text>
-          {hasSelections && (
-            <Text variant="labelSmall" style={[styles.count, { color: isDark ? themeColors.gray[400] : colors.gray[500] }]}>
-              ({selections.length})
-            </Text>
-          )}
+          {icon && <Icon name={icon} size={iconSize.sm} color={t.icon.secondary} />}
+          <Text style={styles.label}>{label}</Text>
+          {hasSelections && <Text style={styles.count}>({selections.length})</Text>}
         </View>
       )}
 
-      {/* Trigger Button with inline chips if enabled */}
-      <Surface style={[styles.triggerSurface, { backgroundColor: themeColors.white }]} elevation={0}>
+      <Pressable
+        onPress={onPress}
+        style={({ pressed }) => [styles.trigger, pressed && styles.triggerPressed]}
+        accessibilityRole="button"
+        accessibilityLabel={
+          hasSelections
+            ? `${label}, ${selections.map((s) => s.label).join(', ')}`
+            : placeholder || `Select ${label.toLowerCase()}`
+        }
+        accessibilityHint="Opens a search list"
+      >
         {inlineChips && hasSelections ? (
-          // Inline mode: Show chip inside the button area
-          <View style={[
-            styles.inlineChipContainer,
-            {
-              borderColor: isDark ? themeColors.gray[600] : colors.gray[300],
-              backgroundColor: themeColors.white,
-            },
-          ]}>
-            {selections.map((selection) => {
-              const chipColors = getAutocompleteChipColor(selection.type);
-              return (
-                <Chip
-                  key={selection.id}
-                  onClose={onRemoveSelection ? () => onRemoveSelection(selection.id) : undefined}
-                  style={[
-                    styles.inlineChip,
-                    { backgroundColor: chipColors.backgroundColor },
-                  ]}
-                  textStyle={[
-                    styles.chipText,
-                    { color: chipColors.textColor },
-                  ]}
-                  closeIconAccessibilityLabel="Remove"
-                  onPress={onPress}
-                >
-                  {selection.label}
-                </Chip>
-              );
-            })}
-          </View>
+          <View style={styles.inlineChipContainer}>{selections.map(renderChip)}</View>
         ) : (
-          // Default mode: Show button
-          <Button
-            mode="outlined"
-            onPress={onPress}
-            icon={() => <Icon name="magnify" size={20} color={isDark ? themeColors.gray[400] : colors.gray[600]} />}
-            contentStyle={styles.triggerButtonContent}
-            labelStyle={[
-              styles.triggerButtonLabel,
-              { color: isDark ? themeColors.gray[400] : colors.gray[600] },
-            ]}
-            style={[
-              styles.triggerButton,
-              {
-                borderColor: isDark ? themeColors.gray[600] : colors.gray[300],
-                backgroundColor: themeColors.white,
-              },
-            ]}
-          >
-            {placeholder || `Select ${label.toLowerCase()}`}
-          </Button>
+          <>
+            <Icon name="magnify" size={iconSize.md} color={t.icon.secondary} />
+            <Text style={styles.triggerText} numberOfLines={1}>
+              {placeholder || `Select ${label.toLowerCase()}`}
+            </Text>
+          </>
         )}
-      </Surface>
+      </Pressable>
 
-      {/* Selected Items Chips - Only show below if NOT in inline mode */}
+      {/* Selected items below the field (non-inline mode) */}
       {!inlineChips && hasSelections && (
         <ScrollView
           horizontal
@@ -114,91 +113,79 @@ export const AutocompleteFilterField: React.FC<AutocompleteFilterFieldProps> = (
           style={styles.chipsScrollView}
           contentContainerStyle={styles.chipsContainer}
         >
-          {selections.map((selection) => {
-            const chipColors = getAutocompleteChipColor(selection.type);
-            return (
-              <Chip
-                key={selection.id}
-                onClose={onRemoveSelection ? () => onRemoveSelection(selection.id) : undefined}
-                style={[
-                  styles.chip,
-                  { backgroundColor: chipColors.backgroundColor },
-                ]}
-                textStyle={[
-                  styles.chipText,
-                  { color: chipColors.textColor },
-                ]}
-                closeIconAccessibilityLabel="Remove"
-              >
-                {selection.label}
-              </Chip>
-            );
-          })}
+          {selections.map(renderChip)}
         </ScrollView>
       )}
     </View>
   );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (t: ThemeTokens) => ({
   container: {
-    marginBottom: 4,
+    marginBottom: space.xs,
   },
   labelContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 12,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.xs,
+    marginBottom: space.xs,
   },
   label: {
-    // Color applied dynamically
-    fontWeight: '600',
+    ...typography.footnote,
+    color: t.text.secondary,
   },
   count: {
-    // Color applied dynamically
-    fontWeight: '500',
+    ...typography.footnote,
+    color: t.text.secondary,
+    fontVariant: ['tabular-nums' as const],
   },
-  triggerSurface: {
-    // backgroundColor applied dynamically
-    borderRadius: 12,
+  trigger: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.sm,
+    minHeight: touchTarget,
+    paddingHorizontal: space.md,
+    paddingVertical: space.xs,
+    borderWidth: 1,
+    borderColor: t.border.field,
+    borderRadius: radius.field,
+    backgroundColor: t.surface.field,
   },
-  triggerButton: {
-    // borderColor applied dynamically
-    borderRadius: 12,
+  triggerPressed: {
+    backgroundColor: t.surface.cardPressed,
   },
-  triggerButtonContent: {
-    justifyContent: 'flex-start',
-    paddingVertical: 8,
-  },
-  triggerButtonLabel: {
-    // Color applied dynamically
-    fontSize: 14,
-    textAlign: 'left',
+  triggerText: {
+    ...typography.body,
+    flex: 1,
+    color: t.text.placeholder,
   },
   inlineChipContainer: {
-    borderWidth: 1,
-    // borderColor applied dynamically
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    minHeight: 48,
-    justifyContent: 'center',
-  },
-  inlineChip: {
-    maxWidth: '100%',
+    flex: 1,
+    flexDirection: 'row' as const,
+    flexWrap: 'wrap' as const,
+    gap: space.sm,
   },
   chipsScrollView: {
-    marginTop: 12,
+    marginTop: space.sm,
   },
   chipsContainer: {
-    flexDirection: 'row',
-    gap: 8,
+    flexDirection: 'row' as const,
+    gap: space.sm,
   },
   chip: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.xs,
+    minHeight: CHIP_HEIGHT,
     maxWidth: 200,
+    paddingVertical: space.s6,
+    paddingLeft: space.md,
+    paddingRight: space.sm,
+    borderRadius: radius.pill,
   },
   chipText: {
-    fontSize: 13,
-    fontWeight: '500',
+    ...typography.caption1,
+    fontWeight: fontWeight.semibold,
+    flexShrink: 1,
   },
 });

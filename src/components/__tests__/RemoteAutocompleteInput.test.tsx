@@ -4,7 +4,11 @@ import { act, create } from 'react-test-renderer';
 import { RemoteAutocompleteInput } from '../RemoteAutocompleteInput';
 
 jest.mock('@expo/vector-icons', () => ({ Ionicons: 'Ionicons' }));
-jest.mock('@/hooks/useListColors', () => ({ useListColors: () => new Proxy({}, { get: () => '#ffffff' }) }));
+jest.mock('@/store/hooks', () => ({
+  useAppDispatch: () => jest.fn(),
+  useAppSelector: (selector: (state: unknown) => unknown) =>
+    selector({ theme: { preference: 'light', brand: 'orange' } }),
+}));
 
 type Item = { id: string; name: string };
 const potatoes: Item = { id: 'fictional-potatoes', name: 'Backend Test Potatoes' };

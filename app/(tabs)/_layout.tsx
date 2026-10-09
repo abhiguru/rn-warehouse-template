@@ -23,7 +23,7 @@ export default function TabsLayout() {
   const router = useRouter();
   const dispatch = useAppDispatch();
   const { userProfile, session, user } = useAppSelector((state) => state.auth);
-  const { colors: themeColors, isDarkMode } = useTheme();
+  const { tokens: t } = useTheme();
   const [hasAuthCheckSettled, setHasAuthCheckSettled] = useState(false);
 
   // Restore credentials before mounting protected screens or deciding to redirect.
@@ -68,16 +68,18 @@ export default function TabsLayout() {
     }
   }, [hasAuthCheckSettled, isUnauthenticated, router]);
 
-  // Background colors - using direct hex values for reliability
-  const darkBg = '#11222c';  // gray[900]
-  const lightBg = '#f7f9fa'; // gray[50]
-  const screenBg = isDarkMode ? darkBg : lightBg;
+  // Screen background behind cards and lists
+  const screenBg = t.background.base;
 
   // Keep a deliberate loading surface while navigation replaces an unauthenticated route.
   if (!hasAuthCheckSettled || isUnauthenticated) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: screenBg }}>
-        <ActivityIndicator size="large" color={themeColors.primary} />
+        <ActivityIndicator
+          size="large"
+          color={t.brand.tint}
+          accessibilityLabel="Loading"
+        />
       </View>
     );
   }
@@ -85,9 +87,7 @@ export default function TabsLayout() {
   return (
     <View style={{ flex: 1, backgroundColor: screenBg }}>
       {/* StatusBar explicitly set for tab screens */}
-      <EdgeToEdgeStatusBar
-        barStyle={isDarkMode ? 'light-content' : 'dark-content'}
-      />
+      <EdgeToEdgeStatusBar barStyle={t.statusBarStyle} />
       <ImageBackground
         source={require('../../assets/logo.png')}
         style={{ flex: 1 }}

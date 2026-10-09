@@ -1,30 +1,29 @@
 /**
  * Number Range Filter Field Component
  *
- * Min/max number input fields for range filtering.
- * Mobile-First Design with Material Design 3 and react-native-paper.
+ * Min/max number inputs for range filtering (style guide §13.2).
  */
 
-import React from 'react';
-import { View, StyleSheet, useColorScheme } from 'react-native';
-import { Text } from 'react-native-paper';
+import React, { useState } from 'react';
+import { View } from 'react-native';
 import { BottomSheetTextInput } from '@gorhom/bottom-sheet';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { colors, darkColors } from '@/theme';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { iconSize, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 import type { NumberRangeFilterFieldProps } from '@/types/filter.types';
 
 export const NumberRangeFilterField: React.FC<NumberRangeFilterFieldProps> = ({
   label,
-  icon,
+  icon: _icon,
   placeholder = ['Min', 'Max'],
-  minValue,
-  maxValue,
+  minValue: _minValue,
+  maxValue: _maxValue,
   value,
   onChange,
 }) => {
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
-  const themeColors = isDark ? darkColors : colors;
+  const t = useTokens();
+  const styles = useThemedStyles(makeStyles);
+  const [focused, setFocused] = useState<'min' | 'max' | null>(null);
 
   const handleMinChange = (text: string) => {
     const numValue = text === '' ? undefined : parseFloat(text);
@@ -42,43 +41,32 @@ export const NumberRangeFilterField: React.FC<NumberRangeFilterFieldProps> = ({
 
   return (
     <View style={styles.container}>
-      {/* Range Inputs */}
       <View style={styles.rangeContainer}>
         <BottomSheetTextInput
           placeholder={placeholder[0]}
-          placeholderTextColor={themeColors.gray[isDark ? 600 : 500]}
+          placeholderTextColor={t.text.placeholder}
           value={value[0]?.toString() || ''}
           onChangeText={handleMinChange}
+          onFocus={() => setFocused('min')}
+          onBlur={() => setFocused(null)}
           keyboardType="decimal-pad"
           returnKeyType="done"
-          style={[
-            styles.input,
-            {
-              backgroundColor: themeColors.white,
-              borderColor: isDark ? themeColors.gray[600] : colors.gray[300],
-              color: themeColors.gray[isDark ? 50 : 900],
-            },
-          ]}
+          style={[styles.input, focused === 'min' && styles.inputFocused]}
           accessibilityLabel={`${label} minimum value`}
         />
 
-        <Icon name="minus" size={20} color={isDark ? themeColors.gray[500] : colors.gray[400]} style={styles.separator} />
+        <Icon name="minus" size={iconSize.md} color={t.icon.secondary} />
 
         <BottomSheetTextInput
           placeholder={placeholder[1]}
-          placeholderTextColor={themeColors.gray[isDark ? 600 : 500]}
+          placeholderTextColor={t.text.placeholder}
           value={value[1]?.toString() || ''}
           onChangeText={handleMaxChange}
+          onFocus={() => setFocused('max')}
+          onBlur={() => setFocused(null)}
           keyboardType="decimal-pad"
           returnKeyType="done"
-          style={[
-            styles.input,
-            {
-              backgroundColor: themeColors.white,
-              borderColor: isDark ? themeColors.gray[600] : colors.gray[300],
-              color: themeColors.gray[isDark ? 50 : 900],
-            },
-          ]}
+          style={[styles.input, focused === 'max' && styles.inputFocused]}
           accessibilityLabel={`${label} maximum value`}
         />
       </View>
@@ -86,25 +74,31 @@ export const NumberRangeFilterField: React.FC<NumberRangeFilterFieldProps> = ({
   );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (t: ThemeTokens) => ({
   container: {
-    marginBottom: 4,
+    marginBottom: space.xs,
   },
   rangeContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.sm,
   },
   input: {
+    ...typography.body,
     flex: 1,
     borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    fontSize: 16,
-    minHeight: 48,
+    borderColor: t.border.field,
+    borderRadius: radius.field,
+    backgroundColor: t.surface.field,
+    color: t.text.primary,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.md,
+    minHeight: touchTarget,
+    fontVariant: ['tabular-nums' as const],
   },
-  separator: {
-    marginBottom: 0,
+  inputFocused: {
+    borderWidth: 2,
+    borderColor: t.border.fieldFocus,
+    paddingHorizontal: space.lg - 1,
   },
 });

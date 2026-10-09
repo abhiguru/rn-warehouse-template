@@ -5,16 +5,19 @@
  * Filters available roles based on caller's role (supervisor cannot assign admin).
  */
 
-import React, { useCallback, useMemo } from 'react';
-import { View, Text, Pressable, StyleSheet } from 'react-native';
+import React, { useCallback, useEffect, useMemo } from 'react';
+import { View, Text, Pressable, StyleSheet, BackHandler } from 'react-native';
 import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetBackdropProps,
   BottomSheetView,
 } from '@gorhom/bottom-sheet';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { UserRole } from '@/types/user.types';
-import { useListColors } from '@/hooks/useListColors';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { iconSize, layout, radius, space, touchTarget, typography } from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
 
 // =============================================================================
 // ROLE CONFIGURATION
@@ -25,7 +28,8 @@ interface RoleOption {
   label: string;
   description: string;
   icon: string;
-  color: string;
+  /** Index into the theme's avatar palette (category colour, not status). */
+  avatarIndex: number;
 }
 
 const ALL_ROLES: RoleOption[] = [
@@ -34,28 +38,28 @@ const ALL_ROLES: RoleOption[] = [
     label: 'Admin',
     description: 'Full system access and user management',
     icon: 'shield-crown',
-    color: '#f69000',
+    avatarIndex: 0,
   },
   {
     value: 'supervisor',
     label: 'Supervisor',
     description: 'Can manage operations and view all data',
     icon: 'account-supervisor',
-    color: '#1c5858',
+    avatarIndex: 5,
   },
   {
     value: 'staff',
     label: 'Staff',
     description: 'Can create and manage GRNs and dispatches',
     icon: 'account-hard-hat',
-    color: '#7e8e9d',
+    avatarIndex: 8,
   },
   {
     value: 'customer',
     label: 'Customer',
     description: 'Can view assigned orders and invoices',
     icon: 'account',
-    color: '#53b1b1',
+    avatarIndex: 6,
   },
 ];
 
@@ -80,55 +84,20 @@ export const RolePickerBottomSheet: React.FC<RolePickerBottomSheetProps> = ({
 }) => {
   const bottomSheetRef = React.useRef<BottomSheet>(null);
 
-  // Theme colors for dark mode support
-  const colors = useListColors();
+  const t = useTokens();
+  const dynamicStyles = useThemedStyles(makeStyles);
+  const insets = useSafeAreaInsets();
+  const avatarIconColor = t.mode === 'dark' ? t.overlay.onImage : t.text.primary;
 
-  // Dynamic styles based on theme
-  const dynamicStyles = useMemo(() => StyleSheet.create({
-    bottomSheetBackground: {
-      backgroundColor: colors.cellBackground,
-    },
-    handleIndicator: {
-      backgroundColor: colors.gray300,
-      width: 40,
-    },
-    header: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      paddingBottom: 12,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.cellDivider,
-    },
-    title: {
-      fontSize: 17,
-      fontWeight: '600',
-      color: colors.textPrimary,
-    },
-    roleItemSelected: {
-      backgroundColor: colors.primaryLight,
-    },
-    roleItemPressed: {
-      backgroundColor: colors.gray50,
-    },
-    roleLabel: {
-      fontSize: 17,
-      fontWeight: '600',
-      color: colors.textPrimary,
-      marginBottom: 2,
-    },
-    roleDescription: {
-      fontSize: 13,
-      color: colors.textSecondary,
-    },
-    helperText: {
-      fontSize: 13,
-      color: colors.textTertiary,
-      textAlign: 'center',
-      paddingVertical: 12,
-      fontStyle: 'italic',
-    },
-  }), [colors]);
+  // Android back closes the sheet first (style guide 15)
+  useEffect(() => {
+    if (!isVisible) return undefined;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      onClose();
+      return true;
+    });
+    return () => sub.remove();
+  }, [isVisible, onClose]);
 
   // Filter roles based on caller's role
   const availableRoles = useMemo(() => {
@@ -155,11 +124,12 @@ export const RolePickerBottomSheet: React.FC<RolePickerBottomSheetProps> = ({
         {...props}
         disappearsOnIndex={-1}
         appearsOnIndex={0}
-        opacity={0.4}
+        opacity={1}
         pressBehavior="close"
+        style={[props.style, dynamicStyles.backdrop]}
       />
     ),
-    []
+    [dynamicStyles.backdrop]
   );
 
   // Handle sheet changes
@@ -187,21 +157,22 @@ export const RolePickerBottomSheet: React.FC<RolePickerBottomSheetProps> = ({
       handleIndicatorStyle={dynamicStyles.handleIndicator}
       backgroundStyle={dynamicStyles.bottomSheetBackground}
     >
-      <BottomSheetView style={styles.container}>
+      <BottomSheetView style={[styles.container, { paddingBottom: insets.bottom + space.lg }]}>
         {/* Header */}
         <View style={dynamicStyles.header}>
-          <Text style={dynamicStyles.title}>Select Role</Text>
+          <Text style={dynamicStyles.title} accessibilityRole="header">Select role</Text>
           <Pressable
             style={styles.closeButton}
             onPress={onClose}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            accessibilityRole="button"
+            accessibilityLabel="Close role picker"
           >
-            <Icon name="close" size={24} color={colors.textSecondary} />
+            <Icon name="close" size={iconSize.lg} color={t.icon.primary} />
           </Pressable>
         </View>
 
         {/* Role Options */}
-        <View style={styles.roleList}>
+        <View style={styles.roleList} accessibilityRole="radiogroup">
           {availableRoles.map((role) => {
             const isSelected = role.value === currentRole;
             return (
@@ -213,11 +184,14 @@ export const RolePickerBottomSheet: React.FC<RolePickerBottomSheetProps> = ({
                   pressed && dynamicStyles.roleItemPressed,
                 ]}
                 onPress={() => handleSelect(role.value)}
+                accessibilityRole="radio"
+                accessibilityState={{ checked: isSelected, selected: isSelected }}
+                accessibilityLabel={`${role.label}. ${role.description}`}
               >
                 <View
-                  style={[styles.roleIcon, { backgroundColor: `${role.color}15` }]}
+                  style={[styles.roleIcon, { backgroundColor: t.avatar[role.avatarIndex % t.avatar.length] }]}
                 >
-                  <Icon name={role.icon} size={24} color={role.color} />
+                  <Icon name={role.icon} size={iconSize.lg} color={avatarIconColor} />
                 </View>
                 <View style={styles.roleContent}>
                   <Text style={dynamicStyles.roleLabel}>{role.label}</Text>
@@ -226,8 +200,8 @@ export const RolePickerBottomSheet: React.FC<RolePickerBottomSheetProps> = ({
                 {isSelected && (
                   <Icon
                     name="check-circle"
-                    size={24}
-                    color={colors.success}
+                    size={iconSize.lg}
+                    color={t.brand.tint}
                   />
                 )}
               </Pressable>
@@ -238,7 +212,7 @@ export const RolePickerBottomSheet: React.FC<RolePickerBottomSheetProps> = ({
         {/* Helper text for supervisors */}
         {callerRole === 'supervisor' && (
           <Text style={dynamicStyles.helperText}>
-            Note: Only administrators can assign the Admin role.
+            Only admins can assign the Admin role.
           </Text>
         )}
       </BottomSheetView>
@@ -247,38 +221,89 @@ export const RolePickerBottomSheet: React.FC<RolePickerBottomSheetProps> = ({
 };
 
 // =============================================================================
-// STYLES (Layout only - colors in dynamicStyles)
+// STYLES
 // =============================================================================
+
+const makeStyles = (t: ThemeTokens) => ({
+  backdrop: {
+    backgroundColor: t.overlay.scrim,
+  },
+  bottomSheetBackground: {
+    backgroundColor: t.surface.sheet,
+    borderTopLeftRadius: radius.sheet,
+    borderTopRightRadius: radius.sheet,
+    ...t.shadow[4],
+  },
+  handleIndicator: {
+    backgroundColor: t.border.separator,
+    width: 36,
+    height: 4,
+  },
+  header: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
+    paddingBottom: space.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.divider,
+  },
+  title: {
+    ...typography.headline,
+    color: t.text.primary,
+  },
+  roleItemSelected: {
+    backgroundColor: t.surface.selected,
+  },
+  roleItemPressed: {
+    backgroundColor: t.surface.cardPressed,
+  },
+  roleLabel: {
+    ...typography.headline,
+    color: t.text.primary,
+    marginBottom: space.xxs,
+  },
+  roleDescription: {
+    ...typography.footnote,
+    color: t.text.secondary,
+  },
+  helperText: {
+    ...typography.footnote,
+    color: t.text.secondary,
+    textAlign: 'center' as const,
+    paddingVertical: space.md,
+  },
+});
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    paddingHorizontal: 16,
+    paddingHorizontal: space.lg,
   },
   closeButton: {
-    width: 44,
-    height: 44,
+    width: touchTarget,
+    height: touchTarget,
     alignItems: 'center',
     justifyContent: 'center',
   },
   roleList: {
-    paddingVertical: 12,
+    paddingVertical: space.md,
   },
   roleItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 8,
-    borderRadius: 10,
-    marginBottom: 8,
+    minHeight: layout.objectCellMinHeight,
+    paddingVertical: space.md,
+    paddingHorizontal: space.sm,
+    borderRadius: radius.button,
+    marginBottom: space.sm,
   },
   roleIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: layout.avatar.md,
+    height: layout.avatar.md,
+    borderRadius: radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 12,
+    marginRight: space.md,
   },
   roleContent: {
     flex: 1,

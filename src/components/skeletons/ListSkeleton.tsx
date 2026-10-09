@@ -9,6 +9,7 @@
 
 import React, { memo } from 'react';
 import { View, StyleSheet } from 'react-native';
+import { space } from '@/theme/tokens';
 import { ListSkeletonCard } from '../list/ListSkeletonCard';
 
 export interface ListSkeletonProps {
@@ -26,7 +27,7 @@ export const ListSkeleton = memo<ListSkeletonProps>(({
   showFooter = true,
 }) => {
   return (
-    <View style={styles.container} accessible accessibilityLabel="Loading list">
+    <View style={styles.container} accessible accessibilityLabel="Loading list" accessibilityState={{ busy: true }}>
       {Array.from({ length: count }).map((_, index) => (
         <ListSkeletonCard
           key={index}
@@ -42,7 +43,7 @@ ListSkeleton.displayName = 'ListSkeleton';
 
 const styles = StyleSheet.create({
   container: {
-    paddingTop: 8,
+    paddingTop: space.sm,
   },
 });
 

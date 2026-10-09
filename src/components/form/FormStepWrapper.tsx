@@ -33,15 +33,17 @@ import {
   View,
   Text,
   StyleSheet,
-  TouchableOpacity,
+  Pressable,
   Alert,
   Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { Button } from 'react-native-paper';
-import theme from '@/theme';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { iconSize, layout, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
+import { Button } from '@/components/ui/Button';
+import BaseStepIndicator from '../StepIndicator';
 import SwipeableFormStep from '../SwipeableFormStep';
 
 /**
@@ -113,67 +115,19 @@ export interface FormStepWrapperProps {
 }
 
 /**
- * Default step indicator component
+ * Default step indicator: the shared StepIndicator (style guide §13.8)
  */
 const DefaultStepIndicator = memo<{
   currentStep: number;
   steps: StepConfig[];
   completedSteps: number[];
 }>(({ currentStep, steps, completedSteps }) => (
-  <View style={styles.stepIndicatorContainer}>
-    {steps.map((step, index) => {
-      const stepNumber = index + 1;
-      const isActive = stepNumber === currentStep;
-      const isCompleted = completedSteps.includes(stepNumber);
-
-      return (
-        <View key={index} style={styles.stepItem}>
-          <View
-            style={[
-              styles.stepCircle,
-              isActive && styles.stepCircleActive,
-              isCompleted && styles.stepCircleCompleted,
-            ]}
-          >
-            {isCompleted ? (
-              <Icon name="check" size={14} color={theme.colors.white} />
-            ) : (
-              <Text
-                style={[
-                  styles.stepNumber,
-                  (isActive || isCompleted) && styles.stepNumberActive,
-                ]}
-              >
-                {stepNumber}
-              </Text>
-            )}
-          </View>
-          <Text
-            style={[
-              styles.stepLabel,
-              isActive && styles.stepLabelActive,
-            ]}
-            numberOfLines={1}
-          >
-            {step.label}
-          </Text>
-          {index < steps.length - 1 && (
-            <View
-              style={[
-                styles.stepConnector,
-                isCompleted && styles.stepConnectorCompleted,
-              ]}
-            />
-          )}
-        </View>
-      );
-    })}
-  </View>
+  <BaseStepIndicator steps={steps} currentStep={currentStep} completedSteps={completedSteps} />
 ));
 DefaultStepIndicator.displayName = 'DefaultStepIndicator';
 
 /**
- * Navigation footer component
+ * Navigation footer: Back (secondary) and Next or Submit (primary)
  */
 const NavigationFooter = memo<{
   currentStep: number;
@@ -200,38 +154,40 @@ const NavigationFooter = memo<{
   submitLabel,
   isSubmitting,
 }) => {
+  const styles = useThemedStyles(makeStyles);
   const isLastStep = currentStep === totalSteps;
 
   return (
     <View style={styles.footer}>
       <Button
-        mode="outlined"
+        type="secondary"
+        variant="normal"
+        size="standalone"
         onPress={onBack}
         disabled={!canGoBack || currentStep === 1}
         style={styles.footerButton}
-        textColor={theme.colors.gray[700]}
       >
         {backLabel}
       </Button>
 
       {isLastStep ? (
         <Button
-          mode="contained"
+          type="primary"
+          size="standalone"
           onPress={onSubmit}
-          disabled={!canGoNext || isSubmitting}
+          disabled={!canGoNext}
           loading={isSubmitting}
           style={styles.footerButton}
-          buttonColor={theme.colors.primary}
         >
           {submitLabel}
         </Button>
       ) : (
         <Button
-          mode="contained"
+          type="primary"
+          size="standalone"
           onPress={onNext}
           disabled={!canGoNext}
           style={styles.footerButton}
-          buttonColor={theme.colors.primary}
         >
           {nextLabel}
         </Button>
@@ -258,7 +214,7 @@ export const FormStepWrapper = memo<FormStepWrapperProps>(({
   canGoBack = true,
   canGoNext = true,
   hasUnsavedChanges = false,
-  unsavedChangesMessage = 'You have unsaved changes. Are you sure you want to leave?',
+  unsavedChangesMessage = 'Your changes will be lost.',
   backLabel = 'Back',
   nextLabel = 'Next',
   submitLabel = 'Submit',
@@ -271,6 +227,8 @@ export const FormStepWrapper = memo<FormStepWrapperProps>(({
   loading = false,
 }) => {
   const insets = useSafeAreaInsets();
+  const t = useTokens();
+  const styles = useThemedStyles(makeStyles);
 
   // Build step configs from labels if not provided
   const steps: StepConfig[] = stepConfigs || stepLabels.map((label) => ({ label }));
@@ -279,10 +237,10 @@ export const FormStepWrapper = memo<FormStepWrapperProps>(({
   const handleCancel = useCallback(() => {
     if (hasUnsavedChanges) {
       Alert.alert(
-        'Discard Changes?',
+        'Discard changes?',
         unsavedChangesMessage,
         [
-          { text: 'Stay', style: 'cancel' },
+          { text: 'Keep editing', style: 'cancel' },
           {
             text: 'Discard',
             style: 'destructive',
@@ -329,10 +287,17 @@ export const FormStepWrapper = memo<FormStepWrapperProps>(({
     <View style={[styles.container, { paddingTop: insets.top }]}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={handleCancel} style={styles.cancelButton}>
-          <Icon name="close" size={24} color={theme.colors.gray[600]} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>{title}</Text>
+        <Pressable
+          onPress={handleCancel}
+          style={({ pressed }) => [styles.cancelButton, pressed && styles.cancelButtonPressed]}
+          accessibilityRole="button"
+          accessibilityLabel="Cancel"
+        >
+          <Icon name="close" size={iconSize.lg} color={t.icon.primary} />
+        </Pressable>
+        <Text style={styles.headerTitle} accessibilityRole="header" numberOfLines={2}>
+          {title}
+        </Text>
         <View style={styles.headerRight}>
           {headerRight}
         </View>
@@ -363,7 +328,7 @@ export const FormStepWrapper = memo<FormStepWrapperProps>(({
 
       {/* Navigation Footer */}
       {!hideFooter && (
-        <View style={{ paddingBottom: insets.bottom }}>
+        <View style={[styles.footerContainer, { paddingBottom: insets.bottom }]}>
           <NavigationFooter
             currentStep={currentStep}
             totalSteps={totalSteps}
@@ -385,105 +350,64 @@ export const FormStepWrapper = memo<FormStepWrapperProps>(({
 
 FormStepWrapper.displayName = 'FormStepWrapper';
 
-const styles = StyleSheet.create({
+const makeStyles = (t: ThemeTokens) => ({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.white,
+    backgroundColor: t.background.base,
   },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: theme.spacing.md,
-    paddingVertical: theme.spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.gray[200],
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    paddingHorizontal: space.xs,
+    paddingVertical: space.xs,
+    backgroundColor: t.surface.header,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.divider,
   },
   cancelButton: {
-    padding: theme.spacing.xs,
+    width: touchTarget,
+    height: touchTarget,
+    borderRadius: radius.pill,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+  },
+  cancelButtonPressed: {
+    backgroundColor: t.surface.cardPressed,
   },
   headerTitle: {
+    ...typography.headline,
     flex: 1,
-    fontSize: theme.fontSize.lg,
-    fontWeight: theme.fontWeight.semibold,
-    color: theme.colors.gray[800],
-    marginLeft: theme.spacing.sm,
+    color: t.text.primary,
+    marginLeft: space.xs,
   },
   headerRight: {
-    minWidth: 40,
-    alignItems: 'flex-end',
-  },
-  stepIndicatorContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: theme.spacing.md,
-    paddingHorizontal: theme.spacing.lg,
-    backgroundColor: theme.colors.gray[50],
-  },
-  stepItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  stepCircle: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: theme.colors.gray[200],
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  stepCircleActive: {
-    backgroundColor: theme.colors.primary,
-  },
-  stepCircleCompleted: {
-    backgroundColor: theme.colors.semantic.success,
-  },
-  stepNumber: {
-    fontSize: theme.fontSize.xs,
-    fontWeight: theme.fontWeight.medium,
-    color: theme.colors.gray[600],
-  },
-  stepNumberActive: {
-    color: theme.colors.white,
-  },
-  stepLabel: {
-    fontSize: theme.fontSize.xs,
-    color: theme.colors.gray[500],
-    marginLeft: theme.spacing.xs,
-    maxWidth: 60,
-  },
-  stepLabelActive: {
-    color: theme.colors.gray[800],
-    fontWeight: theme.fontWeight.medium,
-  },
-  stepConnector: {
-    width: 24,
-    height: 2,
-    backgroundColor: theme.colors.gray[200],
-    marginHorizontal: theme.spacing.xs,
-  },
-  stepConnectorCompleted: {
-    backgroundColor: theme.colors.semantic.success,
+    minWidth: touchTarget,
+    alignItems: 'flex-end' as const,
+    paddingRight: space.sm,
   },
   content: {
     flex: 1,
   },
   scrollContent: {
     flexGrow: 1,
-    padding: theme.spacing.md,
+    padding: layout.marginCompact,
+  },
+  // Bottom bar on surface.card with shadow[3]; the bottom inset is added inline
+  footerContainer: {
+    backgroundColor: t.surface.card,
+    ...t.shadow[3],
   },
   footer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingHorizontal: theme.spacing.md,
-    paddingVertical: theme.spacing.sm,
-    borderTopWidth: 1,
-    borderTopColor: theme.colors.gray[200],
-    backgroundColor: theme.colors.white,
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    gap: space.sm,
+    paddingHorizontal: layout.marginCompact,
+    paddingVertical: space.sm,
+    backgroundColor: t.surface.card,
   },
   footerButton: {
     flex: 1,
-    marginHorizontal: theme.spacing.xs,
+    minWidth: 0,
   },
 });
 

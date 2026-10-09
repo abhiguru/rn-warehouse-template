@@ -1,40 +1,24 @@
 /**
  * LoadingState - Reusable loading state component
  *
- * SAP Fiori Design System - Loading State Component
+ * A centred spinner in brand.tint with an optional message in
+ * text.secondary (docs/STYLE_GUIDE.md §13.6). Use it only for short waits of
+ * unknown length; lists and object pages use skeletons instead.
  * M14 Fix: DRY violation - loading pattern repeated 10+ times
- *
- * Provides consistent loading UI across the app.
  */
 
 import React, { memo } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
-import { listColors } from '@/theme/listColors';
-
-// ============================================================================
-// SAP Fiori Design Constants
-// ============================================================================
-const FIORI = {
-  container: {
-    padding: 24,
-  },
-  indicator: {
-    size: 'large' as const,
-  },
-  typography: {
-    message: { fontSize: 14, fontWeight: '400' as const, lineHeight: 20 },
-  },
-  spacing: {
-    indicatorToMessage: 16,
-  },
-} as const;
+import { View, Text, ActivityIndicator } from 'react-native';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { space, typography } from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
 
 export interface LoadingStateProps {
   /** Loading message to display */
   message?: string;
   /** Size of the activity indicator */
   size?: 'small' | 'large';
-  /** Color of the activity indicator (defaults to theme primary) */
+  /** Color of the activity indicator (defaults to brand.tint) */
   color?: string;
   /** Whether to show in full screen mode (flex: 1) */
   fullScreen?: boolean;
@@ -42,21 +26,42 @@ export interface LoadingStateProps {
   testID?: string;
 }
 
+const makeStyles = (t: ThemeTokens) => ({
+  container: {
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    padding: space.xxl,
+  },
+  fullScreen: {
+    flex: 1,
+    backgroundColor: t.background.base,
+  },
+  message: {
+    ...typography.subhead,
+    color: t.text.secondary,
+    textAlign: 'center' as const,
+    marginTop: space.lg,
+  },
+});
+
 export const LoadingState = memo<LoadingStateProps>(({
-  message = 'Loading...',
+  message = 'Loading…',
   size = 'large',
   color,
   fullScreen = true,
   testID,
 }) => {
-  const indicatorColor = color || listColors.primary;
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
+  const indicatorColor = color || t.brand.tint;
 
   return (
     <View
       style={[styles.container, fullScreen && styles.fullScreen]}
       accessible={true}
-      accessibilityLabel={message}
+      accessibilityLabel={message || 'Loading'}
       accessibilityRole="progressbar"
+      accessibilityState={{ busy: true }}
       testID={testID}
     >
       <ActivityIndicator
@@ -64,7 +69,7 @@ export const LoadingState = memo<LoadingStateProps>(({
         color={indicatorColor}
         accessibilityElementsHidden={true}
       />
-      {message && (
+      {!!message && (
         <Text style={styles.message}>
           {message}
         </Text>
@@ -74,27 +79,5 @@ export const LoadingState = memo<LoadingStateProps>(({
 });
 
 LoadingState.displayName = 'LoadingState';
-
-// ============================================================================
-// Styles - SAP Fiori Design System
-// ============================================================================
-const styles = StyleSheet.create({
-  container: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: FIORI.container.padding,
-  },
-  fullScreen: {
-    flex: 1,
-  },
-  message: {
-    fontSize: FIORI.typography.message.fontSize,
-    fontWeight: FIORI.typography.message.fontWeight,
-    lineHeight: FIORI.typography.message.lineHeight,
-    color: listColors.textSecondary,
-    textAlign: 'center',
-    marginTop: FIORI.spacing.indicatorToMessage,
-  },
-});
 
 export default LoadingState;

@@ -1,6 +1,7 @@
 import React from 'react';
 import { act, create } from 'react-test-renderer';
 import OrderFlashList from '@/components/lists/OrderFlashList';
+import { BRANDS, getTokens, type Mode } from '@/theme/tokens';
 import { OrderService } from '@/services/order-service';
 import type { Order } from '@/types/order.types';
 
@@ -12,8 +13,14 @@ jest.mock('@react-navigation/native', () => ({ useFocusEffect: jest.fn() }));
 jest.mock('expo-router', () => ({ router: { push: jest.fn() } }));
 jest.mock('@/hooks/useOrderLiveUpdates', () => ({ useOrderLiveUpdates: jest.fn() }));
 jest.mock('@/config/sessionLifecycle', () => ({ getSessionGeneration: () => 1 }));
-jest.mock('@/store/hooks', () => ({ useAppSelector: () => ({ role: 'admin', name: 'Fictional Administrator' }) }));
-jest.mock('@/hooks/useListColors', () => ({ useListColors: () => new Proxy({}, { get: () => '#ffffff' }) }));
+let mockState = {
+  theme: { preference: 'light', brand: 'orange' },
+  auth: { userProfile: { role: 'admin', name: 'Fictional Administrator' } },
+};
+jest.mock('@/store/hooks', () => ({
+  useAppDispatch: () => jest.fn(),
+  useAppSelector: (selector: (state: unknown) => unknown) => selector(mockState),
+}));
 jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('@/components/skeletons', () => ({ ListSkeleton: () => null }));
 jest.mock('@/components/list-items', () => ({ MemoizedOrderItem: () => null }));
@@ -70,3 +77,26 @@ it('refreshes the whole loaded window so live updates do not drop scrolled rows'
   expect(listedIds(renderer)).toHaveLength(40);
   await act(async () => { renderer.unmount(); });
 });
+
+describe.each(BRANDS.flatMap(brand => (['light', 'dark'] as Mode[]).map(mode => [brand, mode] as const)))(
+  'themes: %s %s',
+  (brand, mode) => {
+    it('renders the list on the theme background with a brand-tinted refresh control', async () => {
+      mockState = { ...mockState, theme: { preference: mode, brand } };
+      const t = getTokens(brand, mode);
+      const getOrdersList = jest.mocked(OrderService.getOrdersList);
+      getOrdersList.mockReset();
+      getOrdersList.mockResolvedValueOnce({ success: true, message: '', data: page(0, 3), metadata: { has_more: false } });
+      let renderer!: ReturnType<typeof create>;
+      await act(async () => { renderer = create(<OrderFlashList />); });
+      const backgrounds = renderer.root.findAll(node => {
+        const style = [].concat(node.props.style ?? []).filter(Boolean) as Array<{ backgroundColor?: string }>;
+        return style.some(s => s.backgroundColor === t.background.base);
+      });
+      expect(backgrounds.length).toBeGreaterThan(0);
+      const refresh = renderer.root.findByType('FlashList' as unknown as React.ElementType).props.refreshControl;
+      expect(refresh.props.tintColor).toBe(t.brand.tint);
+      await act(async () => { renderer.unmount(); });
+    });
+  },
+);

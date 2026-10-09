@@ -13,6 +13,13 @@ jest.mock('react-native', () => ({
   },
 }));
 
+// The default style comes from the theme tokens; the hook is replaced so this
+// test does not need the store. Only statusBarStyle is read.
+let mockStatusBarStyle: 'dark-content' | 'light-content' = 'dark-content';
+jest.mock('@/hooks/useTheme', () => ({
+  useTokens: () => ({ statusBarStyle: mockStatusBarStyle }),
+}));
+
 type EdgeToEdgeStatusBarProps = React.ComponentProps<
   typeof EdgeToEdgeStatusBar
 >;
@@ -82,6 +89,19 @@ describe('EdgeToEdgeStatusBar', () => {
 
     await unmountStatusBar(renderer);
     expect(getBarStyleCalls()).toEqual([['dark-content', true]]);
+  });
+
+  it.each([
+    ['light', 'dark-content'],
+    ['dark', 'light-content'],
+  ] as const)('uses the %s theme token statusBarStyle when no barStyle is passed', async (_mode, tokenStyle) => {
+    mockStatusBarStyle = tokenStyle;
+    const renderer = await mountStatusBar({});
+
+    expect(getBarStyleCalls()).toEqual([[tokenStyle, false]]);
+
+    await unmountStatusBar(renderer);
+    mockStatusBarStyle = 'dark-content';
   });
 
   it('defaults animated to false', async () => {

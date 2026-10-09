@@ -12,6 +12,8 @@
  * - No inline functions in renderItem
  * - FlashList v2 handles item sizing automatically
  *
+ * Styling follows docs/STYLE_GUIDE.md (list report, §13.6 and §14.1).
+ *
  * @module lists/DispatchFlashList
  */
 
@@ -19,7 +21,7 @@ import React, { useState, useEffect, useCallback, useRef, useMemo, memo } from '
 import { View, Text, StyleSheet, RefreshControl, Pressable, LayoutAnimation, Vibration } from 'react-native';
 
 import { FlashList } from '@shopify/flash-list';
-import { ActivityIndicator, Badge, IconButton, Portal, Snackbar, Chip } from 'react-native-paper';
+import { ActivityIndicator, Badge, IconButton, Portal, Snackbar } from 'react-native-paper';
 import { router } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -33,6 +35,8 @@ import {
   getItemType,
   DEFAULT_LIST_CONFIG,
   SectionData,
+  useLegacyRowPalette,
+  listAvatarIndex,
 } from './types';
 
 // Services
@@ -65,9 +69,13 @@ import { selectFilterValues, clearFilter, setFilterValues } from '@/store/slices
 
 // Config
 import { DISPATCH_FILTER_CONFIG } from '@/config/filterConfigs';
-import { useListColors, ListColors } from '@/hooks/useListColors';
 import { formatSectionDate } from '@/utils/formatters';
 import { createLogger } from '@/utils/logger';
+
+// Theme
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { fontWeight, iconSize, layout, radius, space, touchTarget, typography } from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
 
 // ============================================================================
 // TYPES
@@ -88,17 +96,25 @@ type SortOrder = 'asc' | 'desc';
 interface SectionHeaderProps {
   title: string;
   count: number;
-  colors: ListColors;
 }
 
-const SectionHeader = React.memo<SectionHeaderProps>(({ title, count, colors }) => (
-  <View style={[styles.sectionHeader, { backgroundColor: colors.gray50 }]}>
-    <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>{title}</Text>
-    <View style={[styles.sectionBadge, { backgroundColor: colors.gray200 }]}>
-      <Text style={[styles.sectionCount, { color: colors.textSecondary }]}>{count}</Text>
+// Section header: footnote, capitals, text.secondary (style guide §13.6)
+const SectionHeader = React.memo<SectionHeaderProps>(({ title, count }) => {
+  const styles = useThemedStyles(makeStyles);
+  return (
+    <View
+      style={styles.sectionHeader}
+      accessible
+      accessibilityRole="header"
+      accessibilityLabel={`${title}, ${count} ${count === 1 ? 'dispatch' : 'dispatches'}`}
+    >
+      <Text style={styles.sectionTitle}>{title}</Text>
+      <View style={styles.sectionBadge}>
+        <Text style={styles.sectionCount} maxFontSizeMultiplier={1.6}>{count}</Text>
+      </View>
     </View>
-  </View>
-));
+  );
+});
 
 SectionHeader.displayName = 'SectionHeader';
 
@@ -111,38 +127,60 @@ interface EmptyStateProps {
   onClearFilters: () => void;
   canCreate: boolean;
   onCreateDispatch: () => void;
-  colors: ListColors;
 }
 
+// Empty state: hero icon, title3 title, subhead message, one action (style guide §13.6)
 const EmptyState = React.memo<EmptyStateProps>(({
   hasFilters,
   onClearFilters,
   canCreate,
   onCreateDispatch,
-  colors,
-}) => (
-  <View style={styles.emptyContainer}>
-    <View style={[styles.emptyIconSurface, { backgroundColor: colors.gray100 }]}>
-      <Icon name="truck-delivery" size={48} color={colors.textTertiary} />
+}) => {
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
+  return (
+    <View style={styles.emptyContainer}>
+      <Icon
+        name="truck-delivery-outline"
+        size={iconSize.hero}
+        color={t.icon.secondary}
+        accessible={false}
+        importantForAccessibility="no"
+      />
+      <Text style={styles.emptyTitle} accessibilityRole="header">
+        {hasFilters ? 'No dispatches match these filters' : 'No dispatches yet'}
+      </Text>
+      <Text style={styles.emptySubtitle}>
+        {hasFilters
+          ? 'Try fewer filters, or clear them to see all dispatches.'
+          : canCreate
+            ? 'Dispatches you create appear here.'
+            : 'Dispatches appear here once they are created.'}
+      </Text>
+      {hasFilters && (
+        <Pressable
+          style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryButtonPressed]}
+          onPress={onClearFilters}
+          accessibilityRole="button"
+          accessibilityLabel="Clear filters"
+        >
+          <Text style={styles.secondaryButtonText}>Clear filters</Text>
+        </Pressable>
+      )}
+      {canCreate && !hasFilters && (
+        <Pressable
+          style={({ pressed }) => [styles.primaryButton, pressed && styles.primaryButtonPressed]}
+          onPress={onCreateDispatch}
+          accessibilityRole="button"
+          accessibilityLabel="Create dispatch"
+        >
+          <Icon name="plus" size={iconSize.md} color={t.brand.onFill} />
+          <Text style={styles.primaryButtonText}>Create dispatch</Text>
+        </Pressable>
+      )}
     </View>
-    <Text style={[styles.emptyTitle, { color: colors.textPrimary }]}>No Dispatches Found</Text>
-    <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>
-      {hasFilters
-        ? 'Try adjusting your filters to see more results.'
-        : 'Start by creating your first dispatch.'}
-    </Text>
-    {hasFilters && (
-      <Pressable style={[styles.emptyButton, { borderColor: colors.gray300 }]} onPress={onClearFilters}>
-        <Text style={[styles.emptyButtonText, { color: colors.textPrimary }]}>Clear Filters</Text>
-      </Pressable>
-    )}
-    {canCreate && !hasFilters && (
-      <Pressable style={[styles.emptyButton, styles.emptyButtonPrimary, { backgroundColor: colors.primary, borderColor: colors.primary }]} onPress={onCreateDispatch}>
-        <Text style={[styles.emptyButtonTextPrimary, { color: colors.white }]}>Create Dispatch</Text>
-      </Pressable>
-    )}
-  </View>
-));
+  );
+});
 
 EmptyState.displayName = 'EmptyState';
 
@@ -155,7 +193,6 @@ interface FilterChipsProps {
   activeFilterCount: number;
   updateFilter: (key: string, value: AutocompleteSelection[] | string | number | undefined) => void;
   clearAllFilters: () => void;
-  colors: ListColors;
 }
 
 const FilterChips: React.FC<FilterChipsProps> = memo(({
@@ -163,8 +200,9 @@ const FilterChips: React.FC<FilterChipsProps> = memo(({
   activeFilterCount,
   updateFilter,
   clearAllFilters,
-  colors,
 }) => {
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
   if (activeFilterCount === 0) return null;
 
   const chips: { key: string; label: string; icon: string; onRemove: () => void }[] = [];
@@ -175,7 +213,7 @@ const FilterChips: React.FC<FilterChipsProps> = memo(({
       chips.push({
         key: `item-${item.id}`,
         label: item.label,
-        icon: 'package-variant',
+        icon: 'cube-outline',
         onRemove: () => {
           const remaining = (filters.itemName ?? []).filter((i: AutocompleteSelection) => i.id !== item.id);
           updateFilter('itemName', remaining.length > 0 ? remaining : []);
@@ -190,7 +228,7 @@ const FilterChips: React.FC<FilterChipsProps> = memo(({
       chips.push({
         key: `customer-${item.id}`,
         label: item.label,
-        icon: 'account',
+        icon: 'account-outline',
         onRemove: () => {
           const remaining = (filters.customerName ?? []).filter((i: AutocompleteSelection) => i.id !== item.id);
           updateFilter('customerName', remaining.length > 0 ? remaining : []);
@@ -203,25 +241,28 @@ const FilterChips: React.FC<FilterChipsProps> = memo(({
   if (filters.dispNoFrom && filters.dispNoFrom.length > 0) {
     chips.push({
       key: 'disp-from',
-      label: `From: ${filters.dispNoFrom[0].label}`,
-      icon: 'file-document',
+      label: `From ${filters.dispNoFrom[0].label}`,
+      icon: 'file-document-outline',
       onRemove: () => updateFilter('dispNoFrom', []),
     });
   }
   if (filters.dispNoTo && filters.dispNoTo.length > 0) {
     chips.push({
       key: 'disp-to',
-      label: `To: ${filters.dispNoTo[0].label}`,
-      icon: 'file-document',
+      label: `To ${filters.dispNoTo[0].label}`,
+      icon: 'file-document-outline',
       onRemove: () => updateFilter('dispNoTo', []),
     });
   }
 
   // Weight range chip
   if (filters.weightMin || filters.weightMax) {
+    const min = new Intl.NumberFormat('en-IN').format(Number(filters.weightMin || 0));
     chips.push({
       key: 'weight-range',
-      label: `${filters.weightMin || 0} - ${filters.weightMax || '∞'} kg`,
+      label: filters.weightMax
+        ? `${min} – ${new Intl.NumberFormat('en-IN').format(Number(filters.weightMax))} kg`
+        : `${min} kg or more`,
       icon: 'weight-kilogram',
       onRemove: () => {
         updateFilter('weightMin', undefined);
@@ -235,35 +276,45 @@ const FilterChips: React.FC<FilterChipsProps> = memo(({
     chips.push({
       key: 'package-mark',
       label: filters.packageMark,
-      icon: 'tag',
+      icon: 'tag-outline',
       onRemove: () => updateFilter('packageMark', ''),
     });
   }
 
   return (
-    <Animated.View entering={FadeIn} style={[styles.filterChipsContainer, { backgroundColor: colors.cellBackground, borderBottomColor: colors.cellDivider }]}>
+    <Animated.View entering={FadeIn} style={styles.filterChipsContainer}>
       <View style={styles.filterChipsHeader}>
         <View style={styles.filterCountBadge}>
-          <Icon name="filter-variant" size={14} color={colors.primary} />
-          <Text style={[styles.filterCountText, { color: colors.primary }]}>{activeFilterCount} active</Text>
+          <Icon name="filter-variant" size={iconSize.sm} color={t.brand.tint} />
+          <Text style={styles.filterCountText}>
+            {activeFilterCount} {activeFilterCount === 1 ? 'filter' : 'filters'}
+          </Text>
         </View>
-        <Pressable onPress={clearAllFilters} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-          <Text style={[styles.clearAllText, { color: colors.error }]}>Clear all</Text>
+        <Pressable
+          onPress={clearAllFilters}
+          style={styles.clearAllButton}
+          accessibilityRole="button"
+          accessibilityLabel="Clear all filters"
+        >
+          <Text style={styles.clearAllText}>Clear all</Text>
         </Pressable>
       </View>
       <View style={styles.filterChipsList}>
         {chips.map((chip) => (
-          <Chip
+          <Pressable
             key={chip.key}
-            icon={chip.icon}
-            onClose={chip.onRemove}
-            style={[styles.filterChip, { backgroundColor: colors.primaryLight }]}
-            textStyle={[styles.filterChipText, { color: colors.textSecondary }]}
-            closeIcon="close-circle"
-            compact
+            onPress={chip.onRemove}
+            hitSlop={space.sm}
+            style={({ pressed }) => [styles.filterChip, pressed && styles.filterChipPressed]}
+            accessibilityRole="button"
+            accessibilityLabel={`Remove filter ${chip.label}`}
           >
-            {chip.label}
-          </Chip>
+            <Icon name={chip.icon} size={iconSize.sm} color={t.brand.tint} />
+            <Text style={styles.filterChipText} numberOfLines={1} maxFontSizeMultiplier={1.6}>
+              {chip.label}
+            </Text>
+            <Icon name="close" size={iconSize.sm} color={t.brand.tint} />
+          </Pressable>
         ))}
       </View>
     </Animated.View>
@@ -280,8 +331,10 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
   const reduxDispatch = useAppDispatch();
   const fetchInProgressRef = useRef(false);
 
-  // Dynamic colors for dark mode support
-  const colors = useListColors();
+  // Theme
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
+  const rowColors = useLegacyRowPalette();
 
   // User state & permissions
   const { userProfile } = useAppSelector(state => state.auth);
@@ -452,7 +505,9 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
       console.error('[DispatchFlashList] Error:', err);
       const errorMessage = err instanceof Error ? err.message : 'Failed to load dispatches';
       setError(errorMessage);
-      setSnackbarMessage(errorMessage);
+      setSnackbarMessage(append
+        ? "Couldn't load more dispatches. Scroll down to try again."
+        : "Couldn't load dispatches. Check your connection and try again.");
       setSnackbarVisible(true);
     } finally {
       fetchInProgressRef.current = false;
@@ -611,7 +666,7 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
 
   const renderItem = useCallback(({ item }: { item: FlattenedItem<Dispatch> }) => {
     if (item.type === 'header') {
-      return <SectionHeader title={item.title} count={item.count} colors={colors} />;
+      return <SectionHeader title={item.title} count={item.count} />;
     }
 
     return (
@@ -619,12 +674,12 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
         dispatch={item.data}
         onPress={handleDispatchPress}
         canPrint={canPrint || false}
-        colors={colors}
+        colors={rowColors}
         globalExpanded={allExpanded}
         globalExpandedKey={expandKey}
       />
     );
-  }, [handleDispatchPress, canPrint, colors, allExpanded, expandKey]);
+  }, [handleDispatchPress, canPrint, rowColors, allExpanded, expandKey]);
 
   // ============================================================================
   // LIST FOOTER
@@ -633,23 +688,42 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
   const ListFooter = useMemo(() => {
     if (!isLoadingMore) return null;
     return (
-      <View style={styles.footerLoader}>
-        <ActivityIndicator size="small" color={colors.primary} />
-        <Text style={[styles.footerLoaderText, { color: colors.textSecondary }]}>Loading more...</Text>
+      <View style={styles.footerLoader} accessibilityLiveRegion="polite">
+        <ActivityIndicator size="small" color={t.brand.tint} />
+        <Text style={styles.footerLoaderText}>Loading more dispatches…</Text>
       </View>
     );
-  }, [isLoadingMore, colors]);
+  }, [isLoadingMore, styles, t]);
 
   // ============================================================================
   // RENDER
   // ============================================================================
 
+  const userName = userProfile?.name || 'U';
+  const avatarColor = t.avatar[listAvatarIndex(userName, t.avatar.length)];
+
+  const filterButton = (
+    <View style={styles.filterBtnContainer}>
+      <IconButton
+        icon="filter-variant"
+        size={iconSize.lg}
+        iconColor={activeFilterCount > 0 ? t.brand.tint : t.icon.primary}
+        style={styles.iconButton}
+        onPress={openFilterModal}
+        accessibilityLabel={activeFilterCount > 0 ? `Filter dispatches, ${activeFilterCount} active` : 'Filter dispatches'}
+      />
+      {activeFilterCount > 0 && (
+        <Badge size={18} style={styles.filterBadge} accessible={false}>{activeFilterCount}</Badge>
+      )}
+    </View>
+  );
+
   // Loading state
   if (isLoading && !isRefreshing) {
     return (
-      <View style={[styles.container, { backgroundColor: colors.gray50 }]}>
-        <View style={[styles.header, { backgroundColor: colors.cellBackground, borderBottomColor: colors.cellDivider }]}>
-          <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Dispatches</Text>
+      <View style={styles.container}>
+        <View style={styles.header}>
+          <Text style={styles.headerTitle} accessibilityRole="header">Dispatches</Text>
         </View>
         <ListSkeleton count={5} metricsCount={3} />
       </View>
@@ -659,17 +733,22 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
   // E1 Fix: Error state with retry button
   if (error && dispatches.length === 0) {
     return (
-      <View style={[styles.container, { backgroundColor: colors.gray50 }]}>
-        <View style={[styles.header, { backgroundColor: colors.cellBackground, borderBottomColor: colors.cellDivider }]}>
-          <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Dispatches</Text>
+      <View style={styles.container}>
+        <View style={styles.header}>
+          <Text style={styles.headerTitle} accessibilityRole="header">Dispatches</Text>
         </View>
         <View style={styles.errorState}>
-          <Icon name="alert-circle-outline" size={48} color={colors.gray400} />
-          <Text style={[styles.errorTitle, { color: colors.textPrimary }]}>Unable to load dispatches</Text>
-          <Text style={[styles.errorMessage, { color: colors.textSecondary }]}>{error}</Text>
-          <Pressable style={[styles.retryButton, { backgroundColor: colors.primary }]} onPress={handleRefresh}>
-            <Icon name="refresh" size={18} color={colors.white} />
-            <Text style={[styles.retryButtonText, { color: colors.white }]}>Retry</Text>
+          <Icon name="alert-circle-outline" size={iconSize.hero} color={t.status.negative.text} />
+          <Text style={styles.errorTitle} accessibilityRole="header">Couldn't load dispatches</Text>
+          <Text style={styles.errorMessage}>Check your connection and try again.</Text>
+          <Pressable
+            style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryButtonPressed]}
+            onPress={handleRefresh}
+            accessibilityRole="button"
+            accessibilityLabel="Try again"
+          >
+            <Icon name="refresh" size={iconSize.md} color={t.brand.tint} />
+            <Text style={styles.secondaryButtonText}>Try again</Text>
           </Pressable>
         </View>
       </View>
@@ -679,28 +758,16 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
   // Empty state
   if (!isLoading && dispatches.length === 0 && !error) {
     return (
-      <View style={[styles.container, { backgroundColor: colors.gray50 }]}>
-        <View style={[styles.header, { backgroundColor: colors.cellBackground, borderBottomColor: colors.cellDivider }]}>
-          <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Dispatches</Text>
-          <View style={styles.headerActions}>
-            <View style={styles.filterBtnContainer}>
-              <IconButton
-                icon="filter-variant"
-                size={24}
-                onPress={openFilterModal}
-              />
-              {activeFilterCount > 0 && (
-                <Badge size={18} style={[styles.filterBadge, { backgroundColor: colors.primary }]}>{activeFilterCount}</Badge>
-              )}
-            </View>
-          </View>
+      <View style={styles.container}>
+        <View style={styles.header}>
+          <Text style={styles.headerTitle} accessibilityRole="header">Dispatches</Text>
+          <View style={styles.headerActions}>{filterButton}</View>
         </View>
         <EmptyState
           hasFilters={activeFilterCount > 0}
           onClearFilters={handleClearFilters}
           canCreate={canCreateDispatch}
           onCreateDispatch={handleCreateDispatch}
-          colors={colors}
         />
         <Portal>
           <GenericFilterModal
@@ -714,35 +781,32 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
   }
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.gray50 }]}>
+    <View style={styles.container}>
       {/* Header */}
-      <View style={[styles.header, { backgroundColor: colors.cellBackground, borderBottomColor: colors.cellDivider }]}>
-        <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Dispatches</Text>
+      <View style={styles.header}>
+        <Text style={styles.headerTitle} accessibilityRole="header">Dispatches</Text>
         <View style={styles.headerActions}>
           {canCreateDispatch && (
             <IconButton
               icon="plus"
-              size={22}
-              iconColor={colors.textInverse}
-              style={[styles.addBtn, { backgroundColor: colors.primary }]}
-              accessibilityLabel="Create Dispatch"
+              size={iconSize.lg}
+              iconColor={t.brand.onFill}
+              containerColor={t.brand.fill}
+              style={styles.addBtn}
+              accessibilityLabel="Create dispatch"
               onPress={handleCreateDispatch}
             />
           )}
-          <View style={styles.filterBtnContainer}>
-            <IconButton
-              icon="filter-variant"
-              size={24}
-              onPress={openFilterModal}
-            />
-            {activeFilterCount > 0 && (
-              <Badge size={18} style={[styles.filterBadge, { backgroundColor: colors.primary }]}>{activeFilterCount}</Badge>
-            )}
-          </View>
-          <Pressable onPress={() => router.push('/settings')} style={styles.profileButton}>
-            <View style={[styles.profileAvatar, { backgroundColor: colors.primary }]}>
-              <Text style={[styles.profileAvatarText, { color: colors.white }]}>
-                {(userProfile?.name || 'U').charAt(0).toUpperCase()}
+          {filterButton}
+          <Pressable
+            onPress={() => router.push('/settings')}
+            style={styles.avatarButton}
+            accessibilityRole="button"
+            accessibilityLabel="Open settings"
+          >
+            <View style={[styles.profileAvatar, { backgroundColor: avatarColor }]}>
+              <Text style={styles.profileAvatarText} maxFontSizeMultiplier={1.6}>
+                {userName.charAt(0).toUpperCase()}
               </Text>
             </View>
           </Pressable>
@@ -750,72 +814,71 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
       </View>
 
       {/* Sort Toggle Bar */}
-      <View style={[styles.sortBar, { backgroundColor: colors.cellBackground, borderBottomColor: colors.cellDivider }]}>
-        <Text style={[styles.sortLabel, { color: colors.textTertiary }]}>Sort by:</Text>
-        <Pressable
-          style={[
-            styles.sortChip,
-            { backgroundColor: colors.gray100 },
-            sortField === 'dispDate' && { backgroundColor: colors.primary },
-          ]}
-          onPress={toggleSortField}
-        >
-          <Icon
-            name="calendar"
-            size={14}
-            color={sortField === 'dispDate' ? colors.white : colors.textSecondary}
-          />
-          <Text
-            style={[
-              styles.sortChipText,
-              { color: colors.textSecondary },
-              sortField === 'dispDate' && { color: colors.white },
-            ]}
+      <View style={styles.sortBar}>
+        <Text style={styles.sortLabel}>Sort by</Text>
+        <View style={styles.segmented} accessibilityRole="radiogroup">
+          <Pressable
+            style={[styles.segment, sortField === 'dispDate' && styles.segmentSelected]}
+            onPress={sortField === 'dispDate' ? undefined : toggleSortField}
+            hitSlop={space.sm}
+            accessibilityRole="radio"
+            accessibilityLabel="Sort by date"
+            accessibilityState={{ selected: sortField === 'dispDate', checked: sortField === 'dispDate' }}
           >
-            Date
-          </Text>
-        </Pressable>
-        <Pressable
-          style={[
-            styles.sortChip,
-            { backgroundColor: colors.gray100 },
-            sortField === 'dispNo' && { backgroundColor: colors.primary },
-          ]}
-          onPress={toggleSortField}
-        >
-          <Icon
-            name="pound"
-            size={14}
-            color={sortField === 'dispNo' ? colors.white : colors.textSecondary}
-          />
-          <Text
-            style={[
-              styles.sortChipText,
-              { color: colors.textSecondary },
-              sortField === 'dispNo' && { color: colors.white },
-            ]}
+            <Icon
+              name="calendar-outline"
+              size={iconSize.sm}
+              color={sortField === 'dispDate' ? t.brand.onFill : t.icon.primary}
+            />
+            <Text style={[styles.segmentText, sortField === 'dispDate' && styles.segmentTextSelected]}>
+              Date
+            </Text>
+          </Pressable>
+          <Pressable
+            style={[styles.segment, sortField === 'dispNo' && styles.segmentSelected]}
+            onPress={sortField === 'dispNo' ? undefined : toggleSortField}
+            hitSlop={space.sm}
+            accessibilityRole="radio"
+            accessibilityLabel="Sort by number"
+            accessibilityState={{ selected: sortField === 'dispNo', checked: sortField === 'dispNo' }}
           >
-            Number
-          </Text>
-        </Pressable>
-        <Pressable style={styles.sortOrderBtn} onPress={toggleSortOrder}>
+            <Icon
+              name="pound"
+              size={iconSize.sm}
+              color={sortField === 'dispNo' ? t.brand.onFill : t.icon.primary}
+            />
+            <Text style={[styles.segmentText, sortField === 'dispNo' && styles.segmentTextSelected]}>
+              Number
+            </Text>
+          </Pressable>
+        </View>
+        <Pressable
+          style={({ pressed }) => [styles.sortOrderBtn, pressed && styles.toolPressed]}
+          onPress={toggleSortOrder}
+          accessibilityRole="button"
+          accessibilityLabel={sortOrder === 'desc' ? 'Sorted newest first. Sort oldest first' : 'Sorted oldest first. Sort newest first'}
+        >
           <Icon
             name={sortOrder === 'desc' ? 'sort-descending' : 'sort-ascending'}
-            size={20}
-            color={colors.textSecondary}
+            size={iconSize.md}
+            color={t.icon.primary}
           />
         </Pressable>
         {/* Expand All / Collapse All Toggle */}
         <Pressable
-          style={[styles.expandAllBtn, { backgroundColor: colors.gray100 }]}
+          style={({ pressed }) => [styles.expandAllBtn, pressed && styles.toolPressed]}
           onPress={handleToggleAllExpanded}
+          hitSlop={space.sm}
+          accessibilityRole="button"
+          accessibilityLabel={allExpanded ? 'Collapse all dispatches' : 'Expand all dispatches'}
+          accessibilityState={{ expanded: allExpanded }}
         >
           <Icon
             name={allExpanded ? 'unfold-less-horizontal' : 'unfold-more-horizontal'}
-            size={18}
-            color={colors.textSecondary}
+            size={iconSize.sm}
+            color={t.brand.tint}
           />
-          <Text style={[styles.expandAllText, { color: colors.textSecondary }]}>
+          <Text style={styles.expandAllText}>
             {allExpanded ? 'Collapse' : 'Expand'}
           </Text>
         </Pressable>
@@ -827,7 +890,6 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
         activeFilterCount={activeFilterCount}
         updateFilter={updateFilter}
         clearAllFilters={handleClearFilters}
-        colors={colors}
       />
 
       {/* FlashList - The key to performance */}
@@ -836,14 +898,15 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
         renderItem={renderItem}
         keyExtractor={keyExtractor}
         getItemType={getItemType}
-        extraData={{ canPrint, handleDispatchPress, allExpanded, expandKey }}
+        extraData={{ canPrint, handleDispatchPress, allExpanded, expandKey, rowColors }}
         contentContainerStyle={styles.listContent}
         refreshControl={
           <RefreshControl
             refreshing={isRefreshing}
             onRefresh={handleRefresh}
-            colors={[colors.primary]}
-            tintColor={colors.primary}
+            colors={[t.brand.tint]}
+            tintColor={t.brand.tint}
+            progressBackgroundColor={t.surface.card}
           />
         }
         onEndReached={handleLoadMore}
@@ -867,7 +930,7 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
       <Snackbar
         visible={snackbarVisible}
         onDismiss={dismissSnackbar}
-        duration={3000}
+        duration={4000}
         style={styles.snackbar}
       >
         {snackbarMessage}
@@ -877,269 +940,336 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
 };
 
 // ============================================================================
-// STYLES
+// STYLES - tokens only (docs/STYLE_GUIDE.md)
 // ============================================================================
 
-const styles = StyleSheet.create({
+const makeStyles = (t: ThemeTokens) => ({
   container: {
     flex: 1,
-    // backgroundColor applied inline for dark mode
+    backgroundColor: t.background.base,
   },
+  // App bar on surface.header with a hairline divider (§13.8)
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    // backgroundColor, borderBottomColor applied inline for dark mode
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
+    paddingHorizontal: layout.marginCompact,
+    paddingVertical: space.sm,
+    minHeight: layout.rowMinHeight,
+    backgroundColor: t.surface.header,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.divider,
   },
   headerTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    // color applied inline for dark mode
+    ...typography.title3,
+    fontWeight: fontWeight.bold,
+    color: t.text.primary,
+    flexShrink: 1,
   },
   headerActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
   },
+  iconButton: {
+    width: touchTarget,
+    height: touchTarget,
+    margin: 0,
+  },
+  // Create action: brand.fill circle, kept at the minimum touch size
   addBtn: {
-    borderRadius: 20,
-    marginRight: 8,
-    // backgroundColor applied inline for dark mode
+    width: touchTarget,
+    height: touchTarget,
+    borderRadius: radius.pill,
+    margin: 0,
+    marginRight: space.xs,
   },
   filterBtnContainer: {
-    position: 'relative',
+    position: 'relative' as const,
   },
+  // Plain count badge: brand.fill with brand.onFill (§13.5)
   filterBadge: {
-    position: 'absolute',
-    top: 4,
-    right: 4,
-    // backgroundColor applied inline for dark mode
+    position: 'absolute' as const,
+    top: space.xxs,
+    right: space.xxs,
+    backgroundColor: t.brand.fill,
+    color: t.brand.onFill,
   },
-  sortBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    gap: 8,
-    // backgroundColor, borderBottomColor applied inline for dark mode
-  },
-  sortLabel: {
-    fontSize: 13,
-    marginRight: 4,
-    // color applied inline for dark mode
-  },
-  sortChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 16,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    gap: 4,
-    // backgroundColor applied inline for dark mode
-  },
-  sortChipText: {
-    fontSize: 13,
-    fontWeight: '500',
-    // color applied inline for dark mode
-  },
-  sortOrderBtn: {
-    padding: 4,
-  },
-  // Expand All Toggle Button
-  expandAllBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    gap: 4,
-    marginLeft: 'auto',
-    // backgroundColor: applied inline
-  },
-  expandAllText: {
-    fontSize: 13,
-    fontWeight: '500',
-    // color: applied inline
-  },
-  // Filter chips styles
-  filterChipsContainer: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-  },
-  filterChipsHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  filterCountBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  filterCountText: {
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  clearAllText: {
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  filterChipsList: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  filterChip: {
-    borderRadius: 16,
-  },
-  filterChipText: {
-    fontSize: 13,
-  },
-  listContent: {
-    paddingVertical: 8,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    // backgroundColor applied inline for dark mode
-  },
-  sectionTitle: {
-    fontSize: 13,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    // color applied inline for dark mode
-  },
-  sectionBadge: {
-    borderRadius: 10,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    // backgroundColor applied inline for dark mode
-  },
-  sectionCount: {
-    fontSize: 12,
-    fontWeight: '600',
-    // color applied inline for dark mode
-  },
-  footerLoader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 16,
-    gap: 8,
-  },
-  footerLoaderText: {
-    fontSize: 14,
-    // color applied inline for dark mode
-  },
-  emptyContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 32,
-  },
-  emptyIconSurface: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 24,
-    // backgroundColor applied inline for dark mode
-  },
-  emptyTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 8,
-    // color applied inline for dark mode
-  },
-  emptySubtitle: {
-    fontSize: 14,
-    textAlign: 'center',
-    marginBottom: 24,
-    // color applied inline for dark mode
-  },
-  emptyButton: {
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-    marginBottom: 12,
-    // borderColor applied inline for dark mode
-  },
-  emptyButtonPrimary: {
-    // backgroundColor, borderColor applied inline for dark mode
-  },
-  emptyButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    // color applied inline for dark mode
-  },
-  emptyButtonTextPrimary: {
-    fontSize: 14,
-    fontWeight: '600',
-    // color applied inline for dark mode
-  },
-  // E1 Fix: Error state styles
-  errorState: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 32,
-  },
-  errorTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginTop: 16,
-    marginBottom: 8,
-    // color applied inline for dark mode
-  },
-  errorMessage: {
-    fontSize: 14,
-    textAlign: 'center',
-    marginBottom: 24,
-    // color applied inline for dark mode
-  },
-  retryButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 8,
-    gap: 8,
-    // backgroundColor applied inline for dark mode
-  },
-  retryButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    // color applied inline for dark mode
-  },
-  snackbar: {
-    marginBottom: 80,
-  },
-  profileButton: {
-    marginLeft: 4,
+  avatarButton: {
+    width: touchTarget,
+    height: touchTarget,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
   },
   profileAvatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    justifyContent: 'center',
-    alignItems: 'center',
-    // backgroundColor applied inline for dark mode
+    width: layout.avatar.sm,
+    height: layout.avatar.sm,
+    borderRadius: radius.pill,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
   },
   profileAvatarText: {
-    fontSize: 14,
-    fontWeight: '600',
-    // color applied inline for dark mode
+    ...typography.subhead,
+    fontWeight: fontWeight.semibold,
+    // Avatar initials: text.primary in light mode, white in dark mode (§3.2)
+    color: t.mode === 'dark' ? t.overlay.onImage : t.text.primary,
+  },
+  // Sort toolbar with a hairline separator
+  sortBar: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    paddingHorizontal: layout.marginCompact,
+    paddingVertical: space.sm,
+    gap: space.sm,
+    backgroundColor: t.surface.header,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.separator,
+  },
+  sortLabel: {
+    ...typography.footnote,
+    color: t.text.secondary,
+  },
+  // Segmented control (§13.4): border.button container, selected brand.fill
+  segmented: {
+    flexDirection: 'row' as const,
+    borderWidth: 1,
+    borderColor: t.border.button,
+    borderRadius: radius.button,
+    overflow: 'hidden' as const,
+  },
+  segment: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    minHeight: space.xxxl,
+    paddingHorizontal: space.md,
+    gap: space.xs,
+  },
+  segmentSelected: {
+    backgroundColor: t.brand.fill,
+  },
+  segmentText: {
+    ...typography.footnote,
+    fontWeight: fontWeight.medium,
+    color: t.text.primary,
+  },
+  segmentTextSelected: {
+    fontWeight: fontWeight.semibold,
+    color: t.brand.onFill,
+  },
+  sortOrderBtn: {
+    width: touchTarget,
+    height: touchTarget,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    borderRadius: radius.button,
+  },
+  toolPressed: {
+    backgroundColor: t.brand.subtle,
+  },
+  // Expand all: tertiary action
+  expandAllBtn: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    minHeight: space.xxxl,
+    paddingHorizontal: space.sm,
+    borderRadius: radius.button,
+    gap: space.xs,
+    marginLeft: 'auto' as const,
+  },
+  expandAllText: {
+    ...typography.footnote,
+    fontWeight: fontWeight.semibold,
+    color: t.brand.tint,
+  },
+  // Applied filters bar (§13.5)
+  filterChipsContainer: {
+    paddingHorizontal: layout.marginCompact,
+    paddingVertical: space.md,
+    backgroundColor: t.surface.header,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.separator,
+  },
+  filterChipsHeader: {
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'center' as const,
+    marginBottom: space.sm,
+  },
+  filterCountBadge: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.s6,
+  },
+  filterCountText: {
+    ...typography.footnote,
+    fontWeight: fontWeight.semibold,
+    color: t.text.secondary,
+  },
+  clearAllButton: {
+    minHeight: touchTarget,
+    justifyContent: 'center' as const,
+    paddingHorizontal: space.sm,
+  },
+  clearAllText: {
+    ...typography.footnote,
+    fontWeight: fontWeight.semibold,
+    color: t.brand.tint,
+  },
+  filterChipsList: {
+    flexDirection: 'row' as const,
+    flexWrap: 'wrap' as const,
+    gap: space.sm,
+  },
+  filterChip: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    maxWidth: '100%' as const,
+    minHeight: space.xxxl,
+    borderRadius: radius.pill,
+    paddingHorizontal: space.md,
+    paddingVertical: space.s6,
+    gap: space.s6,
+    backgroundColor: t.brand.subtle,
+  },
+  filterChipPressed: {
+    backgroundColor: t.brand.subtleStrong,
+  },
+  filterChipText: {
+    ...typography.caption1,
+    fontWeight: fontWeight.semibold,
+    color: t.brand.tint,
+    flexShrink: 1,
+  },
+  listContent: {
+    paddingVertical: space.sm,
+  },
+  // Section header: footnote, capitals, text.secondary, letter spacing 0.5 (§4, §13.6)
+  sectionHeader: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
+    paddingHorizontal: layout.marginCompact,
+    paddingVertical: space.sm,
+    backgroundColor: t.background.base,
+  },
+  sectionTitle: {
+    ...typography.footnote,
+    fontWeight: fontWeight.semibold,
+    textTransform: 'uppercase' as const,
+    letterSpacing: 0.5,
+    color: t.text.secondary,
+  },
+  // Plain count: neutral tag
+  sectionBadge: {
+    borderRadius: radius.pill,
+    paddingHorizontal: space.sm,
+    paddingVertical: space.xxs,
+    backgroundColor: t.status.neutral.background,
+  },
+  sectionCount: {
+    ...typography.caption1,
+    fontWeight: fontWeight.semibold,
+    fontVariant: ['tabular-nums' as const],
+    color: t.status.neutral.text,
+  },
+  footerLoader: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    padding: space.lg,
+    gap: space.sm,
+  },
+  footerLoaderText: {
+    ...typography.footnote,
+    color: t.text.secondary,
+  },
+  // Empty and error states (§13.6)
+  emptyContainer: {
+    flex: 1,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    padding: space.xxxl,
+    gap: space.sm,
+  },
+  emptyTitle: {
+    ...typography.title3,
+    color: t.text.primary,
+    textAlign: 'center' as const,
+    marginTop: space.lg,
+  },
+  emptySubtitle: {
+    ...typography.subhead,
+    color: t.text.secondary,
+    textAlign: 'center' as const,
+    marginBottom: space.lg,
+    maxWidth: 320,
+  },
+  errorState: {
+    flex: 1,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    padding: space.xxxl,
+    gap: space.sm,
+  },
+  errorTitle: {
+    ...typography.title3,
+    color: t.text.primary,
+    textAlign: 'center' as const,
+    marginTop: space.lg,
+  },
+  errorMessage: {
+    ...typography.subhead,
+    color: t.text.secondary,
+    textAlign: 'center' as const,
+    marginBottom: space.lg,
+    maxWidth: 320,
+  },
+  // Primary button (§13.1)
+  primaryButton: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    minHeight: touchTarget,
+    minWidth: 120,
+    paddingHorizontal: space.xxl,
+    paddingVertical: space.sm,
+    borderRadius: radius.button,
+    backgroundColor: t.brand.fill,
+    gap: space.sm,
+  },
+  primaryButtonPressed: {
+    backgroundColor: t.brand.fillPressed,
+  },
+  primaryButtonText: {
+    ...typography.callout,
+    color: t.brand.onFill,
+  },
+  // Secondary button: outline border.button, label brand.tint, pressed brand.subtle (§13.1, §10)
+  secondaryButton: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    minHeight: touchTarget,
+    minWidth: 120,
+    paddingHorizontal: space.xxl,
+    paddingVertical: space.sm,
+    borderRadius: radius.button,
+    borderWidth: 1,
+    borderColor: t.border.button,
+    gap: space.sm,
+  },
+  secondaryButtonPressed: {
+    backgroundColor: t.brand.subtle,
+  },
+  secondaryButtonText: {
+    ...typography.callout,
+    color: t.brand.tint,
+  },
+  // Snackbar: inverse surface (§13.9)
+  snackbar: {
+    marginBottom: 80,
+    backgroundColor: t.surface.inverse,
+    borderRadius: radius.button,
+    ...t.shadow[3],
   },
 });
 

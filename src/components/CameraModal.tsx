@@ -1,26 +1,40 @@
 /**
  * CameraModal - Full-screen camera component with flash control
- * 
+ *
  * Uses expo-camera for native camera access with programmable flash control.
  * Flash defaults to ON for better warehouse/document photography.
+ *
+ * Camera and preview draw on overlay.imageBackdrop with overlay.onImage
+ * controls on overlay.scrim circles (docs/STYLE_GUIDE.md §13.3, §13.10). The
+ * permission request is a full-screen state on background.base (§13.9). The
+ * Android back button closes the camera (or returns from the preview).
  */
 
 import React, { useState, useRef, useCallback } from 'react';
 import {
     View,
     Text,
-    TouchableOpacity,
-    StyleSheet,
+    Pressable,
     Modal,
     ActivityIndicator,
-    Platform,
 } from 'react-native';
 import { Image } from 'expo-image';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
 import { CameraView, useCameraPermissions, FlashMode } from 'expo-camera';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import theme from '@/theme';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { fontWeight, iconSize, layout, motion, radius, space, touchTarget, typography } from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
+import { createLogger } from '@/utils/logger';
+
+const logger = createLogger('CameraModal');
+
+/** Photo and camera views always use light status bar icons (§5.2). */
+const PHOTO_STATUS_BAR = 'light-content' as const;
+
+const CAPTURE_OUTER = 80;
+const CAPTURE_INNER = 64;
 
 interface CameraModalProps {
     visible: boolean;
@@ -33,6 +47,9 @@ export const CameraModal: React.FC<CameraModalProps> = ({
     onClose,
     onCapture,
 }) => {
+    const styles = useThemedStyles(makeStyles);
+    const t = useTokens();
+    const insets = useSafeAreaInsets();
     const [flashMode, setFlashMode] = useState<FlashMode>('on'); // Default flash ON
     const [isCapturing, setIsCapturing] = useState(false);
     const [facing, setFacing] = useState<'front' | 'back'>('back');
@@ -67,7 +84,7 @@ export const CameraModal: React.FC<CameraModalProps> = ({
                 setPreviewUri(photo.uri);
             }
         } catch (error) {
-            console.error('[CameraModal] Error capturing photo:', error);
+            logger.error('Error capturing photo', error);
         } finally {
             setIsCapturing(false);
         }
@@ -101,19 +118,24 @@ export const CameraModal: React.FC<CameraModalProps> = ({
 
     const getFlashLabel = () => {
         switch (flashMode) {
-            case 'on': return 'ON';
-            case 'off': return 'OFF';
-            case 'auto': return 'AUTO';
-            default: return 'ON';
+            case 'on': return 'On';
+            case 'off': return 'Off';
+            case 'auto': return 'Auto';
+            default: return 'On';
         }
     };
 
     // Handle permission not granted yet
     if (!permission) {
         return (
-            <Modal visible={visible} animationType="slide" statusBarTranslucent>
-                <View style={styles.loadingContainer}>
-                    <ActivityIndicator size="large" color={theme.colors.primary} />
+            <Modal visible={visible} animationType="slide" statusBarTranslucent onRequestClose={handleClose}>
+                <View
+                    style={styles.loadingContainer}
+                    accessible
+                    accessibilityLabel="Opening camera"
+                    accessibilityState={{ busy: true }}
+                >
+                    <ActivityIndicator size="large" color={t.overlay.onImage} />
                 </View>
             </Modal>
         );
@@ -122,49 +144,73 @@ export const CameraModal: React.FC<CameraModalProps> = ({
     // Handle permission not granted
     if (!permission.granted) {
         return (
-            <Modal visible={visible} animationType="slide" statusBarTranslucent>
+            <Modal visible={visible} animationType="slide" statusBarTranslucent onRequestClose={handleClose}>
+                <EdgeToEdgeStatusBar barStyle={t.statusBarStyle} active={visible} />
                 <SafeAreaView style={styles.permissionContainer}>
-                    <Icon name="camera-off" size={64} color={theme.colors.gray[400]} />
-                    <Text style={styles.permissionTitle}>Camera Permission Required</Text>
-                    <Text style={styles.permissionText}>
-                        We need camera access to take photos for your GRN records.
+                    <Icon name="camera-off-outline" size={iconSize.hero} color={t.icon.secondary} />
+                    <Text style={styles.permissionTitle} accessibilityRole="header">
+                        Allow camera access
                     </Text>
-                    <TouchableOpacity style={styles.permissionButton} onPress={requestPermission}>
-                        <Text style={styles.permissionButtonText}>Grant Permission</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={styles.cancelButton} onPress={handleClose}>
+                    <Text style={styles.permissionText}>
+                        The app uses the camera to take photos of goods and documents for your records.
+                    </Text>
+                    <Pressable
+                        style={({ pressed }) => [styles.permissionButton, pressed && styles.permissionButtonPressed]}
+                        onPress={requestPermission}
+                        accessibilityRole="button"
+                        accessibilityLabel="Allow camera"
+                    >
+                        <Text style={styles.permissionButtonText}>Allow camera</Text>
+                    </Pressable>
+                    <Pressable
+                        style={({ pressed }) => [styles.cancelButton, pressed && styles.cancelButtonPressed]}
+                        onPress={handleClose}
+                        accessibilityRole="button"
+                        accessibilityLabel="Cancel"
+                    >
                         <Text style={styles.cancelButtonText}>Cancel</Text>
-                    </TouchableOpacity>
+                    </Pressable>
                 </SafeAreaView>
             </Modal>
         );
     }
 
-    // Show photo preview with Retake / Use Photo options
+    // Show photo preview with Retake / Use photo options
     if (previewUri) {
         return (
-            <Modal visible={visible} animationType="fade" statusBarTranslucent>
-                <EdgeToEdgeStatusBar barStyle="light-content" active={visible} />
+            <Modal visible={visible} animationType="fade" statusBarTranslucent onRequestClose={handleRetake}>
+                <EdgeToEdgeStatusBar barStyle={PHOTO_STATUS_BAR} active={visible} />
                 <View style={styles.container}>
                     <Image
                         source={{ uri: previewUri }}
                         style={styles.previewImage}
                         contentFit="contain"
                         cachePolicy="memory"
-                        transition={100}
+                        transition={motion.fast}
+                        accessibilityLabel="Photo preview"
                     />
 
                     {/* Preview Controls */}
-                    <View style={styles.previewControls}>
-                        <TouchableOpacity style={styles.retakeButton} onPress={handleRetake}>
-                            <Icon name="camera-retake" size={24} color="white" />
-                            <Text style={styles.previewButtonText}>Retake</Text>
-                        </TouchableOpacity>
+                    <View style={[styles.previewControls, { paddingBottom: insets.bottom + space.xxl }]}>
+                        <Pressable
+                            style={({ pressed }) => [styles.retakeButton, pressed && styles.overlayButtonPressed]}
+                            onPress={handleRetake}
+                            accessibilityRole="button"
+                            accessibilityLabel="Retake photo"
+                        >
+                            <Icon name="camera-retake-outline" size={iconSize.lg} color={t.overlay.onImage} />
+                            <Text style={styles.retakeButtonText}>Retake</Text>
+                        </Pressable>
 
-                        <TouchableOpacity style={styles.usePhotoButton} onPress={handleUsePhoto}>
-                            <Icon name="check" size={24} color="white" />
-                            <Text style={styles.previewButtonText}>Use Photo</Text>
-                        </TouchableOpacity>
+                        <Pressable
+                            style={({ pressed }) => [styles.usePhotoButton, pressed && styles.usePhotoButtonPressed]}
+                            onPress={handleUsePhoto}
+                            accessibilityRole="button"
+                            accessibilityLabel="Use photo"
+                        >
+                            <Icon name="check" size={iconSize.lg} color={t.brand.onFill} />
+                            <Text style={styles.usePhotoButtonText}>Use photo</Text>
+                        </Pressable>
                     </View>
                 </View>
             </Modal>
@@ -172,8 +218,8 @@ export const CameraModal: React.FC<CameraModalProps> = ({
     }
 
     return (
-        <Modal visible={visible} animationType="slide" statusBarTranslucent>
-            <EdgeToEdgeStatusBar barStyle="light-content" active={visible} />
+        <Modal visible={visible} animationType="slide" statusBarTranslucent onRequestClose={handleClose}>
+            <EdgeToEdgeStatusBar barStyle={PHOTO_STATUS_BAR} active={visible} />
             <View style={styles.container}>
                 <CameraView
                     ref={cameraRef}
@@ -182,35 +228,53 @@ export const CameraModal: React.FC<CameraModalProps> = ({
                     flash={flashMode}
                 >
                     {/* Top Controls */}
-                    <SafeAreaView style={styles.topControls}>
-                        <TouchableOpacity style={styles.closeButton} onPress={handleClose}>
-                            <Icon name="close" size={28} color="white" />
-                        </TouchableOpacity>
+                    <View style={[styles.topControls, { paddingTop: insets.top + space.sm }]}>
+                        <Pressable
+                            style={({ pressed }) => [styles.roundButton, pressed && styles.overlayButtonPressed]}
+                            onPress={handleClose}
+                            accessibilityRole="button"
+                            accessibilityLabel="Close camera"
+                        >
+                            <Icon name="close" size={iconSize.lg} color={t.overlay.onImage} />
+                        </Pressable>
 
-                        <TouchableOpacity style={styles.flashButton} onPress={toggleFlash}>
-                            <Icon name={getFlashIcon()} size={24} color="white" />
+                        <Pressable
+                            style={({ pressed }) => [styles.flashButton, pressed && styles.overlayButtonPressed]}
+                            onPress={toggleFlash}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Flash ${getFlashLabel().toLowerCase()}`}
+                            accessibilityHint="Changes the flash mode"
+                        >
+                            <Icon name={getFlashIcon()} size={iconSize.lg} color={t.overlay.onImage} />
                             <Text style={styles.flashLabel}>{getFlashLabel()}</Text>
-                        </TouchableOpacity>
+                        </Pressable>
 
-                        <TouchableOpacity style={styles.flipButton} onPress={toggleCameraFacing}>
-                            <Icon name="camera-flip" size={24} color="white" />
-                        </TouchableOpacity>
-                    </SafeAreaView>
+                        <Pressable
+                            style={({ pressed }) => [styles.roundButton, pressed && styles.overlayButtonPressed]}
+                            onPress={toggleCameraFacing}
+                            accessibilityRole="button"
+                            accessibilityLabel="Switch camera"
+                        >
+                            <Icon name="camera-flip-outline" size={iconSize.lg} color={t.overlay.onImage} />
+                        </Pressable>
+                    </View>
 
                     {/* Bottom Controls */}
-                    <View style={styles.bottomControls}>
+                    <View style={[styles.bottomControls, { paddingBottom: insets.bottom + space.xxl }]}>
                         <View style={styles.captureButtonOuter}>
-                            <TouchableOpacity
-                                style={[styles.captureButton, isCapturing && styles.captureButtonDisabled]}
+                            <Pressable
+                                style={({ pressed }) => [
+                                    styles.captureButton,
+                                    (pressed || isCapturing) && styles.captureButtonBusy,
+                                ]}
                                 onPress={handleCapture}
                                 disabled={isCapturing}
+                                accessibilityRole="button"
+                                accessibilityLabel="Take photo"
+                                accessibilityState={{ disabled: isCapturing, busy: isCapturing }}
                             >
-                                {isCapturing ? (
-                                    <ActivityIndicator size="small" color="white" />
-                                ) : (
-                                    <View style={styles.captureButtonInner} />
-                                )}
-                            </TouchableOpacity>
+                                {isCapturing && <ActivityIndicator size="small" color={t.overlay.imageBackdrop} />}
+                            </Pressable>
                         </View>
                     </View>
                 </CameraView>
@@ -219,174 +283,183 @@ export const CameraModal: React.FC<CameraModalProps> = ({
     );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (t: ThemeTokens) => ({
     container: {
         flex: 1,
-        backgroundColor: 'black',
+        backgroundColor: t.overlay.imageBackdrop,
     },
     camera: {
         flex: 1,
     },
     loadingContainer: {
         flex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
-        backgroundColor: 'black',
+        justifyContent: 'center' as const,
+        alignItems: 'center' as const,
+        backgroundColor: t.overlay.imageBackdrop,
     },
     permissionContainer: {
         flex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
-        backgroundColor: theme.colors.gray[50],
-        padding: 24,
-        gap: 16,
+        justifyContent: 'center' as const,
+        alignItems: 'center' as const,
+        backgroundColor: t.background.base,
+        padding: space.xxl,
+        gap: space.md,
     },
     permissionTitle: {
-        fontSize: 20,
-        fontWeight: '600',
-        color: theme.colors.gray[900],
-        marginTop: 16,
+        ...typography.title2,
+        color: t.text.primary,
+        textAlign: 'center' as const,
+        marginTop: space.sm,
     },
     permissionText: {
-        fontSize: 14,
-        color: theme.colors.gray[600],
-        textAlign: 'center',
-        lineHeight: 20,
+        ...typography.body,
+        color: t.text.secondary,
+        textAlign: 'center' as const,
+        maxWidth: layout.maxFormWidth,
     },
     permissionButton: {
-        backgroundColor: theme.colors.primary,
-        paddingHorizontal: 32,
-        paddingVertical: 14,
-        borderRadius: 12,
-        marginTop: 16,
+        minHeight: touchTarget,
+        minWidth: 120,
+        justifyContent: 'center' as const,
+        alignItems: 'center' as const,
+        backgroundColor: t.brand.fill,
+        paddingHorizontal: space.xxxl,
+        borderRadius: radius.button,
+        marginTop: space.md,
+    },
+    permissionButtonPressed: {
+        backgroundColor: t.brand.fillPressed,
     },
     permissionButtonText: {
-        color: 'white',
-        fontSize: 16,
-        fontWeight: '600',
+        ...typography.callout,
+        fontWeight: fontWeight.semibold,
+        color: t.brand.onFill,
     },
     cancelButton: {
-        paddingHorizontal: 32,
-        paddingVertical: 14,
+        minHeight: touchTarget,
+        justifyContent: 'center' as const,
+        alignItems: 'center' as const,
+        paddingHorizontal: space.xxxl,
+        borderRadius: radius.button,
+    },
+    cancelButtonPressed: {
+        backgroundColor: t.brand.subtle,
     },
     cancelButtonText: {
-        color: theme.colors.gray[600],
-        fontSize: 14,
+        ...typography.callout,
+        fontWeight: fontWeight.semibold,
+        color: t.brand.tint,
     },
     topControls: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        paddingHorizontal: 16,
-        paddingTop: Platform.OS === 'android' ? 40 : 8,
-        paddingBottom: 16,
-        backgroundColor: 'rgba(0,0,0,0.3)',
+        flexDirection: 'row' as const,
+        justifyContent: 'space-between' as const,
+        alignItems: 'center' as const,
+        paddingHorizontal: layout.marginCompact,
+        paddingBottom: space.lg,
+        backgroundColor: t.overlay.scrim,
     },
-    closeButton: {
-        width: 44,
-        height: 44,
-        borderRadius: 22,
-        backgroundColor: 'rgba(0,0,0,0.5)',
-        justifyContent: 'center',
-        alignItems: 'center',
+    roundButton: {
+        width: touchTarget,
+        height: touchTarget,
+        borderRadius: radius.pill,
+        backgroundColor: t.overlay.scrim,
+        justifyContent: 'center' as const,
+        alignItems: 'center' as const,
+    },
+    overlayButtonPressed: {
+        backgroundColor: t.interaction.pressedOverlay,
     },
     flashButton: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingHorizontal: 16,
-        paddingVertical: 10,
-        borderRadius: 20,
-        backgroundColor: 'rgba(0,0,0,0.5)',
-        gap: 6,
+        flexDirection: 'row' as const,
+        alignItems: 'center' as const,
+        minHeight: touchTarget,
+        paddingHorizontal: space.lg,
+        borderRadius: radius.pill,
+        backgroundColor: t.overlay.scrim,
+        gap: space.s6,
     },
     flashLabel: {
-        color: 'white',
-        fontSize: 12,
-        fontWeight: '600',
-    },
-    flipButton: {
-        width: 44,
-        height: 44,
-        borderRadius: 22,
-        backgroundColor: 'rgba(0,0,0,0.5)',
-        justifyContent: 'center',
-        alignItems: 'center',
+        ...typography.footnote,
+        fontWeight: fontWeight.semibold,
+        color: t.overlay.onImage,
     },
     bottomControls: {
-        position: 'absolute',
+        position: 'absolute' as const,
         bottom: 0,
         left: 0,
         right: 0,
-        paddingBottom: Platform.OS === 'ios' ? 40 : 30,
-        paddingTop: 20,
-        backgroundColor: 'rgba(0,0,0,0.3)',
-        alignItems: 'center',
+        paddingTop: space.xl,
+        backgroundColor: t.overlay.scrim,
+        alignItems: 'center' as const,
     },
     captureButtonOuter: {
-        width: 80,
-        height: 80,
-        borderRadius: 40,
-        borderWidth: 4,
-        borderColor: 'white',
-        justifyContent: 'center',
-        alignItems: 'center',
+        width: CAPTURE_OUTER,
+        height: CAPTURE_OUTER,
+        borderRadius: radius.pill,
+        borderWidth: space.xs,
+        borderColor: t.overlay.onImage,
+        justifyContent: 'center' as const,
+        alignItems: 'center' as const,
     },
     captureButton: {
-        width: 64,
-        height: 64,
-        borderRadius: 32,
-        backgroundColor: 'white',
-        justifyContent: 'center',
-        alignItems: 'center',
+        width: CAPTURE_INNER,
+        height: CAPTURE_INNER,
+        borderRadius: radius.pill,
+        backgroundColor: t.overlay.onImage,
+        justifyContent: 'center' as const,
+        alignItems: 'center' as const,
     },
-    captureButtonDisabled: {
-        backgroundColor: theme.colors.gray[300],
-    },
-    captureButtonInner: {
-        width: 56,
-        height: 56,
-        borderRadius: 28,
-        backgroundColor: 'white',
+    captureButtonBusy: {
+        opacity: t.interaction.disabledOpacity,
     },
     // Preview screen styles
     previewImage: {
         flex: 1,
-        width: '100%',
+        width: '100%' as const,
     },
     previewControls: {
-        position: 'absolute',
+        position: 'absolute' as const,
         bottom: 0,
         left: 0,
         right: 0,
-        flexDirection: 'row',
-        justifyContent: 'space-around',
-        paddingHorizontal: 32,
-        paddingBottom: Platform.OS === 'ios' ? 50 : 40,
-        paddingTop: 20,
-        backgroundColor: 'rgba(0,0,0,0.6)',
+        flexDirection: 'row' as const,
+        justifyContent: 'space-around' as const,
+        gap: space.md,
+        paddingHorizontal: space.xxxl,
+        paddingTop: space.xl,
+        backgroundColor: t.overlay.scrim,
     },
     retakeButton: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingHorizontal: 24,
-        paddingVertical: 14,
-        borderRadius: 12,
-        backgroundColor: 'rgba(255,255,255,0.2)',
-        gap: 8,
+        flexDirection: 'row' as const,
+        alignItems: 'center' as const,
+        minHeight: touchTarget,
+        paddingHorizontal: space.xxl,
+        borderRadius: radius.button,
+        borderWidth: 1,
+        borderColor: t.overlay.onImage,
+        gap: space.sm,
+    },
+    retakeButtonText: {
+        ...typography.callout,
+        fontWeight: fontWeight.semibold,
+        color: t.overlay.onImage,
     },
     usePhotoButton: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingHorizontal: 24,
-        paddingVertical: 14,
-        borderRadius: 12,
-        backgroundColor: theme.colors.primary,
-        gap: 8,
+        flexDirection: 'row' as const,
+        alignItems: 'center' as const,
+        minHeight: touchTarget,
+        paddingHorizontal: space.xxl,
+        borderRadius: radius.button,
+        backgroundColor: t.brand.fill,
+        gap: space.sm,
     },
-    previewButtonText: {
-        color: 'white',
-        fontSize: 16,
-        fontWeight: '600',
+    usePhotoButtonPressed: {
+        backgroundColor: t.brand.fillPressed,
+    },
+    usePhotoButtonText: {
+        ...typography.callout,
+        fontWeight: fontWeight.semibold,
+        color: t.brand.onFill,
     },
 });
 

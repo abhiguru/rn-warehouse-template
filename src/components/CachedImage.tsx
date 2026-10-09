@@ -10,13 +10,19 @@
  * - Loading state indicator
  * - Error state with retry
  * - Smooth transition animations
+ *
+ * Placeholder per docs/STYLE_GUIDE.md §13.10: surface.cardActive with an
+ * image-outline icon in icon.secondary while loading or after a failure.
+ * Pass `borderRadius: radius.card` in `style` when used in a grid.
  */
 
 import React, { useState, useCallback } from 'react';
-import { View, StyleSheet, ActivityIndicator, TouchableOpacity } from 'react-native';
+import { View, StyleSheet, Pressable } from 'react-native';
 import { Image, ImageProps, ImageContentFit } from 'expo-image';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import theme from '@/theme';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { iconSize, motion, radius, space } from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
 
 // Placeholder image as base64 (gray background with image icon)
 const PLACEHOLDER_BLURHASH = '|rF?hV%2WCj[ayj[a|j[az_NaeWBj@ayfRayfQfQM{M|azj[azf6fQfQfQIpWXofj[ayj[j[fQayWCoeoeaya}j[ayfQa{oLj?j[WVj[ayayj[fQoff7teleayj[ayj[j[ayofayayayj[fQj[ayayj[ayfjj[j[ayjuayj[';
@@ -52,6 +58,8 @@ export function CachedImage({
   style,
   ...rest
 }: CachedImageProps) {
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
   const [currentUri, setCurrentUri] = useState(uri);
@@ -104,7 +112,7 @@ export function CachedImage({
         style={StyleSheet.absoluteFill}
         contentFit={contentFit}
         cachePolicy="memory-disk"
-        transition={200}
+        transition={motion.standard}
         placeholder={usePlaceholder ? { blurhash: PLACEHOLDER_BLURHASH } : undefined}
         placeholderContentFit="cover"
         onLoadStart={handleLoadStart}
@@ -113,24 +121,31 @@ export function CachedImage({
         {...rest}
       />
 
-      {/* Loading overlay */}
-      {showLoading && isLoading && !hasError && (
-        <View style={styles.loadingOverlay}>
-          <ActivityIndicator size="small" color={theme.colors.primary} />
+      {/* Loading placeholder */}
+      {showLoading && isLoading && !hasError && !usePlaceholder && (
+        <View
+          style={styles.placeholder}
+          accessible
+          accessibilityLabel="Loading image"
+          accessibilityState={{ busy: true }}
+        >
+          <Icon name="image-outline" size={iconSize.lg} color={t.icon.secondary} />
         </View>
       )}
 
-      {/* Error overlay with retry */}
+      {/* Failure placeholder with retry */}
       {showError && hasError && (
-        <TouchableOpacity style={styles.errorOverlay} onPress={handleRetry} activeOpacity={0.8}>
-          <Icon name="image-off" size={24} color={theme.colors.gray[400]} />
-          <Icon
-            name="refresh"
-            size={16}
-            color={theme.colors.primary}
-            style={styles.retryIcon}
-          />
-        </TouchableOpacity>
+        <Pressable
+          style={({ pressed }) => [styles.placeholder, pressed && styles.placeholderPressed]}
+          onPress={handleRetry}
+          accessibilityRole="button"
+          accessibilityLabel="Couldn't load image. Try again"
+        >
+          <Icon name="image-off-outline" size={iconSize.lg} color={t.icon.secondary} />
+          <View style={styles.retryBadge}>
+            <Icon name="refresh" size={iconSize.sm} color={t.brand.tint} />
+          </View>
+        </Pressable>
       )}
     </View>
   );
@@ -177,27 +192,27 @@ export async function clearImageCache(): Promise<void> {
   }
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (t: ThemeTokens) => ({
   container: {
-    overflow: 'hidden',
-    backgroundColor: theme.colors.gray[100],
+    overflow: 'hidden' as const,
+    backgroundColor: t.surface.cardActive,
   },
-  loadingOverlay: {
+  placeholder: {
     ...StyleSheet.absoluteFillObject,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.7)',
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    backgroundColor: t.surface.cardActive,
   },
-  errorOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: theme.colors.gray[100],
+  placeholderPressed: {
+    backgroundColor: t.surface.cardPressed,
   },
-  retryIcon: {
-    position: 'absolute',
-    bottom: 4,
-    right: 4,
+  retryBadge: {
+    position: 'absolute' as const,
+    bottom: space.xs,
+    right: space.xs,
+    padding: space.xxs,
+    borderRadius: radius.pill,
+    backgroundColor: t.surface.card,
   },
 });
 

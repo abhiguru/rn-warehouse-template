@@ -3,26 +3,27 @@
  *
  * Shown when app launches and biometric auth is enabled.
  * Prompts user to authenticate with Face ID/Touch ID/Fingerprint.
+ * Full-screen state per docs/STYLE_GUIDE.md §13.9.
  */
 
 import React, { useEffect, useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  Image,
-  ActivityIndicator,
-  useColorScheme,
-} from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { ActivityIndicator, Text, View } from 'react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import theme, { colors, darkColors } from '@/theme';
-import { PrimaryButton, GhostButton } from '@/components/ui/Button';
+import { Button } from '@/components/ui/Button';
+import { BrandMark } from '@/components/BrandMark';
+import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
 import { useBiometricAuth, BiometricType } from '@/hooks/useBiometricAuth';
 import { triggerSuccess, triggerError } from '@/hooks/useHaptics';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { iconSize, layout, radius, space, typography } from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
+import { createLogger } from '@/utils/logger';
 
-// Local logo asset
-const localLogo = require('../../assets/logo.jpeg');
+const logger = createLogger('BiometricLockScreen');
+
+const APP_NAME = process.env.EXPO_PUBLIC_APP_NAME || 'Warehouse Manager';
+const ICON_CIRCLE = 96;
 
 interface BiometricLockScreenProps {
   onSuccess: () => void;
@@ -32,27 +33,52 @@ interface BiometricLockScreenProps {
 /**
  * Get icon name for biometric type
  */
-function getBiometricIcon(type: BiometricType): keyof typeof Ionicons.glyphMap {
+function getBiometricIcon(type: BiometricType): keyof typeof MaterialCommunityIcons.glyphMap {
   switch (type) {
     case 'face':
-      return 'scan-outline';
+      return 'face-recognition';
     case 'fingerprint':
-      return 'finger-print-outline';
+      return 'fingerprint';
     default:
-      return 'lock-closed-outline';
+      return 'lock-outline';
   }
 }
+
+const makeStyles = (t: ThemeTokens) => ({
+  container: { flex: 1, backgroundColor: t.background.base },
+  loading: { flex: 1, backgroundColor: t.background.base, justifyContent: 'center' as const, alignItems: 'center' as const },
+  content: {
+    flex: 1,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    paddingHorizontal: layout.marginCompact,
+  },
+  column: { width: '100%' as const, maxWidth: layout.maxFormWidth, alignItems: 'center' as const },
+  brand: { marginBottom: space.xxl },
+  iconCircle: {
+    width: ICON_CIRCLE,
+    height: ICON_CIRCLE,
+    borderRadius: radius.pill,
+    backgroundColor: t.brand.subtle,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    marginBottom: space.xxl,
+  },
+  title: { ...typography.title2, color: t.text.primary, textAlign: 'center' as const, marginBottom: space.sm },
+  subtitle: { ...typography.body, color: t.text.secondary, textAlign: 'center' as const, marginBottom: space.huge },
+  buttons: { width: '100%' as const, gap: space.lg },
+  divider: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: space.lg },
+  dividerLine: { flex: 1, height: 1, backgroundColor: t.border.divider },
+  dividerText: { ...typography.footnote, color: t.text.secondary },
+});
 
 export function BiometricLockScreen({
   onSuccess,
   onUsePhoneLogin,
 }: BiometricLockScreenProps) {
   const insets = useSafeAreaInsets();
-
-  // Dark mode support
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
-  const themeColors = isDark ? darkColors : colors;
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
 
   const {
     biometricType,
@@ -88,7 +114,7 @@ export function BiometricLockScreen({
       }
     } catch (error) {
       if (__DEV__) {
-        console.error('[BiometricLockScreen] Auth error:', error);
+        logger.error('Auth error:', error);
       }
       triggerError();
     } finally {
@@ -100,116 +126,55 @@ export function BiometricLockScreen({
 
   if (isLoading) {
     return (
-      <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
-        <ActivityIndicator size="large" color={themeColors.primary} />
+      <View style={[styles.loading, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+        <EdgeToEdgeStatusBar barStyle={t.statusBarStyle} />
+        <ActivityIndicator size="large" color={t.brand.tint} accessibilityLabel="Loading" />
       </View>
     );
   }
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom + 20 }]}>
+    <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom + space.xl }]}>
+      <EdgeToEdgeStatusBar barStyle={t.statusBarStyle} />
       <View style={styles.content}>
-        {/* Logo */}
-        <View style={styles.logoContainer}>
-          <Image source={localLogo} style={styles.logo} resizeMode="contain" />
-        </View>
-
-        {/* Biometric Icon */}
-        <View style={[styles.iconContainer, { backgroundColor: themeColors.orange[50] }]}>
-          <View style={[styles.iconCircle, { borderColor: themeColors.primary }]}>
-            <Ionicons name={biometricIcon} size={64} color={themeColors.primary} />
-          </View>
-        </View>
-
-        {/* Title */}
-        <Text style={[styles.title, { color: themeColors.fiori.text.primary }]}>Welcome Back</Text>
-        <Text style={[styles.subtitle, { color: themeColors.fiori.text.secondary }]}>
-          Use {biometricLabel} to unlock the app
-        </Text>
-
-        {/* Buttons */}
-        <View style={styles.buttonContainer}>
-          <PrimaryButton
-            onPress={handleBiometricAuth}
-            disabled={isAuthenticating}
-            loading={isAuthenticating}
-            size="large"
-            fullWidth
-          >
-            {`Unlock with ${biometricLabel}`}
-          </PrimaryButton>
-
-          <View style={styles.divider}>
-            <View style={[styles.dividerLine, { backgroundColor: themeColors.gray[200] }]} />
-            <Text style={[styles.dividerText, { color: themeColors.fiori.text.secondary }]}>or</Text>
-            <View style={[styles.dividerLine, { backgroundColor: themeColors.gray[200] }]} />
+        <View style={styles.column}>
+          <View style={styles.brand}>
+            <BrandMark label={APP_NAME} />
           </View>
 
-          <GhostButton onPress={onUsePhoneLogin} size="medium" fullWidth>
-            Use Phone Number
-          </GhostButton>
+          <View style={styles.iconCircle} accessibilityElementsHidden importantForAccessibility="no">
+            <MaterialCommunityIcons name={biometricIcon} size={iconSize.hero} color={t.brand.tint} />
+          </View>
+
+          <Text style={styles.title} accessibilityRole="header">
+            Welcome back
+          </Text>
+          <Text style={styles.subtitle}>Use {biometricLabel} to unlock the app.</Text>
+
+          <View style={styles.buttons}>
+            <Button
+              onPress={handleBiometricAuth}
+              loading={isAuthenticating}
+              loadingText="Unlocking"
+              size="fullWidth"
+            >
+              {`Unlock with ${biometricLabel}`}
+            </Button>
+
+            <View style={styles.divider} accessibilityElementsHidden importantForAccessibility="no">
+              <View style={styles.dividerLine} />
+              <Text style={styles.dividerText}>or</Text>
+              <View style={styles.dividerLine} />
+            </View>
+
+            <Button type="tertiary" size="fullWidth" onPress={onUsePhoneLogin}>
+              Sign in with mobile number
+            </Button>
+          </View>
         </View>
       </View>
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  content: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 32,
-  },
-  logoContainer: {
-    marginBottom: 32,
-  },
-  logo: {
-    width: 120,
-    height: 120,
-  },
-  iconContainer: {
-    marginBottom: 24,
-  },
-  iconCircle: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 3,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: '600',
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  subtitle: {
-    fontSize: 17,
-    textAlign: 'center',
-    marginBottom: 48,
-  },
-  buttonContainer: {
-    width: '100%',
-    gap: 16,
-  },
-  divider: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 16,
-    marginVertical: 8,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-  },
-  dividerText: {
-    fontSize: 13,
-  },
-});
 
 export default BiometricLockScreen;

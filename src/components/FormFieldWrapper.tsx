@@ -1,6 +1,13 @@
+/**
+ * Form field wrapper (docs/STYLE_GUIDE.md §13.2): label above the field in
+ * footnote / text.secondary with the required asterisk in text.required, then
+ * helper text or an error message with its icon.
+ */
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
-import theme from '@/theme';
+import { View, Text } from 'react-native';
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { fontWeight, iconSize, space, typography, type ThemeTokens } from '@/theme/tokens';
 
 export interface FormFieldWrapperProps {
   label: string;
@@ -17,13 +24,15 @@ export default function FormFieldWrapper({
   error,
   helpText,
   children,
-  marginBottom = theme.spacing.lg,
+  marginBottom = space.lg,
 }: FormFieldWrapperProps) {
+  const t = useTokens();
+  const styles = useThemedStyles(makeStyles);
   return (
     <View style={[styles.container, { marginBottom }]}>
       {/* Label */}
       <View style={styles.labelContainer}>
-        <Text style={styles.label}>
+        <Text style={[styles.label, error ? styles.labelError : null]}>
           {label}
           {required && <Text style={styles.required}> *</Text>}
         </Text>
@@ -36,37 +45,56 @@ export default function FormFieldWrapper({
       {helpText && !error && <Text style={styles.helpText}>{helpText}</Text>}
 
       {/* Error Message */}
-      {error && <Text style={styles.errorText}>{error}</Text>}
+      {error && (
+        <View style={styles.errorRow} accessibilityLiveRegion="polite">
+          <Icon
+            name="alert-circle"
+            size={iconSize.sm}
+            color={t.status.negative.text}
+            style={styles.errorIcon}
+          />
+          <Text style={styles.errorText}>{error}</Text>
+        </View>
+      )}
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (t: ThemeTokens) => ({
   container: {
-    width: '100%',
+    width: '100%' as const,
   },
   labelContainer: {
-    marginBottom: theme.spacing.xs,
+    marginBottom: space.xs,
   },
   label: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: theme.colors.gray[700],
+    ...typography.footnote,
+    color: t.text.secondary,
+  },
+  labelError: {
+    color: t.status.negative.text,
   },
   required: {
-    color: theme.colors.red[500],
-    fontWeight: '600',
+    color: t.text.required,
+    fontWeight: fontWeight.semibold,
   },
   helpText: {
-    marginTop: theme.spacing.xs,
-    fontSize: 12,
-    color: theme.colors.gray[500],
-    lineHeight: 16,
+    ...typography.footnote,
+    marginTop: space.xs,
+    color: t.text.secondary,
+  },
+  errorRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'flex-start' as const,
+    marginTop: space.xs,
+  },
+  errorIcon: {
+    marginTop: 1,
+    marginRight: space.xs,
   },
   errorText: {
-    marginTop: theme.spacing.xs,
-    fontSize: 12,
-    color: theme.colors.red[500],
-    lineHeight: 16,
+    ...typography.footnote,
+    flex: 1,
+    color: t.status.negative.text,
   },
 });

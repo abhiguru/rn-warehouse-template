@@ -8,24 +8,36 @@
  * SAP Fiori Design System - Modal/Dialog Component
  */
 
-import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
+import React, { useCallback, useContext, useEffect, useMemo, useState, useRef } from 'react';
 import {
   View,
   StyleSheet,
   Vibration,
   Pressable,
-  Platform,
   Text,
-  useColorScheme,
+  BackHandler,
+  Insets,
 } from 'react-native';
+import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetBackdropProps,
   BottomSheetScrollView,
 } from '@gorhom/bottom-sheet';
-import Icon from 'react-native-vector-icons/Ionicons';
-import { colors, darkColors } from '@/theme';
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import {
+  fontWeight,
+  iconSize,
+  layout,
+  radius,
+  space,
+  touchTarget,
+  typography,
+  type ThemeTokens,
+} from '@/theme/tokens';
+import { Button } from '@/components/ui/Button';
 import { createLogger } from '@/utils/logger';
 import type {
   GenericFilterModalProps,
@@ -43,87 +55,13 @@ import {
 } from '@/store/slices/filterSlice';
 import { calculateActiveFilterCount } from '@/utils/filterHelpers';
 
-// =============================================================================
-// FIORI DESIGN CONSTANTS
-// =============================================================================
-const FIORI = {
-  // Modal dimensions (from 10-modal-dialog.md)
-  modal: {
-    cornerRadius: 16,
-    handleWidth: 36,
-    handleHeight: 5,
-    handleColor: '#C6C6C8', // Fiori handle color
-    handleMarginTop: 8,
-    handleMarginBottom: 8,
-  },
-  // Header (from 10-modal-dialog.md)
-  header: {
-    height: 56,
-    paddingHorizontal: 16,
-  },
-  // Typography
-  typography: {
-    title: {
-      fontSize: 17,
-      fontWeight: '600' as const,
-      lineHeight: 22,
-    },
-    subtitle: {
-      fontSize: 13,
-      fontWeight: '400' as const,
-      lineHeight: 18,
-    },
-    sectionTitle: {
-      fontSize: 15,
-      fontWeight: '600' as const,
-      lineHeight: 20,
-    },
-    body: {
-      fontSize: 15,
-      fontWeight: '400' as const,
-      lineHeight: 20,
-    },
-    button: {
-      fontSize: 17,
-      fontWeight: '600' as const,
-    },
-    buttonSecondary: {
-      fontSize: 17,
-      fontWeight: '400' as const,
-    },
-  },
-  // Buttons (from 08-button.md)
-  button: {
-    height: 44,
-    borderRadius: 8,
-    paddingHorizontal: 16,
-  },
-  // Chips (from 09-chip.md)
-  chip: {
-    height: 32,
-    borderRadius: 16,
-    paddingHorizontal: 12,
-  },
-  // Touch targets
-  touchTarget: {
-    minHeight: 44,
-    minWidth: 44,
-  },
-  // Spacing scale
-  spacing: {
-    xxs: 4,
-    xs: 8,
-    sm: 12,
-    md: 16,
-    lg: 20,
-    xl: 24,
-    xxl: 32,
-  },
-  // Backdrop opacity (from 10-modal-dialog.md)
-  backdrop: {
-    opacity: 0.4,
-  },
-} as const;
+const CHIP_HEIGHT = 32;
+const CHIP_REMOVE_HIT_SLOP: Insets = {
+  top: (touchTarget - iconSize.sm) / 2,
+  bottom: (touchTarget - iconSize.sm) / 2,
+  left: space.sm,
+  right: space.sm,
+};
 
 // Field components
 import { TextFilterField } from './fields/TextFilterField';
@@ -133,35 +71,8 @@ import { RadioFilterField } from './fields/RadioFilterField';
 import { AutocompleteFilterField } from './fields/AutocompleteFilterField';
 import { AutocompleteBottomSheet } from './AutocompleteBottomSheet';
 
-// =============================================================================
-// ICON MAPPING (MaterialCommunityIcons → Ionicons)
-// Filter configs use MaterialCommunityIcons names, but this modal uses Ionicons
-// =============================================================================
-const ICON_MAP: Record<string, string> = {
-  'file-document': 'document-text-outline',
-  'file-document-outline': 'document-text-outline',
-  'package-variant': 'cube-outline',
-  'package-variant-closed': 'cube-outline',
-  'account': 'person-outline',
-  'account-group-outline': 'people-outline',
-  'chart-bar': 'bar-chart-outline',
-  'weight-kilogram': 'scale-outline',
-  'tag': 'pricetag-outline',
-  'calendar-range': 'calendar-outline',
-  'cash-multiple': 'cash-outline',
-  'currency-inr': 'cash-outline',
-  'magnify': 'search-outline',
-  'close': 'close',
-  'close-circle': 'close-circle',
-};
-
-/**
- * Map MaterialCommunityIcons name to Ionicons name
- */
-const mapIcon = (iconName?: string): string => {
-  if (!iconName) return 'document-text-outline';
-  return ICON_MAP[iconName] || iconName;
-};
+/** Field configs use MaterialCommunityIcons names; fall back to a document glyph. */
+const fieldIcon = (iconName?: string): string => iconName || 'file-document-outline';
 
 export const GenericFilterModal: React.FC<GenericFilterModalProps> = ({
   visible,
@@ -175,9 +86,10 @@ export const GenericFilterModal: React.FC<GenericFilterModalProps> = ({
   const dispatch = useAppDispatch();
   const bottomSheetRef = useRef<BottomSheet>(null);
   const snapPoints = useMemo(() => ['100%'], []);
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
-  const themeColors = isDark ? darkColors : colors;
+  const t = useTokens();
+  const styles = useThemedStyles(makeStyles);
+  // Insets when a SafeAreaProvider is mounted; zero otherwise.
+  const insets = useContext(SafeAreaInsetsContext) ?? { top: 0, bottom: 0, left: 0, right: 0 };
 
   // Get filter values from Redux (applied filters)
   const filterValues = useAppSelector(state =>
@@ -523,17 +435,17 @@ export const GenericFilterModal: React.FC<GenericFilterModalProps> = ({
 
   const renderBackdrop = useCallback(
     (props: BottomSheetBackdropProps) => {
-      logger.debug(`[BACKDROP_RENDER] Rendering backdrop with opacity=${FIORI.backdrop.opacity}`);
       return (
         <BottomSheetBackdrop
           {...props}
+          style={[props.style, styles.backdrop]}
           disappearsOnIndex={-1}
           appearsOnIndex={0}
-          opacity={FIORI.backdrop.opacity}
+          opacity={1}
         />
       );
     },
-    [logger]
+    [styles.backdrop]
   );
 
   const handleSheetChanges = useCallback(
@@ -548,6 +460,16 @@ export const GenericFilterModal: React.FC<GenericFilterModalProps> = ({
     },
     [onClose, logger]
   );
+
+  // Android back closes the sheet first (style guide §15)
+  useEffect(() => {
+    if (!visible) return undefined;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      handleClose();
+      return true;
+    });
+    return () => sub.remove();
+  }, [visible, handleClose]);
 
   // Don't render anything when not visible - fixes Android touch blocking issue
   // GestureHandlerRootView with pointerEvents: 'none' still captures touches on Android
@@ -569,21 +491,21 @@ export const GenericFilterModal: React.FC<GenericFilterModalProps> = ({
         }}
         index={0}
         snapPoints={snapPoints}
-        topInset={0}
+        topInset={insets.top}
         enableDynamicSizing={false}
         onChange={handleSheetChanges}
         backdropComponent={renderBackdrop}
         enablePanDownToClose
-        handleStyle={[styles.handle, { backgroundColor: themeColors.white }]}
-        backgroundStyle={[styles.background, { backgroundColor: themeColors.white }]}
+        handleStyle={styles.handle}
+        handleIndicatorStyle={styles.handleIndicator}
+        backgroundStyle={styles.background}
         style={styles.bottomSheet}
         keyboardBehavior="fillParent"
         keyboardBlurBehavior="restore"
         android_keyboardInputMode="adjustResize"
       >
-        {/* Fiori Header - Title centered, Cancel/Apply on sides */}
-        <View style={[styles.header, { backgroundColor: themeColors.white }]}>
-          {/* Cancel Button (left) - Fiori Tertiary Normal */}
+        {/* Header: Cancel, title, Reset */}
+        <View style={styles.header}>
           <Pressable
             onPress={handleClose}
             style={({ pressed }) => [
@@ -592,53 +514,40 @@ export const GenericFilterModal: React.FC<GenericFilterModalProps> = ({
             ]}
             accessibilityRole="button"
             accessibilityLabel="Cancel"
-            accessibilityHint="Discard changes and close filter"
+            accessibilityHint="Discards changes and closes the filters"
           >
-            <Text style={[styles.cancelButtonText, { color: themeColors.fiori.text.primary }]}>
-              Cancel
-            </Text>
+            <Text style={styles.cancelButtonText}>Cancel</Text>
           </Pressable>
 
-          {/* Title (center) */}
           <View style={styles.headerTitleContainer}>
-            <Text style={[styles.headerTitle, { color: themeColors.fiori.text.primary }]}>
+            <Text style={styles.headerTitle} accessibilityRole="header" numberOfLines={1}>
               {config.title || 'Filter'}
             </Text>
             {pendingFilterCount > 0 && (
-              <Text style={[styles.headerSubtitle, { color: themeColors.fiori.text.secondary }]}>
+              <Text style={styles.headerSubtitle}>
                 {pendingFilterCount} selected
               </Text>
             )}
           </View>
 
-          {/* Apply Button (right) - Fiori Tertiary Tint */}
           <Pressable
-            onPress={handleApply}
-            disabled={!hasPendingChanges}
+            onPress={handleReset}
+            disabled={pendingFilterCount === 0}
             style={({ pressed }) => [
               styles.headerButton,
+              styles.headerButtonEnd,
               pressed && styles.headerButtonPressed,
-              !hasPendingChanges && styles.headerButtonDisabled,
+              pendingFilterCount === 0 && styles.headerButtonDisabled,
             ]}
             accessibilityRole="button"
-            accessibilityLabel={`Apply ${pendingFilterCount} filter${pendingFilterCount !== 1 ? 's' : ''}`}
+            accessibilityLabel="Reset all filters"
+            accessibilityState={{ disabled: pendingFilterCount === 0 }}
           >
-            <Text
-              style={[
-                styles.applyButtonText,
-                { color: themeColors.primary },
-                !hasPendingChanges && { color: themeColors.gray[400] },
-              ]}
-            >
-              Apply
-            </Text>
+            <Text style={styles.resetButtonText}>Reset</Text>
           </Pressable>
         </View>
 
-        {/* Divider */}
-        <View style={[styles.headerDivider, { backgroundColor: themeColors.gray[200] }]} />
-
-        {/* Filter Fields with Collapsible Sections */}
+        {/* Filter fields grouped by section */}
         <BottomSheetScrollView
           contentContainerStyle={styles.contentContainer}
           keyboardShouldPersistTaps="handled"
@@ -664,28 +573,28 @@ export const GenericFilterModal: React.FC<GenericFilterModalProps> = ({
               <View key={section.key} style={styles.sectionContainer}>
                 {isCollapsible ? (
                   <>
-                    {/* Collapsible Section Header */}
+                    {/* Collapsible section header */}
                     <Pressable
                       onPress={() => toggleSection(sectionIndex)}
                       style={({ pressed }) => [
                         styles.sectionHeader,
-                        { backgroundColor: themeColors.gray[50] },
-                        pressed && { backgroundColor: themeColors.gray[100] },
+                        pressed && styles.sectionHeaderPressed,
                       ]}
                       accessibilityRole="button"
-                      accessibilityLabel={`${isExpanded ? 'Collapse' : 'Expand'} ${section.title}`}
+                      accessibilityLabel={section.title}
+                      accessibilityState={{ expanded: isExpanded }}
                     >
-                      <Text style={[styles.sectionTitle, { color: themeColors.fiori.text.primary }]}>
+                      <Text style={styles.sectionTitle} accessibilityRole="header">
                         {section.title}
                       </Text>
                       <Icon
                         name={isExpanded ? 'chevron-up' : 'chevron-down'}
-                        size={20}
-                        color={themeColors.gray[600]}
+                        size={iconSize.md}
+                        color={t.icon.secondary}
                       />
                     </Pressable>
 
-                    {/* Collapsible Content */}
+                    {/* Collapsible content */}
                     {isExpanded && (
                       <View style={styles.sectionContent}>
                         {/* For range pairs (2 fields), show them side by side */}
@@ -710,17 +619,16 @@ export const GenericFilterModal: React.FC<GenericFilterModalProps> = ({
                   </>
                 ) : (
                   <>
-                    {/* Non-collapsible Section */}
                     {isAutocompleteRange ? (
-                      /* Autocomplete Range Pair - show with title and side by side fields */
+                      /* Autocomplete range pair - title and side-by-side fields */
                       <View style={styles.rangeFilterContainer}>
                         <View style={styles.rangeFilterHeader}>
                           <Icon
-                            name={mapIcon(section.fields[0].icon)}
-                            size={20}
-                            color={themeColors.primary}
+                            name={fieldIcon(section.fields[0].icon)}
+                            size={iconSize.md}
+                            color={t.icon.secondary}
                           />
-                          <Text style={[styles.rangeFilterTitle, { color: themeColors.fiori.text.primary }]}>
+                          <Text style={styles.rangeFilterTitle} accessibilityRole="header">
                             {section.title}
                           </Text>
                         </View>
@@ -731,110 +639,67 @@ export const GenericFilterModal: React.FC<GenericFilterModalProps> = ({
                             </View>
                           ))}
                         </View>
-                        {/* Show selected items as chips for the range */}
+                        {/* Selected items in the range as chips */}
                         {(Array.isArray(localFilters[section.fields[0].key as string]) &&
                           localFilters[section.fields[0].key as string].length > 0) && (
                             <View style={styles.quickFilterChips}>
                               {localFilters[section.fields[0].key as string].map((item: AutocompleteSelection) => (
-                                <View
+                                <SelectionChip
                                   key={`from-${item.id}`}
-                                  style={[styles.filterChip, { backgroundColor: themeColors.primary }]}
-                                >
-                                  <Text style={[styles.filterChipText, { color: themeColors.fiori.text.inverse }]} numberOfLines={1}>
-                                    From: {item.label}
-                                  </Text>
-                                  <Pressable
-                                    onPress={() => handleRemoveSelection(section.fields[0].key as string, item.id)}
-                                    style={styles.filterChipRemove}
-                                    hitSlop={8}
-                                    accessibilityRole="button"
-                                    accessibilityLabel={`Remove ${item.label}`}
-                                  >
-                                    <Icon name="close" size={14} color={themeColors.fiori.text.inverse} />
-                                  </Pressable>
-                                </View>
+                                  label={`From ${item.label}`}
+                                  onRemove={() => handleRemoveSelection(section.fields[0].key as string, item.id)}
+                                />
                               ))}
                               {Array.isArray(localFilters[section.fields[1]?.key as string]) &&
                                 localFilters[section.fields[1].key as string].map((item: AutocompleteSelection) => (
-                                  <View
+                                  <SelectionChip
                                     key={`to-${item.id}`}
-                                    style={[styles.filterChip, { backgroundColor: themeColors.primary }]}
-                                  >
-                                    <Text style={[styles.filterChipText, { color: themeColors.fiori.text.inverse }]} numberOfLines={1}>
-                                      To: {item.label}
-                                    </Text>
-                                    <Pressable
-                                      onPress={() => handleRemoveSelection(section.fields[1].key as string, item.id)}
-                                      style={styles.filterChipRemove}
-                                      hitSlop={8}
-                                      accessibilityRole="button"
-                                      accessibilityLabel={`Remove ${item.label}`}
-                                    >
-                                      <Icon name="close" size={14} color={themeColors.fiori.text.inverse} />
-                                    </Pressable>
-                                  </View>
+                                    label={`To ${item.label}`}
+                                    onRemove={() => handleRemoveSelection(section.fields[1].key as string, item.id)}
+                                  />
                                 ))}
                             </View>
                           )}
                       </View>
                     ) : section.fields[0]?.type === 'autocomplete' ? (
-                      /* Single Autocomplete - show label with search icon */
+                      /* Single autocomplete - field-like trigger with search icon */
                       <View style={styles.quickFilterContainer}>
                         <Pressable
                           onPress={() => handleAutocompletePress(section.fields[0] as AutocompleteFieldConfig)}
                           style={({ pressed }) => [
                             styles.quickFilterPressable,
-                            {
-                              backgroundColor: themeColors.white,
-                              borderColor: themeColors.gray[300],
-                            },
-                            pressed && {
-                              backgroundColor: themeColors.gray[50],
-                              borderColor: themeColors.primary,
-                            },
+                            pressed && styles.quickFilterPressablePressed,
                           ]}
                           accessibilityRole="button"
                           accessibilityLabel={`Search ${section.title}`}
                         >
                           <View style={styles.quickFilterContent}>
                             {section.fields[0].icon && (
-                              <Icon name={mapIcon(section.fields[0].icon)} size={20} color={themeColors.gray[600]} />
+                              <Icon name={fieldIcon(section.fields[0].icon)} size={iconSize.md} color={t.icon.secondary} />
                             )}
-                            <Text style={[styles.quickFilterLabel, { color: themeColors.fiori.text.primary }]}>
+                            <Text style={styles.quickFilterLabel}>
                               {section.title}
                             </Text>
                           </View>
-                          <Icon name="search-outline" size={22} color={themeColors.primary} />
+                          <Icon name="magnify" size={iconSize.lg} color={t.brand.tint} />
                         </Pressable>
 
-                        {/* Show selected items as chips */}
+                        {/* Selected items as chips */}
                         {Array.isArray(localFilters[section.fields[0].key as string]) &&
                           localFilters[section.fields[0].key as string].length > 0 && (
                             <View style={styles.quickFilterChips}>
                               {localFilters[section.fields[0].key as string].map((item: AutocompleteSelection) => (
-                                <View
+                                <SelectionChip
                                   key={item.id}
-                                  style={[styles.filterChip, { backgroundColor: themeColors.primary }]}
-                                >
-                                  <Text style={[styles.filterChipText, { color: themeColors.fiori.text.inverse }]} numberOfLines={1}>
-                                    {item.label}
-                                  </Text>
-                                  <Pressable
-                                    onPress={() => handleRemoveSelection(section.fields[0].key as string, item.id)}
-                                    style={styles.filterChipRemove}
-                                    hitSlop={8}
-                                    accessibilityRole="button"
-                                    accessibilityLabel={`Remove ${item.label}`}
-                                  >
-                                    <Icon name="close" size={14} color={themeColors.fiori.text.inverse} />
-                                  </Pressable>
-                                </View>
+                                  label={item.label}
+                                  onRemove={() => handleRemoveSelection(section.fields[0].key as string, item.id)}
+                                />
                               ))}
                             </View>
                           )}
                       </View>
                     ) : (
-                      /* For other single field types, show the field directly */
+                      /* Other single fields render directly */
                       <View style={styles.fieldWrapperCompact}>
                         {renderField(section.fields[0])}
                       </View>
@@ -844,62 +709,23 @@ export const GenericFilterModal: React.FC<GenericFilterModalProps> = ({
               </View>
             );
           })}
-
-          {/* Action Buttons at bottom of scroll - Fiori style */}
-          <View style={[styles.actionButtonsContainer, { borderTopColor: themeColors.gray[200] }]}>
-            {/* Reset Button - Fiori Secondary Negative */}
-            <Pressable
-              onPress={handleReset}
-              disabled={pendingFilterCount === 0}
-              style={({ pressed }) => [
-                styles.resetButton,
-                {
-                  borderColor: themeColors.error,
-                  backgroundColor: themeColors.white,
-                },
-                pressed && { backgroundColor: themeColors.semantic.errorLight },
-                pendingFilterCount === 0 && {
-                  borderColor: themeColors.gray[300],
-                  opacity: 0.5,
-                },
-              ]}
-              accessibilityRole="button"
-              accessibilityLabel="Reset all filters"
-            >
-              <Icon
-                name="refresh-outline"
-                size={18}
-                color={pendingFilterCount === 0 ? themeColors.gray[400] : themeColors.error}
-              />
-              <Text
-                style={[
-                  styles.resetButtonText,
-                  { color: themeColors.error },
-                  pendingFilterCount === 0 && { color: themeColors.gray[400] },
-                ]}
-              >
-                Reset
-              </Text>
-            </Pressable>
-
-            {/* Clear All Button - Only shows when filters applied */}
-            {pendingFilterCount > 0 && (
-              <Pressable
-                onPress={handleReset}
-                style={({ pressed }) => [
-                  styles.clearAllButton,
-                  pressed && styles.clearAllButtonPressed,
-                ]}
-                accessibilityRole="button"
-                accessibilityLabel="Clear all filters"
-              >
-                <Text style={[styles.clearAllButtonText, { color: themeColors.primary }]}>
-                  Clear All
-                </Text>
-              </Pressable>
-            )}
-          </View>
         </BottomSheetScrollView>
+
+        {/* Primary action pinned at the bottom with the safe-area inset */}
+        <View style={[styles.footer, { paddingBottom: space.md + insets.bottom }]}>
+          <Button
+            type="primary"
+            size="fullWidth"
+            onPress={hasPendingChanges ? handleApply : handleClose}
+            accessibilityLabel={
+              pendingFilterCount > 0
+                ? `Show results, ${pendingFilterCount} filter${pendingFilterCount !== 1 ? 's' : ''}`
+                : 'Show results'
+            }
+          >
+            Show results
+          </Button>
+        </View>
       </BottomSheet>
 
       {/* Autocomplete Bottom Sheet */}
@@ -924,14 +750,34 @@ export const GenericFilterModal: React.FC<GenericFilterModalProps> = ({
   );
 };
 
+/** Applied-selection chip (style guide §13.5) with a 44 px remove target. */
+function SelectionChip({ label, onRemove }: { label: string; onRemove: () => void }) {
+  const t = useTokens();
+  const styles = useThemedStyles(makeStyles);
+  return (
+    <View style={styles.filterChip}>
+      <Text style={styles.filterChipText} numberOfLines={1} maxFontSizeMultiplier={1.6}>
+        {label}
+      </Text>
+      <Pressable
+        onPress={onRemove}
+        hitSlop={CHIP_REMOVE_HIT_SLOP}
+        accessibilityRole="button"
+        accessibilityLabel={`Remove filter ${label}`}
+      >
+        <Icon name="close" size={iconSize.sm} color={t.brand.tint} />
+      </Pressable>
+    </View>
+  );
+}
+
 // =============================================================================
-// STYLES - SAP Fiori Design System
-// Colors are applied dynamically in JSX for dark mode support
+// STYLES - SAP Fiori filter sheet (style guide §13.9)
 // =============================================================================
-const styles = StyleSheet.create({
-  // Bottom Sheet Structure
+const makeStyles = (t: ThemeTokens) => ({
+  // Bottom sheet structure
   gestureRoot: {
-    position: 'absolute',
+    position: 'absolute' as const,
     top: 0,
     left: 0,
     right: 0,
@@ -940,244 +786,211 @@ const styles = StyleSheet.create({
   },
   bottomSheet: {
     zIndex: 9999,
+    ...t.shadow[4],
   },
   handle: {
-    borderTopLeftRadius: FIORI.modal.cornerRadius,
-    borderTopRightRadius: FIORI.modal.cornerRadius,
+    backgroundColor: t.surface.sheet,
+    borderTopLeftRadius: radius.sheet,
+    borderTopRightRadius: radius.sheet,
   },
   handleIndicator: {
-    width: FIORI.modal.handleWidth,
-    height: FIORI.modal.handleHeight,
-    backgroundColor: FIORI.modal.handleColor,
-    borderRadius: FIORI.modal.handleHeight / 2,
-    alignSelf: 'center',
-    marginTop: FIORI.modal.handleMarginTop,
-    marginBottom: FIORI.modal.handleMarginBottom,
+    width: 36,
+    height: 4,
+    backgroundColor: t.border.separator,
+    borderRadius: radius.pill,
   },
   background: {
-    borderTopLeftRadius: FIORI.modal.cornerRadius,
-    borderTopRightRadius: FIORI.modal.cornerRadius,
+    backgroundColor: t.surface.sheet,
+    borderTopLeftRadius: radius.sheet,
+    borderTopRightRadius: radius.sheet,
+  },
+  backdrop: {
+    backgroundColor: t.overlay.scrim,
   },
 
-  // ==========================================================================
-  // HEADER - Fiori Modal Header with Cancel/Title/Apply
-  // ==========================================================================
+  // Header: Cancel / title / Reset
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    height: FIORI.header.height,
-    paddingHorizontal: FIORI.header.paddingHorizontal,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
+    minHeight: touchTarget + space.md,
+    paddingHorizontal: space.xs,
+    backgroundColor: t.surface.sheet,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.divider,
   },
   headerButton: {
-    minHeight: FIORI.touchTarget.minHeight,
-    minWidth: 60,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: FIORI.spacing.xs,
+    minHeight: touchTarget,
+    minWidth: 72,
+    justifyContent: 'center' as const,
+    alignItems: 'flex-start' as const,
+    paddingHorizontal: space.md,
+    borderRadius: radius.button,
+  },
+  headerButtonEnd: {
+    alignItems: 'flex-end' as const,
   },
   headerButtonPressed: {
-    opacity: 0.7,
+    backgroundColor: t.brand.subtle,
   },
   headerButtonDisabled: {
-    opacity: 0.3,
+    opacity: t.interaction.disabledOpacity,
   },
   headerTitleContainer: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
   },
   headerTitle: {
-    fontSize: FIORI.typography.title.fontSize,
-    fontWeight: FIORI.typography.title.fontWeight,
-    lineHeight: FIORI.typography.title.lineHeight,
-    textAlign: 'center',
+    ...typography.headline,
+    color: t.text.primary,
+    textAlign: 'center' as const,
   },
   headerSubtitle: {
-    fontSize: FIORI.typography.subtitle.fontSize,
-    fontWeight: FIORI.typography.subtitle.fontWeight,
-    lineHeight: FIORI.typography.subtitle.lineHeight,
-    textAlign: 'center',
-    marginTop: 2,
+    ...typography.footnote,
+    color: t.text.secondary,
+    textAlign: 'center' as const,
+    marginTop: space.xxs,
   },
   cancelButtonText: {
-    fontSize: FIORI.typography.buttonSecondary.fontSize,
-    fontWeight: FIORI.typography.buttonSecondary.fontWeight,
+    ...typography.body,
+    color: t.text.primary,
   },
-  applyButtonText: {
-    fontSize: FIORI.typography.button.fontSize,
-    fontWeight: FIORI.typography.button.fontWeight,
-  },
-  headerDivider: {
-    height: 1,
+  resetButtonText: {
+    ...typography.body,
+    fontWeight: fontWeight.semibold,
+    color: t.brand.tint,
   },
 
-  // ==========================================================================
-  // CONTENT AREA
-  // ==========================================================================
+  // Content
   contentContainer: {
-    paddingHorizontal: FIORI.spacing.md,
-    paddingTop: FIORI.spacing.sm,
-    paddingBottom: FIORI.spacing.xxl,
+    paddingHorizontal: layout.marginCompact,
+    paddingTop: space.md,
+    paddingBottom: space.xxl,
   },
 
-  // ==========================================================================
-  // COLLAPSIBLE SECTIONS
-  // ==========================================================================
+  // Collapsible sections
   sectionContainer: {
-    marginBottom: FIORI.spacing.sm,
+    marginBottom: space.md,
   },
   sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    borderRadius: FIORI.spacing.sm,
-    paddingHorizontal: FIORI.spacing.md,
-    paddingVertical: FIORI.spacing.sm,
-    minHeight: FIORI.touchTarget.minHeight,
-    marginBottom: FIORI.spacing.xs,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
+    borderRadius: radius.button,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.md,
+    minHeight: touchTarget,
+    marginBottom: space.sm,
+    backgroundColor: t.background.base,
+  },
+  sectionHeaderPressed: {
+    backgroundColor: t.surface.cardPressed,
   },
   sectionTitle: {
-    fontSize: FIORI.typography.sectionTitle.fontSize,
-    fontWeight: FIORI.typography.sectionTitle.fontWeight,
-    lineHeight: FIORI.typography.sectionTitle.lineHeight,
+    ...typography.subhead,
+    fontWeight: fontWeight.semibold,
+    color: t.text.primary,
     flex: 1,
   },
   sectionContent: {
-    paddingLeft: FIORI.spacing.xxs,
+    paddingLeft: space.xs,
   },
   fieldWrapper: {
-    marginBottom: FIORI.spacing.lg,
+    marginBottom: space.xl,
   },
   fieldWrapperCompact: {
     marginBottom: 0,
   },
   rangeFieldsRow: {
-    flexDirection: 'row',
-    gap: FIORI.spacing.sm,
-    alignItems: 'flex-start',
+    flexDirection: 'row' as const,
+    gap: space.md,
+    alignItems: 'flex-start' as const,
   },
   rangeFieldHalf: {
     flex: 1,
   },
 
-  // ==========================================================================
-  // QUICK FILTER BUTTON (for autocomplete fields)
-  // ==========================================================================
+  // Field-like trigger for autocomplete sections
   quickFilterPressable: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
     borderWidth: 1,
-    borderRadius: FIORI.spacing.xs,
-    paddingHorizontal: FIORI.spacing.md,
-    paddingVertical: FIORI.spacing.sm,
-    minHeight: FIORI.touchTarget.minHeight,
+    borderColor: t.border.field,
+    borderRadius: radius.field,
+    backgroundColor: t.surface.field,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.md,
+    minHeight: touchTarget,
+  },
+  quickFilterPressablePressed: {
+    backgroundColor: t.surface.cardPressed,
   },
   quickFilterContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: FIORI.spacing.sm,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.md,
     flex: 1,
   },
   quickFilterLabel: {
-    fontSize: FIORI.typography.body.fontSize,
-    fontWeight: '500' as const,
-    lineHeight: FIORI.typography.body.lineHeight,
+    ...typography.subhead,
+    fontWeight: fontWeight.medium,
+    color: t.text.primary,
     flex: 1,
   },
   quickFilterContainer: {
     marginBottom: 0,
   },
 
-  // ==========================================================================
-  // RANGE FILTER (non-collapsible autocomplete range)
-  // ==========================================================================
+  // Autocomplete range pair
   rangeFilterContainer: {
     marginBottom: 0,
   },
   rangeFilterHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: FIORI.spacing.xs,
-    marginBottom: FIORI.spacing.sm,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.sm,
+    marginBottom: space.md,
   },
   rangeFilterTitle: {
-    fontSize: FIORI.typography.sectionTitle.fontSize,
-    fontWeight: FIORI.typography.sectionTitle.fontWeight,
-    lineHeight: FIORI.typography.sectionTitle.lineHeight,
+    ...typography.subhead,
+    fontWeight: fontWeight.semibold,
+    color: t.text.primary,
   },
 
-  // ==========================================================================
-  // FILTER CHIPS - Fiori Chip Style
-  // ==========================================================================
+  // Selection chips
   quickFilterChips: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: FIORI.spacing.xs,
-    marginTop: FIORI.spacing.sm,
+    flexDirection: 'row' as const,
+    flexWrap: 'wrap' as const,
+    gap: space.sm,
+    marginTop: space.md,
   },
   filterChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    height: FIORI.chip.height,
-    borderRadius: FIORI.chip.borderRadius,
-    paddingLeft: FIORI.chip.paddingHorizontal,
-    paddingRight: FIORI.spacing.xxs,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    minHeight: CHIP_HEIGHT,
+    borderRadius: radius.pill,
+    paddingVertical: space.s6,
+    paddingLeft: space.md,
+    paddingRight: space.sm,
     maxWidth: 200,
-    gap: FIORI.spacing.xs,
+    gap: space.xs,
+    backgroundColor: t.brand.subtle,
   },
   filterChipText: {
-    fontSize: 14,
-    fontWeight: '500' as const,
+    ...typography.caption1,
+    fontWeight: fontWeight.semibold,
+    color: t.brand.tint,
     flexShrink: 1,
   },
-  filterChipRemove: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: 'rgba(255, 255, 255, 0.3)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
 
-  // ==========================================================================
-  // ACTION BUTTONS - Fiori style (bottom of scroll)
-  // ==========================================================================
-  actionButtonsContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: FIORI.spacing.md,
-    marginTop: FIORI.spacing.xxl,
-    paddingTop: FIORI.spacing.lg,
-    borderTopWidth: 1,
-  },
-  resetButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    height: FIORI.button.height,
-    paddingHorizontal: FIORI.button.paddingHorizontal,
-    borderRadius: FIORI.button.borderRadius,
-    borderWidth: 1,
-    gap: FIORI.spacing.xs,
-  },
-  resetButtonText: {
-    fontSize: FIORI.typography.button.fontSize,
-    fontWeight: FIORI.typography.button.fontWeight,
-  },
-  clearAllButton: {
-    height: FIORI.touchTarget.minHeight,
-    paddingHorizontal: FIORI.spacing.md,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  clearAllButtonPressed: {
-    opacity: 0.7,
-  },
-  clearAllButtonText: {
-    fontSize: FIORI.typography.body.fontSize,
-    fontWeight: '500' as const,
+  // Pinned footer
+  footer: {
+    paddingHorizontal: layout.marginCompact,
+    paddingTop: space.md,
+    backgroundColor: t.surface.sheet,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: t.border.separator,
   },
 });

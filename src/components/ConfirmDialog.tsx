@@ -1,50 +1,24 @@
 /**
- * ConfirmDialog - Dark mode compliant confirmation modal
+ * ConfirmDialog - confirmation dialog (docs/STYLE_GUIDE.md §13.9).
  *
- * SAP Fiori Design System - Modal/Dialog Component
- * Replaces native Alert.alert() for dark mode support
+ * surface.sheet, radius.card and shadow[4] over overlay.scrim. Optional icon:
+ * warning in status.critical.text, danger in status.negative.text. Title in
+ * title3, message in body text.secondary. Cancel is a secondary button and the
+ * action a primary one (the destructive fill for `danger`). The Android back
+ * button and a tap on the scrim cancel.
+ *
+ * Wording (§12.2): the title asks a question naming the object, and the
+ * confirm button repeats the verb ("Delete GRN", "Cancel").
  */
 
 import React, { ComponentProps } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  Modal,
-  Pressable,
-  Platform,
-  useColorScheme,
-} from 'react-native';
+import { View, Text, Modal, Pressable, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, darkColors } from '@/theme';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { fontWeight, iconSize, layout, radius, space, touchTarget, typography } from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
 
 type IoniconsName = ComponentProps<typeof Ionicons>['name'];
-
-// ============================================================================
-// SAP Fiori Design Constants
-// ============================================================================
-const FIORI = {
-  modal: {
-    cornerRadius: 16,
-    padding: 24,
-    maxWidth: 340,
-    backdropOpacity: 0.4,
-  },
-  button: {
-    height: 44,
-    borderRadius: 8,
-    fontSize: 15,
-    fontWeight: '600' as const,
-  },
-  typography: {
-    title: { fontSize: 18, fontWeight: '600' as const, lineHeight: 24 },
-    body: { fontSize: 15, fontWeight: '400' as const, lineHeight: 22 },
-  },
-  icon: {
-    containerSize: 56,
-    iconSize: 28,
-  },
-} as const;
 
 export type ConfirmVariant = 'default' | 'warning' | 'danger';
 
@@ -59,7 +33,93 @@ export interface ConfirmDialogProps {
   variant?: ConfirmVariant;
   /** Optional icon name (Ionicons) */
   icon?: IoniconsName;
+  /** Whether tapping the scrim cancels (default true). The back button always cancels. */
+  dismissible?: boolean;
 }
+
+const ICON_CIRCLE = layout.avatar.lg - space.xs;
+
+const makeStyles = (t: ThemeTokens) => ({
+  overlay: {
+    flex: 1,
+    backgroundColor: t.overlay.scrim,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    padding: space.xxl,
+  },
+  dialog: {
+    backgroundColor: t.surface.sheet,
+    borderRadius: radius.card,
+    padding: space.xxl,
+    width: '100%' as const,
+    maxWidth: layout.maxFormWidth,
+    alignItems: 'center' as const,
+    ...t.shadow[4],
+  },
+  iconContainer: {
+    width: ICON_CIRCLE,
+    height: ICON_CIRCLE,
+    borderRadius: radius.pill,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    marginBottom: space.lg,
+  },
+  iconDefault: { backgroundColor: t.brand.subtle },
+  iconWarning: { backgroundColor: t.status.critical.background },
+  iconDanger: { backgroundColor: t.status.negative.background },
+  title: {
+    ...typography.title3,
+    color: t.text.primary,
+    textAlign: 'center' as const,
+    marginBottom: space.sm,
+  },
+  message: {
+    ...typography.body,
+    color: t.text.secondary,
+    textAlign: 'center' as const,
+    marginBottom: space.xxl,
+  },
+  buttonContainer: {
+    flexDirection: 'row' as const,
+    flexWrap: 'wrap' as const,
+    gap: space.sm,
+    width: '100%' as const,
+  },
+  button: {
+    flexGrow: 1,
+    flexBasis: 120,
+    minHeight: touchTarget,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.sm,
+    borderRadius: radius.button,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+  },
+  cancelButton: {
+    borderWidth: 1,
+    borderColor: t.border.button,
+  },
+  cancelButtonPressed: {
+    backgroundColor: t.brand.subtle,
+  },
+  cancelButtonText: {
+    ...typography.callout,
+    fontWeight: fontWeight.semibold,
+    color: t.text.primary,
+    textAlign: 'center' as const,
+  },
+  confirmPrimary: { backgroundColor: t.brand.fill },
+  confirmPrimaryPressed: { backgroundColor: t.brand.fillPressed },
+  confirmPrimaryText: { color: t.brand.onFill },
+  confirmDestructive: { backgroundColor: t.destructive.fill },
+  confirmDestructivePressed: { backgroundColor: t.destructive.fillPressed },
+  confirmDestructiveText: { color: t.destructive.onFill },
+  confirmButtonText: {
+    ...typography.callout,
+    fontWeight: fontWeight.semibold,
+    textAlign: 'center' as const,
+  },
+});
 
 export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   visible,
@@ -71,53 +131,20 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   onCancel,
   variant = 'default',
   icon,
+  dismissible = true,
 }) => {
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
-  const themeColors = isDark ? darkColors : colors;
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
 
-  // Get variant-specific colors
-  const getVariantColors = () => {
-    switch (variant) {
-      case 'warning':
-        return {
-          iconBg: themeColors.orange[100],
-          iconColor: themeColors.orange[500],
-          confirmBg: themeColors.orange[500],
-          confirmBgPressed: themeColors.orange[600],
-        };
-      case 'danger':
-        return {
-          iconBg: themeColors.fiori.semantic.negativeLight,
-          iconColor: themeColors.fiori.semantic.negative,
-          confirmBg: themeColors.fiori.semantic.negative,
-          confirmBgPressed: '#b91c1c',
-        };
-      default:
-        return {
-          iconBg: themeColors.fiori.semantic.positiveLight,
-          iconColor: themeColors.fiori.semantic.positive,
-          confirmBg: themeColors.primary,
-          confirmBgPressed: themeColors.orange[600],
-        };
-    }
-  };
+  const destructive = variant === 'danger';
 
-  const variantColors = getVariantColors();
-
-  // Default icons based on variant
-  const getDefaultIcon = (): IoniconsName => {
-    switch (variant) {
-      case 'warning':
-        return 'alert-circle';
-      case 'danger':
-        return 'warning';
-      default:
-        return 'help-circle';
-    }
-  };
-
-  const iconName: IoniconsName = icon || getDefaultIcon();
+  // Icon: status colours for warning and danger, brand tint otherwise
+  const iconName: IoniconsName | undefined =
+    icon ?? (variant === 'danger' ? 'alert-circle-outline' : variant === 'warning' ? 'warning-outline' : undefined);
+  const iconColor =
+    variant === 'danger' ? t.status.negative.text : variant === 'warning' ? t.status.critical.text : t.brand.tint;
+  const iconBg =
+    variant === 'danger' ? styles.iconDanger : variant === 'warning' ? styles.iconWarning : styles.iconDefault;
 
   return (
     <Modal
@@ -125,62 +152,60 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
       transparent
       animationType="fade"
       onRequestClose={onCancel}
-      accessibilityViewIsModal={true}
-      accessibilityLabel="Confirmation Dialog"
+      statusBarTranslucent
     >
       <View style={styles.overlay}>
-        <View style={[styles.dialog, { backgroundColor: themeColors.white }]}>
-          {/* Icon */}
-          <View style={[styles.iconContainer, { backgroundColor: variantColors.iconBg }]}>
-            <Ionicons
-              name={iconName}
-              size={FIORI.icon.iconSize}
-              color={variantColors.iconColor}
-            />
-          </View>
+        {/* Scrim: tap to cancel */}
+        <Pressable
+          style={StyleSheet.absoluteFill}
+          onPress={dismissible ? onCancel : undefined}
+          accessible={false}
+          importantForAccessibility="no"
+        />
+        <View
+          style={styles.dialog}
+          accessibilityViewIsModal
+          accessibilityRole="alert"
+          accessibilityLabel={title}
+        >
+          {iconName && (
+            <View style={[styles.iconContainer, iconBg]} accessible={false} importantForAccessibility="no-hide-descendants">
+              <Ionicons name={iconName} size={iconSize.xl} color={iconColor} />
+            </View>
+          )}
 
-          {/* Title */}
-          <Text style={[styles.title, { color: themeColors.fiori.text.primary }]}>
+          <Text style={styles.title} accessibilityRole="header">
             {title}
           </Text>
 
-          {/* Message */}
-          <Text style={[styles.message, { color: themeColors.fiori.text.secondary }]}>
-            {message}
-          </Text>
+          <Text style={styles.message}>{message}</Text>
 
-          {/* Buttons */}
           <View style={styles.buttonContainer}>
-            {/* Cancel Button */}
             <Pressable
-              style={({ pressed }) => [
-                styles.button,
-                styles.cancelButton,
-                { borderColor: themeColors.gray[300] },
-                pressed && { backgroundColor: themeColors.gray[100] },
-              ]}
+              style={({ pressed }) => [styles.button, styles.cancelButton, pressed && styles.cancelButtonPressed]}
               onPress={onCancel}
               accessibilityRole="button"
               accessibilityLabel={cancelText}
             >
-              <Text style={[styles.cancelButtonText, { color: themeColors.fiori.text.primary }]}>
-                {cancelText}
-              </Text>
+              <Text style={styles.cancelButtonText}>{cancelText}</Text>
             </Pressable>
 
-            {/* Confirm Button */}
             <Pressable
               style={({ pressed }) => [
                 styles.button,
-                styles.confirmButton,
-                { backgroundColor: variantColors.confirmBg },
-                pressed && { backgroundColor: variantColors.confirmBgPressed },
+                destructive ? styles.confirmDestructive : styles.confirmPrimary,
+                pressed && (destructive ? styles.confirmDestructivePressed : styles.confirmPrimaryPressed),
               ]}
               onPress={onConfirm}
               accessibilityRole="button"
               accessibilityLabel={confirmText}
             >
-              <Text style={[styles.confirmButtonText, { color: themeColors.white }]}>
+              <Text
+                style={[
+                  styles.confirmButtonText,
+                  destructive ? styles.confirmDestructiveText : styles.confirmPrimaryText,
+                ]}
+              >
                 {confirmText}
               </Text>
             </Pressable>
@@ -190,91 +215,5 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
     </Modal>
   );
 };
-
-const styles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: `rgba(0, 0, 0, ${FIORI.modal.backdropOpacity})`,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 24,
-  },
-  dialog: {
-    borderRadius: FIORI.modal.cornerRadius,
-    padding: FIORI.modal.padding,
-    width: '100%',
-    maxWidth: FIORI.modal.maxWidth,
-    alignItems: 'center',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: 0.25,
-        shadowRadius: 16,
-      },
-      android: {
-        elevation: 16,
-      },
-    }),
-  },
-  iconContainer: {
-    width: FIORI.icon.containerSize,
-    height: FIORI.icon.containerSize,
-    borderRadius: FIORI.icon.containerSize / 2,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  title: {
-    fontSize: FIORI.typography.title.fontSize,
-    fontWeight: FIORI.typography.title.fontWeight,
-    lineHeight: FIORI.typography.title.lineHeight,
-    textAlign: 'center',
-    marginBottom: 8,
-  },
-  message: {
-    fontSize: FIORI.typography.body.fontSize,
-    fontWeight: FIORI.typography.body.fontWeight,
-    lineHeight: FIORI.typography.body.lineHeight,
-    textAlign: 'center',
-    marginBottom: 24,
-  },
-  buttonContainer: {
-    flexDirection: 'row',
-    gap: 12,
-    width: '100%',
-  },
-  button: {
-    flex: 1,
-    height: FIORI.button.height,
-    borderRadius: FIORI.button.borderRadius,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  cancelButton: {
-    borderWidth: 1,
-  },
-  cancelButtonText: {
-    fontSize: FIORI.button.fontSize,
-    fontWeight: FIORI.button.fontWeight,
-  },
-  confirmButton: {
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.2,
-        shadowRadius: 4,
-      },
-      android: {
-        elevation: 4,
-      },
-    }),
-  },
-  confirmButtonText: {
-    fontSize: FIORI.button.fontSize,
-    fontWeight: FIORI.button.fontWeight,
-  },
-});
 
 export default ConfirmDialog;

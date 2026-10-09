@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { View, StyleSheet, Dimensions, LayoutChangeEvent } from 'react-native';
+import { View, Dimensions, LayoutChangeEvent } from 'react-native';
 import { GestureDetector, Gesture } from 'react-native-gesture-handler';
 import Animated, {
   useAnimatedStyle,
@@ -10,7 +10,8 @@ import Animated, {
   Easing,
 } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
-import theme from '@/theme';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { iconSize, radius, type ThemeTokens } from '@/theme/tokens';
 
 interface SwipeableFormStepProps {
   children: React.ReactNode;
@@ -47,6 +48,8 @@ export default function SwipeableFormStep({
   canSwipeRight = false,
   edgeActivationWidth,
 }: SwipeableFormStepProps) {
+  const t = useTokens();
+  const styles = useThemedStyles(makeStyles);
   const translateX = useSharedValue(0);
   const leftIndicatorOpacity = useSharedValue(0);
   const rightIndicatorOpacity = useSharedValue(0);
@@ -198,7 +201,7 @@ export default function SwipeableFormStep({
           style={[styles.leftIndicator, leftIndicatorAnimatedStyle]}
           pointerEvents="none"
         >
-          <Ionicons name="chevron-back" size={32} color={theme.colors.white} />
+          <Ionicons name="chevron-back" size={iconSize.xl} color={t.brand.onFill} />
         </Animated.View>
       )}
 
@@ -208,7 +211,7 @@ export default function SwipeableFormStep({
           style={[styles.rightIndicator, rightIndicatorAnimatedStyle]}
           pointerEvents="none"
         >
-          <Ionicons name="chevron-forward" size={32} color={theme.colors.white} />
+          <Ionicons name="chevron-forward" size={iconSize.xl} color={t.brand.onFill} />
         </Animated.View>
       )}
 
@@ -222,40 +225,39 @@ export default function SwipeableFormStep({
   );
 }
 
-const styles = StyleSheet.create({
+// Swipe hints: decorative edge tabs in the brand fill
+const makeStyles = (t: ThemeTokens) => ({
   container: {
     flex: 1,
-    position: 'relative',
+    position: 'relative' as const,
   },
   content: {
     flex: 1,
   },
   leftIndicator: {
-    position: 'absolute',
+    position: 'absolute' as const,
     top: 0,
     left: 0,
     bottom: 0,
     width: INDICATOR_WIDTH,
-    backgroundColor: theme.colors.blue[600], // Slightly darker for better visibility
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: t.brand.fill,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
     zIndex: 1000,
-    pointerEvents: 'none',
-    borderTopRightRadius: 16,
-    borderBottomRightRadius: 16,
+    borderTopRightRadius: radius.sheet,
+    borderBottomRightRadius: radius.sheet,
   },
   rightIndicator: {
-    position: 'absolute',
+    position: 'absolute' as const,
     top: 0,
     right: 0,
     bottom: 0,
     width: INDICATOR_WIDTH,
-    backgroundColor: theme.colors.green[600], // Slightly darker for better visibility
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: t.brand.fill,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
     zIndex: 1000,
-    pointerEvents: 'none',
-    borderTopLeftRadius: 16,
-    borderBottomLeftRadius: 16,
+    borderTopLeftRadius: radius.sheet,
+    borderBottomLeftRadius: radius.sheet,
   },
 });

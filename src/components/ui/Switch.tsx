@@ -13,51 +13,16 @@ import React from 'react';
 import {
   View,
   Text,
+  Pressable,
   Switch as RNSwitch,
-  StyleSheet,
   ViewStyle,
   TextStyle,
   StyleProp,
 } from 'react-native';
-import theme, { Colors } from '@/theme';
-import { useTheme } from '@/hooks/useTheme';
-import { triggerMediumTap } from '@/hooks/useHaptics';
-
-// ============================================================================
-// FIORI SWITCH CONSTANTS
-// ============================================================================
-
-const FIORI_DIMENSIONS = {
-  // Dimensions
-  cellMinHeight: 44,
-  switchWidth: 51, // iOS standard
-  switchHeight: 31, // iOS standard
-  horizontalPadding: 16,
-  labelSwitchGap: 12,
-
-  // Typography
-  labelFontSize: 17,
-  labelFontWeight: '400' as const,
-  helperFontSize: 13,
-  helperLineHeight: 18,
-};
-
-/**
- * Generate theme-aware FIORI colors for Switch
- */
-function getFioriColors(colors: Colors) {
-  return {
-    trackColorOff: colors.gray[200],
-    trackColorOn: colors.green[500], // iOS green equivalent
-    trackColorOnBranded: colors.primary, // Primary color option
-    thumbColor: colors.white,
-    labelColor: colors.fiori.text.primary,
-    labelColorDisabled: colors.gray[500],
-    helperColor: colors.fiori.text.secondary,
-    backgroundColor: colors.fiori.objectCell.background,
-    dividerColor: colors.fiori.objectCell.divider,
-  };
-}
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { fontWeight, layout, space, typography } from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
+import { triggerLightTap } from '@/hooks/useHaptics';
 
 // ============================================================================
 // TYPES
@@ -74,7 +39,10 @@ export interface SwitchProps {
   disabled?: boolean;
   /** Helper text below the label */
   helperText?: string;
-  /** Use brand primary color instead of iOS green for on state */
+  /**
+   * Track colour when on. true (default): brand.fill. false: status.positive.element,
+   * for a plain on/off that should not read as a brand action.
+   */
   useBrandColor?: boolean;
   /** Enable haptic feedback on toggle */
   hapticFeedback?: boolean;
@@ -101,77 +69,74 @@ export const Switch: React.FC<SwitchProps> = ({
   onValueChange,
   disabled = false,
   helperText,
-  useBrandColor = false,
+  useBrandColor = true,
   hapticFeedback = true,
   style,
   labelStyle,
   showDivider = false,
 }) => {
-  const { colors: themeColors } = useTheme();
-  const FIORI = getFioriColors(themeColors);
+  const t = useTokens();
+  const styles = useThemedStyles(makeStyles);
 
   // Handle toggle with optional haptic feedback
   const handleValueChange = (newValue: boolean) => {
     if (hapticFeedback) {
-      triggerMediumTap();
+      triggerLightTap();
     }
     onValueChange(newValue);
   };
 
-  // Get track on color (iOS green or brand orange)
-  const trackColorOn = useBrandColor ? FIORI.trackColorOnBranded : FIORI.trackColorOn;
+  const trackColorOn = useBrandColor ? t.brand.fill : t.status.positive.element;
+  const hasLabel = Boolean(label || helperText);
+
+  const control = (
+    <RNSwitch
+      value={value}
+      onValueChange={handleValueChange}
+      disabled={disabled}
+      trackColor={{
+        false: t.control.trackOff,
+        true: trackColorOn,
+      }}
+      thumbColor={t.control.thumb}
+      ios_backgroundColor={t.control.trackOff}
+      // With a label the whole row is the switch for touch and screen readers.
+      accessible={!hasLabel}
+      importantForAccessibility={hasLabel ? 'no-hide-descendants' : 'auto'}
+      accessibilityRole="switch"
+      accessibilityState={{ checked: value, disabled }}
+    />
+  );
+
+  if (!hasLabel) {
+    return (
+      <View style={[styles.container, showDivider && styles.containerWithDivider, style]}>
+        {control}
+      </View>
+    );
+  }
 
   return (
-    <View
-      style={[
+    <Pressable
+      onPress={() => handleValueChange(!value)}
+      disabled={disabled}
+      style={({ pressed }) => [
         styles.container,
-        { backgroundColor: FIORI.backgroundColor },
+        pressed && styles.containerPressed,
         showDivider && styles.containerWithDivider,
-        showDivider && { borderBottomColor: FIORI.dividerColor },
         style,
       ]}
+      accessibilityRole="switch"
+      accessibilityLabel={label}
+      accessibilityHint={helperText}
+      accessibilityState={{ checked: value, disabled }}
     >
-      {/* Label section */}
-      {(label || helperText) && (
-        <View style={styles.labelContainer}>
-          {label && (
-            <Text
-              style={[
-                styles.label,
-                { color: FIORI.labelColor },
-                disabled && styles.labelDisabled,
-                disabled && { color: FIORI.labelColorDisabled },
-                labelStyle,
-              ]}
-            >
-              {label}
-            </Text>
-          )}
-          {helperText && (
-            <Text style={[styles.helperText, { color: FIORI.helperColor }]}>{helperText}</Text>
-          )}
-        </View>
-      )}
-
-      {/* Switch */}
-      <RNSwitch
-        value={value}
-        onValueChange={handleValueChange}
-        disabled={disabled}
-        trackColor={{
-          false: FIORI.trackColorOff,
-          true: trackColorOn,
-        }}
-        thumbColor={FIORI.thumbColor}
-        ios_backgroundColor={FIORI.trackColorOff}
-        accessibilityRole="switch"
-        accessibilityState={{
-          checked: value,
-          disabled: disabled,
-        }}
-        accessibilityLabel={label ? `${label}, ${value ? 'On' : 'Off'}` : undefined}
-      />
-    </View>
+      <View style={[styles.labelContainer, disabled && styles.disabled]}>
+        {label && <Text style={[styles.label, labelStyle]}>{label}</Text>}
+        {helperText && <Text style={styles.helperText}>{helperText}</Text>}
+      </View>
+      <View style={disabled && styles.disabled}>{control}</View>
+    </Pressable>
   );
 };
 
@@ -201,18 +166,17 @@ export const SwitchCell: React.FC<SwitchCellProps> = ({
   onValueChange,
   disabled = false,
   helperText,
-  useBrandColor = false,
+  useBrandColor = true,
   hapticFeedback = true,
   style,
   labelStyle,
   showDivider = false,
   children,
 }) => {
-  const { colors: themeColors } = useTheme();
-  const FIORI = getFioriColors(themeColors);
+  const styles = useThemedStyles(makeStyles);
 
   return (
-    <View style={[styles.cellContainer, { backgroundColor: FIORI.backgroundColor }]}>
+    <View style={styles.cellContainer}>
       {/* Main switch row */}
       <Switch
         label={label}
@@ -229,7 +193,7 @@ export const SwitchCell: React.FC<SwitchCellProps> = ({
 
       {/* Further selection content (only when ON) */}
       {value && children && (
-        <View style={[styles.childrenContainer, { backgroundColor: FIORI.backgroundColor }]}>
+        <View style={styles.childrenContainer}>
           {children}
         </View>
       )}
@@ -267,13 +231,12 @@ export const SwitchGroup: React.FC<SwitchGroupProps> = ({
   children,
   style,
 }) => {
-  const { colors: themeColors } = useTheme();
-  const FIORI = getFioriColors(themeColors);
+  const styles = useThemedStyles(makeStyles);
 
   return (
     <View style={[styles.groupContainer, style]}>
-      <Text style={[styles.groupTitle, { color: FIORI.helperColor }]}>{title}</Text>
-      <View style={[styles.groupContent, { backgroundColor: FIORI.backgroundColor, borderColor: FIORI.dividerColor }]}>
+      <Text style={styles.groupTitle} accessibilityRole="header">{title}</Text>
+      <View style={styles.groupContent}>
         {children}
       </View>
     </View>
@@ -284,70 +247,70 @@ export const SwitchGroup: React.FC<SwitchGroupProps> = ({
 // STYLES (SAP Fiori Switch Form Cell)
 // ============================================================================
 
-const styles = StyleSheet.create({
-  // Basic switch container
+const makeStyles = (t: ThemeTokens) => ({
+  // Basic switch row: the whole row is the touch target
   container: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: FIORI_DIMENSIONS.horizontalPadding,
-    paddingVertical: 12,
-    minHeight: FIORI_DIMENSIONS.cellMinHeight,
-    backgroundColor: theme.colors.fiori.objectCell.background,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.md,
+    minHeight: layout.rowMinHeight,
+    backgroundColor: t.surface.card,
+  },
+  containerPressed: {
+    backgroundColor: t.surface.cardPressed,
   },
   containerWithDivider: {
     borderBottomWidth: 1,
-    borderBottomColor: theme.colors.fiori.objectCell.divider,
+    borderBottomColor: t.border.divider,
+  },
+  disabled: {
+    opacity: t.interaction.disabledOpacity,
   },
 
   // Label section
   labelContainer: {
     flex: 1,
-    marginRight: FIORI_DIMENSIONS.labelSwitchGap,
+    marginRight: space.md,
   },
   label: {
-    fontSize: FIORI_DIMENSIONS.labelFontSize,
-    fontWeight: FIORI_DIMENSIONS.labelFontWeight,
-    color: theme.colors.fiori.text.primary,
-  },
-  labelDisabled: {
-    color: theme.colors.gray[500],
-    opacity: 0.5,
+    ...typography.body,
+    color: t.text.primary,
   },
   helperText: {
-    fontSize: FIORI_DIMENSIONS.helperFontSize,
-    lineHeight: FIORI_DIMENSIONS.helperLineHeight,
-    color: theme.colors.fiori.text.secondary,
-    marginTop: 2,
+    ...typography.footnote,
+    color: t.text.secondary,
+    marginTop: space.xxs,
   },
 
   // SwitchCell container
   cellContainer: {
-    backgroundColor: theme.colors.fiori.objectCell.background,
+    backgroundColor: t.surface.card,
   },
   childrenContainer: {
-    backgroundColor: theme.colors.fiori.objectCell.background,
+    backgroundColor: t.surface.card,
   },
 
   // SwitchGroup styles
   groupContainer: {
-    marginBottom: theme.spacing.md,
+    marginBottom: space.lg,
   },
   groupTitle: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: theme.colors.fiori.text.secondary,
-    textTransform: 'uppercase',
+    ...typography.footnote,
+    fontWeight: fontWeight.semibold,
+    color: t.text.secondary,
+    textTransform: 'uppercase' as const,
     letterSpacing: 0.5,
-    paddingHorizontal: FIORI_DIMENSIONS.horizontalPadding,
-    paddingVertical: theme.spacing.sm,
-    backgroundColor: theme.colors.gray[50],
+    paddingHorizontal: space.lg,
+    paddingTop: space.xxl,
+    paddingBottom: space.sm,
   },
   groupContent: {
-    backgroundColor: theme.colors.fiori.objectCell.background,
+    backgroundColor: t.surface.card,
     borderTopWidth: 1,
     borderBottomWidth: 1,
-    borderColor: theme.colors.fiori.objectCell.divider,
+    borderColor: t.border.divider,
   },
 });
 

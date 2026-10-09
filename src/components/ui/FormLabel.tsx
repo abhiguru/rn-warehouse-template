@@ -1,51 +1,28 @@
 /**
- * SAP Fiori Form Cell Label implementation
+ * SAP Fiori form cell label (docs/STYLE_GUIDE.md §13.2).
  *
  * Features:
- * - Capital Case text display
- * - Required asterisk indicator
- * - Error state styling
- * - Disabled state (50% opacity per Fiori spec)
+ * - Sentence-case label in footnote, text.secondary
+ * - Required asterisk in text.required
+ * - Error state in status.negative.text
+ * - Disabled state (interaction.disabledOpacity)
  * - Read-only state
  * - Optional helper/hint text
- * - Consistent typography with Input component
+ * - Consistent typography with the Input component
  */
 
 import React from 'react';
 import {
   View,
   Text,
-  StyleSheet,
   TextProps,
   StyleProp,
   TextStyle,
   ViewStyle,
 } from 'react-native';
-
-// ============================================================================
-// FIORI FORM CELL CONSTANTS (matching Input.tsx)
-// ============================================================================
-
-const FIORI = {
-  // Typography
-  labelFontSize: 13,
-  labelLineHeight: 18,
-  helperFontSize: 13,
-  helperLineHeight: 18,
-
-  // Spacing
-  labelMarginBottom: 4,
-  helperMarginTop: 4,
-
-  // Colors (matching SAP Fiori spec)
-  labelColor: '#1D2D3E', // Fiori text primary
-  labelColorSecondary: '#556B82', // Fiori text secondary (for read-only/disabled)
-  errorColor: '#D32030', // Fiori negative (red)
-  requiredColor: '#D32030', // Red asterisk
-
-  // Opacity
-  disabledOpacity: 0.5,
-};
+import { useThemedStyles } from '@/hooks/useTheme';
+import { fontWeight, space, typography } from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
 
 // ============================================================================
 // TYPES
@@ -56,11 +33,11 @@ export interface FormLabelProps extends Omit<TextProps, 'children'> {
   children: React.ReactNode;
   /** Show required asterisk */
   required?: boolean;
-  /** Show in error state (red text) */
+  /** Show in error state */
   error?: boolean;
-  /** Show in disabled state (50% opacity) */
+  /** Show in disabled state (reduced opacity) */
   disabled?: boolean;
-  /** Show in read-only state (secondary color) */
+  /** Show in read-only state */
   readOnly?: boolean;
   /** Additional text style */
   style?: StyleProp<TextStyle>;
@@ -81,43 +58,29 @@ export const FormLabel: React.FC<FormLabelProps> = ({
   required = false,
   error = false,
   disabled = false,
-  readOnly = false,
+  readOnly: _readOnly = false,
   style,
   containerStyle,
   helperText,
   size = 'default',
   ...props
 }) => {
-  // Determine label color based on state (Fiori priority: error > disabled > readOnly > default)
-  const getLabelColor = () => {
-    if (error) return FIORI.errorColor;
-    if (disabled || readOnly) return FIORI.labelColorSecondary;
-    return FIORI.labelColor;
-  };
-
-  const labelStyle: TextStyle = {
-    fontSize: size === 'small' ? 12 : FIORI.labelFontSize,
-    lineHeight: size === 'small' ? 16 : FIORI.labelLineHeight,
-    fontWeight: '500', // Medium weight per Fiori spec
-    color: getLabelColor(),
-    marginBottom: FIORI.labelMarginBottom,
-    // Capital Case is handled by content, not style
-  };
-
-  const containerOpacity = disabled ? FIORI.disabledOpacity : 1;
+  const styles = useThemedStyles(makeStyles);
+  const labelStyle = [
+    styles.label,
+    size === 'small' && styles.labelSmall,
+    error && styles.labelError,
+  ];
+  const a11yLabel = typeof children === 'string' ? `${children}${required ? ', required' : ''}` : undefined;
 
   // Simple label without helper text
   if (!helperText) {
     return (
       <Text
-        style={[
-          labelStyle,
-          { opacity: containerOpacity },
-          style,
-        ]}
+        style={[labelStyle, disabled && styles.disabled, style]}
         accessible
         accessibilityRole="text"
-        accessibilityLabel={`${children}${required ? ', required field' : ', optional field'}`}
+        accessibilityLabel={a11yLabel}
         {...props}
       >
         {children}
@@ -128,12 +91,12 @@ export const FormLabel: React.FC<FormLabelProps> = ({
 
   // Label with helper text (uses wrapper View)
   return (
-    <View style={[{ opacity: containerOpacity }, containerStyle]}>
+    <View style={[disabled && styles.disabled, containerStyle]}>
       <Text
         style={[labelStyle, style]}
         accessible
         accessibilityRole="text"
-        accessibilityLabel={`${children}${required ? ', required field' : ', optional field'}`}
+        accessibilityLabel={a11yLabel}
         {...props}
       >
         {children}
@@ -189,11 +152,12 @@ export const FormLabelGroup: React.FC<FormLabelGroupProps> = ({
   errorMessage,
   helperText,
   disabled = false,
-  readOnly = false,
+  readOnly: _readOnly = false,
   characterCount,
   style,
   labelStyle,
 }) => {
+  const styles = useThemedStyles(makeStyles);
   const hasError = error || Boolean(errorMessage);
   const isOverLimit = characterCount
     ? characterCount.current > characterCount.max
@@ -204,18 +168,17 @@ export const FormLabelGroup: React.FC<FormLabelGroupProps> = ({
   const showFooter = Boolean(footerText) || Boolean(characterCount);
 
   return (
-    <View style={[{ opacity: disabled ? FIORI.disabledOpacity : 1 }, style]}>
+    <View style={[disabled && styles.disabled, style]}>
       {/* Label row */}
       <Text
         style={[
-          styles.groupLabel,
-          hasError && styles.groupLabelError,
-          (disabled || readOnly) && styles.groupLabelSecondary,
+          styles.label,
+          hasError && styles.labelError,
           labelStyle,
         ]}
         accessible
         accessibilityRole="text"
-        accessibilityLabel={`${label}${required ? ', required field' : ', optional field'}`}
+        accessibilityLabel={`${label}${required ? ', required' : ''}`}
       >
         {label}
         {required && <Text style={styles.requiredMark}> *</Text>}
@@ -224,7 +187,6 @@ export const FormLabelGroup: React.FC<FormLabelGroupProps> = ({
       {/* Footer row (helper/error text + character counter) */}
       {showFooter && (
         <View style={styles.footerRow}>
-          {/* Helper/Error text */}
           {footerText && (
             <Text
               style={[
@@ -239,12 +201,11 @@ export const FormLabelGroup: React.FC<FormLabelGroupProps> = ({
             </Text>
           )}
 
-          {/* Character counter */}
           {characterCount && (
             <Text
               style={[
                 styles.characterCount,
-                isOverLimit && styles.characterCountError,
+                isOverLimit && styles.footerTextError,
               ]}
               accessible
               accessibilityRole="text"
@@ -263,63 +224,49 @@ export const FormLabelGroup: React.FC<FormLabelGroupProps> = ({
 // STYLES
 // ============================================================================
 
-const styles = StyleSheet.create({
-  // Required asterisk mark
+const makeStyles = (t: ThemeTokens) => ({
+  label: {
+    ...typography.footnote,
+    color: t.text.secondary,
+    marginBottom: space.xs,
+  },
+  labelSmall: {
+    ...typography.caption1,
+  },
+  labelError: {
+    color: t.status.negative.text,
+  },
+  disabled: {
+    opacity: t.interaction.disabledOpacity,
+  },
   requiredMark: {
-    color: FIORI.requiredColor,
-    fontWeight: '600', // Semibold
-    fontSize: FIORI.labelFontSize,
+    color: t.text.required,
+    fontWeight: fontWeight.semibold,
   },
-
-  // Helper text below label
   helperText: {
-    fontSize: FIORI.helperFontSize,
-    lineHeight: FIORI.helperLineHeight,
-    color: FIORI.labelColorSecondary,
-    marginTop: FIORI.helperMarginTop,
+    ...typography.footnote,
+    color: t.text.secondary,
+    marginTop: space.xs,
   },
-
-  // FormLabelGroup styles
-  groupLabel: {
-    fontSize: FIORI.labelFontSize,
-    lineHeight: FIORI.labelLineHeight,
-    fontWeight: '500',
-    color: FIORI.labelColor,
-    marginBottom: FIORI.labelMarginBottom,
-  },
-  groupLabelError: {
-    color: FIORI.errorColor,
-  },
-  groupLabelSecondary: {
-    color: FIORI.labelColorSecondary,
-  },
-
-  // Footer row (helper text + character counter)
   footerRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginTop: FIORI.helperMarginTop,
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'flex-start' as const,
+    marginTop: space.xs,
   },
   footerText: {
-    fontSize: FIORI.helperFontSize,
-    lineHeight: FIORI.helperLineHeight,
-    color: FIORI.labelColorSecondary,
+    ...typography.footnote,
+    color: t.text.secondary,
     flex: 1,
   },
   footerTextError: {
-    color: FIORI.errorColor,
+    color: t.status.negative.text,
   },
-
-  // Character counter
   characterCount: {
-    fontSize: FIORI.helperFontSize,
-    lineHeight: FIORI.helperLineHeight,
-    color: FIORI.labelColorSecondary,
-    marginLeft: 8,
-  },
-  characterCountError: {
-    color: FIORI.errorColor,
+    ...typography.caption1,
+    color: t.text.secondary,
+    marginLeft: space.sm,
+    fontVariant: ['tabular-nums' as const],
   },
 });
 

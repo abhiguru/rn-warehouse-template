@@ -6,28 +6,34 @@
  * SAP Fiori Design System implementation.
  */
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useContext, useEffect, useRef, useState } from 'react';
 import {
   View,
+  Text,
   StyleSheet,
   FlatList,
   Modal,
   KeyboardAvoidingView,
   Platform,
-  TouchableOpacity,
+  Pressable,
   TextInput,
-} from 'react-native';
-import {
-  Text,
-  Surface,
   ActivityIndicator,
-  Button,
-  IconButton,
-  List,
-  Divider,
-} from 'react-native-paper';
+  TextStyle,
+} from 'react-native';
+import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { useListColors } from '@/hooks/useListColors';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import {
+  fontWeight,
+  iconSize,
+  layout,
+  radius,
+  space,
+  touchTarget,
+  typography,
+  type ThemeTokens,
+} from '@/theme/tokens';
+import { Button } from '@/components/ui/Button';
 import type {
   AutocompleteBottomSheetProps,
   AutocompleteResult,
@@ -58,8 +64,10 @@ export const AutocompleteBottomSheet: React.FC<AutocompleteBottomSheetProps> = (
     currentSelections
   );
 
-  // Theme colors for dark mode support
-  const colors = useListColors();
+  const t = useTokens();
+  const styles = useThemedStyles(makeStyles);
+  // Insets when a SafeAreaProvider is mounted; zero otherwise.
+  const insets = useContext(SafeAreaInsetsContext) ?? { top: 0, bottom: 0, left: 0, right: 0 };
 
   // Debounce timer
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -205,39 +213,42 @@ export const AutocompleteBottomSheet: React.FC<AutocompleteBottomSheetProps> = (
     const isSelected = multiSelect ? isItemSelected(item.id) : false;
 
     return (
-      <Surface
-        style={[
+      <Pressable
+        onPress={() =>
+          multiSelect ? handleMultiSelectToggle(item) : handleSingleSelect(item)
+        }
+        style={({ pressed }) => [
           styles.resultItem,
-          { backgroundColor: colors.cellBackground, borderColor: colors.gray200 },
-          isSelected && { backgroundColor: colors.blueLight, borderColor: colors.primary, borderWidth: 2 },
+          isSelected && styles.resultItemSelected,
+          pressed && styles.resultItemPressed,
         ]}
-        elevation={isSelected ? 1 : 0}
+        accessibilityRole={multiSelect ? 'checkbox' : 'button'}
+        accessibilityState={multiSelect ? { checked: isSelected } : undefined}
+        accessibilityLabel={item.detail ? `${item.label}, ${item.detail}` : item.label}
       >
-        <List.Item
-          title={item.label}
-          description={item.detail}
-          onPress={() =>
-            multiSelect ? handleMultiSelectToggle(item) : handleSingleSelect(item)
-          }
-          titleNumberOfLines={1}
-          descriptionNumberOfLines={1}
-          titleStyle={[
-            { color: colors.textPrimary },
-            isSelected && styles.resultLabelSelected,
-          ]}
-          descriptionStyle={{ color: colors.textSecondary }}
-          right={() =>
-            multiSelect && isSelected ? (
-              <Icon name="check-circle" size={24} color={colors.primary} />
-            ) : multiSelect ? (
-              <Icon name="checkbox-blank-circle-outline" size={24} color={colors.gray300} />
-            ) : (
-              <Icon name="chevron-right" size={24} color={colors.gray400} />
-            )
-          }
-          style={styles.listItem}
-        />
-      </Surface>
+        <View style={styles.resultText}>
+          <Text
+            style={[styles.resultLabel, isSelected && styles.resultLabelSelected]}
+            numberOfLines={2}
+          >
+            {renderHighlighted(item.label, searchQuery, styles.resultLabelMatch)}
+          </Text>
+          {item.detail ? (
+            <Text style={styles.resultDetail} numberOfLines={1}>
+              {item.detail}
+            </Text>
+          ) : null}
+        </View>
+        {multiSelect ? (
+          <Icon
+            name={isSelected ? 'checkbox-marked' : 'checkbox-blank-outline'}
+            size={iconSize.lg}
+            color={isSelected ? t.brand.tint : t.border.field}
+          />
+        ) : (
+          <Icon name="chevron-right" size={iconSize.lg} color={t.icon.secondary} />
+        )}
+      </Pressable>
     );
   };
 
@@ -247,11 +258,9 @@ export const AutocompleteBottomSheet: React.FC<AutocompleteBottomSheetProps> = (
   const renderEmpty = () => {
     if (isLoading) {
       return (
-        <View style={styles.emptyState}>
-          <ActivityIndicator size="large" color={colors.primary} />
-          <Text variant="bodyMedium" style={[styles.emptyText, { color: colors.textSecondary }]}>
-            Searching...
-          </Text>
+        <View style={styles.emptyState} accessibilityLiveRegion="polite">
+          <ActivityIndicator size="large" color={t.brand.tint} />
+          <Text style={styles.emptyText}>Searching…</Text>
         </View>
       );
     }
@@ -259,28 +268,22 @@ export const AutocompleteBottomSheet: React.FC<AutocompleteBottomSheetProps> = (
     if (!searchQuery || searchQuery.trim().length < 1) {
       return (
         <View style={styles.emptyState}>
-          <Icon name="magnify" size={64} color={colors.gray300} />
-          <Text variant="bodyLarge" style={[styles.emptyText, { color: colors.textSecondary }]}>
-            Type to search
-          </Text>
+          <Icon name="magnify" size={iconSize.hero} color={t.icon.secondary} />
+          <Text style={styles.emptyText}>Type to search</Text>
         </View>
       );
     }
 
     return (
-      <View style={styles.emptyState}>
-        <Icon name="alert-circle-outline" size={64} color={colors.gray300} />
-        <Text variant="bodyLarge" style={[styles.emptyText, { color: colors.textSecondary }]}>
-          No results found
+      <View style={styles.emptyState} accessibilityLiveRegion="polite">
+        <Icon name="magnify-close" size={iconSize.hero} color={t.icon.secondary} />
+        <Text style={styles.emptyTitle}>No matches</Text>
+        <Text style={styles.emptyText}>
+          {`Nothing matches "${searchQuery.trim()}". Try fewer letters.`}
         </Text>
       </View>
     );
   };
-
-  /**
-   * Item separator
-   */
-  const ItemSeparator = () => <View style={styles.separator} />;
 
   if (!visible) {
     return null;
@@ -294,133 +297,135 @@ export const AutocompleteBottomSheet: React.FC<AutocompleteBottomSheetProps> = (
       onRequestClose={onClose}
     >
       <View style={styles.backdrop}>
-        <TouchableOpacity
+        <Pressable
           style={styles.backdropTouchable}
-          activeOpacity={1}
           onPress={onClose}
+          accessibilityRole="button"
+          accessibilityLabel="Close"
         />
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={styles.keyboardView}
+          style={[styles.keyboardView, { marginTop: insets.top + space.xl }]}
         >
-          <Surface style={[styles.sheetContainer, { backgroundColor: colors.cellBackground }]} elevation={5}>
-            <View style={[styles.container, { backgroundColor: colors.cellBackground }]}>
-              {/* Header */}
-              <Surface style={[styles.header, { backgroundColor: colors.cellBackground }]} elevation={0}>
-                <View style={styles.headerContent}>
-                  <Icon name="magnify" size={24} color={colors.primary} />
-                  <Text variant="titleLarge" style={[styles.title, { color: colors.textPrimary }]}>
-                    Select {getAutocompleteTypeLabel(autocompleteType)}
+          <View style={styles.sheetContainer}>
+            <View style={styles.grabHandle} />
+
+            {/* Header */}
+            <View style={styles.header}>
+              <Text style={styles.title} accessibilityRole="header" numberOfLines={2}>
+                Select {lowerFirst(getAutocompleteTypeLabel(autocompleteType))}
+              </Text>
+              <Pressable
+                onPress={onClose}
+                style={({ pressed }) => [styles.closeButton, pressed && styles.closeButtonPressed]}
+                accessibilityRole="button"
+                accessibilityLabel="Close"
+              >
+                <Icon name="close" size={iconSize.lg} color={t.icon.primary} />
+              </Pressable>
+            </View>
+
+            {/* Search field stays visible at the top */}
+            <View style={styles.searchContainer}>
+              <View style={styles.searchBar}>
+                <Icon name="magnify" size={iconSize.md} color={t.icon.secondary} style={styles.searchIcon} />
+                <TextInput
+                  ref={inputRef}
+                  placeholder={searchPlaceholder || getAutocompletePlaceholder(autocompleteType)}
+                  placeholderTextColor={t.text.placeholder}
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  style={styles.searchInput}
+                  returnKeyType="search"
+                  accessibilityLabel={`Search ${lowerFirst(getAutocompleteTypeLabel(autocompleteType))}`}
+                />
+                {isLoading && (
+                  <ActivityIndicator size="small" color={t.brand.tint} style={styles.searchLoader} />
+                )}
+                {searchQuery.length > 0 && !isLoading && (
+                  <Pressable
+                    style={styles.clearButton}
+                    onPress={handleClear}
+                    hitSlop={(touchTarget - iconSize.md) / 2}
+                    accessibilityRole="button"
+                    accessibilityLabel="Clear search"
+                  >
+                    <Icon name="close-circle" size={iconSize.md} color={t.icon.secondary} />
+                  </Pressable>
+                )}
+              </View>
+            </View>
+
+            {/* Results */}
+            <FlatList
+              data={results}
+              renderItem={renderItem}
+              keyExtractor={(item) => item.id}
+              ListEmptyComponent={renderEmpty}
+              style={styles.resultsList}
+              contentContainerStyle={styles.resultsContentContainer}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            />
+
+            {/* Multi-select footer, pinned with the bottom inset */}
+            {multiSelect && (
+              <View style={[styles.footer, { paddingBottom: space.lg + insets.bottom }]}>
+                <View style={styles.footerContent}>
+                  <Icon name="check-circle" size={iconSize.md} color={t.brand.tint} />
+                  <Text style={styles.footerText}>
+                    {tempSelections.length} selected
                   </Text>
                 </View>
-                <IconButton
-                  icon="close"
-                  size={24}
-                  iconColor={colors.gray600}
-                  onPress={onClose}
-                  style={styles.closeButton}
-                />
-              </Surface>
-
-              <Divider />
-
-              {/* Search Input - SAP Fiori Style */}
-              <View style={styles.searchContainer}>
-                <View style={[styles.searchBar, { backgroundColor: colors.gray100 }]}>
-                  <Icon name="magnify" size={20} color={colors.gray500} style={styles.searchIcon} />
-                  <TextInput
-                    ref={inputRef}
-                    placeholder={searchPlaceholder || getAutocompletePlaceholder(autocompleteType)}
-                    placeholderTextColor={colors.gray500}
-                    value={searchQuery}
-                    onChangeText={setSearchQuery}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    style={[styles.searchInput, { color: colors.textPrimary }]}
-                    returnKeyType="search"
-                  />
-                  {isLoading && (
-                    <ActivityIndicator size="small" color={colors.primary} style={styles.searchLoader} />
-                  )}
-                  {searchQuery.length > 0 && !isLoading && (
-                    <TouchableOpacity
-                      style={styles.clearButton}
-                      onPress={handleClear}
-                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                      accessibilityLabel="Clear search"
-                    >
-                      <View style={[styles.clearIconContainer, { backgroundColor: colors.gray400 }]}>
-                        <Icon name="close" size={16} color="#FFFFFF" />
-                      </View>
-                    </TouchableOpacity>
-                  )}
-                </View>
+                <Button type="primary" size="standalone" onPress={handleMultiSelectDone}>
+                  Done
+                </Button>
               </View>
-
-              {/* Results List */}
-              <FlatList
-                data={results}
-                renderItem={renderItem}
-                keyExtractor={(item) => item.id}
-                ItemSeparatorComponent={ItemSeparator}
-                ListEmptyComponent={renderEmpty}
-                style={[styles.resultsList, { backgroundColor: colors.cellBackground }]}
-                contentContainerStyle={[styles.resultsContentContainer, { backgroundColor: colors.cellBackground }]}
-                keyboardShouldPersistTaps="handled"
-                showsVerticalScrollIndicator={false}
-              />
-
-              {/* Multi-select footer */}
-              {multiSelect && (
-                <>
-                  <Divider />
-                  <Surface style={[styles.footer, { backgroundColor: colors.cellBackground }]} elevation={2}>
-                    <View style={styles.footerContent}>
-                      <Icon name="check-circle" size={20} color={colors.primary} />
-                      <Text variant="bodyMedium" style={[styles.footerText, { color: colors.textSecondary }]}>
-                        {tempSelections.length} selected
-                      </Text>
-                    </View>
-                    <Button
-                      mode="contained"
-                      onPress={handleMultiSelectDone}
-                      buttonColor={colors.primary}
-                      style={styles.doneButton}
-                    >
-                      Done
-                    </Button>
-                  </Surface>
-                </>
-              )}
-            </View>
-          </Surface>
+            )}
+          </View>
         </KeyboardAvoidingView>
       </View>
     </Modal>
   );
 };
 
-// ============================================================================
-// SAP Fiori Search Bar Dimensions
-// ============================================================================
-const FIORI_SEARCH = {
-  height: 36, // Fiori default search bar height
-  touchTarget: 44, // Minimum touch target
-  borderRadius: 10, // Fiori search bar corner radius
-  iconSize: 20, // Fiori icon size
-  fontSize: 17, // Fiori iOS font size
-  clearIconSize: 16,
-  padding: 12,
-  iconMargin: 8,
-};
+/** "Customer" -> "customer", but keeps acronyms such as "GRN number". */
+function lowerFirst(label: string): string {
+  if (label.length > 1 && label[1] === label[1].toUpperCase() && /[A-Z]/.test(label[1])) return label;
+  return label.charAt(0).toLowerCase() + label.slice(1);
+}
 
-const styles = StyleSheet.create({
+/** Splits a label so the part matching the query renders bold (match never in colour alone). */
+function renderHighlighted(label: string, query: string, matchStyle: TextStyle): React.ReactNode {
+  const q = query.trim();
+  if (!q) return label;
+  const index = label.toLowerCase().indexOf(q.toLowerCase());
+  if (index < 0) return label;
+  return (
+    <>
+      {label.slice(0, index)}
+      <Text style={matchStyle}>{label.slice(index, index + q.length)}</Text>
+      {label.slice(index + q.length)}
+    </>
+  );
+}
+
+// ============================================================================
+// STYLES (bottom sheet, style guide §13.9)
+// ============================================================================
+
+const SEARCH_BAR_HEIGHT = 36;
+const GRAB_HANDLE = { width: 36, height: 4 };
+
+const makeStyles = (t: ThemeTokens) => ({
   backdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: t.overlay.scrim,
   },
   backdropTouchable: {
-    position: 'absolute',
+    position: 'absolute' as const,
     top: 0,
     left: 0,
     right: 0,
@@ -430,132 +435,151 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   sheetContainer: {
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-    height: '100%',
-    width: '100%',
-    ...Platform.select({
-      ios: {
-        paddingTop: 50,
-      },
-      android: {
-        paddingTop: 20,
-      },
-    }),
-  },
-  container: {
     flex: 1,
-    flexDirection: 'column',
-    overflow: 'hidden',
+    backgroundColor: t.surface.sheet,
+    borderTopLeftRadius: radius.sheet,
+    borderTopRightRadius: radius.sheet,
+    overflow: 'hidden' as const,
+    ...t.shadow[4],
+  },
+  grabHandle: {
+    alignSelf: 'center' as const,
+    width: GRAB_HANDLE.width,
+    height: GRAB_HANDLE.height,
+    borderRadius: radius.pill,
+    backgroundColor: t.border.separator,
+    marginTop: space.sm,
   },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    flexShrink: 0,
-  },
-  headerContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    flex: 1,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
+    paddingLeft: space.lg,
+    paddingRight: space.xs,
+    paddingTop: space.xs,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.divider,
   },
   title: {
-    fontWeight: '600',
+    ...typography.headline,
+    flex: 1,
+    color: t.text.primary,
   },
   closeButton: {
-    margin: 0,
+    width: touchTarget,
+    height: touchTarget,
+    borderRadius: radius.pill,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+  },
+  closeButtonPressed: {
+    backgroundColor: t.surface.cardPressed,
   },
   searchContainer: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    flexShrink: 0,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.md,
   },
   searchBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: FIORI_SEARCH.borderRadius,
-    paddingHorizontal: FIORI_SEARCH.padding,
-    height: FIORI_SEARCH.height,
-    minHeight: FIORI_SEARCH.touchTarget,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    borderRadius: radius.button,
+    paddingHorizontal: space.md,
+    minHeight: touchTarget,
+    backgroundColor: t.surface.field,
+    borderWidth: 1,
+    borderColor: t.border.field,
   },
   searchIcon: {
-    marginRight: FIORI_SEARCH.iconMargin,
+    marginRight: space.sm,
   },
   searchInput: {
+    ...typography.body,
     flex: 1,
-    fontSize: FIORI_SEARCH.fontSize,
-    paddingVertical: 0,
-    ...Platform.select({
-      android: {
-        paddingVertical: 8,
-      },
-    }),
+    minHeight: SEARCH_BAR_HEIGHT,
+    color: t.text.primary,
+    paddingVertical: Platform.OS === 'android' ? space.sm : 0,
   },
   searchLoader: {
-    marginLeft: FIORI_SEARCH.iconMargin,
+    marginLeft: space.sm,
   },
   clearButton: {
-    marginLeft: FIORI_SEARCH.iconMargin,
-    padding: 2,
-  },
-  clearIconContainer: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    justifyContent: 'center',
-    alignItems: 'center',
+    marginLeft: space.sm,
   },
   resultsList: {
     flex: 1,
     minHeight: 0,
   },
   resultsContentContainer: {
-    paddingHorizontal: 16,
-    paddingTop: 4,
-    paddingBottom: 16,
+    paddingBottom: space.lg,
   },
   resultItem: {
-    borderWidth: 1,
-    borderRadius: 12,
-    marginBottom: 8,
-    overflow: 'hidden',
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    minHeight: layout.rowMinHeight + space.lg,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.sm,
+    gap: space.md,
+    backgroundColor: t.surface.sheet,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.divider,
   },
-  listItem: {
-    paddingVertical: 8,
+  resultItemSelected: {
+    backgroundColor: t.surface.selected,
+  },
+  resultItemPressed: {
+    backgroundColor: t.surface.cardPressed,
+  },
+  resultText: {
+    flex: 1,
+  },
+  resultLabel: {
+    ...typography.body,
+    color: t.text.primary,
   },
   resultLabelSelected: {
-    fontWeight: '600',
+    fontWeight: fontWeight.semibold,
   },
-  separator: {
-    height: 0,
+  resultLabelMatch: {
+    fontWeight: fontWeight.bold,
+  },
+  resultDetail: {
+    ...typography.subhead,
+    color: t.text.secondary,
   },
   emptyState: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 64,
-    gap: 16,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    paddingVertical: space.max,
+    paddingHorizontal: space.xxl,
+    gap: space.md,
+  },
+  emptyTitle: {
+    ...typography.title3,
+    color: t.text.primary,
+    textAlign: 'center' as const,
   },
   emptyText: {
-    textAlign: 'center',
+    ...typography.subhead,
+    color: t.text.secondary,
+    textAlign: 'center' as const,
   },
   footer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-    flexShrink: 0,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
+    paddingHorizontal: space.lg,
+    paddingTop: space.md,
+    backgroundColor: t.surface.sheet,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: t.border.separator,
   },
   footerContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.sm,
   },
-  footerText: {},
-  doneButton: {
-    borderRadius: 12,
+  footerText: {
+    ...typography.subhead,
+    color: t.text.secondary,
   },
 });

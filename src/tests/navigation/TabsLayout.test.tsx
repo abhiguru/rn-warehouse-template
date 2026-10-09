@@ -9,6 +9,10 @@ import { useRouter } from 'expo-router';
 import { useTheme } from '@/hooks/useTheme';
 import { useSessionGenerationGuard } from '@/hooks/useSessionGenerationGuard';
 import { StatusBar } from 'react-native';
+import { getTokens } from '@/theme/tokens';
+
+const lightTokens = getTokens('orange', 'light');
+const darkTokens = getTokens('gcsa', 'dark');
 
 jest.mock('react-native', () => {
   const React = require('react');
@@ -225,7 +229,7 @@ describe('TabsLayout authentication gate', () => {
     );
     (useRouter as jest.Mock).mockReturnValue({ replace });
     (useTheme as jest.Mock).mockReturnValue({
-      colors: { primary: '#0072ce' },
+      tokens: lightTokens,
       isDarkMode: false,
     });
   });
@@ -250,7 +254,7 @@ describe('TabsLayout authentication gate', () => {
     const spinner = getTestId(renderer.root, 'auth-restore-spinner');
 
     expect(spinner.props.size).toBe('large');
-    expect(spinner.props.color).toBe('#0072ce');
+    expect(spinner.props.color).toBe(lightTokens.brand.tint);
 
     await unmountLayout(renderer);
   });
@@ -377,7 +381,7 @@ describe('TabsLayout authentication gate', () => {
 
     expect(tabBar.props.screenOptions).toEqual({
       headerShown: false,
-      sceneStyle: { backgroundColor: '#f7f9fa' },
+      sceneStyle: { backgroundColor: lightTokens.background.base },
     });
     await unmountLayout(renderer);
   });
@@ -417,7 +421,7 @@ describe('TabsLayout authentication gate', () => {
     const renderer = await renderLayout();
 
     (useTheme as jest.Mock).mockReturnValue({
-      colors: { primary: '#4aa3ff' },
+      tokens: darkTokens,
       isDarkMode: true,
     });
     authState.userProfile = { id: 'profile-1', role: 'customer' };
@@ -433,7 +437,7 @@ describe('TabsLayout authentication gate', () => {
     expect(
       getTestId(renderer.root, 'tabs-safe-area').props.style
     ).toEqual(
-      expect.objectContaining({ backgroundColor: '#11222c' })
+      expect.objectContaining({ backgroundColor: darkTokens.background.base })
     );
     await unmountLayout(renderer);
   });

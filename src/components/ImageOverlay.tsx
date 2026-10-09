@@ -9,7 +9,8 @@
  * - Double-tap to zoom
  * - Swipe to dismiss
  * - Image carousel navigation (previous/next)
- * - Loading indicator during image fetch
+ * - Close button and image counter in overlay.onImage on an overlay.scrim
+ *   bar, over the overlay.imageBackdrop (docs/STYLE_GUIDE.md §13.10)
  *
  * @example
  * ```tsx
@@ -23,9 +24,13 @@
  */
 
 import React, { useMemo } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, Text, Pressable } from 'react-native';
 import ImageViewing from 'react-native-image-viewing';
-import theme from '@/theme';
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { fontWeight, iconSize, layout, space, touchTarget, typography } from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
 
 // Add logging for debugging image load issues
 const LOG_PREFIX = '[ImageOverlay]';
@@ -47,12 +52,57 @@ interface ImageOverlayProps {
   onClose: () => void;
 }
 
+const makeStyles = (t: ThemeTokens) => ({
+  header: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    paddingHorizontal: space.sm,
+    paddingBottom: space.sm,
+    backgroundColor: t.overlay.scrim,
+  },
+  headerSide: {
+    width: touchTarget,
+  },
+  headerText: {
+    ...typography.headline,
+    fontVariant: ['tabular-nums' as const],
+    flex: 1,
+    textAlign: 'center' as const,
+    color: t.overlay.onImage,
+  },
+  closeButton: {
+    width: touchTarget,
+    height: touchTarget,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    borderRadius: touchTarget / 2,
+  },
+  closeButtonPressed: {
+    backgroundColor: t.interaction.pressedOverlay,
+  },
+  footer: {
+    paddingHorizontal: layout.marginCompact,
+    paddingTop: space.lg,
+    backgroundColor: t.overlay.scrim,
+    alignItems: 'center' as const,
+  },
+  footerText: {
+    ...typography.subhead,
+    fontWeight: fontWeight.medium,
+    color: t.overlay.onImage,
+  },
+});
+
 export const ImageOverlay: React.FC<ImageOverlayProps> = ({
   visible,
   images,
   initialIndex = 0,
   onClose,
 }) => {
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
+  const insets = useSafeAreaInsets();
+
   // Convert images to format expected by react-native-image-viewing
   // P6 Fix: Memoize to prevent array recreation on every render
   const imageUrls = useMemo(() =>
@@ -60,28 +110,34 @@ export const ImageOverlay: React.FC<ImageOverlayProps> = ({
       uri: img.imageUrl,
     })), [images]);
 
-  // Custom header showing image count
+  // Header: close button and image counter
   const renderHeader = (imageIndex: number) => (
-    <View style={styles.header}>
-      <Text style={styles.headerText}>
-        {imageIndex + 1} / {images.length}
+    <View style={[styles.header, { paddingTop: insets.top + space.sm }]}>
+      <Pressable
+        onPress={onClose}
+        style={({ pressed }) => [styles.closeButton, pressed && styles.closeButtonPressed]}
+        accessibilityRole="button"
+        accessibilityLabel="Close photo"
+        hitSlop={space.xs}
+      >
+        <Icon name="close" size={iconSize.lg} color={t.overlay.onImage} />
+      </Pressable>
+      <Text
+        style={styles.headerText}
+        accessibilityLabel={`Photo ${imageIndex + 1} of ${images.length}`}
+      >
+        {imageIndex + 1} of {images.length}
       </Text>
+      <View style={styles.headerSide} />
     </View>
   );
 
-  // Custom footer showing filename
+  // Footer: file name
   const renderFooter = (imageIndex: number) => (
-    <View style={styles.footer}>
+    <View style={[styles.footer, { paddingBottom: insets.bottom + space.lg }]}>
       <Text style={styles.footerText} numberOfLines={1}>
-        {images[imageIndex]?.fileName || 'Image'}
+        {images[imageIndex]?.fileName || 'Photo'}
       </Text>
-    </View>
-  );
-
-  // Loading indicator
-  const renderLoading = () => (
-    <View style={styles.loadingContainer}>
-      <ActivityIndicator size="large" color={theme.colors.white} />
     </View>
   );
 
@@ -95,6 +151,7 @@ export const ImageOverlay: React.FC<ImageOverlayProps> = ({
       imageIndex={initialIndex}
       visible={visible}
       onRequestClose={onClose}
+      backgroundColor={t.overlay.imageBackdrop}
       HeaderComponent={({ imageIndex }) => renderHeader(imageIndex)}
       FooterComponent={({ imageIndex }) => renderFooter(imageIndex)}
       swipeToCloseEnabled={true}
@@ -103,35 +160,3 @@ export const ImageOverlay: React.FC<ImageOverlayProps> = ({
     />
   );
 };
-
-const styles = StyleSheet.create({
-  header: {
-    paddingTop: 60,
-    paddingHorizontal: 20,
-    paddingBottom: 16,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    alignItems: 'center',
-  },
-  headerText: {
-    color: theme.colors.white,
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  footer: {
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    paddingBottom: 40,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    alignItems: 'center',
-  },
-  footerText: {
-    color: theme.colors.white,
-    fontSize: 14,
-    opacity: 0.8,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-});

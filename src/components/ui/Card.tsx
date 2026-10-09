@@ -1,13 +1,13 @@
 /**
- * SAP Fiori Card implementation
+ * SAP Fiori card (docs/STYLE_GUIDE.md §13.6).
  *
  * Features:
  * - Header/Body/Footer anatomy (Fiori Card structure)
- * - Status badges with semantic colors
- * - Loading and error states with skeletons
- * - Pressed state feedback
- * - Platform-specific shadows
- * - 44pt minimum touch targets
+ * - Status tag with icon and semantic colours
+ * - Loading skeleton and error message strip
+ * - Pressed and selected states
+ * - Elevation from the theme shadows (sm 1, md 2, lg 3, xl 4)
+ * - Minimum touch targets on footer actions
  * - Maximum height constraint (520pt per spec)
  *
  * Backwards compatible with existing Card usage (children-only mode)
@@ -20,103 +20,23 @@ import {
   Pressable,
   StyleSheet,
   ViewStyle,
-  TextStyle,
-  Platform,
   ActivityIndicator,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import theme, { Colors } from '@/theme';
-import { listColors } from '@/theme/listColors';
-import { useTheme } from '@/hooks/useTheme';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import {
+  fontWeight,
+  iconSize,
+  radius,
+  space,
+  touchTarget,
+  typography,
+  type ThemeTokens,
+} from '@/theme/tokens';
+import { getButtonColors } from './Button';
 
-// ============================================================================
-// FIORI CONSTANTS
-// ============================================================================
-
-const FIORI_DIMENSIONS = {
-  // Card dimensions
-  card: {
-    maxHeight: 520,
-    minWidth: 280,
-    cornerRadius: 12,
-    padding: 16,
-    spacing: 16,
-  },
-  // Header
-  header: {
-    minHeight: 48,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-  },
-  // Footer
-  footer: {
-    minHeight: 48,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-  },
-  // Body
-  body: {
-    padding: 16,
-  },
-  // Typography
-  typography: {
-    title: {
-      fontSize: 17,
-      fontWeight: '600' as const,
-      lineHeight: 22,
-    },
-    subtitle: {
-      fontSize: 14,
-      fontWeight: '400' as const,
-      lineHeight: 20,
-    },
-    sectionTitle: {
-      fontSize: 13,
-      fontWeight: '600' as const,
-      lineHeight: 18,
-      letterSpacing: 0.5,
-    },
-  },
-  // Shadow (elevation 2 resting, 8 raised)
-  shadow: Platform.select({
-    ios: {
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 1 },
-      shadowOpacity: 0.08,
-      shadowRadius: 4,
-    },
-    android: {
-      elevation: 2,
-    },
-  }) as ViewStyle,
-  shadowRaised: Platform.select({
-    ios: {
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 0.12,
-      shadowRadius: 8,
-    },
-    android: {
-      elevation: 8,
-    },
-  }) as ViewStyle,
-} as const;
-
-/**
- * Generate theme-aware FIORI colors for Card
- */
-function getFioriColors(colors: Colors) {
-  return {
-    background: colors.fiori.objectCell.background,
-    backgroundPressed: colors.fiori.objectCell.backgroundPressed,
-    backgroundSelected: colors.fiori.objectCell.backgroundSelected,
-    border: colors.fiori.objectCell.divider,
-    borderSelected: colors.fiori.objectCell.selectedBorder,
-    divider: colors.fiori.objectCell.divider,
-    textPrimary: colors.fiori.text.primary,
-    textSecondary: colors.fiori.text.secondary,
-  };
-}
+const CARD_MAX_HEIGHT = 520;
+const HEADER_ICON_SIZE = 40;
 
 // ============================================================================
 // TYPES
@@ -239,90 +159,68 @@ export interface CardProps {
 
 function getPaddingValue(padding: CardPadding): number {
   const paddingMap: Record<CardPadding, number> = {
-    none: 0,
-    compact: 12,               // Fiori compact
-    default: FIORI_DIMENSIONS.card.padding, // 16pt Fiori default
-    comfortable: 20,
-    spacious: 24,
+    none: space.none,
+    compact: space.md,
+    default: space.lg,
+    comfortable: space.xl,
+    spacious: space.xxl,
   };
   return paddingMap[padding];
 }
 
-function getStatusColor(type: CardStatusType): { bg: string; text: string; border: string } {
-  switch (type) {
-    case 'positive':
-      return {
-        bg: listColors.statusPositiveLight,
-        text: listColors.statusPositiveDark,
-        border: listColors.statusPositiveBorder,
-      };
-    case 'critical':
-      return {
-        bg: listColors.statusCriticalLight,
-        text: listColors.statusCriticalDark,
-        border: listColors.statusCriticalBorder,
-      };
-    case 'negative':
-      return {
-        bg: listColors.statusNegativeLight,
-        text: listColors.statusNegativeDark,
-        border: listColors.statusNegativeBorder,
-      };
-    case 'neutral':
-    default:
-      return {
-        bg: listColors.statusNeutralLight,
-        text: listColors.statusNeutralDark,
-        border: listColors.statusNeutralBorder,
-      };
-  }
-}
+/** Shadow level per CardShadow (style guide §13.6: sm 1, md 2, lg 3, xl 4). */
+const SHADOW_LEVEL: Record<Exclude<CardShadow, 'none'>, 1 | 2 | 3 | 4> = {
+  sm: 1,
+  md: 2,
+  lg: 3,
+  xl: 4,
+};
+
+/** Status icon per style guide §3.5. */
+const STATUS_ICON: Record<CardStatusType, string> = {
+  positive: 'check-circle',
+  critical: 'alert',
+  negative: 'alert-circle',
+  neutral: 'circle-outline',
+};
+
+type Styles = ReturnType<typeof makeStyles>;
 
 // ============================================================================
 // SUB-COMPONENTS
 // ============================================================================
 
 /** Card Header */
-function CardHeader({ config, showDivider = true, fioriColors }: { config: CardHeaderConfig; showDivider?: boolean; fioriColors: ReturnType<typeof getFioriColors> }) {
-  const statusColors = config.status ? getStatusColor(config.status.type) : null;
+function CardHeader({ config, showDivider = true, styles }: { config: CardHeaderConfig; showDivider?: boolean; styles: Styles }) {
+  const t = useTokens();
+  const status = config.status ? t.status[config.status.type] : null;
 
   return (
-    <View style={[styles.header, showDivider && styles.headerWithDivider, showDivider && { borderBottomColor: fioriColors.divider }]}>
+    <View style={[styles.header, showDivider && styles.headerWithDivider]}>
       {/* Icon */}
       {config.icon && (
         <View style={styles.headerIcon}>
-          <Icon name={config.icon} size={24} color={fioriColors.textPrimary} />
+          <Icon name={config.icon} size={iconSize.lg} color={t.icon.primary} />
         </View>
       )}
 
       {/* Title/Subtitle */}
       <View style={styles.headerTextContainer}>
-        <Text
-          style={[styles.headerTitle, { color: fioriColors.textPrimary }]}
-          numberOfLines={2}
-          accessibilityRole="header"
-        >
+        <Text style={styles.headerTitle} numberOfLines={2} accessibilityRole="header">
           {config.title}
         </Text>
         {config.subtitle && (
-          <Text style={[styles.headerSubtitle, { color: fioriColors.textSecondary }]} numberOfLines={1}>
+          <Text style={styles.headerSubtitle} numberOfLines={2}>
             {config.subtitle}
           </Text>
         )}
       </View>
 
-      {/* Status Badge */}
-      {config.status && statusColors && (
-        <View
-          style={[
-            styles.statusBadge,
-            {
-              backgroundColor: statusColors.bg,
-              borderColor: statusColors.border,
-            },
-          ]}
-        >
-          <Text style={[styles.statusBadgeText, { color: statusColors.text }]}>
+      {/* Status tag: colour plus icon plus word */}
+      {config.status && status && (
+        <View style={[styles.statusBadge, { backgroundColor: status.background }]}>
+          <Icon name={STATUS_ICON[config.status.type]} size={iconSize.sm} color={status.text} />
+          <Text style={[styles.statusBadgeText, { color: status.text }]} maxFontSizeMultiplier={1.6}>
             {config.status.label}
           </Text>
         </View>
@@ -331,17 +229,56 @@ function CardHeader({ config, showDivider = true, fioriColors }: { config: CardH
   );
 }
 
+/** One footer action, coloured like the Button component. */
+function CardFooterButton({ action, styles }: { action: CardFooterAction; styles: Styles }) {
+  const t = useTokens();
+  const type = action.style ?? 'tertiary';
+  const isDisabled = action.disabled || action.loading;
+
+  return (
+    <Pressable
+      onPress={action.onPress}
+      disabled={isDisabled}
+      style={({ pressed }) => {
+        const c = getButtonColors(t, type, 'tint', pressed);
+        return [
+          styles.footerAction,
+          { backgroundColor: c.background, borderColor: c.border, borderWidth: c.borderWidth },
+          action.disabled && styles.footerActionDisabled,
+        ];
+      }}
+      accessibilityRole="button"
+      accessibilityLabel={action.label}
+      accessibilityState={{ disabled: !!isDisabled, busy: !!action.loading }}
+    >
+      {({ pressed }) => {
+        const c = getButtonColors(t, type, 'tint', pressed);
+        return (
+          <>
+            {action.loading ? (
+              <ActivityIndicator size="small" color={c.text} style={styles.footerActionIcon} />
+            ) : (
+              action.icon && (
+                <Icon name={action.icon} size={iconSize.md} color={c.text} style={styles.footerActionIcon} />
+              )
+            )}
+            <Text style={[styles.footerActionText, { color: c.text }]}>{action.label}</Text>
+          </>
+        );
+      }}
+    </Pressable>
+  );
+}
+
 /** Card Footer */
 function CardFooter({
   config,
   showDivider = true,
-  fioriColors,
-  themeColors,
+  styles,
 }: {
   config: CardFooterConfig;
   showDivider?: boolean;
-  fioriColors: ReturnType<typeof getFioriColors>;
-  themeColors: Colors;
+  styles: Styles;
 }) {
   const justifyContent =
     config.align === 'start'
@@ -353,91 +290,50 @@ function CardFooter({
       : 'flex-end';
 
   return (
-    <View style={[styles.footer, showDivider && styles.footerWithDivider, showDivider && { borderTopColor: fioriColors.divider }, { justifyContent }]}>
-      {config.actions?.map((action, index) => {
-        const isPrimary = action.style === 'primary';
-        const isSecondary = action.style === 'secondary';
-        const isTertiary = action.style === 'tertiary' || !action.style;
-
-        return (
-          <Pressable
-            key={index}
-            onPress={action.onPress}
-            disabled={action.disabled || action.loading}
-            style={({ pressed }) => [
-              styles.footerAction,
-              isPrimary && [styles.footerActionPrimary, { backgroundColor: themeColors.primary }],
-              isSecondary && [styles.footerActionSecondary, { borderColor: themeColors.primary }],
-              isTertiary && styles.footerActionTertiary,
-              pressed && styles.footerActionPressed,
-              action.disabled && styles.footerActionDisabled,
-            ]}
-            accessibilityRole="button"
-            accessibilityLabel={action.label}
-          >
-            {action.loading ? (
-              <ActivityIndicator
-                size="small"
-                color={isPrimary ? '#FFFFFF' : themeColors.primary}
-              />
-            ) : (
-              <>
-                {action.icon && (
-                  <Icon
-                    name={action.icon}
-                    size={18}
-                    color={isPrimary ? '#FFFFFF' : themeColors.primary}
-                    style={styles.footerActionIcon}
-                  />
-                )}
-                <Text
-                  style={[
-                    styles.footerActionText,
-                    { color: themeColors.primary },
-                    isPrimary && styles.footerActionTextPrimary,
-                  ]}
-                >
-                  {action.label}
-                </Text>
-              </>
-            )}
-          </Pressable>
-        );
-      })}
+    <View style={[styles.footer, showDivider && styles.footerWithDivider, { justifyContent }]}>
+      {config.actions?.map((action, index) => (
+        <CardFooterButton key={index} action={action} styles={styles} />
+      ))}
     </View>
   );
 }
 
 /** Skeleton Loader */
-function CardSkeleton() {
+function CardSkeleton({ styles }: { styles: Styles }) {
   return (
-    <View style={styles.skeleton}>
-      {/* Header skeleton */}
+    <View
+      style={styles.skeleton}
+      accessible
+      accessibilityLabel="Loading"
+      accessibilityState={{ busy: true }}
+    >
       <View style={styles.skeletonHeader}>
         <View style={styles.skeletonIcon} />
         <View style={styles.skeletonTextContainer}>
           <View style={[styles.skeletonText, { width: '60%' }]} />
-          <View style={[styles.skeletonText, { width: '40%', marginTop: 4 }]} />
+          <View style={[styles.skeletonText, { width: '40%', marginTop: space.xs }]} />
         </View>
       </View>
-      {/* Body skeleton */}
       <View style={styles.skeletonBody}>
         <View style={[styles.skeletonText, { width: '100%' }]} />
-        <View style={[styles.skeletonText, { width: '80%', marginTop: 8 }]} />
-        <View style={[styles.skeletonText, { width: '60%', marginTop: 8 }]} />
+        <View style={[styles.skeletonText, { width: '80%', marginTop: space.sm }]} />
+        <View style={[styles.skeletonText, { width: '60%', marginTop: space.sm }]} />
       </View>
     </View>
   );
 }
 
-/** Error State */
-function CardError({ message }: { message?: string }) {
+/** Error state: a negative message strip */
+function CardError({ message, styles }: { message?: string; styles: Styles }) {
+  const t = useTokens();
   return (
     <View style={styles.errorContainer}>
-      <Icon name="alert-circle-outline" size={32} color={listColors.statusNegative} />
-      <Text style={styles.errorText}>
-        {typeof message === 'string' ? message : 'Failed to load content'}
-      </Text>
+      <View style={styles.errorStrip} accessibilityRole="alert">
+        <Icon name="alert-circle" size={iconSize.md} color={t.status.negative.text} />
+        <Text style={styles.errorText}>
+          {typeof message === 'string' ? message : "Couldn't load this content. Try again."}
+        </Text>
+      </View>
     </View>
   );
 }
@@ -464,23 +360,20 @@ export function Card({
   selected,
 }: CardProps) {
   const [isPressed, setIsPressed] = useState(false);
-  const { colors: themeColors } = useTheme();
-  const FIORI = getFioriColors(themeColors);
+  const t = useTokens();
+  const styles = useThemedStyles(makeStyles);
 
   // Determine if using Fiori structure (header/body/footer) or simple children mode
   const isFioriMode = !!(header || body || footer || loading || error);
 
   // Container styles
-  const containerStyle: ViewStyle = {
-    ...styles.card,
-    backgroundColor: FIORI.background,
-    borderColor: FIORI.border,
-    ...(shadow !== 'none' ? FIORI_DIMENSIONS.shadow : {}),
-    ...(selected ? { ...FIORI_DIMENSIONS.shadowRaised, borderColor: FIORI.borderSelected, borderWidth: 2 } : {}),
-    ...(isPressed ? { backgroundColor: FIORI.backgroundPressed } : {}),
-    ...(selected ? { backgroundColor: FIORI.backgroundSelected } : {}),
-    ...(style as object),
-  };
+  const containerStyle: ViewStyle = StyleSheet.flatten([
+    styles.card,
+    shadow === 'none' ? styles.cardFlat : t.shadow[SHADOW_LEVEL[shadow]],
+    isPressed && styles.cardPressed,
+    selected && styles.cardSelected,
+    style,
+  ]);
 
   // Simple mode: use padding prop
   const simpleContentStyle: ViewStyle = {
@@ -489,24 +382,21 @@ export function Card({
 
   // Render content
   const renderContent = () => {
-    // Loading state
     if (loading) {
-      return <CardSkeleton />;
+      return <CardSkeleton styles={styles} />;
     }
 
-    // Error state
     if (error) {
-      return <CardError message={typeof error === 'string' ? error : undefined} />;
+      return <CardError message={typeof error === 'string' ? error : undefined} styles={styles} />;
     }
 
-    // Fiori structured mode
     if (isFioriMode) {
       return (
         <>
-          {header && <CardHeader config={header} showDivider={header.showDivider !== false} fioriColors={FIORI} />}
+          {header && <CardHeader config={header} showDivider={header.showDivider !== false} styles={styles} />}
           <View style={styles.body}>{body || children}</View>
           {footer && footer.actions && footer.actions.length > 0 && (
-            <CardFooter config={footer} showDivider={footer.showDivider !== false} fioriColors={FIORI} themeColors={themeColors} />
+            <CardFooter config={footer} showDivider={footer.showDivider !== false} styles={styles} />
           )}
         </>
       );
@@ -515,6 +405,13 @@ export function Card({
     // Simple children mode (backwards compatible)
     return <View style={simpleContentStyle}>{children}</View>;
   };
+
+  // Selected cards carry a check as well as the border (colour is never the only cue)
+  const selectedMark = selected ? (
+    <View style={styles.selectedMark} pointerEvents="none">
+      <Icon name="check-circle" size={iconSize.md} color={t.brand.tint} />
+    </View>
+  ) : null;
 
   // Touchable card
   if (onPress || onLongPress) {
@@ -527,10 +424,11 @@ export function Card({
         style={containerStyle}
         accessibilityRole="button"
         accessibilityLabel={accessibilityLabel || header?.title}
-        accessibilityState={{ selected }}
+        accessibilityState={{ selected, busy: !!loading }}
         testID={testID}
       >
         {renderContent()}
+        {selectedMark}
       </Pressable>
     );
   }
@@ -540,9 +438,11 @@ export function Card({
     <View
       style={containerStyle}
       accessibilityLabel={accessibilityLabel || header?.title}
+      accessibilityState={selected ? { selected } : undefined}
       testID={testID}
     >
       {renderContent()}
+      {selectedMark}
     </View>
   );
 }
@@ -608,161 +508,164 @@ export function ObjectCard(props: CardProps) {
 // STYLES
 // ============================================================================
 
-const styles = StyleSheet.create({
+const makeStyles = (t: ThemeTokens) => ({
   // Card container
   card: {
-    backgroundColor: theme.colors.fiori.objectCell.background,
-    borderRadius: FIORI_DIMENSIONS.card.cornerRadius,
-    borderWidth: 1,
-    borderColor: theme.colors.fiori.objectCell.divider,
-    overflow: 'hidden',
-    maxHeight: FIORI_DIMENSIONS.card.maxHeight,
+    backgroundColor: t.surface.card,
+    borderRadius: radius.card,
+    overflow: 'hidden' as const,
+    maxHeight: CARD_MAX_HEIGHT,
+  },
+  // A flat card has no shadow, so a hairline keeps it apart from the background.
+  cardFlat: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: t.border.divider,
+  },
+  cardPressed: {
+    backgroundColor: t.surface.cardPressed,
+  },
+  cardSelected: {
+    borderWidth: 2,
+    borderColor: t.brand.tint,
+  },
+  selectedMark: {
+    position: 'absolute' as const,
+    top: space.sm,
+    right: space.sm,
   },
 
   // Header
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    minHeight: FIORI_DIMENSIONS.header.minHeight,
-    paddingVertical: FIORI_DIMENSIONS.header.paddingVertical,
-    paddingHorizontal: FIORI_DIMENSIONS.header.paddingHorizontal,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    minHeight: touchTarget,
+    paddingVertical: space.md,
+    paddingHorizontal: space.lg,
   },
   headerWithDivider: {
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.fiori.objectCell.divider,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.divider,
   },
   headerIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 8,
-    backgroundColor: theme.colors.gray[100],
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
+    width: HEADER_ICON_SIZE,
+    height: HEADER_ICON_SIZE,
+    borderRadius: radius.button,
+    backgroundColor: t.background.base,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    marginRight: space.md,
   },
   headerTextContainer: {
     flex: 1,
-    marginRight: 8,
+    marginRight: space.sm,
   },
   headerTitle: {
-    ...FIORI_DIMENSIONS.typography.title,
-    color: theme.colors.fiori.text.primary,
-  } as TextStyle,
+    ...typography.headline,
+    color: t.text.primary,
+  },
   headerSubtitle: {
-    ...FIORI_DIMENSIONS.typography.subtitle,
-    color: theme.colors.fiori.text.secondary,
-    marginTop: 2,
-  } as TextStyle,
+    ...typography.subhead,
+    color: t.text.secondary,
+    marginTop: space.xxs,
+  },
 
-  // Status badge
+  // Status tag
   statusBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-    borderWidth: 1,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.xs,
+    paddingHorizontal: space.sm,
+    paddingVertical: space.xxs,
+    borderRadius: radius.field,
   },
   statusBadgeText: {
-    fontSize: 12,
-    fontWeight: '600',
+    ...typography.caption1,
+    fontWeight: fontWeight.semibold,
   },
 
   // Body
   body: {
-    padding: FIORI_DIMENSIONS.body.padding,
+    padding: space.lg,
   },
 
   // Footer
   footer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    minHeight: FIORI_DIMENSIONS.footer.minHeight,
-    paddingVertical: FIORI_DIMENSIONS.footer.paddingVertical,
-    paddingHorizontal: FIORI_DIMENSIONS.footer.paddingHorizontal,
-    gap: 8,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    minHeight: touchTarget,
+    paddingVertical: space.sm,
+    paddingHorizontal: space.lg,
+    gap: space.sm,
   },
   footerWithDivider: {
-    borderTopWidth: 1,
-    borderTopColor: theme.colors.fiori.objectCell.divider,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: t.border.divider,
   },
   footerAction: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 36,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-  },
-  footerActionPrimary: {
-    backgroundColor: theme.colors.primary,
-    paddingHorizontal: 16,
-  },
-  footerActionSecondary: {
-    backgroundColor: 'transparent',
-    borderWidth: 1,
-    borderColor: theme.colors.primary,
-    paddingHorizontal: 16,
-  },
-  footerActionTertiary: {
-    backgroundColor: 'transparent',
-  },
-  footerActionPressed: {
-    opacity: 0.7,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    minHeight: touchTarget,
+    paddingHorizontal: space.lg,
+    borderRadius: radius.button,
   },
   footerActionDisabled: {
-    opacity: 0.4,
+    opacity: t.interaction.disabledOpacity,
   },
   footerActionIcon: {
-    marginRight: 6,
+    marginRight: space.s6,
   },
   footerActionText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: theme.colors.primary,
-  },
-  footerActionTextPrimary: {
-    color: '#FFFFFF',
+    ...typography.callout,
+    fontWeight: fontWeight.semibold,
   },
 
   // Skeleton
   skeleton: {
-    padding: FIORI_DIMENSIONS.body.padding,
+    padding: space.lg,
   },
   skeletonHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 16,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    marginBottom: space.lg,
   },
   skeletonIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 8,
-    backgroundColor: theme.colors.gray[200],
-    marginRight: 12,
+    width: HEADER_ICON_SIZE,
+    height: HEADER_ICON_SIZE,
+    borderRadius: radius.button,
+    backgroundColor: t.surface.cardActive,
+    marginRight: space.md,
   },
   skeletonTextContainer: {
     flex: 1,
   },
   skeletonText: {
     height: 14,
-    borderRadius: 4,
-    backgroundColor: theme.colors.gray[200],
+    borderRadius: radius.field,
+    backgroundColor: t.surface.cardActive,
   },
   skeletonBody: {
-    marginTop: 8,
+    marginTop: space.sm,
   },
 
   // Error
   errorContainer: {
-    padding: FIORI_DIMENSIONS.body.padding,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 120,
+    padding: space.lg,
+  },
+  errorStrip: {
+    flexDirection: 'row' as const,
+    alignItems: 'flex-start' as const,
+    gap: space.sm,
+    padding: space.md,
+    borderRadius: radius.button,
+    borderWidth: 1,
+    borderColor: t.status.negative.border,
+    backgroundColor: t.status.negative.background,
   },
   errorText: {
-    fontSize: 14,
-    color: theme.colors.fiori.text.secondary,
-    marginTop: 8,
-    textAlign: 'center',
+    ...typography.subhead,
+    flex: 1,
+    color: t.status.negative.text,
   },
 });
 

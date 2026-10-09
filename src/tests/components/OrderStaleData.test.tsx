@@ -13,7 +13,14 @@ jest.mock('@react-navigation/native', () => ({ useFocusEffect: jest.fn() }));
 jest.mock('expo-router', () => ({ router: { push: jest.fn() } }));
 jest.mock('@/hooks/useOrderLiveUpdates', () => ({ useOrderLiveUpdates: jest.fn() }));
 jest.mock('@/config/sessionLifecycle', () => ({ getSessionGeneration: () => 1 }));
-jest.mock('@/store/hooks', () => ({ useAppSelector: () => ({ role: 'admin', name: 'Fictional Administrator' }) }));
+jest.mock('@/store/hooks', () => ({
+  useAppDispatch: () => jest.fn(),
+  useAppSelector: (selector: (state: unknown) => unknown) => {
+    const profile = { role: 'admin', name: 'Fictional Administrator' };
+    // Theme state for the token hooks; auth for the list; the profile itself for older selectors.
+    return selector({ theme: { preference: 'light', brand: 'orange' }, auth: { userProfile: profile, ...profile }, ...profile });
+  },
+}));
 jest.mock('@/hooks/useListColors', () => ({ useListColors: () => new Proxy({}, { get: () => '#ffffff' }) }));
 jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('@/components/skeletons', () => ({ ListSkeleton: () => null }));

@@ -3,7 +3,11 @@ import { act, create } from 'react-test-renderer';
 import { GhostTextInput } from '../GhostTextInput';
 
 jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
-jest.mock('@/hooks/useListColors', () => ({ useListColors: () => require('@/theme/listColors').listColors }));
+jest.mock('@/store/hooks', () => ({
+  useAppDispatch: () => jest.fn(),
+  useAppSelector: (selector: (state: unknown) => unknown) =>
+    selector({ theme: { preference: 'light', brand: 'orange' } }),
+}));
 
 beforeEach(() => jest.useFakeTimers());
 afterEach(() => jest.useRealTimers());

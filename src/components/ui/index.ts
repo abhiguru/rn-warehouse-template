@@ -8,8 +8,9 @@ export {
   SecondaryButton,
   GhostButton,
   default as Button,
+  getButtonColors,
 } from './Button';
-export type { BaseButtonProps, ButtonSize } from './Button';
+export type { BaseButtonProps, ButtonSize, ButtonType, ButtonStyle, ButtonProps } from './Button';
 
 // Cards
 export {
@@ -36,11 +37,19 @@ export type { InputProps } from './Input';
 export { FormLabel } from './FormLabel';
 export type { FormLabelProps } from './FormLabel';
 
-export { RadioButton, RadioGroup } from './RadioButton';
-export type { RadioButtonProps, RadioGroupProps } from './RadioButton';
+export { RadioButton, RadioGroup, SegmentedControl, ButtonGroup } from './RadioButton';
+export type {
+  RadioButtonProps,
+  RadioGroupProps,
+  SegmentedControlProps,
+  ButtonGroupProps,
+} from './RadioButton';
 
-export { Switch } from './Switch';
-export type { SwitchProps } from './Switch';
+export { Switch, SwitchCell, SwitchGroup } from './Switch';
+export type { SwitchProps, SwitchCellProps, SwitchGroupProps } from './Switch';
+
+export { SectionHeader, SectionFooter } from './SectionHeader';
+export type { SectionHeaderProps, SectionFooterProps } from './SectionHeader';
 
 export { DatePickerInput } from './DatePickerInput';
 export type { DatePickerInputProps } from './DatePickerInput';

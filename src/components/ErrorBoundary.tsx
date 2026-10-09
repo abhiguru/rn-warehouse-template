@@ -1,65 +1,275 @@
 /**
  * Error Boundary Component
  *
- * SAP Fiori Design System - Error/Empty State Component
+ * Catches JavaScript errors anywhere in the component tree and shows the
+ * error state from docs/STYLE_GUIDE.md §13.6: an alert icon in negative text,
+ * "Something went wrong", a plain-language cause and a "Try again" button.
+ * Stack traces are shown in development builds only.
  *
- * Catches JavaScript errors anywhere in the component tree and displays a fallback UI.
- * Prevents the entire app from crashing due to component errors.
+ * Also exports the building blocks other full-screen and error states share:
+ * `ErrorStateView` (the error layout) and `StateActionButton` (primary,
+ * secondary and tertiary buttons that depend on nothing but the tokens, so
+ * they still render when the component that crashed is a shared one).
  */
 
 import type { ErrorInfo, ReactNode } from 'react';
 import React, { Component } from 'react';
-import {
-  View,
-  Text,
-  Pressable,
-  StyleSheet,
-  ScrollView,
-  Platform,
-  Appearance,
-  type ColorSchemeName,
-} from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { colors, darkColors, type Colors } from '@/theme';
+import { ActivityIndicator, Platform, Pressable, ScrollView, Text, View } from 'react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { fontWeight, iconSize, layout, radius, space, touchTarget, typography } from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
+import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
 import { createLogger } from '@/utils/logger';
 import { captureException } from '@/config/sentryConfig';
 
+type IconName = keyof typeof MaterialCommunityIcons.glyphMap;
+
 // ============================================================================
-// SAP Fiori Design Constants
+// Action button (tokens only)
 // ============================================================================
-const FIORI = {
-  // Container
-  container: {
-    padding: 24,
+
+export type StateActionVariant = 'primary' | 'secondary' | 'tertiary';
+
+export interface StateActionButtonProps {
+  label: string;
+  onPress: () => void;
+  variant?: StateActionVariant;
+  icon?: IconName;
+  loading?: boolean;
+  loadingLabel?: string;
+  disabled?: boolean;
+  /** Stretch to the container width (bottom action of a full-screen state). */
+  fullWidth?: boolean;
+  accessibilityLabel?: string;
+  accessibilityHint?: string;
+  testID?: string;
+}
+
+const makeButtonStyles = (t: ThemeTokens) => ({
+  base: {
+    minHeight: touchTarget,
+    minWidth: 120,
+    borderRadius: radius.button,
+    paddingHorizontal: space.xl,
+    paddingVertical: space.sm,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    gap: space.sm,
   },
-  // Illustration
-  illustration: {
-    containerSize: 120,
-    iconSize: 64,
+  fullWidth: { alignSelf: 'stretch' as const },
+  primary: { backgroundColor: t.brand.fill },
+  primaryPressed: { backgroundColor: t.brand.fillPressed },
+  secondary: { borderWidth: 1, borderColor: t.border.button, backgroundColor: 'transparent' },
+  secondaryPressed: { backgroundColor: t.brand.subtle },
+  tertiary: { backgroundColor: 'transparent' },
+  tertiaryPressed: { backgroundColor: t.brand.subtle },
+  disabled: { opacity: t.interaction.disabledOpacity },
+  label: { ...typography.callout, textAlign: 'center' as const },
+  labelPrimary: { color: t.brand.onFill },
+  labelOther: { color: t.brand.tint },
+});
+
+export function StateActionButton({
+  label,
+  onPress,
+  variant = 'primary',
+  icon,
+  loading = false,
+  loadingLabel,
+  disabled = false,
+  fullWidth = false,
+  accessibilityLabel,
+  accessibilityHint,
+  testID,
+}: StateActionButtonProps) {
+  const styles = useThemedStyles(makeButtonStyles);
+  const t = useTokens();
+  const isDisabled = disabled || loading;
+  const contentColor = variant === 'primary' ? t.brand.onFill : t.brand.tint;
+  const pressedStyle =
+    variant === 'primary' ? styles.primaryPressed : variant === 'secondary' ? styles.secondaryPressed : styles.tertiaryPressed;
+
+  return (
+    <Pressable
+      testID={testID}
+      onPress={onPress}
+      disabled={isDisabled}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel ?? label}
+      accessibilityHint={accessibilityHint}
+      accessibilityState={{ disabled: isDisabled, busy: loading }}
+      style={({ pressed }) => [
+        styles.base,
+        styles[variant],
+        fullWidth && styles.fullWidth,
+        pressed && !isDisabled && pressedStyle,
+        isDisabled && styles.disabled,
+      ]}
+    >
+      {loading ? (
+        <ActivityIndicator size="small" color={contentColor} />
+      ) : (
+        icon && <MaterialCommunityIcons name={icon} size={iconSize.lg} color={contentColor} />
+      )}
+      <Text style={[styles.label, variant === 'primary' ? styles.labelPrimary : styles.labelOther]}>
+        {loading && loadingLabel ? loadingLabel : label}
+      </Text>
+    </Pressable>
+  );
+}
+
+// ============================================================================
+// Error state layout
+// ============================================================================
+
+export interface ErrorStateViewProps {
+  /** Title; defaults to "Something went wrong". */
+  title?: string;
+  /** Plain-language cause and what to do next. */
+  message: string;
+  /** Glyph; defaults to `alert-circle-outline`. */
+  icon?: IconName;
+  /** Error shown in development builds only. */
+  error?: Error | null;
+  /** Component stack shown in development builds only. */
+  componentStack?: string | null;
+  onRetry?: () => void;
+  /** Defaults to "Try again". */
+  retryLabel?: string;
+  retryAccessibilityLabel?: string;
+  retryAccessibilityHint?: string;
+  /** Optional extra low-emphasis action, such as going back to a list. */
+  secondaryActionLabel?: string;
+  onSecondaryAction?: () => void;
+  secondaryActionAccessibilityLabel?: string;
+  /**
+   * `screen` fills the screen (safe areas, status bar, hero icon).
+   * `inline` fills its container, for lists and sections.
+   */
+  presentation?: 'screen' | 'inline';
+}
+
+const makeStateStyles = (t: ThemeTokens) => ({
+  screen: { flex: 1, backgroundColor: t.background.base },
+  scrollContent: {
+    flexGrow: 1,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    paddingHorizontal: layout.marginCompact,
+    paddingVertical: space.xxxl,
   },
-  // Typography
-  typography: {
-    title: { fontSize: 20, fontWeight: '600' as const, lineHeight: 28 },
-    description: { fontSize: 14, fontWeight: '400' as const, lineHeight: 20 },
-    errorTitle: { fontSize: 13, fontWeight: '600' as const },
-    errorText: { fontSize: 11, fontWeight: '400' as const },
+  column: { width: '100%' as const, maxWidth: layout.maxFormWidth, alignItems: 'center' as const },
+  icon: { marginBottom: space.lg },
+  titleScreen: { ...typography.title2, color: t.text.primary, textAlign: 'center' as const, marginBottom: space.sm },
+  titleInline: { ...typography.title3, color: t.text.primary, textAlign: 'center' as const, marginBottom: space.sm },
+  message: { ...typography.body, color: t.text.secondary, textAlign: 'center' as const, marginBottom: space.xxl },
+  actions: { alignItems: 'center' as const, gap: space.sm },
+  devDetails: {
+    alignSelf: 'stretch' as const,
+    backgroundColor: t.status.negative.background,
+    borderColor: t.status.negative.border,
+    borderWidth: 1,
+    borderRadius: radius.button,
+    padding: space.md,
+    marginBottom: space.xxl,
   },
-  // Button
-  button: {
-    height: 44,
-    borderRadius: 8,
-    minWidth: 160,
-    fontSize: 15,
-    fontWeight: '600' as const,
+  devTitle: { ...typography.footnote, fontWeight: fontWeight.semibold, color: t.status.negative.text, marginBottom: space.xs },
+  devText: {
+    ...typography.caption1,
+    color: t.text.primary,
+    fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
   },
-  // Spacing
-  spacing: {
-    illustrationToTitle: 24,
-    titleToDescription: 8,
-    descriptionToAction: 24,
-    errorDetailsGap: 24,
-  },
-} as const;
+});
+
+export function ErrorStateView({
+  title = 'Something went wrong',
+  message,
+  icon = 'alert-circle-outline',
+  error,
+  componentStack,
+  onRetry,
+  retryLabel = 'Try again',
+  retryAccessibilityLabel,
+  retryAccessibilityHint,
+  secondaryActionLabel,
+  onSecondaryAction,
+  secondaryActionAccessibilityLabel,
+  presentation = 'screen',
+}: ErrorStateViewProps) {
+  const styles = useThemedStyles(makeStateStyles);
+  const t = useTokens();
+  const isScreen = presentation === 'screen';
+
+  const body = (
+    <ScrollView contentContainerStyle={styles.scrollContent}>
+      <View style={styles.column}>
+        <MaterialCommunityIcons
+          name={icon}
+          size={isScreen ? iconSize.hero : iconSize.xl}
+          color={t.status.negative.text}
+          style={styles.icon}
+          accessibilityElementsHidden
+          importantForAccessibility="no"
+        />
+        <Text style={isScreen ? styles.titleScreen : styles.titleInline} accessibilityRole="header">
+          {title}
+        </Text>
+        <Text style={styles.message}>{message}</Text>
+
+        {__DEV__ && error ? (
+          <View style={styles.devDetails}>
+            <Text style={styles.devTitle}>Details (development builds only)</Text>
+            <Text style={styles.devText} selectable>
+              {error.toString()}
+            </Text>
+            {componentStack ? (
+              <Text style={styles.devText} numberOfLines={10} selectable>
+                {componentStack}
+              </Text>
+            ) : null}
+          </View>
+        ) : null}
+
+        <View style={styles.actions}>
+          {onRetry && (
+            <StateActionButton
+              variant="secondary"
+              icon="refresh"
+              label={retryLabel}
+              onPress={onRetry}
+              accessibilityLabel={retryAccessibilityLabel}
+              accessibilityHint={retryAccessibilityHint}
+            />
+          )}
+          {secondaryActionLabel && onSecondaryAction && (
+            <StateActionButton
+              variant="tertiary"
+              label={secondaryActionLabel}
+              onPress={onSecondaryAction}
+              accessibilityLabel={secondaryActionAccessibilityLabel}
+            />
+          )}
+        </View>
+      </View>
+    </ScrollView>
+  );
+
+  if (!isScreen) return <View style={styles.screen}>{body}</View>;
+
+  return (
+    <SafeAreaView style={styles.screen}>
+      <EdgeToEdgeStatusBar barStyle={t.statusBarStyle} />
+      {body}
+    </SafeAreaView>
+  );
+}
+
+// ============================================================================
+// Error boundary
+// ============================================================================
 
 const errorBoundaryLogger = createLogger('ErrorBoundary');
 
@@ -72,34 +282,16 @@ interface State {
   hasError: boolean;
   error: Error | null;
   errorInfo: ErrorInfo | null;
-  isDark: boolean;
 }
 
 export class ErrorBoundary extends Component<Props, State> {
-  private appearanceSubscription: ReturnType<typeof Appearance.addChangeListener> | null = null;
-
   constructor(props: Props) {
     super(props);
     this.state = {
       hasError: false,
       error: null,
       errorInfo: null,
-      isDark: Appearance.getColorScheme() === 'dark',
     };
-  }
-
-  componentDidMount(): void {
-    // Subscribe to appearance changes
-    this.appearanceSubscription = Appearance.addChangeListener(({ colorScheme }) => {
-      this.setState({ isDark: colorScheme === 'dark' });
-    });
-  }
-
-  componentWillUnmount(): void {
-    // Clean up subscription
-    if (this.appearanceSubscription) {
-      this.appearanceSubscription.remove();
-    }
   }
 
   static getDerivedStateFromError(error: Error): Partial<State> {
@@ -108,7 +300,6 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo): void {
-    // Log error details for debugging
     errorBoundaryLogger.error('Caught error:', error);
     errorBoundaryLogger.error('Error info:', errorInfo);
 
@@ -118,7 +309,6 @@ export class ErrorBoundary extends Component<Props, State> {
       source: 'ErrorBoundary',
     });
 
-    // Update state with error details
     this.setState({
       error,
       errorInfo,
@@ -135,222 +325,21 @@ export class ErrorBoundary extends Component<Props, State> {
 
   render(): ReactNode {
     if (this.state.hasError) {
-      // Custom fallback UI provided by parent
       if (this.props.fallback) {
         return this.props.fallback;
       }
 
-      // Get theme colors based on current color scheme
-      const themeColors = this.state.isDark ? darkColors : colors;
-
-      // Default fallback UI - Fiori Empty State pattern
       return (
-        <View style={[styles.container, { backgroundColor: themeColors.white }]}>
-          <ScrollView
-            contentContainerStyle={styles.scrollContent}
-            accessible={true}
-            accessibilityLabel="Error screen. Something went wrong. Please try again."
-          >
-            {/* Illustration - Fiori Error State */}
-            <View
-              style={[
-                styles.illustrationContainer,
-                { backgroundColor: themeColors.fiori.semantic.negativeLight },
-              ]}
-              accessible={false}
-            >
-              <Ionicons
-                name="alert-circle-outline"
-                size={FIORI.illustration.iconSize}
-                color={themeColors.fiori.semantic.negative}
-              />
-            </View>
-
-            {/* Title */}
-            <Text
-              style={[styles.title, { color: themeColors.fiori.text.primary }]}
-              accessibilityRole="header"
-            >
-              Something went wrong
-            </Text>
-
-            {/* Description */}
-            <Text
-              style={[styles.description, { color: themeColors.fiori.text.secondary }]}
-            >
-              The app encountered an unexpected error. Please try again.
-            </Text>
-
-            {/* Error Details (Dev Mode Only) */}
-            {__DEV__ && this.state.error && (
-              <View
-                style={[
-                  styles.errorDetails,
-                  {
-                    backgroundColor: themeColors.gray[50],
-                    borderColor: themeColors.fiori.semantic.negativeBorder,
-                  },
-                ]}
-              >
-                <Text
-                  style={[styles.errorTitle, { color: themeColors.fiori.text.primary }]}
-                >
-                  Error Details (Dev Mode Only):
-                </Text>
-                <Text
-                  style={[
-                    styles.errorMessage,
-                    { color: themeColors.fiori.semantic.negative },
-                  ]}
-                >
-                  {this.state.error.toString()}
-                </Text>
-                {this.state.errorInfo && (
-                  <Text
-                    style={[
-                      styles.errorStack,
-                      { color: themeColors.fiori.text.secondary },
-                    ]}
-                  >
-                    {this.state.errorInfo.componentStack}
-                  </Text>
-                )}
-              </View>
-            )}
-
-            {/* Action Button - Fiori Primary */}
-            <Pressable
-              style={({ pressed }) => [
-                styles.button,
-                { backgroundColor: themeColors.primary },
-                pressed && styles.buttonPressed,
-              ]}
-              onPress={this.handleReset}
-              accessibilityRole="button"
-              accessibilityLabel="Try Again"
-              accessibilityHint="Tap to reload the screen"
-            >
-              <Ionicons
-                name="refresh-outline"
-                size={20}
-                color={themeColors.fiori.text.inverse}
-                style={styles.buttonIcon}
-              />
-              <Text
-                style={[styles.buttonText, { color: themeColors.fiori.text.inverse }]}
-              >
-                Try Again
-              </Text>
-            </Pressable>
-          </ScrollView>
-        </View>
+        <ErrorStateView
+          message="The app ran into a problem and couldn't show this screen. Try again. If it keeps happening, restart the app."
+          error={this.state.error}
+          componentStack={this.state.errorInfo?.componentStack}
+          onRetry={this.handleReset}
+          retryAccessibilityHint="Reloads the screen"
+        />
       );
     }
 
     return this.props.children;
   }
 }
-
-// ============================================================================
-// Styles - SAP Fiori Design System
-// Colors are applied dynamically in render() for dark mode support
-// ============================================================================
-const styles = StyleSheet.create({
-  // Container
-  container: {
-    flex: 1,
-  },
-  scrollContent: {
-    flexGrow: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: FIORI.container.padding,
-  },
-
-  // Illustration Container - 120x120pt per Fiori spec
-  illustrationContainer: {
-    width: FIORI.illustration.containerSize,
-    height: FIORI.illustration.containerSize,
-    borderRadius: FIORI.illustration.containerSize / 2,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: FIORI.spacing.illustrationToTitle,
-  },
-
-  // Title - 20pt Semibold
-  title: {
-    fontSize: FIORI.typography.title.fontSize,
-    fontWeight: FIORI.typography.title.fontWeight,
-    lineHeight: FIORI.typography.title.lineHeight,
-    marginBottom: FIORI.spacing.titleToDescription,
-    textAlign: 'center',
-  },
-
-  // Description - 14pt Regular
-  description: {
-    fontSize: FIORI.typography.description.fontSize,
-    fontWeight: FIORI.typography.description.fontWeight,
-    lineHeight: FIORI.typography.description.lineHeight,
-    marginBottom: FIORI.spacing.descriptionToAction,
-    textAlign: 'center',
-    maxWidth: 320,
-  },
-
-  // Error Details Container (Dev Mode)
-  errorDetails: {
-    width: '100%',
-    borderRadius: 8,
-    padding: 16,
-    marginBottom: FIORI.spacing.errorDetailsGap,
-    borderWidth: 1,
-  },
-  errorTitle: {
-    fontSize: FIORI.typography.errorTitle.fontSize,
-    fontWeight: FIORI.typography.errorTitle.fontWeight,
-    marginBottom: 8,
-  },
-  errorMessage: {
-    fontSize: FIORI.typography.errorText.fontSize,
-    fontWeight: FIORI.typography.errorText.fontWeight,
-    fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
-    marginBottom: 12,
-  },
-  errorStack: {
-    fontSize: FIORI.typography.errorText.fontSize,
-    fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
-  },
-
-  // Button - Fiori Primary Tint
-  button: {
-    height: FIORI.button.height,
-    minWidth: FIORI.button.minWidth,
-    borderRadius: FIORI.button.borderRadius,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 24,
-    // Platform-specific shadows
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.3,
-        shadowRadius: 4,
-      },
-      android: {
-        elevation: 4,
-      },
-    }),
-  },
-  buttonPressed: {
-    opacity: 0.9,
-    transform: [{ scale: 0.98 }],
-  },
-  buttonIcon: {
-    marginRight: 8,
-  },
-  buttonText: {
-    fontSize: FIORI.button.fontSize,
-    fontWeight: FIORI.button.fontWeight,
-  },
-});

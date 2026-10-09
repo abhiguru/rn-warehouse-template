@@ -9,6 +9,10 @@
  * - Empty state
  * - Filter modal integration
  *
+ * Follows docs/STYLE_GUIDE.md §13.6 and §14.1: background.base behind the
+ * rows, header on surface.header with a hairline divider, pull to refresh and
+ * the footer spinner in brand.tint, filter button with a count badge.
+ *
  * @example
  * ```tsx
  * <GenericFilterableList
@@ -33,6 +37,9 @@
 import React, { memo, useCallback } from 'react';
 import {
   View,
+  Text,
+  Pressable,
+  ActivityIndicator,
   SectionList,
   StyleSheet,
   RefreshControl,
@@ -40,12 +47,21 @@ import {
   SectionListRenderItem,
 } from 'react-native';
 import { FlashList, ListRenderItem } from '@shopify/flash-list';
-import { ActivityIndicator, Badge, IconButton, Text } from 'react-native-paper';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeIn } from 'react-native-reanimated';
-import theme from '@/theme';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { fontWeight, iconSize, layout, motion, radius, space, touchTarget, typography } from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
 import { ListSkeletonCard } from './ListSkeletonCard';
 import { ListEmptyState, ListEmptyStateProps } from './ListEmptyState';
+
+/** Space below the last row so it clears the tab bar and a floating action button. */
+const BOTTOM_CLEARANCE = 80;
+/** Minimum size of a count badge (§13.5). */
+const BADGE_MIN = 18;
+
+const countFormat = new Intl.NumberFormat('en-IN');
 
 /**
  * Props for GenericFilterableList component
@@ -112,11 +128,13 @@ export interface GenericFilterableSectionListProps<T, S = { title: string; data:
  * Loading footer component
  */
 const LoadingFooter = memo<{ loading: boolean }>(({ loading }) => {
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
   if (!loading) return null;
   return (
-    <View style={styles.loadingFooter}>
-      <ActivityIndicator size="small" color={theme.colors.primary} />
-      <Text style={styles.loadingText}>Loading more...</Text>
+    <View style={styles.loadingFooter} accessible accessibilityLabel="Loading more" accessibilityState={{ busy: true }}>
+      <ActivityIndicator size="small" color={t.brand.tint} />
+      <Text style={styles.loadingText}>Loading more…</Text>
     </View>
   );
 });
@@ -130,45 +148,67 @@ const ListHeader = memo<{
   activeFilterCount: number;
   onFilterPress: () => void;
   totalCount?: number;
-}>(({ title, activeFilterCount, onFilterPress, totalCount }) => (
-  <View style={styles.header}>
-    <View style={styles.headerLeft}>
-      {title && <Text style={styles.headerTitle}>{title}</Text>}
-      {totalCount !== undefined && totalCount > 0 && (
-        <Text style={styles.headerCount}>{totalCount} items</Text>
-      )}
-    </View>
-    <View style={styles.headerRight}>
-      <View>
-        <IconButton
-          icon="filter-variant"
-          mode="contained"
-          containerColor={activeFilterCount > 0 ? theme.colors.orange[100] : theme.colors.gray[100]}
-          iconColor={activeFilterCount > 0 ? theme.colors.primary : theme.colors.gray[600]}
-          size={20}
-          onPress={onFilterPress}
-        />
-        {activeFilterCount > 0 && (
-          <Badge style={styles.filterBadge} size={16}>
-            {activeFilterCount}
-          </Badge>
+}>(({ title, activeFilterCount, onFilterPress, totalCount }) => {
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
+  const filtered = activeFilterCount > 0;
+  return (
+    <View style={styles.header}>
+      <View style={styles.headerLeft}>
+        {title && (
+          <Text style={styles.headerTitle} accessibilityRole="header">
+            {title}
+          </Text>
+        )}
+        {totalCount !== undefined && totalCount > 0 && (
+          <Text style={styles.headerCount}>
+            {countFormat.format(totalCount)} {totalCount === 1 ? 'item' : 'items'}
+          </Text>
         )}
       </View>
+      <View style={styles.headerRight}>
+        <Pressable
+          onPress={onFilterPress}
+          style={({ pressed }) => [
+            styles.filterButton,
+            filtered && styles.filterButtonActive,
+            pressed && styles.filterButtonPressed,
+          ]}
+          accessibilityRole="button"
+          accessibilityLabel={filtered ? `Filter, ${activeFilterCount} active` : 'Filter'}
+        >
+          <MaterialCommunityIcons
+            name="filter-variant"
+            size={iconSize.lg}
+            color={filtered ? t.brand.tint : t.icon.primary}
+          />
+          {filtered && (
+            <View style={styles.filterBadge} accessible={false} importantForAccessibility="no-hide-descendants">
+              <Text style={styles.filterBadgeText} maxFontSizeMultiplier={1.6}>
+                {activeFilterCount}
+              </Text>
+            </View>
+          )}
+        </Pressable>
+      </View>
     </View>
-  </View>
-));
+  );
+});
 ListHeader.displayName = 'ListHeader';
 
 /**
  * Skeleton loading state
  */
-const SkeletonList = memo<{ count: number }>(({ count }) => (
-  <View style={styles.skeletonContainer}>
-    {Array.from({ length: count }).map((_, i) => (
-      <ListSkeletonCard key={i} />
-    ))}
-  </View>
-));
+const SkeletonList = memo<{ count: number }>(({ count }) => {
+  const styles = useThemedStyles(makeStyles);
+  return (
+    <View style={styles.skeletonContainer} accessible accessibilityLabel="Loading list" accessibilityState={{ busy: true }}>
+      {Array.from({ length: count }).map((_, i) => (
+        <ListSkeletonCard key={i} />
+      ))}
+    </View>
+  );
+});
 SkeletonList.displayName = 'SkeletonList';
 
 /**
@@ -199,6 +239,8 @@ export const GenericFilterableList = memo(<T,>(props: GenericFilterableListProps
   } = props;
 
   const insets = useSafeAreaInsets();
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
 
   const ListFooter = useCallback(() => (
     <>
@@ -241,7 +283,7 @@ export const GenericFilterableList = memo(<T,>(props: GenericFilterableListProps
           totalCount={totalCount}
         />
       )}
-      <Animated.View style={styles.listContainer} entering={FadeIn.duration(300)}>
+      <Animated.View style={styles.listContainer} entering={FadeIn.duration(motion.slow)}>
         {/* P7 Fix: Migrated from FlatList to FlashList for better performance */}
         <FlashList
           data={data || []}
@@ -249,7 +291,7 @@ export const GenericFilterableList = memo(<T,>(props: GenericFilterableListProps
           keyExtractor={keyExtractor}
           contentContainerStyle={[
             styles.listContent,
-            { paddingBottom: insets.bottom + 80 },
+            { paddingBottom: insets.bottom + BOTTOM_CLEARANCE },
             contentContainerStyle,
           ]}
           ListHeaderComponent={headerComponent}
@@ -259,8 +301,9 @@ export const GenericFilterableList = memo(<T,>(props: GenericFilterableListProps
             <RefreshControl
               refreshing={refreshing}
               onRefresh={onRefresh}
-              colors={[theme.colors.primary]}
-              tintColor={theme.colors.primary}
+              colors={[t.brand.tint]}
+              tintColor={t.brand.tint}
+              progressBackgroundColor={t.surface.card}
             />
           }
           onEndReached={onEndReached}
@@ -302,6 +345,8 @@ export const GenericFilterableSectionList = memo(<T, S extends { title: string; 
   } = props;
 
   const insets = useSafeAreaInsets();
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
 
   const ListFooter = useCallback(() => (
     <>
@@ -344,7 +389,7 @@ export const GenericFilterableSectionList = memo(<T, S extends { title: string; 
           totalCount={totalCount}
         />
       )}
-      <Animated.View style={styles.listContainer} entering={FadeIn.duration(300)}>
+      <Animated.View style={styles.listContainer} entering={FadeIn.duration(motion.slow)}>
         <SectionList
           sections={sections || []}
           renderItem={renderItem}
@@ -352,7 +397,7 @@ export const GenericFilterableSectionList = memo(<T, S extends { title: string; 
           keyExtractor={keyExtractor}
           contentContainerStyle={[
             styles.listContent,
-            { paddingBottom: insets.bottom + 80 },
+            { paddingBottom: insets.bottom + BOTTOM_CLEARANCE },
             contentContainerStyle,
           ]}
           ListHeaderComponent={headerComponent}
@@ -362,8 +407,9 @@ export const GenericFilterableSectionList = memo(<T, S extends { title: string; 
             <RefreshControl
               refreshing={refreshing}
               onRefresh={onRefresh}
-              colors={[theme.colors.primary]}
-              tintColor={theme.colors.primary}
+              colors={[t.brand.tint]}
+              tintColor={t.brand.tint}
+              progressBackgroundColor={t.surface.card}
             />
           }
           onEndReached={onEndReached}
@@ -382,64 +428,90 @@ export const GenericFilterableSectionList = memo(<T, S extends { title: string; 
   props: GenericFilterableSectionListProps<T, S>
 ) => React.ReactElement;
 
-const styles = StyleSheet.create({
+const makeStyles = (t: ThemeTokens) => ({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.gray[50],
+    backgroundColor: t.background.base,
   },
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: theme.spacing.md,
-    paddingVertical: theme.spacing.sm,
-    backgroundColor: theme.colors.white,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.gray[200],
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'center' as const,
+    paddingLeft: layout.marginCompact,
+    paddingRight: space.sm,
+    paddingVertical: space.xs,
+    backgroundColor: t.surface.header,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.divider,
   },
   headerLeft: {
     flex: 1,
   },
   headerRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
   },
   headerTitle: {
-    fontSize: theme.fontSize.lg,
-    fontWeight: theme.fontWeight.semibold,
-    color: theme.colors.gray[800],
+    ...typography.headline,
+    color: t.text.primary,
   },
   headerCount: {
-    fontSize: theme.fontSize.sm,
-    color: theme.colors.gray[500],
-    marginTop: 2,
+    ...typography.footnote,
+    fontVariant: ['tabular-nums' as const],
+    color: t.text.secondary,
+    marginTop: space.xxs,
+  },
+  filterButton: {
+    width: touchTarget,
+    height: touchTarget,
+    borderRadius: radius.pill,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+  },
+  filterButtonActive: {
+    backgroundColor: t.brand.subtle,
+  },
+  filterButtonPressed: {
+    backgroundColor: t.brand.subtleStrong,
   },
   filterBadge: {
-    position: 'absolute',
-    top: 4,
-    right: 4,
-    backgroundColor: theme.colors.primary,
+    position: 'absolute' as const,
+    top: space.xxs,
+    right: space.xxs,
+    minWidth: BADGE_MIN,
+    height: BADGE_MIN,
+    paddingHorizontal: space.xs,
+    borderRadius: radius.pill,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    backgroundColor: t.brand.fill,
+  },
+  filterBadgeText: {
+    ...typography.caption2,
+    fontWeight: fontWeight.semibold,
+    fontVariant: ['tabular-nums' as const],
+    color: t.brand.onFill,
   },
   listContainer: {
     flex: 1,
   },
   listContent: {
-    paddingTop: theme.spacing.sm,
+    paddingTop: space.sm,
   },
   skeletonContainer: {
     flex: 1,
-    paddingTop: theme.spacing.sm,
+    paddingTop: space.sm,
   },
   loadingFooter: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: theme.spacing.md,
+    flexDirection: 'row' as const,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    gap: space.sm,
+    paddingVertical: space.md,
   },
   loadingText: {
-    marginLeft: theme.spacing.sm,
-    fontSize: theme.fontSize.sm,
-    color: theme.colors.gray[500],
+    ...typography.footnote,
+    color: t.text.secondary,
   },
 });
 

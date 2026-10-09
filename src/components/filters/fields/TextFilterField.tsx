@@ -1,16 +1,16 @@
 /**
  * Text Filter Field Component
  *
- * Text input field with icon and clear button for filter modal.
- * Mobile-First Design with Material Design 3 and react-native-paper.
+ * Text input with an icon and a clear button for the filter sheet
+ * (style guide §13.2).
  */
 
 import React, { useState } from 'react';
-import { View, StyleSheet, TextInput as RNTextInput, useColorScheme } from 'react-native';
-import { TextInput, Text } from 'react-native-paper';
+import { View, Text, Pressable } from 'react-native';
 import { BottomSheetTextInput } from '@gorhom/bottom-sheet';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { colors, darkColors } from '@/theme';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { iconSize, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 import type { TextFilterFieldProps } from '@/types/filter.types';
 
 export const TextFilterField: React.FC<TextFilterFieldProps> = ({
@@ -21,9 +21,8 @@ export const TextFilterField: React.FC<TextFilterFieldProps> = ({
   onChangeText,
 }) => {
   const [isFocused, setIsFocused] = useState(false);
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
-  const themeColors = isDark ? darkColors : colors;
+  const t = useTokens();
+  const styles = useThemedStyles(makeStyles);
 
   const handleClear = () => {
     onChangeText('');
@@ -34,19 +33,12 @@ export const TextFilterField: React.FC<TextFilterFieldProps> = ({
 
   return (
     <View style={styles.container}>
-      {/* Input with icon inline */}
-      <View style={[
-        styles.inputWrapper,
-        {
-          backgroundColor: themeColors.white,
-          borderColor: isDark ? themeColors.gray[600] : colors.gray[300],
-        },
-      ]}>
+      <View style={[styles.inputWrapper, isFocused && styles.inputWrapperFocused]}>
         {icon && (
           <Icon
             name={icon}
-            size={20}
-            color={isDark ? themeColors.gray[400] : colors.gray[600]}
+            size={iconSize.md}
+            color={t.icon.secondary}
             style={styles.leftIcon}
           />
         )}
@@ -58,76 +50,78 @@ export const TextFilterField: React.FC<TextFilterFieldProps> = ({
           autoCapitalize="none"
           autoCorrect={false}
           returnKeyType="search"
-          style={[
-            styles.input,
-            icon && styles.inputWithIcon,
-            {
-              color: themeColors.gray[isDark ? 50 : 900],
-            },
-          ]}
-          placeholderTextColor={themeColors.gray[isDark ? 600 : 500]}
+          style={[styles.input, icon && styles.inputWithIcon]}
+          placeholderTextColor={t.text.placeholder}
           accessibilityLabel={label || placeholder}
         />
         {showPlaceholderText && (
-          <Text style={[
-            styles.placeholderText,
-            icon && styles.placeholderWithIcon,
-            {
-              color: themeColors.gray[isDark ? 500 : 500],
-            },
-          ]}>
+          <Text
+            style={[styles.placeholderText, icon && styles.placeholderWithIcon]}
+            pointerEvents="none"
+            importantForAccessibility="no"
+          >
             {placeholderText}
           </Text>
         )}
         {value && value.length > 0 && (
-          <Icon
-            name="close-circle"
-            size={20}
-            color={isDark ? themeColors.gray[500] : colors.gray[500]}
+          <Pressable
             onPress={handleClear}
-            style={styles.clearIcon}
-          />
+            style={styles.clearButton}
+            hitSlop={(touchTarget - iconSize.md) / 2}
+            accessibilityRole="button"
+            accessibilityLabel={`Clear ${(label || 'text').toLowerCase()}`}
+          >
+            <Icon name="close-circle" size={iconSize.md} color={t.icon.secondary} />
+          </Pressable>
         )}
       </View>
     </View>
   );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (t: ThemeTokens) => ({
   container: {
-    marginBottom: 4,
+    marginBottom: space.xs,
   },
   inputWrapper: {
-    position: 'relative',
-    flexDirection: 'row',
-    alignItems: 'center',
+    position: 'relative' as const,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
     borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    minHeight: 48,
+    borderColor: t.border.field,
+    borderRadius: radius.field,
+    backgroundColor: t.surface.field,
+    paddingHorizontal: space.lg,
+    minHeight: touchTarget,
+  },
+  inputWrapperFocused: {
+    borderWidth: 2,
+    borderColor: t.border.fieldFocus,
+    paddingHorizontal: space.lg - 1,
   },
   leftIcon: {
-    marginRight: 12,
+    marginRight: space.md,
   },
   input: {
+    ...typography.body,
     flex: 1,
     backgroundColor: 'transparent',
-    paddingVertical: 12,
-    fontSize: 16,
+    paddingVertical: space.md,
+    color: t.text.primary,
   },
   inputWithIcon: {
     paddingLeft: 0,
   },
   placeholderText: {
-    position: 'absolute',
-    left: 16,
-    fontSize: 16,
-    pointerEvents: 'none',
+    ...typography.body,
+    position: 'absolute' as const,
+    left: space.lg,
+    color: t.text.placeholder,
   },
   placeholderWithIcon: {
-    left: 48,
+    left: space.lg + iconSize.md + space.md,
   },
-  clearIcon: {
-    marginLeft: 8,
+  clearButton: {
+    marginLeft: space.sm,
   },
 });

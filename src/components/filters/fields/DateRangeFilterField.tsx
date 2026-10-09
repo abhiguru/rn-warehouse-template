@@ -1,29 +1,44 @@
 /**
  * Date Range Filter Field Component
  *
- * From/to date picker fields for date range filtering.
- * Mobile-First Design with Material Design 3 and react-native-paper.
+ * From/to date fields for date range filtering (style guide §13.3): the to date
+ * cannot be before the from date; dates show as "9 Oct 2026".
  */
 
 import React, { useState, useRef } from 'react';
-import { View, StyleSheet, Platform, TouchableOpacity, TextInput as RNTextInput, useColorScheme } from 'react-native';
-import { Text, Button, Surface, Chip } from 'react-native-paper';
+import { View, Text, Platform, Pressable, Insets } from 'react-native';
 import { BottomSheetTextInput } from '@gorhom/bottom-sheet';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { colors, darkColors } from '@/theme';
+import { useTheme, useThemedStyles } from '@/hooks/useTheme';
+import {
+  fontWeight,
+  iconSize,
+  radius,
+  space,
+  touchTarget,
+  typography,
+  type ThemeTokens,
+} from '@/theme/tokens';
 import type { DateRangeFilterFieldProps } from '@/types/filter.types';
 
+const CHIP_HEIGHT = 32;
+const REMOVE_HIT_SLOP: Insets = {
+  top: (touchTarget - iconSize.sm) / 2,
+  bottom: (touchTarget - iconSize.sm) / 2,
+  left: space.sm,
+  right: space.sm,
+};
+
 export const DateRangeFilterField: React.FC<DateRangeFilterFieldProps> = ({
-  label,
-  icon,
+  label: _label,
+  icon: _icon,
   placeholder = ['From date', 'To date'],
   value,
   onChange,
 }) => {
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
-  const themeColors = isDark ? darkColors : colors;
+  const { tokens: t, resolvedMode } = useTheme();
+  const styles = useThemedStyles(makeStyles);
 
   const [showFromPicker, setShowFromPicker] = useState(false);
   const [showToPicker, setShowToPicker] = useState(false);
@@ -45,13 +60,11 @@ export const DateRangeFilterField: React.FC<DateRangeFilterFieldProps> = ({
 
   const formatDate = (date: Date | undefined) => {
     if (!date) return null;
-    // Convert to Date if it's a string
     const dateObj = date instanceof Date ? date : new Date(date);
-    // Check if valid date
     if (isNaN(dateObj.getTime())) return null;
-    return dateObj.toLocaleDateString('en-US', {
-      month: 'short',
+    return dateObj.toLocaleDateString('en-IN', {
       day: 'numeric',
+      month: 'short',
       year: 'numeric',
     });
   };
@@ -94,13 +107,47 @@ export const DateRangeFilterField: React.FC<DateRangeFilterFieldProps> = ({
     }, 100);
   };
 
-  const handleFromDismiss = () => {
-    setShowFromPicker(false);
-  };
+  const renderDateField = (
+    date: Date | undefined,
+    fallback: string,
+    onPress: () => void,
+    expanded: boolean
+  ) => (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.dateButton,
+        expanded && styles.dateButtonFocused,
+        pressed && styles.dateButtonPressed,
+      ]}
+      accessibilityRole="button"
+      accessibilityLabel={`${fallback}, ${formatDate(date) ?? 'not set'}`}
+      accessibilityHint="Opens the date picker"
+      accessibilityState={{ expanded }}
+    >
+      <Icon name="calendar-outline" size={iconSize.md} color={t.icon.secondary} />
+      <Text style={[styles.dateButtonText, !date && styles.dateButtonPlaceholder]} numberOfLines={1}>
+        {formatDate(date) || fallback}
+      </Text>
+    </Pressable>
+  );
 
-  const handleToDismiss = () => {
-    setShowToPicker(false);
-  };
+  const renderChip = (iconName: string, text: string, onRemove: () => void, removeLabel: string) => (
+    <View style={styles.chip}>
+      <Icon name={iconName} size={iconSize.sm} color={t.brand.tint} />
+      <Text style={styles.chipText} maxFontSizeMultiplier={1.6}>
+        {text}
+      </Text>
+      <Pressable
+        onPress={onRemove}
+        hitSlop={REMOVE_HIT_SLOP}
+        accessibilityRole="button"
+        accessibilityLabel={removeLabel}
+      >
+        <Icon name="close" size={iconSize.sm} color={t.brand.tint} />
+      </Pressable>
+    </View>
+  );
 
   return (
     <View style={styles.container}>
@@ -110,120 +157,44 @@ export const DateRangeFilterField: React.FC<DateRangeFilterFieldProps> = ({
         style={styles.hiddenInput}
         editable={false}
         pointerEvents="none"
+        importantForAccessibility="no"
       />
       <BottomSheetTextInput
         ref={toInputRef}
         style={styles.hiddenInput}
         editable={false}
         pointerEvents="none"
+        importantForAccessibility="no"
       />
 
-      {/* Date Range Buttons */}
+      {/* From and to fields */}
       <View style={styles.dateContainer}>
-        {/* From Date */}
-        <Surface
-          style={[
-            styles.dateButton,
-            {
-              backgroundColor: fromDate ? themeColors.white : (isDark ? themeColors.gray[800] : colors.gray[50]),
-              borderColor: fromDate ? themeColors.primary : (isDark ? themeColors.gray[700] : colors.gray[200]),
-            },
-            fromDate && styles.dateButtonActive,
-          ]}
-          elevation={fromDate ? 1 : 0}
-        >
-          <TouchableOpacity
-            onPress={handleFromPress}
-            style={styles.dateButtonTouchable}
-            activeOpacity={0.7}
-          >
-            <Icon
-              name="calendar"
-              size={18}
-              color={fromDate ? themeColors.primary : (isDark ? themeColors.gray[500] : colors.gray[400])}
-            />
-            <Text
-              variant="bodyMedium"
-              style={[
-                styles.dateButtonText,
-                {
-                  color: fromDate ? themeColors.gray[900] : (isDark ? themeColors.gray[500] : colors.gray[400]),
-                },
-                fromDate && styles.dateButtonTextActive,
-              ]}
-            >
-              {formatDate(fromDate) || placeholder[0]}
-            </Text>
-          </TouchableOpacity>
-        </Surface>
-
-        <Icon name="arrow-right" size={20} color={isDark ? themeColors.gray[500] : colors.gray[400]} />
-
-        {/* To Date */}
-        <Surface
-          style={[
-            styles.dateButton,
-            {
-              backgroundColor: toDate ? themeColors.white : (isDark ? themeColors.gray[800] : colors.gray[50]),
-              borderColor: toDate ? themeColors.primary : (isDark ? themeColors.gray[700] : colors.gray[200]),
-            },
-            toDate && styles.dateButtonActive,
-          ]}
-          elevation={toDate ? 1 : 0}
-        >
-          <TouchableOpacity
-            onPress={handleToPress}
-            style={styles.dateButtonTouchable}
-            activeOpacity={0.7}
-          >
-            <Icon
-              name="calendar"
-              size={18}
-              color={toDate ? themeColors.primary : (isDark ? themeColors.gray[500] : colors.gray[400])}
-            />
-            <Text
-              variant="bodyMedium"
-              style={[
-                styles.dateButtonText,
-                {
-                  color: toDate ? themeColors.gray[900] : (isDark ? themeColors.gray[500] : colors.gray[400]),
-                },
-                toDate && styles.dateButtonTextActive,
-              ]}
-            >
-              {formatDate(toDate) || placeholder[1]}
-            </Text>
-          </TouchableOpacity>
-        </Surface>
+        {renderDateField(fromDate, placeholder[0], handleFromPress, showFromPicker)}
+        <Icon name="arrow-right" size={iconSize.md} color={t.icon.secondary} />
+        {renderDateField(toDate, placeholder[1], handleToPress, showToPicker)}
       </View>
 
-      {/* Selected Date Chips */}
+      {/* Selected date chips */}
       {(fromDate || toDate) && (
         <View style={styles.chipsContainer}>
-          {fromDate && (
-            <Chip
-              icon="calendar-start"
-              onClose={() => onChange(undefined, toDate)}
-              style={styles.chip}
-              textStyle={styles.chipText}
-            >
-              From: {formatDate(fromDate)}
-            </Chip>
-          )}
-          {toDate && (
-            <Chip
-              icon="calendar-end"
-              onClose={() => onChange(fromDate, undefined)}
-              style={styles.chip}
-              textStyle={styles.chipText}
-            >
-              To: {formatDate(toDate)}
-            </Chip>
-          )}
+          {fromDate &&
+            renderChip(
+              'calendar-start',
+              `From ${formatDate(fromDate)}`,
+              () => onChange(undefined, toDate),
+              'Remove filter from date'
+            )}
+          {toDate &&
+            renderChip(
+              'calendar-end',
+              `To ${formatDate(toDate)}`,
+              () => onChange(fromDate, undefined),
+              'Remove filter to date'
+            )}
         </View>
       )}
 
-      {/* From Date Picker */}
+      {/* From date picker */}
       {showFromPicker && (
         <DateTimePicker
           value={fromDate || new Date()}
@@ -231,10 +202,13 @@ export const DateRangeFilterField: React.FC<DateRangeFilterFieldProps> = ({
           display={Platform.OS === 'ios' ? 'spinner' : 'default'}
           onChange={handleFromDateChange}
           maximumDate={toDate || undefined}
+          themeVariant={resolvedMode}
+          textColor={t.text.primary}
+          accentColor={t.brand.tint}
         />
       )}
 
-      {/* To Date Picker */}
+      {/* To date picker */}
       {showToPicker && (
         <DateTimePicker
           value={toDate || new Date()}
@@ -242,60 +216,80 @@ export const DateRangeFilterField: React.FC<DateRangeFilterFieldProps> = ({
           display={Platform.OS === 'ios' ? 'spinner' : 'default'}
           onChange={handleToDateChange}
           minimumDate={fromDate || undefined}
+          themeVariant={resolvedMode}
+          textColor={t.text.primary}
+          accentColor={t.brand.tint}
         />
       )}
     </View>
   );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (t: ThemeTokens) => ({
   container: {
-    marginBottom: 8,
+    marginBottom: space.sm,
   },
   hiddenInput: {
-    position: 'absolute',
+    position: 'absolute' as const,
     opacity: 0,
     height: 0,
     width: 0,
   },
   dateContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
+    gap: space.sm,
   },
   dateButton: {
     flex: 1,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.sm,
+    minHeight: touchTarget,
+    paddingHorizontal: space.md,
+    paddingVertical: space.sm,
     borderWidth: 1,
-    borderRadius: 12,
-    overflow: 'hidden',
+    borderColor: t.border.field,
+    borderRadius: radius.field,
+    backgroundColor: t.surface.field,
   },
-  dateButtonActive: {
+  dateButtonFocused: {
     borderWidth: 2,
+    borderColor: t.border.fieldFocus,
+    paddingHorizontal: space.md - 1,
   },
-  dateButtonTouchable: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 14,
+  dateButtonPressed: {
+    backgroundColor: t.surface.cardPressed,
   },
   dateButtonText: {
-    // Color applied dynamically
+    ...typography.body,
+    flexShrink: 1,
+    color: t.text.primary,
   },
-  dateButtonTextActive: {
-    fontWeight: '500',
+  dateButtonPlaceholder: {
+    color: t.text.placeholder,
   },
   chipsContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginTop: 12,
+    flexDirection: 'row' as const,
+    flexWrap: 'wrap' as const,
+    gap: space.sm,
+    marginTop: space.md,
   },
   chip: {
-    // backgroundColor applied dynamically via Chip component theming
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.xs,
+    minHeight: CHIP_HEIGHT,
+    paddingVertical: space.s6,
+    paddingLeft: space.md,
+    paddingRight: space.sm,
+    borderRadius: radius.pill,
+    backgroundColor: t.brand.subtle,
   },
   chipText: {
-    fontSize: 12,
+    ...typography.caption1,
+    fontWeight: fontWeight.semibold,
+    color: t.brand.tint,
   },
 });

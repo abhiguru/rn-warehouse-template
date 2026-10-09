@@ -11,6 +11,7 @@ import type {
 } from '@/types/filter.types';
 import { searchService } from './search-service';
 import { getInvoicesList } from './invoice-service';
+import type { ThemeTokens } from '@/theme/tokens';
 
 /**
  * Unified autocomplete search function
@@ -214,11 +215,11 @@ export function getAutocompleteTypeLabel(type: AutocompleteType): string {
     case 'item':
       return 'Item';
     case 'grn':
-      return 'GRN Number';
+      return 'GRN number';
     case 'dispatch':
-      return 'Dispatch Number';
+      return 'Dispatch number';
     case 'invoice':
-      return 'Invoice Number';
+      return 'Invoice number';
     default:
       return 'Unknown';
   }
@@ -271,46 +272,25 @@ export function getAutocompleteIcon(type: AutocompleteType): string {
 }
 
 /**
- * Get chip color for autocomplete type
- * Returns Material Design 3 color values
+ * Get chip colours for an autocomplete selection.
  *
- * @param type Autocomplete type
+ * Selected values are applied filters, so every type uses the applied-filter chip
+ * colours (style guide §13.5: brand.subtle background, brand.tint text). The type
+ * is told apart by the chip's icon and label, never by colour alone.
+ *
+ * @param _type Autocomplete type (kept for API compatibility)
+ * @param tokens Semantic tokens for the current brand and mode
  * @returns Object with backgroundColor and textColor
  */
-export function getAutocompleteChipColor(type: AutocompleteType): {
+export function getAutocompleteChipColor(
+  _type: AutocompleteType,
+  tokens: ThemeTokens
+): {
   backgroundColor: string;
   textColor: string;
 } {
-  switch (type) {
-    case 'customer':
-      return {
-        backgroundColor: '#E8F5E9', // Light green
-        textColor: '#2E7D32', // Dark green
-      };
-    case 'item':
-      return {
-        backgroundColor: '#E3F2FD', // Light blue
-        textColor: '#1565C0', // Dark blue
-      };
-    case 'grn':
-      return {
-        backgroundColor: '#F3E5F5', // Light purple
-        textColor: '#6A1B9A', // Dark purple
-      };
-    case 'dispatch':
-      return {
-        backgroundColor: '#FFF3E0', // Light orange
-        textColor: '#E65100', // Dark orange
-      };
-    case 'invoice':
-      return {
-        backgroundColor: '#FCE4EC', // Light pink
-        textColor: '#C2185B', // Dark pink
-      };
-    default:
-      return {
-        backgroundColor: '#F5F5F5', // Light gray
-        textColor: '#616161', // Dark gray
-      };
-  }
+  return {
+    backgroundColor: tokens.brand.subtle,
+    textColor: tokens.brand.tint,
+  };
 }

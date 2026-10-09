@@ -1,12 +1,28 @@
 /**
- * SAP Fiori Key Value Table View Cell
+ * SAP Fiori key-value cell (docs/STYLE_GUIDE.md §13.6).
+ *
+ * Key in subhead / text.secondary, value in body / text.primary (600 when
+ * emphasized). Actionable values use brand.tint and a chevron. The inline layout
+ * switches to stacked at large text sizes.
  */
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import theme from '@/theme';
-import { useTheme } from '@/hooks/useTheme';
+import { View, Text, StyleSheet, Pressable, useWindowDimensions } from 'react-native';
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import {
+  fontWeight,
+  iconSize,
+  layout as layoutTokens,
+  radius,
+  space,
+  typography,
+  type ThemeTokens,
+} from '@/theme/tokens';
 
 type KeyValueLayout = 'inline' | 'stacked';
+
+/** Above this system font scale inline rows stack. */
+const STACK_FONT_SCALE = 1.3;
 
 interface KeyValueCellProps {
   keyLabel: string;
@@ -31,43 +47,56 @@ export const KeyValueCell: React.FC<KeyValueCellProps> = ({
   valueSuffix,
   showDivider = false,
 }) => {
-  const { colors: themeColors } = useTheme();
-  const isStacked = layout === 'stacked';
+  const t = useTokens();
+  const styles = useThemedStyles(makeStyles);
+  const { fontScale } = useWindowDimensions();
+  const isStacked = layout === 'stacked' || fontScale > STACK_FONT_SCALE;
   const formattedValue = `${valuePrefix || ''}${value}${valueSuffix || ''}`;
+  const isPressable = actionable && !!onPress;
 
-  const content = (
-    <View style={[styles.container, isStacked && styles.containerStacked, { backgroundColor: themeColors.fiori.objectCell.background }]}>
-      <Text style={[styles.keyLabel, { color: themeColors.fiori.text.secondary }]}>{keyLabel}</Text>
+  const renderContent = (pressed: boolean) => (
+    <View
+      style={[
+        styles.container,
+        isStacked && styles.containerStacked,
+        pressed && styles.containerPressed,
+      ]}
+    >
+      <Text style={styles.keyLabel}>{keyLabel}</Text>
       <View style={isStacked ? styles.valueContainerStacked : styles.valueContainer}>
         <Text
           style={[
             styles.value,
-            { color: themeColors.fiori.text.primary },
-            actionable && [styles.valueActionable, { color: themeColors.primary }],
+            isStacked && styles.valueStacked,
+            actionable && styles.valueActionable,
             emphasized && styles.valueEmphasized,
           ]}
         >
           {formattedValue}
         </Text>
+        {isPressable && (
+          <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />
+        )}
       </View>
     </View>
   );
 
-  if (actionable && onPress) {
-    return (
-      <>
-        <TouchableOpacity onPress={onPress} activeOpacity={0.7}>
-          {content}
-        </TouchableOpacity>
-        {showDivider && <View style={[styles.divider, { backgroundColor: themeColors.fiori.objectCell.divider }]} />}
-      </>
-    );
-  }
-
   return (
     <>
-      {content}
-      {showDivider && <View style={[styles.divider, { backgroundColor: themeColors.fiori.objectCell.divider }]} />}
+      {isPressable ? (
+        <Pressable
+          onPress={onPress}
+          accessibilityRole="button"
+          accessibilityLabel={`${keyLabel}, ${formattedValue}`}
+        >
+          {({ pressed }) => renderContent(pressed)}
+        </Pressable>
+      ) : (
+        <View accessible accessibilityLabel={`${keyLabel}, ${formattedValue}`}>
+          {renderContent(false)}
+        </View>
+      )}
+      {showDivider && <View style={styles.divider} />}
     </>
   );
 };
@@ -92,10 +121,10 @@ export const KeyValueGroup: React.FC<KeyValueGroupProps> = ({
   showDividers = true,
   layout = 'inline',
 }) => {
-  const { colors: themeColors } = useTheme();
+  const styles = useThemedStyles(makeStyles);
 
   return (
-    <View style={[groupStyles.container, { backgroundColor: themeColors.fiori.objectCell.background }]}>
+    <View style={styles.group}>
       {items.map((item, index) => (
         <KeyValueCell
           key={item.key}
@@ -114,67 +143,68 @@ export const KeyValueGroup: React.FC<KeyValueGroupProps> = ({
   );
 };
 
-const styles = StyleSheet.create({
-  // Fiori: Inline layout - key and value on same row
+const makeStyles = (t: ThemeTokens) => ({
+  // Inline layout - key and value on same row
   container: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 11,
-    minHeight: 44,
-    // backgroundColor applied dynamically for dark mode
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'center' as const,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.md - 1,
+    minHeight: layoutTokens.rowMinHeight,
+    backgroundColor: t.surface.card,
   },
-  // Fiori: Stacked layout - key above value
+  // Stacked layout - key above value
   containerStacked: {
-    flexDirection: 'column',
-    alignItems: 'flex-start',
+    flexDirection: 'column' as const,
+    alignItems: 'flex-start' as const,
+    justifyContent: 'center' as const,
   },
-  // Fiori: Key label - 13pt, secondary color
+  containerPressed: {
+    backgroundColor: t.surface.cardPressed,
+  },
   keyLabel: {
-    fontSize: 13,
-    fontWeight: '400',
-    // color applied dynamically for dark mode
-    lineHeight: 18,
+    ...typography.subhead,
+    color: t.text.secondary,
   },
   valueContainer: {
     flexShrink: 1,
-    marginLeft: 8,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    marginLeft: space.sm,
   },
   valueContainerStacked: {
-    marginTop: 4,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    marginTop: space.xs,
     marginLeft: 0,
   },
-  // Fiori: Value - 17pt, primary color, right-aligned
   value: {
-    fontSize: theme.fontSize.base,
-    fontWeight: '400',
-    // color applied dynamically for dark mode
-    lineHeight: 22,
-    textAlign: 'right',
+    ...typography.body,
+    color: t.text.primary,
+    textAlign: 'right' as const,
+    flexShrink: 1,
+    fontVariant: ['tabular-nums' as const],
   },
-  // Fiori: Actionable value - tint color, semibold
+  valueStacked: {
+    textAlign: 'left' as const,
+  },
   valueActionable: {
-    // color applied dynamically for dark mode
-    fontWeight: '600',
+    color: t.brand.tint,
   },
-  // Fiori: Emphasized value - semibold
   valueEmphasized: {
-    fontWeight: '600',
+    fontWeight: fontWeight.semibold,
   },
-  // Fiori: Divider - indent from left
+  // Divider - inset from the left
   divider: {
-    height: 1,
-    // backgroundColor applied dynamically for dark mode
-    marginLeft: 16,
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: t.border.divider,
+    marginLeft: space.lg,
   },
-});
-
-const groupStyles = StyleSheet.create({
-  container: {
-    // backgroundColor applied dynamically for dark mode
-    borderRadius: 12,
-    overflow: 'hidden',
+  group: {
+    backgroundColor: t.surface.card,
+    borderRadius: radius.card,
+    overflow: 'hidden' as const,
   },
 });
 

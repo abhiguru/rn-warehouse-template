@@ -6,8 +6,8 @@
  *
  * Features:
  * - Horizontal scrollable bar with filter chips
- * - Active filter chips (filled primary style with remove button)
- * - Clear All button for removing all filters
+ * - Applied filter chips (brand.subtle pill, brand.tint label, close icon)
+ * - Tertiary "Clear all" button
  * - 44pt minimum touch targets per Fiori accessibility spec
  *
  * Usage:
@@ -25,41 +25,34 @@ import React, { memo } from 'react';
 import {
   View,
   Text,
-  TouchableOpacity,
+  Pressable,
   StyleSheet,
   ScrollView,
-  Platform,
+  Insets,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { listColors } from '@/theme/listColors';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import {
+  fontWeight,
+  iconSize,
+  layout,
+  radius,
+  space,
+  touchTarget,
+  typography,
+  type ThemeTokens,
+} from '@/theme/tokens';
 import type { AutocompleteSelection } from '@/types/filter.types';
 
-// ============================================================================
-// FIORI DIMENSIONS (from 05-filter-feedback-bar.md)
-// ============================================================================
+const CHIP_HEIGHT = 32;
+const CHIP_HIT_SLOP: Insets = {
+  top: (touchTarget - CHIP_HEIGHT) / 2,
+  bottom: (touchTarget - CHIP_HEIGHT) / 2,
+};
 
-const FIORI = {
-  // Filter Bar
-  barMinHeight: 44,
-  barPaddingHorizontal: 16,
-  barPaddingVertical: 6,
-  chipGap: 8,
-
-  // Filter Button/Chip
-  chipHeight: 32,
-  chipPaddingHorizontal: 12,
-  chipPaddingVertical: 6,
-  chipBorderRadius: 16, // Pill shape
-  chipIconSize: 16,
-  chipFontSize: 14,
-
-  // Remove button
-  removeButtonSize: 18,
-  removeIconSize: 12,
-
-  // Clear All
-  clearAllFontSize: 14,
-} as const;
+/** "9 Oct 2026" (style guide §12.3). */
+const formatChipDate = (iso: string): string =>
+  new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 
 // ============================================================================
 // TYPES
@@ -96,33 +89,33 @@ interface FilterChipConfig {
 const DEFAULT_CHIP_CONFIGS: FilterChipConfig[] = [
   {
     filterKey: 'itemName',
-    icon: 'package-variant',
+    icon: 'cube-outline',
     isArray: true,
   },
   {
     filterKey: 'customerName',
-    icon: 'account',
+    icon: 'account-outline',
     isArray: true,
   },
   {
     filterKey: 'grNo',
-    icon: 'clipboard-list',
+    icon: 'package-down',
     isArray: true,
   },
   {
     filterKey: 'stockStatus',
-    icon: 'chart-bar',
+    icon: 'warehouse',
     labelRenderer: (value) =>
       value === 'in_stock'
-        ? 'In Stock'
+        ? 'In stock'
         : value === 'out_of_stock'
-          ? 'Out of Stock'
+          ? 'Out of stock'
           : String(value),
     clearValue: 'all',
   },
   {
     filterKey: 'packageMark',
-    icon: 'tag',
+    icon: 'tag-outline',
     clearValue: '',
   },
 ];
@@ -138,39 +131,30 @@ interface ActiveFilterChipProps {
 }
 
 /**
- * Active Filter Chip (Fiori style)
- *
- * Per Fiori spec:
- * - Active: Primary background (#f69000), white text/icon
- * - 32pt height, 16pt corner radius (pill shape)
- * - Remove button: Circular with × icon
+ * Applied filter chip, matching FilterChip: brand.subtle pill, brand.tint
+ * label and icons. The whole chip removes the filter.
  */
 const ActiveFilterChip = memo(function ActiveFilterChip({
   iconName,
   label,
   onRemove,
 }: ActiveFilterChipProps) {
+  const t = useTokens();
+  const styles = useThemedStyles(makeStyles);
   return (
-    <View style={styles.activeChip}>
-      <Icon
-        name={iconName}
-        size={FIORI.chipIconSize}
-        color={listColors.white}
-        style={styles.chipIcon}
-      />
-      <Text style={styles.activeChipText} numberOfLines={1}>
+    <Pressable
+      style={({ pressed }) => [styles.activeChip, pressed && styles.activeChipPressed]}
+      onPress={onRemove}
+      hitSlop={CHIP_HIT_SLOP}
+      accessibilityLabel={`Remove filter ${label}`}
+      accessibilityRole="button"
+    >
+      <Icon name={iconName} size={iconSize.sm} color={t.brand.tint} />
+      <Text style={styles.activeChipText} numberOfLines={1} maxFontSizeMultiplier={1.6}>
         {label}
       </Text>
-      <TouchableOpacity
-        onPress={onRemove}
-        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-        style={styles.removeButton}
-        accessibilityLabel={`${label} applied, tap to remove`}
-        accessibilityRole="button"
-      >
-        <Icon name="close" size={FIORI.removeIconSize} color={listColors.white} />
-      </TouchableOpacity>
-    </View>
+      <Icon name="close" size={iconSize.sm} color={t.brand.tint} />
+    </Pressable>
   );
 });
 
@@ -185,6 +169,8 @@ function AppliedFiltersBar({
   onClearAll,
   customChips,
 }: AppliedFiltersBarProps) {
+  const styles = useThemedStyles(makeStyles);
+
   // Don't render if no active filters
   if (activeFilterCount === 0) return null;
 
@@ -280,15 +266,13 @@ function AppliedFiltersBar({
   const dateFrom = filters.dateFrom as string | undefined;
   const dateTo = filters.dateTo as string | undefined;
   if (dateFrom || dateTo) {
-    const fromLabel = dateFrom
-      ? new Date(dateFrom).toLocaleDateString()
-      : '...';
-    const toLabel = dateTo ? new Date(dateTo).toLocaleDateString() : '...';
+    const fromLabel = dateFrom ? formatChipDate(dateFrom) : '…';
+    const toLabel = dateTo ? formatChipDate(dateTo) : '…';
 
     chips.push(
       <ActiveFilterChip
         key="date-range"
-        iconName="calendar"
+        iconName="calendar-outline"
         label={`${fromLabel} - ${toLabel}`}
         onRemove={() => {
           onUpdateFilter('dateFrom', undefined);
@@ -302,17 +286,17 @@ function AppliedFiltersBar({
     <View style={styles.container}>
       {/* Header row with title and Clear All */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>
+        <Text style={styles.headerTitle} accessibilityRole="header">
           Filters ({activeFilterCount})
         </Text>
-        <TouchableOpacity
+        <Pressable
           onPress={onClearAll}
-          style={styles.clearAllButton}
+          style={({ pressed }) => [styles.clearAllButton, pressed && styles.clearAllPressed]}
           accessibilityLabel="Clear all filters"
           accessibilityRole="button"
         >
-          <Text style={styles.clearAllText}>Clear All</Text>
-        </TouchableOpacity>
+          <Text style={styles.clearAllText}>Clear all</Text>
+        </Pressable>
       </View>
 
       {/* Horizontally scrollable filter chips */}
@@ -331,91 +315,73 @@ function AppliedFiltersBar({
 // STYLES
 // ============================================================================
 
-const styles = StyleSheet.create({
+const makeStyles = (t: ThemeTokens) => ({
   container: {
-    backgroundColor: listColors.white,
-    borderBottomWidth: 1,
-    borderBottomColor: listColors.gray200,
-    paddingTop: FIORI.barPaddingVertical,
-    paddingBottom: FIORI.barPaddingVertical,
+    backgroundColor: t.surface.header,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.divider,
+    paddingBottom: space.sm,
   },
 
   // Header row
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: FIORI.barPaddingHorizontal,
-    marginBottom: FIORI.barPaddingVertical,
-    minHeight: 28,
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'center' as const,
+    paddingLeft: layout.marginCompact,
+    paddingRight: space.xs,
   },
   headerTitle: {
-    fontSize: FIORI.chipFontSize,
-    fontWeight: '600',
-    color: listColors.textSecondary,
+    ...typography.footnote,
+    fontWeight: fontWeight.semibold,
+    color: t.text.secondary,
   },
   clearAllButton: {
-    minWidth: 44,
-    minHeight: 44,
-    justifyContent: 'center',
-    alignItems: 'flex-end',
-    paddingLeft: 8,
+    minWidth: touchTarget,
+    minHeight: touchTarget,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    paddingHorizontal: space.md,
+    borderRadius: radius.button,
+  },
+  clearAllPressed: {
+    backgroundColor: t.brand.subtle,
   },
   clearAllText: {
-    fontSize: FIORI.clearAllFontSize,
-    fontWeight: '600',
-    color: listColors.primary,
+    ...typography.subhead,
+    fontWeight: fontWeight.semibold,
+    color: t.brand.tint,
   },
 
-  // Chips scroll container
+  // Chips scroll container (room for each chip's padded touch area)
   chipsScrollContent: {
-    paddingHorizontal: FIORI.barPaddingHorizontal,
-    gap: FIORI.chipGap,
-    flexDirection: 'row',
-    alignItems: 'center',
+    paddingHorizontal: layout.marginCompact,
+    paddingVertical: (touchTarget - CHIP_HEIGHT) / 2,
+    gap: space.sm,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
   },
 
-  // Active filter chip (Fiori spec: filled primary)
+  // Applied filter chip
   activeChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: listColors.primary,
-    height: FIORI.chipHeight,
-    borderRadius: FIORI.chipBorderRadius,
-    paddingLeft: FIORI.chipPaddingHorizontal,
-    paddingRight: 6, // Smaller right padding for remove button
-    gap: 6,
-    // Platform-specific shadows
-    ...Platform.select({
-      ios: {
-        shadowColor: listColors.primary,
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.3,
-        shadowRadius: 4,
-      },
-      android: {
-        elevation: 2,
-      },
-    }),
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    backgroundColor: t.brand.subtle,
+    minHeight: CHIP_HEIGHT,
+    borderRadius: radius.pill,
+    paddingVertical: space.s6,
+    paddingLeft: space.md,
+    paddingRight: space.sm,
+    gap: space.xs,
   },
-  chipIcon: {
-    // Icon styling handled by Icon component
+  activeChipPressed: {
+    backgroundColor: t.brand.subtleStrong,
   },
   activeChipText: {
-    fontSize: FIORI.chipFontSize,
-    fontWeight: '500',
-    color: listColors.white,
+    ...typography.caption1,
+    fontWeight: fontWeight.semibold,
+    color: t.brand.tint,
     maxWidth: 150, // Prevent overly long text
-  },
-
-  // Remove button (circular with × icon)
-  removeButton: {
-    width: FIORI.removeButtonSize,
-    height: FIORI.removeButtonSize,
-    borderRadius: FIORI.removeButtonSize / 2,
-    backgroundColor: 'rgba(255, 255, 255, 0.25)',
-    justifyContent: 'center',
-    alignItems: 'center',
   },
 });
 
