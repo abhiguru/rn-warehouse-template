@@ -25,10 +25,22 @@ jest.mock('react-native', () => {
   return {
     View: element('View'), Text: element('Text'), TextInput: element('TextInput'),
     Modal: element('Modal'), ActivityIndicator: element('ActivityIndicator'),
+    ScrollView: element('ScrollView'), KeyboardAvoidingView: element('KeyboardAvoidingView'),
+    Platform: { OS: 'ios', select: (options: Record<string, unknown>) => options.ios ?? options.default },
     Alert: { alert: jest.fn() }, StyleSheet: { create: (styles: unknown) => styles },
   };
 });
 jest.mock('expo-camera', () => ({ CameraView: () => null, useCameraPermissions: () => [{ granted: true }, jest.fn()] }));
+jest.mock('react-native-safe-area-context', () => {
+  const React = require('react');
+  return { SafeAreaView: ({ children, ...props }: Record<string, unknown>) => React.createElement('SafeAreaView', props, children) };
+});
+jest.mock('@expo/vector-icons', () => ({ MaterialCommunityIcons: 'MaterialCommunityIcons' }));
+jest.mock('@/components/EdgeToEdgeStatusBar', () => ({ EdgeToEdgeStatusBar: () => null }));
+jest.mock('@/hooks/useTheme', () => {
+  const tokens = jest.requireActual('@/theme/tokens').getTokens('orange', 'light');
+  return { useTokens: () => tokens, useThemedStyles: (factory: (t: unknown) => unknown) => factory(tokens) };
+});
 jest.mock('expo-router', () => ({ router: { back: jest.fn(), replace: jest.fn() } }));
 jest.mock('@/components/ui/Button', () => {
   const React = require('react');
@@ -109,7 +121,7 @@ async function choose(initial = false) {
   await act(async () => { button('Use this server').props.onPress(); });
 }
 function confirmation() {
-  const call = jest.mocked(Alert.alert).mock.calls.find(([title]) => title === 'Change Warehouse Server');
+  const call = jest.mocked(Alert.alert).mock.calls.find(([title]) => title === 'Change warehouse server?');
   expect(call).toBeDefined();
   expect(call![1]).toMatch(/sign.*out/i);
   expect(call![1]).toMatch(/unsaved forms/i);
@@ -178,7 +190,7 @@ it.each(['query mutation', 'tracked mutation'])('checks for a new %s again after
   if (kind === 'query mutation') jest.mocked(queryClient.isMutating).mockReturnValue(1);
   else jest.mocked(beginOperatorSwitch).mockReturnValue(false);
   await confirm();
-  expect(Alert.alert).toHaveBeenLastCalledWith('Operation In Progress', expect.any(String));
+  expect(Alert.alert).toHaveBeenLastCalledWith('Operation in progress', expect.any(String));
   expect(store.getState()).toEqual(drafts);
   expect(stageOperatorServer).not.toHaveBeenCalled();
   expect(logout).not.toHaveBeenCalled();
@@ -210,7 +222,7 @@ it('does not log out or discard forms when staging the destination fails', async
   const drafts = store.getState();
   await choose();
   await confirm();
-  expect(Alert.alert).toHaveBeenLastCalledWith('Switch Failed', 'The current server was kept. Please try again.');
+  expect(Alert.alert).toHaveBeenLastCalledWith("Couldn't change server", 'The current server was kept. Try again.');
   expect(store.getState()).toEqual(drafts);
   expect(logout).not.toHaveBeenCalled();
   expect(commitStagedOperatorServer).not.toHaveBeenCalled();
