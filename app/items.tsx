@@ -1,27 +1,21 @@
 /**
- * Items Screen - 100% SAP Fiori Compliant
+ * Items screen: list report (style guide §14.1).
  *
- * Based on SAP Fiori for iOS Design Guidelines
- * Features:
- * - Fiori Navigation Bar with back button
- * - Object Cell layout pattern for item cards
- * - Semantic colors and typography
- * - Platform-specific shadows
- * - 44pt minimum touch targets
+ * Object cells with an avatar, packaging and description, an Inactive status
+ * tag, swipe to delete, pull to refresh, infinite scroll, and loading, empty
+ * and error states. Colours come from the semantic tokens.
  */
 
-import React, { useCallback, useState, useEffect, useRef, useMemo } from 'react';
+import React, { useCallback, useState, useEffect, useRef } from 'react';
 import {
   View,
+  Text,
   FlatList,
   RefreshControl,
-  StyleSheet,
-  Platform,
   Pressable,
   ActivityIndicator,
   Alert,
 } from 'react-native';
-import { Text } from 'react-native-paper';
 import { Swipeable } from 'react-native-gesture-handler';
 import { useIsFocused } from '@react-navigation/native';
 import { router, Stack } from 'expo-router';
@@ -33,8 +27,17 @@ import {
   ItemFilters,
   DEFAULT_ITEM_FILTERS,
 } from '@/types/item.types';
-import { FIORI } from '@/components/common/overview-tab/FioriTokens';
-import { useFioriColors } from '@/theme/fioriColors';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import {
+  fontWeight,
+  iconSize,
+  layout,
+  radius,
+  space,
+  touchTarget,
+  typography,
+  type ThemeTokens,
+} from '@/theme/tokens';
 
 // =============================================================================
 // TYPES
@@ -58,7 +61,8 @@ interface ListState {
 export default function ItemsScreen() {
   const isFocused = useIsFocused();
   const insets = useSafeAreaInsets();
-  const fiori = useFioriColors();
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
   const [state, setState] = useState<ListState>({
     data: [],
     loading: true,
@@ -171,14 +175,14 @@ export default function ItemsScreen() {
         } else {
           // Show error to user
           Alert.alert(
-            currentActive ? 'Cannot Deactivate' : 'Cannot Activate',
-            result.message || 'Operation failed',
+            currentActive ? "Couldn't deactivate the item" : "Couldn't activate the item",
+            result.message || 'Try again in a moment.',
             [{ text: 'OK' }]
           );
         }
       } catch (error) {
         console.error('[Items] Toggle active error:', error);
-        Alert.alert('Error', 'An unexpected error occurred', [{ text: 'OK' }]);
+        Alert.alert("Couldn't update the item", 'Check your connection and try again.', [{ text: 'OK' }]);
       }
     },
     []
@@ -191,12 +195,12 @@ export default function ItemsScreen() {
   const handleDeleteItem = useCallback(
     async (item: ItemListItem) => {
       Alert.alert(
-        'Delete Item',
-        `Are you sure you want to delete "${item.name}"?`,
+        `Delete ${item.name}?`,
+        'The item will be removed from your catalogue.',
         [
           { text: 'Cancel', style: 'cancel' },
           {
-            text: 'Delete',
+            text: 'Delete item',
             style: 'destructive',
             onPress: async () => {
               try {
@@ -209,30 +213,31 @@ export default function ItemsScreen() {
                     data: prev.data.filter((i) => i.id !== item.id),
                     totalCount: prev.totalCount - 1,
                   }));
-                  Alert.alert('Success', 'Item deleted successfully');
+                  Alert.alert('Item deleted', `${item.name} deleted.`);
                 } else {
                   // Check if blocked due to references
                   if (result.references) {
                     const refs = result.references;
-                    let message = 'This item cannot be deleted because it is referenced in:\n\n';
+                    const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+                    let message = 'This item is used in:\n\n';
                     if (refs.grn_count > 0) {
-                      message += `• ${refs.grn_count} GRN(s)\n`;
+                      message += `• ${plural(refs.grn_count, 'GRN', 'GRNs')}\n`;
                     }
                     if (refs.dispatch_count > 0) {
-                      message += `• ${refs.dispatch_count} Dispatch(es)\n`;
+                      message += `• ${plural(refs.dispatch_count, 'dispatch', 'dispatches')}\n`;
                     }
                     if (refs.invoice_count > 0) {
-                      message += `• ${refs.invoice_count} Invoice(s)\n`;
+                      message += `• ${plural(refs.invoice_count, 'invoice', 'invoices')}\n`;
                     }
                     message += '\nDeactivate the item instead to hide it from searches.';
-                    Alert.alert('Cannot Delete', message);
+                    Alert.alert("Can't delete this item", message);
                   } else {
-                    Alert.alert('Error', result.message || 'Failed to delete item');
+                    Alert.alert("Couldn't delete the item", result.message || 'Try again in a moment.');
                   }
                 }
               } catch (error) {
                 console.error('[Items] Delete error:', error);
-                Alert.alert('Error', 'An unexpected error occurred');
+                Alert.alert("Couldn't delete the item", 'Check your connection and try again.');
               }
             },
           },
@@ -263,65 +268,63 @@ export default function ItemsScreen() {
   const renderEmpty = useCallback(() => {
     if (state.loading) {
       return (
-        <View style={styles.emptyContainer}>
-          <ActivityIndicator size="large" color={fiori.colors.tint} />
-          <Text style={[styles.emptyText, { color: fiori.colors.textSecondary }]}>Loading items...</Text>
+        <View style={styles.emptyContainer} accessibilityRole="progressbar" accessibilityLabel="Loading items">
+          <ActivityIndicator size="large" color={t.brand.tint} />
+          <Text style={styles.emptyText}>Loading items…</Text>
+        </View>
+      );
+    }
+
+    // A failed load is not an empty catalogue: never offer "Add item" for it.
+    if (state.error) {
+      return (
+        <View style={styles.emptyContainer} accessibilityRole="alert">
+          <Icon name="alert-circle-outline" size={iconSize.hero} color={t.status.negative.text} />
+          <Text style={styles.emptyTitle} accessibilityRole="header">
+            Couldn't load items
+          </Text>
+          <Text style={styles.emptyText}>Check your connection and try again.</Text>
+          <Pressable
+            style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryButtonPressed]}
+            onPress={() => fetchItems(state.filters, 0)}
+            accessibilityRole="button"
+          >
+            <Icon name="refresh" size={iconSize.md} color={t.brand.tint} />
+            <Text style={styles.secondaryButtonText}>Try again</Text>
+          </Pressable>
         </View>
       );
     }
 
     return (
       <View style={styles.emptyContainer}>
-        <View style={styles.emptyIconContainer}>
-          <Icon name="cube-outline" size={64} color={fiori.colors.textTertiary} />
-        </View>
-        <Text style={[styles.emptyTitle, { color: fiori.colors.textPrimary }]}>No Items</Text>
-        <Text style={[styles.emptyText, { color: fiori.colors.textSecondary }]}>No items found. Create one to get started.</Text>
+        <Icon name="cube-outline" size={iconSize.hero} color={t.icon.secondary} />
+        <Text style={styles.emptyTitle} accessibilityRole="header">
+          No items yet
+        </Text>
+        <Text style={styles.emptyText}>Items you add appear here.</Text>
         <Pressable
-          style={({ pressed }) => [
-            styles.primaryButton,
-            { backgroundColor: fiori.colors.tint },
-            pressed && { opacity: 0.8 },
-          ]}
+          style={({ pressed }) => [styles.primaryButton, pressed && styles.primaryButtonPressed]}
           onPress={handleAddItem}
+          accessibilityRole="button"
         >
-          <Icon name="plus" size={20} color={fiori.colors.iconOnPrimary} />
-          <Text style={[styles.primaryButtonText, { color: fiori.colors.iconOnPrimary }]}>Add Item</Text>
+          <Icon name="plus" size={iconSize.md} color={t.brand.onFill} />
+          <Text style={styles.primaryButtonText}>Add item</Text>
         </Pressable>
       </View>
     );
-  }, [state.loading, handleAddItem, fiori]);
+  }, [state.loading, state.error, state.filters, fetchItems, handleAddItem, styles, t]);
 
   const renderFooter = useCallback(() => {
     if (!state.loadingMore) return null;
 
     return (
-      <View style={styles.footerContainer}>
-        <ActivityIndicator size="small" color={fiori.colors.tint} />
-        <Text style={[styles.footerText, { color: fiori.colors.textSecondary }]}>Loading more...</Text>
+      <View style={styles.footerContainer} accessibilityRole="progressbar" accessibilityLabel="Loading more items">
+        <ActivityIndicator size="small" color={t.brand.tint} />
+        <Text style={styles.footerText}>Loading more…</Text>
       </View>
     );
-  }, [state.loadingMore, fiori]);
-
-  // Dynamic header styles
-  const dynamicHeaderStyles = useMemo(() => ({
-    navBar: {
-      backgroundColor: fiori.colors.background,
-      borderBottomWidth: 1,
-      borderBottomColor: fiori.colors.divider,
-      ...Platform.select({
-        ios: {
-          shadowColor: '#000000',
-          shadowOffset: { width: 0, height: 1 },
-          shadowOpacity: 0.06,
-          shadowRadius: 2,
-        },
-        android: {
-          elevation: 2,
-        },
-      }),
-    },
-  }), [fiori]);
+  }, [state.loadingMore, styles, t]);
 
   return (
     <>
@@ -329,44 +332,45 @@ export default function ItemsScreen() {
       <Stack.Screen
         options={{
           headerShown: true,
-          headerStyle: dynamicHeaderStyles.navBar,
-          headerTintColor: fiori.colors.tint,
+          headerStyle: { backgroundColor: t.surface.header },
+          headerShadowVisible: false,
+          headerTintColor: t.brand.tint,
           headerTitleAlign: 'center',
           headerLeft: () => (
             <Pressable
               onPress={() => router.back()}
-              style={headerStyles.backButton}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              style={styles.backButton}
+              hitSlop={space.sm}
               accessibilityRole="button"
-              accessibilityLabel="Go back"
+              accessibilityLabel="Back"
             >
-              <Icon name="chevron-left" size={28} color={fiori.colors.tint} />
-              <Text style={[headerStyles.backButtonText, { color: fiori.colors.tint }]}>Back</Text>
+              <Icon name="chevron-left" size={iconSize.xl} color={t.brand.tint} />
+              <Text style={styles.backButtonText}>Back</Text>
             </Pressable>
           ),
           headerTitle: () => (
-            <View style={headerStyles.titleContainer}>
-              <Text style={[headerStyles.title, { color: fiori.colors.textPrimary }]}>Items</Text>
+            <View style={styles.titleContainer} accessible accessibilityRole="header">
+              <Text style={styles.headerTitle}>Items</Text>
               {state.totalCount > 0 && (
-                <Text style={[headerStyles.subtitle, { color: fiori.colors.textSecondary }]}>{state.totalCount} total</Text>
+                <Text style={styles.headerSubtitle}>{countFormat.format(state.totalCount)} total</Text>
               )}
             </View>
           ),
           headerRight: () => (
             <Pressable
               onPress={handleAddItem}
-              style={headerStyles.addButton}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              style={styles.addButton}
+              hitSlop={space.sm}
               accessibilityRole="button"
               accessibilityLabel="Add item"
             >
-              <Icon name="plus" size={24} color={fiori.colors.tint} />
+              <Icon name="plus" size={iconSize.lg} color={t.brand.tint} />
             </Pressable>
           ),
         }}
       />
 
-      <View style={[styles.container, { paddingBottom: insets.bottom, backgroundColor: fiori.colors.backgroundGrouped }]}>
+      <View style={[styles.container, { paddingBottom: insets.bottom }]}>
         <FlatList
           data={state.data}
           renderItem={renderItem}
@@ -379,8 +383,9 @@ export default function ItemsScreen() {
             <RefreshControl
               refreshing={state.refreshing}
               onRefresh={handleRefresh}
-              colors={[fiori.colors.tint]}
-              tintColor={fiori.colors.tint}
+              colors={[t.brand.tint]}
+              tintColor={t.brand.tint}
+              progressBackgroundColor={t.surface.card}
             />
           }
           ListEmptyComponent={renderEmpty}
@@ -388,7 +393,6 @@ export default function ItemsScreen() {
           onEndReached={handleEndReached}
           onEndReachedThreshold={0.3}
           showsVerticalScrollIndicator={false}
-          ItemSeparatorComponent={() => <View style={styles.separator} />}
         />
       </View>
     </>
@@ -396,8 +400,22 @@ export default function ItemsScreen() {
 }
 
 // =============================================================================
+// HELPERS
+// =============================================================================
+
+const countFormat = new Intl.NumberFormat('en-IN');
+
+/** Stable avatar colour index for an id (style guide §3.2). */
+function avatarIndex(id: string, count: number): number {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) {
+    hash = (hash * 31 + id.charCodeAt(i)) | 0;
+  }
+  return Math.abs(hash) % count;
+}
+
+// =============================================================================
 // FIORI ITEM CARD COMPONENT (Object Cell Layout)
-// Based on SAP Fiori for iOS Design Guidelines
 // =============================================================================
 
 interface FioriItemCardProps {
@@ -407,14 +425,14 @@ interface FioriItemCardProps {
   onDelete: () => void;
 }
 
-function FioriItemCard({
-  item,
-  onPress,
-  onToggleActive,
-  onDelete,
-}: FioriItemCardProps) {
+function FioriItemCard({ item, onPress, onToggleActive, onDelete }: FioriItemCardProps) {
   const swipeableRef = useRef<Swipeable | null>(null);
-  const fiori = useFioriColors();
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
+  const avatarColor = t.avatar[avatarIndex(item.id, t.avatar.length)];
+  const rowLabel = [item.name, item.active ? null : 'Inactive', item.packaging, item.description]
+    .filter(Boolean)
+    .join(', ');
 
   const handleDelete = () => {
     swipeableRef.current?.close();
@@ -424,14 +442,12 @@ function FioriItemCard({
   const renderRightActions = () => (
     <View style={styles.swipeActionsContainer}>
       <Pressable
-        style={({ pressed }) => [
-          styles.swipeAction,
-          { backgroundColor: fiori.colors.destructive },
-          pressed && styles.swipeActionPressed,
-        ]}
+        style={({ pressed }) => [styles.swipeAction, pressed && styles.swipeActionPressed]}
         onPress={handleDelete}
+        accessibilityRole="button"
+        accessibilityLabel={`Delete ${item.name}`}
       >
-        <Icon name="trash-can-outline" size={22} color="#fff" />
+        <Icon name="trash-can-outline" size={iconSize.lg} color={t.destructive.onFill} />
         <Text style={styles.swipeActionText}>Delete</Text>
       </Pressable>
     </View>
@@ -446,75 +462,47 @@ function FioriItemCard({
       rightThreshold={40}
     >
       <Pressable
-        style={({ pressed }) => [
-          styles.card,
-          { backgroundColor: fiori.colors.cardBackground, borderColor: fiori.colors.divider },
-          !item.active && { backgroundColor: fiori.colors.backgroundGrouped, borderColor: fiori.colors.divider },
-          pressed && { backgroundColor: fiori.colors.backgroundSecondary },
-        ]}
+        style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
         onPress={onPress}
+        accessibilityRole="button"
+        accessibilityLabel={rowLabel}
+        accessibilityHint="Opens the item for editing. Swipe left to delete."
       >
         {/* Fiori Object Cell: Leading Avatar */}
-        <View style={[
-          styles.avatar,
-          { backgroundColor: fiori.colors.tintLight },
-          !item.active && { backgroundColor: fiori.colors.divider },
-        ]}>
-          <Text style={[
-            styles.avatarText,
-            { color: fiori.colors.tint },
-            !item.active && { color: fiori.colors.textTertiary },
-          ]}>
-            {(item.name || 'I').charAt(0).toUpperCase()}
-          </Text>
+        <View
+          style={[styles.avatar, { backgroundColor: avatarColor }]}
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+        >
+          <Text style={styles.avatarText}>{(item.name || 'I').charAt(0).toUpperCase()}</Text>
         </View>
 
         {/* Fiori Object Cell: Main Content */}
         <View style={styles.cardContent}>
-          {/* Headline - Item Name */}
-          <View style={styles.headlineRow}>
-            <Text
-              style={[
-                styles.headline,
-                { color: fiori.colors.textPrimary },
-                !item.active && { color: fiori.colors.textTertiary },
-              ]}
-              numberOfLines={1}
-            >
-              {item.name}
-            </Text>
-            {!item.active && (
-              <View style={[styles.statusBadge, { backgroundColor: fiori.colors.destructiveLight }]}>
-                <Text style={[styles.statusBadgeText, { color: fiori.colors.destructive }]}>Inactive</Text>
-              </View>
-            )}
-          </View>
+          <Text style={[styles.headline, !item.active && styles.textInactive]} numberOfLines={2}>
+            {item.name}
+          </Text>
+          {!item.active && (
+            <View style={styles.statusBadge}>
+              <Icon name="circle-outline" size={iconSize.sm - 4} color={t.status.neutral.text} />
+              <Text style={styles.statusBadgeText} maxFontSizeMultiplier={1.6}>
+                Inactive
+              </Text>
+            </View>
+          )}
 
           {/* Subheadline - Item Details */}
           <View style={styles.attributeStack}>
             {item.packaging && (
               <View style={styles.attributeRow}>
-                <Icon name="package-variant" size={14} color={fiori.colors.textTertiary} />
-                <Text style={[
-                  styles.attributeText,
-                  { color: fiori.colors.textSecondary },
-                  !item.active && { color: fiori.colors.textTertiary },
-                ]}>
-                  {item.packaging}
-                </Text>
+                <Icon name="package-variant" size={iconSize.sm} color={t.icon.secondary} />
+                <Text style={styles.attributeText}>{item.packaging}</Text>
               </View>
             )}
             {item.description && (
               <View style={styles.attributeRow}>
-                <Icon name="text-box-outline" size={14} color={fiori.colors.textTertiary} />
-                <Text
-                  style={[
-                    styles.attributeText,
-                    { color: fiori.colors.textSecondary },
-                    !item.active && { color: fiori.colors.textTertiary },
-                  ]}
-                  numberOfLines={1}
-                >
+                <Icon name="text-box-outline" size={iconSize.sm} color={t.icon.secondary} />
+                <Text style={styles.attributeText} numberOfLines={1}>
                   {item.description}
                 </Text>
               </View>
@@ -525,23 +513,18 @@ function FioriItemCard({
         {/* Fiori Object Cell: Trailing Actions */}
         <View style={styles.trailingActions}>
           <Pressable
-            style={({ pressed }) => [
-              styles.actionButton,
-              { backgroundColor: fiori.colors.backgroundGrouped },
-              pressed && { backgroundColor: fiori.colors.divider },
-            ]}
+            style={({ pressed }) => [styles.actionButton, pressed && styles.actionButtonPressed]}
             onPress={onToggleActive}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             accessibilityRole="button"
-            accessibilityLabel={item.active ? 'Deactivate item' : 'Activate item'}
+            accessibilityLabel={item.active ? `Deactivate ${item.name}` : `Activate ${item.name}`}
           >
             <Icon
               name={item.active ? 'eye-off-outline' : 'eye-outline'}
-              size={20}
-              color={item.active ? fiori.colors.textTertiary : fiori.colors.success}
+              size={iconSize.md}
+              color={item.active ? t.icon.primary : t.status.positive.text}
             />
           </Pressable>
-          <Icon name="chevron-right" size={20} color={fiori.colors.textTertiary} />
+          <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />
         </View>
       </Pressable>
     </Swipeable>
@@ -549,232 +532,235 @@ function FioriItemCard({
 }
 
 // =============================================================================
-// FIORI HEADER STYLES
-// Based on SAP Fiori for iOS Design Guidelines - Navigation Bar
-// Colors are applied dynamically via useFioriColors hook
+// STYLES
 // =============================================================================
 
-const headerStyles = StyleSheet.create({
-  // Back Button - Fiori spec: 44pt touch target
-  backButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    minHeight: FIORI.dimensions.touchTarget,
-    paddingRight: FIORI.spacing.sm,
-    marginLeft: -FIORI.spacing.sm,
-  },
-  backButtonText: {
-    ...FIORI.typography.body,
-    marginLeft: -4,
-  },
-
-  // Title container - centered layout (Fiori spec)
-  titleContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  // Title - Fiori: 17pt Semibold
-  title: {
-    ...FIORI.typography.headline,
-    letterSpacing: -0.41,
-    textAlign: 'center',
-  },
-
-  // Subtitle - count
-  subtitle: {
-    ...FIORI.typography.caption,
-    textAlign: 'center',
-    marginTop: 2,
-  },
-
-  // Add Button
-  addButton: {
-    minWidth: FIORI.dimensions.touchTarget,
-    minHeight: FIORI.dimensions.touchTarget,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});
-
-// =============================================================================
-// FIORI MAIN STYLES
-// Based on SAP Fiori for iOS Design Guidelines
-// Colors are applied dynamically via useFioriColors hook
-// =============================================================================
-
-const styles = StyleSheet.create({
-  // Container
+const makeStyles = (t: ThemeTokens) => ({
   container: {
     flex: 1,
+    backgroundColor: t.background.base,
   },
   listContent: {
-    paddingTop: FIORI.spacing.md,
-    paddingBottom: FIORI.spacing.xl,
+    paddingTop: space.md,
+    paddingBottom: space.xl,
   },
   listContentEmpty: {
     flex: 1,
   },
-  separator: {
-    height: 0, // Cards have built-in margin
+
+  // Header
+  backButton: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    minHeight: touchTarget,
+    paddingRight: space.sm,
+    marginLeft: -space.sm,
+  },
+  backButtonText: {
+    ...typography.body,
+    color: t.brand.tint,
+    marginLeft: -space.xs,
+  },
+  titleContainer: {
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+  },
+  headerTitle: {
+    ...typography.headline,
+    color: t.text.primary,
+    textAlign: 'center' as const,
+  },
+  headerSubtitle: {
+    ...typography.caption1,
+    color: t.text.secondary,
+    textAlign: 'center' as const,
+  },
+  addButton: {
+    minWidth: touchTarget,
+    minHeight: touchTarget,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
   },
 
-  // Fiori Object Cell Card
+  // Object cell
   card: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: FIORI.dimensions.cardRadius,
-    padding: FIORI.dimensions.cardPadding,
-    marginHorizontal: FIORI.spacing.lg,
-    marginBottom: FIORI.spacing.md,
-    borderWidth: 1,
-    minHeight: FIORI.dimensions.touchTarget * 2,
-    ...FIORI.shadows.card,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    borderRadius: radius.card,
+    padding: space.lg,
+    marginHorizontal: layout.marginCompact,
+    marginBottom: space.sm,
+    minHeight: layout.objectCellMinHeight,
+    backgroundColor: t.surface.card,
+    ...t.shadow[2],
   },
-
-  // Avatar - Fiori Object Cell Leading Element
+  cardPressed: {
+    backgroundColor: t.surface.cardPressed,
+  },
   avatar: {
-    width: FIORI.dimensions.avatarSize,
-    height: FIORI.dimensions.avatarSize,
-    borderRadius: FIORI.dimensions.avatarSize / 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: FIORI.spacing.md,
+    width: layout.avatar.md,
+    height: layout.avatar.md,
+    borderRadius: radius.pill,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    marginRight: space.md,
   },
   avatarText: {
-    fontSize: 20,
-    fontWeight: '600',
+    ...typography.headline,
+    color: t.mode === 'light' ? t.text.primary : t.overlay.onImage,
   },
-
-  // Card Content - Fiori Object Cell Main Content
   cardContent: {
     flex: 1,
-    marginRight: FIORI.spacing.sm,
-  },
-  headlineRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: FIORI.spacing.sm,
-    marginBottom: FIORI.spacing.xs,
+    marginRight: space.sm,
+    gap: space.xs,
   },
   headline: {
-    ...FIORI.typography.headline,
-    flex: 1,
+    ...typography.headline,
+    color: t.text.primary,
   },
-
-  // Status Badge
+  textInactive: {
+    color: t.text.secondary,
+  },
   statusBadge: {
-    paddingHorizontal: FIORI.spacing.sm,
-    paddingVertical: 2,
-    borderRadius: 10,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    alignSelf: 'flex-start' as const,
+    gap: space.xs,
+    paddingHorizontal: space.s6,
+    paddingVertical: space.xxs,
+    borderRadius: radius.field,
+    backgroundColor: t.status.neutral.background,
   },
   statusBadgeText: {
-    fontSize: 11,
-    fontWeight: '600',
-    letterSpacing: 0.3,
+    ...typography.caption1,
+    fontWeight: fontWeight.semibold,
+    color: t.status.neutral.text,
   },
-
-  // Attribute Stack - Fiori Object Cell Subheadline
   attributeStack: {
-    gap: FIORI.spacing.xs,
+    gap: space.xs,
   },
   attributeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: FIORI.spacing.xs,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.xs,
   },
   attributeText: {
-    ...FIORI.typography.caption,
+    ...typography.subhead,
+    color: t.text.secondary,
     flex: 1,
   },
-
-  // Trailing Actions - Fiori Object Cell Trailing Element
   trailingActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: FIORI.spacing.sm,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.xs,
   },
   actionButton: {
-    width: FIORI.dimensions.touchTarget,
-    height: FIORI.dimensions.touchTarget,
-    borderRadius: FIORI.dimensions.buttonRadius,
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: touchTarget,
+    height: touchTarget,
+    borderRadius: radius.button,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+  },
+  actionButtonPressed: {
+    backgroundColor: t.surface.cardPressed,
   },
 
-  // Empty State - Fiori Spec
+  // Empty / error / loading states
   emptyContainer: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: FIORI.spacing.xxl,
-    paddingVertical: FIORI.spacing.xxl * 2,
-  },
-  emptyIconContainer: {
-    marginBottom: FIORI.spacing.lg,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    gap: space.sm,
+    paddingHorizontal: space.xxl,
+    paddingVertical: space.giant,
   },
   emptyTitle: {
-    ...FIORI.typography.headline,
-    fontSize: 20,
-    marginBottom: FIORI.spacing.sm,
-    textAlign: 'center',
+    ...typography.title3,
+    color: t.text.primary,
+    textAlign: 'center' as const,
+    marginTop: space.sm,
   },
   emptyText: {
-    ...FIORI.typography.body,
-    textAlign: 'center',
-    marginBottom: FIORI.spacing.xl,
+    ...typography.subhead,
+    color: t.text.secondary,
+    textAlign: 'center' as const,
+    marginBottom: space.md,
   },
-
-  // Primary Button - Fiori Primary Tint
   primaryButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    height: FIORI.dimensions.buttonHeight,
-    borderRadius: FIORI.dimensions.buttonRadius,
-    paddingHorizontal: FIORI.spacing.xl,
-    gap: FIORI.spacing.sm,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    minHeight: touchTarget,
+    borderRadius: radius.button,
+    paddingHorizontal: space.xl,
+    gap: space.sm,
+    backgroundColor: t.brand.fill,
+  },
+  primaryButtonPressed: {
+    backgroundColor: t.brand.fillPressed,
   },
   primaryButtonText: {
-    ...FIORI.typography.button,
+    ...typography.callout,
+    fontWeight: fontWeight.semibold,
+    color: t.brand.onFill,
+  },
+  secondaryButton: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    minHeight: touchTarget,
+    borderRadius: radius.button,
+    borderWidth: 1,
+    borderColor: t.border.button,
+    paddingHorizontal: space.xl,
+    gap: space.sm,
+  },
+  secondaryButtonPressed: {
+    backgroundColor: t.brand.subtle,
+  },
+  secondaryButtonText: {
+    ...typography.callout,
+    fontWeight: fontWeight.semibold,
+    color: t.brand.tint,
   },
 
   // Footer
   footerContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: FIORI.spacing.lg,
-    gap: FIORI.spacing.sm,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    paddingVertical: space.lg,
+    gap: space.sm,
   },
   footerText: {
-    ...FIORI.typography.caption,
+    ...typography.footnote,
+    color: t.text.secondary,
   },
 
   // Swipe Actions
   swipeActionsContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingRight: FIORI.spacing.lg,
-    paddingLeft: FIORI.spacing.sm,
-    marginBottom: FIORI.spacing.md,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    paddingRight: layout.marginCompact,
+    paddingLeft: space.sm,
+    marginBottom: space.sm,
   },
   swipeAction: {
     width: 72,
-    height: '100%',
-    minHeight: FIORI.dimensions.touchTarget * 2,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderRadius: FIORI.dimensions.cardRadius,
-    gap: 4,
+    height: '100%' as const,
+    minHeight: layout.objectCellMinHeight,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    borderRadius: radius.card,
+    gap: space.xs,
+    backgroundColor: t.destructive.fill,
   },
   swipeActionPressed: {
-    opacity: 0.85,
+    backgroundColor: t.destructive.fillPressed,
   },
   swipeActionText: {
-    color: '#fff',
-    fontSize: 11,
-    fontWeight: '600',
-    textTransform: 'uppercase',
+    ...typography.caption1,
+    fontWeight: fontWeight.semibold,
+    color: t.destructive.onFill,
   },
 });

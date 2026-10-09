@@ -1,5 +1,5 @@
 import React, { memo, useRef } from 'react';
-import { View, Text, StyleSheet, Pressable, Platform } from 'react-native';
+import { View, Text, StyleSheet, Pressable } from 'react-native';
 import Animated, {
   FadeInDown,
   Layout,
@@ -9,8 +9,18 @@ import Animated, {
   runOnJS,
 } from 'react-native-reanimated';
 import { Swipeable } from 'react-native-gesture-handler';
-import { Ionicons } from '@expo/vector-icons';
-import { useListColors, type ListColors } from '@/hooks/useListColors';
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import {
+  fontWeight,
+  iconSize,
+  layout,
+  radius,
+  space,
+  touchTarget,
+  typography,
+  type ThemeTokens,
+} from '@/theme/tokens';
 import type { ItemStoragePrice } from '@/types/item-pricing.types';
 import { formatCurrency } from '@/utils/formatters';
 
@@ -24,20 +34,21 @@ interface ItemPricingCardProps {
   canManage?: boolean;
   isLastInSection?: boolean;
   isFirstForCustomer?: boolean; // Show customer header for first item in customer group
-  colors?: ListColors;
+  /**
+   * @deprecated Ignored. The card reads the semantic tokens itself; kept so
+   * existing callers that still pass list colours compile.
+   */
+  colors?: unknown;
 }
 
-const FIORI = {
-  objectCell: { minHeight: 44, paddingVertical: 8, paddingHorizontal: 12 },
-  badge: { height: 20, borderRadius: 10, fontSize: 10, paddingHorizontal: 6 },
-  avatar: { size: 28, borderRadius: 14 },
-  swipe: { buttonWidth: 56, iconSize: 18 },
-} as const;
+/** "9 Oct 2026" (style guide §12.3). */
+const formatCompactDate = (dateStr: string) =>
+  new Date(dateStr).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 
 const ItemPricingCard = memo<ItemPricingCardProps>(
-  ({ price, onPress, onView, onEdit, onDelete, index, canManage = true, isLastInSection = false, isFirstForCustomer = false, colors: colorsProp }) => {
-    const hookColors = useListColors();
-    const colors = colorsProp || hookColors;
+  ({ price, onPress, onView, onEdit, onDelete, index, canManage = true, isLastInSection = false, isFirstForCustomer = false }) => {
+    const styles = useThemedStyles(makeStyles);
+    const t = useTokens();
     const scale = useSharedValue(1);
     const swipeableRef = useRef<Swipeable | null>(null);
 
@@ -67,54 +78,60 @@ const ItemPricingCard = memo<ItemPricingCardProps>(
       runOnJS(() => swipeableRef.current?.close())();
     };
 
+    const weightLabel = `${price.weight_min}–${price.weight_max} kg`;
+    const isOneTime = price.price_type === 'one_time';
+    const typeLabel = isOneTime ? 'One-time' : 'Monthly';
+
     const renderRightActions = () => (
       <View style={styles.swipeActionsContainer}>
         <Pressable
-          style={({ pressed }) => [
-            styles.swipeAction,
-            { backgroundColor: colors.statusNeutral },
-            pressed && styles.swipeActionPressed,
-          ]}
+          style={({ pressed }) => [styles.swipeAction, styles.swipeView, pressed && styles.swipeViewPressed]}
           onPress={() => handleSwipeAction('view')}
+          accessibilityRole="button"
+          accessibilityLabel={`View price for ${weightLabel}`}
         >
-          <Ionicons name="eye-outline" color={colors.white} size={FIORI.swipe.iconSize} />
+          <Icon name="eye-outline" color={t.icon.primary} size={iconSize.md} />
         </Pressable>
         {canManage && (
           <Pressable
-            style={({ pressed }) => [
-              styles.swipeAction,
-              { backgroundColor: colors.statusCritical },
-              pressed && styles.swipeActionPressed,
-            ]}
+            style={({ pressed }) => [styles.swipeAction, styles.swipeEdit, pressed && styles.swipeEditPressed]}
             onPress={() => handleSwipeAction('edit')}
+            accessibilityRole="button"
+            accessibilityLabel={`Edit price for ${weightLabel}`}
           >
-            <Ionicons name="create-outline" color={colors.white} size={FIORI.swipe.iconSize} />
+            <Icon name="pencil-outline" color={t.brand.onFill} size={iconSize.md} />
           </Pressable>
         )}
         {canManage && (
           <Pressable
-            style={({ pressed }) => [
-              styles.swipeAction,
-              { backgroundColor: colors.statusNegative },
-              pressed && styles.swipeActionPressed,
-            ]}
+            style={({ pressed }) => [styles.swipeAction, styles.swipeDelete, pressed && styles.swipeDeletePressed]}
             onPress={() => handleSwipeAction('delete')}
+            accessibilityRole="button"
+            accessibilityLabel={`Delete price for ${weightLabel}`}
           >
-            <Ionicons name="trash-outline" color={colors.white} size={FIORI.swipe.iconSize} />
+            <Icon name="trash-can-outline" color={t.destructive.onFill} size={iconSize.md} />
           </Pressable>
         )}
       </View>
     );
 
     // Check if price is expired
-    const isExpired = price.effective_to && new Date(price.effective_to) < new Date();
+    const isExpired = !!price.effective_to && new Date(price.effective_to) < new Date();
     const isDefault = !price.customer_id;
-
-    // Format compact date
-    const formatCompactDate = (dateStr: string) => {
-      const date = new Date(dateStr);
-      return date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: '2-digit' });
-    };
+    const validity = `From ${formatCompactDate(price.effective_from)}${
+      price.effective_to ? ` to ${formatCompactDate(price.effective_to)}` : ''
+    }`;
+    const rowLabel = [
+      weightLabel,
+      typeLabel,
+      formatCurrency(price.unit_price),
+      isExpired ? 'Expired' : null,
+      `Labour ${formatCurrency(price.labour_rate)}`,
+      `Tax ${price.tax_percent}%`,
+      validity,
+    ]
+      .filter(Boolean)
+      .join(', ');
 
     return (
       <Animated.View
@@ -124,23 +141,20 @@ const ItemPricingCard = memo<ItemPricingCardProps>(
         <Animated.View style={animatedCardStyle}>
           {/* Customer Group Header - only show for first item in customer group */}
           {isFirstForCustomer && (
-            <View style={[styles.customerGroupHeader, { backgroundColor: colors.gray50, borderBottomColor: colors.gray100 }]}>
-              <View style={[
-                styles.customerAvatar,
-                { backgroundColor: isDefault ? colors.primary : colors.statusNeutral }
-              ]}>
-                <Ionicons
-                  name={isDefault ? 'globe-outline' : 'person-outline'}
-                  size={14}
-                  color={colors.white}
+            <View style={styles.customerGroupHeader} accessible accessibilityRole="header">
+              <View style={[styles.customerAvatar, isDefault && styles.customerAvatarDefault]}>
+                <Icon
+                  name={isDefault ? 'earth' : 'account-outline'}
+                  size={iconSize.sm}
+                  color={isDefault ? t.brand.onFill : t.icon.primary}
                 />
               </View>
-              <Text style={[styles.customerGroupName, { color: colors.textPrimary }]} numberOfLines={1}>
-                {price.customer_name || 'Default Pricing'}
+              <Text style={styles.customerGroupName} numberOfLines={2}>
+                {price.customer_name || 'Default pricing'}
               </Text>
               {isDefault && (
-                <View style={[styles.defaultBadge, { backgroundColor: colors.primaryLight }]}>
-                  <Text style={[styles.defaultBadgeText, { color: colors.primary }]}>BASE</Text>
+                <View style={styles.defaultBadge}>
+                  <Text style={styles.defaultBadgeText} maxFontSizeMultiplier={1.6}>Base</Text>
                 </View>
               )}
             </View>
@@ -157,76 +171,59 @@ const ItemPricingCard = memo<ItemPricingCardProps>(
               onPressIn={handlePressIn}
               onPressOut={handlePressOut}
               onPress={() => onPress(price)}
+              accessibilityRole="button"
+              accessibilityLabel={rowLabel}
+              accessibilityHint="Swipe left for view, edit and delete"
             >
-              <View style={[
-                styles.objectCell,
-                {
-                  backgroundColor: colors.cellBackground,
-                  borderColor: colors.gray100,
-                },
-                isExpired && { backgroundColor: colors.gray50, opacity: 0.7 },
-                isLastInSection && styles.objectCellLast,
-              ]}>
-                {/* Main Row: Weight + Price Type Badge + Price + Actions */}
-                <View style={styles.mainRow}>
-                  {/* Left: Weight Range */}
-                  <View style={styles.weightContainer}>
-                    <Ionicons name="scale-outline" size={14} color={colors.textSecondary} />
-                    <Text style={[styles.weightText, { color: colors.textPrimary }]}>
-                      {price.weight_min}-{price.weight_max} kg
-                    </Text>
-                  </View>
-
-                  {/* Center: Price Type Badge */}
-                  <View style={[
-                    styles.typeBadge,
-                    {
-                      backgroundColor: price.price_type === 'one_time' ? colors.primaryLight : colors.statusCriticalLight,
-                    }
-                  ]}>
-                    <Text style={[
-                      styles.typeBadgeText,
-                      { color: price.price_type === 'one_time' ? colors.primary : colors.statusCritical }
-                    ]}>
-                      {price.price_type === 'one_time' ? 'ONE-TIME' : 'MONTHLY'}
-                    </Text>
-                  </View>
-
-                  {/* Right: Price */}
-                  <Text style={[
-                    styles.priceText,
-                    { color: price.price_type === 'one_time' ? colors.primary : colors.statusCritical }
-                  ]}>
-                    {formatCurrency(price.unit_price)}
-                  </Text>
-
-                  {/* Expired Badge */}
-                  {isExpired && (
-                    <View style={[styles.expiredBadge, { backgroundColor: colors.statusNegative }]}>
-                      <Text style={[styles.expiredBadgeText, { color: colors.white }]}>EXP</Text>
+              {({ pressed }) => (
+                <View style={[
+                  styles.objectCell,
+                  pressed && styles.objectCellPressed,
+                  isLastInSection && styles.objectCellLast,
+                ]}>
+                  {/* Main Row: Weight + Price Type Tag + Price */}
+                  <View style={styles.mainRow}>
+                    {/* Left: Weight Range */}
+                    <View style={styles.weightContainer}>
+                      <Icon name="scale" size={iconSize.sm} color={t.icon.secondary} />
+                      <Text style={styles.weightText}>{weightLabel}</Text>
                     </View>
-                  )}
 
-                  {/* Chevron */}
-                  <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
-                </View>
+                    {/* Price Type Tag */}
+                    <View style={[styles.typeBadge, isOneTime ? styles.typeBadgeOneTime : styles.typeBadgeMonthly]}>
+                      <Text
+                        style={[styles.typeBadgeText, isOneTime ? styles.typeBadgeTextOneTime : styles.typeBadgeTextMonthly]}
+                        maxFontSizeMultiplier={1.6}
+                      >
+                        {typeLabel}
+                      </Text>
+                    </View>
 
-                {/* Secondary Row: Labour, Tax, Validity */}
-                <View style={styles.secondaryRow}>
-                  <Text style={[styles.secondaryText, { color: colors.textSecondary }]}>
-                    Labour {formatCurrency(price.labour_rate)}
-                  </Text>
-                  <Text style={[styles.separator, { color: colors.gray300 }]}>·</Text>
-                  <Text style={[styles.secondaryText, { color: colors.textSecondary }]}>
-                    Tax {price.tax_percent}%
-                  </Text>
-                  <Text style={[styles.separator, { color: colors.gray300 }]}>·</Text>
-                  <Text style={[styles.secondaryText, { color: colors.textSecondary }]}>
-                    From {formatCompactDate(price.effective_from)}
-                    {price.effective_to ? ` to ${formatCompactDate(price.effective_to)}` : '+'}
-                  </Text>
+                    {/* Right: Price */}
+                    <Text style={styles.priceText}>{formatCurrency(price.unit_price)}</Text>
+
+                    {/* Chevron */}
+                    <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />
+                  </View>
+
+                  {/* Secondary Row: Labour, Tax, Validity */}
+                  <View style={styles.secondaryRow}>
+                    <Text style={styles.secondaryText}>
+                      Labour {formatCurrency(price.labour_rate)}
+                    </Text>
+                    <Text style={styles.separator}>·</Text>
+                    <Text style={styles.secondaryText}>Tax {price.tax_percent}%</Text>
+                    <Text style={styles.separator}>·</Text>
+                    <Text style={styles.secondaryText}>{validity}</Text>
+                    {isExpired && (
+                      <View style={styles.expiredBadge}>
+                        <Icon name="alert-circle" size={iconSize.sm - 4} color={t.status.negative.text} />
+                        <Text style={styles.expiredBadgeText} maxFontSizeMultiplier={1.6}>Expired</Text>
+                      </View>
+                    )}
+                  </View>
                 </View>
-              </View>
+              )}
             </Pressable>
           </Swipeable>
         </Animated.View>
@@ -239,7 +236,7 @@ ItemPricingCard.displayName = 'ItemPricingCard';
 
 // Skeleton Loading Card Component - Compact Fiori style
 export const ItemPricingSkeletonCard = memo(() => {
-  const colors = useListColors();
+  const styles = useThemedStyles(makeStyles);
   const opacity = useSharedValue(0.3);
 
   React.useEffect(() => {
@@ -253,16 +250,20 @@ export const ItemPricingSkeletonCard = memo(() => {
   }));
 
   return (
-    <Animated.View style={[styles.skeletonCard, { backgroundColor: colors.cellBackground, borderColor: colors.gray200 }, animatedStyle]}>
+    <Animated.View
+      style={[styles.skeletonCard, animatedStyle]}
+      accessibilityRole="progressbar"
+      accessibilityLabel="Loading prices"
+    >
       {/* Main row skeleton */}
       <View style={styles.skeletonRow}>
-        <View style={[styles.skeleton, { width: 70, height: 14, backgroundColor: colors.gray200 }]} />
-        <View style={[styles.skeleton, { width: 55, height: 18, borderRadius: 9, backgroundColor: colors.gray200 }]} />
-        <View style={[styles.skeleton, { width: 60, height: 16, backgroundColor: colors.gray200, marginLeft: 'auto' }]} />
+        <View style={[styles.skeleton, { width: 70, height: 14 }]} />
+        <View style={[styles.skeleton, { width: 55, height: 18 }]} />
+        <View style={[styles.skeleton, { width: 60, height: 16, marginLeft: 'auto' }]} />
       </View>
       {/* Secondary row skeleton */}
       <View style={[styles.skeletonRow, { marginBottom: 0 }]}>
-        <View style={[styles.skeleton, { width: 180, height: 12, backgroundColor: colors.gray200 }]} />
+        <View style={[styles.skeleton, { width: 180, height: 12 }]} />
       </View>
     </Animated.View>
   );
@@ -270,153 +271,204 @@ export const ItemPricingSkeletonCard = memo(() => {
 
 ItemPricingSkeletonCard.displayName = 'ItemPricingSkeletonCard';
 
-const styles = StyleSheet.create({
+const makeStyles = (t: ThemeTokens) => ({
   // Customer Group Header
   customerGroupHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    marginHorizontal: 12,
-    marginTop: 4,
-    borderBottomWidth: 1,
-    gap: 8,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    paddingHorizontal: space.md,
+    paddingVertical: space.sm,
+    marginHorizontal: space.md,
+    marginTop: space.xs,
+    minHeight: layout.rowMinHeight,
+    backgroundColor: t.surface.card,
+    borderTopLeftRadius: radius.button,
+    borderTopRightRadius: radius.button,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.divider,
+    gap: space.sm,
   },
   customerAvatar: {
-    width: FIORI.avatar.size,
-    height: FIORI.avatar.size,
-    borderRadius: FIORI.avatar.borderRadius,
-    justifyContent: 'center',
-    alignItems: 'center',
+    width: layout.avatar.sm,
+    height: layout.avatar.sm,
+    borderRadius: radius.pill,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    backgroundColor: t.surface.cardActive,
+  },
+  customerAvatarDefault: {
+    backgroundColor: t.brand.fill,
   },
   customerGroupName: {
+    ...typography.subhead,
+    fontWeight: fontWeight.semibold,
     flex: 1,
-    fontSize: 13,
-    fontWeight: '600',
+    color: t.text.primary,
   },
   defaultBadge: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
+    paddingHorizontal: space.s6,
+    paddingVertical: space.xxs,
+    borderRadius: radius.field,
+    backgroundColor: t.brand.subtle,
   },
   defaultBadgeText: {
-    fontSize: 9,
-    fontWeight: '700',
-    letterSpacing: 0.5,
+    ...typography.caption1,
+    fontWeight: fontWeight.semibold,
+    color: t.brand.tint,
   },
 
-  // Object Cell - Compact Fiori style
+  // Object Cell - compact rows inside a customer group
   objectCell: {
-    marginHorizontal: 12,
-    paddingHorizontal: FIORI.objectCell.paddingHorizontal,
-    paddingVertical: FIORI.objectCell.paddingVertical,
-    minHeight: FIORI.objectCell.minHeight,
-    borderBottomWidth: 1,
-    borderLeftWidth: 1,
-    borderRightWidth: 1,
+    marginHorizontal: space.md,
+    paddingHorizontal: space.md,
+    paddingVertical: space.sm,
+    minHeight: layout.rowMinHeight,
+    backgroundColor: t.surface.card,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.divider,
+  },
+  objectCellPressed: {
+    backgroundColor: t.surface.cardPressed,
   },
   objectCellLast: {
-    borderBottomLeftRadius: 8,
-    borderBottomRightRadius: 8,
-    marginBottom: 4,
+    borderBottomLeftRadius: radius.button,
+    borderBottomRightRadius: radius.button,
+    borderBottomWidth: 0,
+    marginBottom: space.xs,
   },
 
   // Main Row
   mainRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.sm,
   },
   weightContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.xs,
     minWidth: 80,
   },
   weightText: {
-    fontSize: 13,
-    fontWeight: '600',
+    ...typography.subhead,
+    fontWeight: fontWeight.semibold,
+    color: t.text.primary,
+    fontVariant: ['tabular-nums' as const],
   },
   typeBadge: {
-    paddingHorizontal: FIORI.badge.paddingHorizontal,
-    paddingVertical: 2,
-    borderRadius: FIORI.badge.borderRadius,
-    height: FIORI.badge.height,
-    justifyContent: 'center',
-    alignItems: 'center',
+    paddingHorizontal: space.s6,
+    paddingVertical: space.xxs,
+    borderRadius: radius.field,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+  },
+  typeBadgeOneTime: {
+    backgroundColor: t.status.neutral.background,
+  },
+  typeBadgeMonthly: {
+    backgroundColor: t.status.informative.background,
   },
   typeBadgeText: {
-    fontSize: FIORI.badge.fontSize,
-    fontWeight: '700',
-    letterSpacing: 0.3,
+    ...typography.caption1,
+    fontWeight: fontWeight.semibold,
+  },
+  typeBadgeTextOneTime: {
+    color: t.status.neutral.text,
+  },
+  typeBadgeTextMonthly: {
+    color: t.status.informative.text,
   },
   priceText: {
+    ...typography.headline,
     flex: 1,
-    fontSize: 15,
-    fontWeight: '700',
-    textAlign: 'right',
+    textAlign: 'right' as const,
+    color: t.text.primary,
+    fontVariant: ['tabular-nums' as const],
   },
   expiredBadge: {
-    paddingHorizontal: 4,
-    paddingVertical: 1,
-    borderRadius: 3,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.xxs,
+    marginLeft: space.sm,
+    paddingHorizontal: space.s6,
+    paddingVertical: space.xxs,
+    borderRadius: radius.field,
+    backgroundColor: t.status.negative.background,
   },
   expiredBadgeText: {
-    fontSize: 8,
-    fontWeight: '700',
-    letterSpacing: 0.3,
+    ...typography.caption1,
+    fontWeight: fontWeight.semibold,
+    color: t.status.negative.text,
   },
 
   // Secondary Row
   secondaryRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 4,
-    flexWrap: 'wrap',
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    marginTop: space.xs,
+    flexWrap: 'wrap' as const,
   },
   secondaryText: {
-    fontSize: 11,
+    ...typography.footnote,
+    color: t.text.secondary,
   },
   separator: {
-    marginHorizontal: 4,
-    fontSize: 11,
+    ...typography.footnote,
+    marginHorizontal: space.xs,
+    color: t.text.secondary,
   },
 
   // Swipe Actions
   swipeActionsContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingRight: 8,
-    paddingLeft: 4,
-    gap: 4,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    paddingRight: space.sm,
+    paddingLeft: space.xs,
+    gap: space.xs,
   },
   swipeAction: {
-    width: 40,
-    height: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderRadius: 6,
+    width: touchTarget,
+    height: touchTarget,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    borderRadius: radius.button,
   },
-  swipeActionPressed: {
-    opacity: 0.85,
+  swipeView: {
+    backgroundColor: t.surface.cardActive,
+  },
+  swipeViewPressed: {
+    backgroundColor: t.surface.cardPressed,
+  },
+  swipeEdit: {
+    backgroundColor: t.brand.fill,
+  },
+  swipeEditPressed: {
+    backgroundColor: t.brand.fillPressed,
+  },
+  swipeDelete: {
+    backgroundColor: t.destructive.fill,
+  },
+  swipeDeletePressed: {
+    backgroundColor: t.destructive.fillPressed,
   },
 
   // Skeleton
   skeletonCard: {
-    marginVertical: 4,
-    marginHorizontal: 12,
-    borderRadius: 6,
-    borderWidth: 1,
-    padding: 12,
+    marginVertical: space.xs,
+    marginHorizontal: space.md,
+    borderRadius: radius.button,
+    padding: space.md,
+    backgroundColor: t.surface.card,
   },
   skeleton: {
-    borderRadius: 4,
+    borderRadius: radius.field,
+    backgroundColor: t.surface.cardActive,
   },
   skeletonRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 6,
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'center' as const,
+    marginBottom: space.s6,
   },
 });
 
