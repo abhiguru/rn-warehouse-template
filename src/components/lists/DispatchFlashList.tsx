@@ -868,19 +868,16 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
         <Pressable
           style={({ pressed }) => [styles.expandAllBtn, pressed && styles.toolPressed]}
           onPress={handleToggleAllExpanded}
-          hitSlop={space.sm}
+          
           accessibilityRole="button"
           accessibilityLabel={allExpanded ? 'Collapse all dispatches' : 'Expand all dispatches'}
           accessibilityState={{ expanded: allExpanded }}
         >
           <Icon
             name={allExpanded ? 'unfold-less-horizontal' : 'unfold-more-horizontal'}
-            size={iconSize.sm}
+            size={iconSize.lg}
             color={t.brand.tint}
           />
-          <Text style={styles.expandAllText}>
-            {allExpanded ? 'Collapse' : 'Expand'}
-          </Text>
         </Pressable>
       </View>
 
@@ -1066,19 +1063,14 @@ const makeStyles = (t: ThemeTokens) => ({
     backgroundColor: t.brand.subtle,
   },
   // Expand all: tertiary action
+  // Icon-only so the sort controls keep one row on phones.
   expandAllBtn: {
-    flexDirection: 'row' as const,
+    width: touchTarget,
+    height: touchTarget,
     alignItems: 'center' as const,
-    minHeight: space.xxxl,
-    paddingHorizontal: space.sm,
-    borderRadius: radius.button,
-    gap: space.xs,
+    justifyContent: 'center' as const,
+    borderRadius: radius.pill,
     marginLeft: 'auto' as const,
-  },
-  expandAllText: {
-    ...typography.footnote,
-    fontWeight: fontWeight.semibold,
-    color: t.brand.tint,
   },
   // Applied filters bar (§13.5)
   filterChipsContainer: {
