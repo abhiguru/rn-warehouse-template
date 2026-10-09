@@ -156,7 +156,7 @@ export const Switch: React.FC<SwitchProps> = ({
  *   value={autoSync}
  *   onValueChange={setAutoSync}
  * >
- *   <ListItem title="Sync Interval" value="Daily" onPress={openPicker} />
+ *   <ListItem title="Sync interval" value="Daily" onPress={openPicker} />
  * </SwitchCell>
  * ```
  */
@@ -211,9 +211,9 @@ export const SwitchCell: React.FC<SwitchCellProps> = ({
  * @example
  * ```tsx
  * <SwitchGroup title="Notifications">
- *   <Switch label="Enable Notifications" value={enabled} onValueChange={setEnabled} />
- *   <Switch label="GRN Updates" value={grn} onValueChange={setGrn} disabled={!enabled} />
- *   <Switch label="Dispatch Alerts" value={dispatch} onValueChange={setDispatch} disabled={!enabled} />
+ *   <Switch label="Enable notifications" value={enabled} onValueChange={setEnabled} />
+ *   <Switch label="GRN updates" value={grn} onValueChange={setGrn} disabled={!enabled} />
+ *   <Switch label="Dispatch alerts" value={dispatch} onValueChange={setDispatch} disabled={!enabled} />
  * </SwitchGroup>
  * ```
  */

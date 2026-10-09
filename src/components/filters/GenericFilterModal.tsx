@@ -222,7 +222,7 @@ export const GenericFilterModal: React.FC<GenericFilterModalProps> = ({
           // Create a range section with both From and To
           sections.push({
             key: `section-${index}`,
-            title: field.label.replace(' From', ' Range'), // "GRN Number From" -> "GRN Number Range"
+            title: field.label.replace(/ from$/i, ' range'), // "GRN number from" -> "GRN number range"
             fields: [field, toField],
           });
           processedKeys.add(fieldKey);

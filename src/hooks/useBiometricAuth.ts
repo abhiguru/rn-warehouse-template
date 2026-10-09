@@ -258,7 +258,7 @@ export function useBiometricAuth(): UseBiometricAuthReturn {
         `Would you like to use ${state.biometricLabel} to quickly unlock the app next time?`,
         [
           {
-            text: 'Not Now',
+            text: 'Not now',
             style: 'cancel',
             onPress: async () => {
               // Store timestamp so we don't ask again for 7 days
