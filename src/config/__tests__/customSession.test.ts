@@ -699,3 +699,54 @@ test('an authenticated client reports a transient refresh failure as connectivit
   await expect(getAuthenticatedClient()).rejects.toThrow('Sign in required');
   expect(secure.get('secure_refresh_token')).toBeUndefined();
 });
+
+// ---------------------------------------------------------------------------
+// Rotated server keys (testvm2 finding 9): Kong 3 answers every request made
+// with the old apikey with 401 {"message":"Unauthorized"}.
+// ---------------------------------------------------------------------------
+const unauthorized = (body: unknown) => {
+  const response = { ok: false, status: 401, json: async () => body } as unknown as Response;
+  (response as { clone: () => Response }).clone = () => unauthorized(body);
+  return response;
+};
+
+test('a gateway key rejection ends the session once and does not wait for a refresh', async () => {
+  await storeTokens(jwt(), 'a'.repeat(64), Date.now() + 3600000);
+  jest.mocked(global.fetch).mockResolvedValue(unauthorized({ message: 'Unauthorized' }));
+  const request = createSessionReadFetch();
+  const [first, second] = await Promise.all([
+    request('https://warehouse.example.test/rest/v1/customers'),
+    request('https://warehouse.example.test/rest/v1/rpc/get_orders_list'),
+  ]);
+  expect([first.status, second.status]).toEqual([401, 401]);
+  await flush();
+  expect(await getStoredToken()).toEqual({ isValid: false });
+  expect(appStore.dispatch).toHaveBeenCalledTimes(1);
+  // Requests still queued for the ended session are refused, not sent.
+  await expect(request('https://warehouse.example.test/rest/v1/customers')).rejects.toThrow('Session changed');
+});
+
+test('the Kong 2 key rejection message is recognized too', async () => {
+  await storeTokens(jwt(), 'a'.repeat(64), Date.now() + 3600000);
+  jest.mocked(global.fetch).mockResolvedValue(unauthorized({ message: 'Invalid authentication credentials' }));
+  await createSessionReadFetch()('https://warehouse.example.test/rest/v1/customers');
+  await flush();
+  expect(appStore.dispatch).toHaveBeenCalledTimes(1);
+});
+
+test('an expired access token is left to the refresh path, not treated as rotated keys', async () => {
+  await storeTokens(jwt(), 'a'.repeat(64), Date.now() + 3600000);
+  jest.mocked(global.fetch).mockResolvedValue(unauthorized({ code: 'PGRST301', message: 'JWT expired' }));
+  await createSessionReadFetch()('https://warehouse.example.test/rest/v1/customers');
+  await flush();
+  expect(secure.get('secure_refresh_token')).toBe('a'.repeat(64));
+  expect(appStore.dispatch).not.toHaveBeenCalled();
+});
+
+test('a refresh refused by the gateway is definitive, not a network failure', async () => {
+  await storeTokens(jwt(1), 'a'.repeat(64), 1000);
+  rpc.mockResolvedValue({ data: null, error: { message: 'Unauthorized' } });
+  await expect(getAuthenticatedClient()).rejects.toThrow('Sign in required');
+  expect(secure.get('secure_refresh_token')).toBeUndefined();
+  expect(appStore.dispatch).toHaveBeenCalledTimes(1);
+});
