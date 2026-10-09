@@ -484,3 +484,28 @@ export function applyBulkGroupPricing(
 
   return { updatedItems, updatedCount };
 }
+
+const invoiceMoneyFormat = new Intl.NumberFormat('en-IN', {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
+/**
+ * Money on an invoice (style guide §12.3): Indian grouping, rupee sign and two
+ * decimals, e.g. "₹1,23,456.50". Missing values show as "₹0.00". A negative
+ * amount gets a leading minus sign: "−₹250.00".
+ */
+export function formatInvoiceAmount(amount: number | null | undefined): string {
+  const value = typeof amount === 'number' && Number.isFinite(amount) ? amount : 0;
+  const formatted = `₹${invoiceMoneyFormat.format(Math.abs(value))}`;
+  return value < 0 ? `−${formatted}` : formatted;
+}
+
+/**
+ * A deduction such as a discount, always shown with a minus sign
+ * (style guide §13.11): "−₹250.00". Zero shows as "₹0.00".
+ */
+export function formatInvoiceDeduction(amount: number | null | undefined): string {
+  const value = typeof amount === 'number' && Number.isFinite(amount) ? Math.abs(amount) : 0;
+  return value === 0 ? formatInvoiceAmount(0) : `−${formatInvoiceAmount(value)}`;
+}

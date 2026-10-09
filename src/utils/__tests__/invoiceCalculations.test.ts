@@ -1,5 +1,6 @@
 import {
   calculateItemAmounts, calculateHeaderTotals, calculateInvoiceBreakdown, savedInvoiceAmounts, roundMoney,
+  formatInvoiceAmount, formatInvoiceDeduction,
 } from '../invoiceCalculations';
 import type { InvoiceItemData } from '@/types/invoice.types';
 import reducer, {
@@ -102,3 +103,18 @@ it.each([[1.005, 1.01], [-1.005, -1.01], [10.075, 10.08], [-10.075, -10.08]])(
   'rounds amount %s to %s consistently with NUMERIC(12,2)', (value, expected) => {
     expect(roundMoney(value)).toBe(expected);
   });
+
+describe('invoice money formatting', () => {
+  it('uses Indian grouping, the rupee sign and two decimals', () => {
+    expect(formatInvoiceAmount(123456.5)).toBe('₹1,23,456.50');
+    expect(formatInvoiceAmount(0)).toBe('₹0.00');
+    expect(formatInvoiceAmount(undefined)).toBe('₹0.00');
+    expect(formatInvoiceAmount(-250)).toBe('−₹250.00');
+  });
+
+  it('shows deductions with a minus sign', () => {
+    expect(formatInvoiceDeduction(250)).toBe('−₹250.00');
+    expect(formatInvoiceDeduction(-250)).toBe('−₹250.00');
+    expect(formatInvoiceDeduction(0)).toBe('₹0.00');
+  });
+});
