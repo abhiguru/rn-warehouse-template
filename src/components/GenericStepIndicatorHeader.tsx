@@ -72,7 +72,11 @@ export interface GenericStepIndicatorHeaderProps {
   cancelMessage?: string;
   /** Optional callback when step pill is tapped (for navigation) */
   onStepPress?: (stepNumber: number) => void;
-  /** Kept for compatibility; steps and progress use the brand tokens */
+  /**
+   * Accepted and ignored: steps and progress always use the brand tokens.
+   * Still passed by GRNStepIndicator, DispatchStepIndicator and the customer
+   * wizard steps; remove once those call sites stop passing it.
+   */
   colorScheme?: StepColorScheme;
 }
 
@@ -105,7 +109,6 @@ export const GenericStepIndicatorHeader: React.FC<GenericStepIndicatorHeaderProp
   cancelTitle,
   cancelMessage = 'The details you entered will be lost.',
   onStepPress,
-  colorScheme: _colorScheme = 'teal',
 }) => {
   const insets = useSafeAreaInsets();
   const t = useTokens();

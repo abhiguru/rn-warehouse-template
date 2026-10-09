@@ -27,7 +27,6 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, radius, space, touchTarget, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
-import { triggerLightTap } from '@/hooks/useHaptics';
 
 // ============================================================================
 // TYPES
@@ -225,7 +224,6 @@ export function Button({
       activeOpacity={1}
       onPressIn={(e) => {
         setIsPressed(true);
-        triggerLightTap();
         props.onPressIn?.(e);
       }}
       onPressOut={(e) => {

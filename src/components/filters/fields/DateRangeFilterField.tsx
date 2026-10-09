@@ -21,6 +21,7 @@ import {
   type ThemeTokens,
 } from '@/theme/tokens';
 import type { DateRangeFilterFieldProps } from '@/types/filter.types';
+import { formatDate as formatSharedDate, toDate as parseDateValue } from '@/utils/formatters';
 
 const CHIP_HEIGHT = 32;
 const REMOVE_HIT_SLOP: Insets = {
@@ -58,16 +59,8 @@ export const DateRangeFilterField: React.FC<DateRangeFilterFieldProps> = ({
   const fromDate = normalizeDate(value[0]);
   const toDate = normalizeDate(value[1]);
 
-  const formatDate = (date: Date | undefined) => {
-    if (!date) return null;
-    const dateObj = date instanceof Date ? date : new Date(date);
-    if (isNaN(dateObj.getTime())) return null;
-    return dateObj.toLocaleDateString('en-IN', {
-      day: 'numeric',
-      month: 'short',
-      year: 'numeric',
-    });
-  };
+  // "9 Oct 2026" (§12.3); null when not set
+  const formatDate = (date: Date | undefined) => (parseDateValue(date) ? formatSharedDate(date) : null);
 
   const handleFromDateChange = (event: DateTimePickerEvent, selectedDate?: Date) => {
     if (Platform.OS === 'android') {

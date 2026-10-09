@@ -9,7 +9,7 @@ import Animated, {
   runOnJS,
   Easing,
 } from 'react-native-reanimated';
-import { Ionicons } from '@expo/vector-icons';
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { iconSize, radius, type ThemeTokens } from '@/theme/tokens';
 
@@ -201,7 +201,7 @@ export default function SwipeableFormStep({
           style={[styles.leftIndicator, leftIndicatorAnimatedStyle]}
           pointerEvents="none"
         >
-          <Ionicons name="chevron-back" size={iconSize.xl} color={t.brand.onFill} />
+          <Icon name="chevron-left" size={iconSize.xl} color={t.brand.onFill} />
         </Animated.View>
       )}
 
@@ -211,7 +211,7 @@ export default function SwipeableFormStep({
           style={[styles.rightIndicator, rightIndicatorAnimatedStyle]}
           pointerEvents="none"
         >
-          <Ionicons name="chevron-forward" size={iconSize.xl} color={t.brand.onFill} />
+          <Icon name="chevron-right" size={iconSize.xl} color={t.brand.onFill} />
         </Animated.View>
       )}
 

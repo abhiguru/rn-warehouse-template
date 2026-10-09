@@ -31,7 +31,7 @@ import {
   FIORI,
 } from '../common/overview-tab';
 import { formatContactPhone } from '../common/overview-tab/ContactCard';
-import { useListColors } from '@/hooks/useListColors';
+import useLegacyListPalette from '@/hooks/useListColors';
 import { FIORI_DIMENSIONS, FIORI_TYPOGRAPHY } from '@/constants/fioriDesignTokens';
 import { commonStyles, useCommonStyles } from '@/styles';
 
@@ -324,10 +324,10 @@ describe.each(THEMES)('shared containers in %s %s', (brand, mode) => {
   });
 
   it('legacy adapters are derived from tokens', () => {
-    let palette: ReturnType<typeof useListColors> | undefined;
+    let palette: ReturnType<typeof useLegacyListPalette> | undefined;
     let common: ReturnType<typeof useCommonStyles> | undefined;
     function Probe() {
-      palette = useListColors();
+      palette = useLegacyListPalette();
       common = useCommonStyles();
       return null;
     }

@@ -197,6 +197,39 @@ describe.each(THEMES)('shared controls in %s %s', (brand, mode) => {
     });
   });
 
+  it('label stock with the one app-wide rule (below 20% is low)', () => {
+    const tree = render(brand, mode, (
+      <>
+        <StockIndicator currentStock={19} originalStock={100} />
+        <StockIndicator currentStock={20} originalStock={100} />
+        <StockIndicator currentStock={0} originalStock={100} />
+        <StockIndicator currentStock={1} originalStock={1} />
+      </>
+    ));
+    const words = tree.root.findAllByType(Text).map(n => n.props.children);
+    expect(words).toEqual(expect.arrayContaining(['Low stock', 'In stock', 'Out of stock', '1 of 1 unit', '19 of 100 units']));
+    act(() => tree.unmount());
+  });
+
+  it('fill plain counts with brand.fill and "needs action" counts with destructive.fill', () => {
+    const header = render(brand, mode, <SectionHeader title="Items" count={3} />);
+    const count = header.root.findAllByType(Text).find(n => n.props.children === 3)!;
+    expect(flat(count.props.style).color).toBe(t.brand.onFill);
+    act(() => header.unmount());
+
+    const routes = [{ key: 'a', name: 'grn', params: undefined }];
+    const props = {
+      state: { index: 0, routes },
+      descriptors: { a: { options: { title: 'GRN' } } },
+      navigation: { emit: () => ({ defaultPrevented: false }), navigate: jest.fn() },
+      badges: { grn: 2 },
+    } as unknown as React.ComponentProps<typeof FioriTabBar>;
+    const bar = render(brand, mode, <FioriTabBar {...props} />);
+    const badge = bar.root.findAllByType(Text).find(n => n.props.children === '2')!;
+    expect(flat(badge.props.style).color).toBe(t.destructive.onFill);
+    act(() => bar.unmount());
+  });
+
   it('render the tab bar on surface.tabBar with the selected tab in brand.tint', () => {
     const routes = [
       { key: 'a', name: 'index', params: undefined },

@@ -24,7 +24,7 @@ import {
   Keyboard,
   StyleProp,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { iconSize, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 
@@ -296,14 +296,14 @@ export function RemoteAutocompleteInput<T>({
             accessibilityRole="button"
             hitSlop={CLEAR_HIT_SLOP}
           >
-            <Ionicons name="close-circle" size={iconSize.md} color={t.icon.secondary} />
+            <Icon name="close-circle" size={iconSize.md} color={t.icon.secondary} />
           </Pressable>
         )}
 
         {/* Search Icon (when empty and not loading) */}
         {!isLoading && !shouldShowClear && !hasValue && !rightIcon && (
-          <Ionicons
-            name="search"
+          <Icon
+            name="magnify"
             size={iconSize.md}
             color={t.icon.secondary}
             style={styles.iconRight}
@@ -320,7 +320,7 @@ export function RemoteAutocompleteInput<T>({
       {message && (
         <View style={styles.messageRow}>
           {message.isError && (
-            <Ionicons
+            <Icon
               name="alert-circle"
               size={iconSize.sm}
               color={t.status.negative.text}
@@ -370,8 +370,8 @@ export function RemoteAutocompleteInput<T>({
           style={[styles.dropdownContainer, suggestionPlacement === 'inline' && styles.dropdownInline, listStyle, styles.emptyState]}
           accessibilityLiveRegion="polite"
         >
-          <Ionicons
-            name="search-outline"
+          <Icon
+            name="magnify"
             size={iconSize.lg}
             color={t.icon.secondary}
             style={styles.emptyIcon}

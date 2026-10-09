@@ -15,7 +15,7 @@
 import type { ErrorInfo, ReactNode } from 'react';
 import React, { Component } from 'react';
 import { ActivityIndicator, Platform, Pressable, ScrollView, Text, View } from 'react-native';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, layout, radius, space, touchTarget, typography } from '@/theme/tokens';
@@ -24,7 +24,8 @@ import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
 import { createLogger } from '@/utils/logger';
 import { captureException } from '@/config/sentryConfig';
 
-type IconName = keyof typeof MaterialCommunityIcons.glyphMap;
+/** A MaterialCommunityIcons glyph name (style guide §8). */
+type IconName = string;
 
 // ============================================================================
 // Action button (tokens only)

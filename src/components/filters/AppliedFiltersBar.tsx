@@ -43,6 +43,7 @@ import {
   type ThemeTokens,
 } from '@/theme/tokens';
 import type { AutocompleteSelection } from '@/types/filter.types';
+import { formatDate } from '@/utils/formatters';
 
 const CHIP_HEIGHT = 32;
 const CHIP_HIT_SLOP: Insets = {
@@ -51,8 +52,7 @@ const CHIP_HIT_SLOP: Insets = {
 };
 
 /** "9 Oct 2026" (style guide §12.3). */
-const formatChipDate = (iso: string): string =>
-  new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+const formatChipDate = (iso: string): string => formatDate(iso);
 
 // ============================================================================
 // TYPES

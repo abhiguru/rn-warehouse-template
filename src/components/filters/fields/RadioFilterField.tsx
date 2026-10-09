@@ -18,7 +18,6 @@ import {
   typography,
   type ThemeTokens,
 } from '@/theme/tokens';
-import { triggerSelection } from '@/hooks/useHaptics';
 import type { RadioFilterFieldProps } from '@/types/filter.types';
 
 const RADIO_SIZE = 20;
@@ -51,7 +50,6 @@ export const RadioFilterField: React.FC<RadioFilterFieldProps> = ({
               key={option.value}
               onPress={() => {
                 if (!isSelected) {
-                  triggerSelection();
                   onChange(option.value);
                 }
               }}

@@ -84,7 +84,7 @@ describe.each(THEMES)('%s %s', (brand, mode) => {
     expect(text).toContain('Something went wrong');
     expect(text).toContain('Try again');
     expect(hasBackground(tree!, t.background.base)).toBe(true);
-    const icon = tree!.root.findAll(node => (node.type as unknown) === 'MaterialCommunityIcons' && node.props.name === 'alert-circle-outline');
+    const icon = tree!.root.findAll(node => (node.type as unknown) === 'Icon' && node.props.name === 'alert-circle-outline');
     expect(icon[0].props.color).toBe(t.status.negative.text);
   });
 

@@ -9,6 +9,7 @@ jest.mock('@/store/hooks', () => ({
   useAppSelector: (selector: (state: unknown) => unknown) => selector({ theme: mockTheme }),
 }));
 jest.mock('@expo/vector-icons', () => ({ Ionicons: 'Ionicons', MaterialCommunityIcons: 'MaterialCommunityIcons' }));
+jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
 
 let renderer: ReturnType<typeof create> | undefined;
 // The pressable itself: it is the only node carrying both onPress and accessibilityState.

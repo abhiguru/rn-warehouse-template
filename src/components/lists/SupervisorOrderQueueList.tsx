@@ -22,11 +22,15 @@ import { useFocusEffect } from '@react-navigation/native';
 import { router } from 'expo-router';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { ListSkeleton } from '@/components/skeletons';
+import { ListEmptyState } from '@/components/list/ListEmptyState';
+import { ErrorStateView } from '@/components/ErrorBoundary';
+import { Avatar } from '@/components/ui/Avatar';
+import { formatCount } from '@/utils/formatters';
 
 // Services
 import { OrderService } from '@/services/order-service';
 import { PAGINATION } from '@/config/cacheConfig';
-import { DEFAULT_LIST_CONFIG, useLegacyRowPalette, listAvatarIndex } from './types';
+import { DEFAULT_LIST_CONFIG } from './types';
 import type { Order, OrderFilters } from '@/types/order.types';
 
 // Components
@@ -61,44 +65,24 @@ interface EmptyStateProps {
   query?: string;
 }
 
-// Empty state: hero icon, title3 title, subhead message, one action (style guide §13.6, §12.2)
+// Empty state: the shared ListEmptyState with the queue wording (style guide §13.6, §12.2)
 const EmptyState = React.memo<EmptyStateProps>(({
   isFiltered,
   onClearFilters,
   query,
-}) => {
-  const styles = useThemedStyles(makeStyles);
-  const t = useTokens();
-  return (
-    <View style={styles.emptyContainer}>
-      <Icon
-        name={isFiltered ? 'magnify' : 'clipboard-check-outline'}
-        size={iconSize.hero}
-        color={t.icon.secondary}
-        accessible={false}
-        importantForAccessibility="no"
-      />
-      <Text style={styles.emptyTitle} accessibilityRole="header">
-        {isFiltered ? 'No orders match your search' : 'No orders in the queue'}
-      </Text>
-      <Text style={styles.emptySubtitle}>
-        {isFiltered
-          ? `No customers match "${query ?? ''}". Try fewer letters.`
-          : 'Customer orders with items appear here.'}
-      </Text>
-      {isFiltered && (
-        <Pressable
-          style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryButtonPressed]}
-          onPress={onClearFilters}
-          accessibilityRole="button"
-          accessibilityLabel="Clear search"
-        >
-          <Text style={styles.secondaryButtonText}>Clear search</Text>
-        </Pressable>
-      )}
-    </View>
-  );
-});
+}) => (
+  <ListEmptyState
+    activeFilterCount={isFiltered ? 1 : 0}
+    emptyIcon="clipboard-check-outline"
+    filteredIcon="magnify"
+    emptyTitle="No orders in the queue"
+    emptySubtitle="Customer orders with items appear here."
+    filteredTitle="No orders match your search"
+    filteredSubtitle={`No customers match "${query ?? ''}". Try fewer letters.`}
+    onClearFilters={onClearFilters}
+    clearFiltersLabel="Clear search"
+  />
+));
 
 EmptyState.displayName = 'EmptyState';
 
@@ -115,7 +99,6 @@ const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = ({
   // Theme
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
-  const rowColors = useLegacyRowPalette();
 
   // User state
   const { userProfile } = useAppSelector(state => state.auth);
@@ -379,10 +362,9 @@ const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = ({
         order={item}
         isExpanded={expandedOrders.has(item.id)}
         onToggleExpand={handleToggleExpand}
-        colors={rowColors}
       />
     );
-  }, [expandedOrders, handleToggleExpand, rowColors]);
+  }, [expandedOrders, handleToggleExpand]);
 
 
   // ============================================================================
@@ -408,26 +390,17 @@ const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = ({
         <View style={styles.header}>
           <Text style={styles.headerTitle} accessibilityRole="header">Order queue</Text>
         </View>
-        <View style={styles.errorContainer}>
-          <Icon name="alert-circle-outline" size={iconSize.hero} color={t.status.negative.text} />
-          <Text style={styles.errorTitle} accessibilityRole="header">Couldn't load the order queue</Text>
-          <Text style={styles.errorText}>Check your connection and try again.</Text>
-          <Pressable
-            style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryButtonPressed]}
-            onPress={() => fetchOrders()}
-            accessibilityRole="button"
-            accessibilityLabel="Try again"
-          >
-            <Icon name="refresh" size={iconSize.md} color={t.brand.tint} />
-            <Text style={styles.secondaryButtonText}>Try again</Text>
-          </Pressable>
-        </View>
+        <ErrorStateView
+          presentation="inline"
+          title="Couldn't load the order queue"
+          message="Check your connection and try again."
+          onRetry={() => fetchOrders()}
+        />
       </View>
     );
   }
 
   const userName = userProfile?.name || 'U';
-  const avatarColor = t.avatar[listAvatarIndex(userName, t.avatar.length)];
   const queueCount = filteredOrders.length;
 
   return (
@@ -436,12 +409,12 @@ const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = ({
       <View style={styles.header}>
         <Text style={styles.headerTitle} accessibilityRole="header">Order queue</Text>
         <View style={styles.headerActions}>
-          <OrderRefreshAction onRefresh={handleRefresh} refreshing={isRefreshing} color={t.brand.tint} label="Refresh order queue" />
+          <OrderRefreshAction onRefresh={handleRefresh} refreshing={isRefreshing} label="Refresh order queue" />
           {/* Order count badge: plain count (§13.5) */}
           <View
             style={styles.countBadge}
             accessible
-            accessibilityLabel={`${queueCount} ${queueCount === 1 ? 'order' : 'orders'} in the queue`}
+            accessibilityLabel={`${formatCount(queueCount, 'order')} in the queue`}
           >
             <Text style={styles.countText} maxFontSizeMultiplier={1.6}>{queueCount}</Text>
           </View>
@@ -452,11 +425,7 @@ const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = ({
             accessibilityRole="button"
             accessibilityLabel="Open settings"
           >
-            <View style={[styles.avatar, { backgroundColor: avatarColor }]}>
-              <Text style={styles.avatarText} maxFontSizeMultiplier={1.6}>
-                {userName.charAt(0).toUpperCase()}
-              </Text>
-            </View>
+            <Avatar name={userName} id={userProfile?.id} size="sm" />
           </Pressable>
         </View>
       </View>
@@ -576,7 +545,8 @@ const makeStyles = (t: ThemeTokens) => ({
     alignItems: 'center' as const,
     gap: space.xs,
   },
-  // Plain count badge: brand.fill with brand.onFill (§13.5)
+  // Plain count badge: brand.fill with brand.onFill. "Needs action" counts use
+  // destructive.fill with destructive.onFill instead (§13.5).
   countBadge: {
     paddingHorizontal: space.sm,
     paddingVertical: space.xxs,
@@ -596,19 +566,6 @@ const makeStyles = (t: ThemeTokens) => ({
     height: touchTarget,
     justifyContent: 'center' as const,
     alignItems: 'center' as const,
-  },
-  avatar: {
-    width: layout.avatar.sm,
-    height: layout.avatar.sm,
-    borderRadius: radius.pill,
-    justifyContent: 'center' as const,
-    alignItems: 'center' as const,
-  },
-  avatarText: {
-    ...typography.subhead,
-    fontWeight: fontWeight.semibold,
-    // Avatar initials: text.primary in light mode, white in dark mode (§3.2)
-    color: t.mode === 'dark' ? t.overlay.onImage : t.text.primary,
   },
   // Search bar under the header (§14.6)
   searchContainer: {
@@ -641,69 +598,6 @@ const makeStyles = (t: ThemeTokens) => ({
   },
   listContent: {
     paddingBottom: space.xxl,
-  },
-  // Empty and error states (§13.6)
-  emptyContainer: {
-    flex: 1,
-    justifyContent: 'center' as const,
-    alignItems: 'center' as const,
-    paddingHorizontal: space.xxl,
-    paddingVertical: space.giant,
-    gap: space.sm,
-  },
-  emptyTitle: {
-    ...typography.title3,
-    color: t.text.primary,
-    textAlign: 'center' as const,
-    marginTop: space.lg,
-  },
-  emptySubtitle: {
-    ...typography.subhead,
-    color: t.text.secondary,
-    textAlign: 'center' as const,
-    marginBottom: space.lg,
-    maxWidth: 320,
-  },
-  errorContainer: {
-    flex: 1,
-    justifyContent: 'center' as const,
-    alignItems: 'center' as const,
-    paddingHorizontal: space.xxl,
-    gap: space.sm,
-  },
-  errorTitle: {
-    ...typography.title3,
-    color: t.text.primary,
-    textAlign: 'center' as const,
-    marginTop: space.lg,
-  },
-  errorText: {
-    ...typography.subhead,
-    color: t.text.secondary,
-    textAlign: 'center' as const,
-    marginBottom: space.lg,
-    maxWidth: 320,
-  },
-  // Secondary button: outline border.button, label brand.tint, pressed brand.subtle (§13.1, §10)
-  secondaryButton: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    minHeight: touchTarget,
-    minWidth: 120,
-    paddingHorizontal: space.xxl,
-    paddingVertical: space.sm,
-    borderRadius: radius.button,
-    borderWidth: 1,
-    borderColor: t.border.button,
-    gap: space.sm,
-  },
-  secondaryButtonPressed: {
-    backgroundColor: t.brand.subtle,
-  },
-  secondaryButtonText: {
-    ...typography.callout,
-    color: t.brand.tint,
   },
   footerLoader: {
     flexDirection: 'row' as const,

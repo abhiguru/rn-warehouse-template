@@ -23,7 +23,7 @@ import {
   Modal,
 } from 'react-native';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
-import { Ionicons } from '@expo/vector-icons';
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useTheme, useThemedStyles } from '@/hooks/useTheme';
 import {
   fontWeight,
@@ -34,6 +34,7 @@ import {
   typography,
   type ThemeTokens,
 } from '@/theme/tokens';
+import { formatDate, formatDateTime, formatTime } from '@/utils/formatters';
 
 const IOS_PICKER_HEIGHT = 216;
 
@@ -74,16 +75,11 @@ export interface DatePickerInputProps {
 // FORMATTING (style guide §12.3)
 // ============================================================================
 
-const DATE_FORMAT: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'short', year: 'numeric' };
-const TIME_FORMAT: Intl.DateTimeFormatOptions = { hour: 'numeric', minute: '2-digit', hour12: true };
-
 /** "9 Oct 2026", "4:05 pm" or "9 Oct 2026, 4:05 pm". */
 export function formatPickerValue(date: Date, mode: 'date' | 'time' | 'datetime'): string {
-  const time = date.toLocaleTimeString('en-IN', TIME_FORMAT).toLowerCase();
-  const day = date.toLocaleDateString('en-IN', DATE_FORMAT);
-  if (mode === 'time') return time;
-  if (mode === 'datetime') return `${day}, ${time}`;
-  return day;
+  if (mode === 'time') return formatTime(date);
+  if (mode === 'datetime') return formatDateTime(date);
+  return formatDate(date);
 }
 
 // ============================================================================
@@ -202,8 +198,8 @@ export const DatePickerInput: React.FC<DatePickerInputProps> = ({
           {displayValue ?? placeholder ?? `Select ${fieldName}`}
         </Text>
 
-        <Ionicons
-          name={mode === 'time' ? 'time-outline' : 'calendar-outline'}
+        <Icon
+          name={mode === 'time' ? 'clock-outline' : 'calendar-outline'}
           size={iconSize.md}
           color={t.icon.secondary}
         />
@@ -280,7 +276,7 @@ export const DatePickerInput: React.FC<DatePickerInputProps> = ({
       {message && (
         <View style={styles.footerRow}>
           {message.isError && (
-            <Ionicons
+            <Icon
               name="alert-circle"
               size={iconSize.sm}
               color={t.status.negative.text}

@@ -29,6 +29,7 @@ import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, radius, space, touchTarget, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { ChangeLogEntry, CustomerSummary, ChangeLogAnalytics } from '@/types/order.types';
+import { formatCount, formatRelativeTime, formatWeight } from '@/utils/formatters';
 
 interface ChangeLogBottomSheetProps {
   isVisible: boolean;
@@ -196,7 +197,9 @@ const ChangeLogBottomSheet = forwardRef<ChangeLogBottomSheetRef, ChangeLogBottom
         <View style={styles.timelineHeader}>
           <View style={styles.timestampSection}>
             <View style={[styles.statusDot, { backgroundColor: statusColor }]} importantForAccessibility="no" />
-            <Text style={dynamicStyles.relativeTime}>{entry.relative_time}</Text>
+            <Text style={dynamicStyles.relativeTime}>
+              {entry.change_timestamp ? formatRelativeTime(entry.change_timestamp) : entry.relative_time}
+            </Text>
           </View>
         </View>
 
@@ -244,7 +247,7 @@ const ChangeLogBottomSheet = forwardRef<ChangeLogBottomSheetRef, ChangeLogBottom
                 <View style={dynamicStyles.itemDetailRow}>
                   <MaterialCommunityIcons name="scale" size={iconSize.sm} color={t.icon.secondary} />
                   <Text style={dynamicStyles.itemDetail} numberOfLines={1}>
-                    {itemDetails.weight || itemDetails.grn_item_weight} kg
+                    {formatWeight(Number(itemDetails.weight || itemDetails.grn_item_weight))}
                   </Text>
                 </View>
               )}
@@ -374,8 +377,10 @@ const ChangeLogBottomSheet = forwardRef<ChangeLogBottomSheetRef, ChangeLogBottom
           Change history
         </Text>
         <Text style={dynamicStyles.headerSubtitle}>
-          {analytics?.total_changes || entries.length} {(analytics?.total_changes || entries.length) === 1 ? 'change' : 'changes'}
-          {analytics?.activity_summary?.unique_editors && ` • ${analytics.activity_summary.unique_editors} editor${analytics.activity_summary.unique_editors > 1 ? 's' : ''}`}
+          {formatCount(analytics?.total_changes || entries.length, 'change')}
+          {analytics?.activity_summary?.unique_editors
+            ? ` • ${formatCount(analytics.activity_summary.unique_editors, 'editor')}`
+            : null}
         </Text>
       </View>
       <Pressable

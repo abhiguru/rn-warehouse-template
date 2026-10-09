@@ -18,7 +18,7 @@
  */
 
 import React, { useState, useEffect, useCallback, useRef, useMemo, memo } from 'react';
-import { View, Text, StyleSheet, RefreshControl, Pressable, LayoutAnimation, Vibration } from 'react-native';
+import { View, Text, StyleSheet, RefreshControl, Pressable, LayoutAnimation } from 'react-native';
 
 import { FlashList } from '@shopify/flash-list';
 import { ActivityIndicator, Badge, IconButton, Portal, Snackbar } from 'react-native-paper';
@@ -35,8 +35,6 @@ import {
   getItemType,
   DEFAULT_LIST_CONFIG,
   SectionData,
-  useLegacyRowPalette,
-  listAvatarIndex,
 } from './types';
 
 // Services
@@ -60,6 +58,10 @@ interface ReduxDispatchFilters {
 
 // Components
 import { MemoizedDispatchItem } from '@/components/list-items';
+import { ListEmptyState } from '@/components/list/ListEmptyState';
+import { ErrorStateView } from '@/components/ErrorBoundary';
+import { Avatar } from '@/components/ui/Avatar';
+import { formatCount, formatNumber, formatWeight } from '@/utils/formatters';
 import { GenericFilterModal } from '@/components/filters';
 
 // State
@@ -106,7 +108,7 @@ const SectionHeader = React.memo<SectionHeaderProps>(({ title, count }) => {
       style={styles.sectionHeader}
       accessible
       accessibilityRole="header"
-      accessibilityLabel={`${title}, ${count} ${count === 1 ? 'dispatch' : 'dispatches'}`}
+      accessibilityLabel={`${title}, ${formatCount(count, 'dispatch', 'dispatches')}`}
     >
       <Text style={styles.sectionTitle}>{title}</Text>
       <View style={styles.sectionBadge}>
@@ -129,58 +131,26 @@ interface EmptyStateProps {
   onCreateDispatch: () => void;
 }
 
-// Empty state: hero icon, title3 title, subhead message, one action (style guide §13.6)
+// Empty state: the shared ListEmptyState with the dispatch wording (style guide §13.6)
 const EmptyState = React.memo<EmptyStateProps>(({
   hasFilters,
   onClearFilters,
   canCreate,
   onCreateDispatch,
-}) => {
-  const styles = useThemedStyles(makeStyles);
-  const t = useTokens();
-  return (
-    <View style={styles.emptyContainer}>
-      <Icon
-        name="truck-delivery-outline"
-        size={iconSize.hero}
-        color={t.icon.secondary}
-        accessible={false}
-        importantForAccessibility="no"
-      />
-      <Text style={styles.emptyTitle} accessibilityRole="header">
-        {hasFilters ? 'No dispatches match these filters' : 'No dispatches yet'}
-      </Text>
-      <Text style={styles.emptySubtitle}>
-        {hasFilters
-          ? 'Try fewer filters, or clear them to see all dispatches.'
-          : canCreate
-            ? 'Dispatches you create appear here.'
-            : 'Dispatches appear here once they are created.'}
-      </Text>
-      {hasFilters && (
-        <Pressable
-          style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryButtonPressed]}
-          onPress={onClearFilters}
-          accessibilityRole="button"
-          accessibilityLabel="Clear filters"
-        >
-          <Text style={styles.secondaryButtonText}>Clear filters</Text>
-        </Pressable>
-      )}
-      {canCreate && !hasFilters && (
-        <Pressable
-          style={({ pressed }) => [styles.primaryButton, pressed && styles.primaryButtonPressed]}
-          onPress={onCreateDispatch}
-          accessibilityRole="button"
-          accessibilityLabel="Create dispatch"
-        >
-          <Icon name="plus" size={iconSize.md} color={t.brand.onFill} />
-          <Text style={styles.primaryButtonText}>Create dispatch</Text>
-        </Pressable>
-      )}
-    </View>
-  );
-});
+}) => (
+  <ListEmptyState
+    activeFilterCount={hasFilters ? 1 : 0}
+    emptyIcon="truck-delivery-outline"
+    emptyTitle="No dispatches yet"
+    emptySubtitle={canCreate ? 'Dispatches you create appear here.' : 'Dispatches appear here once they are created.'}
+    filteredTitle="No dispatches match these filters"
+    filteredSubtitle="Try fewer filters, or clear them to see all dispatches."
+    onClearFilters={onClearFilters}
+    showCreateButton={canCreate}
+    createButtonLabel="Create dispatch"
+    onCreatePress={onCreateDispatch}
+  />
+));
 
 EmptyState.displayName = 'EmptyState';
 
@@ -257,11 +227,11 @@ const FilterChips: React.FC<FilterChipsProps> = memo(({
 
   // Weight range chip
   if (filters.weightMin || filters.weightMax) {
-    const min = new Intl.NumberFormat('en-IN').format(Number(filters.weightMin || 0));
+    const min = formatNumber(Number(filters.weightMin || 0));
     chips.push({
       key: 'weight-range',
       label: filters.weightMax
-        ? `${min} – ${new Intl.NumberFormat('en-IN').format(Number(filters.weightMax))} kg`
+        ? `${min} – ${formatWeight(Number(filters.weightMax))}`
         : `${min} kg or more`,
       icon: 'weight-kilogram',
       onRemove: () => {
@@ -287,7 +257,7 @@ const FilterChips: React.FC<FilterChipsProps> = memo(({
         <View style={styles.filterCountBadge}>
           <Icon name="filter-variant" size={iconSize.sm} color={t.brand.tint} />
           <Text style={styles.filterCountText}>
-            {activeFilterCount} {activeFilterCount === 1 ? 'filter' : 'filters'}
+            {formatCount(activeFilterCount, 'filter')}
           </Text>
         </View>
         <Pressable
@@ -334,7 +304,6 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
   // Theme
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
-  const rowColors = useLegacyRowPalette();
 
   // User state & permissions
   const { userProfile } = useAppSelector(state => state.auth);
@@ -623,7 +592,6 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
 
   // Toggle expand/collapse all cards
   const handleToggleAllExpanded = useCallback(() => {
-    Vibration.vibrate(5);
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setAllExpanded(prev => !prev);
     setExpandKey(prev => prev + 1);
@@ -674,12 +642,11 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
         dispatch={item.data}
         onPress={handleDispatchPress}
         canPrint={canPrint || false}
-        colors={rowColors}
         globalExpanded={allExpanded}
         globalExpandedKey={expandKey}
       />
     );
-  }, [handleDispatchPress, canPrint, rowColors, allExpanded, expandKey]);
+  }, [handleDispatchPress, canPrint, allExpanded, expandKey]);
 
   // ============================================================================
   // LIST FOOTER
@@ -700,7 +667,6 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
   // ============================================================================
 
   const userName = userProfile?.name || 'U';
-  const avatarColor = t.avatar[listAvatarIndex(userName, t.avatar.length)];
 
   const filterButton = (
     <View style={styles.filterBtnContainer}>
@@ -737,20 +703,12 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
         <View style={styles.header}>
           <Text style={styles.headerTitle} accessibilityRole="header">Dispatches</Text>
         </View>
-        <View style={styles.errorState}>
-          <Icon name="alert-circle-outline" size={iconSize.hero} color={t.status.negative.text} />
-          <Text style={styles.errorTitle} accessibilityRole="header">Couldn't load dispatches</Text>
-          <Text style={styles.errorMessage}>Check your connection and try again.</Text>
-          <Pressable
-            style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryButtonPressed]}
-            onPress={handleRefresh}
-            accessibilityRole="button"
-            accessibilityLabel="Try again"
-          >
-            <Icon name="refresh" size={iconSize.md} color={t.brand.tint} />
-            <Text style={styles.secondaryButtonText}>Try again</Text>
-          </Pressable>
-        </View>
+        <ErrorStateView
+          presentation="inline"
+          title="Couldn't load dispatches"
+          message="Check your connection and try again."
+          onRetry={handleRefresh}
+        />
       </View>
     );
   }
@@ -804,11 +762,7 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
             accessibilityRole="button"
             accessibilityLabel="Open settings"
           >
-            <View style={[styles.profileAvatar, { backgroundColor: avatarColor }]}>
-              <Text style={styles.profileAvatarText} maxFontSizeMultiplier={1.6}>
-                {userName.charAt(0).toUpperCase()}
-              </Text>
-            </View>
+            <Avatar name={userName} id={userProfile?.id} size="sm" />
           </Pressable>
         </View>
       </View>
@@ -895,7 +849,7 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
         renderItem={renderItem}
         keyExtractor={keyExtractor}
         getItemType={getItemType}
-        extraData={{ canPrint, handleDispatchPress, allExpanded, expandKey, rowColors }}
+        extraData={{ canPrint, handleDispatchPress, allExpanded, expandKey }}
         contentContainerStyle={styles.listContent}
         refreshControl={
           <RefreshControl
@@ -983,7 +937,8 @@ const makeStyles = (t: ThemeTokens) => ({
   filterBtnContainer: {
     position: 'relative' as const,
   },
-  // Plain count badge: brand.fill with brand.onFill (§13.5)
+  // Plain count badge (active filters): brand.fill with brand.onFill. "Needs action"
+  // counts use destructive.fill with destructive.onFill instead (§13.5).
   filterBadge: {
     position: 'absolute' as const,
     top: space.xxs,
@@ -996,19 +951,6 @@ const makeStyles = (t: ThemeTokens) => ({
     height: touchTarget,
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
-  },
-  profileAvatar: {
-    width: layout.avatar.sm,
-    height: layout.avatar.sm,
-    borderRadius: radius.pill,
-    justifyContent: 'center' as const,
-    alignItems: 'center' as const,
-  },
-  profileAvatarText: {
-    ...typography.subhead,
-    fontWeight: fontWeight.semibold,
-    // Avatar initials: text.primary in light mode, white in dark mode (§3.2)
-    color: t.mode === 'dark' ? t.overlay.onImage : t.text.primary,
   },
   // Sort toolbar with a hairline separator
   sortBar: {
@@ -1150,18 +1092,18 @@ const makeStyles = (t: ThemeTokens) => ({
     letterSpacing: 0.5,
     color: t.text.secondary,
   },
-  // Plain count: neutral tag
+  // Plain count badge: brand.fill with brand.onFill (§13.5)
   sectionBadge: {
     borderRadius: radius.pill,
     paddingHorizontal: space.sm,
     paddingVertical: space.xxs,
-    backgroundColor: t.status.neutral.background,
+    backgroundColor: t.brand.fill,
   },
   sectionCount: {
     ...typography.caption1,
     fontWeight: fontWeight.semibold,
     fontVariant: ['tabular-nums' as const],
-    color: t.status.neutral.text,
+    color: t.brand.onFill,
   },
   footerLoader: {
     flexDirection: 'row' as const,
@@ -1173,88 +1115,6 @@ const makeStyles = (t: ThemeTokens) => ({
   footerLoaderText: {
     ...typography.footnote,
     color: t.text.secondary,
-  },
-  // Empty and error states (§13.6)
-  emptyContainer: {
-    flex: 1,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    padding: space.xxxl,
-    gap: space.sm,
-  },
-  emptyTitle: {
-    ...typography.title3,
-    color: t.text.primary,
-    textAlign: 'center' as const,
-    marginTop: space.lg,
-  },
-  emptySubtitle: {
-    ...typography.subhead,
-    color: t.text.secondary,
-    textAlign: 'center' as const,
-    marginBottom: space.lg,
-    maxWidth: 320,
-  },
-  errorState: {
-    flex: 1,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    padding: space.xxxl,
-    gap: space.sm,
-  },
-  errorTitle: {
-    ...typography.title3,
-    color: t.text.primary,
-    textAlign: 'center' as const,
-    marginTop: space.lg,
-  },
-  errorMessage: {
-    ...typography.subhead,
-    color: t.text.secondary,
-    textAlign: 'center' as const,
-    marginBottom: space.lg,
-    maxWidth: 320,
-  },
-  // Primary button (§13.1)
-  primaryButton: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    minHeight: touchTarget,
-    minWidth: 120,
-    paddingHorizontal: space.xxl,
-    paddingVertical: space.sm,
-    borderRadius: radius.button,
-    backgroundColor: t.brand.fill,
-    gap: space.sm,
-  },
-  primaryButtonPressed: {
-    backgroundColor: t.brand.fillPressed,
-  },
-  primaryButtonText: {
-    ...typography.callout,
-    color: t.brand.onFill,
-  },
-  // Secondary button: outline border.button, label brand.tint, pressed brand.subtle (§13.1, §10)
-  secondaryButton: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    minHeight: touchTarget,
-    minWidth: 120,
-    paddingHorizontal: space.xxl,
-    paddingVertical: space.sm,
-    borderRadius: radius.button,
-    borderWidth: 1,
-    borderColor: t.border.button,
-    gap: space.sm,
-  },
-  secondaryButtonPressed: {
-    backgroundColor: t.brand.subtle,
-  },
-  secondaryButtonText: {
-    ...typography.callout,
-    color: t.brand.tint,
   },
   // Snackbar: inverse surface (§13.9)
   snackbar: {

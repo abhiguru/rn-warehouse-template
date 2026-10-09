@@ -313,33 +313,6 @@ export const makeDataTableStyles = (t: ThemeTokens) => ({
   colStock: { width: 70 },
   colRack: { width: 70 },
 
-  // Status tag (legacy name "stock badge")
-  stockBadge: {
-    minWidth: space.huge,
-    paddingHorizontal: space.sm,
-    paddingVertical: space.xxs,
-    borderRadius: radius.field,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-  },
-  stockBadgePositive: {
-    backgroundColor: t.status.positive.background,
-  },
-  stockBadgeCritical: {
-    backgroundColor: t.status.critical.background,
-  },
-  stockBadgeNegative: {
-    backgroundColor: t.status.negative.background,
-  },
-  stockBadgeNeutral: {
-    backgroundColor: t.status.neutral.background,
-  },
-  stockBadgeText: {
-    ...typography.caption1,
-    fontWeight: fontWeight.semibold,
-    color: t.status.neutral.text,
-  },
-
   // Skeleton rows while the first page loads
   skeletonRow: {
     flexDirection: 'row' as const,

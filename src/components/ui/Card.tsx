@@ -34,6 +34,7 @@ import {
   type ThemeTokens,
 } from '@/theme/tokens';
 import { getButtonColors } from './Button';
+import { StatusTag } from './StatusTag';
 
 const CARD_MAX_HEIGHT = 520;
 const HEADER_ICON_SIZE = 40;
@@ -176,14 +177,6 @@ const SHADOW_LEVEL: Record<Exclude<CardShadow, 'none'>, 1 | 2 | 3 | 4> = {
   xl: 4,
 };
 
-/** Status icon per style guide §3.5. */
-const STATUS_ICON: Record<CardStatusType, string> = {
-  positive: 'check-circle',
-  critical: 'alert',
-  negative: 'alert-circle',
-  neutral: 'circle-outline',
-};
-
 type Styles = ReturnType<typeof makeStyles>;
 
 // ============================================================================
@@ -193,7 +186,6 @@ type Styles = ReturnType<typeof makeStyles>;
 /** Card Header */
 function CardHeader({ config, showDivider = true, styles }: { config: CardHeaderConfig; showDivider?: boolean; styles: Styles }) {
   const t = useTokens();
-  const status = config.status ? t.status[config.status.type] : null;
 
   return (
     <View style={[styles.header, showDivider && styles.headerWithDivider]}>
@@ -217,13 +209,8 @@ function CardHeader({ config, showDivider = true, styles }: { config: CardHeader
       </View>
 
       {/* Status tag: colour plus icon plus word */}
-      {config.status && status && (
-        <View style={[styles.statusBadge, { backgroundColor: status.background }]}>
-          <Icon name={STATUS_ICON[config.status.type]} size={iconSize.sm} color={status.text} />
-          <Text style={[styles.statusBadgeText, { color: status.text }]} maxFontSizeMultiplier={1.6}>
-            {config.status.label}
-          </Text>
-        </View>
+      {config.status && (
+        <StatusTag status={config.status.type} label={config.status.label} style={styles.headerStatus} />
       )}
     </View>
   );
@@ -366,13 +353,19 @@ export function Card({
   // Determine if using Fiori structure (header/body/footer) or simple children mode
   const isFioriMode = !!(header || body || footer || loading || error);
 
-  // Container styles
+  // The outer view carries the shadow, background and border; it must not clip,
+  // or iOS drops the shadow. The inner view clips the content to the corners.
   const containerStyle: ViewStyle = StyleSheet.flatten([
     styles.card,
     shadow === 'none' ? styles.cardFlat : t.shadow[SHADOW_LEVEL[shadow]],
     isPressed && styles.cardPressed,
     selected && styles.cardSelected,
     style,
+  ]);
+  const borderWidth = typeof containerStyle.borderWidth === 'number' ? containerStyle.borderWidth : 0;
+  const clipStyle: ViewStyle = StyleSheet.flatten([
+    styles.cardClip,
+    { borderRadius: Math.max(0, radius.card - borderWidth) },
   ]);
 
   // Simple mode: use padding prop
@@ -427,8 +420,10 @@ export function Card({
         accessibilityState={{ selected, busy: !!loading }}
         testID={testID}
       >
-        {renderContent()}
-        {selectedMark}
+        <View style={clipStyle}>
+          {renderContent()}
+          {selectedMark}
+        </View>
       </Pressable>
     );
   }
@@ -441,8 +436,10 @@ export function Card({
       accessibilityState={selected ? { selected } : undefined}
       testID={testID}
     >
-      {renderContent()}
-      {selectedMark}
+      <View style={clipStyle}>
+        {renderContent()}
+        {selectedMark}
+      </View>
     </View>
   );
 }
@@ -509,10 +506,14 @@ export function ObjectCard(props: CardProps) {
 // ============================================================================
 
 const makeStyles = (t: ThemeTokens) => ({
-  // Card container
+  // Card container: shadow, background and border (no clipping, see clipStyle)
   card: {
     backgroundColor: t.surface.card,
     borderRadius: radius.card,
+  },
+  // Inner view that clips the content to the rounded corners
+  cardClip: {
+    flexGrow: 1,
     overflow: 'hidden' as const,
     maxHeight: CARD_MAX_HEIGHT,
   },
@@ -569,18 +570,9 @@ const makeStyles = (t: ThemeTokens) => ({
     marginTop: space.xxs,
   },
 
-  // Status tag
-  statusBadge: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: space.xs,
-    paddingHorizontal: space.sm,
-    paddingVertical: space.xxs,
-    borderRadius: radius.field,
-  },
-  statusBadgeText: {
-    ...typography.caption1,
-    fontWeight: fontWeight.semibold,
+  // Status tag, centred on the header row
+  headerStatus: {
+    alignSelf: 'center' as const,
   },
 
   // Body

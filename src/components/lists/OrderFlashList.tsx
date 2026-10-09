@@ -28,6 +28,10 @@ import { router } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { ListSkeleton } from '@/components/skeletons';
+import { ListEmptyState } from '@/components/list/ListEmptyState';
+import { ErrorStateView } from '@/components/ErrorBoundary';
+import { Avatar } from '@/components/ui/Avatar';
+import { formatCount } from '@/utils/formatters';
 import { CustomerSearchBottomSheet, CustomerSearchBottomSheetRef } from '@/components/CustomerSearchBottomSheet';
 
 // Types and utilities
@@ -55,7 +59,6 @@ import { useAppSelector } from '@/store/hooks';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, layout, radius, space, touchTarget, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
-import { useLegacyRowPalette, listAvatarIndex } from './types';
 
 // ============================================================================
 // TYPES
@@ -87,7 +90,7 @@ const SectionHeader = React.memo<SectionHeaderProps>(({ title, count }) => {
       style={styles.sectionHeader}
       accessible
       accessibilityRole="header"
-      accessibilityLabel={`${title}, ${count} ${count === 1 ? 'order' : 'orders'}`}
+      accessibilityLabel={`${title}, ${formatCount(count, 'order')}`}
     >
       <Text style={styles.sectionTitle}>{title.toUpperCase()}</Text>
       <View style={styles.sectionBadge}>
@@ -108,43 +111,21 @@ interface EmptyStateProps {
   onClearFilters: () => void;
 }
 
-// Empty state: hero icon, title3 title, subhead message, one action (style guide §13.6)
+// Empty state: the shared ListEmptyState with the order wording (style guide §13.6)
 const EmptyState = React.memo<EmptyStateProps>(({
   isFiltered,
   onClearFilters,
-}) => {
-  const styles = useThemedStyles(makeStyles);
-  const t = useTokens();
-  return (
-    <View style={styles.emptyContainer}>
-      <Icon
-        name="clipboard-list-outline"
-        size={iconSize.hero}
-        color={t.icon.secondary}
-        accessible={false}
-        importantForAccessibility="no"
-      />
-      <Text style={styles.emptyTitle} accessibilityRole="header">
-        {isFiltered ? 'No orders with items' : 'No orders yet'}
-      </Text>
-      <Text style={styles.emptySubtitle}>
-        {isFiltered
-          ? 'Clear the filter to see empty orders too.'
-          : 'Orders appear here when customers add items.'}
-      </Text>
-      {isFiltered && (
-        <Pressable
-          style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryButtonPressed]}
-          onPress={onClearFilters}
-          accessibilityRole="button"
-          accessibilityLabel="Clear filters"
-        >
-          <Text style={styles.secondaryButtonText}>Clear filters</Text>
-        </Pressable>
-      )}
-    </View>
-  );
-});
+}) => (
+  <ListEmptyState
+    activeFilterCount={isFiltered ? 1 : 0}
+    emptyIcon="clipboard-list-outline"
+    emptyTitle="No orders yet"
+    emptySubtitle="Orders appear here when customers add items."
+    filteredTitle="No orders with items"
+    filteredSubtitle="Clear the filter to see empty orders too."
+    onClearFilters={onClearFilters}
+  />
+));
 
 EmptyState.displayName = 'EmptyState';
 
@@ -166,7 +147,6 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
   // Theme
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
-  const rowColors = useLegacyRowPalette();
 
   // User state
   const { userProfile } = useAppSelector(state => state.auth);
@@ -488,10 +468,9 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
       <MemoizedOrderItem
         order={item.data}
         onPress={handleOrderPress}
-        colors={rowColors}
       />
     );
-  }, [handleOrderPress, rowColors]);
+  }, [handleOrderPress]);
 
   // ============================================================================
   // LIST FOOTER
@@ -515,11 +494,10 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
   // ============================================================================
 
   const userName = userProfile?.name || 'U';
-  const avatarColor = t.avatar[listAvatarIndex(userName, t.avatar.length)];
 
   const headerActions = (withAvatar: boolean) => (
     <View style={styles.headerActions}>
-      <OrderRefreshAction onRefresh={handleRefresh} refreshing={isRefreshing} color={t.brand.tint} label="Refresh orders" />
+      <OrderRefreshAction onRefresh={handleRefresh} refreshing={isRefreshing} label="Refresh orders" />
       <IconButton
         icon="plus"
         size={iconSize.lg}
@@ -544,11 +522,7 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
           accessibilityRole="button"
           accessibilityLabel="Open settings"
         >
-          <View style={[styles.avatar, { backgroundColor: avatarColor }]}>
-            <Text style={styles.avatarText} maxFontSizeMultiplier={1.6}>
-              {userName.charAt(0).toUpperCase()}
-            </Text>
-          </View>
+          <Avatar name={userName} id={userProfile?.id} size="sm" />
         </Pressable>
       )}
     </View>
@@ -573,20 +547,12 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
         <View style={styles.header}>
           <Text style={styles.headerTitle} accessibilityRole="header">Orders</Text>
         </View>
-        <View style={styles.errorState}>
-          <Icon name="alert-circle-outline" size={iconSize.hero} color={t.status.negative.text} />
-          <Text style={styles.errorTitle} accessibilityRole="header">Couldn't load orders</Text>
-          <Text style={styles.errorMessage}>Check your connection and try again.</Text>
-          <Pressable
-            style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryButtonPressed]}
-            onPress={handleRefresh}
-            accessibilityRole="button"
-            accessibilityLabel="Try again"
-          >
-            <Icon name="refresh" size={iconSize.md} color={t.brand.tint} />
-            <Text style={styles.secondaryButtonText}>Try again</Text>
-          </Pressable>
-        </View>
+        <ErrorStateView
+          presentation="inline"
+          title="Couldn't load orders"
+          message="Check your connection and try again."
+          onRetry={handleRefresh}
+        />
       </View>
     );
   }
@@ -658,7 +624,7 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
           renderItem={renderItem}
           keyExtractor={keyExtractor}
           getItemType={getItemType}
-          extraData={{ handleOrderPress, rowColors }}
+          extraData={handleOrderPress}
           contentContainerStyle={styles.listContent}
           contentInsetAdjustmentBehavior="never"
           automaticallyAdjustContentInsets={false}
@@ -740,19 +706,6 @@ const makeStyles = (t: ThemeTokens) => ({
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
   },
-  avatar: {
-    width: layout.avatar.sm,
-    height: layout.avatar.sm,
-    borderRadius: radius.pill,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-  },
-  avatarText: {
-    ...typography.subhead,
-    fontWeight: fontWeight.semibold,
-    // Avatar initials: text.primary in light mode, white in dark mode (§3.2)
-    color: t.mode === 'dark' ? t.overlay.onImage : t.text.primary,
-  },
   // Critical message strip (§13.9)
   messageStrip: {
     flexDirection: 'row' as const,
@@ -827,7 +780,8 @@ const makeStyles = (t: ThemeTokens) => ({
     letterSpacing: 0.5,
     color: t.text.secondary,
   },
-  // Plain count: neutral tag
+  // Plain count badge: brand.fill with brand.onFill. "Needs action" counts use
+  // destructive.fill with destructive.onFill instead (§13.5).
   sectionBadge: {
     minWidth: 20,
     borderRadius: radius.pill,
@@ -835,13 +789,13 @@ const makeStyles = (t: ThemeTokens) => ({
     paddingVertical: space.xxs,
     justifyContent: 'center' as const,
     alignItems: 'center' as const,
-    backgroundColor: t.status.neutral.background,
+    backgroundColor: t.brand.fill,
   },
   sectionBadgeText: {
     ...typography.caption1,
     fontWeight: fontWeight.semibold,
     fontVariant: ['tabular-nums' as const],
-    color: t.status.neutral.text,
+    color: t.brand.onFill,
   },
   footerLoader: {
     flexDirection: 'row' as const,
@@ -853,68 +807,6 @@ const makeStyles = (t: ThemeTokens) => ({
   footerLoaderText: {
     ...typography.footnote,
     color: t.text.secondary,
-  },
-  // Empty and error states (§13.6)
-  emptyContainer: {
-    flex: 1,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    padding: space.xxl,
-    gap: space.sm,
-  },
-  emptyTitle: {
-    ...typography.title3,
-    color: t.text.primary,
-    textAlign: 'center' as const,
-    marginTop: space.lg,
-  },
-  emptySubtitle: {
-    ...typography.subhead,
-    color: t.text.secondary,
-    textAlign: 'center' as const,
-    marginBottom: space.lg,
-    maxWidth: 320,
-  },
-  errorState: {
-    flex: 1,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    padding: space.xxl,
-    gap: space.sm,
-  },
-  errorTitle: {
-    ...typography.title3,
-    color: t.text.primary,
-    textAlign: 'center' as const,
-    marginTop: space.lg,
-  },
-  errorMessage: {
-    ...typography.subhead,
-    color: t.text.secondary,
-    textAlign: 'center' as const,
-    marginBottom: space.lg,
-    maxWidth: 320,
-  },
-  // Secondary button: outline border.button, label brand.tint, pressed brand.subtle (§13.1, §10)
-  secondaryButton: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    minHeight: touchTarget,
-    minWidth: 120,
-    paddingHorizontal: space.xxl,
-    paddingVertical: space.sm,
-    borderRadius: radius.button,
-    borderWidth: 1,
-    borderColor: t.border.button,
-    gap: space.sm,
-  },
-  secondaryButtonPressed: {
-    backgroundColor: t.brand.subtle,
-  },
-  secondaryButtonText: {
-    ...typography.callout,
-    color: t.brand.tint,
   },
   // Snackbar: inverse surface (§13.9)
   snackbar: {

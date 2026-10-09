@@ -14,12 +14,10 @@ import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, layout, radius, space, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
-
-const buildDateFormat = new Intl.DateTimeFormat('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+import { formatDate, toDate } from '@/utils/formatters';
 
 function formatBuildDate(value: string): string {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? '' : `\nBuilt ${buildDateFormat.format(date)}`;
+  return toDate(value) ? `\nBuilt ${formatDate(value)}` : '';
 }
 
 const makeStyles = (t: ThemeTokens) => ({
