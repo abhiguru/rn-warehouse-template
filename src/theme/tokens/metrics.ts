@@ -36,6 +36,8 @@ export const typography = {
   caption1: { fontSize: 12, lineHeight: 16, fontWeight: '400', letterSpacing: 0 },
   /** Tab bar labels, smallest legible text. */
   caption2: { fontSize: 11, lineHeight: 13, fontWeight: '400', letterSpacing: 0.07 },
+  /** The GCSA wordmark in BrandMark only (the one weight above 700). */
+  wordmark: { fontSize: 48, lineHeight: 52, fontWeight: '800', letterSpacing: 2 },
 } as const satisfies Record<string, TypeStyle>;
 
 export type TypographyStyle = keyof typeof typography;

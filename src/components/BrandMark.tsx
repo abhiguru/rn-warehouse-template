@@ -26,33 +26,29 @@ const makeStyles = (t: ThemeTokens) => ({
     paddingHorizontal: space.xxl,
     paddingVertical: space.lg,
     borderRadius: radius.sheet,
-    backgroundColor: t.brandName === 'gcsa' && t.mode === 'dark' ? '#FFFFFF' : 'transparent',
+    backgroundColor: t.brandMark.panel,
   },
   image: {
     width: 120,
     height: 64,
   },
   wordmark: {
-    fontSize: 48,
-    lineHeight: 52,
-    fontWeight: '800' as const,
-    letterSpacing: 2,
-    // The wordmark sits on white in dark mode, so it keeps the logo navy there.
-    color: t.mode === 'dark' ? '#2E3192' : t.brand.tint,
+    ...typography.wordmark,
+    color: t.brandMark.wordmark,
   },
   rule: {
     marginTop: space.xs,
     height: 4,
     width: 140,
     borderRadius: radius.pill,
-    backgroundColor: t.brand.secondary,
+    backgroundColor: t.brandMark.rule,
   },
   caption: {
     ...typography.caption1,
     marginTop: space.xs,
     fontWeight: '600' as const,
     letterSpacing: 1,
-    color: t.mode === 'dark' ? '#5C5F63' : t.brand.secondaryText,
+    color: t.brandMark.caption,
   },
 });
 

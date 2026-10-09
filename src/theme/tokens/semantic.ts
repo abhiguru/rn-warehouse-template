@@ -113,6 +113,16 @@ export interface ThemeTokens {
     /** Text/icon variant of the secondary colour (4.5:1). */
     secondaryText: string;
   };
+  /**
+   * Brand mark (logo area on sign-in and lock screens). In GCSA dark mode the
+   * mark sits on a white panel so the logo navy stays the official colour.
+   */
+  brandMark: {
+    panel: string;
+    wordmark: string;
+    rule: string;
+    caption: string;
+  };
   /** Filled destructive button (Fiori "Reject"/negative emphasized button). */
   destructive: {
     fill: string;
@@ -263,6 +273,15 @@ export function buildTokens(brand: Brand, mode: Mode): ThemeTokens {
       button: h.buttonBorder,
     },
     brand: { ...brandGroup(brand, mode) },
+    brandMark:
+      brand === 'gcsa' && !light
+        ? { panel: '#FFFFFF', wordmark: gcsaNavy[600], rule: gcsaGrey[400], caption: gcsaGrey[700] }
+        : {
+            panel: 'transparent',
+            wordmark: brandGroup(brand, mode).tint,
+            rule: brandGroup(brand, mode).secondary,
+            caption: brandGroup(brand, mode).secondaryText,
+          },
     // Horizon's element red (#F53232) gives white text only 3.9:1, so the filled
     // button uses the negative text colour in light mode and dark ink on red in dark mode.
     destructive: light
