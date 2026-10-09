@@ -21,7 +21,6 @@ jest.mock('@/store/hooks', () => ({
     return selector({ theme: { preference: 'light', brand: 'orange' }, auth: { userProfile: profile, ...profile }, ...profile });
   },
 }));
-jest.mock('@/hooks/useListColors', () => ({ useListColors: () => new Proxy({}, { get: () => '#ffffff' }) }));
 jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('@/components/skeletons', () => ({ ListSkeleton: () => null }));
 jest.mock('@/components/list-items', () => ({ MemoizedOrderItem: () => null }));

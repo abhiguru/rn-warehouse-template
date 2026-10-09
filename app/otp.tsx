@@ -44,13 +44,8 @@ import {
 } from '@/theme/tokens';
 
 import { showAlert } from '@/utils/alert';
+import { formatMobile } from '@/utils/formatters';
 const CODE_LENGTH = 6;
-
-/** "+919876543210" -> "+91 98765 43210" (style guide §12.3). */
-const formatPhoneForDisplay = (phone: string) => {
-  const match = /^\+91(\d{5})(\d{5})$/.exec(phone);
-  return match ? `+91 ${match[1]} ${match[2]}` : phone;
-};
 
 export default function OTPScreen() {
   const [otpCode, setOtpCode] = useState('');
@@ -186,7 +181,7 @@ export default function OTPScreen() {
         setFocusedIndex(0);
         showAlert(
           'Code sent',
-          `A new code was sent to ${formatPhoneForDisplay(phoneNumber)}.`
+          `A new code was sent to ${formatMobile(phoneNumber)}.`
         );
       } else {
         if (handleRateLimitError(result.error)) {
@@ -217,7 +212,7 @@ export default function OTPScreen() {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const displayPhone = formatPhoneForDisplay(phoneNumber);
+  const displayPhone = formatMobile(phoneNumber);
 
   return (
     <View style={[styles.container, { paddingTop: insets.top + space.sm }]}>
@@ -242,13 +237,13 @@ export default function OTPScreen() {
 
       {/* Navigation bar - back button, outside the ScrollView */}
       <Pressable
-        style={({ pressed }) => [styles.backButtonNav, pressed && styles.backButtonPressed]}
+        style={({ pressed }) => [styles.backButton, styles.backButtonNav, pressed && styles.backButtonPressed]}
         onPress={handleBack}
         accessibilityRole="button"
         accessibilityLabel="Back"
       >
-        <Icon name="chevron-left" size={iconSize.lg} color={t.brand.tint} />
-        <Text style={styles.backButtonText}>Back</Text>
+        <Icon name={Platform.OS === 'ios' ? 'chevron-left' : 'arrow-left'} size={iconSize.lg} color={t.brand.tint} />
+        {Platform.OS === 'ios' && <Text style={styles.backButtonText}>Back</Text>}
       </Pressable>
 
       <KeyboardAvoidingView
@@ -451,24 +446,27 @@ const makeStyles = (t: ThemeTokens) => ({
   },
 
   // Navigation bar - back button
-  backButtonNav: {
+  // Custom back button (same on every headerless screen): platform glyph,
+  // brand.tint, "Back" label on iOS, at least touchTarget square
+  backButton: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
     alignSelf: 'flex-start' as const,
+    minWidth: touchTarget,
     minHeight: touchTarget,
-    paddingLeft: space.xs,
-    paddingRight: space.md,
-    marginLeft: space.xs,
+    paddingHorizontal: space.xs,
     borderRadius: radius.button,
   },
   backButtonPressed: {
     backgroundColor: t.brand.subtle,
   },
-
   backButtonText: {
     ...typography.body,
     color: t.brand.tint,
     marginLeft: space.xxs,
+  },
+  backButtonNav: {
+    marginLeft: space.xs,
   },
 
   content: {

@@ -8,7 +8,7 @@ import {
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { OrderItem } from '@/types/order.types';
-import { parseLocalISODate } from '@/utils/formatters';
+import { formatDate, formatWeight } from '@/utils/formatters';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import {
   fontWeight,
@@ -21,18 +21,6 @@ import {
   type ThemeTokens,
 } from '@/theme/tokens';
 import StockIndicator from './StockIndicator';
-
-/** "2026-10-09" -> "9 Oct 2026" (style guide §12.3). */
-const formatGrnDate = (value: string) => {
-  const date = /^\d{4}-\d{2}-\d{2}$/.test(value) ? parseLocalISODate(value) : new Date(value);
-  return isNaN(date.getTime())
-    ? ''
-    : date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
-};
-
-/** Up to two decimals, Indian grouping, unit kg (style guide §12.3). */
-const formatKg = (weight: number) =>
-  `${new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 }).format(weight)} kg`;
 
 interface OrderItemCardProps {
   item: OrderItem;
@@ -228,7 +216,7 @@ const OrderItemCardComponent: React.FC<OrderItemCardProps> = ({
           </View>
           {item.grn_item.grn_date && (
             <Text style={styles.grnDate}>
-              {formatGrnDate(item.grn_item.grn_date)}
+              {formatDate(item.grn_item.grn_date, 'short')}
             </Text>
           )}
         </View>
@@ -244,7 +232,7 @@ const OrderItemCardComponent: React.FC<OrderItemCardProps> = ({
           {item.grn_item.weight && item.grn_item.weight > 0 && (
             <View style={styles.weightRow}>
               <Icon name="weight-kilogram" size={iconSize.sm} color={t.icon.secondary} />
-              <Text style={styles.weightText}>{formatKg(item.grn_item.weight)}</Text>
+              <Text style={styles.weightText}>{formatWeight(item.grn_item.weight)}</Text>
             </View>
           )}
         </View>

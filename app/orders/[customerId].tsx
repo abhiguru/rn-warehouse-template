@@ -148,16 +148,13 @@ export default function CustomerOrderScreen() {
         <View style={styles.customHeader}>
           <View style={[styles.customHeaderContent, { paddingTop: insets.top }]}>
             <Pressable
-              style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
+              style={({ pressed }) => [styles.backButton, pressed && styles.backButtonPressed]}
               onPress={() => router.back()}
               accessibilityRole="button"
               accessibilityLabel="Back"
             >
-              <Icon
-                name={Platform.OS === 'ios' ? 'chevron-left' : 'arrow-left'}
-                size={iconSize.lg}
-                color={t.brand.tint}
-              />
+              <Icon name={Platform.OS === 'ios' ? 'chevron-left' : 'arrow-left'} size={iconSize.lg} color={t.brand.tint} />
+              {Platform.OS === 'ios' && <Text style={styles.backButtonText}>Back</Text>}
             </Pressable>
             <View style={styles.headerTitleContainer}>
               <Text style={styles.headerTitle} numberOfLines={2} accessibilityRole="header">
@@ -256,6 +253,25 @@ const makeStyles = (t: ThemeTokens) => ({
   headerTitle: {
     ...typography.headline,
     color: t.text.primary,
+  },
+  // Custom back button (same on every headerless screen): platform glyph,
+  // brand.tint, "Back" label on iOS, at least touchTarget square
+  backButton: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    alignSelf: 'flex-start' as const,
+    minWidth: touchTarget,
+    minHeight: touchTarget,
+    paddingHorizontal: space.xs,
+    borderRadius: radius.button,
+  },
+  backButtonPressed: {
+    backgroundColor: t.brand.subtle,
+  },
+  backButtonText: {
+    ...typography.body,
+    color: t.brand.tint,
+    marginLeft: space.xxs,
   },
   iconButton: {
     width: touchTarget,

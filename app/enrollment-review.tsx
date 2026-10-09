@@ -29,13 +29,9 @@ import {
 } from '@/services/enrollmentReviewService';
 
 import { showAlert } from '@/utils/alert';
-/** "+919876543210" -> "+91 98765 43210" (style guide §12.3). */
-const formatMobile = (mobile: string) => {
-  const match = /^\+?91(\d{5})(\d{5})$/.exec(mobile.replace(/\s/g, ''));
-  return match ? `+91 ${match[1]} ${match[2]}` : mobile;
-};
+import { formatCount, formatMobile } from '@/utils/formatters';
 
-const customerCount = (n: number) => `${n} ${n === 1 ? 'customer' : 'customers'}`;
+const customerCount = (n: number) => formatCount(n, 'customer');
 
 export default function EnrollmentReviewScreen() {
   const role = useAppSelector(state => state.auth.userProfile?.role);

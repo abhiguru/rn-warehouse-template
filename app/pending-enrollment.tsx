@@ -27,6 +27,7 @@ import {
 } from '@/theme/tokens';
 
 import { showAlert } from '@/utils/alert';
+import { StatusTag } from '@/components/ui/StatusTag';
 type EnrollmentStatus = 'pending' | 'approved' | 'rejected' | 'disabled';
 type StatusKind = 'critical' | 'positive' | 'negative';
 
@@ -110,10 +111,7 @@ export default function PendingEnrollmentScreen() {
               <Text style={styles.facilityName} numberOfLines={2}>{facilityName}</Text>
               {facilityHost ? <Text style={styles.facilityHost} numberOfLines={1}>{facilityHost}</Text> : null}
             </View>
-            <View style={[styles.tag, { backgroundColor: tone.background }]}>
-              <Icon name={view.icon} size={iconSize.sm} color={tone.text} />
-              <Text style={[styles.tagText, { color: tone.text }]} maxFontSizeMultiplier={1.6}>{view.label}</Text>
-            </View>
+            <StatusTag status={view.kind} label={view.label} icon={view.icon} />
           </View>
 
           {/* What happens next */}
@@ -164,15 +162,6 @@ const makeStyles = (t: ThemeTokens) => ({
   cardText: { flex: 1 },
   facilityName: { ...typography.headline, color: t.text.primary },
   facilityHost: { ...typography.subhead, color: t.text.secondary },
-  tag: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: space.xs,
-    paddingHorizontal: space.sm,
-    paddingVertical: space.xxs,
-    borderRadius: radius.field,
-  },
-  tagText: { ...typography.caption1, fontWeight: fontWeight.semibold },
   message: { ...typography.body, color: t.text.secondary, textAlign: 'center' as const },
   actions: { gap: space.md },
 });

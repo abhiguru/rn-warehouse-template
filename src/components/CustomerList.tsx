@@ -19,9 +19,11 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { router } from 'expo-router';
 import { CustomerListItem } from '@/types/customer.types';
 import { Button } from '@/components/ui/Button';
+import { StatusTag } from '@/components/ui/StatusTag';
+import { formatMobile } from '@/utils/formatters';
+import { avatarColors, avatarInitials } from '@/utils/avatar';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import {
-  fontWeight,
   iconSize,
   layout,
   radius,
@@ -47,19 +49,6 @@ interface CustomerListProps {
   emptyMessage?: string;
 }
 
-/** Stable avatar colour index for a customer (style guide §3.2). */
-function avatarIndex(key: string, count: number): number {
-  let hash = 0;
-  for (let i = 0; i < key.length; i++) hash = (hash * 31 + key.charCodeAt(i)) | 0;
-  return Math.abs(hash) % count;
-}
-
-/** "9876543210" -> "+91 98765 43210" (style guide §12.3). */
-function formatMobile(mobile: string): string {
-  const digits = mobile.replace(/\D/g, '').replace(/^91(?=\d{10}$)/, '');
-  return digits.length === 10 ? `+91 ${digits.slice(0, 5)} ${digits.slice(5)}` : `+91 ${mobile}`;
-}
-
 // =============================================================================
 // CUSTOMER CARD COMPONENT
 // =============================================================================
@@ -75,7 +64,7 @@ function CustomerCard({ customer, onEdit, onToggleActive }: CustomerCardProps) {
   const styles = useThemedStyles(makeStyles);
   const name = customer.name || 'Customer';
   const avatarBackground = customer.active
-    ? t.avatar[avatarIndex(customer.id || name, t.avatar.length)]
+    ? avatarColors(customer.id || name, t).background
     : t.status.neutral.background;
   const rowLabel = [
     name,
@@ -98,7 +87,7 @@ function CustomerCard({ customer, onEdit, onToggleActive }: CustomerCardProps) {
           style={[styles.avatarText, !customer.active && styles.avatarTextInactive]}
           maxFontSizeMultiplier={1.6}
         >
-          {name.charAt(0).toUpperCase()}
+          {avatarInitials(name)}
         </Text>
       </View>
 
@@ -109,10 +98,7 @@ function CustomerCard({ customer, onEdit, onToggleActive }: CustomerCardProps) {
             {name}
           </Text>
           {!customer.active && (
-            <View style={styles.inactiveBadge}>
-              <Icon name="circle-outline" size={iconSize.sm} color={t.status.neutral.text} />
-              <Text style={styles.inactiveBadgeText} maxFontSizeMultiplier={1.6}>Inactive</Text>
-            </View>
+            <StatusTag status="neutral" label="Inactive" />
           )}
         </View>
 
@@ -355,21 +341,6 @@ const makeStyles = (t: ThemeTokens) => ({
     ...typography.headline,
     color: t.text.primary,
     flex: 1,
-  },
-  // Neutral status tag (style guide §13.5)
-  inactiveBadge: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: space.xs,
-    backgroundColor: t.status.neutral.background,
-    paddingHorizontal: space.s6,
-    paddingVertical: space.xxs,
-    borderRadius: radius.field,
-  },
-  inactiveBadgeText: {
-    ...typography.caption1,
-    fontWeight: fontWeight.semibold,
-    color: t.status.neutral.text,
   },
   cardDetails: {
     gap: space.xxs,

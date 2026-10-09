@@ -4,6 +4,7 @@ import { act, create } from 'react-test-renderer';
 import OrderItemCard from '../OrderItemCard';
 import type { OrderItem } from '@/types/order.types';
 import { getTokens, type Brand, type Mode } from '@/theme/tokens';
+import { formatDate } from '@/utils/formatters';
 
 jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('../StockIndicator', () => 'StockIndicator');
@@ -79,7 +80,7 @@ it.each([
   const container = tree.root.findAll(node => node.props.style?.backgroundColor === tokens.surface.card);
   expect(container.length).toBeGreaterThan(0);
   expect(texts(tree)).toContain('1,250.5 kg');
-  expect(texts(tree)).toContain('9 Oct 2026');
+  expect(texts(tree)).toContain(formatDate('2026-10-09', 'short'));
   const remove = byLabel(tree, 'Remove Fictional Onions from order');
   expect(remove.findByProps({ name: 'trash-can-outline' }).props.color).toBe(tokens.status.negative.text);
   await act(async () => { tree.unmount(); });
