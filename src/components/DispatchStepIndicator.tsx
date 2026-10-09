@@ -28,7 +28,7 @@ export const DispatchStepIndicator: React.FC<DispatchStepIndicatorProps> = ({
   completedSteps,
   onCancel,
   cancelMessage,
-  cancelTitle = 'Cancel Dispatch',
+  cancelTitle = 'Cancel dispatch',
   dispNo,
   onStepPress,
   isEditMode = false,

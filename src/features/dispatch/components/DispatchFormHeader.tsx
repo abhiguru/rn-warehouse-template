@@ -8,19 +8,27 @@ import React, { ComponentProps } from 'react';
 import {
   View,
   Text,
-  TouchableOpacity,
+  Pressable,
   StyleSheet,
   Platform,
   Alert,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import theme from '@/theme';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import {
+  fontWeight,
+  iconSize,
+  space,
+  touchTarget,
+  typography,
+} from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
 
 type IoniconsName = ComponentProps<typeof Ionicons>['name'];
 
 export interface DispatchFormHeaderProps {
-  title: string; // e.g., "Create Dispatch - Step 1"
+  title: string; // e.g., "Create dispatch"
   onCancel: () => void; // Called after user confirms cancellation
   showCancelButton?: boolean; // Default: true
   confirmCancel?: boolean; // Show confirmation alert (default: true)
@@ -36,28 +44,86 @@ export interface DispatchFormHeaderProps {
 const HEADER_HEIGHT_IOS = 56;
 const HEADER_HEIGHT_ANDROID = 64;
 
+const makeStyles = (t: ThemeTokens) => ({
+  // Stack header spec (guide 13.8): surface.header, no shadow, hairline divider
+  container: {
+    backgroundColor: t.surface.header,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.divider,
+  },
+  content: {
+    flex: 1,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
+    paddingHorizontal: space.lg,
+  },
+  cancelButton: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.xs,
+    paddingRight: space.sm,
+    minHeight: touchTarget,
+    minWidth: touchTarget,
+  },
+  cancelText: {
+    ...typography.callout,
+    color: t.brand.tint,
+  },
+  title: {
+    ...typography.headline,
+    color: t.text.primary,
+    textAlign: 'center' as const,
+    flex: 1,
+  },
+  spacer: {
+    width: 80, // Match approximate width of cancel button
+  },
+  rightActionButton: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.xs,
+    paddingLeft: space.sm,
+    minHeight: touchTarget,
+    minWidth: touchTarget,
+  },
+  pressed: {
+    opacity: 0.6,
+  },
+  rightActionButtonDisabled: {
+    opacity: t.interaction.disabledOpacity,
+  },
+  rightActionText: {
+    ...typography.callout,
+    fontWeight: fontWeight.semibold,
+    color: t.brand.tint,
+  },
+});
+
 export const DispatchFormHeader: React.FC<DispatchFormHeaderProps> = ({
   title,
   onCancel,
   showCancelButton = true,
   confirmCancel = true,
-  cancelMessage = 'Are you sure you want to cancel? All entered data will be lost.',
+  cancelMessage = 'Discard this dispatch? The details you entered will be lost.',
   rightAction,
 }) => {
   const insets = useSafeAreaInsets();
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
 
   const handleCancelPress = () => {
     if (confirmCancel) {
       Alert.alert(
-        'Cancel Dispatch Creation',
+        'Discard this dispatch?',
         cancelMessage,
         [
           {
-            text: 'Continue Editing',
+            text: 'Keep editing',
             style: 'cancel',
           },
           {
-            text: 'Discard',
+            text: 'Discard dispatch',
             style: 'destructive',
             onPress: onCancel,
           },
@@ -74,7 +140,7 @@ export const DispatchFormHeader: React.FC<DispatchFormHeaderProps> = ({
       style={[
         styles.container,
         {
-          paddingTop: insets.top || theme.spacing.md,
+          paddingTop: insets.top || space.md,
           height:
             (Platform.OS === 'ios'
               ? HEADER_HEIGHT_IOS
@@ -85,52 +151,49 @@ export const DispatchFormHeader: React.FC<DispatchFormHeaderProps> = ({
       <View style={styles.content}>
         {/* Cancel Button */}
         {showCancelButton && (
-          <TouchableOpacity
-            style={styles.cancelButton}
+          <Pressable
+            style={({ pressed }) => [styles.cancelButton, pressed && styles.pressed]}
             onPress={handleCancelPress}
-            activeOpacity={0.7}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel="Cancel dispatch"
           >
-            <Ionicons name="close" size={24} color={theme.colors.gray[700]} />
+            <Ionicons name="close" size={iconSize.lg} color={t.brand.tint} />
             <Text style={styles.cancelText}>Cancel</Text>
-          </TouchableOpacity>
+          </Pressable>
         )}
 
         {/* Title */}
-        <Text style={styles.title}>{title}</Text>
+        <Text style={styles.title} accessibilityRole="header" numberOfLines={2}>
+          {title}
+        </Text>
 
         {/* Right Action Button or Spacer */}
         {rightAction ? (
-          <TouchableOpacity
-            style={[
+          <Pressable
+            style={({ pressed }) => [
               styles.rightActionButton,
               rightAction.disabled && styles.rightActionButtonDisabled,
+              pressed && styles.pressed,
             ]}
             onPress={rightAction.onPress}
             disabled={rightAction.disabled}
-            activeOpacity={0.7}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel={rightAction.label ?? title}
+            accessibilityState={{ disabled: !!rightAction.disabled }}
           >
             <Ionicons
               name={rightAction.icon}
-              size={24}
-              color={
-                rightAction.disabled
-                  ? theme.colors.gray[400]
-                  : theme.colors.primary
-              }
+              size={iconSize.lg}
+              color={t.brand.tint}
             />
             {rightAction.label && (
-              <Text
-                style={[
-                  styles.rightActionText,
-                  rightAction.disabled && styles.rightActionTextDisabled,
-                ]}
-              >
+              <Text style={styles.rightActionText}>
                 {rightAction.label}
               </Text>
             )}
-          </TouchableOpacity>
+          </Pressable>
         ) : (
           showCancelButton && <View style={styles.spacer} />
         )}
@@ -138,71 +201,3 @@ export const DispatchFormHeader: React.FC<DispatchFormHeaderProps> = ({
     </View>
   );
 };
-
-const styles = StyleSheet.create({
-  container: {
-    backgroundColor: theme.colors.primary,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.gray[200],
-    ...Platform.select({
-      ios: {
-        shadowColor: theme.colors.black,
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.05,
-        shadowRadius: 2,
-      },
-      android: {
-        elevation: 2,
-      },
-    }),
-  },
-  content: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: theme.spacing.lg,
-  },
-  cancelButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: theme.spacing.xs,
-    paddingVertical: theme.spacing.xs,
-    paddingRight: theme.spacing.sm,
-    minHeight: 44, // iOS touch target
-  },
-  cancelText: {
-    fontSize: theme.fontSize.base,
-    fontWeight: '500',
-    color: theme.colors.gray[700],
-  },
-  title: {
-    fontSize: theme.fontSize.lg,
-    fontWeight: '600',
-    color: theme.colors.gray[900],
-    textAlign: 'center',
-    flex: 1,
-  },
-  spacer: {
-    width: 80, // Match approximate width of cancel button
-  },
-  rightActionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: theme.spacing.xs,
-    paddingVertical: theme.spacing.xs,
-    paddingLeft: theme.spacing.sm,
-    minHeight: 44, // iOS touch target
-  },
-  rightActionButtonDisabled: {
-    opacity: 0.5,
-  },
-  rightActionText: {
-    fontSize: theme.fontSize.base,
-    fontWeight: '600',
-    color: theme.colors.primary,
-  },
-  rightActionTextDisabled: {
-    color: theme.colors.gray[400],
-  },
-});

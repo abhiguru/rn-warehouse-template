@@ -12,16 +12,26 @@ import {
     Text,
     StyleSheet,
     ScrollView,
-    TouchableOpacity,
+    Pressable,
     ActivityIndicator,
-    Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { triggerSuccess, triggerError } from '@/hooks/useHaptics';
 import { Snackbar } from 'react-native-paper';
-import { useListColors } from '@/hooks/useListColors';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import {
+    fontWeight,
+    iconSize,
+    layout,
+    radius,
+    space,
+    touchTarget,
+    typography,
+} from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
+import { parseLocalISODate } from '@/utils/formatters';
 import { DispatchStepIndicator } from '@/components/DispatchStepIndicator';
 import SwipeableFormStep from '@/components/SwipeableFormStep';
 import { PrintRangeDialog } from '@/components/PrintRangeDialog';
@@ -30,7 +40,6 @@ import { DocumentSuccessDialog, DocumentData } from '@/components/DocumentSucces
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { generateDispatchPDF } from '@/services/pdf-service';
 import { downloadAndSharePDF } from '@/utils/shareDocument';
-import theme from '@/theme';
 import { useDispatchForm } from '@/hooks/useDispatchForm';
 import { getGRNDetailByNumber } from '@/features/dispatch/services/grnDetailService';
 import type { DispatchItemData, DispatchImageData } from '@/types/dispatch.types';
@@ -49,43 +58,16 @@ type DispatchReviewStepProps = {
     mode: 'create' | 'edit';
 };
 
-export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
-    // Theme colors for dark mode support
-    const colors = useListColors();
+/** Guide 12.3: mobile number as "+91 98765 43210". */
+const formatMobile = (mobile: string) => {
+    const digits = mobile.replace(/\D/g, '');
+    if (digits.length === 10) return `+91 ${digits.slice(0, 5)} ${digits.slice(5)}`;
+    return `+91 ${mobile}`;
+};
 
-    // #19 Fix: Only create color overrides, not full StyleSheet
-    // This is a simple object (not StyleSheet.create) with only dynamic color values
-    // Compose with array syntax: [styles.base, themedColors.override]
-    const themedColors = useMemo(() => ({
-        sectionTitle: { color: colors.textPrimary },
-        compactSummaryCard: { backgroundColor: colors.cellBackground, borderColor: colors.cellDivider },
-        compactLabel: { color: colors.textSecondary },
-        compactValue: { color: colors.textPrimary },
-        notesRow: { borderTopColor: colors.cellDivider },
-        notesText: { color: colors.textSecondary },
-        summaryCard: { backgroundColor: colors.cellBackground, borderColor: colors.cellDivider },
-        summaryLabel: { color: colors.textSecondary },
-        summaryValue: { color: colors.textPrimary },
-        summaryDivider: { backgroundColor: colors.cellDivider },
-        itemCard: { backgroundColor: colors.cellBackground, borderColor: colors.cellDivider },
-        itemName: { color: colors.textPrimary },
-        itemDetails: { borderTopColor: colors.cellDivider, backgroundColor: colors.gray50 },
-        detailLabel: { color: colors.textSecondary },
-        detailValue: { color: colors.textPrimary },
-        metaBadge: { backgroundColor: colors.gray100 },
-        metaText: { color: colors.textSecondary },
-        imagesCard: { backgroundColor: colors.gray50, borderColor: colors.cellDivider },
-        imagesHint: { color: colors.textSecondary },
-        subtotalIconContainer: { backgroundColor: colors.cellBackground },
-        subtotalLabel: { color: colors.textSecondary },
-        subtotalValue: { color: colors.textPrimary },
-        totalIconContainer: { backgroundColor: colors.cellBackground },
-        totalLabel: { color: colors.textSecondary },
-        totalValue: { color: colors.textPrimary },
-        hintContainer: { backgroundColor: colors.gray50, borderColor: colors.cellDivider },
-        hintText: { color: colors.textSecondary },
-        stickyButtonContainer: { backgroundColor: colors.cellBackground, borderTopColor: colors.cellDivider },
-    }), [colors]);
+export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
+    const styles = useThemedStyles(makeStyles);
+    const t = useTokens();
 
     const insets = useSafeAreaInsets();
     const { id } = useLocalSearchParams<{ id: string }>();
@@ -288,14 +270,12 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
         return { itemWiseTotals, grandTotalQuantity, grandTotalWeight, uniqueGRNs };
     }, [items]);
 
-    // Format date
+    // Format date (guide 12.3: "9 Oct 2026")
     const formatDisplayDate = (isoDate: string) => {
         if (!isoDate) return '';
-        const date = new Date(isoDate);
-        const day = date.getDate();
-        const month = date.getMonth() + 1;
-        const year = date.getFullYear().toString().slice(-2);
-        return `${day}/${month}/${year}`;
+        const date = /^\d{4}-\d{2}-\d{2}$/.test(isoDate) ? parseLocalISODate(isoDate) : new Date(isoDate);
+        if (isNaN(date.getTime())) return '';
+        return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
     };
 
     // Handle form submission
@@ -327,7 +307,7 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
             setCreatedDispatchNumber(header.disp_no);
             setSuccessDialogData({
                 documentNo: header.disp_no,
-                customerName: header.customer_name || 'Unknown',
+                customerName: header.customer_name || 'No customer',
                 date: formatDisplayDate(header.disp_date),
                 itemCount: items.length,
             });
@@ -335,7 +315,7 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
 
             // Show snackbar if order was cleared
             if (result.sourceOrderCleared) {
-                setSnackbarMessage('Order fulfilled and removed from queue');
+                setSnackbarMessage('Order fulfilled and removed from the queue.');
                 setSnackbarVisible(true);
             }
         } else {
@@ -357,7 +337,7 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
         try {
             const pdfResult = await generateDispatchPDF(createdDispatchNumber);
             if (!pdfResult.success || !pdfResult.pdfUrl) {
-                setSnackbarMessage(pdfResult.error || 'Failed to generate PDF');
+                setSnackbarMessage("Couldn't create the PDF. Check your connection and try again.");
                 setSnackbarVisible(true);
                 return;
             }
@@ -367,11 +347,11 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
                 `Dispatch_${createdDispatchNumber}.pdf`
             );
             if (!shareResult.success) {
-                setSnackbarMessage(shareResult.error || 'Failed to share PDF');
+                setSnackbarMessage("Couldn't share the PDF. Try again.");
                 setSnackbarVisible(true);
             }
         } catch (error) {
-            setSnackbarMessage('Failed to share PDF');
+            setSnackbarMessage("Couldn't share the PDF. Try again.");
             setSnackbarVisible(true);
         } finally {
             setIsShareLoading(false);
@@ -396,81 +376,106 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
         setShowPrintDialog(true);
     };
 
+    const isBusy = isSaving || isSubmitting;
+
     // Render hero metrics (key totals at top for quick scanning)
     const renderHeroMetrics = () => (
-        <View style={[styles.heroSection, { backgroundColor: colors.gray50 }]}>
-            {/* Customer banner */}
-            <View style={[styles.customerBanner, { backgroundColor: colors.primary }]}>
-                <Icon name="account-arrow-right" size={20} color={colors.cellBackground} />
-                <View style={styles.customerBannerTextContainer}>
-                    <Text style={[styles.customerBannerText, { color: colors.cellBackground }]} numberOfLines={1}>
-                        To: {header.customer_name || 'No Customer'}
+        <View style={styles.heroSection}>
+            {/* Customer card (surface.card; brand fills are not used for content headers) */}
+            <View
+                style={styles.customerCard}
+                accessible
+                accessibilityLabel={`Customer, ${header.customer_name || 'none chosen'}`}
+            >
+                <View style={styles.customerIconContainer}>
+                    <Icon name="account-outline" size={iconSize.md} color={t.brand.tint} />
+                </View>
+                <View style={styles.customerTextContainer}>
+                    <Text style={styles.customerLabel}>Customer</Text>
+                    <Text style={styles.customerName} numberOfLines={2}>
+                        {header.customer_name || 'No customer'}
                     </Text>
                     {(header.customer_address || header.customer_city) && (
-                        <Text style={[styles.customerBannerAddress, { color: colors.cellBackground }]} numberOfLines={1}>
+                        <Text style={styles.customerMeta} numberOfLines={1}>
                             {header.customer_address || header.customer_city}
                             {header.customer_address && header.customer_city && header.customer_address !== header.customer_city && `, ${header.customer_city}`}
                         </Text>
                     )}
                     {header.customer_mobile && (
-                        <View style={styles.customerBannerMobileRow}>
-                            <Icon name="phone" size={12} color={colors.cellBackground} />
-                            <Text style={[styles.customerBannerAddress, { color: colors.cellBackground }]} numberOfLines={1}>
-                                +91 {header.customer_mobile}
+                        <View style={styles.customerMobileRow}>
+                            <Icon name="phone-outline" size={iconSize.sm} color={t.icon.secondary} />
+                            <Text style={styles.customerMeta} numberOfLines={1}>
+                                {formatMobile(header.customer_mobile)}
                             </Text>
                         </View>
                     )}
                 </View>
             </View>
 
-            {/* Key metrics grid */}
+            {/* Key metrics grid (KPI tiles, guide 13.11) */}
             <View style={styles.metricsGrid}>
-                <View style={[styles.metricCard, { backgroundColor: colors.cellBackground, borderColor: colors.cellDivider }]}>
-                    <View style={[styles.metricIconContainer, { backgroundColor: colors.tealLight }]}>
-                        <Icon name="package-variant" size={22} color={colors.teal} />
+                <View style={styles.metricCard} accessible accessibilityLabel={`${items.length} ${items.length === 1 ? 'item' : 'items'}`}>
+                    <View style={styles.metricIconContainer}>
+                        <Icon name="cube-outline" size={iconSize.md} color={t.brand.tint} />
                     </View>
                     <View style={styles.metricContent}>
-                        <Text style={[styles.metricValue, { color: colors.gray900 }]}>{items.length}</Text>
-                        <Text style={[styles.metricLabel, { color: colors.gray500 }]}>{items.length === 1 ? 'Item' : 'Items'}</Text>
+                        <Text style={styles.metricValue}>{items.length}</Text>
+                        <Text style={styles.metricLabel}>{items.length === 1 ? 'Item' : 'Items'}</Text>
                     </View>
                 </View>
 
-                <View style={[styles.metricCard, { backgroundColor: colors.cellBackground, borderColor: colors.cellDivider }]}>
-                    <View style={[styles.metricIconContainer, { backgroundColor: colors.successLight }]}>
-                        <Icon name="counter" size={22} color={colors.success} />
+                <View style={styles.metricCard} accessible accessibilityLabel={`Total quantity ${totals.grandTotalQuantity}`}>
+                    <View style={styles.metricIconContainer}>
+                        <Icon name="counter" size={iconSize.md} color={t.brand.tint} />
                     </View>
                     <View style={styles.metricContent}>
-                        <Text style={[styles.metricValue, { color: colors.gray900 }]}>{totals.grandTotalQuantity}</Text>
-                        <Text style={[styles.metricLabel, { color: colors.gray500 }]}>Total Qty</Text>
+                        <Text style={styles.metricValue}>{totals.grandTotalQuantity}</Text>
+                        <Text style={styles.metricLabel}>Total quantity</Text>
                     </View>
                 </View>
             </View>
         </View>
     );
 
+    // Section header with optional edit link (guide 14.3: Review has an edit link per section)
+    const renderSectionHeader = (title: string, editStep?: number, editLabel?: string) => (
+        <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle} accessibilityRole="header">{title}</Text>
+            {editStep !== undefined && (
+                <Pressable
+                    onPress={() => navigateToStep(editStep)}
+                    style={({ pressed }) => [styles.editLink, pressed && styles.editLinkPressed]}
+                    accessibilityRole="button"
+                    accessibilityLabel={editLabel}
+                    hitSlop={space.sm}
+                >
+                    <Icon name="pencil-outline" size={iconSize.sm} color={t.brand.tint} />
+                    <Text style={styles.editLinkText}>Edit</Text>
+                </Pressable>
+            )}
+        </View>
+    );
+
     // Render header summary (compact version - customer shown in hero)
     const renderHeaderSummary = () => (
         <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-                <Icon name="clipboard-text-outline" size={20} color={colors.primary} />
-                <Text style={[styles.sectionTitle, themedColors.sectionTitle]}>Dispatch Details</Text>
-            </View>
+            {renderSectionHeader('Dispatch details', DISPATCH_STEP_NUMBERS.INFO, 'Edit dispatch details')}
 
-            <View style={[styles.compactSummaryCard, themedColors.compactSummaryCard]}>
+            <View style={styles.card}>
                 {/* Row 1: Dispatch No + Date */}
                 <View style={styles.compactRow}>
                     <View style={styles.compactItem}>
-                        <Icon name="file-document" size={16} color={colors.gray500} />
+                        <Icon name="truck-delivery-outline" size={iconSize.sm} color={t.icon.secondary} />
                         <View style={styles.compactItemContent}>
-                            <Text style={[styles.compactLabel, themedColors.compactLabel]}>Dispatch #</Text>
-                            <Text style={[styles.compactValue, themedColors.compactValue]}>{header.disp_no}</Text>
+                            <Text style={styles.compactLabel}>Dispatch number</Text>
+                            <Text style={styles.compactValue}>{header.disp_no}</Text>
                         </View>
                     </View>
                     <View style={styles.compactItem}>
-                        <Icon name="calendar" size={16} color={colors.gray500} />
+                        <Icon name="calendar-outline" size={iconSize.sm} color={t.icon.secondary} />
                         <View style={styles.compactItemContent}>
-                            <Text style={[styles.compactLabel, themedColors.compactLabel]}>Date</Text>
-                            <Text style={[styles.compactValue, themedColors.compactValue]}>{formatDisplayDate(header.disp_date)}</Text>
+                            <Text style={styles.compactLabel}>Date</Text>
+                            <Text style={styles.compactValue}>{formatDisplayDate(header.disp_date)}</Text>
                         </View>
                     </View>
                 </View>
@@ -478,37 +483,37 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
                 {/* Row 2: Vehicle + Supervisor */}
                 <View style={styles.compactRow}>
                     <View style={styles.compactItem}>
-                        <Icon name="truck" size={16} color={colors.gray500} />
+                        <Icon name="truck-outline" size={iconSize.sm} color={t.icon.secondary} />
                         <View style={styles.compactItemContent}>
-                            <Text style={[styles.compactLabel, themedColors.compactLabel]}>Vehicle</Text>
-                            <Text style={[styles.compactValue, themedColors.compactValue]} numberOfLines={1}>{header.registration || '-'}</Text>
+                            <Text style={styles.compactLabel}>Vehicle</Text>
+                            <Text style={styles.compactValue} numberOfLines={1}>{header.registration || '-'}</Text>
                         </View>
                     </View>
                     <View style={styles.compactItem}>
-                        <Icon name="account" size={16} color={colors.gray500} />
+                        <Icon name="account-outline" size={iconSize.sm} color={t.icon.secondary} />
                         <View style={styles.compactItemContent}>
-                            <Text style={[styles.compactLabel, themedColors.compactLabel]}>Supervisor</Text>
-                            <Text style={[styles.compactValue, themedColors.compactValue]} numberOfLines={1}>{header.supervisor_name || '-'}</Text>
+                            <Text style={styles.compactLabel}>Supervisor</Text>
+                            <Text style={styles.compactValue} numberOfLines={1}>{header.supervisor_name || '-'}</Text>
                         </View>
                     </View>
                 </View>
 
                 {/* Row 3: Weight (full width) */}
                 <View style={styles.compactRow}>
-                    <View style={[styles.compactItem, { flex: 1 }]}>
-                        <Icon name="weight" size={16} color={colors.gray500} />
+                    <View style={[styles.compactItem, styles.fullWidth]}>
+                        <Icon name="weight" size={iconSize.sm} color={t.icon.secondary} />
                         <View style={styles.compactItemContent}>
-                            <Text style={[styles.compactLabel, themedColors.compactLabel]}>Total Weight</Text>
-                            <Text style={[styles.compactValue, themedColors.compactValue]}>{Math.round(totals.grandTotalWeight)} kg</Text>
+                            <Text style={styles.compactLabel}>Total weight</Text>
+                            <Text style={styles.compactValue}>{Math.round(totals.grandTotalWeight)} kg</Text>
                         </View>
                     </View>
                 </View>
 
                 {/* Notes (if any) */}
                 {header.note && (
-                    <View style={[styles.notesRow, themedColors.notesRow]}>
-                        <Icon name="note-text" size={16} color={colors.gray500} />
-                        <Text style={[styles.notesText, themedColors.notesText]} numberOfLines={2}>{header.note}</Text>
+                    <View style={styles.notesRow}>
+                        <Icon name="note-text-outline" size={iconSize.sm} color={t.icon.secondary} />
+                        <Text style={styles.notesText} numberOfLines={2}>{header.note}</Text>
                     </View>
                 )}
             </View>
@@ -524,11 +529,14 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
             : freshStockValues[item.unique_id] ?? item.grnItems_stock;
 
         return (
-            <View key={item.unique_id} style={[styles.itemCard, themedColors.itemCard]}>
-                <TouchableOpacity
-                    style={styles.itemHeader}
+            <View key={item.unique_id} style={styles.itemCard}>
+                <Pressable
+                    style={({ pressed }) => [styles.itemHeader, pressed && styles.itemHeaderPressed]}
                     onPress={() => toggleItemExpansion(item.unique_id)}
-                    activeOpacity={0.7}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Item ${index + 1}, ${item.grnItems_item_name}${item.grnItems_package_mark ? `, mark ${item.grnItems_package_mark}` : ''}, GRN ${item.grns_gr_no}, quantity ${item.disp_quantity}`}
+                    accessibilityHint={isExpanded ? 'Hides item details' : 'Shows item details'}
+                    accessibilityState={{ expanded: isExpanded }}
                 >
                     <View style={styles.itemNumberBadge}>
                         <Text style={styles.itemNumber}>{index + 1}</Text>
@@ -537,98 +545,98 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
                     <View style={styles.itemMainInfo}>
                         <View style={styles.itemTitleRow}>
                             <View style={styles.itemNameSection}>
-                                <Text style={[styles.itemName, themedColors.itemName]} numberOfLines={1}>
+                                <Text style={styles.itemName} numberOfLines={2}>
                                     {item.grnItems_item_name}
                                 </Text>
                                 {item.grnItems_package_mark && (
                                     <View style={styles.packageMarkBadge}>
-                                        <Icon name="label" size={12} color={theme.colors.orange[600]} />
+                                        <Icon name="tag-outline" size={iconSize.sm} color={t.icon.secondary} />
                                         <Text style={styles.packageMarkText}>{item.grnItems_package_mark}</Text>
                                     </View>
                                 )}
                             </View>
                             <Icon
                                 name={isExpanded ? 'chevron-up' : 'chevron-down'}
-                                size={24}
-                                color={theme.colors.gray[400]}
+                                size={iconSize.lg}
+                                color={t.icon.secondary}
                             />
                         </View>
                         <View style={styles.itemMetaRow}>
-                            <View style={[styles.metaBadge, themedColors.metaBadge]}>
-                                <Icon name="clipboard-text" size={12} color={theme.colors.blue[600]} />
-                                <Text style={[styles.metaText, themedColors.metaText]}>
-                                    {item.grns_gr_no}/{item.grnItems_quantity}
+                            <View style={styles.metaBadge}>
+                                <Icon name="package-down" size={iconSize.sm} color={t.icon.secondary} />
+                                <Text style={styles.metaText} maxFontSizeMultiplier={1.6}>
+                                    GRN {item.grns_gr_no}/{item.grnItems_quantity}
                                 </Text>
                             </View>
-                            <View style={[styles.metaBadge, themedColors.metaBadge]}>
-                                <Icon name="package" size={12} color={theme.colors.green[600]} />
-                                <Text style={[styles.metaText, themedColors.metaText]}>{item.disp_quantity} qty</Text>
+                            <View style={styles.metaBadge}>
+                                <Icon name="cube-outline" size={iconSize.sm} color={t.icon.secondary} />
+                                <Text style={styles.metaText} maxFontSizeMultiplier={1.6}>Qty {item.disp_quantity}</Text>
                             </View>
                         </View>
                     </View>
-                </TouchableOpacity>
+                </Pressable>
 
                 {isExpanded && (
-                    <View style={[styles.itemDetails, themedColors.itemDetails]}>
+                    <View style={styles.itemDetails}>
                         <View style={styles.detailRow}>
-                            <Icon name="calendar" size={16} color={theme.colors.gray[500]} />
-                            <Text style={[styles.detailLabel, themedColors.detailLabel]}>GRN Date:</Text>
-                            <Text style={[styles.detailValue, themedColors.detailValue]}>{formatDisplayDate(item.grns_date)}</Text>
+                            <Icon name="calendar-outline" size={iconSize.sm} color={t.icon.secondary} />
+                            <Text style={styles.detailLabel}>GRN date</Text>
+                            <Text style={styles.detailValue}>{formatDisplayDate(item.grns_date)}</Text>
                         </View>
 
                         <View style={styles.detailRow}>
-                            <Icon name="account" size={16} color={theme.colors.gray[500]} />
-                            <Text style={[styles.detailLabel, themedColors.detailLabel]}>Customer:</Text>
-                            <Text style={[styles.detailValue, themedColors.detailValue]}>{item.grns_customer_name}</Text>
+                            <Icon name="account-outline" size={iconSize.sm} color={t.icon.secondary} />
+                            <Text style={styles.detailLabel}>Customer</Text>
+                            <Text style={styles.detailValue}>{item.grns_customer_name}</Text>
                         </View>
 
                         {item.grnItems_package_mark && (
                             <View style={styles.detailRow}>
-                                <Icon name="label" size={16} color={theme.colors.gray[500]} />
-                                <Text style={[styles.detailLabel, themedColors.detailLabel]}>Package Mark:</Text>
-                                <Text style={[styles.detailValue, themedColors.detailValue]}>{item.grnItems_package_mark}</Text>
+                                <Icon name="tag-outline" size={iconSize.sm} color={t.icon.secondary} />
+                                <Text style={styles.detailLabel}>Package mark</Text>
+                                <Text style={styles.detailValue}>{item.grnItems_package_mark}</Text>
                             </View>
                         )}
 
                         {item.grnItems_rack && (
                             <View style={styles.detailRow}>
-                                <Icon name="warehouse" size={16} color={theme.colors.gray[500]} />
-                                <Text style={[styles.detailLabel, themedColors.detailLabel]}>Rack:</Text>
-                                <Text style={[styles.detailValue, themedColors.detailValue]}>{item.grnItems_rack}</Text>
+                                <Icon name="view-grid-outline" size={iconSize.sm} color={t.icon.secondary} />
+                                <Text style={styles.detailLabel}>Rack</Text>
+                                <Text style={styles.detailValue}>{item.grnItems_rack}</Text>
                             </View>
                         )}
 
                         <View style={styles.detailRow}>
-                            <Icon name="scale" size={16} color={theme.colors.gray[500]} />
-                            <Text style={[styles.detailLabel, themedColors.detailLabel]}>Unit Weight:</Text>
-                            <Text style={[styles.detailValue, themedColors.detailValue]}>{item.grnItems_weight} kg</Text>
+                            <Icon name="scale" size={iconSize.sm} color={t.icon.secondary} />
+                            <Text style={styles.detailLabel}>Unit weight</Text>
+                            <Text style={styles.detailValue}>{item.grnItems_weight} kg</Text>
                         </View>
 
                         <View style={styles.detailRow}>
-                            <Icon name="weight" size={16} color={theme.colors.gray[500]} />
-                            <Text style={[styles.detailLabel, themedColors.detailLabel]}>Total Weight:</Text>
-                            <Text style={[styles.detailValue, themedColors.detailValue]}>{Math.round(itemTotalWeight)} kg</Text>
+                            <Icon name="weight" size={iconSize.sm} color={t.icon.secondary} />
+                            <Text style={styles.detailLabel}>Total weight</Text>
+                            <Text style={styles.detailValue}>{Math.round(itemTotalWeight)} kg</Text>
                         </View>
 
                         <View style={styles.detailRow}>
-                            <Icon name="package-variant" size={16} color={theme.colors.gray[500]} />
-                            <Text style={[styles.detailLabel, themedColors.detailLabel]}>Original GRN Qty:</Text>
-                            <Text style={[styles.detailValue, themedColors.detailValue]}>{item.grnItems_quantity}</Text>
+                            <Icon name="package-variant" size={iconSize.sm} color={t.icon.secondary} />
+                            <Text style={styles.detailLabel}>Original GRN quantity</Text>
+                            <Text style={styles.detailValue}>{item.grnItems_quantity}</Text>
                         </View>
 
                         <View style={styles.detailRow}>
-                            <Icon name="database" size={16} color={theme.colors.gray[500]} />
-                            <Text style={[styles.detailLabel, themedColors.detailLabel]}>In Stock:</Text>
-                            <Text style={[styles.detailValue, themedColors.detailValue, !isCreateMode && loadingStock && styles.detailValueLoading]}>
+                            <Icon name="warehouse" size={iconSize.sm} color={t.icon.secondary} />
+                            <Text style={styles.detailLabel}>In stock</Text>
+                            <Text style={[styles.detailValue, !isCreateMode && loadingStock && styles.detailValueLoading]}>
                                 {!isCreateMode && loadingStock ? '-' : stockValue}
                             </Text>
                         </View>
 
                         {isCreateMode && (
                             <View style={styles.detailRow}>
-                                <Icon name="database-check" size={16} color={theme.colors.semantic.success} />
-                                <Text style={[styles.detailLabel, themedColors.detailLabel]}>Stock After Dispatch:</Text>
-                                <Text style={[styles.detailValue, { color: theme.colors.semantic.success, fontWeight: '700' }]}>
+                                <Icon name="database-check-outline" size={iconSize.sm} color={t.icon.secondary} />
+                                <Text style={styles.detailLabel}>Stock after dispatch</Text>
+                                <Text style={[styles.detailValue, styles.detailValueEmphasized]}>
                                     {item.grnItems_stock - item.disp_quantity}
                                 </Text>
                             </View>
@@ -642,10 +650,7 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
     // Render items section
     const renderItemsSection = () => (
         <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-                <Icon name="package-variant" size={20} color={theme.colors.primary} />
-                <Text style={[styles.sectionTitle, themedColors.sectionTitle]}>Items ({items.length})</Text>
-            </View>
+            {renderSectionHeader(`Items (${items.length})`, DISPATCH_STEP_NUMBERS.ITEMS, 'Edit items')}
 
             <View style={styles.itemsContainer}>
                 {items.map((item: DispatchItemData, index: number) => renderItem(item, index))}
@@ -670,12 +675,9 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
 
         return (
             <View style={styles.section}>
-                <View style={styles.sectionHeader}>
-                    <Icon name="camera" size={20} color={theme.colors.primary} />
-                    <Text style={[styles.sectionTitle, themedColors.sectionTitle]}>Photos (Optional)</Text>
-                </View>
+                {renderSectionHeader('Photos (optional)')}
 
-                <View style={[styles.imagesCard, themedColors.imagesCard]}>
+                <View style={[styles.card, styles.imagesCard]}>
                     {images.length > 0 && (
                         <ImagePreviewGrid
                             imageData={imageDataForGrid}
@@ -687,7 +689,7 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
                             }}
                             editable={true}
                             maxImages={10}
-                            columns={4}
+                            columns={3}
                         />
                     )}
 
@@ -700,13 +702,13 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
                         imageType="header"
                         currentImages={images.map((img) => img.image_url)}
                         maxImages={10}
-                        buttonText={images.length > 0 ? 'Add More Photos' : 'Add Photos'}
+                        buttonText={images.length > 0 ? 'Add more photos' : 'Add photos'}
                         customUploadFunction={dispatchUploadFunction}
                     />
 
                     {images.length === 0 && (
-                        <Text style={[styles.imagesHint, themedColors.imagesHint]}>
-                            Optionally add photos of the dispatch items or vehicle
+                        <Text style={styles.imagesHint}>
+                            You can add photos of the goods or the vehicle.
                         </Text>
                     )}
                 </View>
@@ -717,48 +719,34 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
     // Render totals section
     const renderTotalsSection = () => (
         <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-                <Icon name="calculator" size={20} color={theme.colors.primary} />
-                <Text style={[styles.sectionTitle, themedColors.sectionTitle]}>Summary</Text>
-            </View>
+            {renderSectionHeader('Summary')}
 
-            <View style={styles.totalsCard}>
+            <View style={styles.card}>
                 {isCreateMode &&
                     Object.entries(totals.itemWiseTotals).map(([itemName, itemTotals]) => (
                         <View key={itemName} style={styles.subtotalRow}>
-                            <View style={[styles.subtotalIconContainer, themedColors.subtotalIconContainer]}>
-                                <Icon name="package" size={16} color={theme.colors.blue[500]} />
-                            </View>
-                            <Text style={[styles.subtotalLabel, themedColors.subtotalLabel]}>{itemName}</Text>
-                            <Text style={[styles.subtotalValue, themedColors.subtotalValue]}>{itemTotals.quantity} qty</Text>
+                            <Icon name="cube-outline" size={iconSize.sm} color={t.icon.secondary} />
+                            <Text style={styles.subtotalLabel}>{itemName}</Text>
+                            <Text style={styles.subtotalValue}>{itemTotals.quantity}</Text>
                         </View>
                     ))}
 
                 {isCreateMode && <View style={styles.totalsDivider} />}
 
                 <View style={styles.totalRow}>
-                    <View style={[styles.totalIconContainer, themedColors.totalIconContainer]}>
-                        <Icon name="package" size={20} color={theme.colors.blue[600]} />
-                    </View>
-                    <Text style={[styles.totalLabel, themedColors.totalLabel]}>Total Quantity</Text>
-                    <Text style={[styles.totalValue, themedColors.totalValue]}>{totals.grandTotalQuantity}</Text>
+                    <Text style={styles.totalLabel}>Total quantity</Text>
+                    <Text style={styles.totalValue}>{totals.grandTotalQuantity}</Text>
                 </View>
 
                 <View style={styles.totalRow}>
-                    <View style={[styles.totalIconContainer, themedColors.totalIconContainer]}>
-                        <Icon name="weight" size={20} color={theme.colors.green[600]} />
-                    </View>
-                    <Text style={[styles.totalLabel, themedColors.totalLabel]}>Total Weight</Text>
-                    <Text style={[styles.totalValue, themedColors.totalValue]}>{Math.round(totals.grandTotalWeight)} kg</Text>
+                    <Text style={styles.totalLabel}>Total weight</Text>
+                    <Text style={styles.totalValue}>{Math.round(totals.grandTotalWeight)} kg</Text>
                 </View>
 
                 {!isCreateMode && (
                     <View style={styles.totalRow}>
-                        <View style={[styles.totalIconContainer, themedColors.totalIconContainer]}>
-                            <Icon name="clipboard-text" size={20} color={theme.colors.purple[600]} />
-                        </View>
-                        <Text style={[styles.totalLabel, themedColors.totalLabel]}>Unique GRNs</Text>
-                        <Text style={[styles.totalValue, themedColors.totalValue]}>{totals.uniqueGRNs}</Text>
+                        <Text style={styles.totalLabel}>GRNs</Text>
+                        <Text style={styles.totalValue}>{totals.uniqueGRNs}</Text>
                     </View>
                 )}
             </View>
@@ -771,8 +759,11 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
         await navigateToStep(stepNumber);
     };
 
+    const submitLabel = isCreateMode ? 'Create dispatch' : 'Save changes';
+    const submitBusyLabel = isCreateMode ? 'Creating dispatch…' : 'Saving changes…';
+
     return (
-        <View style={[styles.container, { backgroundColor: colors.cellBackground }]}>
+        <View style={styles.container}>
             <DispatchStepIndicator
                 steps={DISPATCH_STEPS}
                 currentStep={DISPATCH_STEP_NUMBERS.REVIEW}
@@ -780,8 +771,8 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
                 onCancel={handleCancel}
                 cancelMessage={
                     isCreateMode
-                        ? 'Are you sure you want to cancel? All entered data will be lost.'
-                        : 'Are you sure you want to cancel editing? All unsaved changes will be lost.'
+                        ? 'Discard this dispatch? The details you entered will be lost.'
+                        : 'Discard your changes to this dispatch? Unsaved changes will be lost.'
                 }
                 dispNo={header.disp_no}
                 onStepPress={handleStepIndicatorPress}
@@ -796,82 +787,65 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
                 <View style={styles.contentWrapper}>
                     <ScrollView
                         style={styles.scrollView}
-                        contentContainerStyle={[
-                            styles.scrollContent,
-                            // Add bottom safe area padding for edit mode (inline button)
-                            !isCreateMode && { paddingBottom: Math.max(insets.bottom + 16, 24) }
-                        ]}
+                        contentContainerStyle={styles.scrollContent}
                     >
                         {renderHeroMetrics()}
                         {renderHeaderSummary()}
                         {renderItemsSection()}
                         {renderImagesSection()}
 
-                        {/* Hint for edit mode */}
+                        {/* Message strip for edit mode (informative) */}
                         {!isCreateMode && (
-                            <View style={[styles.hintContainer, themedColors.hintContainer]}>
-                                <Icon name="information" size={16} color={theme.colors.blue[600]} />
-                                <Text style={[styles.hintText, themedColors.hintText]}>
-                                    Review all information carefully before submitting. This action will update stock levels.
+                            <View style={styles.hintContainer}>
+                                <Icon name="information" size={iconSize.md} color={t.status.informative.text} />
+                                <Text style={styles.hintText}>
+                                    Check the details before you save. Saving updates stock levels.
                                 </Text>
                             </View>
                         )}
-
-                        {/* Inline submit button for edit mode */}
-                        {!isCreateMode && (
-                            <TouchableOpacity
-                                style={[styles.submitButton, (isSaving || isSubmitting) && styles.submitButtonDisabled]}
-                                onPress={handleSubmit}
-                                disabled={isSaving || isSubmitting}
-                                activeOpacity={0.8}
-                            >
-                                {(isSaving || isSubmitting) ? (
-                                    <>
-                                        <ActivityIndicator size="small" color={theme.colors.white} />
-                                        <Text style={styles.submitButtonText}>Updating...</Text>
-                                    </>
-                                ) : (
-                                    <>
-                                        <Icon name="check" size={20} color={theme.colors.white} />
-                                        <Text style={styles.submitButtonText}>Update Dispatch</Text>
-                                    </>
-                                )}
-                            </TouchableOpacity>
-                        )}
                     </ScrollView>
 
-                    {/* Sticky submit button for create mode */}
-                    {isCreateMode && (
-                        <View style={[styles.stickyButtonContainer, themedColors.stickyButtonContainer, { paddingBottom: Math.max(insets.bottom, 16) }]}>
-                            <TouchableOpacity
-                                style={[styles.submitButton, (isSaving || isSubmitting) && styles.submitButtonDisabled]}
-                                onPress={handleSubmit}
-                                disabled={isSaving || isSubmitting}
-                                activeOpacity={0.8}
-                            >
-                                {(isSaving || isSubmitting) ? (
-                                    <>
-                                        <ActivityIndicator size="small" color={theme.colors.white} />
-                                        <Text style={styles.submitButtonText}>Submitting...</Text>
-                                    </>
-                                ) : (
-                                    <>
-                                        <Icon name="check-circle" size={22} color={theme.colors.white} />
-                                        <Text style={styles.submitButtonText}>Submit Dispatch</Text>
-                                    </>
-                                )}
-                            </TouchableOpacity>
-                        </View>
-                    )}
+                    {/* Bottom bar (guide 13.8): Back secondary, primary action, bottom inset */}
+                    <View style={[styles.bottomBar, { paddingBottom: Math.max(insets.bottom, space.lg) }]}>
+                        <Pressable
+                            style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryButtonPressed]}
+                            onPress={handleBack}
+                            disabled={isBusy}
+                            accessibilityRole="button"
+                            accessibilityLabel="Back to items"
+                            accessibilityState={{ disabled: isBusy }}
+                        >
+                            <Text style={styles.secondaryButtonText}>Back</Text>
+                        </Pressable>
+                        <Pressable
+                            style={({ pressed }) => [
+                                styles.submitButton,
+                                pressed && styles.submitButtonPressed,
+                                isBusy && styles.submitButtonDisabled,
+                            ]}
+                            onPress={handleSubmit}
+                            disabled={isBusy}
+                            accessibilityRole="button"
+                            accessibilityLabel={isBusy ? submitBusyLabel : submitLabel}
+                            accessibilityState={{ disabled: isBusy, busy: isBusy }}
+                        >
+                            {isBusy ? (
+                                <ActivityIndicator size="small" color={t.brand.onFill} />
+                            ) : (
+                                <Icon name="check" size={iconSize.md} color={t.brand.onFill} />
+                            )}
+                            <Text style={styles.submitButtonText}>{isBusy ? submitBusyLabel : submitLabel}</Text>
+                        </Pressable>
+                    </View>
                 </View>
             </SwipeableFormStep>
 
             {/* Confirm Submit Dialog */}
             <ConfirmDialog
                 visible={showConfirmDialog}
-                title={isCreateMode ? 'Confirm Submission' : 'Confirm Update'}
-                message={`You are about to ${isCreateMode ? 'create' : 'update'} dispatch ${header.disp_no} with ${items.length} item${items.length !== 1 ? 's' : ''}.\n\nThis will update stock levels. Continue?`}
-                confirmText={isCreateMode ? 'Submit' : 'Update'}
+                title={isCreateMode ? `Create dispatch ${header.disp_no}?` : `Save changes to dispatch ${header.disp_no}?`}
+                message={`${items.length} ${items.length === 1 ? 'item' : 'items'} will be ${isCreateMode ? 'dispatched' : 'saved'} and stock levels updated.`}
+                confirmText={submitLabel}
                 cancelText="Cancel"
                 onConfirm={handleConfirmSubmit}
                 onCancel={() => setShowConfirmDialog(false)}
@@ -906,30 +880,30 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
                         const result = await printDispatchRange(start, end);
                         if (result.success) {
                             setSnackbarMessage(
-                                `Print job submitted${result.print_job?.cups_job_id ? ` (Job #${result.print_job.cups_job_id})` : ''}`
+                                `Sent to the printer${result.print_job?.cups_job_id ? ` (job ${result.print_job.cups_job_id})` : ''}.`
                             );
                         } else {
-                            setSnackbarMessage(result.error || 'Failed to submit print job');
+                            setSnackbarMessage("Couldn't send to the printer. Check the printer and try again.");
                         }
                         setSnackbarVisible(true);
                         setShowPrintDialog(false);
                         resetFormState();
                         router.replace('/dispatch');
                     }}
-                    title="Print Dispatch"
+                    title="Print dispatch"
                     defaultNumber={createdDispatchNumber}
-                    label="Dispatch Number"
-                    placeholder="e.g., D001"
+                    label="Dispatch number"
+                    placeholder="For example, D001"
                 />
             )}
 
             <Snackbar
                 visible={snackbarVisible}
                 onDismiss={() => setSnackbarVisible(false)}
-                duration={3000}
-                style={{ backgroundColor: colors.gray900 }}
+                duration={4000}
+                style={styles.snackbar}
             >
-                {snackbarMessage}
+                <Text style={styles.snackbarText}>{snackbarMessage}</Text>
             </Snackbar>
 
             {/* Full-screen image preview */}
@@ -953,10 +927,10 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
             {/* Discard Changes Dialog (create mode) */}
             <ConfirmDialog
                 visible={showDiscardDialog}
-                title="Discard Changes?"
-                message={`You have ${items.length} item(s) ready to submit. Are you sure you want to leave?`}
-                confirmText="Discard"
-                cancelText="Stay"
+                title="Discard this dispatch?"
+                message={`The ${items.length} ${items.length === 1 ? 'item' : 'items'} you added will be lost.`}
+                confirmText="Discard dispatch"
+                cancelText="Keep editing"
                 onConfirm={handleDiscardConfirm}
                 onCancel={() => setShowDiscardDialog(false)}
                 variant="danger"
@@ -966,9 +940,9 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
             {/* Edit Success Dialog (edit mode) */}
             <ConfirmDialog
                 visible={showEditSuccessDialog}
-                title="Success"
-                message={`Dispatch ${header.disp_no} updated successfully!`}
-                confirmText="OK"
+                title={`Dispatch ${header.disp_no} saved`}
+                message="Your changes are saved and stock levels are updated."
+                confirmText="View dispatch"
                 cancelText=""
                 onConfirm={handleEditSuccessConfirm}
                 onCancel={handleEditSuccessConfirm}
@@ -979,9 +953,10 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
     );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (t: ThemeTokens) => ({
     container: {
         flex: 1,
+        backgroundColor: t.background.base,
     },
     contentWrapper: {
         flex: 1,
@@ -990,397 +965,394 @@ const styles = StyleSheet.create({
         flex: 1,
     },
     scrollContent: {
-        paddingHorizontal: 20,
-        paddingTop: 0,
-        paddingBottom: 16,
+        paddingHorizontal: layout.marginCompact,
+        paddingTop: space.lg,
+        paddingBottom: space.lg,
     },
-    // Hero section styles
-    heroSection: {
-        marginHorizontal: -20,
-        marginBottom: 20,
+    card: {
+        backgroundColor: t.surface.card,
+        borderRadius: radius.card,
+        padding: space.lg,
+        gap: space.md,
+        ...t.shadow[2],
     },
-    customerBanner: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingHorizontal: 20,
-        paddingVertical: 12,
-        gap: 10,
-    },
-    customerBannerTextContainer: {
+    fullWidth: {
         flex: 1,
     },
-    customerBannerText: {
-        fontSize: 16,
-        fontWeight: '600',
+    // Hero section
+    heroSection: {
+        marginBottom: space.xxl,
+        gap: space.md,
     },
-    customerBannerAddress: {
-        fontSize: 13,
-        fontWeight: '400',
-        opacity: 0.9,
-        marginTop: 2,
+    customerCard: {
+        flexDirection: 'row' as const,
+        alignItems: 'center' as const,
+        gap: space.md,
+        backgroundColor: t.surface.card,
+        borderRadius: radius.card,
+        padding: space.lg,
+        ...t.shadow[2],
     },
-    customerBannerMobileRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 4,
-        marginTop: 2,
+    customerIconContainer: {
+        width: layout.avatar.md,
+        height: layout.avatar.md,
+        borderRadius: radius.pill,
+        backgroundColor: t.brand.subtle,
+        justifyContent: 'center' as const,
+        alignItems: 'center' as const,
+    },
+    customerTextContainer: {
+        flex: 1,
+    },
+    customerLabel: {
+        ...typography.footnote,
+        color: t.text.secondary,
+    },
+    customerName: {
+        ...typography.headline,
+        color: t.text.primary,
+    },
+    customerMeta: {
+        ...typography.subhead,
+        color: t.text.secondary,
+        marginTop: space.xxs,
+    },
+    customerMobileRow: {
+        flexDirection: 'row' as const,
+        alignItems: 'center' as const,
+        gap: space.xs,
     },
     metricsGrid: {
-        flexDirection: 'row',
-        paddingHorizontal: 16,
-        paddingVertical: 16,
-        gap: 12,
+        flexDirection: 'row' as const,
+        gap: space.sm,
     },
     metricCard: {
         flex: 1,
-        flexDirection: 'row',
-        alignItems: 'center',
-        borderRadius: 12,
-        padding: 12,
-        gap: 10,
-        borderWidth: 1,
+        flexDirection: 'row' as const,
+        alignItems: 'center' as const,
+        backgroundColor: t.surface.card,
+        borderRadius: radius.card,
+        padding: space.md,
+        gap: space.md,
+        ...t.shadow[2],
     },
     metricIconContainer: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
-        justifyContent: 'center',
-        alignItems: 'center',
+        width: layout.avatar.md,
+        height: layout.avatar.md,
+        borderRadius: radius.pill,
+        backgroundColor: t.brand.subtle,
+        justifyContent: 'center' as const,
+        alignItems: 'center' as const,
     },
     metricContent: {
         flex: 1,
     },
     metricValue: {
-        fontSize: 20,
-        fontWeight: '700',
+        ...typography.title3,
+        color: t.text.primary,
+        fontVariant: ['tabular-nums' as const],
     },
     metricLabel: {
-        fontSize: 11,
-        fontWeight: '500',
+        ...typography.footnote,
+        color: t.text.secondary,
     },
     section: {
-        marginBottom: 24,
+        marginBottom: space.xxl,
     },
     sectionHeader: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 8,
-        marginBottom: 12,
+        flexDirection: 'row' as const,
+        alignItems: 'center' as const,
+        justifyContent: 'space-between' as const,
+        marginBottom: space.sm,
+        minHeight: touchTarget,
     },
     sectionTitle: {
-        fontSize: 16,
-        fontWeight: '600',
-        color: theme.colors.gray[900],
+        ...typography.footnote,
+        fontWeight: fontWeight.semibold,
+        textTransform: 'uppercase' as const,
+        letterSpacing: 0.5,
+        color: t.text.secondary,
     },
-    // Compact summary card styles
-    compactSummaryCard: {
-        backgroundColor: theme.colors.white,
-        borderRadius: 12,
-        padding: 16,
-        borderWidth: 1,
-        borderColor: theme.colors.gray[200],
-        gap: 12,
+    editLink: {
+        flexDirection: 'row' as const,
+        alignItems: 'center' as const,
+        gap: space.xs,
+        minHeight: touchTarget,
+        paddingHorizontal: space.sm,
+        borderRadius: radius.button,
     },
+    editLinkPressed: {
+        backgroundColor: t.brand.subtle,
+    },
+    editLinkText: {
+        ...typography.callout,
+        color: t.brand.tint,
+    },
+    // Compact summary card
     compactRow: {
-        flexDirection: 'row',
-        gap: 12,
+        flexDirection: 'row' as const,
+        gap: space.md,
     },
     compactItem: {
         flex: 1,
-        flexDirection: 'row',
-        alignItems: 'flex-start',
-        gap: 10,
+        flexDirection: 'row' as const,
+        alignItems: 'flex-start' as const,
+        gap: space.sm,
     },
     compactItemContent: {
         flex: 1,
     },
     compactLabel: {
-        fontSize: 11,
-        fontWeight: '500',
-        color: theme.colors.gray[500],
-        marginBottom: 2,
+        ...typography.footnote,
+        color: t.text.secondary,
+        marginBottom: space.xxs,
     },
     compactValue: {
-        fontSize: 14,
-        fontWeight: '600',
-        color: theme.colors.gray[900],
+        ...typography.body,
+        fontWeight: fontWeight.semibold,
+        color: t.text.primary,
     },
     notesRow: {
-        flexDirection: 'row',
-        alignItems: 'flex-start',
-        gap: 10,
-        paddingTop: 12,
-        borderTopWidth: 1,
-        borderTopColor: theme.colors.gray[100],
+        flexDirection: 'row' as const,
+        alignItems: 'flex-start' as const,
+        gap: space.sm,
+        paddingTop: space.md,
+        borderTopWidth: StyleSheet.hairlineWidth,
+        borderTopColor: t.border.divider,
     },
     notesText: {
+        ...typography.subhead,
         flex: 1,
-        fontSize: 13,
-        color: theme.colors.gray[600],
-        fontStyle: 'italic',
-    },
-    // Legacy summary styles (kept for compatibility)
-    summaryCard: {
-        backgroundColor: theme.colors.white,
-        borderRadius: 12,
-        padding: 16,
-        borderWidth: 1,
-        borderColor: theme.colors.gray[200],
-    },
-    summaryRow: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        paddingVertical: 8,
-    },
-    summaryLabel: {
-        fontSize: 14,
-        fontWeight: '500',
-        color: theme.colors.gray[600],
-        flex: 1,
-    },
-    summaryValue: {
-        fontSize: 14,
-        fontWeight: '600',
-        color: theme.colors.gray[900],
-        flex: 1,
-        textAlign: 'right',
-    },
-    summaryDivider: {
-        height: 1,
-        backgroundColor: theme.colors.gray[100],
-        marginVertical: 4,
+        color: t.text.primary,
     },
     itemsContainer: {
-        gap: 12,
+        gap: space.sm,
     },
     itemCard: {
-        backgroundColor: theme.colors.white,
-        borderRadius: 12,
-        borderWidth: 1,
-        borderColor: theme.colors.gray[200],
-        overflow: 'hidden',
+        backgroundColor: t.surface.card,
+        borderRadius: radius.card,
+        overflow: 'hidden' as const,
+        ...t.shadow[2],
     },
     itemHeader: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        padding: 16,
-        gap: 12,
+        flexDirection: 'row' as const,
+        alignItems: 'center' as const,
+        padding: space.lg,
+        gap: space.md,
+        minHeight: layout.objectCellMinHeight,
+        backgroundColor: t.surface.card,
+    },
+    itemHeaderPressed: {
+        backgroundColor: t.surface.cardPressed,
     },
     itemNumberBadge: {
-        width: 32,
-        height: 32,
-        borderRadius: 16,
-        backgroundColor: theme.colors.primary,
-        justifyContent: 'center',
-        alignItems: 'center',
+        width: layout.avatar.sm,
+        height: layout.avatar.sm,
+        borderRadius: radius.pill,
+        backgroundColor: t.brand.subtle,
+        justifyContent: 'center' as const,
+        alignItems: 'center' as const,
     },
     itemNumber: {
-        fontSize: 14,
-        fontWeight: '700',
-        color: theme.colors.white,
+        ...typography.subhead,
+        fontWeight: fontWeight.semibold,
+        color: t.brand.tint,
+        fontVariant: ['tabular-nums' as const],
     },
     itemMainInfo: {
         flex: 1,
-        gap: 4,
+        gap: space.xs,
     },
     itemTitleRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
+        flexDirection: 'row' as const,
+        alignItems: 'center' as const,
+        justifyContent: 'space-between' as const,
     },
     itemNameSection: {
         flex: 1,
-        gap: 4,
+        gap: space.xs,
     },
     itemName: {
-        fontSize: 16,
-        fontWeight: '600',
-        color: theme.colors.gray[900],
+        ...typography.headline,
+        color: t.text.primary,
     },
     packageMarkBadge: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 4,
-        alignSelf: 'flex-start',
+        flexDirection: 'row' as const,
+        alignItems: 'center' as const,
+        gap: space.xs,
+        alignSelf: 'flex-start' as const,
     },
     packageMarkText: {
-        fontSize: 12,
-        color: theme.colors.orange[600],
-        fontWeight: '500',
+        ...typography.footnote,
+        color: t.text.secondary,
     },
     itemMetaRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 8,
+        flexDirection: 'row' as const,
+        flexWrap: 'wrap' as const,
+        alignItems: 'center' as const,
+        gap: space.sm,
     },
     metaBadge: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 4,
-        paddingHorizontal: 8,
-        paddingVertical: 4,
-        backgroundColor: theme.colors.gray[100],
-        borderRadius: 6,
+        flexDirection: 'row' as const,
+        alignItems: 'center' as const,
+        gap: space.xs,
+        paddingHorizontal: space.sm,
+        paddingVertical: space.xxs,
+        backgroundColor: t.status.neutral.background,
+        borderRadius: radius.field,
     },
     metaText: {
-        fontSize: 11,
-        fontWeight: '500',
-        color: theme.colors.gray[700],
+        ...typography.caption1,
+        fontWeight: fontWeight.semibold,
+        color: t.status.neutral.text,
+        fontVariant: ['tabular-nums' as const],
     },
     itemDetails: {
-        paddingHorizontal: 16,
-        paddingBottom: 16,
-        paddingTop: 8,
-        gap: 12,
-        borderTopWidth: 1,
-        borderTopColor: theme.colors.gray[100],
-        backgroundColor: theme.colors.gray[50],
+        paddingHorizontal: space.lg,
+        paddingBottom: space.lg,
+        paddingTop: space.md,
+        gap: space.md,
+        borderTopWidth: StyleSheet.hairlineWidth,
+        borderTopColor: t.border.divider,
+        backgroundColor: t.background.base,
     },
     detailRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 8,
+        flexDirection: 'row' as const,
+        alignItems: 'center' as const,
+        gap: space.sm,
     },
     detailLabel: {
-        fontSize: 13,
-        fontWeight: '500',
-        color: theme.colors.gray[600],
+        ...typography.subhead,
+        color: t.text.secondary,
         minWidth: 120,
     },
     detailValue: {
-        fontSize: 13,
-        fontWeight: '600',
-        color: theme.colors.gray[900],
+        ...typography.subhead,
+        fontWeight: fontWeight.semibold,
+        color: t.text.primary,
         flex: 1,
+        fontVariant: ['tabular-nums' as const],
+    },
+    detailValueEmphasized: {
+        fontWeight: fontWeight.bold,
     },
     detailValueLoading: {
-        color: theme.colors.gray[400],
+        color: t.text.secondary,
     },
     imagesCard: {
-        backgroundColor: theme.colors.gray[50],
-        borderRadius: 12,
-        padding: 16,
-        borderWidth: 1,
-        borderColor: theme.colors.gray[200],
-        gap: 12,
+        gap: space.md,
     },
     imagesHint: {
-        fontSize: 13,
-        color: theme.colors.gray[500],
-        textAlign: 'center',
-        marginTop: 8,
-    },
-    totalsCard: {
-        backgroundColor: theme.colors.blue[50],
-        borderRadius: 12,
-        padding: 16,
-        gap: 16,
-        borderWidth: 1,
-        borderColor: theme.colors.blue[200],
+        ...typography.footnote,
+        color: t.text.secondary,
+        textAlign: 'center' as const,
     },
     subtotalRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 8,
-    },
-    subtotalIconContainer: {
-        width: 28,
-        height: 28,
-        borderRadius: 14,
-        backgroundColor: theme.colors.white,
-        justifyContent: 'center',
-        alignItems: 'center',
+        flexDirection: 'row' as const,
+        alignItems: 'center' as const,
+        gap: space.sm,
     },
     subtotalLabel: {
-        fontSize: 13,
-        fontWeight: '500',
-        color: theme.colors.gray[700],
+        ...typography.subhead,
+        color: t.text.secondary,
         flex: 1,
     },
     subtotalValue: {
-        fontSize: 13,
-        fontWeight: '600',
-        color: theme.colors.gray[900],
+        ...typography.subhead,
+        fontWeight: fontWeight.semibold,
+        color: t.text.primary,
+        fontVariant: ['tabular-nums' as const],
     },
     totalsDivider: {
         height: 1,
-        backgroundColor: theme.colors.blue[200],
-        marginVertical: 8,
+        backgroundColor: t.border.separator,
     },
     totalRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 12,
-    },
-    totalIconContainer: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
-        backgroundColor: theme.colors.white,
-        justifyContent: 'center',
-        alignItems: 'center',
+        flexDirection: 'row' as const,
+        alignItems: 'center' as const,
+        gap: space.md,
     },
     totalLabel: {
-        fontSize: 14,
-        fontWeight: '500',
-        color: theme.colors.gray[700],
+        ...typography.body,
+        color: t.text.secondary,
         flex: 1,
     },
     totalValue: {
-        fontSize: 16,
-        fontWeight: '700',
-        color: theme.colors.gray[900],
+        ...typography.headline,
+        color: t.text.primary,
+        fontVariant: ['tabular-nums' as const],
     },
+    // Message strip (guide 13.9), informative
     hintContainer: {
-        flexDirection: 'row',
-        alignItems: 'flex-start',
-        gap: 8,
-        padding: 16,
-        backgroundColor: theme.colors.blue[50],
-        borderRadius: 12,
+        flexDirection: 'row' as const,
+        alignItems: 'flex-start' as const,
+        gap: space.sm,
+        padding: space.md,
+        backgroundColor: t.status.informative.background,
+        borderRadius: radius.button,
         borderWidth: 1,
-        borderColor: theme.colors.blue[200],
-        marginTop: 8,
+        borderColor: t.status.informative.border,
     },
     hintText: {
+        ...typography.subhead,
         flex: 1,
-        fontSize: 13,
-        color: theme.colors.gray[700],
-        lineHeight: 18,
+        color: t.status.informative.text,
     },
-    stickyButtonContainer: {
-        padding: 16,
-        backgroundColor: theme.colors.white,
-        borderTopWidth: 1,
-        borderTopColor: theme.colors.gray[200],
-        ...Platform.select({
-            ios: {
-                shadowColor: theme.colors.black,
-                shadowOffset: { width: 0, height: -2 },
-                shadowOpacity: 0.1,
-                shadowRadius: 4,
-            },
-            android: {
-                elevation: 8,
-            },
-        }),
+    // Bottom bar (guide 13.8)
+    bottomBar: {
+        flexDirection: 'row' as const,
+        gap: space.sm,
+        paddingHorizontal: layout.marginCompact,
+        paddingTop: space.md,
+        backgroundColor: t.surface.card,
+        ...t.shadow[3],
+    },
+    secondaryButton: {
+        minHeight: 48,
+        minWidth: 96,
+        paddingHorizontal: space.lg,
+        alignItems: 'center' as const,
+        justifyContent: 'center' as const,
+        borderRadius: radius.button,
+        borderWidth: 1,
+        borderColor: t.border.button,
+    },
+    secondaryButtonPressed: {
+        backgroundColor: t.brand.subtle,
+    },
+    secondaryButtonText: {
+        ...typography.callout,
+        color: t.brand.tint,
     },
     submitButton: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: theme.colors.primary,
-        paddingVertical: 16,
-        borderRadius: 8,
-        gap: 8,
+        flex: 1,
+        flexDirection: 'row' as const,
+        alignItems: 'center' as const,
+        justifyContent: 'center' as const,
+        backgroundColor: t.brand.fill,
+        minHeight: 48,
+        paddingHorizontal: space.lg,
+        borderRadius: radius.button,
+        gap: space.sm,
+    },
+    submitButtonPressed: {
+        backgroundColor: t.brand.fillPressed,
     },
     submitButtonDisabled: {
-        opacity: 0.6,
+        opacity: t.interaction.disabledOpacity,
     },
     submitButtonText: {
-        fontSize: 16,
-        fontWeight: '600',
-        color: theme.colors.white,
+        ...typography.callout,
+        color: t.brand.onFill,
+    },
+    snackbar: {
+        backgroundColor: t.surface.inverse,
+        borderRadius: radius.button,
+        ...t.shadow[3],
+    },
+    snackbarText: {
+        ...typography.subhead,
+        color: t.text.inverse,
     },
 });
 

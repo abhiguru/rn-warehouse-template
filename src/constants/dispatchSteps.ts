@@ -6,15 +6,15 @@ import { StepConfig } from '@/components/StepIndicator';
  */
 export const DISPATCH_STEPS: StepConfig[] = [
   {
-    label: 'Basic Info',
-    shortLabel: 'Info',
+    label: 'Dispatch details',
+    shortLabel: 'Details',
   },
   {
-    label: 'Items Selection',
+    label: 'Items',
     shortLabel: 'Items',
   },
   {
-    label: 'Review & Submit',
+    label: 'Review',
     shortLabel: 'Review',
   },
 ];
@@ -33,7 +33,7 @@ export const DISPATCH_STEP_NUMBERS = {
  */
 export function getDispatchNextStepLabel(currentStep: number): string {
   if (currentStep >= DISPATCH_STEPS.length) {
-    return 'Create Dispatch';
+    return 'Create dispatch';
   }
   const nextStep = DISPATCH_STEPS[currentStep];
   return `Next: ${nextStep.shortLabel}`;
