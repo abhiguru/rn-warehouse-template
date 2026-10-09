@@ -20,22 +20,29 @@ import {
   ActivityIndicator,
   Switch,
   TextInput,
+  type TextInputProps,
 } from 'react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
-import { useListColors } from '@/hooks/useListColors';
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import {
+  fontWeight,
+  iconSize,
+  layout,
+  radius,
+  space,
+  touchTarget,
+  typography,
+  type ThemeTokens,
+} from '@/theme/tokens';
 import { itemService } from '@/services/item-service';
 import type { ItemFormData, ItemValidationErrors } from '@/types/item.types';
 
-const FIORI = {
-  button: { height: 44, borderRadius: 8 },
-  input: { height: 56, borderRadius: 8 },
-} as const;
-
 const ItemFormScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
-  const colors = useListColors();
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
 
   // Form state
   const [saving, setSaving] = useState(false);
@@ -65,19 +72,19 @@ const ItemFormScreen: React.FC = () => {
 
     // Name validation
     if (!formData.name.trim()) {
-      newErrors.name = 'Item name is required';
+      newErrors.name = 'Enter the item name.';
     } else if (formData.name.length > 80) {
-      newErrors.name = 'Item name cannot exceed 80 characters';
+      newErrors.name = 'Use 80 characters or fewer.';
     }
 
     // Packaging validation
     if (formData.packaging && formData.packaging.length > 40) {
-      newErrors.packaging = 'Packaging cannot exceed 40 characters';
+      newErrors.packaging = 'Use 40 characters or fewer.';
     }
 
     // Description validation
     if (formData.description && formData.description.length > 40) {
-      newErrors.description = 'Description cannot exceed 40 characters';
+      newErrors.description = 'Use 40 characters or fewer.';
     }
 
     setErrors(newErrors);
@@ -100,7 +107,7 @@ const ItemFormScreen: React.FC = () => {
       });
 
       if (result.success) {
-        Alert.alert('Success', 'Item created successfully', [
+        Alert.alert('Item added', `${formData.name.trim()} has been added.`, [
           { text: 'OK', onPress: () => router.back() },
         ]);
       } else {
@@ -108,181 +115,232 @@ const ItemFormScreen: React.FC = () => {
         if (result.message?.toLowerCase().includes('duplicate') ||
             result.message?.toLowerCase().includes('unique') ||
             result.message?.toLowerCase().includes('already exists')) {
-          setErrors({ name: 'An item with this name already exists' });
+          setErrors({ name: 'An item with this name already exists. Use a different name.' });
         } else {
-          Alert.alert('Error', result.message || 'Failed to create item');
+          Alert.alert("Couldn't add the item", result.message || 'Try again in a moment.');
         }
       }
     } catch (err) {
       console.error('[ItemForm] Save error:', err);
-      Alert.alert('Error', 'Failed to save item');
+      Alert.alert("Couldn't add the item", 'Check your connection and try again.');
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <>
-      <View style={{ height: insets.top, backgroundColor: colors.cellBackground }} />
-      <View style={[styles.container, { backgroundColor: colors.cellBackground }]}>
-        {/* Header */}
-        <View style={[styles.header, { borderBottomColor: colors.gray100 }]}>
-          <Pressable style={styles.backButton} onPress={() => router.back()}>
-            <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
-          </Pressable>
-          <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Add Item</Text>
-          <Pressable
-            style={[styles.saveButton, { backgroundColor: colors.primary }, saving && styles.saveButtonDisabled]}
-            onPress={handleSave}
-            disabled={saving}
-          >
-            {saving ? (
-              <ActivityIndicator size="small" color={colors.white} />
-            ) : (
-              <Text style={[styles.saveButtonText, { color: colors.white }]}>Save</Text>
-            )}
-          </Pressable>
-        </View>
-
-        <KeyboardAvoidingView
-          style={styles.keyboardView}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    <View style={styles.container}>
+      {/* Header */}
+      <View style={[styles.header, { paddingTop: insets.top + space.xs }]}>
+        <Pressable
+          style={styles.iconButton}
+          onPress={() => router.back()}
+          accessibilityRole="button"
+          accessibilityLabel="Back"
         >
-          <ScrollView
-            style={styles.scrollView}
-            contentContainerStyle={styles.scrollContent}
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-          >
-            {/* Name Field - Required */}
-            <View style={styles.formSection}>
-              <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>Item Name *</Text>
-              <TextInput
-                value={formData.name}
-                onChangeText={(text) => handleFieldChange('name', text)}
-                placeholder="Enter item name"
-                placeholderTextColor={colors.textTertiary}
-                maxLength={80}
-                style={[
-                  styles.textInput,
-                  { backgroundColor: colors.cellBackground, borderColor: colors.gray300, color: colors.textPrimary },
-                  errors.name && { borderColor: colors.statusNegative, borderWidth: 2 },
-                ]}
-              />
-              {errors.name && <Text style={[styles.errorText, { color: colors.statusNegative }]}>{errors.name}</Text>}
-              <Text style={[styles.charCount, { color: colors.textTertiary }]}>{formData.name.length}/80</Text>
-            </View>
-
-            {/* Packaging Field */}
-            <View style={styles.formSection}>
-              <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>Packaging</Text>
-              <TextInput
-                value={formData.packaging}
-                onChangeText={(text) => handleFieldChange('packaging', text)}
-                placeholder="e.g., Box, Bag, Carton"
-                placeholderTextColor={colors.textTertiary}
-                maxLength={40}
-                style={[
-                  styles.textInput,
-                  { backgroundColor: colors.cellBackground, borderColor: colors.gray300, color: colors.textPrimary },
-                  errors.packaging && { borderColor: colors.statusNegative, borderWidth: 2 },
-                ]}
-              />
-              {errors.packaging && <Text style={[styles.errorText, { color: colors.statusNegative }]}>{errors.packaging}</Text>}
-              <Text style={[styles.charCount, { color: colors.textTertiary }]}>{formData.packaging.length}/40</Text>
-            </View>
-
-            {/* Description Field */}
-            <View style={styles.formSection}>
-              <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>Description</Text>
-              <TextInput
-                value={formData.description}
-                onChangeText={(text) => handleFieldChange('description', text)}
-                placeholder="Brief description"
-                placeholderTextColor={colors.textTertiary}
-                maxLength={40}
-                style={[
-                  styles.textInput,
-                  { backgroundColor: colors.cellBackground, borderColor: colors.gray300, color: colors.textPrimary },
-                  errors.description && { borderColor: colors.statusNegative, borderWidth: 2 },
-                ]}
-              />
-              {errors.description && <Text style={[styles.errorText, { color: colors.statusNegative }]}>{errors.description}</Text>}
-              <Text style={[styles.charCount, { color: colors.textTertiary }]}>{formData.description.length}/40</Text>
-            </View>
-
-            {/* Active Toggle */}
-            <View style={styles.formSection}>
-              <View style={[styles.switchRow, { backgroundColor: colors.gray50 }]}>
-                <View style={styles.switchLabel}>
-                  <Text style={[styles.switchTitle, { color: colors.textPrimary }]}>Active</Text>
-                  <Text style={[styles.switchDescription, { color: colors.textTertiary }]}>
-                    Inactive items won't appear in searches
-                  </Text>
-                </View>
-                <Switch
-                  value={formData.active}
-                  onValueChange={(value) => handleFieldChange('active', value)}
-                  trackColor={{
-                    false: colors.gray300,
-                    true: colors.primary,
-                  }}
-                  thumbColor={colors.white}
-                />
-              </View>
-            </View>
-
-            <View style={{ height: 100 }} />
-          </ScrollView>
-        </KeyboardAvoidingView>
+          <Icon name="arrow-left" size={iconSize.lg} color={t.icon.primary} />
+        </Pressable>
+        <Text style={styles.headerTitle} accessibilityRole="header" numberOfLines={1}>
+          Add item
+        </Text>
+        <Pressable
+          style={({ pressed }) => [styles.saveButton, pressed && styles.saveButtonPressed]}
+          onPress={handleSave}
+          disabled={saving}
+          accessibilityRole="button"
+          accessibilityLabel="Save item"
+          accessibilityState={{ busy: saving }}
+        >
+          {saving ? (
+            <>
+              <ActivityIndicator size="small" color={t.brand.onFill} />
+              <Text style={styles.saveButtonText}>Saving…</Text>
+            </>
+          ) : (
+            <Text style={styles.saveButtonText}>Save</Text>
+          )}
+        </Pressable>
       </View>
-    </>
+
+      <KeyboardAvoidingView
+        style={styles.keyboardView}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: space.max + insets.bottom }]}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          <View style={styles.card}>
+            <ItemTextField
+              label="Item name"
+              required
+              value={formData.name}
+              onChangeText={(text) => handleFieldChange('name', text)}
+              placeholder="Enter item name"
+              maxLength={80}
+              error={errors.name}
+              autoCapitalize="words"
+            />
+            <ItemTextField
+              label="Packaging"
+              value={formData.packaging}
+              onChangeText={(text) => handleFieldChange('packaging', text)}
+              placeholder="For example box, bag or carton"
+              maxLength={40}
+              error={errors.packaging}
+            />
+            <ItemTextField
+              label="Description"
+              value={formData.description}
+              onChangeText={(text) => handleFieldChange('description', text)}
+              placeholder="Brief description"
+              maxLength={40}
+              error={errors.description}
+            />
+          </View>
+
+          {/* Active Toggle */}
+          <Pressable
+            style={styles.switchRow}
+            onPress={() => handleFieldChange('active', !formData.active)}
+            accessibilityRole="switch"
+            accessibilityLabel="Active"
+            accessibilityHint="Inactive items don't appear in searches"
+            accessibilityState={{ checked: formData.active }}
+          >
+            <View style={styles.switchLabel}>
+              <Text style={styles.switchTitle}>Active</Text>
+              <Text style={styles.switchDescription}>Inactive items don't appear in searches.</Text>
+            </View>
+            <Switch
+              value={formData.active}
+              onValueChange={(value) => handleFieldChange('active', value)}
+              trackColor={{ false: t.control.trackOff, true: t.brand.fill }}
+              thumbColor={t.control.thumb}
+              ios_backgroundColor={t.control.trackOff}
+              accessibilityElementsHidden
+              importantForAccessibility="no-hide-descendants"
+            />
+          </Pressable>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </View>
   );
 };
 
-const styles = StyleSheet.create({
+type ItemTextFieldProps = Omit<TextInputProps, 'style'> & {
+  label: string;
+  required?: boolean;
+  error?: string;
+  maxLength: number;
+  value: string;
+};
+
+/** Labelled text field with focus, error and character count (style guide §13.2). */
+function ItemTextField({ label, required, error, maxLength, value, onFocus, onBlur, ...inputProps }: ItemTextFieldProps) {
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
+  const [focused, setFocused] = useState(false);
+  return (
+    <View style={styles.formSection}>
+      <Text style={[styles.label, !!error && styles.labelError]}>
+        {label}
+        {required && <Text style={styles.required}> *</Text>}
+      </Text>
+      <TextInput
+        {...inputProps}
+        value={value}
+        maxLength={maxLength}
+        placeholderTextColor={t.text.placeholder}
+        accessibilityLabel={required ? `${label}, required` : label}
+        onFocus={(e) => {
+          setFocused(true);
+          onFocus?.(e);
+        }}
+        onBlur={(e) => {
+          setFocused(false);
+          onBlur?.(e);
+        }}
+        style={[styles.textInput, focused && styles.textInputFocused, !!error && styles.textInputError]}
+      />
+      <View style={styles.helperRow}>
+        {error ? (
+          <View style={styles.errorRow} accessibilityLiveRegion="polite">
+            <Icon name="alert-circle" size={iconSize.sm} color={t.status.negative.text} />
+            <Text style={styles.errorText}>{error}</Text>
+          </View>
+        ) : (
+          <View style={styles.flex} />
+        )}
+        <Text
+          style={styles.charCount}
+          accessibilityLabel={`${value.length} of ${maxLength} characters`}
+        >
+          {value.length}/{maxLength}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+const makeStyles = (t: ThemeTokens) => ({
   container: {
     flex: 1,
+    backgroundColor: t.background.base,
+  },
+  flex: {
+    flex: 1,
+  },
+  loadingContainer: {
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+  },
+  loadingText: {
+    ...typography.subhead,
+    marginTop: space.lg,
+    color: t.text.secondary,
   },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 8,
-    borderBottomWidth: 1,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    paddingBottom: space.xs,
+    paddingHorizontal: space.sm,
+    gap: space.xs,
+    backgroundColor: t.surface.header,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.divider,
   },
-  backButton: {
-    padding: 8,
+  iconButton: {
+    minWidth: touchTarget,
+    minHeight: touchTarget,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
   },
   headerTitle: {
+    ...typography.headline,
     flex: 1,
-    fontSize: 20,
-    fontWeight: '700',
-    marginLeft: 8,
+    color: t.text.primary,
   },
   saveButton: {
-    height: FIORI.button.height,
-    borderRadius: FIORI.button.borderRadius,
-    paddingHorizontal: 24,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 8,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.3,
-        shadowRadius: 4,
-      },
-      android: { elevation: 4 },
-    }),
+    flexDirection: 'row' as const,
+    gap: space.sm,
+    minHeight: touchTarget,
+    borderRadius: radius.button,
+    paddingHorizontal: space.xl,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    marginRight: space.xs,
+    backgroundColor: t.brand.fill,
   },
-  saveButtonDisabled: {
-    opacity: 0.6,
+  saveButtonPressed: {
+    backgroundColor: t.brand.fillPressed,
   },
   saveButtonText: {
-    fontSize: 15,
-    fontWeight: '600',
+    ...typography.callout,
+    fontWeight: fontWeight.semibold,
+    color: t.brand.onFill,
   },
   keyboardView: {
     flex: 1,
@@ -291,51 +349,91 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    padding: 20,
+    padding: layout.marginCompact,
+    gap: space.lg,
   },
-  formSection: {
-    marginBottom: 24,
+  card: {
+    backgroundColor: t.surface.card,
+    borderRadius: radius.card,
+    padding: space.lg,
+    gap: space.lg,
+    ...t.shadow[2],
   },
-  sectionTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    marginBottom: 8,
+  formSection: {},
+  label: {
+    ...typography.footnote,
+    color: t.text.secondary,
+    marginBottom: space.xs,
+  },
+  labelError: {
+    color: t.status.negative.text,
+  },
+  required: {
+    color: t.text.required,
   },
   textInput: {
+    ...typography.body,
     borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    fontSize: 16,
-    minHeight: 48,
+    borderRadius: radius.field,
+    paddingHorizontal: space.md,
+    paddingVertical: space.sm,
+    minHeight: touchTarget,
+    backgroundColor: t.surface.field,
+    borderColor: t.border.field,
+    color: t.text.primary,
+  },
+  textInputFocused: {
+    borderWidth: 2,
+    borderColor: t.border.fieldFocus,
+  },
+  textInputError: {
+    borderWidth: 2,
+    borderColor: t.status.negative.border,
+  },
+  helperRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'flex-start' as const,
+    gap: space.sm,
+    marginTop: space.xs,
+  },
+  errorRow: {
+    flex: 1,
+    flexDirection: 'row' as const,
+    alignItems: 'flex-start' as const,
+    gap: space.xs,
   },
   errorText: {
-    fontSize: 12,
-    marginTop: 4,
+    ...typography.footnote,
+    flex: 1,
+    color: t.status.negative.text,
   },
   charCount: {
-    fontSize: 12,
-    textAlign: 'right',
-    marginTop: 4,
+    ...typography.caption1,
+    color: t.text.secondary,
+    fontVariant: ['tabular-nums' as const],
   },
   switchRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    borderRadius: 12,
-    padding: 16,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
+    minHeight: layout.rowMinHeight,
+    borderRadius: radius.card,
+    padding: space.lg,
+    backgroundColor: t.surface.card,
+    ...t.shadow[2],
   },
   switchLabel: {
     flex: 1,
-    marginRight: 16,
+    marginRight: space.lg,
   },
   switchTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 4,
+    ...typography.body,
+    color: t.text.primary,
   },
   switchDescription: {
-    fontSize: 13,
+    ...typography.footnote,
+    marginTop: space.xxs,
+    color: t.text.secondary,
   },
 });
 
