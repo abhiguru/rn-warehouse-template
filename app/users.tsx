@@ -1,48 +1,40 @@
 /**
- * Users Screen - Admin User Management (100% SAP Fiori Compliant)
+ * Users screen: admin user management as a list report (style guide §14.1).
  *
- * Based on SAP Fiori for iOS Design Guidelines
- * Features:
- * - Fiori Navigation Bar with back button
- * - Object Cell layout pattern for user cards
- * - Role badges with semantic colors
- * - Active/Inactive status toggle
- * - 44pt minimum touch targets
+ * Object cells with an avatar, role and Inactive tags and contact details,
+ * pull to refresh, infinite scroll, and loading, empty, error and no-access
+ * states. Colours come from the semantic tokens.
  *
  * Access: Admin and Supervisor roles only
  */
 
-import React, { useCallback, useState, useEffect, useMemo } from 'react';
+import React, { useCallback, useState, useEffect } from 'react';
 import {
   View,
+  Text,
   FlatList,
   RefreshControl,
-  StyleSheet,
-  Platform,
   Pressable,
   ActivityIndicator,
 } from 'react-native';
-import { Text } from 'react-native-paper';
 import { useIsFocused } from '@react-navigation/native';
 import { router, Stack } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { adminUserService } from '@/services/admin-user-service';
 import { UserListItem, UserFilters, UserRole } from '@/types/user.types';
-import { FIORI } from '@/components/common/overview-tab/FioriTokens';
 import { useAppSelector } from '@/store/hooks';
-import { useListColors } from '@/hooks/useListColors';
-
-// =============================================================================
-// ROLE BADGE COLORS
-// =============================================================================
-
-const ROLE_COLORS: Record<UserRole, { bg: string; text: string }> = {
-  admin: { bg: '#fff4e6', text: '#f69000' },
-  supervisor: { bg: '#e8f4f4', text: '#1c5858' },
-  staff: { bg: '#f0f0f0', text: '#7e8e9d' },
-  customer: { bg: '#e8f4f4', text: '#53b1b1' },
-};
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import {
+  fontWeight,
+  iconSize,
+  layout,
+  radius,
+  space,
+  touchTarget,
+  typography,
+  type ThemeTokens,
+} from '@/theme/tokens';
 
 // =============================================================================
 // TYPES
@@ -72,140 +64,8 @@ export default function UsersScreen() {
   const isFocused = useIsFocused();
   const insets = useSafeAreaInsets();
   const { userProfile } = useAppSelector((state) => state.auth);
-  const colors = useListColors();
-
-  // Dynamic styles for dark mode
-  const dynamicStyles = useMemo(
-    () =>
-      StyleSheet.create({
-        container: {
-          flex: 1,
-          backgroundColor: colors.gray50,
-        },
-        navBar: {
-          backgroundColor: colors.cellBackground,
-          borderBottomWidth: 1,
-          borderBottomColor: colors.cellDivider,
-          ...Platform.select({
-            ios: {
-              shadowColor: '#000000',
-              shadowOffset: { width: 0, height: 1 },
-              shadowOpacity: 0.06,
-              shadowRadius: 2,
-            },
-            android: {
-              elevation: 2,
-            },
-          }),
-        },
-        backButtonText: {
-          ...FIORI.typography.body,
-          color: colors.primary,
-          marginLeft: -4,
-        },
-        title: {
-          ...FIORI.typography.headline,
-          color: colors.textPrimary,
-          letterSpacing: -0.41,
-          textAlign: 'center',
-        },
-        subtitle: {
-          ...FIORI.typography.caption,
-          color: colors.textSecondary,
-          textAlign: 'center',
-          marginTop: 2,
-        },
-        card: {
-          flexDirection: 'row',
-          alignItems: 'center',
-          backgroundColor: colors.cellBackground,
-          borderRadius: FIORI.dimensions.cardRadius,
-          padding: FIORI.dimensions.cardPadding,
-          marginHorizontal: FIORI.spacing.lg,
-          marginBottom: FIORI.spacing.md,
-          borderWidth: 1,
-          borderColor: colors.cellDivider,
-          minHeight: FIORI.dimensions.touchTarget * 2,
-          ...FIORI.shadows.card,
-        },
-        cardInactive: {
-          backgroundColor: colors.gray100,
-          borderColor: colors.cellDivider,
-        },
-        cardPressed: {
-          backgroundColor: colors.cellBackgroundPressed,
-        },
-        avatar: {
-          width: FIORI.dimensions.avatarSize,
-          height: FIORI.dimensions.avatarSize,
-          borderRadius: FIORI.dimensions.avatarSize / 2,
-          backgroundColor: colors.primaryLight,
-          alignItems: 'center',
-          justifyContent: 'center',
-          marginRight: FIORI.spacing.md,
-        },
-        avatarInactive: {
-          backgroundColor: colors.gray200,
-        },
-        avatarText: {
-          ...FIORI.typography.headline,
-          color: colors.primary,
-        },
-        avatarTextInactive: {
-          color: colors.textTertiary,
-        },
-        headline: {
-          ...FIORI.typography.headline,
-          color: colors.textPrimary,
-          flexShrink: 1,
-        },
-        textInactive: {
-          color: colors.textTertiary,
-        },
-        attributeText: {
-          ...FIORI.typography.caption,
-          color: colors.textSecondary,
-        },
-        emptyContainer: {
-          flex: 1,
-          justifyContent: 'center',
-          alignItems: 'center',
-          paddingHorizontal: FIORI.spacing.xxl,
-        },
-        emptyTitle: {
-          ...FIORI.typography.headline,
-          color: colors.textPrimary,
-          marginBottom: FIORI.spacing.sm,
-          textAlign: 'center',
-        },
-        emptyText: {
-          ...FIORI.typography.body,
-          color: colors.textSecondary,
-          textAlign: 'center',
-          marginBottom: FIORI.spacing.lg,
-        },
-        primaryButton: {
-          flexDirection: 'row',
-          alignItems: 'center',
-          justifyContent: 'center',
-          backgroundColor: colors.primary,
-          paddingHorizontal: FIORI.spacing.lg,
-          height: FIORI.dimensions.buttonHeight,
-          borderRadius: FIORI.dimensions.buttonRadius,
-          gap: FIORI.spacing.sm,
-          marginTop: FIORI.spacing.md,
-        },
-        primaryButtonText: {
-          ...FIORI.typography.button,
-          color: colors.cellBackground,
-        },
-        footerText: {
-          ...FIORI.typography.caption,
-          color: colors.textSecondary,
-        },
-      }),
-    [colors]
-  );
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
 
   const [state, setState] = useState<ListState>({
     data: [],
@@ -316,9 +176,9 @@ export default function UsersScreen() {
 
   const renderItem = useCallback(
     ({ item }: { item: UserListItem }) => (
-      <FioriUserCard user={item} onPress={() => handleEditUser(item.id)} colors={colors} dynamicStyles={dynamicStyles} />
+      <FioriUserCard user={item} onPress={() => handleEditUser(item.id)} />
     ),
-    [handleEditUser, colors, dynamicStyles]
+    [handleEditUser]
   );
 
   const keyExtractor = useCallback((item: UserListItem) => item.id, []);
@@ -326,64 +186,74 @@ export default function UsersScreen() {
   const renderEmpty = useCallback(() => {
     if (state.loading) {
       return (
-        <View style={dynamicStyles.emptyContainer}>
-          <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={dynamicStyles.emptyText}>Loading users...</Text>
+        <View style={styles.emptyContainer} accessibilityRole="progressbar" accessibilityLabel="Loading users">
+          <ActivityIndicator size="large" color={t.brand.tint} />
+          <Text style={styles.emptyText}>Loading users…</Text>
         </View>
       );
     }
 
     if (state.error) {
       return (
-        <View style={dynamicStyles.emptyContainer}>
-          <View style={styles.emptyIconContainer}>
-            <Icon
-              name="alert-circle-outline"
-              size={64}
-              color={colors.statusNegative}
-            />
-          </View>
-          <Text style={dynamicStyles.emptyTitle}>Error Loading Users</Text>
-          <Text style={dynamicStyles.emptyText}>{state.error}</Text>
+        <View style={styles.emptyContainer} accessibilityRole="alert">
+          <Icon name="alert-circle-outline" size={iconSize.hero} color={t.status.negative.text} />
+          <Text style={styles.emptyTitle} accessibilityRole="header">
+            Couldn't load users
+          </Text>
+          <Text style={styles.emptyText}>Check your connection and try again.</Text>
           <Pressable
-            style={({ pressed }) => [
-              dynamicStyles.primaryButton,
-              pressed && styles.primaryButtonPressed,
-            ]}
+            style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryButtonPressed]}
             onPress={handleRefresh}
+            accessibilityRole="button"
           >
-            <Icon name="refresh" size={20} color={colors.cellBackground} />
-            <Text style={dynamicStyles.primaryButtonText}>Retry</Text>
+            <Icon name="refresh" size={iconSize.md} color={t.brand.tint} />
+            <Text style={styles.secondaryButtonText}>Try again</Text>
           </Pressable>
         </View>
       );
     }
 
     return (
-      <View style={dynamicStyles.emptyContainer}>
-        <View style={styles.emptyIconContainer}>
-          <Icon
-            name="account-group-outline"
-            size={64}
-            color={colors.textTertiary}
-          />
-        </View>
-        <Text style={dynamicStyles.emptyTitle}>No Users</Text>
-        <Text style={dynamicStyles.emptyText}>No users found.</Text>
+      <View style={styles.emptyContainer}>
+        <Icon name="account-group-outline" size={iconSize.hero} color={t.icon.secondary} />
+        <Text style={styles.emptyTitle} accessibilityRole="header">
+          No users yet
+        </Text>
+        <Text style={styles.emptyText}>People who join this facility appear here.</Text>
       </View>
     );
-  }, [state.loading, state.error, handleRefresh, colors, dynamicStyles]);
+  }, [state.loading, state.error, handleRefresh, styles, t]);
 
   const renderFooter = useCallback(() => {
     if (!state.loadingMore) return null;
 
     return (
-      <View style={styles.footerContainer}>
-        <ActivityIndicator size="small" color={colors.primary} />
-        <Text style={dynamicStyles.footerText}>Loading more...</Text>
+      <View style={styles.footerContainer} accessibilityRole="progressbar" accessibilityLabel="Loading more users">
+        <ActivityIndicator size="small" color={t.brand.tint} />
+        <Text style={styles.footerText}>Loading more…</Text>
       </View>
     );
-  }, [state.loadingMore, colors, dynamicStyles]);
+  }, [state.loadingMore, styles, t]);
+
+  const headerOptions = {
+    headerShown: true,
+    headerStyle: { backgroundColor: t.surface.header },
+    headerShadowVisible: false,
+    headerTintColor: t.brand.tint,
+    headerTitleAlign: 'center' as const,
+    headerLeft: () => (
+      <Pressable
+        onPress={() => router.back()}
+        style={styles.backButton}
+        hitSlop={space.sm}
+        accessibilityRole="button"
+        accessibilityLabel="Back"
+      >
+        <Icon name="chevron-left" size={iconSize.xl} color={t.brand.tint} />
+        <Text style={styles.backButtonText}>Back</Text>
+      </Pressable>
+    ),
+  };
 
   // Access denied view
   if (!hasAccess) {
@@ -391,35 +261,20 @@ export default function UsersScreen() {
       <>
         <Stack.Screen
           options={{
-            headerShown: true,
-            headerStyle: dynamicStyles.navBar,
-            headerTintColor: colors.primary,
-            headerTitleAlign: 'center',
-            headerLeft: () => (
-              <Pressable
-                onPress={() => router.back()}
-                style={headerStyles.backButton}
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              >
-                <Icon name="chevron-left" size={28} color={colors.primary} />
-                <Text style={dynamicStyles.backButtonText}>Back</Text>
-              </Pressable>
-            ),
+            ...headerOptions,
             headerTitle: () => (
-              <View style={headerStyles.titleContainer}>
-                <Text style={dynamicStyles.title}>Users</Text>
+              <View style={styles.titleContainer} accessible accessibilityRole="header">
+                <Text style={styles.title}>Users</Text>
               </View>
             ),
           }}
         />
-        <View style={[dynamicStyles.container, dynamicStyles.emptyContainer]}>
-          <Icon
-            name="lock-outline"
-            size={64}
-            color={colors.textTertiary}
-          />
-          <Text style={dynamicStyles.emptyTitle}>Access Denied</Text>
-          <Text style={dynamicStyles.emptyText}>
+        <View style={[styles.container, styles.emptyContainer]}>
+          <Icon name="lock-outline" size={iconSize.hero} color={t.icon.secondary} />
+          <Text style={styles.emptyTitle} accessibilityRole="header">
+            You can't manage users
+          </Text>
+          <Text style={styles.emptyText}>
             Only administrators and supervisors can manage users.
           </Text>
         </View>
@@ -432,36 +287,19 @@ export default function UsersScreen() {
       {/* Fiori Navigation Bar */}
       <Stack.Screen
         options={{
-          headerShown: true,
-          headerStyle: dynamicStyles.navBar,
-          headerTintColor: colors.primary,
-          headerTitleAlign: 'center',
-          headerLeft: () => (
-            <Pressable
-              onPress={() => router.back()}
-              style={headerStyles.backButton}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              accessibilityRole="button"
-              accessibilityLabel="Go back"
-            >
-              <Icon name="chevron-left" size={28} color={colors.primary} />
-              <Text style={dynamicStyles.backButtonText}>Back</Text>
-            </Pressable>
-          ),
+          ...headerOptions,
           headerTitle: () => (
-            <View style={headerStyles.titleContainer}>
-              <Text style={dynamicStyles.title}>Users</Text>
+            <View style={styles.titleContainer} accessible accessibilityRole="header">
+              <Text style={styles.title}>Users</Text>
               {state.totalCount > 0 && (
-                <Text style={dynamicStyles.subtitle}>
-                  {state.totalCount} total
-                </Text>
+                <Text style={styles.subtitle}>{countFormat.format(state.totalCount)} total</Text>
               )}
             </View>
           ),
         }}
       />
 
-      <View style={[dynamicStyles.container, { paddingBottom: insets.bottom }]}>
+      <View style={[styles.container, { paddingBottom: insets.bottom }]}>
         <FlatList
           data={state.data}
           renderItem={renderItem}
@@ -474,8 +312,9 @@ export default function UsersScreen() {
             <RefreshControl
               refreshing={state.refreshing}
               onRefresh={handleRefresh}
-              colors={[colors.primary]}
-              tintColor={colors.primary}
+              colors={[t.brand.tint]}
+              tintColor={t.brand.tint}
+              progressBackgroundColor={t.surface.card}
             />
           }
           ListEmptyComponent={renderEmpty}
@@ -483,7 +322,6 @@ export default function UsersScreen() {
           onEndReached={handleEndReached}
           onEndReachedThreshold={0.3}
           showsVerticalScrollIndicator={false}
-          ItemSeparatorComponent={() => <View style={styles.separator} />}
         />
       </View>
     </>
@@ -491,92 +329,109 @@ export default function UsersScreen() {
 }
 
 // =============================================================================
+// HELPERS
+// =============================================================================
+
+const countFormat = new Intl.NumberFormat('en-IN');
+
+/** "+91 98765 43210" for a stored 10-digit (or 91-prefixed) number. */
+function formatMobile(mobile: string): string {
+  const digits = mobile.replace(/\D/g, '').replace(/^91(?=\d{10}$)/, '');
+  if (digits.length !== 10) return `+91 ${digits}`;
+  return `+91 ${digits.slice(0, 5)} ${digits.slice(5)}`;
+}
+
+/** Stable avatar colour index for an id (style guide §3.2). */
+function avatarIndex(id: string, count: number): number {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) {
+    hash = (hash * 31 + id.charCodeAt(i)) | 0;
+  }
+  return Math.abs(hash) % count;
+}
+
+/** Roles are categories, not statuses: staff roles informative, others neutral. */
+const ROLE_TONE: Record<UserRole, 'informative' | 'neutral'> = {
+  admin: 'informative',
+  supervisor: 'informative',
+  staff: 'neutral',
+  customer: 'neutral',
+};
+
+// =============================================================================
 // FIORI USER CARD COMPONENT (Object Cell Layout)
-// Based on SAP Fiori for iOS Design Guidelines
 // =============================================================================
 
 interface FioriUserCardProps {
   user: UserListItem;
   onPress: () => void;
-  colors: ReturnType<typeof useListColors>;
-  dynamicStyles: any;
 }
 
-function FioriUserCard({ user, onPress, colors, dynamicStyles }: FioriUserCardProps) {
-  const roleColor = ROLE_COLORS[user.role] || ROLE_COLORS.customer;
+function FioriUserCard({ user, onPress }: FioriUserCardProps) {
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
+  const tone = t.status[ROLE_TONE[user.role] ?? 'neutral'];
+  const roleLabel = user.role.charAt(0).toUpperCase() + user.role.slice(1);
+  const name = user.name || 'Unknown user';
+  const mobile = user.mobile ? formatMobile(user.mobile) : null;
+  const assigned =
+    user.assigned_customers_count > 0
+      ? `${user.assigned_customers_count} ${user.assigned_customers_count === 1 ? 'customer' : 'customers'} assigned`
+      : null;
+  const rowLabel = [name, roleLabel, user.active ? null : 'Inactive', mobile, assigned]
+    .filter(Boolean)
+    .join(', ');
 
   return (
     <Pressable
-      style={({ pressed }) => [
-        dynamicStyles.card,
-        !user.active && dynamicStyles.cardInactive,
-        pressed && dynamicStyles.cardPressed,
-      ]}
+      style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
       onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={rowLabel}
+      accessibilityHint="Opens the user for editing"
     >
       {/* Fiori Object Cell: Leading Avatar */}
-      <View style={[dynamicStyles.avatar, !user.active && dynamicStyles.avatarInactive]}>
-        <Text
-          style={[dynamicStyles.avatarText, !user.active && dynamicStyles.avatarTextInactive]}
-        >
-          {(user.name || 'U').charAt(0).toUpperCase()}
-        </Text>
+      <View
+        style={[styles.avatar, { backgroundColor: t.avatar[avatarIndex(user.id, t.avatar.length)] }]}
+        accessibilityElementsHidden
+        importantForAccessibility="no-hide-descendants"
+      >
+        <Text style={styles.avatarText}>{name.charAt(0).toUpperCase()}</Text>
       </View>
 
       {/* Fiori Object Cell: Main Content */}
       <View style={styles.cardContent}>
-        {/* Headline - User Name */}
-        <View style={styles.headlineRow}>
-          <Text
-            style={[dynamicStyles.headline, !user.active && dynamicStyles.textInactive]}
-            numberOfLines={1}
-          >
-            {user.name || 'Unknown'}
-          </Text>
-          {/* Role Badge */}
-          <View style={[styles.roleBadge, { backgroundColor: roleColor.bg }]}>
-            <Text style={[styles.roleBadgeText, { color: roleColor.text }]}>
-              {user.role.charAt(0).toUpperCase() + user.role.slice(1)}
+        <Text style={[styles.headline, !user.active && styles.textInactive]} numberOfLines={2}>
+          {name}
+        </Text>
+        <View style={styles.tagRow}>
+          <View style={[styles.tag, { backgroundColor: tone.background }]}>
+            <Text style={[styles.tagText, { color: tone.text }]} maxFontSizeMultiplier={1.6}>
+              {roleLabel}
             </Text>
           </View>
           {!user.active && (
-            <View style={styles.statusBadge}>
-              <Text style={styles.statusBadgeText}>Inactive</Text>
+            <View style={[styles.tag, styles.tagWithIcon, { backgroundColor: t.status.neutral.background }]}>
+              <Icon name="circle-outline" size={iconSize.sm - 4} color={t.status.neutral.text} />
+              <Text style={[styles.tagText, { color: t.status.neutral.text }]} maxFontSizeMultiplier={1.6}>
+                Inactive
+              </Text>
             </View>
           )}
         </View>
 
         {/* Subheadline - Contact Details */}
         <View style={styles.attributeStack}>
-          {user.mobile && (
+          {mobile && (
             <View style={styles.attributeRow}>
-              <Icon name="phone" size={14} color={colors.textTertiary} />
-              <Text
-                style={[
-                  dynamicStyles.attributeText,
-                  !user.active && dynamicStyles.textInactive,
-                ]}
-              >
-                +91 {user.mobile}
-              </Text>
+              <Icon name="phone-outline" size={iconSize.sm} color={t.icon.secondary} />
+              <Text style={styles.attributeText}>{mobile}</Text>
             </View>
           )}
-          {user.assigned_customers_count > 0 && (
+          {assigned && (
             <View style={styles.attributeRow}>
-              <Icon
-                name="account-multiple"
-                size={14}
-                color={colors.textTertiary}
-              />
-              <Text
-                style={[
-                  dynamicStyles.attributeText,
-                  !user.active && dynamicStyles.textInactive,
-                ]}
-              >
-                {user.assigned_customers_count} customer
-                {user.assigned_customers_count > 1 ? 's' : ''} assigned
-              </Text>
+              <Icon name="account-multiple-outline" size={iconSize.sm} color={t.icon.secondary} />
+              <Text style={styles.attributeText}>{assigned}</Text>
             </View>
           )}
         </View>
@@ -584,120 +439,183 @@ function FioriUserCard({ user, onPress, colors, dynamicStyles }: FioriUserCardPr
 
       {/* Fiori Object Cell: Trailing Chevron */}
       <View style={styles.trailingActions}>
-        <Icon name="chevron-right" size={20} color={colors.textTertiary} />
+        <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />
       </View>
     </Pressable>
   );
 }
 
 // =============================================================================
-// FIORI HEADER STYLES (Layout only - colors in dynamicStyles)
-// Based on SAP Fiori for iOS Design Guidelines - Navigation Bar
+// STYLES
 // =============================================================================
 
-const headerStyles = StyleSheet.create({
+const makeStyles = (t: ThemeTokens) => ({
+  container: {
+    flex: 1,
+    backgroundColor: t.background.base,
+  },
   backButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    minHeight: FIORI.dimensions.touchTarget,
-    paddingRight: FIORI.spacing.sm,
-    marginLeft: -FIORI.spacing.sm,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    minHeight: touchTarget,
+    paddingRight: space.sm,
+    marginLeft: -space.sm,
+  },
+  backButtonText: {
+    ...typography.body,
+    color: t.brand.tint,
+    marginLeft: -space.xs,
   },
   titleContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
   },
-});
-
-// =============================================================================
-// FIORI MAIN STYLES (Layout only - colors in dynamicStyles)
-// Based on SAP Fiori for iOS Design Guidelines
-// =============================================================================
-
-const styles = StyleSheet.create({
+  title: {
+    ...typography.headline,
+    color: t.text.primary,
+    textAlign: 'center' as const,
+  },
+  subtitle: {
+    ...typography.caption1,
+    color: t.text.secondary,
+    textAlign: 'center' as const,
+  },
   listContent: {
-    paddingTop: FIORI.spacing.md,
-    paddingBottom: FIORI.spacing.xl,
+    paddingTop: space.md,
+    paddingBottom: space.xl,
   },
   listContentEmpty: {
     flex: 1,
   },
-  separator: {
-    height: 0,
-  },
 
-  // Card Content
+  // Object cell
+  card: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    backgroundColor: t.surface.card,
+    borderRadius: radius.card,
+    padding: space.lg,
+    marginHorizontal: layout.marginCompact,
+    marginBottom: space.sm,
+    minHeight: layout.objectCellMinHeight,
+    ...t.shadow[2],
+  },
+  cardPressed: {
+    backgroundColor: t.surface.cardPressed,
+  },
+  avatar: {
+    width: layout.avatar.md,
+    height: layout.avatar.md,
+    borderRadius: radius.pill,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    marginRight: space.md,
+  },
+  avatarText: {
+    ...typography.headline,
+    color: t.mode === 'light' ? t.text.primary : t.overlay.onImage,
+  },
   cardContent: {
     flex: 1,
-    justifyContent: 'center',
+    justifyContent: 'center' as const,
+    gap: space.xs,
   },
-
-  // Headline Row
-  headlineRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: 6,
-    marginBottom: 4,
+  headline: {
+    ...typography.headline,
+    color: t.text.primary,
   },
-
-  // Role Badge
-  roleBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 4,
+  textInactive: {
+    color: t.text.secondary,
   },
-  roleBadgeText: {
-    fontSize: 11,
-    fontWeight: '600',
-    textTransform: 'capitalize',
+  tagRow: {
+    flexDirection: 'row' as const,
+    flexWrap: 'wrap' as const,
+    gap: space.s6,
   },
-
-  // Status Badge (Inactive)
-  statusBadge: {
-    backgroundColor: FIORI.colors.negativeLight,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 4,
+  tag: {
+    paddingHorizontal: space.s6,
+    paddingVertical: space.xxs,
+    borderRadius: radius.field,
   },
-  statusBadgeText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: FIORI.colors.negative,
+  tagWithIcon: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.xs,
   },
-
-  // Attribute Stack
+  tagText: {
+    ...typography.caption1,
+    fontWeight: fontWeight.semibold,
+  },
   attributeStack: {
-    gap: 4,
+    gap: space.xs,
   },
   attributeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.s6,
   },
-
-  // Trailing Actions
+  attributeText: {
+    ...typography.subhead,
+    color: t.text.secondary,
+    flexShrink: 1,
+  },
   trailingActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginLeft: FIORI.spacing.sm,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    marginLeft: space.sm,
   },
 
-  // Empty State
-  emptyIconContainer: {
-    marginBottom: FIORI.spacing.lg,
+  // Empty / error / loading states
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    gap: space.sm,
+    paddingHorizontal: space.xxl,
+    paddingVertical: space.giant,
   },
-  primaryButtonPressed: {
-    opacity: 0.8,
+  emptyTitle: {
+    ...typography.title3,
+    color: t.text.primary,
+    textAlign: 'center' as const,
+    marginTop: space.sm,
+  },
+  emptyText: {
+    ...typography.subhead,
+    color: t.text.secondary,
+    textAlign: 'center' as const,
+    marginBottom: space.md,
+  },
+  secondaryButton: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    minHeight: touchTarget,
+    borderRadius: radius.button,
+    borderWidth: 1,
+    borderColor: t.border.button,
+    paddingHorizontal: space.xl,
+    gap: space.sm,
+  },
+  secondaryButtonPressed: {
+    backgroundColor: t.brand.subtle,
+  },
+  secondaryButtonText: {
+    ...typography.callout,
+    fontWeight: fontWeight.semibold,
+    color: t.brand.tint,
   },
 
   // Footer
   footerContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: FIORI.spacing.lg,
-    gap: FIORI.spacing.sm,
+    flexDirection: 'row' as const,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    paddingVertical: space.lg,
+    gap: space.sm,
+  },
+  footerText: {
+    ...typography.footnote,
+    color: t.text.secondary,
   },
 });
