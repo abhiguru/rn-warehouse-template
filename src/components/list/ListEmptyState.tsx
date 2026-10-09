@@ -45,19 +45,8 @@ export interface ListEmptyStateProps {
   clearFiltersLabel?: string;
 }
 
-/**
- * Older Ionicons names some screens still pass, mapped to their
- * MaterialCommunityIcons equivalents (style guide §8). Remove an entry once no
- * caller passes it.
- */
-const LEGACY_GLYPHS: Record<string, string> = {
-  add: 'plus',
-  'cash-outline': 'cash',
-  'filter-outline': 'filter-variant',
-};
-
 function Glyph({ name, size, color }: { name: string; size: number; color: string }) {
-  return <Icon name={LEGACY_GLYPHS[name] ?? name} size={size} color={color} />;
+  return <Icon name={name} size={size} color={color} />;
 }
 
 const makeStyles = (t: ThemeTokens) => ({

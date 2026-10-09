@@ -46,11 +46,6 @@ export interface MemoizedDispatchItemProps {
   onPrint?: (dispatch: Dispatch) => void;
   /** Whether print action is available */
   canPrint?: boolean;
-  /**
-   * @deprecated Colours now come from the semantic tokens. Still accepted so
-   * existing callers keep compiling; it only triggers a re-render on change.
-   */
-  colors?: unknown;
   /** Global expand state from parent */
   globalExpanded?: boolean;
   /** Key to trigger sync with global state (increments on toggle) */
@@ -473,8 +468,7 @@ const areEqual = (
     // Compare callback references
     prevProps.onPress === nextProps.onPress &&
     prevProps.canPrint === nextProps.canPrint &&
-    // Legacy colours prop (same reference means same theme); tokens re-render via the store
-    prevProps.colors === nextProps.colors &&
+
     // Compare global expand state
     prevProps.globalExpanded === nextProps.globalExpanded &&
     prevProps.globalExpandedKey === nextProps.globalExpandedKey

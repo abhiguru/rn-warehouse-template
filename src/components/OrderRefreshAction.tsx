@@ -6,11 +6,6 @@ import { iconSize, space } from '@/theme/tokens';
 interface Props {
   onRefresh: () => void;
   refreshing: boolean;
-  /**
-   * @deprecated The icon is always `brand.tint` (style guide §13.13); kept so
-   * existing callers still compile. Ignored.
-   */
-  color?: string;
   label: string;
 }
 

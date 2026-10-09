@@ -49,11 +49,6 @@ export interface CustomerOrderGroupCardProps {
   isExpanded: boolean;
   /** Callback when expand/collapse is toggled */
   onToggleExpand: (orderId: string) => void;
-  /**
-   * @deprecated Ignored. The card reads the semantic tokens itself; kept so
-   * existing callers that still pass their list colours compile.
-   */
-  colors?: unknown;
 }
 
 // ============================================================================

@@ -474,8 +474,7 @@ export const SensorHistoryChart: React.FC<SensorHistoryChartProps> = ({
     const date = toDate(timestamp);
     if (!date) return '';
     if (periodDays <= 90) return formatDate(date, 'short');
-    const month = formatMonth(date, 'short');
-    return compact ? month.split(' ')[0] : month;
+    return formatMonth(date, compact ? 'narrow' : 'short');
   };
 
   // Prepare chart data. A missing reading has no value, so the line breaks

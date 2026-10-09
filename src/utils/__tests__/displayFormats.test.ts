@@ -24,6 +24,7 @@ describe('style guide §12.3 formats', () => {
     expect(formatDate(null)).toBe('—');
     expect(formatMonth('2026-10-09')).toBe('October 2026');
     expect(formatMonth('2026-10-09', 'short')).toBe('Oct 2026');
+    expect(formatMonth('2026-10-09', 'narrow')).toBe('Oct');
     expect(formatDate('not a date')).toBe('—');
   });
 

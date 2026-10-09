@@ -39,7 +39,7 @@ import type {
   AllInvoiceHistoryData,
   CustomerInvoiceSummary,
 } from '@/types/report.types';
-import { formatDate, formatCount, formatCurrency } from '@/utils/formatters';
+import { formatDate, formatCount, formatCurrency, formatMonth } from '@/utils/formatters';
 import { formatInvoiceAmount } from '@/utils/invoiceCalculations';
 import { StatusTag } from '@/components/ui/StatusTag';
 
@@ -51,9 +51,8 @@ import { StatusTag } from '@/components/ui/StatusTag';
 const formatSummaryAmount = (amount: number): string =>
   formatCurrency(Math.round(amount || 0), { maximumFractionDigits: 0 });
 
-/** Month row title (2025-12 -> "Dec 2025"): the medium date without the day. */
-const formatMonth = (monthStr: string): string =>
-  formatDate(`${monthStr.slice(0, 7)}-01`).replace(/^\d+ /, '');
+/** Month row title (2025-12 -> "Dec 2025"). */
+const formatMonthRow = (monthStr: string): string => formatMonth(`${monthStr.slice(0, 7)}-01`, 'short');
 
 const LOAD_ERROR = "Couldn't load the invoice history. Check your connection and try again.";
 
@@ -237,9 +236,9 @@ const MonthlyBreakdownCard: React.FC<MonthlyBreakdownCardProps> = ({ months, isE
                 key={m.month}
                 style={[styles.monthRow, index < months.length - 1 && styles.monthRowBorder]}
                 accessible
-                accessibilityLabel={`${formatMonth(m.month)}, ${countLabel}, ${formatSummaryAmount(m.total_amount)}`}
+                accessibilityLabel={`${formatMonthRow(m.month)}, ${countLabel}, ${formatSummaryAmount(m.total_amount)}`}
               >
-                <Text style={styles.monthLabel}>{formatMonth(m.month)}</Text>
+                <Text style={styles.monthLabel}>{formatMonthRow(m.month)}</Text>
                 <View style={styles.monthStats}>
                   <Text style={styles.monthAmount}>{formatSummaryAmount(m.total_amount)}</Text>
                   <Text style={styles.monthCount}>{countLabel}</Text>

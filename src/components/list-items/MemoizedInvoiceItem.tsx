@@ -41,11 +41,6 @@ export interface MemoizedInvoiceItemProps {
   onPrint?: (invoice: Invoice) => void;
   /** Whether print action is available */
   canPrint?: boolean;
-  /**
-   * Deprecated: the cell reads theme tokens itself. Still accepted (and
-   * compared) so existing list callers keep working.
-   */
-  colors?: unknown;
 }
 
 // ============================================================================
@@ -267,8 +262,7 @@ export const invoiceItemPropsAreEqual = (
     prevInvoice.customer?.name === nextInvoice.customer?.name &&
     prevInvoice.grn?.gr_no === nextInvoice.grn?.gr_no &&
     prevProps.onPress === nextProps.onPress &&
-    prevProps.canPrint === nextProps.canPrint &&
-    prevProps.colors === nextProps.colors
+    prevProps.canPrint === nextProps.canPrint
   );
 };
 

@@ -937,6 +937,7 @@ export default function DispatchActivityScreen() {
                 {filteredCustomers.map((customer, index) => (
                   <React.Fragment key={customer.customer_id}>
                     <ReportCustomerCard
+                      customerId={customer.customer_id}
                       title={customer.customer_name}
                       subtitle={formatCount(customer.dispatch_count, 'dispatch', 'dispatches')}
                       value={customer.total_quantity}

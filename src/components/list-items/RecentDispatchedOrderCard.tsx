@@ -51,11 +51,6 @@ export interface RecentDispatchedOrderCardProps {
   dispatch: RecentDispatchedOrder;
   /** Callback when card is pressed (navigates to dispatch details) */
   onPress: (dispatch: RecentDispatchedOrder) => void;
-  /**
-   * @deprecated Colours now come from the semantic tokens. Still accepted so
-   * existing callers keep compiling.
-   */
-  colors?: unknown;
 }
 
 // ============================================================================
@@ -438,8 +433,7 @@ const areEqual = (
     prevDispatch.item_count === nextDispatch.item_count &&
     prevDispatch.registration === nextDispatch.registration &&
     prevDispatch.disp_date === nextDispatch.disp_date &&
-    prevProps.onPress === nextProps.onPress &&
-    prevProps.colors === nextProps.colors
+    prevProps.onPress === nextProps.onPress
   );
 };
 

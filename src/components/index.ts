@@ -87,7 +87,6 @@ export { InvoiceStepIndicator } from './InvoiceStepIndicator';
 export {
   GenericStepIndicatorHeader,
   type GenericStepIndicatorHeaderProps,
-  type StepColorScheme,
 } from './GenericStepIndicatorHeader';
 export { default as StepIndicator } from './StepIndicator';
 

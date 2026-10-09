@@ -152,13 +152,15 @@ export const formatDate = (
   return `${day} ${month} ${year}`;
 };
 
-/** Month titles (§12.3): "October 2026" (long, timelines) or "Oct 2026" (short, report rows). */
+/** Month titles (§12.3): "October 2026" (long, timelines), "Oct 2026" (short, report rows), "Oct" (narrow, chart axes). */
 export const formatMonth = (
   date: string | Date | null | undefined,
-  format: 'short' | 'long' = 'long'
+  format: 'short' | 'long' | 'narrow' = 'long'
 ): string => {
   const d = toDate(date);
   if (!d) return '—';
+  // Chart axes: the month alone, "Oct".
+  if (format === 'narrow') return MONTHS_SHORT[d.getMonth()];
   return `${(format === 'long' ? MONTHS_LONG : MONTHS_SHORT)[d.getMonth()]} ${d.getFullYear()}`;
 };
 

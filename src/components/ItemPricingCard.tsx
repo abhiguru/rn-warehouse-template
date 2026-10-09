@@ -35,11 +35,6 @@ interface ItemPricingCardProps {
   canManage?: boolean;
   isLastInSection?: boolean;
   isFirstForCustomer?: boolean; // Show customer header for first item in customer group
-  /**
-   * @deprecated Ignored. The card reads the semantic tokens itself; kept so
-   * existing callers that still pass list colours compile.
-   */
-  colors?: unknown;
 }
 
 const ItemPricingCard = memo<ItemPricingCardProps>(

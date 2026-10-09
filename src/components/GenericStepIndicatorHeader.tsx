@@ -35,12 +35,6 @@ import {
 import type { StepConfig } from '@/components/StepIndicator';
 
 import { showAlert } from '@/utils/alert';
-/**
- * Kept for compatibility. Both schemes now use the brand tokens: step and
- * progress colours never change per document type.
- */
-export type StepColorScheme = 'teal' | 'blue';
-
 type StepState = 'completed' | 'current' | 'upcoming';
 
 const STATE_WORD: Record<StepState, string> = {
@@ -72,12 +66,6 @@ export interface GenericStepIndicatorHeaderProps {
   cancelMessage?: string;
   /** Optional callback when step pill is tapped (for navigation) */
   onStepPress?: (stepNumber: number) => void;
-  /**
-   * Accepted and ignored: steps and progress always use the brand tokens.
-   * Still passed by GRNStepIndicator, DispatchStepIndicator and the customer
-   * wizard steps; remove once those call sites stop passing it.
-   */
-  colorScheme?: StepColorScheme;
 }
 
 // ============================================================================

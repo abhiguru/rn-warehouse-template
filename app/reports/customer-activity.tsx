@@ -125,7 +125,7 @@ function formatMonthYear(monthStr: string): string {
 
 /** "Oct": the month alone, for chart axis labels. */
 function formatShortMonth(monthStr: string): string {
-  return formatMonthYear(monthStr).split(' ')[0];
+  return toDate(`${monthStr}-01`) ? formatMonth(`${monthStr}-01`, 'narrow') : monthStr;
 }
 
 // ============================================================================

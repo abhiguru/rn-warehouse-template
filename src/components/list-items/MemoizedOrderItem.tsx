@@ -39,11 +39,6 @@ export interface MemoizedOrderItemProps {
   onViewDetails?: (order: Order) => void;
   /** Callback for convert to dispatch action */
   onConvertToDispatch?: (order: Order) => void;
-  /**
-   * @deprecated Colours come from the theme tokens; kept so existing callers
-   * still compile. Ignored.
-   */
-  colors?: unknown;
 }
 
 // ============================================================================

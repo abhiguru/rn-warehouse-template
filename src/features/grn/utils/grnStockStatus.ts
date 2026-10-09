@@ -5,15 +5,12 @@
  * not an error, so it is neutral "Fully dispatched". While stock is left the
  * app-wide stock-level rule applies (style guide §3.5): under 20% of the
  * received quantity is critical "Low stock", otherwise positive "In stock".
- *
- * TODO: the guide names LOW_STOCK_RATIO in src/utils/stockStatus.ts as the
- * single home of the threshold. Import it from there once it exists and drop
- * the copy below.
  */
 import type { StatusKind } from '@/components/ui';
 
-/** App-wide low-stock threshold as a share of the received quantity. */
-export const LOW_STOCK_RATIO = 0.2;
+import { LOW_STOCK_RATIO } from '@/utils/stockStatus';
+
+export { LOW_STOCK_RATIO };
 
 export interface GRNStockStatus {
   status: StatusKind;

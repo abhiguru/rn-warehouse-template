@@ -761,15 +761,15 @@ const ItemPricingScreen: React.FC = () => {
       ) : (
         <ListEmptyState
           activeFilterCount={activeFilterCount}
-          emptyIcon="cash-outline"
-          filteredIcon="filter-outline"
+          emptyIcon="cash"
+          filteredIcon="filter-variant"
           emptyTitle="No prices yet"
           filteredTitle="No prices match these filters"
           emptySubtitle={canManagePrices() ? 'Prices you add appear here.' : 'No prices have been set up yet.'}
           filteredSubtitle="Try fewer filters."
           showCreateButton={canManagePrices() && activeFilterCount === 0}
           createButtonLabel="Add price"
-          createButtonIcon="add"
+          createButtonIcon="plus"
           onCreatePress={handleCreatePrice}
         />
       )}

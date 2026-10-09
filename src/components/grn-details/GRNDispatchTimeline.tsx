@@ -26,7 +26,7 @@ import {
   typography,
 } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
-import { formatCount, formatDate, toDate } from '@/utils/formatters';
+import { formatCount, formatDate, toDate, formatMonth } from '@/utils/formatters';
 
 export interface DispatchRecord {
   id: string;
@@ -48,7 +48,7 @@ interface GRNDispatchTimelineProps {
 }
 
 /** Month group title, "October 2026" (the long date without the day). */
-const monthTitle = (date: Date) => formatDate(date, 'long').replace(/^\d+ /, '');
+const monthTitle = (date: Date) => formatMonth(date, 'long');
 
 const bagsLabel = (qty: number) => formatCount(qty, 'bag');
 

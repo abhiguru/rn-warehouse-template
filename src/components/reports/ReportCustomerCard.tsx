@@ -44,11 +44,6 @@ export interface ReportCustomerCardProps {
   customerId?: string | null;
   /** Optional status tag under the value (at most one per row, guide §3.5). */
   status?: { status: StatusKind; label: string };
-  /**
-   * @deprecated Ignored. The avatar colour comes from the customer id; kept so
-   * existing callers compile.
-   */
-  avatarColor?: unknown;
   /** Optional share handler */
   onShare?: () => void;
   /** Loading state for share button */
