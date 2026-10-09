@@ -109,7 +109,7 @@ describe.each(THEMES)('GRN wizard steps in %s %s', (brand, mode) => {
     const text = allText(tree);
     expect(text).toContain('GRN DETAILS');
     expect(text).toContain('Potatoes');
-    expect(text).toContain('Dispatched');
+    expect(text).toContain('Quantity locked');
     expect(tree.root.findAll(node => node.props.accessibilityLabel === 'Edit GRN details' && typeof node.props.onPress === 'function').length).toBeGreaterThan(0);
     expect(tree.root.findAll(node => node.props.accessibilityLabel === 'Edit items' && typeof node.props.onPress === 'function').length).toBeGreaterThan(0);
     act(() => tree.unmount());

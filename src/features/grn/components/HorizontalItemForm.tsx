@@ -20,6 +20,7 @@ import { GRNImageData } from '@/store/slices/grnFormSlice';
 import { searchItems } from '@/services/item-search-service';
 
 import { showAlert } from '@/utils/alert';
+import { formatCount } from '@/utils/formatters';
 const FIELD_WIDTH_LARGE = 220; // Width for item name field
 const FIELD_WIDTH_QTY_WEIGHT = 117; // Qty & Weight reduced by 35% (was 180)
 const FIELD_WIDTH_RACK = 196; // Rack reduced by 30% (was 280), chips will wrap
@@ -286,7 +287,7 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                         accessibilityRole={canViewAll ? 'button' : 'header'}
                         accessibilityLabel={
                             canViewAll
-                                ? `${isEditing ? 'Editing' : 'New'} item ${itemNumber}. View ${savedItemsCount} saved ${savedItemsCount === 1 ? 'item' : 'items'}`
+                                ? `${isEditing ? 'Editing' : 'New'} item ${itemNumber}. View ${formatCount(savedItemsCount, 'saved item')}`
                                 : `${isEditing ? 'Editing' : 'New'} item ${itemNumber}`
                         }
                     >

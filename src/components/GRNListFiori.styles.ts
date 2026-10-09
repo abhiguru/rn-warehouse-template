@@ -83,21 +83,6 @@ export const makeGRNListStyles = (t: ThemeTokens) => ({
     color: t.brand.onFill,
   },
 
-  avatar: {
-    width: layout.avatar.sm,
-    height: layout.avatar.sm,
-    borderRadius: radius.pill,
-    justifyContent: 'center' as const,
-    alignItems: 'center' as const,
-  },
-
-  avatarText: {
-    ...typography.subhead,
-    fontWeight: fontWeight.semibold,
-    // Avatar initials: text.primary in light mode, white in dark (guide 3.2)
-    color: t.mode === 'dark' ? t.overlay.onImage : t.text.primary,
-  },
-
   // =========================================================================
   // Applied filters bar
   // =========================================================================
@@ -373,21 +358,6 @@ export const makeGRNListStyles = (t: ThemeTokens) => ({
     alignItems: 'flex-end' as const,
     gap: space.xs,
     minWidth: 72,
-  },
-
-  // Status tag (guide 13.5): status background + status text + icon
-  statusTag: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: space.xs,
-    paddingHorizontal: space.sm,
-    paddingVertical: space.xxs,
-    borderRadius: radius.field,
-  },
-
-  statusTagText: {
-    ...typography.caption1,
-    fontWeight: fontWeight.semibold,
   },
 
   stockValueText: {

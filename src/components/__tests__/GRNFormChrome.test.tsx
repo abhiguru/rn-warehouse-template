@@ -10,7 +10,7 @@ jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
   useAppSelector: (selector: (state: unknown) => unknown) => selector(mockState),
 }));
-jest.mock('@expo/vector-icons', () => ({ Ionicons: 'Ionicons', MaterialCommunityIcons: 'MaterialCommunityIcons' }));
+jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 20, bottom: 10, left: 0, right: 0 }),
 }));
@@ -60,11 +60,37 @@ describe('GRN form chrome', () => {
         mode,
         <GRNFormBottomNav currentStep={2} totalSteps={3} onPrevious={jest.fn()} onNext={jest.fn()} />
       );
-      const next = tree.root.find(node => node.props.accessibilityLabel === 'Next: step 3' && typeof node.props.onPress === 'function');
+      const next = tree.root.find(node => node.props.accessibilityLabel === 'Next' && typeof node.props.onPress === 'function');
       const style = typeof next.props.style === 'function' ? next.props.style({ pressed: false }) : next.props.style;
       expect(flatStyle(style).backgroundColor).toBe(t.brand.fill);
-      expect(tree.root.findAll(node => node.props.accessibilityLabel === 'Back to the previous step').length).toBeGreaterThan(0);
+      expect(tree.root.findAll(node => node.props.accessibilityLabel === 'Back').length).toBeGreaterThan(0);
     });
+  });
+
+  // Same bar on every step as the dispatch and invoice wizards (§14.3)
+  it('shows Next alone on step 1, Back and Next in the middle, Back and the save action on review', () => {
+    const pressable = (tree: ReactTestRenderer, label: string) =>
+      tree.root.findAll(node => node.props.accessibilityLabel === label && typeof node.props.onPress === 'function');
+
+    const first = renderIn('orange', 'light', <GRNFormBottomNav currentStep={1} totalSteps={3} onNext={jest.fn()} />);
+    expect(pressable(first, 'Next')).toHaveLength(1);
+    expect(pressable(first, 'Back')).toHaveLength(0);
+
+    const onPrevious = jest.fn();
+    const onNext = jest.fn();
+    const middle = renderIn('orange', 'light', <GRNFormBottomNav currentStep={2} totalSteps={3} onPrevious={onPrevious} onNext={onNext} />);
+    act(() => pressable(middle, 'Back')[0].props.onPress());
+    act(() => pressable(middle, 'Next')[0].props.onPress());
+    expect(onPrevious).toHaveBeenCalledTimes(1);
+    expect(onNext).toHaveBeenCalledTimes(1);
+
+    const review = renderIn(
+      'orange',
+      'light',
+      <GRNFormBottomNav currentStep={3} totalSteps={3} onPrevious={jest.fn()} onNext={jest.fn()} nextLabel="Save GRN" />
+    );
+    expect(pressable(review, 'Back')).toHaveLength(1);
+    expect(pressable(review, 'Save GRN')).toHaveLength(1);
   });
 
   it('asks before discarding the GRN', () => {

@@ -13,6 +13,7 @@ import { SearchableBottomSheet } from '@/components/common';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { iconSize, layout, space, typography, touchTarget } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
+import { Avatar } from '@/components/ui/Avatar';
 
 const RECENT_CUSTOMERS_KEY = 'recent_customers';
 
@@ -91,6 +92,7 @@ export const CustomerBottomSheet: React.FC<CustomerBottomSheetProps> = ({
         accessibilityRole="button"
         accessibilityLabel={item.address ? `${item.name}, ${item.address}` : item.name}
       >
+        <Avatar name={item.name} id={item.id} />
         <View style={styles.customerContent}>
           <Text style={styles.customerName} numberOfLines={2}>{item.name}</Text>
           {item.address ? (

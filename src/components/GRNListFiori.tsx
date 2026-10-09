@@ -55,10 +55,12 @@ import { PrintRangeDialog } from '@/components/PrintRangeDialog';
 import PrintJobsBottomSheet, { PrintJobsBottomSheetRef } from '@/components/PrintJobsBottomSheet';
 import { Button } from '@/components/ui/Button';
 import { printGRNRange } from '@/services/print-service';
-import { getStockStatus, StockStatus } from '@/utils/stockStatus';
+import { getGRNStockStatus, type GRNStockStatus } from '@/features/grn/utils/grnStockStatus';
+import { StatusTag } from '@/components/ui/StatusTag';
+import { Avatar } from '@/components/ui/Avatar';
 import { createLogger } from '@/utils/logger';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
-import { iconSize, type ThemeTokens } from '@/theme/tokens';
+import { iconSize } from '@/theme/tokens';
 
 // Filter configuration
 import { GRN_FILTER_CONFIG } from '@/config/filterConfigs';
@@ -67,7 +69,7 @@ import { GRN_FILTER_CONFIG } from '@/config/filterConfigs';
 import { makeGRNListStyles, type GRNListStyles } from './GRNListFiori.styles';
 
 // Shared formatters
-import { formatSectionDate, formatNumber } from '@/utils/formatters';
+import { formatSectionDate, formatNumber, formatCount, formatDate, formatWeight } from '@/utils/formatters';
 
 const logger = createLogger('GRNListFiori');
 
@@ -80,34 +82,12 @@ const SORT_OPTIONS: Array<{ field: SortField; label: string; a11y: string; icon:
   { field: 'date', label: 'Date', a11y: 'date', icon: 'calendar-outline' },
 ];
 
-/** Status icons from the style guide (3.5). */
-const STATUS_ICON: Record<StockStatus, string> = {
-  positive: 'check-circle',
-  critical: 'alert',
-  negative: 'alert-circle',
-  neutral: 'circle-outline',
-};
+/** Status when nothing was received (no quantity to judge stock against). */
+const NO_QUANTITY_STATUS: GRNStockStatus = { status: 'neutral', label: 'No quantity', icon: 'circle-outline' };
 
-/** Status tokens for a stock status. */
-const statusTokens = (t: ThemeTokens, status: StockStatus) => t.status[status];
-
-/** "1 item", "12 items" (guide 12.3). */
-const pluralize = (count: number, singular: string, plural: string) =>
-  `${formatNumber(count)} ${count === 1 ? singular : plural}`;
-
-/** "9 Oct 2026" (guide 12.3). */
-const formatDisplayDate = (date: string) => {
-  const d = new Date(date);
-  if (isNaN(d.getTime())) return '';
-  return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
-};
-
-/** Stable avatar colour index from a string (guide 3.2). */
-const avatarIndex = (key: string, count: number) => {
-  let hash = 0;
-  for (let i = 0; i < key.length; i += 1) hash = (hash * 31 + key.charCodeAt(i)) | 0;
-  return Math.abs(hash) % count;
-};
+/** Stock status of a GRN or item: fully dispatched is neutral, then the app low-stock rule. */
+const stockStatusFor = (stock: number, qty: number): GRNStockStatus =>
+  getGRNStockStatus(stock, qty) ?? NO_QUANTITY_STATUS;
 
 // Type for grouped GRN data
 interface GRNGroupData {
@@ -118,24 +98,6 @@ interface GRNGroupData {
   customerName: string;
   items: GRNItem[];
 }
-
-// ============================================================================
-// STATUS TAG
-// ============================================================================
-const StatusTag = memo<{ status: StockStatus; label: string; styles: GRNListStyles }>(({ status, label, styles }) => {
-  const t = useTokens();
-  const s = statusTokens(t, status);
-  return (
-    <View style={[styles.statusTag, { backgroundColor: s.background }]}>
-      <Icon name={STATUS_ICON[status]} size={iconSize.sm} color={s.text} />
-      <Text style={[styles.statusTagText, { color: s.text }]} maxFontSizeMultiplier={1.6}>
-        {label}
-      </Text>
-    </View>
-  );
-});
-
-StatusTag.displayName = 'StatusTag';
 
 // ============================================================================
 // SKELETON CARD
@@ -229,11 +191,11 @@ const GRNCardFiori = memo<GRNCardProps>(({
   const totalStock = group.items.reduce((sum, item) => sum + (item.stock || 0), 0);
 
   // Fiori semantic status for the whole GRN
-  const stockStatus = getStockStatus(totalStock, totalQty);
-  const status = statusTokens(t, stockStatus.status);
-  const displayDate = formatDisplayDate(group.date);
-  const itemCountLabel = pluralize(group.items.length, 'item', 'items');
-  const weightLabel = `${formatNumber(Math.round(totalWeight))} kg`;
+  const stockStatus = stockStatusFor(totalStock, totalQty);
+  const status = t.status[stockStatus.status];
+  const displayDate = formatDate(group.date, 'short');
+  const itemCountLabel = formatCount(group.items.length, 'item');
+  const weightLabel = formatWeight(Math.round(totalWeight));
 
   const handleSwipeAction = (action: 'view' | 'edit' | 'print') => {
     Vibration.vibrate(10);
@@ -339,7 +301,7 @@ const GRNCardFiori = memo<GRNCardProps>(({
             <View style={styles.attributeStack}>
               <Text style={styles.stockValueText}>{formatNumber(totalStock)}</Text>
               <Text style={styles.stockLabel}>in stock</Text>
-              <StatusTag status={stockStatus.status} label={stockStatus.label} styles={styles} />
+              <StatusTag status={stockStatus.status} label={stockStatus.label} icon={stockStatus.icon} />
               <Text style={styles.weightText}>{weightLabel}</Text>
             </View>
           </Pressable>
@@ -355,8 +317,7 @@ const GRNCardFiori = memo<GRNCardProps>(({
               </View>
 
               {group.items.map((item, idx) => {
-                const itemStatus = getStockStatus(item.stock, item.qty);
-                const itemTokens = statusTokens(t, itemStatus.status);
+                const itemStatus = stockStatusFor(item.stock, item.qty);
                 return (
                   <View
                     key={`${item.id}-${idx}`}
@@ -365,8 +326,8 @@ const GRNCardFiori = memo<GRNCardProps>(({
                     accessibilityLabel={[
                       item.item_name,
                       item.package_mark,
-                      pluralize(item.qty || 0, 'bag', 'bags'),
-                      `${formatNumber(Math.round(item.weight || 0))} kg`,
+                      formatCount(item.qty || 0, 'bag'),
+                      formatWeight(Math.round(item.weight || 0)),
                       `${formatNumber(item.stock || 0)} in stock, ${itemStatus.label}`,
                     ].filter(Boolean).join(', ')}
                   >
@@ -381,15 +342,7 @@ const GRNCardFiori = memo<GRNCardProps>(({
                       {formatNumber(Math.round(item.weight || 0))}
                     </Text>
                     <View style={[styles.tableCell, styles.colStock]}>
-                      <View style={[styles.statusTag, { backgroundColor: itemTokens.background }]}>
-                        <Icon name={STATUS_ICON[itemStatus.status]} size={iconSize.sm} color={itemTokens.text} />
-                        <Text
-                          style={[styles.statusTagText, { color: itemTokens.text, fontVariant: ['tabular-nums'] }]}
-                          maxFontSizeMultiplier={1.6}
-                        >
-                          {formatNumber(item.stock)}
-                        </Text>
-                      </View>
+                      <StatusTag status={itemStatus.status} label={formatNumber(item.stock)} icon={itemStatus.icon} />
                     </View>
                   </View>
                 );
@@ -439,9 +392,6 @@ interface FilterChipsProps {
   clearAllFilters: () => void;
   styles: GRNListStyles;
 }
-
-const formatChipDate = (date: string) =>
-  new Date(date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 
 const FilterChips: React.FC<FilterChipsProps> = memo(({
   filters,
@@ -540,8 +490,8 @@ const FilterChips: React.FC<FilterChipsProps> = memo(({
 
   // Date range chip
   if (filters.dateFrom || filters.dateTo) {
-    const fromDate = filters.dateFrom ? formatChipDate(filters.dateFrom) : null;
-    const toDate = filters.dateTo ? formatChipDate(filters.dateTo) : null;
+    const fromDate = filters.dateFrom ? formatDate(filters.dateFrom) : null;
+    const toDate = filters.dateTo ? formatDate(filters.dateTo) : null;
     chips.push({
       key: 'date-range',
       label: fromDate && toDate ? `${fromDate} to ${toDate}` : fromDate ? `From ${fromDate}` : `Until ${toDate}`,
@@ -559,7 +509,7 @@ const FilterChips: React.FC<FilterChipsProps> = memo(({
         <View style={styles.filterCountBadge}>
           <Icon name="filter-variant" size={iconSize.sm} color={t.icon.secondary} />
           <Text style={styles.filterCountText}>
-            {activeFilterCount === 1 ? '1 filter applied' : `${activeFilterCount} filters applied`}
+            {`${formatCount(activeFilterCount, 'filter')} applied`}
           </Text>
         </View>
         <Pressable
@@ -1010,7 +960,7 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({
           style={styles.sectionHeader}
           accessible
           accessibilityRole="header"
-          accessibilityLabel={`${item.title}, ${pluralize(item.count, 'GRN', 'GRNs')}`}
+          accessibilityLabel={`${item.title}, ${formatCount(item.count, 'GRN')}`}
         >
           <Text style={styles.sectionTitle}>{item.title}</Text>
           <View style={styles.sectionBadge}>
@@ -1046,7 +996,6 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({
   }, [loadingMore, styles, t]);
 
   const userName = userProfile?.name || 'User';
-  const avatarColor = t.avatar[avatarIndex(userName, t.avatar.length)];
 
   const renderHeader = (interactive: boolean) => (
     <View style={styles.header}>
@@ -1075,11 +1024,7 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({
           accessibilityRole="button"
           accessibilityLabel="Open settings"
         >
-          <View style={[styles.avatar, { backgroundColor: avatarColor }]}>
-            <Text style={styles.avatarText} maxFontSizeMultiplier={1.6}>
-              {userName.charAt(0).toUpperCase()}
-            </Text>
-          </View>
+          <Avatar name={userName} id={userProfile?.id} size="sm" />
         </Pressable>
       </View>
     </View>

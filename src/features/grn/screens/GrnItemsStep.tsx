@@ -30,6 +30,7 @@ import { useGRNForm } from '@/hooks';
 import * as ImagePicker from 'expo-image-picker';
 import { withNativeHandoff } from '@/config/nativeHandoff';
 import { GRNStepIndicator } from '@/components/GRNStepIndicator';
+import GRNFormBottomNav from '@/components/GRNFormBottomNav';
 import { GRN_STEPS, STEP_NUMBERS, getCompletedSteps } from '@/constants/grnSteps';
 import { deleteGRNImage, uploadGRNItemImage, validateImageFile } from '@/features/grn/services/imageUploadService';
 import { isTemporaryGRNImageId } from '@/features/grn/services/imageId';
@@ -43,6 +44,7 @@ import {
 } from '@/features/grn/schemas/grnValidation';
 
 import { showAlert } from '@/utils/alert';
+import { formatCount } from '@/utils/formatters';
 const EMPTY_GRN_ITEM = (): ItemFormData => ({
   grn_trl_id: `item-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
   item_table_id: '',
@@ -151,7 +153,7 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
         isCreateMode ? 'Discard this GRN?' : 'Discard changes to this GRN?',
         (() => {
           const count = savedItems.length || items.length;
-          return `${count} ${count === 1 ? 'item' : 'items'} will be lost.`;
+          return `${formatCount(count, 'item')} will be lost.`;
         })(),
         [
           { text: 'Keep editing', style: 'cancel' },
@@ -708,6 +710,16 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
           }}
         />
       </View>
+
+      {/* Back and Next run the same checks as the swipe (unsaved item, validation) */}
+      <GRNFormBottomNav
+        currentStep={STEP_NUMBERS.ITEMS}
+        totalSteps={GRN_STEPS.length}
+        onPrevious={handleSwipeRight}
+        onNext={handleSwipeLeft}
+        isLoading={isNavigating}
+        loadingLabel="Opening review…"
+      />
 
       <ItemsSummaryBottomSheet
         isVisible={showItemsSummarySheet}

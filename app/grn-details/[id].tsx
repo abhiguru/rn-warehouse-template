@@ -53,6 +53,7 @@ import { Button } from '@/components/ui/Button';
 import { deleteGRNImage, uploadGRNImage } from '@/features/grn/services/imageUploadService';
 
 import { showAlert } from '@/utils/alert';
+import { formatCount } from '@/utils/formatters';
 const makeStyles = (t: ThemeTokens) => ({
   container: {
     flex: 1,
@@ -91,21 +92,24 @@ const makeStyles = (t: ThemeTokens) => ({
     gap: space.sm,
   },
   // Header back button
+  // Custom back button (same on every headerless screen): platform glyph,
+  // brand.tint, "Back" label on iOS, at least touchTarget square
   backButton: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
+    alignSelf: 'flex-start' as const,
+    minWidth: touchTarget,
     minHeight: touchTarget,
-    paddingRight: space.sm,
-    marginLeft: -space.sm,
+    paddingHorizontal: space.xs,
     borderRadius: radius.button,
   },
   backButtonPressed: {
-    opacity: 0.6,
+    backgroundColor: t.brand.subtle,
   },
   backButtonText: {
     ...typography.body,
     color: t.brand.tint,
-    marginLeft: -space.xs,
+    marginLeft: space.xxs,
   },
   // Native stack titles accept only font size, weight and colour.
   headerTitle: {
@@ -445,7 +449,7 @@ function GRNDetailScreen() {
               if (result.success) {
                 const message = result.message || (data?.grn?.gr_no ? `GRN ${data.grn.gr_no} deleted.` : 'GRN deleted.');
                 const details = result.deleted_counts
-                  ? `\n\nRemoved:\n• ${result.deleted_counts.grn_items} items\n• ${result.deleted_counts.order_items} order items\n• ${result.deleted_counts.stock_movements} stock movements\n• ${result.deleted_counts.images} images`
+                  ? `\n\nRemoved:\n• ${formatCount(result.deleted_counts.grn_items, 'item')}\n• ${formatCount(result.deleted_counts.order_items, 'order item')}\n• ${formatCount(result.deleted_counts.stock_movements, 'stock movement')}\n• ${formatCount(result.deleted_counts.images, 'image')}`
                   : '';
 
                 showAlert('GRN deleted', message + details, [
@@ -457,9 +461,9 @@ function GRNDetailScreen() {
                 if (result.blocking_dependencies) {
                   const deps = result.blocking_dependencies;
                   if (deps.invoiced_dispatches) {
-                    errorMessage += `\n\n${deps.invoiced_dispatches} dispatch items have been invoiced.`;
+                    errorMessage += `\n\n${formatCount(deps.invoiced_dispatches, 'dispatch item')} invoiced.`;
                   } else if (deps.dispatches) {
-                    errorMessage += `\n\n${deps.dispatches} dispatch items exist.`;
+                    errorMessage += `\n\n${formatCount(deps.dispatches, 'dispatch item')} recorded.`;
                   }
 
                   if (result.instructions) {
@@ -659,12 +663,11 @@ function GRNDetailScreen() {
             <Pressable
               onPress={() => router.back()}
               style={({ pressed }) => [styles.backButton, pressed && styles.backButtonPressed]}
-              hitSlop={{ top: space.sm, bottom: space.sm, left: space.sm, right: space.sm }}
               accessibilityRole="button"
-              accessibilityLabel="Go back"
+              accessibilityLabel="Back"
             >
-              <Icon name="chevron-left" size={28} color={t.brand.tint} />
-              <Text style={styles.backButtonText}>Back</Text>
+              <Icon name={Platform.OS === 'ios' ? 'chevron-left' : 'arrow-left'} size={iconSize.lg} color={t.brand.tint} />
+              {Platform.OS === 'ios' && <Text style={styles.backButtonText}>Back</Text>}
             </Pressable>
           ),
         }}

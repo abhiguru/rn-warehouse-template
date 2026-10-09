@@ -13,6 +13,7 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, radius, space, touchTarget, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
+import { formatCount } from '@/utils/formatters';
 
 const LOG_PREFIX = '[GRNImagesTab]';
 
@@ -239,7 +240,7 @@ const ImageTile: React.FC<{
             <View style={styles.badge}>
               <Icon
                 name={item.category === 'header' ? 'file-document-outline' : 'cube-outline'}
-                size={12}
+                size={iconSize.xs}
                 color={t.overlay.onImage}
               />
             </View>
@@ -340,7 +341,7 @@ export const GRNImagesTab: React.FC<GRNImagesTabProps> = ({
         onPress={() => setFilter(type)}
         hitSlop={{ top: space.sm, bottom: space.sm }}
         accessibilityRole="button"
-        accessibilityLabel={`${label}, ${count} ${count === 1 ? 'image' : 'images'}`}
+        accessibilityLabel={`${label}, ${formatCount(count, 'image')}`}
         accessibilityState={{ selected }}
       >
         {selected && <Icon name="check" size={iconSize.sm} color={t.brand.tint} />}

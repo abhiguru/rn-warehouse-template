@@ -15,6 +15,7 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { iconSize, radius, space, touchTarget, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
+import { formatCount } from '@/utils/formatters';
 
 // ============================================================================
 // TYPES
@@ -60,7 +61,7 @@ export const HeroBanner: React.FC<HeroBannerProps> = React.memo(
           accessibilityRole={canViewAll ? 'button' : 'header'}
           accessibilityLabel={
             canViewAll
-              ? `${overline} ${itemNumber}. View ${savedItemsCount} saved ${savedItemsCount === 1 ? 'item' : 'items'}`
+              ? `${overline} ${itemNumber}. View ${formatCount(savedItemsCount, 'saved item')}`
               : `${overline} ${itemNumber}`
           }
         >

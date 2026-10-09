@@ -6,12 +6,14 @@
  * and rack as neutral tags.
  */
 
-import React, { useMemo } from 'react';
+import React from 'react';
 import { View, Text } from 'react-native';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { useThemedStyles, useTokens } from '@/hooks/useTheme';
-import { fontWeight, iconSize, layout, radius, space, typography } from '@/theme/tokens';
+import { useThemedStyles } from '@/hooks/useTheme';
+import { fontWeight, layout, radius, space, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
+import { StatusTag } from '@/components/ui/StatusTag';
+import { formatNumber, formatWeight } from '@/utils/formatters';
+import { getGRNStockStatus } from '@/features/grn/utils/grnStockStatus';
 
 // ============================================================================
 // TYPES - Using snake_case to match backend RPC types
@@ -31,22 +33,6 @@ interface GRNItemCardProps {
   onViewDispatches?: () => void;
 }
 
-type StockStatus = 'negative' | 'critical' | 'positive';
-
-const STATUS_ICON: Record<StockStatus, string> = {
-  negative: 'alert-circle',
-  critical: 'alert',
-  positive: 'check-circle',
-};
-
-const STATUS_LABEL: Record<StockStatus, string> = {
-  negative: 'Out of stock',
-  critical: 'Partly dispatched',
-  positive: 'In stock',
-};
-
-const numberFormat = new Intl.NumberFormat('en-IN');
-const weightFormat = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 });
 
 // ============================================================================
 // STYLES
@@ -72,17 +58,7 @@ const makeStyles = (t: ThemeTokens) => ({
   },
   titleBlock: { flex: 1 },
   itemName: { ...typography.headline, color: t.text.primary },
-  tag: {
-    flexDirection: 'row' as const,
-    alignSelf: 'flex-start' as const,
-    alignItems: 'center' as const,
-    gap: space.xs,
-    paddingHorizontal: space.sm,
-    paddingVertical: space.xxs,
-    borderRadius: radius.field,
-    marginTop: space.xs,
-  },
-  tagText: { ...typography.caption1, fontWeight: fontWeight.semibold },
+  tag: { marginTop: space.xs },
   qtyBlock: { alignItems: 'flex-end' as const },
   qtyValue: {
     ...typography.headline,
@@ -116,16 +92,6 @@ const makeStyles = (t: ThemeTokens) => ({
     borderTopWidth: 1,
     borderTopColor: t.border.divider,
   },
-  detailChip: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    paddingHorizontal: space.md,
-    paddingVertical: space.s6,
-    borderRadius: radius.pill,
-    gap: space.xs,
-    backgroundColor: t.status.neutral.background,
-  },
-  detailChipText: { ...typography.caption1, color: t.status.neutral.text },
 });
 
 // ============================================================================
@@ -143,15 +109,9 @@ const GRNItemCardComponent: React.FC<GRNItemCardProps> = ({
   package_mark,
 }) => {
   const styles = useThemedStyles(makeStyles);
-  const t = useTokens();
 
-  const stockStatus = useMemo<StockStatus>(() => {
-    if (stock === 0) return 'negative';
-    if (stock === qty) return 'positive';
-    return 'critical';
-  }, [stock, qty]);
-
-  const statusColor = t.status[stockStatus].text;
+  // Fully dispatched is neutral; otherwise the app-wide low-stock rule.
+  const stockStatus = getGRNStockStatus(stock, qty);
   const hasDetails = package_mark || packaging || rack;
   const showWeight = weight !== undefined && weight !== null;
 
@@ -163,11 +123,11 @@ const GRNItemCardComponent: React.FC<GRNItemCardProps> = ({
 
   const a11yLabel = [
     item_name,
-    `${numberFormat.format(qty)} received`,
-    STATUS_LABEL[stockStatus],
-    `${numberFormat.format(stock)} in stock`,
-    `${numberFormat.format(total_dispatched)} dispatched`,
-    showWeight ? `${weightFormat.format(Number(weight))} kg` : null,
+    `${formatNumber(qty)} received`,
+    stockStatus?.label,
+    `${formatNumber(stock)} in stock`,
+    `${formatNumber(total_dispatched)} dispatched`,
+    showWeight ? formatWeight(Number(weight)) : null,
     ...details.map(d => d.text),
   ]
     .filter(Boolean)
@@ -180,15 +140,17 @@ const GRNItemCardComponent: React.FC<GRNItemCardProps> = ({
           <Text style={styles.itemName} numberOfLines={2}>
             {item_name}
           </Text>
-          <View style={[styles.tag, { backgroundColor: t.status[stockStatus].background }]}>
-            <Icon name={STATUS_ICON[stockStatus]} size={iconSize.sm} color={statusColor} />
-            <Text style={[styles.tagText, { color: statusColor }]} maxFontSizeMultiplier={1.6}>
-              {STATUS_LABEL[stockStatus]}
-            </Text>
-          </View>
+          {stockStatus && (
+            <StatusTag
+              status={stockStatus.status}
+              label={stockStatus.label}
+              icon={stockStatus.icon}
+              style={styles.tag}
+            />
+          )}
         </View>
         <View style={styles.qtyBlock}>
-          <Text style={styles.qtyValue}>{numberFormat.format(qty)}</Text>
+          <Text style={styles.qtyValue}>{formatNumber(qty)}</Text>
           <Text style={styles.qtyLabel}>Received</Text>
         </View>
       </View>
@@ -196,16 +158,16 @@ const GRNItemCardComponent: React.FC<GRNItemCardProps> = ({
       <View style={styles.metricsSection}>
         <View style={styles.metricItem}>
           <Text style={styles.metricLabel}>In stock</Text>
-          <Text style={styles.metricValue}>{numberFormat.format(stock)}</Text>
+          <Text style={styles.metricValue}>{formatNumber(stock)}</Text>
         </View>
         <View style={styles.metricItem}>
           <Text style={styles.metricLabel}>Dispatched</Text>
-          <Text style={styles.metricValue}>{numberFormat.format(total_dispatched)}</Text>
+          <Text style={styles.metricValue}>{formatNumber(total_dispatched)}</Text>
         </View>
         {showWeight && (
           <View style={styles.metricItem}>
             <Text style={styles.metricLabel}>Weight</Text>
-            <Text style={styles.metricValue}>{`${weightFormat.format(Number(weight))} kg`}</Text>
+            <Text style={styles.metricValue}>{formatWeight(Number(weight))}</Text>
           </View>
         )}
       </View>
@@ -213,12 +175,7 @@ const GRNItemCardComponent: React.FC<GRNItemCardProps> = ({
       {hasDetails && (
         <View style={styles.detailsRow}>
           {details.map(detail => (
-            <View key={detail.icon} style={styles.detailChip}>
-              <Icon name={detail.icon} size={iconSize.sm} color={t.status.neutral.text} />
-              <Text style={styles.detailChipText} maxFontSizeMultiplier={1.6}>
-                {detail.text}
-              </Text>
-            </View>
+            <StatusTag key={detail.icon} status="neutral" label={detail.text} icon={detail.icon} />
           ))}
         </View>
       )}

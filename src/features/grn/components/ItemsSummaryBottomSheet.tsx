@@ -16,9 +16,8 @@ import { GRNImageData } from '@/store/slices/grnFormSlice';
 import { SavedItemCard } from '@/features/grn/components/SavedItemCard';
 import { parseReceiptQuantity, parseReceiptWeight } from '@/features/grn/schemas/grnValidation';
 import { useTokens } from '@/hooks/useTheme';
+import { formatNumber, formatWeight } from '@/utils/formatters';
 
-const qtyFormat = new Intl.NumberFormat('en-IN');
-const weightFormat = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 });
 
 /** Form data for a GRN item */
 export interface ItemFormData {
@@ -89,13 +88,13 @@ const ItemsSummaryBottomSheet: React.FC<ItemsSummaryBottomSheetProps> = ({
         icon: 'counter',
         iconColor: t.icon.secondary,
         label: 'Total quantity:',
-        value: qtyFormat.format(totalQuantity),
+        value: formatNumber(totalQuantity),
       },
       {
         icon: 'weight',
         iconColor: t.icon.secondary,
         label: 'Total weight:',
-        value: `${weightFormat.format(totalWeight)} kg`,
+        value: formatWeight(totalWeight),
       },
     ];
   }, [t]);

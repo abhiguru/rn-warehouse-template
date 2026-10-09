@@ -14,6 +14,7 @@ import { searchService } from '@/services/search-service';
 import { useThemedStyles } from '@/hooks/useTheme';
 import { fontWeight, radius, space, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
+import { StatusTag } from '@/components/ui/StatusTag';
 
 // ============================================================================
 // TYPES
@@ -116,9 +117,7 @@ export const ItemAutocomplete: React.FC<ItemAutocompleteProps> = ({
           {item.name}
         </Text>
         {item.packaging ? (
-          <View style={styles.packagingBadge}>
-            <Text style={styles.packagingText}>{item.packaging}</Text>
-          </View>
+          <StatusTag status="neutral" label={item.packaging} icon={null} style={styles.packagingBadge} />
         ) : null}
       </View>
       {item.description ? (
@@ -165,14 +164,7 @@ const makeStyles = (t: ThemeTokens) => ({
     justifyContent: 'space-between' as const,
   },
   itemName: { ...typography.headline, color: t.text.primary, flex: 1 },
-  packagingBadge: {
-    backgroundColor: t.status.neutral.background,
-    paddingHorizontal: space.sm,
-    paddingVertical: space.xs,
-    borderRadius: radius.field,
-    marginLeft: space.sm,
-  },
-  packagingText: { ...typography.caption1, fontWeight: fontWeight.semibold, color: t.status.neutral.text },
+  packagingBadge: { marginLeft: space.sm, alignSelf: 'center' as const },
   itemDescription: { ...typography.subhead, color: t.text.secondary, marginTop: space.xxs },
 });
 

@@ -16,6 +16,7 @@ import { iconSize, radius, space, touchTarget, typography } from '@/theme/tokens
 import type { ThemeTokens } from '@/theme/tokens';
 
 import { showAlert } from '@/utils/alert';
+import { formatCount } from '@/utils/formatters';
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -67,7 +68,7 @@ export const MarkImageField = forwardRef<MarkImageFieldRef, MarkImageFieldProps>
       if (images.length >= maxImages) {
         showAlert(
           'Photo limit reached',
-          `You can add up to ${maxImages} ${maxImages === 1 ? 'photo' : 'photos'} per item.`
+          `You can add up to ${formatCount(maxImages, 'photo')} per item.`
         );
         return;
       }

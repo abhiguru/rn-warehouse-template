@@ -8,12 +8,13 @@
 
 import React from 'react';
 import { View, Text } from 'react-native';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { FioriSegmentedProgress } from '@/components/FioriLinearProgress';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
-import { fontWeight, iconSize, layout, radius, space, typography } from '@/theme/tokens';
+import { fontWeight, layout, radius, space, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
-import { parseLocalISODate } from '@/utils/formatters';
+import { formatDate, formatNumber } from '@/utils/formatters';
+import { StatusTag } from '@/components/ui/StatusTag';
+import { getGRNStockStatus } from '@/features/grn/utils/grnStockStatus';
 
 // ============================================================================
 // TYPES
@@ -27,29 +28,6 @@ interface GRNHeroHeaderProps {
   customer_name?: string;
 }
 
-type StockStatus = 'negative' | 'critical' | 'positive';
-
-const STATUS_ICON: Record<StockStatus, string> = {
-  negative: 'alert-circle',
-  critical: 'alert',
-  positive: 'check-circle',
-};
-
-const STATUS_LABEL: Record<StockStatus, string> = {
-  negative: 'No stock left',
-  critical: 'Low stock',
-  positive: 'In stock',
-};
-
-const numberFormat = new Intl.NumberFormat('en-IN');
-
-/** "9 Oct 2026" (style guide §12.3). Date-only strings are read in local time. */
-export function formatGRNDate(value?: string | null): string | null {
-  if (!value) return null;
-  const date = /^\d{4}-\d{2}-\d{2}$/.test(value) ? parseLocalISODate(value) : new Date(value);
-  if (isNaN(date.getTime())) return null;
-  return date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
-}
 
 // ============================================================================
 // STYLES
@@ -73,16 +51,7 @@ const makeStyles = (t: ThemeTokens) => ({
   docType: { ...typography.footnote, color: t.text.secondary },
   number: { ...typography.title2, color: t.text.primary },
   meta: { ...typography.subhead, color: t.text.secondary, marginTop: space.xxs },
-  tag: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: space.xs,
-    paddingHorizontal: space.sm,
-    paddingVertical: space.xs,
-    borderRadius: radius.field,
-    marginTop: space.xs,
-  },
-  tagText: { ...typography.caption1, fontWeight: fontWeight.semibold },
+  tag: { marginTop: space.xs },
   facts: {
     flexDirection: 'row' as const,
     marginTop: space.lg,
@@ -140,15 +109,11 @@ export const GRNHeroHeader: React.FC<GRNHeroHeaderProps> = ({
   const stockPercentage = safeQty > 0 ? Math.round((safeStock / safeQty) * 100) : 0;
   const dispatchPercentage = safeQty > 0 ? Math.round((safeDispatched / safeQty) * 100) : 0;
 
-  // Stock level: empty is negative, under 20% is critical, otherwise positive.
-  let stockStatus: StockStatus | null = null;
-  if (safeQty > 0) {
-    if (safeStock === 0) stockStatus = 'negative';
-    else if (safeStock < safeQty * 0.2) stockStatus = 'critical';
-    else stockStatus = 'positive';
-  }
+  // Fully dispatched is neutral; otherwise the app-wide low-stock rule.
+  const stockStatus = getGRNStockStatus(safeStock, safeQty);
 
-  const formattedDate = formatGRNDate(date);
+  const shownDate = formatDate(date);
+  const formattedDate = shownDate === '—' ? null : shownDate;
   const meta = [customer_name, formattedDate].filter(Boolean).join(' · ');
 
   const stockSegmentColor = t.chart[0];
@@ -179,19 +144,12 @@ export const GRNHeroHeader: React.FC<GRNHeroHeaderProps> = ({
         </View>
 
         {stockStatus && (
-          <View
-            style={[styles.tag, { backgroundColor: t.status[stockStatus].background }]}
-            accessible
-            accessibilityLabel={`Status: ${STATUS_LABEL[stockStatus]}`}
-          >
-            <Icon name={STATUS_ICON[stockStatus]} size={iconSize.sm} color={t.status[stockStatus].text} />
-            <Text
-              style={[styles.tagText, { color: t.status[stockStatus].text }]}
-              maxFontSizeMultiplier={1.6}
-            >
-              {STATUS_LABEL[stockStatus]}
-            </Text>
-          </View>
+          <StatusTag
+            status={stockStatus.status}
+            label={stockStatus.label}
+            icon={stockStatus.icon}
+            style={styles.tag}
+          />
         )}
       </View>
 
@@ -202,12 +160,12 @@ export const GRNHeroHeader: React.FC<GRNHeroHeaderProps> = ({
             key={fact.key}
             style={styles.fact}
             accessible
-            accessibilityLabel={`${fact.label}: ${numberFormat.format(fact.value)}`}
+            accessibilityLabel={`${fact.label}: ${formatNumber(fact.value)}`}
           >
             <Text style={styles.factLabel} numberOfLines={1}>
               {fact.label}
             </Text>
-            <Text style={styles.factValue}>{numberFormat.format(fact.value)}</Text>
+            <Text style={styles.factValue}>{formatNumber(fact.value)}</Text>
           </View>
         ))}
       </View>

@@ -1,7 +1,7 @@
 import React, { useCallback } from 'react';
 import { View, Text, Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { iconSize, layout, radius, space, touchTarget, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
@@ -102,7 +102,7 @@ export default function GRNFormHeader({
               accessibilityLabel="Cancel GRN"
               accessibilityHint="Asks before discarding the details you entered"
             >
-              <MaterialCommunityIcons name="close" size={iconSize.lg} color={t.brand.tint} />
+              <Icon name="close" size={iconSize.lg} color={t.brand.tint} />
               <Text style={styles.cancelText}>Cancel</Text>
             </Pressable>
           )}
