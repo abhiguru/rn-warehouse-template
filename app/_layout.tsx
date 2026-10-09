@@ -61,6 +61,7 @@ import { QueryClientProvider } from '@tanstack/react-query';
 import { store, persistor } from '@/store';
 import { queryClient } from '@/lib/queryClient';
 import theme, { getThemeColors, colors, darkColors } from '@/theme';
+import { getTokens, type Brand } from '@/theme/tokens';
 import ConfigService from '@/services/configService';
 import { initializeSupabase } from '@/config/supabaseConfig';
 import { clearPendingEnrollment } from '@/config/supabaseConfig';
@@ -83,6 +84,7 @@ import { hasActiveOperatorMutation } from '@/config/supabaseConfig';
 import {
   selectThemePreference,
   selectResolvedThemeMode,
+  selectBrand,
 } from '@/store/slices/themeSlice';
 import {
   initializeSentry,
@@ -161,9 +163,10 @@ if (typeof global !== 'undefined') {
 }
 
 // Create Material Design 3 theme based on color mode
-const createPaperTheme = (isDark: boolean) => {
+const createPaperTheme = (isDark: boolean, brand: Brand = 'orange') => {
   const baseTheme = isDark ? MD3DarkTheme : MD3LightTheme;
-  const themeColors = isDark ? darkColors : colors;
+  const themeColors = getThemeColors(isDark ? 'dark' : 'light', brand);
+  const tokens = getTokens(brand, isDark ? 'dark' : 'light');
 
   return {
     ...baseTheme,
@@ -180,7 +183,7 @@ const createPaperTheme = (isDark: boolean) => {
       background: themeColors.gray[isDark ? 50 : 50],
       error: themeColors.semantic.error,
       errorContainer: themeColors.red[50],
-      onPrimary: isDark ? themeColors.gray[900] : '#ffffff',
+      onPrimary: tokens.brand.onFill,
       onSecondary: isDark ? themeColors.gray[900] : '#ffffff',
       onTertiary: isDark ? themeColors.gray[900] : '#ffffff',
       onSurface: themeColors.gray[900],
@@ -310,6 +313,7 @@ function ThemedContent() {
   const dispatch = useAppDispatch();
   const [authCheckSettled, setAuthCheckSettled] = useState(false);
   const themePreference = useAppSelector(selectThemePreference);
+  const brand = useAppSelector(selectBrand);
   const systemColorScheme = useColorScheme();
   const resolvedMode = selectResolvedThemeMode(
     themePreference,
@@ -340,10 +344,10 @@ function ThemedContent() {
 
   // Memoize the paper theme to avoid recreating on every render
   const currentPaperTheme = useMemo(
-    () => createPaperTheme(isDarkMode),
-    [isDarkMode]
+    () => createPaperTheme(isDarkMode, brand),
+    [isDarkMode, brand]
   );
-  const themeColors = isDarkMode ? darkColors : colors;
+  const themeColors = getThemeColors(resolvedMode, brand);
 
   // Background color that matches the theme
   // Note: In darkColors, gray scale is inverted (gray[50] is dark, gray[900] is light)

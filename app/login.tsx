@@ -12,7 +12,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  Image,
+  Pressable,
 } from 'react-native';
 import { router } from 'expo-router';
 import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
@@ -25,6 +25,8 @@ import {
   setOtpSent,
 } from '@/store/slices/authSlice';
 import { getPendingEnrollmentToken, signInWithPhone } from '@/config/supabaseConfig';
+import { getActiveOperatorServer } from '@/config/operatorServer';
+import { BrandMark } from '@/components/BrandMark';
 import { PhoneInput } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { useRateLimitCountdown } from '@/hooks/useRateLimitCountdown';
@@ -81,8 +83,6 @@ const FIORI_STATIC = {
   },
 };
 
-// Local logo asset (PNG with transparent background for dark/light mode support)
-const localLogo = require('../assets/logo.png');
 
 export default function LoginScreen() {
   const [phoneNumber, setPhoneNumber] = useState('');
@@ -90,6 +90,9 @@ export default function LoginScreen() {
   const { isAuthenticating } = useAppSelector((state) => state.auth);
   const insets = useSafeAreaInsets();
   const FIORI = useFioriColors();
+  // The warehouse this sign-in is for; becomes the facility picker with central login.
+  const facility = getActiveOperatorServer();
+  const facilityHost = facility ? facility.origin.replace(/^https:\/\//, '') : '';
   const { isDarkMode } = useTheme();
 
   useEffect(() => {
@@ -178,10 +181,11 @@ export default function LoginScreen() {
     }
   };
 
+  // Indian mobile numbers are written 5 + 5 ("98765 43210"); group as the user types.
   const formatPhoneDisplay = (phone: string) => {
     const digitsOnly = phone.replace(/\D/g, '');
     if (digitsOnly.length <= 10) {
-      return digitsOnly.replace(/(\d{3})(\d{3})(\d{4})/, '$1 $2 $3');
+      return digitsOnly.length > 5 ? `${digitsOnly.slice(0, 5)} ${digitsOnly.slice(5)}` : digitsOnly;
     }
     return phone;
   };
@@ -211,19 +215,33 @@ export default function LoginScreen() {
         >
           {/* Fiori: Welcome Screen Content */}
           <View style={styles.content}>
-            <Button type="secondary" onPress={() => router.push('/operator-server')}>Change warehouse server</Button>
-            {/* A. Logo Section */}
+            {/* Facility line: which warehouse this sign-in is for (becomes the facility picker later) */}
             <View
-              style={styles.logoContainer}
-              accessible={true}
-              accessibilityRole="image"
-              accessibilityLabel="App logo"
+              style={[styles.facilityRow, { backgroundColor: FIORI.colors.backgroundSecondary, borderColor: FIORI.colors.divider }]}
             >
-              <Image
-                source={localLogo}
-                style={styles.logo}
-                resizeMode="contain"
-              />
+              <Icon name="warehouse" size={20} color={FIORI.colors.textSecondary} />
+              <View style={styles.facilityText}>
+                <Text style={[styles.facilityName, { color: FIORI.colors.textPrimary }]} numberOfLines={1}>
+                  {facility?.companyName || 'No warehouse selected'}
+                </Text>
+                {facilityHost ? (
+                  <Text style={[styles.facilityHost, { color: FIORI.colors.textSecondary }]} numberOfLines={1}>
+                    {facilityHost}
+                  </Text>
+                ) : null}
+              </View>
+              <Pressable
+                onPress={() => router.push('/operator-server')}
+                accessibilityRole="button"
+                accessibilityLabel="Change warehouse server"
+                hitSlop={8}
+              >
+                <Text style={[styles.facilityChange, { color: FIORI.colors.tint }]}>Change</Text>
+              </Pressable>
+            </View>
+            {/* A. Logo Section */}
+            <View style={styles.logoContainer}>
+              <BrandMark label={process.env.EXPO_PUBLIC_APP_NAME || 'Warehouse Manager'} />
             </View>
 
             {/* B. Welcome Message Section */}
@@ -232,13 +250,16 @@ export default function LoginScreen() {
               accessible={true}
               accessibilityRole="header"
             >
+              <Text style={[styles.appName, { color: FIORI.colors.tint }]}>
+                {process.env.EXPO_PUBLIC_APP_NAME || 'Warehouse Manager'}
+              </Text>
               <Text
                 style={[styles.welcomeTitle, { color: FIORI.colors.textPrimary }]}
               >
-                Welcome
+                Sign in
               </Text>
-              <Text style={[styles.appName, { color: FIORI.colors.tint }]}>
-                {process.env.EXPO_PUBLIC_APP_NAME || 'Warehouse Manager'}
+              <Text style={[styles.welcomeSubtitle, { color: FIORI.colors.textSecondary }]}>
+                Enter your mobile number to get a one-time code.
               </Text>
             </View>
 
@@ -289,11 +310,11 @@ export default function LoginScreen() {
               <Text
                 style={[styles.sectionHeader, { color: FIORI.colors.textSecondary }]}
               >
-                PHONE NUMBER
+                MOBILE NUMBER
               </Text>
 
               <PhoneInput
-                placeholder="Enter your mobile number"
+                placeholder="98765 43210"
                 value={formatPhoneDisplay(phoneNumber)}
                 onChangeText={(text) => {
                   const digitsOnly = text.replace(/\D/g, '');
@@ -301,13 +322,11 @@ export default function LoginScreen() {
                 }}
                 maxLength={12}
                 editable={!isAuthenticating && !isRateLimited}
-                helperText="We'll send you a verification code"
+                accessibilityLabel="Mobile number"
                 leftIcon={
-                  <Icon
-                    name="cellphone"
-                    size={20}
-                    color={FIORI.colors.textSecondary}
-                  />
+                  <View style={[styles.countryCode, { borderRightColor: FIORI.colors.divider }]}>
+                    <Text style={[styles.countryCodeText, { color: FIORI.colors.textPrimary }]}>+91</Text>
+                  </View>
                 }
               />
             </View>
@@ -331,7 +350,7 @@ export default function LoginScreen() {
                   busy: isAuthenticating,
                 }}
               >
-                {isRateLimited ? `Wait ${countdownText}` : 'Continue'}
+                {isRateLimited ? `Wait ${countdownText}` : 'Send code'}
               </Button>
             </View>
 
@@ -401,16 +420,40 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
   },
 
+  // Facility line - compact, secondary to the sign-in form
+  facilityRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: FIORI_STATIC.spacing.sm,
+    paddingHorizontal: FIORI_STATIC.spacing.md,
+    paddingVertical: FIORI_STATIC.spacing.sm,
+    borderRadius: FIORI_STATIC.dimensions.borderRadius,
+    borderWidth: StyleSheet.hairlineWidth,
+    marginBottom: FIORI_STATIC.spacing.xxl,
+  },
+  facilityText: {
+    flex: 1,
+  },
+  facilityName: {
+    ...FIORI_STATIC.typography.caption1,
+    fontWeight: '600',
+  },
+  facilityHost: {
+    ...FIORI_STATIC.typography.caption2,
+  },
+  facilityChange: {
+    ...FIORI_STATIC.typography.caption1,
+    fontWeight: '600',
+    paddingVertical: FIORI_STATIC.spacing.xs,
+  },
+
   // A. Logo Container - Fiori: Centered, adequate spacing
   logoContainer: {
     alignItems: 'center',
-    marginBottom: FIORI_STATIC.spacing.xl,
+    marginBottom: FIORI_STATIC.spacing.lg,
   },
 
-  logo: {
-    width: '70%',
-    height: FIORI_STATIC.dimensions.logoHeight,
-  },
+
 
   // B. Welcome Section - Fiori: Centered text, hierarchical typography
   welcomeSection: {
@@ -425,11 +468,29 @@ const styles = StyleSheet.create({
     marginBottom: FIORI_STATIC.spacing.xs,
   },
 
-  // Fiori Title 1 - App name with brand color (color applied inline)
+  // App name above the title, in brand color (color applied inline)
   appName: {
-    ...FIORI_STATIC.typography.title1,
+    ...FIORI_STATIC.typography.caption1,
+    fontSize: 15,
+    fontWeight: '600',
     textAlign: 'center',
-    marginBottom: FIORI_STATIC.spacing.md,
+    marginBottom: FIORI_STATIC.spacing.sm,
+  },
+
+  welcomeSubtitle: {
+    ...FIORI_STATIC.typography.caption1,
+    textAlign: 'center',
+  },
+
+  // Fixed country code inside the phone field
+  countryCode: {
+    paddingRight: FIORI_STATIC.spacing.sm,
+    marginRight: FIORI_STATIC.spacing.xs,
+    borderRightWidth: StyleSheet.hairlineWidth,
+  },
+  countryCodeText: {
+    fontSize: 17,
+    fontWeight: '600',
   },
 
   // C. Message Strip (Fiori Critical/Warning Banner) (colors applied inline)

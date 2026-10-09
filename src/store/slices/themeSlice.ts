@@ -1,14 +1,23 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 import { ThemeMode } from '@/theme';
+import type { Brand } from '@/theme/tokens';
 
 export type ThemePreference = 'light' | 'dark' | 'system';
+export type { Brand };
 
 interface ThemeState {
   preference: ThemePreference;
+  /** Colour brand chosen in Settings (docs/STYLE_GUIDE.md). Older persisted state has none. */
+  brand?: Brand;
 }
+
+/** Brand used until the user picks one; a build may set EXPO_PUBLIC_DEFAULT_BRAND. */
+export const DEFAULT_BRAND: Brand =
+  process.env.EXPO_PUBLIC_DEFAULT_BRAND === 'gcsa' ? 'gcsa' : 'orange';
 
 const initialState: ThemeState = {
   preference: 'system', // Default to system preference
+  brand: DEFAULT_BRAND,
 };
 
 const themeSlice = createSlice({
@@ -18,10 +27,17 @@ const themeSlice = createSlice({
     setThemePreference: (state, action: PayloadAction<ThemePreference>) => {
       state.preference = action.payload;
     },
+    setBrand: (state, action: PayloadAction<Brand>) => {
+      state.brand = action.payload === 'gcsa' ? 'gcsa' : 'orange';
+    },
   },
 });
 
-export const { setThemePreference } = themeSlice.actions;
+export const { setThemePreference, setBrand } = themeSlice.actions;
+
+/** Selected brand; persisted state from before brands existed falls back to the default. */
+export const selectBrand = (state: { theme: ThemeState }): Brand =>
+  state.theme.brand === 'gcsa' || state.theme.brand === 'orange' ? state.theme.brand : DEFAULT_BRAND;
 
 /**
  * Selector to get the theme preference
