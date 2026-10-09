@@ -104,6 +104,12 @@ export const GhostTextInput = forwardRef<GhostTextInputRef, GhostTextInputProps>
     const fetchSuggestion = useCallback(
       async (prefix: string, context: string | null | undefined) => {
         latestRequest.current = { prefix, context };
+        // An empty field shows its placeholder, never a full suggestion: a whole
+        // registration in an empty field reads as a value someone typed earlier.
+        if (!prefix) {
+          setSuggestion(null);
+          return;
+        }
         try {
           const result = await getSuggestion(prefix, context);
           // Only update if this is still the latest request
@@ -155,9 +161,9 @@ export const GhostTextInput = forwardRef<GhostTextInputRef, GhostTextInputProps>
       const upperValue = value.toUpperCase();
       const upperSuggestion = suggestion.toUpperCase();
 
-      // If value is empty, show full suggestion as ghost
+      // Suggestions complete what the user started typing only
       if (!value) {
-        return suggestion;
+        return '';
       }
 
       // If suggestion starts with current value, show remainder
@@ -174,8 +180,7 @@ export const GhostTextInput = forwardRef<GhostTextInputRef, GhostTextInputProps>
     // Handle tap on ghost text to accept suggestion
     const handleAcceptSuggestion = () => {
       if (suggestion && ghostText) {
-        // If empty, use full suggestion; otherwise append ghost
-        const newValue = value ? value + ghostText : suggestion;
+        const newValue = value + ghostText;
         onChangeText(newValue.toUpperCase());
       }
     };

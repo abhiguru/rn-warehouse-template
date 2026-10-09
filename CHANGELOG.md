@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased — dispatch photos after submit, registration suggestions (2026-10-09)
+
+- A submitted dispatch's Images tab has an Add Photo button for admin,
+  supervisor and staff (testvm2 known issue 4). Photos could only be attached
+  in the create flow's review step, below the item list, and a dispatch that
+  went in without one could not get one later. It uses the existing
+  register/upload/confirm dispatch photo flow, as GRN details already does.
+- Vehicle registration suggestions appear only after you start typing (testvm2
+  known issue 5). An empty dispatch or GRN form showed the server's most-used
+  registration in full where the placeholder belongs, so it looked like a value
+  left over from a previous session. Form drafts were already cleared on
+  sign-out.
+
 ## Unreleased — revoked sessions after a key rotation (2026-10-09)
 
 - After `rotate-keys.sh` the app now signs out and returns to the login screen
