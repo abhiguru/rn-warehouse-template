@@ -2,14 +2,23 @@ import React, { useRef } from 'react';
 import {
   View,
   Text,
-  TouchableOpacity,
+  Pressable,
   StyleSheet,
   Animated,
   PanResponder,
 } from 'react-native';
 import { router } from 'expo-router';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import theme from '@/theme';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import {
+  fontWeight,
+  iconSize,
+  layout,
+  radius,
+  space,
+  typography,
+} from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
 import { CustomerDispatchItem } from '@/types/order.types';
 
 interface DispatchHistoryCardProps {
@@ -17,10 +26,166 @@ interface DispatchHistoryCardProps {
   onPress?: (dispatch: CustomerDispatchItem) => void;
 }
 
+const formatDate = (dateString: string) => {
+  const date = new Date(dateString);
+  const today = new Date();
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+
+  // Reset time parts for comparison
+  const resetTime = (d: Date) => {
+    d.setHours(0, 0, 0, 0);
+    return d;
+  };
+
+  if (resetTime(new Date(date)).getTime() === resetTime(new Date(today)).getTime()) {
+    return 'Today';
+  } else if (resetTime(new Date(date)).getTime() === resetTime(new Date(yesterday)).getTime()) {
+    return 'Yesterday';
+  }
+  return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+};
+
+const makeStyles = (t: ThemeTokens) => ({
+  cardContainer: {
+    marginBottom: space.sm,
+    position: 'relative' as const,
+  },
+  actionsContainer: {
+    position: 'absolute' as const,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.sm,
+    paddingRight: space.lg,
+  },
+  actionButton: {
+    width: 80,
+    height: '90%' as const,
+    borderRadius: radius.card,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    gap: space.xs,
+    backgroundColor: t.brand.fill,
+  },
+  actionButtonPressed: {
+    backgroundColor: t.brand.fillPressed,
+  },
+  actionText: {
+    ...typography.caption1,
+    fontWeight: fontWeight.semibold,
+    color: t.brand.onFill,
+  },
+  card: {
+    backgroundColor: t.surface.card,
+    borderRadius: radius.card,
+    ...t.shadow[2],
+  },
+  cardTouchable: {
+    padding: space.lg,
+    borderRadius: radius.card,
+    minHeight: layout.objectCellMinHeight,
+  },
+  cardTouchablePressed: {
+    backgroundColor: t.surface.cardPressed,
+  },
+  cardHeader: {
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'center' as const,
+    marginBottom: space.md,
+  },
+  dispatchBadge: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.s6,
+  },
+  dispatchNumber: {
+    ...typography.headline,
+    color: t.text.primary,
+    fontVariant: ['tabular-nums' as const],
+  },
+  dateContainer: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.xs,
+  },
+  dispatchDate: {
+    ...typography.footnote,
+    color: t.text.secondary,
+  },
+  itemSection: {
+    marginBottom: space.md,
+    paddingBottom: space.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.divider,
+  },
+  itemName: {
+    ...typography.headline,
+    color: t.text.primary,
+    marginBottom: space.sm,
+  },
+  metaRow: {
+    flexDirection: 'row' as const,
+    flexWrap: 'wrap' as const,
+    gap: space.md,
+  },
+  metaItem: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.xs,
+  },
+  metaText: {
+    ...typography.subhead,
+    color: t.text.secondary,
+  },
+  metricsContainer: {
+    flexDirection: 'row' as const,
+    justifyContent: 'space-around' as const,
+    gap: space.md,
+  },
+  metricBox: {
+    flex: 1,
+    backgroundColor: t.background.base,
+    paddingVertical: space.md,
+    paddingHorizontal: space.sm,
+    borderRadius: radius.button,
+    alignItems: 'center' as const,
+    gap: space.xs,
+  },
+  metricValue: {
+    ...typography.headline,
+    color: t.text.primary,
+    fontVariant: ['tabular-nums' as const],
+  },
+  metricLabel: {
+    ...typography.caption1,
+    color: t.text.secondary,
+  },
+  noteContainer: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    marginTop: space.md,
+    paddingTop: space.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: t.border.divider,
+    gap: space.sm,
+  },
+  noteText: {
+    ...typography.subhead,
+    flex: 1,
+    color: t.text.primary,
+  },
+});
+
 const DispatchHistoryCard: React.FC<DispatchHistoryCardProps> = ({
   dispatch,
   onPress,
 }) => {
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
   const swipeAnim = useRef(new Animated.Value(0)).current;
 
   // Pan responder for swipe gesture
@@ -75,40 +240,22 @@ const DispatchHistoryCard: React.FC<DispatchHistoryCardProps> = ({
     router.push(`/dispatch-details/${dispatch.dispatch_id}`);
   };
 
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    const today = new Date();
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
-
-    // Reset time parts for comparison
-    const resetTime = (d: Date) => {
-      d.setHours(0, 0, 0, 0);
-      return d;
-    };
-
-    if (resetTime(new Date(date)).getTime() === resetTime(new Date(today)).getTime()) {
-      return 'Today';
-    } else if (resetTime(new Date(date)).getTime() === resetTime(new Date(yesterday)).getTime()) {
-      return 'Yesterday';
-    } else {
-      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-    }
-  };
+  const dateLabel = formatDate(dispatch.disp_date);
+  const bags = `${dispatch.disp_quantity} ${dispatch.disp_quantity === 1 ? 'bag' : 'bags'}`;
 
   return (
     <View style={styles.cardContainer}>
       {/* Hidden action buttons */}
       <View style={styles.actionsContainer}>
-        <TouchableOpacity
-          style={[styles.actionButton, styles.detailsButton]}
+        <Pressable
+          style={({ pressed }) => [styles.actionButton, pressed && styles.actionButtonPressed]}
           onPress={handleViewDetails}
-          accessibilityLabel="View dispatch details"
+          accessibilityLabel={`View dispatch ${dispatch.disp_no}`}
           accessibilityRole="button"
         >
-          <Icon name="eye" size={20} color={theme.colors.white} />
+          <Icon name="eye-outline" size={iconSize.md} color={t.brand.onFill} />
           <Text style={styles.actionText}>Details</Text>
-        </TouchableOpacity>
+        </Pressable>
       </View>
 
       {/* Main card content */}
@@ -121,36 +268,38 @@ const DispatchHistoryCard: React.FC<DispatchHistoryCardProps> = ({
         ]}
         {...panResponder.panHandlers}
       >
-        <TouchableOpacity
+        <Pressable
           onPress={handleCardPress}
-          activeOpacity={0.7}
-          style={styles.cardTouchable}
+          style={({ pressed }) => [styles.cardTouchable, pressed && styles.cardTouchablePressed]}
+          accessibilityRole="button"
+          accessibilityLabel={`Dispatch ${dispatch.disp_no}, ${dispatch.grnItems_item_name}, ${bags}, ${dateLabel}`}
+          accessibilityHint="Opens the dispatch"
         >
           {/* Card Header */}
           <View style={styles.cardHeader}>
             <View style={styles.dispatchBadge}>
-              <Icon name="package-variant" size={16} color={theme.colors.blue[700]} />
-              <Text style={styles.dispatchNumber}>#{dispatch.disp_no}</Text>
+              <Icon name="truck-delivery-outline" size={iconSize.md} color={t.brand.tint} />
+              <Text style={styles.dispatchNumber}>Dispatch {dispatch.disp_no}</Text>
             </View>
             <View style={styles.dateContainer}>
-              <Text style={styles.dispatchDate}>{formatDate(dispatch.disp_date)}</Text>
-              <Icon name="chevron-right" size={18} color={theme.colors.gray[400]} />
+              <Text style={styles.dispatchDate}>{dateLabel}</Text>
+              <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />
             </View>
           </View>
 
           {/* Item Information */}
           <View style={styles.itemSection}>
-            <Text style={styles.itemName} numberOfLines={1}>
+            <Text style={styles.itemName} numberOfLines={2}>
               {dispatch.grnItems_item_name}
             </Text>
             <View style={styles.metaRow}>
               <View style={styles.metaItem}>
-                <Icon name="clipboard-list" size={14} color={theme.colors.gray[500]} />
-                <Text style={styles.metaText}>GRN: {dispatch.grns_gr_no}</Text>
+                <Icon name="package-down" size={iconSize.sm} color={t.icon.secondary} />
+                <Text style={styles.metaText}>GRN {dispatch.grns_gr_no}</Text>
               </View>
               {dispatch.grnItems_rack && (
                 <View style={styles.metaItem}>
-                  <Icon name="map-marker" size={14} color={theme.colors.gray[500]} />
+                  <Icon name="view-grid-outline" size={iconSize.sm} color={t.icon.secondary} />
                   <Text style={styles.metaText}>Rack {dispatch.grnItems_rack}</Text>
                 </View>
               )}
@@ -161,7 +310,7 @@ const DispatchHistoryCard: React.FC<DispatchHistoryCardProps> = ({
           <View style={styles.metricsContainer}>
             <View style={styles.metricBox}>
               <Text style={styles.metricValue}>{dispatch.disp_quantity}</Text>
-              <Text style={styles.metricLabel}>units</Text>
+              <Text style={styles.metricLabel}>{dispatch.disp_quantity === 1 ? 'bag' : 'bags'}</Text>
             </View>
             {dispatch.grnItems_weight && (
               <View style={styles.metricBox}>
@@ -182,152 +331,16 @@ const DispatchHistoryCard: React.FC<DispatchHistoryCardProps> = ({
           {/* Note Preview (if exists) */}
           {dispatch.note && (
             <View style={styles.noteContainer}>
-              <Icon name="comment-text-outline" size={16} color={theme.colors.gray[500]} />
+              <Icon name="note-text-outline" size={iconSize.sm} color={t.icon.secondary} />
               <Text style={styles.noteText} numberOfLines={1}>
                 {dispatch.note}
               </Text>
             </View>
           )}
-        </TouchableOpacity>
+        </Pressable>
       </Animated.View>
     </View>
   );
 };
-
-const styles = StyleSheet.create({
-  cardContainer: {
-    marginBottom: theme.spacing.md,
-    position: 'relative',
-  },
-  actionsContainer: {
-    position: 'absolute',
-    right: 0,
-    top: 0,
-    bottom: 0,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingRight: theme.spacing.lg,
-  },
-  actionButton: {
-    width: 80,
-    height: '90%',
-    borderRadius: theme.borderRadius.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
-  },
-  detailsButton: {
-    backgroundColor: theme.colors.blue[600],
-  },
-  actionText: {
-    fontSize: theme.fontSize.xs,
-    color: theme.colors.white,
-    fontWeight: theme.fontWeight.semibold,
-  },
-  card: {
-    backgroundColor: theme.colors.white,
-    borderRadius: theme.borderRadius.xl,
-    ...theme.shadows.md,
-  },
-  cardTouchable: {
-    padding: theme.spacing.lg,
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: theme.spacing.md,
-  },
-  dispatchBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: theme.colors.blue[50],
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: theme.borderRadius.xl,
-    gap: 6,
-  },
-  dispatchNumber: {
-    fontSize: theme.fontSize.base,
-    fontWeight: theme.fontWeight.bold,
-    color: theme.colors.blue[700],
-  },
-  dateContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  dispatchDate: {
-    fontSize: theme.fontSize.sm,
-    color: theme.colors.gray[600],
-    fontWeight: theme.fontWeight.medium,
-  },
-  itemSection: {
-    marginBottom: theme.spacing.md,
-    paddingBottom: theme.spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.gray[100],
-  },
-  itemName: {
-    fontSize: theme.fontSize.lg,
-    fontWeight: theme.fontWeight.semibold,
-    color: theme.colors.gray[900],
-    marginBottom: theme.spacing.sm,
-  },
-  metaRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-  },
-  metaItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  metaText: {
-    fontSize: theme.fontSize.sm,
-    color: theme.colors.gray[600],
-  },
-  metricsContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    gap: 12,
-  },
-  metricBox: {
-    flex: 1,
-    backgroundColor: theme.colors.gray[50],
-    paddingVertical: theme.spacing.md,
-    paddingHorizontal: theme.spacing.sm,
-    borderRadius: theme.borderRadius.lg,
-    alignItems: 'center',
-    gap: 4,
-  },
-  metricValue: {
-    fontSize: theme.fontSize.lg,
-    fontWeight: theme.fontWeight.bold,
-    color: theme.colors.gray[900],
-  },
-  metricLabel: {
-    fontSize: theme.fontSize.xs,
-    color: theme.colors.gray[600],
-    fontWeight: theme.fontWeight.medium,
-  },
-  noteContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: theme.spacing.md,
-    paddingTop: theme.spacing.md,
-    borderTopWidth: 1,
-    borderTopColor: theme.colors.gray[100],
-    gap: 8,
-  },
-  noteText: {
-    flex: 1,
-    fontSize: theme.fontSize.sm,
-    color: theme.colors.gray[600],
-    fontStyle: 'italic',
-  },
-});
 
 export default DispatchHistoryCard;

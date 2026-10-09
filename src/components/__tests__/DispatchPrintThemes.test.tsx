@@ -62,7 +62,6 @@ describe.each(THEMES)('%s %s', (brand, mode) => {
       mode,
       <DispatchGroupCard
         dispatch={{ dispatchId: 'd1', dispNo: '42', dispDate: '2026-10-09', customerName: 'Patel', note: 'Fragile' }}
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         items={[dispatchItem as any]}
       />
     );
@@ -116,10 +115,8 @@ describe.each(THEMES)('%s %s', (brand, mode) => {
       brand,
       mode,
       <GRNItemDispatchTable
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         item={{ id: 'a', item_name: 'Potatoes', qty: 10 } as any}
         dispatches={[
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           { id: 'r1', dispatch_id: 'd1', disp_no: '42', disp_date: '2026-10-09', disp_quantity: 3 } as any,
         ]}
         defaultExpanded

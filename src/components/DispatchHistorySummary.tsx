@@ -2,13 +2,20 @@ import React, { useState } from 'react';
 import {
   View,
   Text,
-  TouchableOpacity,
-  StyleSheet,
-  Animated,
+  Pressable,
   LayoutAnimation,
+  ActivityIndicator,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import theme from '@/theme';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import {
+  iconSize,
+  radius,
+  space,
+  touchTarget,
+  typography,
+} from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
 
 interface DispatchHistorySummaryProps {
   totalDispatches: number;
@@ -18,6 +25,80 @@ interface DispatchHistorySummaryProps {
   isLoading?: boolean;
 }
 
+const formatNumber = (n: number) => new Intl.NumberFormat('en-IN').format(n);
+
+const makeStyles = (t: ThemeTokens) => ({
+  container: {
+    backgroundColor: t.surface.card,
+    marginHorizontal: space.lg,
+    marginTop: space.md,
+    marginBottom: space.sm,
+    borderRadius: radius.card,
+    ...t.shadow[2],
+    overflow: 'hidden' as const,
+  },
+  header: {
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'center' as const,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.md,
+    minHeight: touchTarget,
+    backgroundColor: t.surface.card,
+  },
+  headerPressed: {
+    backgroundColor: t.surface.cardPressed,
+  },
+  headerLeft: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.sm,
+  },
+  headerTitle: {
+    ...typography.headline,
+    color: t.text.primary,
+  },
+  content: {
+    paddingHorizontal: space.lg,
+    paddingBottom: space.lg,
+  },
+  loadingContainer: {
+    paddingVertical: space.xl,
+    alignItems: 'center' as const,
+    gap: space.sm,
+  },
+  loadingText: {
+    ...typography.subhead,
+    color: t.text.secondary,
+  },
+  metricsGrid: {
+    gap: space.sm,
+  },
+  metricRow: {
+    flexDirection: 'row' as const,
+    gap: space.sm,
+  },
+  metricCard: {
+    flex: 1,
+    paddingVertical: space.lg,
+    paddingHorizontal: space.md,
+    borderRadius: radius.card,
+    alignItems: 'center' as const,
+    gap: space.s6,
+    backgroundColor: t.background.base,
+  },
+  metricValue: {
+    ...typography.title3,
+    color: t.text.primary,
+    fontVariant: ['tabular-nums' as const],
+  },
+  metricLabel: {
+    ...typography.footnote,
+    color: t.text.secondary,
+    textAlign: 'center' as const,
+  },
+});
+
 const DispatchHistorySummary: React.FC<DispatchHistorySummaryProps> = ({
   totalDispatches,
   totalQuantity,
@@ -25,6 +106,8 @@ const DispatchHistorySummary: React.FC<DispatchHistorySummaryProps> = ({
   initialQuantity,
   isLoading = false,
 }) => {
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
   const [isExpanded, setIsExpanded] = useState(true);
 
   const toggleExpand = () => {
@@ -32,58 +115,54 @@ const DispatchHistorySummary: React.FC<DispatchHistorySummaryProps> = ({
     setIsExpanded(!isExpanded);
   };
 
+  const metric = (icon: string, value: number, label: string) => (
+    <View
+      style={styles.metricCard}
+      accessible
+      accessibilityLabel={`${formatNumber(value)} ${label}`}
+    >
+      <Icon name={icon} size={iconSize.lg} color={t.brand.tint} />
+      <Text style={styles.metricValue}>{formatNumber(value)}</Text>
+      <Text style={styles.metricLabel}>{label}</Text>
+    </View>
+  );
+
   return (
     <View style={styles.container}>
-      <TouchableOpacity
-        style={styles.header}
+      <Pressable
+        style={({ pressed }) => [styles.header, pressed && styles.headerPressed]}
         onPress={toggleExpand}
-        activeOpacity={0.7}
-        accessibilityLabel={`Summary Statistics, ${isExpanded ? 'collapse' : 'expand'}`}
+        accessibilityLabel="Summary"
         accessibilityRole="button"
+        accessibilityState={{ expanded: isExpanded }}
       >
         <View style={styles.headerLeft}>
-          <Icon name="chart-bar" size={20} color={theme.colors.primary} />
-          <Text style={styles.headerTitle}>Summary Statistics</Text>
+          <Icon name="chart-box-outline" size={iconSize.md} color={t.brand.tint} />
+          <Text style={styles.headerTitle} accessibilityRole="header">Summary</Text>
         </View>
-        <View style={styles.headerRight}>
-          <Icon name={isExpanded ? 'chevron-down' : 'chevron-right'} size={20} color={theme.colors.gray[600]} />
-        </View>
-      </TouchableOpacity>
+        <Icon
+          name={isExpanded ? 'chevron-up' : 'chevron-down'}
+          size={iconSize.md}
+          color={t.icon.secondary}
+        />
+      </Pressable>
 
       {isExpanded && (
         <View style={styles.content}>
           {isLoading ? (
             <View style={styles.loadingContainer}>
-              <Text style={styles.loadingText}>Loading summary...</Text>
+              <ActivityIndicator size="small" color={t.brand.tint} />
+              <Text style={styles.loadingText}>Loading summary…</Text>
             </View>
           ) : (
             <View style={styles.metricsGrid}>
-              {/* First Row */}
               <View style={styles.metricRow}>
-                <View style={[styles.metricCard, styles.metricCardPrimary]}>
-                  <Icon name="package-variant" size={24} color={theme.colors.blue[600]} />
-                  <Text style={styles.metricValue}>{totalDispatches}</Text>
-                  <Text style={styles.metricLabel}>Dispatches</Text>
-                </View>
-                <View style={[styles.metricCard, styles.metricCardSecondary]}>
-                  <Icon name="chart-bar" size={24} color={theme.colors.green[600]} />
-                  <Text style={styles.metricValue}>{totalQuantity.toLocaleString()}</Text>
-                  <Text style={styles.metricLabel}>Units</Text>
-                </View>
+                {metric('truck-delivery-outline', totalDispatches, totalDispatches === 1 ? 'dispatch' : 'dispatches')}
+                {metric('cube-outline', totalQuantity, 'bags dispatched')}
               </View>
-
-              {/* Second Row */}
               <View style={styles.metricRow}>
-                <View style={[styles.metricCard, styles.metricCardAccent]}>
-                  <Icon name="scale-balance" size={24} color={theme.colors.orange[600]} />
-                  <Text style={styles.metricValue}>{totalWeight.toLocaleString()}</Text>
-                  <Text style={styles.metricLabel}>kg</Text>
-                </View>
-                <View style={[styles.metricCard, styles.metricCardNeutral]}>
-                  <Icon name="package-down" size={24} color={theme.colors.purple[600]} />
-                  <Text style={styles.metricValue}>{initialQuantity.toLocaleString()}</Text>
-                  <Text style={styles.metricLabel}>Initial Qty</Text>
-                </View>
+                {metric('scale-balance', totalWeight, 'kg')}
+                {metric('package-down', initialQuantity, 'bags received')}
               </View>
             </View>
           )}
@@ -92,86 +171,5 @@ const DispatchHistorySummary: React.FC<DispatchHistorySummaryProps> = ({
     </View>
   );
 };
-
-const styles = StyleSheet.create({
-  container: {
-    backgroundColor: theme.colors.white,
-    marginHorizontal: theme.spacing.lg,
-    marginTop: theme.spacing.md,
-    marginBottom: theme.spacing.sm,
-    borderRadius: theme.borderRadius.xl,
-    ...theme.shadows.md,
-    overflow: 'hidden',
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: theme.spacing.lg,
-    backgroundColor: theme.colors.blue[50],
-  },
-  headerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  headerTitle: {
-    fontSize: theme.fontSize.base,
-    fontWeight: theme.fontWeight.semibold,
-    color: theme.colors.gray[900],
-  },
-  headerRight: {
-    padding: theme.spacing.xs,
-  },
-  content: {
-    padding: theme.spacing.lg,
-  },
-  loadingContainer: {
-    paddingVertical: theme.spacing.xl,
-    alignItems: 'center',
-  },
-  loadingText: {
-    fontSize: theme.fontSize.sm,
-    color: theme.colors.gray[500],
-  },
-  metricsGrid: {
-    gap: 12,
-  },
-  metricRow: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  metricCard: {
-    flex: 1,
-    paddingVertical: theme.spacing.lg,
-    paddingHorizontal: theme.spacing.md,
-    borderRadius: theme.borderRadius.lg,
-    alignItems: 'center',
-    gap: 6,
-  },
-  metricCardPrimary: {
-    backgroundColor: theme.colors.blue[50],
-  },
-  metricCardSecondary: {
-    backgroundColor: theme.colors.green[50],
-  },
-  metricCardAccent: {
-    backgroundColor: theme.colors.orange[50],
-  },
-  metricCardNeutral: {
-    backgroundColor: theme.colors.purple[50],
-  },
-  metricValue: {
-    fontSize: theme.fontSize.xl,
-    fontWeight: theme.fontWeight.bold,
-    color: theme.colors.gray[900],
-  },
-  metricLabel: {
-    fontSize: theme.fontSize.xs,
-    color: theme.colors.gray[600],
-    textAlign: 'center',
-    fontWeight: theme.fontWeight.medium,
-  },
-});
 
 export default DispatchHistorySummary;

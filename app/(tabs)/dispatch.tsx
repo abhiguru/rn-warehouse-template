@@ -11,30 +11,27 @@
  */
 
 import React from 'react';
-import { View, StyleSheet } from 'react-native';
+import { View } from 'react-native';
 import { DispatchFlashList } from '@/components/lists';
 import { ListErrorBoundary } from '@/components/list/ListErrorBoundary';
-import { useTheme } from '@/hooks/useTheme';
+import { useThemedStyles } from '@/hooks/useTheme';
+import type { ThemeTokens } from '@/theme/tokens';
+
+const makeStyles = (t: ThemeTokens) => ({
+  container: {
+    flex: 1,
+    backgroundColor: t.background.base,
+  },
+});
 
 export default function DispatchTab() {
-  const { colors: themeColors, isDarkMode } = useTheme();
+  const styles = useThemedStyles(makeStyles);
 
   return (
-    <View
-      style={[
-        styles.container,
-        { backgroundColor: isDarkMode ? themeColors.gray[900] : themeColors.gray[50] },
-      ]}
-    >
+    <View style={styles.container}>
       <ListErrorBoundary listName="dispatches">
         <DispatchFlashList />
       </ListErrorBoundary>
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-});
