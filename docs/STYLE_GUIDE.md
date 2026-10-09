@@ -388,7 +388,7 @@ Rules:
 | Dispatch (activity report) | has quantity / no quantity | Positive / Critical | Complete / Pending |
 | Stock age | 0–120 / 121–240 / 241–364 / over 364 days | Positive / Informative / Critical / Negative | 0–120 days … |
 | Sensor health | `healthy` / `warning` / `critical` | Positive / Critical / Negative | Healthy / Warning / Critical |
-| Sensor battery | `GOOD` / `LOW` / `CRITICAL` | Positive / Critical / Negative | Battery good / low / critical |
+| Sensor battery | `GOOD` / `LOW` / `CRITICAL` | Positive / Critical / Negative | In lists: Battery good / Battery low / Battery critical. In a row labelled Battery: Good / Low / Critical |
 | Sensor connection | online / stale / offline | Positive / Critical / Negative | Online / No recent data / Offline |
 | Printer | online / busy / offline or error | Positive / Informative / Negative | Online / Busy / Offline |
 | Print job | `pending` / `printing` / `completed` / `failed` / `cancelled` | Neutral / Informative / Positive / Negative / Neutral | Waiting / Printing / Printed / Failed / Cancelled |
@@ -402,6 +402,7 @@ Show every status with the `StatusTag` component (`@/components/ui`), which pair
 Not statuses, so never status-coloured by meaning:
 
 - **Categories** such as user roles, price types or packaging: neutral tags (`status="neutral"`, usually `icon={null}`). At most one category in a set may use informative to stand out. Never brand colours.
+- **Item details** on cells (weight, rack, mark, photos) are neutral `StatusTag`s with their glyph, worded the same everywhere: "1,250.5 kg", "Rack B-14", "Mark PT", "3 photos". On object pages, contact and metadata facts use `InfoChip`.
 - **A row being edited** in a list: `surface.selected` background and an informative "Editing" tag.
 - **A row already in the current order**: `brand.subtle` background, a 4 px `brand.tint` bar on the leading edge and an "In order" tag with a check.
 - **A value changed from its default**: a "Custom" tag in `brand.subtle` with `brand.tint` text and `pencil-outline`.
@@ -721,10 +722,11 @@ Use the shared helpers in `src/utils/formatters.ts`; never format by string conc
 | `formatDate(d, 'long')` | 9 October 2026 |
 | `formatTime(d)` / `formatDateTime(d)` | 4:05 pm / 9 Oct 2026, 4:05 pm |
 | `formatSectionDate(d)` | Today, Yesterday, Tue, 6 Oct |
+| `formatMonth(d)` / `'short'` / `'narrow'` | October 2026 (timelines) / Oct 2026 (report rows) / Oct (chart axes) |
 | `formatRelativeTime(d)` | 5 min ago, 3 h ago, then the short date |
 | `formatMobile(n)` | +91 98765 43210 |
 | `formatCount(n, 'item')` | 1 item, 12 items (`formatCount(n, 'dispatch', 'dispatches')`) |
-| `formatCurrency(n)` / invoice `formatInvoiceAmount(n)` | ₹1,23,457 / ₹1,23,456.50 |
+| `formatCurrency(n, { maximumFractionDigits: 0 })` / invoice `formatInvoiceAmount(n)` | ₹1,23,457 in summaries and KPIs / ₹1,23,456.50 on invoices and their rows |
 | `formatWeight(n)` | 1,250.5 kg |
 | `formatTemperature(n)` | −18.5°C |
 
@@ -818,6 +820,7 @@ Sheets with an on-screen keypad (the GRN picker in dispatch) keep the search fie
 | `filters/AppliedFiltersBar.tsx` | Row of `FilterChip`s plus a tertiary "Clear all". |
 | `common/overview-tab/InfoChip.tsx` | Neutral tag: `status.neutral.background`, `status.neutral.text`. |
 | `ui/StatusTag.tsx` | `status.*.background`, `status.*.text`, the standard icon from [3.5](#35-status-colours) at `iconSize.xs`, `radius.field`, `caption1` weight 600. Use it for every status; do not build local tags. |
+| `ui/Fab.tsx` | Floating create button for list reports, see 14.1. |
 | `ui/Avatar.tsx` | Initials (first letters of the first two words) on the avatar palette colour for the record id; sizes `sm` 32, `md` 44, `lg` 60. |
 | Count badge | A "needs action" count (tab bar items waiting for you) uses `destructive.fill` with `destructive.onFill`. Plain counts (section headers, detail tabs, active filters) use `brand.fill` with `brand.onFill`. Minimum 18 px, `caption2`. |
 | `StockIndicator.tsx` | Bar track `brand.subtleStrong`; fill and tag follow the single stock rule in [3.5](#35-status-colours) (in stock, low stock below 20%, out of stock); text "120 of 200 bags" beside it; `flashRed` pulses once, not in a loop. |
@@ -838,7 +841,7 @@ Sheets with an on-screen keypad (the GRN picker in dispatch) keep the search fie
 | `list/LoadingState.tsx` | Use skeletons for lists and object pages; a centred spinner in `brand.tint` only for short unknown waits. |
 | `list/ListErrorBoundary.tsx`, `ErrorBoundary.tsx`, `FeatureErrorBoundary.tsx` | Icon `alert-circle-outline` in `status.negative.text`, title "Something went wrong", plain-language cause, "Try again" secondary button. No stack trace outside development builds. |
 
-Swipe actions on rows: each action is at least 72 wide and full row height, with an icon over a `caption1` weight 600 label. The primary action (Edit) uses `brand.fill` with `brand.onFill`; others use `surface.cardActive` with `text.primary`; destructive ones use `destructive.fill` with `destructive.onFill` and ask for confirmation. Destructive and state-changing actions (delete, deactivate) live in swipe actions or on the object page, never as a one-tap icon in the row.
+Swipe actions on rows: each action is at least 72 wide and full row height, with an icon over a `caption1` weight 600 label. The primary action (Edit) and a reversible state action (Activate) use `brand.fill` with `brand.onFill`; others use `surface.cardActive` with `text.primary`; destructive ones (Delete, Deactivate) use `destructive.fill` with `destructive.onFill` and ask for confirmation. Each swipe action is also offered to screen readers as an accessibility action. Destructive and state-changing actions (delete, deactivate) live in swipe actions or on the object page, never as a one-tap icon in the row.
 
 A surcharge (a negative discount) shows with a plus sign in `text.primary`; a discount shows with a minus sign in `status.positive.text`.
 
@@ -850,6 +853,7 @@ The three `FioriDataTable` copies follow one spec and are merged during migratio
 - Body rows: `body` or `subhead`, `text.primary`, min height 44 (36 for read-only compact tables), dividers `border.divider`. Alternate shading is not used.
 - Numbers are right-aligned with tabular figures. Text is left-aligned. Status uses a status tag.
 - Totals row: weight 600, top border 1 px `border.separator`.
+- Rate columns may carry the unit in the header ("Charge (₹)") and show plain grouped numbers in the cells.
 - On phones, tables with more than three columns scroll horizontally with the first column pinned, or turn into object cells. Show a fade at the scroll edge.
 - Editable cells follow the editable-cell rule in section 13.2.
 - Empty cells show "—".
@@ -947,7 +951,7 @@ The main pattern for orders, GRNs, dispatches, invoices, customers, items and us
 2. Quick filter chips under the header (period or status).
 3. Applied filters bar when any filter is set.
 4. The list of object cells, newest first, with pull to refresh and infinite scroll.
-5. A primary create action: a floating action button (`brand.fill` with a `plus` in `brand.onFill`, `shadow[3]`, 56 px, bottom right above the tab bar, label "Create GRN" and so on) for the role that can create, hidden for others. Lists with an A–Z index rail (customers, items) put Create in the header instead, because a floating button would cover the rail.
+5. A primary create action: the shared `ui/Fab` (`brand.fill` with a `plus` in `brand.onFill`, `shadow[3]`, 56 px, bottom right above the tab bar, label "Create GRN" and so on) for the roles that can create, hidden for others; the list adds `FAB_CLEARANCE` to its bottom padding. Customers create their own orders, so the Orders button shows for every role. Lists with an A–Z index rail (customers, items) put Create in the header instead, because a floating button would cover the rail.
 6. Empty, filtered-empty, loading (skeleton), error and offline states.
 
 ### 14.2 Object page
@@ -965,7 +969,7 @@ GRN, dispatch and invoice creation.
 
 - A step indicator at the top; step names are nouns ("Customer", "Items", "Review").
 - One topic per step. The last step is always Review, with an edit link per section.
-- Every step has the same bottom bar on `surface.card` with `shadow[3]` and the bottom inset: the first step shows Next, middle steps Back and Next, the review step Back and the save action ("Create GRN", "Save dispatch"). Next validates only the current step. Swiping between steps is a shortcut, never the only way.
+- Every step has the same bottom bar on `surface.card` with `shadow[3]` and the bottom inset, laid out below the scrolling content (it never floats over it): the first step shows Next, middle steps Back and Next, the review step Back and the save action ("Create GRN", "Save dispatch"). Next validates only the current step. Swiping between steps is a shortcut, never the only way.
 - Section edit links on the review step are tertiary "Edit" buttons in `brand.tint`.
 - Drafts are kept on the phone. Leaving with unsaved changes asks "Discard this GRN?".
 - After saving, show a success dialog with the document number and actions (Print, Share, View, Create another).
