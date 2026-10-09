@@ -8,10 +8,11 @@
  */
 import React, { useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
-import { Stack, router } from 'expo-router';
+import { Stack } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useTheme, useThemedStyles } from '@/hooks/useTheme';
+import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
 import {
   AA,
   BRANDS,
@@ -181,9 +182,7 @@ export default function StyleGuideScreen() {
       <Stack.Screen options={{ headerShown: false }} />
       <EdgeToEdgeStatusBar barStyle={t.statusBarStyle} />
       <View style={[styles.header, { paddingTop: insets.top + space.sm }]}>
-        <Pressable onPress={() => router.back()} accessibilityRole="button" accessibilityLabel="Back" hitSlop={8}>
-          <Icon name="arrow-left" size={iconSize.lg} color={t.icon.primary} />
-        </Pressable>
+        <HeaderBackButton />
         <Text style={styles.headerTitle} accessibilityRole="header">Style guide</Text>
       </View>
       <ScrollView contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + space.xxxl }]}>

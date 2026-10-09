@@ -8,7 +8,7 @@
  */
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { View, Text, Pressable, Platform } from 'react-native';
+import { View, Text, Platform } from 'react-native';
 import { DetailSkeleton } from '@/components/skeletons';
 import { isAbortError } from '@/hooks/useAbortableFetch';
 import { useLocalSearchParams, router, Stack } from 'expo-router';
@@ -47,7 +47,8 @@ import {
   GRNImageData,
 } from '@/components/grn-details';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
-import { iconSize, radius, space, touchTarget, typography } from '@/theme/tokens';
+import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
+import { iconSize, radius, space, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { Button } from '@/components/ui/Button';
 import { deleteGRNImage, uploadGRNImage } from '@/features/grn/services/imageUploadService';
@@ -94,23 +95,6 @@ const makeStyles = (t: ThemeTokens) => ({
   // Header back button
   // Custom back button (same on every headerless screen): platform glyph,
   // brand.tint, the word "Back", at least touchTarget in size (§8)
-  backButton: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    alignSelf: 'flex-start' as const,
-    minWidth: touchTarget,
-    minHeight: touchTarget,
-    paddingHorizontal: space.xs,
-    borderRadius: radius.button,
-  },
-  backButtonPressed: {
-    backgroundColor: t.brand.subtle,
-  },
-  backButtonText: {
-    ...typography.body,
-    color: t.brand.tint,
-    marginLeft: space.xxs,
-  },
   // Native stack titles accept only font size, weight and colour.
   headerTitle: {
     fontSize: typography.headline.fontSize,
@@ -660,15 +644,7 @@ function GRNDetailScreen() {
           title: `GRN ${grn.gr_no}`,
           // Custom back button so Back always returns, even after a deep link
           headerLeft: () => (
-            <Pressable
-              onPress={() => router.back()}
-              style={({ pressed }) => [styles.backButton, pressed && styles.backButtonPressed]}
-              accessibilityRole="button"
-              accessibilityLabel="Back"
-            >
-              <Icon name={Platform.OS === 'ios' ? 'chevron-left' : 'arrow-left'} size={iconSize.lg} color={t.brand.tint} />
-              <Text style={styles.backButtonText}>Back</Text>
-            </Pressable>
+            <HeaderBackButton />
           ),
         }}
       />

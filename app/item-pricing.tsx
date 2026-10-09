@@ -16,6 +16,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
 import {
   fontWeight,
   iconSize,
@@ -655,14 +656,7 @@ const ItemPricingScreen: React.FC = () => {
     <View style={[styles.header, { paddingTop: insets.top + space.sm }]}>
       <View style={styles.headerContent}>
         <View style={styles.titleRow}>
-          <Pressable
-            style={styles.iconButton}
-            onPress={() => router.back()}
-            accessibilityRole="button"
-            accessibilityLabel="Back"
-          >
-            <Icon name="arrow-left" size={iconSize.lg} color={t.icon.primary} />
-          </Pressable>
+          <HeaderBackButton />
           <Text style={styles.title} accessibilityRole="header" numberOfLines={1}>
             Item pricing
           </Text>

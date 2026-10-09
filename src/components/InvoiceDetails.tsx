@@ -11,14 +11,14 @@ import {
   ScrollView,
   RefreshControl,
   Text,
-  Pressable,
   ActivityIndicator,
   StyleSheet,
 } from 'react-native';
 import { Portal, Snackbar } from 'react-native-paper';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
-import { fontWeight, iconSize, radius, space, touchTarget, typography } from '@/theme/tokens';
+import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
+import { fontWeight, iconSize, radius, space, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import {
   getInvoiceDetails,
@@ -52,14 +52,6 @@ const makeStyles = (t: ThemeTokens) => ({
   },
   loadingText: { ...typography.body, color: t.text.secondary },
   topBar: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: space.sm },
-  backButton: {
-    width: touchTarget,
-    height: touchTarget,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    borderRadius: radius.pill,
-  },
-  backButtonPressed: { backgroundColor: t.surface.cardPressed },
   pageTitle: { ...typography.title2, color: t.text.primary, flex: 1 },
   card: {
     backgroundColor: t.surface.card,
@@ -276,14 +268,7 @@ const InvoiceDetails: React.FC<InvoiceDetailsProps> = ({ invoiceId, onBack }) =>
       <>
         <View style={styles.topBar}>
           {onBack && (
-            <Pressable
-              onPress={onBack}
-              style={({ pressed }) => [styles.backButton, pressed && styles.backButtonPressed]}
-              accessibilityRole="button"
-              accessibilityLabel="Go back"
-            >
-              <Icon name="arrow-left" size={iconSize.lg} color={t.icon.primary} />
-            </Pressable>
+            <HeaderBackButton onPress={onBack} />
           )}
           <Text style={styles.pageTitle} accessibilityRole="header">Invoice details</Text>
         </View>

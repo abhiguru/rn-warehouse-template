@@ -8,10 +8,11 @@ import {
   RefreshControl,
   ActivityIndicator,
 } from 'react-native';
-import { useLocalSearchParams, router } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
 import {
   fontWeight,
   iconSize,
@@ -537,14 +538,7 @@ const CustomerDispatches: React.FC = () => {
       <EdgeToEdgeStatusBar barStyle={t.statusBarStyle} />
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + space.sm }]}>
-        <Pressable
-          onPress={() => router.back()}
-          style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
-          accessibilityLabel="Back"
-          accessibilityRole="button"
-        >
-          <Icon name="arrow-left" size={iconSize.lg} color={t.brand.tint} />
-        </Pressable>
+        <HeaderBackButton />
         <View style={styles.headerContent}>
           <Text style={styles.title} accessibilityRole="header" numberOfLines={2}>
             Dispatch history

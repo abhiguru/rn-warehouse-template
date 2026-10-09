@@ -27,6 +27,7 @@ import type { DateTimePickerEvent } from '@react-native-community/datetimepicker
 import DateTimePicker from '@react-native-community/datetimepicker';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
 import {
   fontWeight,
   iconSize,
@@ -541,14 +542,7 @@ const ItemPricingFormScreen: React.FC = () => {
       <View style={styles.container}>
         {/* Header */}
         <View style={[styles.header, { paddingTop: insets.top + space.xs }]}>
-          <Pressable
-            style={styles.iconButton}
-            onPress={() => router.back()}
-            accessibilityRole="button"
-            accessibilityLabel="Back"
-          >
-            <Icon name="arrow-left" size={iconSize.lg} color={t.icon.primary} />
-          </Pressable>
+          <HeaderBackButton />
           <Text style={styles.headerTitle} accessibilityRole="header" numberOfLines={1}>
             {getTitle()}
           </Text>

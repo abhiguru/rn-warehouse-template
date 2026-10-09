@@ -38,6 +38,7 @@ import {
   InvoiceLineItem,
 } from '@/components/invoice-details';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
 import { iconSize, layout, radius, space, touchTarget, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 
@@ -76,15 +77,6 @@ const makeStyles = (t: ThemeTokens) => ({
   secondaryButtonPressed: { backgroundColor: t.brand.subtle },
   secondaryButtonText: { ...typography.callout, color: t.brand.tint },
   navBar: { backgroundColor: t.surface.header },
-  backButton: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    minHeight: touchTarget,
-    minWidth: touchTarget,
-    paddingRight: space.sm,
-    marginLeft: -space.xs,
-  },
-  backButtonText: { ...typography.body, color: t.brand.tint },
   headerTitleContainer: { alignItems: 'center' as const, justifyContent: 'center' as const },
   headerTitle: { ...typography.headline, color: t.text.primary, textAlign: 'center' as const },
   headerSubtitle: {
@@ -473,16 +465,7 @@ function InvoiceDetailScreen() {
           headerTitleAlign: 'center',
           // Custom back button to ensure it always works
           headerLeft: () => (
-            <Pressable
-              onPress={() => router.back()}
-              style={styles.backButton}
-              hitSlop={space.sm}
-              accessibilityRole="button"
-              accessibilityLabel="Go back"
-            >
-              <Icon name="chevron-left" size={iconSize.lg} color={t.brand.tint} />
-              <Text style={styles.backButtonText}>Back</Text>
-            </Pressable>
+            <HeaderBackButton />
           ),
           headerTitle: () => (
             <View

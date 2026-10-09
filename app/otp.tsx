@@ -32,13 +32,13 @@ import { Button } from '@/components/ui/Button';
 import { parseErrorToFriendly } from '@/utils/errorHandler';
 import { useRateLimitCountdown } from '@/hooks/useRateLimitCountdown';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
 import {
   fontWeight,
   iconSize,
   layout,
   radius,
   space,
-  touchTarget,
   typography,
   type ThemeTokens,
 } from '@/theme/tokens';
@@ -236,15 +236,7 @@ export default function OTPScreen() {
       />
 
       {/* Navigation bar - back button, outside the ScrollView */}
-      <Pressable
-        style={({ pressed }) => [styles.backButton, styles.backButtonNav, pressed && styles.backButtonPressed]}
-        onPress={handleBack}
-        accessibilityRole="button"
-        accessibilityLabel="Back"
-      >
-        <Icon name={Platform.OS === 'ios' ? 'chevron-left' : 'arrow-left'} size={iconSize.lg} color={t.brand.tint} />
-        <Text style={styles.backButtonText}>Back</Text>
-      </Pressable>
+      <HeaderBackButton onPress={handleBack} style={styles.backButton} />
 
       <KeyboardAvoidingView
         style={styles.keyboardView}
@@ -449,24 +441,9 @@ const makeStyles = (t: ThemeTokens) => ({
   // Custom back button (same on every headerless screen): platform glyph,
   // brand.tint, the word "Back", at least touchTarget in size (§8)
   backButton: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
     alignSelf: 'flex-start' as const,
-    minWidth: touchTarget,
-    minHeight: touchTarget,
-    paddingHorizontal: space.xs,
-    borderRadius: radius.button,
-  },
-  backButtonPressed: {
-    backgroundColor: t.brand.subtle,
-  },
-  backButtonText: {
-    ...typography.body,
-    color: t.brand.tint,
-    marginLeft: space.xxs,
-  },
-  backButtonNav: {
     marginLeft: space.xs,
+    paddingLeft: space.xs,
   },
 
   content: {

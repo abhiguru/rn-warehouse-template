@@ -28,6 +28,7 @@ import {
   DEFAULT_CUSTOMER_FILTERS,
 } from '@/types/customer.types';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
 import {
   fontWeight,
   iconSize,
@@ -358,16 +359,7 @@ export default function CustomersScreen() {
           headerTintColor: t.brand.tint,
           headerTitleAlign: 'center',
           headerLeft: () => (
-            <Pressable
-              onPress={() => router.back()}
-              style={styles.backButton}
-              hitSlop={space.sm}
-              accessibilityRole="button"
-              accessibilityLabel="Back"
-            >
-              <Icon name="chevron-left" size={iconSize.xl} color={t.brand.tint} />
-              <Text style={styles.backButtonText}>Back</Text>
-            </Pressable>
+            <HeaderBackButton />
           ),
           headerTitle: () => (
             <View style={styles.titleContainer} accessible accessibilityRole="header">
@@ -664,18 +656,6 @@ const makeStyles = (t: ThemeTokens) => ({
   },
 
   // Header styles
-  backButton: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    minHeight: touchTarget,
-    paddingRight: space.sm,
-    marginLeft: -space.sm,
-  },
-  backButtonText: {
-    ...typography.body,
-    color: t.brand.tint,
-    marginLeft: -space.xs,
-  },
   titleContainer: {
     alignItems: 'center' as const,
     justifyContent: 'center' as const,

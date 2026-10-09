@@ -19,6 +19,7 @@ import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
 import { useAppSelector, useAppDispatch } from '@/store/hooks';
 import { logout } from '@/store/slices/authSlice';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
 import {
   fontWeight,
   iconSize,
@@ -132,15 +133,7 @@ const UserProfileScreen: React.FC = () => {
 
       {/* Fiori Navigation Bar */}
       <View style={styles.navigationBar}>
-        <Pressable
-          style={styles.navBackButton}
-          onPress={() => router.back()}
-          accessibilityRole="button"
-          accessibilityLabel="Back"
-        >
-          <Icon name="chevron-left" size={iconSize.xl} color={t.brand.tint} />
-          <Text style={styles.navBackText}>Back</Text>
-        </Pressable>
+        <HeaderBackButton style={styles.navBackButton} />
         <Text style={styles.navTitle} accessibilityRole="header">
           Profile
         </Text>
@@ -354,15 +347,7 @@ const makeStyles = (t: ThemeTokens) => ({
     borderBottomColor: t.border.divider,
   },
   navBackButton: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    minHeight: touchTarget,
-    paddingRight: space.lg,
     minWidth: 70,
-  },
-  navBackText: {
-    ...typography.body,
-    color: t.brand.tint,
   },
   navTitle: {
     ...typography.headline,

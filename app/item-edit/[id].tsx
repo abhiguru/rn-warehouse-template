@@ -26,6 +26,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
 import {
   fontWeight,
   iconSize,
@@ -241,14 +242,7 @@ const ItemEditScreen: React.FC = () => {
     <View style={styles.container}>
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + space.xs }]}>
-        <Pressable
-          style={styles.iconButton}
-          onPress={handleBack}
-          accessibilityRole="button"
-          accessibilityLabel="Back"
-        >
-          <Icon name="arrow-left" size={iconSize.lg} color={t.icon.primary} />
-        </Pressable>
+        <HeaderBackButton onPress={handleBack} />
         <Text style={styles.headerTitle} accessibilityRole="header" numberOfLines={1}>
           Edit item
         </Text>
@@ -421,12 +415,6 @@ const makeStyles = (t: ThemeTokens) => ({
     backgroundColor: t.surface.header,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: t.border.divider,
-  },
-  iconButton: {
-    minWidth: touchTarget,
-    minHeight: touchTarget,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
   },
   headerTitle: {
     ...typography.headline,

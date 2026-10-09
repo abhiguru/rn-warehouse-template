@@ -21,6 +21,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
 import { iconSize, radius, space, touchTarget, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
@@ -119,18 +120,6 @@ const makeStyles = (t: ThemeTokens) => ({
   tertiaryButtonText: {
     ...typography.callout,
     color: t.brand.tint,
-  },
-  backButton: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    minHeight: touchTarget,
-    paddingRight: space.sm,
-    marginLeft: -space.sm,
-  },
-  backButtonText: {
-    ...typography.body,
-    color: t.brand.tint,
-    marginLeft: -space.xs,
   },
   headerTitle: {
     ...typography.headline,
@@ -546,16 +535,7 @@ function DispatchDetailScreen() {
           headerTitleAlign: 'center',
           // Custom back button to ensure it always works
           headerLeft: () => (
-            <Pressable
-              onPress={() => router.back()}
-              style={styles.backButton}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              accessibilityRole="button"
-              accessibilityLabel="Go back"
-            >
-              <Icon name="chevron-left" size={iconSize.lg + 4} color={t.brand.tint} />
-              <Text style={styles.backButtonText}>Back</Text>
-            </Pressable>
+            <HeaderBackButton />
           ),
           headerTitle: () => (
             <Text style={styles.headerTitle} numberOfLines={1} accessibilityRole="header">

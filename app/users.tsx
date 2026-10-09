@@ -25,6 +25,7 @@ import { adminUserService } from '@/services/admin-user-service';
 import { UserListItem, UserFilters, UserRole } from '@/types/user.types';
 import { useAppSelector } from '@/store/hooks';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
 import {
   fontWeight,
   iconSize,
@@ -244,16 +245,7 @@ export default function UsersScreen() {
     headerTintColor: t.brand.tint,
     headerTitleAlign: 'center' as const,
     headerLeft: () => (
-      <Pressable
-        onPress={() => router.back()}
-        style={styles.backButton}
-        hitSlop={space.sm}
-        accessibilityRole="button"
-        accessibilityLabel="Back"
-      >
-        <Icon name="chevron-left" size={iconSize.xl} color={t.brand.tint} />
-        <Text style={styles.backButtonText}>Back</Text>
-      </Pressable>
+      <HeaderBackButton />
     ),
   };
 
@@ -419,18 +411,6 @@ const makeStyles = (t: ThemeTokens) => ({
   container: {
     flex: 1,
     backgroundColor: t.background.base,
-  },
-  backButton: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    minHeight: touchTarget,
-    paddingRight: space.sm,
-    marginLeft: -space.sm,
-  },
-  backButtonText: {
-    ...typography.body,
-    color: t.brand.tint,
-    marginLeft: -space.xs,
   },
   titleContainer: {
     alignItems: 'center' as const,

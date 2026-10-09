@@ -18,7 +18,7 @@ import {
   ActivityIndicator,
   Switch,
 } from 'react-native';
-import { router, Stack, useLocalSearchParams } from 'expo-router';
+import { Stack, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -33,6 +33,7 @@ import { useAppSelector } from '@/store/hooks';
 import { RolePickerBottomSheet } from '@/components/RolePickerBottomSheet';
 import { SearchableBottomSheet } from '@/components/common';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
 import {
   fontWeight,
   iconSize,
@@ -357,16 +358,7 @@ export default function UserEditScreen() {
     headerTintColor: t.brand.tint,
     headerTitleAlign: 'center' as const,
     headerLeft: () => (
-      <Pressable
-        onPress={() => router.back()}
-        style={styles.backButton}
-        hitSlop={space.sm}
-        accessibilityRole="button"
-        accessibilityLabel="Back"
-      >
-        <Icon name="chevron-left" size={iconSize.xl} color={t.brand.tint} />
-        <Text style={styles.backButtonText}>Back</Text>
-      </Pressable>
+      <HeaderBackButton />
     ),
     headerTitle: () => (
       <Text style={styles.title} accessibilityRole="header">
@@ -633,18 +625,6 @@ const makeStyles = (t: ThemeTokens) => ({
     alignItems: 'center' as const,
     paddingHorizontal: space.xxl,
     gap: space.sm,
-  },
-  backButton: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    minHeight: touchTarget,
-    paddingRight: space.sm,
-    marginLeft: -space.sm,
-  },
-  backButtonText: {
-    ...typography.body,
-    color: t.brand.tint,
-    marginLeft: -space.xs,
   },
   title: {
     ...typography.headline,
