@@ -1172,23 +1172,19 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({
             );
           })}
         </View>
-        {/* Expand all / collapse all */}
+        {/* Expand all / collapse all: icon button so the sort chips keep one row on phones */}
         <Pressable
-          style={({ pressed }) => [styles.chip, styles.expandAllBtn, pressed && styles.chipPressed]}
-          hitSlop={{ top: 8, bottom: 8 }}
+          style={({ pressed }) => [styles.expandAllBtn, pressed && styles.chipPressed]}
           onPress={handleToggleAllExpanded}
           accessibilityRole="button"
-          accessibilityLabel={allExpanded ? 'Hide items of every GRN' : 'Show items of every GRN'}
+          accessibilityLabel={allExpanded ? 'Collapse all GRNs' : 'Expand all GRNs'}
           accessibilityState={{ expanded: allExpanded }}
         >
           <Icon
             name={allExpanded ? 'unfold-less-horizontal' : 'unfold-more-horizontal'}
-            size={iconSize.sm}
-            color={t.icon.primary}
+            size={iconSize.lg}
+            color={t.brand.tint}
           />
-          <Text style={styles.chipText} maxFontSizeMultiplier={1.6}>
-            {allExpanded ? 'Collapse all' : 'Expand all'}
-          </Text>
         </Pressable>
       </View>
 

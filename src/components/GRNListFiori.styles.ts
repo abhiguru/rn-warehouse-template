@@ -238,6 +238,11 @@ export const makeGRNListStyles = (t: ThemeTokens) => ({
 
   expandAllBtn: {
     marginLeft: 'auto' as const,
+    width: touchTarget,
+    height: touchTarget,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    borderRadius: radius.pill,
   },
 
   // =========================================================================
