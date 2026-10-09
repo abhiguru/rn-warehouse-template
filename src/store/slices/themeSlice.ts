@@ -1,5 +1,5 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
-import { ThemeMode } from '@/theme';
+import type { ThemeMode } from '@/theme/tokens';
 import type { Brand } from '@/theme/tokens';
 
 export type ThemePreference = 'light' | 'dark' | 'system';

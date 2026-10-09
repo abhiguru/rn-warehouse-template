@@ -103,7 +103,7 @@ Rules:
 - **Don't** import `reference` palettes in components. If a role is missing, add a semantic token, add it to the contrast test, and document it here.
 - **Don't** copy a local `FIORI` or `FIORI_STATIC` object of colours or sizes into a file. Use `metrics.ts`.
 
-Legacy adapters keep unmigrated screens working while the migration lands: `getThemeColors(mode, brand)`, `colors` and `darkColors`, `useFioriColors`, `useListColors`, and the Paper MD3 theme. They are built from the tokens, so they follow the brand. They are deleted in the last migration phase.
+There are no other colour APIs: the old palettes and their adapters were removed once every screen used tokens.
 
 ---
 

@@ -10,8 +10,7 @@ import {
   setBrand as setBrandAction,
   type Brand,
 } from '@/store/slices/themeSlice';
-import { getTheme, getThemeColors, ThemeMode } from '@/theme';
-import { getTokens, type ThemeTokens } from '@/theme/tokens';
+import { getTokens, type ThemeMode, type ThemeTokens } from '@/theme/tokens';
 
 /**
  * Hook for accessing and managing theme state
@@ -30,11 +29,7 @@ export function useTheme() {
   // Semantic tokens for the chosen brand and mode (preferred by new code)
   const tokens = getTokens(brand, resolvedMode);
 
-  // Legacy palette for the resolved mode and brand
-  const colors = getThemeColors(resolvedMode, brand);
 
-  // Get the full theme object for the resolved mode
-  const theme = getTheme(resolvedMode, brand);
 
   // Check if dark mode is active
   const isDarkMode = resolvedMode === 'dark';
@@ -54,8 +49,6 @@ export function useTheme() {
     systemColorScheme,
 
     // Theme data
-    colors,
-    theme,
 
     // Actions
     setPreference,

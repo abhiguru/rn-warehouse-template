@@ -21,6 +21,8 @@ import {
 
 export type Brand = 'orange' | 'gcsa';
 export type Mode = 'light' | 'dark';
+/** Alias kept for the theme slice and hook. */
+export type ThemeMode = Mode;
 
 export const BRANDS: readonly Brand[] = ['orange', 'gcsa'];
 export const BRAND_LABELS: Record<Brand, string> = {

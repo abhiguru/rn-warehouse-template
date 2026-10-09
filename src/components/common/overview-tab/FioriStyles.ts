@@ -4,20 +4,13 @@
  * Layout lives in the static `overviewStyles`; colours, shadows and the icon
  * colours come from `useOverviewColors()`, which is built from the semantic
  * tokens for the current brand and mode (docs/STYLE_GUIDE.md §13.6).
- *
- * `FIORI` is a legacy adapter for screens that still read a static object of
- * sizes and colours. Its sizes come from the metrics tokens and its colours
- * from the default brand in light mode, so it cannot follow dark mode or the
- * brand chosen in Settings. New code uses tokens directly. Deleted in phase 6.
  */
 
 import { StyleSheet, TextStyle, ViewStyle } from 'react-native';
 import { useMemo } from 'react';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
-import { DEFAULT_BRAND } from '@/store/slices/themeSlice';
 import {
   fontWeight,
-  getTokens,
   iconSize,
   layout,
   radius,
@@ -27,75 +20,14 @@ import {
 } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 
-// =============================================================================
-// Legacy static adapter (exported as FIORI)
-// =============================================================================
 
-const staticTokens = getTokens(DEFAULT_BRAND, 'light');
-
+/** Section header text (§13.6): footnote, semibold, capitals. */
 const sectionHeaderType = {
   ...typography.footnote,
   fontWeight: fontWeight.semibold,
   letterSpacing: 0.5,
   textTransform: 'uppercase' as const,
 };
-
-const legacyOverviewTokens = {
-  colors: {
-    pageBackground: staticTokens.background.base,
-    cardBackground: staticTokens.surface.card,
-    textPrimary: staticTokens.text.primary,
-    textSecondary: staticTokens.text.secondary,
-    textTertiary: staticTokens.text.secondary,
-    primary: staticTokens.brand.fill,
-    primaryDark: staticTokens.brand.fillPressed,
-    primaryLight: staticTokens.brand.subtle,
-    success: staticTokens.status.positive.text,
-    successDark: staticTokens.status.positive.text,
-    successLight: staticTokens.status.positive.background,
-    warning: staticTokens.status.critical.text,
-    warningLight: staticTokens.status.critical.background,
-    negative: staticTokens.status.negative.text,
-    negativeDark: staticTokens.status.negative.text,
-    negativeLight: staticTokens.status.negative.background,
-    positive: staticTokens.status.positive.text,
-    positiveLight: staticTokens.status.positive.background,
-    info: staticTokens.status.informative.text,
-    infoLight: staticTokens.status.informative.background,
-    divider: staticTokens.border.divider,
-    cardBorder: staticTokens.border.divider,
-  },
-  spacing: {
-    xs: space.xs,
-    sm: space.sm,
-    md: space.md,
-    lg: space.lg,
-    xl: space.xl,
-    xxl: space.xxl,
-  },
-  typography: {
-    headline: typography.headline,
-    body: typography.subhead,
-    bodyMedium: { ...typography.subhead, fontWeight: fontWeight.medium },
-    caption: typography.footnote,
-    sectionHeader: sectionHeaderType,
-    button: typography.callout,
-  },
-  dimensions: {
-    cardRadius: radius.card,
-    cardPadding: space.lg,
-    buttonHeight: touchTarget,
-    buttonRadius: radius.button,
-    touchTarget,
-    avatarSize: layout.avatar.md,
-    iconSize: iconSize.md,
-  },
-  shadows: {
-    card: staticTokens.shadow[2] as ViewStyle,
-  },
-} as const;
-
-export { legacyOverviewTokens as FIORI };
 
 // =============================================================================
 // Static layout (no colours)

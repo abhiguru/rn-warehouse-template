@@ -5,7 +5,7 @@
  * Based on SAP Fiori for iOS Design Guidelines
  */
 
-export { FIORI, overviewStyles, useOverviewColors } from './FioriStyles';
+export { overviewStyles, useOverviewColors } from './FioriStyles';
 export { SectionHeader } from './SectionHeader';
 export { ContactCard } from './ContactCard';
 export type { ContactDetails } from './ContactCard';
