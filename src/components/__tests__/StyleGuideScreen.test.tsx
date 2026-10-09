@@ -41,7 +41,8 @@ describe('style guide gallery', () => {
       const tree = renderIn(brand, mode);
       const text = allText(tree);
       for (const section of ['Theme', 'Brand', 'Surfaces and text', 'Status', 'Typography', 'Spacing',
-        'Shape and elevation', 'Buttons', 'Fields and selection', 'Content']) {
+        'Shape and elevation', 'Buttons', 'Fields and selection', 'Selection', 'Tags, avatars and indicators',
+        'Steps', 'Reports', 'Dialogs and alerts', 'States', 'Formats', 'Content']) {
         expect(text.some(t => t.toUpperCase() === section.toUpperCase())).toBe(true);
       }
       expect(text).not.toContain('Fails');
