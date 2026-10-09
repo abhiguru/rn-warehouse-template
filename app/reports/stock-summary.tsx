@@ -42,7 +42,8 @@ import type {
   AllStockSummaryData,
   CustomerStockRow,
 } from '@/types/report.types';
-import { formatNumber, parseLocalISODate } from '@/utils/formatters';
+import { formatCount, formatDate, formatNumber, formatWeight } from '@/utils/formatters';
+import { StatusTag } from '@/components/ui/StatusTag';
 import { createLogger } from '@/utils/logger';
 
 import { showAlert } from '@/utils/alert';
@@ -50,20 +51,6 @@ const logger = createLogger('StockSummary');
 
 const LOAD_ERROR = "Couldn't load the stock summary. Check your connection and try again.";
 const NO_CUSTOMER = 'No customer is linked to your account. Ask your facility to link one.';
-
-/** "9 Oct 2026" (guide §12.3) */
-function formatDay(value: string | null | undefined): string {
-  if (!value) return '–';
-  const date = /^\d{4}-\d{2}-\d{2}$/.test(value) ? parseLocalISODate(value) : new Date(value);
-  if (isNaN(date.getTime())) return '–';
-  return date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
-}
-
-const weightFormat = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 });
-
-function plural(count: number, one: string, many: string): string {
-  return `${formatNumber(count)} ${count === 1 ? one : many}`;
-}
 
 // ============================================================================
 // Styles
@@ -160,20 +147,6 @@ const makeStyles = (t: ThemeTokens) =>
     grnRowStockMuted: { color: t.text.secondary },
     grnRowSecondary: { ...typography.caption1, color: t.text.secondary, fontVariant: ['tabular-nums'] },
 
-    tag: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      alignSelf: 'flex-start',
-      gap: space.xxs,
-      paddingHorizontal: space.s6,
-      paddingVertical: space.xxs,
-      borderRadius: radius.field,
-    },
-    tagText: { ...typography.caption1, fontWeight: fontWeight.semibold },
-    neutralTag: { backgroundColor: t.status.neutral.background },
-    neutralTagText: { color: t.status.neutral.text },
-    negativeTag: { backgroundColor: t.status.negative.background },
-    negativeTagText: { color: t.status.negative.text },
 
     // Collapsible out-of-stock header
     collapsibleHeader: {
@@ -230,7 +203,7 @@ interface ItemCardProps {
 }
 
 const ItemCard: React.FC<ItemCardProps> = ({ item, isExpanded, onToggle, isOutOfStock = false, styles, t }) => {
-  const grns = plural(item.grn_count, 'GRN', 'GRNs');
+  const grns = formatCount(item.grn_count, 'GRN');
   return (
     <View style={styles.card}>
       <View style={styles.cardClip}>
@@ -259,12 +232,7 @@ const ItemCard: React.FC<ItemCardProps> = ({ item, isExpanded, onToggle, isOutOf
               {isOutOfStock ? `${grns} dispatched` : grns}
             </Text>
             {isOutOfStock && (
-              <View style={[styles.tag, styles.negativeTag]}>
-                <Icon name="alert-circle" size={iconSize.sm} color={t.status.negative.text} />
-                <Text style={[styles.tagText, styles.negativeTagText]} maxFontSizeMultiplier={1.6}>
-                  Out of stock
-                </Text>
-              </View>
+              <StatusTag status="negative" label="Out of stock" />
             )}
           </View>
 
@@ -319,13 +287,13 @@ const GRNRow: React.FC<GRNRowProps> = ({ grn, isLast = false, onPress, isOutOfSt
   };
 
   const isNavigable = !!grn.grn_id;
-  const received = `Received ${formatDay(grn.date)}`;
-  const emptied = isOutOfStock && grn.emptied_date ? `Emptied ${formatDay(grn.emptied_date)}` : null;
+  const received = `Received ${formatDate(grn.date, 'short')}`;
+  const emptied = isOutOfStock && grn.emptied_date ? `Emptied ${formatDate(grn.emptied_date, 'short')}` : null;
   const extra = !emptied ? [grn.packaging, grn.rack ? `Rack ${grn.rack}` : null].filter(Boolean).join(' · ') : '';
   const stockText = grn.orig_qty > 0
     ? `${formatNumber(grn.stock)} of ${formatNumber(grn.orig_qty)}`
     : formatNumber(grn.stock);
-  const weight = `${weightFormat.format(grn.item_weight || 0)} kg each`;
+  const weight = `${formatWeight(grn.item_weight || 0)} each`;
 
   const a11yLabel = [
     `GRN ${grn.gr_no}`,
@@ -347,11 +315,7 @@ const GRNRow: React.FC<GRNRowProps> = ({ grn, isLast = false, onPress, isOutOfSt
             {`GRN ${grn.gr_no}`}
           </Text>
           {grn.package_mark && (
-            <View style={[styles.tag, styles.neutralTag]}>
-              <Text style={[styles.tagText, styles.neutralTagText]} maxFontSizeMultiplier={1.6}>
-                {grn.package_mark}
-              </Text>
-            </View>
+            <StatusTag status="neutral" label={grn.package_mark} icon={null} />
           )}
         </View>
         <View style={styles.grnRowLine}>
@@ -663,7 +627,7 @@ export default function StockSummaryScreen() {
     if (!data?.summary) return '';
     const oldestDate = data.summary.oldest_stock_date;
     if (oldestDate) {
-      return `Oldest stock ${formatDay(oldestDate)}`;
+      return `Oldest stock ${formatDate(oldestDate)}`;
     }
     return '';
   };
@@ -767,7 +731,8 @@ export default function StockSummaryScreen() {
                     <React.Fragment key={customer.customer_id}>
                       <ReportCustomerCard
                         title={customer.customer_name}
-                        subtitle={`${plural(customer.item_count, 'item', 'items')} · ${plural(customer.grn_count, 'GRN', 'GRNs')}`}
+                        customerId={customer.customer_id}
+                        subtitle={`${formatCount(customer.item_count, 'item')} · ${formatCount(customer.grn_count, 'GRN')}`}
                         value={customer.total_stock}
                         valueLabel="units"
                         onPress={() => handleCustomerSelect(customer)}
@@ -882,7 +847,7 @@ export default function StockSummaryScreen() {
                   style={({ pressed }) => [styles.collapsibleHeader, pressed && styles.rowPressed]}
                   onPress={toggleOutOfStockSection}
                   accessibilityRole="button"
-                  accessibilityLabel={`Out of stock, ${plural(data.out_of_stock_items.length, 'item', 'items')}, last 360 days`}
+                  accessibilityLabel={`Out of stock, ${formatCount(data.out_of_stock_items.length, 'item')}, last 360 days`}
                   accessibilityState={{ expanded: outOfStockExpanded }}
                 >
                   <View style={styles.collapsibleHeaderLeft}>

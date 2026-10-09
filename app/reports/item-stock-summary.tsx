@@ -36,7 +36,8 @@ import {
   typography,
   type ThemeTokens,
 } from '@/theme/tokens';
-import { formatNumber, parseLocalISODate } from '@/utils/formatters';
+import { formatCount, formatDate, formatNumber, formatWeight } from '@/utils/formatters';
+import { StatusTag } from '@/components/ui/StatusTag';
 import { createLogger } from '@/utils/logger';
 import type { ItemWiseStockItem } from '@/types/stock.types';
 
@@ -46,15 +47,6 @@ const LOAD_ERROR = "Couldn't load items. Check your connection and try again.";
 
 /** Below this share of the received quantity still in stock, an item is low on stock. */
 const LOW_STOCK_PERCENT = 20;
-
-/** "9 Oct 2026" (guide §12.3) */
-function formatDay(value: string): string {
-  const date = /^\d{4}-\d{2}-\d{2}$/.test(value) ? parseLocalISODate(value) : new Date(value);
-  if (isNaN(date.getTime())) return '';
-  return date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
-}
-
-const weightFormat = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 });
 
 // ============================================================================
 // Styles
@@ -127,19 +119,6 @@ const makeStyles = (t: ThemeTokens) =>
     stockInfo: { alignItems: 'flex-end' },
     stockValue: { ...typography.headline, color: t.text.primary, fontVariant: ['tabular-nums'] },
     stockLabel: { ...typography.caption1, color: t.text.secondary, fontVariant: ['tabular-nums'] },
-    tag: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: space.xxs,
-      paddingHorizontal: space.s6,
-      paddingVertical: space.xxs,
-      borderRadius: radius.field,
-    },
-    tagText: { ...typography.caption1, fontWeight: fontWeight.semibold },
-    neutralTag: { backgroundColor: t.status.neutral.background },
-    neutralTagText: { color: t.status.neutral.text },
-    criticalTag: { backgroundColor: t.status.critical.background },
-    criticalTagText: { color: t.status.critical.text },
 
     // Expanded body
     cardBody: {
@@ -217,9 +196,9 @@ const GRNRow: React.FC<GRNRowProps> = ({ grn, isLast = false, styles, t }) => {
 
   const isNavigable = !!(grn.grn_id || grn.id);
   const details = [
-    grn.date ? { icon: 'calendar-outline', text: formatDay(grn.date) } : null,
+    grn.date ? { icon: 'calendar-outline', text: formatDate(grn.date, 'short') } : null,
     grn.rack ? { icon: 'view-grid-outline', text: `Rack ${grn.rack}` } : null,
-    grn.weight && grn.weight > 0 ? { icon: 'weight-kilogram', text: `${weightFormat.format(grn.weight)} kg` } : null,
+    grn.weight && grn.weight > 0 ? { icon: 'weight-kilogram', text: formatWeight(grn.weight) } : null,
   ].filter((d): d is { icon: string; text: string } => d !== null);
 
   const a11yLabel = [
@@ -241,11 +220,7 @@ const GRNRow: React.FC<GRNRowProps> = ({ grn, isLast = false, styles, t }) => {
             {`GRN ${grn.gr_no}`}
           </Text>
           {grn.package_mark && (
-            <View style={[styles.tag, styles.neutralTag]}>
-              <Text style={[styles.tagText, styles.neutralTagText]} maxFontSizeMultiplier={1.6}>
-                {grn.package_mark}
-              </Text>
-            </View>
+            <StatusTag status="neutral" label={grn.package_mark} icon={null} />
           )}
         </View>
 
@@ -328,7 +303,7 @@ const ItemCard: React.FC<ItemCardProps> = ({
     ? Math.round((item.total_stock / item.total_qty) * 100)
     : 0;
   const isLowStock = stockPercentage < LOW_STOCK_PERCENT;
-  const grnCount = `${formatNumber(item.grn_count)} ${item.grn_count === 1 ? 'GRN' : 'GRNs'}`;
+  const grnCount = formatCount(item.grn_count, 'GRN');
 
   return (
     <View style={styles.itemCard}>
@@ -364,19 +339,8 @@ const ItemCard: React.FC<ItemCardProps> = ({
               </Text>
             ) : null}
             <View style={styles.tagRow}>
-              <View style={[styles.tag, styles.neutralTag]}>
-                <Text style={[styles.tagText, styles.neutralTagText]} maxFontSizeMultiplier={1.6}>
-                  {grnCount}
-                </Text>
-              </View>
-              {isLowStock && (
-                <View style={[styles.tag, styles.criticalTag]}>
-                  <Icon name="alert" size={iconSize.sm} color={t.status.critical.text} />
-                  <Text style={[styles.tagText, styles.criticalTagText]} maxFontSizeMultiplier={1.6}>
-                    Low stock
-                  </Text>
-                </View>
-              )}
+              <StatusTag status="neutral" label={grnCount} icon={null} />
+              {isLowStock && <StatusTag status="critical" label="Low stock" />}
             </View>
           </View>
 

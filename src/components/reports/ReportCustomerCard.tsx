@@ -2,7 +2,7 @@
  * ReportCustomerCard - Reusable customer object cell for report screens
  *
  * Follows the object cell spec in docs/STYLE_GUIDE.md §13.6:
- * - 44 avatar on the left
+ * - 44 avatar on the left (shared `Avatar`, keyed by the customer id)
  * - Title (`headline`, two lines) and subtitle (`subhead`)
  * - Optional share button (44 target, `brand.tint`)
  * - Value (`headline`, tabular) and its label on the right
@@ -22,6 +22,9 @@ import {
   typography,
   type ThemeTokens,
 } from '@/theme/tokens';
+import { Avatar } from '@/components/ui/Avatar';
+import { StatusTag, type StatusKind } from '@/components/ui/StatusTag';
+import { formatNumber as formatShared } from '@/utils/formatters';
 
 // ============================================================================
 // TYPES
@@ -38,11 +41,15 @@ export interface ReportCustomerCardProps {
   valueLabel?: string;
   /** Press handler for navigation */
   onPress: () => void;
-  /** Optional custom avatar colours (use tokens, e.g. brand.subtle / brand.tint) */
-  avatarColor?: {
-    bg: string;
-    icon: string;
-  };
+  /** Customer id: keys the avatar colour so a customer looks the same on every screen. */
+  customerId?: string | null;
+  /** Optional status tag under the value (at most one per row, guide §3.5). */
+  status?: { status: StatusKind; label: string };
+  /**
+   * @deprecated Ignored. The avatar colour comes from the customer id; kept so
+   * existing callers compile.
+   */
+  avatarColor?: unknown;
   /** Optional share handler */
   onShare?: () => void;
   /** Loading state for share button */
@@ -59,8 +66,7 @@ export interface ReportCustomerCardProps {
 
 const formatNumber = (num: number | string): string => {
   const n = typeof num === 'string' ? parseFloat(num) : num;
-  if (isNaN(n)) return String(num);
-  return new Intl.NumberFormat('en-IN').format(n);
+  return isNaN(n) ? String(num) : formatShared(n);
 };
 
 // ============================================================================
@@ -81,14 +87,6 @@ const makeStyles = (t: ThemeTokens) =>
     },
     cardPressed: {
       backgroundColor: t.surface.cardPressed,
-    },
-    avatar: {
-      width: layout.avatar.md,
-      height: layout.avatar.md,
-      borderRadius: radius.pill,
-      alignItems: 'center',
-      justifyContent: 'center',
-      backgroundColor: t.brand.subtle,
     },
     content: {
       flex: 1,
@@ -126,6 +124,10 @@ const makeStyles = (t: ThemeTokens) =>
       color: t.text.secondary,
       marginTop: space.xxs,
     },
+    status: {
+      alignSelf: 'flex-end',
+      marginTop: space.xs,
+    },
   });
 
 // ============================================================================
@@ -138,7 +140,8 @@ export const ReportCustomerCard: React.FC<ReportCustomerCardProps> = ({
   value,
   valueLabel = 'units',
   onPress,
-  avatarColor,
+  customerId,
+  status,
   onShare,
   isSharing,
   accessibilityLabel,
@@ -147,10 +150,10 @@ export const ReportCustomerCard: React.FC<ReportCustomerCardProps> = ({
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
 
-  const avatarIcon = avatarColor?.icon ?? t.brand.tint;
-
   // Auto-generate accessibility label if not provided
-  const a11yLabel = accessibilityLabel ?? `${title}, ${subtitle}, ${formatNumber(value)} ${valueLabel}`;
+  const a11yLabel =
+    accessibilityLabel ??
+    [title, subtitle, `${formatNumber(value)} ${valueLabel}`, status?.label].filter(Boolean).join(', ');
 
   return (
     <Pressable
@@ -161,13 +164,7 @@ export const ReportCustomerCard: React.FC<ReportCustomerCardProps> = ({
       accessibilityHint={accessibilityHint}
     >
       {/* A. Avatar */}
-      <View
-        style={[styles.avatar, avatarColor && { backgroundColor: avatarColor.bg }]}
-        accessible={false}
-        importantForAccessibility="no-hide-descendants"
-      >
-        <Icon name="account-outline" size={iconSize.lg} color={avatarIcon} />
-      </View>
+      <Avatar name={title} id={customerId} />
 
       {/* B. Main Content */}
       <View style={styles.content}>
@@ -204,6 +201,7 @@ export const ReportCustomerCard: React.FC<ReportCustomerCardProps> = ({
       <View style={styles.valueContainer}>
         <Text style={styles.value}>{formatNumber(value)}</Text>
         <Text style={styles.valueLabel}>{valueLabel}</Text>
+        {status && <StatusTag status={status.status} label={status.label} style={styles.status} />}
       </View>
 
       {/* E. Navigation Chevron */}

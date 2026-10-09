@@ -40,7 +40,8 @@ import type {
   AllStockAgingData,
   CustomerAgingSummary,
 } from '@/types/report.types';
-import { formatNumber, parseLocalISODate } from '@/utils/formatters';
+import { formatCount, formatDate, formatNumber } from '@/utils/formatters';
+import { StatusTag, type StatusKind } from '@/components/ui/StatusTag';
 import { createLogger } from '@/utils/logger';
 
 const logger = createLogger('StockAging');
@@ -52,15 +53,13 @@ const NO_CUSTOMER = 'No customer is linked to your account. Ask your facility to
 // Age buckets (status per guide §3.5)
 // ============================================================================
 
-type StatusKind = 'positive' | 'informative' | 'critical' | 'negative';
-
 const BUCKET_ORDER = ['0-120', '121-240', '241-364', '364+'];
 
-const AGING_BUCKETS: Record<string, { kind: StatusKind; icon: string; label: string }> = {
-  '0-120': { kind: 'positive', icon: 'check-circle', label: '0–120 days' },
-  '121-240': { kind: 'informative', icon: 'information', label: '121–240 days' },
-  '241-364': { kind: 'critical', icon: 'alert', label: '241–364 days' },
-  '364+': { kind: 'negative', icon: 'alert-circle', label: 'Over 364 days' },
+const AGING_BUCKETS: Record<string, { kind: StatusKind; label: string }> = {
+  '0-120': { kind: 'positive', label: '0–120 days' },
+  '121-240': { kind: 'informative', label: '121–240 days' },
+  '241-364': { kind: 'critical', label: '241–364 days' },
+  '364+': { kind: 'negative', label: 'Over 364 days' },
 };
 
 const bucketInfo = (bucket: string) => AGING_BUCKETS[bucket] || AGING_BUCKETS['0-120'];
@@ -68,16 +67,8 @@ const bucketInfo = (bucket: string) => AGING_BUCKETS[bucket] || AGING_BUCKETS['0
 const bucketForAge = (days: number): string =>
   days <= 120 ? '0-120' : days <= 240 ? '121-240' : days <= 364 ? '241-364' : '364+';
 
-/** "9 Oct 2026" (guide §12.3) */
-function formatDay(value: string | null | undefined): string {
-  if (!value) return '–';
-  const date = /^\d{4}-\d{2}-\d{2}$/.test(value) ? parseLocalISODate(value) : new Date(value);
-  if (isNaN(date.getTime())) return '–';
-  return date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
-}
-
 function days(n: number): string {
-  return `${formatNumber(n)} ${n === 1 ? 'day' : 'days'}`;
+  return formatCount(n, 'day');
 }
 
 // ============================================================================
@@ -117,7 +108,7 @@ const makeStyles = (t: ThemeTokens) =>
     // Bucket bar
     bucketRow: { gap: space.xs },
     bucketTop: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
-    bucketLabel: { ...typography.subhead, color: t.text.primary, flex: 1 },
+    bucketLabel: { flex: 1 },
     bucketValue: { ...typography.subhead, fontWeight: fontWeight.semibold, color: t.text.primary, fontVariant: ['tabular-nums'] },
     bucketCount: {
       ...typography.footnote,
@@ -200,17 +191,6 @@ const makeStyles = (t: ThemeTokens) =>
     detailValue: { ...typography.subhead, color: t.text.primary, textAlign: 'right', flexShrink: 1, fontVariant: ['tabular-nums'] },
     detailDivider: { height: StyleSheet.hairlineWidth, marginVertical: space.sm, backgroundColor: t.border.divider },
     viewGrnButton: { marginTop: space.md },
-
-    tag: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      alignSelf: 'flex-start',
-      gap: space.xxs,
-      paddingHorizontal: space.s6,
-      paddingVertical: space.xxs,
-      borderRadius: radius.field,
-    },
-    tagText: { ...typography.caption1, fontWeight: fontWeight.semibold },
   });
 
 type Styles = ReturnType<typeof makeStyles>;
@@ -228,22 +208,9 @@ const SectionHeader: React.FC<{ title: string; styles: Styles }> = ({ title, sty
 );
 
 /** Status tag showing the age of a stock entry in its bucket's colour, icon and words. */
-const AgeTag: React.FC<{ bucket: string; ageDays: number; styles: Styles; t: ThemeTokens }> = ({
-  bucket,
-  ageDays,
-  styles,
-  t,
-}) => {
+const AgeTag: React.FC<{ bucket: string; ageDays: number }> = ({ bucket, ageDays }) => {
   const info = bucketInfo(bucket);
-  const tone = t.status[info.kind];
-  return (
-    <View style={[styles.tag, { backgroundColor: tone.background }]}>
-      <Icon name={info.icon} size={iconSize.sm} color={tone.text} />
-      <Text style={[styles.tagText, { color: tone.text }]} maxFontSizeMultiplier={1.6}>
-        {`${days(ageDays)} old`}
-      </Text>
-    </View>
-  );
+  return <StatusTag status={info.kind} label={`${days(ageDays)} old`} />;
 };
 
 // Aging Bucket Bar Component
@@ -267,8 +234,9 @@ const AgingBucketBar: React.FC<AgingBucketBarProps> = ({ bucket, data, maxPercen
       accessibilityLabel={`${info.label}: ${data.percentage.toFixed(1)}%, ${formatNumber(data.total_quantity)} units`}
     >
       <View style={styles.bucketTop}>
-        <Icon name={info.icon} size={iconSize.sm} color={tone.text} />
-        <Text style={styles.bucketLabel}>{info.label}</Text>
+        <View style={styles.bucketLabel}>
+          <StatusTag status={info.kind} label={info.label} />
+        </View>
         <Text style={styles.bucketValue}>{`${data.percentage.toFixed(1)}%`}</Text>
         <Text style={styles.bucketCount}>{formatNumber(data.total_quantity)}</Text>
       </View>
@@ -279,10 +247,10 @@ const AgingBucketBar: React.FC<AgingBucketBarProps> = ({ bucket, data, maxPercen
   );
 };
 
-/** Avatar colours for a customer row: the status of the customer's average stock age. */
-const getAgingAvatarColors = (averageAgeDays: number, t: ThemeTokens) => {
-  const tone = t.status[bucketInfo(bucketForAge(averageAgeDays)).kind];
-  return { bg: tone.background, icon: tone.text };
+/** Status tag for a customer row: the bucket of the customer's average stock age. */
+const averageAgeStatus = (averageAgeDays: number): { status: StatusKind; label: string } => {
+  const info = bucketInfo(bucketForAge(averageAgeDays));
+  return { status: info.kind, label: info.label };
 };
 
 // ============================================================================
@@ -342,7 +310,7 @@ const ItemGroupCard: React.FC<ItemGroupCardProps> = ({
   styles,
   t,
 }) => {
-  const entryCount = `${group.entries.length} ${group.entries.length === 1 ? 'GRN' : 'GRNs'}`;
+  const entryCount = formatCount(group.entries.length, 'GRN');
   return (
     <View style={styles.card}>
       <View style={styles.cardClip}>
@@ -362,7 +330,7 @@ const ItemGroupCard: React.FC<ItemGroupCardProps> = ({
               {group.item_name}
             </Text>
             <Text style={styles.cellSubtitle}>{entryCount}</Text>
-            <AgeTag bucket={group.aging_bucket} ageDays={group.oldest_days} styles={styles} t={t} />
+            <AgeTag bucket={group.aging_bucket} ageDays={group.oldest_days} />
           </View>
           <View style={styles.stockInfo}>
             <Text style={styles.stockValue}>{formatNumber(group.total_stock)}</Text>
@@ -419,15 +387,15 @@ const StockEntryRow: React.FC<StockEntryRowProps> = ({ item, isExpanded, onToggl
         style={({ pressed }) => [styles.entryRow, pressed && styles.rowPressed]}
         onPress={onToggle}
         accessibilityRole="button"
-        accessibilityLabel={`${title}, received ${formatDay(item.grn_date)}, ${days(item.aging_days)} in storage, ${formatNumber(item.current_stock)} units`}
+        accessibilityLabel={`${title}, received ${formatDate(item.grn_date, 'short')}, ${days(item.aging_days)} in storage, ${formatNumber(item.current_stock)} units`}
         accessibilityState={{ expanded: isExpanded }}
       >
         <View style={styles.entryContent}>
           <Text style={styles.entryTitle} numberOfLines={2}>
             {title}
           </Text>
-          <Text style={styles.entrySubtitle}>{`Received ${formatDay(item.grn_date)}`}</Text>
-          <AgeTag bucket={item.aging_bucket} ageDays={item.aging_days} styles={styles} t={t} />
+          <Text style={styles.entrySubtitle}>{`Received ${formatDate(item.grn_date, 'short')}`}</Text>
+          <AgeTag bucket={item.aging_bucket} ageDays={item.aging_days} />
         </View>
         <Text style={styles.entryStockValue}>{formatNumber(item.current_stock)}</Text>
         <Icon name={isExpanded ? 'chevron-up' : 'chevron-down'} size={iconSize.md} color={t.icon.secondary} />
@@ -447,7 +415,7 @@ const StockEntryRow: React.FC<StockEntryRowProps> = ({ item, isExpanded, onToggl
                 styles={styles}
               />
               {dispatch.last_dispatch_date && (
-                <DetailRow label="Last dispatch" value={formatDay(dispatch.last_dispatch_date)} styles={styles} />
+                <DetailRow label="Last dispatch" value={formatDate(dispatch.last_dispatch_date)} styles={styles} />
               )}
               {dispatch.avg_days_between_dispatches ? (
                 <DetailRow
@@ -807,11 +775,12 @@ export default function StockAgingScreen() {
                     <React.Fragment key={customer.customer_id}>
                       <ReportCustomerCard
                         title={customer.customer_name}
-                        subtitle={`Average age ${days(customer.average_age_days)} · ${customer.items_over_365_days} over 1 year`}
+                        subtitle={`Average age ${days(customer.average_age_days)} · ${formatNumber(customer.items_over_365_days)} over 1 year`}
                         value={customer.total_stock}
                         valueLabel="units"
                         onPress={() => handleCustomerSelect(customer)}
-                        avatarColor={getAgingAvatarColors(customer.average_age_days, t)}
+                        customerId={customer.customer_id}
+                        status={averageAgeStatus(customer.average_age_days)}
                         accessibilityHint="Opens this customer's stock aging"
                       />
                       {index < filteredCustomers.length - 1 && <View style={styles.divider} />}
