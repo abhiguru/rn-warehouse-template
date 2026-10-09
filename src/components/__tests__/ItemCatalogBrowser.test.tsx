@@ -13,7 +13,7 @@ jest.mock('@gorhom/bottom-sheet', () => {
       React.useImperativeHandle(ref, () => ({ present: jest.fn(), dismiss: jest.fn() }));
       return React.createElement('BottomSheet', null, props.children);
     }),
-    BottomSheetFlatList: (props: any) => React.createElement('CatalogList', null,
+    BottomSheetFlatList: (props: any) => React.createElement('CatalogList', { onEndReached: props.onEndReached },
       props.ListHeaderComponent, props.data.length ? props.data.map((item: any) =>
         React.createElement('CatalogItem', { key: item.id, testID: `catalog-item-${item.id}` }, props.renderItem({ item }))) : props.ListEmptyComponent),
   };
@@ -112,5 +112,44 @@ it('shows an empty search result and clearing search does not submit an order', 
     expect(tree.root.findByType(TextInput).props.value).toBe('');
     expect(OrderService.searchCustomerItemsForOrder).toHaveBeenCalledTimes(1);
     expect(add).not.toHaveBeenCalled();
+  } finally { await act(async () => { tree.unmount(); }); }
+});
+
+const catalogList = (tree: ReturnType<typeof create>) => tree.root.findByType('CatalogList' as never);
+
+it('loads the next browse page when the list reaches its end', async () => {
+  const page = (from: number, count: number) =>
+    Array.from({ length: count }, (_, i) => catalogItem(`lot-${from + i}`, `Fictional lot ${from + i}`));
+  jest.mocked(OrderService.getAvailableItems)
+    .mockResolvedValueOnce({ success: true, message: '', data: page(0, 50), metadata: { has_more: true } } as never)
+    .mockResolvedValueOnce({ success: true, message: '', data: page(50, 3), metadata: { has_more: false } } as never);
+  let tree!: ReturnType<typeof create>;
+  await act(async () => { tree = create(<ItemCatalogBrowser isVisible currentOrderItems={emptyOrderItems} customerId="customer-a" onClose={jest.fn()} onAddItems={jest.fn()} />); });
+  try {
+    expect(OrderService.getAvailableItems).toHaveBeenLastCalledWith(expect.objectContaining({ offset: 0, page_size: 50 }));
+    await act(async () => { await catalogList(tree).props.onEndReached(); });
+    expect(OrderService.getAvailableItems).toHaveBeenLastCalledWith(expect.objectContaining({ customer_id: 'customer-a', offset: 50 }));
+    expect(listedItemIds(tree)).toHaveLength(53);
+    await act(async () => { await catalogList(tree).props.onEndReached(); });
+    expect(OrderService.getAvailableItems).toHaveBeenCalledTimes(2);
+  } finally { await act(async () => { tree.unmount(); }); }
+});
+
+it('loads the next search page from the current result count', async () => {
+  const hits = (from: number, count: number) =>
+    Array.from({ length: count }, (_, i) => catalogItem(`hit-${from + i}`, `Fictional onion ${from + i}`));
+  jest.mocked(OrderService.searchCustomerItemsForOrder)
+    .mockResolvedValueOnce({ success: true, message: '', data: hits(0, 50), metadata: { has_more: true } } as never)
+    .mockResolvedValueOnce({ success: true, message: '', data: hits(50, 2), metadata: { has_more: false } } as never);
+  let tree!: ReturnType<typeof create>;
+  await act(async () => { tree = create(<ItemCatalogBrowser isVisible currentOrderItems={emptyOrderItems} customerId="customer-a" onClose={jest.fn()} onAddItems={jest.fn()} />); });
+  try {
+    await act(async () => { tree.root.findByType(TextInput).props.onChangeText('onion'); });
+    await act(async () => { jest.advanceTimersByTime(250); });
+    expect(listedItemIds(tree)).toHaveLength(50);
+    await act(async () => { await catalogList(tree).props.onEndReached(); });
+    expect(OrderService.searchCustomerItemsForOrder).toHaveBeenLastCalledWith(
+      expect.objectContaining({ search_query: 'onion', offset: 50, page_size: 50 }));
+    expect(listedItemIds(tree)).toHaveLength(52);
   } finally { await act(async () => { tree.unmount(); }); }
 });

@@ -188,8 +188,9 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
   useOrderLiveUpdates(onRefresh, !!order);
 
   // Handle quantity update
-  const handleQuantityUpdate = useCallback(async (item: OrderItem, newQuantity: number) => {
-    if (!order) return;
+  // Resolves true only when the server stored the quantity.
+  const handleQuantityUpdate = useCallback(async (item: OrderItem, newQuantity: number): Promise<boolean> => {
+    if (!order) return false;
 
     try {
       const result = await OrderService.updateOrderItemQuantity(
@@ -201,12 +202,14 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
       if (result.success) {
         // Refresh order
         await onRefresh();
-      } else {
-        Alert.alert('Error', result.message);
+        return true;
       }
+      Alert.alert('Error', result.message);
+      return false;
     } catch (error) {
       console.error('[OrderManagement] Update quantity error:', error);
       Alert.alert('Error', 'Failed to update quantity');
+      return false;
     }
   }, [order, onRefresh]);
 
@@ -292,7 +295,9 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
 
       // Handle items that were removed (exist in order but not in selected items)
       const selectedItemIds = new Set(items.map(item => item.grnItemId));
-      const itemsToRemove = order.items?.filter(orderItem => 
+      // The catalog only sees open lines, so only open lines can be deselected.
+      const itemsToRemove = order.items?.filter(orderItem =>
+        (orderItem.item_status || '').toLowerCase() !== 'fulfilled' &&
         !selectedItemIds.has(orderItem.grn_item_id)
       ) || [];
 

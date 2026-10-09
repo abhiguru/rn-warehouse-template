@@ -47,6 +47,36 @@ interface SelectedItem {
   item: GRNItem;
 }
 
+// Rows requested per page in browse and search mode.
+const CATALOG_PAGE_SIZE = 50;
+
+// Search results are EnhancedGRNItem; the list renders plain GRNItem.
+const toGRNItem = (item: GRNItem): GRNItem => ({
+  id: item.id,
+  name: item.name,
+  packaging: item.packaging,
+  package_mark: item.package_mark,
+  current_stock: item.current_stock,
+  original_quantity: item.original_quantity,
+  catalog_id: item.catalog_id,
+  catalog: item.catalog,
+  rack: item.rack,
+  weight: item.weight,
+  gr_id: item.gr_id,
+  grn_number: item.grn_number,
+  grn_date: item.grn_date,
+  image_url: item.image_url,
+  pricing_mode: item.pricing_mode,
+  created_at: item.created_at,
+  updated_at: item.updated_at,
+});
+
+const appendUnique = (current: GRNItem[], page: GRNItem[]): GRNItem[] => {
+  const seen = new Set(current.map(item => item.id));
+  const fresh = page.filter(item => !seen.has(item.id));
+  return fresh.length > 0 ? [...current, ...fresh] : current;
+};
+
 const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
   isVisible,
   onClose,
@@ -75,6 +105,10 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
   const [searchMetadata, setSearchMetadata] = useState<SearchMetadata | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [useEnhancedSearch, setUseEnhancedSearch] = useState(true);
+  const [browseHasMore, setBrowseHasMore] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  // Every browse reload takes a new id; an older page is discarded.
+  const browseRequestRef = useRef(0);
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   // Every search edit takes a new id; a response whose id is no longer current
   // is discarded so an earlier, slower search cannot overwrite a later one.
@@ -149,6 +183,8 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
 
   // Fetch items
   const fetchItems = useCallback(async () => {
+    const requestId = ++browseRequestRef.current;
+    const isCurrent = () => isMountedRef.current && requestId === browseRequestRef.current;
     try {
       setLoading(true);
       if (__DEV__) console.log('[ItemCatalogBrowser] Fetching items for customer:', customerId);
@@ -157,7 +193,10 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
         customer_id: customerId,
         in_stock_only: inStockOnly,
         catalog_id: selectedCatalog || undefined,
+        offset: 0,
+        page_size: CATALOG_PAGE_SIZE,
       });
+      if (!isCurrent()) return;
 
       if (__DEV__) console.log('[ItemCatalogBrowser] Items fetch result:', {
         success: result.success,
@@ -168,6 +207,7 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
 
       if (result.success && result.data) {
         setAllItems(result.data);
+        setBrowseHasMore(result.metadata?.has_more ?? false);
         
         // Extract unique catalogs
         const uniqueCatalogs = new Map<string, Catalog>();
@@ -192,11 +232,33 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
         Alert.alert('Error', result.message || 'Failed to load items');
       }
     } catch (error) {
+      if (!isCurrent()) return;
       console.error('[ItemCatalogBrowser] Error fetching items:', error);
       Alert.alert('Error', 'Failed to load items');
     } finally {
-      setLoading(false);
+      if (isCurrent()) setLoading(false);
     }
+  }, [customerId, inStockOnly, selectedCatalog]);
+
+  // Search filters for one page of a remote search.
+  const buildSearchFilters = useCallback((query: string, offset: number): EnhancedSearchFilters => {
+    const filters: EnhancedSearchFilters = {
+      customer_id: customerId,
+      search_query: query,
+      search_type: 'auto',
+      stock_filter_min: inStockOnly ? 1 : 0,
+      catalog_id: selectedCatalog || undefined,
+      page_size: CATALOG_PAGE_SIZE,
+      offset,
+    };
+    // A whole-number range such as "10-20" searches by weight.
+    const weightRangeMatch = query.match(/^(\d+)-(\d+)$/);
+    if (weightRangeMatch) {
+      filters.weight_min = parseInt(weightRangeMatch[1], 10);
+      filters.weight_max = parseInt(weightRangeMatch[2], 10);
+      filters.search_type = 'weight';
+    }
+    return filters;
   }, [customerId, inStockOnly, selectedCatalog]);
 
   // Fetch all customer-specific GRN items (for pills)
@@ -273,30 +335,7 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
       if (useEnhancedSearch && searchQuery.trim()) {
         setIsSearching(true);
         try {
-          // Check if search query is a weight range (e.g., "10-20")
-          const weightRangeMatch = searchQuery.match(/^(\d+)-(\d+)$/);
-          
-          const searchFilters: EnhancedSearchFilters = {
-            customer_id: customerId,
-            search_query: searchQuery,
-            search_type: 'auto',
-            stock_filter_min: inStockOnly ? 1 : 0,
-            catalog_id: selectedCatalog || undefined
-          };
-
-          // If it's a weight range, add weight_min and weight_max
-          if (weightRangeMatch) {
-            searchFilters.weight_min = parseInt(weightRangeMatch[1]);
-            searchFilters.weight_max = parseInt(weightRangeMatch[2]);
-            searchFilters.search_type = 'weight';
-            
-            if (__DEV__) console.log('[ItemCatalogBrowser] 🎯 WEIGHT RANGE DETECTED:', {
-              originalQuery: searchQuery,
-              parsedMin: searchFilters.weight_min,
-              parsedMax: searchFilters.weight_max,
-              regexMatch: weightRangeMatch
-            });
-          }
+          const searchFilters = buildSearchFilters(searchQuery, 0);
 
           if (__DEV__) console.log('[ItemCatalogBrowser] 🔎 SEARCH REQUEST:', {
             searchType: searchFilters.search_type,
@@ -314,25 +353,7 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
           });
 
           if (result.success && result.data) {
-            const mappedItems = result.data.map(item => ({
-              id: item.id,
-              name: item.name,
-              packaging: item.packaging,
-              package_mark: item.package_mark,
-              current_stock: item.current_stock,
-              original_quantity: item.original_quantity,
-              catalog_id: item.catalog_id,
-              catalog: item.catalog,
-              rack: item.rack,
-              weight: item.weight,
-              gr_id: item.gr_id,
-              grn_number: item.grn_number,
-              grn_date: item.grn_date,
-              image_url: item.image_url,
-              pricing_mode: item.pricing_mode,
-              created_at: item.created_at,
-              updated_at: item.updated_at
-            }));
+            const mappedItems = result.data.map(toGRNItem);
 
             if (__DEV__) console.log('[ItemCatalogBrowser] 🎯 MAPPED ITEMS TO DISPLAY:', {
               count: mappedItems.length,
@@ -390,7 +411,60 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
       // Any response still in flight for this edit is now stale.
       searchRequestRef.current += 1;
     };
-  }, [searchQuery, useEnhancedSearch, customerId, inStockOnly, selectedCatalog, allItems]);
+  }, [searchQuery, useEnhancedSearch, buildSearchFilters, allItems]);
+
+  // Next page of the current search or of the browse list.
+  const handleLoadMore = useCallback(async () => {
+    if (loading || isLoadingMore || isSearching || showSelectedItems) return;
+    const query = searchQuery.trim();
+    if (query && useEnhancedSearch) {
+      if (!searchMetadata?.has_more) return;
+      const requestId = searchRequestRef.current;
+      setIsLoadingMore(true);
+      try {
+        const result = await OrderService.searchCustomerItemsForOrder(
+          buildSearchFilters(searchQuery, filteredItems.length)
+        );
+        if (!isMountedRef.current || requestId !== searchRequestRef.current) return;
+        if (result.success && result.data) {
+          setFilteredItems(prev => appendUnique(prev, result.data!.map(toGRNItem)));
+          setSearchMetadata(result.metadata || null);
+        } else {
+          setSearchMetadata(prev => (prev ? { ...prev, has_more: false } : prev));
+        }
+      } catch (error) {
+        console.error('[ItemCatalogBrowser] Load more search error:', error);
+      } finally {
+        if (isMountedRef.current) setIsLoadingMore(false);
+      }
+    } else if (!query) {
+      if (!browseHasMore) return;
+      const requestId = browseRequestRef.current;
+      setIsLoadingMore(true);
+      try {
+        const result = await OrderService.getAvailableItems({
+          customer_id: customerId,
+          in_stock_only: inStockOnly,
+          catalog_id: selectedCatalog || undefined,
+          offset: allItems.length,
+          page_size: CATALOG_PAGE_SIZE,
+        });
+        if (!isMountedRef.current || requestId !== browseRequestRef.current) return;
+        if (result.success && result.data) {
+          setAllItems(prev => appendUnique(prev, result.data!));
+          setBrowseHasMore(result.metadata?.has_more ?? false);
+        } else {
+          setBrowseHasMore(false);
+        }
+      } catch (error) {
+        console.error('[ItemCatalogBrowser] Load more items error:', error);
+      } finally {
+        if (isMountedRef.current) setIsLoadingMore(false);
+      }
+    }
+  }, [loading, isLoadingMore, isSearching, showSelectedItems, searchQuery, useEnhancedSearch,
+      searchMetadata, buildSearchFilters, filteredItems.length, browseHasMore, customerId,
+      inStockOnly, selectedCatalog, allItems.length]);
 
   // Fetch items on mount and when filters change
   useEffect(() => {
@@ -967,6 +1041,12 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
   // Memoized ListFooterComponent
   const listFooterComponent = useMemo(() => (
     <>
+      {isLoadingMore && (
+        <View style={styles.loadMoreRow} accessibilityLabel="Loading more items">
+          <ActivityIndicator size="small" color={colors.primary} />
+          <Text style={[styles.loadMoreText, { color: colors.gray600 }]}>Loading more...</Text>
+        </View>
+      )}
       {/* Catalog Filter */}
       {catalogs.length > 0 && (
         <View style={styles.bottomCatalogFilter}>
@@ -1007,7 +1087,7 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
       {/* Extra padding at bottom */}
       <View style={{ height: 100 }} />
     </>
-  ), [catalogs, selectedCatalog, colors]);
+  ), [catalogs, selectedCatalog, colors, isLoadingMore]);
 
   return (
     <BottomSheetModal
@@ -1042,6 +1122,8 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
           ListHeaderComponent={listHeaderComponent}
           ListEmptyComponent={listEmptyComponent}
           ListFooterComponent={listFooterComponent}
+          onEndReached={handleLoadMore}
+          onEndReachedThreshold={0.3}
         />
       )}
     </BottomSheetModal>
@@ -1049,6 +1131,16 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
 };
 
 const styles = StyleSheet.create({
+  loadMoreRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    gap: 8,
+  },
+  loadMoreText: {
+    fontSize: 14,
+  },
   bottomSheetContent: {
     flex: 1,
     paddingHorizontal: 0,

@@ -123,20 +123,6 @@ export interface AddToOrderResponse {
   item_id: string;
 }
 
-export interface CreateDispatchResponse {
-  success: boolean;
-  dispatch_id: string;
-  dispatch_no: string;
-  message: string;
-  items_dispatched: number;
-  items_remaining: number;
-}
-
-export interface OrderSummary {
-  item_count: number;
-  total_quantity: number;
-}
-
 // Filter types
 export interface OrderFilters {
   customer_id?: string;
@@ -144,6 +130,9 @@ export interface OrderFilters {
   has_items?: boolean;
   date_from?: Date;
   date_to?: Date;
+  /** Page size; the service caps it at PAGINATION.MAX_LIMIT */
+  limit?: number;
+  offset?: number;
 }
 
 export interface ItemFilters {
@@ -151,6 +140,8 @@ export interface ItemFilters {
   catalog_id?: string;
   search?: string;
   grn_id?: string;
+  page_size?: number;
+  offset?: number;
 }
 
 // Enhanced search interfaces

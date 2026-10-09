@@ -40,6 +40,7 @@ import { resolveCustomerOrderTarget } from './orderCustomerTarget';
 
 // Services
 import { OrderService } from '@/services/order-service';
+import { PAGINATION } from '@/config/cacheConfig';
 import type { Order, OrderFilters } from '@/types/order.types';
 
 // Components
@@ -181,6 +182,9 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
   // E7 Fix: Track request ID to discard stale pagination responses
   const requestIdRef = useRef(0);
 
+  // Rows received from the server so far; the next page starts here.
+  const loadedCountRef = useRef(0);
+
   // Filter state
   const [showWithItemsOnly, setShowWithItemsOnly] = useState(hasItemsOnly);
   const [snackbarMessage, setSnackbarMessage] = useState('');
@@ -189,6 +193,13 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
   // ============================================================================
   // DATA FETCHING
   // ============================================================================
+
+  const buildFilters = useCallback((): OrderFilters => {
+    const filters: OrderFilters = {};
+    if (customerId) filters.customer_id = customerId;
+    if (showWithItemsOnly) filters.has_items = true;
+    return filters;
+  }, [customerId, showWithItemsOnly]);
 
   // isSilent = true → fetch data without showing RefreshControl spinner.
   // Used by useFocusEffect to avoid contentOffset.y = -60 gap from RefreshControl.
@@ -213,16 +224,12 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
       // A retry does not make retained data current. Clear the warning only
       // after a successful response replaces the displayed orders.
 
-      // Build filters
-      const filters: OrderFilters = {};
-      if (customerId) {
-        filters.customer_id = customerId;
-      }
-      if (showWithItemsOnly) {
-        filters.has_items = true;
-      }
-
-      const result = await OrderService.getOrdersList(filters);
+      // Reload every row already shown so live updates keep the whole window current.
+      const result = await OrderService.getOrdersList({
+        ...buildFilters(),
+        offset: 0,
+        limit: Math.max(PAGINATION.DEFAULT_LIMIT, loadedCountRef.current),
+      });
       if (sessionGeneration !== getSessionGeneration()) return;
 
       // E3 Fix: Skip state updates if component unmounted during fetch
@@ -245,10 +252,11 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
             return itemCount > 0;
           });
         }
+        loadedCountRef.current = result.data.length;
         setOrders(filteredOrders);
         setError(null);
         setRefreshTimestamp(Date.now());
-        setHasMore(false);
+        setHasMore(result.metadata?.has_more ?? false);
       } else {
         setError(result.message || 'Failed to load orders');
         setSnackbarMessage(result.message || 'Failed to load orders');
@@ -277,7 +285,55 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
         setIsLoadingMore(false);
       }
     }
-  }, [customerId, showWithItemsOnly]);
+  }, [buildFilters, showWithItemsOnly]);
+
+  // Next page, appended. Shares the in-flight guard and request id with refreshes,
+  // so a refresh that starts later wins and a stale page is discarded.
+  const handleLoadMore = useCallback(async () => {
+    if (!hasMore || isLoading || isLoadingMore || fetchInProgressRef.current) return;
+    fetchInProgressRef.current = true;
+    const sessionGeneration = getSessionGeneration();
+    const currentRequestId = ++requestIdRef.current;
+    const offset = loadedCountRef.current;
+    setIsLoadingMore(true);
+    try {
+      const result = await OrderService.getOrdersList({
+        ...buildFilters(),
+        offset,
+        limit: PAGINATION.DEFAULT_LIMIT,
+      });
+      if (sessionGeneration !== getSessionGeneration()) return;
+      if (!isMountedRef.current || currentRequestId !== requestIdRef.current) return;
+      if (result.success && result.data) {
+        const page = result.data;
+        loadedCountRef.current = offset + page.length;
+        setOrders(prev => {
+          const seen = new Set(prev.map(order => order.id));
+          const fresh = page.filter((order: Order) => {
+            if (seen.has(order.id)) return false;
+            return !showWithItemsOnly || (order.item_count ?? order.total_items ?? 0) > 0;
+          });
+          return fresh.length > 0 ? [...prev, ...fresh] : prev;
+        });
+        setHasMore(result.metadata?.has_more ?? false);
+      } else {
+        setSnackbarMessage(result.message || 'Failed to load more orders');
+        setSnackbarVisible(true);
+      }
+    } catch (err: unknown) {
+      if (!isMountedRef.current) return;
+      console.error('[OrderFlashList] Load more error:', err);
+      setSnackbarMessage('Failed to load more orders');
+      setSnackbarVisible(true);
+    } finally {
+      fetchInProgressRef.current = false;
+      if (isMountedRef.current) setIsLoadingMore(false);
+      if (liveRefreshPendingRef.current && isMountedRef.current && sessionGeneration === getSessionGeneration()) {
+        liveRefreshPendingRef.current = false;
+        void fetchOrders(true, true);
+      }
+    }
+  }, [hasMore, isLoading, isLoadingMore, buildFilters, showWithItemsOnly, fetchOrders]);
 
   // E3 Fix: Cleanup on unmount to prevent state updates after unmount
   useEffect(() => {
@@ -598,6 +654,8 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
             />
           }
           ListFooterComponent={ListFooter}
+          onEndReached={handleLoadMore}
+          onEndReachedThreshold={DEFAULT_LIST_CONFIG.onEndReachedThreshold}
           showsVerticalScrollIndicator={false}
         />
       </View>

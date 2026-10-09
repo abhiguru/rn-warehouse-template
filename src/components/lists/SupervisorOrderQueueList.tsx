@@ -23,6 +23,8 @@ import { ListSkeleton } from '@/components/skeletons';
 
 // Services
 import { OrderService } from '@/services/order-service';
+import { PAGINATION } from '@/config/cacheConfig';
+import { DEFAULT_LIST_CONFIG } from './types';
 import type { Order, OrderFilters } from '@/types/order.types';
 
 // Components
@@ -115,6 +117,10 @@ const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = ({
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
+  // Rows received from the server so far; the next page starts here.
+  const loadedCountRef = useRef(0);
 
   // Expanded state - track which orders are expanded
   const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set());
@@ -158,9 +164,11 @@ const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = ({
       }
       setError(null);
 
-      // Fetch only orders with items
+      // Fetch only orders with items. A refresh reloads every row already shown.
       const filters: OrderFilters = {
         has_items: true,
+        offset: 0,
+        limit: Math.max(PAGINATION.DEFAULT_LIMIT, loadedCountRef.current),
       };
 
       if (__DEV__) console.log('[SupervisorOrderQueueList] Fetching orders with filters:', filters);
@@ -187,7 +195,9 @@ const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = ({
         });
 
         if (__DEV__) console.log('[SupervisorOrderQueueList] Loaded orders:', ordersWithItems.length);
+        loadedCountRef.current = result.data.length;
         setOrders(ordersWithItems);
+        setHasMore(result.metadata?.has_more ?? false);
       } else {
         setError(result.message || 'Failed to load orders');
         setSnackbarMessage(result.message || 'Failed to load orders');
@@ -214,6 +224,62 @@ const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = ({
       }
     }
   }, []);
+
+  // Next page, appended; shares the in-flight guard and request id with refreshes.
+  const handleLoadMore = useCallback(async () => {
+    if (!hasMore || isLoading || isLoadingMore || fetchInProgressRef.current) return;
+    fetchInProgressRef.current = true;
+    const sessionGeneration = getSessionGeneration();
+    const currentRequestId = ++requestIdRef.current;
+    const offset = loadedCountRef.current;
+    setIsLoadingMore(true);
+    try {
+      const result = await OrderService.getOrdersList({
+        has_items: true,
+        offset,
+        limit: PAGINATION.DEFAULT_LIMIT,
+      });
+      if (sessionGeneration !== getSessionGeneration()) return;
+      if (!isMountedRef.current || currentRequestId !== requestIdRef.current) return;
+      if (result.success && result.data) {
+        const page = result.data;
+        loadedCountRef.current = offset + page.length;
+        setOrders(prev => {
+          const seen = new Set(prev.map(order => order.id));
+          const fresh = page.filter((order: Order) =>
+            !seen.has(order.id) && (order.item_count ?? order.total_items ?? order.items?.length ?? 0) > 0
+          );
+          return fresh.length > 0 ? [...prev, ...fresh] : prev;
+        });
+        setHasMore(result.metadata?.has_more ?? false);
+      } else {
+        setSnackbarMessage(result.message || 'Failed to load more orders');
+        setSnackbarVisible(true);
+      }
+    } catch (err: unknown) {
+      if (!isMountedRef.current) return;
+      console.error('[SupervisorOrderQueueList] Load more error:', err);
+      setSnackbarMessage('Failed to load more orders');
+      setSnackbarVisible(true);
+    } finally {
+      fetchInProgressRef.current = false;
+      if (isMountedRef.current) setIsLoadingMore(false);
+      if (liveRefreshPendingRef.current && isMountedRef.current && sessionGeneration === getSessionGeneration()) {
+        liveRefreshPendingRef.current = false;
+        void fetchOrders(true, true);
+      }
+    }
+  }, [hasMore, isLoading, isLoadingMore, fetchOrders]);
+
+  const ListFooter = useMemo(() => {
+    if (!isLoadingMore) return null;
+    return (
+      <View style={styles.footerLoader}>
+        <ActivityIndicator size="small" color={colors.primary} />
+        <Text style={[styles.footerLoaderText, { color: colors.textSecondary }]}>Loading more...</Text>
+      </View>
+    );
+  }, [isLoadingMore, colors]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -420,6 +486,9 @@ const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = ({
           renderItem={renderItem}
           extraData={expandedOrders}
           ListHeaderComponent={ListHeaderComponent}
+          ListFooterComponent={ListFooter}
+          onEndReached={handleLoadMore}
+          onEndReachedThreshold={DEFAULT_LIST_CONFIG.onEndReachedThreshold}
           refreshControl={
             <RefreshControl
               refreshing={isRefreshing}
@@ -588,6 +657,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingVertical: 11,
     borderRadius: 8,
+  },
+  footerLoader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    gap: 8,
+  },
+  footerLoaderText: {
+    fontSize: 14,
   },
   retryButtonText: {
     fontSize: 17,

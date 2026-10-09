@@ -15,12 +15,9 @@ import {
   OrderServiceResponse,
   GetOrCreateOrderResponse,
   AddToOrderResponse,
-  CreateDispatchResponse,
-  OrderSummary,
   OrderFilters,
   ItemFilters,
   GRNItem,
-  Dispatch,
   EnhancedSearchFilters,
   EnhancedGRNItem,
   SearchMetadata,
@@ -274,51 +271,35 @@ export class OrderService {
     };
   }
 
-  // Remove item from order
+  // Remove item from order. The RPC records the removal in the order history.
   static async removeItemFromOrder(
     itemId: string,
-    orderId: string
+    _orderId: string
   ): Promise<OrderServiceResponse<void>> {
-    try {
-      const authenticatedClient = await getAuthenticatedClient();
-      const { data, error, count } = await authenticatedClient
-        .from('order_items')
-        .delete()
-        .eq('id', itemId)
-        .eq('order_id', orderId)
-        .select();
-
-      if (error) {
-        console.error('[OrderService] Delete Error:', error);
-        return {
-          success: false,
-          message: 'Failed to remove item',
-          error: error.message,
-        };
-      }
-
-      if (!data || data.length === 0) {
-        console.warn(
-          '[OrderService] Delete returned no rows - item may not exist or RLS blocked'
-        );
-        return {
-          success: false,
-          message: 'Item not found or permission denied',
-        };
-      }
-
+    if (!itemId) {
       return {
-        success: true,
-        message: 'Item removed from order',
+        success: false,
+        message: 'Invalid parameters',
+        error: 'Order item ID required',
       };
-    } catch (error) {
-      console.error('[OrderService] Exception:', error);
-      return createErrorResponse(
-        error,
-        'An unexpected error occurred',
-        'OrderService.removeItemFromOrder'
-      );
     }
+
+    const result = await executeRPC<void>(
+      getAuthenticatedClient,
+      'remove_item_from_order',
+      { p_order_item_id: itemId },
+      {
+        context: 'OrderService.removeItemFromOrder',
+        errorMessage: 'Failed to remove item',
+        unwrapNested: false,
+      }
+    );
+
+    return {
+      success: result.success,
+      message: result.success ? 'Item removed from order' : result.message,
+      error: result.error,
+    };
   }
 
   // Get order with items using RPC
@@ -497,13 +478,18 @@ export class OrderService {
       // Make the RPC call with enhanced error handling using authenticated client
       const rpcStartTime = Date.now();
 
+      const limit = Math.min(
+        filters?.limit ?? PAGINATION.DEFAULT_LIMIT,
+        PAGINATION.MAX_LIMIT
+      );
+      const offset = Math.max(filters?.offset ?? 0, 0);
       const rpcCall = authenticatedClient.rpc('get_orders_list', {
         p_customer_id: filters?.customer_id || null,
         p_customer_name: filters?.customer_name || null,
         p_has_items: filters?.has_items || null,
         p_user_id: null, // Use current session user
-        p_limit: 200, // Increased from 50 to show more customers
-        p_offset: 0,
+        p_limit: limit,
+        p_offset: offset,
       });
 
       const { data, error } = await rpcCall;
@@ -540,16 +526,16 @@ export class OrderService {
         };
       }
 
-      if (__DEV__) {
-        if (data) {
-          /* No action needed. */
-        }
-
-        const totalDuration = Date.now() - totalStartTime;
+      if (data && typeof data === 'object' && data.success === false) {
+        return {
+          success: false,
+          message: data.message || 'Failed to fetch orders',
+          error: data.error || 'RPC function returned error',
+        };
       }
 
       // Handle multiple response formats:
-      // 1. { data: { orders: [...] } } - nested format from RPC
+      // 1. { data: { orders: [...], pagination } } - nested format from RPC
       // 2. { orders: [...] } - direct object format
       // 3. [...] - direct array format
       let ordersArray: RpcOrderListItem[] = [];
@@ -560,14 +546,20 @@ export class OrderService {
         ordersArray = data.data.orders;
       } else if (data?.orders) {
         ordersArray = data.orders;
-      } else {
-        /* No action needed. */
       }
+
+      const pagination = data?.data?.pagination ?? data?.pagination;
+      const totalCount: number = pagination?.total_count ?? offset + ordersArray.length;
 
       return {
         success: true,
         message: 'Orders retrieved successfully',
         data: ordersArray,
+        metadata: {
+          total_count: totalCount,
+          current_count: ordersArray.length,
+          has_more: pagination?.has_more ?? offset + ordersArray.length < totalCount,
+        },
       };
     } catch (error) {
       const totalDuration = Date.now() - totalStartTime;
@@ -581,52 +573,6 @@ export class OrderService {
         'OrderService.getOrdersList'
       );
     }
-  }
-
-  // Get order dispatches
-  // M3 Fix: Using executeRPC wrapper
-  static async getOrderDispatches(
-    orderId: string,
-    limit = 20,
-    offset = 0
-  ): Promise<OrderServiceResponse<Dispatch[]>> {
-    const result = await executeRPC<Dispatch[]>(
-      getAuthenticatedClient,
-      'get_cart_dispatches',
-      { p_cart_id: orderId },
-      {
-        context: 'OrderService.getOrderDispatches',
-        errorMessage: 'Failed to fetch dispatches',
-        unwrapNested: false,
-        validateSuccess: false, // Response is direct array
-      }
-    );
-
-    if (!result.success || !result.data) {
-      return {
-        success: false,
-        message: result.message,
-        error: result.error,
-      };
-    }
-
-    // D3 Fix: Type check before calling slice
-    if (!Array.isArray(result.data)) {
-      return {
-        success: false,
-        message: 'Invalid response format',
-        error: 'Expected array response from RPC',
-      };
-    }
-
-    // Apply pagination manually if backend doesn't support it
-    const paginatedData = result.data.slice(offset, offset + limit);
-
-    return {
-      success: true,
-      message: 'Dispatches retrieved successfully',
-      data: paginatedData,
-    };
   }
 
   // Get customer dispatches using the new RPC
@@ -676,6 +622,19 @@ export class OrderService {
         }
       }
 
+      // The RPC sorts only on these snake_case keys and silently ignores others.
+      const sortKeyMap: Record<string, string> = {
+        dispDate: 'disp_date',
+        dispNo: 'disp_no',
+        dispQty: 'disp_qty',
+        grnGrNo: 'grn_gr_no',
+        grnDate: 'grn_date',
+        itemName: 'item_name',
+      };
+      const sortBy = options?.sortBy
+        ? sortKeyMap[options.sortBy] || options.sortBy
+        : 'grn_gr_no';
+
       const authenticatedClient = await getAuthenticatedClient();
       const { data, error } = await authenticatedClient.rpc(
         'get_customer_dispatch_items',
@@ -684,7 +643,7 @@ export class OrderService {
           p_date_from: options?.dateFrom || null,
           p_date_to: options?.dateTo || null,
           p_filters: transformedFilters,
-          p_sort_by: options?.sortBy || 'grns_grNo',
+          p_sort_by: sortBy,
           p_sort_order: options?.sortOrder || 'asc',
           p_limit: options?.limit || PAGINATION.DEFAULT_LIMIT,
           p_offset: options?.offset || 0,
@@ -798,6 +757,19 @@ export class OrderService {
             current_count: 0,
             has_more: false,
           },
+        };
+      }
+
+      // A denial comes back as { success: false, error } with an empty item list.
+      if (
+        typeof data === 'object' &&
+        !Array.isArray(data) &&
+        (data.success === false || typeof data.error === 'string')
+      ) {
+        return {
+          success: false,
+          message: data.message || data.error || 'Failed to search items',
+          error: data.error || 'Search refused',
         };
       }
 
@@ -919,7 +891,9 @@ export class OrderService {
             'weight' | 'name' | 'package_mark' | 'combined') || 'combined',
         total_count: totalCount,
         current_count: currentCount,
-        has_more: responseMetadata.has_more || currentCount < totalCount,
+        has_more:
+          responseMetadata.has_more ||
+          (filters.offset || 0) + currentCount < totalCount,
       };
 
       return {
@@ -960,8 +934,8 @@ export class OrderService {
         'get_customer_items_for_order_selection',
         {
           p_customer_id: filters.customer_id,
-          p_page_size: 50, // Default page size
-          p_offset: 0, // No pagination for now
+          p_page_size: filters.page_size ?? 50,
+          p_offset: filters.offset ?? 0,
           p_search_term: filters.search || null,
           p_stock_filter_min: filters.in_stock_only ? 1 : 0, // Server-side stock filtering
           p_grn_no_filter: filters.grn_id || null, // GRN filter if provided
@@ -1004,10 +978,11 @@ export class OrderService {
       }
 
       // Extract total count from first record for pagination metadata
+      const offset = filters.offset ?? 0;
       const totalCount =
         response?.pagination?.total_count ??
         data[0]?.total_count ??
-        data.length;
+        offset + data.length;
 
       // Map the customer-specific items to our expected format
       const mappedItems = data.map((item: RpcEnhancedGrnItem) => ({
@@ -1024,7 +999,7 @@ export class OrderService {
         package_mark: item.package_mark || '',
         rack: item.rack || '',
         weight: item.weight || 0,
-        image_url: item.grns_image_url || '',
+        image_url: item.image_url || item.grns_image_url || '',
 
         // GRN information
         gr_id: item.grn_id,
@@ -1063,7 +1038,9 @@ export class OrderService {
         metadata: {
           total_count: totalCount,
           current_count: mappedItems.length,
-          has_more: mappedItems.length < totalCount,
+          has_more:
+            response?.pagination?.has_more ??
+            offset + mappedItems.length < totalCount,
         },
       };
     } catch (error) {
@@ -1074,96 +1051,6 @@ export class OrderService {
         'OrderService.getAvailableItems'
       );
     }
-  }
-
-  // Get order summary
-  static async getOrderSummary(
-    orderId: string
-  ): Promise<OrderServiceResponse<OrderSummary>> {
-    try {
-      const { data, error } = await (await getAuthenticatedClient())
-        .from('order_items')
-        .select('requested_quantity')
-        .eq('order_id', orderId)
-        .gt('requested_quantity', 0);
-
-      if (error) {
-        console.error('[OrderService] Fetch Error:', error);
-        return {
-          success: false,
-          message: 'Failed to fetch order summary',
-          error: error.message,
-        };
-      }
-
-      const summary: OrderSummary = {
-        item_count: data?.length || 0,
-        total_quantity:
-          data?.reduce(
-            (sum, item) => sum + (item.requested_quantity || 0),
-            0
-          ) || 0,
-      };
-
-      return {
-        success: true,
-        message: 'Summary retrieved successfully',
-        data: summary,
-      };
-    } catch (error) {
-      console.error('[OrderService] Exception:', error);
-      return createErrorResponse(
-        error,
-        'An unexpected error occurred',
-        'OrderService.getOrderSummary'
-      );
-    }
-  }
-
-  // Check if order is empty
-  static async isOrderEmpty(orderId: string): Promise<boolean> {
-    try {
-      const { error, count } = await (await getAuthenticatedClient())
-        .from('order_items')
-        .select('*', { count: 'exact', head: true })
-        .eq('order_id', orderId)
-        .gt('requested_quantity', 0);
-
-      return !error && count === 0;
-    } catch (error) {
-      console.error('[OrderService] Error checking order status:', error);
-      return false;
-    }
-  }
-
-  // Create dispatch from order
-  // M3 Fix: Using executeRPC wrapper
-  static async createDispatchFromOrder(
-    orderId: string,
-    userId: string
-  ): Promise<OrderServiceResponse<CreateDispatchResponse>> {
-    const result = await executeRPC<CreateDispatchResponse>(
-      getAuthenticatedClient,
-      'convert_order_to_dispatch',
-      {
-        p_order_id: orderId,
-        p_user_id: userId,
-      },
-      {
-        context: 'OrderService.createDispatchFromOrder',
-        errorMessage: 'Failed to create dispatch',
-        unwrapNested: false,
-      }
-    );
-
-    return {
-      success: result.success,
-      message: result.success
-        ? 'Dispatch created successfully'
-        : result.message,
-      data: result.data,
-      error: result.error,
-    };
   }
 }
 
@@ -1199,9 +1086,6 @@ export const getOrderWithItems =
 /** Get orders list with filters using RPC */
 export const getOrdersList = OrderService.getOrdersList.bind(OrderService);
 
-/** Get order dispatches */
-export const getOrderDispatches =
-  OrderService.getOrderDispatches.bind(OrderService);
 
 /** Get customer dispatches using the new RPC */
 export const getCustomerDispatches =
@@ -1215,15 +1099,8 @@ export const searchCustomerItemsForOrder =
 export const getAvailableItems =
   OrderService.getAvailableItems.bind(OrderService);
 
-/** Get order summary */
-export const getOrderSummary = OrderService.getOrderSummary.bind(OrderService);
 
-/** Check if order is empty */
-export const isOrderEmpty = OrderService.isOrderEmpty.bind(OrderService);
 
-/** Create dispatch from order */
-export const createDispatchFromOrder =
-  OrderService.createDispatchFromOrder.bind(OrderService);
 
 // Default export maintained for backward compatibility
 export default OrderService;
