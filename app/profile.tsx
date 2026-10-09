@@ -1,7 +1,6 @@
 /**
- * Profile Screen - SAP Fiori for iOS Design
- *
- * Implements SAP Fiori profile/detail pattern
+ * Profile screen: the signed-in user's details and account actions, as a
+ * grouped list on background.grouped (style guide §14.12).
  */
 import React, { useState } from 'react';
 import {
@@ -13,98 +12,24 @@ import {
   Alert,
   Modal,
   ActivityIndicator,
-  Platform,
 } from 'react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
-import { Ionicons } from '@expo/vector-icons';
 import { useAppSelector, useAppDispatch } from '@/store/hooks';
 import { logout } from '@/store/slices/authSlice';
-import { useFioriColors } from '@/theme/fioriColors';
-import { useTheme } from '@/hooks/useTheme';
-
-// Static design tokens (typography, spacing, dimensions)
-const FIORI_STATIC = {
-  typography: {
-    largeTitle: {
-      fontSize: 34,
-      lineHeight: 41,
-      fontWeight: '700' as const,
-      letterSpacing: 0.37,
-    },
-    title1: {
-      fontSize: 28,
-      lineHeight: 34,
-      fontWeight: '700' as const,
-      letterSpacing: 0.36,
-    },
-    title2: {
-      fontSize: 22,
-      lineHeight: 28,
-      fontWeight: '700' as const,
-      letterSpacing: 0.35,
-    },
-    title3: {
-      fontSize: 20,
-      lineHeight: 25,
-      fontWeight: '600' as const,
-      letterSpacing: 0.38,
-    },
-    headline: {
-      fontSize: 17,
-      lineHeight: 22,
-      fontWeight: '600' as const,
-      letterSpacing: -0.41,
-    },
-    body: {
-      fontSize: 17,
-      lineHeight: 22,
-      fontWeight: '400' as const,
-      letterSpacing: -0.41,
-    },
-    callout: {
-      fontSize: 16,
-      lineHeight: 21,
-      fontWeight: '400' as const,
-      letterSpacing: -0.32,
-    },
-    subhead: {
-      fontSize: 15,
-      lineHeight: 20,
-      fontWeight: '400' as const,
-      letterSpacing: -0.24,
-    },
-    footnote: {
-      fontSize: 13,
-      lineHeight: 18,
-      fontWeight: '400' as const,
-      letterSpacing: -0.08,
-    },
-    caption1: {
-      fontSize: 12,
-      lineHeight: 16,
-      fontWeight: '400' as const,
-      letterSpacing: 0,
-    },
-  },
-  spacing: {
-    xs: 4,
-    sm: 8,
-    md: 16,
-    lg: 24,
-    xl: 32,
-  },
-  dimensions: {
-    rowHeight: 44,
-    avatarSize: 80,
-    iconSize: 22,
-    borderRadius: 10,
-    cardRadius: 12,
-    modalRadius: 14,
-    buttonHeight: 44,
-  },
-};
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import {
+  fontWeight,
+  iconSize,
+  layout,
+  radius,
+  space,
+  touchTarget,
+  typography,
+  type ThemeTokens,
+} from '@/theme/tokens';
 
 const UserProfileScreen: React.FC = () => {
   const dispatch = useAppDispatch();
@@ -112,8 +37,8 @@ const UserProfileScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
-  const FIORI = useFioriColors();
-  const { isDarkMode } = useTheme();
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
 
   const handleLogout = () => {
     setShowLogoutModal(true);
@@ -125,7 +50,7 @@ const UserProfileScreen: React.FC = () => {
       await dispatch(logout()).unwrap();
       router.replace('/login');
     } catch {
-      Alert.alert('Error', 'Failed to sign out. Please try again.');
+      Alert.alert("Couldn't sign out", 'Check your connection and try again.');
       setShowLogoutModal(false);
     } finally {
       setLoggingOut(false);
@@ -155,98 +80,53 @@ const UserProfileScreen: React.FC = () => {
     }
   };
 
+  const roleLabel = userProfile?.role
+    ? userProfile.role.charAt(0).toUpperCase() + userProfile.role.slice(1)
+    : 'User';
+
   // Profile data sections
-  const profileSections = [
+  const profileSections: Array<{
+    title: string;
+    items: Array<{ label: string; value: string; icon: string }>;
+  }> = [
     {
-      title: 'ACCOUNT INFORMATION',
+      title: 'Account information',
       items: [
         {
           label: 'Name',
           value: userProfile?.name || 'Not provided',
-          icon: 'person-outline' as const,
+          icon: 'account-outline',
         },
         {
           label: 'Phone',
-          value: userProfile?.mobile || 'Not provided',
-          icon: 'call-outline' as const,
+          value: userProfile?.mobile ? formatMobile(userProfile.mobile) : 'Not provided',
+          icon: 'phone-outline',
         },
         {
           label: 'Role',
-          value: userProfile?.role
-            ? userProfile.role.charAt(0).toUpperCase() + userProfile.role.slice(1)
-            : 'User',
-          icon: 'shield-checkmark-outline' as const,
+          value: roleLabel,
+          icon: 'shield-check-outline',
         },
       ],
     },
   ];
 
-  // Key-Value Row Component
-  const KeyValueRow = ({
-    icon,
-    label,
-    value,
-    valueColor,
-    isLast = false,
-  }: {
-    icon: keyof typeof Ionicons.glyphMap;
-    label: string;
-    value: string;
-    valueColor?: string;
-    isLast?: boolean;
-  }) => (
-    <View style={[styles.keyValueRow, !isLast && [styles.keyValueRowDivider, { borderBottomColor: FIORI.colors.divider }]]}>
-      <View style={styles.keyValueLeft}>
-        <View style={[styles.keyValueIcon, { backgroundColor: FIORI.colors.backgroundSecondary }]}>
-          <Ionicons name={icon} size={18} color={FIORI.colors.textSecondary} />
-        </View>
-        <Text style={[styles.keyValueLabel, { color: FIORI.colors.textPrimary }]}>{label}</Text>
-      </View>
-      <Text
-        style={[styles.keyValueValue, { color: FIORI.colors.textSecondary }, valueColor && { color: valueColor }]}
-        numberOfLines={1}
-      >
-        {value}
-      </Text>
-    </View>
-  );
-
   return (
-    <View
-      style={[
-        styles.container,
-        {
-          paddingTop: insets.top,
-          backgroundColor: FIORI.colors.backgroundGrouped,
-        },
-      ]}
-    >
-      <EdgeToEdgeStatusBar
-        barStyle={isDarkMode ? 'light-content' : 'dark-content'}
-      />
+    <View style={[styles.container, { paddingTop: insets.top }]}>
+      <EdgeToEdgeStatusBar barStyle={t.statusBarStyle} />
 
       {/* Fiori Navigation Bar */}
-      <View
-        style={[
-          styles.navigationBar,
-          {
-            backgroundColor: FIORI.colors.background,
-            borderBottomColor: FIORI.colors.divider,
-          },
-        ]}
-      >
+      <View style={styles.navigationBar}>
         <Pressable
           style={styles.navBackButton}
           onPress={() => router.back()}
           accessibilityRole="button"
-          accessibilityLabel="Go back"
+          accessibilityLabel="Back"
         >
-          <Ionicons name="chevron-back" size={28} color={FIORI.colors.tint} />
-          <Text style={[styles.navBackText, { color: FIORI.colors.tint }]}>
-            Back
-          </Text>
+          <Icon name="chevron-left" size={iconSize.xl} color={t.brand.tint} />
+          <Text style={styles.navBackText}>Back</Text>
         </Pressable>
-        <Text style={[styles.navTitle, { color: FIORI.colors.textPrimary }]}>
+        <Text style={styles.navTitle} accessibilityRole="header">
           Profile
         </Text>
         <Pressable
@@ -255,142 +135,116 @@ const UserProfileScreen: React.FC = () => {
           accessibilityRole="button"
           accessibilityLabel="Edit profile"
         >
-          <Text style={[styles.navEditText, { color: FIORI.colors.tint }]}>
-            Edit
-          </Text>
+          <Text style={styles.navEditText}>Edit</Text>
         </Pressable>
       </View>
 
       <ScrollView
         style={styles.scrollView}
-        contentContainerStyle={{
-          paddingBottom: insets.bottom + FIORI_STATIC.spacing.xl,
-        }}
+        contentContainerStyle={{ paddingBottom: insets.bottom + space.xxxl }}
         showsVerticalScrollIndicator={false}
       >
         {/* Profile Header */}
-        <View
-          style={[styles.profileHeader, { backgroundColor: FIORI.colors.background }]}
-        >
+        <View style={styles.profileHeader}>
           <View style={styles.avatarContainer}>
-            <View style={[styles.avatar, { backgroundColor: FIORI.colors.tint }]}>
+            <View style={styles.avatar} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
               <Text style={styles.avatarText}>
                 {(userProfile?.name || 'U').charAt(0).toUpperCase()}
               </Text>
             </View>
             <Pressable
-              style={[styles.editAvatarButton, { backgroundColor: FIORI.colors.tint }]}
+              style={styles.editAvatarButton}
               onPress={handleEditProfile}
-              accessibilityLabel="Edit profile picture"
+              hitSlop={space.sm}
+              accessibilityRole="button"
+              accessibilityLabel="Edit profile"
             >
-              <Ionicons name="camera" size={14} color="#FFFFFF" />
+              <Icon name="pencil-outline" size={iconSize.sm} color={t.brand.onFill} />
             </Pressable>
           </View>
 
-          <Text style={[styles.profileName, { color: FIORI.colors.textPrimary }]}>
+          <Text style={styles.profileName} accessibilityRole="header">
             {userProfile?.name || 'User'}
           </Text>
 
-          <View style={[styles.roleBadge, { backgroundColor: FIORI.colors.infoLight }]}>
-            <Ionicons
-              name="shield-checkmark"
-              size={14}
-              color={FIORI.colors.info}
+          <View style={styles.roleBadge}>
+            <Icon
+              name="shield-check"
+              size={iconSize.sm}
+              color={t.status.informative.text}
               style={styles.roleBadgeIcon}
             />
-            <Text style={[styles.roleText, { color: FIORI.colors.info }]}>
-              {userProfile?.role
-                ? userProfile.role.charAt(0).toUpperCase() +
-                  userProfile.role.slice(1)
-                : 'User'}
+            <Text style={styles.roleText} maxFontSizeMultiplier={1.6}>
+              {roleLabel}
             </Text>
           </View>
         </View>
 
         {/* Profile Sections */}
-        {profileSections.map((section, sectionIndex) => (
-          <View key={sectionIndex} style={styles.section}>
-            <Text style={[styles.sectionHeader, { color: FIORI.colors.textSecondary }]}>{section.title}</Text>
-            <View style={[styles.sectionContent, { backgroundColor: FIORI.colors.background }]}>
+        {profileSections.map((section) => (
+          <View key={section.title} style={styles.section}>
+            <Text style={styles.sectionHeader} accessibilityRole="header">
+              {section.title}
+            </Text>
+            <View style={styles.sectionContent}>
               {section.items.map((item, itemIndex) => (
-                <KeyValueRow
-                  key={itemIndex}
-                  icon={item.icon}
-                  label={item.label}
-                  value={item.value}
-                  valueColor={(item as { valueColor?: string }).valueColor}
-                  isLast={itemIndex === section.items.length - 1}
-                />
+                <View
+                  key={item.label}
+                  style={[
+                    styles.keyValueRow,
+                    itemIndex < section.items.length - 1 && styles.keyValueRowDivider,
+                  ]}
+                  accessible
+                  accessibilityLabel={`${item.label}, ${item.value}`}
+                >
+                  <View style={styles.keyValueLeft}>
+                    <Icon name={item.icon} size={iconSize.md} color={t.icon.secondary} />
+                    <Text style={styles.keyValueLabel}>{item.label}</Text>
+                  </View>
+                  <Text style={styles.keyValueValue}>{item.value}</Text>
+                </View>
               ))}
             </View>
           </View>
         ))}
 
-        {/* Quick Actions Section */}
+        {/* Actions Section */}
         <View style={styles.section}>
-          <Text style={[styles.sectionHeader, { color: FIORI.colors.textSecondary }]}>QUICK ACTIONS</Text>
-          <View style={[styles.sectionContent, { backgroundColor: FIORI.colors.background }]}>
+          <Text style={styles.sectionHeader} accessibilityRole="header">
+            Actions
+          </Text>
+          <View style={styles.sectionContent}>
             {/* Edit Profile */}
             <Pressable
               style={({ pressed }) => [
                 styles.actionRow,
-                { borderBottomColor: FIORI.colors.divider },
+                styles.keyValueRowDivider,
                 pressed && styles.actionRowPressed,
               ]}
               onPress={handleEditProfile}
               accessibilityRole="button"
               accessibilityLabel="Edit profile"
+              accessibilityHint="Update your name"
             >
-              <View style={[styles.actionIconContainer, { backgroundColor: FIORI.colors.tintLight }]}>
-                <Ionicons
-                  name="create-outline"
-                  size={FIORI.dimensions.iconSize}
-                  color={FIORI.colors.tint}
-                />
-              </View>
+              <Icon name="pencil-outline" size={iconSize.md} color={t.brand.tint} />
               <View style={styles.actionContent}>
-                <Text style={[styles.actionLabel, { color: FIORI.colors.textPrimary }]}>Edit Profile</Text>
-                <Text style={[styles.actionSubtitle, { color: FIORI.colors.textTertiary }]}>
-                  Update your personal information
-                </Text>
+                <Text style={styles.actionLabel}>Edit profile</Text>
+                <Text style={styles.actionSubtitle}>Update your personal information.</Text>
               </View>
-              <Ionicons
-                name="chevron-forward"
-                size={20}
-                color={FIORI.colors.textTertiary}
-              />
+              <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />
             </Pressable>
 
             {/* Sign Out */}
             <Pressable
-              style={({ pressed }) => [
-                styles.actionRow,
-                styles.actionRowLast,
-                pressed && styles.actionRowPressed,
-              ]}
+              style={({ pressed }) => [styles.actionRow, pressed && styles.actionRowPressed]}
               onPress={handleLogout}
               accessibilityRole="button"
               accessibilityLabel="Sign out"
             >
-              <View
-                style={[
-                  styles.actionIconContainer,
-                  { backgroundColor: FIORI.colors.destructiveLight },
-                ]}
-              >
-                <Ionicons
-                  name="log-out-outline"
-                  size={FIORI.dimensions.iconSize}
-                  color={FIORI.colors.destructive}
-                />
-              </View>
+              <Icon name="logout" size={iconSize.md} color={t.status.negative.text} />
               <View style={styles.actionContent}>
-                <Text style={[styles.actionLabel, { color: FIORI.colors.destructive }]}>
-                  Sign Out
-                </Text>
-                <Text style={[styles.actionSubtitle, { color: FIORI.colors.textTertiary }]}>
-                  Sign out of your account
-                </Text>
+                <Text style={[styles.actionLabel, styles.actionLabelNegative]}>Sign out</Text>
+                <Text style={styles.actionSubtitle}>Sign out of this phone.</Text>
               </View>
             </Pressable>
           </View>
@@ -398,66 +252,62 @@ const UserProfileScreen: React.FC = () => {
 
         {/* Footer */}
         <View style={styles.footer}>
-          <View style={[styles.footerLogo, { backgroundColor: FIORI.colors.backgroundSecondary }]}>
-            <Ionicons
-              name="snow-outline"
-              size={24}
-              color={FIORI.colors.textTertiary}
-            />
-          </View>
-          <Text style={[styles.footerTitle, { color: FIORI.colors.textSecondary }]}>{process.env.EXPO_PUBLIC_APP_NAME || 'Warehouse Manager'}</Text>
-          <Text style={[styles.footerSubtitle, { color: FIORI.colors.textTertiary }]}>Management System v1.0</Text>
+          <Icon name="snowflake" size={iconSize.lg} color={t.icon.secondary} />
+          <Text style={styles.footerTitle}>{process.env.EXPO_PUBLIC_APP_NAME || 'Warehouse Manager'}</Text>
+          <Text style={styles.footerSubtitle}>Management System v1.0</Text>
         </View>
       </ScrollView>
 
-      {/* Fiori Modal Dialog */}
+      {/* Sign-out confirmation (style guide §13.9) */}
       <Modal
         visible={showLogoutModal}
         transparent
         animationType="fade"
+        statusBarTranslucent
         onRequestClose={() => !loggingOut && setShowLogoutModal(false)}
       >
         <Pressable
-          style={[styles.modalOverlay, { backgroundColor: 'rgba(0, 0, 0, 0.5)' }]}
+          style={styles.modalOverlay}
           onPress={() => !loggingOut && setShowLogoutModal(false)}
+          accessibilityRole="button"
+          accessibilityLabel="Cancel"
         >
           <Pressable
-            style={[styles.modalDialog, { backgroundColor: FIORI.colors.background }]}
+            style={styles.modalDialog}
             onPress={(e) => e.stopPropagation()}
+            accessibilityViewIsModal
+            accessible={false}
           >
-            {/* Modal Icon */}
-            <View style={[styles.modalIconContainer, { backgroundColor: FIORI.colors.destructiveLight }]}>
-              <Ionicons
-                name="log-out-outline"
-                size={32}
-                color={FIORI.colors.destructive}
-              />
-            </View>
-
-            {/* Modal Header */}
-            <Text style={[styles.modalTitle, { color: FIORI.colors.textPrimary }]}>Sign Out</Text>
-            <Text style={[styles.modalMessage, { color: FIORI.colors.textSecondary }]}>
-              Are you sure you want to sign out of your account?
+            <Icon name="logout" size={iconSize.xl} color={t.status.negative.text} />
+            <Text style={styles.modalTitle} accessibilityRole="header">
+              Sign out?
+            </Text>
+            <Text style={styles.modalMessage}>
+              You'll need your mobile number and a one-time code to sign in again.
             </Text>
 
-            {/* Modal Actions */}
             <View style={styles.modalActions}>
               <Pressable
-                style={[styles.modalButton, { backgroundColor: FIORI.colors.backgroundSecondary }]}
+                style={({ pressed }) => [styles.modalButton, styles.modalButtonSecondary, pressed && styles.modalButtonSecondaryPressed]}
                 onPress={() => setShowLogoutModal(false)}
                 disabled={loggingOut}
+                accessibilityRole="button"
+                accessibilityState={{ disabled: loggingOut }}
               >
-                <Text style={[styles.modalButtonTextSecondary, { color: FIORI.colors.tint }]}>Cancel</Text>
+                <Text style={styles.modalButtonTextSecondary}>Cancel</Text>
               </Pressable>
               <Pressable
-                style={[styles.modalButton, { backgroundColor: FIORI.colors.destructive }]}
+                style={({ pressed }) => [styles.modalButton, styles.modalButtonDestructive, pressed && styles.modalButtonDestructivePressed]}
                 onPress={confirmLogout}
                 disabled={loggingOut}
+                accessibilityRole="button"
+                accessibilityLabel="Sign out"
+                accessibilityState={{ busy: loggingOut }}
               >
                 {loggingOut ? (
-                  <ActivityIndicator size="small" color="#FFFFFF" />
+                  <ActivityIndicator size="small" color={t.destructive.onFill} />
                 ) : (
-                  <Text style={[styles.modalButtonTextDestructive, { color: '#FFFFFF' }]}>Sign Out</Text>
+                  <Text style={styles.modalButtonTextDestructive}>Sign out</Text>
                 )}
               </Pressable>
             </View>
@@ -468,341 +318,286 @@ const UserProfileScreen: React.FC = () => {
   );
 };
 
+/** "+91 98765 43210" for a stored 10-digit (or 91-prefixed) number. */
+function formatMobile(mobile: string): string {
+  const digits = mobile.replace(/\D/g, '').replace(/^91(?=\d{10}$)/, '');
+  if (digits.length !== 10) return mobile;
+  return `+91 ${digits.slice(0, 5)} ${digits.slice(5)}`;
+}
+
 // ============================================================================
-// SAP FIORI STYLES
+// STYLES
 // ============================================================================
 
-const styles = StyleSheet.create({
-  // Container (color applied inline)
+const makeStyles = (t: ThemeTokens) => ({
   container: {
     flex: 1,
+    backgroundColor: t.background.grouped,
   },
 
-  // Navigation Bar (colors applied inline)
+  // Navigation Bar
   navigationBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    height: 44,
-    paddingHorizontal: FIORI_STATIC.spacing.sm,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
+    minHeight: touchTarget,
+    paddingHorizontal: space.sm,
+    backgroundColor: t.surface.header,
     borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.divider,
   },
-
   navBackButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: FIORI_STATIC.spacing.sm,
-    paddingRight: FIORI_STATIC.spacing.md,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    minHeight: touchTarget,
+    paddingRight: space.lg,
     minWidth: 70,
   },
-
   navBackText: {
-    ...FIORI_STATIC.typography.body,
-    marginLeft: FIORI_STATIC.spacing.xs,
+    ...typography.body,
+    color: t.brand.tint,
   },
-
   navTitle: {
-    ...FIORI_STATIC.typography.headline,
+    ...typography.headline,
+    color: t.text.primary,
   },
-
   navEditButton: {
-    paddingVertical: FIORI_STATIC.spacing.sm,
-    paddingLeft: FIORI_STATIC.spacing.md,
+    minHeight: touchTarget,
+    justifyContent: 'center' as const,
+    paddingLeft: space.lg,
+    paddingRight: space.sm,
     minWidth: 70,
-    alignItems: 'flex-end',
+    alignItems: 'flex-end' as const,
   },
-
   navEditText: {
-    ...FIORI_STATIC.typography.body,
+    ...typography.body,
+    color: t.brand.tint,
   },
 
-  // ScrollView
   scrollView: {
     flex: 1,
   },
 
-  // Profile Header (colors applied inline)
+  // Profile Header
   profileHeader: {
-    alignItems: 'center',
-    paddingTop: FIORI_STATIC.spacing.lg,
-    paddingBottom: FIORI_STATIC.spacing.xl,
-    paddingHorizontal: FIORI_STATIC.spacing.md,
-    marginBottom: FIORI_STATIC.spacing.lg,
+    alignItems: 'center' as const,
+    paddingTop: space.xxl,
+    paddingBottom: space.xxxl,
+    paddingHorizontal: space.lg,
+    marginBottom: space.xxl,
+    backgroundColor: t.surface.card,
   },
-
   avatarContainer: {
-    position: 'relative',
-    marginBottom: FIORI_STATIC.spacing.md,
+    position: 'relative' as const,
+    marginBottom: space.lg,
   },
-
   avatar: {
-    width: FIORI_STATIC.dimensions.avatarSize,
-    height: FIORI_STATIC.dimensions.avatarSize,
-    borderRadius: FIORI_STATIC.dimensions.avatarSize / 2,
-    justifyContent: 'center',
-    alignItems: 'center',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.15,
-        shadowRadius: 4,
-      },
-      android: { elevation: 3 },
-    }),
+    width: 80,
+    height: 80,
+    borderRadius: radius.pill,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    backgroundColor: t.brand.fill,
   },
-
   avatarText: {
-    fontSize: 32,
-    fontWeight: '600',
-    color: '#FFFFFF',
+    ...typography.title1,
+    color: t.brand.onFill,
   },
-
   editAvatarButton: {
-    position: 'absolute',
+    position: 'absolute' as const,
     bottom: 0,
     right: 0,
     width: 28,
     height: 28,
-    borderRadius: 14,
-    justifyContent: 'center',
-    alignItems: 'center',
+    borderRadius: radius.pill,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
     borderWidth: 2,
-    borderColor: '#FFFFFF',
+    borderColor: t.surface.card,
+    backgroundColor: t.brand.fill,
   },
-
   profileName: {
-    ...FIORI_STATIC.typography.title2,
-    marginBottom: FIORI_STATIC.spacing.sm,
+    ...typography.title2,
+    color: t.text.primary,
+    textAlign: 'center' as const,
+    marginBottom: space.sm,
   },
-
   roleBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: FIORI_STATIC.spacing.sm + 4,
-    paddingVertical: FIORI_STATIC.spacing.xs + 2,
-    borderRadius: 16,
-    marginBottom: FIORI_STATIC.spacing.sm,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    paddingHorizontal: space.md,
+    paddingVertical: space.s6,
+    borderRadius: radius.pill,
+    backgroundColor: t.status.informative.background,
   },
-
   roleBadgeIcon: {
-    marginRight: FIORI_STATIC.spacing.xs,
+    marginRight: space.xs,
   },
-
   roleText: {
-    ...FIORI_STATIC.typography.footnote,
-    fontWeight: '600',
+    ...typography.footnote,
+    fontWeight: fontWeight.semibold,
+    color: t.status.informative.text,
   },
 
-  profileEmail: {
-    ...FIORI_STATIC.typography.subhead,
-  },
-
-  // Section
+  // Section (grouped list, style guide §14.12)
   section: {
-    marginBottom: FIORI_STATIC.spacing.lg,
+    marginBottom: space.xxl,
   },
-
   sectionHeader: {
-    ...FIORI_STATIC.typography.footnote,
-    fontWeight: '400',
+    ...typography.footnote,
+    textTransform: 'uppercase' as const,
     letterSpacing: 0.5,
-    marginHorizontal: FIORI_STATIC.spacing.md,
-    marginBottom: FIORI_STATIC.spacing.sm,
-    paddingHorizontal: FIORI_STATIC.spacing.md,
+    color: t.text.secondary,
+    marginHorizontal: layout.marginCompact,
+    marginBottom: space.sm,
+    paddingHorizontal: space.lg,
   },
-
   sectionContent: {
-    marginHorizontal: FIORI_STATIC.spacing.md,
-    borderRadius: FIORI_STATIC.dimensions.borderRadius,
-    overflow: 'hidden',
+    marginHorizontal: layout.marginCompact,
+    borderRadius: radius.card,
+    overflow: 'hidden' as const,
+    backgroundColor: t.surface.card,
   },
 
   // Key-Value Row
   keyValueRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    minHeight: FIORI_STATIC.dimensions.rowHeight + 8,
-    paddingHorizontal: FIORI_STATIC.spacing.md,
-    paddingVertical: FIORI_STATIC.spacing.sm,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
+    minHeight: layout.rowMinHeight + space.sm,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.sm,
   },
-
   keyValueRowDivider: {
     borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.divider,
   },
-
   keyValueLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.md,
   },
-
-  keyValueIcon: {
-    width: 28,
-    height: 28,
-    borderRadius: 6,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: FIORI_STATIC.spacing.sm,
-  },
-
   keyValueLabel: {
-    ...FIORI_STATIC.typography.body,
+    ...typography.body,
+    color: t.text.primary,
   },
-
   keyValueValue: {
-    ...FIORI_STATIC.typography.body,
-    textAlign: 'right',
+    ...typography.body,
+    color: t.text.secondary,
+    textAlign: 'right' as const,
     flex: 1,
-    marginLeft: FIORI_STATIC.spacing.md,
+    marginLeft: space.lg,
   },
 
   // Action Row
   actionRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    minHeight: FIORI_STATIC.dimensions.rowHeight + 16,
-    paddingHorizontal: FIORI_STATIC.spacing.md,
-    paddingVertical: FIORI_STATIC.spacing.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.md,
+    minHeight: layout.rowMinHeight + space.lg,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.sm,
+    backgroundColor: t.surface.card,
   },
-
   actionRowPressed: {
-    opacity: 0.7,
+    backgroundColor: t.surface.cardPressed,
   },
-
-  actionRowLast: {
-    borderBottomWidth: 0,
-  },
-
-  actionIconContainer: {
-    width: 36,
-    height: 36,
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: FIORI_STATIC.spacing.sm,
-  },
-
-  actionIconDestructive: {
-    // Color applied inline
-  },
-
   actionContent: {
     flex: 1,
-    marginRight: FIORI_STATIC.spacing.sm,
   },
-
   actionLabel: {
-    ...FIORI_STATIC.typography.body,
+    ...typography.body,
+    color: t.text.primary,
   },
-
-  actionLabelDestructive: {
-    // Color applied inline
+  actionLabelNegative: {
+    color: t.status.negative.text,
   },
-
   actionSubtitle: {
-    ...FIORI_STATIC.typography.footnote,
-    marginTop: 2,
+    ...typography.footnote,
+    color: t.text.secondary,
+    marginTop: space.xxs,
   },
 
   // Footer
   footer: {
-    alignItems: 'center',
-    paddingVertical: FIORI_STATIC.spacing.xl,
+    alignItems: 'center' as const,
+    paddingVertical: space.xxxl,
+    gap: space.xs,
   },
-
-  footerLogo: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: FIORI_STATIC.spacing.sm,
-  },
-
   footerTitle: {
-    ...FIORI_STATIC.typography.subhead,
-    fontWeight: '600',
-    marginBottom: FIORI_STATIC.spacing.xs,
+    ...typography.subhead,
+    fontWeight: fontWeight.semibold,
+    color: t.text.secondary,
+    marginTop: space.xs,
   },
-
   footerSubtitle: {
-    ...FIORI_STATIC.typography.footnote,
+    ...typography.footnote,
+    color: t.text.secondary,
   },
 
-  // Modal
+  // Dialog
   modalOverlay: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    padding: space.xxl,
+    backgroundColor: t.overlay.scrim,
   },
-
   modalDialog: {
-    width: 300,
-    borderRadius: FIORI_STATIC.dimensions.modalRadius,
-    padding: FIORI_STATIC.spacing.lg,
-    alignItems: 'center',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 12,
-      },
-      android: { elevation: 8 },
-    }),
+    width: '100%' as const,
+    maxWidth: layout.maxFormWidth,
+    borderRadius: radius.card,
+    padding: space.xxl,
+    alignItems: 'center' as const,
+    gap: space.sm,
+    backgroundColor: t.surface.sheet,
+    ...t.shadow[4],
   },
-
-  modalIconContainer: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: FIORI_STATIC.spacing.md,
-  },
-
   modalTitle: {
-    ...FIORI_STATIC.typography.title3,
-    marginBottom: FIORI_STATIC.spacing.sm,
+    ...typography.title3,
+    color: t.text.primary,
+    textAlign: 'center' as const,
   },
-
   modalMessage: {
-    ...FIORI_STATIC.typography.subhead,
-    textAlign: 'center',
-    marginBottom: FIORI_STATIC.spacing.lg,
+    ...typography.body,
+    color: t.text.secondary,
+    textAlign: 'center' as const,
+    marginBottom: space.lg,
   },
-
   modalActions: {
-    flexDirection: 'row',
-    gap: FIORI_STATIC.spacing.sm,
-    width: '100%',
+    flexDirection: 'row' as const,
+    gap: space.sm,
+    width: '100%' as const,
   },
-
   modalButton: {
     flex: 1,
-    height: FIORI_STATIC.dimensions.buttonHeight,
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
+    minHeight: touchTarget,
+    borderRadius: radius.button,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
   },
-
   modalButtonSecondary: {
-    // Color applied inline
+    borderWidth: 1,
+    borderColor: t.border.button,
   },
-
+  modalButtonSecondaryPressed: {
+    backgroundColor: t.surface.cardPressed,
+  },
   modalButtonDestructive: {
-    // Color applied inline
+    backgroundColor: t.destructive.fill,
   },
-
+  modalButtonDestructivePressed: {
+    backgroundColor: t.destructive.fillPressed,
+  },
   modalButtonTextSecondary: {
-    ...FIORI_STATIC.typography.headline,
+    ...typography.callout,
+    fontWeight: fontWeight.semibold,
+    color: t.text.primary,
   },
-
   modalButtonTextDestructive: {
-    ...FIORI_STATIC.typography.headline,
+    ...typography.callout,
+    fontWeight: fontWeight.semibold,
+    color: t.destructive.onFill,
   },
 });
 

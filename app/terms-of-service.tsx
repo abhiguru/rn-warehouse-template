@@ -1,66 +1,27 @@
 /**
- * Terms of Service Screen - SAP Fiori for iOS Design
+ * Terms of service screen: reading text (style guide §4, §12).
  *
- * Displays the full Terms of Service for the App
- * Adapted from website terms for mobile app context
+ * The full terms of service, adapted from the website terms for the app.
+ * Section titles are headers for screen readers; body text uses
+ * typography.body in text.primary on a surface.card column.
  */
 import React from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  Pressable,
-} from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
 import { router } from 'expo-router';
 import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
-import { useTheme } from '@/hooks/useTheme';
-import { useFioriColors } from '@/theme/fioriColors';
-
-// Static design tokens
-const FIORI_STATIC = {
-  typography: {
-    title1: {
-      fontSize: 28,
-      lineHeight: 34,
-      fontWeight: '700' as const,
-      letterSpacing: 0.36,
-    },
-    headline: {
-      fontSize: 17,
-      lineHeight: 22,
-      fontWeight: '600' as const,
-      letterSpacing: -0.41,
-    },
-    body: {
-      fontSize: 17,
-      lineHeight: 24,
-      fontWeight: '400' as const,
-      letterSpacing: -0.41,
-    },
-    subhead: {
-      fontSize: 15,
-      lineHeight: 20,
-      fontWeight: '400' as const,
-      letterSpacing: -0.24,
-    },
-    footnote: {
-      fontSize: 13,
-      lineHeight: 18,
-      fontWeight: '400' as const,
-      letterSpacing: -0.08,
-    },
-  },
-  spacing: {
-    xs: 4,
-    sm: 8,
-    md: 16,
-    lg: 24,
-    xl: 32,
-  },
-};
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import {
+  fontWeight,
+  iconSize,
+  layout,
+  radius,
+  space,
+  touchTarget,
+  typography,
+  type ThemeTokens,
+} from '@/theme/tokens';
 
 // Company information
 const COMPANY = {
@@ -68,105 +29,98 @@ const COMPANY = {
   email: process.env.EXPO_PUBLIC_LEGAL_EMAIL || 'legal@example.com',
 };
 
-export default function TermsOfServiceScreen() {
-  const insets = useSafeAreaInsets();
-  const { isDarkMode } = useTheme();
-  const FIORI = useFioriColors();
-
-  const Section = ({
-    title,
-    children,
-  }: {
-    title: string;
-    children: React.ReactNode;
-  }) => (
+function Section({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
+  const styles = useThemedStyles(makeStyles);
+  return (
     <View style={styles.section}>
-      <Text style={[styles.sectionTitle, { color: FIORI.colors.textPrimary }]}>
+      <Text style={styles.sectionTitle} accessibilityRole="header">
         {title}
       </Text>
       {children}
     </View>
   );
+}
 
-  const Paragraph = ({ children }: { children: React.ReactNode }) => (
-    <Text style={[styles.paragraph, { color: FIORI.colors.textSecondary }]}>
+function Paragraph({ children }: { children: React.ReactNode }) {
+  const styles = useThemedStyles(makeStyles);
+  return <Text style={styles.paragraph}>{children}</Text>;
+}
+
+function Subheading({ children }: { children: React.ReactNode }) {
+  const styles = useThemedStyles(makeStyles);
+  return (
+    <Text style={styles.subheading} accessibilityRole="header">
       {children}
     </Text>
   );
+}
 
-  const BulletList = ({ items }: { items: string[] }) => (
+function BulletList({ items }: { items: string[] }) {
+  const styles = useThemedStyles(makeStyles);
+  return (
     <View style={styles.bulletList}>
-      {items.map((item, index) => (
-        <View key={index} style={styles.bulletItem}>
-          <Text style={[styles.bullet, { color: FIORI.colors.textSecondary }]}>
-            •
-          </Text>
-          <Text
-            style={[styles.bulletText, { color: FIORI.colors.textSecondary }]}
-          >
-            {item}
-          </Text>
+      {items.map(item => (
+        <View
+          key={item}
+          style={styles.bulletItem}
+          accessible
+          accessibilityLabel={item}
+        >
+          <Text style={styles.bullet}>•</Text>
+          <Text style={styles.bulletText}>{item}</Text>
         </View>
       ))}
     </View>
   );
+}
+
+export default function TermsOfServiceScreen() {
+  const insets = useSafeAreaInsets();
+  const t = useTokens();
+  const styles = useThemedStyles(makeStyles);
 
   return (
-    <View
-      style={[
-        styles.container,
-        {
-          paddingTop: insets.top,
-          backgroundColor: FIORI.colors.backgroundGrouped,
-        },
-      ]}
-    >
-      <EdgeToEdgeStatusBar
-        barStyle={isDarkMode ? 'light-content' : 'dark-content'}
-      />
+    <View style={[styles.container, { paddingTop: insets.top }]}>
+      <EdgeToEdgeStatusBar barStyle={t.statusBarStyle} />
 
       {/* Navigation Bar */}
-      <View
-        style={[
-          styles.navigationBar,
-          {
-            backgroundColor: FIORI.colors.background,
-            borderBottomColor: FIORI.colors.divider,
-          },
-        ]}
-      >
+      <View style={styles.navigationBar}>
         <Pressable
           style={styles.navBackButton}
           onPress={() => router.back()}
-          accessibilityLabel="Go back"
+          accessibilityRole="button"
+          accessibilityLabel="Back"
         >
-          <Ionicons name="chevron-back" size={28} color={FIORI.colors.tint} />
-          <Text style={[styles.navBackText, { color: FIORI.colors.tint }]}>
-            Back
-          </Text>
+          <Icon name="chevron-left" size={iconSize.xl} color={t.brand.tint} />
+          <Text style={styles.navBackText}>Back</Text>
         </Pressable>
-        <Text style={[styles.navTitle, { color: FIORI.colors.textPrimary }]}>
-          Terms of Service
+        <Text
+          style={styles.navTitle}
+          accessibilityRole="header"
+          numberOfLines={1}
+        >
+          Terms of service
         </Text>
         <View style={styles.navPlaceholder} />
       </View>
 
       <ScrollView
         style={styles.scrollView}
-        contentContainerStyle={{
-          paddingBottom: insets.bottom + FIORI_STATIC.spacing.xl,
-        }}
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingBottom: insets.bottom + space.xxxl },
+        ]}
         showsVerticalScrollIndicator={false}
       >
-        <View
-          style={[styles.content, { backgroundColor: FIORI.colors.background }]}
-        >
+        <View style={styles.content}>
           {/* Header */}
-          <Text
-            style={[styles.lastUpdated, { color: FIORI.colors.textTertiary }]}
-          >
-            Last Updated: December 2025
-          </Text>
+          <Text style={styles.lastUpdated}>Last updated: December 2025</Text>
 
           <Paragraph>
             Welcome to the App. These Terms and Conditions constitute a legal
@@ -175,7 +129,7 @@ export default function TermsOfServiceScreen() {
           </Paragraph>
 
           {/* Section 1 */}
-          <Section title="1. Company Information">
+          <Section title="1. Company information">
             <Paragraph>Company Name: {COMPANY.name}</Paragraph>
             <Paragraph>Email: {COMPANY.email}</Paragraph>
           </Section>
@@ -193,7 +147,7 @@ export default function TermsOfServiceScreen() {
           </Section>
 
           {/* Section 3 */}
-          <Section title="3. Acceptance of Terms">
+          <Section title="3. Acceptance of terms">
             <Paragraph>
               By accessing and using our App, you acknowledge that you have
               read, understood, and agree to be bound by these Terms and our
@@ -203,7 +157,7 @@ export default function TermsOfServiceScreen() {
           </Section>
 
           {/* Section 4 */}
-          <Section title="4. Services Offered">
+          <Section title="4. Services offered">
             <Paragraph>
               The Company provides the following services through the App:
             </Paragraph>
@@ -220,7 +174,7 @@ export default function TermsOfServiceScreen() {
           </Section>
 
           {/* Section 5 */}
-          <Section title="5. User Account and Registration">
+          <Section title="5. User account and registration">
             <Paragraph>
               To access the App features, you need to create a User Account by
               providing your phone number. You agree to:
@@ -259,7 +213,7 @@ export default function TermsOfServiceScreen() {
           </Section>
 
           {/* Section 7 */}
-          <Section title="7. Mobile Device Permissions">
+          <Section title="7. Mobile device permissions">
             <Paragraph>
               The App may request access to certain features on your device:
             </Paragraph>
@@ -278,7 +232,7 @@ export default function TermsOfServiceScreen() {
           </Section>
 
           {/* Section 8 */}
-          <Section title="8. Payment Terms">
+          <Section title="8. Payment terms">
             <Paragraph>
               Payment terms, including the amount, due dates, advance payment
               requirements, and billing cycles, shall be as specified in your
@@ -288,7 +242,7 @@ export default function TermsOfServiceScreen() {
           </Section>
 
           {/* Section 9 */}
-          <Section title="9. Cancellation and Refund Policy">
+          <Section title="9. Cancellation and refund policy">
             <Paragraph>
               Cancellation terms, refund eligibility, notice periods, and refund
               processing timelines shall be governed by the specific terms
@@ -299,7 +253,7 @@ export default function TermsOfServiceScreen() {
           </Section>
 
           {/* Section 10 */}
-          <Section title="10. Intellectual Property Rights">
+          <Section title="10. Intellectual property rights">
             <Paragraph>
               All Content on the App, including but not limited to text,
               graphics, logos, images, software, and other material, is the
@@ -309,7 +263,7 @@ export default function TermsOfServiceScreen() {
           </Section>
 
           {/* Section 11 */}
-          <Section title="11. Privacy and Data Protection">
+          <Section title="11. Privacy and data protection">
             <Paragraph>
               Your use of the App is also governed by our Privacy Policy, which
               is incorporated into these Terms by reference. Please review our
@@ -319,7 +273,7 @@ export default function TermsOfServiceScreen() {
           </Section>
 
           {/* Section 12 */}
-          <Section title="12. Third-Party Services">
+          <Section title="12. Third-party services">
             <Paragraph>
               The App may use third-party services for functionality such as
               authentication, analytics, and cloud storage. We have no control
@@ -329,7 +283,7 @@ export default function TermsOfServiceScreen() {
           </Section>
 
           {/* Section 13 */}
-          <Section title="13. Disclaimer of Warranties">
+          <Section title="13. Disclaimer of warranties">
             <Paragraph>
               TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW: The App and all
               Content are provided on an "AS IS" and "AS AVAILABLE" basis
@@ -340,7 +294,7 @@ export default function TermsOfServiceScreen() {
           </Section>
 
           {/* Section 14 */}
-          <Section title="14. Limitation of Liability">
+          <Section title="14. Limitation of liability">
             <Paragraph>
               TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW: The Company,
               its directors, officers, employees, agents, and affiliates shall
@@ -362,7 +316,7 @@ export default function TermsOfServiceScreen() {
           </Section>
 
           {/* Section 16 */}
-          <Section title="16. Force Majeure">
+          <Section title="16. Force majeure">
             <Paragraph>
               The Company shall not be liable for any failure or delay in
               performance due to circumstances beyond its reasonable control,
@@ -372,7 +326,7 @@ export default function TermsOfServiceScreen() {
           </Section>
 
           {/* Section 17 */}
-          <Section title="17. Dispute Resolution">
+          <Section title="17. Dispute resolution">
             <Paragraph>
               Any dispute arising out of these Terms shall first be attempted to
               be resolved through good faith negotiations. If unresolved within
@@ -383,7 +337,7 @@ export default function TermsOfServiceScreen() {
           </Section>
 
           {/* Section 18 */}
-          <Section title="18. Governing Law">
+          <Section title="18. Governing law">
             <Paragraph>
               These Terms shall be governed by and construed in accordance with
               the laws of India, including the Indian Contract Act, 1872, the
@@ -393,7 +347,7 @@ export default function TermsOfServiceScreen() {
           </Section>
 
           {/* Section 19 */}
-          <Section title="19. Modifications to Terms">
+          <Section title="19. Modifications to terms">
             <Paragraph>
               We reserve the right to modify these Terms at any time. Changes
               will be effective immediately upon posting the updated Terms in
@@ -403,7 +357,7 @@ export default function TermsOfServiceScreen() {
           </Section>
 
           {/* Section 20 */}
-          <Section title="20. Contact Information">
+          <Section title="20. Contact information">
             <Paragraph>
               If you have any questions about these Terms, please contact us:
             </Paragraph>
@@ -412,20 +366,10 @@ export default function TermsOfServiceScreen() {
           </Section>
 
           {/* Acknowledgment */}
-          <View
-            style={[
-              styles.acknowledgment,
-              { borderTopColor: FIORI.colors.divider },
-            ]}
-          >
-            <Text
-              style={[
-                styles.acknowledgmentText,
-                { color: FIORI.colors.textSecondary },
-              ]}
-            >
-              BY USING THE APP, YOU ACKNOWLEDGE THAT YOU HAVE READ THESE TERMS
-              AND CONDITIONS, UNDERSTAND THEM, AND AGREE TO BE BOUND BY THEM.
+          <View style={styles.acknowledgment}>
+            <Text style={styles.acknowledgmentText}>
+              By using the app, you acknowledge that you have read these terms
+              and conditions, understand them, and agree to be bound by them.
             </Text>
           </View>
         </View>
@@ -434,30 +378,35 @@ export default function TermsOfServiceScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (t: ThemeTokens) => ({
   container: {
     flex: 1,
+    backgroundColor: t.background.base,
   },
   navigationBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: FIORI_STATIC.spacing.md,
-    paddingVertical: FIORI_STATIC.spacing.sm,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
+    minHeight: touchTarget,
+    paddingHorizontal: space.sm,
+    backgroundColor: t.surface.header,
     borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.divider,
   },
   navBackButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    minHeight: touchTarget,
     minWidth: 80,
   },
   navBackText: {
-    ...FIORI_STATIC.typography.body,
-    marginLeft: FIORI_STATIC.spacing.xs,
+    ...typography.body,
+    color: t.brand.tint,
   },
   navTitle: {
-    ...FIORI_STATIC.typography.headline,
-    textAlign: 'center',
+    ...typography.headline,
+    color: t.text.primary,
+    textAlign: 'center' as const,
     flex: 1,
   },
   navPlaceholder: {
@@ -466,50 +415,69 @@ const styles = StyleSheet.create({
   scrollView: {
     flex: 1,
   },
+  scrollContent: {
+    padding: layout.marginCompact,
+  },
   content: {
-    margin: FIORI_STATIC.spacing.md,
-    borderRadius: 12,
-    padding: FIORI_STATIC.spacing.lg,
+    width: '100%' as const,
+    maxWidth: layout.maxContentWidth,
+    alignSelf: 'center' as const,
+    borderRadius: radius.card,
+    padding: space.xl,
+    backgroundColor: t.surface.card,
+    ...t.shadow[2],
   },
   lastUpdated: {
-    ...FIORI_STATIC.typography.footnote,
-    marginBottom: FIORI_STATIC.spacing.md,
+    ...typography.footnote,
+    color: t.text.secondary,
+    marginBottom: space.lg,
   },
   section: {
-    marginTop: FIORI_STATIC.spacing.lg,
+    marginTop: space.xxl,
   },
   sectionTitle: {
-    ...FIORI_STATIC.typography.headline,
-    marginBottom: FIORI_STATIC.spacing.sm,
+    ...typography.title3,
+    color: t.text.primary,
+    marginBottom: space.sm,
+  },
+  subheading: {
+    ...typography.headline,
+    color: t.text.primary,
+    marginTop: space.lg,
+    marginBottom: space.xs,
   },
   paragraph: {
-    ...FIORI_STATIC.typography.body,
-    marginBottom: FIORI_STATIC.spacing.sm,
+    ...typography.body,
+    color: t.text.primary,
+    marginBottom: space.md,
   },
   bulletList: {
-    marginLeft: FIORI_STATIC.spacing.sm,
-    marginBottom: FIORI_STATIC.spacing.sm,
+    marginLeft: space.xs,
+    marginBottom: space.md,
   },
   bulletItem: {
-    flexDirection: 'row',
-    marginBottom: FIORI_STATIC.spacing.xs,
+    flexDirection: 'row' as const,
+    marginBottom: space.xs,
   },
   bullet: {
-    ...FIORI_STATIC.typography.body,
-    marginRight: FIORI_STATIC.spacing.sm,
+    ...typography.body,
+    color: t.text.secondary,
+    marginRight: space.sm,
   },
   bulletText: {
-    ...FIORI_STATIC.typography.body,
+    ...typography.body,
+    color: t.text.primary,
     flex: 1,
   },
   acknowledgment: {
-    marginTop: FIORI_STATIC.spacing.xl,
-    paddingTop: FIORI_STATIC.spacing.lg,
+    marginTop: space.xxxl,
+    paddingTop: space.xxl,
     borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: t.border.divider,
   },
   acknowledgmentText: {
-    ...FIORI_STATIC.typography.subhead,
-    fontWeight: '600',
-    textAlign: 'center',
+    ...typography.body,
+    fontWeight: fontWeight.semibold,
+    color: t.text.primary,
   },
 });
