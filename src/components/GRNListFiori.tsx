@@ -56,8 +56,7 @@ import PrintJobsBottomSheet, { PrintJobsBottomSheetRef } from '@/components/Prin
 import { Button } from '@/components/ui/Button';
 import { printGRNRange } from '@/services/print-service';
 import { getGRNStockStatus, type GRNStockStatus } from '@/features/grn/utils/grnStockStatus';
-import { StatusTag } from '@/components/ui/StatusTag';
-import { Avatar } from '@/components/ui/Avatar';
+import { StatusTag, Avatar } from '@/components/ui';
 import { createLogger } from '@/utils/logger';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { iconSize } from '@/theme/tokens';

@@ -154,7 +154,7 @@ export default function CustomerOrderScreen() {
               accessibilityLabel="Back"
             >
               <Icon name={Platform.OS === 'ios' ? 'chevron-left' : 'arrow-left'} size={iconSize.lg} color={t.brand.tint} />
-              {Platform.OS === 'ios' && <Text style={styles.backButtonText}>Back</Text>}
+              <Text style={styles.backButtonText}>Back</Text>
             </Pressable>
             <View style={styles.headerTitleContainer}>
               <Text style={styles.headerTitle} numberOfLines={2} accessibilityRole="header">
@@ -255,7 +255,7 @@ const makeStyles = (t: ThemeTokens) => ({
     color: t.text.primary,
   },
   // Custom back button (same on every headerless screen): platform glyph,
-  // brand.tint, "Back" label on iOS, at least touchTarget square
+  // brand.tint, the word "Back", at least touchTarget in size (§8)
   backButton: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,

@@ -5,7 +5,7 @@ import { parseReceiptQuantity, parseReceiptWeight } from '@/features/grn/schemas
 import { useThemedStyles } from '@/hooks/useTheme';
 import { fontWeight, layout, radius, space, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
-import { StatusTag } from '@/components/ui/StatusTag';
+import { StatusTag } from '@/components/ui';
 import { formatCount, formatNumber, formatWeight } from '@/utils/formatters';
 
 export interface SavedItemCardData {

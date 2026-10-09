@@ -47,8 +47,7 @@ import type {
   CustomerGRNSummary,
 } from '@/types/report.types';
 import { formatCount, formatDate, formatNumber, formatSectionDate } from '@/utils/formatters';
-import { StatusTag } from '@/components/ui/StatusTag';
-import { Avatar } from '@/components/ui/Avatar';
+import { StatusTag, Avatar } from '@/components/ui';
 
 const NO_CUSTOMER_ERROR = 'No customer assigned to your account';
 

@@ -29,7 +29,7 @@ import {
   type ThemeTokens,
 } from '@/theme/tokens';
 import { formatCount, formatDate, formatNumber, formatWeight } from '@/utils/formatters';
-import { StatusTag } from '@/components/ui/StatusTag';
+import { StatusTag } from '@/components/ui';
 import { OrderService } from '@/services/order-service';
 import { StockService } from '@/services/stock-service';
 import { SessionRecentItemsService } from '@/services/session-recent-items-service';

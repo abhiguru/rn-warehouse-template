@@ -14,7 +14,7 @@ import { searchService } from '@/services/search-service';
 import { useThemedStyles } from '@/hooks/useTheme';
 import { fontWeight, radius, space, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
-import { StatusTag } from '@/components/ui/StatusTag';
+import { StatusTag } from '@/components/ui';
 
 // ============================================================================
 // TYPES

@@ -93,7 +93,7 @@ const makeStyles = (t: ThemeTokens) => ({
   },
   // Header back button
   // Custom back button (same on every headerless screen): platform glyph,
-  // brand.tint, "Back" label on iOS, at least touchTarget square
+  // brand.tint, the word "Back", at least touchTarget in size (§8)
   backButton: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
@@ -667,7 +667,7 @@ function GRNDetailScreen() {
               accessibilityLabel="Back"
             >
               <Icon name={Platform.OS === 'ios' ? 'chevron-left' : 'arrow-left'} size={iconSize.lg} color={t.brand.tint} />
-              {Platform.OS === 'ios' && <Text style={styles.backButtonText}>Back</Text>}
+              <Text style={styles.backButtonText}>Back</Text>
             </Pressable>
           ),
         }}

@@ -27,7 +27,7 @@ import {
 } from '@/theme/tokens';
 
 import { showAlert } from '@/utils/alert';
-import { StatusTag } from '@/components/ui/StatusTag';
+import { StatusTag } from '@/components/ui';
 type EnrollmentStatus = 'pending' | 'approved' | 'rejected' | 'disabled';
 type StatusKind = 'critical' | 'positive' | 'negative';
 

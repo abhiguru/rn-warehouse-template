@@ -19,7 +19,7 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { router } from 'expo-router';
 import { CustomerListItem } from '@/types/customer.types';
 import { Button } from '@/components/ui/Button';
-import { StatusTag } from '@/components/ui/StatusTag';
+import { StatusTag } from '@/components/ui';
 import { formatMobile } from '@/utils/formatters';
 import { avatarColors, avatarInitials } from '@/utils/avatar';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';

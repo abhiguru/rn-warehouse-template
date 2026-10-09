@@ -14,8 +14,7 @@ import React from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { formatCount, formatRelativeTime } from '@/utils/formatters';
-import { StatusTag, type StatusKind } from '@/components/ui/StatusTag';
-import { Avatar } from '@/components/ui/Avatar';
+import { StatusTag, type StatusKind, Avatar } from '@/components/ui';
 import type { Order } from '@/types/order.types';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import {

@@ -13,7 +13,7 @@ import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, layout, radius, space, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { formatDate, formatNumber } from '@/utils/formatters';
-import { StatusTag } from '@/components/ui/StatusTag';
+import { StatusTag } from '@/components/ui';
 import { getGRNStockStatus } from '@/features/grn/utils/grnStockStatus';
 
 // ============================================================================

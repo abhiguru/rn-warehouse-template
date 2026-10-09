@@ -13,7 +13,7 @@ import { SearchableBottomSheet } from '@/components/common';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { iconSize, layout, space, typography, touchTarget } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
-import { Avatar } from '@/components/ui/Avatar';
+import { Avatar } from '@/components/ui';
 
 const RECENT_SENDERS_KEY = 'recent_senders';
 

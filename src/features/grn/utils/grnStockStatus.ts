@@ -3,16 +3,17 @@
  *
  * Nothing left because everything was dispatched is the normal end of a GRN,
  * not an error, so it is neutral "Fully dispatched". While stock is left the
- * app-wide stock-level rule applies: under LOW_STOCK_PERCENT of the received
- * quantity is critical "Low stock", otherwise positive "In stock".
+ * app-wide stock-level rule applies (style guide §3.5): under 20% of the
+ * received quantity is critical "Low stock", otherwise positive "In stock".
  *
- * TODO: move this rule into src/utils/stockStatus.ts so orders, GRNs and
- * reports share one helper (that file is outside this change).
+ * TODO: the guide names LOW_STOCK_RATIO in src/utils/stockStatus.ts as the
+ * single home of the threshold. Import it from there once it exists and drop
+ * the copy below.
  */
-import type { StatusKind } from '@/components/ui/StatusTag';
+import type { StatusKind } from '@/components/ui';
 
-/** App-wide low-stock threshold, in percent of the received quantity. */
-export const LOW_STOCK_PERCENT = 20;
+/** App-wide low-stock threshold as a share of the received quantity. */
+export const LOW_STOCK_RATIO = 0.2;
 
 export interface GRNStockStatus {
   status: StatusKind;
@@ -28,7 +29,7 @@ export function getGRNStockStatus(stock: number, qty: number): GRNStockStatus | 
   if (safeStock <= 0) {
     return { status: 'neutral', label: 'Fully dispatched', icon: 'check-all' };
   }
-  if ((safeStock / safeQty) * 100 < LOW_STOCK_PERCENT) {
+  if (safeStock < safeQty * LOW_STOCK_RATIO) {
     return { status: 'critical', label: 'Low stock', icon: 'alert' };
   }
   return { status: 'positive', label: 'In stock', icon: 'check-circle' };

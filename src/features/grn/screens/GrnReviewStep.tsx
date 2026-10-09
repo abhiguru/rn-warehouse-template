@@ -42,7 +42,7 @@ import { downloadAndSharePDF } from '@/utils/shareDocument';
 import { showAlert } from '@/utils/alert';
 import GRNFormBottomNav from '@/components/GRNFormBottomNav';
 import { formatCount, formatDate, formatNumber, formatWeight } from '@/utils/formatters';
-import { StatusTag } from '@/components/ui/StatusTag';
+import { StatusTag } from '@/components/ui';
 
 /** "9 Oct 2026" (§12.3); today when no date is set yet. */
 function formatReviewDate(value: string | undefined): string {

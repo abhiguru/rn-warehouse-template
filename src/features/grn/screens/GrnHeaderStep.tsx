@@ -29,7 +29,7 @@ import { GhostTextInput, GhostTextInputRef } from '@/components/GhostTextInput';
 import { getTopVehicleSuggestion } from '@/services/vehicle-suggestion-service';
 
 import { showAlert } from '@/utils/alert';
-import { StatusTag } from '@/components/ui/StatusTag';
+import { StatusTag } from '@/components/ui';
 type GrnHeaderStepProps = {
   mode: 'create' | 'edit';
 };
