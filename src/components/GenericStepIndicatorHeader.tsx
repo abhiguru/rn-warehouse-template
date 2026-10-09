@@ -1,6 +1,10 @@
 /**
- * Generic Step Indicator Header - SAP Fiori Compliant
- * Configurable form header with step indicator for multi-step forms
+ * Generic Step Indicator Header - SAP Fiori form chrome (docs/STYLE_GUIDE.md §13.8)
+ * Configurable form header with step indicator for multi-step forms.
+ *
+ * On surface.header: a close button, the document name, step circles (28 px;
+ * current brand.fill, completed brand.tint outline with a check, upcoming
+ * border.field), the current step name and a progress bar.
  *
  * Replaces: GRNStepIndicator, DispatchStepIndicator, InvoiceStepIndicator
  */
@@ -11,91 +15,39 @@ import {
   Text,
   StyleSheet,
   Animated,
-  Platform,
-  TouchableOpacity,
+  Pressable,
   Alert,
   ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
-import { Ionicons } from '@expo/vector-icons';
-import Svg, { Path } from 'react-native-svg';
-import theme from '@/theme';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import {
+  fontWeight,
+  iconSize,
+  motion,
+  radius,
+  space,
+  touchTarget,
+  typography,
+  type ThemeTokens,
+} from '@/theme/tokens';
 import type { StepConfig } from '@/components/StepIndicator';
 
-// ============================================================================
-// COLOR SCHEMES
-// ============================================================================
-
 /**
- * Color scheme configuration for step indicator
- * - 'teal': Uses green[500] (#53b1b1) - for GRN and Dispatch forms
- * - 'blue': Uses blue[500] (#1c5858) - for Invoice forms
+ * Kept for compatibility. Both schemes now use the brand tokens: step and
+ * progress colours never change per document type.
  */
 export type StepColorScheme = 'teal' | 'blue';
 
-interface ColorConfig {
-  progressIndicator: string;
-  progressTrack: string;
-  stepCompleted: string;
-  stepCurrent: string;
-  stepUpcoming: string;
-  stepBorder: string;
-  stepUpcomingBorder: string;
-  textCompleted: string;
-  textCurrent: string;
-  textUpcoming: string;
-}
+type StepState = 'completed' | 'current' | 'upcoming';
 
-const getColorConfig = (scheme: StepColorScheme): ColorConfig => {
-  if (scheme === 'teal') {
-    return {
-      progressIndicator: theme.colors.green[500], // #53b1b1
-      progressTrack: theme.colors.green[50], // #e8f4f4
-      stepCompleted: theme.colors.green[500],
-      stepCurrent: theme.colors.white,
-      stepUpcoming: theme.colors.green[50],
-      stepBorder: theme.colors.green[500],
-      stepUpcomingBorder: theme.colors.green[300],
-      textCompleted: theme.colors.white,
-      textCurrent: theme.colors.green[500],
-      textUpcoming: theme.colors.blue[500], // #1c5858 dark teal
-    };
-  }
-  // 'blue' scheme
-  return {
-    progressIndicator: theme.colors.blue[500],
-    progressTrack: theme.colors.blue[50],
-    stepCompleted: theme.colors.blue[500],
-    stepCurrent: theme.colors.white,
-    stepUpcoming: theme.colors.blue[50],
-    stepBorder: theme.colors.blue[500],
-    stepUpcomingBorder: theme.colors.blue[300],
-    textCompleted: theme.colors.white,
-    textCurrent: theme.colors.blue[500],
-    textUpcoming: theme.colors.blue[700],
-  };
+const STATE_WORD: Record<StepState, string> = {
+  completed: 'completed',
+  current: 'current',
+  upcoming: 'not started',
 };
-
-// ============================================================================
-// ARROW ICON
-// ============================================================================
-
-interface ArrowIconProps {
-  color: string;
-}
-
-const ArrowIcon: React.FC<ArrowIconProps> = ({ color }) => (
-  <Svg width={10} height={10} viewBox="0 0 12 12" fill="none">
-    <Path
-      d="M7.5 1L11 6M11 6L7.5 11M11 6H1"
-      stroke={color}
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-  </Svg>
-);
 
 // ============================================================================
 // COMPONENT PROPS
@@ -120,7 +72,7 @@ export interface GenericStepIndicatorHeaderProps {
   cancelMessage?: string;
   /** Optional callback when step pill is tapped (for navigation) */
   onStepPress?: (stepNumber: number) => void;
-  /** Color scheme for steps and progress bar */
+  /** Kept for compatibility; steps and progress use the brand tokens */
   colorScheme?: StepColorScheme;
 }
 
@@ -128,14 +80,16 @@ export interface GenericStepIndicatorHeaderProps {
 // CONSTANTS
 // ============================================================================
 
-const PILL_WIDTH = 70;
-const PILL_HEIGHT = 28;
-const CANCEL_PILL_WIDTH = 115;
-const LINE_HEIGHT = 2;
-const ANIMATION_DURATION = 300;
-const PROGRESS_HEIGHT = 8;
-const PROGRESS_RADIUS = 4;
-const ARROW_SIZE = 14;
+/** Step circle diameter (style guide §13.8). */
+const STEP_SIZE = 28;
+const CONNECTOR_WIDTH = 8;
+const PROGRESS_HEIGHT = 4;
+const STEP_HIT_SLOP = {
+  top: (touchTarget - STEP_SIZE) / 2,
+  bottom: (touchTarget - STEP_SIZE) / 2,
+  left: CONNECTOR_WIDTH / 2,
+  right: CONNECTOR_WIDTH / 2,
+};
 
 // ============================================================================
 // COMPONENT
@@ -149,12 +103,13 @@ export const GenericStepIndicatorHeader: React.FC<GenericStepIndicatorHeaderProp
   entityName,
   entityId,
   cancelTitle,
-  cancelMessage = 'Are you sure you want to cancel? All entered data will be lost.',
+  cancelMessage = 'The details you entered will be lost.',
   onStepPress,
-  colorScheme = 'teal',
+  colorScheme: _colorScheme = 'teal',
 }) => {
   const insets = useSafeAreaInsets();
-  const colors = getColorConfig(colorScheme);
+  const t = useTokens();
+  const styles = useThemedStyles(makeStyles);
 
   // Debounce state to prevent multiple rapid taps
   const [navigatingToStep, setNavigatingToStep] = useState<number | null>(null);
@@ -195,11 +150,11 @@ export const GenericStepIndicatorHeader: React.FC<GenericStepIndicatorHeaderProp
 
   const handleCancelPress = () => {
     Alert.alert(
-      cancelTitle || `Cancel ${entityName} Creation`,
+      cancelTitle || `Discard this ${entityName}?`,
       cancelMessage,
       [
         {
-          text: 'Continue Editing',
+          text: 'Keep editing',
           style: 'cancel',
         },
         {
@@ -217,233 +172,161 @@ export const GenericStepIndicatorHeader: React.FC<GenericStepIndicatorHeaderProp
     steps.map(() => new Animated.Value(1))
   ).current;
 
-  const lineWidthAnims = useRef(
-    steps.map(() => new Animated.Value(0))
-  ).current;
-
   useEffect(() => {
-    // Animate current step (pulse effect)
+    // Single pulse on the current step
     const currentIndex = currentStep - 1;
     if (currentIndex >= 0 && currentIndex < scaleAnims.length) {
       Animated.sequence([
         Animated.timing(scaleAnims[currentIndex], {
           toValue: 1.1,
-          duration: ANIMATION_DURATION / 2,
+          duration: motion.standard / 2,
           useNativeDriver: true,
         }),
         Animated.timing(scaleAnims[currentIndex], {
           toValue: 1,
-          duration: ANIMATION_DURATION / 2,
+          duration: motion.standard / 2,
           useNativeDriver: true,
         }),
       ]).start();
     }
+  }, [currentStep, scaleAnims]);
 
-    // Animate connecting lines for completed steps
-    completedSteps.forEach((stepNum) => {
-      if (stepNum < steps.length && stepNum > 0) {
-        Animated.timing(lineWidthAnims[stepNum - 1], {
-          toValue: 1,
-          duration: ANIMATION_DURATION,
-          useNativeDriver: false,
-        }).start();
-      }
-    });
-  }, [currentStep, completedSteps, steps.length, scaleAnims, lineWidthAnims]);
-
-  const getStepState = (stepIndex: number): 'completed' | 'current' | 'upcoming' => {
+  const getStepState = (stepIndex: number): StepState => {
     const stepNumber = stepIndex + 1;
     if (completedSteps.includes(stepNumber)) return 'completed';
     if (stepNumber === currentStep) return 'current';
     return 'upcoming';
   };
 
-  const renderStepCircle = (step: StepConfig, stepIndex: number, state: string) => {
+  const renderStepCircle = (step: StepConfig, stepIndex: number, state: StepState) => {
     const isCompleted = state === 'completed';
     const isCurrent = state === 'current';
-    const isUpcoming = state === 'upcoming';
     const stepNumber = stepIndex + 1;
     const isInteractive = !!onStepPress;
-
-    const backgroundColor = isCompleted
-      ? colors.stepCompleted
-      : isCurrent
-      ? colors.stepCurrent
-      : colors.stepUpcoming;
-
-    const borderColor = isCompleted
-      ? colors.stepCompleted
-      : isCurrent
-      ? colors.stepBorder
-      : colors.stepUpcomingBorder;
-
-    const textColor = isCompleted
-      ? colors.textCompleted
-      : isCurrent
-      ? colors.textCurrent
-      : colors.textUpcoming;
-
-    const animatedStyle = {
-      transform: [{ scale: isCurrent ? scaleAnims[stepIndex] : 1 }],
-    };
-
-    const label = step.shortLabel || step.label;
-
-    const pillContent = (
-      <Animated.View
-        style={[
-          styles.stepCircle,
-          { backgroundColor, borderColor },
-          animatedStyle,
-        ]}
-      >
-        <Text style={[styles.stepNumber, { color: textColor }]}>
-          {label}
-        </Text>
-      </Animated.View>
-    );
-
-    if (!isInteractive) {
-      return pillContent;
-    }
-
+    const glyphColor = isCurrent ? t.brand.onFill : isCompleted ? t.brand.tint : t.text.secondary;
     const isNavigatingToThis = navigatingToStep === stepNumber;
     const isAnyNavigating = navigatingToStep !== null;
 
-    // Determine spinner color that contrasts with background
-    // For light backgrounds (upcoming, current), use teal; for dark backgrounds (completed), use white
-    const spinnerColor = isCompleted ? theme.colors.white : colors.progressIndicator;
-
-    // Show loading spinner on the pill being navigated to
-    const pillWithLoading = isNavigatingToThis ? (
+    const circle = (
       <Animated.View
         style={[
           styles.stepCircle,
-          { backgroundColor: colors.progressIndicator, borderColor: colors.progressIndicator },
-          animatedStyle,
+          isCurrent && styles.stepCircleCurrent,
+          isCompleted && styles.stepCircleCompleted,
+          isNavigatingToThis && styles.stepCircleCurrent,
+          { transform: [{ scale: isCurrent ? scaleAnims[stepIndex] : 1 }] },
         ]}
       >
-        <ActivityIndicator size={18} color={theme.colors.white} />
+        {isNavigatingToThis ? (
+          <ActivityIndicator size="small" color={t.brand.onFill} />
+        ) : isCompleted ? (
+          <Icon name="check" size={iconSize.sm} color={glyphColor} />
+        ) : (
+          <Text style={[styles.stepNumber, { color: glyphColor }]} maxFontSizeMultiplier={1.6}>
+            {step.number ?? stepNumber}
+          </Text>
+        )}
       </Animated.View>
-    ) : pillContent;
+    );
+
+    const a11yLabel = `Step ${stepNumber} of ${steps.length}, ${step.label}, ${STATE_WORD[state]}`;
+
+    if (!isInteractive) {
+      return (
+        <View accessible accessibilityLabel={a11yLabel}>
+          {circle}
+        </View>
+      );
+    }
 
     return (
-      <TouchableOpacity
+      <Pressable
         onPress={() => handleStepPressDebounced(stepNumber)}
-        activeOpacity={0.8}
+        hitSlop={STEP_HIT_SLOP}
         accessibilityRole="button"
-        accessibilityLabel={`Go to ${label} step`}
+        accessibilityLabel={a11yLabel}
+        accessibilityHint={isCurrent ? undefined : `Goes to ${step.label}`}
+        accessibilityState={{ selected: isCurrent, disabled: isAnyNavigating, busy: isNavigatingToThis }}
         disabled={isAnyNavigating}
-        style={isAnyNavigating && !isNavigatingToThis ? { opacity: 0.6 } : undefined}
+        style={({ pressed }) => [
+          pressed && styles.stepPressed,
+          isAnyNavigating && !isNavigatingToThis && styles.stepDimmed,
+        ]}
       >
-        {pillWithLoading}
-      </TouchableOpacity>
+        {circle}
+      </Pressable>
     );
   };
 
   // Round to avoid floating point precision errors (e.g., 33.333... causing crash)
   const progressPercentage = Math.round((completedSteps.length / steps.length) * 100);
+  const current = steps[currentStep - 1];
 
   return (
     <>
-      <EdgeToEdgeStatusBar
-        barStyle="light-content"
-      />
-      <View style={styles.safeAreaBackground}>
-        <View
-          style={[
-            styles.container,
-            {
-              paddingTop: (insets.top || theme.spacing.md) + theme.spacing.lg,
-            },
-          ]}
-        >
-          {/* Steps Row with Progress Pills */}
-          <View style={styles.headerRow}>
-            {/* Cancel Pill - Left aligned */}
-            <View style={styles.cancelPillWrapper}>
-              <TouchableOpacity
-                style={styles.cancelPill}
-                onPress={handleCancelPress}
-                activeOpacity={0.7}
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                accessibilityRole="button"
-                accessibilityLabel={`Cancel ${entityName} creation`}
-                accessibilityHint="Double tap to cancel and discard changes"
-              >
-                <View style={styles.closeIconBackground}>
-                  <Ionicons name="close" size={12} color={theme.colors.primary} />
-                </View>
-                <View style={styles.entityTextContainer}>
-                  <Text style={styles.cancelPillText} numberOfLines={1}>
-                    {entityName}
-                  </Text>
-                  {entityId && (
-                    <Text style={styles.entityIdText} numberOfLines={1}>
-                      {entityId}
-                    </Text>
-                  )}
-                </View>
-              </TouchableOpacity>
-            </View>
+      <EdgeToEdgeStatusBar barStyle={t.statusBarStyle} />
+      <View style={[styles.container, { paddingTop: insets.top + space.sm }]}>
+        <View style={styles.headerRow}>
+          {/* Cancel: icon button, then the document being created */}
+          <Pressable
+            style={({ pressed }) => [styles.cancelButton, pressed && styles.cancelButtonPressed]}
+            onPress={handleCancelPress}
+            accessibilityRole="button"
+            accessibilityLabel={`Cancel ${entityName.toLowerCase() === 'edit' ? 'editing' : entityName}`}
+            accessibilityHint="Asks before discarding your changes"
+          >
+            <Icon name="close" size={iconSize.lg} color={t.icon.primary} />
+          </Pressable>
+          <View style={styles.entityTextContainer}>
+            <Text style={styles.entityName} numberOfLines={1} accessibilityRole="header">
+              {entityName}
+            </Text>
+            {entityId && (
+              <Text style={styles.entityIdText} numberOfLines={1}>
+                {entityId}
+              </Text>
+            )}
+          </View>
 
-            {/* Progress Pills & Bar Container - Right aligned */}
-            <View style={styles.pillsAndProgressContainer}>
-              {/* Progress Pills */}
-              <View style={styles.progressPillsContainer}>
-                {steps.map((step, index) => {
-                  const state = getStepState(index);
-                  return (
-                    <View key={index} style={styles.pillWrapper}>
-                      {renderStepCircle(step, index, state)}
-                    </View>
-                  );
-                })}
-              </View>
-
-              {/* Progress Bar with Arrow Indicator */}
-              <View
-                style={styles.progressBarContainer}
-                accessible={true}
-                accessibilityRole="progressbar"
-                accessibilityLabel={`Form progress: Step ${currentStep} of ${steps.length}`}
-                accessibilityValue={{
-                  min: 0,
-                  max: 100,
-                  now: progressPercentage,
-                  text: `${progressPercentage}% complete`,
-                }}
-              >
-                <View
-                  style={[
-                    styles.progressBarBackground,
-                    { backgroundColor: colors.progressTrack },
-                  ]}
-                >
-                  {/* Completed/Active Segment */}
+          {/* Step circles with connectors */}
+          <View style={styles.stepsRow}>
+            {steps.map((step, index) => (
+              <React.Fragment key={index}>
+                {renderStepCircle(step, index, getStepState(index))}
+                {index < steps.length - 1 && (
                   <View
                     style={[
-                      styles.progressBarFill,
-                      {
-                        backgroundColor: colors.progressIndicator,
-                        width: `${progressPercentage}%`,
-                      },
+                      styles.connector,
+                      completedSteps.includes(index + 1) && styles.connectorCompleted,
                     ]}
                   />
-
-                  {/* Arrow Indicator */}
-                  <View
-                    style={[
-                      styles.arrowIndicator,
-                      { left: `${progressPercentage}%` },
-                    ]}
-                  >
-                    <ArrowIcon color={colors.progressIndicator} />
-                  </View>
-                </View>
-              </View>
-            </View>
+                )}
+              </React.Fragment>
+            ))}
           </View>
+        </View>
+
+        {/* Current step name (phones show only this one) */}
+        {current && (
+          <Text style={styles.currentStepText} numberOfLines={1}>
+            {`Step ${currentStep} of ${steps.length} · ${current.label}`}
+          </Text>
+        )}
+
+        {/* Progress */}
+        <View
+          style={styles.progressBarBackground}
+          accessible={true}
+          accessibilityRole="progressbar"
+          accessibilityLabel={`Form progress, step ${currentStep} of ${steps.length}`}
+          accessibilityValue={{
+            min: 0,
+            max: 100,
+            now: progressPercentage,
+            text: `${progressPercentage}% complete`,
+          }}
+        >
+          <View style={[styles.progressBarFill, { width: `${progressPercentage}%` }]} />
         </View>
       </View>
     </>
@@ -454,140 +337,101 @@ export const GenericStepIndicatorHeader: React.FC<GenericStepIndicatorHeaderProp
 // STYLES
 // ============================================================================
 
-const styles = StyleSheet.create({
-  safeAreaBackground: {
-    backgroundColor: theme.colors.primary,
-  },
+const makeStyles = (t: ThemeTokens) => ({
   container: {
-    backgroundColor: theme.colors.primary,
-    paddingTop: theme.spacing.xl,
-    paddingBottom: theme.spacing.xl,
-    paddingHorizontal: theme.spacing.lg,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.gray[200],
-    ...Platform.select({
-      ios: {
-        shadowColor: theme.colors.black,
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.05,
-        shadowRadius: 4,
-      },
-      android: {
-        elevation: 2,
-      },
-    }),
+    backgroundColor: t.surface.header,
+    paddingBottom: space.md,
+    paddingHorizontal: space.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.divider,
   },
   headerRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
   },
-  progressPillsContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    gap: 1,
+  cancelButton: {
+    width: touchTarget,
+    height: touchTarget,
+    borderRadius: radius.pill,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
   },
-  cancelPillWrapper: {
-    alignItems: 'center',
-    flexShrink: 0,
-    justifyContent: 'flex-start',
-    marginTop: 5,
-    marginLeft: -2,
-  },
-  pillWrapper: {
-    alignItems: 'center',
-  },
-  stepCircle: {
-    width: PILL_WIDTH,
-    height: PILL_HEIGHT,
-    borderRadius: PILL_HEIGHT / 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    paddingHorizontal: 4,
-  },
-  stepNumber: {
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  cancelPill: {
-    flexDirection: 'row',
-    width: CANCEL_PILL_WIDTH,
-    height: PILL_HEIGHT + 10,
-    borderRadius: (PILL_HEIGHT + 10) / 2,
-    backgroundColor: theme.colors.primary,
-    borderWidth: 2,
-    borderColor: theme.colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 5,
-    paddingLeft: 6,
-    paddingRight: 6,
-  },
-  cancelPillText: {
-    fontSize: 21,
-    fontWeight: '700',
-    color: theme.colors.white,
-  },
-  closeIconBackground: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: theme.colors.white,
-    alignItems: 'center',
-    justifyContent: 'center',
+  cancelButtonPressed: {
+    backgroundColor: t.surface.cardPressed,
   },
   entityTextContainer: {
-    flexDirection: 'column',
-    alignItems: 'flex-start',
+    flex: 1,
+    marginLeft: space.xs,
+    marginRight: space.sm,
+  },
+  entityName: {
+    ...typography.headline,
+    color: t.text.primary,
   },
   entityIdText: {
-    fontSize: 10,
-    fontWeight: '500',
-    color: 'rgba(255,255,255,0.8)',
-    marginTop: -2,
+    ...typography.footnote,
+    color: t.text.secondary,
+    fontVariant: ['tabular-nums' as const],
   },
-  pillsAndProgressContainer: {
-    flexDirection: 'column',
-    alignSelf: 'flex-end',
+  stepsRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    paddingRight: space.sm,
   },
-  progressBarContainer: {
-    marginTop: theme.spacing.sm,
-    marginLeft: 0,
-    marginRight: 0,
+  stepCircle: {
+    width: STEP_SIZE,
+    height: STEP_SIZE,
+    borderRadius: radius.pill,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    borderWidth: 2,
+    borderColor: t.border.field,
+    backgroundColor: t.surface.header,
+  },
+  stepCircleCurrent: {
+    borderColor: t.brand.fill,
+    backgroundColor: t.brand.fill,
+  },
+  stepCircleCompleted: {
+    borderColor: t.brand.tint,
+  },
+  stepPressed: {
+    opacity: 0.8,
+  },
+  stepDimmed: {
+    opacity: t.interaction.disabledOpacity,
+  },
+  stepNumber: {
+    ...typography.caption1,
+    fontWeight: fontWeight.semibold,
+    fontVariant: ['tabular-nums' as const],
+  },
+  connector: {
+    width: CONNECTOR_WIDTH,
+    height: 2,
+    backgroundColor: t.border.divider,
+  },
+  connectorCompleted: {
+    backgroundColor: t.brand.tint,
+  },
+  currentStepText: {
+    ...typography.caption1,
+    color: t.text.secondary,
+    marginTop: space.xs,
+    marginHorizontal: space.sm,
   },
   progressBarBackground: {
     height: PROGRESS_HEIGHT,
-    borderRadius: PROGRESS_RADIUS,
-    overflow: 'visible',
-    position: 'relative',
+    borderRadius: radius.pill,
+    backgroundColor: t.brand.subtleStrong,
+    overflow: 'hidden' as const,
+    marginTop: space.sm,
+    marginHorizontal: space.sm,
   },
   progressBarFill: {
-    height: '100%',
-    borderRadius: PROGRESS_RADIUS - 1,
-  },
-  arrowIndicator: {
-    position: 'absolute',
-    top: -3,
-    width: ARROW_SIZE,
-    height: ARROW_SIZE,
-    borderRadius: ARROW_SIZE / 2,
-    backgroundColor: theme.colors.white,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: -ARROW_SIZE / 2,
-    ...Platform.select({
-      ios: {
-        shadowColor: theme.colors.black,
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.15,
-        shadowRadius: 3,
-      },
-      android: {
-        elevation: 3,
-      },
-    }),
+    height: '100%' as const,
+    borderRadius: radius.pill,
+    backgroundColor: t.brand.fill,
   },
 });
 

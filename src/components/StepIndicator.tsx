@@ -1,14 +1,12 @@
 /**
- * Base Step Indicator Component (SAP Fiori Style)
+ * Base Step Indicator Component (SAP Fiori style, docs/STYLE_GUIDE.md §13.8)
  *
  * A horizontal step indicator for multi-step forms.
- * Features:
- * - Pill-shaped step indicators with labels
- * - Animated connecting lines
- * - Pulse animation on current step
- * - Three states: completed, current, upcoming
- * - Platform-specific shadows
- * - Uses Fiori semantic colors from listColors
+ * - Circles 28 px. Current: brand.fill with the number in brand.onFill.
+ *   Completed: brand.tint outline with a check. Upcoming: border.field outline
+ *   with the number in text.secondary.
+ * - Connectors 2 px: brand.tint when completed, else border.divider.
+ * - Step names under the circles in caption1; phones show only the current name.
  *
  * Note: For entity-specific step indicators with cancel button
  * and progress bar, see GRNStepIndicator, DispatchStepIndicator,
@@ -21,74 +19,29 @@ import {
   Text,
   StyleSheet,
   Animated,
-  Platform,
   Pressable,
+  useWindowDimensions,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import theme from '@/theme';
-import { listColors } from '@/theme/listColors';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import {
+  fontWeight,
+  iconSize,
+  layout,
+  motion,
+  radius,
+  space,
+  touchTarget,
+  typography,
+  type ThemeTokens,
+} from '@/theme/tokens';
 
-// ============================================================================
-// FIORI CONSTANTS
-// ============================================================================
-
-const FIORI = {
-  // Step pill dimensions
-  pill: {
-    width: 72,
-    height: 32,
-    borderRadius: 16, // pill shape
-    borderWidth: 2,
-  },
-  // Connecting line
-  line: {
-    height: 2,
-  },
-  // Container
-  container: {
-    paddingVertical: 16,
-    paddingHorizontal: 24,
-  },
-  // Animation
-  animation: {
-    duration: 300,
-  },
-  // Colors
-  colors: {
-    // Completed state (blue/teal)
-    completedBg: listColors.statusPositive,
-    completedBorder: listColors.statusPositive,
-    completedText: '#FFFFFF',
-    // Current state (outlined)
-    currentBg: '#FFFFFF',
-    currentBorder: theme.colors.primary,
-    currentText: theme.colors.primary,
-    // Upcoming state (gray)
-    upcomingBg: listColors.gray200,
-    upcomingBorder: listColors.gray300,
-    upcomingText: listColors.gray500,
-    // Connecting lines
-    lineInactive: listColors.gray200,
-    lineActive: listColors.statusPositive,
-  },
-  // Typography
-  typography: {
-    fontSize: 12,
-    fontWeight: '600' as const,
-  },
-  // Shadow
-  shadow: Platform.select({
-    ios: {
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.05,
-      shadowRadius: 4,
-    },
-    android: {
-      elevation: 2,
-    },
-  }),
-} as const;
+/** Circle diameter (style guide §13.8). */
+const STEP_SIZE = 28;
+const CONNECTOR_HEIGHT = 2;
+/** Below this window width only the current step's name is shown. */
+const TABLET_MIN_WIDTH = 600;
+const STEP_HIT_SLOP = (touchTarget - STEP_SIZE) / 2;
 
 // ============================================================================
 // TYPES
@@ -99,9 +52,9 @@ export interface StepConfig {
   number?: number;
   /** Full step label */
   label: string;
-  /** Short label for display in pill */
+  /** Short label for display under the circle */
   shortLabel?: string;
-  /** Optional icon name (MaterialCommunityIcons) */
+  /** Optional icon name (MaterialCommunityIcons) shown instead of the number */
   icon?: string;
 }
 
@@ -114,11 +67,13 @@ export interface StepIndicatorProps {
   completedSteps: number[];
   /** Callback when a step is pressed (optional) */
   onStepPress?: (stepNumber: number) => void;
-  /** Color scheme variant */
+  /** Kept for compatibility; both variants use the brand tokens. */
   variant?: 'primary' | 'secondary';
-  /** Show checkmark icon for completed steps */
+  /** Kept for compatibility; completed steps always show a check. */
   showCompletedIcon?: boolean;
 }
+
+type StepState = 'completed' | 'current' | 'upcoming';
 
 // ============================================================================
 // COMPONENT
@@ -129,9 +84,12 @@ export default function StepIndicator({
   currentStep,
   completedSteps,
   onStepPress,
-  variant = 'primary',
-  showCompletedIcon = false,
 }: StepIndicatorProps) {
+  const t = useTokens();
+  const styles = useThemedStyles(makeStyles);
+  const { width } = useWindowDimensions();
+  const showAllNames = width >= TABLET_MIN_WIDTH;
+
   // Animation values for each step
   const scaleAnims = useRef(
     steps.map(() => new Animated.Value(1))
@@ -142,18 +100,18 @@ export default function StepIndicator({
   ).current;
 
   useEffect(() => {
-    // Animate current step (pulse effect)
+    // Animate current step (single pulse)
     const currentIndex = currentStep - 1;
     if (currentIndex >= 0 && currentIndex < scaleAnims.length) {
       Animated.sequence([
         Animated.timing(scaleAnims[currentIndex], {
           toValue: 1.08,
-          duration: FIORI.animation.duration / 2,
+          duration: motion.standard / 2,
           useNativeDriver: true,
         }),
         Animated.timing(scaleAnims[currentIndex], {
           toValue: 1,
-          duration: FIORI.animation.duration / 2,
+          duration: motion.standard / 2,
           useNativeDriver: true,
         }),
       ]).start();
@@ -164,119 +122,93 @@ export default function StepIndicator({
       if (stepNum - 1 >= 0 && stepNum - 1 < lineWidthAnims.length) {
         Animated.timing(lineWidthAnims[stepNum - 1], {
           toValue: 1,
-          duration: FIORI.animation.duration,
+          duration: motion.slow,
           useNativeDriver: false,
         }).start();
       }
     });
   }, [currentStep, completedSteps, steps.length, scaleAnims, lineWidthAnims]);
 
-  const getStepState = (
-    stepIndex: number
-  ): 'completed' | 'current' | 'upcoming' => {
+  const getStepState = (stepIndex: number): StepState => {
     const stepNumber = stepIndex + 1;
     if (completedSteps.includes(stepNumber)) return 'completed';
     if (stepNumber === currentStep) return 'current';
     return 'upcoming';
   };
 
-  // Get colors based on variant
-  const getColors = () => {
-    if (variant === 'secondary') {
-      return {
-        completedBg: theme.colors.blue[500],
-        completedBorder: theme.colors.blue[500],
-        completedText: '#FFFFFF',
-        currentBg: '#FFFFFF',
-        currentBorder: theme.colors.blue[500],
-        currentText: theme.colors.blue[500],
-        upcomingBg: theme.colors.blue[100],
-        upcomingBorder: theme.colors.blue[300],
-        upcomingText: theme.colors.blue[700],
-        lineInactive: theme.colors.blue[200],
-        lineActive: theme.colors.blue[500],
-      };
-    }
-    return FIORI.colors;
+  const stateWord: Record<StepState, string> = {
+    completed: 'completed',
+    current: 'current',
+    upcoming: 'not started',
   };
 
-  const colors = getColors();
-
-  const renderStepCircle = (step: StepConfig, stepIndex: number, state: string) => {
+  const renderStep = (step: StepConfig, stepIndex: number, state: StepState) => {
     const isCompleted = state === 'completed';
     const isCurrent = state === 'current';
-    const isUpcoming = state === 'upcoming';
     const stepNumber = stepIndex + 1;
-    const isInteractive = !!onStepPress;
+    const glyphColor = isCurrent ? t.brand.onFill : isCompleted ? t.brand.tint : t.text.secondary;
+    const name = step.shortLabel || step.label;
+    const showName = showAllNames || isCurrent;
 
-    const circleStyle = [
-      styles.stepCircle,
-      {
-        backgroundColor: isCompleted
-          ? colors.completedBg
-          : isCurrent
-          ? colors.currentBg
-          : colors.upcomingBg,
-        borderColor: isCompleted
-          ? colors.completedBorder
-          : isCurrent
-          ? colors.currentBorder
-          : colors.upcomingBorder,
-      },
-    ];
-
-    const textStyle = [
-      styles.stepNumber,
-      {
-        color: isCompleted
-          ? colors.completedText
-          : isCurrent
-          ? colors.currentText
-          : colors.upcomingText,
-      },
-    ];
-
-    const animatedStyle = {
-      transform: [{ scale: isCurrent ? scaleAnims[stepIndex] : 1 }],
-    };
-
-    const label = step.shortLabel || step.label;
-
-    const pillContent = (
-      <Animated.View style={[circleStyle, animatedStyle]}>
-        {isCompleted && showCompletedIcon ? (
-          <Icon name="check" size={16} color={colors.completedText} />
+    const circle = (
+      <Animated.View
+        style={[
+          styles.stepCircle,
+          isCurrent && styles.stepCircleCurrent,
+          isCompleted && styles.stepCircleCompleted,
+          { transform: [{ scale: isCurrent ? scaleAnims[stepIndex] : 1 }] },
+        ]}
+      >
+        {isCompleted ? (
+          <Icon name="check" size={iconSize.sm} color={glyphColor} />
         ) : step.icon ? (
-          <Icon
-            name={step.icon}
-            size={14}
-            color={
-              isCompleted
-                ? colors.completedText
-                : isCurrent
-                ? colors.currentText
-                : colors.upcomingText
-            }
-          />
+          <Icon name={step.icon} size={iconSize.sm} color={glyphColor} />
         ) : (
-          <Text style={textStyle}>{label}</Text>
+          <Text style={[styles.stepNumber, { color: glyphColor }]} maxFontSizeMultiplier={1.6}>
+            {step.number ?? stepNumber}
+          </Text>
         )}
       </Animated.View>
     );
 
-    if (!isInteractive) {
-      return pillContent;
+    const a11yLabel = `Step ${stepNumber} of ${steps.length}, ${step.label}, ${stateWord[state]}`;
+
+    const content = (
+      <View style={styles.stepContainer}>
+        {circle}
+        {showName ? (
+          <Text
+            style={[styles.stepName, isCurrent && styles.stepNameCurrent]}
+            numberOfLines={1}
+            maxFontSizeMultiplier={1.6}
+          >
+            {name}
+          </Text>
+        ) : (
+          <View style={styles.stepNamePlaceholder} />
+        )}
+      </View>
+    );
+
+    if (!onStepPress) {
+      return (
+        <View accessible accessibilityLabel={a11yLabel}>
+          {content}
+        </View>
+      );
     }
 
     return (
       <Pressable
-        onPress={() => onStepPress?.(stepNumber)}
-        style={({ pressed }) => [pressed && { opacity: 0.8 }]}
+        onPress={() => onStepPress(stepNumber)}
+        hitSlop={STEP_HIT_SLOP}
+        style={({ pressed }) => [pressed && styles.stepPressed]}
         accessibilityRole="button"
-        accessibilityLabel={`Go to ${step.label} step`}
+        accessibilityLabel={a11yLabel}
+        accessibilityHint={isCurrent ? undefined : `Goes to ${step.label}`}
         accessibilityState={{ selected: isCurrent }}
       >
-        {pillContent}
+        {content}
       </Pressable>
     );
   };
@@ -294,16 +226,10 @@ export default function StepIndicator({
 
     return (
       <View style={styles.lineContainer}>
-        {/* Background line (inactive) */}
-        <View style={[styles.connectingLine, { backgroundColor: colors.lineInactive }]} />
-        {/* Animated active line */}
+        <View style={styles.connectingLine} />
         {isCompleted && (
           <Animated.View
-            style={[
-              styles.connectingLine,
-              styles.lineActive,
-              { backgroundColor: colors.lineActive, width: animatedWidth },
-            ]}
+            style={[styles.connectingLine, styles.lineActive, { width: animatedWidth }]}
           />
         )}
       </View>
@@ -313,18 +239,12 @@ export default function StepIndicator({
   return (
     <View style={styles.container}>
       <View style={styles.stepsRow}>
-        {steps.map((step, index) => {
-          const state = getStepState(index);
-
-          return (
-            <React.Fragment key={index}>
-              <View style={styles.stepContainer}>
-                {renderStepCircle(step, index, state)}
-              </View>
-              {renderConnectingLine(index)}
-            </React.Fragment>
-          );
-        })}
+        {steps.map((step, index) => (
+          <React.Fragment key={index}>
+            {renderStep(step, index, getStepState(index))}
+            {renderConnectingLine(index)}
+          </React.Fragment>
+        ))}
       </View>
     </View>
   );
@@ -334,66 +254,77 @@ export default function StepIndicator({
 // STYLES
 // ============================================================================
 
-const styles = StyleSheet.create({
-  // Container
+const makeStyles = (t: ThemeTokens) => ({
   container: {
-    backgroundColor: listColors.white,
-    paddingVertical: FIORI.container.paddingVertical,
-    paddingHorizontal: FIORI.container.paddingHorizontal,
-    borderBottomWidth: 1,
-    borderBottomColor: listColors.gray200,
-    ...FIORI.shadow,
+    backgroundColor: t.surface.header,
+    paddingVertical: space.md,
+    paddingHorizontal: layout.marginCompact,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.divider,
   },
-
-  // Steps row
   stepsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: 'row' as const,
+    alignItems: 'flex-start' as const,
+    justifyContent: 'space-between' as const,
   },
-
-  // Step container
   stepContainer: {
-    alignItems: 'center',
+    alignItems: 'center' as const,
+    minWidth: STEP_SIZE,
   },
-
-  // Step circle (pill)
+  stepPressed: {
+    opacity: t.interaction.disabledOpacity + 0.4,
+  },
   stepCircle: {
-    width: FIORI.pill.width,
-    height: FIORI.pill.height,
-    borderRadius: FIORI.pill.borderRadius,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: FIORI.pill.borderWidth,
-    paddingHorizontal: 8,
+    width: STEP_SIZE,
+    height: STEP_SIZE,
+    borderRadius: radius.pill,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    borderWidth: 2,
+    borderColor: t.border.field,
+    backgroundColor: t.surface.card,
   },
-
-  // Step number text
+  stepCircleCurrent: {
+    borderColor: t.brand.fill,
+    backgroundColor: t.brand.fill,
+  },
+  stepCircleCompleted: {
+    borderColor: t.brand.tint,
+  },
   stepNumber: {
-    fontSize: FIORI.typography.fontSize,
-    fontWeight: FIORI.typography.fontWeight,
+    ...typography.caption1,
+    fontWeight: fontWeight.semibold,
+    fontVariant: ['tabular-nums' as const],
   },
-
-  // Line container
+  stepName: {
+    ...typography.caption1,
+    color: t.text.secondary,
+    marginTop: space.xs,
+    maxWidth: 96,
+    textAlign: 'center' as const,
+  },
+  stepNameCurrent: {
+    color: t.text.primary,
+    fontWeight: fontWeight.semibold,
+  },
+  stepNamePlaceholder: {
+    height: typography.caption1.lineHeight + space.xs,
+  },
   lineContainer: {
     flex: 1,
-    height: FIORI.pill.height,
-    justifyContent: 'center',
-    alignItems: 'center',
-    position: 'relative',
-    marginHorizontal: -4,
+    height: STEP_SIZE,
+    justifyContent: 'center' as const,
+    position: 'relative' as const,
+    marginHorizontal: space.xs,
   },
-
-  // Connecting line (base)
   connectingLine: {
-    height: FIORI.line.height,
-    width: '100%',
-    position: 'absolute',
+    height: CONNECTOR_HEIGHT,
+    width: '100%' as const,
+    position: 'absolute' as const,
+    backgroundColor: t.border.divider,
   },
-
-  // Active line (animated overlay)
   lineActive: {
-    position: 'absolute',
     left: 0,
+    backgroundColor: t.brand.tint,
   },
 });

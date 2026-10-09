@@ -1,8 +1,8 @@
 /**
  * GhostTextInput - Input with inline ghost text autocomplete
  *
- * Shows suggestion as faded text after user's input.
- * Tap ghost text to accept the suggestion.
+ * Shows the suggestion in text.placeholder after the user's input; tap it to
+ * accept. Field tokens per style guide §13.2.
  */
 
 import React, {
@@ -18,16 +18,14 @@ import {
   View,
   TextInput,
   Text,
-  TouchableOpacity,
-  StyleSheet,
+  Pressable,
   TextInputProps,
   ViewStyle,
   TextStyle,
-  Platform,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import theme from '@/theme';
-import { useListColors } from '@/hooks/useListColors';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { iconSize, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 
 export interface GhostTextInputProps
   extends Omit<TextInputProps, 'value' | 'onChangeText' | 'style'> {
@@ -89,8 +87,8 @@ export const GhostTextInput = forwardRef<GhostTextInputRef, GhostTextInputProps>
       context: undefined,
     });
 
-    // Dark mode support
-    const colors = useListColors();
+    const t = useTokens();
+    const styles = useThemedStyles(makeStyles);
 
     // Expose focus/blur methods
     useImperativeHandle(ref, () => ({
@@ -206,10 +204,6 @@ export const GhostTextInput = forwardRef<GhostTextInputRef, GhostTextInputProps>
       <View
         style={[
           styles.container,
-          {
-            backgroundColor: colors.cellBackground,
-            borderColor: colors.cellDivider,
-          },
           isFocused && styles.containerFocused,
           hasError && styles.containerError,
           containerStyle,
@@ -218,8 +212,8 @@ export const GhostTextInput = forwardRef<GhostTextInputRef, GhostTextInputProps>
         {icon && (
           <Icon
             name={icon}
-            size={20}
-            color={colors.textTertiary}
+            size={iconSize.md}
+            color={t.icon.secondary}
             style={styles.icon}
           />
         )}
@@ -228,11 +222,11 @@ export const GhostTextInput = forwardRef<GhostTextInputRef, GhostTextInputProps>
           {/* Actual TextInput */}
           <TextInput
             ref={inputRef}
-            style={[styles.input, { color: colors.textPrimary }, inputStyle]}
+            style={[styles.input, inputStyle]}
             value={value}
             onChangeText={handleChangeText}
             placeholder={!ghostText ? placeholder : undefined}
-            placeholderTextColor={colors.textTertiary}
+            placeholderTextColor={t.text.placeholder}
             maxLength={maxLength}
             autoCapitalize={autoCapitalize}
             onFocus={handleFocus}
@@ -242,22 +236,21 @@ export const GhostTextInput = forwardRef<GhostTextInputRef, GhostTextInputProps>
 
           {/* Ghost text overlay */}
           {ghostText && (
-            <TouchableOpacity
-              style={styles.ghostContainer}
+            <Pressable
+              style={({ pressed }) => [styles.ghostContainer, pressed && styles.ghostPressed]}
               onPress={handleAcceptSuggestion}
               accessibilityRole="button"
               accessibilityLabel={`Use suggestion ${suggestion}`}
-              activeOpacity={0.6}
             >
               {/* Invisible spacer matching user input */}
-              <Text style={[styles.input, styles.invisibleText, { color: colors.textPrimary }, inputStyle]}>
+              <Text style={[styles.input, styles.invisibleText, inputStyle]}>
                 {value}
               </Text>
               {/* Visible ghost text */}
-              <Text style={[styles.input, styles.ghostText, { color: colors.textTertiary }, inputStyle]}>
+              <Text style={[styles.input, styles.ghostText, inputStyle]}>
                 {ghostText}
               </Text>
-            </TouchableOpacity>
+            </Pressable>
           )}
         </View>
       </View>
@@ -267,55 +260,57 @@ export const GhostTextInput = forwardRef<GhostTextInputRef, GhostTextInputProps>
 
 GhostTextInput.displayName = 'GhostTextInput';
 
-const styles = StyleSheet.create({
+const makeStyles = (t: ThemeTokens) => ({
   container: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
     borderWidth: 1,
-    borderRadius: 8,
-    minHeight: 44,
-    paddingHorizontal: 12,
-    // backgroundColor and borderColor applied dynamically
+    borderColor: t.border.field,
+    borderRadius: radius.field,
+    backgroundColor: t.surface.field,
+    minHeight: touchTarget,
+    paddingHorizontal: space.md,
   },
   containerFocused: {
-    borderColor: '#0057D2',
+    borderColor: t.border.fieldFocus,
     borderWidth: 2,
+    paddingHorizontal: space.md - 1,
   },
   containerError: {
-    borderColor: theme.colors.fiori.semantic.negative,
+    borderColor: t.status.negative.border,
     borderWidth: 2,
+    paddingHorizontal: space.md - 1,
   },
   icon: {
-    marginRight: 8,
+    marginRight: space.sm,
   },
   inputWrapper: {
     flex: 1,
-    position: 'relative',
-    justifyContent: 'center',
+    position: 'relative' as const,
+    justifyContent: 'center' as const,
   },
   input: {
-    fontSize: theme.fontSize.base,
+    ...typography.body,
+    color: t.text.primary,
     padding: 0,
-    // Ensure consistent line height across platforms
-    lineHeight: Platform.OS === 'ios' ? 22 : 24,
-    // color applied dynamically
   },
   ghostContainer: {
-    position: 'absolute',
+    position: 'absolute' as const,
     left: 0,
     right: 0,
     top: 0,
     bottom: 0,
-    flexDirection: 'row',
-    alignItems: 'center',
-    pointerEvents: 'box-only', // Allow taps but don't block input
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+  },
+  ghostPressed: {
+    opacity: 0.6,
   },
   invisibleText: {
     opacity: 0,
   },
   ghostText: {
-    opacity: 0.6,
-    // color applied dynamically
+    color: t.text.placeholder,
   },
 });
 

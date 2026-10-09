@@ -1,83 +1,35 @@
 /**
- * SAP Fiori Form Cell implementation with autocomplete dropdown
+ * SAP Fiori form cell with an autocomplete dropdown (docs/STYLE_GUIDE.md §13.2)
  *
  * Features:
- * - Label above field (Capital Case)
- * - Required asterisk indicator
- * - Helper text / Error message (mutually exclusive)
- * - Clear button during active typing (Fiori circular style)
- * - Floating dropdown with suggestions
+ * - Label above field (sentence case) with required asterisk
+ * - Helper text / error message (mutually exclusive)
+ * - Clear button while typing
+ * - Suggestions in a list under the field
  * - Loading state with activity indicator
  * - 44pt minimum touch target
  */
 
-import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   TextInput,
   FlatList,
   Text,
-  TouchableOpacity,
   Pressable,
   ActivityIndicator,
   StyleSheet,
   ViewStyle,
-  TextStyle,
   Platform,
   Keyboard,
   StyleProp,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import theme from '@/theme';
-import { useListColors } from '@/hooks/useListColors';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { iconSize, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 
-// ============================================================================
-// FIORI FORM CELL CONSTANTS (matching Input.tsx)
-// ============================================================================
-
-const FIORI = {
-  // Typography
-  labelFontSize: 13,
-  labelLineHeight: 18,
-  inputFontSize: Platform.OS === 'ios' ? 17 : 16,
-  inputLineHeight: 22,
-  helperFontSize: 13,
-  helperLineHeight: 18,
-
-  // Dimensions
-  minHeight: 44,
-  inputPaddingHorizontal: 12,
-  inputPaddingVertical: 8,
-  iconSize: 20,
-  clearButtonSize: 18,
-  borderRadius: 8,
-
-  // Colors
-  labelColor: '#1D2D3E',
-  inputTextColor: '#1D2D3E',
-  placeholderColor: '#556B82',
-  helperColor: '#556B82',
-  iconColor: '#7e8e9d',
-
-  // Border colors
-  borderDefault: '#E5E5E5',
-  borderActive: '#53b1b1', // Green/teal - matches header step chips
-  borderError: '#D32030',
-
-  // Background colors
-  backgroundDefault: '#FFFFFF',
-  backgroundReadOnly: '#F2F2F7',
-  backgroundDropdown: '#FFFFFF',
-
-  // Border widths
-  borderWidthDefault: 1,
-  borderWidthActive: 2,
-
-  // Dropdown
-  dropdownMaxHeight: 200,
-  dropdownItemPaddingVertical: 12,
-  dropdownItemPaddingHorizontal: 16,
-};
+const DROPDOWN_MAX_HEIGHT = 200;
+const CLEAR_HIT_SLOP = (touchTarget - iconSize.md) / 2;
 
 // ============================================================================
 // TYPES
@@ -158,7 +110,7 @@ export function RemoteAutocompleteInput<T>({
   editable = true,
   leftIcon,
   rightIcon,
-  emptyText = 'No items found',
+  emptyText = 'No matches',
 }: RemoteAutocompleteInputProps<T>) {
   const [query, setQuery] = useState(value);
   const [suggestions, setSuggestions] = useState<T[]>([]);
@@ -183,8 +135,8 @@ export function RemoteAutocompleteInput<T>({
 
   useEffect(() => () => { cancelPendingSearch(); }, [cancelPendingSearch]);
 
-  // Theme colors for dark mode support
-  const colors = useListColors();
+  const t = useTokens();
+  const styles = useThemedStyles(makeStyles);
 
   const hasError = Boolean(error);
   const isDisabled = editable === false && !readOnly;
@@ -257,42 +209,21 @@ export function RemoteAutocompleteInput<T>({
     inputRef.current?.focus();
   };
 
-  // Determine border color based on state (Fiori spec)
-  const getBorderColor = useCallback(() => {
-    if (hasError) return colors.error;
-    if (isFocused) return colors.teal;
-    if (isReadOnly) return 'transparent';
-    return colors.gray200;
-  }, [hasError, isFocused, isReadOnly, colors]);
+  // Field outline per state (style guide §13.2)
+  const fieldStateStyle = hasError
+    ? styles.fieldError
+    : isFocused
+      ? styles.fieldFocused
+      : isReadOnly
+        ? styles.fieldReadOnly
+        : null;
 
-  // Determine border width based on state
-  const getBorderWidth = useCallback(() => {
-    if (hasError || isFocused) return FIORI.borderWidthActive;
-    if (isReadOnly) return 0;
-    return FIORI.borderWidthDefault;
-  }, [hasError, isFocused, isReadOnly]);
-
-  // Determine background color based on state
-  const getBackgroundColor = useCallback(() => {
-    if (isReadOnly) return colors.gray100;
-    return colors.cellBackground;
-  }, [isReadOnly, colors]);
-
-  // Get message text and color (error overrides helper per Fiori spec)
-  const getMessage = useCallback(() => {
-    if (error) {
-      return { text: error, color: colors.error, isError: true };
-    }
-    if (isReadOnly) {
-      return { text: 'Read-only field', color: colors.textSecondary, isError: false };
-    }
-    if (helperText) {
-      return { text: helperText, color: colors.textSecondary, isError: false };
-    }
-    return null;
-  }, [error, isReadOnly, helperText, colors]);
-
-  const message = getMessage();
+  // Error overrides helper text
+  const message = error
+    ? { text: error, isError: true }
+    : helperText
+      ? { text: helperText, isError: false }
+      : null;
 
   // Show clear button when typing and has value
   const shouldShowClear = isFocused && hasValue && !isReadOnly && !isDisabled && !isLoading;
@@ -308,40 +239,31 @@ export function RemoteAutocompleteInput<T>({
     >
       {/* Label */}
       {label && (
-        <Text style={[styles.label, { color: colors.textPrimary }, isDisabled && { color: colors.textSecondary }]}>
+        <Text style={[styles.label, hasError && styles.labelError, isDisabled && styles.textDisabled]}>
           {label}
-          {required && <Text style={{ color: colors.error }}> *</Text>}
+          {required && <Text style={styles.required}> *</Text>}
         </Text>
       )}
 
       {/* Input Container */}
-      <View
-        style={[
-          styles.inputContainer,
-          {
-            borderColor: getBorderColor(),
-            borderWidth: getBorderWidth(),
-            backgroundColor: getBackgroundColor(),
-          },
-        ]}
-      >
+      <View style={[styles.inputContainer, fieldStateStyle]}>
         {/* Left Icon */}
         {leftIcon && <View style={styles.leftIcon}>{leftIcon}</View>}
 
         {/* Text Input */}
         <TextInput
           ref={inputRef}
-          style={[styles.input, { color: colors.textPrimary }, isDisabled && { color: colors.textSecondary }, inputStyle]}
+          style={[styles.input, isDisabled && styles.textDisabled, inputStyle]}
           value={query}
           onChangeText={handleSearch}
           placeholder={placeholder}
-          placeholderTextColor={colors.textTertiary}
+          placeholderTextColor={t.text.placeholder}
           editable={!isReadOnly && editable}
           selectTextOnFocus={isReadOnly}
           accessibilityLabel={
-            label ? `${label}${required ? ', required' : ', optional'}` : placeholder
+            label ? `${label}${required ? ', required' : ''}` : placeholder
           }
-          accessibilityHint={label ? `Enter ${label.toLowerCase()}` : undefined}
+          accessibilityHint={isReadOnly ? 'Read only' : hasError ? error : 'Type to see suggestions'}
           accessibilityState={{ disabled: isDisabled }}
           onFocus={() => {
             setIsFocused(true);
@@ -361,7 +283,7 @@ export function RemoteAutocompleteInput<T>({
           <ActivityIndicator
             style={styles.iconRight}
             size="small"
-            color={colors.primary}
+            color={t.brand.tint}
           />
         )}
 
@@ -370,13 +292,11 @@ export function RemoteAutocompleteInput<T>({
           <Pressable
             onPress={clearInput}
             style={styles.clearButton}
-            accessibilityLabel={`Clear ${label || 'input'}`}
+            accessibilityLabel={`Clear ${label ? label.toLowerCase() : 'text'}`}
             accessibilityRole="button"
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            hitSlop={CLEAR_HIT_SLOP}
           >
-            <View style={[styles.clearButtonInner, { backgroundColor: colors.gray400 }]}>
-              <Ionicons name="close" size={14} color="#FFFFFF" />
-            </View>
+            <Ionicons name="close-circle" size={iconSize.md} color={t.icon.secondary} />
           </Pressable>
         )}
 
@@ -384,18 +304,8 @@ export function RemoteAutocompleteInput<T>({
         {!isLoading && !shouldShowClear && !hasValue && !rightIcon && (
           <Ionicons
             name="search"
-            size={FIORI.iconSize}
-            color={colors.textTertiary}
-            style={styles.iconRight}
-          />
-        )}
-
-        {/* Error Icon (when has error and not focused) */}
-        {hasError && !isFocused && !shouldShowClear && (
-          <Ionicons
-            name="alert-circle"
-            size={FIORI.iconSize}
-            color={colors.error}
+            size={iconSize.md}
+            color={t.icon.secondary}
             style={styles.iconRight}
           />
         )}
@@ -408,20 +318,27 @@ export function RemoteAutocompleteInput<T>({
 
       {/* Helper Text / Error Message (mutually exclusive per Fiori spec) */}
       {message && (
-        <Text
-          style={[
-            styles.helperText,
-            { color: message.color },
-            message.isError && styles.errorText,
-          ]}
-        >
-          {message.text}
-        </Text>
+        <View style={styles.messageRow}>
+          {message.isError && (
+            <Ionicons
+              name="alert-circle"
+              size={iconSize.sm}
+              color={t.status.negative.text}
+              style={styles.messageIcon}
+            />
+          )}
+          <Text
+            style={[styles.helperText, message.isError && styles.errorText]}
+            accessibilityLiveRegion={message.isError ? 'polite' : 'none'}
+          >
+            {message.text}
+          </Text>
+        </View>
       )}
 
       {/* Floating Suggestions List */}
       {showList && suggestions.length > 0 && (
-        <View style={[styles.dropdownContainer, suggestionPlacement === 'inline' && styles.dropdownInline, { backgroundColor: colors.cellBackground, borderColor: colors.gray200 }, listStyle]}>
+        <View style={[styles.dropdownContainer, suggestionPlacement === 'inline' && styles.dropdownInline, listStyle]}>
           <FlatList
             data={suggestions}
             keyExtractor={keyExtractor}
@@ -429,8 +346,7 @@ export function RemoteAutocompleteInput<T>({
               <Pressable
                 style={({ pressed }) => [
                   styles.dropdownItem,
-                  { borderBottomColor: colors.gray200 },
-                  pressed && { backgroundColor: colors.gray100 },
+                  pressed && styles.dropdownItemPressed,
                   index === suggestions.length - 1 && styles.dropdownItemLast,
                 ]}
                 accessibilityRole="button"
@@ -450,14 +366,17 @@ export function RemoteAutocompleteInput<T>({
 
       {/* Empty State */}
       {showList && !isLoading && suggestions.length === 0 && query.length >= minChars && (
-        <View style={[styles.dropdownContainer, suggestionPlacement === 'inline' && styles.dropdownInline, { backgroundColor: colors.cellBackground, borderColor: colors.gray200 }, listStyle, styles.emptyState]}>
+        <View
+          style={[styles.dropdownContainer, suggestionPlacement === 'inline' && styles.dropdownInline, listStyle, styles.emptyState]}
+          accessibilityLiveRegion="polite"
+        >
           <Ionicons
             name="search-outline"
-            size={24}
-            color={colors.textTertiary}
+            size={iconSize.lg}
+            color={t.icon.secondary}
             style={styles.emptyIcon}
           />
-          <Text style={[styles.emptyText, { color: colors.textSecondary }]}>{emptyText}</Text>
+          <Text style={styles.emptyText}>{emptyText}</Text>
         </View>
       )}
     </View>
@@ -468,120 +387,142 @@ export function RemoteAutocompleteInput<T>({
 // STYLES (SAP Fiori Form Cell)
 // ============================================================================
 
-const styles = StyleSheet.create({
+const makeStyles = (t: ThemeTokens) => ({
   container: {
-    position: 'relative',
-    marginBottom: theme.spacing.md,
+    position: 'relative' as const,
+    marginBottom: space.lg,
   },
   containerDisabled: {
-    opacity: 0.5,
+    opacity: t.interaction.disabledOpacity,
   },
   label: {
-    fontSize: FIORI.labelFontSize,
-    lineHeight: FIORI.labelLineHeight,
-    fontWeight: theme.fontWeight.medium,
-    marginBottom: 4,
+    ...typography.footnote,
+    color: t.text.secondary,
+    marginBottom: space.xs,
+  },
+  labelError: {
+    color: t.status.negative.text,
+  },
+  required: {
+    color: t.text.required,
+  },
+  textDisabled: {
+    color: t.text.disabled,
   },
   inputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: FIORI.borderRadius,
-    minHeight: FIORI.minHeight,
-    paddingHorizontal: FIORI.inputPaddingHorizontal,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    borderRadius: radius.field,
+    minHeight: touchTarget,
+    paddingHorizontal: space.md,
+    backgroundColor: t.surface.field,
+    borderWidth: 1,
+    borderColor: t.border.field,
+  },
+  fieldFocused: {
+    borderWidth: 2,
+    borderColor: t.border.fieldFocus,
+    paddingHorizontal: space.md - 1,
+  },
+  fieldError: {
+    borderWidth: 2,
+    borderColor: t.status.negative.border,
+    paddingHorizontal: space.md - 1,
+  },
+  fieldReadOnly: {
+    borderWidth: 0,
+    backgroundColor: t.surface.fieldReadOnly,
+    paddingHorizontal: space.md + 1,
   },
   input: {
+    ...typography.body,
     flex: 1,
-    fontSize: FIORI.inputFontSize,
-    paddingVertical: FIORI.inputPaddingVertical,
+    color: t.text.primary,
+    paddingVertical: space.sm,
     paddingHorizontal: 0,
     ...Platform.select({
-      ios: {
-        lineHeight: FIORI.inputLineHeight,
-      },
       android: {
-        textAlignVertical: 'center',
+        textAlignVertical: 'center' as const,
         includeFontPadding: false,
       },
+      default: {},
     }),
   },
   leftIcon: {
-    marginRight: theme.spacing.sm,
+    marginRight: space.sm,
   },
   iconRight: {
-    marginLeft: theme.spacing.sm,
+    marginLeft: space.sm,
   },
   clearButton: {
-    marginLeft: theme.spacing.sm,
-    padding: 2,
+    marginLeft: space.sm,
   },
-  clearButtonInner: {
-    width: FIORI.clearButtonSize,
-    height: FIORI.clearButtonSize,
-    borderRadius: FIORI.clearButtonSize / 2,
-    alignItems: 'center',
-    justifyContent: 'center',
+  messageRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'flex-start' as const,
+    marginTop: space.xs,
+  },
+  messageIcon: {
+    marginTop: 1,
+    marginRight: space.xs,
   },
   helperText: {
-    fontSize: FIORI.helperFontSize,
-    lineHeight: FIORI.helperLineHeight,
-    marginTop: 4,
+    ...typography.footnote,
+    flex: 1,
+    color: t.text.secondary,
   },
   errorText: {
-    fontWeight: theme.fontWeight.medium,
+    color: t.status.negative.text,
   },
   dropdownContainer: {
-    position: 'absolute',
-    top: '100%',
+    position: 'absolute' as const,
+    top: '100%' as const,
     left: 0,
     right: 0,
-    borderWidth: FIORI.borderWidthDefault,
-    borderRadius: FIORI.borderRadius,
-    maxHeight: FIORI.dropdownMaxHeight,
-    marginTop: 4,
-    overflow: 'hidden',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.15,
-        shadowRadius: 12,
-      },
-      android: {
-        elevation: 8,
-      },
-    }),
+    backgroundColor: t.surface.sheet,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: t.border.separator,
+    borderRadius: radius.button,
+    maxHeight: DROPDOWN_MAX_HEIGHT,
+    marginTop: space.xs,
+    overflow: 'hidden' as const,
+    ...t.shadow[3],
     zIndex: 1000,
   },
   dropdownInline: {
-    position: 'relative',
+    position: 'relative' as const,
     top: 0,
   },
   dropdownList: {
-    maxHeight: FIORI.dropdownMaxHeight,
+    maxHeight: DROPDOWN_MAX_HEIGHT,
   },
   dropdownItem: {
-    paddingVertical: FIORI.dropdownItemPaddingVertical,
-    paddingHorizontal: FIORI.dropdownItemPaddingHorizontal,
+    paddingVertical: space.md,
+    paddingHorizontal: space.lg,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    minHeight: FIORI.minHeight,
-    justifyContent: 'center',
+    borderBottomColor: t.border.divider,
+    minHeight: touchTarget,
+    justifyContent: 'center' as const,
+  },
+  dropdownItemPressed: {
+    backgroundColor: t.surface.cardPressed,
   },
   dropdownItemLast: {
     borderBottomWidth: 0,
   },
   emptyState: {
-    paddingVertical: theme.spacing.xl,
-    paddingHorizontal: theme.spacing.md,
-    alignItems: 'center',
-    justifyContent: 'center',
+    paddingVertical: space.xl,
+    paddingHorizontal: space.lg,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
   },
   emptyIcon: {
-    marginBottom: theme.spacing.sm,
+    marginBottom: space.sm,
   },
   emptyText: {
-    fontSize: FIORI.helperFontSize,
-    lineHeight: FIORI.helperLineHeight,
-    textAlign: 'center',
+    ...typography.footnote,
+    color: t.text.secondary,
+    textAlign: 'center' as const,
   },
 });
 

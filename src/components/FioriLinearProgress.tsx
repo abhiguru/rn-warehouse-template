@@ -16,54 +16,38 @@ import React, { useEffect, useRef } from 'react';
 import {
   View,
   Text,
-  StyleSheet,
   Animated,
   Easing,
-  Platform,
   ViewStyle,
   AccessibilityInfo,
 } from 'react-native';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { fontWeight, motion, radius, space, typography, type ThemeTokens } from '@/theme/tokens';
 
 // ============================================================================
-// FIORI DESIGN TOKENS
+// SIZES (style guide §13.5: 4 default, 8 prominent, pill radius)
 // ============================================================================
-const FIORI = {
-  track: {
-    height: 4,
-    heightProminent: 8,
-    backgroundColor: '#E5E5E5',
-  },
-  indicator: {
-    default: '#f69000',
-    success: '#53b1b1',
-    warning: '#f6c624',
-    error: '#D32030',
-    info: '#0057D2',
-  },
-  trackBackground: {
-    default: '#E5E5E5',
-    success: '#e8f4f4',
-    warning: '#fef3c7',
-    error: '#FFF4F2',
-    info: '#EBF8FF',
-  },
-  typography: {
-    label: {
-      fontSize: 13,
-      fontWeight: '400' as const,
-      color: '#556B82',
-    },
-    percentage: {
-      fontSize: 13,
-      fontWeight: '600' as const,
-      color: '#1D2D3E',
-    },
-  },
-  animation: {
-    duration: 300,
-    indeterminateDuration: 1500,
-  },
-} as const;
+const TRACK_HEIGHT = { default: 4, prominent: 8 } as const;
+/** Indeterminate sweep; a loading indicator is the one thing allowed to loop. */
+const INDETERMINATE_DURATION = 1500;
+const LEGEND_DOT = 8;
+
+type StatusVariant = 'success' | 'warning' | 'error' | 'info';
+const VARIANT_STATUS: Record<StatusVariant, 'positive' | 'critical' | 'negative' | 'informative'> = {
+  success: 'positive',
+  warning: 'critical',
+  error: 'negative',
+  info: 'informative',
+};
+
+/** Fill and track colours for a variant. */
+function progressColors(t: ThemeTokens, variant: ProgressVariant, coloredTrack: boolean) {
+  if (variant === 'default') {
+    return { fill: t.brand.fill, track: t.brand.subtleStrong };
+  }
+  const status = t.status[VARIANT_STATUS[variant]];
+  return { fill: status.element, track: coloredTrack ? status.background : t.brand.subtleStrong };
+}
 
 // ============================================================================
 // TYPES
@@ -93,10 +77,10 @@ export interface LinearProgressProps {
 }
 
 export interface SegmentedProgressProps {
-  /** Segments with value and color */
+  /** Segments with value and colour. Omit `color` to use the chart palette in order. */
   segments: Array<{
     value: number;
-    color: string;
+    color?: string;
     label?: string;
   }>;
   /** Total value (denominator) */
@@ -127,27 +111,45 @@ export const FioriLinearProgress: React.FC<LinearProgressProps> = ({
 }) => {
   const animatedValue = useRef(new Animated.Value(0)).current;
   const indeterminateAnim = useRef(new Animated.Value(0)).current;
+  const t = useTokens();
+  const styles = useThemedStyles(makeStyles);
+  const [reduceMotion, setReduceMotion] = React.useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    AccessibilityInfo.isReduceMotionEnabled()
+      .then((value) => {
+        if (mounted) setReduceMotion(value);
+      })
+      .catch(() => undefined);
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   // Clamp progress between 0 and 1
   const clampedProgress = Math.max(0, Math.min(1, progress));
   const percentage = Math.round(clampedProgress * 100);
 
-  const trackHeight = size === 'prominent' ? FIORI.track.heightProminent : FIORI.track.height;
-  const borderRadius = trackHeight / 2;
-  const indicatorColor = FIORI.indicator[variant];
-  const trackBgColor = coloredTrack ? FIORI.trackBackground[variant] : FIORI.track.backgroundColor;
+  const trackHeight = TRACK_HEIGHT[size];
+  const borderRadius = radius.pill;
+  const { fill: indicatorColor, track: trackBgColor } = progressColors(t, variant, coloredTrack);
 
   // Animate determinate progress
   useEffect(() => {
     if (!indeterminate) {
+      if (reduceMotion) {
+        animatedValue.setValue(clampedProgress);
+        return;
+      }
       Animated.timing(animatedValue, {
         toValue: clampedProgress,
-        duration: FIORI.animation.duration,
+        duration: motion.slow,
         easing: Easing.out(Easing.ease),
         useNativeDriver: false,
       }).start();
     }
-  }, [clampedProgress, indeterminate, animatedValue]);
+  }, [clampedProgress, indeterminate, animatedValue, reduceMotion]);
 
   // Animate indeterminate progress
   useEffect(() => {
@@ -155,7 +157,7 @@ export const FioriLinearProgress: React.FC<LinearProgressProps> = ({
       const animation = Animated.loop(
         Animated.timing(indeterminateAnim, {
           toValue: 1,
-          duration: FIORI.animation.indeterminateDuration,
+          duration: INDETERMINATE_DURATION,
           easing: Easing.inOut(Easing.ease),
           useNativeDriver: false,
         })
@@ -186,7 +188,7 @@ export const FioriLinearProgress: React.FC<LinearProgressProps> = ({
     : '0%';
 
   // Accessibility
-  const a11yLabel = accessibilityLabel || label || (indeterminate ? 'Loading in progress' : `Progress: ${percentage}%`);
+  const a11yLabel = accessibilityLabel || label || (indeterminate ? 'Loading' : `Progress, ${percentage}%`);
 
   return (
     <View
@@ -195,6 +197,7 @@ export const FioriLinearProgress: React.FC<LinearProgressProps> = ({
       accessibilityRole="progressbar"
       accessibilityLabel={a11yLabel}
       accessibilityValue={indeterminate ? undefined : { min: 0, max: 100, now: percentage }}
+      accessibilityState={indeterminate ? { busy: true } : undefined}
     >
       {/* Label Row */}
       {(label || showPercentage) && (
@@ -245,12 +248,15 @@ export const FioriSegmentedProgress: React.FC<SegmentedProgressProps> = ({
   labelsPosition = 'top',
   style,
 }) => {
-  const trackHeight = size === 'prominent' ? FIORI.track.heightProminent : FIORI.track.height;
-  const borderRadius = trackHeight / 2;
+  const t = useTokens();
+  const styles = useThemedStyles(makeStyles);
+  const trackHeight = TRACK_HEIGHT[size];
+  const borderRadius = radius.pill;
 
-  // Calculate percentages for accessibility
-  const segmentPercentages = segments.map(seg => ({
+  // Calculate percentages for accessibility; colours default to the chart palette in order
+  const segmentPercentages = segments.map((seg, index) => ({
     ...seg,
+    color: seg.color ?? t.chart[index % t.chart.length],
     percentage: total > 0 ? Math.round((seg.value / total) * 100) : 0,
   }));
 
@@ -293,11 +299,11 @@ export const FioriSegmentedProgress: React.FC<SegmentedProgressProps> = ({
           {
             height: trackHeight,
             borderRadius,
-            backgroundColor: FIORI.track.backgroundColor,
+            backgroundColor: t.brand.subtleStrong,
           },
         ]}
       >
-        {segments.map((segment, index) => {
+        {segmentPercentages.map((segment, index) => {
           // Keep the ordinary segment value out of an inline style member
           // expression. Reanimated's development transform treats every
           // `.value` there as a SharedValue and otherwise emits a false warning.
@@ -332,63 +338,67 @@ export const FioriSegmentedProgress: React.FC<SegmentedProgressProps> = ({
 // ============================================================================
 // STYLES
 // ============================================================================
-const styles = StyleSheet.create({
+const makeStyles = (t: ThemeTokens) => ({
   container: {
-    width: '100%',
+    width: '100%' as const,
   },
 
-  // Label Row
+  // Label row
   labelRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'center' as const,
+    marginBottom: space.sm,
   },
   label: {
-    ...FIORI.typography.label,
+    ...typography.caption1,
+    color: t.text.secondary,
   },
   percentage: {
-    ...FIORI.typography.percentage,
+    ...typography.caption1,
+    fontWeight: fontWeight.semibold,
+    color: t.text.primary,
+    fontVariant: ['tabular-nums' as const],
   },
 
   // Track
   track: {
-    width: '100%',
-    overflow: 'hidden',
-    position: 'relative',
+    width: '100%' as const,
+    overflow: 'hidden' as const,
+    position: 'relative' as const,
   },
   segmentedTrack: {
-    flexDirection: 'row',
+    flexDirection: 'row' as const,
   },
 
-  // Indicator (for determinate/indeterminate)
+  // Indicator (determinate/indeterminate)
   indicator: {
-    height: '100%',
-    position: 'absolute',
+    height: '100%' as const,
+    position: 'absolute' as const,
     top: 0,
   },
 
-  // Segment (for segmented progress)
+  // Segment (segmented progress)
   segment: {
-    height: '100%',
+    height: '100%' as const,
   },
 
-  // Segment Labels
+  // Segment labels
   segmentLabelsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-    marginVertical: 6,
+    flexDirection: 'row' as const,
+    flexWrap: 'wrap' as const,
+    gap: space.md,
+    marginVertical: space.s6,
   },
   segmentLabelItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.s6,
   },
   segmentLabelDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    width: LEGEND_DOT,
+    height: LEGEND_DOT,
+    borderRadius: radius.pill,
   },
 });
 
