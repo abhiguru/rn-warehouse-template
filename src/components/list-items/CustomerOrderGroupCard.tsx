@@ -12,10 +12,9 @@ import {
   View,
   Text,
   StyleSheet,
-  TouchableOpacity,
+  Pressable,
   Alert,
   LayoutAnimation,
-  Platform,
   ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -26,8 +25,17 @@ import { loadFromOrder } from '@/store/slices/dispatchFormSlice';
 import { convertOrderToDispatchData, canConvertToDispatch } from '@/utils/orderToDispatchConverter';
 import { OrderService } from '@/services/order-service';
 import type { Order, OrderItem } from '@/types/order.types';
-import type { ListColors } from '@/hooks/useListColors';
-import theme from '@/theme';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import {
+  fontWeight,
+  iconSize,
+  layout,
+  radius,
+  space,
+  touchTarget,
+  typography,
+  type ThemeTokens,
+} from '@/theme/tokens';
 
 // ============================================================================
 // TYPES
@@ -40,8 +48,11 @@ export interface CustomerOrderGroupCardProps {
   isExpanded: boolean;
   /** Callback when expand/collapse is toggled */
   onToggleExpand: (orderId: string) => void;
-  /** Theme-aware list colors for dark mode support */
-  colors: ListColors;
+  /**
+   * @deprecated Ignored. The card reads the semantic tokens itself; kept so
+   * existing callers that still pass their list colours compile.
+   */
+  colors?: unknown;
 }
 
 // ============================================================================
@@ -52,8 +63,9 @@ const CustomerOrderGroupCardContent: React.FC<CustomerOrderGroupCardProps> = ({
   order,
   isExpanded,
   onToggleExpand,
-  colors,
 }) => {
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
   const router = useRouter();
   const dispatch = useAppDispatch();
 
@@ -118,8 +130,8 @@ const CustomerOrderGroupCardContent: React.FC<CustomerOrderGroupCardProps> = ({
 
     if (!canDispatch) {
       Alert.alert(
-        'Cannot Create Dispatch',
-        'This order has no items with available stock. All items must have GRN data and stock available.',
+        "Can't create a dispatch",
+        'No items in this order have stock available. Each item needs a GRN with stock.',
         [{ text: 'OK' }]
       );
       return;
@@ -137,16 +149,16 @@ const CustomerOrderGroupCardContent: React.FC<CustomerOrderGroupCardProps> = ({
     // Show warning if some items were skipped
     if (skippedItems.length > 0) {
       const skippedNames = skippedItems
-        .map(s => `• ${s.item.grn_item?.name || 'Unknown'}: ${s.reason}`)
+        .map(s => `• ${s.item.grn_item?.name || 'Unknown item'}: ${s.reason}`)
         .join('\n');
 
       Alert.alert(
-        'Some Items Skipped',
-        `The following items cannot be dispatched:\n\n${skippedNames}\n\nProceed with ${items.length} item(s)?`,
+        'Some items will be skipped',
+        `These items can't be dispatched:\n\n${skippedNames}\n\nCreate a dispatch with ${items.length} ${items.length === 1 ? 'item' : 'items'}?`,
         [
           { text: 'Cancel', style: 'cancel' },
           {
-            text: 'Continue',
+            text: 'Create dispatch',
             onPress: () => {
               dispatch(loadFromOrder({
                 header,
@@ -174,127 +186,110 @@ const CustomerOrderGroupCardContent: React.FC<CustomerOrderGroupCardProps> = ({
     router.push(`/orders/${order.customer_id}`);
   }, [order.customer_id, router]);
 
+  const customerName = order.customer?.name || 'Unknown customer';
+  const avatarColor = t.avatar[avatarIndex(order.customer_id || order.id, t.avatar.length)];
+
   return (
-    <View style={[styles.card, { backgroundColor: colors.cellBackground, borderColor: colors.cellDivider }]}>
+    <View style={styles.card}>
       {/* Customer Header - Always visible */}
-      <TouchableOpacity
+      <Pressable
         onPress={handleToggle}
-        style={styles.header}
-        activeOpacity={0.7}
+        style={({ pressed }) => [styles.header, pressed && styles.headerPressed]}
         accessibilityRole="button"
-        accessibilityLabel={`${order.customer?.name || 'Unknown Customer'}, ${itemCount} items, ${isExpanded ? 'collapse' : 'expand'}`}
+        accessibilityLabel={`${customerName}, ${formatCount(itemCount, 'item')}, quantity ${totalQty}, open`}
+        accessibilityState={{ expanded: isExpanded }}
       >
         {/* Customer Avatar */}
-        <View style={[styles.avatar, { backgroundColor: colors.primaryLight }]}>
-          <Text style={[styles.avatarText, { color: colors.primary }]}>
-            {(order.customer?.name || 'U').charAt(0).toUpperCase()}
-          </Text>
+        <View style={[styles.avatar, { backgroundColor: avatarColor }]}>
+          <Text style={styles.avatarText}>{customerName.charAt(0).toUpperCase()}</Text>
         </View>
 
         {/* Customer Info */}
         <View style={styles.customerInfo}>
-          <Text style={[styles.customerName, { color: colors.gray900 }]} numberOfLines={1}>
-            {order.customer?.name || 'Unknown Customer'}
+          <Text style={styles.customerName} numberOfLines={2}>
+            {customerName}
           </Text>
           <View style={styles.metaRow}>
-            <Icon name="package-variant" size={14} color={colors.gray500} />
-            <Text style={[styles.metaText, { color: colors.gray500 }]}>
-              {itemCount} items
-            </Text>
-            <View style={[styles.dot, { backgroundColor: colors.gray400 }]} />
-            <Icon name="counter" size={14} color={colors.gray500} />
-            <Text style={[styles.metaText, { color: colors.gray500 }]}>
-              {totalQty} qty
-            </Text>
+            <Icon name="package-variant" size={iconSize.sm} color={t.icon.secondary} />
+            <Text style={styles.metaText}>{formatCount(itemCount, 'item')}</Text>
+            <Text style={styles.metaText}>·</Text>
+            <Text style={styles.metaText}>Qty {numberFormat.format(totalQty)}</Text>
           </View>
         </View>
 
-        {/* Status Badge + Chevron */}
+        {/* Status Tag + Chevron */}
         <View style={styles.rightSection}>
-          <View style={[styles.statusBadge, { backgroundColor: colors.statusPositiveLight }]}>
-            <Text style={[styles.statusText, { color: colors.statusPositive }]}>Active</Text>
+          <View style={styles.statusBadge}>
+            <Icon name="circle-outline" size={iconSize.sm - 4} color={t.status.neutral.text} />
+            <Text style={styles.statusText} maxFontSizeMultiplier={1.6}>
+              Open
+            </Text>
           </View>
           <Icon
             name={isExpanded ? 'chevron-up' : 'chevron-down'}
-            size={24}
-            color={colors.gray400}
+            size={iconSize.lg}
+            color={t.icon.secondary}
           />
         </View>
-      </TouchableOpacity>
+      </Pressable>
 
       {/* Expanded Content - Fiori Data Table Layout */}
       {isExpanded && (
-        <View style={[styles.expandedContent, { borderTopColor: colors.cellDivider }]}>
+        <View style={styles.expandedContent}>
           {/* Order Items Section */}
           {isLoadingItems ? (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator size="small" color={colors.primary} />
-              <Text style={[styles.loadingText, { color: colors.gray500 }]}>Loading items...</Text>
+            <View style={styles.loadingContainer} accessibilityRole="progressbar" accessibilityLabel="Loading items">
+              <ActivityIndicator size="small" color={t.brand.tint} />
+              <Text style={styles.loadingText}>Loading items…</Text>
             </View>
           ) : displayItems.length > 0 ? (
-            <View style={styles.itemsSection}>
-              {/* Data Table Header - Fiori spec: 44pt height, 13pt semibold */}
-              <View style={[styles.tableHeader, { backgroundColor: colors.gray50, borderBottomColor: colors.cellDivider }]}>
-                <Text style={[styles.tableHeaderCell, styles.colItem, { color: colors.textSecondary }]}>ITEM</Text>
-                <Text style={[styles.tableHeaderCell, styles.colStock, { color: colors.textSecondary }]}>STOCK</Text>
-                <Text style={[styles.tableHeaderCell, styles.colQty, { color: colors.textSecondary }]}>QTY</Text>
+            <View>
+              {/* Data Table Header */}
+              <View style={styles.tableHeader}>
+                <Text style={[styles.tableHeaderCell, styles.colItem]}>Item</Text>
+                <Text style={[styles.tableHeaderCell, styles.colStock, styles.numeric]}>Stock</Text>
+                <Text style={[styles.tableHeaderCell, styles.colQty, styles.numeric]}>Qty</Text>
               </View>
 
               {/* Data Table Rows */}
-              {displayItems.slice(0, 5).map((item, index) => {
+              {displayItems.slice(0, 5).map((item) => {
                 const currentStock = item.grn_item?.current_stock || 0;
                 const requestedQty = item.requested_quantity || 0;
                 const hasEnoughStock = currentStock >= requestedQty;
+                const itemName = item.grn_item?.name || 'Unknown item';
 
                 return (
                   <View
                     key={item.id}
-                    style={[
-                      styles.tableRow,
-                      { backgroundColor: index % 2 === 0 ? colors.cellBackground : colors.gray50 },
-                    ]}
+                    style={styles.tableRow}
+                    accessible
+                    accessibilityLabel={`${itemName}, stock ${currentStock}, quantity ${requestedQty}${hasEnoughStock ? '' : ', low stock'}`}
                   >
                     {/* Item Column - Primary info */}
                     <View style={[styles.tableCell, styles.colItem]}>
-                      <Text style={[styles.itemName, { color: colors.textPrimary }]} numberOfLines={1}>
-                        {item.grn_item?.name || 'Unknown Item'}
+                      <Text style={styles.itemName} numberOfLines={2}>
+                        {itemName}
                       </Text>
                       {item.grn_item?.package_mark && (
-                        <Text style={[styles.itemMark, { color: colors.textTertiary }]} numberOfLines={1}>
+                        <Text style={styles.itemMark} numberOfLines={1}>
                           {item.grn_item.package_mark}
                         </Text>
                       )}
                     </View>
 
-                    {/* Stock Column - With status indicator */}
-                    <View style={[styles.tableCell, styles.colStock]}>
-                      <Text
-                        style={[
-                          styles.stockValue,
-                          { color: hasEnoughStock ? colors.statusPositive : colors.statusCritical },
-                        ]}
-                      >
-                        {currentStock}
+                    {/* Stock Column - With status icon when short */}
+                    <View style={[styles.tableCell, styles.colStock, styles.stockCell]}>
+                      {!hasEnoughStock && (
+                        <Icon name="alert" size={iconSize.sm} color={t.status.critical.text} />
+                      )}
+                      <Text style={[styles.stockValue, !hasEnoughStock && styles.stockValueLow]}>
+                        {numberFormat.format(currentStock)}
                       </Text>
                     </View>
 
-                    {/* Quantity Column - Badge */}
+                    {/* Quantity Column */}
                     <View style={[styles.tableCell, styles.colQty]}>
-                      <View
-                        style={[
-                          styles.qtyBadge,
-                          { backgroundColor: hasEnoughStock ? colors.statusPositiveLight : colors.statusCriticalLight },
-                        ]}
-                      >
-                        <Text
-                          style={[
-                            styles.qtyText,
-                            { color: hasEnoughStock ? colors.statusPositive : colors.statusCritical },
-                          ]}
-                        >
-                          {requestedQty}
-                        </Text>
-                      </View>
+                      <Text style={styles.qtyText}>{numberFormat.format(requestedQty)}</Text>
                     </View>
                   </View>
                 );
@@ -302,83 +297,92 @@ const CustomerOrderGroupCardContent: React.FC<CustomerOrderGroupCardProps> = ({
 
               {/* More items indicator */}
               {displayItems.length > 5 && (
-                <View style={[styles.moreItemsRow, { borderTopColor: colors.cellDivider }]}>
-                  <Icon name="dots-horizontal" size={16} color={colors.textTertiary} />
-                  <Text style={[styles.moreItemsText, { color: colors.textTertiary }]}>
-                    {displayItems.length - 5} more items
+                <View style={styles.moreItemsRow}>
+                  <Text style={styles.moreItemsText}>
+                    {formatCount(displayItems.length - 5, 'more item')}
                   </Text>
                 </View>
               )}
             </View>
           ) : (
             <View style={styles.emptyItemsContainer}>
-              <Icon name="package-variant-closed" size={32} color={colors.gray300} />
-              <Text style={[styles.noItemsText, { color: colors.textTertiary }]}>
-                No items in this order
-              </Text>
+              <Icon name="package-variant-closed" size={iconSize.xl} color={t.icon.secondary} />
+              <Text style={styles.noItemsText}>No items in this order.</Text>
             </View>
           )}
 
           {/* Footer Info - Fiori Key-Value style */}
-          <View style={[styles.footerInfo, { borderTopColor: colors.cellDivider }]}>
-            {order.updated_at && (
+          {order.updated_at && (
+            <View style={styles.footerInfo}>
               <View style={styles.keyValueRow}>
-                <Text style={[styles.keyLabel, { color: colors.textTertiary }]}>Last updated</Text>
-                <Text style={[styles.valueText, { color: colors.textSecondary }]}>
+                <Text style={styles.keyLabel}>Last updated</Text>
+                <Text style={styles.valueText}>
                   {formatRelativeTime(order.updated_at)}
                   {order.updated_by_display_name ? ` by ${order.updated_by_display_name}` : ''}
                 </Text>
               </View>
-            )}
-          </View>
+            </View>
+          )}
 
           {/* Action Buttons - Fiori Toolbar */}
           <View style={styles.actionsRow}>
-            <TouchableOpacity
-              style={[styles.editButton, { borderColor: colors.gray300 }]}
+            <Pressable
+              style={({ pressed }) => [styles.editButton, pressed && styles.editButtonPressed]}
               onPress={handleEditOrder}
-              activeOpacity={0.7}
               accessibilityRole="button"
-              accessibilityLabel="Edit order"
+              accessibilityLabel={`Edit order for ${customerName}`}
             >
-              <Icon name="pencil" size={18} color={colors.textSecondary} />
-              <Text style={[styles.editButtonText, { color: colors.textPrimary }]}>Edit</Text>
-            </TouchableOpacity>
+              <Icon name="pencil-outline" size={iconSize.md} color={t.text.primary} />
+              <Text style={styles.editButtonText}>Edit</Text>
+            </Pressable>
 
-            <TouchableOpacity
-              style={[
+            <Pressable
+              style={({ pressed }) => [
                 styles.dispatchButton,
-                { backgroundColor: colors.primary },
-                !canDispatch && { backgroundColor: colors.gray200 },
+                pressed && styles.dispatchButtonPressed,
+                !canDispatch && styles.disabled,
               ]}
               onPress={handleGenerateDispatch}
               disabled={!canDispatch}
-              activeOpacity={0.7}
               accessibilityRole="button"
-              accessibilityLabel="Generate dispatch"
+              accessibilityLabel="Create dispatch"
+              accessibilityHint={canDispatch ? undefined : 'No items have stock available to dispatch'}
               accessibilityState={{ disabled: !canDispatch }}
             >
-              <Icon
-                name="truck-delivery"
-                size={18}
-                color={canDispatch ? '#FFFFFF' : colors.gray400}
-              />
-              <Text
-                style={[
-                  styles.dispatchButtonText,
-                  { color: '#FFFFFF' },
-                  !canDispatch && { color: colors.gray400 },
-                ]}
-              >
-                Generate Dispatch
-              </Text>
-            </TouchableOpacity>
+              <Icon name="truck-delivery-outline" size={iconSize.md} color={t.brand.onFill} />
+              <Text style={styles.dispatchButtonText}>Create dispatch</Text>
+            </Pressable>
           </View>
+          {!canDispatch && !isLoadingItems && (
+            <Text style={styles.helperText}>
+              No items have stock available to dispatch.
+            </Text>
+          )}
         </View>
       )}
     </View>
   );
 };
+
+// ============================================================================
+// HELPERS
+// ============================================================================
+
+const numberFormat = new Intl.NumberFormat('en-IN');
+
+/** "1 item", "3 items". */
+function formatCount(n: number, noun: string): string {
+  return `${numberFormat.format(n)} ${noun}${n === 1 ? '' : 's'}`;
+}
+
+/** Stable avatar colour index for an id (style guide §3.2). */
+function avatarIndex(id: string, count: number): number {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) {
+    hash = (hash * 31 + id.charCodeAt(i)) | 0;
+  }
+  return Math.abs(hash) % count;
+}
 
 // ============================================================================
 // MEMOIZATION
@@ -394,284 +398,268 @@ const areEqual = (
     prevProps.order.quantity_sum === nextProps.order.quantity_sum &&
     prevProps.order.updated_at === nextProps.order.updated_at &&
     prevProps.isExpanded === nextProps.isExpanded &&
-    prevProps.onToggleExpand === nextProps.onToggleExpand &&
-    prevProps.colors === nextProps.colors
+    prevProps.onToggleExpand === nextProps.onToggleExpand
   );
 };
 
 export const CustomerOrderGroupCard = React.memo(CustomerOrderGroupCardContent, areEqual);
 
 // ============================================================================
-// STYLES - SAP Fiori Object Cell & Card Compliant
+// STYLES - SAP Fiori object cell and table (style guide §13.6, §13.7)
 // ============================================================================
 
-const styles = StyleSheet.create({
-  // Card Container - Fiori spec: 12pt corner radius
+const makeStyles = (t: ThemeTokens) => ({
   card: {
-    marginHorizontal: 16,
-    marginVertical: 6,
-    borderRadius: 12, // Fiori card corner radius
-    borderWidth: 1,
-    overflow: 'hidden',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.08,
-        shadowRadius: 4,
-      },
-      android: {
-        elevation: 2,
-      },
-    }),
+    marginHorizontal: layout.marginCompact,
+    marginVertical: space.xs,
+    borderRadius: radius.card,
+    backgroundColor: t.surface.card,
+    ...t.shadow[2],
   },
-  // Object Cell Header - Fiori spec: 16pt padding
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 16, // Fiori card padding
-    gap: 12,
-    minHeight: 72, // Fiori object cell min height
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    padding: space.lg,
+    gap: space.md,
+    minHeight: layout.objectCellMinHeight,
+    borderRadius: radius.card,
   },
-  // Avatar/Detail Image - Fiori spec: 44pt circular
+  headerPressed: {
+    backgroundColor: t.surface.cardPressed,
+  },
   avatar: {
-    width: 44, // Fiori detail image size
-    height: 44,
-    borderRadius: 22, // Circular for users
-    justifyContent: 'center',
-    alignItems: 'center',
+    width: layout.avatar.md,
+    height: layout.avatar.md,
+    borderRadius: radius.pill,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
   },
   avatarText: {
-    fontSize: 18,
-    fontWeight: '600',
+    ...typography.headline,
+    color: t.mode === 'light' ? t.text.primary : t.overlay.onImage,
   },
-  // Main Content - Fiori object cell main content area
   customerInfo: {
     flex: 1,
-    gap: 2,
+    gap: space.xxs,
   },
-  // Title - Fiori spec: 17pt semibold
   customerName: {
-    fontSize: 17, // Fiori object cell title
-    fontWeight: '600',
-    letterSpacing: -0.41,
+    ...typography.headline,
+    color: t.text.primary,
   },
-  // Subtitle/Meta - Fiori spec: 13pt
   metaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginTop: 2,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    flexWrap: 'wrap' as const,
+    gap: space.xs,
   },
   metaText: {
-    fontSize: 13, // Fiori subtitle font size
+    ...typography.subhead,
+    color: t.text.secondary,
+    fontVariant: ['tabular-nums' as const],
   },
-  dot: {
-    width: 4,
-    height: 4,
-    borderRadius: 2,
-    marginHorizontal: 4,
-  },
-  // Attribute Area (Right) - Fiori spec: status + chevron
   rightSection: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.sm,
   },
-  // Status Badge/Tag - Fiori spec: 20pt height, pill shape
   statusBadge: {
-    height: 20, // Fiori compact tag height
-    paddingHorizontal: 8,
-    borderRadius: 10, // Fiori pill shape
-    justifyContent: 'center',
-    alignItems: 'center',
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.xs,
+    paddingHorizontal: space.s6,
+    paddingVertical: space.xxs,
+    borderRadius: radius.field,
+    backgroundColor: t.status.neutral.background,
   },
   statusText: {
-    fontSize: 11, // Fiori compact tag font size
-    fontWeight: '600',
+    ...typography.caption1,
+    fontWeight: fontWeight.semibold,
+    color: t.status.neutral.text,
   },
-  // Expanded Content - Fiori card body
   expandedContent: {
     borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: t.border.divider,
   },
   loadingContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 32,
-    gap: 8,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    paddingVertical: space.xxxl,
+    gap: space.sm,
   },
   loadingText: {
-    fontSize: 14,
+    ...typography.subhead,
+    color: t.text.secondary,
   },
 
-  // =========================================================================
-  // DATA TABLE STYLES - SAP Fiori spec: 20-data-table.md
-  // =========================================================================
-
-  itemsSection: {
-    // No additional padding - table stretches full width
-  },
-
-  // Table Header - Fiori spec: 44pt min height, 13pt semibold uppercase
+  // Data table
   tableHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
     minHeight: 36,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.sm,
+    backgroundColor: t.background.base,
     borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.separator,
   },
   tableHeaderCell: {
-    fontSize: 11, // Fiori compact header
-    fontWeight: '600',
-    letterSpacing: 0.5,
+    ...typography.footnote,
+    fontWeight: fontWeight.semibold,
+    color: t.text.secondary,
   },
-
-  // Table Row - Fiori spec: 44pt min height for touch
+  numeric: {
+    textAlign: 'right' as const,
+  },
   tableRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    minHeight: 52,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    minHeight: layout.rowMinHeight,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.divider,
   },
   tableCell: {
-    justifyContent: 'center',
+    justifyContent: 'center' as const,
   },
-
-  // Column widths - Item takes flex, Stock and Qty are fixed
   colItem: {
     flex: 1,
-    paddingRight: 12,
+    paddingRight: space.md,
   },
   colStock: {
-    width: 48,
-    alignItems: 'center',
+    width: 72,
+    alignItems: 'flex-end' as const,
   },
   colQty: {
-    width: 48,
-    alignItems: 'flex-end',
+    width: 56,
+    alignItems: 'flex-end' as const,
   },
-
-  // Item cell - Title and subtitle
+  stockCell: {
+    flexDirection: 'row' as const,
+    justifyContent: 'flex-end' as const,
+    alignItems: 'center' as const,
+    gap: space.xxs,
+  },
   itemName: {
-    fontSize: 15, // Fiori table cell font
-    fontWeight: '500',
+    ...typography.subhead,
+    fontWeight: fontWeight.medium,
+    color: t.text.primary,
   },
   itemMark: {
-    fontSize: 12, // Fiori caption
-    marginTop: 2,
+    ...typography.caption1,
+    color: t.text.secondary,
+    marginTop: space.xxs,
   },
-
-  // Stock value - Color-coded
   stockValue: {
-    fontSize: 15,
-    fontWeight: '600',
+    ...typography.subhead,
+    color: t.text.primary,
+    fontVariant: ['tabular-nums' as const],
   },
-
-  // Quantity Badge - Fiori tag style
-  qtyBadge: {
-    height: 24, // Fiori default tag height
-    minWidth: 32,
-    paddingHorizontal: 8,
-    borderRadius: 12, // Fiori pill shape
-    justifyContent: 'center',
-    alignItems: 'center',
+  stockValueLow: {
+    color: t.status.critical.text,
+    fontWeight: fontWeight.semibold,
   },
   qtyText: {
-    fontSize: 13,
-    fontWeight: '600',
+    ...typography.subhead,
+    fontWeight: fontWeight.semibold,
+    color: t.text.primary,
+    fontVariant: ['tabular-nums' as const],
   },
-
-  // More items indicator
   moreItemsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 12,
-    gap: 6,
-    borderTopWidth: StyleSheet.hairlineWidth,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    paddingVertical: space.md,
   },
   moreItemsText: {
-    fontSize: 13,
+    ...typography.footnote,
+    color: t.text.secondary,
   },
-
-  // Empty items state
   emptyItemsContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 32,
-    gap: 8,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    paddingVertical: space.xxxl,
+    gap: space.sm,
   },
   noItemsText: {
-    fontSize: 14,
+    ...typography.subhead,
+    color: t.text.secondary,
   },
 
-  // =========================================================================
-  // KEY-VALUE FOOTER - SAP Fiori spec: 21-key-value-table-view-cell.md
-  // =========================================================================
-
+  // Key-value footer
   footerInfo: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.md,
   },
   keyValueRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'center' as const,
+    flexWrap: 'wrap' as const,
+    gap: space.sm,
   },
   keyLabel: {
-    fontSize: 13, // Fiori key label
-    fontWeight: '400',
+    ...typography.footnote,
+    color: t.text.secondary,
   },
   valueText: {
-    fontSize: 13, // Fiori value - compact for footer
-    fontWeight: '400',
+    ...typography.footnote,
+    color: t.text.primary,
   },
 
-  // =========================================================================
-  // ACTION BUTTONS - SAP Fiori Toolbar spec
-  // =========================================================================
-
+  // Actions
   actionsRow: {
-    flexDirection: 'row',
-    gap: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    flexDirection: 'row' as const,
+    gap: space.sm,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.md,
   },
-  // Secondary Normal Button - Fiori spec
   editButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 44, // Fiori touch target
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderRadius: 8, // Fiori button corner radius
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    minHeight: touchTarget,
+    paddingHorizontal: space.xl,
+    borderRadius: radius.button,
     borderWidth: 1,
-    gap: 6,
+    borderColor: t.border.button,
+    gap: space.s6,
+  },
+  editButtonPressed: {
+    backgroundColor: t.surface.cardPressed,
   },
   editButtonText: {
-    fontSize: 15, // Fiori button font size
-    fontWeight: '600',
+    ...typography.callout,
+    fontWeight: fontWeight.semibold,
+    color: t.text.primary,
   },
-  // Primary Button - Fiori spec
   dispatchButton: {
     flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 44, // Fiori touch target
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 8, // Fiori button corner radius
-    gap: 6,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    minHeight: touchTarget,
+    paddingHorizontal: space.lg,
+    borderRadius: radius.button,
+    gap: space.s6,
+    backgroundColor: t.brand.fill,
+  },
+  dispatchButtonPressed: {
+    backgroundColor: t.brand.fillPressed,
   },
   dispatchButtonText: {
-    fontSize: 15, // Fiori button font size
-    fontWeight: '600',
+    ...typography.callout,
+    fontWeight: fontWeight.semibold,
+    color: t.brand.onFill,
+  },
+  disabled: {
+    opacity: t.interaction.disabledOpacity,
+  },
+  helperText: {
+    ...typography.footnote,
+    color: t.text.secondary,
+    paddingHorizontal: space.lg,
+    paddingBottom: space.md,
   },
 });
 

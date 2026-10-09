@@ -2,8 +2,9 @@
  * Stock Summary Report Screen (C1)
  *
  * Displays current inventory at a glance with item-level breakdowns.
- * 100% SAP Fiori compliant following design specs.
- *
+ * Styling follows docs/STYLE_GUIDE.md: report pattern (§14.10) with the PDF
+ * share action in the header, object cells (§13.6) and status tags (§3.5,
+ * out of stock is negative).
  */
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
@@ -11,13 +12,11 @@ import {
   View,
   Text,
   ScrollView,
-  TouchableOpacity,
   Pressable,
   StyleSheet,
   RefreshControl,
   LayoutAnimation,
   Alert,
-  ActivityIndicator,
 } from 'react-native';
 import { router } from 'expo-router';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -26,8 +25,17 @@ import { getCustomerStockSummary, getAllStockSummary } from '@/services/reportin
 import { generateCustomerStockPDF } from '@/services/pdf-service';
 import { downloadAndSharePDF } from '@/utils/shareDocument';
 import { useRoleBasedAccess } from '@/hooks/useRoleBasedAccess';
-import theme from '@/theme';
-import { useFioriColors } from '@/theme/fioriColors';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import {
+  fontWeight,
+  iconSize,
+  layout,
+  radius,
+  space,
+  touchTarget,
+  typography,
+  type ThemeTokens,
+} from '@/theme/tokens';
 import type {
   StockSummaryData,
   StockItemSummary,
@@ -35,205 +43,275 @@ import type {
   AllStockSummaryData,
   CustomerStockRow,
 } from '@/types/report.types';
-import { formatNumber, formatWeight, formatDate } from '@/utils/formatters';
+import { formatNumber, parseLocalISODate } from '@/utils/formatters';
+import { createLogger } from '@/utils/logger';
 
-// ============================================================================
-// SAP Fiori Design Tokens - Static dimensions and typography
-// Colors are now provided via useFioriColors() hook for dark mode support
-// @see src/theme/fioriColors.ts
-// ============================================================================
-const FIORI_STATIC = {
-  // Dimensions from Fiori spec
-  dimensions: {
-    objectCellMinHeight: 72,
-    objectCellImageSize: 44,
-    objectCellImageRadius: 10,
-    cardCornerRadius: 12,
-    cardPadding: 16,
-    cardBodyPadding: 16,
-    sectionHeaderHeight: 32,
-    touchTarget: 44,
-    iconButtonSize: 24,
-  },
-  // Typography from Fiori spec
-  typography: {
-    sectionHeader: {
-      fontSize: 13,
-      fontWeight: '600' as const,
-      letterSpacing: 0.5,
-      textTransform: 'uppercase' as const,
-    },
-    title: {
-      fontSize: 16,
-      fontWeight: '600' as const,
-      lineHeight: 22,
-    },
-    subtitle: {
-      fontSize: 14,
-      lineHeight: 18,
-    },
-    footnote: {
-      fontSize: 13,
-      lineHeight: 16,
-    },
-    caption: {
-      fontSize: 12,
-      lineHeight: 16,
-    },
-  },
-};
+const logger = createLogger('StockSummary');
 
-// ============================================================================
-// Fiori Section Header Component
-// ============================================================================
-interface FioriSectionHeaderProps {
-  title: string;
-  action?: {
-    label?: string;
-    icon?: string;
-    onPress: () => void;
-  };
+const LOAD_ERROR = "Couldn't load the stock summary. Check your connection and try again.";
+const NO_CUSTOMER = 'No customer is linked to your account. Ask your facility to link one.';
+
+/** "9 Oct 2026" (guide §12.3) */
+function formatDay(value: string | null | undefined): string {
+  if (!value) return '–';
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(value) ? parseLocalISODate(value) : new Date(value);
+  if (isNaN(date.getTime())) return '–';
+  return date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
-const FioriSectionHeader: React.FC<FioriSectionHeaderProps> = ({ title, action }) => {
-  const fiori = useFioriColors();
+const weightFormat = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 });
 
-  return (
-    <View style={styles.fioriSectionHeader}>
-      <Text style={[styles.fioriSectionHeaderText, { color: fiori.colors.textSecondary }]}>
-        {title.toUpperCase()}
-      </Text>
-      {action && (
-        action.icon ? (
-          <TouchableOpacity
-            onPress={action.onPress}
-            style={styles.fioriSectionHeaderButton}
-            accessibilityRole="button"
-            accessibilityLabel={action.label || title}
-          >
-            <Icon name={action.icon} size={20} color={fiori.colors.tint} />
-          </TouchableOpacity>
-        ) : (
-          <TouchableOpacity
-            onPress={action.onPress}
-            style={styles.fioriSectionHeaderButton}
-            accessibilityRole="button"
-          >
-            <Text style={[styles.fioriSectionHeaderAction, { color: fiori.colors.tint }]}>
-              {action.label}
-            </Text>
-          </TouchableOpacity>
-        )
-      )}
-    </View>
-  );
-};
+function plural(count: number, one: string, many: string): string {
+  return `${formatNumber(count)} ${count === 1 ? one : many}`;
+}
 
 // ============================================================================
-// Fiori Object Cell - Item Card (Expandable)
+// Styles
+// ============================================================================
+
+const makeStyles = (t: ThemeTokens) =>
+  StyleSheet.create({
+    container: { flex: 1, backgroundColor: t.background.base },
+    loadingContainer: { flex: 1 },
+    scrollView: { flex: 1 },
+    scrollContent: { paddingBottom: space.xxxl },
+
+    searchContainer: { marginTop: space.sm, paddingHorizontal: layout.marginCompact },
+
+    section: { marginTop: space.lg, paddingHorizontal: layout.marginCompact },
+    sectionHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingTop: space.sm,
+      paddingBottom: space.xs,
+      minHeight: 32,
+    },
+    sectionHeaderText: {
+      ...typography.footnote,
+      fontWeight: fontWeight.semibold,
+      letterSpacing: 0.5,
+      textTransform: 'uppercase',
+      color: t.text.secondary,
+    },
+    itemsList: { gap: space.sm },
+    oosList: { marginTop: space.sm },
+
+    card: {
+      backgroundColor: t.surface.card,
+      borderRadius: radius.card,
+      ...t.shadow[2],
+    },
+    cardClip: { borderRadius: radius.card, overflow: 'hidden' },
+    divider: {
+      height: StyleSheet.hairlineWidth,
+      marginLeft: layout.marginCompact + layout.avatar.md + space.md,
+      backgroundColor: t.border.divider,
+    },
+
+    // Object cell
+    objectCell: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      minHeight: layout.objectCellMinHeight,
+      paddingVertical: space.md,
+      paddingHorizontal: space.lg,
+      gap: space.md,
+    },
+    rowPressed: { backgroundColor: t.surface.cardPressed },
+    cellImage: {
+      width: layout.avatar.md,
+      height: layout.avatar.md,
+      borderRadius: radius.button,
+      justifyContent: 'center',
+      alignItems: 'center',
+      backgroundColor: t.brand.subtle,
+    },
+    cellImageMuted: { backgroundColor: t.status.neutral.background },
+    cellContent: { flex: 1, justifyContent: 'center', gap: space.xxs },
+    cellTitle: { ...typography.headline, color: t.text.primary },
+    cellSubtitle: { ...typography.subhead, color: t.text.secondary },
+    cellValue: { alignItems: 'flex-end' },
+    cellValueText: { ...typography.headline, color: t.text.primary, fontVariant: ['tabular-nums'] },
+    cellValueLabel: { ...typography.caption1, color: t.text.secondary },
+
+    // Expanded GRN rows
+    cardBody: {
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: t.border.divider,
+      backgroundColor: t.background.base,
+    },
+    grnRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: space.lg,
+      paddingVertical: space.md,
+      minHeight: layout.rowMinHeight + space.md,
+      gap: space.md,
+    },
+    grnRowBorder: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: t.border.divider },
+    grnRowContent: { flex: 1, gap: space.xxs },
+    grnRowTitleRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm, flexWrap: 'wrap' },
+    grnRowTitle: { ...typography.subhead, fontWeight: fontWeight.semibold, color: t.text.primary, flexShrink: 1 },
+    grnRowLine: { flexDirection: 'row', alignItems: 'center', gap: space.xs, flexWrap: 'wrap' },
+    grnRowFootnote: { ...typography.footnote, color: t.text.secondary },
+    grnRowAttributes: { alignItems: 'flex-end' },
+    grnRowStock: { ...typography.subhead, fontWeight: fontWeight.semibold, color: t.text.primary, fontVariant: ['tabular-nums'] },
+    grnRowStockMuted: { color: t.text.secondary },
+    grnRowSecondary: { ...typography.caption1, color: t.text.secondary, fontVariant: ['tabular-nums'] },
+
+    tag: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      alignSelf: 'flex-start',
+      gap: space.xxs,
+      paddingHorizontal: space.s6,
+      paddingVertical: space.xxs,
+      borderRadius: radius.field,
+    },
+    tagText: { ...typography.caption1, fontWeight: fontWeight.semibold },
+    neutralTag: { backgroundColor: t.status.neutral.background },
+    neutralTagText: { color: t.status.neutral.text },
+    negativeTag: { backgroundColor: t.status.negative.background },
+    negativeTagText: { color: t.status.negative.text },
+
+    // Collapsible out-of-stock header
+    collapsibleHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      minHeight: touchTarget,
+      paddingHorizontal: space.lg,
+      paddingVertical: space.md,
+      gap: space.sm,
+    },
+    collapsibleHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: space.sm, flexShrink: 1 },
+    collapsibleHeaderTitle: { ...typography.headline, color: t.text.primary },
+    collapsibleHeaderHint: { ...typography.footnote, color: t.text.secondary },
+    countBadge: {
+      minWidth: 18,
+      paddingHorizontal: space.s6,
+      paddingVertical: space.xxs,
+      borderRadius: radius.pill,
+      alignItems: 'center',
+      backgroundColor: t.brand.fill,
+    },
+    countBadgeText: {
+      ...typography.caption2,
+      fontWeight: fontWeight.semibold,
+      color: t.brand.onFill,
+      fontVariant: ['tabular-nums'],
+    },
+  });
+
+type Styles = ReturnType<typeof makeStyles>;
+
+// ============================================================================
+// Section Header
+// ============================================================================
+const SectionHeader: React.FC<{ title: string; styles: Styles }> = ({ title, styles }) => (
+  <View style={styles.sectionHeader}>
+    <Text style={styles.sectionHeaderText} accessibilityRole="header">
+      {title}
+    </Text>
+  </View>
+);
+
+// ============================================================================
+// Object Cell - Item Card (Expandable)
 // ============================================================================
 interface ItemCardProps {
   item: StockItemSummary;
   isExpanded: boolean;
   onToggle: () => void;
   isOutOfStock?: boolean;
+  styles: Styles;
+  t: ThemeTokens;
 }
 
-const ItemCard: React.FC<ItemCardProps> = ({ item, isExpanded, onToggle, isOutOfStock = false }) => {
-  const fiori = useFioriColors();
-
+const ItemCard: React.FC<ItemCardProps> = ({ item, isExpanded, onToggle, isOutOfStock = false, styles, t }) => {
+  const grns = plural(item.grn_count, 'GRN', 'GRNs');
   return (
-    <View style={[
-      styles.fioriCard,
-      {
-        backgroundColor: fiori.colors.cardBackground,
-        borderColor: fiori.colors.divider,
-      },
-      isOutOfStock && styles.fioriCardOutOfStock,
-    ]}>
-      {/* Object Cell Header - Main touchable area */}
-      <Pressable
-        style={({ pressed }) => [
-          styles.fioriObjectCell,
-          { backgroundColor: fiori.colors.cardBackground },
-          pressed && { backgroundColor: fiori.colors.cardBackgroundPressed },
-        ]}
-        onPress={onToggle}
-        accessibilityRole="button"
-        accessibilityLabel={`${item.item_name}, ${isOutOfStock ? 'out of stock' : `${item.total_stock} units`} in ${item.grn_count} GRNs`}
-        accessibilityHint={isExpanded ? 'Tap to collapse' : 'Tap to expand GRN details'}
-      >
-        {/* A. Detail Image (44pt per Fiori spec) */}
-        <View style={[
-          styles.fioriObjectCellImagePrimary,
-          { backgroundColor: isOutOfStock ? fiori.colors.backgroundSecondary : fiori.colors.tintLight },
-        ]}>
-          <Icon
-            name={isOutOfStock ? 'cube-off-outline' : 'cube-outline'}
-            size={22}
-            color={isOutOfStock ? fiori.colors.textSecondary : fiori.colors.tint}
-          />
-        </View>
-
-        {/* C. Main Content */}
-        <View style={styles.fioriObjectCellContent}>
-          {/* Title (mandatory) */}
-          <Text style={[styles.fioriObjectCellTitle, { color: fiori.colors.textPrimary }]} numberOfLines={1}>
-            {item.item_name}
-          </Text>
-          {/* Subtitle */}
-          <Text style={[styles.fioriObjectCellSubtitle, { color: fiori.colors.textSecondary }]} numberOfLines={1}>
-            {item.grn_count} GRN{item.grn_count !== 1 ? 's' : ''}{isOutOfStock ? ' dispatched' : ` • ${formatNumber(item.total_stock)} units`}
-          </Text>
-        </View>
-
-        {/* F. Accessory View - Expand/Collapse */}
-        <View style={styles.fioriObjectCellAccessory}>
-          <Icon
-            name={isExpanded ? 'chevron-up' : 'chevron-down'}
-            size={20}
-            color={fiori.colors.textSecondary}
-          />
-        </View>
-      </Pressable>
-
-      {/* Expandable GRN List */}
-      {isExpanded && item.grns.length > 0 && (
-        <View style={[
-          styles.fioriCardBody,
-          {
-            backgroundColor: fiori.colors.backgroundSecondary,
-            borderTopColor: fiori.colors.divider,
-          },
-        ]}>
-          {item.grns.map((grn, index) => (
-            <GRNRow
-              key={`${grn.gr_no}-${index}`}
-              grn={grn}
-              isLast={index === item.grns.length - 1}
-              onPress={grn.grn_id ? () => router.push(`/grn-details/${grn.grn_id}`) : undefined}
-              isOutOfStock={isOutOfStock}
+    <View style={styles.card}>
+      <View style={styles.cardClip}>
+        {/* Object Cell Header - Main touchable area */}
+        <Pressable
+          style={({ pressed }) => [styles.objectCell, pressed && styles.rowPressed]}
+          onPress={onToggle}
+          accessibilityRole="button"
+          accessibilityLabel={`${item.item_name}, ${isOutOfStock ? 'out of stock' : `${formatNumber(item.total_stock)} units`}, ${grns}`}
+          accessibilityState={{ expanded: isExpanded }}
+          accessibilityHint={isExpanded ? 'Hides the GRNs' : 'Shows the GRNs for this item'}
+        >
+          <View style={[styles.cellImage, isOutOfStock && styles.cellImageMuted]}>
+            <Icon
+              name={isOutOfStock ? 'cube-off-outline' : 'cube-outline'}
+              size={iconSize.lg}
+              color={isOutOfStock ? t.status.neutral.text : t.brand.tint}
             />
-          ))}
-        </View>
-      )}
+          </View>
+
+          <View style={styles.cellContent}>
+            <Text style={styles.cellTitle} numberOfLines={2}>
+              {item.item_name}
+            </Text>
+            <Text style={styles.cellSubtitle} numberOfLines={1}>
+              {isOutOfStock ? `${grns} dispatched` : grns}
+            </Text>
+            {isOutOfStock && (
+              <View style={[styles.tag, styles.negativeTag]}>
+                <Icon name="alert-circle" size={iconSize.sm} color={t.status.negative.text} />
+                <Text style={[styles.tagText, styles.negativeTagText]} maxFontSizeMultiplier={1.6}>
+                  Out of stock
+                </Text>
+              </View>
+            )}
+          </View>
+
+          {!isOutOfStock && (
+            <View style={styles.cellValue}>
+              <Text style={styles.cellValueText}>{formatNumber(item.total_stock)}</Text>
+              <Text style={styles.cellValueLabel}>units</Text>
+            </View>
+          )}
+
+          <Icon name={isExpanded ? 'chevron-up' : 'chevron-down'} size={iconSize.md} color={t.icon.secondary} />
+        </Pressable>
+
+        {/* Expandable GRN List */}
+        {isExpanded && item.grns.length > 0 && (
+          <View style={styles.cardBody}>
+            {item.grns.map((grn, index) => (
+              <GRNRow
+                key={`${grn.gr_no}-${index}`}
+                grn={grn}
+                isLast={index === item.grns.length - 1}
+                onPress={grn.grn_id ? () => router.push(`/grn-details/${grn.grn_id}`) : undefined}
+                isOutOfStock={isOutOfStock}
+                styles={styles}
+                t={t}
+              />
+            ))}
+          </View>
+        )}
+      </View>
     </View>
   );
 };
 
 // ============================================================================
-// Fiori Object Cell - GRN Row (nested within Item Card)
+// GRN Row (nested within Item Card)
 // ============================================================================
 interface GRNRowProps {
   grn: StockGRNDetail;
   isLast?: boolean;
   onPress?: () => void;
   isOutOfStock?: boolean;
+  styles: Styles;
+  t: ThemeTokens;
 }
 
-const GRNRow: React.FC<GRNRowProps> = ({ grn, isLast = false, onPress, isOutOfStock = false }) => {
-  const fiori = useFioriColors();
-
+const GRNRow: React.FC<GRNRowProps> = ({ grn, isLast = false, onPress, isOutOfStock = false, styles, t }) => {
   const handlePress = () => {
     if (grn.grn_id && onPress) {
       onPress();
@@ -241,88 +319,71 @@ const GRNRow: React.FC<GRNRowProps> = ({ grn, isLast = false, onPress, isOutOfSt
   };
 
   const isNavigable = !!grn.grn_id;
+  const received = `Received ${formatDay(grn.date)}`;
+  const emptied = isOutOfStock && grn.emptied_date ? `Emptied ${formatDay(grn.emptied_date)}` : null;
+  const extra = !emptied ? [grn.packaging, grn.rack ? `Rack ${grn.rack}` : null].filter(Boolean).join(' · ') : '';
+  const stockText = grn.orig_qty > 0
+    ? `${formatNumber(grn.stock)} of ${formatNumber(grn.orig_qty)}`
+    : formatNumber(grn.stock);
+  const weight = `${weightFormat.format(grn.item_weight || 0)} kg each`;
+
+  const a11yLabel = [
+    `GRN ${grn.gr_no}`,
+    grn.package_mark ? `mark ${grn.package_mark}` : null,
+    received,
+    emptied,
+    extra || null,
+    `${stockText} units`,
+    weight,
+  ]
+    .filter(Boolean)
+    .join(', ');
 
   const content = (
     <>
-      {/* Main Content */}
-      <View style={styles.fioriGrnRowContent}>
-        {/* Title with Tag */}
-        <View style={styles.fioriGrnRowTitleRow}>
-          <Text style={[styles.fioriGrnRowTitle, { color: fiori.colors.textPrimary }]} numberOfLines={1}>
-            {grn.gr_no}
+      <View style={styles.grnRowContent}>
+        <View style={styles.grnRowTitleRow}>
+          <Text style={styles.grnRowTitle} numberOfLines={1}>
+            {`GRN ${grn.gr_no}`}
           </Text>
-          {/* Fiori Tag/Badge for package mark */}
           {grn.package_mark && (
-            <View style={[styles.fioriTag, { backgroundColor: fiori.colors.infoLight }]}>
-              <Text style={[styles.fioriTagText, { color: fiori.colors.info }]}>{grn.package_mark}</Text>
+            <View style={[styles.tag, styles.neutralTag]}>
+              <Text style={[styles.tagText, styles.neutralTagText]} maxFontSizeMultiplier={1.6}>
+                {grn.package_mark}
+              </Text>
             </View>
           )}
         </View>
-        {/* Footnote - with green arrow for In date, red arrow for Out date */}
-        {isOutOfStock && grn.emptied_date ? (
-          <View style={styles.fioriGrnRowFootnoteRow}>
-            <Icon name="arrow-down" size={14} color={fiori.colors.success} />
-            <Text style={[styles.fioriGrnRowFootnote, { color: fiori.colors.textSecondary }]}>
-              {formatDate(grn.date, 'compact')}
-            </Text>
-            <Text style={[styles.fioriGrnRowFootnoteSeparator, { color: fiori.colors.textSecondary }]}> • </Text>
-            <Icon name="arrow-up" size={14} color={fiori.colors.destructive} />
-            <Text style={[styles.fioriGrnRowFootnote, { color: fiori.colors.textSecondary }]}>
-              {formatDate(grn.emptied_date, 'compact')}
-            </Text>
-          </View>
-        ) : (
-          <View style={styles.fioriGrnRowFootnoteRow}>
-            <Icon name="arrow-down" size={14} color={fiori.colors.success} />
-            <Text style={[styles.fioriGrnRowFootnote, { color: fiori.colors.textSecondary }]}>
-              {formatDate(grn.date, 'compact')}
-              {grn.packaging ? ` • ${grn.packaging}` : ''}
-              {grn.rack ? ` • ${grn.rack}` : ''}
-            </Text>
+        <View style={styles.grnRowLine}>
+          <Icon name="package-down" size={iconSize.sm} color={t.icon.secondary} />
+          <Text style={styles.grnRowFootnote}>{received}</Text>
+        </View>
+        {emptied && (
+          <View style={styles.grnRowLine}>
+            <Icon name="truck-delivery-outline" size={iconSize.sm} color={t.icon.secondary} />
+            <Text style={styles.grnRowFootnote}>{emptied}</Text>
           </View>
         )}
+        {extra ? <Text style={styles.grnRowFootnote}>{extra}</Text> : null}
       </View>
 
-      {/* Attributes */}
-      <View style={styles.fioriGrnRowAttributes}>
-        <View style={styles.fioriGrnRowQtyRow}>
-          <Text style={[
-            styles.fioriGrnRowStock,
-            { color: isOutOfStock ? fiori.colors.textSecondary : fiori.colors.textPrimary },
-          ]}>
-            {formatNumber(grn.stock)}
-          </Text>
-          {grn.orig_qty > 0 && (
-            <Text style={[styles.fioriGrnRowOrigQty, { color: fiori.colors.textSecondary }]}>
-              / {formatNumber(grn.orig_qty)}
-            </Text>
-          )}
-        </View>
-        <Text style={[styles.fioriGrnRowWeight, { color: fiori.colors.textSecondary }]}>
-          {formatWeight(grn.item_weight)}
-        </Text>
+      <View style={styles.grnRowAttributes}>
+        <Text style={[styles.grnRowStock, isOutOfStock && styles.grnRowStockMuted]}>{stockText}</Text>
+        <Text style={styles.grnRowSecondary}>{weight}</Text>
       </View>
 
-      {/* Accessory - Navigation Chevron */}
-      {isNavigable && (
-        <Icon name="chevron-right" size={16} color={fiori.colors.textSecondary} />
-      )}
+      {isNavigable && <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />}
     </>
   );
 
   if (isNavigable) {
     return (
       <Pressable
-        style={({ pressed }) => [
-          styles.fioriGrnRow,
-          { backgroundColor: fiori.colors.backgroundSecondary },
-          !isLast && [styles.fioriGrnRowBorder, { borderBottomColor: fiori.colors.divider }],
-          pressed && { backgroundColor: fiori.colors.cardBackgroundPressed },
-        ]}
+        style={({ pressed }) => [styles.grnRow, !isLast && styles.grnRowBorder, pressed && styles.rowPressed]}
         onPress={handlePress}
         accessibilityRole="button"
-        accessibilityLabel={`GRN ${grn.gr_no}, ${grn.stock} units`}
-        accessibilityHint="Tap to view GRN details"
+        accessibilityLabel={a11yLabel}
+        accessibilityHint="Opens the GRN"
       >
         {content}
       </Pressable>
@@ -330,22 +391,15 @@ const GRNRow: React.FC<GRNRowProps> = ({ grn, isLast = false, onPress, isOutOfSt
   }
 
   return (
-    <View style={[
-      styles.fioriGrnRow,
-      { backgroundColor: fiori.colors.backgroundSecondary },
-      !isLast && [styles.fioriGrnRowBorder, { borderBottomColor: fiori.colors.divider }],
-    ]}>
+    <View style={[styles.grnRow, !isLast && styles.grnRowBorder]} accessible accessibilityLabel={a11yLabel}>
       {content}
     </View>
   );
 };
 
-// ============================================================================
-// Fiori Object Cell - Customer Card
-// CustomerCard moved to @/components/reports/ReportCustomerCard (J14 fix)
-
 export default function StockSummaryScreen() {
-  const fiori = useFioriColors();
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
 
   // Role-based access (J12 fix)
   const {
@@ -393,11 +447,12 @@ export default function StockSummaryScreen() {
         // Backend now filters by user permissions via auth.uid()
         setAllCustomersData(response.data);
       } else {
-        setError(response.error || 'Failed to load stock summary');
+        logger.warn('All-customer load failed', { error: response.error });
+        setError(LOAD_ERROR);
       }
     } catch (err) {
-      console.error('[StockSummary] Error fetching all customers data:', err);
-      setError('An unexpected error occurred');
+      logger.error('Error fetching all customers data', err);
+      setError(LOAD_ERROR);
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
@@ -406,7 +461,7 @@ export default function StockSummaryScreen() {
 
   // Fetch single customer stock summary (for drill-down or regular users)
   const fetchSingleCustomerData = useCallback(async (customerId: string, showRefreshIndicator = false) => {
-    console.log('[StockSummary] fetchSingleCustomerData called, customerId:', customerId);
+    logger.debug('fetchSingleCustomerData called', { customerId });
 
     if (showRefreshIndicator) {
       setIsRefreshing(true);
@@ -421,11 +476,12 @@ export default function StockSummaryScreen() {
       if (response.success && response.data) {
         setData(response.data);
       } else {
-        setError(response.error || 'Failed to load stock summary');
+        logger.warn('Customer load failed', { error: response.error });
+        setError(LOAD_ERROR);
       }
     } catch (err) {
-      console.error('[StockSummary] Error fetching single customer data:', err);
-      setError('An unexpected error occurred');
+      logger.error('Error fetching single customer data', err);
+      setError(LOAD_ERROR);
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
@@ -441,7 +497,7 @@ export default function StockSummaryScreen() {
       // Regular users with only one assigned customer go directly to that customer
       fetchSingleCustomerData(singleAssignedCustomerId);
     } else {
-      setError('No customer assigned to your account');
+      setError(NO_CUSTOMER);
       setIsLoading(false);
     }
   }, [shouldShowListView, singleAssignedCustomerId, fetchAllCustomersData, fetchSingleCustomerData]);
@@ -503,7 +559,7 @@ export default function StockSummaryScreen() {
 
   // Handle PDF share for customer stock
   const handleShareCustomerStock = useCallback(async (customerId: string, customerName: string) => {
-    console.log('[StockSummary] handleShareCustomerStock called:', { customerId, customerName });
+    logger.debug('handleShareCustomerStock called', { customerId });
     setSharingCustomerId(customerId);
 
     try {
@@ -516,14 +572,15 @@ export default function StockSummaryScreen() {
 
         const shareResult = await downloadAndSharePDF(result.pdfUrl, filename);
         if (!shareResult.success) {
-          console.log('[StockSummary] Share was cancelled or failed:', shareResult.error);
+          logger.debug('Share was cancelled or failed', { error: shareResult.error });
         }
       } else {
-        Alert.alert('Error', result.error || 'Failed to generate PDF');
+        logger.warn('PDF generation failed', { error: result.error });
+        Alert.alert("Couldn't create the stock PDF", 'Check your connection and try again.');
       }
     } catch (error) {
-      console.error('[StockSummary] Error sharing customer stock PDF:', error);
-      Alert.alert('Error', 'Failed to generate stock PDF. Please try again.');
+      logger.error('Error sharing customer stock PDF', error);
+      Alert.alert("Couldn't create the stock PDF", 'Check your connection and try again.');
     } finally {
       setSharingCustomerId(null);
     }
@@ -573,10 +630,10 @@ export default function StockSummaryScreen() {
         variant: 'primary',
       },
       {
-        icon: 'package-variant',
+        icon: 'warehouse',
         value: summary.total_quantity,
-        label: 'Total Units',
-        variant: 'secondary',
+        label: 'Units in stock',
+        variant: 'primary',
       },
     ];
   }, [allCustomersData?.summary]);
@@ -588,16 +645,16 @@ export default function StockSummaryScreen() {
     const summary = data.summary;
     return [
       {
-        icon: 'package-variant',
+        icon: 'warehouse',
         value: summary.total_quantity,
-        label: 'Total Units',
+        label: 'Units in stock',
         variant: 'primary',
       },
       {
-        icon: 'file-document-outline',
+        icon: 'package-down',
         value: summary.grn_count,
-        label: 'Active GRNs',
-        variant: 'accent',
+        label: 'GRNs with stock',
+        variant: 'primary',
       },
     ];
   }, [data?.summary]);
@@ -606,7 +663,7 @@ export default function StockSummaryScreen() {
     if (!data?.summary) return '';
     const oldestDate = data.summary.oldest_stock_date;
     if (oldestDate) {
-      return `Oldest stock: ${formatDate(oldestDate, 'short')}`;
+      return `Oldest stock ${formatDay(oldestDate)}`;
     }
     return '';
   };
@@ -616,18 +673,33 @@ export default function StockSummaryScreen() {
   const hasData = isListView ? allCustomersData : data;
 
   // Subtitle for list view
-  const listViewSubtitle = isStaff ? 'All Customers' : 'My Customers';
+  const listViewSubtitle = isStaff ? 'All customers' : 'My customers';
+
+  const refreshControl = (
+    <RefreshControl
+      refreshing={isRefreshing}
+      onRefresh={handleRefresh}
+      colors={[t.brand.tint]}
+      tintColor={t.brand.tint}
+    />
+  );
+
+  const retry = () => {
+    if (shouldShowListView && viewMode === 'all') fetchAllCustomersData();
+    else if (selectedCustomer) fetchSingleCustomerData(selectedCustomer.customer_id);
+    else if (singleAssignedCustomerId) fetchSingleCustomerData(singleAssignedCustomerId);
+  };
 
   // Loading skeleton
   if (isLoading && !hasData) {
     return (
-      <View style={[styles.container, { backgroundColor: fiori.colors.backgroundGrouped }]}>
-        <ReportHeader title="Stock Summary" />
+      <View style={styles.container}>
+        <ReportHeader title="Stock summary" />
         <View style={styles.loadingContainer}>
           <KPIGrid
             items={[
-              { icon: 'package-variant', value: '-', label: 'Total Units', variant: 'primary' },
-              { icon: 'file-document-outline', value: '-', label: 'Active GRNs', variant: 'secondary' },
+              { icon: 'warehouse', value: '-', label: 'Units in stock', variant: 'primary' },
+              { icon: 'package-down', value: '-', label: 'GRNs with stock', variant: 'primary' },
             ]}
             isLoading={true}
             compact
@@ -640,13 +712,20 @@ export default function StockSummaryScreen() {
   // Error state
   if (error && !hasData) {
     return (
-      <View style={[styles.container, { backgroundColor: fiori.colors.backgroundGrouped }]}>
-        <ReportHeader title="Stock Summary" />
-        <ReportEmptyState
-          icon="alert-circle-outline"
-          message="Failed to load data"
-          description={error}
-        />
+      <View style={styles.container}>
+        <ReportHeader title="Stock summary" />
+        {error === NO_CUSTOMER ? (
+          <ReportEmptyState icon="account-off-outline" message="No customer linked" description={error} />
+        ) : (
+          <ReportEmptyState
+            icon="alert-circle-outline"
+            tone="error"
+            message="Something went wrong"
+            description={error}
+            actionLabel="Try again"
+            onAction={retry}
+          />
+        )}
       </View>
     );
   }
@@ -656,27 +735,20 @@ export default function StockSummaryScreen() {
     const hasCustomers = allCustomersData.customers.length > 0;
 
     return (
-      <View style={[styles.container, { backgroundColor: fiori.colors.backgroundGrouped }]}>
-        <ReportHeader title="Stock Summary" subtitle={listViewSubtitle} />
+      <View style={styles.container}>
+        <ReportHeader title="Stock summary" subtitle={listViewSubtitle} />
 
         <ScrollView
           style={styles.scrollView}
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
-          refreshControl={
-            <RefreshControl
-              refreshing={isRefreshing}
-              onRefresh={handleRefresh}
-              colors={[fiori.colors.tint]}
-              tintColor={fiori.colors.tint}
-            />
-          }
+          refreshControl={refreshControl}
         >
           {/* KPI Summary */}
           <KPIGrid items={allCustomersKpiItems} isLoading={isLoading} compact />
 
           {/* Customer Search */}
-          <View style={{ marginTop: 8, paddingHorizontal: FIORI_STATIC.dimensions.cardPadding }}>
+          <View style={styles.searchContainer}>
             <ReportCustomerSearch
               searchQuery={customerSearchQuery}
               onSearchChange={setCustomerSearchQuery}
@@ -685,42 +757,46 @@ export default function StockSummaryScreen() {
             />
           </View>
 
-          {/* Customers List - Fiori List Card Pattern */}
+          {/* Customers List */}
           {filteredCustomers.length > 0 ? (
-            <View style={styles.fioriSection}>
-              <FioriSectionHeader title="Customers with Stock" />
-              <View style={[
-                styles.fioriListCard,
-                {
-                  backgroundColor: fiori.colors.cardBackground,
-                  borderColor: fiori.colors.divider,
-                },
-              ]}>
-                {filteredCustomers.map((customer, index) => (
-                  <React.Fragment key={customer.customer_id}>
-                    <ReportCustomerCard
-                      title={customer.customer_name}
-                      subtitle={`${customer.item_count} item${customer.item_count !== 1 ? 's' : ''} • ${customer.grn_count} GRN${customer.grn_count !== 1 ? 's' : ''}`}
-                      value={customer.total_stock}
-                      valueLabel="units"
-                      onPress={() => handleCustomerSelect(customer)}
-                      onShare={() => handleShareCustomerStock(customer.customer_id, customer.customer_name)}
-                      isSharing={sharingCustomerId === customer.customer_id}
-                      accessibilityHint="Tap to view customer stock details"
-                    />
-                    {index < filteredCustomers.length - 1 && (
-                      <View style={[styles.fioriDivider, { backgroundColor: fiori.colors.divider }]} />
-                    )}
-                  </React.Fragment>
-                ))}
+            <View style={styles.section}>
+              <SectionHeader title="Customers with stock" styles={styles} />
+              <View style={styles.card}>
+                <View style={styles.cardClip}>
+                  {filteredCustomers.map((customer, index) => (
+                    <React.Fragment key={customer.customer_id}>
+                      <ReportCustomerCard
+                        title={customer.customer_name}
+                        subtitle={`${plural(customer.item_count, 'item', 'items')} · ${plural(customer.grn_count, 'GRN', 'GRNs')}`}
+                        value={customer.total_stock}
+                        valueLabel="units"
+                        onPress={() => handleCustomerSelect(customer)}
+                        onShare={() => handleShareCustomerStock(customer.customer_id, customer.customer_name)}
+                        isSharing={sharingCustomerId === customer.customer_id}
+                        accessibilityHint="Opens this customer's stock"
+                      />
+                      {index < filteredCustomers.length - 1 && <View style={styles.divider} />}
+                    </React.Fragment>
+                  ))}
+                </View>
               </View>
             </View>
           ) : (
-            <ReportEmptyState
-              icon="package-variant-closed"
-              message="No Stock Found"
-              description="There is no inventory currently in storage."
-            />
+            customerSearchQuery.trim() ? (
+              <ReportEmptyState
+                icon="magnify-close"
+                message="No matching customers"
+                description={`No customers match "${customerSearchQuery.trim()}". Try fewer letters.`}
+                actionLabel="Clear search"
+                onAction={() => setCustomerSearchQuery('')}
+              />
+            ) : (
+              <ReportEmptyState
+                icon="package-variant-closed"
+                message="No stock yet"
+                description="Stock appears here once goods are received."
+              />
+            )
           )}
         </ScrollView>
       </View>
@@ -730,66 +806,67 @@ export default function StockSummaryScreen() {
   // Get current customer info for single customer view
   const currentCustomerId = selectedCustomer?.customer_id || singleAssignedCustomerId;
   const currentCustomerName = selectedCustomer?.customer_name || 'Customer';
+  const pdfActions = currentCustomerId
+    ? [
+        {
+          icon: 'file-pdf-box',
+          label: 'Share stock PDF',
+          busy: !!sharingCustomerId,
+          onPress: () => handleShareCustomerStock(currentCustomerId, currentCustomerName),
+        },
+      ]
+    : [];
 
   // Single Customer View (for single-assigned users or drill-down from list view)
   // Empty state
   if (!data?.items || data.items.length === 0) {
     return (
-      <View style={[styles.container, { backgroundColor: fiori.colors.backgroundGrouped }]}>
+      <View style={styles.container}>
         <ReportHeader
-          title="Stock Summary"
+          title="Stock summary"
           subtitle={selectedCustomer?.customer_name}
           onBack={shouldShowListView ? handleBackToAll : undefined}
-          actionIcon={currentCustomerId && !sharingCustomerId ? 'file-pdf-box' : undefined}
-          onAction={currentCustomerId && !sharingCustomerId ? () => handleShareCustomerStock(currentCustomerId, currentCustomerName) : undefined}
-          actionLabel="Download PDF"
+          actions={pdfActions}
         />
         <ReportEmptyState
           icon="package-variant-closed"
-          message="No Stock Found"
-          description="There is no inventory currently in storage for this customer."
+          message="No stock for this customer"
+          description="Stock appears here once goods are received for this customer."
         />
       </View>
     );
   }
 
   return (
-    <View style={[styles.container, { backgroundColor: fiori.colors.backgroundGrouped }]}>
+    <View style={styles.container}>
       <ReportHeader
-        title="Stock Summary"
+        title="Stock summary"
         subtitle={selectedCustomer?.customer_name || getSubtitle()}
         onBack={shouldShowListView ? handleBackToAll : undefined}
-        actionIcon={currentCustomerId && !sharingCustomerId ? 'file-pdf-box' : undefined}
-        onAction={currentCustomerId && !sharingCustomerId ? () => handleShareCustomerStock(currentCustomerId, currentCustomerName) : undefined}
-        actionLabel="Download PDF"
+        actions={pdfActions}
       />
 
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={isRefreshing}
-            onRefresh={handleRefresh}
-            colors={[fiori.colors.tint]}
-            tintColor={fiori.colors.tint}
-          />
-        }
+        refreshControl={refreshControl}
       >
         {/* KPI Summary */}
         <KPIGrid items={singleCustomerKpiItems} isLoading={isLoading} compact />
 
-        {/* Items List - Fiori Pattern */}
-        <View style={styles.fioriSection}>
-          <FioriSectionHeader title="Items in Storage" />
-          <View style={styles.fioriItemsList}>
+        {/* Items List */}
+        <View style={styles.section}>
+          <SectionHeader title="Items in storage" styles={styles} />
+          <View style={styles.itemsList}>
             {data.items.map((item) => (
               <ItemCard
                 key={item.item_id}
                 item={item}
                 isExpanded={expandedItems.has(item.item_id)}
                 onToggle={() => toggleItem(item.item_id)}
+                styles={styles}
+                t={t}
               />
             ))}
           </View>
@@ -797,44 +874,40 @@ export default function StockSummaryScreen() {
 
         {/* Out of Stock Section - Collapsible */}
         {data.out_of_stock_items && data.out_of_stock_items.length > 0 && (
-          <View style={styles.fioriSection}>
+          <View style={styles.section}>
             {/* Collapsible Section Header */}
-            <Pressable
-              style={[
-                styles.fioriCollapsibleHeader,
-                {
-                  backgroundColor: fiori.colors.cardBackground,
-                  borderColor: fiori.colors.divider,
-                },
-              ]}
-              onPress={toggleOutOfStockSection}
-              accessibilityRole="button"
-              accessibilityLabel={`Out of stock, ${data.out_of_stock_items.length} items`}
-              accessibilityHint={outOfStockExpanded ? 'Tap to collapse' : 'Tap to expand'}
-            >
-              <View style={styles.fioriCollapsibleHeaderLeft}>
-                <Icon
-                  name={outOfStockExpanded ? 'chevron-down' : 'chevron-right'}
-                  size={20}
-                  color={fiori.colors.textSecondary}
-                />
-                <Text style={[styles.fioriSectionHeaderText, { color: fiori.colors.textSecondary }]}>
-                  OUT OF STOCK
-                </Text>
-                <View style={[styles.fioriCountBadge, { backgroundColor: fiori.colors.textSecondary }]}>
-                  <Text style={styles.fioriCountBadgeText}>
-                    {data.out_of_stock_items.length}
-                  </Text>
-                </View>
+            <View style={styles.card}>
+              <View style={styles.cardClip}>
+                <Pressable
+                  style={({ pressed }) => [styles.collapsibleHeader, pressed && styles.rowPressed]}
+                  onPress={toggleOutOfStockSection}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Out of stock, ${plural(data.out_of_stock_items.length, 'item', 'items')}, last 360 days`}
+                  accessibilityState={{ expanded: outOfStockExpanded }}
+                >
+                  <View style={styles.collapsibleHeaderLeft}>
+                    <Icon
+                      name={outOfStockExpanded ? 'chevron-up' : 'chevron-down'}
+                      size={iconSize.md}
+                      color={t.icon.secondary}
+                    />
+                    <Text style={styles.collapsibleHeaderTitle} accessibilityRole="header">
+                      Out of stock
+                    </Text>
+                    <View style={styles.countBadge}>
+                      <Text style={styles.countBadgeText} maxFontSizeMultiplier={1.6}>
+                        {data.out_of_stock_items.length}
+                      </Text>
+                    </View>
+                  </View>
+                  <Text style={styles.collapsibleHeaderHint}>Last 360 days</Text>
+                </Pressable>
               </View>
-              <Text style={[styles.fioriCollapsibleHeaderHint, { color: fiori.colors.textTertiary }]}>
-                Last 360 days
-              </Text>
-            </Pressable>
+            </View>
 
             {/* Expanded Content */}
             {outOfStockExpanded && (
-              <View style={styles.fioriItemsList}>
+              <View style={[styles.itemsList, styles.oosList]}>
                 {data.out_of_stock_items.map((item) => (
                   <ItemCard
                     key={`oos-${item.item_id}`}
@@ -842,6 +915,8 @@ export default function StockSummaryScreen() {
                     isExpanded={expandedOutOfStockItems.has(item.item_id)}
                     onToggle={() => toggleOutOfStockItem(item.item_id)}
                     isOutOfStock
+                    styles={styles}
+                    t={t}
                   />
                 ))}
               </View>
@@ -852,286 +927,3 @@ export default function StockSummaryScreen() {
     </View>
   );
 }
-
-// ============================================================================
-// SAP Fiori Compliant Styles
-// ============================================================================
-// ============================================================================
-const styles = StyleSheet.create({
-  // =========================================================================
-  // Layout
-  // =========================================================================
-  container: {
-    flex: 1,
-  },
-  loadingContainer: {
-    flex: 1,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingBottom: 32,
-  },
-
-  // =========================================================================
-  // Fiori Section Header (14-section-header.md)
-  // =========================================================================
-  fioriSectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: FIORI_STATIC.dimensions.cardPadding,
-    paddingTop: 8,
-    paddingBottom: 4,
-    minHeight: FIORI_STATIC.dimensions.sectionHeaderHeight,
-    backgroundColor: 'transparent',
-  },
-  fioriSectionHeaderText: {
-    fontSize: FIORI_STATIC.typography.sectionHeader.fontSize,
-    fontWeight: FIORI_STATIC.typography.sectionHeader.fontWeight,
-    letterSpacing: FIORI_STATIC.typography.sectionHeader.letterSpacing,
-    textTransform: FIORI_STATIC.typography.sectionHeader.textTransform,
-  },
-  fioriSectionHeaderButton: {
-    minWidth: FIORI_STATIC.dimensions.touchTarget,
-    minHeight: 28,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  fioriSectionHeaderAction: {
-    fontSize: 14,
-    fontWeight: '500',
-  },
-
-  // =========================================================================
-  // Fiori Section Container
-  // =========================================================================
-  fioriSection: {
-    marginTop: 16,
-    paddingHorizontal: FIORI_STATIC.dimensions.cardPadding,
-  },
-  fioriItemsList: {
-    gap: 10,
-  },
-
-  // =========================================================================
-  // Fiori Card Container (13-card.md)
-  // =========================================================================
-  fioriCard: {
-    borderRadius: FIORI_STATIC.dimensions.cardCornerRadius,
-    borderWidth: 1,
-    overflow: 'hidden',
-    ...theme.shadows.sm,
-  },
-  fioriCardBody: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-  },
-  fioriListCard: {
-    borderRadius: FIORI_STATIC.dimensions.cardCornerRadius,
-    borderWidth: 1,
-    overflow: 'hidden',
-    ...theme.shadows.sm,
-  },
-  fioriDivider: {
-    height: StyleSheet.hairlineWidth,
-    marginLeft: 72, // Align with content after image
-  },
-
-  // =========================================================================
-  // Fiori Object Cell (01-object-cell.md)
-  // =========================================================================
-  fioriObjectCell: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    minHeight: FIORI_STATIC.dimensions.objectCellMinHeight,
-    paddingVertical: 14,
-    paddingHorizontal: FIORI_STATIC.dimensions.cardPadding,
-    gap: 12,
-  },
-  fioriObjectCellCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    minHeight: FIORI_STATIC.dimensions.objectCellMinHeight,
-    paddingVertical: 14,
-    paddingHorizontal: FIORI_STATIC.dimensions.cardPadding,
-    gap: 12,
-  },
-
-  // B. Detail Image (44pt per Fiori spec)
-  fioriObjectCellImagePrimary: {
-    width: FIORI_STATIC.dimensions.objectCellImageSize,
-    height: FIORI_STATIC.dimensions.objectCellImageSize,
-    borderRadius: FIORI_STATIC.dimensions.objectCellImageRadius,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-
-  // C. Main Content
-  fioriObjectCellContent: {
-    flex: 1,
-    justifyContent: 'center',
-  },
-  fioriObjectCellTitle: {
-    fontSize: FIORI_STATIC.typography.title.fontSize,
-    fontWeight: FIORI_STATIC.typography.title.fontWeight,
-    lineHeight: FIORI_STATIC.typography.title.lineHeight,
-  },
-  fioriObjectCellSubtitle: {
-    fontSize: FIORI_STATIC.typography.subtitle.fontSize,
-    lineHeight: FIORI_STATIC.typography.subtitle.lineHeight,
-    marginTop: 2,
-  },
-
-  // E. Attributes
-  fioriObjectCellAttributes: {
-    alignItems: 'flex-end',
-    justifyContent: 'center',
-  },
-  fioriObjectCellAttributeValue: {
-    fontSize: 15,
-    fontWeight: '600',
-    lineHeight: 20,
-  },
-  fioriObjectCellAttributeLabel: {
-    fontSize: FIORI_STATIC.typography.caption.fontSize,
-    lineHeight: FIORI_STATIC.typography.caption.lineHeight,
-  },
-  fioriObjectCellAttributeSecondary: {
-    fontSize: FIORI_STATIC.typography.footnote.fontSize,
-    marginTop: 2,
-  },
-
-  // F. Accessory View
-  fioriObjectCellAccessory: {
-    width: 24,
-    height: 24,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-
-  // Share Button (positioned left of attributes, away from nav arrow)
-  fioriShareButtonLeft: {
-    width: FIORI_STATIC.dimensions.touchTarget,
-    height: FIORI_STATIC.dimensions.touchTarget,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 4,
-  },
-
-  // =========================================================================
-  // Fiori GRN Row (nested Object Cell)
-  // =========================================================================
-  fioriGrnRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: FIORI_STATIC.dimensions.cardPadding,
-    paddingVertical: 12,
-    minHeight: 56,
-    gap: 12,
-  },
-  fioriGrnRowBorder: {
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  fioriGrnRowContent: {
-    flex: 1,
-  },
-  fioriGrnRowTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    flexWrap: 'wrap',
-  },
-  fioriGrnRowTitle: {
-    fontSize: 15,
-    fontWeight: '500',
-    flexShrink: 1,
-  },
-  fioriGrnRowFootnote: {
-    fontSize: FIORI_STATIC.typography.footnote.fontSize,
-    lineHeight: FIORI_STATIC.typography.footnote.lineHeight,
-    marginTop: 3,
-  },
-  fioriGrnRowFootnoteRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 3,
-  },
-  fioriGrnRowFootnoteSeparator: {
-    fontSize: FIORI_STATIC.typography.footnote.fontSize,
-  },
-  fioriGrnRowAttributes: {
-    alignItems: 'flex-end',
-  },
-  fioriGrnRowQtyRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    gap: 3,
-  },
-  fioriGrnRowStock: {
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  fioriGrnRowOrigQty: {
-    fontSize: 12,
-  },
-  fioriGrnRowWeight: {
-    fontSize: FIORI_STATIC.typography.caption.fontSize,
-    marginTop: 2,
-  },
-
-  // =========================================================================
-  // Fiori Tags/Badges (18-tags-badges.md)
-  // =========================================================================
-  fioriTag: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 10, // Pill shape per Fiori spec
-    alignSelf: 'flex-start',
-  },
-  fioriTagText: {
-    fontSize: 11,
-    fontWeight: '600',
-  },
-
-  // =========================================================================
-  // Out of Stock Styles
-  // =========================================================================
-  fioriCardOutOfStock: {
-    opacity: 0.85,
-  },
-
-  // =========================================================================
-  // Collapsible Section Header
-  // =========================================================================
-  fioriCollapsibleHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: FIORI_STATIC.dimensions.cardPadding,
-    paddingVertical: 12,
-    borderRadius: FIORI_STATIC.dimensions.cardCornerRadius,
-    borderWidth: 1,
-    ...theme.shadows.sm,
-  },
-  fioriCollapsibleHeaderLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  fioriCollapsibleHeaderHint: {
-    fontSize: FIORI_STATIC.typography.caption.fontSize,
-  },
-  fioriCountBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 10,
-    minWidth: 24,
-    alignItems: 'center',
-  },
-  fioriCountBadgeText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#FFFFFF', // Always white text on badge
-  },
-});

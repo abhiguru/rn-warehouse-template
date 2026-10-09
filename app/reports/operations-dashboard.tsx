@@ -2,18 +2,12 @@
  * Operations Dashboard Report Screen (S1)
  *
  * Staff-only dashboard showing cross-customer KPIs and recent activity.
- * 100% SAP Fiori compliant following design specs.
- *
+ * Layout follows the report pattern in docs/STYLE_GUIDE.md §14.10: period
+ * selector, KPI grid, then cards with the activity list and period averages.
  */
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import {
-  View,
-  Text,
-  ScrollView,
-  StyleSheet,
-  RefreshControl,
-} from 'react-native';
+import { View, Text, ScrollView, StyleSheet, RefreshControl } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import {
   ReportHeader,
@@ -25,154 +19,226 @@ import {
 } from '@/components/reports';
 import { getOperationsDashboard } from '@/services/reporting';
 import { useRoleBasedAccess } from '@/hooks/useRoleBasedAccess';
-import theme from '@/theme';
-import { useFioriColors } from '@/theme/fioriColors';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import {
+  iconSize,
+  layout,
+  radius,
+  space,
+  typography,
+  type ThemeTokens,
+} from '@/theme/tokens';
 import type {
   OperationsDashboardData,
   RecentActivityItem,
   ReportPeriod,
 } from '@/types/report.types';
-import { formatNumber, formatWeight, formatDate } from '@/utils/formatters';
+import { formatNumber, parseLocalISODate } from '@/utils/formatters';
+import { createLogger } from '@/utils/logger';
 
-// ============================================================================
-// SAP Fiori Design Tokens - Static dimensions/typography (no colors)
-// @see src/theme/index.ts - FioriColors interface
-// @see src/theme/fioriColors.ts - Dynamic colors via useFioriColors hook
-// ============================================================================
-const FIORI_STATIC = {
-  // Dimensions from Fiori spec
-  dimensions: {
-    objectCellMinHeight: 72,
-    objectCellImageSize: 44,
-    objectCellImageRadius: 10,
-    cardCornerRadius: 12,
-    cardPadding: 16,
-    cardBodyPadding: 16,
-    sectionHeaderHeight: 32,
-    touchTarget: 44,
-    iconButtonSize: 24,
-    activityIconSize: 36,
-  },
-  // Typography from Fiori spec
-  typography: {
-    sectionHeader: {
-      fontSize: 13,
-      fontWeight: '600' as const,
-      letterSpacing: 0.5,
-      textTransform: 'uppercase' as const,
-    },
-    title: {
-      fontSize: 16,
-      fontWeight: '600' as const,
-      lineHeight: 22,
-    },
-    subtitle: {
-      fontSize: 14,
-      lineHeight: 18,
-    },
-    footnote: {
-      fontSize: 13,
-      lineHeight: 16,
-    },
-    caption: {
-      fontSize: 12,
-      lineHeight: 16,
-    },
-    cardTitle: {
-      fontSize: 17,
-      fontWeight: '600' as const,
-    },
-    trendValue: {
-      fontSize: 22,
-      fontWeight: '700' as const,
-    },
-  },
-};
+const logger = createLogger('OperationsDashboard');
 
-// ============================================================================
-// Fiori Card Header Component
-// ============================================================================
-interface FioriCardHeaderProps {
-  icon: string;
-  iconColor: string;
-  iconBgColor: string;
-  title: string;
+const LOAD_ERROR = "Couldn't load the operations dashboard. Check your connection and try again.";
+
+/** "9 Oct 2026" (guide §12.3) */
+function formatDay(isoDate: string): string {
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(isoDate) ? parseLocalISODate(isoDate) : new Date(isoDate);
+  if (isNaN(date.getTime())) return '';
+  return date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
-const FioriCardHeader: React.FC<FioriCardHeaderProps> = ({
-  icon,
-  iconColor,
-  iconBgColor,
-  title,
-}) => {
-  const fiori = useFioriColors();
-  return (
-    <View style={[
-      styles.fioriCardHeader,
-      {
-        backgroundColor: fiori.colors.cardBackground,
-        borderBottomColor: fiori.colors.divider,
-      },
-    ]}>
-      <View style={[styles.fioriCardHeaderIcon, { backgroundColor: iconBgColor }]}>
-        <Icon name={icon} size={18} color={iconColor} />
-      </View>
-      <Text style={[styles.fioriCardHeaderTitle, { color: fiori.colors.textPrimary }]}>
-        {title}
-      </Text>
-    </View>
-  );
-};
+const oneDecimal = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 1 });
 
 // ============================================================================
-// Fiori Object Cell - Activity Item
+// Styles
+// ============================================================================
+const makeStyles = (t: ThemeTokens) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: t.background.base,
+    },
+    loadingContainer: {
+      flex: 1,
+    },
+    scrollView: {
+      flex: 1,
+    },
+    scrollContent: {
+      paddingBottom: space.xxxl,
+    },
+    cardContainer: {
+      marginTop: space.lg,
+      marginHorizontal: layout.marginCompact,
+    },
+    card: {
+      backgroundColor: t.surface.card,
+      borderRadius: radius.card,
+      ...t.shadow[2],
+    },
+    cardInner: {
+      borderRadius: radius.card,
+      overflow: 'hidden',
+    },
+    cardHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: space.md,
+      paddingVertical: space.md,
+      paddingHorizontal: space.lg,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: t.border.divider,
+    },
+    cardHeaderIcon: {
+      width: layout.avatar.sm,
+      height: layout.avatar.sm,
+      borderRadius: radius.button,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: t.brand.subtle,
+    },
+    cardHeaderTitle: {
+      ...typography.headline,
+      color: t.text.primary,
+      flex: 1,
+    },
+    activityItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: space.lg,
+      paddingVertical: space.md,
+      minHeight: layout.objectCellMinHeight,
+      gap: space.md,
+    },
+    activityDivider: {
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: t.border.divider,
+    },
+    activityIcon: {
+      width: layout.avatar.md,
+      height: layout.avatar.md,
+      borderRadius: radius.pill,
+      justifyContent: 'center',
+      alignItems: 'center',
+      backgroundColor: t.status.neutral.background,
+    },
+    activityContent: {
+      flex: 1,
+      justifyContent: 'center',
+    },
+    activityRef: {
+      ...typography.headline,
+      color: t.text.primary,
+    },
+    activityCustomer: {
+      ...typography.subhead,
+      color: t.text.secondary,
+      marginTop: space.xxs,
+    },
+    activityTime: {
+      ...typography.caption1,
+      color: t.text.secondary,
+    },
+    trendBody: {
+      flexDirection: 'row',
+      paddingVertical: space.xl,
+      paddingHorizontal: space.lg,
+    },
+    trendItem: {
+      flex: 1,
+      alignItems: 'center',
+    },
+    trendLabel: {
+      ...typography.footnote,
+      color: t.text.secondary,
+      marginBottom: space.s6,
+      textAlign: 'center',
+    },
+    trendValue: {
+      ...typography.title2,
+      color: t.text.primary,
+      fontVariant: ['tabular-nums'],
+    },
+    trendDivider: {
+      width: StyleSheet.hairlineWidth,
+      marginHorizontal: space.md,
+      backgroundColor: t.border.divider,
+    },
+    emptyActivity: {
+      ...typography.subhead,
+      color: t.text.secondary,
+      padding: space.lg,
+    },
+  });
+
+type Styles = ReturnType<typeof makeStyles>;
+
+// ============================================================================
+// Card Header
+// ============================================================================
+interface CardHeaderProps {
+  icon: string;
+  title: string;
+  styles: Styles;
+  t: ThemeTokens;
+}
+
+const CardHeader: React.FC<CardHeaderProps> = ({ icon, title, styles, t }) => (
+  <View style={styles.cardHeader}>
+    <View style={styles.cardHeaderIcon}>
+      <Icon name={icon} size={iconSize.md} color={t.brand.tint} />
+    </View>
+    <Text style={styles.cardHeaderTitle} accessibilityRole="header">
+      {title}
+    </Text>
+  </View>
+);
+
+// ============================================================================
+// Object Cell - Activity Item
 // ============================================================================
 interface ActivityItemProps {
   activity: RecentActivityItem;
   isLast?: boolean;
+  styles: Styles;
+  t: ThemeTokens;
 }
 
-const ActivityItem: React.FC<ActivityItemProps> = ({ activity, isLast = false }) => {
-  const fiori = useFioriColors();
+const ActivityItem: React.FC<ActivityItemProps> = ({ activity, isLast = false, styles, t }) => {
   const isGrn = activity.type === 'grn';
+  const typeLabel = isGrn ? 'GRN' : 'Dispatch';
 
   return (
-    <View style={[
-      styles.fioriActivityItem,
-      !isLast && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: fiori.colors.divider },
-    ]}>
-      {/* A. Detail Image (36pt for compact cells) */}
-      <View
-        style={[
-          styles.fioriActivityIcon,
-          { backgroundColor: isGrn ? fiori.colors.successLight : fiori.colors.infoLight },
-        ]}
-      >
+    <View
+      style={[styles.activityItem, !isLast && styles.activityDivider]}
+      accessible
+      accessibilityLabel={`${typeLabel} ${activity.ref}, ${activity.customer}, ${activity.time}`}
+    >
+      <View style={styles.activityIcon}>
         <Icon
-          name={isGrn ? 'package-variant' : 'truck-fast'}
-          size={18}
-          color={isGrn ? fiori.colors.success : fiori.colors.info}
+          name={isGrn ? 'package-down' : 'truck-delivery-outline'}
+          size={iconSize.md}
+          color={t.status.neutral.text}
         />
       </View>
 
-      {/* C. Main Content */}
-      <View style={styles.fioriActivityContent}>
-        <Text style={[styles.fioriActivityRef, { color: fiori.colors.textPrimary }]} numberOfLines={1}>
+      <View style={styles.activityContent}>
+        <Text style={styles.activityRef} numberOfLines={2}>
           {activity.ref}
         </Text>
-        <Text style={[styles.fioriActivityCustomer, { color: fiori.colors.textSecondary }]} numberOfLines={1}>
-          {activity.customer}
+        <Text style={styles.activityCustomer} numberOfLines={1}>
+          {`${typeLabel} · ${activity.customer}`}
         </Text>
       </View>
 
-      {/* E. Attributes - Time */}
-      <Text style={[styles.fioriActivityTime, { color: fiori.colors.textSecondary }]}>{activity.time}</Text>
+      <Text style={styles.activityTime}>{activity.time}</Text>
     </View>
   );
 };
 
 export default function OperationsDashboardScreen() {
-  const fiori = useFioriColors();
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
 
   // Role-based access (J12 fix)
   const { isStaff } = useRoleBasedAccess();
@@ -207,11 +273,12 @@ export default function OperationsDashboardScreen() {
       if (response.success && response.data) {
         setData(response.data);
       } else {
-        setError(response.error || 'Failed to load operations dashboard');
+        logger.warn('Load failed', { error: response.error });
+        setError(LOAD_ERROR);
       }
     } catch (err) {
-      console.error('[OperationsDashboard] Error fetching data:', err);
-      setError('An unexpected error occurred');
+      logger.error('Error fetching data', err);
+      setError(LOAD_ERROR);
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
@@ -237,30 +304,10 @@ export default function OperationsDashboardScreen() {
 
     const kpis = data.kpis;
     return [
-      {
-        icon: 'package-variant',
-        value: kpis.total_grns,
-        label: 'GRNs',
-        variant: 'success',
-      },
-      {
-        icon: 'truck-fast',
-        value: kpis.total_dispatches,
-        label: 'Dispatches',
-        variant: 'secondary',
-      },
-      {
-        icon: 'clipboard-list',
-        value: kpis.pending_orders,
-        label: 'Pending Orders',
-        variant: 'warning',
-      },
-      {
-        icon: 'account-group',
-        value: kpis.active_customers,
-        label: 'Active Customers',
-        variant: 'primary',
-      },
+      { icon: 'package-down', value: kpis.total_grns, label: 'GRNs', variant: 'primary' },
+      { icon: 'truck-delivery-outline', value: kpis.total_dispatches, label: 'Dispatches', variant: 'primary' },
+      { icon: 'clipboard-list-outline', value: kpis.pending_orders, label: 'Pending orders', variant: 'neutral' },
+      { icon: 'account-group-outline', value: kpis.active_customers, label: 'Active customers', variant: 'neutral' },
     ];
   }, [data?.kpis]);
 
@@ -269,35 +316,37 @@ export default function OperationsDashboardScreen() {
 
     const kpis = data.kpis;
     return [
-      {
-        icon: 'cube-outline',
-        value: formatNumber(kpis.total_stock_qty),
-        label: 'Total Stock',
-        variant: 'primary',
-      },
+      { icon: 'warehouse', value: formatNumber(kpis.total_stock_qty), label: 'Total stock', variant: 'primary' },
       {
         icon: 'scale-balance',
         value: formatNumber(kpis.total_stock_weight, 2),
-        label: 'Total Weight',
-        variant: 'accent',
+        label: 'Total weight',
+        variant: 'primary',
         unit: 'kg',
       },
     ];
   }, [data?.kpis]);
 
-  const getSubtitle = (): string => {
-    return `${formatDate(dateRange.from, 'short')} - ${formatDate(dateRange.to, 'short')}`;
-  };
+  const subtitle = `${formatDay(dateRange.from)} – ${formatDay(dateRange.to)}`;
+
+  const refreshControl = (
+    <RefreshControl
+      refreshing={isRefreshing}
+      onRefresh={handleRefresh}
+      colors={[t.brand.tint]}
+      tintColor={t.brand.tint}
+    />
+  );
 
   // Access denied state
   if (!isStaff) {
     return (
-      <View style={[styles.container, { backgroundColor: fiori.colors.backgroundGrouped }]}>
-        <ReportHeader title="Operations Dashboard" />
+      <View style={styles.container}>
+        <ReportHeader title="Operations dashboard" />
         <ReportEmptyState
           icon="lock-outline"
-          message="Access Denied"
-          description="This report is available for staff members only."
+          message="Staff only"
+          description="This report is available to staff members only."
         />
       </View>
     );
@@ -306,19 +355,16 @@ export default function OperationsDashboardScreen() {
   // Loading skeleton
   if (isLoading && !data) {
     return (
-      <View style={[styles.container, { backgroundColor: fiori.colors.backgroundGrouped }]}>
-        <ReportHeader title="Operations Dashboard" />
-        <PeriodSelector
-          selectedPeriod={selectedPeriod}
-          onPeriodChange={handlePeriodChange}
-        />
+      <View style={styles.container}>
+        <ReportHeader title="Operations dashboard" />
+        <PeriodSelector selectedPeriod={selectedPeriod} onPeriodChange={handlePeriodChange} />
         <View style={styles.loadingContainer}>
           <KPIGrid
             items={[
-              { icon: 'package-variant', value: '-', label: 'GRNs', variant: 'success' },
-              { icon: 'truck-fast', value: '-', label: 'Dispatches', variant: 'secondary' },
-              { icon: 'clipboard-list', value: '-', label: 'Pending Orders', variant: 'warning' },
-              { icon: 'account-group', value: '-', label: 'Active Customers', variant: 'primary' },
+              { icon: 'package-down', value: '-', label: 'GRNs', variant: 'primary' },
+              { icon: 'truck-delivery-outline', value: '-', label: 'Dispatches', variant: 'primary' },
+              { icon: 'clipboard-list-outline', value: '-', label: 'Pending orders', variant: 'neutral' },
+              { icon: 'account-group-outline', value: '-', label: 'Active customers', variant: 'neutral' },
             ]}
             isLoading={true}
             compact
@@ -331,41 +377,34 @@ export default function OperationsDashboardScreen() {
   // Error state
   if (error && !data) {
     return (
-      <View style={[styles.container, { backgroundColor: fiori.colors.backgroundGrouped }]}>
-        <ReportHeader title="Operations Dashboard" />
-        <PeriodSelector
-          selectedPeriod={selectedPeriod}
-          onPeriodChange={handlePeriodChange}
-        />
+      <View style={styles.container}>
+        <ReportHeader title="Operations dashboard" />
+        <PeriodSelector selectedPeriod={selectedPeriod} onPeriodChange={handlePeriodChange} />
         <ReportEmptyState
           icon="alert-circle-outline"
-          message="Failed to load data"
+          tone="error"
+          message="Something went wrong"
           description={error}
+          actionLabel="Try again"
+          onAction={() => fetchData()}
         />
       </View>
     );
   }
 
+  const average = (points: { count: number }[]) =>
+    points.length > 0 ? oneDecimal.format(points.reduce((sum, d) => sum + d.count, 0) / points.length) : '0';
+
   return (
-    <View style={[styles.container, { backgroundColor: fiori.colors.backgroundGrouped }]}>
-      <ReportHeader title="Operations Dashboard" subtitle={getSubtitle()} />
-      <PeriodSelector
-        selectedPeriod={selectedPeriod}
-        onPeriodChange={handlePeriodChange}
-      />
+    <View style={styles.container}>
+      <ReportHeader title="Operations dashboard" subtitle={subtitle} />
+      <PeriodSelector selectedPeriod={selectedPeriod} onPeriodChange={handlePeriodChange} />
 
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={isRefreshing}
-            onRefresh={handleRefresh}
-            colors={[fiori.colors.tint]}
-            tintColor={fiori.colors.tint}
-          />
-        }
+        refreshControl={refreshControl}
       >
         {/* Operations KPIs */}
         <KPIGrid items={operationsKPIs} isLoading={isLoading} compact />
@@ -373,77 +412,53 @@ export default function OperationsDashboardScreen() {
         {/* Inventory KPIs */}
         <KPIGrid items={inventoryKPIs} isLoading={isLoading} compact />
 
-        {/* Recent Activity - Fiori List Card */}
-        {data?.recent_activity && data.recent_activity.length > 0 && (
-          <View style={styles.fioriCardContainer}>
-            <View style={[
-              styles.fioriCard,
-              {
-                backgroundColor: fiori.colors.cardBackground,
-                borderColor: fiori.colors.divider,
-              },
-            ]}>
-              {/* Card Header */}
-              <FioriCardHeader
-                icon="history"
-                iconColor={fiori.colors.tint}
-                iconBgColor={fiori.colors.tintLight}
-                title="Recent Activity"
-              />
-              {/* Card Body - Activity List */}
-              <View style={styles.fioriCardBody}>
-                {data.recent_activity.map((activity, index) => (
-                  <ActivityItem
-                    key={`${activity.ref}-${index}`}
-                    activity={activity}
-                    isLast={index === data.recent_activity.length - 1}
-                  />
-                ))}
+        {/* Period averages */}
+        {data?.trends && (
+          <View style={styles.cardContainer}>
+            <View style={styles.card}>
+              <View style={styles.cardInner}>
+                <CardHeader icon="chart-line" title="Period averages" styles={styles} t={t} />
+                <View style={styles.trendBody}>
+                  <View style={styles.trendItem} accessible accessibilityLabel={`GRNs per day: ${average(data.trends.grn_daily)}`}>
+                    <Text style={styles.trendLabel}>GRNs per day</Text>
+                    <Text style={styles.trendValue}>{average(data.trends.grn_daily)}</Text>
+                  </View>
+                  <View style={styles.trendDivider} />
+                  <View
+                    style={styles.trendItem}
+                    accessible
+                    accessibilityLabel={`Dispatches per day: ${average(data.trends.dispatch_daily)}`}
+                  >
+                    <Text style={styles.trendLabel}>Dispatches per day</Text>
+                    <Text style={styles.trendValue}>{average(data.trends.dispatch_daily)}</Text>
+                  </View>
+                </View>
               </View>
             </View>
           </View>
         )}
 
-        {/* Trend Summary - Fiori Data Table Card */}
-        {data?.trends && (
-          <View style={styles.fioriCardContainer}>
-            <View style={[
-              styles.fioriCard,
-              {
-                backgroundColor: fiori.colors.cardBackground,
-                borderColor: fiori.colors.divider,
-              },
-            ]}>
-              {/* Card Header */}
-              <FioriCardHeader
-                icon="trending-up"
-                iconColor={fiori.colors.success}
-                iconBgColor={fiori.colors.successLight}
-                title="Period Trends"
-              />
-              {/* Card Body - Trend Data */}
-              <View style={styles.fioriTrendBody}>
-                <View style={styles.fioriTrendItem}>
-                  <Text style={[styles.fioriTrendLabel, { color: fiori.colors.textSecondary }]}>
-                    Daily Avg GRNs
+        {/* Recent Activity */}
+        {data && (
+          <View style={styles.cardContainer}>
+            <View style={styles.card}>
+              <View style={styles.cardInner}>
+                <CardHeader icon="history" title="Recent activity" styles={styles} t={t} />
+                {data.recent_activity && data.recent_activity.length > 0 ? (
+                  data.recent_activity.map((activity, index) => (
+                    <ActivityItem
+                      key={`${activity.ref}-${index}`}
+                      activity={activity}
+                      isLast={index === data.recent_activity.length - 1}
+                      styles={styles}
+                      t={t}
+                    />
+                  ))
+                ) : (
+                  <Text style={styles.emptyActivity}>
+                    No GRNs or dispatches in this period. New activity appears here.
                   </Text>
-                  <Text style={[styles.fioriTrendValue, { color: fiori.colors.textPrimary }]}>
-                    {data.trends.grn_daily.length > 0
-                      ? (data.trends.grn_daily.reduce((sum, d) => sum + d.count, 0) / data.trends.grn_daily.length).toFixed(1)
-                      : '0'}
-                  </Text>
-                </View>
-                <View style={[styles.fioriTrendDivider, { backgroundColor: fiori.colors.divider }]} />
-                <View style={styles.fioriTrendItem}>
-                  <Text style={[styles.fioriTrendLabel, { color: fiori.colors.textSecondary }]}>
-                    Daily Avg Dispatches
-                  </Text>
-                  <Text style={[styles.fioriTrendValue, { color: fiori.colors.textPrimary }]}>
-                    {data.trends.dispatch_daily.length > 0
-                      ? (data.trends.dispatch_daily.reduce((sum, d) => sum + d.count, 0) / data.trends.dispatch_daily.length).toFixed(1)
-                      : '0'}
-                  </Text>
-                </View>
+                )}
               </View>
             </View>
           </View>
@@ -452,129 +467,3 @@ export default function OperationsDashboardScreen() {
     </View>
   );
 }
-
-// ============================================================================
-// SAP Fiori Compliant Styles
-// ============================================================================
-// ============================================================================
-const styles = StyleSheet.create({
-  // =========================================================================
-  // Layout
-  // =========================================================================
-  container: {
-    flex: 1,
-  },
-  loadingContainer: {
-    flex: 1,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingBottom: 32,
-  },
-
-  // =========================================================================
-  // Fiori Card Container (13-card.md)
-  // =========================================================================
-  fioriCardContainer: {
-    marginTop: 16,
-    marginHorizontal: FIORI_STATIC.dimensions.cardPadding,
-  },
-  fioriCard: {
-    borderRadius: FIORI_STATIC.dimensions.cardCornerRadius,
-    borderWidth: 1,
-    overflow: 'hidden',
-    ...theme.shadows.sm,
-  },
-
-  // =========================================================================
-  // Fiori Card Header (13-card.md - B. Header)
-  // =========================================================================
-  fioriCardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingVertical: 14,
-    paddingHorizontal: FIORI_STATIC.dimensions.cardPadding,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  fioriCardHeaderIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  fioriCardHeaderTitle: {
-    fontSize: FIORI_STATIC.typography.cardTitle.fontSize,
-    fontWeight: FIORI_STATIC.typography.cardTitle.fontWeight,
-  },
-
-  // =========================================================================
-  // Fiori Card Body (13-card.md - C. Body)
-  // =========================================================================
-  fioriCardBody: {
-    paddingVertical: 4,
-  },
-
-  // =========================================================================
-  // Fiori Activity Item (Object Cell - 01-object-cell.md)
-  // =========================================================================
-  fioriActivityItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: FIORI_STATIC.dimensions.cardPadding,
-    paddingVertical: 12,
-    minHeight: 56,
-    gap: 12,
-  },
-  fioriActivityIcon: {
-    width: FIORI_STATIC.dimensions.activityIconSize,
-    height: FIORI_STATIC.dimensions.activityIconSize,
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  fioriActivityContent: {
-    flex: 1,
-    justifyContent: 'center',
-  },
-  fioriActivityRef: {
-    fontSize: 15,
-    fontWeight: '500',
-  },
-  fioriActivityCustomer: {
-    fontSize: FIORI_STATIC.typography.footnote.fontSize,
-    marginTop: 2,
-  },
-  fioriActivityTime: {
-    fontSize: FIORI_STATIC.typography.caption.fontSize,
-  },
-
-  // =========================================================================
-  // Fiori Trend Card Body
-  // =========================================================================
-  fioriTrendBody: {
-    flexDirection: 'row',
-    paddingVertical: 20,
-    paddingHorizontal: FIORI_STATIC.dimensions.cardPadding,
-  },
-  fioriTrendItem: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  fioriTrendLabel: {
-    fontSize: FIORI_STATIC.typography.caption.fontSize,
-    marginBottom: 6,
-    textAlign: 'center',
-  },
-  fioriTrendValue: {
-    fontSize: FIORI_STATIC.typography.trendValue.fontSize,
-    fontWeight: FIORI_STATIC.typography.trendValue.fontWeight,
-  },
-  fioriTrendDivider: {
-    width: 1,
-    marginHorizontal: 12,
-  },
-});

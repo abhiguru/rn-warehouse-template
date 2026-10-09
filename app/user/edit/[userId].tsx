@@ -1,17 +1,33 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+/**
+ * Edit own profile (style guide §14.4): name is editable; mobile, role,
+ * status and customer assignments are read-only and managed by admins.
+ */
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
   ScrollView,
   TextInput,
-  TouchableOpacity,
+  Pressable,
   StyleSheet,
   ActivityIndicator,
   Alert,
   FlatList,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useListColors } from '@/hooks/useListColors';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import {
+  fontWeight,
+  iconSize,
+  layout,
+  radius,
+  space,
+  touchTarget,
+  typography,
+  type ThemeTokens,
+} from '@/theme/tokens';
 import { UserService } from '@/services/user-service';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { setUserProfile } from '@/store/slices/authSlice';
@@ -23,169 +39,18 @@ import {
 
 const UserEditScreen: React.FC = () => {
   const { userId } = useLocalSearchParams<{ userId: string }>();
-  const colors = useListColors();
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
+  const insets = useSafeAreaInsets();
   const dispatch = useAppDispatch();
   const { userProfile: currentUserProfile } = useAppSelector((state) => state.auth);
-
-  // Dynamic styles for dark mode
-  const dynamicStyles = useMemo(
-    () =>
-      StyleSheet.create({
-        container: {
-          flex: 1,
-          backgroundColor: colors.gray50,
-        },
-        loadingContainer: {
-          flex: 1,
-          justifyContent: 'center',
-          alignItems: 'center',
-          backgroundColor: colors.gray50,
-        },
-        loadingText: {
-          marginTop: 12,
-          fontSize: 16,
-          color: colors.textSecondary,
-        },
-        errorContainer: {
-          flex: 1,
-          justifyContent: 'center',
-          alignItems: 'center',
-          backgroundColor: colors.gray50,
-        },
-        errorText: {
-          fontSize: 16,
-          color: colors.statusNegative,
-        },
-        header: {
-          flexDirection: 'row',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          backgroundColor: colors.cellBackground,
-          paddingTop: 60,
-          paddingHorizontal: 16,
-          paddingBottom: 16,
-          borderBottomWidth: 1,
-          borderBottomColor: colors.cellDivider,
-        },
-        backButtonText: {
-          fontSize: 16,
-          color: colors.textSecondary,
-        },
-        title: {
-          fontSize: 18,
-          fontWeight: '600',
-          color: colors.textPrimary,
-        },
-        saveButton: {
-          backgroundColor: colors.primary,
-          paddingHorizontal: 16,
-          paddingVertical: 8,
-          borderRadius: 8,
-          minWidth: 60,
-          alignItems: 'center',
-        },
-        saveButtonText: {
-          fontSize: 16,
-          fontWeight: '600',
-          color: colors.cellBackground,
-        },
-        section: {
-          backgroundColor: colors.cellBackground,
-          marginTop: 16,
-          paddingHorizontal: 16,
-          paddingVertical: 20,
-        },
-        sectionTitle: {
-          fontSize: 16,
-          fontWeight: '600',
-          color: colors.textPrimary,
-          marginBottom: 16,
-        },
-        inputLabel: {
-          fontSize: 14,
-          fontWeight: '500',
-          color: colors.textSecondary,
-          marginBottom: 8,
-        },
-        textInput: {
-          backgroundColor: colors.gray100,
-          borderWidth: 1,
-          borderColor: colors.cellDivider,
-          borderRadius: 8,
-          paddingHorizontal: 12,
-          paddingVertical: 12,
-          fontSize: 16,
-          color: colors.textPrimary,
-        },
-        readOnlyInput: {
-          backgroundColor: colors.gray200,
-          borderColor: colors.gray300,
-          color: colors.textSecondary,
-        },
-        readOnlyNote: {
-          fontSize: 12,
-          color: colors.textTertiary,
-          marginTop: 4,
-          fontStyle: 'italic',
-        },
-        infoRow: {
-          flexDirection: 'row',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          paddingVertical: 12,
-          borderBottomWidth: 1,
-          borderBottomColor: colors.cellDivider,
-        },
-        infoLabel: {
-          fontSize: 16,
-          fontWeight: '500',
-          color: colors.textSecondary,
-        },
-        infoValue: {
-          fontSize: 16,
-          color: colors.textPrimary,
-          textAlign: 'right',
-          marginLeft: 16,
-          flex: 1,
-        },
-        assignedCustomerName: {
-          fontSize: 16,
-          fontWeight: '500',
-          color: colors.textPrimary,
-          marginBottom: 4,
-        },
-        assignedCustomerDetail: {
-          fontSize: 14,
-          color: colors.textSecondary,
-        },
-        customerStatusText: {
-          fontSize: 12,
-          fontWeight: '500',
-          color: colors.textSecondary,
-        },
-        emptyText: {
-          fontSize: 16,
-          fontWeight: '500',
-          color: colors.textSecondary,
-          marginBottom: 4,
-        },
-        emptySubtext: {
-          fontSize: 14,
-          color: colors.textTertiary,
-          textAlign: 'center',
-        },
-        separator: {
-          height: 1,
-          backgroundColor: colors.cellDivider,
-        },
-      }),
-    [colors]
-  );
 
   // State management
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [user, setUser] = useState<UserProfile | null>(null);
+  const [nameError, setNameError] = useState<string | null>(null);
+  const [nameFocused, setNameFocused] = useState(false);
 
   // Form state
   const [formData, setFormData] = useState<UserFormData>({
@@ -207,7 +72,7 @@ const UserEditScreen: React.FC = () => {
 
     if (!userId) {
       console.log('[UserEditScreen] No userId provided, going back');
-      Alert.alert('Error', 'User ID is required');
+      Alert.alert("Couldn't open the profile", 'Go back and try again.');
       router.back();
       return;
     }
@@ -225,7 +90,7 @@ const UserEditScreen: React.FC = () => {
       });
       
       if (!result.success || !result.data) {
-        Alert.alert('Error', result.message || 'Failed to load user data');
+        Alert.alert("Couldn't load the profile", result.message || 'Check your connection and try again.');
         router.back();
         return;
       }
@@ -251,7 +116,7 @@ const UserEditScreen: React.FC = () => {
       });
     } catch (error) {
       console.error('[UserEditScreen] Load error:', error);
-      Alert.alert('Error', 'Failed to load user data');
+      Alert.alert("Couldn't load the profile", 'Check your connection and try again.');
       router.back();
     } finally {
       setLoading(false);
@@ -265,7 +130,7 @@ const UserEditScreen: React.FC = () => {
 
     // Basic validation
     if (!formData.name.trim()) {
-      Alert.alert('Validation Error', 'Name is required');
+      setNameError('Enter your name.');
       return;
     }
 
@@ -287,8 +152,8 @@ const UserEditScreen: React.FC = () => {
         }
 
         Alert.alert(
-          'Success',
-          'Profile updated successfully',
+          'Profile saved',
+          'Your profile has been updated.',
           [
             {
               text: 'OK',
@@ -297,11 +162,11 @@ const UserEditScreen: React.FC = () => {
           ]
         );
       } else {
-        Alert.alert('Error', result.message || 'Failed to update profile');
+        Alert.alert("Couldn't save your profile", result.message || 'Try again in a moment.');
       }
     } catch (error) {
       console.error('[UserEditScreen] Save error:', error);
-      Alert.alert('Error', 'Failed to update profile');
+      Alert.alert("Couldn't save your profile", 'Check your connection and try again.');
     } finally {
       setSaving(false);
     }
@@ -314,191 +179,454 @@ const UserEditScreen: React.FC = () => {
 
 
   // Render assigned customer (read-only)
-  const renderAssignedCustomerReadOnly = ({ item }: { item: CustomerAssignment }) => (
-    <View style={styles.assignedCustomerItem}>
-      <View style={styles.assignedCustomerInfo}>
-        <Text style={dynamicStyles.assignedCustomerName}>{item.name}</Text>
-        {(item.mobile || item.city) && (
-          <Text style={dynamicStyles.assignedCustomerDetail}>
-            {[item.mobile, item.city].filter(Boolean).join(' • ')}
+  const renderAssignedCustomerReadOnly = ({ item }: { item: CustomerAssignment }) => {
+    const meta = [item.mobile && formatMobile(item.mobile), item.city].filter(Boolean).join(' · ');
+    return (
+      <View
+        style={styles.assignedCustomerItem}
+        accessible
+        accessibilityLabel={[item.name, meta, item.active ? 'Active' : 'Inactive'].filter(Boolean).join(', ')}
+      >
+        <View style={styles.flex}>
+          <Text style={styles.assignedCustomerName}>{item.name}</Text>
+          {!!meta && <Text style={styles.assignedCustomerDetail}>{meta}</Text>}
+        </View>
+        <View style={[styles.statusTag, item.active ? styles.statusTagPositive : styles.statusTagNeutral]}>
+          <Icon
+            name={item.active ? 'check-circle' : 'circle-outline'}
+            size={iconSize.sm - 4}
+            color={item.active ? t.status.positive.text : t.status.neutral.text}
+          />
+          <Text
+            style={[styles.statusTagText, item.active ? styles.statusTextPositive : styles.statusTextNeutral]}
+            maxFontSizeMultiplier={1.6}
+          >
+            {item.active ? 'Active' : 'Inactive'}
           </Text>
-        )}
+        </View>
       </View>
-      <View style={styles.customerStatusIndicator}>
-        <Text style={dynamicStyles.customerStatusText}>
-          {item.active ? '✓ Active' : '○ Inactive'}
-        </Text>
-      </View>
-    </View>
-  );
+    );
+  };
 
   if (loading) {
     return (
-      <View style={dynamicStyles.loadingContainer}>
-        <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={dynamicStyles.loadingText}>Loading user data...</Text>
+      <View style={styles.centerContainer} accessibilityRole="progressbar" accessibilityLabel="Loading user">
+        <ActivityIndicator size="large" color={t.brand.tint} />
+        <Text style={styles.loadingText}>Loading user…</Text>
       </View>
     );
   }
 
   if (!user) {
     return (
-      <View style={dynamicStyles.errorContainer}>
-        <Text style={dynamicStyles.errorText}>User not found</Text>
+      <View style={styles.centerContainer} accessibilityRole="alert">
+        <Icon name="alert-circle-outline" size={iconSize.hero} color={t.status.negative.text} />
+        <Text style={styles.errorTitle}>Couldn't find this user</Text>
+        <Pressable
+          style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryButtonPressed]}
+          onPress={() => router.back()}
+          accessibilityRole="button"
+        >
+          <Text style={styles.secondaryButtonText}>Go back</Text>
+        </Pressable>
       </View>
     );
   }
 
   return (
-    <View style={dynamicStyles.container}>
+    <View style={styles.container}>
       {/* Header */}
-      <View style={dynamicStyles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-          <Text style={dynamicStyles.backButtonText}>Cancel</Text>
-        </TouchableOpacity>
-        <Text style={dynamicStyles.title}>Edit User</Text>
-        <TouchableOpacity
+      <View style={[styles.header, { paddingTop: insets.top + space.xs }]}>
+        <Pressable
+          onPress={() => router.back()}
+          style={({ pressed }) => [styles.cancelButton, pressed && styles.cancelButtonPressed]}
+          accessibilityRole="button"
+        >
+          <Text style={styles.cancelButtonText}>Cancel</Text>
+        </Pressable>
+        <Text style={styles.title} accessibilityRole="header" numberOfLines={1}>
+          Edit profile
+        </Text>
+        <Pressable
           onPress={handleSave}
-          style={[dynamicStyles.saveButton, saving && styles.saveButtonDisabled]}
+          style={({ pressed }) => [styles.saveButton, pressed && styles.saveButtonPressed]}
           disabled={saving}
+          accessibilityRole="button"
+          accessibilityLabel="Save profile"
+          accessibilityState={{ busy: saving }}
         >
           {saving ? (
-            <ActivityIndicator size="small" color={colors.cellBackground} />
+            <ActivityIndicator size="small" color={t.brand.onFill} />
           ) : (
-            <Text style={dynamicStyles.saveButtonText}>Save</Text>
+            <Text style={styles.saveButtonText}>Save</Text>
           )}
-        </TouchableOpacity>
+        </Pressable>
       </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={styles.flex}
+        contentContainerStyle={{ paddingBottom: insets.bottom + space.xxl }}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
         {/* Basic Information */}
-        <View style={dynamicStyles.section}>
-          <Text style={dynamicStyles.sectionTitle}>Basic Information</Text>
-
+        <Text style={styles.sectionTitle} accessibilityRole="header">Basic information</Text>
+        <View style={styles.section}>
           <View style={styles.inputGroup}>
-            <Text style={dynamicStyles.inputLabel}>Name *</Text>
+            <Text style={[styles.inputLabel, !!nameError && styles.inputLabelError]}>
+              Name<Text style={styles.required}> *</Text>
+            </Text>
             <TextInput
-              style={dynamicStyles.textInput}
+              style={[styles.textInput, nameFocused && styles.textInputFocused, !!nameError && styles.textInputError]}
               value={formData.name}
-              onChangeText={(text) => setFormData(prev => ({ ...prev, name: text }))}
-              placeholder="Enter user name"
-              placeholderTextColor={colors.textTertiary}
+              onChangeText={(text) => {
+                setFormData(prev => ({ ...prev, name: text }));
+                if (nameError) setNameError(null);
+              }}
+              onFocus={() => setNameFocused(true)}
+              onBlur={() => setNameFocused(false)}
+              placeholder="Enter your name"
+              placeholderTextColor={t.text.placeholder}
+              autoCapitalize="words"
+              autoComplete="name"
+              textContentType="name"
+              accessibilityLabel="Name, required"
             />
+            {!!nameError && (
+              <View style={styles.errorRow} accessibilityLiveRegion="polite">
+                <Icon name="alert-circle" size={iconSize.sm} color={t.status.negative.text} />
+                <Text style={styles.errorText}>{nameError}</Text>
+              </View>
+            )}
           </View>
 
-          <View style={styles.inputGroup}>
-            <Text style={dynamicStyles.inputLabel}>Mobile (Login Number)</Text>
-            <TextInput
-              style={[dynamicStyles.textInput, dynamicStyles.readOnlyInput]}
-              value={formData.mobile}
-              placeholder="Mobile number used for login"
-              placeholderTextColor={colors.textTertiary}
-              keyboardType="phone-pad"
-              editable={false}
-              selectTextOnFocus={false}
-            />
-            <Text style={dynamicStyles.readOnlyNote}>
-              This is your login number and cannot be changed
-            </Text>
+          <View>
+            <Text style={styles.inputLabel}>Mobile number (used to sign in)</Text>
+            <View style={styles.readOnlyField} accessible accessibilityLabel={`Mobile number, ${formData.mobile ? formatMobile(formData.mobile) : 'not set'}, read only`}>
+              <Text style={styles.readOnlyValue}>
+                {formData.mobile ? formatMobile(formData.mobile) : '—'}
+              </Text>
+            </View>
+            <Text style={styles.helperText}>Your sign-in number can't be changed.</Text>
           </View>
         </View>
 
         {/* Role & Status */}
-        <View style={dynamicStyles.section}>
-          <Text style={dynamicStyles.sectionTitle}>Role & Status</Text>
-          <Text style={dynamicStyles.readOnlyNote}>
-            Role and status settings are managed by administrators
-          </Text>
-
-          <View style={dynamicStyles.infoRow}>
+        <Text style={styles.sectionTitle} accessibilityRole="header">Role and status</Text>
+        <View style={styles.section}>
+          <View style={styles.infoRow} accessible accessibilityLabel={`Role, ${formData.supervisor ? 'Supervisor' : 'User'}`}>
             <View style={styles.infoLeft}>
-              <Text style={styles.infoIcon}>🎯</Text>
-              <Text style={dynamicStyles.infoLabel}>Role</Text>
+              <Icon name="shield-account-outline" size={iconSize.md} color={t.icon.secondary} />
+              <Text style={styles.infoLabel}>Role</Text>
             </View>
-            <Text style={dynamicStyles.infoValue}>
-              {formData.supervisor ? 'Supervisor' : 'User'}
-            </Text>
+            <Text style={styles.infoValue}>{formData.supervisor ? 'Supervisor' : 'User'}</Text>
           </View>
 
-          <View style={dynamicStyles.infoRow}>
+          <View style={[styles.infoRow, styles.infoRowLast]} accessible accessibilityLabel={`Status, ${formData.active ? 'Active' : 'Inactive'}`}>
             <View style={styles.infoLeft}>
-              <Text style={styles.infoIcon}>{formData.active ? '✅' : '❌'}</Text>
-              <Text style={dynamicStyles.infoLabel}>Status</Text>
+              <Icon
+                name={formData.active ? 'check-circle' : 'alert-circle'}
+                size={iconSize.md}
+                color={formData.active ? t.status.positive.text : t.status.negative.text}
+              />
+              <Text style={styles.infoLabel}>Status</Text>
             </View>
-            <Text style={dynamicStyles.infoValue}>
-              {formData.active ? 'Active' : 'Inactive'}
-            </Text>
+            <Text style={styles.infoValue}>{formData.active ? 'Active' : 'Inactive'}</Text>
           </View>
         </View>
+        <Text style={styles.sectionFooter}>Administrators manage your role and status.</Text>
 
         {/* Customer Assignments */}
-        <View style={dynamicStyles.section}>
-          <Text style={dynamicStyles.sectionTitle}>Customer Assignments</Text>
-          <Text style={dynamicStyles.readOnlyNote}>
-            Customer assignments are managed by administrators
-          </Text>
-
+        <Text style={styles.sectionTitle} accessibilityRole="header">Customer assignments</Text>
+        <View style={styles.section}>
           {assignedCustomers.length > 0 ? (
             <FlatList
               data={assignedCustomers}
               renderItem={renderAssignedCustomerReadOnly}
               keyExtractor={(item) => item.id}
               scrollEnabled={false}
-              ItemSeparatorComponent={() => <View style={dynamicStyles.separator} />}
+              ItemSeparatorComponent={() => <View style={styles.separator} />}
             />
           ) : (
             <View style={styles.emptyState}>
-              <Text style={dynamicStyles.emptyText}>No customers assigned</Text>
-              <Text style={dynamicStyles.emptySubtext}>Contact an administrator for customer assignments</Text>
+              <Icon name="account-multiple-outline" size={iconSize.xl} color={t.icon.secondary} />
+              <Text style={styles.emptyText}>No customers assigned yet.</Text>
+              <Text style={styles.emptySubtext}>Ask an administrator to assign customers to you.</Text>
             </View>
           )}
         </View>
+        <Text style={styles.sectionFooter}>Administrators manage customer assignments.</Text>
       </ScrollView>
-
     </View>
   );
 };
 
-// Static styles (layout only - colors in dynamicStyles)
-const styles = StyleSheet.create({
-  backButton: {
-    padding: 8,
-  },
-  saveButtonDisabled: {
-    opacity: 0.6,
-  },
-  content: {
+/** "+91 98765 43210" for a stored 10-digit (or 91-prefixed) number. */
+function formatMobile(mobile: string): string {
+  const digits = mobile.replace(/\D/g, '').replace(/^91(?=\d{10}$)/, '');
+  if (digits.length !== 10) return `+91 ${digits}`;
+  return `+91 ${digits.slice(0, 5)} ${digits.slice(5)}`;
+}
+
+const makeStyles = (t: ThemeTokens) => ({
+  flex: {
     flex: 1,
+  },
+  container: {
+    flex: 1,
+    backgroundColor: t.background.base,
+  },
+  centerContainer: {
+    flex: 1,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    gap: space.md,
+    padding: space.xxl,
+    backgroundColor: t.background.base,
+  },
+  loadingText: {
+    ...typography.subhead,
+    color: t.text.secondary,
+  },
+  errorTitle: {
+    ...typography.title3,
+    color: t.text.primary,
+    textAlign: 'center' as const,
+  },
+  secondaryButton: {
+    minHeight: touchTarget,
+    borderRadius: radius.button,
+    borderWidth: 1,
+    borderColor: t.border.button,
+    paddingHorizontal: space.xl,
+    justifyContent: 'center' as const,
+  },
+  secondaryButtonPressed: {
+    backgroundColor: t.brand.subtle,
+  },
+  secondaryButtonText: {
+    ...typography.callout,
+    fontWeight: fontWeight.semibold,
+    color: t.brand.tint,
+  },
+  header: {
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'center' as const,
+    gap: space.sm,
+    backgroundColor: t.surface.header,
+    paddingHorizontal: space.sm,
+    paddingBottom: space.xs,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.divider,
+  },
+  cancelButton: {
+    minHeight: touchTarget,
+    paddingHorizontal: space.sm,
+    justifyContent: 'center' as const,
+    borderRadius: radius.button,
+  },
+  cancelButtonPressed: {
+    backgroundColor: t.brand.subtle,
+  },
+  cancelButtonText: {
+    ...typography.body,
+    color: t.brand.tint,
+  },
+  title: {
+    ...typography.headline,
+    flexShrink: 1,
+    color: t.text.primary,
+  },
+  saveButton: {
+    backgroundColor: t.brand.fill,
+    paddingHorizontal: space.lg,
+    minHeight: touchTarget,
+    borderRadius: radius.button,
+    minWidth: 64,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+  },
+  saveButtonPressed: {
+    backgroundColor: t.brand.fillPressed,
+  },
+  saveButtonText: {
+    ...typography.callout,
+    fontWeight: fontWeight.semibold,
+    color: t.brand.onFill,
+  },
+  sectionTitle: {
+    ...typography.footnote,
+    textTransform: 'uppercase' as const,
+    letterSpacing: 0.5,
+    color: t.text.secondary,
+    marginTop: space.xxl,
+    marginBottom: space.sm,
+    marginHorizontal: layout.marginCompact,
+  },
+  sectionFooter: {
+    ...typography.footnote,
+    color: t.text.secondary,
+    marginTop: space.sm,
+    marginHorizontal: layout.marginCompact,
+  },
+  section: {
+    backgroundColor: t.surface.card,
+    marginHorizontal: layout.marginCompact,
+    borderRadius: radius.card,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.lg,
+    ...t.shadow[2],
   },
   inputGroup: {
-    marginBottom: 20,
+    marginBottom: space.lg,
+  },
+  inputLabel: {
+    ...typography.footnote,
+    color: t.text.secondary,
+    marginBottom: space.xs,
+  },
+  inputLabelError: {
+    color: t.status.negative.text,
+  },
+  required: {
+    color: t.text.required,
+  },
+  textInput: {
+    ...typography.body,
+    backgroundColor: t.surface.field,
+    borderWidth: 1,
+    borderColor: t.border.field,
+    borderRadius: radius.field,
+    paddingHorizontal: space.md,
+    paddingVertical: space.sm,
+    minHeight: touchTarget,
+    color: t.text.primary,
+  },
+  textInputFocused: {
+    borderWidth: 2,
+    borderColor: t.border.fieldFocus,
+  },
+  textInputError: {
+    borderWidth: 2,
+    borderColor: t.status.negative.border,
+  },
+  errorRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'flex-start' as const,
+    gap: space.xs,
+    marginTop: space.xs,
+  },
+  errorText: {
+    ...typography.footnote,
+    flex: 1,
+    color: t.status.negative.text,
+  },
+  readOnlyField: {
+    backgroundColor: t.surface.fieldReadOnly,
+    borderRadius: radius.field,
+    paddingHorizontal: space.md,
+    minHeight: touchTarget,
+    justifyContent: 'center' as const,
+  },
+  readOnlyValue: {
+    ...typography.body,
+    color: t.text.primary,
+    fontVariant: ['tabular-nums' as const],
+  },
+  helperText: {
+    ...typography.footnote,
+    color: t.text.secondary,
+    marginTop: space.xs,
+  },
+  infoRow: {
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'center' as const,
+    minHeight: layout.rowMinHeight,
+    paddingVertical: space.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.divider,
+  },
+  infoRowLast: {
+    borderBottomWidth: 0,
   },
   infoLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.md,
     flex: 1,
   },
-  infoIcon: {
-    fontSize: 18,
-    marginRight: 12,
-    width: 24,
-    textAlign: 'center',
+  infoLabel: {
+    ...typography.body,
+    color: t.text.secondary,
+  },
+  infoValue: {
+    ...typography.body,
+    color: t.text.primary,
+    textAlign: 'right' as const,
+    marginLeft: space.lg,
+    flex: 1,
   },
   assignedCustomerItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 12,
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'center' as const,
+    gap: space.md,
+    paddingVertical: space.md,
   },
-  assignedCustomerInfo: {
-    flex: 1,
+  assignedCustomerName: {
+    ...typography.body,
+    color: t.text.primary,
+    marginBottom: space.xxs,
   },
-  customerStatusIndicator: {
-    padding: 8,
+  assignedCustomerDetail: {
+    ...typography.footnote,
+    color: t.text.secondary,
+  },
+  statusTag: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.xs,
+    paddingHorizontal: space.s6,
+    paddingVertical: space.xxs,
+    borderRadius: radius.field,
+  },
+  statusTagPositive: {
+    backgroundColor: t.status.positive.background,
+  },
+  statusTagNeutral: {
+    backgroundColor: t.status.neutral.background,
+  },
+  statusTagText: {
+    ...typography.caption1,
+    fontWeight: fontWeight.semibold,
+  },
+  statusTextPositive: {
+    color: t.status.positive.text,
+  },
+  statusTextNeutral: {
+    color: t.status.neutral.text,
   },
   emptyState: {
-    alignItems: 'center',
-    paddingVertical: 40,
+    alignItems: 'center' as const,
+    paddingVertical: space.xxl,
+    gap: space.xs,
+  },
+  emptyText: {
+    ...typography.body,
+    color: t.text.primary,
+    textAlign: 'center' as const,
+    marginTop: space.sm,
+  },
+  emptySubtext: {
+    ...typography.footnote,
+    color: t.text.secondary,
+    textAlign: 'center' as const,
+  },
+  separator: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: t.border.divider,
   },
 });
 

@@ -1,5 +1,5 @@
 /**
- * User Edit Screen - Admin User Management
+ * User Edit Screen - Admin User Management (style guide §14.4)
  *
  * Allows supervisors and admins to:
  * - View user details (read-only: name, mobile)
@@ -8,18 +8,17 @@
  * - Manage customer assignments
  */
 
-import React, { useCallback, useState, useEffect, useMemo } from 'react';
+import React, { useCallback, useState, useEffect } from 'react';
 import {
   View,
+  Text,
   ScrollView,
   StyleSheet,
-  Platform,
   Pressable,
   ActivityIndicator,
   Alert,
   Switch,
 } from 'react-native';
-import { Text } from 'react-native-paper';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -31,21 +30,27 @@ import {
   UserRole,
   UserDetailsCustomer,
 } from '@/types/user.types';
-import { FIORI } from '@/components/common/overview-tab/FioriTokens';
 import { useAppSelector } from '@/store/hooks';
 import { RolePickerBottomSheet } from '@/components/RolePickerBottomSheet';
 import { SearchableBottomSheet } from '@/components/common';
-import { useListColors } from '@/hooks/useListColors';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import {
+  fontWeight,
+  iconSize,
+  layout,
+  radius,
+  space,
+  touchTarget,
+  typography,
+  type ThemeTokens,
+} from '@/theme/tokens';
 
-// =============================================================================
-// ROLE BADGE COLORS
-// =============================================================================
-
-const ROLE_COLORS: Record<UserRole, { bg: string; text: string }> = {
-  admin: { bg: '#fff4e6', text: '#f69000' },
-  supervisor: { bg: '#e8f4f4', text: '#1c5858' },
-  staff: { bg: '#f0f0f0', text: '#7e8e9d' },
-  customer: { bg: '#e8f4f4', text: '#53b1b1' },
+/** Roles are categories, not statuses: staff roles informative, others neutral. */
+const ROLE_TONE: Record<UserRole, 'informative' | 'neutral'> = {
+  admin: 'informative',
+  supervisor: 'informative',
+  staff: 'neutral',
+  customer: 'neutral',
 };
 
 // =============================================================================
@@ -67,222 +72,8 @@ export default function UserEditScreen() {
   const { id: userId } = useLocalSearchParams<{ id: string }>();
   const insets = useSafeAreaInsets();
   const { userProfile } = useAppSelector((state) => state.auth);
-  const colors = useListColors();
-
-  // Dynamic styles for dark mode
-  const dynamicStyles = useMemo(
-    () =>
-      StyleSheet.create({
-        gestureContainer: {
-          flex: 1,
-        },
-        container: {
-          flex: 1,
-          backgroundColor: colors.gray50,
-        },
-        centerContainer: {
-          justifyContent: 'center',
-          alignItems: 'center',
-          paddingHorizontal: FIORI.spacing.xxl,
-        },
-        navBar: {
-          backgroundColor: colors.cellBackground,
-          borderBottomWidth: 1,
-          borderBottomColor: colors.cellDivider,
-          ...Platform.select({
-            ios: {
-              shadowColor: '#000000',
-              shadowOffset: { width: 0, height: 1 },
-              shadowOpacity: 0.06,
-              shadowRadius: 2,
-            },
-            android: {
-              elevation: 2,
-            },
-          }),
-        },
-        backButtonText: {
-          ...FIORI.typography.body,
-          color: colors.primary,
-          marginLeft: -4,
-        },
-        title: {
-          ...FIORI.typography.headline,
-          color: colors.textPrimary,
-          letterSpacing: -0.41,
-          textAlign: 'center',
-        },
-        loadingText: {
-          ...FIORI.typography.body,
-          color: colors.textSecondary,
-          marginTop: FIORI.spacing.md,
-        },
-        errorTitle: {
-          ...FIORI.typography.headline,
-          color: colors.statusNegative,
-          marginTop: FIORI.spacing.md,
-        },
-        errorText: {
-          ...FIORI.typography.body,
-          color: colors.textSecondary,
-          textAlign: 'center',
-          marginTop: FIORI.spacing.sm,
-        },
-        retryButton: {
-          flexDirection: 'row',
-          alignItems: 'center',
-          backgroundColor: colors.primary,
-          paddingHorizontal: FIORI.spacing.lg,
-          height: FIORI.dimensions.buttonHeight,
-          borderRadius: FIORI.dimensions.buttonRadius,
-          gap: FIORI.spacing.sm,
-          marginTop: FIORI.spacing.lg,
-        },
-        retryButtonText: {
-          ...FIORI.typography.button,
-          color: colors.cellBackground,
-        },
-        card: {
-          backgroundColor: colors.cellBackground,
-          marginHorizontal: FIORI.spacing.lg,
-          marginTop: FIORI.spacing.lg,
-          borderRadius: FIORI.dimensions.cardRadius,
-          padding: FIORI.dimensions.cardPadding,
-          borderWidth: 1,
-          borderColor: colors.cellDivider,
-          ...FIORI.shadows.card,
-        },
-        avatar: {
-          width: 64,
-          height: 64,
-          borderRadius: 32,
-          backgroundColor: colors.primaryLight,
-          alignItems: 'center',
-          justifyContent: 'center',
-          marginRight: FIORI.spacing.md,
-        },
-        avatarText: {
-          fontSize: 28,
-          fontWeight: '600',
-          color: colors.primary,
-        },
-        userName: {
-          ...FIORI.typography.headline,
-          color: colors.textPrimary,
-          fontSize: 20,
-        },
-        userMobile: {
-          ...FIORI.typography.body,
-          color: colors.textSecondary,
-          marginTop: 4,
-        },
-        sectionTitle: {
-          ...FIORI.typography.sectionHeader,
-          color: colors.textSecondary,
-          marginBottom: FIORI.spacing.sm,
-        },
-        fieldRow: {
-          flexDirection: 'row',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          backgroundColor: colors.cellBackground,
-          borderRadius: FIORI.dimensions.cardRadius,
-          padding: FIORI.dimensions.cardPadding,
-          borderWidth: 1,
-          borderColor: colors.cellDivider,
-          minHeight: FIORI.dimensions.touchTarget + 16,
-        },
-        fieldRowPressed: {
-          backgroundColor: colors.cellBackgroundPressed,
-        },
-        fieldLabel: {
-          ...FIORI.typography.body,
-          color: colors.textPrimary,
-        },
-        fieldSubLabel: {
-          ...FIORI.typography.caption,
-          color: colors.textSecondary,
-          marginTop: 2,
-        },
-        helperText: {
-          ...FIORI.typography.caption,
-          color: colors.textTertiary,
-          marginTop: FIORI.spacing.sm,
-          fontStyle: 'italic',
-        },
-        addButtonText: {
-          ...FIORI.typography.body,
-          color: colors.primary,
-          fontWeight: '600',
-        },
-        emptyAssignments: {
-          alignItems: 'center',
-          paddingVertical: FIORI.spacing.xl,
-          backgroundColor: colors.cellBackground,
-          borderRadius: FIORI.dimensions.cardRadius,
-          borderWidth: 1,
-          borderColor: colors.cellDivider,
-        },
-        emptyText: {
-          ...FIORI.typography.body,
-          color: colors.textSecondary,
-          marginTop: FIORI.spacing.md,
-        },
-        emptySubText: {
-          ...FIORI.typography.caption,
-          color: colors.textTertiary,
-          marginTop: FIORI.spacing.xs,
-        },
-        assignmentsList: {
-          backgroundColor: colors.cellBackground,
-          borderRadius: FIORI.dimensions.cardRadius,
-          borderWidth: 1,
-          borderColor: colors.cellDivider,
-          overflow: 'hidden',
-        },
-        assignmentItem: {
-          flexDirection: 'row',
-          alignItems: 'center',
-          paddingHorizontal: FIORI.dimensions.cardPadding,
-          paddingVertical: FIORI.spacing.md,
-          borderBottomWidth: 1,
-          borderBottomColor: colors.cellDivider,
-        },
-        assignmentName: {
-          ...FIORI.typography.body,
-          color: colors.textPrimary,
-          fontWeight: '500',
-        },
-        assignmentMeta: {
-          ...FIORI.typography.caption,
-          color: colors.textSecondary,
-          marginTop: 2,
-        },
-        searchResultItem: {
-          flexDirection: 'row',
-          alignItems: 'center',
-          paddingHorizontal: FIORI.spacing.lg,
-          paddingVertical: FIORI.spacing.md,
-          borderBottomWidth: 1,
-          borderBottomColor: colors.cellDivider,
-        },
-        searchResultName: {
-          ...FIORI.typography.body,
-          color: colors.textPrimary,
-          fontWeight: '500',
-        },
-        searchResultMeta: {
-          ...FIORI.typography.caption,
-          color: colors.textSecondary,
-          marginTop: 2,
-        },
-        savingText: {
-          ...FIORI.typography.caption,
-          color: colors.textSecondary,
-        },
-      }),
-    [colors]
-  );
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
 
   // State
   const [user, setUser] = useState<UserDetails | null>(null);
@@ -327,7 +118,7 @@ export default function UserEditScreen() {
         setIsActive(response.data.active);
         setAssignedCustomers(response.data.assigned_customers);
       } else {
-        setError(response.error || 'Failed to load user');
+        setError(response.error || 'not-found');
       }
     } catch (err) {
       console.error('[UserEdit] Load error:', err);
@@ -356,13 +147,13 @@ export default function UserEditScreen() {
         if (response.success) {
           setSelectedRole(newRole);
           setUser((prev) => (prev ? { ...prev, role: newRole } : null));
-          Alert.alert('Success', `Role updated to ${newRole}`);
+          Alert.alert('Role changed', `${user.name || 'This user'} is now ${newRole === 'admin' ? 'an' : 'a'} ${newRole}.`);
         } else {
-          Alert.alert('Error', response.error || 'Failed to update role');
+          Alert.alert("Couldn't change the role", response.error || 'Try again in a moment.');
         }
       } catch (err) {
         console.error('[UserEdit] Role update error:', err);
-        Alert.alert('Error', 'Failed to update role');
+        Alert.alert("Couldn't change the role", 'Check your connection and try again.');
       } finally {
         setSaving(false);
       }
@@ -377,12 +168,12 @@ export default function UserEditScreen() {
       // Confirm deactivation
       if (!newActive) {
         Alert.alert(
-          'Deactivate User',
-          `Are you sure you want to deactivate ${user.name}? They will no longer be able to access the app.`,
+          `Deactivate ${user.name}?`,
+          "They won't be able to use the app until you activate them again.",
           [
             { text: 'Cancel', style: 'cancel' },
             {
-              text: 'Deactivate',
+              text: 'Deactivate user',
               style: 'destructive',
               onPress: async () => {
                 await updateStatus(false);
@@ -408,13 +199,13 @@ export default function UserEditScreen() {
       if (response.success) {
         setIsActive(active);
         setUser((prev) => (prev ? { ...prev, active } : null));
-        Alert.alert('Success', `User ${active ? 'activated' : 'deactivated'}`);
+        Alert.alert(active ? 'User activated' : 'User deactivated', `${user.name || 'This user'} ${active ? 'can use the app again.' : "can't use the app now."}`);
       } else {
-        Alert.alert('Error', response.error || 'Failed to update status');
+        Alert.alert("Couldn't change the status", response.error || 'Try again in a moment.');
       }
     } catch (err) {
       console.error('[UserEdit] Status update error:', err);
-      Alert.alert('Error', 'Failed to update status');
+      Alert.alert("Couldn't change the status", 'Check your connection and try again.');
     } finally {
       setSaving(false);
     }
@@ -426,7 +217,7 @@ export default function UserEditScreen() {
 
       // Check if already assigned
       if (assignedCustomers.some((c) => c.customer_id === customer.id)) {
-        Alert.alert('Already Assigned', 'This customer is already assigned.');
+        Alert.alert('Already assigned', `${customer.name} is already assigned to this user.`);
         return;
       }
 
@@ -448,13 +239,13 @@ export default function UserEditScreen() {
             assigned_by_name: userProfile?.name || null,
           };
           setAssignedCustomers((prev) => [...prev, newAssignment]);
-          Alert.alert('Success', `${customer.name} assigned to user`);
+          Alert.alert('Customer assigned', `${customer.name} assigned.`);
         } else {
-          Alert.alert('Error', response.error || 'Failed to assign customer');
+          Alert.alert("Couldn't assign the customer", response.error || 'Try again in a moment.');
         }
       } catch (err) {
         console.error('[UserEdit] Assign customer error:', err);
-        Alert.alert('Error', 'Failed to assign customer');
+        Alert.alert("Couldn't assign the customer", 'Check your connection and try again.');
       } finally {
         setSaving(false);
         setShowCustomerSearch(false);
@@ -468,12 +259,12 @@ export default function UserEditScreen() {
       if (!user) return;
 
       Alert.alert(
-        'Remove Customer',
-        `Remove ${customerName} from this user's assignments?`,
+        `Remove ${customerName}?`,
+        `${customerName} will no longer be assigned to this user.`,
         [
           { text: 'Cancel', style: 'cancel' },
           {
-            text: 'Remove',
+            text: 'Remove customer',
             style: 'destructive',
             onPress: async () => {
               setSaving(true);
@@ -487,16 +278,16 @@ export default function UserEditScreen() {
                   setAssignedCustomers((prev) =>
                     prev.filter((c) => c.customer_id !== customerId)
                   );
-                  Alert.alert('Success', 'Customer removed');
+                  Alert.alert('Customer removed', `${customerName} removed.`);
                 } else {
                   Alert.alert(
-                    'Error',
-                    response.error || 'Failed to remove customer'
+                    "Couldn't remove the customer",
+                    response.error || 'Try again in a moment.'
                   );
                 }
               } catch (err) {
                 console.error('[UserEdit] Remove customer error:', err);
-                Alert.alert('Error', 'Failed to remove customer');
+                Alert.alert("Couldn't remove the customer", 'Check your connection and try again.');
               } finally {
                 setSaving(false);
               }
@@ -533,62 +324,67 @@ export default function UserEditScreen() {
   );
 
   const renderCustomerSearchItem = useCallback(
-    (item: CustomerSearchResult, onSelect: (item: CustomerSearchResult) => void) => (
-      <Pressable
-        style={dynamicStyles.searchResultItem}
-        onPress={() => onSelect(item)}
-      >
-        <View style={styles.searchResultContent}>
-          <Text style={dynamicStyles.searchResultName}>{item.name}</Text>
-          {(item.mobile || item.city) && (
-            <Text style={dynamicStyles.searchResultMeta}>
-              {[item.mobile && `+91 ${item.mobile}`, item.city]
-                .filter(Boolean)
-                .join(' • ')}
-            </Text>
-          )}
-        </View>
-        <Icon name="plus-circle" size={24} color={colors.primary} />
-      </Pressable>
-    ),
-    [colors, dynamicStyles]
+    (item: CustomerSearchResult, onSelect: (item: CustomerSearchResult) => void) => {
+      const meta = [item.mobile && formatMobile(item.mobile), item.city].filter(Boolean).join(' · ');
+      return (
+        <Pressable
+          style={({ pressed }) => [styles.searchResultItem, pressed && styles.rowPressed]}
+          onPress={() => onSelect(item)}
+          accessibilityRole="button"
+          accessibilityLabel={meta ? `Assign ${item.name}, ${meta}` : `Assign ${item.name}`}
+        >
+          <View style={styles.flex}>
+            <Text style={styles.searchResultName}>{item.name}</Text>
+            {!!meta && <Text style={styles.searchResultMeta}>{meta}</Text>}
+          </View>
+          <Icon name="plus" size={iconSize.lg} color={t.brand.tint} />
+        </Pressable>
+      );
+    },
+    [styles, t]
   );
 
   // ===========================================================================
   // RENDER
   // ===========================================================================
 
+  const headerOptions = {
+    headerShown: true,
+    headerStyle: { backgroundColor: t.surface.header },
+    headerShadowVisible: false,
+    headerTintColor: t.brand.tint,
+    headerTitleAlign: 'center' as const,
+    headerLeft: () => (
+      <Pressable
+        onPress={() => router.back()}
+        style={styles.backButton}
+        hitSlop={space.sm}
+        accessibilityRole="button"
+        accessibilityLabel="Back"
+      >
+        <Icon name="chevron-left" size={iconSize.xl} color={t.brand.tint} />
+        <Text style={styles.backButtonText}>Back</Text>
+      </Pressable>
+    ),
+    headerTitle: () => (
+      <Text style={styles.title} accessibilityRole="header">
+        Edit user
+      </Text>
+    ),
+  };
+
   // Loading state
   if (loading) {
     return (
       <>
-        <Stack.Screen
-          options={{
-            headerShown: true,
-            headerStyle: dynamicStyles.navBar,
-            headerTintColor: colors.primary,
-            headerTitleAlign: 'center',
-            headerLeft: () => (
-              <Pressable
-                onPress={() => router.back()}
-                style={styles.backButton}
-              >
-                <Icon
-                  name="chevron-left"
-                  size={28}
-                  color={colors.primary}
-                />
-                <Text style={dynamicStyles.backButtonText}>Back</Text>
-              </Pressable>
-            ),
-            headerTitle: () => (
-              <Text style={dynamicStyles.title}>Edit User</Text>
-            ),
-          }}
-        />
-        <View style={[dynamicStyles.container, dynamicStyles.centerContainer]}>
-          <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={dynamicStyles.loadingText}>Loading user...</Text>
+        <Stack.Screen options={headerOptions} />
+        <View
+          style={[styles.container, styles.centerContainer]}
+          accessibilityRole="progressbar"
+          accessibilityLabel="Loading user"
+        >
+          <ActivityIndicator size="large" color={t.brand.tint} />
+          <Text style={styles.loadingText}>Loading user…</Text>
         </View>
       </>
     );
@@ -598,271 +394,203 @@ export default function UserEditScreen() {
   if (error || !user) {
     return (
       <>
-        <Stack.Screen
-          options={{
-            headerShown: true,
-            headerStyle: dynamicStyles.navBar,
-            headerTintColor: colors.primary,
-            headerTitleAlign: 'center',
-            headerLeft: () => (
-              <Pressable
-                onPress={() => router.back()}
-                style={styles.backButton}
-              >
-                <Icon
-                  name="chevron-left"
-                  size={28}
-                  color={colors.primary}
-                />
-                <Text style={dynamicStyles.backButtonText}>Back</Text>
-              </Pressable>
-            ),
-            headerTitle: () => (
-              <Text style={dynamicStyles.title}>Edit User</Text>
-            ),
-          }}
-        />
-        <View style={[dynamicStyles.container, dynamicStyles.centerContainer]}>
-          <Icon
-            name="alert-circle-outline"
-            size={64}
-            color={colors.statusNegative}
-          />
-          <Text style={dynamicStyles.errorTitle}>Error</Text>
-          <Text style={dynamicStyles.errorText}>{error || 'User not found'}</Text>
-          <Pressable style={dynamicStyles.retryButton} onPress={loadUser}>
-            <Icon name="refresh" size={20} color={colors.cellBackground} />
-            <Text style={dynamicStyles.retryButtonText}>Retry</Text>
+        <Stack.Screen options={headerOptions} />
+        <View style={[styles.container, styles.centerContainer]} accessibilityRole="alert">
+          <Icon name="alert-circle-outline" size={iconSize.hero} color={t.status.negative.text} />
+          <Text style={styles.errorTitle} accessibilityRole="header">
+            Couldn't load this user
+          </Text>
+          <Text style={styles.errorText}>Check your connection and try again.</Text>
+          <Pressable
+            style={({ pressed }) => [styles.retryButton, pressed && styles.retryButtonPressed]}
+            onPress={loadUser}
+            accessibilityRole="button"
+          >
+            <Icon name="refresh" size={iconSize.md} color={t.brand.tint} />
+            <Text style={styles.retryButtonText}>Try again</Text>
           </Pressable>
         </View>
       </>
     );
   }
 
-  const roleColor = ROLE_COLORS[selectedRole] || ROLE_COLORS.customer;
+  const roleTone = t.status[ROLE_TONE[selectedRole] ?? 'neutral'];
+  const roleLabel = selectedRole.charAt(0).toUpperCase() + selectedRole.slice(1);
+  const roleLocked = !canEdit || isSelfEdit;
 
   return (
-    <GestureHandlerRootView style={dynamicStyles.gestureContainer}>
-      <Stack.Screen
-        options={{
-          headerShown: true,
-          headerStyle: dynamicStyles.navBar,
-          headerTintColor: colors.primary,
-          headerTitleAlign: 'center',
-          headerLeft: () => (
-            <Pressable
-              onPress={() => router.back()}
-              style={styles.backButton}
-            >
-              <Icon
-                name="chevron-left"
-                size={28}
-                color={colors.primary}
-              />
-              <Text style={dynamicStyles.backButtonText}>Back</Text>
-            </Pressable>
-          ),
-          headerTitle: () => (
-            <View style={styles.titleContainer}>
-              <Text style={dynamicStyles.title}>Edit User</Text>
-            </View>
-          ),
-        }}
-      />
+    <GestureHandlerRootView style={styles.flex}>
+      <Stack.Screen options={headerOptions} />
 
       <ScrollView
-        style={dynamicStyles.container}
-        contentContainerStyle={{ paddingBottom: insets.bottom + 20 }}
+        style={styles.container}
+        contentContainerStyle={{ paddingBottom: insets.bottom + space.xl }}
       >
         {/* User Info Card */}
-        <View style={dynamicStyles.card}>
+        <View style={styles.card} accessible accessibilityLabel={`${user.name || 'Unknown user'}, ${formatMobile(user.mobile)}`}>
           <View style={styles.userHeader}>
-            <View style={dynamicStyles.avatar}>
-              <Text style={dynamicStyles.avatarText}>
-                {(user.name || 'U').charAt(0).toUpperCase()}
-              </Text>
+            <View style={[styles.avatar, { backgroundColor: t.avatar[avatarIndex(user.id, t.avatar.length)] }]}>
+              <Text style={styles.avatarText}>{(user.name || 'U').charAt(0).toUpperCase()}</Text>
             </View>
-            <View style={styles.userInfo}>
-              <Text style={dynamicStyles.userName}>{user.name || 'Unknown'}</Text>
-              <Text style={dynamicStyles.userMobile}>+91 {user.mobile}</Text>
+            <View style={styles.flex}>
+              <Text style={styles.userName}>{user.name || 'Unknown user'}</Text>
+              <Text style={styles.userMobile}>{formatMobile(user.mobile)}</Text>
             </View>
           </View>
         </View>
 
         {/* Role Section */}
         <View style={styles.section}>
-          <Text style={dynamicStyles.sectionTitle}>ROLE</Text>
+          <Text style={styles.sectionTitle} accessibilityRole="header">Role</Text>
           <Pressable
             style={({ pressed }) => [
-              dynamicStyles.fieldRow,
-              pressed && dynamicStyles.fieldRowPressed,
-              (!canEdit || isSelfEdit) && styles.fieldRowDisabled,
+              styles.fieldRow,
+              pressed && !roleLocked && styles.rowPressed,
             ]}
             onPress={() => {
-              if (canEdit && !isSelfEdit) {
+              if (!roleLocked) {
                 setShowRolePicker(true);
               }
             }}
-            disabled={!canEdit || isSelfEdit}
+            disabled={roleLocked}
+            accessibilityRole="button"
+            accessibilityLabel={`User role, ${roleLabel}`}
+            accessibilityHint={roleLocked ? undefined : 'Opens the role picker'}
+            accessibilityState={{ disabled: roleLocked }}
           >
             <View style={styles.fieldLeft}>
-              <Icon
-                name="shield-account"
-                size={22}
-                color={colors.textSecondary}
-              />
-              <Text style={dynamicStyles.fieldLabel}>User Role</Text>
+              <Icon name="shield-account-outline" size={iconSize.md} color={t.icon.secondary} />
+              <Text style={styles.fieldLabel}>User role</Text>
             </View>
             <View style={styles.fieldRight}>
-              <View
-                style={[styles.roleBadge, { backgroundColor: roleColor.bg }]}
-              >
-                <Text style={[styles.roleBadgeText, { color: roleColor.text }]}>
-                  {selectedRole.charAt(0).toUpperCase() + selectedRole.slice(1)}
+              <View style={[styles.roleBadge, { backgroundColor: roleTone.background }]}>
+                <Text style={[styles.roleBadgeText, { color: roleTone.text }]} maxFontSizeMultiplier={1.6}>
+                  {roleLabel}
                 </Text>
               </View>
-              {canEdit && !isSelfEdit && (
-                <Icon
-                  name="chevron-right"
-                  size={20}
-                  color={colors.textTertiary}
-                />
+              {!roleLocked && (
+                <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />
               )}
             </View>
           </Pressable>
           {isSelfEdit && (
-            <Text style={dynamicStyles.helperText}>
-              You cannot change your own role
-            </Text>
+            <Text style={styles.helperText}>You can't change your own role.</Text>
           )}
           {!canEdit && !isSelfEdit && (
-            <Text style={dynamicStyles.helperText}>
-              Supervisors cannot modify admin users
-            </Text>
+            <Text style={styles.helperText}>Supervisors can't change administrators.</Text>
           )}
         </View>
 
         {/* Status Section */}
         <View style={styles.section}>
-          <Text style={dynamicStyles.sectionTitle}>STATUS</Text>
-          <View
-            style={[
-              dynamicStyles.fieldRow,
-              (!canEdit || isSelfEdit) && styles.fieldRowDisabled,
-            ]}
-          >
+          <Text style={styles.sectionTitle} accessibilityRole="header">Status</Text>
+          <View style={styles.fieldRow}>
             <View style={styles.fieldLeft}>
               <Icon
-                name={isActive ? 'account-check' : 'account-off'}
-                size={22}
-                color={isActive ? colors.success : colors.statusNegative}
+                name={isActive ? 'account-check-outline' : 'account-off-outline'}
+                size={iconSize.md}
+                color={isActive ? t.status.positive.text : t.status.negative.text}
               />
-              <View>
-                <Text style={dynamicStyles.fieldLabel}>Account Status</Text>
-                <Text style={dynamicStyles.fieldSubLabel}>
-                  {isActive
-                    ? 'User can access the app'
-                    : 'User cannot access the app'}
+              <View style={styles.flex}>
+                <Text style={styles.fieldLabel}>{isActive ? 'Active' : 'Inactive'}</Text>
+                <Text style={styles.fieldSubLabel}>
+                  {isActive ? 'This user can use the app.' : "This user can't use the app."}
                 </Text>
               </View>
             </View>
             <Switch
               value={isActive}
               onValueChange={handleStatusToggle}
-              disabled={!canEdit || isSelfEdit || saving}
-              trackColor={{
-                false: colors.cellDivider,
-                true: colors.success,
-              }}
-              thumbColor={colors.cellBackground}
+              disabled={roleLocked || saving}
+              trackColor={{ false: t.control.trackOff, true: t.status.positive.element }}
+              thumbColor={t.control.thumb}
+              ios_backgroundColor={t.control.trackOff}
+              style={(roleLocked || saving) && styles.disabled}
+              accessibilityLabel="Account active"
+              accessibilityState={{ checked: isActive, disabled: roleLocked || saving }}
             />
           </View>
           {isSelfEdit && (
-            <Text style={dynamicStyles.helperText}>
-              You cannot deactivate your own account
-            </Text>
+            <Text style={styles.helperText}>You can't deactivate your own account.</Text>
           )}
         </View>
 
         {/* Customer Assignments Section */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={dynamicStyles.sectionTitle}>CUSTOMER ASSIGNMENTS</Text>
+            <Text style={[styles.sectionTitle, styles.sectionTitleInline]} accessibilityRole="header">
+              Customer assignments
+            </Text>
             {canEdit && (
               <Pressable
-                style={styles.addButton}
+                style={({ pressed }) => [styles.addButton, pressed && styles.addButtonPressed]}
                 onPress={() => setShowCustomerSearch(true)}
                 disabled={saving}
+                accessibilityRole="button"
+                accessibilityLabel="Assign customer"
+                accessibilityState={{ disabled: saving }}
               >
-                <Icon name="plus" size={20} color={colors.primary} />
-                <Text style={dynamicStyles.addButtonText}>Add</Text>
+                <Icon name="plus" size={iconSize.md} color={t.brand.tint} />
+                <Text style={styles.addButtonText}>Add</Text>
               </Pressable>
             )}
           </View>
 
           {assignedCustomers.length === 0 ? (
-            <View style={dynamicStyles.emptyAssignments}>
-              <Icon
-                name="account-multiple-outline"
-                size={48}
-                color={colors.textTertiary}
-              />
-              <Text style={dynamicStyles.emptyText}>No customers assigned</Text>
+            <View style={styles.emptyAssignments}>
+              <Icon name="account-multiple-outline" size={iconSize.xl} color={t.icon.secondary} />
+              <Text style={styles.emptyText}>No customers assigned yet.</Text>
               {canEdit && (
-                <Text style={dynamicStyles.emptySubText}>
-                  Tap "Add" to assign customers to this user
-                </Text>
+                <Text style={styles.emptySubText}>Tap Add to assign customers to this user.</Text>
               )}
             </View>
           ) : (
-            <View style={dynamicStyles.assignmentsList}>
-              {assignedCustomers.map((customer) => (
-                <View key={customer.customer_id} style={dynamicStyles.assignmentItem}>
-                  <View style={styles.assignmentContent}>
-                    <Text style={dynamicStyles.assignmentName}>
-                      {customer.customer_name}
-                    </Text>
-                    {(customer.customer_mobile || customer.customer_city) && (
-                      <Text style={dynamicStyles.assignmentMeta}>
-                        {[
-                          customer.customer_mobile &&
-                            `+91 ${customer.customer_mobile}`,
-                          customer.customer_city,
-                        ]
-                          .filter(Boolean)
-                          .join(' • ')}
-                      </Text>
+            <View style={styles.assignmentsList}>
+              {assignedCustomers.map((customer, index) => {
+                const meta = [
+                  customer.customer_mobile && formatMobile(customer.customer_mobile),
+                  customer.customer_city,
+                ]
+                  .filter(Boolean)
+                  .join(' · ');
+                return (
+                  <View
+                    key={customer.customer_id}
+                    style={[
+                      styles.assignmentItem,
+                      index === assignedCustomers.length - 1 && styles.assignmentItemLast,
+                    ]}
+                  >
+                    <View style={styles.flex} accessible accessibilityLabel={meta ? `${customer.customer_name}, ${meta}` : customer.customer_name}>
+                      <Text style={styles.assignmentName}>{customer.customer_name}</Text>
+                      {!!meta && <Text style={styles.assignmentMeta}>{meta}</Text>}
+                    </View>
+                    {canEdit && (
+                      <Pressable
+                        style={({ pressed }) => [styles.removeButton, pressed && styles.rowPressed]}
+                        onPress={() =>
+                          handleRemoveCustomer(customer.customer_id, customer.customer_name)
+                        }
+                        disabled={saving}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Remove ${customer.customer_name}`}
+                        accessibilityState={{ disabled: saving }}
+                      >
+                        <Icon name="close" size={iconSize.md} color={t.status.negative.text} />
+                      </Pressable>
                     )}
                   </View>
-                  {canEdit && (
-                    <Pressable
-                      style={styles.removeButton}
-                      onPress={() =>
-                        handleRemoveCustomer(
-                          customer.customer_id,
-                          customer.customer_name
-                        )
-                      }
-                      disabled={saving}
-                    >
-                      <Icon
-                        name="close-circle"
-                        size={24}
-                        color={colors.statusNegative}
-                      />
-                    </Pressable>
-                  )}
-                </View>
-              ))}
+                );
+              })}
             </View>
           )}
         </View>
 
         {/* Saving Indicator */}
         {saving && (
-          <View style={styles.savingOverlay}>
-            <ActivityIndicator size="small" color={colors.primary} />
-            <Text style={dynamicStyles.savingText}>Saving...</Text>
+          <View style={styles.savingOverlay} accessibilityRole="progressbar" accessibilityLabel="Saving">
+            <ActivityIndicator size="small" color={t.brand.tint} />
+            <Text style={styles.savingText}>Saving…</Text>
           </View>
         )}
       </ScrollView>
@@ -881,113 +609,312 @@ export default function UserEditScreen() {
         isVisible={showCustomerSearch}
         onClose={() => setShowCustomerSearch(false)}
         onSelect={handleAddCustomer}
-        title="Add Customer"
-        placeholder="Search customers by name..."
+        title="Assign customer"
+        placeholder="Search customers by name"
         searchFn={searchCustomers}
         renderItem={renderCustomerSearchItem}
         keyExtractor={(item) => item.id}
         emptyInitialText="Search for a customer"
-        emptySubText="Type at least 2 characters to search"
+        emptySubText="Type at least 2 letters to search."
       />
     </GestureHandlerRootView>
   );
 }
 
 // =============================================================================
-// STATIC STYLES (Layout only - colors in dynamicStyles)
+// HELPERS
 // =============================================================================
 
-const styles = StyleSheet.create({
-  // Header
-  backButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    minHeight: FIORI.dimensions.touchTarget,
-    paddingRight: FIORI.spacing.sm,
-    marginLeft: -FIORI.spacing.sm,
-  },
-  titleContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+/** "+91 98765 43210" for a stored 10-digit (or 91-prefixed) number. */
+function formatMobile(mobile: string): string {
+  const digits = mobile.replace(/\D/g, '').replace(/^91(?=\d{10}$)/, '');
+  if (digits.length !== 10) return `+91 ${digits}`;
+  return `+91 ${digits.slice(0, 5)} ${digits.slice(5)}`;
+}
 
-  // User Header
-  userHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  userInfo: {
+/** Stable avatar colour index for an id (style guide §3.2). */
+function avatarIndex(id: string, count: number): number {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) {
+    hash = (hash * 31 + id.charCodeAt(i)) | 0;
+  }
+  return Math.abs(hash) % count;
+}
+
+// =============================================================================
+// STYLES
+// =============================================================================
+
+const makeStyles = (t: ThemeTokens) => ({
+  flex: {
     flex: 1,
   },
-
-  // Sections
+  container: {
+    flex: 1,
+    backgroundColor: t.background.base,
+  },
+  centerContainer: {
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    paddingHorizontal: space.xxl,
+    gap: space.sm,
+  },
+  backButton: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    minHeight: touchTarget,
+    paddingRight: space.sm,
+    marginLeft: -space.sm,
+  },
+  backButtonText: {
+    ...typography.body,
+    color: t.brand.tint,
+    marginLeft: -space.xs,
+  },
+  title: {
+    ...typography.headline,
+    color: t.text.primary,
+    textAlign: 'center' as const,
+  },
+  loadingText: {
+    ...typography.subhead,
+    color: t.text.secondary,
+    marginTop: space.md,
+  },
+  errorTitle: {
+    ...typography.title3,
+    color: t.text.primary,
+    textAlign: 'center' as const,
+    marginTop: space.sm,
+  },
+  errorText: {
+    ...typography.subhead,
+    color: t.text.secondary,
+    textAlign: 'center' as const,
+    marginBottom: space.md,
+  },
+  retryButton: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    minHeight: touchTarget,
+    borderRadius: radius.button,
+    borderWidth: 1,
+    borderColor: t.border.button,
+    paddingHorizontal: space.xl,
+    gap: space.sm,
+  },
+  retryButtonPressed: {
+    backgroundColor: t.brand.subtle,
+  },
+  retryButtonText: {
+    ...typography.callout,
+    fontWeight: fontWeight.semibold,
+    color: t.brand.tint,
+  },
+  card: {
+    backgroundColor: t.surface.card,
+    marginHorizontal: layout.marginCompact,
+    marginTop: space.lg,
+    borderRadius: radius.card,
+    padding: space.lg,
+    ...t.shadow[2],
+  },
+  userHeader: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+  },
+  avatar: {
+    width: layout.avatar.lg,
+    height: layout.avatar.lg,
+    borderRadius: radius.pill,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    marginRight: space.md,
+  },
+  avatarText: {
+    ...typography.title2,
+    color: t.mode === 'light' ? t.text.primary : t.overlay.onImage,
+  },
+  userName: {
+    ...typography.title3,
+    color: t.text.primary,
+  },
+  userMobile: {
+    ...typography.subhead,
+    color: t.text.secondary,
+    marginTop: space.xs,
+    fontVariant: ['tabular-nums' as const],
+  },
   section: {
-    marginTop: FIORI.spacing.xl,
-    marginHorizontal: FIORI.spacing.lg,
+    marginTop: space.xxl,
+    marginHorizontal: layout.marginCompact,
   },
   sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: FIORI.spacing.sm,
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'center' as const,
   },
-
-  // Field Row
-  fieldRowDisabled: {
-    opacity: 0.7,
+  sectionTitle: {
+    ...typography.footnote,
+    textTransform: 'uppercase' as const,
+    letterSpacing: 0.5,
+    color: t.text.secondary,
+    marginBottom: space.sm,
+  },
+  sectionTitleInline: {
+    marginBottom: 0,
+    flex: 1,
+  },
+  fieldRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
+    backgroundColor: t.surface.card,
+    borderRadius: radius.card,
+    padding: space.lg,
+    gap: space.md,
+    minHeight: touchTarget + space.lg,
+    ...t.shadow[2],
+  },
+  rowPressed: {
+    backgroundColor: t.surface.cardPressed,
+  },
+  disabled: {
+    opacity: t.interaction.disabledOpacity,
   },
   fieldLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: FIORI.spacing.md,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.md,
     flex: 1,
   },
   fieldRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: FIORI.spacing.sm,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.sm,
   },
-
-  // Role Badge
+  fieldLabel: {
+    ...typography.body,
+    color: t.text.primary,
+  },
+  fieldSubLabel: {
+    ...typography.footnote,
+    color: t.text.secondary,
+    marginTop: space.xxs,
+  },
   roleBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 6,
+    paddingHorizontal: space.sm,
+    paddingVertical: space.xxs,
+    borderRadius: radius.field,
   },
   roleBadgeText: {
-    fontSize: 13,
-    fontWeight: '600',
+    ...typography.footnote,
+    fontWeight: fontWeight.semibold,
   },
-
-  // Add Button
+  helperText: {
+    ...typography.footnote,
+    color: t.text.secondary,
+    marginTop: space.sm,
+  },
   addButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.xs,
+    minHeight: touchTarget,
+    paddingHorizontal: space.sm,
+    borderRadius: radius.button,
   },
-
-  // Assignments
-  assignmentContent: {
-    flex: 1,
+  addButtonPressed: {
+    backgroundColor: t.brand.subtle,
+  },
+  addButtonText: {
+    ...typography.callout,
+    fontWeight: fontWeight.semibold,
+    color: t.brand.tint,
+  },
+  emptyAssignments: {
+    alignItems: 'center' as const,
+    paddingVertical: space.xl,
+    paddingHorizontal: space.lg,
+    backgroundColor: t.surface.card,
+    borderRadius: radius.card,
+    ...t.shadow[2],
+  },
+  emptyText: {
+    ...typography.body,
+    color: t.text.primary,
+    marginTop: space.md,
+    textAlign: 'center' as const,
+  },
+  emptySubText: {
+    ...typography.footnote,
+    color: t.text.secondary,
+    marginTop: space.xs,
+    textAlign: 'center' as const,
+  },
+  assignmentsList: {
+    backgroundColor: t.surface.card,
+    borderRadius: radius.card,
+    overflow: 'hidden' as const,
+    ...t.shadow[2],
+  },
+  assignmentItem: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    paddingLeft: space.lg,
+    paddingRight: space.xs,
+    paddingVertical: space.xs,
+    minHeight: layout.rowMinHeight,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.divider,
+  },
+  assignmentItemLast: {
+    borderBottomWidth: 0,
+  },
+  assignmentName: {
+    ...typography.body,
+    color: t.text.primary,
+  },
+  assignmentMeta: {
+    ...typography.footnote,
+    color: t.text.secondary,
+    marginTop: space.xxs,
   },
   removeButton: {
-    width: FIORI.dimensions.touchTarget,
-    height: FIORI.dimensions.touchTarget,
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: touchTarget,
+    height: touchTarget,
+    borderRadius: radius.button,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
   },
-
-  // Search Result
-  searchResultContent: {
-    flex: 1,
+  searchResultItem: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.md,
+    paddingHorizontal: layout.marginCompact,
+    paddingVertical: space.md,
+    minHeight: layout.rowMinHeight,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.divider,
   },
-
-  // Saving Overlay
+  searchResultName: {
+    ...typography.body,
+    color: t.text.primary,
+  },
+  searchResultMeta: {
+    ...typography.footnote,
+    color: t.text.secondary,
+    marginTop: space.xxs,
+  },
   savingOverlay: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: FIORI.spacing.md,
-    gap: FIORI.spacing.sm,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    paddingVertical: space.md,
+    gap: space.sm,
+  },
+  savingText: {
+    ...typography.footnote,
+    color: t.text.secondary,
   },
 });

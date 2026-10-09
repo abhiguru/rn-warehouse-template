@@ -98,15 +98,15 @@ export function getAggregationLabel(interval: string): string {
 }
 
 /**
- * Get period label for display
+ * Get period label for display (sentence case, guide §12.1)
  */
 export function getPeriodLabel(days: SensorHistoryPeriod): string {
   const labels: Record<SensorHistoryPeriod, string> = {
-    7: '7 Days',
-    14: '14 Days',
-    30: '30 Days',
-    90: '90 Days',
-    365: '1 Year',
+    7: '7 days',
+    14: '14 days',
+    30: '30 days',
+    90: '90 days',
+    365: '1 year',
   };
   return labels[days];
 }

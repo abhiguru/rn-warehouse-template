@@ -1,29 +1,22 @@
 /**
- * Customers Screen - 100% SAP Fiori Compliant
+ * Customers screen: list report (style guide §14.1).
  *
- * Based on SAP Fiori for iOS Design Guidelines
- * Features:
- * - Fiori Navigation Bar with back button
- * - Object Cell layout pattern for customer cards
- * - Semantic colors and typography
- * - Platform-specific shadows
- * - 44pt minimum touch targets
- * - Dark mode support via useFioriColors hook
+ * Object cells with an avatar, contact details and an Inactive status tag,
+ * an A–Z rail for quick navigation, pull to refresh, and loading, empty and
+ * error states. Colours come from the semantic tokens.
  */
 
 import React, { useCallback, useState, useEffect, useRef, useMemo } from 'react';
 import {
   View,
+  Text,
   FlatList,
   RefreshControl,
-  StyleSheet,
-  Platform,
   Pressable,
   ActivityIndicator,
   Alert,
   Vibration,
 } from 'react-native';
-import { Text } from 'react-native-paper';
 import { useIsFocused } from '@react-navigation/native';
 import { router, Stack } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -34,44 +27,17 @@ import {
   CustomerFilters,
   DEFAULT_CUSTOMER_FILTERS,
 } from '@/types/customer.types';
-import { useFioriColors, type FioriColors } from '@/theme/fioriColors';
-
-// Static design tokens (non-color)
-const FIORI_STATIC = {
-  spacing: {
-    xs: 4,
-    sm: 8,
-    md: 12,
-    lg: 16,
-    xl: 20,
-    xxl: 24,
-  },
-  typography: {
-    headline: { fontSize: 17, fontWeight: '600' as const },
-    body: { fontSize: 15, fontWeight: '400' as const },
-    caption: { fontSize: 13, fontWeight: '400' as const },
-    button: { fontSize: 17, fontWeight: '600' as const, letterSpacing: -0.41 },
-  },
-  dimensions: {
-    cardRadius: 12,
-    cardPadding: 16,
-    buttonHeight: 44,
-    buttonRadius: 8,
-    touchTarget: 44,
-    avatarSize: 48,
-  },
-  shadows: {
-    card: Platform.select({
-      ios: {
-        shadowColor: '#000000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.08,
-        shadowRadius: 3,
-      },
-      android: { elevation: 2 },
-    }),
-  },
-};
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import {
+  fontWeight,
+  iconSize,
+  layout,
+  radius,
+  space,
+  touchTarget,
+  typography,
+  type ThemeTokens,
+} from '@/theme/tokens';
 
 // =============================================================================
 // TYPES
@@ -96,7 +62,8 @@ const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
 export default function CustomersScreen() {
   const isFocused = useIsFocused();
   const insets = useSafeAreaInsets();
-  const FIORI = useFioriColors();
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
   const flatListRef = useRef<FlatList<CustomerListItem>>(null);
   const [activeLetter, setActiveLetter] = useState<string | null>(null);
   const [state, setState] = useState<ListState>({
@@ -197,14 +164,14 @@ export default function CustomersScreen() {
         } else {
           // Show error to user
           Alert.alert(
-            currentActive ? 'Cannot Deactivate' : 'Cannot Activate',
-            result.message || 'Operation failed',
+            currentActive ? "Couldn't deactivate the customer" : "Couldn't activate the customer",
+            result.message || 'Try again in a moment.',
             [{ text: 'OK' }]
           );
         }
       } catch (error) {
         console.error('[Customers] Toggle active error:', error);
-        Alert.alert('Error', 'An unexpected error occurred', [{ text: 'OK' }]);
+        Alert.alert("Couldn't update the customer", 'Check your connection and try again.', [{ text: 'OK' }]);
       }
     },
     []
@@ -298,10 +265,9 @@ export default function CustomersScreen() {
         customer={item}
         onPress={() => handleEditCustomer(item.id)}
         onToggleActive={() => handleInactivateCustomer(item.id, item.active)}
-        fipiColors={FIORI}
       />
     ),
-    [handleEditCustomer, handleInactivateCustomer, FIORI]
+    [handleEditCustomer, handleInactivateCustomer]
   );
 
   const keyExtractor = useCallback((item: CustomerListItem) => item.id, []);
@@ -309,11 +275,9 @@ export default function CustomersScreen() {
   const renderEmpty = useCallback(() => {
     if (state.loading) {
       return (
-        <View style={styles.emptyContainer}>
-          <ActivityIndicator size="large" color={FIORI.colors.tint} />
-          <Text style={[styles.emptyText, { color: FIORI.colors.textSecondary }]}>
-            Loading customers...
-          </Text>
+        <View style={styles.emptyContainer} accessibilityRole="progressbar" accessibilityLabel="Loading customers">
+          <ActivityIndicator size="large" color={t.brand.tint} />
+          <Text style={styles.emptyText}>Loading customers…</Text>
         </View>
       );
     }
@@ -322,26 +286,18 @@ export default function CustomersScreen() {
     if (state.error) {
       return (
         <View style={styles.emptyContainer} accessibilityRole="alert">
-          <View style={[styles.emptyIconContainer, { backgroundColor: FIORI.colors.backgroundSecondary }]}>
-            <Icon name="alert-circle-outline" size={64} color={FIORI.colors.textTertiary} />
-          </View>
-          <Text style={[styles.emptyTitle, { color: FIORI.colors.textPrimary }]}>Unable to load customers</Text>
-          <Text style={[styles.emptyText, { color: FIORI.colors.textSecondary }]}>
-            Check the connection and try again.
+          <Icon name="alert-circle-outline" size={iconSize.hero} color={t.status.negative.text} />
+          <Text style={styles.emptyTitle} accessibilityRole="header">
+            Couldn't load customers
           </Text>
+          <Text style={styles.emptyText}>Check your connection and try again.</Text>
           <Pressable
-            style={({ pressed }) => [
-              styles.primaryButton,
-              { backgroundColor: FIORI.colors.tint },
-              pressed && { backgroundColor: '#dd8200' },
-            ]}
+            style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryButtonPressed]}
             onPress={() => fetchCustomers(state.filters)}
             accessibilityRole="button"
           >
-            <Icon name="refresh" size={20} color={FIORI.colors.iconOnPrimary} />
-            <Text style={[styles.primaryButtonText, { color: FIORI.colors.iconOnPrimary }]}>
-              Retry
-            </Text>
+            <Icon name="refresh" size={iconSize.md} color={t.brand.tint} />
+            <Text style={styles.secondaryButtonText}>Try again</Text>
           </Pressable>
         </View>
       );
@@ -349,29 +305,22 @@ export default function CustomersScreen() {
 
     return (
       <View style={styles.emptyContainer}>
-        <View style={[styles.emptyIconContainer, { backgroundColor: FIORI.colors.backgroundSecondary }]}>
-          <Icon name="account-group-outline" size={64} color={FIORI.colors.textTertiary} />
-        </View>
-        <Text style={[styles.emptyTitle, { color: FIORI.colors.textPrimary }]}>No Customers</Text>
-        <Text style={[styles.emptyText, { color: FIORI.colors.textSecondary }]}>
-          No customers found. Create one to get started.
+        <Icon name="account-group-outline" size={iconSize.hero} color={t.icon.secondary} />
+        <Text style={styles.emptyTitle} accessibilityRole="header">
+          No customers yet
         </Text>
+        <Text style={styles.emptyText}>Customers you add appear here.</Text>
         <Pressable
-          style={({ pressed }) => [
-            styles.primaryButton,
-            { backgroundColor: FIORI.colors.tint },
-            pressed && { backgroundColor: '#dd8200' },
-          ]}
+          style={({ pressed }) => [styles.primaryButton, pressed && styles.primaryButtonPressed]}
           onPress={handleAddCustomer}
+          accessibilityRole="button"
         >
-          <Icon name="plus" size={20} color={FIORI.colors.iconOnPrimary} />
-          <Text style={[styles.primaryButtonText, { color: FIORI.colors.iconOnPrimary }]}>
-            Add Customer
-          </Text>
+          <Icon name="plus" size={iconSize.md} color={t.brand.onFill} />
+          <Text style={styles.primaryButtonText}>Add customer</Text>
         </Pressable>
       </View>
     );
-  }, [state.loading, state.error, state.filters, fetchCustomers, handleAddCustomer, FIORI]);
+  }, [state.loading, state.error, state.filters, fetchCustomers, handleAddCustomer, styles, t]);
 
   return (
     <>
@@ -380,30 +329,29 @@ export default function CustomersScreen() {
         options={{
           headerShown: true,
           headerStyle: {
-            backgroundColor: FIORI.colors.cardBackground,
+            backgroundColor: t.surface.header,
           },
-          headerTintColor: FIORI.colors.tint,
+          headerShadowVisible: false,
+          headerTintColor: t.brand.tint,
           headerTitleAlign: 'center',
           headerLeft: () => (
             <Pressable
               onPress={() => router.back()}
               style={styles.backButton}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              hitSlop={space.sm}
               accessibilityRole="button"
-              accessibilityLabel="Go back"
+              accessibilityLabel="Back"
             >
-              <Icon name="chevron-left" size={28} color={FIORI.colors.tint} />
-              <Text style={[styles.backButtonText, { color: FIORI.colors.tint }]}>Back</Text>
+              <Icon name="chevron-left" size={iconSize.xl} color={t.brand.tint} />
+              <Text style={styles.backButtonText}>Back</Text>
             </Pressable>
           ),
           headerTitle: () => (
-            <View style={styles.titleContainer}>
-              <Text style={[styles.headerTitle, { color: FIORI.colors.textPrimary }]}>
-                Customers
-              </Text>
+            <View style={styles.titleContainer} accessible accessibilityRole="header">
+              <Text style={styles.headerTitle}>Customers</Text>
               {state.totalCount > 0 && (
-                <Text style={[styles.headerSubtitle, { color: FIORI.colors.textSecondary }]}>
-                  {state.totalCount} total
+                <Text style={styles.headerSubtitle}>
+                  {formatCount(state.totalCount)} total
                 </Text>
               )}
             </View>
@@ -412,17 +360,17 @@ export default function CustomersScreen() {
             <Pressable
               onPress={handleAddCustomer}
               style={styles.addButton}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              hitSlop={space.sm}
               accessibilityRole="button"
               accessibilityLabel="Add customer"
             >
-              <Icon name="plus" size={24} color={FIORI.colors.tint} />
+              <Icon name="plus" size={iconSize.lg} color={t.brand.tint} />
             </Pressable>
           ),
         }}
       />
 
-      <View style={[styles.container, { backgroundColor: FIORI.colors.background }]}>
+      <View style={styles.container}>
         <View style={styles.listWithRail}>
           <FlatList
             ref={flatListRef}
@@ -431,20 +379,20 @@ export default function CustomersScreen() {
             keyExtractor={keyExtractor}
             contentContainerStyle={[
               styles.listContent,
-              { paddingBottom: FIORI_STATIC.spacing.xl + insets.bottom },
+              { paddingBottom: space.xl + insets.bottom },
               state.data.length === 0 && styles.listContentEmpty,
             ]}
             refreshControl={
               <RefreshControl
                 refreshing={state.refreshing}
                 onRefresh={handleRefresh}
-                colors={[FIORI.colors.tint]}
-                tintColor={FIORI.colors.tint}
+                colors={[t.brand.tint]}
+                tintColor={t.brand.tint}
+                progressBackgroundColor={t.surface.card}
               />
             }
             ListEmptyComponent={renderEmpty}
             showsVerticalScrollIndicator={false}
-            ItemSeparatorComponent={() => <View style={styles.separator} />}
             onScrollToIndexFailed={handleScrollToIndexFailed}
             style={styles.flatList}
           />
@@ -456,7 +404,6 @@ export default function CustomersScreen() {
               availableLetters={availableLetters}
               activeLetter={activeLetter}
               onLetterPress={scrollToLetter}
-              fioriColors={FIORI}
             />
           )}
         </View>
@@ -466,15 +413,26 @@ export default function CustomersScreen() {
 }
 
 // =============================================================================
-// FIORI CUSTOMER CARD COMPONENT (Object Cell Layout)
-// Based on SAP Fiori for iOS Design Guidelines
+// HELPERS
 // =============================================================================
 
-interface FioriCustomerCardProps {
-  customer: CustomerListItem;
-  onPress: () => void;
-  onToggleActive: () => void;
-  fipiColors: FioriColors;
+const countFormat = new Intl.NumberFormat('en-IN');
+const formatCount = (n: number) => countFormat.format(n);
+
+/** "+91 98765 43210" for a stored 10-digit (or 91-prefixed) number. */
+function formatMobile(mobile: string): string {
+  const digits = mobile.replace(/\D/g, '').replace(/^91(?=\d{10}$)/, '');
+  if (digits.length !== 10) return `+91 ${digits}`;
+  return `+91 ${digits.slice(0, 5)} ${digits.slice(5)}`;
+}
+
+/** Stable avatar colour index for an id (style guide §3.2). */
+function avatarIndex(id: string, count: number): number {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) {
+    hash = (hash * 31 + id.charCodeAt(i)) | 0;
+  }
+  return Math.abs(hash) % count;
 }
 
 // =============================================================================
@@ -487,7 +445,6 @@ interface AlphabeticalRailProps {
   availableLetters: Set<string>;
   activeLetter: string | null;
   onLetterPress: (letter: string) => void;
-  fioriColors: FioriColors;
 }
 
 function AlphabeticalRail({
@@ -495,8 +452,8 @@ function AlphabeticalRail({
   availableLetters,
   activeLetter,
   onLetterPress,
-  fioriColors: FIORI,
 }: AlphabeticalRailProps) {
+  const styles = useThemedStyles(makeStyles);
   return (
     <View style={styles.alphabetRail}>
       {letters.map((letter) => {
@@ -507,18 +464,18 @@ function AlphabeticalRail({
           <Pressable
             key={letter}
             onPress={() => onLetterPress(letter)}
-            style={[
-              styles.letterItem,
-              isActive && { backgroundColor: FIORI.colors.tint, borderRadius: 8 },
-            ]}
+            style={[styles.letterItem, isActive && styles.letterItemActive]}
+            accessibilityRole="button"
+            accessibilityLabel={`Jump to ${letter}`}
+            accessibilityState={{ disabled: !hasLoadedCustomers, selected: isActive }}
           >
             <Text
               style={[
                 styles.letterText,
-                { color: FIORI.colors.tint },
                 !hasLoadedCustomers && styles.letterTextDisabled,
-                isActive && { color: FIORI.colors.iconOnPrimary },
+                isActive && styles.letterTextActive,
               ]}
+              maxFontSizeMultiplier={1.2}
             >
               {letter}
             </Text>
@@ -529,108 +486,81 @@ function AlphabeticalRail({
   );
 }
 
-function FioriCustomerCard({
-  customer,
-  onPress,
-  onToggleActive,
-  fipiColors: FIORI,
-}: FioriCustomerCardProps) {
+// =============================================================================
+// FIORI CUSTOMER CARD COMPONENT (Object Cell Layout)
+// =============================================================================
+
+interface FioriCustomerCardProps {
+  customer: CustomerListItem;
+  onPress: () => void;
+  onToggleActive: () => void;
+}
+
+function FioriCustomerCard({ customer, onPress, onToggleActive }: FioriCustomerCardProps) {
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
+  const avatarColor = t.avatar[avatarIndex(customer.id, t.avatar.length)];
+  const mobile = customer.mobile ? formatMobile(customer.mobile) : null;
+  const rowLabel = [
+    customer.name,
+    customer.active ? null : 'Inactive',
+    mobile,
+    customer.city,
+    customer.email,
+  ]
+    .filter(Boolean)
+    .join(', ');
+
   return (
     <Pressable
-      style={({ pressed }) => [
-        styles.card,
-        {
-          backgroundColor: FIORI.colors.cardBackground,
-          borderColor: FIORI.colors.divider,
-        },
-        !customer.active && { backgroundColor: FIORI.colors.backgroundSecondary },
-        pressed && { backgroundColor: FIORI.colors.cardBackgroundPressed },
-      ]}
+      style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
       onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={rowLabel}
+      accessibilityHint="Opens the customer for editing"
     >
       {/* Fiori Object Cell: Leading Avatar */}
       <View
-        style={[
-          styles.avatar,
-          { backgroundColor: FIORI.colors.tintLight },
-          !customer.active && { backgroundColor: FIORI.colors.divider },
-        ]}
+        style={[styles.avatar, { backgroundColor: avatarColor }]}
+        accessibilityElementsHidden
+        importantForAccessibility="no-hide-descendants"
       >
-        <Text
-          style={[
-            styles.avatarText,
-            { color: FIORI.colors.tint },
-            !customer.active && { color: FIORI.colors.textTertiary },
-          ]}
-        >
-          {(customer.name || 'C').charAt(0).toUpperCase()}
-        </Text>
+        <Text style={styles.avatarText}>{(customer.name || 'C').charAt(0).toUpperCase()}</Text>
       </View>
 
       {/* Fiori Object Cell: Main Content */}
       <View style={styles.cardContent}>
         {/* Headline - Customer Name */}
-        <View style={styles.headlineRow}>
-          <Text
-            style={[
-              styles.headline,
-              { color: FIORI.colors.textPrimary },
-              !customer.active && { color: FIORI.colors.textTertiary },
-            ]}
-            numberOfLines={1}
-          >
-            {customer.name}
-          </Text>
-          {!customer.active && (
-            <View style={[styles.statusBadge, { backgroundColor: FIORI.colors.destructiveLight }]}>
-              <Text style={[styles.statusBadgeText, { color: FIORI.colors.destructive }]}>
-                Inactive
-              </Text>
-            </View>
-          )}
-        </View>
+        <Text style={[styles.headline, !customer.active && styles.textInactive]} numberOfLines={2}>
+          {customer.name}
+        </Text>
+        {!customer.active && (
+          <View style={styles.statusBadge}>
+            <Icon name="circle-outline" size={iconSize.sm - 4} color={t.status.neutral.text} />
+            <Text style={styles.statusBadgeText} maxFontSizeMultiplier={1.6}>
+              Inactive
+            </Text>
+          </View>
+        )}
 
         {/* Subheadline - Contact Details */}
         <View style={styles.attributeStack}>
-          {customer.mobile && (
+          {mobile && (
             <View style={styles.attributeRow}>
-              <Icon name="phone" size={14} color={FIORI.colors.textTertiary} />
-              <Text
-                style={[
-                  styles.attributeText,
-                  { color: FIORI.colors.textSecondary },
-                  !customer.active && { color: FIORI.colors.textTertiary },
-                ]}
-              >
-                +91 {customer.mobile}
-              </Text>
+              <Icon name="phone-outline" size={iconSize.sm} color={t.icon.secondary} />
+              <Text style={styles.attributeText}>{mobile}</Text>
             </View>
           )}
           {customer.city && (
             <View style={styles.attributeRow}>
-              <Icon name="map-marker" size={14} color={FIORI.colors.textTertiary} />
-              <Text
-                style={[
-                  styles.attributeText,
-                  { color: FIORI.colors.textSecondary },
-                  !customer.active && { color: FIORI.colors.textTertiary },
-                ]}
-              >
-                {customer.city}
-              </Text>
+              <Icon name="map-marker-outline" size={iconSize.sm} color={t.icon.secondary} />
+              <Text style={styles.attributeText}>{customer.city}</Text>
             </View>
           )}
           {customer.email && (
             <View style={styles.attributeRow}>
-              <Icon name="email-outline" size={14} color={FIORI.colors.textTertiary} />
-              <Text
-                style={[
-                  styles.attributeText,
-                  { color: FIORI.colors.textSecondary },
-                  !customer.active && { color: FIORI.colors.textTertiary },
-                ]}
-                numberOfLines={1}
-              >
+              <Icon name="email-outline" size={iconSize.sm} color={t.icon.secondary} />
+              <Text style={styles.attributeText} numberOfLines={1}>
                 {customer.email}
               </Text>
             </View>
@@ -641,238 +571,267 @@ function FioriCustomerCard({
       {/* Fiori Object Cell: Trailing Actions */}
       <View style={styles.trailingActions}>
         <Pressable
-          style={({ pressed }) => [
-            styles.actionButton,
-            { backgroundColor: FIORI.colors.backgroundSecondary },
-            pressed && { backgroundColor: FIORI.colors.divider },
-          ]}
+          style={({ pressed }) => [styles.actionButton, pressed && styles.actionButtonPressed]}
           onPress={onToggleActive}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           accessibilityRole="button"
-          accessibilityLabel={customer.active ? 'Deactivate customer' : 'Activate customer'}
+          accessibilityLabel={
+            customer.active ? `Deactivate ${customer.name}` : `Activate ${customer.name}`
+          }
         >
           <Icon
             name={customer.active ? 'eye-off-outline' : 'eye-outline'}
-            size={20}
-            color={customer.active ? FIORI.colors.textTertiary : FIORI.colors.success}
+            size={iconSize.md}
+            color={customer.active ? t.icon.primary : t.status.positive.text}
           />
         </Pressable>
-        <Icon name="chevron-right" size={20} color={FIORI.colors.textTertiary} />
+        <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />
       </View>
     </Pressable>
   );
 }
 
-
 // =============================================================================
-// FIORI MAIN STYLES
-// Based on SAP Fiori for iOS Design Guidelines
-// Colors applied inline for dark mode support
+// STYLES
 // =============================================================================
 
-const styles = StyleSheet.create({
-  // Container (colors applied inline)
+const makeStyles = (t: ThemeTokens) => ({
   container: {
     flex: 1,
+    backgroundColor: t.background.base,
   },
   listWithRail: {
     flex: 1,
-    flexDirection: 'row',
+    flexDirection: 'row' as const,
   },
   flatList: {
     flex: 1,
   },
   listContent: {
-    paddingTop: FIORI_STATIC.spacing.md,
+    paddingTop: space.md,
     paddingRight: 44, // Make room for the rail
   },
   listContentEmpty: {
     flex: 1,
   },
-  separator: {
-    height: 0,
-  },
 
   // Alphabetical Rail
   alphabetRail: {
-    position: 'absolute',
-    right: 2,
+    position: 'absolute' as const,
+    right: space.xxs,
     top: 0,
     bottom: 0,
     width: 40,
-    justifyContent: 'space-evenly',
-    alignItems: 'center',
+    justifyContent: 'space-evenly' as const,
+    alignItems: 'center' as const,
   },
   letterItem: {
     width: 40,
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+  },
+  letterItemActive: {
+    backgroundColor: t.brand.fill,
+    borderRadius: radius.button,
   },
   letterText: {
-    fontSize: 16,
-    fontWeight: '700',
-    textAlign: 'center',
+    ...typography.footnote,
+    fontWeight: fontWeight.bold,
+    textAlign: 'center' as const,
+    color: t.brand.tint,
   },
   letterTextDisabled: {
-    opacity: 0.3,
+    color: t.text.disabled,
+  },
+  letterTextActive: {
+    color: t.brand.onFill,
   },
 
   // Header styles
   backButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    minHeight: FIORI_STATIC.dimensions.touchTarget,
-    paddingRight: FIORI_STATIC.spacing.sm,
-    marginLeft: -FIORI_STATIC.spacing.sm,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    minHeight: touchTarget,
+    paddingRight: space.sm,
+    marginLeft: -space.sm,
   },
   backButtonText: {
-    ...FIORI_STATIC.typography.body,
-    marginLeft: -4,
+    ...typography.body,
+    color: t.brand.tint,
+    marginLeft: -space.xs,
   },
   titleContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
   },
   headerTitle: {
-    ...FIORI_STATIC.typography.headline,
-    letterSpacing: -0.41,
-    textAlign: 'center',
+    ...typography.headline,
+    color: t.text.primary,
+    textAlign: 'center' as const,
   },
   headerSubtitle: {
-    ...FIORI_STATIC.typography.caption,
-    textAlign: 'center',
-    marginTop: 2,
+    ...typography.caption1,
+    color: t.text.secondary,
+    textAlign: 'center' as const,
   },
   addButton: {
-    minWidth: FIORI_STATIC.dimensions.touchTarget,
-    minHeight: FIORI_STATIC.dimensions.touchTarget,
-    alignItems: 'center',
-    justifyContent: 'center',
+    minWidth: touchTarget,
+    minHeight: touchTarget,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
   },
 
-  // Fiori Object Cell Card (colors applied inline)
+  // Object cell
   card: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: FIORI_STATIC.dimensions.cardRadius,
-    padding: FIORI_STATIC.dimensions.cardPadding,
-    marginHorizontal: FIORI_STATIC.spacing.lg,
-    marginBottom: FIORI_STATIC.spacing.md,
-    borderWidth: 1,
-    minHeight: FIORI_STATIC.dimensions.touchTarget * 2,
-    ...FIORI_STATIC.shadows.card,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    borderRadius: radius.card,
+    padding: space.lg,
+    marginHorizontal: layout.marginCompact,
+    marginBottom: space.sm,
+    minHeight: layout.objectCellMinHeight,
+    backgroundColor: t.surface.card,
+    ...t.shadow[2],
+  },
+  cardPressed: {
+    backgroundColor: t.surface.cardPressed,
   },
 
-  // Avatar (colors applied inline)
+  // Avatar
   avatar: {
-    width: FIORI_STATIC.dimensions.avatarSize,
-    height: FIORI_STATIC.dimensions.avatarSize,
-    borderRadius: FIORI_STATIC.dimensions.avatarSize / 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: FIORI_STATIC.spacing.md,
+    width: layout.avatar.md,
+    height: layout.avatar.md,
+    borderRadius: radius.pill,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    marginRight: space.md,
   },
   avatarText: {
-    fontSize: 20,
-    fontWeight: '600',
+    ...typography.headline,
+    color: t.mode === 'light' ? t.text.primary : t.overlay.onImage,
   },
 
   // Card Content
   cardContent: {
     flex: 1,
-    marginRight: FIORI_STATIC.spacing.sm,
-  },
-  headlineRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: FIORI_STATIC.spacing.sm,
-    marginBottom: FIORI_STATIC.spacing.xs,
+    marginRight: space.sm,
+    gap: space.xs,
   },
   headline: {
-    ...FIORI_STATIC.typography.headline,
-    flex: 1,
+    ...typography.headline,
+    color: t.text.primary,
+  },
+  textInactive: {
+    color: t.text.secondary,
   },
 
-  // Status Badge (colors applied inline)
+  // Status tag
   statusBadge: {
-    paddingHorizontal: FIORI_STATIC.spacing.sm,
-    paddingVertical: 2,
-    borderRadius: 10,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    alignSelf: 'flex-start' as const,
+    gap: space.xs,
+    paddingHorizontal: space.s6,
+    paddingVertical: space.xxs,
+    borderRadius: radius.field,
+    backgroundColor: t.status.neutral.background,
   },
   statusBadgeText: {
-    fontSize: 11,
-    fontWeight: '600',
-    letterSpacing: 0.3,
+    ...typography.caption1,
+    fontWeight: fontWeight.semibold,
+    color: t.status.neutral.text,
   },
 
   // Attribute Stack
   attributeStack: {
-    gap: FIORI_STATIC.spacing.xs,
+    gap: space.xs,
   },
   attributeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: FIORI_STATIC.spacing.xs,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.xs,
   },
   attributeText: {
-    ...FIORI_STATIC.typography.caption,
+    ...typography.subhead,
+    color: t.text.secondary,
     flex: 1,
   },
 
-  // Trailing Actions (colors applied inline)
+  // Trailing Actions
   trailingActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: FIORI_STATIC.spacing.sm,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.xs,
   },
   actionButton: {
-    width: FIORI_STATIC.dimensions.touchTarget,
-    height: FIORI_STATIC.dimensions.touchTarget,
-    borderRadius: FIORI_STATIC.dimensions.buttonRadius,
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: touchTarget,
+    height: touchTarget,
+    borderRadius: radius.button,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+  },
+  actionButtonPressed: {
+    backgroundColor: t.surface.cardPressed,
   },
 
-  // Empty State (colors applied inline)
+  // Empty / error / loading states
   emptyContainer: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: FIORI_STATIC.spacing.xxl,
-    paddingVertical: FIORI_STATIC.spacing.xxl * 2,
-  },
-  emptyIconContainer: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: FIORI_STATIC.spacing.lg,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    gap: space.sm,
+    paddingHorizontal: space.xxl,
+    paddingVertical: space.giant,
   },
   emptyTitle: {
-    ...FIORI_STATIC.typography.headline,
-    fontSize: 20,
-    marginBottom: FIORI_STATIC.spacing.sm,
-    textAlign: 'center',
+    ...typography.title3,
+    color: t.text.primary,
+    textAlign: 'center' as const,
+    marginTop: space.sm,
   },
   emptyText: {
-    ...FIORI_STATIC.typography.body,
-    textAlign: 'center',
-    marginBottom: FIORI_STATIC.spacing.xl,
+    ...typography.subhead,
+    color: t.text.secondary,
+    textAlign: 'center' as const,
+    marginBottom: space.md,
   },
 
-  // Primary Button (colors applied inline)
+  // Buttons
   primaryButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    height: FIORI_STATIC.dimensions.buttonHeight,
-    borderRadius: FIORI_STATIC.dimensions.buttonRadius,
-    paddingHorizontal: FIORI_STATIC.spacing.xl,
-    gap: FIORI_STATIC.spacing.sm,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    minHeight: touchTarget,
+    borderRadius: radius.button,
+    paddingHorizontal: space.xl,
+    gap: space.sm,
+    backgroundColor: t.brand.fill,
+  },
+  primaryButtonPressed: {
+    backgroundColor: t.brand.fillPressed,
   },
   primaryButtonText: {
-    ...FIORI_STATIC.typography.button,
+    ...typography.callout,
+    fontWeight: fontWeight.semibold,
+    color: t.brand.onFill,
+  },
+  secondaryButton: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    minHeight: touchTarget,
+    borderRadius: radius.button,
+    borderWidth: 1,
+    borderColor: t.border.button,
+    paddingHorizontal: space.xl,
+    gap: space.sm,
+  },
+  secondaryButtonPressed: {
+    backgroundColor: t.brand.subtle,
+  },
+  secondaryButtonText: {
+    ...typography.callout,
+    fontWeight: fontWeight.semibold,
+    color: t.brand.tint,
   },
 });

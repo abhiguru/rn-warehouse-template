@@ -6,16 +6,33 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { View, ActivityIndicator, Text, StyleSheet } from 'react-native';
+import { View, ActivityIndicator, Text } from 'react-native';
 import { Stack, useLocalSearchParams, router } from 'expo-router';
 import { useAppDispatch } from '@/store/hooks';
 import { setMode, setCustomerId, setIsLoading } from '@/store/slices/customerFormSlice';
-import theme from '@/theme';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { space, typography, type ThemeTokens } from '@/theme/tokens';
+
+const makeStyles = (t: ThemeTokens) => ({
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    backgroundColor: t.background.base,
+  },
+  loadingText: {
+    ...typography.subhead,
+    marginTop: space.md,
+    color: t.text.secondary,
+  },
+});
 
 export default function CustomerEditLayout() {
   const dispatch = useAppDispatch();
   const { id } = useLocalSearchParams<{ id: string }>();
   const [isReady, setIsReady] = useState(false);
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
 
   useEffect(() => {
     if (!id) {
@@ -37,9 +54,9 @@ export default function CustomerEditLayout() {
   // Show loading while initializing
   if (!isReady) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={theme.colors.primary[500]} />
-        <Text style={styles.loadingText}>Loading customer...</Text>
+      <View style={styles.loadingContainer} accessibilityRole="progressbar" accessibilityLabel="Loading customer">
+        <ActivityIndicator size="large" color={t.brand.tint} />
+        <Text style={styles.loadingText}>Loading customer…</Text>
       </View>
     );
   }
@@ -52,17 +69,3 @@ export default function CustomerEditLayout() {
     </Stack>
   );
 }
-
-const styles = StyleSheet.create({
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: theme.colors.gray[50],
-  },
-  loadingText: {
-    marginTop: 12,
-    fontSize: 15,
-    color: theme.colors.gray[600],
-  },
-});

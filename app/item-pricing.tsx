@@ -7,7 +7,6 @@ import {
   StyleSheet,
   RefreshControl,
   Alert,
-  Platform,
   Pressable,
   LayoutAnimation,
   ActivityIndicator,
@@ -16,8 +15,18 @@ import {
 import { router } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
-import { useListColors } from '@/hooks/useListColors';
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import {
+  fontWeight,
+  iconSize,
+  layout,
+  radius,
+  space,
+  touchTarget,
+  typography,
+  type ThemeTokens,
+} from '@/theme/tokens';
 import { getItemStoragePrices, deleteItemStoragePrice } from '@/services/item-pricing-service';
 import type { ItemStoragePrice, ItemPricingFilters, ItemPricingListParams } from '@/types/item-pricing.types';
 import { useFilterState } from '@/hooks/useFilterState';
@@ -32,15 +41,6 @@ import { createLogger } from '@/utils/logger';
 
 const itemPricingScreenLogger = createLogger('ItemPricingScreen');
 
-const FIORI = {
-  header: { height: 56, paddingHorizontal: 20 },
-  button: { height: 44, borderRadius: 8 },
-  avatar: { size: 40 },
-  badge: { minSize: 18 },
-  chip: { height: 32, borderRadius: 16 },
-  modal: { width: 320, borderRadius: 16, padding: 24 },
-} as const;
-
 // Section type for grouped pricing data
 interface PricingSection {
   title: string;
@@ -53,14 +53,14 @@ interface PricingSection {
 const itemPricingFilterConfig: FilterConfig = {
   persistKey: 'item-pricing-list',
   debounceMs: 500,
-  title: 'Filter Item Prices',
+  title: 'Filter prices',
   fields: [
     {
       type: 'autocomplete',
       key: 'itemIds',
       label: 'Item',
       autocompleteType: 'item',
-      placeholder: 'Search items...',
+      placeholder: 'Search items',
       icon: 'package-variant',
       multiSelect: true,
       renderAsChips: true,
@@ -70,7 +70,7 @@ const itemPricingFilterConfig: FilterConfig = {
       key: 'customerIds',
       label: 'Customer',
       autocompleteType: 'customer',
-      placeholder: 'Search customers...',
+      placeholder: 'Search customers',
       icon: 'account',
       multiSelect: true,
       renderAsChips: true,
@@ -78,7 +78,7 @@ const itemPricingFilterConfig: FilterConfig = {
     {
       type: 'radio',
       key: 'priceType',
-      label: 'Price Type',
+      label: 'Price type',
       icon: 'tag-outline',
       options: [
         { label: 'All', value: '' },
@@ -90,7 +90,7 @@ const itemPricingFilterConfig: FilterConfig = {
     {
       type: 'number-range',
       key: ['weightMin', 'weightMax'],
-      label: 'Weight Range (kg)',
+      label: 'Weight range (kg)',
       icon: 'weight-kilogram',
       placeholder: ['Min weight', 'Max weight'],
       minValue: 0,
@@ -98,18 +98,18 @@ const itemPricingFilterConfig: FilterConfig = {
     {
       type: 'date-range',
       key: ['effectiveFrom', 'effectiveTo'],
-      label: 'Effective Date Range',
+      label: 'Effective dates',
       icon: 'calendar-range',
       placeholder: ['From date', 'To date'],
     },
     {
       type: 'radio',
       key: 'includeExpired',
-      label: 'Show Expired Prices',
+      label: 'Expired prices',
       icon: 'clock-alert-outline',
       options: [
-        { label: 'Active Only', value: 'false' },
-        { label: 'Include Expired', value: 'true' },
+        { label: 'Active only', value: 'false' },
+        { label: 'Include expired', value: 'true' },
       ],
       defaultValue: 'false',
     },
@@ -120,7 +120,8 @@ const itemPricingFilterConfig: FilterConfig = {
 const ItemPricingScreen: React.FC = () => {
   const { userProfile } = useAppSelector((state) => state.auth);
   const insets = useSafeAreaInsets();
-  const colors = useListColors();
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
 
   // State
   const [data, setData] = useState<ItemStoragePrice[]>([]);
@@ -283,13 +284,13 @@ const ItemPricingScreen: React.FC = () => {
             offset: offset,
           });
         } else {
-          const errorMsg = result.message || result.error || 'Failed to load item prices';
+          const errorMsg = result.message || result.error || 'Check your connection and try again.';
           const totalDuration = Date.now() - startTime;
           itemPricingScreenLogger.warn(`[${fetchId}] Fetch failed after ${totalDuration}ms`, {
             success: result.success,
             message: errorMsg
           });
-          Alert.alert('Error', errorMsg);
+          Alert.alert("Couldn't load prices", errorMsg);
         }
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : String(err);
@@ -298,7 +299,7 @@ const ItemPricingScreen: React.FC = () => {
           error: errorMessage,
           type: typeof err
         });
-        Alert.alert('Error', 'Failed to load item prices. Please try again.');
+        Alert.alert("Couldn't load prices", 'Check your connection and try again.');
       } finally {
         const totalDuration = Date.now() - startTime;
         itemPricingScreenLogger.info(`[${fetchId}] === TOTAL LOAD TIME: ${totalDuration}ms ===`);
@@ -330,12 +331,12 @@ const ItemPricingScreen: React.FC = () => {
         setDeleteDialogVisible(false);
         setPriceToDelete(null);
       } else {
-        Alert.alert('Error', result.message || 'Failed to delete item price');
+        Alert.alert("Couldn't delete the price", result.message || 'Try again in a moment.');
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);
       itemPricingScreenLogger.error('Delete error:', { error: errorMessage, type: typeof err });
-      Alert.alert('Error', 'Failed to delete item price. Please try again.');
+      Alert.alert("Couldn't delete the price", 'Check your connection and try again.');
     } finally {
       setDeleting(false);
     }
@@ -400,126 +401,106 @@ const ItemPricingScreen: React.FC = () => {
     }
   }, [pagination, loadingMore, loading, fetchItemPrices]);
 
+  // Applied filter chip (style guide §13.5 FilterChip)
+  const renderFilterChip = (key: string, label: string, onRemove: () => void) => (
+    <View key={key} style={styles.filterChip}>
+      <Text style={styles.filterChipText} maxFontSizeMultiplier={1.6}>
+        {label}
+      </Text>
+      <Pressable
+        onPress={onRemove}
+        style={styles.filterChipRemove}
+        accessibilityRole="button"
+        accessibilityLabel={`Remove filter ${label}`}
+      >
+        <Icon name="close" size={iconSize.sm} color={t.brand.tint} />
+      </Pressable>
+    </View>
+  );
+
   // Helper function to render applied filters
-  const renderAppliedFilters = useCallback(() => {
+  const renderAppliedFilters = () => {
     if (activeFilterCount === 0) return null;
 
+    const priceType = getStringValue(filters.priceType);
+    const weightMin = getNumberValue(filters.weightMin);
+    const weightMax = getNumberValue(filters.weightMax);
+    const effectiveFrom = getStringValue(filters.effectiveFrom);
+    const effectiveTo = getStringValue(filters.effectiveTo);
+
     return (
-      <View style={[styles.appliedFiltersContainer, { backgroundColor: colors.cellBackground, borderBottomColor: colors.gray100 }]}>
+      <View style={styles.appliedFiltersContainer}>
         <View style={styles.appliedFiltersHeader}>
-          <Text style={[styles.appliedFiltersTitle, { color: colors.textSecondary }]}>Active Filters ({activeFilterCount})</Text>
-          <Pressable onPress={clearAllFilters}>
-            <Text style={[styles.clearAllText, { color: colors.primary }]}>Clear All</Text>
+          <Text style={styles.appliedFiltersTitle} accessibilityRole="header">
+            Filters ({activeFilterCount})
+          </Text>
+          <Pressable
+            onPress={clearAllFilters}
+            style={styles.clearAllButton}
+            accessibilityRole="button"
+            accessibilityLabel="Clear all filters"
+          >
+            <Text style={styles.clearAllText}>Clear all</Text>
           </Pressable>
         </View>
         <View style={styles.appliedFiltersList}>
-          {/* Item Chips */}
-          {getAutocompleteSelections(filters.itemIds).map((item) => (
-            <View key={`item-${item.id}`} style={[styles.filterChip, { backgroundColor: colors.primaryLight, borderColor: colors.primary }]}>
-              <Text style={[styles.filterChipText, { color: colors.primary }]}>Item: {item.label}</Text>
-              <Pressable
-                onPress={() => {
-                  const newSelections = getAutocompleteSelections(filters.itemIds).filter(
-                    (i) => i.id !== item.id
-                  );
-                  updateFilter('itemIds', newSelections.length > 0 ? newSelections : []);
-                }}
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              >
-                <Ionicons name="close" size={14} color={colors.primary} />
-              </Pressable>
-            </View>
-          ))}
-
-          {/* Customer Chips */}
-          {getAutocompleteSelections(filters.customerIds).map((item) => (
-            <View key={`customer-${item.id}`} style={[styles.filterChip, { backgroundColor: colors.primaryLight, borderColor: colors.primary }]}>
-              <Text style={[styles.filterChipText, { color: colors.primary }]}>Customer: {item.label}</Text>
-              <Pressable
-                onPress={() => {
-                  const newSelections = getAutocompleteSelections(filters.customerIds).filter(
-                    (i) => i.id !== item.id
-                  );
-                  updateFilter('customerIds', newSelections.length > 0 ? newSelections : []);
-                }}
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              >
-                <Ionicons name="close" size={14} color={colors.primary} />
-              </Pressable>
-            </View>
-          ))}
-
-          {/* Price Type Chip */}
-          {getStringValue(filters.priceType) && getStringValue(filters.priceType) !== '' && (
-            <View style={[styles.filterChip, { backgroundColor: colors.primaryLight, borderColor: colors.primary }]}>
-              <Text style={[styles.filterChipText, { color: colors.primary }]}>
-                {getStringValue(filters.priceType) === 'one_time' ? 'One-time' : 'Monthly'}
-              </Text>
-              <Pressable
-                onPress={() => updateFilter('priceType', '')}
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              >
-                <Ionicons name="close" size={14} color={colors.primary} />
-              </Pressable>
-            </View>
+          {getAutocompleteSelections(filters.itemIds).map((item) =>
+            renderFilterChip(`item-${item.id}`, `Item: ${item.label}`, () => {
+              const newSelections = getAutocompleteSelections(filters.itemIds).filter(
+                (i) => i.id !== item.id
+              );
+              updateFilter('itemIds', newSelections.length > 0 ? newSelections : []);
+            })
           )}
 
-          {/* Weight Range Chip */}
-          {(getNumberValue(filters.weightMin) !== undefined || getNumberValue(filters.weightMax) !== undefined) && (
-            <View style={[styles.filterChip, { backgroundColor: colors.primaryLight, borderColor: colors.primary }]}>
-              <Text style={[styles.filterChipText, { color: colors.primary }]}>
-                Weight: {getNumberValue(filters.weightMin) ?? '0'} - {getNumberValue(filters.weightMax) ?? '∞'} kg
-              </Text>
-              <Pressable
-                onPress={() => {
-                  updateFilter('weightMin', undefined);
-                  updateFilter('weightMax', undefined);
-                }}
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              >
-                <Ionicons name="close" size={14} color={colors.primary} />
-              </Pressable>
-            </View>
+          {getAutocompleteSelections(filters.customerIds).map((item) =>
+            renderFilterChip(`customer-${item.id}`, `Customer: ${item.label}`, () => {
+              const newSelections = getAutocompleteSelections(filters.customerIds).filter(
+                (i) => i.id !== item.id
+              );
+              updateFilter('customerIds', newSelections.length > 0 ? newSelections : []);
+            })
           )}
 
-          {/* Include Expired Chip */}
-          {getStringValue(filters.includeExpired) === 'true' && (
-            <View style={[styles.filterChip, { backgroundColor: colors.primaryLight, borderColor: colors.primary }]}>
-              <Text style={[styles.filterChipText, { color: colors.primary }]}>Including Expired</Text>
-              <Pressable
-                onPress={() => updateFilter('includeExpired', 'false')}
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              >
-                <Ionicons name="close" size={14} color={colors.primary} />
-              </Pressable>
-            </View>
-          )}
+          {priceType && priceType !== '' &&
+            renderFilterChip('priceType', priceType === 'one_time' ? 'One-time' : 'Monthly', () =>
+              updateFilter('priceType', '')
+            )}
 
-          {/* Date Range Chip */}
-          {(getStringValue(filters.effectiveFrom) || getStringValue(filters.effectiveTo)) && (
-            <View style={[styles.filterChip, { backgroundColor: colors.primaryLight, borderColor: colors.primary }]}>
-              <Text style={[styles.filterChipText, { color: colors.primary }]}>
-                {getStringValue(filters.effectiveFrom)
-                  ? new Date(getStringValue(filters.effectiveFrom)!).toLocaleDateString()
-                  : '...'}{' '}
-                -{' '}
-                {getStringValue(filters.effectiveTo) ? new Date(getStringValue(filters.effectiveTo)!).toLocaleDateString() : '...'}
-              </Text>
-              <Pressable
-                onPress={() => {
-                  updateFilter('effectiveFrom', undefined);
-                  updateFilter('effectiveTo', undefined);
-                }}
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              >
-                <Ionicons name="close" size={14} color={colors.primary} />
-              </Pressable>
-            </View>
-          )}
+          {(weightMin !== undefined || weightMax !== undefined) &&
+            renderFilterChip(
+              'weight',
+              weightMax !== undefined
+                ? `Weight: ${weightMin ?? 0}–${weightMax} kg`
+                : `Weight: ${weightMin} kg or more`,
+              () => {
+                updateFilter('weightMin', undefined);
+                updateFilter('weightMax', undefined);
+              }
+            )}
+
+          {getStringValue(filters.includeExpired) === 'true' &&
+            renderFilterChip('includeExpired', 'Including expired', () =>
+              updateFilter('includeExpired', 'false')
+            )}
+
+          {(effectiveFrom || effectiveTo) &&
+            renderFilterChip(
+              'effective',
+              effectiveFrom && effectiveTo
+                ? `${formatDay(effectiveFrom)} to ${formatDay(effectiveTo)}`
+                : effectiveFrom
+                  ? `From ${formatDay(effectiveFrom)}`
+                  : `Until ${formatDay(effectiveTo!)}`,
+              () => {
+                updateFilter('effectiveFrom', undefined);
+                updateFilter('effectiveTo', undefined);
+              }
+            )}
         </View>
       </View>
     );
-  }, [filters, activeFilterCount, updateFilter, clearAllFilters, colors]);
+  };
 
   // Group data by item for SectionList, sorted by customer within each item
   const groupedData = useMemo((): PricingSection[] => {
@@ -608,7 +589,6 @@ const ItemPricingScreen: React.FC = () => {
           canManage={canManagePrices()}
           isLastInSection={index === section.data.length - 1}
           isFirstForCustomer={isFirstForCustomer}
-          colors={colors}
         />
       );
     },
@@ -618,477 +598,520 @@ const ItemPricingScreen: React.FC = () => {
       handleEditPrice,
       handleDeletePress,
       canManagePrices,
-      colors,
     ]
   );
 
   const renderSectionHeader = useCallback(
     (info: { section: PricingSection }) => {
       const isExpanded = info.section.data.length > 0;
+      const count = info.section.totalCount;
       return (
         <Pressable
           onPress={() => toggleSectionExpansion(info.section.itemId)}
           style={({ pressed }) => [
             styles.sectionHeader,
-            {
-              backgroundColor: isExpanded ? colors.primaryLight : colors.gray50,
-              borderColor: isExpanded ? colors.primaryLight : colors.gray200,
-            },
             isExpanded && styles.sectionHeaderExpanded,
-            pressed && { backgroundColor: colors.gray100 },
+            pressed && styles.sectionHeaderPressed,
           ]}
+          accessibilityRole="button"
+          accessibilityLabel={`${info.section.title}, ${count} ${count === 1 ? 'price' : 'prices'}`}
+          accessibilityState={{ expanded: isExpanded }}
         >
-          <View style={[
-            styles.sectionHeaderIcon,
-            { backgroundColor: isExpanded ? colors.primary : colors.gray400 },
-          ]}>
-            <Ionicons name="cube-outline" size={16} color={colors.white} />
+          <View style={styles.sectionHeaderIcon}>
+            <Icon name="cube-outline" size={iconSize.md} color={t.brand.tint} />
           </View>
-          <Text style={[
-            styles.sectionHeaderText,
-            { color: isExpanded ? colors.textPrimary : colors.textSecondary },
-          ]} numberOfLines={1}>
+          <Text style={styles.sectionHeaderText} numberOfLines={2}>
             {info.section.title}
           </Text>
-          <View style={[
-            styles.sectionHeaderBadge,
-            { backgroundColor: isExpanded ? colors.primaryLight : colors.gray200 },
-          ]}>
-            <Text style={[
-              styles.sectionHeaderBadgeText,
-              { color: isExpanded ? colors.primary : colors.textSecondary },
-            ]}>{info.section.totalCount}</Text>
+          <View style={styles.sectionHeaderBadge}>
+            <Text style={styles.sectionHeaderBadgeText} maxFontSizeMultiplier={1.6}>
+              {count}
+            </Text>
           </View>
-          <Ionicons
+          <Icon
             name={isExpanded ? 'chevron-up' : 'chevron-down'}
-            size={20}
-            color={isExpanded ? colors.primary : colors.textTertiary}
+            size={iconSize.md}
+            color={t.icon.secondary}
           />
         </Pressable>
       );
     },
-    [toggleSectionExpansion, colors]
+    [toggleSectionExpansion, styles, t]
   );
 
   const renderFooter = () => {
     if (!loadingMore) return null;
     return (
-      <View style={styles.footerLoader}>
-        <ActivityIndicator size="small" color={colors.primary} />
-        <Text style={[styles.footerLoaderText, { color: colors.textSecondary }]}>Loading more...</Text>
+      <View style={styles.footerLoader} accessibilityRole="progressbar" accessibilityLabel="Loading more prices">
+        <ActivityIndicator size="small" color={t.brand.tint} />
+        <Text style={styles.footerLoaderText}>Loading more…</Text>
       </View>
     );
   };
 
+  const renderHeader = (showActions: boolean) => (
+    <View style={[styles.header, { paddingTop: insets.top + space.sm }]}>
+      <View style={styles.headerContent}>
+        <View style={styles.titleRow}>
+          <Pressable
+            style={styles.iconButton}
+            onPress={() => router.back()}
+            accessibilityRole="button"
+            accessibilityLabel="Back"
+          >
+            <Icon name="arrow-left" size={iconSize.lg} color={t.icon.primary} />
+          </Pressable>
+          <Text style={styles.title} accessibilityRole="header" numberOfLines={1}>
+            Item pricing
+          </Text>
+        </View>
+        <View style={styles.headerActions}>
+          {showActions && canManagePrices() && (
+            <Pressable
+              style={styles.iconButton}
+              onPress={handleCreatePrice}
+              accessibilityRole="button"
+              accessibilityLabel="Add price"
+            >
+              <Icon name="plus" size={iconSize.lg} color={t.brand.tint} />
+            </Pressable>
+          )}
+          {showActions && (
+            <Pressable
+              style={styles.iconButton}
+              onPress={() => setShowFilterModal(true)}
+              accessibilityRole="button"
+              accessibilityLabel={
+                activeFilterCount > 0 ? `Filter, ${activeFilterCount} active` : 'Filter'
+              }
+            >
+              <Icon name="filter-variant" size={iconSize.lg} color={t.icon.primary} />
+              {activeFilterCount > 0 && (
+                <View style={styles.filterBadge}>
+                  <Text style={styles.filterBadgeText} maxFontSizeMultiplier={1.6}>
+                    {activeFilterCount}
+                  </Text>
+                </View>
+              )}
+            </Pressable>
+          )}
+          {userProfile && (
+            <Pressable
+              style={styles.iconButton}
+              onPress={() => router.push('/settings')}
+              accessibilityRole="button"
+              accessibilityLabel="Settings"
+            >
+              <View style={styles.profileAvatar}>
+                <Text style={styles.profileAvatarText}>
+                  {(userProfile.name || 'U').charAt(0).toUpperCase()}
+                </Text>
+              </View>
+            </Pressable>
+          )}
+        </View>
+      </View>
+    </View>
+  );
+
   // Loading state
   if (loading && !refreshing) {
     return (
-      <>
-        <View style={{ height: insets.top, backgroundColor: colors.cellBackground, zIndex: 999 }} />
-        <View style={[styles.container, { backgroundColor: colors.gray50 }]}>
-          <View style={[styles.header, { paddingTop: 16, backgroundColor: colors.cellBackground, borderBottomColor: colors.gray100 }]}>
-            <View style={styles.headerContent}>
-              <View style={styles.titleRow}>
-                <Pressable style={styles.backButton} onPress={() => router.back()}>
-                  <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
-                </Pressable>
-                <Text style={[styles.title, { color: colors.textPrimary }]}>Item Pricing</Text>
-              </View>
-              {userProfile && (
-                <Pressable onPress={() => router.push('/settings')}>
-                  <View style={[styles.profileAvatar, { backgroundColor: colors.primary }]}>
-                    <Text style={[styles.profileAvatarText, { color: colors.white }]}>
-                      {(userProfile.name || 'U').charAt(0).toUpperCase()}
-                    </Text>
-                  </View>
-                </Pressable>
-              )}
-            </View>
-          </View>
-          <FlatList
-            data={[1, 2, 3, 4, 5, 6]}
-            renderItem={() => <ListSkeletonCard metricsCount={3} showFooter={true} />}
-            keyExtractor={(item: number) => item.toString()}
-            contentContainerStyle={styles.listContent}
-          />
-        </View>
-      </>
+      <View style={styles.container}>
+        {renderHeader(false)}
+        <FlatList
+          data={[1, 2, 3, 4, 5, 6]}
+          renderItem={() => <ListSkeletonCard metricsCount={3} showFooter={true} />}
+          keyExtractor={(item: number) => item.toString()}
+          contentContainerStyle={styles.listContent}
+          accessibilityLabel="Loading prices"
+        />
+      </View>
     );
   }
 
   return (
-    <>
-      <View style={{ height: insets.top, backgroundColor: colors.cellBackground, zIndex: 999 }} />
-      <View style={[styles.container, { backgroundColor: colors.gray50 }]}>
-        {/* Header */}
-        <View style={[styles.header, { paddingTop: 16, backgroundColor: colors.cellBackground, borderBottomColor: colors.gray100 }]}>
-          <View style={styles.headerContent}>
-            <View style={styles.titleRow}>
-              <Pressable style={styles.backButton} onPress={() => router.back()}>
-                <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
-              </Pressable>
-              <Text style={[styles.title, { color: colors.textPrimary }]}>Item Pricing</Text>
-            </View>
-            <View style={styles.headerActions}>
-              {canManagePrices() && (
-                <Pressable style={styles.addButton} onPress={handleCreatePrice}>
-                  <Ionicons name="add" size={24} color={colors.primary} />
-                </Pressable>
-              )}
-              <View style={styles.filterButtonContainer}>
-                <Pressable style={styles.filterButton} onPress={() => setShowFilterModal(true)}>
-                  <Ionicons name="filter-outline" size={24} color={colors.textPrimary} />
-                </Pressable>
-                {activeFilterCount > 0 && (
-                  <View style={[styles.filterBadge, { backgroundColor: colors.statusNegative }]}>
-                    <Text style={[styles.filterBadgeText, { color: colors.white }]}>{activeFilterCount}</Text>
-                  </View>
-                )}
-              </View>
-              {userProfile && (
-                <Pressable onPress={() => router.push('/settings')}>
-                  <View style={[styles.profileAvatar, { backgroundColor: colors.primary }]}>
-                    <Text style={[styles.profileAvatarText, { color: colors.white }]}>
-                      {(userProfile.name || 'U').charAt(0).toUpperCase()}
-                    </Text>
-                  </View>
-                </Pressable>
-              )}
-            </View>
-          </View>
-        </View>
+    <View style={styles.container}>
+      {renderHeader(true)}
 
-        {/* Applied Filters Section */}
-        {renderAppliedFilters()}
+      {/* Applied Filters Section */}
+      {renderAppliedFilters()}
 
-        {/* Main Content */}
-        {data.length > 0 ? (
-          <SectionList
-            sections={groupedData as any}
-            renderItem={renderPriceCard}
-            renderSectionHeader={renderSectionHeader as any}
-            keyExtractor={(item: ItemStoragePrice) => item.id}
-            ListFooterComponent={renderFooter}
-            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-            onEndReached={onEndReached}
-            onEndReachedThreshold={0.1}
-            contentContainerStyle={styles.listContent}
-            showsVerticalScrollIndicator={false}
-            stickySectionHeadersEnabled={false}
-          />
-        ) : (
-          <ListEmptyState
-            activeFilterCount={activeFilterCount}
-            emptyIcon="cash-outline"
-            filteredIcon="filter-outline"
-            emptyTitle="No Item Prices Found"
-            filteredTitle="No Matching Prices"
-            emptySubtitle={canManagePrices() ? 'Create your first item price to get started' : 'No pricing information available'}
-            filteredSubtitle="Try adjusting your filters to see more results"
-            showCreateButton={canManagePrices() && activeFilterCount === 0}
-            createButtonLabel="Create New Price"
-            createButtonIcon="add"
-            onCreatePress={handleCreatePrice}
-          />
-        )}
-
-        {/* Generic Filter Modal */}
-        <GenericFilterModal
-          visible={showFilterModal}
-          onClose={() => setShowFilterModal(false)}
-          config={itemPricingFilterConfig}
+      {/* Main Content */}
+      {data.length > 0 ? (
+        <SectionList
+          sections={groupedData as any}
+          renderItem={renderPriceCard}
+          renderSectionHeader={renderSectionHeader as any}
+          keyExtractor={(item: ItemStoragePrice) => item.id}
+          ListFooterComponent={renderFooter}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              colors={[t.brand.tint]}
+              tintColor={t.brand.tint}
+              progressBackgroundColor={t.surface.card}
+            />
+          }
+          onEndReached={onEndReached}
+          onEndReachedThreshold={0.1}
+          contentContainerStyle={[styles.listContent, { paddingBottom: space.huge + insets.bottom }]}
+          showsVerticalScrollIndicator={false}
+          stickySectionHeadersEnabled={false}
         />
+      ) : (
+        <ListEmptyState
+          activeFilterCount={activeFilterCount}
+          emptyIcon="cash-outline"
+          filteredIcon="filter-outline"
+          emptyTitle="No prices yet"
+          filteredTitle="No prices match these filters"
+          emptySubtitle={canManagePrices() ? 'Prices you add appear here.' : 'No prices have been set up yet.'}
+          filteredSubtitle="Try fewer filters."
+          showCreateButton={canManagePrices() && activeFilterCount === 0}
+          createButtonLabel="Add price"
+          createButtonIcon="add"
+          onCreatePress={handleCreatePrice}
+        />
+      )}
 
-        {/* Delete Confirmation Dialog */}
-        <Modal
-          visible={deleteDialogVisible}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setDeleteDialogVisible(false)}
+      {/* Generic Filter Modal */}
+      <GenericFilterModal
+        visible={showFilterModal}
+        onClose={() => setShowFilterModal(false)}
+        config={itemPricingFilterConfig}
+      />
+
+      {/* Delete Confirmation Dialog (style guide §13.9) */}
+      <Modal
+        visible={deleteDialogVisible}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+        onRequestClose={() => !deleting && setDeleteDialogVisible(false)}
+      >
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => !deleting && setDeleteDialogVisible(false)}
+          accessibilityRole="button"
+          accessibilityLabel="Cancel"
         >
-          <Pressable style={styles.modalOverlay} onPress={() => setDeleteDialogVisible(false)}>
-            <Pressable style={[styles.modalDialog, { backgroundColor: colors.cellBackground }]} onPress={(e) => e.stopPropagation()}>
-              {/* Header */}
-              <View style={styles.modalHeader}>
-                <Ionicons name="alert-circle-outline" size={24} color={colors.statusNegative} />
-                <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Delete Item Price</Text>
-              </View>
+          <Pressable
+            style={styles.modalDialog}
+            onPress={(e) => e.stopPropagation()}
+            accessibilityViewIsModal
+            accessible={false}
+          >
+            <View style={styles.modalHeader}>
+              <Icon name="alert-circle-outline" size={iconSize.lg} color={t.status.negative.text} />
+              <Text style={styles.modalTitle} accessibilityRole="header">
+                Delete this price?
+              </Text>
+            </View>
 
-              {/* Content */}
-              <View style={styles.modalContent}>
-                <Text style={[styles.modalText, { color: colors.textPrimary }]}>
-                  Are you sure you want to delete the pricing for "{priceToDelete?.item_name}"
-                  {priceToDelete?.customer_name ? ` (${priceToDelete.customer_name})` : ' (Default)'}?
-                </Text>
-                <Text style={[styles.modalSubtext, { color: colors.textSecondary }]}>This action cannot be undone.</Text>
-              </View>
+            <Text style={styles.modalText}>
+              The price for {priceToDelete?.item_name}
+              {priceToDelete?.customer_name ? ` (${priceToDelete.customer_name})` : ' (default)'} will be
+              removed. You can't undo this.
+            </Text>
 
-              {/* Actions */}
-              <View style={styles.modalActions}>
-                <Pressable
-                  style={[styles.modalButton, { backgroundColor: colors.gray100 }]}
-                  onPress={() => setDeleteDialogVisible(false)}
-                  disabled={deleting}
-                >
-                  <Text style={[styles.modalButtonTextSecondary, { color: colors.textPrimary }]}>Cancel</Text>
-                </Pressable>
-                <Pressable
-                  style={[styles.modalButton, { backgroundColor: colors.statusNegative }]}
-                  onPress={handleDeleteConfirm}
-                  disabled={deleting}
-                >
-                  {deleting ? (
-                    <ActivityIndicator size="small" color={colors.white} />
-                  ) : (
-                    <Text style={[styles.modalButtonTextDestructive, { color: colors.white }]}>Delete</Text>
-                  )}
-                </Pressable>
-              </View>
-            </Pressable>
+            <View style={styles.modalActions}>
+              <Pressable
+                style={({ pressed }) => [styles.modalButton, styles.modalButtonSecondary, pressed && styles.modalButtonSecondaryPressed]}
+                onPress={() => setDeleteDialogVisible(false)}
+                disabled={deleting}
+                accessibilityRole="button"
+                accessibilityState={{ disabled: deleting }}
+              >
+                <Text style={styles.modalButtonTextSecondary}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                style={({ pressed }) => [styles.modalButton, styles.modalButtonDestructive, pressed && styles.modalButtonDestructivePressed]}
+                onPress={handleDeleteConfirm}
+                disabled={deleting}
+                accessibilityRole="button"
+                accessibilityLabel="Delete price"
+                accessibilityState={{ busy: deleting }}
+              >
+                {deleting ? (
+                  <ActivityIndicator size="small" color={t.destructive.onFill} />
+                ) : (
+                  <Text style={styles.modalButtonTextDestructive}>Delete price</Text>
+                )}
+              </Pressable>
+            </View>
           </Pressable>
-        </Modal>
-      </View>
-    </>
+        </Pressable>
+      </Modal>
+    </View>
   );
 };
 
-const styles = StyleSheet.create({
-  // Container (colors applied inline)
+/** "9 Oct 2026" (style guide §12.3). */
+function formatDay(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+const makeStyles = (t: ThemeTokens) => ({
   container: {
     flex: 1,
+    backgroundColor: t.background.base,
   },
   header: {
-    paddingBottom: 8,
-    paddingHorizontal: 20,
-    borderBottomWidth: 1,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    zIndex: 2,
+    paddingBottom: space.sm,
+    paddingHorizontal: space.sm,
+    backgroundColor: t.surface.header,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.divider,
   },
   headerContent: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'center' as const,
   },
   titleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.xs,
+    flexShrink: 1,
   },
   title: {
-    fontSize: 24,
-    fontWeight: '700',
-    letterSpacing: -0.5,
+    ...typography.title2,
+    color: t.text.primary,
+    flexShrink: 1,
   },
   headerActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
   },
-  backButton: {
-    padding: 8,
-    marginLeft: -8,
-  },
-  addButton: {
-    padding: 8,
-  },
-  filterButtonContainer: {
-    position: 'relative',
-  },
-  filterButton: {
-    padding: 8,
+  iconButton: {
+    minWidth: touchTarget,
+    minHeight: touchTarget,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
   },
   filterBadge: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
+    position: 'absolute' as const,
+    top: space.xs,
+    right: space.xxs,
     minWidth: 18,
     height: 18,
-    borderRadius: 9,
-    alignItems: 'center',
-    justifyContent: 'center',
+    paddingHorizontal: space.xs,
+    borderRadius: radius.pill,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    backgroundColor: t.brand.fill,
   },
   filterBadgeText: {
-    fontSize: 11,
-    fontWeight: '700',
+    ...typography.caption2,
+    fontWeight: fontWeight.bold,
+    color: t.brand.onFill,
   },
   profileAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: layout.avatar.sm,
+    height: layout.avatar.sm,
+    borderRadius: radius.pill,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    backgroundColor: t.brand.fill,
   },
   profileAvatarText: {
-    fontSize: 17,
-    fontWeight: '600',
+    ...typography.subhead,
+    fontWeight: fontWeight.semibold,
+    color: t.brand.onFill,
   },
 
   // List
   listContent: {
     flexGrow: 1,
+    paddingTop: space.xs,
     paddingBottom: 100,
   },
 
-  // Footer (colors applied inline)
+  // Footer
   footerLoader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 20,
-    gap: 8,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    paddingVertical: space.xl,
+    gap: space.sm,
   },
   footerLoaderText: {
-    fontSize: 14,
+    ...typography.footnote,
+    color: t.text.secondary,
   },
 
-  // Section Header Styles (colors applied inline)
+  // Section header (item group)
   sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    marginHorizontal: 12,
-    marginTop: 8,
-    marginBottom: 4,
-    borderRadius: 10,
-    gap: 10,
-    borderWidth: 1,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.md,
+    marginHorizontal: space.md,
+    marginTop: space.sm,
+    marginBottom: space.xs,
+    minHeight: touchTarget + space.sm,
+    borderRadius: radius.card,
+    gap: space.md,
+    backgroundColor: t.surface.card,
+    ...t.shadow[1],
   },
   sectionHeaderExpanded: {
     borderBottomLeftRadius: 0,
     borderBottomRightRadius: 0,
     marginBottom: 0,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.divider,
+  },
+  sectionHeaderPressed: {
+    backgroundColor: t.surface.cardPressed,
   },
   sectionHeaderIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    justifyContent: 'center',
-    alignItems: 'center',
+    width: layout.avatar.sm,
+    height: layout.avatar.sm,
+    borderRadius: radius.pill,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    backgroundColor: t.brand.subtle,
   },
   sectionHeaderText: {
+    ...typography.headline,
     flex: 1,
-    fontSize: 15,
-    fontWeight: '600',
+    color: t.text.primary,
   },
   sectionHeaderBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-    minWidth: 32,
-    alignItems: 'center',
+    paddingHorizontal: space.sm,
+    paddingVertical: space.xxs,
+    borderRadius: radius.pill,
+    minWidth: 28,
+    alignItems: 'center' as const,
+    backgroundColor: t.status.neutral.background,
   },
   sectionHeaderBadgeText: {
-    fontSize: 12,
-    fontWeight: '700',
+    ...typography.caption1,
+    fontWeight: fontWeight.semibold,
+    color: t.status.neutral.text,
+    fontVariant: ['tabular-nums' as const],
   },
 
-  // Applied Filters Styles (colors applied inline)
+  // Applied filters
   appliedFiltersContainer: {
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
+    paddingHorizontal: layout.marginCompact,
+    paddingVertical: space.sm,
+    backgroundColor: t.surface.header,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.separator,
   },
   appliedFiltersHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'center' as const,
   },
   appliedFiltersTitle: {
-    fontSize: 14,
-    fontWeight: '600',
+    ...typography.footnote,
+    textTransform: 'uppercase' as const,
+    letterSpacing: 0.5,
+    color: t.text.secondary,
+  },
+  clearAllButton: {
+    minHeight: touchTarget,
+    justifyContent: 'center' as const,
+    paddingHorizontal: space.sm,
   },
   clearAllText: {
-    fontSize: 14,
-    fontWeight: '600',
+    ...typography.callout,
+    color: t.brand.tint,
   },
   appliedFiltersList: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
+    flexDirection: 'row' as const,
+    flexWrap: 'wrap' as const,
+    gap: space.sm,
   },
   filterChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderRadius: 20,
-    paddingVertical: 6,
-    paddingLeft: 12,
-    paddingRight: 8,
-    gap: 6,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    borderRadius: radius.pill,
+    paddingLeft: space.md,
+    backgroundColor: t.brand.subtle,
   },
   filterChipText: {
-    fontSize: 13,
-    fontWeight: '500',
+    ...typography.caption1,
+    fontWeight: fontWeight.semibold,
+    color: t.brand.tint,
+  },
+  filterChipRemove: {
+    width: touchTarget,
+    height: 32,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
   },
 
-  // Modal Styles (colors applied inline)
+  // Dialog
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: t.overlay.scrim,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    padding: space.xxl,
   },
   modalDialog: {
-    width: FIORI.modal.width,
-    borderRadius: FIORI.modal.borderRadius,
-    padding: FIORI.modal.padding,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 8,
-      },
-      android: { elevation: 8 },
-    }),
+    width: '100%' as const,
+    maxWidth: layout.maxFormWidth,
+    borderRadius: radius.card,
+    padding: space.xxl,
+    backgroundColor: t.surface.sheet,
+    ...t.shadow[4],
   },
   modalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginBottom: 16,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.md,
+    marginBottom: space.md,
   },
   modalTitle: {
-    fontSize: 18,
-    fontWeight: '700',
+    ...typography.title3,
     flex: 1,
-  },
-  modalContent: {
-    marginBottom: 24,
+    color: t.text.primary,
   },
   modalText: {
-    fontSize: 14,
-    lineHeight: 20,
-    marginBottom: 8,
-  },
-  modalSubtext: {
-    fontSize: 13,
-    lineHeight: 18,
+    ...typography.body,
+    color: t.text.secondary,
+    marginBottom: space.xxl,
   },
   modalActions: {
-    flexDirection: 'row',
-    gap: 12,
+    flexDirection: 'row' as const,
+    gap: space.sm,
   },
   modalButton: {
     flex: 1,
-    height: FIORI.button.height,
-    borderRadius: FIORI.button.borderRadius,
-    justifyContent: 'center',
-    alignItems: 'center',
+    minHeight: touchTarget,
+    borderRadius: radius.button,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+  },
+  modalButtonSecondary: {
+    borderWidth: 1,
+    borderColor: t.border.button,
+  },
+  modalButtonSecondaryPressed: {
+    backgroundColor: t.surface.cardPressed,
+  },
+  modalButtonDestructive: {
+    backgroundColor: t.destructive.fill,
+  },
+  modalButtonDestructivePressed: {
+    backgroundColor: t.destructive.fillPressed,
   },
   modalButtonTextSecondary: {
-    fontSize: 15,
-    fontWeight: '600',
+    ...typography.callout,
+    fontWeight: fontWeight.semibold,
+    color: t.text.primary,
   },
   modalButtonTextDestructive: {
-    fontSize: 15,
-    fontWeight: '600',
+    ...typography.callout,
+    fontWeight: fontWeight.semibold,
+    color: t.destructive.onFill,
   },
 });
 

@@ -1,7 +1,9 @@
 /**
- * Settings Screen - SAP Fiori for iOS Design
+ * Settings screen: a grouped list on background.grouped (style guide §14.12).
  *
- * Implements SAP Fiori settings/profile pattern
+ * Sections: account (profile), app features, appearance (System, Light, Dark),
+ * brand (Orange, GCSA navy), account actions, about (legal pages) and, in
+ * development builds, the style guide gallery.
  */
 import React, { useState } from 'react';
 import {
@@ -13,82 +15,38 @@ import {
   Alert,
   Modal,
   ActivityIndicator,
-  Platform,
-  Switch as RNSwitch,
   TextInput,
 } from 'react-native';
 import { router } from 'expo-router';
 import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useAppSelector, useAppDispatch } from '@/store/hooks';
 import { logout, deleteAccount } from '@/store/slices/authSlice';
-import { useTheme } from '@/hooks/useTheme';
-import { BRANDS, BRAND_LABELS, getTokens } from '@/theme/tokens';
-import { useFioriColors } from '@/theme/fioriColors';
+import { useTheme, useThemedStyles, useTokens } from '@/hooks/useTheme';
+import {
+  BRANDS,
+  BRAND_LABELS,
+  fontWeight,
+  getTokens,
+  iconSize,
+  layout,
+  radius,
+  space,
+  touchTarget,
+  typography,
+  type ThemeTokens,
+} from '@/theme/tokens';
 import { ThemePreference } from '@/store/slices/themeSlice';
-import { triggerMediumTap } from '@/hooks/useHaptics';
-
-// Static design tokens (typography, spacing, dimensions)
-const FIORI_STATIC = {
-  typography: {
-    headline: {
-      fontSize: 17,
-      lineHeight: 22,
-      fontWeight: '600' as const,
-      letterSpacing: -0.41,
-    },
-    body: {
-      fontSize: 17,
-      lineHeight: 22,
-      fontWeight: '400' as const,
-      letterSpacing: -0.41,
-    },
-    subhead: {
-      fontSize: 15,
-      lineHeight: 20,
-      fontWeight: '400' as const,
-      letterSpacing: -0.24,
-    },
-    footnote: {
-      fontSize: 13,
-      lineHeight: 18,
-      fontWeight: '400' as const,
-      letterSpacing: -0.08,
-    },
-    title3: {
-      fontSize: 20,
-      lineHeight: 25,
-      fontWeight: '600' as const,
-      letterSpacing: 0.38,
-    },
-  },
-  spacing: {
-    xs: 4,
-    sm: 8,
-    md: 16,
-    lg: 24,
-    xl: 32,
-  },
-  dimensions: {
-    rowHeight: 44,
-    avatarSize: 60,
-    iconSize: 22,
-    borderRadius: 10,
-    cardRadius: 12,
-    modalRadius: 14,
-    buttonHeight: 44,
-  },
-};
 
 const THEME_OPTIONS: {
   value: ThemePreference;
   label: string;
-  icon: keyof typeof Ionicons.glyphMap;
+  icon: string;
 }[] = [
-  { value: 'light', label: 'Light', icon: 'sunny-outline' },
-  { value: 'dark', label: 'Dark', icon: 'moon-outline' },
-  { value: 'system', label: 'System', icon: 'phone-portrait-outline' },
+  { value: 'system', label: 'System', icon: 'cellphone' },
+  { value: 'light', label: 'Light', icon: 'white-balance-sunny' },
+  { value: 'dark', label: 'Dark', icon: 'weather-night' },
 ];
 
 const SettingsScreen: React.FC = () => {
@@ -106,6 +64,7 @@ const SettingsScreen: React.FC = () => {
   const [deleteConfirmPhone, setDeleteConfirmPhone] = useState('');
   const [deletingAccount, setDeletingAccount] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deleteFocused, setDeleteFocused] = useState(false);
   const {
     preference: themePreference,
     setPreference: setThemePreference,
@@ -115,7 +74,7 @@ const SettingsScreen: React.FC = () => {
     resolvedMode,
     tokens,
   } = useTheme();
-  const FIORI = useFioriColors();
+  const styles = useThemedStyles(makeStyles);
 
   const handleLogout = () => {
     setShowLogoutModal(true);
@@ -127,7 +86,7 @@ const SettingsScreen: React.FC = () => {
       await dispatch(logout()).unwrap();
       router.replace('/login');
     } catch {
-      Alert.alert('Error', 'Failed to sign out. Please try again.');
+      Alert.alert("Couldn't sign out", 'Check your connection and try again.');
       setShowLogoutModal(false);
     } finally {
       setLoggingOut(false);
@@ -163,7 +122,7 @@ const SettingsScreen: React.FC = () => {
       .slice(-10);
 
     if (normalizedInputPhone !== normalizedUserPhone) {
-      setDeleteError('Phone number does not match your account');
+      setDeleteError("This number doesn't match your account. Check it and try again.");
       return;
     }
 
@@ -178,7 +137,8 @@ const SettingsScreen: React.FC = () => {
       setDeleteError(
         typeof error === 'string'
           ? error
-          : 'Failed to delete account. Please try again.'
+          : "Couldn't delete your account. Check your connection and try again."
+
       );
     } finally {
       setDeletingAccount(false);
@@ -221,119 +181,26 @@ const SettingsScreen: React.FC = () => {
     !!userProfile &&
     (userProfile.role === 'supervisor' || userProfile.role === 'admin');
 
-  // Fiori Object Cell Row Component
-  const ObjectCellRow = ({
-    icon,
-    label,
-    subtitle,
-    onPress,
-    showChevron = true,
-    destructive = false,
-    rightElement,
-  }: {
-    icon: keyof typeof Ionicons.glyphMap;
-    label: string;
-    subtitle?: string;
-    onPress?: () => void;
-    showChevron?: boolean;
-    destructive?: boolean;
-    rightElement?: React.ReactNode;
-  }) => (
-    <Pressable
-      style={({ pressed }) => [
-        styles.objectCell,
-        {
-          backgroundColor: FIORI.colors.background,
-          borderBottomColor: FIORI.colors.divider,
-        },
-        pressed && { backgroundColor: FIORI.colors.backgroundSecondary },
-      ]}
-      onPress={onPress}
-      disabled={!onPress && !rightElement}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-    >
-      <View
-        style={[
-          styles.objectCellIcon,
-          { backgroundColor: FIORI.colors.tintLight },
-          destructive && { backgroundColor: FIORI.colors.destructiveLight },
-        ]}
-      >
-        <Ionicons
-          name={icon}
-          size={FIORI.dimensions.iconSize}
-          color={destructive ? FIORI.colors.destructive : FIORI.colors.tint}
-        />
-      </View>
-      <View style={styles.objectCellContent}>
-        <Text
-          style={[
-            styles.objectCellLabel,
-            { color: FIORI.colors.textPrimary },
-            destructive && { color: FIORI.colors.destructive },
-          ]}
-        >
-          {label}
-        </Text>
-        {subtitle && (
-          <Text
-            style={[
-              styles.objectCellSubtitle,
-              { color: FIORI.colors.textSecondary },
-            ]}
-          >
-            {subtitle}
-          </Text>
-        )}
-      </View>
-      {rightElement}
-      {showChevron && !rightElement && (
-        <Ionicons
-          name="chevron-forward"
-          size={20}
-          color={FIORI.colors.textTertiary}
-        />
-      )}
-    </Pressable>
-  );
+  const roleLabel = userProfile?.role
+    ? userProfile.role.charAt(0).toUpperCase() + userProfile.role.slice(1)
+    : 'User';
 
   return (
-    <View
-      style={[
-        styles.container,
-        {
-          paddingTop: insets.top,
-          backgroundColor: FIORI.colors.backgroundGrouped,
-        },
-      ]}
-    >
-      <EdgeToEdgeStatusBar
-        barStyle={isDarkMode ? 'light-content' : 'dark-content'}
-      />
+    <View style={[styles.container, { paddingTop: insets.top }]}>
+      <EdgeToEdgeStatusBar barStyle={tokens.statusBarStyle} />
 
       {/* Fiori Navigation Bar */}
-      <View
-        style={[
-          styles.navigationBar,
-          {
-            backgroundColor: FIORI.colors.background,
-            borderBottomColor: FIORI.colors.divider,
-          },
-        ]}
-      >
+      <View style={styles.navigationBar}>
         <Pressable
           style={styles.navBackButton}
           onPress={() => router.back()}
           accessibilityRole="button"
-          accessibilityLabel="Go back"
+          accessibilityLabel="Back"
         >
-          <Ionicons name="chevron-back" size={28} color={FIORI.colors.tint} />
-          <Text style={[styles.navBackText, { color: FIORI.colors.tint }]}>
-            Back
-          </Text>
+          <Icon name="chevron-left" size={iconSize.xl} color={tokens.brand.tint} />
+          <Text style={styles.navBackText}>Back</Text>
         </Pressable>
-        <Text style={[styles.navTitle, { color: FIORI.colors.textPrimary }]}>
+        <Text style={styles.navTitle} accessibilityRole="header">
           Settings
         </Text>
         <View style={styles.navPlaceholder} />
@@ -341,418 +208,261 @@ const SettingsScreen: React.FC = () => {
 
       <ScrollView
         style={styles.scrollView}
-        contentContainerStyle={{
-          paddingBottom: insets.bottom + FIORI.spacing.xl,
-        }}
+        contentContainerStyle={{ paddingBottom: insets.bottom + space.xxxl }}
         showsVerticalScrollIndicator={false}
       >
-        {/* User Profile Card */}
+        {/* Account: user profile card */}
         <Pressable
-          style={({ pressed }) => [
-            styles.profileCard,
-            { backgroundColor: FIORI.colors.background },
-            pressed && { backgroundColor: FIORI.colors.backgroundSecondary },
-          ]}
+          style={({ pressed }) => [styles.profileCard, pressed && styles.rowPressed]}
           onPress={handleProfile}
           accessibilityRole="button"
-          accessibilityLabel={`View profile for ${userProfile?.name || 'User'}`}
+          accessibilityLabel={`${userProfile?.name || 'User'}, ${roleLabel}`}
+          accessibilityHint="Opens your profile"
         >
-          <View style={[styles.avatar, { backgroundColor: FIORI.colors.tint }]}>
+          <View style={styles.avatar}>
             <Text style={styles.avatarText}>
               {(userProfile?.name || 'U').charAt(0).toUpperCase()}
             </Text>
           </View>
           <View style={styles.profileInfo}>
-            <Text
-              style={[styles.profileName, { color: FIORI.colors.textPrimary }]}
-            >
-              {userProfile?.name || 'User'}
-            </Text>
-            <Text style={[styles.profileRole, { color: FIORI.colors.tint }]}>
-              {userProfile?.role
-                ? userProfile.role.charAt(0).toUpperCase() +
-                  userProfile.role.slice(1)
-                : 'User'}
-            </Text>
+            <Text style={styles.profileName}>{userProfile?.name || 'User'}</Text>
+            <Text style={styles.profileRole}>{roleLabel}</Text>
           </View>
-          <Ionicons
-            name="chevron-forward"
-            size={22}
-            color={FIORI.colors.textTertiary}
-          />
+          <Icon name="chevron-right" size={iconSize.md} color={tokens.icon.secondary} />
         </Pressable>
 
         {/* App Features Section */}
-        <View style={styles.section}>
-          <Text
-            style={[
-              styles.sectionHeader,
-              { color: FIORI.colors.textSecondary },
-            ]}
-          >
-            APP FEATURES
-          </Text>
-          <View
-            style={[
-              styles.sectionContent,
-              { backgroundColor: FIORI.colors.background },
-            ]}
-          >
-            {canManageCustomers && (
-              <ObjectCellRow
-                icon="people-outline"
-                label="Customers"
-                subtitle="Manage customer accounts"
-                onPress={handleCustomers}
-              />
-            )}
-            {userProfile?.role === 'admin' && (
-              <ObjectCellRow
-                icon="person-add-outline"
-                label="Enrollment Review"
-                subtitle="Approve verified customers and assign access"
-                onPress={() => router.push('/enrollment-review')}
-              />
-            )}
-            {canManageItems && (
-              <ObjectCellRow
-                icon="cube-outline"
-                label="Items"
-                subtitle="Manage inventory items"
-                onPress={handleItems}
-              />
-            )}
-            {canManageUsers && (
-              <ObjectCellRow
-                icon="person-circle-outline"
-                label="Users"
-                subtitle="Manage user accounts"
-                onPress={handleUsers}
-              />
-            )}
-            {canAccessItemPricing && (
-              <ObjectCellRow
-                icon="pricetag-outline"
-                label="Item Pricing"
-                subtitle="View and manage prices"
-                onPress={handleItemPricing}
-              />
-            )}
-            <ObjectCellRow
-              icon="thermometer-outline"
-              label="Temperature & Humidity"
-              subtitle="Unavailable in the local demo"
-              onPress={handleSensors}
+        <SettingsSection title="App features">
+          {canManageCustomers && (
+            <SettingsRow
+              icon="account-outline"
+              label="Customers"
+              subtitle="Manage customer accounts"
+              onPress={handleCustomers}
             />
-          </View>
-        </View>
+          )}
+          {userProfile?.role === 'admin' && (
+            <SettingsRow
+              icon="account-plus-outline"
+              label="Enrollment review"
+              subtitle="Approve verified customers and assign access"
+              onPress={() => router.push('/enrollment-review')}
+            />
+          )}
+          {canManageItems && (
+            <SettingsRow
+              icon="cube-outline"
+              label="Items"
+              subtitle="Manage inventory items"
+              onPress={handleItems}
+            />
+          )}
+          {canManageUsers && (
+            <SettingsRow
+              icon="account-circle-outline"
+              label="Users"
+              subtitle="Manage user accounts"
+              onPress={handleUsers}
+            />
+          )}
+          {canAccessItemPricing && (
+            <SettingsRow
+              icon="tag-outline"
+              label="Item pricing"
+              subtitle="View and manage prices"
+              onPress={handleItemPricing}
+            />
+          )}
+          <SettingsRow
+            icon="thermometer"
+            label="Temperature and humidity"
+            subtitle="Unavailable in the local demo"
+            onPress={handleSensors}
+            last
+          />
+        </SettingsSection>
 
         {/* Appearance Section */}
-        <View style={styles.section}>
-          <Text
-            style={[
-              styles.sectionHeader,
-              { color: FIORI.colors.textSecondary },
-            ]}
-          >
-            APPEARANCE
-          </Text>
-          <View
-            style={[
-              styles.sectionContent,
-              { backgroundColor: FIORI.colors.background },
-            ]}
-          >
-            <View style={styles.themeSelector}>
-              {THEME_OPTIONS.map(option => {
-                const isSelected = themePreference === option.value;
-                return (
-                  <Pressable
-                    key={option.value}
-                    style={[
-                      styles.themeOption,
-                      { backgroundColor: FIORI.colors.backgroundGrouped },
-                      isSelected && { backgroundColor: FIORI.colors.tintLight },
-                    ]}
-                    onPress={() => setThemePreference(option.value)}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: isSelected }}
-                    accessibilityLabel={`${option.label} theme`}
-                  >
-                    <View
-                      style={[
-                        styles.themeIconContainer,
-                        { backgroundColor: FIORI.colors.background },
-                        isSelected && { backgroundColor: tokens.brand.fill },
-                      ]}
-                    >
-                      <Ionicons
-                        name={option.icon}
-                        size={24}
-                        color={
-                          isSelected
-                            ? tokens.brand.onFill
-                            : FIORI.colors.textPrimary
-                        }
-                      />
-                    </View>
-                    <Text
-                      style={[
-                        styles.themeLabel,
-                        { color: FIORI.colors.textPrimary },
-                        isSelected && { color: tokens.brand.tint },
-                      ]}
-                    >
-                      {option.label}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-            <Text
-              style={[styles.themeHint, { color: FIORI.colors.textTertiary }]}
-            >
-              {themePreference === 'system'
-                ? `Currently using ${isDarkMode ? 'dark' : 'light'} mode based on system settings`
-                : `Using ${themePreference} mode`}
-            </Text>
+        <SettingsSection
+          title="Appearance"
+          footer={
+            themePreference === 'system'
+              ? `Follows your phone's setting. ${isDarkMode ? 'Dark' : 'Light'} mode is on now.`
+              : `${themePreference === 'dark' ? 'Dark' : 'Light'} mode is always on.`
+          }
+        >
+          <View style={styles.optionGroup} accessibilityRole="radiogroup" accessibilityLabel="Appearance">
+            {THEME_OPTIONS.map(option => {
+              const isSelected = themePreference === option.value;
+              return (
+                <Pressable
+                  key={option.value}
+                  style={({ pressed }) => [
+                    styles.option,
+                    isSelected && styles.optionSelected,
+                    pressed && !isSelected && styles.optionPressed,
+                  ]}
+                  onPress={() => setThemePreference(option.value)}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected: isSelected, checked: isSelected }}
+                  accessibilityLabel={option.label}
+                >
+                  <View style={[styles.optionIcon, isSelected && styles.optionIconSelected]}>
+                    <Icon
+                      name={option.icon}
+                      size={iconSize.lg}
+                      color={isSelected ? tokens.brand.onFill : tokens.icon.primary}
+                    />
+                  </View>
+                  <Text style={[styles.optionLabel, isSelected && styles.optionLabelSelected]}>
+                    {option.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
           </View>
-        </View>
+        </SettingsSection>
 
         {/* Brand Section: colour palette for the whole app (docs/STYLE_GUIDE.md) */}
-        <View style={styles.section}>
-          <Text style={[styles.sectionHeader, { color: tokens.text.secondary }]}>BRAND</Text>
-          <View style={[styles.sectionContent, { backgroundColor: tokens.surface.card }]}>
-            <View style={styles.themeSelector}>
-              {BRANDS.map(option => {
-                const isSelected = brand === option;
-                const swatch = getTokens(option, resolvedMode);
-                return (
-                  <Pressable
-                    key={option}
-                    style={[
-                      styles.themeOption,
-                      { backgroundColor: tokens.background.grouped },
-                      isSelected && { backgroundColor: tokens.brand.subtle, borderColor: tokens.brand.tint, borderWidth: 2 },
-                    ]}
-                    onPress={() => setBrand(option)}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: isSelected }}
-                    accessibilityLabel={`${BRAND_LABELS[option]} brand`}
-                  >
-                    <View style={styles.brandSwatches} accessible={false}>
-                      <View style={[styles.brandSwatch, { backgroundColor: swatch.brand.fill }]} />
-                      <View style={[styles.brandSwatch, { backgroundColor: swatch.brand.secondary }]} />
-                    </View>
-                    <Text style={[styles.themeLabel, { color: isSelected ? tokens.brand.tint : tokens.text.primary }]}>
+        <SettingsSection title="Brand" footer="Colours for the whole app. Works with light and dark mode.">
+          <View style={styles.optionGroup} accessibilityRole="radiogroup" accessibilityLabel="Brand">
+            {BRANDS.map(option => {
+              const isSelected = brand === option;
+              const swatch = getTokens(option, resolvedMode);
+              return (
+                <Pressable
+                  key={option}
+                  style={({ pressed }) => [
+                    styles.option,
+                    isSelected && styles.optionSelected,
+                    pressed && !isSelected && styles.optionPressed,
+                  ]}
+                  onPress={() => setBrand(option)}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected: isSelected, checked: isSelected }}
+                  accessibilityLabel={`${BRAND_LABELS[option]} brand`}
+                >
+                  <View style={styles.brandSwatches} accessible={false}>
+                    <View style={[styles.brandSwatch, { backgroundColor: swatch.brand.fill }]} />
+                    <View style={[styles.brandSwatch, { backgroundColor: swatch.brand.secondary }]} />
+                  </View>
+                  <View style={styles.optionLabelRow}>
+                    {isSelected && (
+                      <Icon name="check" size={iconSize.sm} color={tokens.brand.tint} />
+                    )}
+                    <Text style={[styles.optionLabel, isSelected && styles.optionLabelSelected]}>
                       {BRAND_LABELS[option]}
                     </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-            <Text style={[styles.themeHint, { color: tokens.text.secondary }]}>
-              Colours for the whole app. Works with light and dark mode.
-            </Text>
+                  </View>
+                </Pressable>
+              );
+            })}
           </View>
-        </View>
-
-        {__DEV__ && (
-          <View style={styles.section}>
-            <Text style={[styles.sectionHeader, { color: tokens.text.secondary }]}>DEVELOPMENT</Text>
-            <View style={[styles.sectionContent, { backgroundColor: tokens.surface.card }]}>
-              <ObjectCellRow
-                icon="color-palette-outline"
-                label="Style guide"
-                subtitle="Tokens and components in the current brand and mode"
-                onPress={() => router.push('/style-guide')}
-              />
-            </View>
-          </View>
-        )}
-
-        {/* Legal Section */}
-        <View style={styles.section}>
-          <Text
-            style={[
-              styles.sectionHeader,
-              { color: FIORI.colors.textSecondary },
-            ]}
-          >
-            LEGAL
-          </Text>
-          <View
-            style={[
-              styles.sectionContent,
-              { backgroundColor: FIORI.colors.background },
-            ]}
-          >
-            <ObjectCellRow
-              icon="document-text-outline"
-              label="Terms of Service"
-              subtitle="View terms and conditions"
-              onPress={() => router.push('/terms-of-service')}
-            />
-            <ObjectCellRow
-              icon="shield-checkmark-outline"
-              label="Privacy Policy"
-              subtitle="How we handle your data"
-              onPress={() => router.push('/privacy-policy')}
-            />
-          </View>
-        </View>
+        </SettingsSection>
 
         {/* Account Section */}
-        <View style={styles.section}>
-          <Text
-            style={[
-              styles.sectionHeader,
-              { color: FIORI.colors.textSecondary },
-            ]}
-          >
-            ACCOUNT
-          </Text>
-          <View
-            style={[
-              styles.sectionContent,
-              { backgroundColor: FIORI.colors.background },
-            ]}
-          >
-            <ObjectCellRow
-              icon="log-out-outline"
-              label="Sign Out"
-              onPress={handleLogout}
-              showChevron={false}
-              destructive
+        <SettingsSection title="Account">
+          <SettingsRow
+            icon="server"
+            label="Change warehouse server"
+            onPress={() => router.push('/operator-server')}
+          />
+          <SettingsRow
+            icon="logout"
+            label="Sign out"
+            onPress={handleLogout}
+            showChevron={false}
+            destructive
+          />
+          <SettingsRow
+            icon="trash-can-outline"
+            label="Delete account"
+            subtitle="Permanently delete your account and data"
+            onPress={handleDeleteAccount}
+            showChevron={false}
+            destructive
+            last
+          />
+        </SettingsSection>
+
+        {/* About Section */}
+        <SettingsSection title="About">
+          <SettingsRow
+            icon="file-document-outline"
+            label="Terms of service"
+            subtitle="View terms and conditions"
+            onPress={() => router.push('/terms-of-service')}
+          />
+          <SettingsRow
+            icon="shield-check-outline"
+            label="Privacy policy"
+            subtitle="How we handle your data"
+            onPress={() => router.push('/privacy-policy')}
+            last
+          />
+        </SettingsSection>
+
+        {__DEV__ && (
+          <SettingsSection title="Development">
+            <SettingsRow
+              icon="palette-outline"
+              label="Style guide"
+              subtitle="Tokens and components in the current brand and mode"
+              onPress={() => router.push('/style-guide')}
+              last
             />
-            <ObjectCellRow
-              icon="server-outline"
-              label="Change Warehouse Server"
-              onPress={() => router.push('/operator-server')}
-              showChevron
-            />
-            <ObjectCellRow
-              icon="trash-outline"
-              label="Delete Account"
-              subtitle="Permanently delete your account and data"
-              onPress={handleDeleteAccount}
-              showChevron={false}
-              destructive
-            />
-          </View>
-        </View>
+          </SettingsSection>
+        )}
 
         {/* Footer */}
         <View style={styles.footer}>
-          <Text
-            style={[styles.footerTitle, { color: FIORI.colors.textSecondary }]}
-          >
+          <Text style={styles.footerTitle}>
             {process.env.EXPO_PUBLIC_APP_NAME || 'Warehouse Manager'}
           </Text>
-          <Text
-            style={[
-              styles.footerSubtitle,
-              { color: FIORI.colors.textTertiary },
-            ]}
-          >
-            Management System v1.0
-          </Text>
+          <Text style={styles.footerSubtitle}>Management System v1.0</Text>
         </View>
       </ScrollView>
 
-      {/* Fiori Modal Dialog */}
+      {/* Sign-out confirmation (style guide §13.9) */}
       <Modal
         visible={showLogoutModal}
         transparent
         animationType="fade"
+        statusBarTranslucent
         onRequestClose={() => !loggingOut && setShowLogoutModal(false)}
       >
         <Pressable
-          style={[
-            styles.modalOverlay,
-            { backgroundColor: FIORI.colors.overlayBackground },
-          ]}
+          style={styles.modalOverlay}
           onPress={() => !loggingOut && setShowLogoutModal(false)}
+          accessibilityRole="button"
+          accessibilityLabel="Cancel"
         >
           <Pressable
-            style={[
-              styles.modalDialog,
-              { backgroundColor: FIORI.colors.background },
-            ]}
+            style={styles.modalDialog}
             onPress={e => e.stopPropagation()}
+            accessibilityViewIsModal
+            accessible={false}
           >
-            {/* Modal Icon */}
-            <View
-              style={[
-                styles.modalIconContainer,
-                { backgroundColor: FIORI.colors.destructiveLight },
-              ]}
-            >
-              <Ionicons
-                name="log-out-outline"
-                size={32}
-                color={FIORI.colors.destructive}
-              />
-            </View>
-
-            {/* Modal Header */}
-            <Text
-              style={[styles.modalTitle, { color: FIORI.colors.textPrimary }]}
-            >
-              Sign Out
+            <Icon name="logout" size={iconSize.xl} color={tokens.status.negative.text} />
+            <Text style={styles.modalTitle} accessibilityRole="header">
+              Sign out?
             </Text>
-            <Text
-              style={[
-                styles.modalMessage,
-                { color: FIORI.colors.textSecondary },
-              ]}
-            >
-              Are you sure you want to sign out of your account?
+            <Text style={styles.modalMessage}>
+              You'll need your mobile number and a one-time code to sign in again.
             </Text>
 
-            {/* Modal Actions */}
             <View style={styles.modalActions}>
-              <Pressable
-                style={[
-                  styles.modalButton,
-                  { backgroundColor: FIORI.colors.backgroundGrouped },
-                ]}
+              <DialogButton
+                label="Cancel"
                 onPress={() => setShowLogoutModal(false)}
                 disabled={loggingOut}
-              >
-                <Text
-                  style={[
-                    styles.modalButtonTextSecondary,
-                    { color: FIORI.colors.textPrimary },
-                  ]}
-                >
-                  Cancel
-                </Text>
-              </Pressable>
-              <Pressable
-                style={[
-                  styles.modalButton,
-                  { backgroundColor: FIORI.colors.destructive },
-                ]}
+              />
+              <DialogButton
+                label="Sign out"
+                destructive
+                busy={loggingOut}
                 onPress={confirmLogout}
-                disabled={loggingOut}
-              >
-                {loggingOut ? (
-                  <ActivityIndicator
-                    size="small"
-                    color={FIORI.colors.iconOnPrimary}
-                  />
-                ) : (
-                  <Text
-                    style={[
-                      styles.modalButtonTextDestructive,
-                      { color: FIORI.colors.iconOnPrimary },
-                    ]}
-                  >
-                    Sign Out
-                  </Text>
-                )}
-              </Pressable>
+              />
             </View>
           </Pressable>
         </Pressable>
@@ -763,198 +473,93 @@ const SettingsScreen: React.FC = () => {
         visible={showDeleteModal}
         transparent
         animationType="fade"
+        statusBarTranslucent
         onRequestClose={() => !deletingAccount && handleDeleteCancel()}
       >
         <Pressable
-          style={[
-            styles.modalOverlay,
-            { backgroundColor: FIORI.colors.overlayBackground },
-          ]}
+          style={styles.modalOverlay}
           onPress={() => !deletingAccount && handleDeleteCancel()}
+          accessibilityRole="button"
+          accessibilityLabel="Cancel"
         >
           <Pressable
-            style={[
-              styles.modalDialog,
-              { backgroundColor: FIORI.colors.background, width: 320 },
-            ]}
+            style={styles.modalDialog}
             onPress={e => e.stopPropagation()}
+            accessibilityViewIsModal
+            accessible={false}
           >
-            {/* Modal Icon */}
-            <View
-              style={[
-                styles.modalIconContainer,
-                { backgroundColor: FIORI.colors.destructiveLight },
-              ]}
-            >
-              <Ionicons
-                name="trash-outline"
-                size={32}
-                color={FIORI.colors.destructive}
-              />
-            </View>
+            <Icon name="trash-can-outline" size={iconSize.xl} color={tokens.status.negative.text} />
 
             {deleteStep === 'warning' ? (
               <>
                 {/* Warning Step */}
-                <Text
-                  style={[
-                    styles.modalTitle,
-                    { color: FIORI.colors.textPrimary },
-                  ]}
-                >
-                  Delete Account
+                <Text style={styles.modalTitle} accessibilityRole="header">
+                  Delete your account?
                 </Text>
-                <Text
-                  style={[
-                    styles.modalMessage,
-                    { color: FIORI.colors.textSecondary, textAlign: 'left' },
-                  ]}
-                >
-                  This action is permanent and cannot be undone.{'\n\n'}
-                  The following will be deleted:{'\n'}
-                  {'\u2022'} Your profile information{'\n'}
-                  {'\u2022'} Customer assignments{'\n'}
-                  {'\u2022'} App preferences and cache{'\n\n'}
-                  Historical records (GRNs, dispatches) will be retained for
-                  compliance.
+                <Text style={[styles.modalMessage, styles.modalMessageLeft]}>
+                  This can't be undone. These will be deleted:{'\n'}
+                  {'•'} Your profile information{'\n'}
+                  {'•'} Customer assignments{'\n'}
+                  {'•'} App preferences and cache{'\n\n'}
+                  Records such as GRNs and dispatches are kept for compliance.
                 </Text>
 
                 <View style={styles.modalActions}>
-                  <Pressable
-                    style={[
-                      styles.modalButton,
-                      { backgroundColor: FIORI.colors.backgroundGrouped },
-                    ]}
-                    onPress={handleDeleteCancel}
-                  >
-                    <Text
-                      style={[
-                        styles.modalButtonTextSecondary,
-                        { color: FIORI.colors.textPrimary },
-                      ]}
-                    >
-                      Cancel
-                    </Text>
-                  </Pressable>
-                  <Pressable
-                    style={[
-                      styles.modalButton,
-                      { backgroundColor: FIORI.colors.destructive },
-                    ]}
-                    onPress={handleDeleteProceed}
-                  >
-                    <Text
-                      style={[
-                        styles.modalButtonTextDestructive,
-                        { color: FIORI.colors.iconOnPrimary },
-                      ]}
-                    >
-                      Continue
-                    </Text>
-                  </Pressable>
+                  <DialogButton label="Cancel" onPress={handleDeleteCancel} />
+                  <DialogButton label="Continue" destructive onPress={handleDeleteProceed} />
                 </View>
               </>
             ) : (
               <>
                 {/* Confirm Step */}
-                <Text
-                  style={[
-                    styles.modalTitle,
-                    { color: FIORI.colors.textPrimary },
-                  ]}
-                >
-                  Confirm Deletion
+                <Text style={styles.modalTitle} accessibilityRole="header">
+                  Confirm deletion
                 </Text>
-                <Text
-                  style={[
-                    styles.modalMessage,
-                    { color: FIORI.colors.textSecondary },
-                  ]}
-                >
-                  Enter your phone number to confirm account deletion.
+                <Text style={styles.modalMessage}>
+                  Enter the mobile number on your account to delete it.
                 </Text>
 
                 <TextInput
                   style={[
                     styles.deleteConfirmInput,
-                    {
-                      backgroundColor: FIORI.colors.backgroundGrouped,
-                      color: FIORI.colors.textPrimary,
-                      borderColor: deleteError
-                        ? FIORI.colors.destructive
-                        : FIORI.colors.divider,
-                    },
+                    deleteFocused && styles.deleteConfirmInputFocused,
+                    !!deleteError && styles.deleteConfirmInputError,
                   ]}
-                  placeholder="Phone number"
-                  placeholderTextColor={FIORI.colors.textTertiary}
+                  placeholder="10-digit mobile number"
+                  placeholderTextColor={tokens.text.placeholder}
                   value={deleteConfirmPhone}
                   onChangeText={text => {
                     setDeleteConfirmPhone(text);
                     setDeleteError(null);
                   }}
+                  onFocus={() => setDeleteFocused(true)}
+                  onBlur={() => setDeleteFocused(false)}
                   keyboardType="phone-pad"
                   autoComplete="tel"
+                  textContentType="telephoneNumber"
                   editable={!deletingAccount}
+                  accessibilityLabel="Mobile number"
                 />
 
                 {deleteError && (
-                  <Text
-                    style={[
-                      styles.deleteErrorText,
-                      { color: FIORI.colors.destructive },
-                    ]}
-                  >
-                    {deleteError}
-                  </Text>
+                  <View style={styles.deleteErrorRow} accessibilityLiveRegion="polite">
+                    <Icon name="alert-circle" size={iconSize.sm} color={tokens.status.negative.text} />
+                    <Text style={styles.deleteErrorText}>{deleteError}</Text>
+                  </View>
                 )}
 
                 <View style={styles.modalActions}>
-                  <Pressable
-                    style={[
-                      styles.modalButton,
-                      { backgroundColor: FIORI.colors.backgroundGrouped },
-                    ]}
+                  <DialogButton
+                    label="Cancel"
                     onPress={handleDeleteCancel}
                     disabled={deletingAccount}
-                  >
-                    <Text
-                      style={[
-                        styles.modalButtonTextSecondary,
-                        { color: FIORI.colors.textPrimary },
-                      ]}
-                    >
-                      Cancel
-                    </Text>
-                  </Pressable>
-                  <Pressable
-                    style={[
-                      styles.modalButton,
-                      {
-                        backgroundColor:
-                          deleteConfirmPhone.length >= 10
-                            ? FIORI.colors.destructive
-                            : FIORI.colors.divider,
-                      },
-                    ]}
+                  />
+                  <DialogButton
+                    label="Delete account"
+                    destructive
+                    busy={deletingAccount}
                     onPress={confirmDeleteAccount}
-                    disabled={deletingAccount || deleteConfirmPhone.length < 10}
-                  >
-                    {deletingAccount ? (
-                      <ActivityIndicator
-                        size="small"
-                        color={FIORI.colors.iconOnPrimary}
-                      />
-                    ) : (
-                      <Text
-                        style={[
-                          styles.modalButtonTextDestructive,
-                          { color: FIORI.colors.iconOnPrimary },
-                        ]}
-                      >
-                        Delete
-                      </Text>
-                    )}
-                  </Pressable>
+                  />
                 </View>
               </>
             )}
@@ -966,335 +571,455 @@ const SettingsScreen: React.FC = () => {
 };
 
 // ============================================================================
-// SAP FIORI STYLES
+// ROWS, SECTIONS AND DIALOG BUTTONS
 // ============================================================================
 
-const styles = StyleSheet.create({
-  brandSwatches: {
-    flexDirection: 'row',
-    gap: 4,
-    marginBottom: 8,
-  },
-  brandSwatch: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-  },
-  // Container (color applied inline)
+/** A grouped-list section: header, rows on surface.card, optional footer. */
+function SettingsSection({
+  title,
+  footer,
+  children,
+}: {
+  title: string;
+  footer?: string;
+  children: React.ReactNode;
+}) {
+  const styles = useThemedStyles(makeStyles);
+  return (
+    <View style={styles.section}>
+      <Text style={styles.sectionHeader} accessibilityRole="header">
+        {title}
+      </Text>
+      <View style={styles.sectionContent}>{children}</View>
+      {footer ? <Text style={styles.sectionFooter}>{footer}</Text> : null}
+    </View>
+  );
+}
+
+/** A grouped-list row with an icon, label, optional subtitle and chevron. */
+function SettingsRow({
+  icon,
+  label,
+  subtitle,
+  onPress,
+  showChevron = true,
+  destructive = false,
+  last = false,
+}: {
+  icon: string;
+  label: string;
+  subtitle?: string;
+  onPress: () => void;
+  showChevron?: boolean;
+  destructive?: boolean;
+  last?: boolean;
+}) {
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
+  return (
+    <Pressable
+      style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={subtitle ? `${label}, ${subtitle}` : label}
+    >
+      <Icon
+        name={icon}
+        size={iconSize.md}
+        color={destructive ? t.status.negative.text : t.brand.tint}
+        style={styles.rowIcon}
+      />
+      <View style={[styles.rowBody, !last && styles.rowDivider]}>
+        <View style={styles.rowContent}>
+          <Text style={[styles.rowLabel, destructive && styles.rowLabelDestructive]}>{label}</Text>
+          {subtitle && <Text style={styles.rowSubtitle}>{subtitle}</Text>}
+        </View>
+        {showChevron && (
+          <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />
+        )}
+      </View>
+    </Pressable>
+  );
+}
+
+/** Dialog button: secondary (Cancel) or destructive primary (style guide §13.1, §13.9). */
+function DialogButton({
+  label,
+  onPress,
+  destructive = false,
+  busy = false,
+  disabled = false,
+}: {
+  label: string;
+  onPress: () => void;
+  destructive?: boolean;
+  busy?: boolean;
+  disabled?: boolean;
+}) {
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
+  return (
+    <Pressable
+      style={({ pressed }) => [
+        styles.modalButton,
+        destructive ? styles.modalButtonDestructive : styles.modalButtonSecondary,
+        pressed && (destructive ? styles.modalButtonDestructivePressed : styles.modalButtonSecondaryPressed),
+        disabled && styles.disabled,
+      ]}
+      onPress={onPress}
+      disabled={disabled || busy}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ disabled: disabled || busy, busy }}
+    >
+      {busy ? (
+        <ActivityIndicator size="small" color={destructive ? t.destructive.onFill : t.brand.tint} />
+      ) : (
+        <Text style={destructive ? styles.modalButtonTextDestructive : styles.modalButtonTextSecondary}>
+          {label}
+        </Text>
+      )}
+    </Pressable>
+  );
+}
+
+// ============================================================================
+// STYLES (grouped list on background.grouped, style guide §14.12)
+// ============================================================================
+
+const makeStyles = (t: ThemeTokens) => ({
   container: {
     flex: 1,
+    backgroundColor: t.background.grouped,
   },
 
-  // Navigation Bar (colors applied inline)
+  // Navigation Bar
   navigationBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    height: 44,
-    paddingHorizontal: FIORI_STATIC.spacing.sm,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
+    minHeight: touchTarget,
+    paddingHorizontal: space.sm,
+    backgroundColor: t.surface.header,
     borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.divider,
   },
-
   navBackButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: FIORI_STATIC.spacing.sm,
-    paddingRight: FIORI_STATIC.spacing.md,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    minHeight: touchTarget,
+    paddingRight: space.lg,
+    minWidth: 80,
   },
-
   navBackText: {
-    ...FIORI_STATIC.typography.body,
-    marginLeft: FIORI_STATIC.spacing.xs,
+    ...typography.body,
+    color: t.brand.tint,
   },
-
   navTitle: {
-    ...FIORI_STATIC.typography.headline,
+    ...typography.headline,
+    color: t.text.primary,
   },
-
   navPlaceholder: {
     width: 80,
   },
 
-  // ScrollView
   scrollView: {
     flex: 1,
   },
 
-  // Profile Card (colors applied inline)
+  // Profile Card
   profileCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginHorizontal: FIORI_STATIC.spacing.md,
-    marginTop: FIORI_STATIC.spacing.md,
-    marginBottom: FIORI_STATIC.spacing.lg,
-    padding: FIORI_STATIC.spacing.md,
-    borderRadius: FIORI_STATIC.dimensions.cardRadius,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.1,
-        shadowRadius: 3,
-      },
-      android: { elevation: 2 },
-    }),
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    marginHorizontal: layout.marginCompact,
+    marginTop: space.lg,
+    marginBottom: space.xxl,
+    padding: space.lg,
+    borderRadius: radius.card,
+    backgroundColor: t.surface.card,
   },
-
   avatar: {
-    width: FIORI_STATIC.dimensions.avatarSize,
-    height: FIORI_STATIC.dimensions.avatarSize,
-    borderRadius: FIORI_STATIC.dimensions.avatarSize / 2,
-    justifyContent: 'center',
-    alignItems: 'center',
+    width: layout.avatar.lg,
+    height: layout.avatar.lg,
+    borderRadius: radius.pill,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    backgroundColor: t.brand.fill,
   },
-
   avatarText: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#FFFFFF',
+    ...typography.title2,
+    color: t.brand.onFill,
   },
-
   profileInfo: {
     flex: 1,
-    marginLeft: FIORI_STATIC.spacing.md,
+    marginLeft: space.lg,
+    marginRight: space.sm,
   },
-
   profileName: {
-    ...FIORI_STATIC.typography.headline,
-    marginBottom: 2,
+    ...typography.headline,
+    color: t.text.primary,
+    marginBottom: space.xxs,
   },
-
   profileRole: {
-    ...FIORI_STATIC.typography.subhead,
-    fontWeight: '500',
+    ...typography.subhead,
+    color: t.text.secondary,
   },
 
   // Section
   section: {
-    marginBottom: FIORI_STATIC.spacing.lg,
+    marginBottom: space.xxl,
   },
-
   sectionHeader: {
-    ...FIORI_STATIC.typography.footnote,
-    fontWeight: '400',
+    ...typography.footnote,
+    textTransform: 'uppercase' as const,
     letterSpacing: 0.5,
-    marginHorizontal: FIORI_STATIC.spacing.md,
-    marginBottom: FIORI_STATIC.spacing.sm,
-    paddingHorizontal: FIORI_STATIC.spacing.md,
+    color: t.text.secondary,
+    marginHorizontal: layout.marginCompact,
+    marginBottom: space.sm,
+    paddingHorizontal: space.lg,
   },
-
   sectionContent: {
-    marginHorizontal: FIORI_STATIC.spacing.md,
-    borderRadius: FIORI_STATIC.dimensions.borderRadius,
-    overflow: 'hidden',
+    marginHorizontal: layout.marginCompact,
+    borderRadius: radius.card,
+    overflow: 'hidden' as const,
+    backgroundColor: t.surface.card,
+  },
+  sectionFooter: {
+    ...typography.footnote,
+    color: t.text.secondary,
+    marginHorizontal: layout.marginCompact,
+    paddingHorizontal: space.lg,
+    marginTop: space.sm,
   },
 
-  // Object Cell Row (colors applied inline)
-  objectCell: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    minHeight: FIORI_STATIC.dimensions.rowHeight + 12,
-    paddingHorizontal: FIORI_STATIC.spacing.md,
-    paddingVertical: FIORI_STATIC.spacing.sm,
+  // Row
+  row: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    minHeight: layout.rowMinHeight + space.md,
+    paddingLeft: space.lg,
+    backgroundColor: t.surface.card,
+  },
+  rowPressed: {
+    backgroundColor: t.surface.cardPressed,
+  },
+  rowIcon: {
+    marginRight: space.md,
+  },
+  rowBody: {
+    flex: 1,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    alignSelf: 'stretch' as const,
+    paddingVertical: space.sm,
+    paddingRight: space.md,
+  },
+  rowDivider: {
     borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.divider,
   },
-
-  objectCellIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: FIORI_STATIC.spacing.sm,
-  },
-
-  objectCellContent: {
+  rowContent: {
     flex: 1,
-    marginRight: FIORI_STATIC.spacing.sm,
+    marginRight: space.sm,
+  },
+  rowLabel: {
+    ...typography.body,
+    color: t.text.primary,
+  },
+  rowLabelDestructive: {
+    color: t.status.negative.text,
+  },
+  rowSubtitle: {
+    ...typography.footnote,
+    color: t.text.secondary,
+    marginTop: space.xxs,
   },
 
-  objectCellLabel: {
-    ...FIORI_STATIC.typography.body,
+  // Option pickers (appearance, brand)
+  optionGroup: {
+    flexDirection: 'row' as const,
+    padding: space.lg,
+    gap: space.sm,
   },
-
-  objectCellSubtitle: {
-    ...FIORI_STATIC.typography.footnote,
-    marginTop: 2,
-  },
-
-  // Theme Selector (colors applied inline)
-  themeSelector: {
-    flexDirection: 'row',
-    padding: FIORI_STATIC.spacing.md,
-    gap: FIORI_STATIC.spacing.sm,
-  },
-
-  themeOption: {
+  option: {
     flex: 1,
-    alignItems: 'center',
-    paddingVertical: FIORI_STATIC.spacing.md,
-    borderRadius: FIORI_STATIC.dimensions.borderRadius,
+    alignItems: 'center' as const,
+    paddingVertical: space.lg,
+    paddingHorizontal: space.xs,
+    borderRadius: radius.button,
+    borderWidth: 1,
+    borderColor: t.border.button,
   },
-
-  themeIconContainer: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: FIORI_STATIC.spacing.sm,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.1,
-        shadowRadius: 2,
-      },
-      android: { elevation: 1 },
-    }),
+  optionSelected: {
+    backgroundColor: t.brand.subtle,
+    borderColor: t.brand.tint,
+    borderWidth: 2,
   },
-
-  themeLabel: {
-    ...FIORI_STATIC.typography.footnote,
-    fontWeight: '500',
+  optionPressed: {
+    backgroundColor: t.surface.cardPressed,
   },
-
-  themeHint: {
-    fontSize: 12,
-    lineHeight: 16,
-    textAlign: 'center',
-    paddingHorizontal: FIORI_STATIC.spacing.md,
-    paddingBottom: FIORI_STATIC.spacing.md,
+  optionIcon: {
+    width: layout.avatar.md,
+    height: layout.avatar.md,
+    borderRadius: radius.pill,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    marginBottom: space.sm,
+    backgroundColor: t.background.grouped,
   },
-
-  // Switch Row (colors applied inline)
-  switchRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    minHeight: FIORI_STATIC.dimensions.rowHeight + 12,
-    paddingHorizontal: FIORI_STATIC.spacing.md,
-    paddingVertical: FIORI_STATIC.spacing.sm,
+  optionIconSelected: {
+    backgroundColor: t.brand.fill,
   },
-
-  switchRowIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: FIORI_STATIC.spacing.sm,
+  optionLabelRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.xxs,
   },
-
-  switchRowContent: {
-    flex: 1,
-    marginRight: FIORI_STATIC.spacing.sm,
+  optionLabel: {
+    ...typography.footnote,
+    fontWeight: fontWeight.medium,
+    color: t.text.primary,
+    textAlign: 'center' as const,
   },
-
-  switchRowLabel: {
-    ...FIORI_STATIC.typography.body,
+  optionLabelSelected: {
+    fontWeight: fontWeight.semibold,
+    color: t.brand.tint,
   },
-
-  switchRowSubtitle: {
-    ...FIORI_STATIC.typography.footnote,
-    marginTop: 2,
+  brandSwatches: {
+    flexDirection: 'row' as const,
+    gap: space.xs,
+    marginBottom: space.sm,
+  },
+  brandSwatch: {
+    width: 22,
+    height: 22,
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: t.border.separator,
   },
 
   // Footer
   footer: {
-    alignItems: 'center',
-    paddingVertical: FIORI_STATIC.spacing.xl,
+    alignItems: 'center' as const,
+    paddingVertical: space.xxxl,
   },
-
   footerTitle: {
-    ...FIORI_STATIC.typography.subhead,
-    fontWeight: '600',
-    marginBottom: FIORI_STATIC.spacing.xs,
+    ...typography.subhead,
+    fontWeight: fontWeight.semibold,
+    color: t.text.secondary,
+    marginBottom: space.xs,
   },
-
   footerSubtitle: {
-    ...FIORI_STATIC.typography.footnote,
+    ...typography.footnote,
+    color: t.text.secondary,
   },
 
-  // Modal (colors applied inline)
+  // Dialogs
   modalOverlay: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    padding: space.xxl,
+    backgroundColor: t.overlay.scrim,
   },
-
   modalDialog: {
-    width: 300,
-    borderRadius: FIORI_STATIC.dimensions.modalRadius,
-    padding: FIORI_STATIC.spacing.lg,
-    alignItems: 'center',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 12,
-      },
-      android: { elevation: 8 },
-    }),
+    width: '100%' as const,
+    maxWidth: layout.maxFormWidth,
+    borderRadius: radius.card,
+    padding: space.xxl,
+    alignItems: 'center' as const,
+    gap: space.sm,
+    backgroundColor: t.surface.sheet,
+    ...t.shadow[4],
   },
-
-  modalIconContainer: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: FIORI_STATIC.spacing.md,
-  },
-
   modalTitle: {
-    ...FIORI_STATIC.typography.title3,
-    marginBottom: FIORI_STATIC.spacing.sm,
+    ...typography.title3,
+    color: t.text.primary,
+    textAlign: 'center' as const,
   },
-
   modalMessage: {
-    ...FIORI_STATIC.typography.subhead,
-    textAlign: 'center',
-    marginBottom: FIORI_STATIC.spacing.lg,
+    ...typography.body,
+    color: t.text.secondary,
+    textAlign: 'center' as const,
+    marginBottom: space.md,
   },
-
+  modalMessageLeft: {
+    textAlign: 'left' as const,
+    alignSelf: 'stretch' as const,
+  },
   modalActions: {
-    flexDirection: 'row',
-    gap: FIORI_STATIC.spacing.sm,
-    width: '100%',
+    flexDirection: 'row' as const,
+    gap: space.sm,
+    width: '100%' as const,
+    marginTop: space.sm,
   },
-
   modalButton: {
     flex: 1,
-    height: FIORI_STATIC.dimensions.buttonHeight,
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
+    minHeight: touchTarget,
+    borderRadius: radius.button,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    paddingHorizontal: space.sm,
   },
-
+  modalButtonSecondary: {
+    borderWidth: 1,
+    borderColor: t.border.button,
+  },
+  modalButtonSecondaryPressed: {
+    backgroundColor: t.surface.cardPressed,
+  },
+  modalButtonDestructive: {
+    backgroundColor: t.destructive.fill,
+  },
+  modalButtonDestructivePressed: {
+    backgroundColor: t.destructive.fillPressed,
+  },
   modalButtonTextSecondary: {
-    ...FIORI_STATIC.typography.headline,
+    ...typography.callout,
+    fontWeight: fontWeight.semibold,
+    color: t.text.primary,
+    textAlign: 'center' as const,
   },
-
   modalButtonTextDestructive: {
-    ...FIORI_STATIC.typography.headline,
+    ...typography.callout,
+    fontWeight: fontWeight.semibold,
+    color: t.destructive.onFill,
+    textAlign: 'center' as const,
+  },
+  disabled: {
+    opacity: t.interaction.disabledOpacity,
   },
 
   // Delete Account Modal
   deleteConfirmInput: {
-    width: '100%',
-    height: FIORI_STATIC.dimensions.buttonHeight,
-    borderRadius: 8,
+    ...typography.body,
+    width: '100%' as const,
+    minHeight: touchTarget,
+    borderRadius: radius.field,
     borderWidth: 1,
-    paddingHorizontal: FIORI_STATIC.spacing.md,
-    marginBottom: FIORI_STATIC.spacing.sm,
-    ...FIORI_STATIC.typography.body,
+    paddingHorizontal: space.md,
+    backgroundColor: t.surface.field,
+    borderColor: t.border.field,
+    color: t.text.primary,
   },
-
+  deleteConfirmInputFocused: {
+    borderWidth: 2,
+    borderColor: t.border.fieldFocus,
+  },
+  deleteConfirmInputError: {
+    borderWidth: 2,
+    borderColor: t.status.negative.border,
+  },
+  deleteErrorRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'flex-start' as const,
+    alignSelf: 'stretch' as const,
+    gap: space.xs,
+  },
   deleteErrorText: {
-    ...FIORI_STATIC.typography.footnote,
-    textAlign: 'center',
-    marginBottom: FIORI_STATIC.spacing.sm,
+    ...typography.footnote,
+    flex: 1,
+    color: t.status.negative.text,
   },
 });
 

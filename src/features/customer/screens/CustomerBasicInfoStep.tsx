@@ -6,21 +6,13 @@
  */
 
 import React, { useState, useRef, useCallback } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TextInput,
-  TouchableOpacity,
-  Alert,
-  Platform,
-  ActivityIndicator,
-} from 'react-native';
+import { View, Text, TextInput, Pressable, Alert, ActivityIndicator } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import { router } from 'expo-router';
-import theme from '@/theme';
-import { useListColors } from '@/hooks/useListColors';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { fontWeight, iconSize, layout, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 import { useCustomerForm } from '@/hooks/useCustomerForm';
 import { GenericStepIndicatorHeader } from '@/components/GenericStepIndicatorHeader';
 import { CUSTOMER_STEPS, CUSTOMER_STEP_NUMBERS, getCompletedSteps } from '@/constants/customerSteps';
@@ -36,8 +28,9 @@ type CustomerBasicInfoStepProps = {
 };
 
 export function CustomerBasicInfoStep({ mode, customerId }: CustomerBasicInfoStepProps) {
-  // Theme colors
-  const colors = useListColors();
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
+  const insets = useSafeAreaInsets();
 
   // Form hook
   const {
@@ -78,10 +71,10 @@ export function CustomerBasicInfoStep({ mode, customerId }: CustomerBasicInfoSte
 
     if (isDirty) {
       Alert.alert(
-        isCreateMode ? 'Discard Changes?' : 'Cancel Edit',
-        'You have unsaved changes. Are you sure you want to leave?',
+        isCreateMode ? 'Discard this customer?' : 'Discard your changes?',
+        'Your unsaved changes will be lost.',
         [
-          { text: 'Stay', style: 'cancel' },
+          { text: 'Keep editing', style: 'cancel' },
           { text: 'Discard', style: 'destructive', onPress: confirmDiscard },
         ]
       );
@@ -117,15 +110,15 @@ export function CustomerBasicInfoStep({ mode, customerId }: CustomerBasicInfoSte
 
   if (isLoading) {
     return (
-      <View style={[styles.loadingContainer, { backgroundColor: colors.gray50 }]}>
-        <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={[styles.loadingText, { color: colors.gray600 }]}>Loading customer data...</Text>
+      <View style={styles.loadingContainer} accessibilityRole="progressbar" accessibilityLabel="Loading customer">
+        <ActivityIndicator size="large" color={t.brand.tint} />
+        <Text style={styles.loadingText}>Loading customer…</Text>
       </View>
     );
   }
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.gray50 }]}>
+    <View style={styles.container}>
       {/* Step Indicator */}
       <GenericStepIndicatorHeader
         steps={CUSTOMER_STEPS}
@@ -134,7 +127,7 @@ export function CustomerBasicInfoStep({ mode, customerId }: CustomerBasicInfoSte
         onCancel={handleCancel}
         onStepPress={handleStepIndicatorPress}
         colorScheme="teal"
-        entityName={isCreateMode ? 'Customer' : 'Customer'}
+        entityName="Customer"
         entityId={isCreateMode ? undefined : formData.name || 'Editing'}
       />
 
@@ -149,59 +142,60 @@ export function CustomerBasicInfoStep({ mode, customerId }: CustomerBasicInfoSte
       >
         {/* Header */}
         <View style={styles.header}>
-          <Text style={[styles.title, { color: colors.gray900 }]}>Basic Information</Text>
-          <Text style={[styles.subtitle, { color: colors.gray600 }]}>
-            Enter the customer's primary details
-          </Text>
+          <Text style={styles.title} accessibilityRole="header">Basic information</Text>
+          <Text style={styles.subtitle}>Enter the customer's main contact details.</Text>
         </View>
 
         {/* Form Fields */}
         <View style={styles.formContainer}>
           {/* Customer Name */}
           <View style={styles.formField}>
-            <Text style={[styles.label, { color: colors.gray600 }]}>
-              CUSTOMER NAME<Text style={[styles.required, { color: colors.statusNegative }]}> *</Text>
+            <Text style={[styles.label, validationErrors.name && styles.labelError]}>
+              Customer name<Text style={styles.required}> *</Text>
             </Text>
             <TextInput
               style={[
                 styles.input,
-                { backgroundColor: colors.cellBackground, borderColor: colors.gray300, color: colors.gray900 },
-                focusedField === 'name' && { borderColor: colors.primary, borderWidth: 2 },
-                validationErrors.name && { borderColor: colors.statusNegative, borderWidth: 2 },
+                focusedField === 'name' && styles.inputFocused,
+                validationErrors.name && styles.inputError,
               ]}
               value={formData.name}
               onChangeText={updateName}
               placeholder="Enter customer name"
-              placeholderTextColor={colors.gray400}
+              placeholderTextColor={t.text.placeholder}
               maxLength={200}
               returnKeyType="next"
               onSubmitEditing={() => mobileInputRef.current?.focus()}
               onFocus={() => setFocusedField('name')}
               onBlur={() => setFocusedField(null)}
               autoCapitalize="words"
+              autoComplete="name"
+              textContentType="name"
+              accessibilityLabel="Customer name, required"
             />
-            {validationErrors.name && (
-              <Text style={[styles.errorText, { color: colors.statusNegative }]}>{validationErrors.name}</Text>
-            )}
+            {validationErrors.name && <FieldError message={validationErrors.name} />}
           </View>
 
           {/* Mobile Number */}
           <View style={styles.formField}>
-            <Text style={[styles.label, { color: colors.gray600 }]}>
-              MOBILE NUMBER<Text style={[styles.required, { color: colors.statusNegative }]}> *</Text>
+            <Text style={[styles.label, validationErrors.mobile && styles.labelError]}>
+              Mobile number<Text style={styles.required}> *</Text>
             </Text>
             <View style={styles.phoneInputContainer}>
-              <View style={[styles.countryCode, { backgroundColor: colors.gray100, borderColor: colors.gray300 }]}>
-                <Text style={[styles.countryCodeText, { color: colors.gray700 }]}>+91</Text>
+              <View
+                style={styles.countryCode}
+                accessibilityElementsHidden
+                importantForAccessibility="no-hide-descendants"
+              >
+                <Text style={styles.countryCodeText}>+91</Text>
               </View>
               <TextInput
                 ref={mobileInputRef}
                 style={[
                   styles.input,
                   styles.phoneInput,
-                  { backgroundColor: colors.cellBackground, borderColor: colors.gray300, color: colors.gray900 },
-                  focusedField === 'mobile' && { borderColor: colors.primary, borderWidth: 2 },
-                  validationErrors.mobile && { borderColor: colors.statusNegative, borderWidth: 2 },
+                  focusedField === 'mobile' && styles.inputFocused,
+                  validationErrors.mobile && styles.inputError,
                 ]}
                 value={formData.mobile.replace(/^91/, '')}
                 onChangeText={(text) => {
@@ -209,48 +203,50 @@ export function CustomerBasicInfoStep({ mode, customerId }: CustomerBasicInfoSte
                   const cleaned = text.replace(/\D/g, '').slice(0, 10);
                   updateMobile(cleaned);
                 }}
-                placeholder="10 digit mobile number"
-                placeholderTextColor={colors.gray400}
+                placeholder="10-digit mobile number"
+                placeholderTextColor={t.text.placeholder}
                 keyboardType="phone-pad"
+                autoComplete="tel"
+                textContentType="telephoneNumber"
                 maxLength={10}
                 returnKeyType="next"
                 onSubmitEditing={() => emailInputRef.current?.focus()}
                 onFocus={() => setFocusedField('mobile')}
                 onBlur={() => setFocusedField(null)}
+                accessibilityLabel="Mobile number after plus 91, required"
               />
             </View>
-            {validationErrors.mobile && (
-              <Text style={[styles.errorText, { color: colors.statusNegative }]}>{validationErrors.mobile}</Text>
-            )}
+            {validationErrors.mobile && <FieldError message={validationErrors.mobile} />}
           </View>
 
           {/* Email */}
           <View style={styles.formField}>
-            <Text style={[styles.label, { color: colors.gray600 }]}>EMAIL</Text>
+            <Text style={[styles.label, validationErrors.email && styles.labelError]}>Email</Text>
             <TextInput
               ref={emailInputRef}
               style={[
                 styles.input,
-                { backgroundColor: colors.cellBackground, borderColor: colors.gray300, color: colors.gray900 },
-                focusedField === 'email' && { borderColor: colors.primary, borderWidth: 2 },
-                validationErrors.email && { borderColor: colors.statusNegative, borderWidth: 2 },
+                focusedField === 'email' && styles.inputFocused,
+                validationErrors.email && styles.inputError,
               ]}
               value={formData.email}
               onChangeText={updateEmail}
               placeholder="customer@example.com"
-              placeholderTextColor={colors.gray400}
+              placeholderTextColor={t.text.placeholder}
               keyboardType="email-address"
+              autoComplete="email"
+              textContentType="emailAddress"
               maxLength={100}
               autoCapitalize="none"
               autoCorrect={false}
               returnKeyType="done"
               onFocus={() => setFocusedField('email')}
               onBlur={() => setFocusedField(null)}
+              accessibilityLabel="Email, optional"
+              accessibilityHint="Used for sending invoices"
             />
-            {validationErrors.email && (
-              <Text style={[styles.errorText, { color: colors.statusNegative }]}>{validationErrors.email}</Text>
-            )}
-            <Text style={[styles.helperText, { color: colors.gray500 }]}>Optional - for sending invoices</Text>
+            {validationErrors.email && <FieldError message={validationErrors.email} />}
+            <Text style={styles.helperText}>Optional. Used for sending invoices.</Text>
           </View>
         </View>
 
@@ -259,16 +255,29 @@ export function CustomerBasicInfoStep({ mode, customerId }: CustomerBasicInfoSte
       </KeyboardAwareScrollView>
 
       {/* Next Button */}
-      <View style={[styles.buttonContainer, { backgroundColor: colors.gray50, borderTopColor: colors.gray200 }]}>
-        <TouchableOpacity
-          style={[styles.nextButton, { backgroundColor: colors.primary }]}
+      <View style={[styles.buttonContainer, { paddingBottom: space.lg + insets.bottom }]}>
+        <Pressable
+          style={({ pressed }) => [styles.nextButton, pressed && styles.nextButtonPressed]}
           onPress={handleNext}
-          activeOpacity={0.8}
+          accessibilityRole="button"
+          accessibilityLabel="Next: details"
         >
-          <Text style={[styles.nextButtonText, { color: colors.white }]}>Next: Details</Text>
-          <Icon name="chevron-right" size={20} color={colors.white} />
-        </TouchableOpacity>
+          <Text style={styles.nextButtonText}>Next: details</Text>
+          <Icon name="chevron-right" size={iconSize.md} color={t.brand.onFill} />
+        </Pressable>
       </View>
+    </View>
+  );
+}
+
+/** Field error: icon plus message in the negative status colour. */
+function FieldError({ message }: { message: string }) {
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
+  return (
+    <View style={styles.errorRow} accessibilityLiveRegion="polite">
+      <Icon name="alert-circle" size={iconSize.sm} color={t.status.negative.text} />
+      <Text style={styles.errorText}>{message}</Text>
     </View>
   );
 }
@@ -277,88 +286,113 @@ export function CustomerBasicInfoStep({ mode, customerId }: CustomerBasicInfoSte
 // STYLES
 // =============================================================================
 
-const styles = StyleSheet.create({
+const makeStyles = (t: ThemeTokens) => ({
   container: {
     flex: 1,
+    backgroundColor: t.background.base,
   },
   loadingContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    backgroundColor: t.background.base,
   },
   loadingText: {
-    marginTop: 12,
-    fontSize: 15,
+    ...typography.subhead,
+    marginTop: space.md,
+    color: t.text.secondary,
   },
   scrollView: {
     flex: 1,
   },
   scrollContent: {
-    paddingHorizontal: 16,
+    paddingHorizontal: layout.marginCompact,
     paddingBottom: 100,
   },
 
   // Header
   header: {
-    paddingVertical: 20,
+    paddingVertical: space.xl,
   },
   title: {
-    fontSize: 22,
-    fontWeight: '700',
-    marginBottom: 4,
+    ...typography.title2,
+    color: t.text.primary,
+    marginBottom: space.xs,
   },
   subtitle: {
-    fontSize: 15,
+    ...typography.subhead,
+    color: t.text.secondary,
   },
 
   // Form
   formContainer: {
-    gap: 20,
+    gap: space.lg,
   },
   formField: {
-    gap: 6,
+    gap: space.xs,
   },
   label: {
-    fontSize: 13,
-    fontWeight: '500',
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
+    ...typography.footnote,
+    color: t.text.secondary,
   },
-  required: {},
+  labelError: {
+    color: t.status.negative.text,
+  },
+  required: {
+    color: t.text.required,
+  },
   input: {
+    ...typography.body,
     borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    fontSize: 16,
-    minHeight: 48,
+    borderRadius: radius.field,
+    paddingHorizontal: space.md,
+    paddingVertical: space.md,
+    minHeight: touchTarget,
+    backgroundColor: t.surface.field,
+    borderColor: t.border.field,
+    color: t.text.primary,
+  },
+  inputFocused: {
+    borderColor: t.border.fieldFocus,
+    borderWidth: 2,
+  },
+  inputError: {
+    borderColor: t.status.negative.border,
+    borderWidth: 2,
+  },
+  errorRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'flex-start' as const,
+    gap: space.xs,
+    marginTop: space.xs,
   },
   errorText: {
-    fontSize: 13,
-    marginTop: 4,
+    ...typography.footnote,
+    flex: 1,
+    color: t.status.negative.text,
   },
   helperText: {
-    fontSize: 13,
-    marginTop: 4,
+    ...typography.footnote,
+    marginTop: space.xs,
+    color: t.text.secondary,
   },
 
   // Phone input
   phoneInputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
   },
   countryCode: {
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    marginRight: 8,
-    minHeight: 48,
-    justifyContent: 'center',
+    borderRadius: radius.field,
+    paddingHorizontal: space.md,
+    marginRight: space.sm,
+    minHeight: touchTarget,
+    justifyContent: 'center' as const,
+    backgroundColor: t.surface.fieldReadOnly,
   },
   countryCodeText: {
-    fontSize: 16,
-    fontWeight: '500',
+    ...typography.body,
+    color: t.text.primary,
   },
   phoneInput: {
     flex: 1,
@@ -366,39 +400,35 @@ const styles = StyleSheet.create({
 
   // Bottom
   bottomSpacer: {
-    height: 40,
+    height: space.huge,
   },
   buttonContainer: {
-    position: 'absolute',
+    position: 'absolute' as const,
     bottom: 0,
     left: 0,
     right: 0,
-    padding: 16,
-    borderTopWidth: 1,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: -2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
-      },
-      android: {
-        elevation: 8,
-      },
-    }),
+    paddingHorizontal: space.lg,
+    paddingTop: space.lg,
+    backgroundColor: t.surface.card,
+    ...t.shadow[3],
   },
   nextButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 8,
-    paddingVertical: 14,
-    paddingHorizontal: 20,
-    gap: 8,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    borderRadius: radius.button,
+    minHeight: 48,
+    paddingHorizontal: space.xl,
+    gap: space.sm,
+    backgroundColor: t.brand.fill,
+  },
+  nextButtonPressed: {
+    backgroundColor: t.brand.fillPressed,
   },
   nextButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
+    ...typography.callout,
+    fontWeight: fontWeight.semibold,
+    color: t.brand.onFill,
   },
 });
 

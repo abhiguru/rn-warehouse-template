@@ -1,66 +1,27 @@
 /**
- * Privacy Policy Screen - SAP Fiori for iOS Design
+ * Privacy policy screen: reading text (style guide §4, §12).
  *
- * Displays the full Privacy Policy for the App
- * Covers data collection, usage, and user rights
+ * The full privacy policy: data collection, use and user rights.
+ * Section titles are headers for screen readers; body text uses
+ * typography.body in text.primary on a surface.card column.
  */
 import React from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  Pressable,
-} from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
 import { router } from 'expo-router';
 import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
-import { useTheme } from '@/hooks/useTheme';
-import { useFioriColors } from '@/theme/fioriColors';
-
-// Static design tokens
-const FIORI_STATIC = {
-  typography: {
-    title1: {
-      fontSize: 28,
-      lineHeight: 34,
-      fontWeight: '700' as const,
-      letterSpacing: 0.36,
-    },
-    headline: {
-      fontSize: 17,
-      lineHeight: 22,
-      fontWeight: '600' as const,
-      letterSpacing: -0.41,
-    },
-    body: {
-      fontSize: 17,
-      lineHeight: 24,
-      fontWeight: '400' as const,
-      letterSpacing: -0.41,
-    },
-    subhead: {
-      fontSize: 15,
-      lineHeight: 20,
-      fontWeight: '400' as const,
-      letterSpacing: -0.24,
-    },
-    footnote: {
-      fontSize: 13,
-      lineHeight: 18,
-      fontWeight: '400' as const,
-      letterSpacing: -0.08,
-    },
-  },
-  spacing: {
-    xs: 4,
-    sm: 8,
-    md: 16,
-    lg: 24,
-    xl: 32,
-  },
-};
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import {
+  fontWeight,
+  iconSize,
+  layout,
+  radius,
+  space,
+  touchTarget,
+  typography,
+  type ThemeTokens,
+} from '@/theme/tokens';
 
 // Company information
 const COMPANY = {
@@ -68,105 +29,98 @@ const COMPANY = {
   email: process.env.EXPO_PUBLIC_LEGAL_EMAIL || 'legal@example.com',
 };
 
-export default function PrivacyPolicyScreen() {
-  const insets = useSafeAreaInsets();
-  const { isDarkMode } = useTheme();
-  const FIORI = useFioriColors();
-
-  const Section = ({
-    title,
-    children,
-  }: {
-    title: string;
-    children: React.ReactNode;
-  }) => (
+function Section({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
+  const styles = useThemedStyles(makeStyles);
+  return (
     <View style={styles.section}>
-      <Text style={[styles.sectionTitle, { color: FIORI.colors.textPrimary }]}>
+      <Text style={styles.sectionTitle} accessibilityRole="header">
         {title}
       </Text>
       {children}
     </View>
   );
+}
 
-  const Paragraph = ({ children }: { children: React.ReactNode }) => (
-    <Text style={[styles.paragraph, { color: FIORI.colors.textSecondary }]}>
+function Paragraph({ children }: { children: React.ReactNode }) {
+  const styles = useThemedStyles(makeStyles);
+  return <Text style={styles.paragraph}>{children}</Text>;
+}
+
+function Subheading({ children }: { children: React.ReactNode }) {
+  const styles = useThemedStyles(makeStyles);
+  return (
+    <Text style={styles.subheading} accessibilityRole="header">
       {children}
     </Text>
   );
+}
 
-  const BulletList = ({ items }: { items: string[] }) => (
+function BulletList({ items }: { items: string[] }) {
+  const styles = useThemedStyles(makeStyles);
+  return (
     <View style={styles.bulletList}>
-      {items.map((item, index) => (
-        <View key={index} style={styles.bulletItem}>
-          <Text style={[styles.bullet, { color: FIORI.colors.textSecondary }]}>
-            •
-          </Text>
-          <Text
-            style={[styles.bulletText, { color: FIORI.colors.textSecondary }]}
-          >
-            {item}
-          </Text>
+      {items.map(item => (
+        <View
+          key={item}
+          style={styles.bulletItem}
+          accessible
+          accessibilityLabel={item}
+        >
+          <Text style={styles.bullet}>•</Text>
+          <Text style={styles.bulletText}>{item}</Text>
         </View>
       ))}
     </View>
   );
+}
+
+export default function PrivacyPolicyScreen() {
+  const insets = useSafeAreaInsets();
+  const t = useTokens();
+  const styles = useThemedStyles(makeStyles);
 
   return (
-    <View
-      style={[
-        styles.container,
-        {
-          paddingTop: insets.top,
-          backgroundColor: FIORI.colors.backgroundGrouped,
-        },
-      ]}
-    >
-      <EdgeToEdgeStatusBar
-        barStyle={isDarkMode ? 'light-content' : 'dark-content'}
-      />
+    <View style={[styles.container, { paddingTop: insets.top }]}>
+      <EdgeToEdgeStatusBar barStyle={t.statusBarStyle} />
 
       {/* Navigation Bar */}
-      <View
-        style={[
-          styles.navigationBar,
-          {
-            backgroundColor: FIORI.colors.background,
-            borderBottomColor: FIORI.colors.divider,
-          },
-        ]}
-      >
+      <View style={styles.navigationBar}>
         <Pressable
           style={styles.navBackButton}
           onPress={() => router.back()}
-          accessibilityLabel="Go back"
+          accessibilityRole="button"
+          accessibilityLabel="Back"
         >
-          <Ionicons name="chevron-back" size={28} color={FIORI.colors.tint} />
-          <Text style={[styles.navBackText, { color: FIORI.colors.tint }]}>
-            Back
-          </Text>
+          <Icon name="chevron-left" size={iconSize.xl} color={t.brand.tint} />
+          <Text style={styles.navBackText}>Back</Text>
         </Pressable>
-        <Text style={[styles.navTitle, { color: FIORI.colors.textPrimary }]}>
-          Privacy Policy
+        <Text
+          style={styles.navTitle}
+          accessibilityRole="header"
+          numberOfLines={1}
+        >
+          Privacy policy
         </Text>
         <View style={styles.navPlaceholder} />
       </View>
 
       <ScrollView
         style={styles.scrollView}
-        contentContainerStyle={{
-          paddingBottom: insets.bottom + FIORI_STATIC.spacing.xl,
-        }}
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingBottom: insets.bottom + space.xxxl },
+        ]}
         showsVerticalScrollIndicator={false}
       >
-        <View
-          style={[styles.content, { backgroundColor: FIORI.colors.background }]}
-        >
+        <View style={styles.content}>
           {/* Header */}
-          <Text
-            style={[styles.lastUpdated, { color: FIORI.colors.textTertiary }]}
-          >
-            Last Updated: December 2025
-          </Text>
+          <Text style={styles.lastUpdated}>Last updated: December 2025</Text>
 
           <Paragraph>
             {COMPANY.name} ("Company", "we", "us", or "our") operates this
@@ -176,16 +130,12 @@ export default function PrivacyPolicyScreen() {
           </Paragraph>
 
           {/* Section 1 */}
-          <Section title="1. Information We Collect">
+          <Section title="1. Information we collect">
             <Paragraph>
               We collect information that you provide directly to us:
             </Paragraph>
 
-            <Text
-              style={[styles.subheading, { color: FIORI.colors.textPrimary }]}
-            >
-              Personal Information
-            </Text>
+            <Subheading>Personal information</Subheading>
             <BulletList
               items={[
                 'Phone number (required for account creation and authentication)',
@@ -195,11 +145,7 @@ export default function PrivacyPolicyScreen() {
               ]}
             />
 
-            <Text
-              style={[styles.subheading, { color: FIORI.colors.textPrimary }]}
-            >
-              Usage Information
-            </Text>
+            <Subheading>Usage information</Subheading>
             <BulletList
               items={[
                 'App usage data and interaction patterns',
@@ -209,11 +155,7 @@ export default function PrivacyPolicyScreen() {
               ]}
             />
 
-            <Text
-              style={[styles.subheading, { color: FIORI.colors.textPrimary }]}
-            >
-              Device Information
-            </Text>
+            <Subheading>Device information</Subheading>
             <BulletList
               items={[
                 'Device type and model',
@@ -224,11 +166,7 @@ export default function PrivacyPolicyScreen() {
               ]}
             />
 
-            <Text
-              style={[styles.subheading, { color: FIORI.colors.textPrimary }]}
-            >
-              Content You Provide
-            </Text>
+            <Subheading>Content you provide</Subheading>
             <BulletList
               items={[
                 'Images uploaded for GRN documentation',
@@ -239,7 +177,7 @@ export default function PrivacyPolicyScreen() {
           </Section>
 
           {/* Section 2 */}
-          <Section title="2. How We Use Your Information">
+          <Section title="2. How we use your information">
             <Paragraph>We use the information we collect to:</Paragraph>
             <BulletList
               items={[
@@ -256,16 +194,12 @@ export default function PrivacyPolicyScreen() {
           </Section>
 
           {/* Section 3 */}
-          <Section title="3. Information Sharing and Disclosure">
+          <Section title="3. Information sharing and disclosure">
             <Paragraph>
               We may share your information in the following circumstances:
             </Paragraph>
 
-            <Text
-              style={[styles.subheading, { color: FIORI.colors.textPrimary }]}
-            >
-              Service Providers
-            </Text>
+            <Subheading>Service providers</Subheading>
             <Paragraph>
               We share information with third-party service providers who
               perform services on our behalf, including:
@@ -279,31 +213,19 @@ export default function PrivacyPolicyScreen() {
               ]}
             />
 
-            <Text
-              style={[styles.subheading, { color: FIORI.colors.textPrimary }]}
-            >
-              Business Transfers
-            </Text>
+            <Subheading>Business transfers</Subheading>
             <Paragraph>
               If we are involved in a merger, acquisition, or sale of assets,
               your information may be transferred as part of that transaction.
             </Paragraph>
 
-            <Text
-              style={[styles.subheading, { color: FIORI.colors.textPrimary }]}
-            >
-              Legal Requirements
-            </Text>
+            <Subheading>Legal requirements</Subheading>
             <Paragraph>
               We may disclose your information if required by law, regulation,
               legal process, or governmental request.
             </Paragraph>
 
-            <Text
-              style={[styles.subheading, { color: FIORI.colors.textPrimary }]}
-            >
-              With Your Consent
-            </Text>
+            <Subheading>With your consent</Subheading>
             <Paragraph>
               We may share your information with your consent or at your
               direction.
@@ -311,7 +233,7 @@ export default function PrivacyPolicyScreen() {
           </Section>
 
           {/* Section 4 */}
-          <Section title="4. Data Storage and Security">
+          <Section title="4. Data storage and security">
             <Paragraph>
               We implement appropriate technical and organizational measures to
               protect your personal information against unauthorized access,
@@ -334,7 +256,7 @@ export default function PrivacyPolicyScreen() {
           </Section>
 
           {/* Section 5 */}
-          <Section title="5. Data Retention">
+          <Section title="5. Data retention">
             <Paragraph>
               We retain your personal information for as long as necessary to
               fulfill the purposes for which it was collected, including to
@@ -350,7 +272,7 @@ export default function PrivacyPolicyScreen() {
           </Section>
 
           {/* Section 6 */}
-          <Section title="6. Your Rights and Choices">
+          <Section title="6. Your rights and choices">
             <Paragraph>
               You have the following rights regarding your personal information:
             </Paragraph>
@@ -371,7 +293,7 @@ export default function PrivacyPolicyScreen() {
           </Section>
 
           {/* Section 7 */}
-          <Section title="7. Device Permissions">
+          <Section title="7. Device permissions">
             <Paragraph>
               The App may request the following device permissions:
             </Paragraph>
@@ -390,7 +312,7 @@ export default function PrivacyPolicyScreen() {
           </Section>
 
           {/* Section 8 */}
-          <Section title="8. Children's Privacy">
+          <Section title="8. Children's privacy">
             <Paragraph>
               Our App is not intended for use by children under the age of 18.
               We do not knowingly collect personal information from children. If
@@ -401,7 +323,7 @@ export default function PrivacyPolicyScreen() {
           </Section>
 
           {/* Section 9 */}
-          <Section title="9. Third-Party Services">
+          <Section title="9. Third-party services">
             <Paragraph>
               Our App may contain links to or integrate with third-party
               services. This Privacy Policy does not apply to third-party
@@ -420,7 +342,7 @@ export default function PrivacyPolicyScreen() {
           </Section>
 
           {/* Section 10 */}
-          <Section title="10. Changes to This Privacy Policy">
+          <Section title="10. Changes to this Privacy Policy">
             <Paragraph>
               We may update this Privacy Policy from time to time. We will
               notify you of any material changes by posting the new Privacy
@@ -431,7 +353,7 @@ export default function PrivacyPolicyScreen() {
           </Section>
 
           {/* Section 11 */}
-          <Section title="11. Contact Us">
+          <Section title="11. Contact us">
             <Paragraph>
               If you have any questions, concerns, or requests regarding this
               Privacy Policy or our data practices, please contact us:
@@ -441,7 +363,7 @@ export default function PrivacyPolicyScreen() {
           </Section>
 
           {/* Section 12 */}
-          <Section title="12. Governing Law">
+          <Section title="12. Governing law">
             <Paragraph>
               This Privacy Policy is governed by the laws of India, including
               the Information Technology Act, 2000, and the Information
@@ -451,21 +373,11 @@ export default function PrivacyPolicyScreen() {
           </Section>
 
           {/* Acknowledgment */}
-          <View
-            style={[
-              styles.acknowledgment,
-              { borderTopColor: FIORI.colors.divider },
-            ]}
-          >
-            <Text
-              style={[
-                styles.acknowledgmentText,
-                { color: FIORI.colors.textSecondary },
-              ]}
-            >
-              BY USING THE APP, YOU ACKNOWLEDGE THAT YOU HAVE READ AND
-              UNDERSTOOD THIS PRIVACY POLICY AND AGREE TO THE COLLECTION AND USE
-              OF YOUR INFORMATION AS DESCRIBED HEREIN.
+          <View style={styles.acknowledgment}>
+            <Text style={styles.acknowledgmentText}>
+              By using the app, you acknowledge that you have read and
+              understood this privacy policy and agree to the collection and use
+              of your information as described herein.
             </Text>
           </View>
         </View>
@@ -474,30 +386,35 @@ export default function PrivacyPolicyScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (t: ThemeTokens) => ({
   container: {
     flex: 1,
+    backgroundColor: t.background.base,
   },
   navigationBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: FIORI_STATIC.spacing.md,
-    paddingVertical: FIORI_STATIC.spacing.sm,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
+    minHeight: touchTarget,
+    paddingHorizontal: space.sm,
+    backgroundColor: t.surface.header,
     borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.divider,
   },
   navBackButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    minHeight: touchTarget,
     minWidth: 80,
   },
   navBackText: {
-    ...FIORI_STATIC.typography.body,
-    marginLeft: FIORI_STATIC.spacing.xs,
+    ...typography.body,
+    color: t.brand.tint,
   },
   navTitle: {
-    ...FIORI_STATIC.typography.headline,
-    textAlign: 'center',
+    ...typography.headline,
+    color: t.text.primary,
+    textAlign: 'center' as const,
     flex: 1,
   },
   navPlaceholder: {
@@ -506,56 +423,69 @@ const styles = StyleSheet.create({
   scrollView: {
     flex: 1,
   },
+  scrollContent: {
+    padding: layout.marginCompact,
+  },
   content: {
-    margin: FIORI_STATIC.spacing.md,
-    borderRadius: 12,
-    padding: FIORI_STATIC.spacing.lg,
+    width: '100%' as const,
+    maxWidth: layout.maxContentWidth,
+    alignSelf: 'center' as const,
+    borderRadius: radius.card,
+    padding: space.xl,
+    backgroundColor: t.surface.card,
+    ...t.shadow[2],
   },
   lastUpdated: {
-    ...FIORI_STATIC.typography.footnote,
-    marginBottom: FIORI_STATIC.spacing.md,
+    ...typography.footnote,
+    color: t.text.secondary,
+    marginBottom: space.lg,
   },
   section: {
-    marginTop: FIORI_STATIC.spacing.lg,
+    marginTop: space.xxl,
   },
   sectionTitle: {
-    ...FIORI_STATIC.typography.headline,
-    marginBottom: FIORI_STATIC.spacing.sm,
+    ...typography.title3,
+    color: t.text.primary,
+    marginBottom: space.sm,
   },
   subheading: {
-    ...FIORI_STATIC.typography.subhead,
-    fontWeight: '600',
-    marginTop: FIORI_STATIC.spacing.md,
-    marginBottom: FIORI_STATIC.spacing.xs,
+    ...typography.headline,
+    color: t.text.primary,
+    marginTop: space.lg,
+    marginBottom: space.xs,
   },
   paragraph: {
-    ...FIORI_STATIC.typography.body,
-    marginBottom: FIORI_STATIC.spacing.sm,
+    ...typography.body,
+    color: t.text.primary,
+    marginBottom: space.md,
   },
   bulletList: {
-    marginLeft: FIORI_STATIC.spacing.sm,
-    marginBottom: FIORI_STATIC.spacing.sm,
+    marginLeft: space.xs,
+    marginBottom: space.md,
   },
   bulletItem: {
-    flexDirection: 'row',
-    marginBottom: FIORI_STATIC.spacing.xs,
+    flexDirection: 'row' as const,
+    marginBottom: space.xs,
   },
   bullet: {
-    ...FIORI_STATIC.typography.body,
-    marginRight: FIORI_STATIC.spacing.sm,
+    ...typography.body,
+    color: t.text.secondary,
+    marginRight: space.sm,
   },
   bulletText: {
-    ...FIORI_STATIC.typography.body,
+    ...typography.body,
+    color: t.text.primary,
     flex: 1,
   },
   acknowledgment: {
-    marginTop: FIORI_STATIC.spacing.xl,
-    paddingTop: FIORI_STATIC.spacing.lg,
+    marginTop: space.xxxl,
+    paddingTop: space.xxl,
     borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: t.border.divider,
   },
   acknowledgmentText: {
-    ...FIORI_STATIC.typography.subhead,
-    fontWeight: '600',
-    textAlign: 'center',
+    ...typography.body,
+    fontWeight: fontWeight.semibold,
+    color: t.text.primary,
   },
 });

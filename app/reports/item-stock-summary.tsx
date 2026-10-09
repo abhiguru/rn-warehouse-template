@@ -2,7 +2,9 @@
  * Item Stock Summary Report Screen
  *
  * Displays all items aggregated across customers (or user's accessible customers).
- * Expandable cards show GRN details when tapped.
+ * Expandable cards show GRN details when tapped. Styling follows
+ * docs/STYLE_GUIDE.md: object cells (§13.6), status tags (§3.5) and the search
+ * field (§13.2, §14.6).
  */
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
@@ -16,46 +18,196 @@ import {
   ActivityIndicator,
   Pressable,
   LayoutAnimation,
+  Platform,
 } from 'react-native';
 import { router } from 'expo-router';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { ReportHeader, KPIGrid, ReportEmptyState, type KPIItem } from '@/components/reports';
 import { StockService } from '@/services/stock-service';
 import { getAllGRNItems, type GRNItem } from '@/services/grn-service';
-import theme from '@/theme';
-import { useFioriColors } from '@/theme/fioriColors';
-import { formatNumber, formatDate } from '@/utils/formatters';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import {
+  fontWeight,
+  iconSize,
+  layout,
+  radius,
+  space,
+  touchTarget,
+  typography,
+  type ThemeTokens,
+} from '@/theme/tokens';
+import { formatNumber, parseLocalISODate } from '@/utils/formatters';
+import { createLogger } from '@/utils/logger';
 import type { ItemWiseStockItem } from '@/types/stock.types';
 
-// ============================================================================
-// SAP Fiori Design Tokens (Static - dimensions and typography only)
-// ============================================================================
-const FIORI_STATIC = {
-  dimensions: {
-    objectCellMinHeight: 72,
-    objectCellImageSize: 44,
-    objectCellImageRadius: 10,
-    cardCornerRadius: 12,
-    cardPadding: 16,
-  },
-  typography: {
-    title: { fontSize: 16, fontWeight: '600' as const, lineHeight: 22 },
-    subtitle: { fontSize: 14, lineHeight: 18 },
-    footnote: { fontSize: 13, lineHeight: 16 },
-  },
-};
+const logger = createLogger('ItemStockSummary');
+
+const LOAD_ERROR = "Couldn't load items. Check your connection and try again.";
+
+/** Below this share of the received quantity still in stock, an item is low on stock. */
+const LOW_STOCK_PERCENT = 20;
+
+/** "9 Oct 2026" (guide §12.3) */
+function formatDay(value: string): string {
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(value) ? parseLocalISODate(value) : new Date(value);
+  if (isNaN(date.getTime())) return '';
+  return date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+const weightFormat = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 });
 
 // ============================================================================
-// Fiori GRN Row Component (nested Object Cell within expanded Item Card)
+// Styles
+// ============================================================================
+const makeStyles = (t: ThemeTokens) =>
+  StyleSheet.create({
+    container: { flex: 1, backgroundColor: t.background.base },
+    loadingContainer: { flex: 1 },
+    spinner: { marginTop: space.huge },
+    listContent: { paddingBottom: space.xxxl },
+    separator: { height: space.sm },
+
+    // Search
+    searchContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginHorizontal: layout.marginCompact,
+      marginVertical: space.md,
+      paddingLeft: space.md,
+      minHeight: layout.rowMinHeight,
+      borderRadius: radius.field,
+      borderWidth: 1,
+      borderColor: t.border.field,
+      backgroundColor: t.surface.field,
+    },
+    searchIcon: { marginRight: space.sm },
+    searchInput: {
+      ...typography.body,
+      flex: 1,
+      color: t.text.primary,
+      paddingVertical: 0,
+      ...Platform.select({ android: { paddingVertical: space.sm } }),
+    },
+    clearButton: {
+      width: touchTarget,
+      height: layout.rowMinHeight,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+
+    // Item card
+    itemCard: {
+      marginHorizontal: layout.marginCompact,
+      backgroundColor: t.surface.card,
+      borderRadius: radius.card,
+      ...t.shadow[2],
+    },
+    itemCardClip: { borderRadius: radius.card, overflow: 'hidden' },
+    objectCell: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      minHeight: layout.objectCellMinHeight,
+      paddingVertical: space.md,
+      paddingHorizontal: space.lg,
+      gap: space.md,
+    },
+    objectCellPressed: { backgroundColor: t.surface.cardPressed },
+    objectCellImage: {
+      width: layout.avatar.md,
+      height: layout.avatar.md,
+      borderRadius: radius.button,
+      justifyContent: 'center',
+      alignItems: 'center',
+      backgroundColor: t.brand.subtle,
+    },
+    objectCellContent: { flex: 1, gap: space.xxs },
+    objectCellTitle: { ...typography.headline, color: t.text.primary },
+    objectCellSubtitle: { ...typography.subhead, color: t.text.secondary },
+    tagRow: { flexDirection: 'row', flexWrap: 'wrap', gap: space.s6, marginTop: space.xxs },
+    stockInfo: { alignItems: 'flex-end' },
+    stockValue: { ...typography.headline, color: t.text.primary, fontVariant: ['tabular-nums'] },
+    stockLabel: { ...typography.caption1, color: t.text.secondary, fontVariant: ['tabular-nums'] },
+    tag: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: space.xxs,
+      paddingHorizontal: space.s6,
+      paddingVertical: space.xxs,
+      borderRadius: radius.field,
+    },
+    tagText: { ...typography.caption1, fontWeight: fontWeight.semibold },
+    neutralTag: { backgroundColor: t.status.neutral.background },
+    neutralTagText: { color: t.status.neutral.text },
+    criticalTag: { backgroundColor: t.status.critical.background },
+    criticalTagText: { color: t.status.critical.text },
+
+    // Expanded body
+    cardBody: {
+      backgroundColor: t.background.base,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: t.border.divider,
+    },
+    grnLoadingContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: space.xl,
+      gap: space.sm,
+    },
+    grnLoadingText: { ...typography.footnote, color: t.text.secondary },
+    grnEmptyText: {
+      ...typography.footnote,
+      color: t.text.secondary,
+      textAlign: 'center',
+      paddingVertical: space.xl,
+      paddingHorizontal: space.lg,
+    },
+
+    // GRN row
+    grnRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: space.lg,
+      paddingVertical: space.md,
+      minHeight: layout.rowMinHeight + space.md,
+      gap: space.md,
+    },
+    grnRowDivider: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: t.border.divider },
+    grnRowPressed: { backgroundColor: t.surface.cardPressed },
+    grnRowContent: { flex: 1, gap: space.xxs },
+    grnRowTitleRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm, flexWrap: 'wrap' },
+    grnRowTitle: { ...typography.subhead, fontWeight: fontWeight.semibold, color: t.text.primary, flexShrink: 1 },
+    grnRowLine: { flexDirection: 'row', alignItems: 'center', gap: space.xs, flexWrap: 'wrap' },
+    grnRowFootnote: { ...typography.footnote, color: t.text.secondary, flexShrink: 1 },
+    grnRowDetail: { ...typography.caption1, color: t.text.secondary },
+    grnRowAttributes: { alignItems: 'flex-end' },
+    grnRowStock: { ...typography.subhead, fontWeight: fontWeight.semibold, color: t.text.primary, fontVariant: ['tabular-nums'] },
+    grnRowOrigQty: { ...typography.caption1, color: t.text.secondary, fontVariant: ['tabular-nums'] },
+
+    // Loading more
+    loadingMore: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: space.lg,
+      gap: space.sm,
+    },
+    loadingMoreText: { ...typography.footnote, color: t.text.secondary },
+  });
+
+type Styles = ReturnType<typeof makeStyles>;
+
+// ============================================================================
+// GRN Row Component (nested row within expanded Item Card)
 // ============================================================================
 interface GRNRowProps {
   grn: GRNItem;
   isLast?: boolean;
+  styles: Styles;
+  t: ThemeTokens;
 }
 
-const GRNRow: React.FC<GRNRowProps> = ({ grn, isLast = false }) => {
-  const fiori = useFioriColors();
-
+const GRNRow: React.FC<GRNRowProps> = ({ grn, isLast = false, styles, t }) => {
   const handlePress = () => {
     const grnId = grn.grn_id || grn.id;
     if (grnId) {
@@ -64,86 +216,79 @@ const GRNRow: React.FC<GRNRowProps> = ({ grn, isLast = false }) => {
   };
 
   const isNavigable = !!(grn.grn_id || grn.id);
+  const details = [
+    grn.date ? { icon: 'calendar-outline', text: formatDay(grn.date) } : null,
+    grn.rack ? { icon: 'view-grid-outline', text: `Rack ${grn.rack}` } : null,
+    grn.weight && grn.weight > 0 ? { icon: 'weight-kilogram', text: `${weightFormat.format(grn.weight)} kg` } : null,
+  ].filter((d): d is { icon: string; text: string } => d !== null);
+
+  const a11yLabel = [
+    `GRN ${grn.gr_no}`,
+    grn.package_mark ? `mark ${grn.package_mark}` : null,
+    grn.customer_name,
+    ...details.map(d => d.text),
+    `${formatNumber(grn.stock)} of ${formatNumber(grn.qty)} in stock`,
+  ]
+    .filter(Boolean)
+    .join(', ');
 
   const content = (
     <>
-      {/* Main Content - 3 lines */}
-      <View style={styles.fioriGrnRowContent}>
-        {/* Line 1: GRN Number + Package Mark Tag */}
-        <View style={styles.fioriGrnRowTitleRow}>
-          <Text style={[styles.fioriGrnRowTitle, { color: fiori.colors.textPrimary }]} numberOfLines={1}>
-            {grn.gr_no}
+      <View style={styles.grnRowContent}>
+        {/* Line 1: GRN number + package mark */}
+        <View style={styles.grnRowTitleRow}>
+          <Text style={styles.grnRowTitle} numberOfLines={1}>
+            {`GRN ${grn.gr_no}`}
           </Text>
           {grn.package_mark && (
-            <View style={[styles.fioriTag, { backgroundColor: fiori.colors.backgroundSecondary }]}>
-              <Text style={[styles.fioriTagText, { color: fiori.colors.textSecondary }]}>{grn.package_mark}</Text>
+            <View style={[styles.tag, styles.neutralTag]}>
+              <Text style={[styles.tagText, styles.neutralTagText]} maxFontSizeMultiplier={1.6}>
+                {grn.package_mark}
+              </Text>
             </View>
           )}
         </View>
 
-        {/* Line 2: Customer Name */}
-        <View style={styles.fioriGrnRowCustomerRow}>
-          <Icon name="account-outline" size={14} color={fiori.colors.textSecondary} />
-          <Text style={[styles.fioriGrnRowFootnote, { color: fiori.colors.textSecondary }]} numberOfLines={1}>
+        {/* Line 2: Customer */}
+        <View style={styles.grnRowLine}>
+          <Icon name="account-outline" size={iconSize.sm} color={t.icon.secondary} />
+          <Text style={styles.grnRowFootnote} numberOfLines={1}>
             {grn.customer_name}
           </Text>
         </View>
 
-        {/* Line 3: Date, Rack, Weight */}
-        <View style={styles.fioriGrnRowDetailsRow}>
-          {grn.date && (
-            <>
-              <Icon name="calendar-outline" size={12} color={fiori.colors.textTertiary} />
-              <Text style={[styles.fioriGrnRowDetail, { color: fiori.colors.textTertiary }]}>
-                {formatDate(grn.date, 'compact')}
-              </Text>
-            </>
-          )}
-          {grn.rack && (
-            <>
-              <Text style={[styles.fioriGrnRowDetailSeparator, { color: fiori.colors.textTertiary }]}>•</Text>
-              <Icon name="map-marker-outline" size={12} color={fiori.colors.textTertiary} />
-              <Text style={[styles.fioriGrnRowDetail, { color: fiori.colors.textTertiary }]}>{grn.rack}</Text>
-            </>
-          )}
-          {grn.weight && grn.weight > 0 && (
-            <>
-              <Text style={[styles.fioriGrnRowDetailSeparator, { color: fiori.colors.textTertiary }]}>•</Text>
-              <Icon name="weight" size={12} color={fiori.colors.textTertiary} />
-              <Text style={[styles.fioriGrnRowDetail, { color: fiori.colors.textTertiary }]}>{grn.weight} kg</Text>
-            </>
-          )}
-        </View>
+        {/* Line 3: Date, rack, weight */}
+        {details.length > 0 && (
+          <View style={styles.grnRowLine}>
+            {details.map((d, i) => (
+              <React.Fragment key={d.icon}>
+                {i > 0 && <Text style={styles.grnRowDetail}>·</Text>}
+                <Icon name={d.icon} size={iconSize.sm} color={t.icon.secondary} />
+                <Text style={styles.grnRowDetail}>{d.text}</Text>
+              </React.Fragment>
+            ))}
+          </View>
+        )}
       </View>
 
-      {/* Attributes - Stock/Qty */}
-      <View style={styles.fioriGrnRowAttributes}>
-        <View style={styles.fioriGrnRowQtyRow}>
-          <Text style={[styles.fioriGrnRowStock, { color: fiori.colors.textPrimary }]}>{formatNumber(grn.stock)}</Text>
-          <Text style={[styles.fioriGrnRowOrigQty, { color: fiori.colors.textSecondary }]}>/ {formatNumber(grn.qty)}</Text>
-        </View>
+      {/* Stock of received quantity */}
+      <View style={styles.grnRowAttributes}>
+        <Text style={styles.grnRowStock}>{formatNumber(grn.stock)}</Text>
+        <Text style={styles.grnRowOrigQty}>{`of ${formatNumber(grn.qty)}`}</Text>
       </View>
 
-      {/* Accessory - Navigation Chevron */}
-      {isNavigable && (
-        <Icon name="chevron-right" size={16} color={fiori.colors.textSecondary} />
-      )}
+      {isNavigable && <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />}
     </>
   );
 
   if (isNavigable) {
     return (
       <Pressable
-        style={({ pressed }) => [
-          styles.fioriGrnRow,
-          { backgroundColor: fiori.colors.backgroundGrouped },
-          !isLast && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: fiori.colors.divider },
-          pressed && { backgroundColor: fiori.colors.cardBackgroundPressed },
-        ]}
+        style={({ pressed }) => [styles.grnRow, !isLast && styles.grnRowDivider, pressed && styles.grnRowPressed]}
         onPress={handlePress}
         accessibilityRole="button"
-        accessibilityLabel={`GRN ${grn.gr_no}, ${grn.stock} units at ${grn.customer_name}`}
-        accessibilityHint="Tap to view GRN details"
+        accessibilityLabel={a11yLabel}
+        accessibilityHint="Opens the GRN"
       >
         {content}
       </Pressable>
@@ -151,11 +296,7 @@ const GRNRow: React.FC<GRNRowProps> = ({ grn, isLast = false }) => {
   }
 
   return (
-    <View style={[
-      styles.fioriGrnRow,
-      { backgroundColor: fiori.colors.backgroundGrouped },
-      !isLast && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: fiori.colors.divider },
-    ]}>
+    <View style={[styles.grnRow, !isLast && styles.grnRowDivider]} accessible accessibilityLabel={a11yLabel}>
       {content}
     </View>
   );
@@ -170,6 +311,8 @@ interface ItemCardProps {
   onToggle: () => void;
   grnDetails: GRNItem[] | null;
   isLoadingGRNs: boolean;
+  styles: Styles;
+  t: ThemeTokens;
 }
 
 const ItemCard: React.FC<ItemCardProps> = ({
@@ -178,105 +321,97 @@ const ItemCard: React.FC<ItemCardProps> = ({
   onToggle,
   grnDetails,
   isLoadingGRNs,
+  styles,
+  t,
 }) => {
-  const fiori = useFioriColors();
-
   const stockPercentage = item.total_qty > 0
     ? Math.round((item.total_stock / item.total_qty) * 100)
     : 0;
-  const isLowStock = stockPercentage < 20;
+  const isLowStock = stockPercentage < LOW_STOCK_PERCENT;
+  const grnCount = `${formatNumber(item.grn_count)} ${item.grn_count === 1 ? 'GRN' : 'GRNs'}`;
 
   return (
-    <View style={[styles.itemCard, {
-      backgroundColor: fiori.colors.cardBackground,
-      borderColor: fiori.colors.divider,
-    }]}>
-      {/* Main Object Cell - Tappable Header */}
-      <Pressable
-        style={({ pressed }) => [
-          styles.fioriObjectCell,
-          pressed && { backgroundColor: fiori.colors.cardBackgroundPressed },
-        ]}
-        onPress={onToggle}
-        accessibilityRole="button"
-        accessibilityLabel={`${item.item_name}, ${item.total_stock} units in ${item.grn_count} GRNs`}
-        accessibilityHint={isExpanded ? 'Tap to collapse' : 'Tap to expand GRN details'}
-      >
-        {/* Icon */}
-        <View style={[
-          styles.fioriObjectCellImage,
-          { backgroundColor: isLowStock ? fiori.colors.backgroundSecondary : fiori.colors.tintLight },
-        ]}>
-          <Icon
-            name="cube-outline"
-            size={22}
-            color={isLowStock ? fiori.colors.textSecondary : fiori.colors.tint}
-          />
-        </View>
+    <View style={styles.itemCard}>
+      <View style={styles.itemCardClip}>
+        {/* Main Object Cell - Tappable Header */}
+        <Pressable
+          style={({ pressed }) => [styles.objectCell, pressed && styles.objectCellPressed]}
+          onPress={onToggle}
+          accessibilityRole="button"
+          accessibilityLabel={[
+            item.item_name,
+            item.packaging,
+            `${formatNumber(item.total_stock)} of ${formatNumber(item.total_qty)} in stock`,
+            grnCount,
+            isLowStock ? 'Low stock' : null,
+          ]
+            .filter(Boolean)
+            .join(', ')}
+          accessibilityState={{ expanded: isExpanded }}
+          accessibilityHint={isExpanded ? 'Hides the GRNs' : 'Shows the GRNs holding this item'}
+        >
+          <View style={styles.objectCellImage}>
+            <Icon name="cube-outline" size={iconSize.lg} color={t.brand.tint} />
+          </View>
 
-        {/* Content */}
-        <View style={styles.fioriObjectCellContent}>
-          <Text style={[styles.fioriObjectCellTitle, { color: fiori.colors.textPrimary }]} numberOfLines={1}>
-            {item.item_name}
-          </Text>
-          <Text style={[styles.fioriObjectCellSubtitle, { color: fiori.colors.textSecondary }]} numberOfLines={1}>
-            {item.packaging || 'No packaging info'}
-          </Text>
-        </View>
+          <View style={styles.objectCellContent}>
+            <Text style={styles.objectCellTitle} numberOfLines={2}>
+              {item.item_name}
+            </Text>
+            {item.packaging ? (
+              <Text style={styles.objectCellSubtitle} numberOfLines={1}>
+                {item.packaging}
+              </Text>
+            ) : null}
+            <View style={styles.tagRow}>
+              <View style={[styles.tag, styles.neutralTag]}>
+                <Text style={[styles.tagText, styles.neutralTagText]} maxFontSizeMultiplier={1.6}>
+                  {grnCount}
+                </Text>
+              </View>
+              {isLowStock && (
+                <View style={[styles.tag, styles.criticalTag]}>
+                  <Icon name="alert" size={iconSize.sm} color={t.status.critical.text} />
+                  <Text style={[styles.tagText, styles.criticalTagText]} maxFontSizeMultiplier={1.6}>
+                    Low stock
+                  </Text>
+                </View>
+              )}
+            </View>
+          </View>
 
-        {/* Stock Info */}
-        <View style={styles.stockInfo}>
-          <Text style={[styles.stockValue, { color: isLowStock ? fiori.colors.destructive : fiori.colors.textPrimary }]}>
-            {formatNumber(item.total_stock)}
-          </Text>
-          <Text style={[styles.stockLabel, { color: fiori.colors.textSecondary }]}>/ {formatNumber(item.total_qty)}</Text>
-        </View>
+          <View style={styles.stockInfo}>
+            <Text style={styles.stockValue}>{formatNumber(item.total_stock)}</Text>
+            <Text style={styles.stockLabel}>{`of ${formatNumber(item.total_qty)}`}</Text>
+          </View>
 
-        {/* Expand/Collapse Icon */}
-        <View style={styles.expandIcon}>
-          <Icon
-            name={isExpanded ? 'chevron-up' : 'chevron-down'}
-            size={20}
-            color={fiori.colors.textSecondary}
-          />
-        </View>
-      </Pressable>
+          <Icon name={isExpanded ? 'chevron-up' : 'chevron-down'} size={iconSize.md} color={t.icon.secondary} />
+        </Pressable>
 
-      {/* GRN Count Badge */}
-      <View style={styles.badgeRow}>
-        <View style={[styles.grnBadge, { backgroundColor: fiori.colors.successLight }]}>
-          <Text style={[styles.grnBadgeText, { color: fiori.colors.success }]}>
-            {item.grn_count} GRN{item.grn_count !== 1 ? 's' : ''}
-          </Text>
-        </View>
+        {/* Expandable GRN List */}
+        {isExpanded && (
+          <View style={styles.cardBody}>
+            {isLoadingGRNs ? (
+              <View style={styles.grnLoadingContainer} accessibilityLiveRegion="polite">
+                <ActivityIndicator size="small" color={t.brand.tint} />
+                <Text style={styles.grnLoadingText}>Loading GRNs</Text>
+              </View>
+            ) : grnDetails && grnDetails.length > 0 ? (
+              grnDetails.map((grn, index) => (
+                <GRNRow
+                  key={`${grn.grn_id || grn.id}-${index}`}
+                  grn={grn}
+                  isLast={index === grnDetails.length - 1}
+                  styles={styles}
+                  t={t}
+                />
+              ))
+            ) : (
+              <Text style={styles.grnEmptyText}>No GRNs with this item in stock.</Text>
+            )}
+          </View>
+        )}
       </View>
-
-      {/* Expandable GRN List */}
-      {isExpanded && (
-        <View style={[styles.fioriCardBody, {
-          backgroundColor: fiori.colors.backgroundGrouped,
-          borderTopColor: fiori.colors.divider,
-        }]}>
-          {isLoadingGRNs ? (
-            <View style={styles.grnLoadingContainer}>
-              <ActivityIndicator size="small" color={fiori.colors.tint} />
-              <Text style={[styles.grnLoadingText, { color: fiori.colors.textSecondary }]}>Loading GRNs...</Text>
-            </View>
-          ) : grnDetails && grnDetails.length > 0 ? (
-            grnDetails.map((grn, index) => (
-              <GRNRow
-                key={`${grn.grn_id || grn.id}-${index}`}
-                grn={grn}
-                isLast={index === grnDetails.length - 1}
-              />
-            ))
-          ) : (
-            <View style={styles.grnEmptyContainer}>
-              <Text style={[styles.grnEmptyText, { color: fiori.colors.textTertiary }]}>No GRN details available</Text>
-            </View>
-          )}
-        </View>
-      )}
     </View>
   );
 };
@@ -288,40 +423,43 @@ interface SearchInputProps {
   value: string;
   onChangeText: (text: string) => void;
   onClear: () => void;
+  styles: Styles;
+  t: ThemeTokens;
 }
 
-const SearchInput: React.FC<SearchInputProps> = ({ value, onChangeText, onClear }) => {
-  const fiori = useFioriColors();
+const SearchInput: React.FC<SearchInputProps> = ({ value, onChangeText, onClear, styles, t }) => (
+  <View style={styles.searchContainer}>
+    <Icon name="magnify" size={iconSize.md} color={t.icon.secondary} style={styles.searchIcon} />
+    <TextInput
+      style={styles.searchInput}
+      placeholder="Search items"
+      placeholderTextColor={t.text.placeholder}
+      value={value}
+      onChangeText={onChangeText}
+      autoCapitalize="none"
+      autoCorrect={false}
+      returnKeyType="search"
+      accessibilityLabel="Search items"
+    />
+    {value.length > 0 && (
+      <Pressable onPress={onClear} style={styles.clearButton} accessibilityRole="button" accessibilityLabel="Clear search">
+        <Icon name="close-circle" size={iconSize.md} color={t.icon.secondary} />
+      </Pressable>
+    )}
+  </View>
+);
 
-  return (
-    <View style={[styles.searchContainer, {
-      backgroundColor: fiori.colors.cardBackground,
-      borderColor: fiori.colors.divider,
-    }]}>
-      <Icon name="magnify" size={20} color={fiori.colors.textSecondary} style={styles.searchIcon} />
-      <TextInput
-        style={[styles.searchInput, { color: fiori.colors.textPrimary }]}
-        placeholder="Search items..."
-        placeholderTextColor={fiori.colors.textTertiary}
-        value={value}
-        onChangeText={onChangeText}
-        autoCapitalize="none"
-        autoCorrect={false}
-      />
-      {value.length > 0 && (
-        <Pressable onPress={onClear} style={styles.clearButton}>
-          <Icon name="close-circle" size={18} color={fiori.colors.textSecondary} />
-        </Pressable>
-      )}
-    </View>
-  );
-};
+const PLACEHOLDER_KPIS: KPIItem[] = [
+  { icon: 'cube-outline', value: '-', label: 'Items', variant: 'primary' },
+  { icon: 'warehouse', value: '-', label: 'Stock', variant: 'primary' },
+];
 
 // ============================================================================
 // Main Screen
 // ============================================================================
 export default function ItemStockSummaryScreen() {
-  const fiori = useFioriColors();
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
 
   const [items, setItems] = useState<ItemWiseStockItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -381,7 +519,7 @@ export default function ItemStockSummaryScreen() {
       }
       setError(null);
 
-      console.log('[ItemStockSummary] Fetching items:', { query, offset, isLoadMore });
+      logger.debug('Fetching items', { query, offset, isLoadMore });
 
       const response = await StockService.getItemWiseStockList({
         searchQuery: query || undefined,
@@ -409,19 +547,19 @@ export default function ItemStockSummaryScreen() {
           offset: offset + newItems.length,
         });
 
-        console.log('[ItemStockSummary] Fetch success:', {
+        logger.debug('Fetch success', {
           itemsCount: newItems.length,
           totalCount: response.data.pagination.totalCount,
           hasMore: response.data.pagination.hasMore,
         });
       } else {
-        console.error('[ItemStockSummary] Fetch error:', response.message);
-        setError(response.message || 'Failed to load items');
+        logger.warn('Fetch error', { message: response.message });
+        setError(LOAD_ERROR);
       }
-    } catch (err: any) {
+    } catch (err) {
       if (!isMountedRef.current) return;
-      console.error('[ItemStockSummary] Exception:', err);
-      setError(err.message || 'An unexpected error occurred');
+      logger.error('Exception', err);
+      setError(LOAD_ERROR);
     } finally {
       fetchInProgressRef.current = false;
       if (isMountedRef.current) {
@@ -443,7 +581,7 @@ export default function ItemStockSummaryScreen() {
     setLoadingGRNs(prev => new Set(prev).add(itemId));
 
     try {
-      console.log('[ItemStockSummary] Fetching GRN details for item:', itemId);
+      logger.debug('Fetching GRN details for item', { itemId });
 
       const response = await getAllGRNItems({
         p_filters: { item_ids: [itemId], stock_status: 'in_stock' },
@@ -457,9 +595,9 @@ export default function ItemStockSummaryScreen() {
           ...prev,
           [itemId]: response.data.items,
         }));
-        console.log('[ItemStockSummary] GRN details loaded:', response.data.items.length);
+        logger.debug('GRN details loaded', { count: response.data.items.length });
       } else {
-        console.error('[ItemStockSummary] Failed to load GRN details:', response.message);
+        logger.warn('Failed to load GRN details', { message: response.message });
         // Cache empty array to prevent re-fetching
         setGrnDetailsCache(prev => ({
           ...prev,
@@ -467,7 +605,7 @@ export default function ItemStockSummaryScreen() {
         }));
       }
     } catch (err) {
-      console.error('[ItemStockSummary] Exception fetching GRN details:', err);
+      logger.error('Exception fetching GRN details', err);
       setGrnDetailsCache(prev => ({
         ...prev,
         [itemId]: [],
@@ -529,14 +667,14 @@ export default function ItemStockSummaryScreen() {
       {
         icon: 'cube-outline',
         value: pagination.totalCount,
-        label: 'Total Items',
+        label: 'Items',
         variant: 'primary',
       },
       {
-        icon: 'package-variant',
+        icon: 'warehouse',
         value: totalStock,
-        label: 'Total Stock',
-        variant: 'secondary',
+        label: 'Stock',
+        variant: 'primary',
       },
     ];
   }, [items, pagination.totalCount]);
@@ -549,8 +687,10 @@ export default function ItemStockSummaryScreen() {
       onToggle={() => toggleItem(item.item_id)}
       grnDetails={grnDetailsCache[item.item_id] || null}
       isLoadingGRNs={loadingGRNs.has(item.item_id)}
+      styles={styles}
+      t={t}
     />
-  ), [expandedItems, toggleItem, grnDetailsCache, loadingGRNs]);
+  ), [expandedItems, toggleItem, grnDetailsCache, loadingGRNs, styles, t]);
 
   // Key extractor
   const keyExtractor = useCallback((item: ItemWiseStockItem) => item.item_id, []);
@@ -560,30 +700,27 @@ export default function ItemStockSummaryScreen() {
     if (isLoadingMore) {
       return (
         <View style={styles.loadingMore}>
-          <ActivityIndicator size="small" color={fiori.colors.tint} />
-          <Text style={[styles.loadingMoreText, { color: fiori.colors.textSecondary }]}>Loading more...</Text>
+          <ActivityIndicator size="small" color={t.brand.tint} />
+          <Text style={styles.loadingMoreText}>Loading more items</Text>
         </View>
       );
     }
     return null;
-  }, [isLoadingMore, fiori.colors]);
+  }, [isLoadingMore, styles, t]);
 
   // Loading state
   if (isLoading && items.length === 0) {
     return (
-      <View style={[styles.container, { backgroundColor: fiori.colors.backgroundGrouped }]}>
-        <ReportHeader title="Item Stock Summary" />
+      <View style={styles.container}>
+        <ReportHeader title="Item stock summary" />
         <View style={styles.loadingContainer}>
           <KPIGrid
-            items={[
-              { icon: 'cube-outline', value: '-', label: 'Total Items', variant: 'primary' },
-              { icon: 'package-variant', value: '-', label: 'Total Stock', variant: 'secondary' },
-            ]}
+            items={PLACEHOLDER_KPIS}
             isLoading={true}
             compact
           />
-          <SearchInput value={searchQuery} onChangeText={setSearchQuery} onClear={handleClearSearch} />
-          <ActivityIndicator size="large" color={fiori.colors.tint} style={styles.spinner} />
+          <SearchInput value={searchQuery} onChangeText={setSearchQuery} onClear={handleClearSearch} styles={styles} t={t} />
+          <ActivityIndicator size="large" color={t.brand.tint} style={styles.spinner} accessibilityLabel="Loading items" />
         </View>
       </View>
     );
@@ -592,21 +729,21 @@ export default function ItemStockSummaryScreen() {
   // Error state
   if (error && items.length === 0) {
     return (
-      <View style={[styles.container, { backgroundColor: fiori.colors.backgroundGrouped }]}>
-        <ReportHeader title="Item Stock Summary" />
+      <View style={styles.container}>
+        <ReportHeader title="Item stock summary" />
         <KPIGrid
-          items={[
-            { icon: 'cube-outline', value: '-', label: 'Total Items', variant: 'primary' },
-            { icon: 'package-variant', value: '-', label: 'Total Stock', variant: 'secondary' },
-          ]}
+          items={PLACEHOLDER_KPIS}
           isLoading={false}
           compact
         />
-        <SearchInput value={searchQuery} onChangeText={setSearchQuery} onClear={handleClearSearch} />
+        <SearchInput value={searchQuery} onChangeText={setSearchQuery} onClear={handleClearSearch} styles={styles} t={t} />
         <ReportEmptyState
           icon="alert-circle-outline"
-          message="Failed to Load"
+          tone="error"
+          message="Something went wrong"
           description={error}
+          actionLabel="Try again"
+          onAction={() => fetchItems(debouncedQuery, 0)}
         />
       </View>
     );
@@ -615,33 +752,32 @@ export default function ItemStockSummaryScreen() {
   // Empty state
   if (items.length === 0 && !isLoading) {
     return (
-      <View style={[styles.container, { backgroundColor: fiori.colors.backgroundGrouped }]}>
-        <ReportHeader title="Item Stock Summary" />
+      <View style={styles.container}>
+        <ReportHeader title="Item stock summary" />
         <KPIGrid
-          items={[
-            { icon: 'cube-outline', value: '-', label: 'Total Items', variant: 'primary' },
-            { icon: 'package-variant', value: '-', label: 'Total Stock', variant: 'secondary' },
-          ]}
+          items={PLACEHOLDER_KPIS}
           isLoading={false}
           compact
         />
-        <SearchInput value={searchQuery} onChangeText={setSearchQuery} onClear={handleClearSearch} />
+        <SearchInput value={searchQuery} onChangeText={setSearchQuery} onClear={handleClearSearch} styles={styles} t={t} />
         <ReportEmptyState
           icon={debouncedQuery ? 'magnify-close' : 'cube-outline'}
-          message={debouncedQuery ? 'No Items Found' : 'No Stock Data'}
+          message={debouncedQuery ? 'No matching items' : 'No stock yet'}
           description={
             debouncedQuery
-              ? `No items matching "${debouncedQuery}"`
-              : 'There is no inventory currently in storage.'
+              ? `No items match "${debouncedQuery}". Try fewer letters.`
+              : 'Items appear here once goods are received.'
           }
+          actionLabel={debouncedQuery ? 'Clear search' : undefined}
+          onAction={debouncedQuery ? handleClearSearch : undefined}
         />
       </View>
     );
   }
 
   return (
-    <View style={[styles.container, { backgroundColor: fiori.colors.backgroundGrouped }]}>
-      <ReportHeader title="Item Stock Summary" />
+    <View style={styles.container}>
+      <ReportHeader title="Item stock summary" />
 
       <FlatList
         data={items}
@@ -654,8 +790,8 @@ export default function ItemStockSummaryScreen() {
           <RefreshControl
             refreshing={isRefreshing}
             onRefresh={handleRefresh}
-            colors={[fiori.colors.tint]}
-            tintColor={fiori.colors.tint}
+            colors={[t.brand.tint]}
+            tintColor={t.brand.tint}
           />
         }
         onEndReached={handleLoadMore}
@@ -663,7 +799,7 @@ export default function ItemStockSummaryScreen() {
         ListHeaderComponent={
           <>
             <KPIGrid items={kpiItems} isLoading={isLoading} compact />
-            <SearchInput value={searchQuery} onChangeText={setSearchQuery} onClear={handleClearSearch} />
+            <SearchInput value={searchQuery} onChangeText={setSearchQuery} onClear={handleClearSearch} styles={styles} t={t} />
           </>
         }
         ListFooterComponent={ListFooterComponent}
@@ -672,234 +808,3 @@ export default function ItemStockSummaryScreen() {
     </View>
   );
 }
-
-// ============================================================================
-// Styles
-// ============================================================================
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  loadingContainer: {
-    flex: 1,
-  },
-  spinner: {
-    marginTop: 40,
-  },
-  listContent: {
-    paddingHorizontal: FIORI_STATIC.dimensions.cardPadding,
-    paddingBottom: 32,
-  },
-  separator: {
-    height: 10,
-  },
-
-  // Search
-  searchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginHorizontal: FIORI_STATIC.dimensions.cardPadding,
-    marginVertical: 12,
-    paddingHorizontal: 12,
-    borderRadius: 10,
-    borderWidth: 1,
-  },
-  searchIcon: {
-    marginRight: 8,
-  },
-  searchInput: {
-    flex: 1,
-    height: 44,
-    fontSize: 16,
-  },
-  clearButton: {
-    padding: 4,
-  },
-
-  // Item Card
-  itemCard: {
-    borderRadius: FIORI_STATIC.dimensions.cardCornerRadius,
-    borderWidth: 1,
-    overflow: 'hidden',
-    ...theme.shadows.sm,
-  },
-  fioriObjectCell: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    minHeight: FIORI_STATIC.dimensions.objectCellMinHeight,
-    paddingVertical: 14,
-    paddingHorizontal: FIORI_STATIC.dimensions.cardPadding,
-    gap: 12,
-  },
-  fioriObjectCellImage: {
-    width: FIORI_STATIC.dimensions.objectCellImageSize,
-    height: FIORI_STATIC.dimensions.objectCellImageSize,
-    borderRadius: FIORI_STATIC.dimensions.objectCellImageRadius,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  fioriObjectCellContent: {
-    flex: 1,
-  },
-  fioriObjectCellTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  fioriObjectCellSubtitle: {
-    fontSize: 13,
-    marginTop: 2,
-  },
-
-  // Stock Info
-  stockInfo: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    gap: 2,
-  },
-  stockValue: {
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  stockLabel: {
-    fontSize: 12,
-  },
-
-  // Expand Icon
-  expandIcon: {
-    width: 24,
-    alignItems: 'center',
-  },
-
-  // Badge Row
-  badgeRow: {
-    flexDirection: 'row',
-    paddingHorizontal: FIORI_STATIC.dimensions.cardPadding,
-    paddingBottom: 12,
-  },
-  grnBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  grnBadgeText: {
-    fontSize: 11,
-    fontWeight: '600',
-  },
-
-  // =========================================================================
-  // Fiori Card Body (expanded content area)
-  // =========================================================================
-  fioriCardBody: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-  },
-  grnLoadingContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 20,
-    gap: 8,
-  },
-  grnLoadingText: {
-    fontSize: 13,
-  },
-  grnEmptyContainer: {
-    paddingVertical: 20,
-    alignItems: 'center',
-  },
-  grnEmptyText: {
-    fontSize: 13,
-  },
-
-  // =========================================================================
-  // Fiori GRN Row (nested Object Cell)
-  // =========================================================================
-  fioriGrnRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: FIORI_STATIC.dimensions.cardPadding,
-    paddingVertical: 12,
-    minHeight: 56,
-    gap: 12,
-  },
-  fioriGrnRowContent: {
-    flex: 1,
-  },
-  fioriGrnRowTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    flexWrap: 'wrap',
-  },
-  fioriGrnRowTitle: {
-    fontSize: 15,
-    fontWeight: '500',
-    flexShrink: 1,
-  },
-  fioriGrnRowCustomerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 4,
-    gap: 4,
-  },
-  fioriGrnRowFootnote: {
-    fontSize: 13,
-    flex: 1,
-  },
-  fioriGrnRowDetailsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 4,
-    gap: 4,
-  },
-  fioriGrnRowDetail: {
-    fontSize: 12,
-  },
-  fioriGrnRowDetailSeparator: {
-    fontSize: 12,
-    marginHorizontal: 2,
-  },
-  fioriGrnRowAttributes: {
-    alignItems: 'flex-end',
-  },
-  fioriGrnRowQtyRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    gap: 3,
-  },
-  fioriGrnRowStock: {
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  fioriGrnRowOrigQty: {
-    fontSize: 12,
-  },
-  fioriGrnRowWeight: {
-    fontSize: 12,
-    marginTop: 2,
-  },
-
-  // =========================================================================
-  // Fiori Tags/Badges
-  // =========================================================================
-  fioriTag: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  fioriTagText: {
-    fontSize: 11,
-    fontWeight: '500',
-  },
-
-  // Loading More
-  loadingMore: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 16,
-    gap: 8,
-  },
-  loadingMoreText: {
-    fontSize: 13,
-  },
-});

@@ -1,47 +1,26 @@
 /**
- * KPICard Component - SAP Fiori Compliant
+ * KPICard: one KPI tile for report screens.
  *
- * A reusable card for displaying a single KPI metric.
- * Follows SAP Fiori Card spec with proper dimensions and typography.
- * Uses theme.colors.fiori for consistency with GRN/Dispatch/Invoice lists.
- *
- * @see src/theme/index.ts - FioriColors interface
- * @see src/theme/listColors.ts - List component color mapping
+ * Follows docs/STYLE_GUIDE.md §13.11: `surface.card`, `radius.card`, `shadow[2]`,
+ * an icon in a 44 circle, the value in `title3` with tabular figures, the unit in
+ * `subhead` and the label in `footnote`. A trend shows an arrow and its value in
+ * positive or negative text, but only when the KPI says whether up is good;
+ * otherwise the trend is shown in neutral text.
  */
 
-import React, { useMemo } from 'react';
+import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { useListColors, ListColors } from '@/hooks/useListColors';
-
-// ============================================================================
-// SAP Fiori Design Tokens (Static values only - colors are dynamic)
-// ============================================================================
-const FIORI_STATIC = {
-  dimensions: {
-    cardCornerRadius: 12,
-    iconSize: 36,
-    iconRadius: 18,
-  },
-  typography: {
-    value: {
-      fontSize: 20,
-      fontWeight: '700' as const,
-    },
-    unit: {
-      fontSize: 13,
-      fontWeight: '500' as const,
-    },
-    label: {
-      fontSize: 12,
-      fontWeight: '500' as const,
-    },
-    trend: {
-      fontSize: 11,
-      fontWeight: '600' as const,
-    },
-  },
-};
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import {
+  fontWeight,
+  iconSize,
+  layout,
+  radius,
+  space,
+  typography,
+  type ThemeTokens,
+} from '@/theme/tokens';
 
 export type KPIVariant = 'primary' | 'secondary' | 'accent' | 'neutral' | 'success' | 'warning';
 
@@ -52,53 +31,147 @@ interface KPICardProps {
   value: string | number;
   /** Label describing the KPI */
   label: string;
-  /** Color variant */
+  /** Colour variant of the icon circle */
   variant?: KPIVariant;
   /** Optional unit suffix (e.g., "kg", "%") */
   unit?: string;
-  /** Optional trend indicator (-1 = down, 0 = neutral, 1 = up) */
+  /** Optional trend indicator (-1 = down, 0 = flat, 1 = up) */
   trend?: -1 | 0 | 1;
-  /** Optional trend percentage */
+  /** Optional trend value, e.g. "12%" */
   trendValue?: string;
+  /**
+   * Whether a rising value is good for this KPI. Required for the trend to be
+   * coloured positive or negative; when omitted the trend is neutral.
+   */
+  upIsGood?: boolean;
   /** Whether the card is in loading state */
   isLoading?: boolean;
   /** Compact mode for smaller cards */
   compact?: boolean;
 }
 
-// Get variant colors based on theme colors
-const getVariantStyles = (colors: ListColors): Record<KPIVariant, { bg: string; iconBg: string; iconColor: string }> => ({
-  primary: {
-    bg: colors.primaryLight,
-    iconBg: colors.orangeLight,
-    iconColor: colors.primary,
-  },
-  secondary: {
-    bg: colors.statusNeutralLight,
-    iconBg: colors.blueLight,
-    iconColor: colors.statusNeutral,
-  },
-  accent: {
-    bg: colors.statusPositiveLight,
-    iconBg: colors.successLight,
-    iconColor: colors.statusPositive,
-  },
-  neutral: {
-    bg: colors.gray50,
-    iconBg: colors.gray200,
-    iconColor: colors.textSecondary,
-  },
-  success: {
-    bg: colors.statusPositiveLight,
-    iconBg: colors.successLight,
-    iconColor: colors.statusPositive,
-  },
-  warning: {
-    bg: colors.statusCriticalLight,
-    iconBg: colors.warningLight,
-    iconColor: colors.statusCritical,
-  },
-});
+const makeStyles = (t: ThemeTokens) =>
+  StyleSheet.create({
+    card: {
+      flex: 1,
+      backgroundColor: t.surface.card,
+      borderRadius: radius.card,
+      paddingVertical: space.lg,
+      paddingHorizontal: space.md,
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: space.s6,
+      minHeight: 120,
+      ...t.shadow[2],
+    },
+    cardCompact: {
+      paddingVertical: space.md,
+      paddingHorizontal: space.sm,
+      gap: space.xs,
+      minHeight: layout.objectCellMinHeight,
+    },
+    iconCircle: {
+      width: layout.avatar.md,
+      height: layout.avatar.md,
+      borderRadius: radius.pill,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    iconCircleCompact: {
+      width: layout.avatar.sm,
+      height: layout.avatar.sm,
+    },
+    brandCircle: { backgroundColor: t.brand.subtle },
+    positiveCircle: { backgroundColor: t.status.positive.background },
+    criticalCircle: { backgroundColor: t.status.critical.background },
+    neutralCircle: { backgroundColor: t.status.neutral.background },
+    valueRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      alignItems: 'baseline',
+      justifyContent: 'center',
+      columnGap: space.xs,
+      maxWidth: '100%',
+    },
+    value: {
+      ...typography.title3,
+      color: t.text.primary,
+      textAlign: 'center',
+      fontVariant: ['tabular-nums'],
+    },
+    valueCompact: {
+      ...typography.headline,
+    },
+    unit: {
+      ...typography.subhead,
+      color: t.text.secondary,
+    },
+    unitCompact: {
+      ...typography.footnote,
+    },
+    label: {
+      ...typography.footnote,
+      color: t.text.secondary,
+      textAlign: 'center',
+    },
+    trendRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: space.xxs,
+    },
+    trendText: {
+      ...typography.caption1,
+      fontWeight: fontWeight.semibold,
+      fontVariant: ['tabular-nums'],
+    },
+    trendPositive: { color: t.status.positive.text },
+    trendNegative: { color: t.status.negative.text },
+    trendNeutral: { color: t.text.secondary },
+    skeletonCircle: {
+      width: iconSize.md,
+      height: iconSize.md,
+      borderRadius: radius.pill,
+      backgroundColor: t.surface.cardActive,
+    },
+    skeletonValue: {
+      width: 56,
+      height: 20,
+      borderRadius: radius.field,
+      backgroundColor: t.surface.cardActive,
+    },
+    skeletonLabel: {
+      width: 64,
+      height: 12,
+      borderRadius: radius.field,
+      backgroundColor: t.surface.cardActive,
+    },
+  });
+
+type Styles = ReturnType<typeof makeStyles>;
+
+/** Icon circle background and glyph colour for each variant (guide §13.11). */
+function variantColours(
+  variant: KPIVariant,
+  t: ThemeTokens,
+  styles: Styles
+): { circle: object; glyph: string } {
+  switch (variant) {
+    case 'success':
+      return { circle: styles.positiveCircle, glyph: t.status.positive.text };
+    case 'warning':
+      return { circle: styles.criticalCircle, glyph: t.status.critical.text };
+    case 'neutral':
+    case 'secondary':
+      return { circle: styles.neutralCircle, glyph: t.status.neutral.text };
+    case 'primary':
+    case 'accent':
+    default:
+      return { circle: styles.brandCircle, glyph: t.brand.tint };
+  }
+}
+
+const formatValue = (val: string | number): string =>
+  typeof val === 'number' ? new Intl.NumberFormat('en-IN').format(val) : val;
 
 export const KPICard: React.FC<KPICardProps> = ({
   icon,
@@ -108,180 +181,71 @@ export const KPICard: React.FC<KPICardProps> = ({
   unit,
   trend,
   trendValue,
+  upIsGood,
   isLoading = false,
   compact = false,
 }) => {
-  // Theme colors for dark mode support
-  const colors = useListColors();
-
-  // Get variant styles based on theme colors
-  const variantStyles = useMemo(() => getVariantStyles(colors), [colors]);
-  const variantStyle = variantStyles[variant];
-
-  // Dynamic styles based on theme
-  const dynamicStyles = useMemo(() => StyleSheet.create({
-    value: {
-      fontSize: FIORI_STATIC.typography.value.fontSize,
-      fontWeight: FIORI_STATIC.typography.value.fontWeight,
-      color: colors.textPrimary,
-      flexShrink: 1,
-    },
-    valueCompact: {
-      fontSize: 16,
-    },
-    unit: {
-      fontSize: FIORI_STATIC.typography.unit.fontSize,
-      fontWeight: FIORI_STATIC.typography.unit.fontWeight,
-      color: colors.textSecondary,
-      marginLeft: 3,
-      flexShrink: 0,
-    },
-    unitCompact: {
-      fontSize: 11,
-    },
-    label: {
-      fontSize: FIORI_STATIC.typography.label.fontSize,
-      fontWeight: FIORI_STATIC.typography.label.fontWeight,
-      color: colors.textSecondary,
-      textAlign: 'center',
-    },
-    labelCompact: {
-      fontSize: 11,
-    },
-    loadingIcon: {
-      width: 20,
-      height: 20,
-      borderRadius: 10,
-      backgroundColor: colors.gray300,
-    },
-    loadingValue: {
-      width: 50,
-      height: 20,
-      borderRadius: 4,
-      backgroundColor: colors.gray200,
-    },
-    loadingLabel: {
-      width: 60,
-      height: 12,
-      borderRadius: 4,
-      backgroundColor: colors.gray200,
-    },
-  }), [colors]);
-
-  const formatValue = (val: string | number): string => {
-    if (typeof val === 'number') {
-      return val.toLocaleString('en-IN');
-    }
-    return val;
-  };
-
-  const getTrendIcon = (): string => {
-    if (trend === 1) return 'trending-up';
-    if (trend === -1) return 'trending-down';
-    return 'trending-neutral';
-  };
-
-  const getTrendColor = (): string => {
-    if (trend === 1) return colors.statusPositive;
-    if (trend === -1) return colors.statusNegative;
-    return colors.textSecondary;
-  };
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
+  const { circle, glyph } = variantColours(variant, t, styles);
 
   if (isLoading) {
     return (
-      <View style={[styles.card, compact && styles.cardCompact, { backgroundColor: variantStyle.bg }]}>
-        <View style={[styles.iconContainer, compact && styles.iconContainerCompact, { backgroundColor: variantStyle.iconBg }]}>
-          <View style={dynamicStyles.loadingIcon} />
+      <View
+        style={[styles.card, compact && styles.cardCompact]}
+        accessible
+        accessibilityLabel={`${label}, loading`}
+        accessibilityState={{ busy: true }}
+      >
+        <View style={[styles.iconCircle, compact && styles.iconCircleCompact, circle]}>
+          <View style={styles.skeletonCircle} />
         </View>
-        <View style={dynamicStyles.loadingValue} />
-        <View style={dynamicStyles.loadingLabel} />
+        <View style={styles.skeletonValue} />
+        <View style={styles.skeletonLabel} />
       </View>
     );
   }
 
+  const shown = formatValue(value);
+  const hasTrend = trend !== undefined && !!trendValue;
+  const trendIcon = trend === 1 ? 'arrow-up' : trend === -1 ? 'arrow-down' : 'minus';
+  const trendGood = trend === 0 || upIsGood === undefined ? undefined : (trend === 1) === upIsGood;
+  const trendStyle =
+    trendGood === undefined ? styles.trendNeutral : trendGood ? styles.trendPositive : styles.trendNegative;
+  const trendColour =
+    trendGood === undefined ? t.text.secondary : trendGood ? t.status.positive.text : t.status.negative.text;
+  const trendWord = trend === 1 ? 'up' : trend === -1 ? 'down' : 'unchanged';
+
+  const a11yLabel = [
+    `${label}: ${shown}${unit ? ` ${unit}` : ''}`,
+    hasTrend ? `${trendWord} ${trendValue}` : null,
+  ]
+    .filter(Boolean)
+    .join(', ');
+
   return (
-    <View style={[styles.card, compact && styles.cardCompact, { backgroundColor: variantStyle.bg }]}>
-      {/* Icon in circular container */}
-      <View style={[styles.iconContainer, compact && styles.iconContainerCompact, { backgroundColor: variantStyle.iconBg }]}>
-        <Icon name={icon} size={compact ? 16 : 20} color={variantStyle.iconColor} />
+    <View style={[styles.card, compact && styles.cardCompact]} accessible accessibilityLabel={a11yLabel}>
+      <View style={[styles.iconCircle, compact && styles.iconCircleCompact, circle]}>
+        <Icon name={icon} size={compact ? iconSize.md : iconSize.xl} color={glyph} />
       </View>
 
-      {/* Value + Unit on same line */}
-      <View style={styles.valueContainer}>
-        <Text
-          style={[dynamicStyles.value, compact && dynamicStyles.valueCompact]}
-          numberOfLines={1}
-          adjustsFontSizeToFit
-          minimumFontScale={0.7}
-        >
-          {formatValue(value)}
-        </Text>
-        {unit && <Text style={[dynamicStyles.unit, compact && dynamicStyles.unitCompact]}>{unit}</Text>}
+      <View style={styles.valueRow}>
+        <Text style={[styles.value, compact && styles.valueCompact]}>{shown}</Text>
+        {unit ? <Text style={[styles.unit, compact && styles.unitCompact]}>{unit}</Text> : null}
       </View>
 
-      {/* Label */}
-      <Text style={[dynamicStyles.label, compact && dynamicStyles.labelCompact]} numberOfLines={1}>
+      <Text style={styles.label} numberOfLines={2}>
         {label}
       </Text>
 
-      {/* Optional trend indicator */}
-      {trend !== undefined && trendValue && (
-        <View style={styles.trendContainer}>
-          <Icon name={getTrendIcon()} size={12} color={getTrendColor()} />
-          <Text style={[styles.trendValue, { color: getTrendColor() }]}>{trendValue}</Text>
+      {hasTrend && (
+        <View style={styles.trendRow}>
+          <Icon name={trendIcon} size={iconSize.sm} color={trendColour} />
+          <Text style={[styles.trendText, trendStyle]}>{trendValue}</Text>
         </View>
       )}
     </View>
   );
 };
-
-// ============================================================================
-// SAP Fiori Compliant Styles (Static layout only - colors are in dynamicStyles)
-// ============================================================================
-const styles = StyleSheet.create({
-  card: {
-    flex: 1,
-    paddingVertical: 14,
-    paddingHorizontal: 12,
-    borderRadius: FIORI_STATIC.dimensions.cardCornerRadius,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    minHeight: 110,
-  },
-  cardCompact: {
-    paddingVertical: 10,
-    paddingHorizontal: 8,
-    gap: 4,
-    minHeight: 72,
-  },
-  iconContainer: {
-    width: FIORI_STATIC.dimensions.iconSize,
-    height: FIORI_STATIC.dimensions.iconSize,
-    borderRadius: FIORI_STATIC.dimensions.iconRadius,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  iconContainerCompact: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-  },
-  valueContainer: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    justifyContent: 'center',
-    maxWidth: '100%',
-  },
-  trendContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-  },
-  trendValue: {
-    fontSize: FIORI_STATIC.typography.trend.fontSize,
-    fontWeight: FIORI_STATIC.typography.trend.fontWeight,
-  },
-});
 
 export default KPICard;
