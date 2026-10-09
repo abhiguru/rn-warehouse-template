@@ -2,17 +2,18 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import {
   View,
   Text,
+  TextInput,
   StyleSheet,
   Alert,
+  AccessibilityInfo,
   Platform,
   Pressable,
-  TouchableOpacity,
   ActivityIndicator,
+  type StyleProp,
+  type TextInputProps,
+  type ViewStyle,
 } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
-import {
-  TextInput,
-} from 'react-native-paper';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -21,11 +22,22 @@ import {
   BottomSheetTextInput,
   BottomSheetBackdrop,
   BottomSheetModalProvider,
+  type BottomSheetBackdropProps,
 } from '@gorhom/bottom-sheet';
 import type { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { Ionicons } from '@expo/vector-icons';
-import { useListColors } from '@/hooks/useListColors';
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import {
+  fontWeight,
+  iconSize,
+  layout,
+  radius,
+  space,
+  touchTarget,
+  typography,
+  type ThemeTokens,
+} from '@/theme/tokens';
 import {
   getItemStoragePrices,
   createItemStoragePrice,
@@ -42,12 +54,6 @@ import { createLogger } from '@/utils/logger';
 
 const itemPricingFormLogger = createLogger('ItemPricingForm');
 
-const FIORI = {
-  button: { height: 44, borderRadius: 8 },
-  input: { height: 56, borderRadius: 8 },
-  selector: { height: 56, borderRadius: 8 },
-} as const;
-
 interface Item {
   id: string;
   name: string;
@@ -61,10 +67,21 @@ interface Customer {
 
 type FormMode = 'create' | 'edit' | 'view';
 
+type FieldKey =
+  | 'item'
+  | 'unitPrice'
+  | 'weightMin'
+  | 'weightMax'
+  | 'labourRate'
+  | 'taxPercent'
+  | 'effectiveTo';
+type FieldErrors = Partial<Record<FieldKey, string>>;
+
 const ItemPricingFormScreen: React.FC = () => {
   const params = useLocalSearchParams<{ id?: string; mode?: string }>();
   const insets = useSafeAreaInsets();
-  const colors = useListColors();
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
 
   // Get params safely
   const priceId = params.id;
@@ -84,6 +101,7 @@ const ItemPricingFormScreen: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [existingPrice, setExistingPrice] = useState<ItemStoragePrice | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
 
   // Form fields
   const [selectedItem, setSelectedItem] = useState<Item | null>(null);
@@ -179,12 +197,12 @@ const ItemPricingFormScreen: React.FC = () => {
         itemPricingFormLogger.debug('State updated with price data');
       } else {
         itemPricingFormLogger.error('Price not found for ID:', priceId);
-        Alert.alert('Error', 'Price not found');
+        Alert.alert("Couldn't find this price", 'It may have been deleted.');
         router.back();
       }
     } catch (err) {
       itemPricingFormLogger.error('Load error:', err);
-      Alert.alert('Error', 'Failed to load price data');
+      Alert.alert("Couldn't load the price", 'Check your connection and try again.');
       router.back();
     } finally {
       setLoading(false);
@@ -288,40 +306,44 @@ const ItemPricingFormScreen: React.FC = () => {
     [searchCustomers]
   );
 
-  // Validate form
-  const validateForm = (): string | null => {
+  // Validate form: every problem at once, keyed by field (style guide §14.4)
+  const validateForm = (): FieldErrors => {
+    const errors: FieldErrors = {};
     if (!selectedItem) {
-      return 'Please select an item';
+      errors.item = 'Select an item.';
     }
     if (!unitPrice || parseFloat(unitPrice) < 0) {
-      return 'Please enter a valid unit price';
+      errors.unitPrice = 'Enter a price of 0 or more.';
     }
     if (!weightMin || parseFloat(weightMin) < 0) {
-      return 'Please enter a valid minimum weight';
+      errors.weightMin = 'Enter a minimum weight of 0 or more.';
     }
     if (!weightMax || parseFloat(weightMax) <= 0) {
-      return 'Please enter a valid maximum weight';
-    }
-    if (parseFloat(weightMax) < parseFloat(weightMin)) {
-      return 'Maximum weight must be greater than minimum weight';
+      errors.weightMax = 'Enter a maximum weight above 0.';
+    } else if (parseFloat(weightMax) < parseFloat(weightMin)) {
+      errors.weightMax = 'The maximum must be at least the minimum.';
     }
     if (!labourRate || parseFloat(labourRate) < 0) {
-      return 'Please enter a valid labour rate';
+      errors.labourRate = 'Enter a labour rate of 0 or more.';
     }
     if (!taxPercent || parseFloat(taxPercent) < 0 || parseFloat(taxPercent) > 100) {
-      return 'Please enter a valid tax percent (0-100)';
+      errors.taxPercent = 'Enter a tax rate from 0 to 100.';
     }
     if (effectiveTo && effectiveTo < effectiveFrom) {
-      return 'End date must be after start date';
+      errors.effectiveTo = 'The end date must be on or after the start date.';
     }
-    return null;
+    return errors;
   };
 
   // Handle save
   const handleSave = async () => {
-    const validationError = validateForm();
-    if (validationError) {
-      Alert.alert('Validation Error', validationError);
+    const errors = validateForm();
+    setFieldErrors(errors);
+    const messages = Object.values(errors);
+    if (messages.length > 0) {
+      const summary = messages.length === 1 ? 'Fix 1 field.' : `Fix ${messages.length} fields.`;
+      AccessibilityInfo.announceForAccessibility(`${summary} ${messages.join(' ')}`);
+      Alert.alert('Check the highlighted fields', messages.join('\n'));
       return;
     }
 
@@ -343,11 +365,11 @@ const ItemPricingFormScreen: React.FC = () => {
 
         const result = await createItemStoragePrice(payload);
         if (result.success) {
-          Alert.alert('Success', 'Item price created successfully', [
+          Alert.alert('Price saved', `The price for ${selectedItem!.name} has been added.`, [
             { text: 'OK', onPress: () => router.back() },
           ]);
         } else {
-          Alert.alert('Error', result.message || 'Failed to create item price');
+          Alert.alert("Couldn't save the price", result.message || 'Try again in a moment.');
         }
       } else if (formMode === 'edit' && priceId) {
         const payload: UpdateItemPricingPayload = {
@@ -363,16 +385,16 @@ const ItemPricingFormScreen: React.FC = () => {
 
         const result = await updateItemStoragePrice(priceId, payload);
         if (result.success) {
-          Alert.alert('Success', 'Item price updated successfully',  [
-            { text: 'OK',  onPress: () => router.back() },
+          Alert.alert('Price saved', `The price for ${selectedItem?.name ?? 'this item'} has been updated.`, [
+            { text: 'OK', onPress: () => router.back() },
           ]);
         } else {
-          Alert.alert('Error', result.message || 'Failed to update item price');
+          Alert.alert("Couldn't save the price", result.message || 'Try again in a moment.');
         }
       }
     } catch (err) {
       itemPricingFormLogger.error('Save error:', err);
-      Alert.alert('Error', 'Failed to save item price');
+      Alert.alert("Couldn't save the price", 'Check your connection and try again.');
     } finally {
       setSaving(false);
     }
@@ -380,17 +402,23 @@ const ItemPricingFormScreen: React.FC = () => {
 
   // Render backdrop for bottom sheets
   const renderBackdrop = useCallback(
-    (props: any) => (
-      <BottomSheetBackdrop {...props} disappearsOnIndex={-1} appearsOnIndex={0} opacity={0.5} />
+    (props: BottomSheetBackdropProps) => (
+      <BottomSheetBackdrop
+        {...props}
+        disappearsOnIndex={-1}
+        appearsOnIndex={0}
+        opacity={1}
+        style={[props.style, { backgroundColor: t.overlay.scrim }]}
+      />
     ),
-    []
+    [t]
   );
 
-  // Format date for display
+  // Format date for display: "9 Oct 2026" (style guide §12.3)
   const formatDate = (date: Date): string => {
-    return date.toLocaleDateString('en-US', {
-      month: 'short',
+    return date.toLocaleDateString('en-IN', {
       day: 'numeric',
+      month: 'short',
       year: 'numeric',
     });
   };
@@ -433,385 +461,402 @@ const ItemPricingFormScreen: React.FC = () => {
   const renderItemOption = useCallback(
     ({ item }: { item: Item }) => (
       <Pressable
-        style={[styles.sheetItem, { borderBottomColor: colors.gray100 }]}
+        style={({ pressed }) => [styles.sheetItem, pressed && styles.sheetItemPressed]}
         onPress={() => {
           setSelectedItem(item);
+          setFieldErrors((prev) => ({ ...prev, item: undefined }));
           setItemSearchQuery('');
           setItems([]);
           itemSheetRef.current?.dismiss();
         }}
+        accessibilityRole="button"
+        accessibilityLabel={item.packaging ? `${item.name}, ${item.packaging}` : item.name}
       >
+        <Icon name="cube-outline" size={iconSize.md} color={t.icon.secondary} />
         <View style={styles.sheetItemContent}>
-          <Text style={[styles.sheetItemName, { color: colors.textPrimary }]}>{item.name}</Text>
-          {item.packaging && <Text style={[styles.sheetItemMeta, { color: colors.textTertiary }]}>{item.packaging}</Text>}
+          <Text style={styles.sheetItemName}>{item.name}</Text>
+          {item.packaging ? <Text style={styles.sheetItemMeta}>{item.packaging}</Text> : null}
         </View>
-        <Ionicons name="cube-outline" size={20} color={colors.textSecondary} />
       </Pressable>
     ),
-    [colors]
+    [styles, t]
   );
 
   // Render item for customer selection
   const renderCustomerOption = useCallback(
     ({ item }: { item: Customer }) => (
       <Pressable
-        style={[styles.sheetItem, { borderBottomColor: colors.gray100 }]}
+        style={({ pressed }) => [styles.sheetItem, pressed && styles.sheetItemPressed]}
         onPress={() => {
           setSelectedCustomer(item);
           setCustomerSearchQuery('');
           setCustomers([]);
           customerSheetRef.current?.dismiss();
         }}
+        accessibilityRole="button"
+        accessibilityLabel={item.name}
       >
+        <Icon name="account-outline" size={iconSize.md} color={t.icon.secondary} />
         <View style={styles.sheetItemContent}>
-          <Text style={[styles.sheetItemName, { color: colors.textPrimary }]}>{item.name}</Text>
+          <Text style={styles.sheetItemName}>{item.name}</Text>
         </View>
-        <Ionicons name="person-outline" size={20} color={colors.textSecondary} />
       </Pressable>
     ),
-    [colors]
+    [styles, t]
   );
 
   // Page title
   const getTitle = () => {
     switch (formMode) {
       case 'create':
-        return 'Add Item Price';
+        return 'Add price';
       case 'edit':
-        return 'Edit Item Price';
+        return 'Edit price';
       case 'view':
-        return 'View Item Price';
+        return 'Price';
     }
   };
 
   if (loading) {
     return (
-      <View style={[styles.container, styles.loadingContainer, { backgroundColor: colors.cellBackground }]}>
-        <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Loading...</Text>
+      <View
+        style={[styles.container, styles.loadingContainer]}
+        accessibilityRole="progressbar"
+        accessibilityLabel="Loading price"
+      >
+        <ActivityIndicator size="large" color={t.brand.tint} />
+        <Text style={styles.loadingText}>Loading price…</Text>
       </View>
     );
   }
 
+  const lockedSelection = isReadOnly || formMode === 'edit';
+
+  const renderSheetEmpty = (searching: boolean, query: string, noun: string) => (
+    <View style={styles.sheetEmpty}>
+      {searching ? (
+        <ActivityIndicator color={t.brand.tint} accessibilityLabel={`Searching ${noun}`} />
+      ) : query.length > 0 ? (
+        <Text style={styles.sheetEmptyText}>No {noun} match "{query}". Try fewer letters.</Text>
+      ) : (
+        <Text style={styles.sheetEmptyText}>Type to search {noun}.</Text>
+      )}
+    </View>
+  );
+
   return (
     <BottomSheetModalProvider>
-      <View style={{ height: insets.top, backgroundColor: colors.cellBackground }} />
-      <View style={[styles.container, { backgroundColor: colors.cellBackground }]}>
+      <View style={styles.container}>
         {/* Header */}
-        <View style={[styles.header, { borderBottomColor: colors.gray100 }]}>
-          <Pressable style={styles.backButton} onPress={() => router.back()}>
-            <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
+        <View style={[styles.header, { paddingTop: insets.top + space.xs }]}>
+          <Pressable
+            style={styles.iconButton}
+            onPress={() => router.back()}
+            accessibilityRole="button"
+            accessibilityLabel="Back"
+          >
+            <Icon name="arrow-left" size={iconSize.lg} color={t.icon.primary} />
           </Pressable>
-          <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>{getTitle()}</Text>
+          <Text style={styles.headerTitle} accessibilityRole="header" numberOfLines={1}>
+            {getTitle()}
+          </Text>
           {!isReadOnly && (
             <Pressable
-              style={[styles.saveButton, { backgroundColor: colors.primary }, saving && styles.saveButtonDisabled]}
+              style={({ pressed }) => [styles.saveButton, pressed && styles.saveButtonPressed]}
               onPress={handleSave}
               disabled={saving}
+              accessibilityRole="button"
+              accessibilityLabel="Save price"
+              accessibilityState={{ busy: saving }}
             >
               {saving ? (
-                <ActivityIndicator size="small" color={colors.white} />
+                <>
+                  <ActivityIndicator size="small" color={t.brand.onFill} />
+                  <Text style={styles.saveButtonText}>Saving…</Text>
+                </>
               ) : (
-                <Text style={[styles.saveButtonText, { color: colors.white }]}>Save</Text>
+                <Text style={styles.saveButtonText}>Save</Text>
               )}
             </Pressable>
           )}
           {isReadOnly && (
             <Pressable
-              style={[styles.saveButton, { backgroundColor: colors.primary }]}
+              style={({ pressed }) => [styles.editButton, pressed && styles.editButtonPressed]}
               onPress={() => router.replace(`/item-pricing-form?id=${priceId}&mode=edit`)}
+              accessibilityRole="button"
+              accessibilityLabel="Edit price"
             >
-              <Text style={[styles.saveButtonText, { color: colors.white }]}>Edit</Text>
+              <Icon name="pencil-outline" size={iconSize.md} color={t.brand.tint} />
+              <Text style={styles.editButtonText}>Edit</Text>
             </Pressable>
           )}
         </View>
 
         <KeyboardAwareScrollView
           style={styles.scrollView}
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: space.max + insets.bottom }]}
           showsVerticalScrollIndicator={true}
           enableOnAndroid={true}
           enableAutomaticScroll={true}
           extraScrollHeight={Platform.OS === 'ios' ? 120 : 80}
           keyboardShouldPersistTaps="handled"
         >
-            {/* Item Selection */}
-            <View style={styles.formSection}>
-              <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>Item *</Text>
-              <Pressable
-                style={[
-                  styles.selector,
-                  { backgroundColor: colors.cellBackground, borderColor: colors.gray300 },
-                  (isReadOnly || formMode === 'edit') && { backgroundColor: colors.gray100, borderColor: colors.gray200 },
-                ]}
-                onPress={() => {
-                  if (!isReadOnly && formMode !== 'edit') {
-                    itemSheetRef.current?.present();
-                  }
-                }}
-                disabled={isReadOnly || formMode === 'edit'}
+          {/* Item Selection */}
+          <View style={styles.formSection}>
+            <Text style={[styles.label, fieldErrors.item && styles.labelError]}>
+              Item{!lockedSelection && <Text style={styles.required}> *</Text>}
+            </Text>
+            <Pressable
+              style={({ pressed }) => [
+                styles.selector,
+                lockedSelection && styles.fieldReadOnly,
+                fieldErrors.item && styles.fieldError,
+                pressed && !lockedSelection && styles.selectorPressed,
+              ]}
+              onPress={() => {
+                if (!lockedSelection) {
+                  itemSheetRef.current?.present();
+                }
+              }}
+              disabled={lockedSelection}
+              accessibilityRole="button"
+              accessibilityLabel={`Item, ${selectedItem?.name || 'not selected'}`}
+              accessibilityHint={lockedSelection ? undefined : 'Opens item search'}
+              accessibilityState={{ disabled: lockedSelection }}
+            >
+              <Icon name="cube-outline" size={iconSize.md} color={t.icon.secondary} />
+              <Text
+                style={[styles.selectorText, !selectedItem && styles.selectorPlaceholder]}
+                numberOfLines={2}
               >
-                <Ionicons name="cube-outline" size={20} color={colors.textSecondary} />
-                <Text
-                  style={[styles.selectorText, { color: colors.textPrimary }, !selectedItem && { color: colors.gray400 }]}
-                  numberOfLines={1}
-                >
-                  {selectedItem?.name || 'Select Item...'}
-                </Text>
-                {!isReadOnly && formMode !== 'edit' && (
-                  <Ionicons name="chevron-down" size={20} color={colors.textSecondary} />
-                )}
-              </Pressable>
-              {formMode === 'edit' && (
-                <Text style={[styles.helperText, { color: colors.textTertiary }]}>Item cannot be changed after creation</Text>
+                {selectedItem?.name || 'Select an item'}
+              </Text>
+              {!lockedSelection && (
+                <Icon name="chevron-down" size={iconSize.md} color={t.icon.secondary} />
               )}
-            </View>
-
-            {/* Customer Selection (Optional) */}
-            <View style={styles.formSection}>
-              <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>Customer (Optional)</Text>
-              <Pressable
-                style={[
-                  styles.selector,
-                  { backgroundColor: colors.cellBackground, borderColor: colors.gray300 },
-                  (isReadOnly || formMode === 'edit') && { backgroundColor: colors.gray100, borderColor: colors.gray200 },
-                ]}
-                onPress={() => {
-                  if (!isReadOnly && formMode !== 'edit') {
-                    customerSheetRef.current?.present();
-                  }
-                }}
-                disabled={isReadOnly || formMode === 'edit'}
-              >
-                <Ionicons name="person-outline" size={20} color={colors.textSecondary} />
-                <Text
-                  style={[styles.selectorText, { color: colors.textPrimary }, !selectedCustomer && { color: colors.gray400 }]}
-                  numberOfLines={1}
-                >
-                  {selectedCustomer?.name || 'Default Pricing (All Customers)'}
-                </Text>
-                {!isReadOnly && formMode !== 'edit' && (
-                  <Ionicons name="chevron-down" size={20} color={colors.textSecondary} />
-                )}
-              </Pressable>
-              {formMode !== 'create' && !selectedCustomer && (
-                <Text style={[styles.helperText, { color: colors.textTertiary }]}>This is a default price for all customers</Text>
-              )}
-              {selectedCustomer && !isReadOnly && formMode === 'create' && (
-                <Pressable
-                  style={styles.clearButton}
-                  onPress={() => setSelectedCustomer(null)}
-                >
-                  <Text style={[styles.clearButtonText, { color: colors.primary }]}>Clear (Use Default)</Text>
-                </Pressable>
-              )}
-            </View>
-
-            {/* Weight Range */}
-            <View style={styles.formSection}>
-              <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>Weight Range (kg) *</Text>
-              <View style={styles.row}>
-                <View style={styles.halfInput}>
-                  <TextInput
-                    label="Min Weight"
-                    value={weightMin}
-                    onChangeText={setWeightMin}
-                    keyboardType="numeric"
-                    mode="outlined"
-                    disabled={isReadOnly}
-                    style={[styles.textInput, { backgroundColor: colors.cellBackground }]}
-                    outlineColor={colors.gray300}
-                    activeOutlineColor={colors.primary}
-                    textColor={colors.textPrimary}
-                  />
-                </View>
-                <View style={styles.halfInput}>
-                  <TextInput
-                    label="Max Weight"
-                    value={weightMax}
-                    onChangeText={setWeightMax}
-                    keyboardType="numeric"
-                    mode="outlined"
-                    disabled={isReadOnly}
-                    style={[styles.textInput, { backgroundColor: colors.cellBackground }]}
-                    outlineColor={colors.gray300}
-                    activeOutlineColor={colors.primary}
-                    textColor={colors.textPrimary}
-                  />
-                </View>
-              </View>
-            </View>
-
-            {/* Pricing */}
-            <View style={styles.formSection}>
-              <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>Pricing *</Text>
-
-              {/* Price Type Toggle - disabled in edit mode as price type cannot be changed */}
-              <View style={[
-                styles.priceTypeContainer,
-                { backgroundColor: colors.gray100 },
-                (isReadOnly || formMode === 'edit') && styles.priceTypeContainerDisabled,
-              ]}>
-                <Pressable
-                  style={[
-                    styles.priceTypeButton,
-                    priceType === 'one_time' && [styles.priceTypeButtonActive, { backgroundColor: colors.cellBackground }],
-                  ]}
-                  onPress={() => formMode === 'create' && setPriceType('one_time')}
-                  disabled={isReadOnly || formMode === 'edit'}
-                >
-                  <Text
-                    style={[
-                      styles.priceTypeText,
-                      { color: colors.textTertiary },
-                      priceType === 'one_time' && { color: colors.primary },
-                    ]}
-                  >
-                    One-Time
-                  </Text>
-                </Pressable>
-                <Pressable
-                  style={[
-                    styles.priceTypeButton,
-                    priceType === 'monthly' && [styles.priceTypeButtonActive, { backgroundColor: colors.cellBackground }],
-                  ]}
-                  onPress={() => formMode === 'create' && setPriceType('monthly')}
-                  disabled={isReadOnly || formMode === 'edit'}
-                >
-                  <Text
-                    style={[
-                      styles.priceTypeText,
-                      { color: colors.textTertiary },
-                      priceType === 'monthly' && { color: colors.primary },
-                    ]}
-                  >
-                    Monthly
-                  </Text>
-                </Pressable>
-              </View>
-              {formMode === 'edit' && (
-                <Text style={[styles.helperText, { color: colors.textTertiary }]}>Price type cannot be changed after creation</Text>
-              )}
-
-              {/* Unit Price */}
-              <TextInput
-                label={`${priceType === 'one_time' ? 'One-Time' : 'Monthly'} Price *`}
-                value={unitPrice}
-                onChangeText={setUnitPrice}
-                keyboardType="numeric"
-                mode="outlined"
-                disabled={isReadOnly}
-                style={[styles.textInput, { backgroundColor: colors.cellBackground }]}
-                left={<TextInput.Affix text="₹" />}
-                outlineColor={colors.gray300}
-                activeOutlineColor={colors.primary}
-                textColor={colors.textPrimary}
-              />
-            </View>
-
-            {/* Labour Rate */}
-            <View style={styles.formSection}>
-              <TextInput
-                label="Labour Rate *"
-                value={labourRate}
-                onChangeText={setLabourRate}
-                keyboardType="numeric"
-                mode="outlined"
-                disabled={isReadOnly}
-                style={[styles.textInput, { backgroundColor: colors.cellBackground }]}
-                left={<TextInput.Affix text="₹" />}
-                outlineColor={colors.gray300}
-                activeOutlineColor={colors.primary}
-                textColor={colors.textPrimary}
-              />
-            </View>
-
-            {/* Tax Percent */}
-            <View style={styles.formSection}>
-              <TextInput
-                label="Tax Percent *"
-                value={taxPercent}
-                onChangeText={setTaxPercent}
-                keyboardType="numeric"
-                mode="outlined"
-                disabled={isReadOnly}
-                style={[styles.textInput, { backgroundColor: colors.cellBackground }]}
-                right={<TextInput.Affix text="%" />}
-                outlineColor={colors.gray300}
-                activeOutlineColor={colors.primary}
-                textColor={colors.textPrimary}
-              />
-            </View>
-
-            {/* Validity Period */}
-            <View style={styles.formSection}>
-              <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>Validity Period *</Text>
-              <View style={styles.dateRow}>
-                <TouchableOpacity
-                  style={[
-                    styles.dateField,
-                    { backgroundColor: colors.cellBackground, borderColor: colors.gray300 },
-                    isReadOnly && { backgroundColor: colors.gray100, borderColor: colors.gray200 },
-                  ]}
-                  onPress={() => handleDatePress('from')}
-                  disabled={isReadOnly}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.dateLabel, { color: colors.textTertiary }]}>From</Text>
-                  <View style={styles.dateValueRow}>
-                    <Text style={[styles.dateValue, { color: colors.textPrimary }, isReadOnly && { color: colors.gray400 }]}>
-                      {formatDate(effectiveFrom)}
-                    </Text>
-                    <Ionicons name="calendar-outline" size={18} color={colors.textSecondary} />
-                  </View>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[
-                    styles.dateField,
-                    { backgroundColor: colors.cellBackground, borderColor: colors.gray300 },
-                    isReadOnly && { backgroundColor: colors.gray100, borderColor: colors.gray200 },
-                  ]}
-                  onPress={() => handleDatePress('to')}
-                  disabled={isReadOnly}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.dateLabel, { color: colors.textTertiary }]}>To</Text>
-                  <View style={styles.dateValueRow}>
-                    <Text style={[styles.dateValue, { color: colors.textPrimary }, isReadOnly && { color: colors.gray400 }]}>
-                      {effectiveTo ? formatDate(effectiveTo) : 'No end date'}
-                    </Text>
-                    <Ionicons name="calendar-outline" size={18} color={colors.textSecondary} />
-                  </View>
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            {/* Shared Date Picker */}
-            {showDatePicker && (
-              <View>
-                {Platform.OS === 'ios' && (
-                  <View style={[styles.iosPickerHeader, { backgroundColor: colors.gray100 }]}>
-                    <Text style={[styles.iosPickerTitle, { color: colors.textPrimary }]}>
-                      Select {activeDateField === 'from' ? 'Start' : 'End'} Date
-                    </Text>
-                    <TouchableOpacity onPress={closeDatePicker}>
-                      <Text style={[styles.iosPickerDone, { color: colors.primary }]}>Done</Text>
-                    </TouchableOpacity>
-                  </View>
-                )}
-                <DateTimePicker
-                  value={activeDateField === 'from' ? effectiveFrom : (effectiveTo || new Date())}
-                  mode="date"
-                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                  onChange={handleDateChange}
-                  minimumDate={activeDateField === 'to' ? effectiveFrom : undefined}
-                  accentColor={colors.primary}
-                  themeVariant="light"
-                />
-              </View>
+            </Pressable>
+            <FieldError message={fieldErrors.item} />
+            {formMode === 'edit' && (
+              <Text style={styles.helperText}>The item can't be changed after the price is created.</Text>
             )}
+          </View>
 
-            <View style={{ height: 100 }} />
+          {/* Customer Selection (Optional) */}
+          <View style={styles.formSection}>
+            <Text style={styles.label}>Customer</Text>
+            <Pressable
+              style={({ pressed }) => [
+                styles.selector,
+                lockedSelection && styles.fieldReadOnly,
+                pressed && !lockedSelection && styles.selectorPressed,
+              ]}
+              onPress={() => {
+                if (!lockedSelection) {
+                  customerSheetRef.current?.present();
+                }
+              }}
+              disabled={lockedSelection}
+              accessibilityRole="button"
+              accessibilityLabel={`Customer, ${selectedCustomer?.name || 'default price for all customers'}`}
+              accessibilityHint={lockedSelection ? undefined : 'Opens customer search'}
+              accessibilityState={{ disabled: lockedSelection }}
+            >
+              <Icon name="account-outline" size={iconSize.md} color={t.icon.secondary} />
+              <Text
+                style={[styles.selectorText, !selectedCustomer && styles.selectorPlaceholder]}
+                numberOfLines={2}
+              >
+                {selectedCustomer?.name || 'Default price (all customers)'}
+              </Text>
+              {!lockedSelection && (
+                <Icon name="chevron-down" size={iconSize.md} color={t.icon.secondary} />
+              )}
+            </Pressable>
+            {formMode !== 'create' && !selectedCustomer && (
+              <Text style={styles.helperText}>This is the default price for all customers.</Text>
+            )}
+            {formMode === 'create' && (
+              <Text style={styles.helperText}>Optional. Leave empty to set the default price.</Text>
+            )}
+            {selectedCustomer && !isReadOnly && formMode === 'create' && (
+              <Pressable
+                style={styles.clearButton}
+                onPress={() => setSelectedCustomer(null)}
+                accessibilityRole="button"
+              >
+                <Text style={styles.clearButtonText}>Use the default price</Text>
+              </Pressable>
+            )}
+          </View>
+
+          {/* Weight Range */}
+          <Text style={styles.sectionHeader} accessibilityRole="header">Weight range</Text>
+          <View style={[styles.formSection, styles.row]}>
+            <FormField
+              containerStyle={styles.halfInput}
+              label="Minimum"
+              required
+              readOnly={isReadOnly}
+              suffix="kg"
+              error={fieldErrors.weightMin}
+              value={weightMin}
+              onChangeText={setWeightMin}
+              keyboardType="decimal-pad"
+            />
+            <FormField
+              containerStyle={styles.halfInput}
+              label="Maximum"
+              required
+              readOnly={isReadOnly}
+              suffix="kg"
+              error={fieldErrors.weightMax}
+              value={weightMax}
+              onChangeText={setWeightMax}
+              keyboardType="decimal-pad"
+            />
+          </View>
+
+          {/* Pricing */}
+          <Text style={styles.sectionHeader} accessibilityRole="header">Pricing</Text>
+          <View style={styles.formSection}>
+            <Text style={styles.label}>Price type</Text>
+            {/* Price Type segmented control - fixed after creation */}
+            <View
+              style={[styles.segment, lockedSelection && styles.segmentLocked]}
+              accessibilityRole="radiogroup"
+              accessibilityLabel="Price type"
+            >
+              {(['one_time', 'monthly'] as const).map((value) => {
+                const selected = priceType === value;
+                return (
+                  <Pressable
+                    key={value}
+                    style={[styles.segmentItem, selected && styles.segmentItemSelected]}
+                    onPress={() => formMode === 'create' && setPriceType(value)}
+                    disabled={lockedSelection}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected, disabled: lockedSelection }}
+                  >
+                    {selected && <Icon name="check" size={iconSize.sm} color={t.brand.onFill} />}
+                    <Text style={[styles.segmentText, selected && styles.segmentTextSelected]}>
+                      {value === 'one_time' ? 'One-time' : 'Monthly'}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+            {formMode === 'edit' && (
+              <Text style={styles.helperText}>The price type can't be changed after the price is created.</Text>
+            )}
+          </View>
+
+          <FormField
+            containerStyle={styles.formSection}
+            label={priceType === 'one_time' ? 'One-time price' : 'Monthly price'}
+            required
+            readOnly={isReadOnly}
+            prefix="₹"
+            error={fieldErrors.unitPrice}
+            value={unitPrice}
+            onChangeText={setUnitPrice}
+            keyboardType="decimal-pad"
+          />
+
+          <FormField
+            containerStyle={styles.formSection}
+            label="Labour rate"
+            required
+            readOnly={isReadOnly}
+            prefix="₹"
+            error={fieldErrors.labourRate}
+            value={labourRate}
+            onChangeText={setLabourRate}
+            keyboardType="decimal-pad"
+          />
+
+          <FormField
+            containerStyle={styles.formSection}
+            label="Tax"
+            required
+            readOnly={isReadOnly}
+            suffix="%"
+            error={fieldErrors.taxPercent}
+            value={taxPercent}
+            onChangeText={setTaxPercent}
+            keyboardType="decimal-pad"
+          />
+
+          {/* Validity Period */}
+          <Text style={styles.sectionHeader} accessibilityRole="header">Validity</Text>
+          <View style={styles.formSection}>
+            <View style={styles.dateRow}>
+              {(['from', 'to'] as const).map((field) => {
+                const label = field === 'from' ? 'From' : 'To';
+                const value =
+                  field === 'from'
+                    ? formatDate(effectiveFrom)
+                    : effectiveTo
+                      ? formatDate(effectiveTo)
+                      : 'No end date';
+                const hasError = field === 'to' && !!fieldErrors.effectiveTo;
+                return (
+                  <View key={field} style={styles.dateColumn}>
+                    <Text style={[styles.label, hasError && styles.labelError]}>
+                      {label}
+                      {field === 'from' && !isReadOnly && <Text style={styles.required}> *</Text>}
+                    </Text>
+                    <Pressable
+                      style={({ pressed }) => [
+                        styles.dateField,
+                        isReadOnly && styles.fieldReadOnly,
+                        hasError && styles.fieldError,
+                        pressed && !isReadOnly && styles.selectorPressed,
+                      ]}
+                      onPress={() => handleDatePress(field)}
+                      disabled={isReadOnly}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${label}, ${value}`}
+                      accessibilityHint={isReadOnly ? undefined : 'Opens the date picker'}
+                    >
+                      <Text style={styles.dateValue}>{value}</Text>
+                      <Icon name="calendar-outline" size={iconSize.md} color={t.icon.secondary} />
+                    </Pressable>
+                  </View>
+                );
+              })}
+            </View>
+            <FieldError message={fieldErrors.effectiveTo} />
+          </View>
+
+          {/* Shared Date Picker */}
+          {showDatePicker && (
+            <View style={styles.pickerContainer}>
+              {Platform.OS === 'ios' && (
+                <View style={styles.iosPickerHeader}>
+                  <Text style={styles.iosPickerTitle}>
+                    {activeDateField === 'from' ? 'Start date' : 'End date'}
+                  </Text>
+                  <Pressable
+                    onPress={closeDatePicker}
+                    style={styles.iosPickerDoneButton}
+                    accessibilityRole="button"
+                  >
+                    <Text style={styles.iosPickerDone}>Done</Text>
+                  </Pressable>
+                </View>
+              )}
+              <DateTimePicker
+                value={activeDateField === 'from' ? effectiveFrom : (effectiveTo || new Date())}
+                mode="date"
+                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                onChange={handleDateChange}
+                minimumDate={activeDateField === 'to' ? effectiveFrom : undefined}
+                accentColor={t.brand.tint}
+                textColor={t.text.primary}
+                themeVariant={t.mode}
+              />
+            </View>
+          )}
         </KeyboardAwareScrollView>
 
         {/* Item Selection Bottom Sheet */}
@@ -823,38 +868,39 @@ const ItemPricingFormScreen: React.FC = () => {
           enablePanDownToClose
           keyboardBehavior="interactive"
           keyboardBlurBehavior="restore"
-          backgroundStyle={{ backgroundColor: colors.cellBackground }}
-          handleIndicatorStyle={{ backgroundColor: colors.gray400 }}
+          backgroundStyle={styles.sheetBackground}
+          handleIndicatorStyle={styles.sheetHandle}
         >
-          <View style={[styles.sheetHeader, { borderBottomColor: colors.gray100 }]}>
-            <Text style={[styles.sheetTitle, { color: colors.textPrimary }]}>Select Item</Text>
+          <View style={styles.sheetHeader}>
+            <Text style={styles.sheetTitle} accessibilityRole="header">Select item</Text>
+            <Pressable
+              style={styles.iconButton}
+              onPress={() => itemSheetRef.current?.dismiss()}
+              accessibilityRole="button"
+              accessibilityLabel="Close"
+            >
+              <Icon name="close" size={iconSize.lg} color={t.icon.primary} />
+            </Pressable>
           </View>
           <View style={styles.sheetSearchContainer}>
+            <Icon name="magnify" size={iconSize.md} color={t.icon.secondary} style={styles.sheetSearchIcon} />
             <BottomSheetTextInput
-              style={[styles.sheetSearchInput, { backgroundColor: colors.gray50, borderColor: colors.gray200, color: colors.textPrimary }]}
-              placeholder="Search items..."
-              placeholderTextColor={colors.gray400}
+              style={styles.sheetSearchInput}
+              placeholder="Search items"
+              placeholderTextColor={t.text.placeholder}
               value={itemSearchQuery}
               onChangeText={handleItemSearchChange}
               autoFocus
+              accessibilityLabel="Search items"
+              returnKeyType="search"
             />
           </View>
           <BottomSheetFlatList<Item>
             data={items}
             keyExtractor={(item: Item) => item.id}
             renderItem={renderItemOption}
-            contentContainerStyle={styles.sheetList}
-            ListEmptyComponent={
-              <View style={styles.sheetEmpty}>
-                {searchingItems ? (
-                  <ActivityIndicator color={colors.primary} />
-                ) : itemSearchQuery.length > 0 ? (
-                  <Text style={[styles.sheetEmptyText, { color: colors.textTertiary }]}>No items found</Text>
-                ) : (
-                  <Text style={[styles.sheetEmptyText, { color: colors.textTertiary }]}>Type to search items</Text>
-                )}
-              </View>
-            }
+            contentContainerStyle={[styles.sheetList, { paddingBottom: space.huge + insets.bottom }]}
+            ListEmptyComponent={renderSheetEmpty(searchingItems, itemSearchQuery, 'items')}
           />
         </BottomSheetModal>
 
@@ -867,38 +913,39 @@ const ItemPricingFormScreen: React.FC = () => {
           enablePanDownToClose
           keyboardBehavior="interactive"
           keyboardBlurBehavior="restore"
-          backgroundStyle={{ backgroundColor: colors.cellBackground }}
-          handleIndicatorStyle={{ backgroundColor: colors.gray400 }}
+          backgroundStyle={styles.sheetBackground}
+          handleIndicatorStyle={styles.sheetHandle}
         >
-          <View style={[styles.sheetHeader, { borderBottomColor: colors.gray100 }]}>
-            <Text style={[styles.sheetTitle, { color: colors.textPrimary }]}>Select Customer</Text>
+          <View style={styles.sheetHeader}>
+            <Text style={styles.sheetTitle} accessibilityRole="header">Select customer</Text>
+            <Pressable
+              style={styles.iconButton}
+              onPress={() => customerSheetRef.current?.dismiss()}
+              accessibilityRole="button"
+              accessibilityLabel="Close"
+            >
+              <Icon name="close" size={iconSize.lg} color={t.icon.primary} />
+            </Pressable>
           </View>
           <View style={styles.sheetSearchContainer}>
+            <Icon name="magnify" size={iconSize.md} color={t.icon.secondary} style={styles.sheetSearchIcon} />
             <BottomSheetTextInput
-              style={[styles.sheetSearchInput, { backgroundColor: colors.gray50, borderColor: colors.gray200, color: colors.textPrimary }]}
-              placeholder="Search customers..."
-              placeholderTextColor={colors.gray400}
+              style={styles.sheetSearchInput}
+              placeholder="Search customers"
+              placeholderTextColor={t.text.placeholder}
               value={customerSearchQuery}
               onChangeText={handleCustomerSearchChange}
               autoFocus
+              accessibilityLabel="Search customers"
+              returnKeyType="search"
             />
           </View>
           <BottomSheetFlatList<Customer>
             data={customers}
             keyExtractor={(item: Customer) => item.id}
             renderItem={renderCustomerOption}
-            contentContainerStyle={styles.sheetList}
-            ListEmptyComponent={
-              <View style={styles.sheetEmpty}>
-                {searchingCustomers ? (
-                  <ActivityIndicator color={colors.primary} />
-                ) : customerSearchQuery.length > 0 ? (
-                  <Text style={[styles.sheetEmptyText, { color: colors.textTertiary }]}>No customers found</Text>
-                ) : (
-                  <Text style={[styles.sheetEmptyText, { color: colors.textTertiary }]}>Type to search customers</Text>
-                )}
-              </View>
-            }
+            contentContainerStyle={[styles.sheetList, { paddingBottom: space.huge + insets.bottom }]}
+            ListEmptyComponent={renderSheetEmpty(searchingCustomers, customerSearchQuery, 'customers')}
           />
         </BottomSheetModal>
       </View>
@@ -906,223 +953,439 @@ const ItemPricingFormScreen: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+// =============================================================================
+// FORM FIELD
+// =============================================================================
+
+type FormFieldProps = TextInputProps & {
+  label: string;
+  required?: boolean;
+  readOnly?: boolean;
+  error?: string;
+  prefix?: string;
+  suffix?: string;
+  containerStyle?: StyleProp<ViewStyle>;
+};
+
+/** Field error: icon plus message in the negative status colour. */
+function FieldError({ message }: { message?: string }) {
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
+  if (!message) return null;
+  return (
+    <View style={styles.errorRow} accessibilityLiveRegion="polite">
+      <Icon name="alert-circle" size={iconSize.sm} color={t.status.negative.text} />
+      <Text style={styles.errorText}>{message}</Text>
+    </View>
+  );
+}
+
+/** Labelled text field with prefix/suffix, focus, error and read-only states (§13.2). */
+function FormField({
+  label,
+  required,
+  readOnly,
+  error,
+  prefix,
+  suffix,
+  containerStyle,
+  onFocus,
+  onBlur,
+  ...inputProps
+}: FormFieldProps) {
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
+  const [focused, setFocused] = useState(false);
+  return (
+    <View style={containerStyle}>
+      <Text style={[styles.label, !!error && styles.labelError]}>
+        {label}
+        {required && !readOnly && <Text style={styles.required}> *</Text>}
+      </Text>
+      <View
+        style={[
+          styles.inputBox,
+          readOnly && styles.fieldReadOnly,
+          focused && styles.inputBoxFocused,
+          !!error && styles.fieldError,
+        ]}
+      >
+        {prefix ? <Text style={styles.affix}>{prefix}</Text> : null}
+        <TextInput
+          {...inputProps}
+          editable={!readOnly}
+          style={styles.input}
+          placeholderTextColor={t.text.placeholder}
+          accessibilityLabel={[label, prefix === '₹' ? 'in rupees' : null, suffix === '%' ? 'percent' : suffix]
+            .filter(Boolean)
+            .join(', ')}
+          accessibilityState={{ disabled: readOnly }}
+          onFocus={(e) => {
+            setFocused(true);
+            onFocus?.(e);
+          }}
+          onBlur={(e) => {
+            setFocused(false);
+            onBlur?.(e);
+          }}
+        />
+        {suffix ? <Text style={styles.affix}>{suffix}</Text> : null}
+      </View>
+      <FieldError message={error} />
+    </View>
+  );
+}
+
+const makeStyles = (t: ThemeTokens) => ({
   container: {
     flex: 1,
+    backgroundColor: t.background.base,
   },
   loadingContainer: {
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
   },
   loadingText: {
-    marginTop: 16,
-    fontSize: 16,
+    ...typography.subhead,
+    marginTop: space.lg,
+    color: t.text.secondary,
   },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 8,
-    borderBottomWidth: 1,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    paddingBottom: space.xs,
+    paddingHorizontal: space.sm,
+    gap: space.xs,
+    backgroundColor: t.surface.header,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.divider,
   },
-  backButton: {
-    padding: 8,
+  iconButton: {
+    minWidth: touchTarget,
+    minHeight: touchTarget,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
   },
   headerTitle: {
+    ...typography.headline,
     flex: 1,
-    fontSize: 20,
-    fontWeight: '700',
-    marginLeft: 8,
+    color: t.text.primary,
   },
   saveButton: {
-    height: FIORI.button.height,
-    borderRadius: FIORI.button.borderRadius,
-    paddingHorizontal: 24,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 8,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.3,
-        shadowRadius: 4,
-      },
-      android: { elevation: 4 },
-    }),
+    flexDirection: 'row' as const,
+    gap: space.sm,
+    minHeight: touchTarget,
+    borderRadius: radius.button,
+    paddingHorizontal: space.xl,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    marginRight: space.xs,
+    backgroundColor: t.brand.fill,
   },
-  saveButtonDisabled: {
-    opacity: 0.6,
+  saveButtonPressed: {
+    backgroundColor: t.brand.fillPressed,
   },
   saveButtonText: {
-    fontSize: 15,
-    fontWeight: '600',
+    ...typography.callout,
+    fontWeight: fontWeight.semibold,
+    color: t.brand.onFill,
+  },
+  editButton: {
+    flexDirection: 'row' as const,
+    gap: space.xs,
+    minHeight: touchTarget,
+    borderRadius: radius.button,
+    paddingHorizontal: space.md,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    marginRight: space.xs,
+  },
+  editButtonPressed: {
+    backgroundColor: t.brand.subtle,
+  },
+  editButtonText: {
+    ...typography.callout,
+    color: t.brand.tint,
   },
   scrollView: {
     flex: 1,
   },
   scrollContent: {
-    padding: 20,
+    padding: layout.marginCompact,
   },
   formSection: {
-    marginBottom: 24,
+    marginBottom: space.lg,
   },
-  sectionTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    marginBottom: 8,
+  sectionHeader: {
+    ...typography.footnote,
+    textTransform: 'uppercase' as const,
+    letterSpacing: 0.5,
+    color: t.text.secondary,
+    marginTop: space.sm,
+    marginBottom: space.sm,
+  },
+  label: {
+    ...typography.footnote,
+    color: t.text.secondary,
+    marginBottom: space.xs,
+  },
+  labelError: {
+    color: t.status.negative.text,
+  },
+  required: {
+    color: t.text.required,
   },
   row: {
-    flexDirection: 'row',
-    gap: 12,
+    flexDirection: 'row' as const,
+    gap: space.md,
   },
   halfInput: {
     flex: 1,
   },
+  inputBox: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    minHeight: touchTarget,
+    borderWidth: 1,
+    borderRadius: radius.field,
+    paddingHorizontal: space.md,
+    gap: space.sm,
+    backgroundColor: t.surface.field,
+    borderColor: t.border.field,
+  },
+  inputBoxFocused: {
+    borderWidth: 2,
+    borderColor: t.border.fieldFocus,
+  },
+  input: {
+    ...typography.body,
+    flex: 1,
+    paddingVertical: space.sm,
+    color: t.text.primary,
+    fontVariant: ['tabular-nums' as const],
+  },
+  affix: {
+    ...typography.body,
+    color: t.text.secondary,
+  },
+  fieldReadOnly: {
+    backgroundColor: t.surface.fieldReadOnly,
+    borderWidth: 0,
+  },
+  fieldError: {
+    borderWidth: 2,
+    borderColor: t.status.negative.border,
+  },
+  errorRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'flex-start' as const,
+    gap: space.xs,
+    marginTop: space.xs,
+  },
+  errorText: {
+    ...typography.footnote,
+    flex: 1,
+    color: t.status.negative.text,
+  },
   dateRow: {
-    flexDirection: 'row',
-    gap: 12,
+    flexDirection: 'row' as const,
+    gap: space.md,
+  },
+  dateColumn: {
+    flex: 1,
   },
   dateField: {
-    flex: 1,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
+    minHeight: touchTarget,
     borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
-  dateLabel: {
-    fontSize: 12,
-    marginBottom: 4,
-  },
-  dateValueRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    borderRadius: radius.field,
+    paddingHorizontal: space.md,
+    gap: space.sm,
+    backgroundColor: t.surface.field,
+    borderColor: t.border.field,
   },
   dateValue: {
-    fontSize: 14,
-    fontWeight: '500',
+    ...typography.body,
     flex: 1,
+    color: t.text.primary,
+  },
+  pickerContainer: {
+    borderRadius: radius.card,
+    overflow: 'hidden' as const,
+    backgroundColor: t.surface.card,
+    marginBottom: space.lg,
   },
   iosPickerHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 8,
-    marginBottom: 8,
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'center' as const,
+    paddingLeft: space.lg,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.divider,
   },
   iosPickerTitle: {
-    fontSize: 16,
-    fontWeight: '600',
+    ...typography.headline,
+    color: t.text.primary,
+  },
+  iosPickerDoneButton: {
+    minHeight: touchTarget,
+    paddingHorizontal: space.lg,
+    justifyContent: 'center' as const,
   },
   iosPickerDone: {
-    fontSize: 16,
-    fontWeight: '600',
+    ...typography.headline,
+    color: t.brand.tint,
   },
-  textInput: {},
   selector: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    minHeight: touchTarget,
     borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 14,
-    gap: 10,
+    borderRadius: radius.field,
+    paddingHorizontal: space.md,
+    paddingVertical: space.sm,
+    gap: space.sm,
+    backgroundColor: t.surface.field,
+    borderColor: t.border.field,
+  },
+  selectorPressed: {
+    backgroundColor: t.surface.cardPressed,
   },
   selectorText: {
+    ...typography.body,
     flex: 1,
-    fontSize: 16,
+    color: t.text.primary,
+  },
+  selectorPlaceholder: {
+    color: t.text.placeholder,
   },
   helperText: {
-    fontSize: 12,
-    marginTop: 4,
-    marginBottom: 8,
+    ...typography.footnote,
+    color: t.text.secondary,
+    marginTop: space.xs,
   },
-  priceTypeContainer: {
-    flexDirection: 'row',
-    borderRadius: 8,
-    padding: 4,
-    marginBottom: 16,
+  segment: {
+    flexDirection: 'row' as const,
+    borderRadius: radius.button,
+    borderWidth: 1,
+    borderColor: t.border.button,
+    overflow: 'hidden' as const,
   },
-  priceTypeContainerDisabled: {
-    opacity: 0.6,
+  segmentLocked: {
+    opacity: t.interaction.disabledOpacity,
   },
-  priceTypeButton: {
+  segmentItem: {
     flex: 1,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 6,
-    alignItems: 'center',
+    flexDirection: 'row' as const,
+    gap: space.xs,
+    minHeight: touchTarget,
+    paddingHorizontal: space.lg,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    backgroundColor: t.surface.card,
   },
-  priceTypeButtonActive: {
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
+  segmentItemSelected: {
+    backgroundColor: t.brand.fill,
   },
-  priceTypeText: {
-    fontSize: 14,
-    fontWeight: '600',
+  segmentText: {
+    ...typography.callout,
+    color: t.text.primary,
+  },
+  segmentTextSelected: {
+    fontWeight: fontWeight.semibold,
+    color: t.brand.onFill,
   },
   clearButton: {
-    marginTop: 8,
+    minHeight: touchTarget,
+    justifyContent: 'center' as const,
+    alignSelf: 'flex-start' as const,
   },
   clearButtonText: {
-    fontSize: 14,
-    fontWeight: '500',
+    ...typography.callout,
+    color: t.brand.tint,
   },
 
-  // Bottom Sheet Styles
+  // Bottom sheets (style guide §13.9)
+  sheetBackground: {
+    backgroundColor: t.surface.sheet,
+    borderTopLeftRadius: radius.sheet,
+    borderTopRightRadius: radius.sheet,
+  },
+  sheetHandle: {
+    width: 36,
+    height: 4,
+    backgroundColor: t.border.separator,
+  },
   sheetHeader: {
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
+    paddingLeft: layout.marginCompact,
+    paddingRight: space.xs,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.divider,
   },
   sheetTitle: {
-    fontSize: 18,
-    fontWeight: '700',
+    ...typography.headline,
+    color: t.text.primary,
   },
   sheetSearchContainer: {
-    paddingHorizontal: 20,
-    paddingVertical: 12,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    marginHorizontal: layout.marginCompact,
+    marginVertical: space.md,
+    paddingHorizontal: space.md,
+    borderWidth: 1,
+    borderRadius: radius.field,
+    backgroundColor: t.surface.field,
+    borderColor: t.border.field,
+  },
+  sheetSearchIcon: {
+    marginRight: space.sm,
   },
   sheetSearchInput: {
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    fontSize: 16,
+    ...typography.body,
+    flex: 1,
+    minHeight: touchTarget,
+    color: t.text.primary,
   },
   sheetList: {
-    paddingHorizontal: 20,
-    paddingBottom: 40,
+    paddingHorizontal: layout.marginCompact,
   },
   sheetItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 14,
-    borderBottomWidth: 1,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.md,
+    minHeight: layout.rowMinHeight,
+    paddingVertical: space.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.divider,
+  },
+  sheetItemPressed: {
+    backgroundColor: t.surface.cardPressed,
   },
   sheetItemContent: {
     flex: 1,
   },
   sheetItemName: {
-    fontSize: 16,
-    fontWeight: '500',
+    ...typography.body,
+    color: t.text.primary,
   },
   sheetItemMeta: {
-    fontSize: 13,
-    marginTop: 2,
+    ...typography.footnote,
+    color: t.text.secondary,
+    marginTop: space.xxs,
   },
   sheetEmpty: {
-    paddingVertical: 40,
-    alignItems: 'center',
+    paddingVertical: space.huge,
+    alignItems: 'center' as const,
   },
   sheetEmptyText: {
-    fontSize: 14,
+    ...typography.subhead,
+    color: t.text.secondary,
+    textAlign: 'center' as const,
   },
 });
 
