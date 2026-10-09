@@ -21,6 +21,7 @@ import {
   typography,
 } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
+import { formatCount, formatDate, toDate, formatWeight } from '@/utils/formatters';
 
 // Using snake_case to match backend RPC types
 interface GRNItemSummary {
@@ -43,13 +44,7 @@ interface DispatchGRNsTabProps {
   onViewGRN?: (grn_id: string) => void;
 }
 
-const formatDate = (value: string) => {
-  const date = new Date(value);
-  if (isNaN(date.getTime())) return '';
-  return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
-};
-
-const bags = (qty: number) => `${qty} ${qty === 1 ? 'bag' : 'bags'}`;
+const bags = (qty: number) => formatCount(qty, 'bag');
 
 const makeStyles = (t: ThemeTokens) => ({
   container: {
@@ -230,8 +225,8 @@ export const DispatchGRNsTab: React.FC<DispatchGRNsTabProps> = ({
       <Text style={styles.sectionHeaderText} accessibilityRole="header">Source GRNs</Text>
 
       {grns.map((grn) => {
-        const dateLabel = formatDate(grn.grn_date);
-        const itemCount = `${grn.items.length} ${grn.items.length === 1 ? 'item' : 'items'} dispatched`;
+        const dateLabel = toDate(grn.grn_date) ? formatDate(grn.grn_date, 'short') : '';
+        const itemCount = `${formatCount(grn.items.length, 'item')} dispatched`;
         return (
           <Pressable
             key={grn.grn_id}
@@ -289,7 +284,7 @@ export const DispatchGRNsTab: React.FC<DispatchGRNsTabProps> = ({
                           <View style={styles.detailPill}>
                             <Icon name="weight-kilogram" size={iconSize.sm} color={t.status.neutral.text} />
                             <Text style={styles.detailPillText} maxFontSizeMultiplier={1.6}>
-                              {item.weight} kg
+                              {formatWeight(item.weight)}
                             </Text>
                           </View>
                         )}

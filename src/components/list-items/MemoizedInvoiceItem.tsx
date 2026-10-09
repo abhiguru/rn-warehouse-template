@@ -22,6 +22,7 @@ import {
 } from '@/utils/invoiceCalculations';
 import { formatDate } from '@/utils/formatters';
 import type { Invoice } from '@/services/invoice-service';
+import { StatusTag } from '@/components/ui/StatusTag';
 
 // ============================================================================
 // TYPES
@@ -135,34 +136,6 @@ const makeStyles = (t: ThemeTokens) => ({
     gap: space.sm,
     marginTop: space.md,
   },
-  neutralTag: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    backgroundColor: t.status.neutral.background,
-    borderRadius: radius.field,
-    paddingHorizontal: space.s6,
-    paddingVertical: space.xxs,
-    gap: space.xs,
-  },
-  neutralTagText: {
-    ...typography.caption1,
-    fontWeight: fontWeight.semibold,
-    color: t.status.neutral.text,
-  },
-  infoTag: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    backgroundColor: t.status.informative.background,
-    borderRadius: radius.field,
-    paddingHorizontal: space.s6,
-    paddingVertical: space.xxs,
-    gap: space.xs,
-  },
-  infoTagText: {
-    ...typography.caption1,
-    fontWeight: fontWeight.semibold,
-    color: t.status.informative.text,
-  },
 });
 
 // ============================================================================
@@ -185,7 +158,7 @@ const InvoiceItemContent: React.FC<MemoizedInvoiceItemProps> = ({
     ? formatInvoiceDeduction(saved.adjustmentAmount)
     : `+${formatInvoiceAmount(saved.adjustmentAmount)}`;
   const customerName = invoice.customer?.name || 'Customer not set';
-  const invoiceDate = formatDate(invoice.invoice_date, 'medium');
+  const invoiceDate = formatDate(invoice.invoice_date, 'short');
 
   // One element for screen readers (style guide §11.3)
   const accessibilityDescription = [
@@ -260,17 +233,9 @@ const InvoiceItemContent: React.FC<MemoizedInvoiceItemProps> = ({
 
       {/* Financial year and origin */}
       <View style={styles.tagRow}>
-        <View style={styles.neutralTag}>
-          <Icon name="calendar-check" size={iconSize.sm} color={t.status.neutral.text} />
-          <Text style={styles.neutralTagText} maxFontSizeMultiplier={1.6}>
-            FY {invoice.financial_year}
-          </Text>
-        </View>
+        <StatusTag status="neutral" icon="calendar-check" label={`FY ${invoice.financial_year}`} />
         {invoice.is_auto_generated && (
-          <View style={styles.infoTag}>
-            <Icon name="auto-fix" size={iconSize.sm} color={t.status.informative.text} />
-            <Text style={styles.infoTagText} maxFontSizeMultiplier={1.6}>Auto-generated</Text>
-          </View>
+          <StatusTag status="informative" icon="auto-fix" label="Auto-generated" />
         )}
       </View>
     </Pressable>

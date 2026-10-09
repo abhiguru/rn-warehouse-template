@@ -15,6 +15,7 @@ import { InvoiceItemData, GroupedInvoiceItems } from '@/types/invoice.types';
 import { useAppSelector } from '@/store/hooks';
 import { selectInvoiceFormBulkPricing } from '@/store/slices/invoiceFormSlice';
 import { formatInvoiceAmount } from '@/utils/invoiceCalculations';
+import { formatCount, formatDate, formatWeight } from '@/utils/formatters';
 
 /** Table rows with editable cells keep the full 44 minimum (§13.7). */
 const ROW_MIN_HEIGHT = 44;
@@ -29,22 +30,12 @@ const COLUMN_WIDTH = {
   total: 120,
 } as const;
 
-// Safe date formatting helper: "9 Oct 26"
-const formatDate = (dateStr: string | null | undefined): string => {
-  if (!dateStr) return '—';
-  const date = new Date(dateStr);
-  return isNaN(date.getTime())
-    ? '—'
-    : date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: '2-digit' });
-};
-
 // Format number with Indian grouping - show decimals only if needed
 const formatNumber = (value: number, maxDecimals: number = 2): string => {
   if (!value) return '0';
   return new Intl.NumberFormat('en-IN', { maximumFractionDigits: maxDecimals }).format(value);
 };
 
-const plural = (count: number, one: string, many: string) => `${formatNumber(count)} ${count === 1 ? one : many}`;
 
 const tabular = { fontVariant: ['tabular-nums' as const] };
 
@@ -622,7 +613,7 @@ export const InvoiceItemsTable: React.FC<InvoiceItemsTableProps> = ({
 
         // #23 Fix: Use pre-computed allItems instead of flatMap in render
         const { allItems } = itemGroup;
-        const dispatchCount = plural(allItems.length, 'dispatch', 'dispatches');
+        const dispatchCount = formatCount(allItems.length, 'dispatch', 'dispatches');
         const groupTotalText = formatInvoiceAmount(groupTotal);
 
         const renderEditableCell = (
@@ -674,7 +665,7 @@ export const InvoiceItemsTable: React.FC<InvoiceItemsTableProps> = ({
               onPress={() => toggleItemGroup(groupKey)}
               accessibilityRole="button"
               accessibilityState={{ expanded: isExpanded }}
-              accessibilityLabel={`${itemGroup.item_name}, mark ${itemGroup.package_mark}, ${formatNumber(itemGroup.total_weight)} kg, GRN quantity ${formatNumber(itemGroup.gr_quantity)}, dispatched ${formatNumber(itemGroup.total_dispatched)}, total ${groupTotalText}`}
+              accessibilityLabel={`${itemGroup.item_name}, mark ${itemGroup.package_mark}, ${formatWeight(itemGroup.total_weight)}, GRN quantity ${formatNumber(itemGroup.gr_quantity)}, dispatched ${formatNumber(itemGroup.total_dispatched)}, total ${groupTotalText}`}
             >
               <Icon
                 name={isExpanded ? 'chevron-down' : 'chevron-right'}
@@ -692,7 +683,7 @@ export const InvoiceItemsTable: React.FC<InvoiceItemsTableProps> = ({
                   </View>
                   <View style={styles.metaBadge}>
                     <Icon name="weight-kilogram" size={iconSize.sm} color={t.status.neutral.text} />
-                    <Text style={styles.metaText}>{formatNumber(itemGroup.total_weight)} kg</Text>
+                    <Text style={styles.metaText}>{formatWeight(itemGroup.total_weight)}</Text>
                   </View>
                   <View style={styles.metaBadge}>
                     <Text style={styles.metaText}>GRN qty {formatNumber(itemGroup.gr_quantity)}</Text>
@@ -722,7 +713,7 @@ export const InvoiceItemsTable: React.FC<InvoiceItemsTableProps> = ({
                     <Icon name="pencil-outline" size={iconSize.md} color={t.brand.tint} />
                   </Pressable>
                 )}
-                <Text style={styles.bulkPricingHint}>Applies to all {plural(allItems.length, 'line', 'lines')}</Text>
+                <Text style={styles.bulkPricingHint}>Applies to all {formatCount(allItems.length, 'line')}</Text>
               </View>
               <View style={styles.bulkPricingInputs}>
                 {/* Charge */}
@@ -812,7 +803,7 @@ export const InvoiceItemsTable: React.FC<InvoiceItemsTableProps> = ({
                         {/* Dispatch info */}
                         <View style={[styles.tableDataCell, styles.colDispatch]}>
                           <Text style={styles.dispatchNo}>{item.dispatch_no}</Text>
-                          <Text style={styles.dispatchDate}>{formatDate(item.dispatch_date)}</Text>
+                          <Text style={styles.dispatchDate}>{formatDate(item.dispatch_date, 'short')}</Text>
                         </View>
 
                         {/* Qty - read only */}
@@ -824,10 +815,10 @@ export const InvoiceItemsTable: React.FC<InvoiceItemsTableProps> = ({
                         <View
                           style={[styles.tableDataCell, styles.colDuration]}
                           accessible
-                          accessibilityLabel={`${formatNumber(item.duration, 1)} months, ${plural(item.no_of_days, 'day', 'days')}`}
+                          accessibilityLabel={`${formatCount(Math.round(item.duration * 10) / 10, 'month')}, ${formatCount(item.no_of_days, 'day')}`}
                         >
                           <Text style={styles.tableDataText}>{formatNumber(item.duration, 1)} mo</Text>
-                          <Text style={styles.secondaryText}>{plural(item.no_of_days, 'day', 'days')}</Text>
+                          <Text style={styles.secondaryText}>{formatCount(item.no_of_days, 'day')}</Text>
                         </View>
 
                         {renderEditableCell(

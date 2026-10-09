@@ -34,6 +34,7 @@ import {
 import { canNavigateFromStep2 } from '@/features/invoice/utils/swipeNavigationHelpers';
 
 import { showAlert } from '@/utils/alert';
+import { formatCount } from '@/utils/formatters';
 export default function InvoiceEditStep2() {
   const dispatch = useAppDispatch();
   const styles = useThemedStyles(makeInvoiceWizardStyles);
@@ -138,7 +139,7 @@ export default function InvoiceEditStep2() {
         keyboardShouldPersistTaps="handled"
       >
         {/* Item count */}
-        <View style={[styles.card, styles.kvRow]} accessible accessibilityLabel={`${items.length} ${items.length === 1 ? 'item' : 'items'} to invoice`}>
+        <View style={[styles.card, styles.kvRow]} accessible accessibilityLabel={`${formatCount(items.length, 'item')} to invoice`}>
           <Text style={styles.kvKey}>Items to invoice</Text>
           <Text style={[styles.kvValue, styles.bold, styles.numeric]}>{items.length}</Text>
         </View>

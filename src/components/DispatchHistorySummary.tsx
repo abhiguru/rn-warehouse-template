@@ -16,6 +16,7 @@ import {
   typography,
 } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
+import { formatNumber } from '@/utils/formatters';
 
 interface DispatchHistorySummaryProps {
   totalDispatches: number;
@@ -25,7 +26,6 @@ interface DispatchHistorySummaryProps {
   isLoading?: boolean;
 }
 
-const formatNumber = (n: number) => new Intl.NumberFormat('en-IN').format(n);
 
 const makeStyles = (t: ThemeTokens) => ({
   container: {

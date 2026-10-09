@@ -37,7 +37,7 @@ import { SupervisorBottomSheet } from '@/features/grn/components/SupervisorBotto
 import { DispatchStepIndicator } from '@/components/DispatchStepIndicator';
 import SwipeableFormStep from '@/components/SwipeableFormStep';
 import { DISPATCH_STEPS, DISPATCH_STEP_NUMBERS, getDispatchCompletedSteps } from '@/constants/dispatchSteps';
-import { parseLocalISODate, toLocalISODate } from '@/utils/formatters';
+import { toLocalISODate, formatDate, toDate } from '@/utils/formatters';
 import { GhostTextInput } from '@/components/GhostTextInput';
 import { getTopVehicleSuggestion } from '@/services/vehicle-suggestion-service';
 
@@ -324,10 +324,7 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
 
     // Guide 12.3: "9 Oct 2026"
     const formatDisplayDate = (isoDate: string) => {
-        if (!isoDate) return '';
-        const date = /^\d{4}-\d{2}-\d{2}$/.test(isoDate) ? parseLocalISODate(isoDate) : new Date(isoDate);
-        if (isNaN(date.getTime())) return '';
-        return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+        return toDate(isoDate) ? formatDate(isoDate) : '';
     };
 
     // Loading state (edit mode)

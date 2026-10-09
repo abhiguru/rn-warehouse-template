@@ -35,7 +35,7 @@ import {
 } from '@/theme/tokens';
 import { InvoiceableGrn } from '@/types/invoice.types';
 import { getInvoiceableGrns } from '@/features/invoice/services/invoiceFormService';
-import { parseLocalISODate } from '@/utils/formatters';
+import { formatCount, formatDate, toDate } from '@/utils/formatters';
 
 interface GRNAutocompleteProps {
   isVisible: boolean;
@@ -44,12 +44,7 @@ interface GRNAutocompleteProps {
   currentValue?: InvoiceableGrn | null;
 }
 
-const formatGrnDate = (value: string): string => {
-  if (!value) return '';
-  const date = /^\d{4}-\d{2}-\d{2}$/.test(value) ? parseLocalISODate(value) : new Date(value);
-  if (isNaN(date.getTime())) return '';
-  return date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
-};
+const formatGrnDate = (value: string): string => (toDate(value) ? formatDate(value, 'short') : '');
 
 const makeStyles = (t: ThemeTokens) => ({
   modalOverlay: {
@@ -499,7 +494,7 @@ export const GRNAutocomplete: React.FC<GRNAutocompleteProps> = ({
           {grns.length > 0 && (
             <View style={styles.resultsCount}>
               <Text style={styles.resultsCountText}>
-                {grns.length === 1 ? '1 GRN' : `${new Intl.NumberFormat('en-IN').format(grns.length)} GRNs`}
+                {formatCount(grns.length, 'GRN')}
               </Text>
             </View>
           )}

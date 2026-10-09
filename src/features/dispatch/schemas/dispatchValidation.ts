@@ -4,6 +4,7 @@
  */
 
 import * as yup from 'yup';
+import { formatDate } from '@/utils/formatters';
 
 // ============================================================================
 // STEP 1: HEADER SCHEMA
@@ -199,7 +200,6 @@ export const validateDispatchDateVsGRNDates = (
     console.log('[validateDispatchDateVsGRNDates] ❌ Invalid GRNs found:', invalidItems.map(i => i.grNo));
 
     // Format dates for display
-    const formatDate = (date: Date) => date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
     const dispDateFormatted = formatDate(dispDate);
 
     // Build user-friendly error message

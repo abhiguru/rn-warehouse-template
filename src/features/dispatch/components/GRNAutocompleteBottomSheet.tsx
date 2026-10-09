@@ -42,6 +42,7 @@ import {
 import type { ThemeTokens } from '@/theme/tokens';
 import { searchGRNNumbers, getGRNPrefixesWithStock, getCustomerGRNsWithStock, type GRNPrefixWithStock } from '../services/grnDetailService';
 import type { GRNAutocompleteItem } from '@/types/dispatch.types';
+import { formatCount, formatDate } from '@/utils/formatters';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -529,12 +530,7 @@ const GRNListItem = memo<GRNListItemProps>(({
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
 
-  const grnDate = useMemo(() =>
-    new Date(item.date).toLocaleDateString('en-GB', {
-      day: 'numeric',
-      month: 'short',
-      year: 'numeric',
-    }), [item.date]);
+  const grnDate = useMemo(() => formatDate(item.date, 'short'), [item.date]);
 
   const handlePress = useCallback(() => onSelect(item), [item, onSelect]);
   const handleViewDetails = useCallback(() => onViewDetails(item), [item, onViewDetails]);
@@ -832,8 +828,8 @@ export const GRNAutocompleteBottomSheet: React.FC<GRNAutocompleteBottomSheetProp
               <View style={styles.resultsCountContainer}>
                 <Text style={styles.resultsCount} accessibilityRole="header">
                   {hasSearchQuery
-                    ? `${displayList.length} ${displayList.length === 1 ? 'GRN' : 'GRNs'} found`
-                    : `${displayList.length} ${displayList.length === 1 ? 'GRN' : 'GRNs'} with stock`
+                    ? `${formatCount(displayList.length, 'GRN')} found`
+                    : `${formatCount(displayList.length, 'GRN')} with stock`
                   }
                 </Text>
               </View>

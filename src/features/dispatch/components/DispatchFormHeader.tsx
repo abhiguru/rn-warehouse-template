@@ -4,7 +4,7 @@
  * Based on GRNFormHeader pattern
  */
 
-import React, { ComponentProps } from 'react';
+import React from 'react';
 import {
   View,
   Text,
@@ -13,7 +13,7 @@ import {
   Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import {
   fontWeight,
@@ -25,7 +25,6 @@ import {
 import type { ThemeTokens } from '@/theme/tokens';
 
 import { showAlert } from '@/utils/alert';
-type IoniconsName = ComponentProps<typeof Ionicons>['name'];
 
 export interface DispatchFormHeaderProps {
   title: string; // e.g., "Create dispatch"
@@ -34,7 +33,7 @@ export interface DispatchFormHeaderProps {
   confirmCancel?: boolean; // Show confirmation alert (default: true)
   cancelMessage?: string; // Custom cancel confirmation message
   rightAction?: {
-    icon: IoniconsName; // Ionicons name
+    icon: string; // MaterialCommunityIcons name
     label?: string; // Optional label
     onPress: () => void;
     disabled?: boolean;
@@ -158,7 +157,7 @@ export const DispatchFormHeader: React.FC<DispatchFormHeaderProps> = ({
             accessibilityRole="button"
             accessibilityLabel="Cancel dispatch"
           >
-            <Ionicons name="close" size={iconSize.lg} color={t.brand.tint} />
+            <Icon name="close" size={iconSize.lg} color={t.brand.tint} />
             <Text style={styles.cancelText}>Cancel</Text>
           </Pressable>
         )}
@@ -183,7 +182,7 @@ export const DispatchFormHeader: React.FC<DispatchFormHeaderProps> = ({
             accessibilityLabel={rightAction.label ?? title}
             accessibilityState={{ disabled: !!rightAction.disabled }}
           >
-            <Ionicons
+            <Icon
               name={rightAction.icon}
               size={iconSize.lg}
               color={t.brand.tint}

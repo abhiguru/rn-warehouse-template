@@ -52,12 +52,13 @@ import {
 import type { ThemeTokens } from '@/theme/tokens';
 import { getPrintJobs, cancelPrintJob, PrintJob, PrinterStatus } from '@/services/print-service';
 import { usePrintJobPolling } from '@/hooks/usePrintJobPolling';
+import { formatCount, formatRelativeTime } from '@/utils/formatters';
+import { StatusTag, type StatusKind } from '@/components/ui/StatusTag';
 
 const LOAD_ERROR_MESSAGE = "Couldn't load print jobs. Pull down to try again.";
 /** Snackbars hide after 4 seconds (guide §13.9). */
 const SNACKBAR_DURATION_MS = 4000;
 
-type StatusKind = 'negative' | 'critical' | 'positive' | 'informative' | 'neutral';
 
 /** Print job status → Fiori status (guide §3.5). */
 const JOB_STATUS: Record<PrintJob['status'], { kind: StatusKind; icon: string; label: string }> = {
@@ -83,24 +84,6 @@ const JOB_TYPE: Record<string, { icon: string; label: string }> = {
 
 const getJobType = (jobType: string) =>
   JOB_TYPE[jobType.toLowerCase()] ?? { icon: 'file-outline', label: 'Document' };
-
-/** Relative time under 24 hours, then the date (guide §12.3). */
-const formatTimestamp = (timestamp: string) => {
-  const date = new Date(timestamp);
-  const diffMs = Date.now() - date.getTime();
-  const diffMins = Math.floor(diffMs / 60000);
-  const diffHours = Math.floor(diffMs / 3600000);
-
-  if (diffMins < 1) return 'Just now';
-  if (diffMins < 60) return `${diffMins} min ago`;
-  if (diffHours < 24) return `${diffHours} h ago`;
-
-  return date.toLocaleDateString('en-GB', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  });
-};
 
 export interface PrintJobsBottomSheetRef {
   open: () => void;
@@ -418,27 +401,14 @@ const PrintJobsBottomSheet: React.ForwardRefRenderFunction<
 
     // Status tag: icon + word on the status background (guide §13.5)
     const renderStatusTag = (kind: StatusKind, icon: string, label: string) => (
-      <View
-        style={[
-          styles.statusTag,
-          { backgroundColor: t.status[kind].background },
-        ]}
-      >
-        <Icon name={icon} size={iconSize.sm} color={t.status[kind].text} />
-        <Text
-          style={[styles.statusTagText, { color: t.status[kind].text }]}
-          maxFontSizeMultiplier={1.6}
-        >
-          {label}
-        </Text>
-      </View>
+      <StatusTag status={kind} icon={icon} label={label} />
     );
 
     // Render job card
     const renderJobCard = ({ item: job }: { item: PrintJob }) => {
       const status = JOB_STATUS[job.status] ?? JOB_STATUS.pending;
       const type = getJobType(job.job_type);
-      const docCount = `${job.document_count} ${job.document_count === 1 ? 'document' : 'documents'}`;
+      const docCount = formatCount(job.document_count, 'document');
 
       return (
         <Pressable
@@ -474,7 +444,7 @@ const PrintJobsBottomSheet: React.ForwardRefRenderFunction<
 
           {/* Footer: Timestamp + Cancel Button */}
           <View style={styles.jobFooter}>
-            <Text style={styles.timestampText}>{formatTimestamp(job.created_at)}</Text>
+            <Text style={styles.timestampText}>{formatRelativeTime(job.created_at)}</Text>
 
             {job.status === 'pending' && activeTab === 'inProgress' && (
               <Pressable
@@ -590,7 +560,7 @@ const PrintJobsBottomSheet: React.ForwardRefRenderFunction<
                 <View
                   style={styles.jobCountBadge}
                   accessible
-                  accessibilityLabel={`${printJobs.length} ${printJobs.length === 1 ? 'job' : 'jobs'}`}
+                  accessibilityLabel={formatCount(printJobs.length, 'job')}
                 >
                   <Text style={styles.jobCountText} maxFontSizeMultiplier={1.6}>
                     {printJobs.length}
@@ -758,18 +728,6 @@ const makeStyles = (t: ThemeTokens) => ({
     ...typography.footnote,
     color: t.text.secondary,
     width: '100%' as const,
-  },
-  statusTag: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: space.xs,
-    paddingHorizontal: space.sm,
-    paddingVertical: space.xxs,
-    borderRadius: radius.field,
-  },
-  statusTagText: {
-    ...typography.caption1,
-    fontWeight: fontWeight.semibold,
   },
   typeTag: {
     flexDirection: 'row' as const,

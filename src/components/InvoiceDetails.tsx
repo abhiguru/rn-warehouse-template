@@ -30,20 +30,15 @@ import {
 } from '@/services/invoice-service';
 import { isAbortError } from '@/hooks/useAbortableFetch';
 import { formatInvoiceAmount, formatInvoiceDeduction } from '@/utils/invoiceCalculations';
+import { formatCount, formatDate, toDate, formatNumber } from '@/utils/formatters';
 
 interface InvoiceDetailsProps {
   invoiceId: string;
   onBack?: () => void;
 }
 
-const formatDisplayDate = (value?: string) => {
-  if (!value) return '';
-  const date = new Date(value);
-  if (isNaN(date.getTime())) return '';
-  return date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
-};
+const formatDisplayDate = (value?: string) => (toDate(value) ? formatDate(value) : '');
 
-const formatQty = (value?: number) => new Intl.NumberFormat('en-IN').format(value || 0);
 
 const makeStyles = (t: ThemeTokens) => ({
   container: { flex: 1, backgroundColor: t.background.base },
@@ -345,7 +340,7 @@ const InvoiceDetails: React.FC<InvoiceDetailsProps> = ({ invoiceId, onBack }) =>
         <Text style={styles.sectionHeader} accessibilityRole="header">Line items</Text>
         {itemsSummary && (
           <Text style={styles.summaryLine}>
-            {`${itemsSummary.totalItems} ${itemsSummary.totalItems === 1 ? 'item' : 'items'} · ${formatInvoiceAmount(itemsSummary.totalAmount)}`}
+            {`${formatCount(itemsSummary.totalItems, 'item')} · ${formatInvoiceAmount(itemsSummary.totalAmount)}`}
           </Text>
         )}
 
@@ -361,7 +356,7 @@ const InvoiceDetails: React.FC<InvoiceDetailsProps> = ({ invoiceId, onBack }) =>
               <Text style={styles.itemCharge}>{formatInvoiceAmount(item.charge)}</Text>
             </View>
             <Text style={styles.itemSubtitle}>
-              {`${item.duration} (${item.noOfDays} ${item.noOfDays === 1 ? 'day' : 'days'})`}
+              {`${item.duration} (${formatCount(item.noOfDays, 'day')})`}
             </Text>
 
             <View style={styles.detailsGrid}>
@@ -383,11 +378,11 @@ const InvoiceDetails: React.FC<InvoiceDetailsProps> = ({ invoiceId, onBack }) =>
               </View>
               <View style={styles.detailItem}>
                 <Text style={styles.detailLabel}>Dispatch qty</Text>
-                <Text style={styles.detailValue}>{formatQty(item.dispatchQty)}</Text>
+                <Text style={styles.detailValue}>{formatNumber(item.dispatchQty)}</Text>
               </View>
               <View style={styles.detailItem}>
                 <Text style={styles.detailLabel}>GRN qty</Text>
-                <Text style={styles.detailValue}>{formatQty(item.grnQuantity)}</Text>
+                <Text style={styles.detailValue}>{formatNumber(item.grnQuantity)}</Text>
               </View>
               <View style={styles.detailItem}>
                 <Text style={styles.detailLabel}>Tax</Text>
@@ -400,8 +395,8 @@ const InvoiceDetails: React.FC<InvoiceDetailsProps> = ({ invoiceId, onBack }) =>
         {itemsSummary && (
           <View style={styles.card}>
             <Text style={[styles.infoValue, styles.emphasis]} accessibilityRole="header">Items summary</Text>
-            {renderAmountRow('Total items', formatQty(itemsSummary.totalItems))}
-            {renderAmountRow('Total dispatch qty', formatQty(itemsSummary.totalDispatchQty))}
+            {renderAmountRow('Total items', formatNumber(itemsSummary.totalItems))}
+            {renderAmountRow('Total dispatch qty', formatNumber(itemsSummary.totalDispatchQty))}
             <View style={styles.totalRow}>
               <Text style={styles.totalLabel}>Total amount</Text>
               <Text style={styles.totalValue}>{formatInvoiceAmount(itemsSummary.totalAmount)}</Text>

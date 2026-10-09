@@ -18,6 +18,7 @@ import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, layout, radius, space, touchTarget, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { savedInvoiceAmounts, formatInvoiceAmount, formatInvoiceDeduction } from '@/utils/invoiceCalculations';
+import { formatDate, toDate } from '@/utils/formatters';
 
 // ============================================================================
 // TYPES
@@ -71,12 +72,7 @@ interface InvoiceOverviewTabProps {
   is_print_loading?: boolean;
 }
 
-const formatDisplayDate = (value?: string) => {
-  if (!value) return '';
-  const date = new Date(value);
-  if (isNaN(date.getTime())) return '';
-  return date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
-};
+const formatDisplayDate = (value?: string) => (toDate(value) ? formatDate(value) : '');
 
 // ============================================================================
 // STYLES

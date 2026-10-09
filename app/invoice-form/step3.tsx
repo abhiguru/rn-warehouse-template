@@ -39,6 +39,7 @@ import {
   formatInvoiceDate,
   makeInvoiceWizardStyles,
 } from '@/constants/invoiceSteps';
+import { formatNumber } from '@/utils/formatters';
 
 export default function InvoiceFormStep3() {
   const styles = useThemedStyles(makeInvoiceWizardStyles);
@@ -232,7 +233,6 @@ export default function InvoiceFormStep3() {
     }
   };
 
-  const qty = (n: number) => new Intl.NumberFormat('en-IN').format(n);
 
   return (
     <View style={styles.container}>
@@ -314,11 +314,11 @@ export default function InvoiceFormStep3() {
           <View style={styles.card}>
             <View style={styles.kvRow}>
               <Text style={styles.kvKey}>Quantity received on the GRN</Text>
-              <Text style={[styles.kvValue, styles.numeric]}>{qty(totalGRQty)}</Text>
+              <Text style={[styles.kvValue, styles.numeric]}>{formatNumber(totalGRQty)}</Text>
             </View>
             <View style={[styles.kvRow, styles.kvDivider]}>
               <Text style={styles.kvKey}>Quantity dispatched</Text>
-              <Text style={[styles.kvValue, styles.numeric]}>{qty(totalDispatchQty)}</Text>
+              <Text style={[styles.kvValue, styles.numeric]}>{formatNumber(totalDispatchQty)}</Text>
             </View>
           </View>
         </View>

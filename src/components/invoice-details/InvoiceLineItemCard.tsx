@@ -12,7 +12,7 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, layout, radius, space, touchTarget, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
-import { formatNumber, formatDate } from '@/utils/formatters';
+import { formatNumber, formatDate, formatCount, formatWeight } from '@/utils/formatters';
 import { formatInvoiceAmount } from '@/utils/invoiceCalculations';
 
 // ============================================================================
@@ -184,7 +184,7 @@ const InvoiceLineItemCardComponent: React.FC<InvoiceLineItemCardProps> = ({
 
   const isGrnClickable = !!(grNo && onViewGRN);
   const isDispatchClickable = !!(onViewDispatch && dispatchId);
-  const durationText = `${Number.isInteger(durationNum) ? durationNum : durationNum.toFixed(1)} ${durationNum === 1 ? 'month' : 'months'}`;
+  const durationText = formatCount(Math.round(durationNum * 10) / 10, 'month');
 
   return (
     <View style={styles.card}>
@@ -202,7 +202,7 @@ const InvoiceLineItemCardComponent: React.FC<InvoiceLineItemCardProps> = ({
           )}
         </View>
         {noOfDays !== undefined && noOfDays > 0 && (
-          <Text style={styles.daysValue}>{`${noOfDays} ${noOfDays === 1 ? 'day' : 'days'}`}</Text>
+          <Text style={styles.daysValue}>{formatCount(noOfDays, 'day')}</Text>
         )}
       </View>
 
@@ -234,7 +234,7 @@ const InvoiceLineItemCardComponent: React.FC<InvoiceLineItemCardProps> = ({
             <View style={styles.storageItem}>
               <Icon name="weight" size={iconSize.sm} color={t.icon.secondary} />
               <Text style={styles.storageLabel}>Weight</Text>
-              <Text style={styles.storageValue}>{`${formatNumber(weight)} kg`}</Text>
+              <Text style={styles.storageValue}>{formatWeight(weight)}</Text>
             </View>
           )}
         </View>
@@ -327,7 +327,7 @@ const InvoiceLineItemCardComponent: React.FC<InvoiceLineItemCardProps> = ({
                     {dispatchDate && (
                       <View style={styles.dispatchDetail}>
                         <Icon name="calendar-outline" size={iconSize.sm} color={t.icon.secondary} />
-                        <Text style={styles.dispatchDetailText}>{formatDate(dispatchDate)}</Text>
+                        <Text style={styles.dispatchDetailText}>{formatDate(dispatchDate, 'short')}</Text>
                       </View>
                     )}
                     {dispatchQty !== undefined && dispatchQty > 0 && (

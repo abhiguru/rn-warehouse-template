@@ -48,6 +48,7 @@ import {
 } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
+import { formatDate, formatCount } from '@/utils/formatters';
 
 export interface DispatchFilterState {
   dateFrom?: Date;
@@ -69,10 +70,7 @@ interface DispatchFilterOverlayProps {
   activeFilterCount: number;
 }
 
-const formatDate = (date?: Date) => {
-  if (!date) return 'Any date';
-  return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
-};
+const formatDateValue = (date?: Date) => (date ? formatDate(date) : 'Any date');
 
 const makeStyles = (t: ThemeTokens) => ({
   container: {
@@ -292,10 +290,10 @@ const DispatchFilterOverlay: React.FC<DispatchFilterOverlayProps> = ({
                 style={({ pressed }) => [styles.dateButton, pressed && styles.dateButtonPressed]}
                 onPress={() => setShowDateFromPicker(true)}
                 accessibilityRole="button"
-                accessibilityLabel={`From date, ${formatDate(filters.dateFrom)}`}
+                accessibilityLabel={`From date, ${formatDateValue(filters.dateFrom)}`}
               >
                 <Text style={styles.dateLabel}>From</Text>
-                <Text style={styles.dateValue}>{formatDate(filters.dateFrom)}</Text>
+                <Text style={styles.dateValue}>{formatDateValue(filters.dateFrom)}</Text>
                 <Icon name="calendar-outline" size={iconSize.md} color={t.icon.secondary} />
               </Pressable>
 
@@ -307,10 +305,10 @@ const DispatchFilterOverlay: React.FC<DispatchFilterOverlayProps> = ({
                 ]}
                 onPress={() => setShowDateToPicker(true)}
                 accessibilityRole="button"
-                accessibilityLabel={`To date, ${formatDate(filters.dateTo)}`}
+                accessibilityLabel={`To date, ${formatDateValue(filters.dateTo)}`}
               >
                 <Text style={styles.dateLabel}>To</Text>
-                <Text style={styles.dateValue}>{formatDate(filters.dateTo)}</Text>
+                <Text style={styles.dateValue}>{formatDateValue(filters.dateTo)}</Text>
                 <Icon name="calendar-outline" size={iconSize.md} color={t.icon.secondary} />
               </Pressable>
             </View>
@@ -367,7 +365,7 @@ const DispatchFilterOverlay: React.FC<DispatchFilterOverlayProps> = ({
             onPress={handleApply}
             accessibilityLabel={
               activeFilterCount > 0
-                ? `Show results, ${activeFilterCount} ${activeFilterCount === 1 ? 'filter' : 'filters'} set`
+                ? `Show results, ${formatCount(activeFilterCount, 'filter')} set`
                 : 'Show results'
             }
             accessibilityRole="button"

@@ -10,7 +10,8 @@
  * - Loading, error, and empty states
  * - Tapping a dispatch navigates to dispatch details
  *
- * Composed of a section card and object cells only (docs/STYLE_GUIDE.md §13.13).
+ * A normal page section (docs/STYLE_GUIDE.md §13.6, §13.13): SectionHeader with
+ * the count and a Show/Hide action, then object cells on surface.card.
  *
  * @module components/RecentDispatchedOrdersSection
  */
@@ -20,7 +21,6 @@ import {
   View,
   Text,
   Pressable,
-  StyleSheet,
   LayoutAnimation,
   ActivityIndicator,
 } from 'react-native';
@@ -30,8 +30,9 @@ import { getRecentDispatchedOrders } from '@/services/dispatch-service';
 import { RecentDispatchedOrderCard } from './list-items/RecentDispatchedOrderCard';
 import type { RecentDispatchedOrder } from '@/types/dispatch.types';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { SectionHeader } from '@/components/ui/SectionHeader';
+import { formatCount } from '@/utils/formatters';
 import {
-  fontWeight,
   iconSize,
   layout,
   radius,
@@ -50,53 +51,14 @@ interface RecentDispatchedOrdersSectionProps {
 
 const makeStyles = (t: ThemeTokens) => ({
   wrapper: {
-    marginTop: space.sm,
     marginBottom: space.lg,
   },
-  sectionCard: {
+  // Loading and error messages sit in a card on surface.card (§13.6)
+  messageCard: {
     marginHorizontal: layout.marginCompact,
     borderRadius: radius.card,
     backgroundColor: t.surface.card,
-    overflow: 'hidden' as const,
     ...t.shadow[2],
-  },
-  header: {
-    flexDirection: 'row' as const,
-    justifyContent: 'space-between' as const,
-    alignItems: 'center' as const,
-    minHeight: touchTarget,
-    paddingHorizontal: space.lg,
-    paddingVertical: space.md,
-    backgroundColor: t.surface.card,
-  },
-  headerPressed: {
-    backgroundColor: t.surface.cardPressed,
-  },
-  headerLeft: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: space.sm,
-    flex: 1,
-  },
-  headerTitle: {
-    ...typography.headline,
-    color: t.text.primary,
-    flexShrink: 1,
-  },
-  countBadge: {
-    minHeight: 18,
-    minWidth: 18,
-    paddingHorizontal: space.s6,
-    borderRadius: radius.pill,
-    justifyContent: 'center' as const,
-    alignItems: 'center' as const,
-    backgroundColor: t.brand.fill,
-  },
-  countText: {
-    ...typography.caption2,
-    fontWeight: fontWeight.semibold,
-    color: t.brand.onFill,
-    fontVariant: ['tabular-nums' as const],
   },
   loadingContainer: {
     flexDirection: 'row' as const,
@@ -104,8 +66,6 @@ const makeStyles = (t: ThemeTokens) => ({
     justifyContent: 'center' as const,
     paddingVertical: space.xxl,
     gap: space.sm,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: t.border.divider,
   },
   loadingText: {
     ...typography.subhead,
@@ -116,8 +76,6 @@ const makeStyles = (t: ThemeTokens) => ({
     paddingVertical: space.xxl,
     paddingHorizontal: space.xxl,
     gap: space.md,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: t.border.divider,
   },
   errorText: {
     ...typography.subhead,
@@ -139,9 +97,6 @@ const makeStyles = (t: ThemeTokens) => ({
   retryText: {
     ...typography.callout,
     color: t.brand.tint,
-  },
-  list: {
-    paddingTop: space.xs,
   },
 });
 
@@ -227,47 +182,32 @@ const RecentDispatchedOrdersSection: React.FC<RecentDispatchedOrdersSectionProps
     return null;
   }
 
-  const countLabel = `${dispatches.length} ${dispatches.length === 1 ? 'dispatch' : 'dispatches'}`;
+  const countLabel = formatCount(dispatches.length, 'dispatch', 'dispatches');
 
   return (
     <View style={styles.wrapper}>
-      <View style={styles.sectionCard}>
-        {/* Section Header */}
-        <Pressable
-          style={({ pressed }) => [styles.header, pressed && styles.headerPressed]}
-          onPress={toggleExpand}
-          accessibilityRole="button"
-          accessibilityLabel={`Recently dispatched orders, ${countLabel}`}
-          accessibilityState={{ expanded: isExpanded }}
-        >
-          <View style={styles.headerLeft}>
-            <Icon name="truck-check-outline" size={iconSize.md} color={t.brand.tint} />
-            <Text style={styles.headerTitle} accessibilityRole="header">
-              Recently dispatched orders
-            </Text>
-            {!loading && dispatches.length > 0 && (
-              <View style={styles.countBadge}>
-                <Text style={styles.countText} maxFontSizeMultiplier={1.6}>
-                  {dispatches.length}
-                </Text>
-              </View>
-            )}
-          </View>
-          <Icon
-            name={isExpanded ? 'chevron-up' : 'chevron-down'}
-            size={iconSize.md}
-            color={t.icon.secondary}
-          />
-        </Pressable>
+      <SectionHeader
+        title="Recently dispatched orders"
+        count={loading ? undefined : dispatches.length}
+        action={{
+          label: isExpanded ? 'Hide' : 'Show',
+          onPress: toggleExpand,
+          accessibilityLabel: `${isExpanded ? 'Hide' : 'Show'} recently dispatched orders, ${countLabel}`,
+        }}
+        testID="recent-dispatched-orders-header"
+      />
 
-        {isExpanded && loading && (
+      {isExpanded && loading && (
+        <View style={styles.messageCard}>
           <View style={styles.loadingContainer} accessibilityLabel="Loading recent dispatches">
             <ActivityIndicator size="small" color={t.brand.tint} />
             <Text style={styles.loadingText}>Loading recent dispatches…</Text>
           </View>
-        )}
+        </View>
+      )}
 
-        {isExpanded && !loading && error && (
+      {isExpanded && !loading && error && (
+        <View style={styles.messageCard}>
           <View style={styles.errorContainer}>
             <Icon name="alert-circle-outline" size={iconSize.xl} color={t.status.negative.text} />
             <Text style={styles.errorText}>{error}</Text>
@@ -280,21 +220,23 @@ const RecentDispatchedOrdersSection: React.FC<RecentDispatchedOrdersSectionProps
               <Text style={styles.retryText}>Try again</Text>
             </Pressable>
           </View>
-        )}
+        </View>
+      )}
 
-        {isExpanded && !loading && !error && dispatches.length === 0 && (
+      {isExpanded && !loading && !error && dispatches.length === 0 && (
+        <View style={styles.messageCard}>
           <View style={styles.errorContainer}>
             <Icon name="truck-delivery-outline" size={iconSize.xl} color={t.icon.secondary} />
             <Text style={styles.errorText}>
               No orders dispatched yet. Dispatches created from orders appear here.
             </Text>
           </View>
-        )}
-      </View>
+        </View>
+      )}
 
-      {/* Dispatch cards sit on the screen background, not inside the section card */}
+      {/* Dispatch object cells (surface.card) */}
       {isExpanded && !loading && !error && dispatches.length > 0 && (
-        <View style={styles.list}>
+        <View>
           {dispatches.map(dispatch => (
             <RecentDispatchedOrderCard
               key={dispatch.dispatch_id}

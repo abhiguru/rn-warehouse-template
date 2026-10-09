@@ -23,22 +23,13 @@ import {
   typography,
 } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
+import { formatCount, formatDate, toDate, formatWeight } from '@/utils/formatters';
 
 // ============================================================================
 // UTILITIES
 // ============================================================================
 
-const formatDate = (dateString: string): string => {
-  const date = new Date(dateString);
-  if (isNaN(date.getTime())) return '';
-  return date.toLocaleDateString('en-GB', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  });
-};
-
-const bags = (qty: number) => `${qty} ${qty === 1 ? 'bag' : 'bags'}`;
+const bags = (qty: number) => formatCount(qty, 'bag');
 
 // ============================================================================
 // TYPES - Using snake_case to match backend
@@ -179,7 +170,7 @@ const DispatchItemCardComponent: React.FC<DispatchItemCardProps> = ({
     }
   }, [grn_id, onViewGRN]);
 
-  const formattedGrnDate = useMemo(() => formatDate(grn_date), [grn_date]);
+  const formattedGrnDate = useMemo(() => (toDate(grn_date) ? formatDate(grn_date, 'short') : ''), [grn_date]);
   const hasDetails = original_quantity !== undefined || weight !== undefined || package_mark;
   const isGrnClickable = !!(grn_id && onViewGRN);
 
@@ -242,7 +233,7 @@ const DispatchItemCardComponent: React.FC<DispatchItemCardProps> = ({
               <View style={styles.detailChip}>
                 <Icon name="weight-kilogram" size={iconSize.sm} color={t.status.neutral.text} />
                 <Text style={styles.detailChipText} maxFontSizeMultiplier={1.6}>
-                  {weight} kg
+                  {formatWeight(weight)}
                 </Text>
               </View>
             )}

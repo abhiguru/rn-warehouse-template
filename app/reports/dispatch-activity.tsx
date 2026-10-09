@@ -49,11 +49,11 @@ import type {
   AllDispatchActivityData,
   CustomerDispatchRow,
 } from '@/types/report.types';
-import { formatNumber, formatWeight, formatDate, formatSectionDate } from '@/utils/formatters';
+import { formatNumber, formatWeight, formatDate, formatSectionDate, formatCount } from '@/utils/formatters';
 
 const LOAD_ERROR = "Couldn't load dispatch activity. Check your connection and try again.";
 
-const bagsLabel = (qty: number) => `${formatNumber(qty)} ${qty === 1 ? 'bag' : 'bags'}`;
+const bagsLabel = (qty: number) => formatCount(qty, 'bag');
 
 // ============================================================================
 // Styles (tokens only)
@@ -807,7 +807,7 @@ export default function DispatchActivityScreen() {
   }, [data?.dispatches]);
 
   const getDateRangeSubtitle = (): string => {
-    return `${formatDate(dateRange.from, 'short')} – ${formatDate(dateRange.to, 'short')}`;
+    return `${formatDate(dateRange.from, 'medium')} – ${formatDate(dateRange.to, 'medium')}`;
   };
 
   // Retry after a failed load (same fetch as the current view, with the full loading state)
@@ -938,7 +938,7 @@ export default function DispatchActivityScreen() {
                   <React.Fragment key={customer.customer_id}>
                     <ReportCustomerCard
                       title={customer.customer_name}
-                      subtitle={`${customer.dispatch_count} ${customer.dispatch_count === 1 ? 'dispatch' : 'dispatches'}`}
+                      subtitle={formatCount(customer.dispatch_count, 'dispatch', 'dispatches')}
                       value={customer.total_quantity}
                       valueLabel={customer.total_quantity === 1 ? 'bag' : 'bags'}
                       onPress={() => handleCustomerSelect(customer)}

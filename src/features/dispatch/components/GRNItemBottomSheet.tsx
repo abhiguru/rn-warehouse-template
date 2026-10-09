@@ -34,6 +34,7 @@ import {
 } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import type { GRNDetailItem } from '@/types/dispatch.types';
+import { formatCount } from '@/utils/formatters';
 
 interface GRNItemBottomSheetProps {
   isVisible: boolean;
@@ -256,8 +257,8 @@ export const GRNItemBottomSheet: React.FC<GRNItemBottomSheetProps> = ({
   const renderItem = useCallback(
     ({ item }: { item: UniqueItem }) => {
       const isSelected = currentValue?.item_id === item.item_id;
-      const lots = `${item.lotCount} ${item.lotCount === 1 ? 'lot' : 'lots'}`;
-      const available = `${item.totalStock} ${item.totalStock === 1 ? 'bag' : 'bags'} available`;
+      const lots = formatCount(item.lotCount, 'lot');
+      const available = `${formatCount(item.totalStock, 'bag')} available`;
 
       return (
         <Pressable
@@ -360,7 +361,7 @@ export const GRNItemBottomSheet: React.FC<GRNItemBottomSheetProps> = ({
         {uniqueItems.length > 0 && (
           <View style={styles.countContainer}>
             <Text style={styles.countText} accessibilityRole="header">
-              {uniqueItems.length} {uniqueItems.length === 1 ? 'item' : 'items'} in stock
+              {formatCount(uniqueItems.length, 'item')} in stock
             </Text>
           </View>
         )}

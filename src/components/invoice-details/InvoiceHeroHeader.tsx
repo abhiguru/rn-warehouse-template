@@ -11,6 +11,7 @@ import { useThemedStyles } from '@/hooks/useTheme';
 import { fontWeight, space, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { formatInvoiceAmount } from '@/utils/invoiceCalculations';
+import { formatCount, formatDate, formatNumber, toDate } from '@/utils/formatters';
 
 // ============================================================================
 // TYPES
@@ -24,11 +25,7 @@ interface InvoiceHeroHeaderProps {
   customer_name?: string;
 }
 
-const formatHeaderDate = (value: string) => {
-  const date = new Date(value);
-  if (isNaN(date.getTime())) return '';
-  return date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
-};
+const formatHeaderDate = (value: string) => (toDate(value) ? formatDate(value) : '');
 
 // ============================================================================
 // STYLES
@@ -92,8 +89,8 @@ export const InvoiceHeroHeader: React.FC<InvoiceHeroHeaderProps> = ({
     {
       key: 'items',
       label: 'Items',
-      value: new Intl.NumberFormat('en-IN').format(safeItems),
-      a11y: `${safeItems} ${safeItems === 1 ? 'item' : 'items'}`,
+      value: formatNumber(safeItems),
+      a11y: formatCount(safeItems, 'item'),
     },
     {
       key: 'total',

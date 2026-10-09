@@ -42,6 +42,8 @@ import {
 } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import type { GRNDetailItem } from '@/types/dispatch.types';
+import { formatCount, formatWeight } from '@/utils/formatters';
+import { StatusTag } from '@/components/ui/StatusTag';
 
 interface LotBottomSheetProps {
   isVisible: boolean;
@@ -152,18 +154,6 @@ const makeStyles = (t: ThemeTokens) => ({
     ...typography.headline,
     color: t.text.primary,
     flex: 1,
-  },
-  statusTag: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: space.xs,
-    paddingHorizontal: space.sm,
-    paddingVertical: space.xxs,
-    borderRadius: radius.field,
-  },
-  statusTagText: {
-    ...typography.caption1,
-    fontWeight: fontWeight.semibold,
   },
   lotDetails: {
     gap: space.sm,
@@ -355,17 +345,9 @@ export const LotBottomSheet: React.FC<LotBottomSheetProps> = ({
 
   const renderStatusTag = useCallback(
     (kind: 'negative' | 'informative', icon: string, label: string) => (
-      <View style={[styles.statusTag, { backgroundColor: t.status[kind].background }]}>
-        <Icon name={icon} size={iconSize.sm} color={t.status[kind].text} />
-        <Text
-          style={[styles.statusTagText, { color: t.status[kind].text }]}
-          maxFontSizeMultiplier={1.6}
-        >
-          {label}
-        </Text>
-      </View>
+      <StatusTag status={kind} icon={icon} label={label} />
     ),
-    [styles, t]
+    []
   );
 
   // Render lot item
@@ -447,7 +429,7 @@ export const LotBottomSheet: React.FC<LotBottomSheetProps> = ({
                 <View style={styles.detailRow}>
                   <Icon name="weight" size={iconSize.sm} color={t.icon.secondary} />
                   <Text style={styles.detailLabel}>Weight</Text>
-                  <Text style={styles.detailValue}>{item.weight} kg</Text>
+                  <Text style={styles.detailValue}>{formatWeight(item.weight)}</Text>
                 </View>
               )}
             </View>
@@ -539,7 +521,7 @@ export const LotBottomSheet: React.FC<LotBottomSheetProps> = ({
         <View style={styles.countContainer}>
           <Text style={styles.countText}>
             {availableLotsCount > 0
-              ? `${availableLotsCount} ${availableLotsCount === 1 ? 'lot' : 'lots'} in stock`
+              ? `${formatCount(availableLotsCount, 'lot')} in stock`
               : 'No lots in stock'}
             {outOfStockLotsCount > 0 && ` (${outOfStockLotsCount} out of stock)`}
           </Text>

@@ -18,6 +18,7 @@ import {
   ItemsSummaryBottomSheet as GenericItemsSummaryBottomSheet,
   TotalBadge,
 } from '@/components/common/ItemsSummaryBottomSheet';
+import { formatCount, formatWeight } from '@/utils/formatters';
 
 interface DispatchItemsSummaryBottomSheetProps {
   isVisible: boolean;
@@ -135,7 +136,7 @@ const DispatchItemCard: React.FC<{
 }> = ({ item, index, isLast, isEditing }) => {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
-  const bags = `${item.disp_quantity} ${item.disp_quantity === 1 ? 'bag' : 'bags'}`;
+  const bags = formatCount(item.disp_quantity, 'bag');
 
   return (
     <View
@@ -191,7 +192,7 @@ const DispatchItemCard: React.FC<{
         )}
         <View style={styles.detailRow}>
           <Icon name="scale" size={iconSize.sm} color={t.icon.secondary} />
-          <Text style={styles.detailText}>{item.grnItems_weight} kg</Text>
+          <Text style={styles.detailText}>{formatWeight(item.grnItems_weight)}</Text>
         </View>
       </View>
     </View>
@@ -237,7 +238,7 @@ export const ItemsSummaryBottomSheet: React.FC<DispatchItemsSummaryBottomSheetPr
         icon: 'weight',
         iconColor: t.icon.secondary,
         label: 'Weight',
-        value: `${new Intl.NumberFormat('en-IN').format(Math.round(totalWeight))} kg`,
+        value: formatWeight(totalWeight, 0),
       },
       {
         icon: 'package-down',

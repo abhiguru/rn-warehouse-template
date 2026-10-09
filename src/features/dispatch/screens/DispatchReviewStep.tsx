@@ -31,7 +31,7 @@ import {
     typography,
 } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
-import { parseLocalISODate } from '@/utils/formatters';
+import { formatCount, formatDate, toDate, formatWeight, formatNumber } from '@/utils/formatters';
 import { DispatchStepIndicator } from '@/components/DispatchStepIndicator';
 import SwipeableFormStep from '@/components/SwipeableFormStep';
 import { PrintRangeDialog } from '@/components/PrintRangeDialog';
@@ -272,10 +272,7 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
 
     // Format date (guide 12.3: "9 Oct 2026")
     const formatDisplayDate = (isoDate: string) => {
-        if (!isoDate) return '';
-        const date = /^\d{4}-\d{2}-\d{2}$/.test(isoDate) ? parseLocalISODate(isoDate) : new Date(isoDate);
-        if (isNaN(date.getTime())) return '';
-        return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+        return toDate(isoDate) ? formatDate(isoDate) : '';
     };
 
     // Handle form submission
@@ -414,7 +411,7 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
 
             {/* Key metrics grid (KPI tiles, guide 13.11) */}
             <View style={styles.metricsGrid}>
-                <View style={styles.metricCard} accessible accessibilityLabel={`${items.length} ${items.length === 1 ? 'item' : 'items'}`}>
+                <View style={styles.metricCard} accessible accessibilityLabel={formatCount(items.length, 'item')}>
                     <View style={styles.metricIconContainer}>
                         <Icon name="cube-outline" size={iconSize.md} color={t.brand.tint} />
                     </View>
@@ -424,12 +421,12 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
                     </View>
                 </View>
 
-                <View style={styles.metricCard} accessible accessibilityLabel={`Total quantity ${totals.grandTotalQuantity}`}>
+                <View style={styles.metricCard} accessible accessibilityLabel={`Total quantity ${formatCount(totals.grandTotalQuantity, 'bag')}`}>
                     <View style={styles.metricIconContainer}>
                         <Icon name="counter" size={iconSize.md} color={t.brand.tint} />
                     </View>
                     <View style={styles.metricContent}>
-                        <Text style={styles.metricValue}>{totals.grandTotalQuantity}</Text>
+                        <Text style={styles.metricValue}>{formatNumber(totals.grandTotalQuantity)}</Text>
                         <Text style={styles.metricLabel}>Total quantity</Text>
                     </View>
                 </View>
@@ -504,7 +501,7 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
                         <Icon name="weight" size={iconSize.sm} color={t.icon.secondary} />
                         <View style={styles.compactItemContent}>
                             <Text style={styles.compactLabel}>Total weight</Text>
-                            <Text style={styles.compactValue}>{Math.round(totals.grandTotalWeight)} kg</Text>
+                            <Text style={styles.compactValue}>{formatWeight(totals.grandTotalWeight, 0)}</Text>
                         </View>
                     </View>
                 </View>
@@ -609,13 +606,13 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
                         <View style={styles.detailRow}>
                             <Icon name="scale" size={iconSize.sm} color={t.icon.secondary} />
                             <Text style={styles.detailLabel}>Unit weight</Text>
-                            <Text style={styles.detailValue}>{item.grnItems_weight} kg</Text>
+                            <Text style={styles.detailValue}>{formatWeight(item.grnItems_weight)}</Text>
                         </View>
 
                         <View style={styles.detailRow}>
                             <Icon name="weight" size={iconSize.sm} color={t.icon.secondary} />
                             <Text style={styles.detailLabel}>Total weight</Text>
-                            <Text style={styles.detailValue}>{Math.round(itemTotalWeight)} kg</Text>
+                            <Text style={styles.detailValue}>{formatWeight(itemTotalWeight, 0)}</Text>
                         </View>
 
                         <View style={styles.detailRow}>
@@ -735,12 +732,12 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
 
                 <View style={styles.totalRow}>
                     <Text style={styles.totalLabel}>Total quantity</Text>
-                    <Text style={styles.totalValue}>{totals.grandTotalQuantity}</Text>
+                    <Text style={styles.totalValue}>{formatNumber(totals.grandTotalQuantity)}</Text>
                 </View>
 
                 <View style={styles.totalRow}>
                     <Text style={styles.totalLabel}>Total weight</Text>
-                    <Text style={styles.totalValue}>{Math.round(totals.grandTotalWeight)} kg</Text>
+                    <Text style={styles.totalValue}>{formatWeight(totals.grandTotalWeight, 0)}</Text>
                 </View>
 
                 {!isCreateMode && (
@@ -844,7 +841,7 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
             <ConfirmDialog
                 visible={showConfirmDialog}
                 title={isCreateMode ? `Create dispatch ${header.disp_no}?` : `Save changes to dispatch ${header.disp_no}?`}
-                message={`${items.length} ${items.length === 1 ? 'item' : 'items'} will be ${isCreateMode ? 'dispatched' : 'saved'} and stock levels updated.`}
+                message={`${formatCount(items.length, 'item')} will be ${isCreateMode ? 'dispatched' : 'saved'} and stock levels updated.`}
                 confirmText={submitLabel}
                 cancelText="Cancel"
                 onConfirm={handleConfirmSubmit}
@@ -928,7 +925,7 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
             <ConfirmDialog
                 visible={showDiscardDialog}
                 title="Discard this dispatch?"
-                message={`The ${items.length} ${items.length === 1 ? 'item' : 'items'} you added will be lost.`}
+                message={`The ${formatCount(items.length, 'item')} you added will be lost.`}
                 confirmText="Discard dispatch"
                 cancelText="Keep editing"
                 onConfirm={handleDiscardConfirm}

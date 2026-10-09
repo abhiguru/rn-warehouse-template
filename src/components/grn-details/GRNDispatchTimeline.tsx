@@ -26,6 +26,7 @@ import {
   typography,
 } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
+import { formatCount, formatDate, toDate } from '@/utils/formatters';
 
 export interface DispatchRecord {
   id: string;
@@ -46,10 +47,10 @@ interface GRNDispatchTimelineProps {
   itemName?: string; // If showing for specific item
 }
 
-const formatDispatchDate = (date: Date) =>
-  date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+/** Month group title, "October 2026" (the long date without the day). */
+const monthTitle = (date: Date) => formatDate(date, 'long').replace(/^\d+ /, '');
 
-const bagsLabel = (qty: number) => `${qty} ${qty === 1 ? 'bag' : 'bags'}`;
+const bagsLabel = (qty: number) => formatCount(qty, 'bag');
 
 const makeStyles = (t: ThemeTokens) => ({
   container: {
@@ -235,11 +236,7 @@ export const GRNDispatchTimeline: React.FC<GRNDispatchTimelineProps> = ({
     const groups = new Map<string, DispatchRecord[]>();
 
     dispatches.forEach(dispatch => {
-      const date = new Date(dispatch.dispDate);
-      const monthKey = date.toLocaleDateString('en-GB', {
-        year: 'numeric',
-        month: 'long',
-      });
+      const monthKey = monthTitle(toDate(dispatch.dispDate) ?? new Date(NaN));
 
       const existing = groups.get(monthKey);
       if (existing) {
@@ -313,7 +310,7 @@ export const GRNDispatchTimeline: React.FC<GRNDispatchTimelineProps> = ({
       {groupedDispatches.map((group, groupIndex) => {
         const isExpanded = expandedMonths.has(group.month);
         const isLastGroup = groupIndex === groupedDispatches.length - 1;
-        const countLabel = `${group.dispatches.length} ${group.dispatches.length === 1 ? 'dispatch' : 'dispatches'}`;
+        const countLabel = formatCount(group.dispatches.length, 'dispatch', 'dispatches');
 
         return (
           <View key={group.month} style={styles.monthGroup}>
@@ -349,8 +346,7 @@ export const GRNDispatchTimeline: React.FC<GRNDispatchTimelineProps> = ({
               <View style={styles.dispatchesContainer}>
                 {group.dispatches.map((dispatch, dispatchIndex) => {
                   const isLast = dispatchIndex === group.dispatches.length - 1;
-                  const date = new Date(dispatch.dispDate);
-                  const dateLabel = formatDispatchDate(date);
+                  const dateLabel = formatDate(dispatch.dispDate, 'short');
 
                   return (
                     <View key={dispatch.id} style={styles.dispatchWrapper}>

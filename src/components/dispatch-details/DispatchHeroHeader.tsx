@@ -12,6 +12,7 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { iconSize, layout, radius, space, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
+import { formatCount, formatDate, formatNumber, toDate } from '@/utils/formatters';
 
 // ============================================================================
 // TYPES - Using snake_case to match backend
@@ -24,14 +25,6 @@ interface DispatchHeroHeaderProps {
   total_quantity: number;
   customer_name?: string;
 }
-
-const formatDate = (value: string) => {
-  const date = new Date(value);
-  if (isNaN(date.getTime())) return '';
-  return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
-};
-
-const numberFormat = new Intl.NumberFormat('en-IN');
 
 const makeStyles = (t: ThemeTokens) => ({
   surface: {
@@ -102,7 +95,7 @@ export const DispatchHeroHeader: React.FC<DispatchHeroHeaderProps> = ({
   // Ensure all numeric values are valid numbers (handle null/undefined)
   const safeItems = Number(total_items) || 0;
   const safeQuantity = Number(total_quantity) || 0;
-  const dateLabel = date ? formatDate(date) : '';
+  const dateLabel = toDate(date) ? formatDate(date) : '';
   const subtitle = [customer_name, dateLabel].filter(Boolean).join(' · ');
 
   return (
@@ -120,11 +113,11 @@ export const DispatchHeroHeader: React.FC<DispatchHeroHeaderProps> = ({
         <View
           style={styles.statChip}
           accessible
-          accessibilityLabel={`${safeItems} ${safeItems === 1 ? 'item' : 'items'}`}
+          accessibilityLabel={formatCount(safeItems, 'item')}
         >
           <Icon name="cube-outline" size={iconSize.md} color={t.icon.secondary} />
           <View style={styles.statContent}>
-            <Text style={styles.statValue}>{numberFormat.format(safeItems)}</Text>
+            <Text style={styles.statValue}>{formatNumber(safeItems)}</Text>
             <Text style={styles.statLabel}>{safeItems === 1 ? 'Item' : 'Items'}</Text>
           </View>
         </View>
@@ -132,11 +125,11 @@ export const DispatchHeroHeader: React.FC<DispatchHeroHeaderProps> = ({
         <View
           style={styles.statChip}
           accessible
-          accessibilityLabel={`${safeQuantity} ${safeQuantity === 1 ? 'bag' : 'bags'} dispatched`}
+          accessibilityLabel={`${formatCount(safeQuantity, 'bag')} dispatched`}
         >
           <Icon name="truck-delivery-outline" size={iconSize.md} color={t.icon.secondary} />
           <View style={styles.statContent}>
-            <Text style={styles.statValue}>{numberFormat.format(safeQuantity)}</Text>
+            <Text style={styles.statValue}>{formatNumber(safeQuantity)}</Text>
             <Text style={styles.statLabel}>{safeQuantity === 1 ? 'Bag' : 'Bags'}</Text>
           </View>
         </View>

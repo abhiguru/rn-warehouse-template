@@ -6,6 +6,7 @@ import { fontWeight, iconSize, layout, radius, space, touchTarget, typography } 
 import type { ThemeTokens } from '@/theme/tokens';
 import { InvoiceItemData } from '@/types/invoice.types';
 import { formatInvoiceAmount } from '@/utils/invoiceCalculations';
+import { formatCount, formatNumber } from '@/utils/formatters';
 
 interface InvoiceItemCardProps {
   item: InvoiceItemData;
@@ -16,7 +17,6 @@ interface InvoiceItemCardProps {
 const tabular = { fontVariant: ['tabular-nums' as const] };
 
 /** Quantities use Indian digit grouping. */
-const qtyFormat = new Intl.NumberFormat('en-IN');
 
 const makeStyles = (t: ThemeTokens) => ({
   card: {
@@ -287,7 +287,7 @@ export const InvoiceItemCard: React.FC<InvoiceItemCardProps> = ({ item, onUpdate
   const total = formatInvoiceAmount(item.item_total);
   const summaryLabel = [
     item.item_name,
-    `quantity ${qtyFormat.format(item.qty)}`,
+    `quantity ${formatNumber(item.qty)}`,
     item.package_mark ? `mark ${item.package_mark}` : null,
     item.rack ? `rack ${item.rack}` : null,
     total,
@@ -313,7 +313,7 @@ export const InvoiceItemCard: React.FC<InvoiceItemCardProps> = ({ item, onUpdate
           <View style={styles.metaRow}>
             <View style={styles.chip}>
               <Icon name="cube-outline" size={iconSize.sm} color={t.status.neutral.text} />
-              <Text style={styles.chipText}>Qty {qtyFormat.format(item.qty)}</Text>
+              <Text style={styles.chipText}>Qty {formatNumber(item.qty)}</Text>
             </View>
             {!!item.package_mark && (
               <View style={styles.chip}>
@@ -351,7 +351,7 @@ export const InvoiceItemCard: React.FC<InvoiceItemCardProps> = ({ item, onUpdate
               <Text style={[styles.inputLabel, styles.readOnlyLabel]}>Duration</Text>
               <View style={styles.readOnlyField}>
                 <Text style={styles.readOnlyText}>
-                  {item.duration} {item.duration === 1 ? 'month' : 'months'}
+                  {formatCount(item.duration, 'month')}
                 </Text>
               </View>
             </View>
@@ -361,7 +361,7 @@ export const InvoiceItemCard: React.FC<InvoiceItemCardProps> = ({ item, onUpdate
               <Text style={[styles.inputLabel, styles.readOnlyLabel]}>Number of days</Text>
               <View style={styles.readOnlyField}>
                 <Text style={styles.readOnlyText}>
-                  {item.no_of_days} {item.no_of_days === 1 ? 'day' : 'days'}
+                  {formatCount(item.no_of_days, 'day')}
                 </Text>
               </View>
             </View>

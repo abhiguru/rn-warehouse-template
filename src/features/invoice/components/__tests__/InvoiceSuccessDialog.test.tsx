@@ -62,12 +62,15 @@ describe('InvoiceSuccessDialog', () => {
       expect(text).toContain('Invoice saved');
       expect(text).toContain('₹1,23,456.50');
       expect(text).toContain('View invoices');
+      expect(text).toContain('Create another invoice');
     });
   });
 
-  it('uses update wording in edit mode', () => {
+  it('uses update wording in edit mode and hides the redundant "another" action', () => {
     const text = allText(renderIn('gcsa', 'dark', true));
     expect(text).toContain('Invoice updated');
-    expect(text).toContain('Edit another invoice');
+    expect(text).toContain('View invoices');
+    expect(text).not.toContain('Edit another invoice');
+    expect(text).not.toContain('Create another invoice');
   });
 });

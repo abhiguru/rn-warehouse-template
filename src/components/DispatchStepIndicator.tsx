@@ -44,7 +44,6 @@ export const DispatchStepIndicator: React.FC<DispatchStepIndicatorProps> = ({
       cancelTitle={cancelTitle}
       cancelMessage={cancelMessage}
       onStepPress={onStepPress}
-      colorScheme="teal"
     />
   );
 };

@@ -9,7 +9,7 @@ jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
   useAppSelector: (selector: (state: unknown) => unknown) => selector(mockState),
 }));
-jest.mock('@expo/vector-icons', () => ({ Ionicons: 'Ionicons' }));
+jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
 }));
@@ -33,7 +33,7 @@ describe('DispatchFormHeader', () => {
             title="Create dispatch"
             onCancel={onCancel}
             confirmCancel={false}
-            rightAction={{ icon: 'checkmark', label: 'Save', onPress: jest.fn() }}
+            rightAction={{ icon: 'check', label: 'Save', onPress: jest.fn() }}
           />
         );
       });

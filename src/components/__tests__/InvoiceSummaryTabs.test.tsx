@@ -32,12 +32,12 @@ function joined(node: { props: { children?: unknown } }) {
 describe.each(THEMES)('invoice summary tabs in %s %s', (brand, mode) => {
   const t = getTokens(brand, mode);
 
-  it('GRN tab shows Indian-grouped amounts in primary text on the base background', () => {
+  it('GRN tab shows Indian-grouped whole-rupee summary amounts in primary text on the base background', () => {
     const tree = render(
       <GRNInvoicesTab invoiceSummary={{ total_invoices: 2, total_amount: 123456.5, total_with_tax: 129629.33, invoice_numbers: ['11', '12'] }} />,
       brand, mode
     );
-    const amount = textNodes(tree).find(n => joined(n) === '₹1,23,456.50');
+    const amount = textNodes(tree).find(n => joined(n) === '₹1,23,457');
     expect(amount).toBeDefined();
     expect(StyleSheet.flatten(amount!.props.style).color).toBe(t.text.primary);
     expect(textNodes(tree).some(n => joined(n) === 'Invoice 11')).toBe(true);
@@ -59,7 +59,7 @@ describe.each(THEMES)('invoice summary tabs in %s %s', (brand, mode) => {
       <DispatchInvoicesTab invoiceSummary={{ total_invoices: 1, total_amount: 1906, invoice_numbers: [42] }} />,
       brand, mode
     );
-    expect(textNodes(tree).some(n => joined(n) === '₹1,906.00')).toBe(true);
+    expect(textNodes(tree).some(n => joined(n) === '₹1,906')).toBe(true);
     expect(textNodes(tree).some(n => joined(n) === 'Invoice 42')).toBe(true);
     act(() => tree.unmount());
   });

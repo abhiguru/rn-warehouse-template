@@ -9,6 +9,7 @@ import { BRANDS, getTokens, type Mode } from '@/theme/tokens';
 import DispatchHistoryCard from '@/components/DispatchHistoryCard';
 import DispatchHistorySummary from '@/components/DispatchHistorySummary';
 import DispatchFilterOverlay from '@/components/DispatchFilterOverlay';
+import { formatDate } from '@/utils/formatters';
 
 let mockState = { theme: { preference: 'light', brand: 'orange' } };
 jest.mock('@/store/hooks', () => ({
@@ -63,7 +64,7 @@ describe.each(THEMES)('%s %s', (brand, mode) => {
     const tree = renderIn(brand, mode, <DispatchHistoryCard dispatch={dispatch as any} />);
     expect(backgrounds(tree)).toContain(t.surface.card);
     expect(
-      tree.root.findByProps({ accessibilityLabel: 'Dispatch 42, Potatoes, 1 bag, 1 Oct 2026' })
+      tree.root.findByProps({ accessibilityLabel: `Dispatch 42, Potatoes, 1 bag, ${formatDate('2026-10-01', 'short')}` })
     ).toBeTruthy();
   });
 

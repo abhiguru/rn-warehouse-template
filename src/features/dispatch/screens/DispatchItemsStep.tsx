@@ -53,6 +53,7 @@ import { getUserFriendlyError } from '@/utils/errorHandler';
 import { areAllAvailableLotsAlreadyAdded } from '@/features/dispatch/utils/lotAvailability';
 
 import { showAlert } from '@/utils/alert';
+import { formatCount, formatWeight } from '@/utils/formatters';
 type DispatchItemsStepProps = {
     mode: 'create' | 'edit';
 };
@@ -763,7 +764,7 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
                     accessibilityRole={savedItems.length > 0 ? 'button' : 'header'}
                     accessibilityLabel={
                         savedItems.length > 0
-                            ? `${itemTitle}. View all ${savedItems.length} ${savedItems.length === 1 ? 'item' : 'items'}`
+                            ? `${itemTitle}. View all ${formatCount(savedItems.length, 'item')}`
                             : itemTitle
                     }
                 >
@@ -778,7 +779,7 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
                             <View style={styles.heroSubtitleContainer}>
                                 <Icon name="format-list-bulleted" size={iconSize.sm} color={t.brand.tint} />
                                 <Text style={styles.heroSubtitle}>
-                                    View all {savedItems.length} {savedItems.length === 1 ? 'item' : 'items'}
+                                    View all {formatCount(savedItems.length, 'item')}
                                 </Text>
                             </View>
                         )}
@@ -1077,7 +1078,7 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
                                     <Icon name="warehouse" size={iconSize.sm} color={t.icon.secondary} />
                                     <Text style={styles.detailLabel}>In stock</Text>
                                     <Text style={styles.detailValue}>
-                                        {currentItem.grnItems_stock} {currentItem.grnItems_stock === 1 ? 'bag' : 'bags'}
+                                        {formatCount(currentItem.grnItems_stock, 'bag')}
                                     </Text>
                                 </View>
                                 {currentItem.grnItems_package_mark && (
@@ -1097,7 +1098,7 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
                                 <View style={styles.detailItem}>
                                     <Icon name="weight" size={iconSize.sm} color={t.icon.secondary} />
                                     <Text style={styles.detailLabel}>Weight</Text>
-                                    <Text style={styles.detailValue}>{currentItem.grnItems_weight} kg</Text>
+                                    <Text style={styles.detailValue}>{formatWeight(currentItem.grnItems_weight)}</Text>
                                 </View>
                             </View>
                         </View>
@@ -1175,7 +1176,7 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
             <ConfirmDialog
                 visible={showDiscardDialog}
                 title="Discard this dispatch?"
-                message={`The ${savedItems.length} ${savedItems.length === 1 ? 'item' : 'items'} you added will be lost.`}
+                message={`The ${formatCount(savedItems.length, 'item')} you added will be lost.`}
                 confirmText="Discard dispatch"
                 cancelText="Keep editing"
                 onConfirm={handleDiscardConfirm}

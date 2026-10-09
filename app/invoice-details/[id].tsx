@@ -42,6 +42,7 @@ import { iconSize, layout, radius, space, touchTarget, typography } from '@/them
 import type { ThemeTokens } from '@/theme/tokens';
 
 import { showAlert } from '@/utils/alert';
+import { formatDate } from '@/utils/formatters';
 // ============================================================================
 // STYLES
 // ============================================================================
@@ -456,11 +457,7 @@ function InvoiceDetailScreen() {
     invoice.total;
 
   // Date per style guide §12.3, e.g. "9 Oct 2026"
-  const formattedDate = new Date(invoice.invoice_date || new Date()).toLocaleDateString('en-IN', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  });
+  const formattedDate = formatDate(invoice.invoice_date || new Date());
 
 
   const grnNumber = invoice.gr_no || invoice.grn?.number;
