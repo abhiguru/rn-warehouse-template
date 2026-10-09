@@ -2,9 +2,8 @@ import React, { useState, useRef, useCallback } from 'react';
 import {
   View,
   Text,
-  StyleSheet,
   TextInput,
-  TouchableOpacity,
+  Pressable,
   Switch,
   Alert,
   LayoutAnimation,
@@ -15,8 +14,9 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { DatePickerModal } from 'react-native-paper-dates';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import { router, useLocalSearchParams } from 'expo-router';
-import theme from '@/theme';
-import { useListColors } from '@/hooks/useListColors';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { fontWeight, iconSize, radius, space, touchTarget, typography } from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
 import { useAppSelector } from '@/store/hooks';
 import { selectGRNFormItems } from '@/store/slices/grnFormSlice';
 import { useGRNForm } from '@/hooks';
@@ -32,8 +32,8 @@ type GrnHeaderStepProps = {
 };
 
 export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
-  // Theme colors
-  const colors = useListColors();
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
 
   // Extract ID from URL params for edit mode
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -94,11 +94,17 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
 
     if (hasUnsavedData()) {
       Alert.alert(
-        isCreateMode ? 'Discard Changes?' : 'Cancel GRN Edit',
-        'You have unsaved changes. Are you sure you want to leave?',
+        isCreateMode ? 'Discard this GRN?' : 'Discard changes to this GRN?',
+        isCreateMode
+          ? 'The details you entered will be lost.'
+          : 'Your unsaved changes will be lost.',
         [
-          { text: 'Stay', style: 'cancel' },
-          { text: 'Discard', style: 'destructive', onPress: confirmDiscard },
+          { text: 'Keep editing', style: 'cancel' },
+          {
+            text: isCreateMode ? 'Discard GRN' : 'Discard changes',
+            style: 'destructive',
+            onPress: confirmDiscard,
+          },
         ]
       );
     } else {
@@ -169,21 +175,70 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
   // Loading state for edit mode - show while fetching existing GRN data
   if (!isCreateMode && isLoading) {
     return (
-      <View style={[styles.loadingContainer, { backgroundColor: colors.gray50 }]}>
-        <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Loading GRN details...</Text>
+      <View style={styles.loadingContainer} accessibilityRole="progressbar" accessibilityState={{ busy: true }}>
+        <ActivityIndicator size="large" color={t.brand.tint} />
+        <Text style={styles.loadingText}>Loading GRN details…</Text>
       </View>
     );
   }
 
+  const renderLabel = (text: string, required = false) => (
+    <Text style={styles.label}>
+      {text}
+      {required ? <Text style={styles.required}> *</Text> : null}
+    </Text>
+  );
+
+  const renderError = (message?: string) =>
+    message ? (
+      <View style={styles.errorRow} accessibilityLiveRegion="polite">
+        <Icon name="alert-circle" size={iconSize.sm} color={t.status.negative.text} />
+        <Text style={styles.errorText}>{message}</Text>
+      </View>
+    ) : null;
+
+  const renderPickerField = (
+    label: string,
+    value: string | undefined,
+    placeholder: string,
+    error: string | undefined,
+    onPress: () => void
+  ) => (
+    <View style={styles.formField}>
+      {renderLabel(label, true)}
+      <Pressable
+        style={({ pressed }) => [
+          styles.input,
+          styles.pickerInput,
+          pressed && styles.inputPressed,
+          error ? styles.inputError : null,
+        ]}
+        onPress={onPress}
+        accessibilityRole="button"
+        accessibilityLabel={`${label}, ${value || 'not selected'}`}
+        accessibilityHint={`Opens a list to choose the ${label.toLowerCase()}`}
+      >
+        <Text style={value ? styles.valueText : styles.placeholderText} numberOfLines={2}>
+          {value || placeholder}
+        </Text>
+        <Icon name="magnify" size={iconSize.md} color={t.icon.secondary} />
+      </Pressable>
+      {renderError(error)}
+    </View>
+  );
+
+  const pricingOptions = [
+    { value: 'ONE_TIME' as const, label: 'One time' },
+    { value: 'MONTHLY' as const, label: 'Monthly' },
+  ];
+
   return (
-    <View style={[styles.container, { backgroundColor: colors.gray50 }]}>
+    <View style={styles.container}>
       <GRNStepIndicator
         steps={GRN_STEPS}
         currentStep={STEP_NUMBERS.HEADER}
         completedSteps={getCompletedSteps(STEP_NUMBERS.HEADER)}
         onCancel={handleCancel}
-        cancelMessage={isCreateMode ? undefined : 'Are you sure you want to cancel editing? All unsaved changes will be lost.'}
         onStepPress={handleStepIndicatorPress}
         grnNo={header.gr_no || undefined}
         isEditMode={!isCreateMode}
@@ -199,137 +254,114 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
         keyboardShouldPersistTaps="handled"
       >
         {hasDispatchedItems && (
-          <View style={styles.warningBanner}>
-            <Text style={styles.warningIcon}>⚠️</Text>
+          <View style={styles.warningBanner} accessible accessibilityRole="alert">
+            <Icon name="alert" size={iconSize.md} color={t.status.critical.text} />
             <View style={styles.warningTextContainer}>
-              <Text style={styles.warningTitle}>Stock Protection Active</Text>
+              <Text style={styles.warningTitle}>Some items are already dispatched</Text>
               <Text style={styles.warningText}>
-                Some items in this GRN were already dispatched. Quantity/stock edits will be locked for those items.
+                You can't change the quantity or stock of items that were dispatched from this GRN.
               </Text>
             </View>
           </View>
         )}
 
-        {/* Section Header - Basic Information */}
-        <View style={styles.sectionHeader}>
-          <Text style={[styles.sectionHeaderText, { color: colors.textSecondary }]}>BASIC INFORMATION</Text>
-        </View>
+        <Text style={styles.sectionHeaderText} accessibilityRole="header">
+          BASIC INFORMATION
+        </Text>
 
-        <View style={[styles.formSection, { backgroundColor: colors.cellBackground }]}>
+        <View style={styles.formSection}>
           <View style={styles.compactRow}>
             <View style={[styles.formField, styles.grNumberField]}>
-              <Text style={[styles.label, { color: colors.textSecondary }]}>
-                GR NUMBER<Text style={[styles.required, { color: colors.statusNegative }]}> *</Text>
-              </Text>
+              {renderLabel('GRN number', true)}
               {isCreateMode && isGeneratingNumber ? (
-                <View style={[styles.loadingInputContainer, { backgroundColor: colors.gray100 }]}>
-                  <ActivityIndicator size="small" color={colors.primary} />
+                <View
+                  style={[styles.input, styles.loadingInputContainer]}
+                  accessibilityLabel="Getting the next GRN number"
+                  accessibilityState={{ busy: true }}
+                >
+                  <ActivityIndicator size="small" color={t.brand.tint} />
                 </View>
               ) : (
-                <View style={[styles.input, styles.grNoInput, { backgroundColor: colors.cellBackground, borderColor: colors.gray300 }, validationErrors.gr_no && { borderColor: colors.statusNegative, borderWidth: 2 }]}>
-                  <Icon name="clipboard-text" size={18} color={colors.gray400} style={styles.inputIcon} />
+                <View
+                  style={[
+                    styles.input,
+                    styles.rowInput,
+                    focusedField === 'gr_no' && styles.inputFocused,
+                    validationErrors.gr_no ? styles.inputError : null,
+                  ]}
+                >
+                  <Icon name="package-down" size={iconSize.md} color={t.icon.secondary} />
                   <TextInput
-                    style={[styles.grNoTextInput, { color: colors.textPrimary }]}
+                    style={styles.grNoTextInput}
                     accessibilityLabel="Receipt number"
                     value={header.gr_no}
                     onChangeText={(text) => handleGrNoChange(text.toUpperCase())}
                     placeholder="GRN####"
-                    placeholderTextColor={colors.gray400}
+                    placeholderTextColor={t.text.placeholder}
                     autoCapitalize="characters"
+                    returnKeyType="next"
+                    onFocus={() => setFocusedField('gr_no')}
+                    onBlur={() => setFocusedField(null)}
                   />
                 </View>
               )}
-              {validationErrors.gr_no && (
-                <Text style={[styles.errorText, { color: colors.statusNegative }]}>{validationErrors.gr_no}</Text>
-              )}
+              {renderError(validationErrors.gr_no)}
             </View>
 
             <View style={[styles.formField, styles.dateField]}>
-              <Text style={[styles.label, { color: colors.textSecondary }]}>
-                DATE<Text style={[styles.required, { color: colors.statusNegative }]}> *</Text>
-              </Text>
-              <TouchableOpacity
-                style={[styles.input, styles.dateInput, { backgroundColor: colors.cellBackground, borderColor: colors.gray300 }, validationErrors.date && { borderColor: colors.statusNegative, borderWidth: 2 }]}
+              {renderLabel('Date', true)}
+              <Pressable
+                style={({ pressed }) => [
+                  styles.input,
+                  styles.rowInput,
+                  pressed && styles.inputPressed,
+                  validationErrors.date ? styles.inputError : null,
+                ]}
                 onPress={openDatePicker}
-                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel={`Date, ${formatHeaderDate(header.date)}`}
+                accessibilityHint="Opens the date picker"
               >
-                <Icon name="calendar" size={18} color={colors.gray500} />
-                <Text style={[styles.dateText, { color: colors.textPrimary }]}>
-                  {new Date(header.date).toLocaleDateString()}
-                </Text>
-              </TouchableOpacity>
-              {validationErrors.date && (
-                <Text style={[styles.errorText, { color: colors.statusNegative }]}>{validationErrors.date}</Text>
-              )}
+                <Icon name="calendar-outline" size={iconSize.md} color={t.icon.secondary} />
+                <Text style={styles.valueText}>{formatHeaderDate(header.date)}</Text>
+              </Pressable>
+              {renderError(validationErrors.date)}
             </View>
           </View>
 
-          <View style={styles.formField}>
-            <Text style={[styles.label, { color: colors.textSecondary }]}>
-              SENDER<Text style={[styles.required, { color: colors.statusNegative }]}> *</Text>
-            </Text>
-            <TouchableOpacity
-              style={[styles.input, styles.senderInput, { backgroundColor: colors.cellBackground, borderColor: colors.gray300 }, validationErrors.sender_name && { borderColor: colors.statusNegative, borderWidth: 2 }]}
-              onPress={() => senderBottomSheetRef.current?.open()}
-              activeOpacity={0.7}
-            >
-              <Text style={[styles.senderText, { color: colors.textPrimary }, !header.sender_name && { color: colors.textSecondary }]}>
-                {header.sender_name || 'Select sender...'}
-              </Text>
-              <Icon name="magnify" size={20} color={colors.gray400} />
-            </TouchableOpacity>
-            {validationErrors.sender_name && (
-              <Text style={[styles.errorText, { color: colors.statusNegative }]}>{validationErrors.sender_name}</Text>
-            )}
-          </View>
+          {renderPickerField(
+            'Sender',
+            header.sender_name,
+            'Select sender',
+            validationErrors.sender_name,
+            () => senderBottomSheetRef.current?.open()
+          )}
 
-          <View style={styles.formField}>
-            <Text style={[styles.label, { color: colors.textSecondary }]}>
-              CUSTOMER<Text style={[styles.required, { color: colors.statusNegative }]}> *</Text>
-            </Text>
-            <TouchableOpacity
-              style={[styles.input, styles.customerInput, { backgroundColor: colors.cellBackground, borderColor: colors.gray300 }, validationErrors.customer_id && { borderColor: colors.statusNegative, borderWidth: 2 }]}
-              onPress={() => customerBottomSheetRef.current?.open()}
-              activeOpacity={0.7}
-            >
-              <Text style={[styles.customerText, { color: colors.textPrimary }, !header.customer_name && { color: colors.textSecondary }]}>
-                {header.customer_name || 'Select customer...'}
-              </Text>
-              <Icon name="magnify" size={20} color={colors.gray400} />
-            </TouchableOpacity>
-            {validationErrors.customer_id && (
-              <Text style={[styles.errorText, { color: colors.statusNegative }]}>{validationErrors.customer_id}</Text>
-            )}
-          </View>
+          {renderPickerField(
+            'Customer',
+            header.customer_name,
+            'Select customer',
+            validationErrors.customer_id,
+            () => customerBottomSheetRef.current?.open()
+          )}
 
-          <View style={styles.formField}>
-            <Text style={[styles.label, { color: colors.textSecondary }]}>
-              SUPERVISOR<Text style={[styles.required, { color: colors.statusNegative }]}> *</Text>
-            </Text>
-            <TouchableOpacity
-              style={[styles.input, styles.supervisorInput, { backgroundColor: colors.cellBackground, borderColor: colors.gray300 }, validationErrors.supervisor_id && { borderColor: colors.statusNegative, borderWidth: 2 }]}
-              onPress={() => setShowSupervisorBottomSheet(true)}
-              activeOpacity={0.7}
-            >
-              <Text style={[styles.supervisorText, { color: colors.textPrimary }, !header.supervisor_name && { color: colors.textSecondary }]}>
-                {header.supervisor_name || 'Select supervisor...'}
-              </Text>
-              <Icon name="magnify" size={20} color={colors.gray400} />
-            </TouchableOpacity>
-            {validationErrors.supervisor_id && (
-              <Text style={[styles.errorText, { color: colors.statusNegative }]}>{validationErrors.supervisor_id}</Text>
-            )}
-          </View>
+          {renderPickerField(
+            'Supervisor',
+            header.supervisor_name,
+            'Select supervisor',
+            validationErrors.supervisor_id,
+            () => setShowSupervisorBottomSheet(true)
+          )}
 
-          <View style={styles.formField}>
-            <Text style={[styles.label, { color: colors.textSecondary }]}>REGISTRATION</Text>
+          <View style={[styles.formField, styles.lastField]}>
+            {renderLabel('Vehicle registration')}
             <GhostTextInput
               ref={registrationInputRef}
               value={header.registration}
               onChangeText={(text) => updateHeaderField('registration', text)}
               getSuggestion={getTopVehicleSuggestion}
               suggestionContext={header.customer_id}
-              placeholder="Vehicle registration"
+              placeholder="For example GJ01AB1234"
               maxLength={12}
               autoCapitalize="characters"
               icon="car"
@@ -340,102 +372,101 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
           </View>
         </View>
 
-        <TouchableOpacity
-          style={[styles.optionalToggle, { backgroundColor: colors.cellBackground, borderColor: colors.gray200 }]}
+        <Pressable
+          style={({ pressed }) => [styles.optionalToggle, pressed && styles.optionalTogglePressed]}
           onPress={toggleOptionalFields}
-          activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityState={{ expanded: showOptionalFields }}
+          accessibilityLabel={showOptionalFields ? 'Hide optional fields' : 'Show optional fields'}
         >
           <View style={styles.optionalToggleLeft}>
             <Icon
               name={showOptionalFields ? 'chevron-up' : 'chevron-down'}
-              size={20}
-              color={colors.gray600}
+              size={iconSize.md}
+              color={t.brand.tint}
             />
-            <Text style={[styles.optionalToggleText, { color: colors.gray600 }]}>
-              {showOptionalFields ? 'Hide' : 'Show'} Optional Fields
+            <Text style={styles.optionalToggleText}>
+              {showOptionalFields ? 'Hide optional fields' : 'Show optional fields'}
             </Text>
           </View>
-          {(header.note || header.leon) && !showOptionalFields && (
-            <View style={[styles.optionalBadge, { backgroundColor: colors.statusNeutralLight }]}>
-              <Text style={[styles.optionalBadgeText, { color: colors.statusNeutral }]}>Has data</Text>
+          {(header.note || header.leon) && !showOptionalFields ? (
+            <View style={styles.optionalBadge}>
+              <Text style={styles.optionalBadgeText} maxFontSizeMultiplier={1.6}>
+                Has data
+              </Text>
             </View>
-          )}
-        </TouchableOpacity>
+          ) : null}
+        </Pressable>
 
         {showOptionalFields && (
-          <View style={[styles.formSection, { backgroundColor: colors.cellBackground }]}>
+          <View style={styles.formSection}>
             <View style={styles.formField}>
-              <Text style={[styles.label, { color: colors.textSecondary }]}>PRICING MODE</Text>
-              <View style={styles.radioGroup}>
-                <TouchableOpacity
-                  style={[styles.radioChip, { backgroundColor: colors.gray100, borderColor: colors.gray300 }, header.pricing_mode === 'ONE_TIME' && { backgroundColor: colors.primary, borderColor: colors.primary }]}
-                  onPress={() => updateHeaderField('pricing_mode', 'ONE_TIME')}
-                  activeOpacity={0.7}
-                >
-                  {header.pricing_mode === 'ONE_TIME' && (
-                    <Icon name="check" size={14} color={colors.white} style={styles.radioChipCheckmark} />
-                  )}
-                  <Text style={[styles.radioChipText, { color: colors.gray700 }, header.pricing_mode === 'ONE_TIME' && { color: colors.white }]}>
-                    One Time
-                  </Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[styles.radioChip, { backgroundColor: colors.gray100, borderColor: colors.gray300 }, header.pricing_mode === 'MONTHLY' && { backgroundColor: colors.primary, borderColor: colors.primary }]}
-                  onPress={() => updateHeaderField('pricing_mode', 'MONTHLY')}
-                  activeOpacity={0.7}
-                >
-                  {header.pricing_mode === 'MONTHLY' && (
-                    <Icon name="check" size={14} color={colors.white} style={styles.radioChipCheckmark} />
-                  )}
-                  <Text style={[styles.radioChipText, { color: colors.gray700 }, header.pricing_mode === 'MONTHLY' && { color: colors.white }]}>
-                    Monthly
-                  </Text>
-                </TouchableOpacity>
+              {renderLabel('Pricing mode')}
+              <View style={styles.radioGroup} accessibilityRole="radiogroup">
+                {pricingOptions.map((option) => {
+                  const selected = header.pricing_mode === option.value;
+                  return (
+                    <Pressable
+                      key={option.value}
+                      style={({ pressed }) => [
+                        styles.radioChip,
+                        selected && styles.radioChipSelected,
+                        pressed && !selected && styles.radioChipPressed,
+                      ]}
+                      onPress={() => updateHeaderField('pricing_mode', option.value)}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected, checked: selected }}
+                      accessibilityLabel={option.label}
+                      hitSlop={{ top: space.sm, bottom: space.sm }}
+                    >
+                      {selected ? <Icon name="check" size={iconSize.sm} color={t.brand.tint} /> : null}
+                      <Text
+                        style={[styles.radioChipText, selected && styles.radioChipTextSelected]}
+                        maxFontSizeMultiplier={1.6}
+                      >
+                        {option.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
               </View>
             </View>
 
             <View style={styles.formField}>
               <View style={styles.switchRow}>
-                <Text style={[styles.label, { color: colors.textSecondary }]}>LEON</Text>
+                <Text style={styles.switchLabel}>Leon</Text>
                 <Switch
                   value={header.leon}
                   onValueChange={(value) => updateHeaderField('leon', value)}
-                  trackColor={{ false: colors.gray300, true: colors.primary }}
-                  thumbColor={colors.white}
-                  ios_backgroundColor={colors.gray300}
+                  trackColor={{ false: t.control.trackOff, true: t.brand.fill }}
+                  thumbColor={t.control.thumb}
+                  ios_backgroundColor={t.control.trackOff}
+                  accessibilityLabel="Leon"
                 />
               </View>
             </View>
 
-            <View style={styles.formField}>
-              <Text style={[styles.label, { color: colors.textSecondary }]}>NOTES</Text>
+            <View style={[styles.formField, styles.lastField]}>
+              {renderLabel('Notes')}
               <TextInput
-                style={[
-                  styles.input,
-                  styles.textArea,
-                  { backgroundColor: colors.cellBackground, borderColor: colors.gray300, color: colors.textPrimary },
-                  focusedField === 'notes' && { borderColor: colors.primary, borderWidth: 2 },
-                ]}
+                style={[styles.input, styles.textArea, focusedField === 'notes' && styles.inputFocused]}
+                accessibilityLabel="Notes"
                 value={header.note}
                 onChangeText={(text) => updateHeaderField('note', text)}
-                placeholder="Additional notes..."
-                placeholderTextColor={colors.gray400}
+                placeholder="Add a note for this GRN"
+                placeholderTextColor={t.text.placeholder}
                 multiline
                 numberOfLines={2}
                 maxLength={280}
                 onFocus={() => setFocusedField('notes')}
                 onBlur={() => setFocusedField(null)}
               />
-              {header.note.length > 0 && (
-                <Text style={[styles.charCount, { color: colors.textSecondary }]}>{header.note.length}/280</Text>
-              )}
+              {header.note.length > 0 && <Text style={styles.charCount}>{header.note.length}/280</Text>}
             </View>
           </View>
         )}
       </KeyboardAwareScrollView>
 
-      {/* Date Picker Modal - Pure JS with dark mode support */}
       <DatePickerModal
         locale="en"
         mode="single"
@@ -451,13 +482,13 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
       <CustomerSearchBottomSheet
         ref={senderBottomSheetRef}
         onSelect={handleSenderSelect}
-        title="Select Sender"
+        title="Select sender"
       />
 
       <CustomerSearchBottomSheet
         ref={customerBottomSheetRef}
         onSelect={handleCustomerSelect}
-        title="Select Customer"
+        title="Select customer"
       />
 
       <SupervisorBottomSheet
@@ -474,300 +505,161 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
   );
 }
 
-// SAP Fiori Form Cell Styles (colors applied inline for dark mode)
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
+const SHORT_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/** "9 Oct 2026", the style guide date format. */
+function formatHeaderDate(value: string | undefined): string {
+  const date = value ? new Date(value) : new Date();
+  if (isNaN(date.getTime())) return '';
+  // Three-letter months on every engine (en-IN prints "Sept" on some).
+  return `${date.getDate()} ${SHORT_MONTHS[date.getMonth()]} ${date.getFullYear()}`;
+}
+
+const makeStyles = (t: ThemeTokens) => ({
+  container: { flex: 1, backgroundColor: t.background.base },
   loadingContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    backgroundColor: t.background.base,
   },
-  loadingText: {
-    marginTop: theme.spacing.md,
-    fontSize: theme.fontSize.base,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  contentContainer: {
-    padding: theme.spacing.md,
-    paddingBottom: 40,
-  },
-  // Fiori: Section header - 13pt, secondary color, capital case
-  sectionHeader: {
-    height: 32,
-    justifyContent: 'center',
-    paddingHorizontal: theme.spacing.xs,
-    marginBottom: theme.spacing.sm,
-  },
+  loadingText: { ...typography.subhead, color: t.text.secondary, marginTop: space.md },
+  scrollView: { flex: 1 },
+  contentContainer: { padding: space.lg, paddingBottom: space.huge },
   sectionHeaderText: {
-    fontSize: 13,
-    fontWeight: '600',
+    ...typography.footnote,
+    fontWeight: fontWeight.semibold,
     letterSpacing: 0.5,
-    lineHeight: 18,
+    color: t.text.secondary,
+    paddingHorizontal: space.xs,
+    marginBottom: space.sm,
   },
   formSection: {
-    borderRadius: theme.borderRadius.xl,
-    padding: theme.spacing.md,
-    marginBottom: theme.spacing.lg,
+    backgroundColor: t.surface.card,
+    borderRadius: radius.card,
+    padding: space.lg,
+    marginBottom: space.xxl,
+    ...t.shadow[2],
   },
-  formField: {
-    marginBottom: theme.spacing.md,
-  },
-  // Fiori: Label - 13pt, secondary color
-  label: {
-    fontSize: 13,
-    fontWeight: '400',
-    marginBottom: 6,
-    letterSpacing: 0.5,
-    lineHeight: 18,
-  },
-  // Fiori: Required indicator - negative color
-  required: {},
-  // Fiori: Input field - 44pt min height
+  formField: { marginBottom: space.lg },
+  lastField: { marginBottom: 0 },
+  label: { ...typography.footnote, color: t.text.secondary, marginBottom: space.xs },
+  required: { color: t.text.required },
   input: {
+    ...typography.body,
+    color: t.text.primary,
+    backgroundColor: t.surface.field,
     borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: theme.fontSize.base,
-    minHeight: 44,
+    borderColor: t.border.field,
+    borderRadius: radius.field,
+    paddingHorizontal: space.md,
+    paddingVertical: space.sm,
+    minHeight: touchTarget,
   },
-  // Fiori: Text area - 88pt min (3 lines), 176pt max
-  textArea: {
-    minHeight: 88,
-    maxHeight: 176,
-    textAlignVertical: 'top',
+  inputPressed: { backgroundColor: t.surface.cardPressed },
+  inputFocused: { borderColor: t.border.fieldFocus, borderWidth: 2 },
+  inputError: { borderColor: t.status.negative.border, borderWidth: 2 },
+  textArea: { minHeight: 88, maxHeight: 176, textAlignVertical: 'top' as const },
+  rowInput: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: space.sm },
+  pickerInput: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
+    gap: space.sm,
   },
-  // Fiori: Read-only field
-  readOnlyField: {
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    minHeight: 44,
-    justifyContent: 'center',
-  },
-  readOnlyText: {
-    fontSize: theme.fontSize.base,
-    lineHeight: 22,
-  },
-  // GRN number input styles
-  grNoInput: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  grNoTextInput: {
-    flex: 1,
-    fontSize: theme.fontSize.base,
-    padding: 0,
-  },
-  inputIcon: {
-    marginRight: 4,
-  },
+  grNoTextInput: { ...typography.body, color: t.text.primary, flex: 1, padding: 0 },
   loadingInputContainer: {
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    minHeight: 44,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    backgroundColor: t.surface.fieldReadOnly,
+    borderWidth: 0,
   },
-  dateInput: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+  valueText: { ...typography.body, color: t.text.primary, flex: 1 },
+  placeholderText: { ...typography.body, color: t.text.placeholder, flex: 1 },
+  errorRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'flex-start' as const,
+    gap: space.xs,
+    marginTop: space.xs,
   },
-  dateText: {
-    fontSize: theme.fontSize.base,
-    flex: 1,
-    lineHeight: 22,
-  },
-  senderInput: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  senderText: {
-    fontSize: theme.fontSize.base,
-    flex: 1,
-    lineHeight: 22,
-  },
-  customerInput: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  customerText: {
-    fontSize: theme.fontSize.base,
-    flex: 1,
-    lineHeight: 22,
-  },
-  supervisorInput: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  supervisorText: {
-    fontSize: theme.fontSize.base,
-    flex: 1,
-    lineHeight: 22,
-  },
-  // Fiori: Error text - 13pt
-  errorText: {
-    fontSize: 13,
-    marginTop: 4,
-    lineHeight: 18,
-  },
-  // Fiori: Helper text - 13pt
+  errorText: { ...typography.footnote, color: t.status.negative.text, flex: 1 },
   charCount: {
-    fontSize: 13,
-    textAlign: 'right',
-    marginTop: 4,
-    lineHeight: 18,
+    ...typography.caption1,
+    color: t.text.secondary,
+    textAlign: 'right' as const,
+    marginTop: space.xs,
+    fontVariant: ['tabular-nums' as const],
   },
-  // Fiori: Switch row - 44pt min height
   switchRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    minHeight: 44,
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'center' as const,
+    minHeight: touchTarget,
   },
-  radioGroup: {
-    flexDirection: 'row',
-    gap: theme.spacing.md,
-  },
+  switchLabel: { ...typography.body, color: t.text.primary },
+  radioGroup: { flexDirection: 'row' as const, flexWrap: 'wrap' as const, gap: space.sm },
   radioChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    height: 32,
-    paddingHorizontal: 12,
-    borderRadius: 16,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    gap: space.xs,
+    minHeight: 32,
+    paddingVertical: space.s6,
+    paddingHorizontal: space.md,
+    borderRadius: radius.pill,
     borderWidth: 1,
-    minWidth: 44,
+    borderColor: t.border.button,
+    backgroundColor: t.surface.card,
   },
-  radioChipCheckmark: {
-    marginRight: 4,
-  },
-  radioChipText: {
-    fontSize: 13,
-    fontWeight: theme.fontWeight.medium,
-  },
-  compactRow: {
-    flexDirection: 'row',
-    gap: theme.spacing.md,
-  },
-  halfField: {
-    flex: 1,
-  },
-  grNumberField: {
-    flex: 0.4,
-  },
-  dateField: {
-    flex: 0.6,
-  },
+  radioChipPressed: { backgroundColor: t.surface.cardPressed },
+  radioChipSelected: { backgroundColor: t.brand.subtle, borderColor: t.brand.tint },
+  radioChipText: { ...typography.footnote, fontWeight: fontWeight.medium, color: t.text.primary },
+  radioChipTextSelected: { color: t.brand.tint, fontWeight: fontWeight.semibold },
+  compactRow: { flexDirection: 'row' as const, flexWrap: 'wrap' as const, columnGap: space.md },
+  grNumberField: { flexGrow: 4, flexBasis: 120 },
+  dateField: { flexGrow: 6, flexBasis: 140 },
   optionalToggle: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: theme.spacing.lg,
-    paddingVertical: theme.spacing.md,
-    borderRadius: theme.borderRadius.lg,
-    marginBottom: theme.spacing.md,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
+    minHeight: touchTarget,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.md,
+    borderRadius: radius.button,
+    marginBottom: space.lg,
     borderWidth: 1,
+    borderColor: t.border.button,
+    backgroundColor: t.surface.card,
   },
-  optionalToggleLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: theme.spacing.sm,
-  },
-  optionalToggleText: {
-    fontSize: theme.fontSize.sm,
-    fontWeight: theme.fontWeight.medium,
-  },
+  optionalTogglePressed: { backgroundColor: t.brand.subtle },
+  optionalToggleLeft: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: space.sm },
+  optionalToggleText: { ...typography.callout, color: t.brand.tint },
   optionalBadge: {
-    paddingHorizontal: theme.spacing.sm,
-    paddingVertical: 2,
-    borderRadius: theme.borderRadius.sm,
+    paddingHorizontal: space.sm,
+    paddingVertical: space.xxs,
+    borderRadius: radius.field,
+    backgroundColor: t.status.neutral.background,
   },
-  optionalBadgeText: {
-    fontSize: theme.fontSize.xs,
-    fontWeight: theme.fontWeight.medium,
-  },
+  optionalBadgeText: { ...typography.caption1, fontWeight: fontWeight.semibold, color: t.status.neutral.text },
   warningBanner: {
-    backgroundColor: '#fef3c7',
-    borderLeftWidth: 4,
-    borderLeftColor: '#f59e0b',
-    borderRadius: 8,
-    padding: 16,
-    marginBottom: 16,
-    flexDirection: 'row',
-    alignItems: 'flex-start',
+    flexDirection: 'row' as const,
+    alignItems: 'flex-start' as const,
+    gap: space.sm,
+    backgroundColor: t.status.critical.background,
+    borderWidth: 1,
+    borderColor: t.status.critical.border,
+    borderRadius: radius.button,
+    padding: space.md,
+    marginBottom: space.lg,
   },
-  warningIcon: {
-    fontSize: 24,
-    marginRight: 12,
-  },
-  warningTextContainer: {
-    flex: 1,
-  },
+  warningTextContainer: { flex: 1 },
   warningTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#92400e',
-    marginBottom: 4,
+    ...typography.subhead,
+    fontWeight: fontWeight.semibold,
+    color: t.status.critical.text,
+    marginBottom: space.xxs,
   },
-  warningText: {
-    fontSize: 14,
-    color: '#78350f',
-    lineHeight: 20,
-  },
-  iosDatePickerOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    justifyContent: 'flex-end',
-  },
-  iosDatePickerBackdrop: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.4)',
-  },
-  iosDatePickerContainer: {
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-    paddingBottom: 20,
-  },
-  iosDatePickerHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-  },
-  iosDatePickerTitle: {
-    fontSize: 17,
-    fontWeight: '600',
-  },
-  iosDatePickerCancel: {
-    fontSize: 17,
-  },
-  iosDatePickerDone: {
-    fontSize: 17,
-    fontWeight: '600',
-  },
-  iosDatePicker: {
-    height: 216,
-  },
+  warningText: { ...typography.footnote, color: t.status.critical.text },
 });
 
 export default GrnHeaderStep;

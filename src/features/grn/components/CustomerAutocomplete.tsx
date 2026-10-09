@@ -7,12 +7,13 @@
  * @module features/grn/components/CustomerAutocomplete
  */
 
-import React, { useCallback, useMemo } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import React, { useCallback } from 'react';
+import { View, Text } from 'react-native';
 import { RemoteAutocompleteInput } from '@/components/RemoteAutocompleteInput';
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
-import theme from '@/theme';
-import { useListColors } from '@/hooks/useListColors';
+import { useThemedStyles } from '@/hooks/useTheme';
+import { space, typography } from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
 
 // ============================================================================
 // TYPES
@@ -43,7 +44,7 @@ interface CustomerAutocompleteProps {
 export const CustomerAutocomplete: React.FC<CustomerAutocompleteProps> = ({
   value,
   onChange,
-  placeholder = 'Search customers...',
+  placeholder = 'Search customers',
   error,
   disabled = false,
   required = false,
@@ -51,8 +52,7 @@ export const CustomerAutocomplete: React.FC<CustomerAutocompleteProps> = ({
   helperText,
   zIndex = 1000,
 }) => {
-  // Theme colors for dark mode support
-  const colors = useListColors();
+  const styles = useThemedStyles(makeStyles);
 
   // Fetch customers from Supabase
   const fetchCustomers = useCallback(async (query: string): Promise<Customer[]> => {
@@ -96,17 +96,17 @@ export const CustomerAutocomplete: React.FC<CustomerAutocompleteProps> = ({
   const renderItem = useCallback(
     (customer: Customer) => (
       <View style={styles.itemContainer}>
-        <Text style={[styles.itemName, { color: colors.textPrimary }]} numberOfLines={1}>
+        <Text style={styles.itemName} numberOfLines={1}>
           {customer.name}
         </Text>
-        {customer.mobile && (
-          <Text style={[styles.itemMobile, { color: colors.textSecondary }]} numberOfLines={1}>
+        {customer.mobile ? (
+          <Text style={styles.itemMobile} numberOfLines={1}>
             {customer.mobile}
           </Text>
-        )}
+        ) : null}
       </View>
     ),
-    [colors]
+    [styles]
   );
 
   // Key extractor
@@ -128,24 +128,23 @@ export const CustomerAutocomplete: React.FC<CustomerAutocompleteProps> = ({
       editable={!disabled}
       minChars={2}
       debounceMs={300}
-      emptyText="No customers found"
+      emptyText="No matches"
     />
   );
 };
 
 // ============================================================================
-// STYLES (Layout only - colors applied inline)
+// STYLES
 // ============================================================================
 
-const styles = StyleSheet.create({
+const makeStyles = (t: ThemeTokens) => ({
   itemContainer: {},
-  itemName: {
-    fontSize: theme.fontSize.base,
-    fontWeight: '500',
-  },
+  itemName: { ...typography.headline, color: t.text.primary },
   itemMobile: {
-    fontSize: theme.fontSize.sm,
-    marginTop: 2,
+    ...typography.subhead,
+    color: t.text.secondary,
+    fontVariant: ['tabular-nums' as const],
+    marginTop: space.xxs,
   },
 });
 

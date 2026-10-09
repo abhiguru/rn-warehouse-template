@@ -3,14 +3,14 @@ import {
   View,
   Text,
   ScrollView,
-  StyleSheet,
   Alert,
   ActivityIndicator,
-  Platform,
   Pressable,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { useListColors } from '@/hooks/useListColors';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { fontWeight, iconSize, radius, space, touchTarget, typography } from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
 import { triggerSuccess, triggerError, triggerWarning } from '@/hooks/useHaptics';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Snackbar } from 'react-native-paper';
@@ -42,133 +42,32 @@ import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { generateGRNPDF } from '@/services/pdf-service';
 import { downloadAndSharePDF } from '@/utils/shareDocument';
 
-// ============================================================================
-// FIORI DESIGN TOKENS
-// Based on SAP Fiori for iOS Design Guidelines
-// ============================================================================
-const FIORI = {
-  // Colors
-  colors: {
-    // Backgrounds
-    pageBackground: '#F7F9FA',
-    cardBackground: '#FFFFFF',
-    cardBackgroundPressed: '#F5F6F7',
-    // Borders
-    cardBorder: '#E5E5E5',
-    divider: '#E5E5E5',
-    // Text
-    textPrimary: '#1D2D3E',
-    textSecondary: '#556B82',
-    textTertiary: '#7e8e9d',
-    // Brand
-    primary: '#f69000',
-    primaryDark: '#dd8200',
-    primaryLight: '#fff4e6',
-    // Semantic
-    success: '#53b1b1',
-    successLight: '#e8f4f4',
-    warning: '#f6c624',
-    warningLight: '#fef3c7',
-    negative: '#D32030',
-    negativeLight: '#FFF4F2',
-    // Status
-    info: '#0057D2',
-    infoLight: '#EBF8FF',
-  },
-  // Spacing
-  spacing: {
-    xs: 4,
-    sm: 8,
-    md: 12,
-    lg: 16,
-    xl: 20,
-    xxl: 24,
-  },
-  // Typography
-  typography: {
-    // Section Header
-    sectionTitle: {
-      fontSize: 13,
-      fontWeight: '600' as const,
-      letterSpacing: 0.5,
-      textTransform: 'uppercase' as const,
-    },
-    // Card Title
-    cardTitle: {
-      fontSize: 17,
-      fontWeight: '600' as const,
-    },
-    // Body
-    bodyRegular: {
-      fontSize: 15,
-      fontWeight: '400' as const,
-    },
-    bodyMedium: {
-      fontSize: 15,
-      fontWeight: '500' as const,
-    },
-    // Caption
-    caption: {
-      fontSize: 13,
-      fontWeight: '400' as const,
-    },
-    // Button
-    buttonPrimary: {
-      fontSize: 17,
-      fontWeight: '600' as const,
-      letterSpacing: -0.41,
-    },
-  },
-  // Dimensions
-  dimensions: {
-    cardRadius: 12,
-    cardPadding: 16,
-    buttonHeight: 44,
-    buttonRadius: 8,
-    sectionHeaderHeight: 32,
-    objectCellMinHeight: 56,
-    avatarSize: 40,
-    iconSize: 20,
-    touchTarget: 44,
-  },
-  // Shadows
-  shadows: {
-    card: {
-      ...Platform.select({
-        ios: {
-          shadowColor: '#000000',
-          shadowOffset: { width: 0, height: 1 },
-          shadowOpacity: 0.08,
-          shadowRadius: 3,
-        },
-        android: {
-          elevation: 2,
-        },
-      }),
-    },
-    footer: {
-      ...Platform.select({
-        ios: {
-          shadowColor: '#000000',
-          shadowOffset: { width: 0, height: -2 },
-          shadowOpacity: 0.08,
-          shadowRadius: 4,
-        },
-        android: {
-          elevation: 8,
-        },
-      }),
-    },
-  },
-} as const;
+const numberFormat = new Intl.NumberFormat('en-IN');
+const weightFormat = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 });
+
+const SHORT_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/** "9 Oct 2026", the style guide date format. */
+function formatReviewDate(value: string | undefined): string {
+  const date = value ? new Date(value) : new Date();
+  if (isNaN(date.getTime())) return '';
+  // Three-letter months on every engine (en-IN prints "Sept" on some).
+  return `${date.getDate()} ${SHORT_MONTHS[date.getMonth()]} ${date.getFullYear()}`;
+}
+
+const STOCK_PROTECTED_TITLE = 'Some items are already dispatched';
+const STOCK_PROTECTED_MESSAGE =
+  "You can't change the quantity or stock of dispatched items. You can still change other details.";
+const SAVE_FAILED_TITLE = "Couldn't save the GRN";
+const CONNECTION_HINT = 'Check your connection and try again.';
 
 type GrnReviewStepProps = {
   mode: 'create' | 'edit';
 };
 
 export function GrnReviewStep({ mode }: GrnReviewStepProps) {
-  // Theme colors for dark mode support
-  const colors = useListColors();
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
 
   // Extract ID from URL params for edit mode
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -206,12 +105,12 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
 
   const handleCancel = () => {
     Alert.alert(
-      isCreateMode ? 'Discard Changes?' : 'Cancel GRN Edit',
-      `You have ${items.length} item(s) ${isCreateMode ? 'ready to submit' : 'ready to update'}. Are you sure you want to leave?`,
+      isCreateMode ? 'Discard this GRN?' : 'Discard changes to this GRN?',
+      `${items.length} ${items.length === 1 ? 'item' : 'items'} ${isCreateMode ? 'and the GRN details' : 'and your changes'} will be lost.`,
       [
-        { text: 'Stay', style: 'cancel' },
+        { text: 'Keep editing', style: 'cancel' },
         {
-          text: 'Discard',
+          text: isCreateMode ? 'Discard GRN' : 'Discard changes',
           style: 'destructive',
           onPress: () => {
             resetFormState();
@@ -262,21 +161,21 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
       const errorMessages: string[] = [];
       Object.entries(validation.errors).forEach(([field, message]) => {
         if (field.startsWith('header.')) {
-          errorMessages.push(`• ${message} (in GRN Details)`);
+          errorMessages.push(`• ${message} (GRN details)`);
         } else if (field.startsWith('items')) {
           const match = field.match(/items\[(\d+)\]\.(.+)/);
           if (match) {
             const itemIndex = parseInt(match[1], 10) + 1;
-            errorMessages.push(`• ${message} (in Item #${itemIndex})`);
+            errorMessages.push(`• ${message} (item ${itemIndex})`);
           } else {
-            errorMessages.push(`• ${message} (in Items section)`);
+            errorMessages.push(`• ${message} (items)`);
           }
         } else {
           errorMessages.push(`• ${message}`);
         }
       });
 
-      Alert.alert('Validation Error', errorMessages.join('\n') || 'Please go back and fix validation errors');
+      Alert.alert('Check the GRN details', errorMessages.join('\n') || 'Go back and fix the highlighted fields.');
       return false;
     }
 
@@ -291,8 +190,8 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
 
     if (!header.gr_images || header.gr_images.length === 0) {
       Alert.alert(
-        'Image Required',
-        `Please attach an image of the GRN book entry for GRN No ${header.gr_no}`
+        'Add a photo of the GRN',
+        `Attach a photo of the GRN book entry for GRN ${header.gr_no}.`
       );
       return;
     }
@@ -335,18 +234,18 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
         setSuccessDialogData({
           documentNo: grNo,
           customerName: header.customer_name || 'Unknown',
-          date: new Date(header.date).toLocaleDateString(),
+          date: formatReviewDate(header.date),
           itemCount: items.length,
         });
         setShowSuccessDialog(true);
       } else {
         triggerError();
-        Alert.alert('Error', result.error || 'Failed to create GRN');
+        Alert.alert(SAVE_FAILED_TITLE, result.error || CONNECTION_HINT);
       }
     } catch (error) {
       triggerError();
       console.error('[GrnReviewStep] Submission error:', error);
-      Alert.alert('Error', 'An unexpected error occurred. Please try again.');
+      Alert.alert(SAVE_FAILED_TITLE, CONNECTION_HINT);
     } finally {
       setIsSubmitting(false);
     }
@@ -354,7 +253,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
 
   const performUpdate = async () => {
     if (!grnId) {
-      Alert.alert('Error', 'No GRN ID found');
+      Alert.alert(SAVE_FAILED_TITLE, 'Go back to the GRN list and open this GRN again.');
       return;
     }
 
@@ -396,10 +295,10 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
         if (skippedItems && skippedItems.length > 0) {
           triggerWarning();
           const skippedText = skippedItems.map((item) => `• ${item.item_name}: ${item.reason}`).join('\n');
-          setSnackbarMessage(`Some fields were not updated due to stock protection:\n${skippedText}`);
+          setSnackbarMessage(`GRN saved. Some quantities were not changed because those items are already dispatched:\n${skippedText}`);
         } else {
           triggerSuccess();
-          setSnackbarMessage('GRN updated successfully');
+          setSnackbarMessage(header.gr_no ? `GRN ${header.gr_no} saved.` : 'GRN saved.');
         }
         setSnackbarVisible(true);
 
@@ -408,27 +307,27 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
         setSuccessDialogData({
           documentNo: grNo,
           customerName: header.customer_name || 'Unknown',
-          date: new Date(header.date).toLocaleDateString(),
+          date: formatReviewDate(header.date),
           itemCount: items.length,
         });
         setShowSuccessDialog(true);
       } else {
         triggerError();
-        const errorMessage = result.error || 'Failed to update GRN';
+        const errorMessage = result.error || CONNECTION_HINT;
         if (errorMessage.includes('Stock Protection') || errorMessage.includes('STOCK_PROTECTED') || errorMessage.includes('dispatches exist')) {
-          Alert.alert('Stock Protection Error', 'Cannot modify quantity/stock for items that have been dispatched. You can still update other details.');
+          Alert.alert(STOCK_PROTECTED_TITLE, STOCK_PROTECTED_MESSAGE);
         } else {
-          Alert.alert('Error', errorMessage);
+          Alert.alert(SAVE_FAILED_TITLE, errorMessage);
         }
       }
     } catch (error) {
       triggerError();
       console.error('[GrnReviewStep] Update error:', error);
-      const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred';
+      const errorMessage = error instanceof Error ? error.message : '';
       if (errorMessage.includes('Stock Protection') || errorMessage.includes('STOCK_PROTECTED') || errorMessage.includes('dispatches exist')) {
-        Alert.alert('Stock Protection Error', 'Cannot modify quantity/stock for items that have been dispatched. You can still update other details.');
+        Alert.alert(STOCK_PROTECTED_TITLE, STOCK_PROTECTED_MESSAGE);
       } else {
-        Alert.alert('Error', errorMessage);
+        Alert.alert(SAVE_FAILED_TITLE, CONNECTION_HINT);
       }
     } finally {
       dispatch(setIsSaving(false));
@@ -441,19 +340,19 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
     try {
       const pdfResult = await generateGRNPDF(documentNumber);
       if (!pdfResult.success || !pdfResult.pdfUrl) {
-        setSnackbarMessage(pdfResult.error || 'Failed to generate PDF');
+        setSnackbarMessage("Couldn't create the PDF. Try again.");
         setSnackbarVisible(true);
         return;
       }
 
       const shareResult = await downloadAndSharePDF(pdfResult.pdfUrl, `GRN_${documentNumber}.pdf`);
       if (!shareResult.success) {
-        setSnackbarMessage(shareResult.error || 'Failed to share PDF');
+        setSnackbarMessage("Couldn't share the PDF. Try again.");
         setSnackbarVisible(true);
       }
     } catch (error) {
       console.error('[GrnReviewStep] Share PDF error:', error);
-      setSnackbarMessage('Failed to share PDF');
+      setSnackbarMessage("Couldn't share the PDF. Try again.");
       setSnackbarVisible(true);
     } finally {
       setIsShareLoading(false);
@@ -492,191 +391,158 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
   const ctaLabel = isCreateMode ? 'Create GRN' : 'Update GRN';
 
   // ============================================================================
-  // FIORI COMPONENTS
+  // FIORI BUILDING BLOCKS (plain render helpers, so rows are not remounted)
   // ============================================================================
 
-  // Section Header Component - Fiori Spec Compliant
-  const SectionHeader = ({ title, count, action }: {
-    title: string;
-    count?: number;
-    action?: { icon: string; onPress: () => void };
-  }) => (
-    <View style={[styles.sectionHeader, { backgroundColor: colors.gray50 }]}>
-      <Text style={[styles.sectionHeaderText, { color: colors.gray600 }]}>
-        {title.toUpperCase()}{count !== undefined ? ` (${count})` : ''}
+  const renderSectionHeader = (
+    title: string,
+    options?: { count?: number; onEdit?: () => void; editLabel?: string }
+  ) => (
+    <View style={styles.sectionHeader}>
+      <Text style={styles.sectionHeaderText} accessibilityRole="header">
+        {title.toUpperCase()}
+        {options?.count !== undefined ? ` (${numberFormat.format(options.count)})` : ''}
       </Text>
-      {action && (
+      {options?.onEdit ? (
         <Pressable
-          onPress={action.onPress}
-          style={({ pressed }) => [
-            styles.sectionHeaderAction,
-            pressed && { backgroundColor: colors.primaryLight },
-          ]}
+          onPress={options.onEdit}
+          style={({ pressed }) => [styles.editLink, pressed && styles.editLinkPressed]}
           accessibilityRole="button"
-          accessibilityLabel={`Add ${title.toLowerCase()}`}
+          accessibilityLabel={options.editLabel ?? `Edit ${title.toLowerCase()}`}
+          hitSlop={{ top: space.xs, bottom: space.xs }}
         >
-          <Icon name={action.icon} size={20} color={colors.primary} />
+          <Icon name="pencil-outline" size={iconSize.sm} color={t.brand.tint} />
+          <Text style={styles.editLinkText}>Edit</Text>
         </Pressable>
+      ) : null}
+    </View>
+  );
+
+  const renderKeyValue = (label: string, value: React.ReactNode, emphasized = false) => (
+    <View style={styles.keyValueRow} key={label} accessible accessibilityLabel={typeof value === 'string' ? `${label}, ${value}` : undefined}>
+      <Text style={styles.keyValueLabel}>{label}</Text>
+      {typeof value === 'string' ? (
+        <Text style={[styles.keyValueValue, emphasized && styles.keyValueValueEmphasized]}>{value}</Text>
+      ) : (
+        value
       )}
     </View>
   );
 
-  // Key-Value Row Component - Fiori Data Table Style
-  const KeyValueRow = ({ label, value, isHighlighted }: {
-    label: string;
-    value: string | React.ReactNode;
-    isHighlighted?: boolean;
-  }) => (
-    <View style={styles.keyValueRow}>
-      <Text style={[styles.keyValueLabel, { color: colors.gray600 }]}>{label}</Text>
-      {typeof value === 'string' ? (
-        <Text style={[styles.keyValueValue, { color: colors.gray900 }, isHighlighted && { color: colors.primary }]}>
-          {value}
-        </Text>
-      ) : value}
-    </View>
-  );
-
-  // Status Badge Component - Fiori Style
-  const StatusBadge = ({ label, variant }: {
-    label: string;
-    variant: 'success' | 'warning' | 'info' | 'negative';
-  }) => {
-    const variantStyles = {
-      success: { bg: colors.successLight, text: colors.teal },
-      warning: { bg: colors.warningLight, text: '#92661a' },
-      info: { bg: colors.tealLight, text: colors.teal },
-      negative: { bg: colors.errorLight, text: colors.error },
-    };
-    const style = variantStyles[variant];
-
-    return (
-      <View style={[styles.statusBadge, { backgroundColor: style.bg }]}>
-        <Text style={[styles.statusBadgeText, { color: style.text }]}>{label}</Text>
-      </View>
-    );
-  };
-
-  // Object Cell Component - Fiori Style for Items
-  const ItemObjectCell = ({
-    index,
-    item,
-    isLast,
-    isProtected,
-  }: {
-    index: number;
-    item: typeof items[0];
-    isLast: boolean;
-    isProtected: boolean;
-  }) => {
+  const renderItemCell = (item: (typeof items)[0], index: number, isLast: boolean, isProtected: boolean) => {
     const qty = item.qty || 0;
     const weight = item.weight || 0;
     const hasWeight = weight > 0;
     const rack = item.rack?.trim();
     const packageMark = item.package_mark?.trim();
     const imageCount = item.trl_images?.length || 0;
+    const a11yParts = [
+      `Item ${index + 1}`,
+      item.item_name,
+      item.packaging,
+      `quantity ${numberFormat.format(qty)}`,
+      hasWeight ? `${weightFormat.format(weight)} kilograms each` : undefined,
+      rack ? `rack ${rack}` : undefined,
+      packageMark ? `mark ${packageMark}` : undefined,
+      imageCount > 0 ? `${imageCount} ${imageCount === 1 ? 'photo' : 'photos'}` : undefined,
+      isProtected ? 'already dispatched, quantity locked' : undefined,
+    ].filter(Boolean);
 
     return (
-      <View style={[
-        styles.objectCell,
-        { backgroundColor: colors.cellBackground },
-        !isLast && [styles.objectCellBorder, { borderBottomColor: colors.cellDivider }],
-        isProtected && { backgroundColor: colors.warningLight },
-      ]}>
-        {/* Avatar / Index */}
-        <View style={[styles.objectCellAvatar, { backgroundColor: colors.primary }, isProtected && { backgroundColor: colors.warning }]}>
-          <Text style={[styles.objectCellAvatarText, { color: colors.cellBackground }]}>{index + 1}</Text>
+      <View
+        key={item.grn_trl_id || `item-${index}`}
+        style={[styles.objectCell, !isLast && styles.objectCellBorder]}
+        accessible
+        accessibilityLabel={a11yParts.join(', ')}
+      >
+        <View style={styles.objectCellAvatar}>
+          <Text style={styles.objectCellAvatarText}>{index + 1}</Text>
         </View>
 
-        {/* Content */}
         <View style={styles.objectCellContent}>
-          {/* Headline */}
-          <Text style={[styles.objectCellHeadline, { color: colors.gray900 }]} numberOfLines={1}>
+          <Text style={styles.objectCellHeadline} numberOfLines={2}>
             {item.item_name}
           </Text>
 
-          {/* Subheadline - Packaging */}
-          {item.packaging && (
-            <Text style={[styles.objectCellSubheadline, { color: colors.gray600 }]} numberOfLines={1}>
+          {item.packaging ? (
+            <Text style={styles.objectCellSubheadline} numberOfLines={1}>
               {item.packaging}
             </Text>
-          )}
+          ) : null}
 
-          {/* Footnote - Details */}
           <View style={styles.objectCellFootnote}>
             {hasWeight && (
-              <View style={[styles.objectCellChip, { backgroundColor: colors.gray100 }]}>
-                <Icon name="weight-kilogram" size={12} color={colors.gray500} />
-                <Text style={[styles.objectCellChipText, { color: colors.gray600 }]}>{weight} kg</Text>
+              <View style={styles.objectCellChip}>
+                <Icon name="weight-kilogram" size={iconSize.sm} color={t.icon.secondary} />
+                <Text style={styles.objectCellChipText} maxFontSizeMultiplier={1.6}>
+                  {weightFormat.format(weight)} kg
+                </Text>
               </View>
             )}
-            {rack && (
-              <View style={[styles.objectCellChip, { backgroundColor: colors.gray100 }]}>
-                <Icon name="view-grid" size={12} color={colors.gray500} />
-                <Text style={[styles.objectCellChipText, { color: colors.gray600 }]}>{rack}</Text>
+            {rack ? (
+              <View style={styles.objectCellChip}>
+                <Icon name="view-grid-outline" size={iconSize.sm} color={t.icon.secondary} />
+                <Text style={styles.objectCellChipText} maxFontSizeMultiplier={1.6}>
+                  Rack {rack}
+                </Text>
               </View>
-            )}
-            {packageMark && (
-              <View style={[styles.objectCellChip, { backgroundColor: colors.gray100 }]}>
-                <Icon name="label" size={12} color={colors.gray500} />
-                <Text style={[styles.objectCellChipText, { color: colors.gray600 }]} numberOfLines={1}>{packageMark}</Text>
+            ) : null}
+            {packageMark ? (
+              <View style={styles.objectCellChip}>
+                <Icon name="label-outline" size={iconSize.sm} color={t.icon.secondary} />
+                <Text style={styles.objectCellChipText} numberOfLines={1} maxFontSizeMultiplier={1.6}>
+                  {packageMark}
+                </Text>
               </View>
-            )}
+            ) : null}
             {imageCount > 0 && (
-              <View style={[styles.objectCellChip, { backgroundColor: colors.successLight }]}>
-                <Icon name="camera" size={12} color={colors.success} />
-                <Text style={[styles.objectCellChipText, { color: colors.success }]}>
-                  {imageCount}
+              <View style={styles.objectCellChip}>
+                <Icon name="camera-outline" size={iconSize.sm} color={t.icon.secondary} />
+                <Text style={styles.objectCellChipText} maxFontSizeMultiplier={1.6}>
+                  {imageCount} {imageCount === 1 ? 'photo' : 'photos'}
                 </Text>
               </View>
             )}
           </View>
         </View>
 
-        {/* Status / Quantity Badge */}
         <View style={styles.objectCellStatus}>
-          <View style={[styles.qtyBadge, { backgroundColor: colors.successLight }, isProtected && { backgroundColor: colors.warningLight }]}>
-            <Text style={[styles.qtyBadgeValue, isProtected && styles.qtyBadgeValueProtected]}>
-              {qty}
-            </Text>
-            <Text style={[styles.qtyBadgeLabel, { color: colors.gray500 }]}>qty</Text>
-            {isProtected && (
-              <Icon name="lock" size={10} color={colors.warning} style={{ marginLeft: 2 }} />
-            )}
-          </View>
+          <Text style={styles.qtyValue}>{numberFormat.format(qty)}</Text>
+          <Text style={styles.qtyLabel}>Qty</Text>
+          {isProtected && (
+            <View style={styles.protectedTag}>
+              <Icon name="lock-outline" size={iconSize.sm} color={t.status.critical.text} />
+              <Text style={styles.protectedTagText} maxFontSizeMultiplier={1.6}>
+                Dispatched
+              </Text>
+            </View>
+          )}
         </View>
       </View>
     );
   };
 
-  // Summary KPI Component - Fiori Style
-  const SummaryKPI = ({ icon, label, value, unit }: {
-    icon: string;
-    label: string;
-    value: number | string;
-    unit?: string;
-  }) => (
-    <View style={styles.summaryKPI}>
-      <View style={[styles.summaryKPIIcon, { backgroundColor: colors.gray100 }]}>
-        <Icon name={icon} size={18} color={colors.gray600} />
+  const renderSummaryKPI = (icon: string, label: string, value: number) => (
+    <View style={styles.summaryKPI} accessible accessibilityLabel={`${label}, ${numberFormat.format(value)}`}>
+      <View style={styles.summaryKPIIcon}>
+        <Icon name={icon} size={iconSize.md} color={t.brand.tint} />
       </View>
       <View style={styles.summaryKPIContent}>
-        <Text style={[styles.summaryKPILabel, { color: colors.gray600 }]}>{label}</Text>
-        <Text style={[styles.summaryKPIValue, { color: colors.primary }]}>
-          {value}{unit ? ` ${unit}` : ''}
-        </Text>
+        <Text style={styles.summaryKPILabel}>{label}</Text>
+        <Text style={styles.summaryKPIValue}>{numberFormat.format(value)}</Text>
       </View>
     </View>
   );
 
+  const grImages = header.gr_images ?? [];
+
   return (
-    <View style={[styles.container, { backgroundColor: colors.gray50 }]}>
+    <View style={styles.container}>
       <GRNStepIndicator
         steps={GRN_STEPS}
         currentStep={STEP_NUMBERS.REVIEW}
         completedSteps={getCompletedSteps(STEP_NUMBERS.REVIEW)}
         onCancel={handleCancel}
-        cancelMessage={isCreateMode ? undefined : 'Are you sure you want to cancel editing? All unsaved changes will be lost.'}
         onStepPress={handleStepIndicatorPress}
         grnNo={header.gr_no || undefined}
         isEditMode={!isCreateMode}
@@ -688,82 +554,45 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
-          {/* ================================================================
-              CARD 1: GRN HEADER INFORMATION
-              Fiori Card with Data Table Body
-          ================================================================ */}
-          <View style={[styles.card, { backgroundColor: colors.cellBackground, borderColor: colors.cellDivider }]}>
-            <SectionHeader title="GRN Details" />
-
+          {/* GRN details */}
+          {renderSectionHeader('GRN details', { onEdit: handleNavigateToHeader, editLabel: 'Edit GRN details' })}
+          <View style={styles.card}>
             <View style={styles.cardBody}>
-              <KeyValueRow
-                label="GR Number"
-                value={header.gr_no || '-'}
-                isHighlighted
-              />
+              {renderKeyValue('GRN number', header.gr_no || 'Not set', true)}
+              {header.registration ? renderKeyValue('Vehicle registration', header.registration) : null}
+              {renderKeyValue('Date', formatReviewDate(header.date))}
+              {renderKeyValue('Customer', header.customer_name || 'Not selected')}
+              {renderKeyValue('Sender', header.sender_name || 'Not selected')}
+              {renderKeyValue('Supervisor', header.supervisor_name || 'Not selected')}
+              {renderKeyValue('Pricing mode', header.pricing_mode === 'ONE_TIME' ? 'One time' : 'Monthly')}
+              {header.leon
+                ? renderKeyValue(
+                    'Leon',
+                    <View style={styles.statusTag}>
+                      <Icon name="check-circle" size={iconSize.sm} color={t.status.positive.text} />
+                      <Text style={styles.statusTagText} maxFontSizeMultiplier={1.6}>
+                        On
+                      </Text>
+                    </View>
+                  )
+                : null}
 
-              {header.registration && (
-                <KeyValueRow
-                  label="Registration"
-                  value={header.registration}
-                />
-              )}
-
-              <KeyValueRow
-                label="Date"
-                value={new Date(header.date).toLocaleDateString()}
-              />
-
-              <KeyValueRow
-                label="Customer"
-                value={header.customer_name || '-'}
-              />
-
-              <KeyValueRow
-                label="Sender"
-                value={header.sender_name || '-'}
-              />
-
-              <KeyValueRow
-                label="Supervisor"
-                value={header.supervisor_name || '-'}
-              />
-
-              <KeyValueRow
-                label="Pricing Mode"
-                value={header.pricing_mode === 'ONE_TIME' ? 'One Time' : 'Monthly'}
-              />
-
-              {header.leon && (
-                <KeyValueRow
-                  label="LEON"
-                  value={<StatusBadge label="Enabled" variant="success" />}
-                />
-              )}
-
-              {header.note && (
-                <View style={[styles.notesSection, { borderTopColor: colors.cellDivider }]}>
-                  <Text style={[styles.notesLabel, { color: colors.gray600 }]}>Notes</Text>
-                  <Text style={[styles.notesValue, { color: colors.gray900 }]}>{header.note}</Text>
+              {header.note ? (
+                <View style={styles.notesSection}>
+                  <Text style={styles.notesLabel}>Notes</Text>
+                  <Text style={styles.notesValue}>{header.note}</Text>
                 </View>
-              )}
+              ) : null}
             </View>
+          </View>
 
-            {/* Divider */}
-            <View style={[styles.cardDivider, { backgroundColor: colors.cellDivider }]} />
-
-            {/* Images Section */}
+          {/* GRN photos */}
+          {renderSectionHeader('GRN photos', { count: grImages.length > 0 ? grImages.length : undefined })}
+          <View style={styles.card}>
             <View style={styles.cardBody}>
-              <View style={styles.imagesSectionHeader}>
-                <View>
-                  <Text style={[styles.imagesSectionTitle, { color: colors.gray900 }]}>
-                    GRN Images {header.gr_images && header.gr_images.length > 0 ? `(${header.gr_images.length})` : ''}
-                  </Text>
-                  <Text style={[styles.imagesSectionSubtitle, { color: colors.gray500 }]}>
-                    Attach photos of the goods receipt
-                  </Text>
-                </View>
-              </View>
+              <Text style={styles.imagesSectionSubtitle}>
+                Attach a photo of the GRN book entry. At least one photo is required.
+              </Text>
 
               <ImageUploadButton
                 onImageUploadStart={(tempImageData: GRNImageData) => {
@@ -811,89 +640,60 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
             </View>
           </View>
 
-          {/* ================================================================
-              CARD 2: ITEMS LIST
-              Fiori List Card with Object Cells
-          ================================================================ */}
-          <View style={[styles.card, { backgroundColor: colors.cellBackground, borderColor: colors.cellDivider }]}>
-            <SectionHeader title="Items" count={items.length} />
-
+          {/* Items */}
+          {renderSectionHeader('Items', { count: items.length, onEdit: handlePrevious, editLabel: 'Edit items' })}
+          <View style={styles.card}>
             {items.length === 0 ? (
               <View style={styles.emptyState}>
-                <View style={[styles.emptyStateIcon, { backgroundColor: colors.gray100 }]}>
-                  <Icon name="package-variant-closed" size={32} color={colors.gray500} />
-                </View>
-                <Text style={[styles.emptyStateTitle, { color: colors.gray900 }]}>No Items Added</Text>
-                <Text style={[styles.emptyStateSubtitle, { color: colors.gray600 }]}>
-                  Go back to add items to this GRN
-                </Text>
+                <Icon name="package-variant-closed" size={iconSize.hero} color={t.icon.secondary} />
+                <Text style={styles.emptyStateTitle}>No items yet</Text>
+                <Text style={styles.emptyStateSubtitle}>Go back to the Items step to add items to this GRN.</Text>
               </View>
             ) : (
-              <View style={styles.objectCellList}>
-                {items.map((item, index) => (
-                  <ItemObjectCell
-                    key={item.grn_trl_id || `item-${index}`}
-                    index={index}
-                    item={item}
-                    isLast={index === items.length - 1}
-                    isProtected={!isCreateMode && item.qty !== item.stock}
-                  />
-                ))}
+              <View>
+                {items.map((item, index) =>
+                  renderItemCell(item, index, index === items.length - 1, !isCreateMode && item.qty !== item.stock)
+                )}
               </View>
             )}
           </View>
 
-          {/* ================================================================
-              CARD 3: SUMMARY
-              Fiori KPI Card
-          ================================================================ */}
-          <View style={[styles.card, { backgroundColor: colors.cellBackground, borderColor: colors.cellDivider }]}>
-            <SectionHeader title="Summary" />
-
+          {/* Summary */}
+          {renderSectionHeader('Summary')}
+          <View style={styles.card}>
             <View style={styles.summaryGrid}>
-              <SummaryKPI
-                icon="format-list-numbered"
-                label="Total Items"
-                value={totalItems}
-              />
-              <SummaryKPI
-                icon="counter"
-                label="Total Quantity"
-                value={totalQty}
-              />
+              {renderSummaryKPI('format-list-numbered', 'Total items', totalItems)}
+              {renderSummaryKPI('counter', 'Total quantity', totalQty)}
             </View>
           </View>
         </ScrollView>
 
-        {/* ================================================================
-            FOOTER: PRIMARY ACTION BUTTON
-            Fiori Full-Width Primary Button
-        ================================================================ */}
-        <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, FIORI.spacing.lg), backgroundColor: colors.cellBackground, borderTopColor: colors.cellDivider }]}>
+        {/* Bottom action bar */}
+        <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, space.lg) }]}>
           <Pressable
             style={({ pressed }) => [
               styles.primaryButton,
-              { backgroundColor: colors.primary },
-              pressed && { backgroundColor: colors.primaryDark },
-              isSubmittingState && styles.primaryButtonDisabled,
+              pressed && styles.primaryButtonPressed,
             ]}
             onPress={handleSubmit}
             disabled={isSubmittingState}
             accessibilityRole="button"
             accessibilityLabel={ctaLabel}
-            accessibilityState={{ disabled: isSubmittingState }}
+            accessibilityState={{ disabled: isSubmittingState, busy: isSubmittingState }}
           >
             {isSubmittingState ? (
-              <ActivityIndicator size="small" color={colors.cellBackground} />
+              <>
+                <ActivityIndicator size="small" color={t.brand.onFill} />
+                <Text style={styles.primaryButtonText}>{isCreateMode ? 'Creating GRN…' : 'Saving GRN…'}</Text>
+              </>
             ) : (
               <>
                 <Icon
-                  name={isCreateMode ? 'check-circle' : 'content-save'}
-                  size={22}
-                  color={colors.cellBackground}
-                  style={styles.primaryButtonIcon}
+                  name={isCreateMode ? 'check-circle-outline' : 'content-save-outline'}
+                  size={iconSize.lg}
+                  color={t.brand.onFill}
                 />
-                <Text style={[styles.primaryButtonText, { color: colors.cellBackground }]}>{ctaLabel}</Text>
+                <Text style={styles.primaryButtonText}>{ctaLabel}</Text>
               </>
             )}
           </Pressable>
@@ -903,9 +703,9 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
       {/* Confirm Submit Dialog */}
       <ConfirmDialog
         visible={showConfirmDialog}
-        title={isCreateMode ? 'Confirm Create' : 'Confirm Update'}
-        message={`Are you sure you want to ${isCreateMode ? 'create' : 'update'} this GRN with ${totalItems} item${totalItems !== 1 ? 's' : ''}?`}
-        confirmText={isCreateMode ? 'Create' : 'Update'}
+        title={isCreateMode ? 'Create this GRN?' : 'Save changes to this GRN?'}
+        message={`${isCreateMode ? 'Create' : 'Save'} ${header.gr_no ? `GRN ${header.gr_no}` : 'this GRN'} with ${numberFormat.format(totalItems)} ${totalItems === 1 ? 'item' : 'items'}?`}
+        confirmText={isCreateMode ? 'Create GRN' : 'Save GRN'}
         cancelText="Cancel"
         onConfirm={handleConfirmSubmit}
         onCancel={() => setShowConfirmDialog(false)}
@@ -937,9 +737,9 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
         onConfirm={async (start, end) => {
           const result = await printGRNRange(start, end);
           if (result.success) {
-            setSnackbarMessage(`Print job submitted${result.print_job?.cups_job_id ? ` (Job #${result.print_job.cups_job_id})` : ''}`);
+            setSnackbarMessage('Print job sent to the printer.');
           } else {
-            setSnackbarMessage(result.error || 'Failed to submit print job');
+            setSnackbarMessage("Couldn't send the print job. Check the printer and try again.");
           }
           setSnackbarVisible(true);
           setShowPrintDialog(false);
@@ -950,17 +750,17 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
         }}
         title="Print GRN"
         defaultNumber={documentNumber || header.gr_no || ''}
-        label="GRN Number"
-        placeholder="e.g., Z0797"
+        label="GRN number"
+        placeholder="For example Z0797"
       />
 
       <Snackbar
         visible={snackbarVisible}
         onDismiss={() => setSnackbarVisible(false)}
-        duration={3000}
-        style={{ backgroundColor: colors.gray900 }}
+        duration={4000}
+        style={styles.snackbar}
       >
-        {snackbarMessage}
+        <Text style={styles.snackbarText}>{snackbarMessage}</Text>
       </Snackbar>
 
       {/* Full-screen image preview */}
@@ -985,276 +785,209 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
 }
 
 // ============================================================================
-// STYLES - 100% FIORI COMPLIANT
+// STYLES
 // ============================================================================
-const styles = StyleSheet.create({
-  // Container
-  container: {
-    flex: 1,
-  },
-  contentWrapper: {
-    flex: 1,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    padding: FIORI.spacing.lg,
-    paddingBottom: FIORI.spacing.xl,
-    gap: FIORI.spacing.lg,
-  },
+const makeStyles = (t: ThemeTokens) => ({
+  container: { flex: 1, backgroundColor: t.background.base },
+  contentWrapper: { flex: 1 },
+  scrollView: { flex: 1 },
+  scrollContent: { padding: space.lg, paddingBottom: space.xxl },
 
-  // Card - Fiori Card Container
-  card: {
-    borderRadius: FIORI.dimensions.cardRadius,
-    borderWidth: 1,
-    overflow: 'hidden',
-    ...FIORI.shadows.card,
-  },
-  cardBody: {
-    padding: FIORI.dimensions.cardPadding,
-  },
-  cardDivider: {
-    height: 1,
-    marginHorizontal: FIORI.dimensions.cardPadding,
-  },
-
-  // Section Header - Fiori Section Header
   sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: FIORI.dimensions.cardPadding,
-    paddingTop: FIORI.spacing.md,
-    paddingBottom: FIORI.spacing.sm,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
+    minHeight: touchTarget,
+    paddingHorizontal: space.xs,
   },
   sectionHeaderText: {
-    ...FIORI.typography.sectionTitle,
-  },
-  sectionHeaderAction: {
-    width: FIORI.dimensions.touchTarget,
-    height: FIORI.dimensions.touchTarget,
-    borderRadius: FIORI.dimensions.touchTarget / 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  // Key-Value Row - Fiori Data Table
-  keyValueRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: FIORI.spacing.sm,
-    minHeight: FIORI.dimensions.touchTarget,
-  },
-  keyValueLabel: {
-    ...FIORI.typography.bodyRegular,
+    ...typography.footnote,
+    fontWeight: fontWeight.semibold,
+    letterSpacing: 0.5,
+    color: t.text.secondary,
     flex: 1,
   },
-  keyValueValue: {
-    ...FIORI.typography.bodyMedium,
-    textAlign: 'right',
-    flexShrink: 1,
-    maxWidth: '60%',
+  editLink: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.xs,
+    minHeight: touchTarget,
+    paddingHorizontal: space.sm,
+    borderRadius: radius.button,
   },
+  editLinkPressed: { backgroundColor: t.brand.subtle },
+  editLinkText: { ...typography.callout, color: t.brand.tint },
 
-  // Status Badge - Fiori Badge
-  statusBadge: {
-    paddingHorizontal: FIORI.spacing.sm,
-    paddingVertical: FIORI.spacing.xs,
-    borderRadius: 4,
+  card: {
+    backgroundColor: t.surface.card,
+    borderRadius: radius.card,
+    marginBottom: space.lg,
+    overflow: 'hidden' as const,
+    ...t.shadow[2],
   },
-  statusBadgeText: {
-    ...FIORI.typography.caption,
-    fontWeight: '500',
-  },
+  cardBody: { padding: space.lg },
 
-  // Notes Section
+  keyValueRow: {
+    flexDirection: 'row' as const,
+    flexWrap: 'wrap' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'center' as const,
+    columnGap: space.md,
+    paddingVertical: space.sm,
+    minHeight: touchTarget - space.sm,
+  },
+  keyValueLabel: { ...typography.subhead, color: t.text.secondary },
+  keyValueValue: { ...typography.body, color: t.text.primary, textAlign: 'right' as const, flexShrink: 1 },
+  keyValueValueEmphasized: { fontWeight: fontWeight.semibold },
+
+  statusTag: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.xs,
+    paddingHorizontal: space.sm,
+    paddingVertical: space.xxs,
+    borderRadius: radius.field,
+    backgroundColor: t.status.positive.background,
+  },
+  statusTagText: { ...typography.caption1, fontWeight: fontWeight.semibold, color: t.status.positive.text },
+
   notesSection: {
-    marginTop: FIORI.spacing.sm,
-    paddingTop: FIORI.spacing.sm,
+    marginTop: space.sm,
+    paddingTop: space.md,
     borderTopWidth: 1,
+    borderTopColor: t.border.divider,
   },
-  notesLabel: {
-    ...FIORI.typography.caption,
-    marginBottom: FIORI.spacing.xs,
-  },
-  notesValue: {
-    ...FIORI.typography.bodyRegular,
-  },
+  notesLabel: { ...typography.subhead, color: t.text.secondary, marginBottom: space.xs },
+  notesValue: { ...typography.body, color: t.text.primary },
 
-  // Images Section
-  imagesSectionHeader: {
-    marginBottom: FIORI.spacing.md,
-  },
-  imagesSectionTitle: {
-    ...FIORI.typography.bodyMedium,
-  },
-  imagesSectionSubtitle: {
-    ...FIORI.typography.caption,
-    marginTop: 2,
-  },
+  imagesSectionSubtitle: { ...typography.subhead, color: t.text.secondary, marginBottom: space.md },
 
-  // Object Cell - Fiori Object Cell
-  objectCellList: {
-    // No padding, cells go edge to edge
-  },
   objectCell: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: FIORI.dimensions.cardPadding,
-    paddingVertical: FIORI.spacing.md,
-    minHeight: FIORI.dimensions.objectCellMinHeight,
+    flexDirection: 'row' as const,
+    alignItems: 'flex-start' as const,
+    gap: space.md,
+    minHeight: 72,
+    paddingVertical: space.md,
+    paddingHorizontal: space.lg,
+    backgroundColor: t.surface.card,
   },
   objectCellBorder: {
     borderBottomWidth: 1,
+    borderBottomColor: t.border.divider,
   },
   objectCellAvatar: {
-    width: FIORI.dimensions.avatarSize,
-    height: FIORI.dimensions.avatarSize,
-    borderRadius: FIORI.dimensions.avatarSize / 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: FIORI.spacing.md,
+    width: 44,
+    height: 44,
+    borderRadius: radius.pill,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    backgroundColor: t.brand.subtle,
   },
   objectCellAvatarText: {
-    fontSize: 14,
-    fontWeight: '700',
+    ...typography.headline,
+    color: t.brand.tint,
+    fontVariant: ['tabular-nums' as const],
   },
-  objectCellContent: {
-    flex: 1,
-    marginRight: FIORI.spacing.sm,
-  },
-  objectCellHeadline: {
-    ...FIORI.typography.bodyMedium,
-  },
-  objectCellSubheadline: {
-    ...FIORI.typography.caption,
-    marginTop: 1,
-  },
+  objectCellContent: { flex: 1, gap: space.xxs },
+  objectCellHeadline: { ...typography.headline, color: t.text.primary },
+  objectCellSubheadline: { ...typography.subhead, color: t.text.secondary },
   objectCellFootnote: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: FIORI.spacing.sm,
-    marginTop: FIORI.spacing.sm,
+    flexDirection: 'row' as const,
+    flexWrap: 'wrap' as const,
+    gap: space.s6,
+    marginTop: space.xs,
   },
   objectCellChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: FIORI.spacing.sm,
-    paddingVertical: 3,
-    borderRadius: 10,
-    gap: 4,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.xs,
+    paddingHorizontal: space.sm,
+    paddingVertical: space.xxs,
+    borderRadius: radius.field,
+    backgroundColor: t.status.neutral.background,
   },
   objectCellChipText: {
-    fontSize: 11,
-    fontWeight: '500',
+    ...typography.caption1,
+    color: t.status.neutral.text,
+    fontVariant: ['tabular-nums' as const],
   },
-  objectCellStatus: {
-    alignItems: 'flex-end',
+  objectCellStatus: { alignItems: 'flex-end' as const, gap: space.xxs },
+  qtyValue: {
+    ...typography.headline,
+    color: t.text.primary,
+    fontVariant: ['tabular-nums' as const],
   },
-  qtyBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: FIORI.spacing.sm,
-    paddingVertical: FIORI.spacing.xs,
-    borderRadius: 12,
-    gap: 3,
+  qtyLabel: { ...typography.caption1, color: t.text.secondary },
+  protectedTag: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.xxs,
+    paddingHorizontal: space.s6,
+    paddingVertical: space.xxs,
+    borderRadius: radius.field,
+    backgroundColor: t.status.critical.background,
   },
-  qtyBadgeValue: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#059669',
-  },
-  qtyBadgeValueProtected: {
-    color: '#92661a',
-  },
-  qtyBadgeLabel: {
-    fontSize: 10,
-    fontWeight: '500',
-  },
+  protectedTagText: { ...typography.caption1, fontWeight: fontWeight.semibold, color: t.status.critical.text },
 
-  // Empty State - Fiori Empty State
   emptyState: {
-    alignItems: 'center',
-    paddingVertical: FIORI.spacing.xxl * 2,
-    paddingHorizontal: FIORI.dimensions.cardPadding,
+    alignItems: 'center' as const,
+    paddingVertical: space.xxxl,
+    paddingHorizontal: space.xxl,
+    gap: space.sm,
   },
-  emptyStateIcon: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: FIORI.spacing.lg,
-  },
-  emptyStateTitle: {
-    ...FIORI.typography.cardTitle,
-    marginBottom: FIORI.spacing.xs,
-  },
-  emptyStateSubtitle: {
-    ...FIORI.typography.bodyRegular,
-    textAlign: 'center',
-  },
+  emptyStateTitle: { ...typography.title3, color: t.text.primary, textAlign: 'center' as const },
+  emptyStateSubtitle: { ...typography.subhead, color: t.text.secondary, textAlign: 'center' as const },
 
-  // Summary Grid - Fiori KPI
   summaryGrid: {
-    padding: FIORI.dimensions.cardPadding,
-    gap: FIORI.spacing.md,
+    flexDirection: 'row' as const,
+    flexWrap: 'wrap' as const,
+    padding: space.lg,
+    gap: space.lg,
   },
   summaryKPI: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: FIORI.spacing.sm,
+    flex: 1,
+    minWidth: 140,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.md,
   },
   summaryKPIIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: FIORI.spacing.md,
+    width: 44,
+    height: 44,
+    borderRadius: radius.pill,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    backgroundColor: t.brand.subtle,
   },
-  summaryKPIContent: {
-    flex: 1,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  summaryKPILabel: {
-    ...FIORI.typography.bodyRegular,
-  },
+  summaryKPIContent: { flex: 1 },
+  summaryKPILabel: { ...typography.footnote, color: t.text.secondary },
   summaryKPIValue: {
-    fontSize: 18,
-    fontWeight: '600',
+    ...typography.title3,
+    color: t.text.primary,
+    fontVariant: ['tabular-nums' as const],
   },
 
-  // Footer - Fiori Footer with Primary Button
   footer: {
-    paddingHorizontal: FIORI.spacing.lg,
-    paddingTop: FIORI.spacing.md,
-    borderTopWidth: 1,
-    ...FIORI.shadows.footer,
+    paddingHorizontal: space.lg,
+    paddingTop: space.md,
+    backgroundColor: t.surface.card,
+    ...t.shadow[3],
   },
-
-  // Primary Button - Fiori Primary Tint Button
   primaryButton: {
-    height: FIORI.dimensions.buttonHeight,
-    borderRadius: FIORI.dimensions.buttonRadius,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: FIORI.spacing.lg,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    gap: space.sm,
+    minHeight: 48,
+    borderRadius: radius.button,
+    paddingHorizontal: space.lg,
+    backgroundColor: t.brand.fill,
   },
-  primaryButtonDisabled: {
-    opacity: 0.3,
-  },
-  primaryButtonIcon: {
-    marginRight: FIORI.spacing.sm,
-  },
-  primaryButtonText: {
-    ...FIORI.typography.buttonPrimary,
-  },
+  primaryButtonPressed: { backgroundColor: t.brand.fillPressed },
+  primaryButtonText: { ...typography.callout, fontWeight: fontWeight.semibold, color: t.brand.onFill },
+
+  snackbar: { backgroundColor: t.surface.inverse, borderRadius: radius.button, ...t.shadow[3] },
+  snackbarText: { ...typography.subhead, color: t.text.inverse },
 });
 
 export default GrnReviewStep;

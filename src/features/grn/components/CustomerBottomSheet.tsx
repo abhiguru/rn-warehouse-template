@@ -5,13 +5,14 @@
  * Uses the generic SearchableBottomSheet component.
  */
 
-import React, { useCallback, useMemo } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import React, { useCallback } from 'react';
+import { View, Text, Pressable } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import theme from '@/theme';
 import { searchService } from '@/services/search-service';
 import { SearchableBottomSheet } from '@/components/common';
-import { useListColors } from '@/hooks/useListColors';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { iconSize, layout, space, typography, touchTarget } from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
 
 const RECENT_CUSTOMERS_KEY = 'recent_customers';
 
@@ -33,34 +34,36 @@ interface CustomerBottomSheetProps {
   };
 }
 
+const makeStyles = (t: ThemeTokens) => ({
+  customerItem: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.md,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.md,
+    minHeight: Math.max(touchTarget, layout.rowMinHeight),
+    backgroundColor: t.surface.sheet,
+  },
+  customerItemPressed: { backgroundColor: t.surface.cardPressed },
+  customerContent: { flex: 1 },
+  customerMeta: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.xs,
+    marginTop: space.xs,
+  },
+  customerName: { ...typography.headline, color: t.text.primary },
+  metaText: { ...typography.subhead, color: t.text.secondary, flexShrink: 1 },
+});
+
 export const CustomerBottomSheet: React.FC<CustomerBottomSheetProps> = ({
   isVisible,
   onClose,
   onSelect,
   currentValue,
 }) => {
-  // Theme colors for dark mode support
-  const colors = useListColors();
-
-  // Dynamic styles based on theme
-  const dynamicStyles = useMemo(() => StyleSheet.create({
-    customerItem: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      paddingHorizontal: theme.spacing.lg,
-      paddingVertical: theme.spacing.md,
-      minHeight: theme.touchTarget.minimum,
-    },
-    customerName: {
-      fontSize: theme.fontSize.base,
-      color: colors.textPrimary,
-      fontWeight: theme.fontWeight.medium,
-    },
-    metaText: {
-      fontSize: theme.fontSize.sm,
-      color: colors.textSecondary,
-    },
-  }), [colors]);
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
 
   // Search function
   const searchCustomers = useCallback(async (query: string): Promise<Customer[]> => {
@@ -82,33 +85,27 @@ export const CustomerBottomSheet: React.FC<CustomerBottomSheetProps> = ({
   // Render customer item
   const renderCustomerItem = useCallback(
     (item: Customer, onItemSelect: (item: Customer) => void) => (
-      <TouchableOpacity
-        style={dynamicStyles.customerItem}
+      <Pressable
+        style={({ pressed }) => [styles.customerItem, pressed && styles.customerItemPressed]}
         onPress={() => onItemSelect(item)}
-        activeOpacity={0.7}
+        accessibilityRole="button"
+        accessibilityLabel={item.address ? `${item.name}, ${item.address}` : item.name}
       >
         <View style={styles.customerContent}>
-          <Text style={dynamicStyles.customerName}>{item.name}</Text>
-          <View style={styles.customerMeta}>
-            {item.address && (
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <Icon
-                  name="map-marker"
-                  size={16}
-                  color={colors.textSecondary}
-                  style={{ marginRight: 4 }}
-                />
-                <Text style={dynamicStyles.metaText} numberOfLines={1}>
-                  {item.address}
-                </Text>
-              </View>
-            )}
-          </View>
+          <Text style={styles.customerName} numberOfLines={2}>{item.name}</Text>
+          {item.address ? (
+            <View style={styles.customerMeta}>
+              <Icon name="map-marker-outline" size={iconSize.sm} color={t.icon.secondary} />
+              <Text style={styles.metaText} numberOfLines={1}>
+                {item.address}
+              </Text>
+            </View>
+          ) : null}
         </View>
-        <Icon name="office-building" size={24} color={colors.textSecondary} />
-      </TouchableOpacity>
+        <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />
+      </Pressable>
     ),
-    [dynamicStyles, colors]
+    [styles, t]
   );
 
   // Key extractor
@@ -119,27 +116,16 @@ export const CustomerBottomSheet: React.FC<CustomerBottomSheetProps> = ({
       isVisible={isVisible}
       onClose={onClose}
       onSelect={onSelect}
-      title="Select Customer"
-      placeholder="Search customers by name or location..."
+      title="Select customer"
+      placeholder="Search by name or location"
       searchFn={searchCustomers}
       renderItem={renderCustomerItem}
       keyExtractor={keyExtractor}
       currentValue={currentValue}
       recentItemsKey={RECENT_CUSTOMERS_KEY}
       maxRecentItems={5}
-      backdropOpacity={0.5}
       emptyInitialText="Search for a customer"
       emptySubText="Type at least 2 characters to find customers"
     />
   );
 };
-
-// Static styles (layout only - colors are in dynamicStyles)
-const styles = StyleSheet.create({
-  customerContent: {
-    flex: 1,
-  },
-  customerMeta: {
-    marginTop: theme.spacing.xs,
-  },
-});

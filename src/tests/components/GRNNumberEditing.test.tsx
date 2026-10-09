@@ -17,9 +17,12 @@ const mockForm = {
 };
 
 jest.mock('@/hooks', () => ({ useGRNForm: () => mockForm }));
-jest.mock('@/store/hooks', () => ({ useAppSelector: () => [] }));
+jest.mock('@/store/hooks', () => ({
+  useAppDispatch: () => jest.fn(),
+  useAppSelector: (selector: (state: unknown) => unknown) =>
+    selector({ theme: { preference: 'light', brand: 'orange' }, grnForm: { items: [] } }),
+}));
 jest.mock('expo-router', () => ({ router: { replace: jest.fn() }, useLocalSearchParams: () => ({}) }));
-jest.mock('@/hooks/useListColors', () => ({ useListColors: () => new Proxy({}, { get: () => '#ffffff' }) }));
 jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('react-native-paper-dates', () => ({ DatePickerModal: () => null }));
 jest.mock('react-native-keyboard-aware-scroll-view', () => ({ KeyboardAwareScrollView: 'ScrollView' }));
