@@ -77,6 +77,42 @@ export async function awaitIdentityGate(generation: number): Promise<void> {
   if (generation !== getSessionGeneration()) throw new Error('Session changed');
 }
 
+// The gateway (Kong 3) answers a request whose apikey it does not know with one
+// of these bodies. After rotate-keys.sh every installed app still holds the old
+// key and the server has revoked every session, so no request can succeed until
+// the session ends and the app reloads the public configuration. Kong 2 used
+// "Invalid authentication credentials"; PostgREST's own 401s (an expired or
+// foreign access token) carry other messages and stay with the refresh path.
+const GATEWAY_KEY_REJECTIONS = new Set([
+  'Unauthorized',
+  'Invalid authentication credentials',
+  'No API key found in request',
+]);
+const KEYS_CHANGED_MESSAGE =
+  "This server's sign-in keys were changed. Please sign in again.";
+
+export const isGatewayKeyRejection = (body: unknown): boolean =>
+  typeof body === 'object' &&
+  body !== null &&
+  GATEWAY_KEY_REJECTIONS.has(String((body as { message?: unknown }).message));
+
+// Inspects a copy of a 401 response without delaying or consuming the original.
+function noteUnauthorized(response: Response, generation: number): void {
+  if (response.status !== 401 || typeof response.clone !== 'function') return;
+  let copy: Response;
+  try {
+    copy = response.clone();
+  } catch {
+    return;
+  }
+  void copy
+    .json()
+    .then(body => {
+      if (isGatewayKeyRejection(body)) return rejectSession(generation, KEYS_CHANGED_MESSAGE);
+    })
+    .catch(() => {});
+}
+
 async function gatedFetch(
   input: RequestInfo | URL,
   init: RequestInit | undefined,
@@ -95,6 +131,7 @@ async function gatedFetch(
   activeRequests.add(request);
   try {
     const response = await fetch(input, { ...init, signal: controller.signal });
+    noteUnauthorized(response, generation);
     if (!honorSwitch) return response;
     if (invalidated()) throw new Error('Session changed');
     // Body parsing can finish after fetch resolves. Check again before callers
@@ -745,8 +782,11 @@ const refreshSession = async (
       console.error('[Auth] Token refresh RPC error:');
       // Only the backend's definitive rejection ends the device session; a
       // transport or serialization failure keeps the credential for retry.
+      // A gateway key rejection is definitive too: the keys were rotated.
       if (isDefinitiveRefreshException(error))
         await rejectSession(generation, SESSION_REJECTED_MESSAGE);
+      else if (isGatewayKeyRejection(error))
+        await rejectSession(generation, KEYS_CHANGED_MESSAGE);
       return null;
     }
 

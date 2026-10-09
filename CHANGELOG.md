@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased — revoked sessions after a key rotation (2026-10-09)
+
+- After `rotate-keys.sh` the app now signs out and returns to the login screen
+  instead of showing empty lists and raw errors (testvm2 finding 9). The
+  gateway (Kong 3) rejects the old key with `401 {"message":"Unauthorized"}`,
+  which the app did not recognize; a refresh refused that way was treated as a
+  network failure, so even a cold start kept the dead session. Every request
+  now passes through one check that ends the session once on a gateway key
+  rejection; the existing forced sign-out reloads the server configuration, so
+  the next login uses the new key. An expired access token still refreshes.
+- Customers shows "Unable to load customers" with Retry when the list fails,
+  instead of "No Customers / Create one to get started".
+
 ## Unreleased — orders screen review fixes (2026-10-09)
 
 Requires backend migrations 28 and 29 (`supabase-warehouse-template`).

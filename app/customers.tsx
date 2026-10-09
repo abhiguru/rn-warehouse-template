@@ -318,6 +318,35 @@ export default function CustomersScreen() {
       );
     }
 
+    // A failed load is not an empty warehouse: never offer "Create one" for it.
+    if (state.error) {
+      return (
+        <View style={styles.emptyContainer} accessibilityRole="alert">
+          <View style={[styles.emptyIconContainer, { backgroundColor: FIORI.colors.backgroundSecondary }]}>
+            <Icon name="alert-circle-outline" size={64} color={FIORI.colors.textTertiary} />
+          </View>
+          <Text style={[styles.emptyTitle, { color: FIORI.colors.textPrimary }]}>Unable to load customers</Text>
+          <Text style={[styles.emptyText, { color: FIORI.colors.textSecondary }]}>
+            Check the connection and try again.
+          </Text>
+          <Pressable
+            style={({ pressed }) => [
+              styles.primaryButton,
+              { backgroundColor: FIORI.colors.tint },
+              pressed && { backgroundColor: '#dd8200' },
+            ]}
+            onPress={() => fetchCustomers(state.filters)}
+            accessibilityRole="button"
+          >
+            <Icon name="refresh" size={20} color={FIORI.colors.iconOnPrimary} />
+            <Text style={[styles.primaryButtonText, { color: FIORI.colors.iconOnPrimary }]}>
+              Retry
+            </Text>
+          </Pressable>
+        </View>
+      );
+    }
+
     return (
       <View style={styles.emptyContainer}>
         <View style={[styles.emptyIconContainer, { backgroundColor: FIORI.colors.backgroundSecondary }]}>
@@ -342,7 +371,7 @@ export default function CustomersScreen() {
         </Pressable>
       </View>
     );
-  }, [state.loading, handleAddCustomer, FIORI]);
+  }, [state.loading, state.error, state.filters, fetchCustomers, handleAddCustomer, FIORI]);
 
   return (
     <>
