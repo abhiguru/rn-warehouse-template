@@ -67,9 +67,11 @@ const makeStyles = (t: ThemeTokens) => ({
     alignItems: 'center' as const,
     gap: space.sm,
   },
+  // KPICard fills a row (flex: 1), as it does inside KPIGrid.
   half: {
     flexBasis: '47%' as const,
     flexGrow: 1,
+    flexDirection: 'row' as const,
   },
   screen: { flex: 1, backgroundColor: t.background.base },
   content: { padding: space.lg, gap: space.xxl },
