@@ -15,13 +15,15 @@ import { OrderRefreshAction } from '@/components/OrderRefreshAction';
  * - No inline functions in renderItem
  * - FlashList v2 handles item sizing automatically
  *
+ * Styling follows docs/STYLE_GUIDE.md (list report, §13.6 and §14.1).
+ *
  * @module lists/OrderFlashList
  */
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { View, Text, StyleSheet, RefreshControl, Pressable } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
-import { ActivityIndicator, Badge, IconButton, Portal, Snackbar, Surface } from 'react-native-paper';
+import { ActivityIndicator, IconButton, Snackbar } from 'react-native-paper';
 import { router } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -49,8 +51,11 @@ import { MemoizedOrderItem } from '@/components/list-items';
 // State
 import { useAppSelector } from '@/store/hooks';
 
-// Config - Dynamic colors for dark mode support
-import { useListColors, ListColors } from '@/hooks/useListColors';
+// Theme
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { fontWeight, iconSize, layout, radius, space, touchTarget, typography } from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
+import { useLegacyRowPalette, listAvatarIndex } from './types';
 
 // ============================================================================
 // TYPES
@@ -72,23 +77,25 @@ export interface OrderFlashListProps {
 interface SectionHeaderProps {
   title: string;
   count: number;
-  colors: ListColors;
 }
 
-// Section Header - Fiori spec: 13pt uppercase, letter spacing 0.5pt
-const SectionHeader = React.memo<SectionHeaderProps>(({ title, count, colors }) => (
-  <View
-    style={[styles.sectionHeader, { backgroundColor: colors.gray50 }]}
-    accessibilityRole="header"
-  >
-    <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>
-      {title.toUpperCase()}
-    </Text>
-    <View style={[styles.sectionBadge, { backgroundColor: colors.gray200 }]}>
-      <Text style={[styles.sectionBadgeText, { color: colors.textSecondary }]}>{count}</Text>
+// Section header: footnote, capitals, text.secondary (style guide §13.6)
+const SectionHeader = React.memo<SectionHeaderProps>(({ title, count }) => {
+  const styles = useThemedStyles(makeStyles);
+  return (
+    <View
+      style={styles.sectionHeader}
+      accessible
+      accessibilityRole="header"
+      accessibilityLabel={`${title}, ${count} ${count === 1 ? 'order' : 'orders'}`}
+    >
+      <Text style={styles.sectionTitle}>{title.toUpperCase()}</Text>
+      <View style={styles.sectionBadge}>
+        <Text style={styles.sectionBadgeText} maxFontSizeMultiplier={1.6}>{count}</Text>
+      </View>
     </View>
-  </View>
-));
+  );
+});
 
 SectionHeader.displayName = 'SectionHeader';
 
@@ -99,50 +106,45 @@ SectionHeader.displayName = 'SectionHeader';
 interface EmptyStateProps {
   isFiltered: boolean;
   onClearFilters: () => void;
-  colors: ListColors;
 }
 
-// Empty State - Fiori spec: 120pt illustration, 24pt gaps, proper typography
+// Empty state: hero icon, title3 title, subhead message, one action (style guide §13.6)
 const EmptyState = React.memo<EmptyStateProps>(({
   isFiltered,
   onClearFilters,
-  colors,
-}) => (
-  <View
-    style={styles.emptyContainer}
-    accessible
-    accessibilityRole="text"
-  >
-    <View
-      style={[styles.emptyIconSurface, { backgroundColor: colors.gray100 }]}
-      accessible={false} // Decorative
-    >
-      <Icon name="cart-off" size={56} color={colors.textTertiary} />
+}) => {
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
+  return (
+    <View style={styles.emptyContainer}>
+      <Icon
+        name="clipboard-list-outline"
+        size={iconSize.hero}
+        color={t.icon.secondary}
+        accessible={false}
+        importantForAccessibility="no"
+      />
+      <Text style={styles.emptyTitle} accessibilityRole="header">
+        {isFiltered ? 'No orders with items' : 'No orders yet'}
+      </Text>
+      <Text style={styles.emptySubtitle}>
+        {isFiltered
+          ? 'Clear the filter to see empty orders too.'
+          : 'Orders appear here when customers add items.'}
+      </Text>
+      {isFiltered && (
+        <Pressable
+          style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryButtonPressed]}
+          onPress={onClearFilters}
+          accessibilityRole="button"
+          accessibilityLabel="Clear filters"
+        >
+          <Text style={styles.secondaryButtonText}>Clear filters</Text>
+        </Pressable>
+      )}
     </View>
-    <Text
-      style={[styles.emptyTitle, { color: colors.textPrimary }]}
-      accessibilityRole="header"
-    >
-      {isFiltered ? 'No Orders Match Filters' : 'No Orders Yet'}
-    </Text>
-    <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>
-      {isFiltered
-        ? 'Try adjusting your filters to see all orders'
-        : 'Orders will appear here when customers add items'}
-    </Text>
-    {isFiltered && (
-      <Pressable
-        style={[styles.emptyButton, { borderColor: colors.gray300 }]}
-        onPress={onClearFilters}
-        accessibilityRole="button"
-        accessibilityLabel="Clear Filters"
-        accessibilityHint="Tap to clear filters and show all orders"
-      >
-        <Text style={[styles.emptyButtonText, { color: colors.textPrimary }]}>Clear Filters</Text>
-      </Pressable>
-    )}
-  </View>
-));
+  );
+});
 
 EmptyState.displayName = 'EmptyState';
 
@@ -161,8 +163,10 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
   // Customer search bottom sheet ref
   const customerSearchRef = useRef<CustomerSearchBottomSheetRef>(null);
 
-  // Dynamic colors for dark mode support
-  const colors = useListColors();
+  // Theme
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
+  const rowColors = useLegacyRowPalette();
 
   // User state
   const { userProfile } = useAppSelector(state => state.auth);
@@ -259,7 +263,7 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
         setHasMore(result.metadata?.has_more ?? false);
       } else {
         setError(result.message || 'Failed to load orders');
-        setSnackbarMessage(result.message || 'Failed to load orders');
+        setSnackbarMessage("Couldn't load orders. Check your connection and try again.");
         setSnackbarVisible(true);
       }
     } catch (err: unknown) {
@@ -270,7 +274,7 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
       console.error('[OrderFlashList] Error:', err);
       const errorMessage = err instanceof Error ? err.message : 'Failed to load orders';
       setError(errorMessage);
-      setSnackbarMessage('Failed to load orders');
+      setSnackbarMessage("Couldn't load orders. Check your connection and try again.");
       setSnackbarVisible(true);
     } finally {
       fetchInProgressRef.current = false;
@@ -317,13 +321,13 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
         });
         setHasMore(result.metadata?.has_more ?? false);
       } else {
-        setSnackbarMessage(result.message || 'Failed to load more orders');
+        setSnackbarMessage("Couldn't load more orders. Scroll down to try again.");
         setSnackbarVisible(true);
       }
     } catch (err: unknown) {
       if (!isMountedRef.current) return;
       console.error('[OrderFlashList] Load more error:', err);
-      setSnackbarMessage('Failed to load more orders');
+      setSnackbarMessage("Couldn't load more orders. Scroll down to try again.");
       setSnackbarVisible(true);
     } finally {
       fetchInProgressRef.current = false;
@@ -448,14 +452,14 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
 
     if (activeOrders.length > 0) {
       sections.push({
-        title: 'Active Orders',
+        title: 'Active orders',
         data: activeOrders,
       });
     }
 
     if (emptyOrders.length > 0 && !showWithItemsOnly) {
       sections.push({
-        title: 'Empty Orders',
+        title: 'Empty orders',
         data: emptyOrders,
       });
     }
@@ -477,18 +481,21 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
 
   const renderItem = useCallback(({ item }: { item: FlattenedItem<Order> }) => {
     if (item.type === 'header') {
-      return <SectionHeader title={item.title} count={item.count} colors={colors} />;
+      return <SectionHeader title={item.title} count={item.count} />;
     }
 
     return (
       <MemoizedOrderItem
         order={item.data}
         onPress={handleOrderPress}
-        colors={colors}
+        colors={rowColors}
       />
     );
-  }, [handleOrderPress, colors]);
+  }, [handleOrderPress, rowColors]);
 
+  // ============================================================================
+  // LIST FOOTER
+  // ============================================================================
   // ============================================================================
   // LIST FOOTER
   // ============================================================================
@@ -496,23 +503,63 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
   const ListFooter = useMemo(() => {
     if (!isLoadingMore) return null;
     return (
-      <View style={styles.footerLoader}>
-        <ActivityIndicator size="small" color={colors.primary} />
-        <Text style={[styles.footerLoaderText, { color: colors.textSecondary }]}>Loading more...</Text>
+      <View style={styles.footerLoader} accessibilityLiveRegion="polite">
+        <ActivityIndicator size="small" color={t.brand.tint} />
+        <Text style={styles.footerLoaderText}>Loading more orders…</Text>
       </View>
     );
-  }, [isLoadingMore, colors]);
+  }, [isLoadingMore, styles, t]);
 
   // ============================================================================
   // RENDER
   // ============================================================================
 
+  const userName = userProfile?.name || 'U';
+  const avatarColor = t.avatar[listAvatarIndex(userName, t.avatar.length)];
+
+  const headerActions = (withAvatar: boolean) => (
+    <View style={styles.headerActions}>
+      <OrderRefreshAction onRefresh={handleRefresh} refreshing={isRefreshing} color={t.brand.tint} label="Refresh orders" />
+      <IconButton
+        icon="plus"
+        size={iconSize.lg}
+        iconColor={t.brand.tint}
+        style={styles.iconButton}
+        onPress={handleAddOrder}
+        accessibilityLabel="Add order"
+      />
+      <IconButton
+        icon={showWithItemsOnly ? 'filter-check' : 'filter-variant'}
+        size={iconSize.lg}
+        iconColor={showWithItemsOnly ? t.brand.tint : t.icon.primary}
+        style={styles.iconButton}
+        onPress={toggleItemsFilter}
+        accessibilityLabel={showWithItemsOnly ? 'Show all orders' : 'Show only orders with items'}
+        accessibilityState={{ selected: showWithItemsOnly }}
+      />
+      {withAvatar && (
+        <Pressable
+          onPress={navigateToSettings}
+          style={styles.avatarButton}
+          accessibilityRole="button"
+          accessibilityLabel="Open settings"
+        >
+          <View style={[styles.avatar, { backgroundColor: avatarColor }]}>
+            <Text style={styles.avatarText} maxFontSizeMultiplier={1.6}>
+              {userName.charAt(0).toUpperCase()}
+            </Text>
+          </View>
+        </Pressable>
+      )}
+    </View>
+  );
+
   // Loading state
   if (isLoading && !isRefreshing) {
     return (
-      <View style={[styles.container, { backgroundColor: colors.gray50 }]}>
-        <View style={[styles.header, { backgroundColor: colors.cellBackground, borderBottomColor: colors.cellDivider }]}>
-          <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Orders</Text>
+      <View style={styles.container}>
+        <View style={styles.header}>
+          <Text style={styles.headerTitle} accessibilityRole="header">Orders</Text>
         </View>
         <ListSkeleton count={5} metricsCount={3} />
       </View>
@@ -522,17 +569,22 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
   // E1 Fix: Error state with retry button
   if (error && orders.length === 0) {
     return (
-      <View style={[styles.container, { backgroundColor: colors.gray50 }]}>
-        <View style={[styles.header, { backgroundColor: colors.cellBackground, borderBottomColor: colors.cellDivider }]}>
-          <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Orders</Text>
+      <View style={styles.container}>
+        <View style={styles.header}>
+          <Text style={styles.headerTitle} accessibilityRole="header">Orders</Text>
         </View>
         <View style={styles.errorState}>
-          <Icon name="alert-circle-outline" size={48} color={colors.gray400} />
-          <Text style={[styles.errorTitle, { color: colors.textPrimary }]}>Unable to load orders</Text>
-          <Text style={[styles.errorMessage, { color: colors.textSecondary }]}>{error}</Text>
-          <Pressable style={[styles.retryButton, { backgroundColor: colors.primary }]} onPress={handleRefresh}>
-            <Icon name="refresh" size={18} color={colors.white} />
-            <Text style={[styles.retryButtonText, { color: colors.white }]}>Retry</Text>
+          <Icon name="alert-circle-outline" size={iconSize.hero} color={t.status.negative.text} />
+          <Text style={styles.errorTitle} accessibilityRole="header">Couldn't load orders</Text>
+          <Text style={styles.errorMessage}>Check your connection and try again.</Text>
+          <Pressable
+            style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryButtonPressed]}
+            onPress={handleRefresh}
+            accessibilityRole="button"
+            accessibilityLabel="Try again"
+          >
+            <Icon name="refresh" size={iconSize.md} color={t.brand.tint} />
+            <Text style={styles.secondaryButtonText}>Try again</Text>
           </Pressable>
         </View>
       </View>
@@ -542,106 +594,71 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
   // Empty state
   if (!isLoading && orders.length === 0 && !error) {
     return (
-      <View style={[styles.container, { backgroundColor: colors.gray50 }]}>
-        <View style={[styles.header, { backgroundColor: colors.cellBackground, borderBottomColor: colors.cellDivider }]}>
-          <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Orders</Text>
-          <View style={styles.headerActions}>
-            <OrderRefreshAction onRefresh={handleRefresh} refreshing={isRefreshing} color={colors.primary} label="Refresh orders" />
-            <IconButton
-              icon="plus"
-              size={22}
-              iconColor={colors.primary}
-              onPress={handleAddOrder}
-              accessibilityLabel="Add new order"
-            />
-            <IconButton
-              icon={showWithItemsOnly ? 'filter-check' : 'filter-variant'}
-              size={22}
-              iconColor={showWithItemsOnly ? colors.primary : colors.gray700}
-              onPress={toggleItemsFilter}
-            />
-          </View>
+      <View style={styles.container}>
+        <View style={styles.header}>
+          <Text style={styles.headerTitle} accessibilityRole="header">Orders</Text>
+          {headerActions(false)}
         </View>
         <EmptyState
           isFiltered={showWithItemsOnly}
           onClearFilters={handleClearFilters}
-          colors={colors}
         />
 
         {/* Customer Search Bottom Sheet */}
         <CustomerSearchBottomSheet
           ref={customerSearchRef}
           onSelect={handleCustomerSelect}
-          title="Select Customer"
+          title="Select customer"
         />
       </View>
     );
   }
 
   return (
-    <View
-      style={[styles.container, { backgroundColor: colors.gray50 }]}
-    >
+    <View style={styles.container}>
       {/* Header */}
-      <View
-        style={[styles.header, { backgroundColor: colors.cellBackground, borderBottomColor: colors.cellDivider }]}
-      >
-        <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Orders</Text>
-        <View style={styles.headerActions}>
-          <OrderRefreshAction onRefresh={handleRefresh} refreshing={isRefreshing} color={colors.primary} label="Refresh orders" />
-          <IconButton
-            icon="plus"
-            size={22}
-            iconColor={colors.primary}
-            onPress={handleAddOrder}
-            accessibilityLabel="Add new order"
-          />
-          <IconButton
-            icon={showWithItemsOnly ? 'filter-check' : 'filter-variant'}
-            size={22}
-            iconColor={showWithItemsOnly ? colors.primary : colors.gray700}
-            onPress={toggleItemsFilter}
-          />
-          <Pressable onPress={navigateToSettings}>
-            <Surface style={[styles.avatarSurface, { backgroundColor: colors.gray100 }]} elevation={1}>
-              <Text style={[styles.avatarText, { color: colors.textPrimary }]}>
-                {(userProfile?.name || 'U').charAt(0).toUpperCase()}
-              </Text>
-            </Surface>
-          </Pressable>
-        </View>
+      <View style={styles.header}>
+        <Text style={styles.headerTitle} accessibilityRole="header">Orders</Text>
+        {headerActions(true)}
       </View>
 
-      {/* Filter Badge */}
+      {/* Stale data warning: critical message strip */}
       {error && (
-        <View accessibilityRole="alert" style={{ padding: 12, backgroundColor: colors.cellBackground }}>
-          <Text style={{ color: colors.textPrimary }}>{error}</Text>
-          <Text style={{ color: colors.textSecondary }}>
-            Showing previously loaded orders. Refresh to get current data.
-          </Text>
+        <View accessibilityRole="alert" style={styles.messageStrip}>
+          <Icon name="alert" size={iconSize.md} color={t.status.critical.text} style={styles.messageStripIcon} />
+          <View style={styles.messageStripBody}>
+            <Text style={styles.messageStripTitle}>Couldn't refresh orders.</Text>
+            <Text style={styles.messageStripText}>
+              Showing previously loaded orders. Refresh to get current data.
+            </Text>
+          </View>
         </View>
       )}
 
       {showWithItemsOnly && (
-        <View
-          style={[styles.filterChipContainer, { backgroundColor: colors.cellBackground }]}
-        >
-          <Pressable style={[styles.filterChip, { backgroundColor: colors.primaryLight }]} onPress={toggleItemsFilter}>
-            <Icon name="cart-check" size={14} color={colors.primary} />
-            <Text style={[styles.filterChipText, { color: colors.primary }]}>With items only</Text>
-            <Icon name="close" size={14} color={colors.primary} />
+        <View style={styles.filterChipContainer}>
+          <Pressable
+            style={({ pressed }) => [styles.filterChip, pressed && styles.filterChipPressed]}
+            onPress={toggleItemsFilter}
+            hitSlop={space.sm}
+            accessibilityRole="button"
+            accessibilityLabel="Remove filter: with items only"
+          >
+            <Icon name="cart-check" size={iconSize.sm} color={t.brand.tint} />
+            <Text style={styles.filterChipText} maxFontSizeMultiplier={1.6}>With items only</Text>
+            <Icon name="close" size={iconSize.sm} color={t.brand.tint} />
           </Pressable>
         </View>
       )}
 
       {/* FlashList - The key to performance */}
-      <View style={{ flex: 1 }}>
+      <View style={styles.listWrapper}>
         <FlashList
           data={flattenedData}
           renderItem={renderItem}
           keyExtractor={keyExtractor}
           getItemType={getItemType}
-          extraData={{ handleOrderPress, colors }}
+          extraData={{ handleOrderPress, rowColors }}
           contentContainerStyle={styles.listContent}
           contentInsetAdjustmentBehavior="never"
           automaticallyAdjustContentInsets={false}
@@ -649,8 +666,9 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
             <RefreshControl
               refreshing={isRefreshing}
               onRefresh={handleRefresh}
-              colors={[colors.primary]}
-              tintColor={colors.primary}
+              colors={[t.brand.tint]}
+              tintColor={t.brand.tint}
+              progressBackgroundColor={t.surface.card}
             />
           }
           ListFooterComponent={ListFooter}
@@ -664,7 +682,7 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
       <Snackbar
         visible={snackbarVisible}
         onDismiss={dismissSnackbar}
-        duration={3000}
+        duration={4000}
         style={styles.snackbar}
       >
         {snackbarMessage}
@@ -674,225 +692,236 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
       <CustomerSearchBottomSheet
         ref={customerSearchRef}
         onSelect={handleCustomerSelect}
-        title="Select Customer"
+        title="Select customer"
       />
     </View>
   );
 };
 
 // ============================================================================
-// STYLES - SAP Fiori Compliant
+// STYLES - tokens only (docs/STYLE_GUIDE.md)
 // ============================================================================
 
-const styles = StyleSheet.create({
+const makeStyles = (t: ThemeTokens) => ({
   container: {
     flex: 1,
+    backgroundColor: t.background.base,
   },
-  // Navigation Bar - Fiori spec: 44pt min height
+  // App bar on surface.header with a hairline divider (§13.8)
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    minHeight: 44, // Fiori navigation bar height
-    paddingVertical: 12,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
+    paddingHorizontal: layout.marginCompact,
+    minHeight: layout.rowMinHeight,
+    paddingVertical: space.md,
+    backgroundColor: t.surface.header,
     borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.divider,
   },
-  // Large Title - Fiori spec: 34pt for primary screens
+  // Large title for a top-level tab screen
   headerTitle: {
-    fontSize: 34, // Fiori large title
-    fontWeight: '700',
-    letterSpacing: 0.37,
+    ...typography.largeTitle,
+    color: t.text.primary,
+    flexShrink: 1,
   },
   headerActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
   },
-  // Avatar - Fiori spec: 36pt for compact
-  avatarSurface: {
-    width: 36, // Fiori compact avatar
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: 8,
+  iconButton: {
+    width: touchTarget,
+    height: touchTarget,
+    margin: 0,
+  },
+  avatarButton: {
+    width: touchTarget,
+    height: touchTarget,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+  },
+  avatar: {
+    width: layout.avatar.sm,
+    height: layout.avatar.sm,
+    borderRadius: radius.pill,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
   },
   avatarText: {
-    fontSize: 15,
-    fontWeight: '600',
+    ...typography.subhead,
+    fontWeight: fontWeight.semibold,
+    // Avatar initials: text.primary in light mode, white in dark mode (§3.2)
+    color: t.mode === 'dark' ? t.overlay.onImage : t.text.primary,
   },
-  // Filter Chip - Fiori tag style
+  // Critical message strip (§13.9)
+  messageStrip: {
+    flexDirection: 'row' as const,
+    alignItems: 'flex-start' as const,
+    marginHorizontal: layout.marginCompact,
+    marginTop: space.sm,
+    padding: space.md,
+    borderRadius: radius.button,
+    borderWidth: 1,
+    borderColor: t.status.critical.border,
+    backgroundColor: t.status.critical.background,
+  },
+  messageStripIcon: {
+    marginRight: space.sm,
+  },
+  messageStripBody: {
+    flex: 1,
+  },
+  messageStripTitle: {
+    ...typography.subhead,
+    fontWeight: fontWeight.semibold,
+    color: t.status.critical.text,
+  },
+  messageStripText: {
+    ...typography.footnote,
+    color: t.status.critical.text,
+  },
+  // Applied filter chip (§13.5 FilterChip)
   filterChipContainer: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingHorizontal: layout.marginCompact,
+    paddingVertical: space.sm,
   },
   filterChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-    height: 24, // Fiori default tag height
-    borderRadius: 12, // Fiori pill shape
-    paddingHorizontal: 12,
-    gap: 6,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    alignSelf: 'flex-start' as const,
+    minHeight: space.xxxl,
+    borderRadius: radius.pill,
+    paddingHorizontal: space.md,
+    paddingVertical: space.s6,
+    gap: space.s6,
+    backgroundColor: t.brand.subtle,
+  },
+  filterChipPressed: {
+    backgroundColor: t.brand.subtleStrong,
   },
   filterChipText: {
-    fontSize: 12, // Fiori tag font size
-    fontWeight: '600',
+    ...typography.caption1,
+    fontWeight: fontWeight.semibold,
+    color: t.brand.tint,
+  },
+  listWrapper: {
+    flex: 1,
   },
   listContent: {
-    paddingBottom: 8,
+    paddingBottom: space.sm,
   },
-  // Section Header - Fiori spec: 13pt uppercase, 0.5pt letter spacing
+  // Section header: footnote, capitals, text.secondary, letter spacing 0.5 (§4, §13.6)
   sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingTop: 16, // Fiori grouped style
-    paddingBottom: 8,
-    minHeight: 32, // Fiori section header min height
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
+    paddingHorizontal: layout.marginCompact,
+    paddingTop: space.lg,
+    paddingBottom: space.sm,
+    minHeight: space.xxxl,
+    backgroundColor: t.background.base,
   },
   sectionTitle: {
-    fontSize: 13, // Fiori section header font size
-    fontWeight: '600',
-    letterSpacing: 0.5, // Fiori letter spacing
+    ...typography.footnote,
+    fontWeight: fontWeight.semibold,
+    letterSpacing: 0.5,
+    color: t.text.secondary,
   },
-  // Section Count Badge - Fiori tag style
+  // Plain count: neutral tag
   sectionBadge: {
-    height: 20, // Fiori compact tag height
     minWidth: 20,
-    borderRadius: 10, // Fiori pill shape
-    paddingHorizontal: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
+    borderRadius: radius.pill,
+    paddingHorizontal: space.sm,
+    paddingVertical: space.xxs,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    backgroundColor: t.status.neutral.background,
   },
   sectionBadgeText: {
-    fontSize: 11, // Fiori compact tag font size
-    fontWeight: '600',
+    ...typography.caption1,
+    fontWeight: fontWeight.semibold,
+    fontVariant: ['tabular-nums' as const],
+    color: t.status.neutral.text,
   },
   footerLoader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 16,
-    gap: 8,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    padding: space.lg,
+    gap: space.sm,
   },
   footerLoaderText: {
-    fontSize: 14,
+    ...typography.footnote,
+    color: t.text.secondary,
   },
-  // Empty State - Fiori spec: 120pt illustration, 24pt gaps
+  // Empty and error states (§13.6)
   emptyContainer: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 24, // Fiori empty state padding
-  },
-  emptyIconSurface: {
-    width: 120, // Fiori illustration size
-    height: 120,
-    borderRadius: 60,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 24, // Fiori illustration to title gap
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    padding: space.xxl,
+    gap: space.sm,
   },
   emptyTitle: {
-    fontSize: 20, // Fiori empty state title
-    fontWeight: '600',
-    lineHeight: 28,
-    marginBottom: 8, // Fiori title to description gap
-    textAlign: 'center',
+    ...typography.title3,
+    color: t.text.primary,
+    textAlign: 'center' as const,
+    marginTop: space.lg,
   },
   emptySubtitle: {
-    fontSize: 14, // Fiori empty state description
-    fontWeight: '400',
-    lineHeight: 20,
-    textAlign: 'center',
-    marginBottom: 24, // Fiori description to action gap
+    ...typography.subhead,
+    color: t.text.secondary,
+    textAlign: 'center' as const,
+    marginBottom: space.lg,
     maxWidth: 320,
   },
-  emptyButton: {
-    minHeight: 44, // Fiori button height
-    paddingHorizontal: 24,
-    paddingVertical: 11,
-    borderRadius: 8, // Fiori button corner radius
-    borderWidth: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  emptyButtonText: {
-    fontSize: 17, // Fiori button font size
-    fontWeight: '600',
-  },
-  // Error State - Fiori empty state pattern
   errorState: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 24,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    padding: space.xxl,
+    gap: space.sm,
   },
   errorTitle: {
-    fontSize: 20, // Fiori empty state title
-    fontWeight: '600',
-    lineHeight: 28,
-    marginTop: 24,
-    marginBottom: 8,
+    ...typography.title3,
+    color: t.text.primary,
+    textAlign: 'center' as const,
+    marginTop: space.lg,
   },
   errorMessage: {
-    fontSize: 14, // Fiori description
-    lineHeight: 20,
-    textAlign: 'center',
-    marginBottom: 24,
+    ...typography.subhead,
+    color: t.text.secondary,
+    textAlign: 'center' as const,
+    marginBottom: space.lg,
     maxWidth: 320,
   },
-  retryButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    minHeight: 44, // Fiori button height
-    paddingHorizontal: 24,
-    paddingVertical: 11,
-    borderRadius: 8, // Fiori button corner radius
-    gap: 8,
+  // Secondary button: outline border.button, label brand.tint, pressed brand.subtle (§13.1, §10)
+  secondaryButton: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    minHeight: touchTarget,
+    minWidth: 120,
+    paddingHorizontal: space.xxl,
+    paddingVertical: space.sm,
+    borderRadius: radius.button,
+    borderWidth: 1,
+    borderColor: t.border.button,
+    gap: space.sm,
   },
-  retryButtonText: {
-    fontSize: 17, // Fiori button font size
-    fontWeight: '600',
+  secondaryButtonPressed: {
+    backgroundColor: t.brand.subtle,
   },
-  // Skeleton Loading - Fiori skeleton style
-  skeletonCard: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    borderRadius: 12,
-    marginHorizontal: 16,
-    marginVertical: 6,
-    padding: 16,
+  secondaryButtonText: {
+    ...typography.callout,
+    color: t.brand.tint,
   },
-  skeletonIcon: {
-    width: 44, // Fiori detail image size
-    height: 44,
-    borderRadius: 22,
-    marginRight: 12,
-  },
-  skeletonContent: {
-    flex: 1,
-  },
-  skeletonTitle: {
-    width: '60%',
-    height: 17, // Fiori title height approximation
-    borderRadius: 4,
-    marginBottom: 8,
-  },
-  skeletonSubtitle: {
-    width: '40%',
-    height: 13, // Fiori subtitle height approximation
-    borderRadius: 4,
-  },
-  skeletonValue: {
-    width: 50,
-    height: 44,
-    borderRadius: 8,
-  },
+  // Snackbar: inverse surface (§13.9)
   snackbar: {
     marginBottom: 80,
+    backgroundColor: t.surface.inverse,
+    borderRadius: radius.button,
+    ...t.shadow[3],
   },
 });
 

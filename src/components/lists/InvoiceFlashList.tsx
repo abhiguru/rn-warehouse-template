@@ -12,13 +12,15 @@
  * - No inline functions in renderItem
  * - FlashList v2 handles item sizing automatically
  *
+ * Styling follows docs/STYLE_GUIDE.md (list report, §13.6 and §14.1).
+ *
  * @module lists/InvoiceFlashList
  */
 
 import React, { useState, useEffect, useCallback, useRef, useMemo, memo } from 'react';
-import { View, Text, StyleSheet, RefreshControl, Pressable, Alert } from 'react-native';
+import { View, Text, StyleSheet, RefreshControl, Pressable } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
-import { ActivityIndicator, Badge, IconButton, Portal, Snackbar, Surface, Chip } from 'react-native-paper';
+import { ActivityIndicator, Badge, IconButton, Portal, Snackbar } from 'react-native-paper';
 import { router } from 'expo-router';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import Animated, { FadeIn } from 'react-native-reanimated';
@@ -31,6 +33,8 @@ import {
   getItemType,
   DEFAULT_LIST_CONFIG,
   SectionData,
+  useLegacyRowPalette,
+  listAvatarIndex,
 } from './types';
 
 // Services
@@ -49,9 +53,13 @@ import type { AutocompleteSelection, FilterValues, FilterValueType } from '@/typ
 
 // Config
 import { INVOICE_FILTER_CONFIG } from '@/config/filterConfigs';
-import { useListColors, ListColors } from '@/hooks/useListColors';
 import { formatSectionDate } from '@/utils/formatters';
 import { createLogger } from '@/utils/logger';
+
+// Theme
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { fontWeight, iconSize, layout, radius, space, touchTarget, typography } from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
 
 // ============================================================================
 // TYPES
@@ -64,6 +72,8 @@ export interface InvoiceFlashListProps {
   initialFilters?: Record<string, any>;
 }
 
+const inr = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 });
+
 // ============================================================================
 // SECTION HEADER COMPONENT (Memoized)
 // ============================================================================
@@ -71,17 +81,25 @@ export interface InvoiceFlashListProps {
 interface SectionHeaderProps {
   title: string;
   count: number;
-  colors: ListColors;
 }
 
-const SectionHeader = React.memo<SectionHeaderProps>(({ title, count, colors }) => (
-  <View style={[styles.sectionHeader, { backgroundColor: colors.gray50 }]}>
-    <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>{title}</Text>
-    <View style={[styles.sectionBadge, { backgroundColor: colors.gray200 }]}>
-      <Text style={[styles.sectionBadgeText, { color: colors.textSecondary }]}>{count}</Text>
+// Section header: footnote, capitals, text.secondary (style guide §13.6)
+const SectionHeader = React.memo<SectionHeaderProps>(({ title, count }) => {
+  const styles = useThemedStyles(makeStyles);
+  return (
+    <View
+      style={styles.sectionHeader}
+      accessible
+      accessibilityRole="header"
+      accessibilityLabel={`${title}, ${count} ${count === 1 ? 'invoice' : 'invoices'}`}
+    >
+      <Text style={styles.sectionTitle}>{title}</Text>
+      <View style={styles.sectionBadge}>
+        <Text style={styles.sectionCount} maxFontSizeMultiplier={1.6}>{count}</Text>
+      </View>
     </View>
-  </View>
-));
+  );
+});
 
 SectionHeader.displayName = 'SectionHeader';
 
@@ -94,40 +112,60 @@ interface EmptyStateProps {
   onClearFilters: () => void;
   canCreate: boolean;
   onCreateInvoice: () => void;
-  colors: ListColors;
 }
 
+// Empty state: hero icon, title3 title, subhead message, one action (style guide §13.6)
 const EmptyState = React.memo<EmptyStateProps>(({
   hasFilters,
   onClearFilters,
   canCreate,
   onCreateInvoice,
-  colors,
-}) => (
-  <View style={styles.emptyContainer}>
-    <View style={[styles.emptyIconSurface, { backgroundColor: colors.gray100 }]}>
-      <Icon name="file-document-remove-outline" size={48} color={colors.textTertiary} />
+}) => {
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
+  return (
+    <View style={styles.emptyContainer}>
+      <Icon
+        name="file-document-outline"
+        size={iconSize.hero}
+        color={t.icon.secondary}
+        accessible={false}
+        importantForAccessibility="no"
+      />
+      <Text style={styles.emptyTitle} accessibilityRole="header">
+        {hasFilters ? 'No invoices match these filters' : 'No invoices yet'}
+      </Text>
+      <Text style={styles.emptySubtitle}>
+        {hasFilters
+          ? 'Try fewer filters, or clear them to see all invoices.'
+          : canCreate
+            ? 'Invoices you create appear here.'
+            : 'Invoices appear here once they are created.'}
+      </Text>
+      {hasFilters && (
+        <Pressable
+          style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryButtonPressed]}
+          onPress={onClearFilters}
+          accessibilityRole="button"
+          accessibilityLabel="Clear filters"
+        >
+          <Text style={styles.secondaryButtonText}>Clear filters</Text>
+        </Pressable>
+      )}
+      {canCreate && !hasFilters && (
+        <Pressable
+          style={({ pressed }) => [styles.primaryButton, pressed && styles.primaryButtonPressed]}
+          onPress={onCreateInvoice}
+          accessibilityRole="button"
+          accessibilityLabel="Create invoice"
+        >
+          <Icon name="plus" size={iconSize.md} color={t.brand.onFill} />
+          <Text style={styles.primaryButtonText}>Create invoice</Text>
+        </Pressable>
+      )}
     </View>
-    <Text style={[styles.emptyTitle, { color: colors.textPrimary }]}>
-      {hasFilters ? 'No invoices match filters' : 'No invoices yet'}
-    </Text>
-    <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>
-      {hasFilters
-        ? 'Try adjusting your filters to see all invoices'
-        : 'Create your first invoice to get started'}
-    </Text>
-    {hasFilters && (
-      <Pressable style={[styles.emptyButton, { borderColor: colors.gray300 }]} onPress={onClearFilters}>
-        <Text style={[styles.emptyButtonText, { color: colors.textPrimary }]}>Clear Filters</Text>
-      </Pressable>
-    )}
-    {canCreate && !hasFilters && (
-      <Pressable style={[styles.emptyButton, styles.emptyButtonPrimary, { backgroundColor: colors.primary, borderColor: colors.primary }]} onPress={onCreateInvoice}>
-        <Text style={[styles.emptyButtonTextPrimary, { color: colors.white }]}>Create Invoice</Text>
-      </Pressable>
-    )}
-  </View>
-));
+  );
+});
 
 EmptyState.displayName = 'EmptyState';
 
@@ -139,7 +177,6 @@ interface FilterChipsProps {
   activeFilterCount: number;
   updateFilter: (key: string, value: FilterValueType) => void;
   clearAllFilters: () => void;
-  colors: ListColors;
 }
 
 const FilterChips: React.FC<FilterChipsProps> = memo(({
@@ -147,8 +184,9 @@ const FilterChips: React.FC<FilterChipsProps> = memo(({
   activeFilterCount,
   updateFilter,
   clearAllFilters,
-  colors,
 }) => {
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
   if (activeFilterCount === 0) return null;
 
   const chips: { key: string; label: string; icon: string; onRemove: () => void }[] = [];
@@ -159,7 +197,7 @@ const FilterChips: React.FC<FilterChipsProps> = memo(({
       chips.push({
         key: `customer-${item.id}`,
         label: item.label,
-        icon: 'account',
+        icon: 'account-outline',
         onRemove: () => {
           const remaining = (filters.customerName ?? []).filter((i: AutocompleteSelection) => i.id !== item.id);
           updateFilter('customerName', remaining.length > 0 ? remaining : []);
@@ -172,16 +210,16 @@ const FilterChips: React.FC<FilterChipsProps> = memo(({
   if (filters.invoiceNoFrom?.length > 0) {
     chips.push({
       key: 'inv-from',
-      label: `From: ${filters.invoiceNoFrom[0].label}`,
-      icon: 'file-document',
+      label: `From ${filters.invoiceNoFrom[0].label}`,
+      icon: 'file-document-outline',
       onRemove: () => updateFilter('invoiceNoFrom', []),
     });
   }
   if (filters.invoiceNoTo?.length > 0) {
     chips.push({
       key: 'inv-to',
-      label: `To: ${filters.invoiceNoTo[0].label}`,
-      icon: 'file-document',
+      label: `To ${filters.invoiceNoTo[0].label}`,
+      icon: 'file-document-outline',
       onRemove: () => updateFilter('invoiceNoTo', []),
     });
   }
@@ -191,7 +229,7 @@ const FilterChips: React.FC<FilterChipsProps> = memo(({
     const statusLabels: Record<string, string> = {
       paid: 'Paid',
       unpaid: 'Unpaid',
-      partial: 'Partial',
+      partial: 'Partly paid',
     };
     chips.push({
       key: 'payment-status',
@@ -203,9 +241,10 @@ const FilterChips: React.FC<FilterChipsProps> = memo(({
 
   // Amount range chip
   if (filters.amountMin || filters.amountMax) {
+    const min = inr.format(Number(filters.amountMin || 0));
     chips.push({
       key: 'amount-range',
-      label: `₹${filters.amountMin || 0} - ₹${filters.amountMax || '∞'}`,
+      label: filters.amountMax ? `${min} – ${inr.format(Number(filters.amountMax))}` : `${min} or more`,
       icon: 'currency-inr',
       onRemove: () => {
         updateFilter('amountMin', undefined);
@@ -216,11 +255,12 @@ const FilterChips: React.FC<FilterChipsProps> = memo(({
 
   // Date range chip
   if (filters.dateFrom || filters.dateTo) {
-    const fromDate = filters.dateFrom ? new Date(filters.dateFrom as string).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : '...';
-    const toDate = filters.dateTo ? new Date(filters.dateTo as string).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : '...';
+    const dateOptions: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'short', year: 'numeric' };
+    const fromDate = filters.dateFrom ? new Date(filters.dateFrom as string).toLocaleDateString('en-IN', dateOptions) : '';
+    const toDate = filters.dateTo ? new Date(filters.dateTo as string).toLocaleDateString('en-IN', dateOptions) : '';
     chips.push({
       key: 'date-range',
-      label: `${fromDate} - ${toDate}`,
+      label: fromDate && toDate ? `${fromDate} – ${toDate}` : fromDate ? `From ${fromDate}` : `Until ${toDate}`,
       icon: 'calendar-range',
       onRemove: () => {
         updateFilter('dateFrom', undefined);
@@ -230,29 +270,39 @@ const FilterChips: React.FC<FilterChipsProps> = memo(({
   }
 
   return (
-    <Animated.View entering={FadeIn} style={[styles.filterChipsContainer, { backgroundColor: colors.cellBackground, borderBottomColor: colors.cellDivider }]}>
+    <Animated.View entering={FadeIn} style={styles.filterChipsContainer}>
       <View style={styles.filterChipsHeader}>
         <View style={styles.filterCountBadge}>
-          <Icon name="filter-variant" size={14} color={colors.primary} />
-          <Text style={[styles.filterCountText, { color: colors.primary }]}>{activeFilterCount} active</Text>
+          <Icon name="filter-variant" size={iconSize.sm} color={t.brand.tint} />
+          <Text style={styles.filterCountText}>
+            {activeFilterCount} {activeFilterCount === 1 ? 'filter' : 'filters'}
+          </Text>
         </View>
-        <Pressable onPress={clearAllFilters} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-          <Text style={[styles.clearAllText, { color: colors.statusNegative }]}>Clear all</Text>
+        <Pressable
+          onPress={clearAllFilters}
+          style={styles.clearAllButton}
+          accessibilityRole="button"
+          accessibilityLabel="Clear all filters"
+        >
+          <Text style={styles.clearAllText}>Clear all</Text>
         </Pressable>
       </View>
       <View style={styles.filterChipsList}>
         {chips.map((chip) => (
-          <Chip
+          <Pressable
             key={chip.key}
-            icon={chip.icon}
-            onClose={chip.onRemove}
-            style={[styles.filterChip, { backgroundColor: colors.primaryLight }]}
-            textStyle={[styles.filterChipText, { color: colors.textSecondary }]}
-            closeIcon="close-circle"
-            compact
+            onPress={chip.onRemove}
+            hitSlop={space.sm}
+            style={({ pressed }) => [styles.filterChip, pressed && styles.filterChipPressed]}
+            accessibilityRole="button"
+            accessibilityLabel={`Remove filter ${chip.label}`}
           >
-            {chip.label}
-          </Chip>
+            <Icon name={chip.icon} size={iconSize.sm} color={t.brand.tint} />
+            <Text style={styles.filterChipText} numberOfLines={1} maxFontSizeMultiplier={1.6}>
+              {chip.label}
+            </Text>
+            <Icon name="close" size={iconSize.sm} color={t.brand.tint} />
+          </Pressable>
         ))}
       </View>
     </Animated.View>
@@ -271,8 +321,10 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({
 }) => {
   const fetchInProgressRef = useRef(false);
 
-  // Theme colors
-  const colors = useListColors();
+  // Theme
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
+  const rowColors = useLegacyRowPalette();
 
   // User state & permissions
   const { userProfile } = useAppSelector(state => state.auth);
@@ -568,7 +620,7 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({
 
   const renderItem = useCallback(({ item }: { item: FlattenedItem<Invoice> }) => {
     if (item.type === 'header') {
-      return <SectionHeader title={item.title} count={item.count} colors={colors} />;
+      return <SectionHeader title={item.title} count={item.count} />;
     }
 
     return (
@@ -576,10 +628,10 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({
         invoice={item.data}
         onPress={handleInvoicePress}
         canPrint={canPrint || false}
-        colors={colors}
+        colors={rowColors}
       />
     );
-  }, [handleInvoicePress, canPrint, colors]);
+  }, [handleInvoicePress, canPrint, rowColors]);
 
   // ============================================================================
   // LIST FOOTER
@@ -588,23 +640,42 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({
   const ListFooter = useMemo(() => {
     if (!isLoadingMore) return null;
     return (
-      <View style={styles.footerLoader}>
-        <ActivityIndicator size="small" color={colors.primary} />
-        <Text style={[styles.footerLoaderText, { color: colors.textSecondary }]}>Loading more...</Text>
+      <View style={styles.footerLoader} accessibilityLiveRegion="polite">
+        <ActivityIndicator size="small" color={t.brand.tint} />
+        <Text style={styles.footerLoaderText}>Loading more invoices…</Text>
       </View>
     );
-  }, [isLoadingMore, colors]);
+  }, [isLoadingMore, styles, t]);
 
   // ============================================================================
   // RENDER
   // ============================================================================
 
+  const userName = userProfile?.name || 'U';
+  const avatarColor = t.avatar[listAvatarIndex(userName, t.avatar.length)];
+
+  const filterButton = (
+    <View style={styles.filterBtnContainer}>
+      <IconButton
+        icon="filter-variant"
+        size={iconSize.lg}
+        iconColor={activeFilterCount > 0 ? t.brand.tint : t.icon.primary}
+        style={styles.iconButton}
+        onPress={openFilterModal}
+        accessibilityLabel={activeFilterCount > 0 ? `Filter invoices, ${activeFilterCount} active` : 'Filter invoices'}
+      />
+      {activeFilterCount > 0 && (
+        <Badge size={18} style={styles.filterBadge} accessible={false}>{activeFilterCount}</Badge>
+      )}
+    </View>
+  );
+
   // Loading state
   if (isLoading && !isRefreshing) {
     return (
-      <View style={[styles.container, { backgroundColor: colors.gray50 }]}>
-        <View style={[styles.header, { backgroundColor: colors.cellBackground, borderBottomColor: colors.cellDivider }]}>
-          <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Invoices</Text>
+      <View style={styles.container}>
+        <View style={styles.header}>
+          <Text style={styles.headerTitle} accessibilityRole="header">Invoices</Text>
         </View>
         <ListSkeleton count={5} metricsCount={3} />
       </View>
@@ -614,17 +685,22 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({
   // E1 Fix: Error state with retry button
   if (error && invoices.length === 0) {
     return (
-      <View style={[styles.container, { backgroundColor: colors.gray50 }]}>
-        <View style={[styles.header, { backgroundColor: colors.cellBackground, borderBottomColor: colors.cellDivider }]}>
-          <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Invoices</Text>
+      <View style={styles.container}>
+        <View style={styles.header}>
+          <Text style={styles.headerTitle} accessibilityRole="header">Invoices</Text>
         </View>
         <View style={styles.errorState}>
-          <Icon name="alert-circle-outline" size={48} color={colors.gray400} />
-          <Text style={[styles.errorTitle, { color: colors.textPrimary }]}>Unable to load invoices</Text>
-          <Text style={[styles.errorMessage, { color: colors.textSecondary }]}>{error}</Text>
-          <Pressable style={[styles.retryButton, { backgroundColor: colors.primary }]} onPress={handleRefresh}>
-            <Icon name="refresh" size={18} color={colors.white} />
-            <Text style={[styles.retryButtonText, { color: colors.white }]}>Retry</Text>
+          <Icon name="alert-circle-outline" size={iconSize.hero} color={t.status.negative.text} />
+          <Text style={styles.errorTitle} accessibilityRole="header">Couldn't load invoices</Text>
+          <Text style={styles.errorMessage}>Check your connection and try again.</Text>
+          <Pressable
+            style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryButtonPressed]}
+            onPress={handleRefresh}
+            accessibilityRole="button"
+            accessibilityLabel="Try again"
+          >
+            <Icon name="refresh" size={iconSize.md} color={t.brand.tint} />
+            <Text style={styles.secondaryButtonText}>Try again</Text>
           </Pressable>
         </View>
       </View>
@@ -634,29 +710,16 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({
   // Empty state
   if (!isLoading && invoices.length === 0 && !error) {
     return (
-      <View style={[styles.container, { backgroundColor: colors.gray50 }]}>
-        <View style={[styles.header, { backgroundColor: colors.cellBackground, borderBottomColor: colors.cellDivider }]}>
-          <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Invoices</Text>
-          <View style={styles.headerActions}>
-            <View style={styles.filterBtnContainer}>
-              <IconButton
-                icon="filter-variant"
-                size={22}
-                iconColor={colors.gray700}
-                onPress={openFilterModal}
-              />
-              {activeFilterCount > 0 && (
-                <Badge size={16} style={[styles.filterBadge, { backgroundColor: colors.primary }]}>{activeFilterCount}</Badge>
-              )}
-            </View>
-          </View>
+      <View style={styles.container}>
+        <View style={styles.header}>
+          <Text style={styles.headerTitle} accessibilityRole="header">Invoices</Text>
+          <View style={styles.headerActions}>{filterButton}</View>
         </View>
         <EmptyState
           hasFilters={activeFilterCount > 0}
           onClearFilters={handleClearFilters}
           canCreate={canCreateInvoice}
           onCreateInvoice={handleCreateInvoice}
-          colors={colors}
         />
         {isFilterModalVisible && (
           <Portal>
@@ -676,38 +739,34 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({
   }
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.gray50 }]}>
+    <View style={styles.container}>
       {/* Header */}
-      <View style={[styles.header, { backgroundColor: colors.cellBackground, borderBottomColor: colors.cellDivider }]}>
-        <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Invoices</Text>
+      <View style={styles.header}>
+        <Text style={styles.headerTitle} accessibilityRole="header">Invoices</Text>
         <View style={styles.headerActions}>
           {canCreateInvoice && (
             <IconButton
               icon="plus"
-              size={22}
-              iconColor={colors.white}
-              style={[styles.addBtn, { backgroundColor: colors.primary }]}
+              size={iconSize.lg}
+              iconColor={t.brand.onFill}
+              containerColor={t.brand.fill}
+              style={styles.addBtn}
               onPress={handleCreateInvoice}
-              accessibilityLabel="Create Invoice"
+              accessibilityLabel="Create invoice"
             />
           )}
-          <View style={styles.filterBtnContainer}>
-            <IconButton
-              icon="filter-variant"
-              size={22}
-              iconColor={colors.gray700}
-              onPress={openFilterModal}
-            />
-            {activeFilterCount > 0 && (
-              <Badge size={16} style={[styles.filterBadge, { backgroundColor: colors.primary }]}>{activeFilterCount}</Badge>
-            )}
-          </View>
-          <Pressable onPress={navigateToSettings}>
-            <Surface style={[styles.avatarSurface, { backgroundColor: colors.gray100 }]} elevation={1}>
-              <Text style={[styles.avatarText, { color: colors.textPrimary }]}>
-                {(userProfile?.name || 'U').charAt(0).toUpperCase()}
+          {filterButton}
+          <Pressable
+            onPress={navigateToSettings}
+            style={styles.avatarButton}
+            accessibilityRole="button"
+            accessibilityLabel="Open settings"
+          >
+            <View style={[styles.profileAvatar, { backgroundColor: avatarColor }]}>
+              <Text style={styles.profileAvatarText} maxFontSizeMultiplier={1.6}>
+                {userName.charAt(0).toUpperCase()}
               </Text>
-            </Surface>
+            </View>
           </Pressable>
         </View>
       </View>
@@ -718,7 +777,6 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({
         activeFilterCount={activeFilterCount}
         updateFilter={updateFilter}
         clearAllFilters={clearAllFilters}
-        colors={colors}
       />
 
       {/* FlashList - The key to performance */}
@@ -727,14 +785,15 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({
         renderItem={renderItem}
         keyExtractor={keyExtractor}
         getItemType={getItemType}
-        extraData={{ canPrint, handleInvoicePress }}
+        extraData={{ canPrint, handleInvoicePress, rowColors }}
         contentContainerStyle={styles.listContent}
         refreshControl={
           <RefreshControl
             refreshing={isRefreshing}
             onRefresh={handleRefresh}
-            colors={[colors.primary]}
-            tintColor={colors.primary}
+            colors={[t.brand.tint]}
+            tintColor={t.brand.tint}
+            progressBackgroundColor={t.surface.card}
           />
         }
         onEndReached={handleLoadMore}
@@ -762,7 +821,7 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({
       <Snackbar
         visible={snackbarVisible}
         onDismiss={dismissSnackbar}
-        duration={3000}
+        duration={4000}
         style={styles.snackbar}
       >
         {snackbarMessage}
@@ -772,260 +831,269 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({
 };
 
 // ============================================================================
-// STYLES
+// STYLES - tokens only (docs/STYLE_GUIDE.md)
 // ============================================================================
 
-const styles = StyleSheet.create({
+const makeStyles = (t: ThemeTokens) => ({
   container: {
     flex: 1,
-    // backgroundColor applied inline for dark mode
+    backgroundColor: t.background.base,
   },
+  // App bar on surface.header with a hairline divider (§13.8)
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    // backgroundColor, borderBottomColor applied inline for dark mode
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
+    paddingHorizontal: layout.marginCompact,
+    paddingVertical: space.sm,
+    minHeight: layout.rowMinHeight,
+    backgroundColor: t.surface.header,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.divider,
   },
   headerTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    // color applied inline for dark mode
+    ...typography.title3,
+    fontWeight: fontWeight.bold,
+    color: t.text.primary,
+    flexShrink: 1,
   },
   headerActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
   },
+  iconButton: {
+    width: touchTarget,
+    height: touchTarget,
+    margin: 0,
+  },
+  // Create action: brand.fill circle, kept at the minimum touch size
   addBtn: {
-    borderRadius: 20,
-    marginRight: 8,
-    // backgroundColor applied inline for dark mode
+    width: touchTarget,
+    height: touchTarget,
+    borderRadius: radius.pill,
+    margin: 0,
+    marginRight: space.xs,
   },
   filterBtnContainer: {
-    position: 'relative',
+    position: 'relative' as const,
   },
+  // Plain count badge: brand.fill with brand.onFill (§13.5)
   filterBadge: {
-    position: 'absolute',
-    top: 4,
-    right: 4,
-    // backgroundColor applied inline for dark mode
+    position: 'absolute' as const,
+    top: space.xxs,
+    right: space.xxs,
+    backgroundColor: t.brand.fill,
+    color: t.brand.onFill,
   },
-  avatarSurface: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: 8,
-    // backgroundColor applied inline for dark mode
+  avatarButton: {
+    width: touchTarget,
+    height: touchTarget,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
   },
-  avatarText: {
-    fontSize: 14,
-    fontWeight: '600',
-    // color applied inline for dark mode
+  profileAvatar: {
+    width: layout.avatar.sm,
+    height: layout.avatar.sm,
+    borderRadius: radius.pill,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
   },
-  listContent: {
-    paddingVertical: 8,
+  profileAvatarText: {
+    ...typography.subhead,
+    fontWeight: fontWeight.semibold,
+    // Avatar initials: text.primary in light mode, white in dark mode (§3.2)
+    color: t.mode === 'dark' ? t.overlay.onImage : t.text.primary,
   },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    // backgroundColor applied inline for dark mode
-  },
-  sectionTitle: {
-    fontSize: 13,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    // color applied inline for dark mode
-  },
-  sectionBadge: {
-    borderRadius: 10,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    // backgroundColor applied inline for dark mode
-  },
-  sectionBadgeText: {
-    fontSize: 12,
-    fontWeight: '600',
-    // color applied inline for dark mode
-  },
-  footerLoader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 16,
-    gap: 8,
-  },
-  footerLoaderText: {
-    fontSize: 14,
-    // color applied inline for dark mode
-  },
-  emptyContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 32,
-  },
-  emptyIconSurface: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 24,
-    // backgroundColor applied inline for dark mode
-  },
-  emptyTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 8,
-    // color applied inline for dark mode
-  },
-  emptySubtitle: {
-    fontSize: 14,
-    textAlign: 'center',
-    marginBottom: 24,
-    // color applied inline for dark mode
-  },
-  emptyButton: {
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-    marginBottom: 12,
-    // borderColor applied inline for dark mode
-  },
-  emptyButtonPrimary: {
-    // backgroundColor, borderColor applied inline for dark mode
-  },
-  emptyButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    // color applied inline for dark mode
-  },
-  emptyButtonTextPrimary: {
-    fontSize: 14,
-    fontWeight: '600',
-    // color applied inline for dark mode
-  },
-  // E1 Fix: Error state styles
-  errorState: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 32,
-  },
-  errorTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginTop: 16,
-    marginBottom: 8,
-    // color applied inline for dark mode
-  },
-  errorMessage: {
-    fontSize: 14,
-    textAlign: 'center',
-    marginBottom: 24,
-    // color applied inline for dark mode
-  },
-  retryButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 8,
-    gap: 8,
-    // backgroundColor applied inline for dark mode
-  },
-  retryButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    // color applied inline for dark mode
-  },
-  skeletonCard: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    borderRadius: 12,
-    marginHorizontal: 16,
-    marginVertical: 6,
-    padding: 16,
-    // backgroundColor applied inline for dark mode
-  },
-  skeletonBadge: {
-    width: 50,
-    height: 30,
-    borderRadius: 8,
-    marginRight: 12,
-    // backgroundColor applied inline for dark mode
-  },
-  skeletonContent: {
-    flex: 1,
-  },
-  skeletonTitle: {
-    width: '60%',
-    height: 16,
-    borderRadius: 4,
-    marginBottom: 8,
-    // backgroundColor applied inline for dark mode
-  },
-  skeletonSubtitle: {
-    width: '40%',
-    height: 12,
-    borderRadius: 4,
-    // backgroundColor applied inline for dark mode
-  },
-  skeletonAmount: {
-    width: 70,
-    height: 24,
-    borderRadius: 4,
-    // backgroundColor applied inline for dark mode
-  },
-  snackbar: {
-    marginBottom: 80,
-  },
-  // Filter chips styles
+  // Applied filters bar (§13.5)
   filterChipsContainer: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
+    paddingHorizontal: layout.marginCompact,
+    paddingVertical: space.md,
+    backgroundColor: t.surface.header,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.separator,
   },
   filterChipsHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'center' as const,
+    marginBottom: space.sm,
   },
   filterCountBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.s6,
   },
   filterCountText: {
-    fontSize: 12,
-    fontWeight: '600',
+    ...typography.footnote,
+    fontWeight: fontWeight.semibold,
+    color: t.text.secondary,
+  },
+  clearAllButton: {
+    minHeight: touchTarget,
+    justifyContent: 'center' as const,
+    paddingHorizontal: space.sm,
   },
   clearAllText: {
-    fontSize: 12,
-    fontWeight: '600',
+    ...typography.footnote,
+    fontWeight: fontWeight.semibold,
+    color: t.brand.tint,
   },
   filterChipsList: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
+    flexDirection: 'row' as const,
+    flexWrap: 'wrap' as const,
+    gap: space.sm,
   },
   filterChip: {
-    height: 32,
-    paddingVertical: 0,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    maxWidth: '100%' as const,
+    minHeight: space.xxxl,
+    borderRadius: radius.pill,
+    paddingHorizontal: space.md,
+    paddingVertical: space.s6,
+    gap: space.s6,
+    backgroundColor: t.brand.subtle,
+  },
+  filterChipPressed: {
+    backgroundColor: t.brand.subtleStrong,
   },
   filterChipText: {
-    fontSize: 12,
-    lineHeight: 16,
+    ...typography.caption1,
+    fontWeight: fontWeight.semibold,
+    color: t.brand.tint,
+    flexShrink: 1,
+  },
+  listContent: {
+    paddingVertical: space.sm,
+  },
+  // Section header: footnote, capitals, text.secondary, letter spacing 0.5 (§4, §13.6)
+  sectionHeader: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
+    paddingHorizontal: layout.marginCompact,
+    paddingVertical: space.sm,
+    backgroundColor: t.background.base,
+  },
+  sectionTitle: {
+    ...typography.footnote,
+    fontWeight: fontWeight.semibold,
+    textTransform: 'uppercase' as const,
+    letterSpacing: 0.5,
+    color: t.text.secondary,
+  },
+  // Plain count: neutral tag
+  sectionBadge: {
+    borderRadius: radius.pill,
+    paddingHorizontal: space.sm,
+    paddingVertical: space.xxs,
+    backgroundColor: t.status.neutral.background,
+  },
+  sectionCount: {
+    ...typography.caption1,
+    fontWeight: fontWeight.semibold,
+    fontVariant: ['tabular-nums' as const],
+    color: t.status.neutral.text,
+  },
+  footerLoader: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    padding: space.lg,
+    gap: space.sm,
+  },
+  footerLoaderText: {
+    ...typography.footnote,
+    color: t.text.secondary,
+  },
+  // Empty and error states (§13.6)
+  emptyContainer: {
+    flex: 1,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    padding: space.xxxl,
+    gap: space.sm,
+  },
+  emptyTitle: {
+    ...typography.title3,
+    color: t.text.primary,
+    textAlign: 'center' as const,
+    marginTop: space.lg,
+  },
+  emptySubtitle: {
+    ...typography.subhead,
+    color: t.text.secondary,
+    textAlign: 'center' as const,
+    marginBottom: space.lg,
+    maxWidth: 320,
+  },
+  errorState: {
+    flex: 1,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    padding: space.xxxl,
+    gap: space.sm,
+  },
+  errorTitle: {
+    ...typography.title3,
+    color: t.text.primary,
+    textAlign: 'center' as const,
+    marginTop: space.lg,
+  },
+  errorMessage: {
+    ...typography.subhead,
+    color: t.text.secondary,
+    textAlign: 'center' as const,
+    marginBottom: space.lg,
+    maxWidth: 320,
+  },
+  // Primary button (§13.1)
+  primaryButton: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    minHeight: touchTarget,
+    minWidth: 120,
+    paddingHorizontal: space.xxl,
+    paddingVertical: space.sm,
+    borderRadius: radius.button,
+    backgroundColor: t.brand.fill,
+    gap: space.sm,
+  },
+  primaryButtonPressed: {
+    backgroundColor: t.brand.fillPressed,
+  },
+  primaryButtonText: {
+    ...typography.callout,
+    color: t.brand.onFill,
+  },
+  // Secondary button: outline border.button, label brand.tint, pressed brand.subtle (§13.1, §10)
+  secondaryButton: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    minHeight: touchTarget,
+    minWidth: 120,
+    paddingHorizontal: space.xxl,
+    paddingVertical: space.sm,
+    borderRadius: radius.button,
+    borderWidth: 1,
+    borderColor: t.border.button,
+    gap: space.sm,
+  },
+  secondaryButtonPressed: {
+    backgroundColor: t.brand.subtle,
+  },
+  secondaryButtonText: {
+    ...typography.callout,
+    color: t.brand.tint,
+  },
+  // Snackbar: inverse surface (§13.9)
+  snackbar: {
+    marginBottom: 80,
+    backgroundColor: t.surface.inverse,
+    borderRadius: radius.button,
+    ...t.shadow[3],
   },
 });
 

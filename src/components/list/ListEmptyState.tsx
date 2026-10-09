@@ -1,76 +1,25 @@
 /**
  * ListEmptyState - Reusable empty state component for list views
  *
- * SAP Fiori Design System - Empty State Component
+ * Centred: icon (iconSize.hero, icon.secondary), title in title3, subtitle in
+ * subhead text.secondary, and an optional action (docs/STYLE_GUIDE.md §13.6).
+ * "No data yet" and "no match for the filters" have separate wording; the
+ * filtered state can offer "Clear filters".
  *
  * Used by GRNListFiori, DispatchListFiori, OrderListFiori, InvoiceListFiori
- * Provides consistent empty state UI across the app.
  */
 
 import React, { memo } from 'react';
-import { View, Text, StyleSheet, Pressable, Platform } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { listColors } from '@/theme/listColors';
-
-// ============================================================================
-// SAP Fiori Design Constants
-// ============================================================================
-const FIORI = {
-  // Container
-  container: {
-    padding: 24,
-  },
-  // Illustration
-  illustration: {
-    size: 120,
-    containerSize: 120,
-    iconSize: 64,
-  },
-  // Typography
-  typography: {
-    title: { fontSize: 20, fontWeight: '600' as const, lineHeight: 28 },
-    description: { fontSize: 14, fontWeight: '400' as const, lineHeight: 20 },
-  },
-  // Spacing
-  spacing: {
-    illustrationToTitle: 24,
-    titleToDescription: 8,
-    descriptionToAction: 24,
-  },
-  // Button
-  button: {
-    height: 44,
-    borderRadius: 8,
-    minWidth: 160,
-    fontSize: 15,
-    fontWeight: '600' as const,
-  },
-} as const;
-
-// Icon mapping from MaterialCommunityIcons to Ionicons
-const ICON_MAP: Record<string, keyof typeof Ionicons.glyphMap> = {
-  'package-variant-closed': 'cube-outline',
-  'package-variant': 'cube-outline',
-  'filter-remove-outline': 'filter-outline',
-  'clipboard-outline': 'clipboard-outline',
-  'truck-delivery': 'car-outline',
-  'receipt': 'receipt-outline',
-  'package': 'cube-outline',
-  'cloud-off-outline': 'cloud-offline-outline',
-  'magnify': 'search-outline',
-  'lock-outline': 'lock-closed-outline',
-  'plus': 'add',
-  'alert-circle-outline': 'alert-circle-outline',
-  'account': 'person-outline',
-  'account-group-outline': 'people-outline',
-  'file-document': 'document-outline',
-  'file-document-outline': 'document-outline',
-};
+import { View, Text, Pressable } from 'react-native';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { fontWeight, iconSize, layout, radius, space, touchTarget, typography } from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
 
 export interface ListEmptyStateProps {
   /** Number of active filters (affects messaging) */
   activeFilterCount: number;
-  /** Icon to show when no filters applied (Ionicons name or MaterialCommunityIcons name for compat) */
+  /** Icon to show when no filters applied (MaterialCommunityIcons name; Ionicons names still work) */
   emptyIcon?: string;
   /** Icon to show when filters are active but no results */
   filteredIcon?: string;
@@ -86,11 +35,91 @@ export interface ListEmptyStateProps {
   showCreateButton?: boolean;
   /** Create button label */
   createButtonLabel?: string;
-  /** Create button icon (Ionicons name) */
+  /** Create button icon (MaterialCommunityIcons name; Ionicons names still work) */
   createButtonIcon?: string;
   /** Called when create button pressed */
   onCreatePress?: () => void;
+  /** Called by the "Clear filters" button shown when filters hide every item */
+  onClearFilters?: () => void;
+  /** Label of the clear-filters button */
+  clearFiltersLabel?: string;
 }
+
+type GlyphMap = Record<string, unknown> | undefined;
+
+/** Render a glyph from MaterialCommunityIcons, falling back to Ionicons for older names. */
+function Glyph({ name, size, color }: { name: string; size: number; color: string }) {
+  const mci = (MaterialCommunityIcons as unknown as { glyphMap?: GlyphMap }).glyphMap;
+  const ion = (Ionicons as unknown as { glyphMap?: GlyphMap }).glyphMap;
+  if (mci && !(name in mci) && ion && name in ion) {
+    return <Ionicons name={name as keyof typeof Ionicons.glyphMap} size={size} color={color} />;
+  }
+  return (
+    <MaterialCommunityIcons
+      name={name as keyof typeof MaterialCommunityIcons.glyphMap}
+      size={size}
+      color={color}
+    />
+  );
+}
+
+const makeStyles = (t: ThemeTokens) => ({
+  container: {
+    flex: 1,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    padding: space.xxl,
+  },
+  icon: {
+    marginBottom: space.lg,
+  },
+  title: {
+    ...typography.title3,
+    color: t.text.primary,
+    textAlign: 'center' as const,
+    marginBottom: space.sm,
+  },
+  description: {
+    ...typography.subhead,
+    color: t.text.secondary,
+    textAlign: 'center' as const,
+    marginBottom: space.xxl,
+    maxWidth: layout.maxFormWidth,
+  },
+  button: {
+    minHeight: touchTarget,
+    minWidth: 160,
+    borderRadius: radius.button,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    gap: space.sm,
+    paddingHorizontal: space.xxl,
+  },
+  primaryButton: {
+    backgroundColor: t.brand.fill,
+  },
+  primaryButtonPressed: {
+    backgroundColor: t.brand.fillPressed,
+  },
+  primaryButtonText: {
+    ...typography.callout,
+    fontWeight: fontWeight.semibold,
+    color: t.brand.onFill,
+  },
+  secondaryButton: {
+    borderWidth: 1,
+    borderColor: t.border.button,
+  },
+  secondaryButtonPressed: {
+    backgroundColor: t.brand.subtle,
+  },
+  secondaryButtonText: {
+    ...typography.callout,
+    fontWeight: fontWeight.semibold,
+    color: t.brand.tint,
+  },
+});
 
 export const ListEmptyState = memo<ListEmptyStateProps>(({
   activeFilterCount,
@@ -98,67 +127,57 @@ export const ListEmptyState = memo<ListEmptyStateProps>(({
   filteredIcon = 'filter-remove-outline',
   emptyTitle = 'No items yet',
   filteredTitle = 'No matching items',
-  emptySubtitle = 'Create your first item to get started',
-  filteredSubtitle = 'Try adjusting your filters to see more results',
+  emptySubtitle = 'Items you create appear here.',
+  filteredSubtitle = 'Nothing matches the filters. Try removing some filters.',
   showCreateButton = false,
   createButtonLabel = 'Create',
   createButtonIcon = 'plus',
   onCreatePress,
+  onClearFilters,
+  clearFiltersLabel = 'Clear filters',
 }) => {
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
   const hasFilters = activeFilterCount > 0;
 
-  // Map icon name to Ionicons if needed
-  const getIconName = (icon: string): keyof typeof Ionicons.glyphMap => {
-    return (ICON_MAP[icon] || icon) as keyof typeof Ionicons.glyphMap;
-  };
-
-  const iconName = getIconName(hasFilters ? filteredIcon : emptyIcon);
-  const buttonIconName = getIconName(createButtonIcon);
+  const title = hasFilters ? filteredTitle : emptyTitle;
+  const subtitle = hasFilters ? filteredSubtitle : emptySubtitle;
 
   return (
-    <View
-      style={styles.container}
-      accessible={true}
-      accessibilityLabel={`${hasFilters ? filteredTitle : emptyTitle}. ${hasFilters ? filteredSubtitle : emptySubtitle}`}
-    >
-      {/* Illustration - Decorative, hidden from screen readers */}
-      <View style={styles.iconContainer} accessible={false}>
-        <Ionicons
-          name={iconName}
-          size={FIORI.illustration.iconSize}
-          color={listColors.textSecondary}
-        />
+    <View style={styles.container}>
+      {/* Illustration - decorative, hidden from screen readers */}
+      <View style={styles.icon} accessible={false} importantForAccessibility="no-hide-descendants">
+        <Glyph name={hasFilters ? filteredIcon : emptyIcon} size={iconSize.hero} color={t.icon.secondary} />
       </View>
 
-      {/* Title */}
       <Text style={styles.title} accessibilityRole="header">
-        {hasFilters ? filteredTitle : emptyTitle}
+        {title}
       </Text>
 
-      {/* Description */}
-      <Text style={styles.description}>
-        {hasFilters ? filteredSubtitle : emptySubtitle}
-      </Text>
+      <Text style={styles.description}>{subtitle}</Text>
 
-      {/* Action Button - Fiori Primary style */}
+      {/* No data yet: optional primary create action */}
       {showCreateButton && !hasFilters && onCreatePress && (
         <Pressable
-          style={({ pressed }) => [
-            styles.button,
-            pressed && styles.buttonPressed,
-          ]}
+          style={({ pressed }) => [styles.button, styles.primaryButton, pressed && styles.primaryButtonPressed]}
           onPress={onCreatePress}
           accessibilityRole="button"
           accessibilityLabel={createButtonLabel}
-          accessibilityHint={`Tap to ${createButtonLabel.toLowerCase()}`}
         >
-          <Ionicons
-            name={buttonIconName}
-            size={20}
-            color={listColors.white}
-            style={styles.buttonIcon}
-          />
-          <Text style={styles.buttonText}>{createButtonLabel}</Text>
+          <Glyph name={createButtonIcon} size={iconSize.md} color={t.brand.onFill} />
+          <Text style={styles.primaryButtonText}>{createButtonLabel}</Text>
+        </Pressable>
+      )}
+
+      {/* Filtered to nothing: clear the filters */}
+      {hasFilters && onClearFilters && (
+        <Pressable
+          style={({ pressed }) => [styles.button, styles.secondaryButton, pressed && styles.secondaryButtonPressed]}
+          onPress={onClearFilters}
+          accessibilityRole="button"
+          accessibilityLabel={clearFiltersLabel}
+        >
+          <Text style={styles.secondaryButtonText}>{clearFiltersLabel}</Text>
         </Pressable>
       )}
     </View>
@@ -166,86 +185,5 @@ export const ListEmptyState = memo<ListEmptyStateProps>(({
 });
 
 ListEmptyState.displayName = 'ListEmptyState';
-
-// ============================================================================
-// Styles - SAP Fiori Design System
-// ============================================================================
-const styles = StyleSheet.create({
-  // Container - Fiori Empty State layout
-  container: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: FIORI.container.padding,
-  },
-
-  // Illustration Container - 120x120pt per spec
-  iconContainer: {
-    width: FIORI.illustration.containerSize,
-    height: FIORI.illustration.containerSize,
-    borderRadius: FIORI.illustration.containerSize / 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: listColors.gray100,
-    marginBottom: FIORI.spacing.illustrationToTitle,
-  },
-
-  // Title - 20pt Semibold
-  title: {
-    fontSize: FIORI.typography.title.fontSize,
-    fontWeight: FIORI.typography.title.fontWeight,
-    lineHeight: FIORI.typography.title.lineHeight,
-    color: listColors.textPrimary,
-    textAlign: 'center',
-    marginBottom: FIORI.spacing.titleToDescription,
-  },
-
-  // Description - 14pt Regular
-  description: {
-    fontSize: FIORI.typography.description.fontSize,
-    fontWeight: FIORI.typography.description.fontWeight,
-    lineHeight: FIORI.typography.description.lineHeight,
-    color: listColors.textSecondary,
-    textAlign: 'center',
-    marginBottom: FIORI.spacing.descriptionToAction,
-    maxWidth: 320, // Constrain for readability
-  },
-
-  // Button - Fiori Primary Tint style
-  button: {
-    height: FIORI.button.height,
-    minWidth: FIORI.button.minWidth,
-    borderRadius: FIORI.button.borderRadius,
-    backgroundColor: listColors.primary,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 24,
-    // Platform-specific shadows
-    ...Platform.select({
-      ios: {
-        shadowColor: listColors.primary,
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.3,
-        shadowRadius: 4,
-      },
-      android: {
-        elevation: 4,
-      },
-    }),
-  },
-  buttonPressed: {
-    opacity: 0.9,
-    transform: [{ scale: 0.98 }],
-  },
-  buttonIcon: {
-    marginRight: 8,
-  },
-  buttonText: {
-    fontSize: FIORI.button.fontSize,
-    fontWeight: FIORI.button.fontWeight,
-    color: listColors.white,
-  },
-});
 
 export default ListEmptyState;
