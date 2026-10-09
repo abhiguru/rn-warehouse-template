@@ -3,7 +3,7 @@
  * or reject it. Style guide §14.8 step 4 and §13.6 object cells.
  */
 import React, { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router, Stack } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -28,6 +28,7 @@ import {
   reviewEnrollment,
 } from '@/services/enrollmentReviewService';
 
+import { showAlert } from '@/utils/alert';
 /** "+919876543210" -> "+91 98765 43210" (style guide §12.3). */
 const formatMobile = (mobile: string) => {
   const match = /^\+?91(\d{5})(\d{5})$/.exec(mobile.replace(/\s/g, ''));
@@ -76,11 +77,11 @@ export default function EnrollmentReviewScreen() {
     const profile = pending.find(item => item.id === selectedUser);
     if (!profile) return;
     if (decision === 'approved' && selectedCustomers.length === 0) {
-      Alert.alert('Choose a customer', 'Select at least one customer this person can see before you approve.');
+      showAlert('Choose a customer', 'Select at least one customer this person can see before you approve.');
       return;
     }
     const name = profile.display_name || profile.name;
-    Alert.alert(
+    showAlert(
       decision === 'approved' ? `Approve ${name}?` : `Reject ${name}?`,
       decision === 'approved'
         ? `${name} can sign in and see orders for ${customerCount(selectedCustomers.length)}.`
@@ -98,7 +99,7 @@ export default function EnrollmentReviewScreen() {
               setPending(enrollments);
               setCustomers(available);
             } catch {
-              Alert.alert("Couldn't save the decision", 'Check your connection and try again.');
+              showAlert("Couldn't save the decision", 'Check your connection and try again.');
             } finally { setBusy(false); }
           })();
         } },

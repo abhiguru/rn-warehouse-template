@@ -14,7 +14,6 @@ import {
   RefreshControl,
   Pressable,
   ActivityIndicator,
-  Alert,
   Vibration,
 } from 'react-native';
 import { useIsFocused } from '@react-navigation/native';
@@ -39,6 +38,7 @@ import {
   type ThemeTokens,
 } from '@/theme/tokens';
 
+import { showAlert } from '@/utils/alert';
 // =============================================================================
 // TYPES
 // =============================================================================
@@ -163,7 +163,7 @@ export default function CustomersScreen() {
           }));
         } else {
           // Show error to user
-          Alert.alert(
+          showAlert(
             currentActive ? "Couldn't deactivate the customer" : "Couldn't activate the customer",
             result.message || 'Try again in a moment.',
             [{ text: 'OK' }]
@@ -171,7 +171,7 @@ export default function CustomersScreen() {
         }
       } catch (error) {
         console.error('[Customers] Toggle active error:', error);
-        Alert.alert("Couldn't update the customer", 'Check your connection and try again.', [{ text: 'OK' }]);
+        showAlert("Couldn't update the customer", 'Check your connection and try again.', [{ text: 'OK' }]);
       }
     },
     []

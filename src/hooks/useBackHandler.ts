@@ -14,10 +14,11 @@
  */
 
 import { useEffect, useCallback } from 'react';
-import { BackHandler, Alert, Platform } from 'react-native';
+import { BackHandler, Platform } from 'react-native';
 import { useRouter, Href } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 
+import { showAlert } from '@/utils/alert';
 export interface BackHandlerOptions {
   /**
    * Whether the handler is enabled
@@ -133,7 +134,7 @@ export function useBackHandler(options: BackHandlerOptions = {}): void {
 
     // Handle unsaved changes confirmation
     if (hasUnsavedChanges) {
-      Alert.alert(
+      showAlert(
         confirmationTitle,
         confirmationMessage,
         [

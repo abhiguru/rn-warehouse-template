@@ -1,11 +1,12 @@
 import React, { useCallback } from 'react';
-import { View, Text, Pressable, Alert } from 'react-native';
+import { View, Text, Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { iconSize, layout, radius, space, touchTarget, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 
+import { showAlert } from '@/utils/alert';
 export interface GRNFormHeaderProps {
   title: string; // e.g., "Create GRN"
   onCancel: () => void; // Called after user confirms cancellation
@@ -74,7 +75,7 @@ export default function GRNFormHeader({
 
   const handleCancelPress = useCallback(() => {
     if (confirmCancel) {
-      Alert.alert(
+      showAlert(
         'Discard this GRN?',
         cancelMessage,
         [

@@ -9,7 +9,6 @@ import {
   StyleSheet,
   Pressable,
   ScrollView,
-  Alert,
   Modal,
   ActivityIndicator,
 } from 'react-native';
@@ -31,6 +30,7 @@ import {
   type ThemeTokens,
 } from '@/theme/tokens';
 
+import { showAlert } from '@/utils/alert';
 const UserProfileScreen: React.FC = () => {
   const dispatch = useAppDispatch();
   const { user, userProfile } = useAppSelector((state) => state.auth);
@@ -50,7 +50,7 @@ const UserProfileScreen: React.FC = () => {
       await dispatch(logout()).unwrap();
       router.replace('/login');
     } catch {
-      Alert.alert("Couldn't sign out", 'Check your connection and try again.');
+      showAlert("Couldn't sign out", 'Check your connection and try again.');
       setShowLogoutModal(false);
     } finally {
       setLoggingOut(false);

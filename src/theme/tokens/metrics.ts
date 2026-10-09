@@ -78,6 +78,8 @@ export const radius = {
 export const touchTarget = Platform.OS === 'ios' ? 44 : 48;
 
 export const iconSize = {
+  /** Inside caption-sized tags and badges. */
+  xs: 12,
   sm: 16,
   md: 20,
   lg: 24,

@@ -9,16 +9,15 @@
 import React, { useState, useRef, useCallback, useMemo } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import {
-    View,
-    Text,
-    StyleSheet,
-    TextInput,
-    Pressable,
-    Alert,
-    Platform,
-    Vibration,
-    Keyboard,
-    ActivityIndicator,
+  View,
+  Text,
+  StyleSheet,
+  TextInput,
+  Pressable,
+  Platform,
+  Vibration,
+  Keyboard,
+  ActivityIndicator,
 } from 'react-native';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -53,6 +52,7 @@ import { DISPATCH_STEPS, DISPATCH_STEP_NUMBERS, getDispatchCompletedSteps } from
 import { getUserFriendlyError } from '@/utils/errorHandler';
 import { areAllAvailableLotsAlreadyAdded } from '@/features/dispatch/utils/lotAvailability';
 
+import { showAlert } from '@/utils/alert';
 type DispatchItemsStepProps = {
     mode: 'create' | 'edit';
 };
@@ -192,7 +192,7 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
                 const result = await getGRNDetailByNumber(grn.gr_no, true);
 
                 if (!result.success || !result.data) {
-                    Alert.alert("Couldn't load the GRN", 'Check your connection and try again.');
+                    showAlert("Couldn't load the GRN", 'Check your connection and try again.');
                     return;
                 }
 
@@ -270,7 +270,7 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
                 });
             } catch (error) {
                 console.error('[DispatchItemsStep] Error loading GRN:', error);
-                Alert.alert("Couldn't load the GRN", getUserFriendlyError('grn', 'load'));
+                showAlert("Couldn't load the GRN", getUserFriendlyError('grn', 'load'));
             } finally {
                 setIsLoadingGRN(false);
             }
@@ -411,7 +411,7 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
 
             if (!validation.isValid) {
                 setValidationErrors(validation.errors);
-                Alert.alert('Check the item', 'Fix the fields marked in red, then try again.');
+                showAlert('Check the item', 'Fix the fields marked in red, then try again.');
                 return;
             }
 
@@ -423,7 +423,7 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
             const duplicateCheck = checkDuplicateLots(allItems);
 
             if (duplicateCheck.hasDuplicates) {
-                Alert.alert(
+                showAlert(
                     'Lot already added',
                     'This lot is already in the dispatch. Each lot can be dispatched once.'
                 );
@@ -552,7 +552,7 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
         const validation = await validateSingleItem(currentItem);
         if (!validation.isValid) {
             setShowUnsavedEditDialog(false);
-            Alert.alert('Check the item', 'Fix the fields marked in red before you save.');
+            showAlert('Check the item', 'Fix the fields marked in red before you save.');
             return;
         }
         setShowUnsavedEditDialog(false);
@@ -633,7 +633,7 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
         const isEditing = editingItemId !== null;
 
         if (savedItems.length === 0 && !isCurrentItemValid) {
-            Alert.alert('Add an item first', 'Add at least one item before you continue.');
+            showAlert('Add an item first', 'Add at least one item before you continue.');
             return;
         }
 
@@ -642,7 +642,7 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
 
             if (!validation.isValid) {
                 setValidationErrors(validation.errors);
-                Alert.alert('Check the item', 'Fix the fields marked in red, then try again.');
+                showAlert('Check the item', 'Fix the fields marked in red, then try again.');
                 return;
             }
 
@@ -653,7 +653,7 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
             const duplicateCheck = checkDuplicateLots(allItems);
 
             if (duplicateCheck.hasDuplicates) {
-                Alert.alert(
+                showAlert(
                     'Lot already added',
                     'This lot is already in the dispatch. Each lot can be dispatched once.'
                 );

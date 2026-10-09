@@ -6,7 +6,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { View, Alert, Text, Pressable } from 'react-native';
+import { View, Text, Pressable } from 'react-native';
 import { DetailSkeleton } from '@/components/skeletons';
 import { useLocalSearchParams, router, Stack } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -41,6 +41,7 @@ import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { iconSize, layout, radius, space, touchTarget, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 
+import { showAlert } from '@/utils/alert';
 // ============================================================================
 // STYLES
 // ============================================================================
@@ -136,7 +137,7 @@ function InvoiceDetailScreen() {
       if (result.success && result.data) {
         setData(result.data);
       } else {
-        Alert.alert("Couldn't load invoice", parseErrorToFriendly(result.error || result.message, 'Invoice'));
+        showAlert("Couldn't load invoice", parseErrorToFriendly(result.error || result.message, 'Invoice'));
         return;
       }
 
@@ -154,7 +155,7 @@ function InvoiceDetailScreen() {
       }
     } catch (error) {
       console.error('[InvoiceDetailScreen] Exception:', error);
-      Alert.alert("Couldn't load invoice", getUserFriendlyError('invoice', 'load'));
+      showAlert("Couldn't load invoice", getUserFriendlyError('invoice', 'load'));
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -195,7 +196,7 @@ function InvoiceDetailScreen() {
     const invoiceNumber = data.header.invoice_number;
     const customerName = data.header.customer?.name || data.header.invoice_customer_name;
 
-    Alert.alert(
+    showAlert(
       `Delete invoice ${invoiceNumber}?`,
       `Invoice ${invoiceNumber}${customerName ? ` for ${customerName}` : ''} will be deleted. This can't be undone.`,
       [
@@ -209,7 +210,7 @@ function InvoiceDetailScreen() {
               const result = await deleteInvoice(invoiceId);
 
               if (result.success) {
-                Alert.alert(
+                showAlert(
                   `Invoice ${invoiceNumber} deleted.`,
                   undefined,
                   [
@@ -222,11 +223,11 @@ function InvoiceDetailScreen() {
                   ]
                 );
               } else {
-                Alert.alert("Couldn't delete invoice", parseErrorToFriendly(result.error, 'Invoice'));
+                showAlert("Couldn't delete invoice", parseErrorToFriendly(result.error, 'Invoice'));
               }
             } catch (error) {
               console.error('[InvoiceDetailScreen] Delete error:', error);
-              Alert.alert("Couldn't delete invoice", getUserFriendlyError('invoice', 'delete'));
+              showAlert("Couldn't delete invoice", getUserFriendlyError('invoice', 'delete'));
             } finally {
               setIsDeleting(false);
             }
@@ -245,7 +246,7 @@ function InvoiceDetailScreen() {
     const shareError = "Couldn't share the invoice PDF. Check your connection and try again.";
 
     if (!invoiceNo || !finYear) {
-      Alert.alert("Couldn't share invoice", 'This invoice is missing its number or financial year. Reload it and try again.');
+      showAlert("Couldn't share invoice", 'This invoice is missing its number or financial year. Reload it and try again.');
       return;
     }
 
@@ -262,7 +263,7 @@ function InvoiceDetailScreen() {
       const pdfResult = await generateInvoicePDF(invoiceNo, finYearNum);
 
       if (!pdfResult.success || !pdfResult.pdfUrl) {
-        Alert.alert("Couldn't share invoice", shareError);
+        showAlert("Couldn't share invoice", shareError);
         return;
       }
 
@@ -275,11 +276,11 @@ function InvoiceDetailScreen() {
       );
 
       if (!shareResult.success) {
-        Alert.alert("Couldn't share invoice", shareError);
+        showAlert("Couldn't share invoice", shareError);
       }
     } catch (error) {
       console.error('[InvoiceDetailScreen] Share PDF error:', error);
-      Alert.alert("Couldn't share invoice", shareError);
+      showAlert("Couldn't share invoice", shareError);
     } finally {
       setIsShareLoading(false);
     }

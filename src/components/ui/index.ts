@@ -53,3 +53,9 @@ export type { SectionHeaderProps, SectionFooterProps } from './SectionHeader';
 
 export { DatePickerInput } from './DatePickerInput';
 export type { DatePickerInputProps } from './DatePickerInput';
+
+export { StatusTag, STATUS_ICONS } from './StatusTag';
+export type { StatusTagProps, StatusKind } from './StatusTag';
+
+export { Avatar } from './Avatar';
+export type { AvatarProps } from './Avatar';

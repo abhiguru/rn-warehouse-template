@@ -16,6 +16,7 @@ import { loadInvoiceData } from '@/features/invoice/services/invoiceFormService'
 import { InvoiceHeaderData } from '@/types/invoice.types';
 import { Alert } from 'react-native';
 
+import { showAlert } from '@/utils/alert';
 export default function InvoiceEditLayout() {
   const dispatch = useAppDispatch();
   const navigation = useNavigation();
@@ -49,7 +50,7 @@ export default function InvoiceEditLayout() {
   useEffect(() => {
     const initializeEdit = async () => {
       if (!id) {
-        Alert.alert("Couldn't open the invoice", 'The invoice link is incomplete. Open the invoice again from the list.');
+        showAlert("Couldn't open the invoice", 'The invoice link is incomplete. Open the invoice again from the list.');
         router.back();
         return;
       }
@@ -93,13 +94,13 @@ export default function InvoiceEditLayout() {
             grId: result.data.header.gr_id || '',
           }));
         } else {
-          Alert.alert("Couldn't load the invoice", result.message || 'Check your connection and try again.');
+          showAlert("Couldn't load the invoice", result.message || 'Check your connection and try again.');
           router.back();
         }
       } catch (error) {
         if (mountedRef.current && loadingIdRef.current === id) {
           console.error('[InvoiceEditLayout] Failed to load invoice data:', error);
-          Alert.alert("Couldn't load the invoice", 'Check your connection and try again.');
+          showAlert("Couldn't load the invoice", 'Check your connection and try again.');
           router.back();
         }
       } finally {

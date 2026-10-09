@@ -13,7 +13,6 @@ import {
   Pressable,
   StyleSheet,
   TextInput,
-  Alert,
   BackHandler,
 } from 'react-native';
 import {
@@ -44,6 +43,7 @@ import { GRNItemBottomSheet } from './GRNItemBottomSheet';
 import { LotBottomSheet } from './LotBottomSheet';
 import { createLogger } from '@/utils/logger';
 
+import { showAlert } from '@/utils/alert';
 const addItemBottomSheetLogger = createLogger('AddItemBottomSheet');
 
 interface AddItemBottomSheetProps {
@@ -358,7 +358,7 @@ export const AddItemBottomSheet: React.FC<AddItemBottomSheetProps> = ({
 
         if (!result.success || !result.data) {
           addItemBottomSheetLogger.error('[AddItemBottomSheet] GRN load failed:', result.error);
-          Alert.alert("Couldn't load the GRN", 'Check your connection and try again.');
+          showAlert("Couldn't load the GRN", 'Check your connection and try again.');
           return;
         }
 
@@ -387,7 +387,7 @@ export const AddItemBottomSheet: React.FC<AddItemBottomSheetProps> = ({
         });
       } catch (err) {
         addItemBottomSheetLogger.error('[AddItemBottomSheet] Error loading GRN:', err);
-        Alert.alert("Couldn't load the GRN", 'Check your connection and try again.');
+        showAlert("Couldn't load the GRN", 'Check your connection and try again.');
       } finally {
         setIsLoadingGRN(false);
       }
@@ -484,7 +484,7 @@ export const AddItemBottomSheet: React.FC<AddItemBottomSheetProps> = ({
 
     if (!validation.isValid) {
       setValidationErrors(validation.errors);
-      Alert.alert('Check the item', 'Fix the fields marked in red, then try again.');
+      showAlert('Check the item', 'Fix the fields marked in red, then try again.');
       return;
     }
 
@@ -493,7 +493,7 @@ export const AddItemBottomSheet: React.FC<AddItemBottomSheetProps> = ({
     const duplicateCheck = checkDuplicateLots(allItems);
 
     if (duplicateCheck.hasDuplicates) {
-      Alert.alert(
+      showAlert(
         'Lot already added',
         'This lot is already in the dispatch. Each lot can be dispatched once.'
       );
@@ -515,7 +515,7 @@ export const AddItemBottomSheet: React.FC<AddItemBottomSheetProps> = ({
 
     if (!validation.isValid) {
       setValidationErrors(validation.errors);
-      Alert.alert('Check the item', 'Fix the fields marked in red, then try again.');
+      showAlert('Check the item', 'Fix the fields marked in red, then try again.');
       return;
     }
 
@@ -523,7 +523,7 @@ export const AddItemBottomSheet: React.FC<AddItemBottomSheetProps> = ({
     const duplicateCheck = checkDuplicateLots(allItems);
 
     if (duplicateCheck.hasDuplicates) {
-      Alert.alert(
+      showAlert(
         'Lot already added',
         'This lot is already in the dispatch. Each lot can be dispatched once.'
       );

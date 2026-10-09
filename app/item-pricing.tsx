@@ -6,7 +6,6 @@ import {
   FlatList,
   StyleSheet,
   RefreshControl,
-  Alert,
   Pressable,
   LayoutAnimation,
   ActivityIndicator,
@@ -39,6 +38,7 @@ import { ListEmptyState } from '@/components/list/ListEmptyState';
 import { ListSkeletonCard } from '@/components/list/ListSkeletonCard';
 import { createLogger } from '@/utils/logger';
 
+import { showAlert } from '@/utils/alert';
 const itemPricingScreenLogger = createLogger('ItemPricingScreen');
 
 // Section type for grouped pricing data
@@ -290,7 +290,7 @@ const ItemPricingScreen: React.FC = () => {
             success: result.success,
             message: errorMsg
           });
-          Alert.alert("Couldn't load prices", errorMsg);
+          showAlert("Couldn't load prices", errorMsg);
         }
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : String(err);
@@ -299,7 +299,7 @@ const ItemPricingScreen: React.FC = () => {
           error: errorMessage,
           type: typeof err
         });
-        Alert.alert("Couldn't load prices", 'Check your connection and try again.');
+        showAlert("Couldn't load prices", 'Check your connection and try again.');
       } finally {
         const totalDuration = Date.now() - startTime;
         itemPricingScreenLogger.info(`[${fetchId}] === TOTAL LOAD TIME: ${totalDuration}ms ===`);
@@ -331,12 +331,12 @@ const ItemPricingScreen: React.FC = () => {
         setDeleteDialogVisible(false);
         setPriceToDelete(null);
       } else {
-        Alert.alert("Couldn't delete the price", result.message || 'Try again in a moment.');
+        showAlert("Couldn't delete the price", result.message || 'Try again in a moment.');
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);
       itemPricingScreenLogger.error('Delete error:', { error: errorMessage, type: typeof err });
-      Alert.alert("Couldn't delete the price", 'Check your connection and try again.');
+      showAlert("Couldn't delete the price", 'Check your connection and try again.');
     } finally {
       setDeleting(false);
     }

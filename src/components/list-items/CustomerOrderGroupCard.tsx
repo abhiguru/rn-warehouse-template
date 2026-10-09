@@ -13,7 +13,6 @@ import {
   Text,
   StyleSheet,
   Pressable,
-  Alert,
   LayoutAnimation,
   ActivityIndicator,
 } from 'react-native';
@@ -37,6 +36,7 @@ import {
   type ThemeTokens,
 } from '@/theme/tokens';
 
+import { showAlert } from '@/utils/alert';
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -129,7 +129,7 @@ const CustomerOrderGroupCardContent: React.FC<CustomerOrderGroupCardProps> = ({
     if (__DEV__) console.log('[CustomerOrderGroupCard] Generate Dispatch pressed for order:', orderToDispatch.id);
 
     if (!canDispatch) {
-      Alert.alert(
+      showAlert(
         "Can't create a dispatch",
         'No items in this order have stock available. Each item needs a GRN with stock.',
         [{ text: 'OK' }]
@@ -152,7 +152,7 @@ const CustomerOrderGroupCardContent: React.FC<CustomerOrderGroupCardProps> = ({
         .map(s => `• ${s.item.grn_item?.name || 'Unknown item'}: ${s.reason}`)
         .join('\n');
 
-      Alert.alert(
+      showAlert(
         'Some items will be skipped',
         `These items can't be dispatched:\n\n${skippedNames}\n\nCreate a dispatch with ${items.length} ${items.length === 1 ? 'item' : 'items'}?`,
         [

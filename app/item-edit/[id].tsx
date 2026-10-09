@@ -14,7 +14,6 @@ import {
   Text,
   StyleSheet,
   ScrollView,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -40,6 +39,7 @@ import {
 import { itemService } from '@/services/item-service';
 import type { ItemFormData, ItemValidationErrors, Item } from '@/types/item.types';
 
+import { showAlert } from '@/utils/alert';
 const ItemEditScreen: React.FC = () => {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
@@ -100,13 +100,13 @@ const ItemEditScreen: React.FC = () => {
         });
       } else {
         console.error('[ItemEdit] Failed to load item:', result.message);
-        Alert.alert("Couldn't find this item", 'It may have been deleted.', [
+        showAlert("Couldn't find this item", 'It may have been deleted.', [
           { text: 'OK', onPress: () => router.back() },
         ]);
       }
     } catch (err) {
       console.error('[ItemEdit] Load error:', err);
-      Alert.alert("Couldn't load the item", 'Check your connection and try again.', [
+      showAlert("Couldn't load the item", 'Check your connection and try again.', [
         { text: 'OK', onPress: () => router.back() },
       ]);
     } finally {
@@ -170,7 +170,7 @@ const ItemEditScreen: React.FC = () => {
     }
 
     if (!hasChanges()) {
-      Alert.alert('Nothing to save', "You haven't changed anything.");
+      showAlert('Nothing to save', "You haven't changed anything.");
       return;
     }
 
@@ -185,7 +185,7 @@ const ItemEditScreen: React.FC = () => {
       });
 
       if (result.success) {
-        Alert.alert('Item saved', `${formData.name.trim()} has been updated.`, [
+        showAlert('Item saved', `${formData.name.trim()} has been updated.`, [
           { text: 'OK', onPress: () => router.back() },
         ]);
       } else {
@@ -197,12 +197,12 @@ const ItemEditScreen: React.FC = () => {
         ) {
           setErrors({ name: 'An item with this name already exists. Use a different name.' });
         } else {
-          Alert.alert("Couldn't save the item", result.message || 'Try again in a moment.');
+          showAlert("Couldn't save the item", result.message || 'Try again in a moment.');
         }
       }
     } catch (err) {
       console.error('[ItemEdit] Save error:', err);
-      Alert.alert("Couldn't save the item", 'Check your connection and try again.');
+      showAlert("Couldn't save the item", 'Check your connection and try again.');
     } finally {
       setSaving(false);
     }
@@ -211,7 +211,7 @@ const ItemEditScreen: React.FC = () => {
   // Handle back with unsaved changes
   const handleBack = () => {
     if (hasChanges()) {
-      Alert.alert(
+      showAlert(
         'Discard your changes?',
         'Your unsaved changes to this item will be lost.',
         [

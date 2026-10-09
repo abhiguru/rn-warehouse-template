@@ -6,7 +6,6 @@ import {
   TextInput,
   StyleSheet,
   ActivityIndicator,
-  Alert,
   BackHandler,
   Platform,
   Animated,
@@ -36,6 +35,7 @@ import { SessionRecentItemsService } from '@/services/session-recent-items-servi
 import { GRNItem, Catalog, EnhancedSearchFilters, SearchMetadata } from '@/types/order.types';
 import RecentItemsQuickAdd, { QuickAddItem } from './RecentItemsQuickAdd';
 
+import { showAlert } from '@/utils/alert';
 type StockStatus = 'positive' | 'critical' | 'negative';
 
 // Status words and icons per guide §3.5 (stock level: low stock is critical).
@@ -259,12 +259,12 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
         });
       } else {
         console.error('[ItemCatalogBrowser] Failed to load items:', result.message);
-        Alert.alert("Couldn't load items", 'Check your connection and try again.');
+        showAlert("Couldn't load items", 'Check your connection and try again.');
       }
     } catch (error) {
       if (!isCurrent()) return;
       console.error('[ItemCatalogBrowser] Error fetching items:', error);
-      Alert.alert("Couldn't load items", 'Check your connection and try again.');
+      showAlert("Couldn't load items", 'Check your connection and try again.');
     } finally {
       if (isCurrent()) setLoading(false);
     }
@@ -616,7 +616,7 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
     }));
 
     if (itemsToAdd.length === 0) {
-      Alert.alert('No items selected', 'Choose a quantity for at least one item, then tap Add.');
+      showAlert('No items selected', 'Choose a quantity for at least one item, then tap Add.');
       return;
     }
 

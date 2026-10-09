@@ -5,7 +5,6 @@ import {
   TextInput,
   Pressable,
   Switch,
-  Alert,
   LayoutAnimation,
   Keyboard,
   ActivityIndicator,
@@ -27,6 +26,7 @@ import { GRN_STEPS, STEP_NUMBERS, getCompletedSteps } from '@/constants/grnSteps
 import { GhostTextInput, GhostTextInputRef } from '@/components/GhostTextInput';
 import { getTopVehicleSuggestion } from '@/services/vehicle-suggestion-service';
 
+import { showAlert } from '@/utils/alert';
 type GrnHeaderStepProps = {
   mode: 'create' | 'edit';
 };
@@ -93,7 +93,7 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
     };
 
     if (hasUnsavedData()) {
-      Alert.alert(
+      showAlert(
         isCreateMode ? 'Discard this GRN?' : 'Discard changes to this GRN?',
         isCreateMode
           ? 'The details you entered will be lost.'

@@ -8,7 +8,7 @@
  */
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { View, Alert, Text, Pressable, Platform } from 'react-native';
+import { View, Text, Pressable, Platform } from 'react-native';
 import { DetailSkeleton } from '@/components/skeletons';
 import { isAbortError } from '@/hooks/useAbortableFetch';
 import { useLocalSearchParams, router, Stack } from 'expo-router';
@@ -52,6 +52,7 @@ import type { ThemeTokens } from '@/theme/tokens';
 import { Button } from '@/components/ui/Button';
 import { deleteGRNImage, uploadGRNImage } from '@/features/grn/services/imageUploadService';
 
+import { showAlert } from '@/utils/alert';
 const makeStyles = (t: ThemeTokens) => ({
   container: {
     flex: 1,
@@ -242,7 +243,7 @@ function GRNDetailScreen() {
   const handleDeleteImage = (image: GRNImageData) => {
     if (imageMutationRef.current) return;
     imageMutationRef.current = true;
-    Alert.alert('Delete this image?', 'The image is removed from the GRN permanently.', [
+    showAlert('Delete this image?', 'The image is removed from the GRN permanently.', [
       { text: 'Cancel', style: 'cancel', onPress: () => { imageMutationRef.current = false; } },
       {
         text: 'Delete image',
@@ -427,7 +428,7 @@ function GRNDetailScreen() {
   // Handle delete GRN
   const handleDeleteGRN = () => {
     const grnLabel = data?.grn?.gr_no ? `GRN ${data.grn.gr_no}` : 'this GRN';
-    Alert.alert(
+    showAlert(
       `Delete ${grnLabel}?`,
       "Its items are removed from stock. This can't be undone.\n\nA GRN with dispatches or invoices can't be deleted.",
       [
@@ -447,7 +448,7 @@ function GRNDetailScreen() {
                   ? `\n\nRemoved:\n• ${result.deleted_counts.grn_items} items\n• ${result.deleted_counts.order_items} order items\n• ${result.deleted_counts.stock_movements} stock movements\n• ${result.deleted_counts.images} images`
                   : '';
 
-                Alert.alert('GRN deleted', message + details, [
+                showAlert('GRN deleted', message + details, [
                   { text: 'Done', onPress: () => router.back() },
                 ]);
               } else {
@@ -466,11 +467,11 @@ function GRNDetailScreen() {
                   }
                 }
 
-                Alert.alert("Couldn't delete the GRN", errorMessage);
+                showAlert("Couldn't delete the GRN", errorMessage);
               }
             } catch (error) {
               console.error('[GRNDetailScreen] Delete error:', error);
-              Alert.alert(
+              showAlert(
                 "Couldn't delete the GRN",
                 'Check your connection and try again.'
               );
@@ -492,7 +493,7 @@ function GRNDetailScreen() {
       const pdfResult = await generateGRNPDF(data.grn.gr_no);
 
       if (!pdfResult.success || !pdfResult.pdfUrl) {
-        Alert.alert("Couldn't create the PDF", pdfResult.error || 'Try again in a moment.');
+        showAlert("Couldn't create the PDF", pdfResult.error || 'Try again in a moment.');
         return;
       }
 
@@ -504,11 +505,11 @@ function GRNDetailScreen() {
       );
 
       if (!shareResult.success) {
-        Alert.alert("Couldn't share the PDF", shareResult.error || 'Try again in a moment.');
+        showAlert("Couldn't share the PDF", shareResult.error || 'Try again in a moment.');
       }
     } catch (error) {
       console.error('[GRNDetailScreen] Share PDF error:', error);
-      Alert.alert("Couldn't share the PDF", 'Check your connection and try again.');
+      showAlert("Couldn't share the PDF", 'Check your connection and try again.');
     } finally {
       setIsShareLoading(false);
     }

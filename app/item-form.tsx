@@ -13,7 +13,6 @@ import {
   Text,
   StyleSheet,
   ScrollView,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -39,6 +38,7 @@ import {
 import { itemService } from '@/services/item-service';
 import type { ItemFormData, ItemValidationErrors } from '@/types/item.types';
 
+import { showAlert } from '@/utils/alert';
 const ItemFormScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
   const styles = useThemedStyles(makeStyles);
@@ -107,7 +107,7 @@ const ItemFormScreen: React.FC = () => {
       });
 
       if (result.success) {
-        Alert.alert('Item added', `${formData.name.trim()} has been added.`, [
+        showAlert('Item added', `${formData.name.trim()} has been added.`, [
           { text: 'OK', onPress: () => router.back() },
         ]);
       } else {
@@ -117,12 +117,12 @@ const ItemFormScreen: React.FC = () => {
             result.message?.toLowerCase().includes('already exists')) {
           setErrors({ name: 'An item with this name already exists. Use a different name.' });
         } else {
-          Alert.alert("Couldn't add the item", result.message || 'Try again in a moment.');
+          showAlert("Couldn't add the item", result.message || 'Try again in a moment.');
         }
       }
     } catch (err) {
       console.error('[ItemForm] Save error:', err);
-      Alert.alert("Couldn't add the item", 'Check your connection and try again.');
+      showAlert("Couldn't add the item", 'Check your connection and try again.');
     } finally {
       setSaving(false);
     }

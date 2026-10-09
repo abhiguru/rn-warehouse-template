@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   View,
-  Alert,
   Keyboard,
   Vibration,
 } from 'react-native';
@@ -43,6 +42,7 @@ import {
   parseReceiptWeight,
 } from '@/features/grn/schemas/grnValidation';
 
+import { showAlert } from '@/utils/alert';
 const EMPTY_GRN_ITEM = (): ItemFormData => ({
   grn_trl_id: `item-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
   item_table_id: '',
@@ -131,7 +131,7 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
   }, [editingItemId, itemsWithDispatchesOnLoad, isCreateMode]);
 
   const handleQtyLockedPress = useCallback(() => {
-    Alert.alert(
+    showAlert(
       "Quantity can't be changed",
       'This item has already been dispatched, so its quantity is locked to keep stock correct.'
     );
@@ -147,7 +147,7 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
     };
 
     if (hasUnsavedData()) {
-      Alert.alert(
+      showAlert(
         isCreateMode ? 'Discard this GRN?' : 'Discard changes to this GRN?',
         (() => {
           const count = savedItems.length || items.length;
@@ -289,14 +289,14 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
 
     const isValid = await validateCurrentItem();
     if (!isValid) {
-      Alert.alert('Check the item details', 'Fill in every required field, then save the item.');
+      showAlert('Check the item details', 'Fill in every required field, then save the item.');
       return;
     }
 
     const hasDispatches = !isCreateMode && currentItem.grn_trl_id && itemsWithDispatchesOnLoad.has(currentItem.grn_trl_id);
     const parsedQty = parseReceiptQuantity(currentItem.qty);
     if (parsedQty === null) {
-      Alert.alert('Check the item details', 'Enter a whole number of 1 or more for the quantity.');
+      showAlert('Check the item details', 'Enter a whole number of 1 or more for the quantity.');
       return;
     }
     // Use the original stock value from the Map (preserved from initial load)
@@ -388,11 +388,11 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
     if (image && !isTemporaryGRNImageId(image.id)) {
       const result = await deleteGRNImage(image.id, image.imageUrl);
       if (!result.success) {
-        Alert.alert("Couldn't remove the photo", 'Check your connection and try again.');
+        showAlert("Couldn't remove the photo", 'Check your connection and try again.');
         return;
       }
       if (result.partial) {
-        Alert.alert('Photo removed', "The photo is removed from this item, but we couldn't confirm the stored copy was deleted.");
+        showAlert('Photo removed', "The photo is removed from this item, but we couldn't confirm the stored copy was deleted.");
       }
     }
 
@@ -409,7 +409,7 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
 
       const validation = validateImageFile(asset);
       if (!validation.valid) {
-        Alert.alert("Couldn't add the photo", validation.error || 'Choose a JPEG or PNG photo.');
+        showAlert("Couldn't add the photo", validation.error || 'Choose a JPEG or PNG photo.');
         return;
       }
 
@@ -450,17 +450,17 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
 
   const handleCameraIconPress = () => {
     if ((currentItem.trl_images?.length || 0) >= 2) {
-      Alert.alert('Photo limit reached', 'You can add up to 2 photos to each item.');
+      showAlert('Photo limit reached', 'You can add up to 2 photos to each item.');
       return;
     }
 
-    Alert.alert('Add photo', undefined, [
+    showAlert('Add photo', undefined, [
       {
         text: 'Take photo',
         onPress: async () => {
           const { status } = await withNativeHandoff(() => ImagePicker.requestCameraPermissionsAsync());
           if (status !== 'granted') {
-            Alert.alert('Allow camera access', 'To take a photo, allow camera access for this app in Settings.');
+            showAlert('Allow camera access', 'To take a photo, allow camera access for this app in Settings.');
             return;
           }
           try {
@@ -517,7 +517,7 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
       if (!alreadySaved) {
         const isValid = await validateCurrentItem();
         if (!isValid) {
-          Alert.alert('Check the item details', 'Fix the highlighted fields in the item you are adding.');
+          showAlert('Check the item details', 'Fix the highlighted fields in the item you are adding.');
           return;
         }
         allItemsToSave.push(currentItem);
@@ -526,7 +526,7 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
     }
 
     if (allItemsToSave.length === 0) {
-      Alert.alert('Add an item', 'Add at least one item to this GRN.');
+      showAlert('Add an item', 'Add at least one item to this GRN.');
       return;
     }
 
@@ -538,7 +538,7 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
     }));
     const unparsable = parsedItems.find(({ parsedQty }) => parsedQty === null);
     if (unparsable) {
-      Alert.alert(
+      showAlert(
         'Check the item details',
         `Enter a whole number of 1 or more for the quantity of ${unparsable.itemToSave.item_name || 'each item'}.`
       );
@@ -590,7 +590,7 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
       }
     } else {
       if (!grnId) {
-        Alert.alert("Couldn't open the review", 'Go back to the GRN list and open this GRN again.');
+        showAlert("Couldn't open the review", 'Go back to the GRN list and open this GRN again.');
         setIsNavigating(false);
         return;
       }
@@ -609,7 +609,7 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
     if (currentItem.item_table_id && currentItem.qty) {
       const alreadySaved = savedItems.some((saved) => saved.grn_trl_id === currentItem.grn_trl_id);
       if (!alreadySaved && !editingItemId) {
-        Alert.alert('Save this item?', "The item you're adding hasn't been saved yet.", [
+        showAlert('Save this item?', "The item you're adding hasn't been saved yet.", [
           { text: 'Keep editing', style: 'cancel' },
           {
             text: 'Discard item',
@@ -617,7 +617,7 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
             onPress: () => {
               setCurrentItem(getNewItemWithRack());
               if (savedItems.length === 0) {
-                Alert.alert('Add an item', 'Add at least one item to this GRN.');
+                showAlert('Add an item', 'Add at least one item to this GRN.');
               } else {
                 handleNext();
               }
@@ -638,7 +638,7 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
     if (currentItem.item_table_id && currentItem.qty) {
       const alreadySaved = savedItems.some((saved) => saved.grn_trl_id === currentItem.grn_trl_id);
       if (!alreadySaved && !editingItemId) {
-        Alert.alert('Save this item?', "The item you're adding hasn't been saved yet.", [
+        showAlert('Save this item?', "The item you're adding hasn't been saved yet.", [
           { text: 'Keep editing', style: 'cancel' },
           {
             text: 'Discard item',
@@ -656,7 +656,7 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
                 await handleAddItem();
                 handlePrevious();
               } else {
-                Alert.alert('Check the item details', 'Fix the highlighted fields, then save the item.');
+                showAlert('Check the item details', 'Fix the highlighted fields, then save the item.');
               }
             },
           },

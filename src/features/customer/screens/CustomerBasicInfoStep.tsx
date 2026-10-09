@@ -6,7 +6,7 @@
  */
 
 import React, { useState, useRef, useCallback } from 'react';
-import { View, Text, TextInput, Pressable, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, TextInput, Pressable, ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
@@ -18,6 +18,7 @@ import { GenericStepIndicatorHeader } from '@/components/GenericStepIndicatorHea
 import { CUSTOMER_STEPS, CUSTOMER_STEP_NUMBERS, getCompletedSteps } from '@/constants/customerSteps';
 import { CustomerFormMode } from '@/types/customer.types';
 
+import { showAlert } from '@/utils/alert';
 // =============================================================================
 // COMPONENT
 // =============================================================================
@@ -70,7 +71,7 @@ export function CustomerBasicInfoStep({ mode, customerId }: CustomerBasicInfoSte
     };
 
     if (isDirty) {
-      Alert.alert(
+      showAlert(
         isCreateMode ? 'Discard this customer?' : 'Discard your changes?',
         'Your unsaved changes will be lost.',
         [

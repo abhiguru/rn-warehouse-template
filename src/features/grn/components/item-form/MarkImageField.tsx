@@ -7,7 +7,7 @@
  */
 
 import React, { forwardRef, useImperativeHandle, useRef, useState, useCallback } from 'react';
-import { View, Text, TextInput, Pressable, StyleSheet, Alert, Platform } from 'react-native';
+import { View, Text, TextInput, Pressable, StyleSheet, Platform } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { Image } from 'expo-image';
 import { GRNImageData } from '@/store/slices/grnFormSlice';
@@ -15,6 +15,7 @@ import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { iconSize, radius, space, touchTarget, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 
+import { showAlert } from '@/utils/alert';
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -64,7 +65,7 @@ export const MarkImageField = forwardRef<MarkImageFieldRef, MarkImageFieldProps>
 
     const handleImagePickPress = useCallback(() => {
       if (images.length >= maxImages) {
-        Alert.alert(
+        showAlert(
           'Photo limit reached',
           `You can add up to ${maxImages} ${maxImages === 1 ? 'photo' : 'photos'} per item.`
         );

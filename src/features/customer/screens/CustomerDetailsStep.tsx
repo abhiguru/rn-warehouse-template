@@ -11,7 +11,6 @@ import {
   Text,
   TextInput,
   Pressable,
-  Alert,
   LayoutAnimation,
   type StyleProp,
   type TextInputProps,
@@ -29,6 +28,7 @@ import { GenericStepIndicatorHeader } from '@/components/GenericStepIndicatorHea
 import { CUSTOMER_STEPS, CUSTOMER_STEP_NUMBERS, getCompletedSteps } from '@/constants/customerSteps';
 import { CustomerFormMode } from '@/types/customer.types';
 
+import { showAlert } from '@/utils/alert';
 // =============================================================================
 // COMPONENT
 // =============================================================================
@@ -104,7 +104,7 @@ export function CustomerDetailsStep({ mode, customerId }: CustomerDetailsStepPro
     };
 
     if (isDirty) {
-      Alert.alert(
+      showAlert(
         isCreateMode ? 'Discard this customer?' : 'Discard your changes?',
         'Your unsaved changes will be lost.',
         [
@@ -167,10 +167,10 @@ export function CustomerDetailsStep({ mode, customerId }: CustomerDetailsStepPro
       if (errors.contact_email) errorMessages.push(`Contact email: ${errors.contact_email}`);
 
       if (errorMessages.length > 0) {
-        Alert.alert('Check these fields', errorMessages.join('\n'));
+        showAlert('Check these fields', errorMessages.join('\n'));
       } else {
         // No specific field errors but validation still failed
-        Alert.alert("Couldn't continue", 'Check that every required field is filled in correctly.');
+        showAlert("Couldn't continue", 'Check that every required field is filled in correctly.');
       }
       return;
     }

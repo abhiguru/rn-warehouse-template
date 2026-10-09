@@ -3,7 +3,6 @@ import {
   View,
   Text,
   ScrollView,
-  Alert,
   ActivityIndicator,
   Pressable,
 } from 'react-native';
@@ -42,6 +41,7 @@ import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { generateGRNPDF } from '@/services/pdf-service';
 import { downloadAndSharePDF } from '@/utils/shareDocument';
 
+import { showAlert } from '@/utils/alert';
 const numberFormat = new Intl.NumberFormat('en-IN');
 const weightFormat = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 });
 
@@ -104,7 +104,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
   }, [header, items]);
 
   const handleCancel = () => {
-    Alert.alert(
+    showAlert(
       isCreateMode ? 'Discard this GRN?' : 'Discard changes to this GRN?',
       `${items.length} ${items.length === 1 ? 'item' : 'items'} ${isCreateMode ? 'and the GRN details' : 'and your changes'} will be lost.`,
       [
@@ -175,7 +175,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
         }
       });
 
-      Alert.alert('Check the GRN details', errorMessages.join('\n') || 'Go back and fix the highlighted fields.');
+      showAlert('Check the GRN details', errorMessages.join('\n') || 'Go back and fix the highlighted fields.');
       return false;
     }
 
@@ -189,7 +189,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
     if (!isValid) return;
 
     if (!header.gr_images || header.gr_images.length === 0) {
-      Alert.alert(
+      showAlert(
         'Add a photo of the GRN',
         `Attach a photo of the GRN book entry for GRN ${header.gr_no}.`
       );
@@ -240,12 +240,12 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
         setShowSuccessDialog(true);
       } else {
         triggerError();
-        Alert.alert(SAVE_FAILED_TITLE, result.error || CONNECTION_HINT);
+        showAlert(SAVE_FAILED_TITLE, result.error || CONNECTION_HINT);
       }
     } catch (error) {
       triggerError();
       console.error('[GrnReviewStep] Submission error:', error);
-      Alert.alert(SAVE_FAILED_TITLE, CONNECTION_HINT);
+      showAlert(SAVE_FAILED_TITLE, CONNECTION_HINT);
     } finally {
       setIsSubmitting(false);
     }
@@ -253,7 +253,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
 
   const performUpdate = async () => {
     if (!grnId) {
-      Alert.alert(SAVE_FAILED_TITLE, 'Go back to the GRN list and open this GRN again.');
+      showAlert(SAVE_FAILED_TITLE, 'Go back to the GRN list and open this GRN again.');
       return;
     }
 
@@ -315,9 +315,9 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
         triggerError();
         const errorMessage = result.error || CONNECTION_HINT;
         if (errorMessage.includes('Stock Protection') || errorMessage.includes('STOCK_PROTECTED') || errorMessage.includes('dispatches exist')) {
-          Alert.alert(STOCK_PROTECTED_TITLE, STOCK_PROTECTED_MESSAGE);
+          showAlert(STOCK_PROTECTED_TITLE, STOCK_PROTECTED_MESSAGE);
         } else {
-          Alert.alert(SAVE_FAILED_TITLE, errorMessage);
+          showAlert(SAVE_FAILED_TITLE, errorMessage);
         }
       }
     } catch (error) {
@@ -325,9 +325,9 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
       console.error('[GrnReviewStep] Update error:', error);
       const errorMessage = error instanceof Error ? error.message : '';
       if (errorMessage.includes('Stock Protection') || errorMessage.includes('STOCK_PROTECTED') || errorMessage.includes('dispatches exist')) {
-        Alert.alert(STOCK_PROTECTED_TITLE, STOCK_PROTECTED_MESSAGE);
+        showAlert(STOCK_PROTECTED_TITLE, STOCK_PROTECTED_MESSAGE);
       } else {
-        Alert.alert(SAVE_FAILED_TITLE, CONNECTION_HINT);
+        showAlert(SAVE_FAILED_TITLE, CONNECTION_HINT);
       }
     } finally {
       dispatch(setIsSaving(false));

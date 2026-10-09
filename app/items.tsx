@@ -14,7 +14,6 @@ import {
   RefreshControl,
   Pressable,
   ActivityIndicator,
-  Alert,
 } from 'react-native';
 import { Swipeable } from 'react-native-gesture-handler';
 import { useIsFocused } from '@react-navigation/native';
@@ -39,6 +38,7 @@ import {
   type ThemeTokens,
 } from '@/theme/tokens';
 
+import { showAlert } from '@/utils/alert';
 // =============================================================================
 // TYPES
 // =============================================================================
@@ -174,7 +174,7 @@ export default function ItemsScreen() {
           }));
         } else {
           // Show error to user
-          Alert.alert(
+          showAlert(
             currentActive ? "Couldn't deactivate the item" : "Couldn't activate the item",
             result.message || 'Try again in a moment.',
             [{ text: 'OK' }]
@@ -182,7 +182,7 @@ export default function ItemsScreen() {
         }
       } catch (error) {
         console.error('[Items] Toggle active error:', error);
-        Alert.alert("Couldn't update the item", 'Check your connection and try again.', [{ text: 'OK' }]);
+        showAlert("Couldn't update the item", 'Check your connection and try again.', [{ text: 'OK' }]);
       }
     },
     []
@@ -194,7 +194,7 @@ export default function ItemsScreen() {
 
   const handleDeleteItem = useCallback(
     async (item: ItemListItem) => {
-      Alert.alert(
+      showAlert(
         `Delete ${item.name}?`,
         'The item will be removed from your catalogue.',
         [
@@ -213,7 +213,7 @@ export default function ItemsScreen() {
                     data: prev.data.filter((i) => i.id !== item.id),
                     totalCount: prev.totalCount - 1,
                   }));
-                  Alert.alert('Item deleted', `${item.name} deleted.`);
+                  showAlert('Item deleted', `${item.name} deleted.`);
                 } else {
                   // Check if blocked due to references
                   if (result.references) {
@@ -230,14 +230,14 @@ export default function ItemsScreen() {
                       message += `• ${plural(refs.invoice_count, 'invoice', 'invoices')}\n`;
                     }
                     message += '\nDeactivate the item instead to hide it from searches.';
-                    Alert.alert("Can't delete this item", message);
+                    showAlert("Can't delete this item", message);
                   } else {
-                    Alert.alert("Couldn't delete the item", result.message || 'Try again in a moment.');
+                    showAlert("Couldn't delete the item", result.message || 'Try again in a moment.');
                   }
                 }
               } catch (error) {
                 console.error('[Items] Delete error:', error);
-                Alert.alert("Couldn't delete the item", 'Check your connection and try again.');
+                showAlert("Couldn't delete the item", 'Check your connection and try again.');
               }
             },
           },

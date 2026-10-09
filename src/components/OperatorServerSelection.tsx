@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, KeyboardAvoidingView, Modal, Platform, ScrollView, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, KeyboardAvoidingView, Modal, Platform, ScrollView, Text, TextInput, View } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { router } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -17,6 +17,7 @@ import { queryClient } from '@/lib/queryClient';
 import { beginOperatorSwitch, clearPendingEnrollment, endOperatorSwitch, getPendingEnrollmentToken, signOutPendingEnrollment } from '@/config/supabaseConfig';
 import { commitStagedOperatorServer, discoverOperator, getActiveOperatorServer, parseOperatorOrigin, stageOperatorServer } from '@/config/operatorServer';
 
+import { showAlert } from '@/utils/alert';
 type Discovery = Awaited<ReturnType<typeof discoverOperator>>;
 
 export interface OperatorServerSelectionProps {
@@ -57,7 +58,7 @@ export function OperatorServerSelection({ initial = false, onCancel }: OperatorS
       setCandidate(discovered);
     } catch (error) {
       if (request !== inspection.current) return;
-      Alert.alert('Server unavailable', error instanceof Error ? error.message : "Couldn't check this server. Check the address and try again.");
+      showAlert('Server unavailable', error instanceof Error ? error.message : "Couldn't check this server. Check the address and try again.");
     } finally { if (request === inspection.current) setBusy(false); }
   };
 
@@ -75,11 +76,11 @@ export function OperatorServerSelection({ initial = false, onCancel }: OperatorS
     // leaving this screen invalidates its callback before any session change.
     if (request !== inspection.current || busy || activating.current) return;
     if (queryClient.isMutating() > 0) {
-      Alert.alert('Operation in progress', 'Finish the current operation before switching servers.');
+      showAlert('Operation in progress', 'Finish the current operation before switching servers.');
       return;
     }
     if (!beginOperatorSwitch()) {
-      Alert.alert('Operation in progress', 'Finish the current operation before switching servers.');
+      showAlert('Operation in progress', 'Finish the current operation before switching servers.');
       return;
     }
     activating.current = true;
@@ -106,7 +107,7 @@ export function OperatorServerSelection({ initial = false, onCancel }: OperatorS
       await commitStagedOperatorServer(selected.server);
       if (!initial) router.replace('/login');
     } catch {
-      Alert.alert("Couldn't change server", sessionCleared
+      showAlert("Couldn't change server", sessionCleared
         ? 'The old session was cleared. Check the selected server and sign in again.'
         : 'The current server was kept. Try again.');
     } finally { endOperatorSwitch(); activating.current = false; setBusy(false); }
@@ -118,7 +119,7 @@ export function OperatorServerSelection({ initial = false, onCancel }: OperatorS
     const request = inspection.current;
     const previous = getActiveOperatorServer();
     if (previous && (previous.origin !== selected.server.origin || previous.instanceId !== selected.server.instanceId)) {
-      Alert.alert(
+      showAlert(
         'Change warehouse server?',
         `Changing to ${selected.server.displayName} will sign you out and discard unsaved forms. You will need to sign in again.`,
         [
@@ -186,7 +187,7 @@ export function OperatorServerSelection({ initial = false, onCancel }: OperatorS
             scanLocked.current = true;
             setScanning(false);
             try { void inspect(parseOperatorOrigin(data)); }
-            catch { Alert.alert('Invalid QR code', 'Scan a QR code containing only an HTTPS server origin.'); }
+            catch { showAlert('Invalid QR code', 'Scan a QR code containing only an HTTPS server origin.'); }
           }} />
         <Text style={styles.cameraHint}>Point the camera at the server QR code.</Text>
         <Button type="secondary" variant="normal" size="fullWidth" onPress={() => setScanning(false)} style={styles.cameraCancel} textStyle={styles.cameraCancelText}>Cancel</Button>

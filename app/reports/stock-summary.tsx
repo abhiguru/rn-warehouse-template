@@ -16,7 +16,6 @@ import {
   StyleSheet,
   RefreshControl,
   LayoutAnimation,
-  Alert,
 } from 'react-native';
 import { router } from 'expo-router';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -46,6 +45,7 @@ import type {
 import { formatNumber, parseLocalISODate } from '@/utils/formatters';
 import { createLogger } from '@/utils/logger';
 
+import { showAlert } from '@/utils/alert';
 const logger = createLogger('StockSummary');
 
 const LOAD_ERROR = "Couldn't load the stock summary. Check your connection and try again.";
@@ -576,11 +576,11 @@ export default function StockSummaryScreen() {
         }
       } else {
         logger.warn('PDF generation failed', { error: result.error });
-        Alert.alert("Couldn't create the stock PDF", 'Check your connection and try again.');
+        showAlert("Couldn't create the stock PDF", 'Check your connection and try again.');
       }
     } catch (error) {
       logger.error('Error sharing customer stock PDF', error);
-      Alert.alert("Couldn't create the stock PDF", 'Check your connection and try again.');
+      showAlert("Couldn't create the stock PDF", 'Check your connection and try again.');
     } finally {
       setSharingCustomerId(null);
     }

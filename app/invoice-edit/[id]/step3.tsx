@@ -3,7 +3,6 @@ import {
   View,
   Text,
   Pressable,
-  Alert,
   ActivityIndicator,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -46,6 +45,7 @@ import {
   makeInvoiceWizardStyles,
 } from '@/constants/invoiceSteps';
 
+import { showAlert } from '@/utils/alert';
 export default function InvoiceEditStep3() {
   const dispatch = useAppDispatch();
   const styles = useThemedStyles(makeInvoiceWizardStyles);
@@ -87,27 +87,27 @@ export default function InvoiceEditStep3() {
   const handleSubmit = async () => {
     // Final validation check
     if (items.length === 0) {
-      Alert.alert('No items to invoice', 'Go back to the details step and select a GRN that has dispatched items.');
+      showAlert('No items to invoice', 'Go back to the details step and select a GRN that has dispatched items.');
       return;
     }
 
     if (!header.gr_id || !header.customer_id) {
-      Alert.alert('Select a GRN', 'Go back to the details step and select the GRN for this invoice.');
+      showAlert('Select a GRN', 'Go back to the details step and select the GRN for this invoice.');
       return;
     }
 
     if (!invoiceId) {
-      Alert.alert("Couldn't find the invoice", 'Open the invoice again from the list.');
+      showAlert("Couldn't find the invoice", 'Open the invoice again from the list.');
       return;
     }
 
     if (reasonRequired) {
-      Alert.alert('Enter a discount reason', 'Enter the reason for this discount change before updating the invoice.');
+      showAlert('Enter a discount reason', 'Enter the reason for this discount change before updating the invoice.');
       return;
     }
 
     // Confirm submission
-    Alert.alert(
+    showAlert(
       `Update invoice ${header.inv_no}?`,
       `${header.customer_name}\nTotal ${formatInvoiceAmount(header.total)}`,
       [
@@ -119,7 +119,7 @@ export default function InvoiceEditStep3() {
 
   const submitInvoiceUpdate = async () => {
     if (!invoiceId) {
-      Alert.alert("Couldn't find the invoice", 'Open the invoice again from the list.');
+      showAlert("Couldn't find the invoice", 'Open the invoice again from the list.');
       return;
     }
 
@@ -146,11 +146,11 @@ export default function InvoiceEditStep3() {
         setShowSuccessDialog(true);
       } else {
         console.error('[InvoiceEditStep3] Failed to update invoice:', response.message);
-        Alert.alert("Couldn't update the invoice", response.message || 'Check your connection and try again.');
+        showAlert("Couldn't update the invoice", response.message || 'Check your connection and try again.');
       }
     } catch (error: any) {
       console.error('[InvoiceEditStep3] Error updating invoice:', error);
-      Alert.alert("Couldn't update the invoice", 'Check your connection and try again.');
+      showAlert("Couldn't update the invoice", 'Check your connection and try again.');
     } finally {
       dispatch(setIsSaving(false));
     }

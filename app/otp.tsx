@@ -9,7 +9,6 @@ import {
   Text,
   TextInput,
   StyleSheet,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -44,6 +43,7 @@ import {
   type ThemeTokens,
 } from '@/theme/tokens';
 
+import { showAlert } from '@/utils/alert';
 const CODE_LENGTH = 6;
 
 /** "+919876543210" -> "+91 98765 43210" (style guide §12.3). */
@@ -130,7 +130,7 @@ export default function OTPScreen() {
 
   const handleVerifyOTPWithCode = async (code: string) => {
     if (code.length !== CODE_LENGTH) {
-      Alert.alert('Enter the full code', 'Enter all 6 digits of the code we sent you.');
+      showAlert('Enter the full code', 'Enter all 6 digits of the code we sent you.');
       return;
     }
 
@@ -158,10 +158,10 @@ export default function OTPScreen() {
         const friendlyMessage = parseErrorToFriendly(
           (result as { success: false; error: string }).error
         );
-        Alert.alert("Couldn't verify the code", friendlyMessage);
+        showAlert("Couldn't verify the code", friendlyMessage);
       }
     } catch {
-      Alert.alert("Couldn't verify the code", 'Check your connection and try again.');
+      showAlert("Couldn't verify the code", 'Check your connection and try again.');
     } finally {
       dispatch(setVerifyingOTP(false));
     }
@@ -184,7 +184,7 @@ export default function OTPScreen() {
         setExpiryTimer(300); // Reset to 5 minutes
         setOtpCode('');
         setFocusedIndex(0);
-        Alert.alert(
+        showAlert(
           'Code sent',
           `A new code was sent to ${formatPhoneForDisplay(phoneNumber)}.`
         );
@@ -193,13 +193,13 @@ export default function OTPScreen() {
           return;
         }
         const friendlyMessage = parseErrorToFriendly(result.error);
-        Alert.alert("Couldn't send the code", friendlyMessage);
+        showAlert("Couldn't send the code", friendlyMessage);
       }
     } catch (error) {
       if (handleRateLimitError(error)) {
         return;
       }
-      Alert.alert("Couldn't send the code", 'Check your connection and try again.');
+      showAlert("Couldn't send the code", 'Check your connection and try again.');
     } finally {
       dispatch(setAuthenticating(false));
     }

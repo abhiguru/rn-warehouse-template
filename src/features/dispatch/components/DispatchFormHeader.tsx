@@ -11,7 +11,6 @@ import {
   Pressable,
   StyleSheet,
   Platform,
-  Alert,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -25,6 +24,7 @@ import {
 } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 
+import { showAlert } from '@/utils/alert';
 type IoniconsName = ComponentProps<typeof Ionicons>['name'];
 
 export interface DispatchFormHeaderProps {
@@ -114,7 +114,7 @@ export const DispatchFormHeader: React.FC<DispatchFormHeaderProps> = ({
 
   const handleCancelPress = () => {
     if (confirmCancel) {
-      Alert.alert(
+      showAlert(
         'Discard this dispatch?',
         cancelMessage,
         [

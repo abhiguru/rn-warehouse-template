@@ -16,7 +16,6 @@ import {
   StyleSheet,
   Animated,
   Pressable,
-  Alert,
   ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -35,6 +34,7 @@ import {
 } from '@/theme/tokens';
 import type { StepConfig } from '@/components/StepIndicator';
 
+import { showAlert } from '@/utils/alert';
 /**
  * Kept for compatibility. Both schemes now use the brand tokens: step and
  * progress colours never change per document type.
@@ -149,7 +149,7 @@ export const GenericStepIndicatorHeader: React.FC<GenericStepIndicatorHeaderProp
   }, []);
 
   const handleCancelPress = () => {
-    Alert.alert(
+    showAlert(
       cancelTitle || `Discard this ${entityName}?`,
       cancelMessage,
       [

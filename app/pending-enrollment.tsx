@@ -3,7 +3,7 @@
  * which facility, and what happens next. No facility data is shown here.
  */
 import React, { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, ScrollView, Text, View } from 'react-native';
+import { ActivityIndicator, ScrollView, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -26,6 +26,7 @@ import {
   type ThemeTokens,
 } from '@/theme/tokens';
 
+import { showAlert } from '@/utils/alert';
 type EnrollmentStatus = 'pending' | 'approved' | 'rejected' | 'disabled';
 type StatusKind = 'critical' | 'positive' | 'negative';
 
@@ -53,7 +54,7 @@ export default function PendingEnrollmentScreen() {
     if (result.success) {
       setStatus(result.status);
     } else {
-      Alert.alert("Couldn't check your access", 'Check your connection and try again.');
+      showAlert("Couldn't check your access", 'Check your connection and try again.');
     }
   }, []);
 
@@ -74,7 +75,7 @@ export default function PendingEnrollmentScreen() {
       router.replace('/login');
     } catch {
       setLoading(false);
-      Alert.alert("Couldn't sign out", 'Check your connection and try again.');
+      showAlert("Couldn't sign out", 'Check your connection and try again.');
     }
   };
 

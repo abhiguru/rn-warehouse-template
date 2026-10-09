@@ -13,7 +13,7 @@
  */
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { View, Alert, Text, Platform, Pressable } from 'react-native';
+import { View, Text, Platform, Pressable } from 'react-native';
 import { DetailSkeleton } from '@/components/skeletons';
 import { isAbortError } from '@/hooks/useAbortableFetch';
 import { useLocalSearchParams, router, Stack } from 'expo-router';
@@ -51,6 +51,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { withNativeHandoff } from '@/config/nativeHandoff';
 import { uploadDispatchImage } from '@/features/dispatch/services/dispatchImageService';
 
+import { showAlert } from '@/utils/alert';
 // ============================================================================
 // STYLES (docs/STYLE_GUIDE.md §14.2 object page)
 // ============================================================================
@@ -276,7 +277,7 @@ function DispatchDetailScreen() {
       const result = await deleteDispatch(id, userProfile.id);
 
       if (result.success) {
-        Alert.alert(
+        showAlert(
           'Dispatch deleted',
           data?.dispatch.disp_no ? `Dispatch ${data.dispatch.disp_no} is deleted.` : 'The dispatch is deleted.',
           [
@@ -292,18 +293,18 @@ function DispatchDetailScreen() {
       } else {
         // Handle invoice blocking case specially
         if (result.blockingReason === 'invoices_exist') {
-          Alert.alert(
+          showAlert(
             "Can't delete dispatch",
             `${result.error}\n\n${result.instructions || 'Delete its invoices first, then try again.'}`,
             [{ text: 'Close' }]
           );
         } else {
-          Alert.alert("Couldn't delete dispatch", result.error || result.message || 'Try again.');
+          showAlert("Couldn't delete dispatch", result.error || result.message || 'Try again.');
         }
       }
     } catch (error) {
       console.error('[DispatchDetailScreen] Error deleting dispatch:', error);
-      Alert.alert("Couldn't delete dispatch", 'Check your connection and try again.');
+      showAlert("Couldn't delete dispatch", 'Check your connection and try again.');
     }
   };
 
@@ -319,7 +320,7 @@ function DispatchDetailScreen() {
       const pdfResult = await generateDispatchPDF(data.dispatch.disp_no);
 
       if (!pdfResult.success || !pdfResult.pdfUrl) {
-        Alert.alert("Couldn't create the PDF", 'Check your connection and try again.');
+        showAlert("Couldn't create the PDF", 'Check your connection and try again.');
         return;
       }
 
@@ -332,11 +333,11 @@ function DispatchDetailScreen() {
       );
 
       if (!shareResult.success) {
-        Alert.alert("Couldn't share the PDF", 'Try again.');
+        showAlert("Couldn't share the PDF", 'Try again.');
       }
     } catch (error) {
       console.error('[DispatchDetailScreen] Share PDF error:', error);
-      Alert.alert("Couldn't share the PDF", 'Try again.');
+      showAlert("Couldn't share the PDF", 'Try again.');
     } finally {
       setIsShareLoading(false);
     }

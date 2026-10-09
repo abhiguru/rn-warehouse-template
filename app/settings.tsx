@@ -12,7 +12,6 @@ import {
   StyleSheet,
   Pressable,
   ScrollView,
-  Alert,
   Modal,
   ActivityIndicator,
   TextInput,
@@ -39,6 +38,7 @@ import {
 } from '@/theme/tokens';
 import { ThemePreference } from '@/store/slices/themeSlice';
 
+import { showAlert } from '@/utils/alert';
 const THEME_OPTIONS: {
   value: ThemePreference;
   label: string;
@@ -86,7 +86,7 @@ const SettingsScreen: React.FC = () => {
       await dispatch(logout()).unwrap();
       router.replace('/login');
     } catch {
-      Alert.alert("Couldn't sign out", 'Check your connection and try again.');
+      showAlert("Couldn't sign out", 'Check your connection and try again.');
       setShowLogoutModal(false);
     } finally {
       setLoggingOut(false);

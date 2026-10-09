@@ -45,10 +45,7 @@ declare const ErrorUtils: ErrorUtilsType | undefined;
 import { Stack } from 'expo-router';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
-import {
-  SafeAreaProvider,
-  useSafeAreaInsets,
-} from 'react-native-safe-area-context';
+import { SafeAreaProvider, useSafeAreaInsets, SafeAreaInsetsContext } from 'react-native-safe-area-context';
 import {
   View,
   ActivityIndicator,
@@ -74,6 +71,8 @@ import { clearPendingEnrollment } from '@/config/supabaseConfig';
 import ConfigErrorScreen from '@/components/ConfigErrorScreen';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { OfflineBanner } from '@/components/OfflineBanner';
+import { AlertHost } from '@/components/AlertHost';
+import { useIsOffline } from '@/hooks/useNetworkStatus';
 import { createLogger } from '@/utils/logger';
 import { useAppDispatch } from '@/store/hooks';
 import { initializeAuth } from '@/store/slices/authSlice';
@@ -271,6 +270,18 @@ const SplashScreen = () => (
 
 // Inner component that applies safe area to the navigation stack
 // Must be inside SafeAreaProvider to use useSafeAreaInsets
+/**
+ * While offline, the banner at the top already pads for the status bar, so the
+ * screens below it get a zero top inset; otherwise their headers would add a
+ * second status-bar gap under the banner.
+ */
+function BelowOfflineBanner({ children }: { children: React.ReactNode }) {
+  const insets = useSafeAreaInsets();
+  const isOffline = useIsOffline();
+  const value = React.useMemo(() => (isOffline ? { ...insets, top: 0 } : insets), [insets, isOffline]);
+  return <SafeAreaInsetsContext.Provider value={value}>{children}</SafeAreaInsetsContext.Provider>;
+}
+
 function NavigationStack({ screenBackground }: { screenBackground: string }) {
   const insets = useSafeAreaInsets();
   const t = useTokens();
@@ -441,8 +452,11 @@ function ThemedContent() {
               <OfflineBanner />
               <UpdatePrompt />
               <BottomSheetModalProvider>
-                <NavigationStack screenBackground={screenBackground} />
+                <BelowOfflineBanner>
+                  <NavigationStack screenBackground={screenBackground} />
+                </BelowOfflineBanner>
               </BottomSheetModalProvider>
+              <AlertHost />
             </GestureHandlerRootView>
           </SafeAreaProvider>
         </PaperProvider>

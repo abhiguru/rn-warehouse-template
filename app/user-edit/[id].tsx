@@ -16,7 +16,6 @@ import {
   StyleSheet,
   Pressable,
   ActivityIndicator,
-  Alert,
   Switch,
 } from 'react-native';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
@@ -45,6 +44,7 @@ import {
   type ThemeTokens,
 } from '@/theme/tokens';
 
+import { showAlert } from '@/utils/alert';
 /** Roles are categories, not statuses: staff roles informative, others neutral. */
 const ROLE_TONE: Record<UserRole, 'informative' | 'neutral'> = {
   admin: 'informative',
@@ -147,13 +147,13 @@ export default function UserEditScreen() {
         if (response.success) {
           setSelectedRole(newRole);
           setUser((prev) => (prev ? { ...prev, role: newRole } : null));
-          Alert.alert('Role changed', `${user.name || 'This user'} is now ${newRole === 'admin' ? 'an' : 'a'} ${newRole}.`);
+          showAlert('Role changed', `${user.name || 'This user'} is now ${newRole === 'admin' ? 'an' : 'a'} ${newRole}.`);
         } else {
-          Alert.alert("Couldn't change the role", response.error || 'Try again in a moment.');
+          showAlert("Couldn't change the role", response.error || 'Try again in a moment.');
         }
       } catch (err) {
         console.error('[UserEdit] Role update error:', err);
-        Alert.alert("Couldn't change the role", 'Check your connection and try again.');
+        showAlert("Couldn't change the role", 'Check your connection and try again.');
       } finally {
         setSaving(false);
       }
@@ -167,7 +167,7 @@ export default function UserEditScreen() {
 
       // Confirm deactivation
       if (!newActive) {
-        Alert.alert(
+        showAlert(
           `Deactivate ${user.name}?`,
           "They won't be able to use the app until you activate them again.",
           [
@@ -199,13 +199,13 @@ export default function UserEditScreen() {
       if (response.success) {
         setIsActive(active);
         setUser((prev) => (prev ? { ...prev, active } : null));
-        Alert.alert(active ? 'User activated' : 'User deactivated', `${user.name || 'This user'} ${active ? 'can use the app again.' : "can't use the app now."}`);
+        showAlert(active ? 'User activated' : 'User deactivated', `${user.name || 'This user'} ${active ? 'can use the app again.' : "can't use the app now."}`);
       } else {
-        Alert.alert("Couldn't change the status", response.error || 'Try again in a moment.');
+        showAlert("Couldn't change the status", response.error || 'Try again in a moment.');
       }
     } catch (err) {
       console.error('[UserEdit] Status update error:', err);
-      Alert.alert("Couldn't change the status", 'Check your connection and try again.');
+      showAlert("Couldn't change the status", 'Check your connection and try again.');
     } finally {
       setSaving(false);
     }
@@ -217,7 +217,7 @@ export default function UserEditScreen() {
 
       // Check if already assigned
       if (assignedCustomers.some((c) => c.customer_id === customer.id)) {
-        Alert.alert('Already assigned', `${customer.name} is already assigned to this user.`);
+        showAlert('Already assigned', `${customer.name} is already assigned to this user.`);
         return;
       }
 
@@ -239,13 +239,13 @@ export default function UserEditScreen() {
             assigned_by_name: userProfile?.name || null,
           };
           setAssignedCustomers((prev) => [...prev, newAssignment]);
-          Alert.alert('Customer assigned', `${customer.name} assigned.`);
+          showAlert('Customer assigned', `${customer.name} assigned.`);
         } else {
-          Alert.alert("Couldn't assign the customer", response.error || 'Try again in a moment.');
+          showAlert("Couldn't assign the customer", response.error || 'Try again in a moment.');
         }
       } catch (err) {
         console.error('[UserEdit] Assign customer error:', err);
-        Alert.alert("Couldn't assign the customer", 'Check your connection and try again.');
+        showAlert("Couldn't assign the customer", 'Check your connection and try again.');
       } finally {
         setSaving(false);
         setShowCustomerSearch(false);
@@ -258,7 +258,7 @@ export default function UserEditScreen() {
     async (customerId: string, customerName: string) => {
       if (!user) return;
 
-      Alert.alert(
+      showAlert(
         `Remove ${customerName}?`,
         `${customerName} will no longer be assigned to this user.`,
         [
@@ -278,16 +278,16 @@ export default function UserEditScreen() {
                   setAssignedCustomers((prev) =>
                     prev.filter((c) => c.customer_id !== customerId)
                   );
-                  Alert.alert('Customer removed', `${customerName} removed.`);
+                  showAlert('Customer removed', `${customerName} removed.`);
                 } else {
-                  Alert.alert(
+                  showAlert(
                     "Couldn't remove the customer",
                     response.error || 'Try again in a moment.'
                   );
                 }
               } catch (err) {
                 console.error('[UserEdit] Remove customer error:', err);
-                Alert.alert("Couldn't remove the customer", 'Check your connection and try again.');
+                showAlert("Couldn't remove the customer", 'Check your connection and try again.');
               } finally {
                 setSaving(false);
               }

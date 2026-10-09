@@ -16,10 +16,11 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { Platform, Alert } from 'react-native';
+import { Platform } from 'react-native';
 import * as LocalAuthentication from 'expo-local-authentication';
 import * as SecureStore from 'expo-secure-store';
 
+import { showAlert } from '@/utils/alert';
 // SecureStore keys
 const BIOMETRIC_ENABLED_KEY = 'biometric_auth_enabled';
 const BIOMETRIC_ENROLLED_KEY = 'biometric_enrolled_timestamp';
@@ -154,7 +155,7 @@ export function useBiometricAuth(): UseBiometricAuthReturn {
   const enableBiometric = useCallback(async (): Promise<boolean> => {
     try {
       if (!state.isBiometricAvailable) {
-        Alert.alert(
+        showAlert(
           'Biometric Not Available',
           `${state.biometricLabel} is not available on this device. Please set it up in your device settings first.`
         );
@@ -252,7 +253,7 @@ export function useBiometricAuth(): UseBiometricAuthReturn {
     }
 
     return new Promise((resolve) => {
-      Alert.alert(
+      showAlert(
         `Enable ${state.biometricLabel}?`,
         `Would you like to use ${state.biometricLabel} to quickly unlock the app next time?`,
         [

@@ -6,7 +6,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert } from 'react-native';
+
 import { router } from 'expo-router';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import {
@@ -59,6 +59,7 @@ import {
   updateInvoice,
 } from '@/features/invoice/services/invoiceFormService';
 
+import { showAlert } from '@/utils/alert';
 /** Field errors as plain sentences for an alert (style guide §12.2), never raw field keys. */
 function describeValidationErrors(errors: Record<string, string>): string {
   const messages = Array.from(new Set(Object.values(errors).filter(Boolean)));
@@ -182,7 +183,7 @@ export function useInvoiceForm({
         }
       } catch (error) {
         console.error('[useInvoiceForm] Failed to generate invoice number:', error);
-        Alert.alert("Couldn't get an invoice number", 'Check your connection and try again.');
+        showAlert("Couldn't get an invoice number", 'Check your connection and try again.');
       }
     }
   }, [isCreateMode, header.inv_no, header.inv_fin_year, dispatch]);
@@ -207,11 +208,11 @@ export function useInvoiceForm({
           grId: loadedHeader.gr_id || '',
         }));
       } else {
-        Alert.alert("Couldn't load the invoice", result.message || 'Check your connection and try again.');
+        showAlert("Couldn't load the invoice", result.message || 'Check your connection and try again.');
       }
     } catch (error) {
       console.error('[useInvoiceForm] Failed to load invoice:', error);
-      Alert.alert("Couldn't load the invoice", 'Check your connection and try again.');
+      showAlert("Couldn't load the invoice", 'Check your connection and try again.');
     } finally {
       dispatch(setIsLoading(false));
       isLoadingData.current = false;
@@ -232,11 +233,11 @@ export function useInvoiceForm({
           grId,
         }));
       } else {
-        Alert.alert("Couldn't load the GRN", result.message || 'Check your connection and try again.');
+        showAlert("Couldn't load the GRN", result.message || 'Check your connection and try again.');
       }
     } catch (error) {
       console.error('[useInvoiceForm] Failed to load GRN data:', error);
-      Alert.alert("Couldn't load the GRN", 'Check your connection and try again.');
+      showAlert("Couldn't load the GRN", 'Check your connection and try again.');
     } finally {
       dispatch(setIsLoadingItems(false));
     }
@@ -354,7 +355,7 @@ export function useInvoiceForm({
     for (let step = currentStep; step < targetStep; step++) {
       const validation = await validateCurrentStep(step);
       if (!validation.isValid) {
-        Alert.alert('Check the invoice', describeValidationErrors(validation.errors));
+        showAlert('Check the invoice', describeValidationErrors(validation.errors));
         return false;
       }
     }
@@ -401,7 +402,7 @@ export function useInvoiceForm({
     // Validate full invoice
     const validation = await validateFullInvoice({ header, items });
     if (!validation.isValid) {
-      Alert.alert('Check the invoice', describeValidationErrors(validation.errors));
+      showAlert('Check the invoice', describeValidationErrors(validation.errors));
       return { success: false, error: 'Validation failed' };
     }
 
@@ -429,13 +430,13 @@ export function useInvoiceForm({
           invoiceNo: result.data?.invoice_no,
         };
       } else {
-        Alert.alert("Couldn't save the invoice", result.message || 'Check your connection and try again.');
+        showAlert("Couldn't save the invoice", result.message || 'Check your connection and try again.');
         return { success: false, error: result.message };
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       console.error('[useInvoiceForm] Submit error:', error);
-      Alert.alert("Couldn't save the invoice", 'Check your connection and try again.');
+      showAlert("Couldn't save the invoice", 'Check your connection and try again.');
       return { success: false, error: errorMessage };
     } finally {
       dispatch(setIsSaving(false));

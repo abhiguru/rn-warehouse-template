@@ -6,7 +6,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert } from 'react-native';
+
 import { router, Href } from 'expo-router';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import {
@@ -72,6 +72,7 @@ import {
   getNextStepLabel,
 } from '@/constants/customerSteps';
 
+import { showAlert } from '@/utils/alert';
 // =============================================================================
 // TYPES
 // =============================================================================
@@ -247,7 +248,7 @@ export function useCustomerForm(
         const result = await getCustomerById(id);
 
         if (!result.success || !result.data) {
-          Alert.alert('Error', result.message || 'Failed to load customer');
+          showAlert('Error', result.message || 'Failed to load customer');
           router.back();
           return;
         }
@@ -284,7 +285,7 @@ export function useCustomerForm(
         console.log('[useCustomerForm] Customer loaded successfully');
       } catch (error) {
         console.error('[useCustomerForm] Error loading customer:', error);
-        Alert.alert('Error', 'Failed to load customer');
+        showAlert('Error', 'Failed to load customer');
         router.back();
       } finally {
         dispatch(setIsLoading(false));
@@ -573,7 +574,7 @@ export function useCustomerForm(
 
     if (!validation.isValid) {
       dispatch(setValidationErrors(validation.errors));
-      Alert.alert(
+      showAlert(
         'Validation Error',
         'Please fix the errors before submitting.'
       );
@@ -622,14 +623,14 @@ export function useCustomerForm(
       }
 
       if (!result.success) {
-        Alert.alert('Error', result.message || 'Failed to save customer');
+        showAlert('Error', result.message || 'Failed to save customer');
         return { success: false, error: result.error };
       }
 
       // Success
       const newCustomerId = result.data?.id || customerId;
 
-      Alert.alert(
+      showAlert(
         'Success',
         isCreateMode
           ? 'Customer created successfully'
@@ -648,7 +649,7 @@ export function useCustomerForm(
       return { success: true, customerId: newCustomerId || undefined };
     } catch (error) {
       console.error('[useCustomerForm] Submit error:', error);
-      Alert.alert('Error', 'An unexpected error occurred');
+      showAlert('Error', 'An unexpected error occurred');
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error',

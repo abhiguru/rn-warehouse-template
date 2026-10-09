@@ -39,7 +39,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert } from 'react-native';
+
 import { router } from 'expo-router';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import {
@@ -87,6 +87,7 @@ import {
   checkDispatchExists,
 } from '@/features/dispatch/services/dispatchFormService';
 
+import { showAlert } from '@/utils/alert';
 /**
  * Module-level session ID that persists across all hook instances.
  * This allows cancellation to work when navigating between create/edit routes.
@@ -239,7 +240,7 @@ export function useDispatchForm({
       } catch (error) {
         console.error('[useDispatchForm] Failed to generate dispatch number:', error);
         if (globalSessionId === currentSessionId) {
-          Alert.alert('Error', 'Failed to generate dispatch number');
+          showAlert('Error', 'Failed to generate dispatch number');
         }
       } finally {
         setIsGeneratingNumber(false);
@@ -298,13 +299,13 @@ export function useDispatchForm({
         }));
       } else {
         if (globalSessionId === currentSessionId) {
-          Alert.alert('Error', result.error || 'Failed to load dispatch data');
+          showAlert('Error', result.error || 'Failed to load dispatch data');
         }
       }
     } catch (error) {
       console.error('[useDispatchForm] Failed to load dispatch:', error);
       if (globalSessionId === currentSessionId) {
-        Alert.alert('Error', 'Failed to load dispatch data');
+        showAlert('Error', 'Failed to load dispatch data');
       }
     } finally {
       dispatch(setIsLoading(false));
@@ -564,7 +565,7 @@ export function useDispatchForm({
           ? `Please check: ${errorFields.join(', ')}`
           : 'Please fill all required fields';
         console.log(`[useDispatchForm] Navigation blocked - step ${step} validation failed:`, errorFields);
-        Alert.alert('Validation Error', errorMessage);
+        showAlert('Validation Error', errorMessage);
         return false;
       }
     }
@@ -617,7 +618,7 @@ export function useDispatchForm({
     const validation = await validateCurrentStep(3);
     if (!validation.isValid) {
       const errorFields = Object.keys(validation.errors);
-      Alert.alert('Validation Error', `Please check: ${errorFields.join(', ')}`);
+      showAlert('Validation Error', `Please check: ${errorFields.join(', ')}`);
       return { success: false, error: 'Validation failed' };
     }
 
@@ -642,13 +643,13 @@ export function useDispatchForm({
           sourceOrderCleared: result.source_order_cleared,
         };
       } else {
-        Alert.alert('Error', result.error || 'Failed to save dispatch');
+        showAlert('Error', result.error || 'Failed to save dispatch');
         return { success: false, error: result.error };
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       console.error('[useDispatchForm] Submit error:', error);
-      Alert.alert('Error', errorMessage);
+      showAlert('Error', errorMessage);
       return { success: false, error: errorMessage };
     } finally {
       dispatch(setIsSaving(false));
