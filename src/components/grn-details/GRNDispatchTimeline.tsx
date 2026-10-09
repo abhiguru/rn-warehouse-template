@@ -5,17 +5,27 @@
  * Features:
  * - Timeline layout with date markers
  * - Grouped by month with collapsible sections
- * - Material Design 3 cards for each dispatch
+ * - Object cells for each dispatch (docs/STYLE_GUIDE.md §13.6)
  * - Tap to navigate to dispatch details
  * - Empty state for no dispatches
  * - Mobile-optimized spacing and touch targets
  */
 
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
-import { Card } from 'react-native-paper';
+import { View, Text, Pressable, ScrollView } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { router } from 'expo-router';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import {
+  fontWeight,
+  iconSize,
+  layout,
+  radius,
+  space,
+  touchTarget,
+  typography,
+} from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
 
 export interface DispatchRecord {
   id: string;
@@ -36,11 +46,186 @@ interface GRNDispatchTimelineProps {
   itemName?: string; // If showing for specific item
 }
 
+const formatDispatchDate = (date: Date) =>
+  date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+
+const bagsLabel = (qty: number) => `${qty} ${qty === 1 ? 'bag' : 'bags'}`;
+
+const makeStyles = (t: ThemeTokens) => ({
+  container: {
+    flex: 1,
+  },
+  contentContainer: {
+    paddingHorizontal: layout.marginCompact,
+    paddingTop: space.sm,
+    paddingBottom: space.xl,
+  },
+  monthGroup: {
+    position: 'relative' as const,
+    marginBottom: space.sm,
+  },
+  monthHeader: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
+    minHeight: touchTarget,
+    paddingHorizontal: space.xs,
+    borderRadius: radius.button,
+    zIndex: 2,
+  },
+  monthHeaderPressed: {
+    backgroundColor: t.surface.cardPressed,
+  },
+  monthHeaderLeft: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.sm,
+  },
+  monthDot: {
+    width: 12,
+    height: 12,
+    borderRadius: radius.pill,
+    backgroundColor: t.brand.fill,
+    marginRight: space.xs,
+  },
+  monthText: {
+    ...typography.headline,
+    color: t.text.primary,
+  },
+  monthBadge: {
+    backgroundColor: t.brand.subtle,
+    paddingHorizontal: space.sm,
+    paddingVertical: space.xxs,
+    borderRadius: radius.pill,
+    minWidth: 18,
+    alignItems: 'center' as const,
+  },
+  monthBadgeText: {
+    ...typography.caption1,
+    fontWeight: fontWeight.semibold,
+    color: t.brand.tint,
+    fontVariant: ['tabular-nums' as const],
+  },
+  timelineLine: {
+    position: 'absolute' as const,
+    left: space.xs + 5,
+    top: touchTarget,
+    bottom: 0,
+    width: 2,
+    backgroundColor: t.border.divider,
+    zIndex: 0,
+  },
+  timeline: {
+    alignItems: 'center' as const,
+    marginRight: space.md,
+    paddingTop: space.lg,
+  },
+  timelineDot: {
+    width: 8,
+    height: 8,
+    borderRadius: radius.pill,
+    backgroundColor: t.icon.secondary,
+  },
+  timelineConnector: {
+    width: 2,
+    flex: 1,
+    backgroundColor: t.border.divider,
+    marginTop: space.xs,
+  },
+  dispatchesContainer: {
+    marginLeft: space.xxl,
+  },
+  dispatchWrapper: {
+    flexDirection: 'row' as const,
+    marginBottom: space.sm,
+  },
+  card: {
+    flex: 1,
+    backgroundColor: t.surface.card,
+    borderRadius: radius.card,
+    ...t.shadow[2],
+  },
+  cardPressed: {
+    backgroundColor: t.surface.cardPressed,
+  },
+  cardContent: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
+    padding: space.md,
+    minHeight: layout.rowMinHeight + space.lg,
+  },
+  cardLeft: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    flex: 1,
+  },
+  dispatchIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: radius.pill,
+    backgroundColor: t.brand.subtle,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    marginRight: space.md,
+  },
+  dispatchInfo: {
+    flex: 1,
+  },
+  dispatchNo: {
+    ...typography.headline,
+    color: t.text.primary,
+  },
+  dispatchDate: {
+    ...typography.footnote,
+    color: t.text.secondary,
+  },
+  cardRight: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.sm,
+  },
+  quantityBadge: {
+    alignItems: 'flex-end' as const,
+  },
+  quantityText: {
+    ...typography.headline,
+    color: t.text.primary,
+    fontVariant: ['tabular-nums' as const],
+  },
+  quantityLabel: {
+    ...typography.caption1,
+    color: t.text.secondary,
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    padding: space.giant,
+  },
+  emptyIconContainer: {
+    marginBottom: space.lg,
+  },
+  emptyTitle: {
+    ...typography.title3,
+    color: t.text.primary,
+    marginBottom: space.sm,
+    textAlign: 'center' as const,
+  },
+  emptySubtitle: {
+    ...typography.subhead,
+    color: t.text.secondary,
+    textAlign: 'center' as const,
+  },
+});
+
 export const GRNDispatchTimeline: React.FC<GRNDispatchTimelineProps> = ({
   dispatches,
   loading = false,
   itemName,
 }) => {
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
   const [expandedMonths, setExpandedMonths] = useState<Set<string>>(new Set());
 
   // Group dispatches by month
@@ -51,7 +236,7 @@ export const GRNDispatchTimeline: React.FC<GRNDispatchTimelineProps> = ({
 
     dispatches.forEach(dispatch => {
       const date = new Date(dispatch.dispDate);
-      const monthKey = date.toLocaleDateString('en-US', {
+      const monthKey = date.toLocaleDateString('en-GB', {
         year: 'numeric',
         month: 'long',
       });
@@ -107,13 +292,13 @@ export const GRNDispatchTimeline: React.FC<GRNDispatchTimelineProps> = ({
     return (
       <View style={styles.emptyContainer}>
         <View style={styles.emptyIconContainer}>
-          <Icon name="truck-outline" size={64} color="#d1d5db" />
+          <Icon name="truck-delivery-outline" size={iconSize.hero} color={t.icon.secondary} />
         </View>
-        <Text style={styles.emptyTitle}>No Dispatches Yet</Text>
+        <Text style={styles.emptyTitle}>No dispatches yet</Text>
         <Text style={styles.emptySubtitle}>
           {itemName
-            ? `No dispatch records found for ${itemName}`
-            : 'No dispatch records found for this GRN'}
+            ? `Dispatches of ${itemName} appear here.`
+            : 'Dispatches from this GRN appear here.'}
         </Text>
       </View>
     );
@@ -128,31 +313,33 @@ export const GRNDispatchTimeline: React.FC<GRNDispatchTimelineProps> = ({
       {groupedDispatches.map((group, groupIndex) => {
         const isExpanded = expandedMonths.has(group.month);
         const isLastGroup = groupIndex === groupedDispatches.length - 1;
+        const countLabel = `${group.dispatches.length} ${group.dispatches.length === 1 ? 'dispatch' : 'dispatches'}`;
 
         return (
           <View key={group.month} style={styles.monthGroup}>
             {/* Month Header */}
-            <TouchableOpacity
-              style={styles.monthHeader}
+            <Pressable
+              style={({ pressed }) => [styles.monthHeader, pressed && styles.monthHeaderPressed]}
               onPress={() => toggleMonth(group.month)}
-              activeOpacity={0.7}
               accessibilityRole="button"
-              accessibilityLabel={`${group.month}, ${group.dispatches.length} dispatches, ${isExpanded ? 'expanded' : 'collapsed'}`}
+              accessibilityLabel={`${group.month}, ${countLabel}`}
               accessibilityState={{ expanded: isExpanded }}
             >
               <View style={styles.monthHeaderLeft}>
                 <View style={styles.monthDot} />
-                <Text style={styles.monthText}>{group.month}</Text>
+                <Text style={styles.monthText} accessibilityRole="header">{group.month}</Text>
                 <View style={styles.monthBadge}>
-                  <Text style={styles.monthBadgeText}>{group.dispatches.length}</Text>
+                  <Text style={styles.monthBadgeText} maxFontSizeMultiplier={1.6}>
+                    {group.dispatches.length}
+                  </Text>
                 </View>
               </View>
               <Icon
                 name={isExpanded ? 'chevron-up' : 'chevron-down'}
-                size={20}
-                color="#6b7280"
+                size={iconSize.md}
+                color={t.icon.secondary}
               />
-            </TouchableOpacity>
+            </Pressable>
 
             {/* Timeline Line */}
             {!isLastGroup && <View style={styles.timelineLine} />}
@@ -163,6 +350,7 @@ export const GRNDispatchTimeline: React.FC<GRNDispatchTimelineProps> = ({
                 {group.dispatches.map((dispatch, dispatchIndex) => {
                   const isLast = dispatchIndex === group.dispatches.length - 1;
                   const date = new Date(dispatch.dispDate);
+                  const dateLabel = formatDispatchDate(date);
 
                   return (
                     <View key={dispatch.id} style={styles.dispatchWrapper}>
@@ -173,43 +361,37 @@ export const GRNDispatchTimeline: React.FC<GRNDispatchTimelineProps> = ({
                       </View>
 
                       {/* Dispatch Card */}
-                      <TouchableOpacity
-                        style={styles.dispatchCard}
+                      <Pressable
+                        style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
                         onPress={() => handleDispatchPress(dispatch.dispatchId)}
-                        activeOpacity={0.7}
                         accessibilityRole="button"
-                        accessibilityLabel={`Dispatch ${dispatch.dispNo}, ${dispatch.dispQuantity} units, ${date.toLocaleDateString()}, tap to view details`}
+                        accessibilityLabel={`Dispatch ${dispatch.dispNo}, ${bagsLabel(dispatch.dispQuantity)}, ${dateLabel}`}
+                        accessibilityHint="Opens the dispatch"
                       >
-                        <Card mode="outlined" style={styles.card}>
-                          <View style={styles.cardContent}>
-                            {/* Left: Icon and Info */}
-                            <View style={styles.cardLeft}>
-                              <View style={styles.dispatchIcon}>
-                                <Icon name="truck-fast" size={20} color="#6366f1" />
-                              </View>
-                              <View style={styles.dispatchInfo}>
-                                <Text style={styles.dispatchNo}>{dispatch.dispNo}</Text>
-                                <Text style={styles.dispatchDate}>
-                                  {date.toLocaleDateString('en-US', {
-                                    day: 'numeric',
-                                    month: 'short',
-                                    year: 'numeric',
-                                  })}
-                                </Text>
-                              </View>
+                        <View style={styles.cardContent}>
+                          {/* Left: Icon and Info */}
+                          <View style={styles.cardLeft}>
+                            <View style={styles.dispatchIcon}>
+                              <Icon name="truck-delivery-outline" size={iconSize.md} color={t.brand.tint} />
                             </View>
-
-                            {/* Right: Quantity and Arrow */}
-                            <View style={styles.cardRight}>
-                              <View style={styles.quantityBadge}>
-                                <Text style={styles.quantityText}>{dispatch.dispQuantity}</Text>
-                                <Text style={styles.quantityLabel}>units</Text>
-                              </View>
-                              <Icon name="chevron-right" size={20} color="#ed6c02" />
+                            <View style={styles.dispatchInfo}>
+                              <Text style={styles.dispatchNo}>{dispatch.dispNo}</Text>
+                              <Text style={styles.dispatchDate}>{dateLabel}</Text>
                             </View>
                           </View>
-                        </Card>
-                      </TouchableOpacity>
+
+                          {/* Right: Quantity and Arrow */}
+                          <View style={styles.cardRight}>
+                            <View style={styles.quantityBadge}>
+                              <Text style={styles.quantityText}>{dispatch.dispQuantity}</Text>
+                              <Text style={styles.quantityLabel}>
+                                {dispatch.dispQuantity === 1 ? 'bag' : 'bags'}
+                              </Text>
+                            </View>
+                            <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />
+                          </View>
+                        </View>
+                      </Pressable>
                     </View>
                   );
                 })}
@@ -222,180 +404,3 @@ export const GRNDispatchTimeline: React.FC<GRNDispatchTimelineProps> = ({
   );
 };
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  contentContainer: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    paddingBottom: 20,
-  },
-
-  // Month Group
-  monthGroup: {
-    position: 'relative',
-    marginBottom: 8,
-  },
-  monthHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 12,
-    paddingHorizontal: 4,
-    zIndex: 2,
-  },
-  monthHeaderLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  monthDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: '#ed6c02',
-    marginRight: 12,
-  },
-  monthText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#111827',
-    marginRight: 8,
-  },
-  monthBadge: {
-    backgroundColor: '#fff7ed',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#fed7aa',
-  },
-  monthBadgeText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#ed6c02',
-  },
-
-  // Timeline
-  timelineLine: {
-    position: 'absolute',
-    left: 5,
-    top: 44,
-    bottom: 0,
-    width: 2,
-    backgroundColor: '#e5e7eb',
-    zIndex: 0,
-  },
-  timeline: {
-    alignItems: 'center',
-    marginRight: 12,
-    paddingTop: 2,
-  },
-  timelineDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#6366f1',
-    borderWidth: 2,
-    borderColor: '#ffffff',
-  },
-  timelineConnector: {
-    width: 2,
-    flex: 1,
-    backgroundColor: '#e5e7eb',
-    marginTop: 4,
-  },
-
-  // Dispatches
-  dispatchesContainer: {
-    marginLeft: 24,
-  },
-  dispatchWrapper: {
-    flexDirection: 'row',
-    marginBottom: 12,
-  },
-  dispatchCard: {
-    flex: 1,
-  },
-
-  // Card
-  card: {
-    backgroundColor: '#ffffff',
-    borderColor: '#e5e7eb',
-  },
-  cardContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 12,
-  },
-  cardLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  dispatchIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#e0e7ff',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  dispatchInfo: {
-    flex: 1,
-  },
-  dispatchNo: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#111827',
-    marginBottom: 2,
-  },
-  dispatchDate: {
-    fontSize: 12,
-    color: '#6b7280',
-  },
-  cardRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  quantityBadge: {
-    alignItems: 'center',
-    paddingHorizontal: 8,
-  },
-  quantityText: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#6366f1',
-  },
-  quantityLabel: {
-    fontSize: 10,
-    color: '#6b7280',
-  },
-
-  // Empty State
-  emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 48,
-  },
-  emptyIconContainer: {
-    marginBottom: 16,
-  },
-  emptyTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#111827',
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  emptySubtitle: {
-    fontSize: 14,
-    color: '#6b7280',
-    textAlign: 'center',
-    lineHeight: 20,
-  },
-});

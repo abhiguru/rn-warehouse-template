@@ -3,25 +3,26 @@ import { act, create } from 'react-test-renderer';
 import { GRNDispatchesTab } from '@/components/grn-details/GRNDispatchesTab';
 import { GRNItemsTab } from '@/components/grn-details/GRNItemsTab';
 
-jest.mock('@/hooks/useListColors', () => ({
-  useListColors: () => ({
-    primary: '#f69000',
-    gray50: '#11222c',
-    gray100: '#20343f',
-    gray400: '#78909c',
-    gray500: '#90a4ae',
-    gray600: '#b0bec5',
-    gray700: '#cfd8dc',
-    gray900: '#ffffff',
-    cellBackground: '#20343f',
-    statusNegative: '#bb0000',
-  }),
+jest.mock('@/store/hooks', () => ({
+  useAppDispatch: () => jest.fn(),
+  useAppSelector: (sel: (s: unknown) => unknown) =>
+    sel({ theme: { preference: 'dark', brand: 'orange' } }),
 }));
 jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
   useAppSelector: (sel: (s: unknown) => unknown) =>
     sel({ theme: { preference: 'dark', brand: 'orange' } }),
 }));
+
+// GRNItemsTab still reads the legacy list palette; serve it from the semantic tokens.
+jest.mock('@/hooks/useListColors', () => {
+  const { getTokens } = jest.requireActual('@/theme/tokens');
+  const t = getTokens('orange', 'dark');
+  return {
+    useListColors: () =>
+      new Proxy({}, { get: (_target, key) => (key === 'primary' ? t.brand.tint : t.text.primary) }),
+  };
+});
 
 jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('@/components/grn-details/GRNItemDispatchTable', () => ({
@@ -58,7 +59,7 @@ it('shows a retryable error instead of an empty-success dispatch state', async (
     );
   });
 
-  expect(renderer.root.findByProps({ children: 'Dispatches Unavailable' })).toBeTruthy();
+  expect(renderer.root.findByProps({ children: "Couldn't load dispatches" })).toBeTruthy();
   expect(renderer.root.findByProps({ children: 'Customer access denied' })).toBeTruthy();
 
   await act(async () => {
