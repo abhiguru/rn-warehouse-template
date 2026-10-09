@@ -6,15 +6,23 @@
  */
 
 import React from 'react';
-import { View, StyleSheet } from 'react-native';
+import { View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import GRNListFiori from '@/components/GRNListFiori';
 import { GRNItem } from '@/services/grn-service';
 import { ListErrorBoundary } from '@/components/list/ListErrorBoundary';
-import { useTheme } from '@/hooks/useTheme';
+import { useThemedStyles } from '@/hooks/useTheme';
+import type { ThemeTokens } from '@/theme/tokens';
+
+const makeStyles = (t: ThemeTokens) => ({
+  container: {
+    flex: 1,
+    backgroundColor: t.background.base,
+  },
+});
 
 export default function GRNTab() {
-  const { colors: themeColors, isDarkMode } = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const { rangeStart, rangeEnd } = useLocalSearchParams<{
     rangeStart?: string;
     rangeEnd?: string;
@@ -54,12 +62,7 @@ export default function GRNTab() {
   };
 
   return (
-    <View
-      style={[
-        styles.container,
-        { backgroundColor: isDarkMode ? themeColors.gray[900] : themeColors.gray[50] },
-      ]}
-    >
+    <View style={styles.container}>
       <ListErrorBoundary listName="GRN items">
         <GRNListFiori
           onItemPress={handleItemPress}
@@ -70,9 +73,3 @@ export default function GRNTab() {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-});

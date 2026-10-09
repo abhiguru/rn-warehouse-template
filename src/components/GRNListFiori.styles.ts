@@ -1,527 +1,449 @@
 /**
- * GRNListFiori Styles
+ * GRNListFiori styles
  *
- * SAP Fiori design system implementation for GRN list.
- * Uses Object Cell layout pattern with semantic status colors.
- *
- * NOTE: Colors are now applied inline via useListColors() hook
- * for dark mode support. This file only contains layout/sizing styles.
+ * List report (style guide 14.1) with object cells (13.6). Built from the
+ * semantic tokens for the current brand and mode; use with
+ * `useThemedStyles(makeGRNListStyles)`. The factory is module-level so the
+ * stylesheet is cached and shared by every card.
  */
 
-import { StyleSheet, Platform } from 'react-native';
+import { StyleSheet } from 'react-native';
+import {
+  fontWeight,
+  layout,
+  radius,
+  space,
+  touchTarget,
+  typography,
+  type ThemeTokens,
+} from '@/theme/tokens';
 
-// SAP Fiori spacing scale
-const spacing = {
-  xxs: 2,
-  xs: 4,
-  sm: 8,
-  md: 12,
-  lg: 16,
-  xl: 20,
-  xxl: 24,
-};
+const tabular = ['tabular-nums' as const];
 
-// SAP Fiori typography
-const typography = {
-  title: {
-    fontSize: 16,
-    fontWeight: '600' as const,
-    lineHeight: 22,
-  },
-  subtitle: {
-    fontSize: 14,
-    fontWeight: '400' as const,
-    lineHeight: 20,
-  },
-  footer: {
-    fontSize: 12,
-    fontWeight: '400' as const,
-    lineHeight: 16,
-  },
-  attribute: {
-    fontSize: 14,
-    fontWeight: '600' as const,
-    lineHeight: 20,
-  },
-  attributeLabel: {
-    fontSize: 10,
-    fontWeight: '500' as const,
-    lineHeight: 14,
-    textTransform: 'uppercase' as const,
-    letterSpacing: 0.5,
-  },
-  badge: {
-    fontSize: 11,
-    fontWeight: '600' as const,
-    lineHeight: 14,
-  },
-  stockValue: {
-    fontSize: 18,
-    fontWeight: '700' as const,
-    lineHeight: 24,
-  },
-};
-
-export const styles = StyleSheet.create({
+export const makeGRNListStyles = (t: ThemeTokens) => ({
   // =========================================================================
-  // Container & Header
+  // Container & header
   // =========================================================================
   container: {
     flex: 1,
-    // backgroundColor: applied inline
+    backgroundColor: t.background.base,
   },
 
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.md,
-    // backgroundColor: applied inline
-    borderBottomWidth: 1,
-    // borderBottomColor: applied inline
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
+    paddingLeft: layout.marginCompact,
+    paddingRight: space.sm,
+    paddingVertical: space.xs,
+    backgroundColor: t.surface.header,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.divider,
   },
 
   headerTitle: {
-    fontSize: 24,
-    fontWeight: '700',
-    // color: applied inline
+    ...typography.title2,
+    color: t.text.primary,
   },
 
   headerActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.xs,
   },
 
-  addBtn: {
-    // backgroundColor: applied inline
-    margin: 0,
+  iconButton: {
+    width: touchTarget,
+    height: touchTarget,
+    borderRadius: radius.pill,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
   },
 
-  filterBtnContainer: {
-    position: 'relative',
+  iconButtonPressed: {
+    backgroundColor: t.surface.cardPressed,
   },
 
   filterBadge: {
-    position: 'absolute',
-    top: 4,
-    right: 4,
-    // backgroundColor: applied inline
+    position: 'absolute' as const,
+    top: space.xs,
+    right: space.xs,
+    minWidth: 18,
+    height: 18,
+    paddingHorizontal: space.xs,
+    borderRadius: radius.pill,
+    backgroundColor: t.brand.fill,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
   },
 
-  avatarSurface: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    // backgroundColor: applied inline
-    justifyContent: 'center',
-    alignItems: 'center',
+  filterBadgeText: {
+    ...typography.caption2,
+    fontWeight: fontWeight.semibold,
+    color: t.brand.onFill,
+  },
+
+  avatar: {
+    width: layout.avatar.sm,
+    height: layout.avatar.sm,
+    borderRadius: radius.pill,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
   },
 
   avatarText: {
-    fontSize: 16,
-    fontWeight: '700',
-    // color: applied inline
+    ...typography.subhead,
+    fontWeight: fontWeight.semibold,
+    // Avatar initials: text.primary in light mode, white in dark (guide 3.2)
+    color: t.mode === 'dark' ? t.overlay.onImage : t.text.primary,
   },
 
   // =========================================================================
-  // Filter Chips
+  // Applied filters bar
   // =========================================================================
   filterChipsContainer: {
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    // backgroundColor: applied inline
-    borderBottomWidth: 1,
-    // borderBottomColor: applied inline
+    paddingHorizontal: layout.marginCompact,
+    paddingVertical: space.sm,
+    backgroundColor: t.surface.card,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.separator,
   },
 
   filterChipsHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.sm,
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'center' as const,
   },
 
   filterCountBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.xs,
   },
 
   filterCountText: {
-    fontSize: 13,
-    fontWeight: '500',
-    // color: applied inline
+    ...typography.footnote,
+    color: t.text.secondary,
+  },
+
+  clearAllButton: {
+    minHeight: touchTarget,
+    paddingHorizontal: space.sm,
+    justifyContent: 'center' as const,
+    borderRadius: radius.button,
+  },
+
+  clearAllButtonPressed: {
+    backgroundColor: t.brand.subtle,
   },
 
   clearAllText: {
-    fontSize: 13,
-    fontWeight: '500',
-    // color: applied inline
+    ...typography.subhead,
+    fontWeight: fontWeight.semibold,
+    color: t.brand.tint,
   },
 
   filterChipsList: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
+    flexDirection: 'row' as const,
+    flexWrap: 'wrap' as const,
+    gap: space.sm,
   },
 
   filterChip: {
-    // backgroundColor: applied inline
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.xs,
+    paddingLeft: space.md,
+    borderRadius: radius.pill,
+    backgroundColor: t.brand.subtle,
   },
 
   filterChipText: {
-    fontSize: 12,
-    // color: applied inline
+    ...typography.caption1,
+    fontWeight: fontWeight.semibold,
+    color: t.brand.tint,
+    flexShrink: 1,
+  },
+
+  filterChipRemove: {
+    width: touchTarget,
+    height: 32,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
   },
 
   // =========================================================================
-  // Sort Controls
+  // Sort controls
   // =========================================================================
   sortRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    // backgroundColor: applied inline
-    borderBottomWidth: 1,
-    // borderBottomColor: applied inline
-    gap: spacing.sm,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    flexWrap: 'wrap' as const,
+    paddingHorizontal: layout.marginCompact,
+    paddingVertical: space.sm,
+    backgroundColor: t.surface.card,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.separator,
+    gap: space.sm,
   },
 
   sortLabel: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.xs,
   },
 
   sortLabelText: {
-    fontSize: 12,
-    fontWeight: '500',
-    // color: applied inline
+    ...typography.footnote,
+    color: t.text.secondary,
   },
 
   sortOptions: {
-    flexDirection: 'row',
-    gap: spacing.sm,
+    flexDirection: 'row' as const,
+    gap: space.sm,
     flex: 1,
   },
 
-  // Expand All Toggle Button
+  chip: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    minHeight: 32,
+    paddingHorizontal: space.md,
+    paddingVertical: space.s6,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: t.border.button,
+    backgroundColor: t.surface.card,
+    gap: space.xs,
+  },
+
+  chipPressed: {
+    backgroundColor: t.surface.cardPressed,
+  },
+
+  chipSelected: {
+    backgroundColor: t.brand.subtle,
+    borderColor: t.brand.subtle,
+  },
+
+  chipText: {
+    ...typography.caption1,
+    color: t.text.primary,
+  },
+
+  chipTextSelected: {
+    fontWeight: fontWeight.semibold,
+    color: t.brand.tint,
+  },
+
   expandAllBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    borderRadius: 16,
-    gap: spacing.xs,
-    marginLeft: 'auto',
-    // backgroundColor: applied inline
-  },
-
-  expandAllText: {
-    fontSize: 12,
-    fontWeight: '500',
-    // color: applied inline
-  },
-
-  sortOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: 16,
-    // backgroundColor: applied inline
-    gap: spacing.xs,
-  },
-
-  sortOptionActive: {
-    // backgroundColor: applied inline (not used anymore, handled inline)
-  },
-
-  sortOptionText: {
-    fontSize: 12,
-    fontWeight: '500',
-    // color: applied inline
-  },
-
-  sortOptionTextActive: {
-    // color: applied inline (not used anymore, handled inline)
-    fontWeight: '600',
+    marginLeft: 'auto' as const,
   },
 
   // =========================================================================
-  // Section Headers (SAP Fiori Section Header spec)
+  // Section headers
   // =========================================================================
   sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-start',
-    minHeight: 32, // Fiori: 32pt min height
-    paddingHorizontal: spacing.md, // Fiori: 16pt horizontal padding
-    paddingTop: spacing.sm, // Fiori: 8pt top padding
-    paddingBottom: spacing.xs, // Fiori: 4pt bottom padding
-    marginTop: spacing.sm,
-    backgroundColor: 'transparent', // Fiori: transparent or #F7F9FA
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    paddingHorizontal: space.xs,
+    paddingTop: space.lg,
+    paddingBottom: space.sm,
   },
 
   sectionTitle: {
-    fontSize: 13, // Fiori: 13pt
-    fontWeight: '600', // Fiori: Semibold
-    // color: applied inline
-    textTransform: 'uppercase', // Fiori: uppercase
-    letterSpacing: 0.5, // Fiori: 0.5pt letter spacing
+    ...typography.footnote,
+    fontWeight: fontWeight.semibold,
+    color: t.text.secondary,
+    textTransform: 'uppercase' as const,
+    letterSpacing: 0.5,
   },
 
   sectionBadge: {
-    marginLeft: spacing.sm,
-    // backgroundColor: applied inline
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xxs,
-    borderRadius: 10,
+    marginLeft: space.sm,
+    backgroundColor: t.status.neutral.background,
+    paddingHorizontal: space.sm,
+    paddingVertical: space.xxs,
+    borderRadius: radius.pill,
     minWidth: 24,
-    alignItems: 'center',
+    alignItems: 'center' as const,
   },
 
   sectionCount: {
-    fontSize: 12,
-    fontWeight: '600',
-    // color: applied inline
+    ...typography.caption1,
+    fontWeight: fontWeight.semibold,
+    color: t.status.neutral.text,
+    fontVariant: tabular,
   },
 
   // =========================================================================
-  // List Container
+  // List container
   // =========================================================================
   listContent: {
     flexGrow: 1,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    paddingBottom: 100,
+    paddingHorizontal: layout.marginCompact,
+    paddingTop: space.sm,
+    // Room for the floating create button
+    paddingBottom: 56 + space.xxxl,
   },
 
   // =========================================================================
-  // SAP Fiori Object Cell Card
+  // Object cell card
   // =========================================================================
   card: {
-    marginBottom: spacing.sm,
-    // backgroundColor: applied inline
-    borderRadius: 12,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.08,
-        shadowRadius: 3,
-      },
-      android: {
-        elevation: 2,
-      },
-    }),
+    marginBottom: space.sm,
+    backgroundColor: t.surface.card,
+    borderRadius: radius.card,
+    ...t.shadow[2],
   },
 
   cardPressed: {
-    // backgroundColor: applied inline
-  },
-
-  cardSelected: {
-    // backgroundColor: applied inline
-    borderLeftWidth: 4,
-    // borderLeftColor: applied inline
+    backgroundColor: t.surface.cardPressed,
   },
 
   cardContentWrapper: {
-    overflow: 'hidden',
-    borderRadius: 12,
+    overflow: 'hidden' as const,
+    borderRadius: radius.card,
   },
 
-  // Object Cell Row (main layout)
   objectCellRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    padding: spacing.lg,
-    gap: spacing.md,
+    flexDirection: 'row' as const,
+    alignItems: 'flex-start' as const,
+    minHeight: layout.objectCellMinHeight,
+    padding: space.lg,
+    gap: space.md,
   },
 
-  // =========================================================================
-  // Status Icon (Left, 40dp)
-  // =========================================================================
   statusIconContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: 10,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    // backgroundColor and borderColor: applied inline
+    width: layout.avatar.md,
+    height: layout.avatar.md,
+    borderRadius: radius.button,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
   },
 
-  // Status icon styles removed - colors applied inline via getStatusIconStyle()
-
-  // =========================================================================
-  // Main Content (Center, Flex)
-  // =========================================================================
   mainContent: {
     flex: 1,
-    gap: spacing.xs,
-  },
-
-  titleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
+    gap: space.xxs,
   },
 
   titleText: {
-    ...typography.title,
-    // color: applied inline
-  },
-
-  subtitleRow: {
-    marginTop: spacing.xxs,
+    ...typography.headline,
+    color: t.text.primary,
   },
 
   subtitleText: {
-    ...typography.subtitle,
-    // color: applied inline
+    ...typography.subhead,
+    color: t.text.secondary,
   },
 
   footerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: spacing.xs,
-    flexWrap: 'wrap',
-    gap: spacing.xs,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    marginTop: space.xs,
+    flexWrap: 'wrap' as const,
+    gap: space.xs,
   },
 
   footerItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xxs,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.xxs,
   },
 
   footerText: {
-    ...typography.footer,
-    // color: applied inline
+    ...typography.footnote,
+    color: t.text.secondary,
   },
 
   footerDot: {
     width: 3,
     height: 3,
-    borderRadius: 1.5,
-    // backgroundColor: applied inline
-    marginHorizontal: spacing.xs,
+    borderRadius: radius.pill,
+    backgroundColor: t.icon.secondary,
+    marginHorizontal: space.xs,
   },
 
-  itemCountBadge: {
-    // backgroundColor: applied inline
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xxs,
-    borderRadius: 10,
-    marginLeft: spacing.xs,
-  },
-
-  itemCountText: {
-    fontSize: 11,
-    fontWeight: '600',
-    // color: applied inline
-  },
-
-  // =========================================================================
-  // Attribute Stack (Right, Fixed Width)
-  // =========================================================================
   attributeStack: {
-    alignItems: 'flex-end',
-    gap: spacing.sm,
+    alignItems: 'flex-end' as const,
+    gap: space.xs,
     minWidth: 72,
   },
 
-  // Status Badge
-  statusBadge: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    borderRadius: 6,
-    minWidth: 56,
-    alignItems: 'center',
-    // backgroundColor: applied inline via getStatusBadgeStyle()
+  // Status tag (guide 13.5): status background + status text + icon
+  statusTag: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.xs,
+    paddingHorizontal: space.sm,
+    paddingVertical: space.xxs,
+    borderRadius: radius.field,
   },
 
-  // Status badge color styles removed - colors applied inline via getStatusBadgeStyle()
-
-  statusBadgeText: {
-    ...typography.badge,
-    // color: applied inline
-  },
-
-  // Stock Value Display
-  stockValueContainer: {
-    alignItems: 'flex-end',
+  statusTagText: {
+    ...typography.caption1,
+    fontWeight: fontWeight.semibold,
   },
 
   stockValueText: {
-    ...typography.stockValue,
-    // color: applied inline via getStockValueStyle()
+    ...typography.headline,
+    color: t.text.primary,
+    fontVariant: tabular,
+    textAlign: 'right' as const,
   },
-
-  // Stock value color styles removed - colors applied inline via getStockValueStyle()
 
   stockLabel: {
-    ...typography.attributeLabel,
-    // color: applied inline
-    marginTop: spacing.xxs,
-  },
-
-  // Weight Display
-  weightDisplay: {
-    alignItems: 'flex-end',
+    ...typography.caption1,
+    color: t.text.secondary,
   },
 
   weightText: {
-    ...typography.footer,
-    // color: applied inline
+    ...typography.footnote,
+    color: t.text.secondary,
+    fontVariant: tabular,
   },
 
   // =========================================================================
-  // Expanded Items Table (SAP Fiori Data Table Spec)
+  // Expanded items table (guide 13.7)
   // =========================================================================
   expandedSection: {
-    borderTopWidth: 1,
-    // borderTopColor: applied inline
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: t.border.divider,
   },
 
   tableHeader: {
-    flexDirection: 'row',
-    // backgroundColor: applied inline
-    paddingVertical: spacing.sm, // 8pt vertical
-    paddingHorizontal: spacing.md, // 12pt horizontal
-    borderBottomWidth: 1,
-    // borderBottomColor: applied inline
-    minHeight: 44, // Fiori spec: 44pt min touch target
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    backgroundColor: t.background.base,
+    paddingVertical: space.sm,
+    paddingHorizontal: space.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.separator,
+    minHeight: 36,
   },
 
   tableHeaderCell: {
-    fontSize: 13, // Fiori spec: 13pt Semibold
-    fontWeight: '600',
-    // color: applied inline
-    letterSpacing: 0.3,
+    ...typography.footnote,
+    fontWeight: fontWeight.semibold,
+    color: t.text.secondary,
   },
 
   tableRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: spacing.sm, // 8pt vertical
-    paddingHorizontal: spacing.md, // 12pt horizontal
-    minHeight: 44, // Fiori spec: 44pt min, 48-56pt comfortable
-    // backgroundColor: applied inline
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    paddingVertical: space.sm,
+    paddingHorizontal: space.md,
+    minHeight: layout.rowMinHeight,
+    backgroundColor: t.surface.card,
   },
 
-  tableRowAlt: {
-    // backgroundColor: applied inline
+  tableRowDivider: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: t.border.divider,
   },
 
   tableCell: {
-    justifyContent: 'center',
+    justifyContent: 'center' as const,
   },
 
   colItem: {
@@ -530,253 +452,252 @@ export const styles = StyleSheet.create({
 
   colQty: {
     width: 48,
-    textAlign: 'right',
+    textAlign: 'right' as const,
   },
 
   colWeight: {
-    width: 48,
-    textAlign: 'right',
-    marginLeft: spacing.sm,
+    width: 56,
+    textAlign: 'right' as const,
+    marginLeft: space.sm,
   },
 
   colStock: {
-    width: 52,
-    alignItems: 'center',
-    marginLeft: spacing.sm,
+    width: 72,
+    alignItems: 'flex-end' as const,
+    textAlign: 'right' as const,
+    marginLeft: space.sm,
   },
 
   cellValue: {
-    fontSize: 15, // Fiori spec: 15pt Regular for data
-    fontWeight: '400',
-    // color: applied inline
+    ...typography.subhead,
+    color: t.text.primary,
+    fontVariant: tabular,
   },
 
   itemName: {
-    fontSize: 15, // Fiori spec: 15pt Regular for data
-    // color: applied inline
-    fontWeight: '500',
+    ...typography.subhead,
+    color: t.text.primary,
   },
 
   itemMark: {
-    fontSize: 11,
-    // color: applied inline
-    marginTop: 2,
-  },
-
-  // Table stock badges with Fiori semantic colors
-  tableStockBadge: {
-    minWidth: 40,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    borderRadius: 6,
-    alignItems: 'center',
-    // backgroundColor: applied inline via getTableStockBadgeStyle()
-  },
-
-  // Table stock badge color styles removed - colors applied inline via getTableStockBadgeStyle()
-
-  tableStockBadgeText: {
-    fontSize: 11,
-    fontWeight: '700',
-    // color: applied inline
+    ...typography.caption1,
+    color: t.text.secondary,
   },
 
   // =========================================================================
-  // Expand/Collapse Button
+  // Expand / collapse button
   // =========================================================================
   expandButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: spacing.md,
-    borderTopWidth: 1,
-    // borderTopColor: applied inline
-    gap: spacing.xs,
-    minHeight: 48,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: t.border.divider,
+    gap: space.xs,
+    minHeight: touchTarget,
   },
 
   expandButtonPressed: {
-    // backgroundColor: applied inline
+    backgroundColor: t.brand.subtle,
   },
 
   expandButtonText: {
-    fontSize: 13,
-    fontWeight: '500',
-    // color: applied inline
+    ...typography.subhead,
+    fontWeight: fontWeight.semibold,
+    color: t.brand.tint,
   },
 
   // =========================================================================
-  // Swipe Actions
+  // Swipe actions
   // =========================================================================
   swipeActions: {
-    flexDirection: 'row',
-    alignItems: 'stretch',
-    marginBottom: spacing.sm,
+    flexDirection: 'row' as const,
+    alignItems: 'stretch' as const,
+    marginBottom: space.sm,
+    marginLeft: space.sm,
+    borderRadius: radius.card,
+    overflow: 'hidden' as const,
   },
 
   swipeButton: {
     width: 72,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: spacing.xs,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    gap: space.xs,
   },
 
-  swipePrint: {
-    // backgroundColor: applied inline
-    borderTopLeftRadius: 8,
-    borderBottomLeftRadius: 8,
+  swipeSecondary: {
+    backgroundColor: t.surface.cardActive,
   },
 
-  swipeView: {
-    // backgroundColor: applied inline
+  swipeSecondaryPressed: {
+    backgroundColor: t.surface.cardPressed,
   },
 
-  swipeEdit: {
-    // backgroundColor: applied inline
-    borderTopRightRadius: 8,
-    borderBottomRightRadius: 8,
+  swipePrimary: {
+    backgroundColor: t.brand.fill,
+  },
+
+  swipePrimaryPressed: {
+    backgroundColor: t.brand.fillPressed,
   },
 
   swipeText: {
-    fontSize: 10,
-    fontWeight: '600',
-    // color: applied inline
+    ...typography.caption1,
+    fontWeight: fontWeight.semibold,
+    color: t.text.primary,
+  },
+
+  swipeTextOnFill: {
+    color: t.brand.onFill,
   },
 
   // =========================================================================
-  // Skeleton Loading
+  // Skeleton loading (guide 13.6)
   // =========================================================================
   skeletonCard: {
-    marginBottom: spacing.sm,
-    // backgroundColor: applied inline
-    borderRadius: 12,
-    padding: spacing.lg,
+    marginBottom: space.sm,
+    backgroundColor: t.surface.card,
+    borderRadius: radius.card,
+    padding: space.lg,
+    ...t.shadow[2],
   },
 
   skeletonObjectCell: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: spacing.md,
+    flexDirection: 'row' as const,
+    alignItems: 'flex-start' as const,
+    gap: space.md,
   },
 
   skeletonStatusIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 10,
-    // backgroundColor: applied inline
+    width: layout.avatar.md,
+    height: layout.avatar.md,
+    borderRadius: radius.button,
+    backgroundColor: t.surface.cardActive,
   },
 
   skeletonContent: {
     flex: 1,
-    gap: spacing.sm,
+    gap: space.sm,
   },
 
   skeletonTitle: {
-    width: '60%',
+    width: '60%' as const,
     height: 16,
-    borderRadius: 4,
-    // backgroundColor: applied inline
+    borderRadius: radius.field,
+    backgroundColor: t.surface.cardActive,
   },
 
   skeletonSubtitle: {
-    width: '80%',
+    width: '80%' as const,
     height: 14,
-    borderRadius: 4,
-    // backgroundColor: applied inline
+    borderRadius: radius.field,
+    backgroundColor: t.surface.cardActive,
   },
 
   skeletonFooter: {
-    width: '50%',
+    width: '50%' as const,
     height: 12,
-    borderRadius: 4,
-    // backgroundColor: applied inline
+    borderRadius: radius.field,
+    backgroundColor: t.surface.cardActive,
   },
 
   skeletonAttributes: {
-    alignItems: 'flex-end',
-    gap: spacing.sm,
+    alignItems: 'flex-end' as const,
+    gap: space.sm,
   },
 
   skeletonBadge: {
     width: 56,
-    height: 24,
-    borderRadius: 6,
-    // backgroundColor: applied inline
+    height: 20,
+    borderRadius: radius.field,
+    backgroundColor: t.surface.cardActive,
   },
 
   skeletonStockValue: {
     width: 40,
-    height: 24,
-    borderRadius: 4,
-    // backgroundColor: applied inline
+    height: 20,
+    borderRadius: radius.field,
+    backgroundColor: t.surface.cardActive,
   },
 
   // =========================================================================
-  // Empty State
+  // Empty and error states (guide 13.6)
   // =========================================================================
   emptyContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: spacing.xxl,
-  },
-
-  emptyIconSurface: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
-    // backgroundColor: applied inline
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: spacing.xl,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    padding: space.xxl,
+    gap: space.sm,
   },
 
   emptyTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    // color: applied inline
-    marginBottom: spacing.sm,
-    textAlign: 'center',
+    ...typography.title3,
+    color: t.text.primary,
+    textAlign: 'center' as const,
+    marginTop: space.sm,
   },
 
   emptySubtitle: {
-    fontSize: 14,
-    // color: applied inline
-    textAlign: 'center',
-    lineHeight: 20,
-    marginBottom: spacing.xl,
-  },
-
-  emptyButton: {
-    borderRadius: 8,
-  },
-
-  emptyButtonContent: {
-    paddingVertical: spacing.xxs,
+    ...typography.subhead,
+    color: t.text.secondary,
+    textAlign: 'center' as const,
+    marginBottom: space.lg,
   },
 
   // =========================================================================
-  // Footer Loading
+  // Floating create button (guide 14.1)
+  // =========================================================================
+  fab: {
+    position: 'absolute' as const,
+    right: layout.marginCompact,
+    bottom: layout.marginCompact,
+    width: 56,
+    height: 56,
+    borderRadius: radius.pill,
+    backgroundColor: t.brand.fill,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    ...t.shadow[3],
+  },
+
+  fabPressed: {
+    backgroundColor: t.brand.fillPressed,
+  },
+
+  // =========================================================================
+  // Footer loading
   // =========================================================================
   footerLoader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: spacing.lg,
-    gap: spacing.sm,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    paddingVertical: space.lg,
+    gap: space.sm,
   },
 
   footerLoaderText: {
-    fontSize: 13,
-    // color: applied inline
+    ...typography.footnote,
+    color: t.text.secondary,
   },
 
   // =========================================================================
-  // Snackbar
+  // Snackbar (guide 13.9)
   // =========================================================================
   snackbar: {
-    marginBottom: 80,
+    marginBottom: space.lg,
+    backgroundColor: t.surface.inverse,
+    borderRadius: radius.button,
+    ...t.shadow[3],
+  },
+
+  snackbarText: {
+    ...typography.subhead,
+    color: t.text.inverse,
   },
 });
 
-export default styles;
+export type GRNListStyles = ReturnType<typeof makeGRNListStyles>;
+
+export default makeGRNListStyles;

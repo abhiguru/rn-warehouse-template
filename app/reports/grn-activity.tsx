@@ -2,7 +2,7 @@
  * GRN Activity Report Screen (C2)
  *
  * Displays recent GRN activity with items, invoice status, and dispatch summary.
- * GRNs grouped by date with period selector.
+ * GRNs grouped by date with period selector (style guide 14.10).
  */
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
@@ -26,83 +26,232 @@ import {
   getDateRangeForPeriod,
   type KPIItem,
 } from '@/components/reports';
+import { Button } from '@/components/ui/Button';
 import { getCustomerGRNActivity, getAllGRNActivity } from '@/services/reporting/grn-activity-service';
 import { useRoleBasedAccess } from '@/hooks/useRoleBasedAccess';
-import theme from '@/theme';
-import { useFioriColors } from '@/theme/fioriColors';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import {
+  fontWeight,
+  iconSize,
+  layout,
+  radius,
+  space,
+  typography,
+  type ThemeTokens,
+} from '@/theme/tokens';
 import type {
   GRNActivityData,
   GRNActivityRecord,
-  GRNActivityItem,
   ReportPeriod,
   AllGRNActivityData,
   CustomerGRNSummary,
 } from '@/types/report.types';
-import { formatNumber, formatWeight, formatDate, formatSectionDate } from '@/utils/formatters';
+import { formatNumber, formatSectionDate } from '@/utils/formatters';
 
-// ============================================================================
-// SAP Fiori Design Tokens (Static - dimensions and typography only)
-// ============================================================================
-const FIORI_STATIC = {
-  dimensions: {
-    objectCellMinHeight: 72,
-    objectCellImageSize: 44,
-    objectCellImageRadius: 10,
-    cardCornerRadius: 12,
-    cardPadding: 16,
-    sectionHeaderHeight: 32,
-    touchTarget: 44,
-  },
-  typography: {
-    sectionHeader: {
-      fontSize: 13,
-      fontWeight: '600' as const,
-      letterSpacing: 0.5,
-      textTransform: 'uppercase' as const,
-    },
-    title: { fontSize: 16, fontWeight: '600' as const, lineHeight: 22 },
-    subtitle: { fontSize: 14, lineHeight: 18 },
-    footnote: { fontSize: 13, lineHeight: 16 },
-    caption: { fontSize: 12, lineHeight: 16 },
-  },
+const NO_CUSTOMER_ERROR = 'No customer assigned to your account';
+
+/** "9 Oct 2026" (style guide 12.3). */
+const formatDisplayDate = (date: string | Date | null | undefined) => {
+  if (!date) return '';
+  const d = typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date)
+    ? new Date(`${date}T00:00:00`)
+    : new Date(date);
+  if (isNaN(d.getTime())) return '';
+  return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 };
+
+/** "1 bag", "120 bags" (style guide 12.3). */
+const pluralize = (count: number, singular: string, plural: string) =>
+  `${formatNumber(count)} ${count === 1 ? singular : plural}`;
+
+const makeStyles = (t: ThemeTokens) => ({
+  container: { flex: 1, backgroundColor: t.background.base },
+  loadingContainer: { flex: 1 },
+  scrollView: { flex: 1 },
+  scrollContent: { paddingBottom: space.xxxl },
+
+  dateRangeText: {
+    ...typography.caption1,
+    color: t.text.secondary,
+    textAlign: 'center' as const,
+    paddingVertical: space.xs,
+  },
+
+  section: { marginTop: space.sm, paddingHorizontal: layout.marginCompact },
+
+  sectionHeader: {
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'center' as const,
+    paddingTop: space.lg,
+    paddingBottom: space.sm,
+  },
+  sectionHeaderText: {
+    ...typography.footnote,
+    fontWeight: fontWeight.semibold,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase' as const,
+    color: t.text.secondary,
+  },
+
+  // Date section header
+  dateSectionHeader: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    paddingTop: space.lg,
+    paddingBottom: space.sm,
+    paddingHorizontal: space.xs,
+  },
+  dateSectionText: {
+    ...typography.footnote,
+    fontWeight: fontWeight.semibold,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase' as const,
+    color: t.text.secondary,
+  },
+
+  grnsList: { gap: space.sm },
+
+  // Object cell card
+  card: {
+    backgroundColor: t.surface.card,
+    borderRadius: radius.card,
+    ...t.shadow[2],
+  },
+  cardPressed: { backgroundColor: t.surface.cardPressed },
+  objectCell: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    minHeight: layout.objectCellMinHeight,
+    paddingTop: space.md,
+    paddingBottom: space.sm,
+    paddingHorizontal: space.lg,
+    gap: space.md,
+  },
+  objectIcon: {
+    width: layout.avatar.md,
+    height: layout.avatar.md,
+    borderRadius: radius.button,
+    backgroundColor: t.brand.subtle,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+  },
+  objectContent: { flex: 1, gap: space.xxs },
+  titleRow: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: space.sm, flexWrap: 'wrap' as const },
+  title: { ...typography.headline, color: t.text.primary, flexShrink: 1 },
+  subtitle: { ...typography.subhead, color: t.text.secondary },
+
+  imageCountBadge: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.xxs,
+    paddingHorizontal: space.s6,
+    paddingVertical: space.xxs,
+    borderRadius: radius.field,
+    backgroundColor: t.status.neutral.background,
+  },
+  imageCountText: { ...typography.caption1, color: t.status.neutral.text, fontVariant: ['tabular-nums' as const] },
+
+  stockInfo: { alignItems: 'flex-end' as const },
+  stockValue: { ...typography.headline, color: t.text.primary, fontVariant: ['tabular-nums' as const] },
+  stockLabel: { ...typography.caption1, color: t.text.secondary, fontVariant: ['tabular-nums' as const] },
+
+  statusRow: {
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'center' as const,
+    flexWrap: 'wrap' as const,
+    gap: space.sm,
+    paddingHorizontal: space.lg,
+    paddingBottom: space.md,
+    paddingLeft: space.lg + layout.avatar.md + space.md,
+  },
+  statusTag: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.xs,
+    paddingHorizontal: space.sm,
+    paddingVertical: space.xxs,
+    borderRadius: radius.field,
+  },
+  statusTagText: { ...typography.caption1, fontWeight: fontWeight.semibold },
+  dispatchCount: { ...typography.footnote, color: t.text.secondary },
+
+  // Customers list
+  customersCard: {
+    backgroundColor: t.surface.card,
+    borderRadius: radius.card,
+    overflow: 'hidden' as const,
+    ...t.shadow[2],
+  },
+  customerRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    minHeight: layout.objectCellMinHeight,
+    paddingVertical: space.md,
+    paddingHorizontal: space.lg,
+    gap: space.md,
+    backgroundColor: t.surface.card,
+  },
+  customerAvatar: {
+    width: layout.avatar.md,
+    height: layout.avatar.md,
+    borderRadius: radius.pill,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+  },
+  customerContent: { flex: 1, gap: space.xxs },
+  customerQty: { alignItems: 'flex-end' as const },
+  divider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: t.border.divider,
+    marginLeft: space.lg + layout.avatar.md + space.md,
+  },
+  retry: { alignItems: 'center' as const, paddingBottom: space.xxl },
+});
+
+type Styles = ReturnType<typeof makeStyles>;
 
 // ============================================================================
 // Components
 // ============================================================================
 
-const FioriSectionHeader: React.FC<{ title: string }> = ({ title }) => {
-  const fiori = useFioriColors();
-  return (
-    <View style={styles.fioriSectionHeader}>
-      <Text style={[styles.fioriSectionHeaderText, { color: fiori.colors.textSecondary }]}>
-        {title.toUpperCase()}
-      </Text>
-    </View>
-  );
-};
+const SectionHeader: React.FC<{ title: string; styles: Styles }> = ({ title, styles }) => (
+  <View style={styles.sectionHeader}>
+    <Text style={styles.sectionHeaderText} accessibilityRole="header">
+      {title}
+    </Text>
+  </View>
+);
 
-// Date Section Header (for grouping GRNs by date)
-const DateSectionHeader: React.FC<{ date: string }> = ({ date }) => {
-  const fiori = useFioriColors();
-  return (
-    <View style={styles.dateSectionHeader}>
-      <View style={[styles.dateSectionLine, { backgroundColor: fiori.colors.divider }]} />
-      <Text style={[styles.dateSectionText, { color: fiori.colors.textSecondary }]}>
-        {formatSectionDate(date)}
-      </Text>
-      <View style={[styles.dateSectionLine, { backgroundColor: fiori.colors.divider }]} />
-    </View>
-  );
-};
+// Date section header (groups GRNs by date)
+const DateSectionHeader: React.FC<{ date: string; styles: Styles }> = ({ date, styles }) => (
+  <View style={styles.dateSectionHeader}>
+    <Text style={styles.dateSectionText} accessibilityRole="header">
+      {formatSectionDate(date)}
+    </Text>
+  </View>
+);
 
-// GRN Card Component - navigates to details screen
+// GRN card - navigates to the details screen
 interface GRNCardProps {
   grn: GRNActivityRecord;
+  styles: Styles;
 }
 
-const GRNCard: React.FC<GRNCardProps> = ({ grn }) => {
-  const fiori = useFioriColors();
+const GRNCard: React.FC<GRNCardProps> = ({ grn, styles }) => {
+  const t = useTokens();
+  const invoiced = grn.invoice_status.is_invoiced;
+  const invoiceStatus = invoiced ? t.status.positive : t.status.critical;
+  const invoiceLabel = invoiced
+    ? grn.invoice_status.invoice_number
+      ? `Invoice ${grn.invoice_status.invoice_number}`
+      : 'Invoiced'
+    : 'Not invoiced';
+  const dispatchCount = grn.dispatch_summary.dispatch_count;
+  const dispatchLabel = dispatchCount > 0 ? pluralize(dispatchCount, 'dispatch', 'dispatches') : null;
+  const people = [grn.sender_name || 'Sender not recorded', grn.supervisor_name].filter(Boolean).join(' · ');
+  const stockLabel = `${formatNumber(grn.dispatch_summary.current_stock)} of ${pluralize(grn.total_qty, 'bag', 'bags')} in stock`;
 
   const handlePress = () => {
     if (grn.grn_id) {
@@ -112,124 +261,109 @@ const GRNCard: React.FC<GRNCardProps> = ({ grn }) => {
 
   return (
     <Pressable
-      style={({ pressed }) => [
-        styles.fioriCard,
-        {
-          backgroundColor: fiori.colors.cardBackground,
-          borderColor: fiori.colors.border,
-        },
-        pressed && { backgroundColor: fiori.colors.cardBackgroundPressed },
-      ]}
+      style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
       onPress={handlePress}
       accessibilityRole="button"
-      accessibilityLabel={`GRN ${grn.gr_no}, ${grn.total_qty} units`}
+      accessibilityLabel={[
+        `GRN ${grn.gr_no}`,
+        people,
+        stockLabel,
+        invoiceLabel,
+        dispatchLabel,
+        grn.image_count > 0 ? pluralize(grn.image_count, 'photo', 'photos') : null,
+      ].filter(Boolean).join(', ')}
+      accessibilityHint="Opens the GRN"
     >
-      <View style={styles.fioriObjectCell}>
-        {/* Icon */}
-        <View style={[styles.fioriObjectCellImage, { backgroundColor: fiori.colors.tintLight }]}>
-          <Icon name="file-document-outline" size={22} color={fiori.colors.tint} />
+      <View style={styles.objectCell}>
+        <View style={styles.objectIcon}>
+          <Icon name="package-down" size={iconSize.lg} color={t.brand.tint} />
         </View>
 
-        {/* Content */}
-        <View style={styles.fioriObjectCellContent}>
+        <View style={styles.objectContent}>
           <View style={styles.titleRow}>
-            <Text style={[styles.fioriObjectCellTitle, { color: fiori.colors.textPrimary }]} numberOfLines={1}>
-              {grn.gr_no}
+            <Text style={styles.title} numberOfLines={2}>
+              GRN {grn.gr_no}
             </Text>
             {grn.image_count > 0 && (
-              <View style={[styles.imageCountBadge, { backgroundColor: fiori.colors.backgroundGrouped }]}>
-                <Icon name="camera" size={12} color={fiori.colors.textSecondary} />
-                <Text style={[styles.imageCountText, { color: fiori.colors.textSecondary }]}>{grn.image_count}</Text>
+              <View style={styles.imageCountBadge}>
+                <Icon name="camera-outline" size={iconSize.sm} color={t.status.neutral.text} />
+                <Text style={styles.imageCountText} maxFontSizeMultiplier={1.6}>{grn.image_count}</Text>
               </View>
             )}
           </View>
-          <Text style={[styles.fioriObjectCellSubtitle, { color: fiori.colors.textSecondary }]} numberOfLines={1}>
-            {grn.sender_name || 'Unknown Sender'} {grn.supervisor_name ? `• ${grn.supervisor_name}` : ''}
+          <Text style={styles.subtitle} numberOfLines={2}>
+            {people}
           </Text>
         </View>
 
-        {/* Stock/Dispatch Info */}
         <View style={styles.stockInfo}>
-          <Text style={[styles.stockValue, { color: fiori.colors.textPrimary }]}>
-            {formatNumber(grn.dispatch_summary.current_stock)}
-          </Text>
-          <Text style={[styles.stockLabel, { color: fiori.colors.textSecondary }]}>
-            / {formatNumber(grn.total_qty)}
-          </Text>
+          <Text style={styles.stockValue}>{formatNumber(grn.dispatch_summary.current_stock)}</Text>
+          <Text style={styles.stockLabel}>of {formatNumber(grn.total_qty)}</Text>
         </View>
 
-        {/* Navigate Icon */}
-        <Icon
-          name="chevron-right"
-          size={20}
-          color={fiori.colors.textSecondary}
-        />
+        <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />
       </View>
 
-      {/* Invoice Status Badge */}
       <View style={styles.statusRow}>
-        <View style={[
-          styles.statusBadge,
-          { backgroundColor: grn.invoice_status.is_invoiced ? fiori.colors.successLight : fiori.colors.warningLight },
-        ]}>
-          <Icon
-            name={grn.invoice_status.is_invoiced ? 'check-circle' : 'clock-outline'}
-            size={14}
-            color={grn.invoice_status.is_invoiced ? fiori.colors.success : fiori.colors.warning}
-          />
-          <Text style={[
-            styles.statusBadgeText,
-            { color: grn.invoice_status.is_invoiced ? fiori.colors.success : fiori.colors.warning },
-          ]}>
-            {grn.invoice_status.is_invoiced
-              ? `Invoiced: ${grn.invoice_status.invoice_number}`
-              : 'Not Invoiced'}
+        <View style={[styles.statusTag, { backgroundColor: invoiceStatus.background }]}>
+          <Icon name={invoiced ? 'check-circle' : 'alert'} size={iconSize.sm} color={invoiceStatus.text} />
+          <Text style={[styles.statusTagText, { color: invoiceStatus.text }]} maxFontSizeMultiplier={1.6}>
+            {invoiceLabel}
           </Text>
         </View>
-        {grn.dispatch_summary.dispatch_count > 0 && (
-          <Text style={[styles.dispatchCount, { color: fiori.colors.textSecondary }]}>
-            {grn.dispatch_summary.dispatch_count} dispatch{grn.dispatch_summary.dispatch_count !== 1 ? 'es' : ''}
-          </Text>
-        )}
+        {dispatchLabel && <Text style={styles.dispatchCount}>{dispatchLabel}</Text>}
       </View>
     </Pressable>
   );
 };
 
-// Customer Card for all-customers view
+// Customer row for the all-customers view
 interface CustomerCardProps {
   customer: CustomerGRNSummary;
   onPress: () => void;
+  styles: Styles;
 }
 
-const CustomerCard: React.FC<CustomerCardProps> = ({ customer, onPress }) => {
-  const fiori = useFioriColors();
+const avatarIndex = (key: string, count: number) => {
+  let hash = 0;
+  for (let i = 0; i < key.length; i += 1) hash = (hash * 31 + key.charCodeAt(i)) | 0;
+  return Math.abs(hash) % count;
+};
+
+const CustomerCard: React.FC<CustomerCardProps> = ({ customer, onPress, styles }) => {
+  const t = useTokens();
+  const latest = formatDisplayDate(customer.latest_grn_date);
+  const grnCount = pluralize(customer.grn_count, 'GRN', 'GRNs');
+  const subtitle = latest ? `${grnCount} · Latest ${latest}` : grnCount;
+  const bags = pluralize(customer.total_quantity, 'bag', 'bags');
+  const initialColor = t.mode === 'dark' ? t.overlay.onImage : t.text.primary;
   return (
     <Pressable
-      style={({ pressed }) => [
-        styles.customerCard,
-        pressed && { backgroundColor: fiori.colors.cardBackgroundPressed },
-      ]}
+      style={({ pressed }) => [styles.customerRow, pressed && styles.cardPressed]}
       onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`${customer.customer_name}, ${subtitle}, ${bags}`}
+      accessibilityHint="Shows this customer's GRNs"
     >
-      <View style={[styles.customerAvatar, { backgroundColor: fiori.colors.tintLight }]}>
-        <Icon name="account-outline" size={22} color={fiori.colors.tint} />
+      <View
+        style={[
+          styles.customerAvatar,
+          { backgroundColor: t.avatar[avatarIndex(customer.customer_id, t.avatar.length)] },
+        ]}
+      >
+        <Icon name="account-outline" size={iconSize.lg} color={initialColor} />
       </View>
       <View style={styles.customerContent}>
-        <Text style={[styles.customerName, { color: fiori.colors.textPrimary }]} numberOfLines={1}>
+        <Text style={styles.title} numberOfLines={2}>
           {customer.customer_name}
         </Text>
-        <Text style={[styles.customerSubtitle, { color: fiori.colors.textSecondary }]}>
-          {customer.grn_count} GRN{customer.grn_count !== 1 ? 's' : ''} • Latest: {formatDate(customer.latest_grn_date, 'compact')}
-        </Text>
+        <Text style={styles.subtitle}>{subtitle}</Text>
       </View>
       <View style={styles.customerQty}>
-        <Text style={[styles.customerQtyValue, { color: fiori.colors.textPrimary }]}>
-          {formatNumber(customer.total_quantity)}
-        </Text>
-        <Text style={[styles.customerQtyLabel, { color: fiori.colors.textSecondary }]}>units</Text>
+        <Text style={styles.stockValue}>{formatNumber(customer.total_quantity)}</Text>
+        <Text style={styles.stockLabel}>{customer.total_quantity === 1 ? 'bag' : 'bags'}</Text>
       </View>
-      <Icon name="chevron-right" size={20} color={fiori.colors.textSecondary} />
+      <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />
     </Pressable>
   );
 };
@@ -239,7 +373,8 @@ const CustomerCard: React.FC<CustomerCardProps> = ({ customer, onPress }) => {
 // ============================================================================
 
 export default function GRNActivityScreen() {
-  const fiori = useFioriColors();
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
   const params = useLocalSearchParams<{ customerId?: string; customerName?: string }>();
 
   // Role-based access (J12 fix)
@@ -335,7 +470,7 @@ export default function GRNActivityScreen() {
     } else if (singleAssignedCustomerId) {
       fetchSingleCustomerData(singleAssignedCustomerId, selectedPeriod);
     } else {
-      setError('No customer assigned to your account');
+      setError(NO_CUSTOMER_ERROR);
       setIsLoading(false);
     }
   }, []);
@@ -428,8 +563,8 @@ export default function GRNActivityScreen() {
     if (!allCustomersData?.summary) return [];
     const s = allCustomersData.summary;
     return [
-      { icon: 'file-document-multiple-outline', value: s.total_grns, label: 'GRNs', variant: 'primary' },
-      { icon: 'package-variant', value: s.total_quantity, label: 'Units', variant: 'secondary' },
+      { icon: 'package-down', value: s.total_grns, label: 'GRNs', variant: 'primary' },
+      { icon: 'package-variant', value: s.total_quantity, label: 'Bags', variant: 'secondary' },
     ];
   }, [allCustomersData?.summary]);
 
@@ -438,29 +573,40 @@ export default function GRNActivityScreen() {
     if (!data?.summary) return [];
     const s = data.summary;
     return [
-      { icon: 'file-document-multiple-outline', value: s.total_grns, label: 'GRNs', variant: 'primary' },
-      { icon: 'package-variant', value: s.total_quantity, label: 'Units', variant: 'secondary' },
-      { icon: 'receipt', value: `${s.total_invoiced_grns}/${s.total_grns}`, label: 'Invoiced', variant: 'accent' },
+      { icon: 'package-down', value: s.total_grns, label: 'GRNs', variant: 'primary' },
+      { icon: 'package-variant', value: s.total_quantity, label: 'Bags', variant: 'secondary' },
+      { icon: 'file-document-outline', value: `${formatNumber(s.total_invoiced_grns)} of ${formatNumber(s.total_grns)}`, label: 'Invoiced', variant: 'accent' },
     ];
   }, [data?.summary]);
 
+
   const { from, to } = getDateRangeForPeriod(selectedPeriod);
-  const dateRangeText = `${formatDate(from, 'compact')} - ${formatDate(to, 'compact')}`;
+  const dateRangeText = `${formatDisplayDate(from)} to ${formatDisplayDate(to)}`;
 
   const isListView = shouldShowListView && viewMode === 'all';
   const hasData = isListView ? allCustomersData : data;
 
+  const refreshControl = (
+    <RefreshControl
+      refreshing={isRefreshing}
+      onRefresh={handleRefresh}
+      colors={[t.brand.tint]}
+      tintColor={t.brand.tint}
+      progressBackgroundColor={t.surface.card}
+    />
+  );
+
   // Loading
   if (isLoading && !hasData) {
     return (
-      <View style={[styles.container, { backgroundColor: fiori.colors.backgroundGrouped }]}>
-        <ReportHeader title="GRN Activity" />
+      <View style={styles.container}>
+        <ReportHeader title="GRN activity" />
         <PeriodSelector selectedPeriod={selectedPeriod} onPeriodChange={handlePeriodChange} />
-        <View style={styles.loadingContainer}>
+        <View style={styles.loadingContainer} accessibilityLabel="Loading GRN activity" accessibilityState={{ busy: true }}>
           <KPIGrid
             items={[
-              { icon: 'file-document-multiple-outline', value: '-', label: 'GRNs', variant: 'primary' },
-              { icon: 'package-variant', value: '-', label: 'Units', variant: 'secondary' },
+              { icon: 'package-down', value: '-', label: 'GRNs', variant: 'primary' },
+              { icon: 'package-variant', value: '-', label: 'Bags', variant: 'secondary' },
             ]}
             isLoading={true}
             compact
@@ -472,36 +618,49 @@ export default function GRNActivityScreen() {
 
   // Error
   if (error && !hasData) {
+    const noCustomer = error === NO_CUSTOMER_ERROR;
     return (
-      <View style={[styles.container, { backgroundColor: fiori.colors.backgroundGrouped }]}>
-        <ReportHeader title="GRN Activity" />
+      <View style={styles.container}>
+        <ReportHeader title="GRN activity" />
         <PeriodSelector selectedPeriod={selectedPeriod} onPeriodChange={handlePeriodChange} />
-        <ReportEmptyState icon="alert-circle-outline" message="Failed to load data" description={error} />
+        <ReportEmptyState
+          icon="alert-circle-outline"
+          message={noCustomer ? 'No customer linked to your account' : "Couldn't load GRN activity"}
+          description={
+            noCustomer
+              ? 'Ask your facility to link your account to a customer.'
+              : 'Check your connection and try again.'
+          }
+        />
+        {!noCustomer && (
+          <View style={styles.retry}>
+            <Button type="secondary" variant="tint" onPress={handleRefresh}>
+              Try again
+            </Button>
+          </View>
+        )}
       </View>
     );
   }
 
-  // All Customers View
+  // All customers view
   if (isListView && allCustomersData) {
-    const hasCustomers = allCustomersData.by_customer.length > 0;
-
     return (
-      <View style={[styles.container, { backgroundColor: fiori.colors.backgroundGrouped }]}>
-        <ReportHeader title="GRN Activity" subtitle={isStaff ? 'All Customers' : 'My Customers'} />
+      <View style={styles.container}>
+        <ReportHeader title="GRN activity" subtitle={isStaff ? 'All customers' : 'My customers'} />
         <PeriodSelector selectedPeriod={selectedPeriod} onPeriodChange={handlePeriodChange} />
-        <Text style={[styles.dateRangeText, { color: fiori.colors.textSecondary }]}>{dateRangeText}</Text>
+        <Text style={styles.dateRangeText}>{dateRangeText}</Text>
 
         <ScrollView
           style={styles.scrollView}
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
-          refreshControl={
-            <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} colors={[fiori.colors.tint]} />
-          }
+          keyboardShouldPersistTaps="handled"
+          refreshControl={refreshControl}
         >
           <KPIGrid items={allCustomersKpis} isLoading={isLoading} compact />
 
-          {/* Customer Search */}
+          {/* Customer search */}
           <View style={styles.section}>
             <ReportCustomerSearch
               searchQuery={customerSearchQuery}
@@ -513,62 +672,69 @@ export default function GRNActivityScreen() {
 
           {filteredCustomers.length > 0 ? (
             <View style={styles.section}>
-              <FioriSectionHeader title="Customers" />
-              <View style={[
-                styles.customersCard,
-                { backgroundColor: fiori.colors.cardBackground, borderColor: fiori.colors.border },
-              ]}>
+              <SectionHeader title="Customers" styles={styles} />
+              <View style={styles.customersCard}>
                 {filteredCustomers.map((customer, index) => (
                   <React.Fragment key={customer.customer_id}>
-                    <CustomerCard customer={customer} onPress={() => handleCustomerSelect(customer)} />
-                    {index < filteredCustomers.length - 1 && (
-                      <View style={[styles.divider, { backgroundColor: fiori.colors.divider }]} />
-                    )}
+                    <CustomerCard customer={customer} onPress={() => handleCustomerSelect(customer)} styles={styles} />
+                    {index < filteredCustomers.length - 1 && <View style={styles.divider} />}
                   </React.Fragment>
                 ))}
               </View>
             </View>
+          ) : customerSearchQuery.trim() && allCustomersData.by_customer.length > 0 ? (
+            <ReportEmptyState
+              icon="magnify"
+              message={`No customers match "${customerSearchQuery.trim()}"`}
+              description="Try fewer letters."
+            />
           ) : (
-            <ReportEmptyState icon="file-document-outline" message="No GRNs Found" description="No GRNs in the selected period." />
+            <ReportEmptyState
+              icon="package-down"
+              message="No GRNs in this period"
+              description="Choose a longer period to see more GRNs."
+            />
           )}
         </ScrollView>
       </View>
     );
   }
 
-  // Single Customer View
+  // Single customer view
   if (!data?.grns || data.grns.length === 0) {
     return (
-      <View style={[styles.container, { backgroundColor: fiori.colors.backgroundGrouped }]}>
+      <View style={styles.container}>
         <ReportHeader
-          title="GRN Activity"
+          title="GRN activity"
           subtitle={selectedCustomer?.customer_name}
           onBack={shouldShowListView || routeCustomerId ? handleBackToAll : undefined}
         />
         <PeriodSelector selectedPeriod={selectedPeriod} onPeriodChange={handlePeriodChange} />
-        <Text style={[styles.dateRangeText, { color: fiori.colors.textSecondary }]}>{dateRangeText}</Text>
-        <ReportEmptyState icon="file-document-outline" message="No GRNs Found" description="No GRNs in the selected period." />
+        <Text style={styles.dateRangeText}>{dateRangeText}</Text>
+        <ReportEmptyState
+          icon="package-down"
+          message="No GRNs in this period"
+          description="Choose a longer period to see more GRNs."
+        />
       </View>
     );
   }
 
   return (
-    <View style={[styles.container, { backgroundColor: fiori.colors.backgroundGrouped }]}>
+    <View style={styles.container}>
       <ReportHeader
-        title="GRN Activity"
+        title="GRN activity"
         subtitle={selectedCustomer?.customer_name}
         onBack={shouldShowListView || routeCustomerId ? handleBackToAll : undefined}
       />
       <PeriodSelector selectedPeriod={selectedPeriod} onPeriodChange={handlePeriodChange} />
-      <Text style={[styles.dateRangeText, { color: fiori.colors.textSecondary }]}>{dateRangeText}</Text>
+      <Text style={styles.dateRangeText}>{dateRangeText}</Text>
 
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} colors={[fiori.colors.tint]} />
-        }
+        refreshControl={refreshControl}
       >
         <KPIGrid items={singleCustomerKpis} isLoading={isLoading} compact />
 
@@ -576,10 +742,10 @@ export default function GRNActivityScreen() {
         <View style={styles.section}>
           {grnsByDate.map(([date, grns]) => (
             <View key={date}>
-              <DateSectionHeader date={date} />
+              <DateSectionHeader date={date} styles={styles} />
               <View style={styles.grnsList}>
                 {grns.map((grn) => (
-                  <GRNCard key={grn.grn_id} grn={grn} />
+                  <GRNCard key={grn.grn_id} grn={grn} styles={styles} />
                 ))}
               </View>
             </View>
@@ -589,136 +755,3 @@ export default function GRNActivityScreen() {
     </View>
   );
 }
-
-// ============================================================================
-// Styles
-// ============================================================================
-const styles = StyleSheet.create({
-  container: { flex: 1 },
-  loadingContainer: { flex: 1 },
-  scrollView: { flex: 1 },
-  scrollContent: { paddingBottom: 32 },
-
-  dateRangeText: {
-    fontSize: 12,
-    textAlign: 'center',
-    paddingVertical: 4,
-  },
-
-  section: { marginTop: 8, paddingHorizontal: FIORI_STATIC.dimensions.cardPadding },
-
-  fioriSectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingTop: 8,
-    paddingBottom: 4,
-    minHeight: FIORI_STATIC.dimensions.sectionHeaderHeight,
-  },
-  fioriSectionHeaderText: {
-    fontSize: FIORI_STATIC.typography.sectionHeader.fontSize,
-    fontWeight: FIORI_STATIC.typography.sectionHeader.fontWeight,
-    letterSpacing: FIORI_STATIC.typography.sectionHeader.letterSpacing,
-    textTransform: FIORI_STATIC.typography.sectionHeader.textTransform,
-  },
-
-  // Date Section Header
-  dateSectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 4,
-  },
-  dateSectionLine: { flex: 1, height: 1 },
-  dateSectionText: {
-    fontSize: 12,
-    fontWeight: '600',
-    paddingHorizontal: 12,
-    textTransform: 'uppercase',
-  },
-
-  // GRNs List
-  grnsList: { gap: 10 },
-
-  // Card
-  fioriCard: {
-    borderRadius: FIORI_STATIC.dimensions.cardCornerRadius,
-    borderWidth: 1,
-    overflow: 'hidden',
-    ...theme.shadows.sm,
-  },
-  fioriObjectCell: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    minHeight: FIORI_STATIC.dimensions.objectCellMinHeight,
-    paddingVertical: 14,
-    paddingHorizontal: FIORI_STATIC.dimensions.cardPadding,
-    gap: 12,
-  },
-  fioriObjectCellImage: {
-    width: FIORI_STATIC.dimensions.objectCellImageSize,
-    height: FIORI_STATIC.dimensions.objectCellImageSize,
-    borderRadius: FIORI_STATIC.dimensions.objectCellImageRadius,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  fioriObjectCellContent: { flex: 1 },
-  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  fioriObjectCellTitle: { fontSize: 16, fontWeight: '600', flexShrink: 1 },
-  fioriObjectCellSubtitle: { fontSize: 13, marginTop: 2 },
-
-  imageCountBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 8,
-  },
-  imageCountText: { fontSize: 11 },
-
-  stockInfo: { flexDirection: 'row', alignItems: 'baseline', gap: 2 },
-  stockValue: { fontSize: 15, fontWeight: '600' },
-  stockLabel: { fontSize: 12 },
-
-  // Status Row
-  statusRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: FIORI_STATIC.dimensions.cardPadding,
-    paddingBottom: 12,
-  },
-  statusBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12 },
-  statusBadgeText: { fontSize: 11, fontWeight: '600' },
-  dispatchCount: { fontSize: 11 },
-
-  // Customers Card
-  customersCard: {
-    borderRadius: FIORI_STATIC.dimensions.cardCornerRadius,
-    borderWidth: 1,
-    overflow: 'hidden',
-    ...theme.shadows.sm,
-  },
-  customerCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: FIORI_STATIC.dimensions.cardPadding,
-    gap: 12,
-  },
-  customerAvatar: {
-    width: FIORI_STATIC.dimensions.objectCellImageSize,
-    height: FIORI_STATIC.dimensions.objectCellImageSize,
-    borderRadius: FIORI_STATIC.dimensions.objectCellImageRadius,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  customerContent: { flex: 1 },
-  customerName: { fontSize: 16, fontWeight: '600' },
-  customerSubtitle: { fontSize: 13, marginTop: 2 },
-  customerQty: { alignItems: 'flex-end' },
-  customerQtyValue: { fontSize: 15, fontWeight: '600' },
-  customerQtyLabel: { fontSize: 11 },
-  divider: { height: StyleSheet.hairlineWidth, marginLeft: 72 },
-});

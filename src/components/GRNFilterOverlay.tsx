@@ -1,16 +1,16 @@
 /**
  * GRNFilterOverlay - Filter modal for GRN list
  *
- * Full-screen modal that provides filtering options for the GRN list.
+ * Full-screen filter sheet (style guide 13.9 / 14.5) for the GRN list.
  * Supports date range, items, stock status, weight range, and package mark filters.
  *
  * Features:
  * - Date range selection with DateRangePicker
  * - Multi-select item filtering
- * - Stock status toggle (all/in_stock/out_of_stock)
+ * - Stock status radio list (all/in_stock/out_of_stock)
  * - Weight range inputs
  * - Package mark text filter
- * - Clear all/apply actions
+ * - Reset and show-results actions
  *
  * @example
  * ```tsx
@@ -25,19 +25,20 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  Modal,
-  TouchableOpacity,
-  ScrollView,
-  TextInput,
-  Switch,
-  useColorScheme,
-} from 'react-native';
+import { View, Text, Modal, Pressable, ScrollView, TextInput } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import theme, { colors, darkColors } from '@/theme';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import {
+  fontWeight,
+  iconSize,
+  layout,
+  radius,
+  space,
+  touchTarget,
+  typography,
+  type ThemeTokens,
+} from '@/theme/tokens';
 import DateRangePicker from './DateRangePicker';
 import FilterChip from './FilterChip';
 
@@ -59,16 +60,217 @@ interface GRNFilterOverlayProps {
   activeFilterCount: number;
 }
 
+const STOCK_OPTIONS: Array<{ value: GRNFilterState['stockStatus']; label: string }> = [
+  { value: 'all', label: 'All items' },
+  { value: 'in_stock', label: 'In stock' },
+  { value: 'out_of_stock', label: 'Out of stock' },
+];
+
+const makeStyles = (t: ThemeTokens) => ({
+  container: {
+    flex: 1,
+    backgroundColor: t.background.base,
+  },
+  header: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
+    paddingHorizontal: space.sm,
+    paddingBottom: space.sm,
+    backgroundColor: t.surface.header,
+    borderBottomWidth: 1,
+    borderBottomColor: t.border.divider,
+  },
+  headerButton: {
+    minWidth: touchTarget,
+    minHeight: touchTarget,
+    paddingHorizontal: space.sm,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    borderRadius: radius.button,
+  },
+  headerButtonPressed: {
+    backgroundColor: t.brand.subtle,
+  },
+  title: {
+    ...typography.headline,
+    color: t.text.primary,
+    flex: 1,
+    textAlign: 'center' as const,
+  },
+  resetText: {
+    ...typography.callout,
+    color: t.brand.tint,
+  },
+  content: {
+    flex: 1,
+  },
+  contentInner: {
+    padding: layout.marginCompact,
+  },
+  section: {
+    marginBottom: space.xxl,
+  },
+  sectionTitle: {
+    ...typography.footnote,
+    fontWeight: fontWeight.semibold,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase' as const,
+    color: t.text.secondary,
+    marginBottom: space.sm,
+  },
+  chipContainer: {
+    flexDirection: 'row' as const,
+    flexWrap: 'wrap' as const,
+    gap: space.sm,
+  },
+  dateRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.md,
+  },
+  field: {
+    flex: 1,
+    minHeight: touchTarget,
+    backgroundColor: t.surface.field,
+    borderWidth: 1,
+    borderColor: t.border.field,
+    borderRadius: radius.field,
+    paddingHorizontal: space.md,
+    paddingVertical: space.sm,
+  },
+  fieldPressed: {
+    backgroundColor: t.surface.cardPressed,
+  },
+  dateField: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.sm,
+  },
+  dateLabel: {
+    ...typography.footnote,
+    color: t.text.secondary,
+    marginBottom: space.xs,
+  },
+  dateValue: {
+    ...typography.body,
+    color: t.text.primary,
+    flexShrink: 1,
+  },
+  datePlaceholder: {
+    ...typography.body,
+    color: t.text.placeholder,
+    flexShrink: 1,
+  },
+  separator: {
+    ...typography.subhead,
+    color: t.text.secondary,
+  },
+  radioList: {
+    backgroundColor: t.surface.card,
+    borderRadius: radius.card,
+    overflow: 'hidden' as const,
+    ...t.shadow[2],
+  },
+  radioRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.md,
+    minHeight: touchTarget,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.md,
+    backgroundColor: t.surface.card,
+  },
+  radioRowPressed: {
+    backgroundColor: t.surface.cardPressed,
+  },
+  radioDivider: {
+    height: 1,
+    backgroundColor: t.border.divider,
+    marginLeft: space.lg,
+  },
+  radioText: {
+    ...typography.body,
+    color: t.text.primary,
+    flex: 1,
+  },
+  radioTextSelected: {
+    fontWeight: fontWeight.semibold,
+  },
+  input: {
+    ...typography.body,
+    flex: 1,
+    minHeight: touchTarget,
+    color: t.text.primary,
+    backgroundColor: t.surface.field,
+    borderWidth: 1,
+    borderColor: t.border.field,
+    borderRadius: radius.field,
+    paddingHorizontal: space.md,
+    fontVariant: ['tabular-nums' as const],
+  },
+  rangeInputs: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.md,
+  },
+  footer: {
+    flexDirection: 'row' as const,
+    paddingHorizontal: layout.marginCompact,
+    paddingTop: space.md,
+    backgroundColor: t.surface.card,
+    gap: space.sm,
+    ...t.shadow[3],
+  },
+  button: {
+    flex: 1,
+    minHeight: touchTarget,
+    borderRadius: radius.button,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    paddingHorizontal: space.lg,
+  },
+  secondaryButton: {
+    borderWidth: 1,
+    borderColor: t.border.button,
+  },
+  secondaryButtonPressed: {
+    backgroundColor: t.brand.subtle,
+  },
+  secondaryText: {
+    ...typography.callout,
+    color: t.text.primary,
+  },
+  primaryButton: {
+    backgroundColor: t.brand.fill,
+  },
+  primaryButtonPressed: {
+    backgroundColor: t.brand.fillPressed,
+  },
+  primaryText: {
+    ...typography.callout,
+    color: t.brand.onFill,
+  },
+});
+
+/** Shows a stored date as "9 Oct 2026" (style guide 12.3). */
+const formatDate = (date?: string) => {
+  if (!date) return undefined;
+  const d = new Date(date);
+  if (isNaN(d.getTime())) return undefined;
+  return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+};
+
 export default function GRNFilterOverlay({
   visible,
   onClose,
   onApply,
   currentFilters,
-  activeFilterCount
+  activeFilterCount,
 }: GRNFilterOverlayProps) {
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
-  const themeColors = isDark ? darkColors : colors;
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
+  const insets = useSafeAreaInsets();
 
   const [filters, setFilters] = useState<GRNFilterState>(currentFilters);
   const [showDatePicker, setShowDatePicker] = useState<'from' | 'to' | null>(null);
@@ -90,18 +292,32 @@ export default function GRNFilterOverlay({
     setFilters(resetFilters);
   };
 
-  // P3 Fix: Memoized callback to prevent inline function recreation on every render
-  // Changed from index-based to id-based removal for better stability
+  // Id-based removal keeps the callback stable across renders
   const removeSelectedItem = useCallback((itemId: string) => {
     setFilters(prev => ({
       ...prev,
-      selectedItems: prev.selectedItems.filter(item => item.id !== itemId)
+      selectedItems: prev.selectedItems.filter(item => item.id !== itemId),
     }));
   }, []);
 
-  const formatDate = (date?: string) => {
-    if (!date) return 'Select date';
-    return new Date(date).toLocaleDateString();
+  const renderDateField = (which: 'from' | 'to') => {
+    const label = which === 'from' ? 'From' : 'To';
+    const value = formatDate(which === 'from' ? filters.dateFrom : filters.dateTo);
+    return (
+      <Pressable
+        style={({ pressed }) => [styles.field, pressed && styles.fieldPressed]}
+        onPress={() => setShowDatePicker(which)}
+        accessibilityRole="button"
+        accessibilityLabel={`${label} date, ${value ?? 'not set'}`}
+        accessibilityHint="Opens the date picker"
+      >
+        <Text style={styles.dateLabel}>{label}</Text>
+        <View style={styles.dateField}>
+          <Icon name="calendar-outline" size={iconSize.md} color={t.icon.secondary} />
+          <Text style={value ? styles.dateValue : styles.datePlaceholder}>{value ?? 'Select date'}</Text>
+        </View>
+      </Pressable>
+    );
   };
 
   return (
@@ -111,35 +327,40 @@ export default function GRNFilterOverlay({
       transparent={false}
       onRequestClose={onClose}
       accessibilityViewIsModal={true}
-      accessibilityLabel="GRN Filter Options"
+      accessibilityLabel="Filter GRNs"
     >
-      <View style={[styles.container, { backgroundColor: isDark ? themeColors.gray[900] : themeColors.gray[50] }]}>
+      <View style={styles.container}>
         {/* Header */}
-        <View style={[styles.header, { backgroundColor: isDark ? themeColors.gray[800] : themeColors.white, borderBottomColor: isDark ? themeColors.gray[700] : themeColors.gray[200] }]}>
-          <TouchableOpacity
+        <View style={[styles.header, { paddingTop: insets.top + space.sm }]}>
+          <Pressable
             onPress={onClose}
-            style={styles.closeButton}
-            accessibilityLabel="Close filter"
+            style={({ pressed }) => [styles.headerButton, pressed && styles.headerButtonPressed]}
+            accessibilityLabel="Close filters"
             accessibilityRole="button"
           >
-            <Icon name="close" size={24} color={isDark ? themeColors.gray[400] : themeColors.gray[600]} />
-          </TouchableOpacity>
-          <Text style={[styles.title, { color: isDark ? themeColors.gray[100] : themeColors.gray[900] }]}>Filter GRN Items</Text>
-          <TouchableOpacity
+            <Icon name="close" size={iconSize.lg} color={t.icon.primary} />
+          </Pressable>
+          <Text style={styles.title} accessibilityRole="header">Filter GRNs</Text>
+          <Pressable
             onPress={handleReset}
-            style={styles.resetButton}
+            style={({ pressed }) => [styles.headerButton, pressed && styles.headerButtonPressed]}
             accessibilityLabel="Reset all filters"
             accessibilityRole="button"
           >
-            <Text style={[styles.resetText, { color: themeColors.primary }]}>Reset</Text>
-          </TouchableOpacity>
+            <Text style={styles.resetText}>Reset</Text>
+          </Pressable>
         </View>
 
-        <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-          {/* Selected Items from Search */}
+        <ScrollView
+          style={styles.content}
+          contentContainerStyle={styles.contentInner}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          {/* Selected items from search */}
           {filters.selectedItems.length > 0 && (
             <View style={styles.section}>
-              <Text style={[styles.sectionTitle, { color: isDark ? themeColors.gray[300] : themeColors.gray[700] }]}>Selected Filters</Text>
+              <Text style={styles.sectionTitle} accessibilityRole="header">Selected filters</Text>
               <View style={styles.chipContainer}>
                 {filters.selectedItems.map((item) => (
                   <FilterChip
@@ -153,86 +374,70 @@ export default function GRNFilterOverlay({
             </View>
           )}
 
-          {/* Date Range */}
+          {/* Date range */}
           <View style={styles.section}>
-            <Text style={[styles.sectionTitle, { color: isDark ? themeColors.gray[300] : themeColors.gray[700] }]}>Date Range</Text>
+            <Text style={styles.sectionTitle} accessibilityRole="header">Date range</Text>
             <View style={styles.dateRow}>
-              <TouchableOpacity
-                style={[styles.dateInput, { backgroundColor: isDark ? themeColors.gray[800] : themeColors.white, borderColor: isDark ? themeColors.gray[600] : themeColors.gray[300] }]}
-                onPress={() => setShowDatePicker('from')}
-              >
-                <Text style={[styles.dateLabel, { color: isDark ? themeColors.gray[400] : themeColors.gray[600] }]}>From</Text>
-                <Text style={[styles.dateValue, { color: isDark ? themeColors.gray[100] : themeColors.gray[900] }]}>{formatDate(filters.dateFrom)}</Text>
-              </TouchableOpacity>
-              <Text style={[styles.dateSeparator, { color: isDark ? themeColors.gray[400] : themeColors.gray[500] }]}>to</Text>
-              <TouchableOpacity
-                style={[styles.dateInput, { backgroundColor: isDark ? themeColors.gray[800] : themeColors.white, borderColor: isDark ? themeColors.gray[600] : themeColors.gray[300] }]}
-                onPress={() => setShowDatePicker('to')}
-              >
-                <Text style={[styles.dateLabel, { color: isDark ? themeColors.gray[400] : themeColors.gray[600] }]}>To</Text>
-                <Text style={[styles.dateValue, { color: isDark ? themeColors.gray[100] : themeColors.gray[900] }]}>{formatDate(filters.dateTo)}</Text>
-              </TouchableOpacity>
+              {renderDateField('from')}
+              <Text style={styles.separator}>to</Text>
+              {renderDateField('to')}
             </View>
           </View>
 
-          {/* Stock Status */}
+          {/* Stock status */}
           <View style={styles.section}>
-            <Text style={[styles.sectionTitle, { color: isDark ? themeColors.gray[300] : themeColors.gray[700] }]}>Stock Status</Text>
-            <View style={styles.radioGroup}>
-              <TouchableOpacity
-                style={[styles.radioOption, { backgroundColor: isDark ? themeColors.gray[800] : themeColors.white, borderColor: isDark ? themeColors.gray[600] : themeColors.gray[300] }, filters.stockStatus === 'all' && { backgroundColor: themeColors.primary + '10', borderColor: themeColors.primary }]}
-                onPress={() => setFilters({ ...filters, stockStatus: 'all' })}
-              >
-                <Text style={[styles.radioText, { color: isDark ? themeColors.gray[300] : themeColors.gray[700] }, filters.stockStatus === 'all' && { color: themeColors.primary }]}>
-                  All Items
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.radioOption, { backgroundColor: isDark ? themeColors.gray[800] : themeColors.white, borderColor: isDark ? themeColors.gray[600] : themeColors.gray[300] }, filters.stockStatus === 'in_stock' && { backgroundColor: themeColors.primary + '10', borderColor: themeColors.primary }]}
-                onPress={() => setFilters({ ...filters, stockStatus: 'in_stock' })}
-              >
-                <Text style={[styles.radioText, { color: isDark ? themeColors.gray[300] : themeColors.gray[700] }, filters.stockStatus === 'in_stock' && { color: themeColors.primary }]}>
-                  In Stock
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.radioOption, { backgroundColor: isDark ? themeColors.gray[800] : themeColors.white, borderColor: isDark ? themeColors.gray[600] : themeColors.gray[300] }, filters.stockStatus === 'out_of_stock' && { backgroundColor: themeColors.primary + '10', borderColor: themeColors.primary }]}
-                onPress={() => setFilters({ ...filters, stockStatus: 'out_of_stock' })}
-              >
-                <Text style={[styles.radioText, { color: isDark ? themeColors.gray[300] : themeColors.gray[700] }, filters.stockStatus === 'out_of_stock' && { color: themeColors.primary }]}>
-                  Out of Stock
-                </Text>
-              </TouchableOpacity>
+            <Text style={styles.sectionTitle} accessibilityRole="header">Stock status</Text>
+            <View style={styles.radioList} accessibilityRole="radiogroup">
+              {STOCK_OPTIONS.map((option, index) => {
+                const selected = filters.stockStatus === option.value;
+                return (
+                  <React.Fragment key={option.value}>
+                    {index > 0 && <View style={styles.radioDivider} />}
+                    <Pressable
+                      style={({ pressed }) => [styles.radioRow, pressed && styles.radioRowPressed]}
+                      onPress={() => setFilters({ ...filters, stockStatus: option.value })}
+                      accessibilityRole="radio"
+                      accessibilityLabel={option.label}
+                      accessibilityState={{ selected, checked: selected }}
+                    >
+                      <Text style={[styles.radioText, selected && styles.radioTextSelected]}>
+                        {option.label}
+                      </Text>
+                      {selected && <Icon name="check" size={iconSize.md} color={t.brand.tint} />}
+                    </Pressable>
+                  </React.Fragment>
+                );
+              })}
             </View>
           </View>
 
-          {/* Weight Range */}
+          {/* Weight range */}
           <View style={styles.section}>
-            <Text style={[styles.sectionTitle, { color: isDark ? themeColors.gray[300] : themeColors.gray[700] }]}>Weight Range (kg)</Text>
+            <Text style={styles.sectionTitle} accessibilityRole="header">Weight range (kg)</Text>
             <View style={styles.rangeInputs}>
               <TextInput
-                style={[styles.rangeInput, { backgroundColor: isDark ? themeColors.gray[800] : themeColors.white, borderColor: isDark ? themeColors.gray[600] : themeColors.gray[300], color: isDark ? themeColors.gray[100] : themeColors.gray[900] }]}
+                style={styles.input}
                 placeholder="Min"
-                placeholderTextColor={isDark ? themeColors.gray[500] : themeColors.gray[500]}
+                placeholderTextColor={t.text.placeholder}
                 keyboardType="decimal-pad"
                 value={filters.weightMin?.toString() || ''}
                 onChangeText={(text) => setFilters({
                   ...filters,
-                  weightMin: text ? parseFloat(text) : undefined
+                  weightMin: text ? parseFloat(text) : undefined,
                 })}
                 accessibilityLabel="Minimum weight in kilograms"
                 returnKeyType="done"
               />
-              <Text style={[styles.rangeSeparator, { color: isDark ? themeColors.gray[400] : themeColors.gray[500] }]}>-</Text>
+              <Text style={styles.separator}>to</Text>
               <TextInput
-                style={[styles.rangeInput, { backgroundColor: isDark ? themeColors.gray[800] : themeColors.white, borderColor: isDark ? themeColors.gray[600] : themeColors.gray[300], color: isDark ? themeColors.gray[100] : themeColors.gray[900] }]}
+                style={styles.input}
                 placeholder="Max"
-                placeholderTextColor={isDark ? themeColors.gray[500] : themeColors.gray[500]}
+                placeholderTextColor={t.text.placeholder}
                 keyboardType="decimal-pad"
                 value={filters.weightMax?.toString() || ''}
                 onChangeText={(text) => setFilters({
                   ...filters,
-                  weightMax: text ? parseFloat(text) : undefined
+                  weightMax: text ? parseFloat(text) : undefined,
                 })}
                 accessibilityLabel="Maximum weight in kilograms"
                 returnKeyType="done"
@@ -240,46 +445,44 @@ export default function GRNFilterOverlay({
             </View>
           </View>
 
-          {/* Package Mark */}
+          {/* Package mark */}
           <View style={styles.section}>
-            <Text style={[styles.sectionTitle, { color: isDark ? themeColors.gray[300] : themeColors.gray[700] }]}>Package Mark</Text>
+            <Text style={styles.sectionTitle} accessibilityRole="header">Package mark</Text>
             <TextInput
-              style={[styles.textInput, { backgroundColor: isDark ? themeColors.gray[800] : themeColors.white, borderColor: isDark ? themeColors.gray[600] : themeColors.gray[300], color: isDark ? themeColors.gray[100] : themeColors.gray[900] }]}
+              style={styles.input}
               placeholder="Enter package mark"
-              placeholderTextColor={isDark ? themeColors.gray[500] : themeColors.gray[500]}
+              placeholderTextColor={t.text.placeholder}
               value={filters.packageMark || ''}
               onChangeText={(text) => setFilters({ ...filters, packageMark: text })}
-              accessibilityLabel="Package mark filter"
+              accessibilityLabel="Package mark"
               returnKeyType="done"
             />
           </View>
         </ScrollView>
 
         {/* Footer */}
-        <View style={[styles.footer, { backgroundColor: isDark ? themeColors.gray[800] : themeColors.white, borderTopColor: isDark ? themeColors.gray[700] : themeColors.gray[200] }]}>
-          <TouchableOpacity
-            style={[styles.cancelButton, { backgroundColor: isDark ? themeColors.gray[700] : themeColors.gray[100] }]}
+        <View style={[styles.footer, { paddingBottom: insets.bottom + space.md }]}>
+          <Pressable
+            style={({ pressed }) => [styles.button, styles.secondaryButton, pressed && styles.secondaryButtonPressed]}
             onPress={onClose}
             accessibilityLabel="Cancel"
             accessibilityRole="button"
-            activeOpacity={0.7}
           >
-            <Text style={[styles.cancelText, { color: isDark ? themeColors.gray[300] : themeColors.gray[700] }]}>Cancel</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.applyButton, { backgroundColor: themeColors.primary }]}
+            <Text style={styles.secondaryText}>Cancel</Text>
+          </Pressable>
+          <Pressable
+            style={({ pressed }) => [styles.button, styles.primaryButton, pressed && styles.primaryButtonPressed]}
             onPress={handleApply}
-            accessibilityLabel={`Apply ${activeFilterCount} filters`}
+            accessibilityLabel={activeFilterCount > 0 ? `Show results, ${activeFilterCount} filters` : 'Show results'}
             accessibilityRole="button"
-            activeOpacity={0.7}
           >
-            <Text style={[styles.applyText, { color: themeColors.white }]}>
-              Apply Filters {activeFilterCount > 0 && `(${activeFilterCount})`}
+            <Text style={styles.primaryText}>
+              {activeFilterCount > 0 ? `Show results (${activeFilterCount})` : 'Show results'}
             </Text>
-          </TouchableOpacity>
+          </Pressable>
         </View>
 
-        {/* Date Picker Modal */}
+        {/* Date picker */}
         {showDatePicker && (
           <DateRangePicker
             visible={true}
@@ -302,157 +505,3 @@ export default function GRNFilterOverlay({
     </Modal>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    // backgroundColor applied dynamically
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: theme.spacing.lg,
-    paddingTop: 60,
-    paddingBottom: 16,
-    // backgroundColor, borderBottomColor applied dynamically
-    borderBottomWidth: 1,
-  },
-  closeButton: {
-    padding: theme.spacing.sm,
-    minWidth: 44,
-    minHeight: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  title: {
-    fontSize: theme.fontSize.lg,
-    fontWeight: theme.fontWeight.semibold,
-    // color applied dynamically
-  },
-  resetButton: {
-    padding: theme.spacing.sm,
-  },
-  resetText: {
-    fontSize: theme.fontSize.base,
-    fontWeight: theme.fontWeight.medium,
-    // color applied dynamically
-  },
-  content: {
-    flex: 1,
-    padding: theme.spacing.lg,
-  },
-  section: {
-    marginBottom: 24,
-  },
-  sectionTitle: {
-    fontSize: theme.fontSize.sm,
-    fontWeight: theme.fontWeight.semibold,
-    // color applied dynamically
-    marginBottom: theme.spacing.md,
-    textTransform: 'uppercase',
-  },
-  chipContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: theme.spacing.sm,
-  },
-  dateRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  dateInput: {
-    flex: 1,
-    // backgroundColor, borderColor applied dynamically
-    borderWidth: 1,
-    borderRadius: theme.borderRadius.lg,
-    padding: theme.spacing.md,
-  },
-  dateLabel: {
-    fontSize: theme.fontSize.xs,
-    // color applied dynamically
-    marginBottom: theme.spacing.xs,
-  },
-  dateValue: {
-    fontSize: theme.fontSize.base,
-    // color applied dynamically
-  },
-  dateSeparator: {
-    fontSize: theme.fontSize.sm,
-    // color applied dynamically
-  },
-  radioGroup: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  radioOption: {
-    flex: 1,
-    paddingVertical: theme.spacing.md,
-    paddingHorizontal: theme.spacing.lg,
-    // backgroundColor, borderColor applied dynamically
-    borderWidth: 1,
-    borderRadius: theme.borderRadius.lg,
-    alignItems: 'center',
-  },
-  radioText: {
-    fontSize: theme.fontSize.sm,
-    fontWeight: theme.fontWeight.medium,
-    // color applied dynamically
-  },
-  rangeInputs: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  rangeInput: {
-    flex: 1,
-    // backgroundColor, borderColor, color applied dynamically
-    borderWidth: 1,
-    borderRadius: theme.borderRadius.lg,
-    padding: theme.spacing.md,
-    fontSize: theme.fontSize.base,
-  },
-  rangeSeparator: {
-    fontSize: theme.fontSize.base,
-    // color applied dynamically
-  },
-  textInput: {
-    // backgroundColor, borderColor, color applied dynamically
-    borderWidth: 1,
-    borderRadius: theme.borderRadius.lg,
-    padding: theme.spacing.md,
-    fontSize: theme.fontSize.base,
-  },
-  footer: {
-    flexDirection: 'row',
-    padding: theme.spacing.lg,
-    // backgroundColor, borderTopColor applied dynamically
-    borderTopWidth: 1,
-    gap: 12,
-  },
-  cancelButton: {
-    flex: 1,
-    paddingVertical: 14,
-    // backgroundColor applied dynamically
-    borderRadius: theme.borderRadius.lg,
-    alignItems: 'center',
-  },
-  cancelText: {
-    fontSize: theme.fontSize.base,
-    fontWeight: theme.fontWeight.semibold,
-    // color applied dynamically
-  },
-  applyButton: {
-    flex: 1,
-    paddingVertical: 14,
-    // backgroundColor applied dynamically
-    borderRadius: theme.borderRadius.lg,
-    alignItems: 'center',
-  },
-  applyText: {
-    fontSize: theme.fontSize.base,
-    fontWeight: theme.fontWeight.semibold,
-    // color applied dynamically
-  },
-});

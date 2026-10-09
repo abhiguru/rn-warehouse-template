@@ -1,12 +1,11 @@
 /**
- * GRNListFiori - SAP Fiori Design System Implementation
+ * GRNListFiori - GRN list report (style guide 14.1)
  *
- * Key design changes from Material Design 3:
- * - SAP Fiori Object Cell layout pattern
- * - Semantic status colors (positive/critical/negative/neutral)
- * - Cleaner visual hierarchy with attribute stacking
- * - Warehouse operator optimized UI
- * - Enhanced selection states
+ * - Object cell layout (13.6) on surface.card over background.base
+ * - Status tags with icon and word (3.5, 13.5); colour is never the only signal
+ * - Applied filters bar, sort chips, pull to refresh, infinite scroll
+ * - Skeleton, empty, filtered-empty and error states
+ * - Floating create button for roles that can create
  */
 
 import React, { useState, useEffect, useCallback, useRef, useMemo, memo } from 'react';
@@ -15,10 +14,10 @@ import {
   Text,
   FlatList,
   RefreshControl,
-  Alert,
   Pressable,
   Vibration,
   LayoutAnimation,
+  ActivityIndicator,
 } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
 import {
@@ -27,21 +26,12 @@ import {
   getItemType,
   DEFAULT_LIST_CONFIG,
 } from '@/components/lists/types';
-import {
-  Card,
-  ActivityIndicator,
-  Button,
-  Chip,
-  IconButton,
-  Portal,
-  Surface,
-  Badge,
-  Snackbar,
-} from 'react-native-paper';
+import { Portal, Snackbar } from 'react-native-paper';
 import { router } from 'expo-router';
 import Animated, {
   FadeIn,
   useAnimatedStyle,
+  useReducedMotion,
   useSharedValue,
   withSpring,
 } from 'react-native-reanimated';
@@ -63,30 +53,61 @@ import { usePermissions } from '@/hooks/usePermissions';
 import { GenericFilterModal } from '@/components/filters';
 import { PrintRangeDialog } from '@/components/PrintRangeDialog';
 import PrintJobsBottomSheet, { PrintJobsBottomSheetRef } from '@/components/PrintJobsBottomSheet';
+import { Button } from '@/components/ui/Button';
 import { printGRNRange } from '@/services/print-service';
-import { getStockStatus, getStatusColors, StockStatus } from '@/utils/stockStatus';
+import { getStockStatus, StockStatus } from '@/utils/stockStatus';
 import { createLogger } from '@/utils/logger';
-
-// Dynamic theme colors hook
-import { useListColors, ListColors } from '@/hooks/useListColors';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { iconSize, type ThemeTokens } from '@/theme/tokens';
 
 // Filter configuration
 import { GRN_FILTER_CONFIG } from '@/config/filterConfigs';
 
 // Styles
-import { styles } from './GRNListFiori.styles';
+import { makeGRNListStyles, type GRNListStyles } from './GRNListFiori.styles';
 
 // Shared formatters
 import { formatSectionDate, formatNumber } from '@/utils/formatters';
+
+const logger = createLogger('GRNListFiori');
 
 // Sort configuration
 type SortField = 'grNo' | 'date';
 type SortOrder = 'asc' | 'desc';
 
-const SORT_OPTIONS: Array<{ field: SortField; label: string; icon: string }> = [
-  { field: 'grNo', label: 'GRN No', icon: 'numeric' },
-  { field: 'date', label: 'Date', icon: 'calendar' },
+const SORT_OPTIONS: Array<{ field: SortField; label: string; a11y: string; icon: string }> = [
+  { field: 'grNo', label: 'GRN no.', a11y: 'GRN number', icon: 'numeric' },
+  { field: 'date', label: 'Date', a11y: 'date', icon: 'calendar-outline' },
 ];
+
+/** Status icons from the style guide (3.5). */
+const STATUS_ICON: Record<StockStatus, string> = {
+  positive: 'check-circle',
+  critical: 'alert',
+  negative: 'alert-circle',
+  neutral: 'circle-outline',
+};
+
+/** Status tokens for a stock status. */
+const statusTokens = (t: ThemeTokens, status: StockStatus) => t.status[status];
+
+/** "1 item", "12 items" (guide 12.3). */
+const pluralize = (count: number, singular: string, plural: string) =>
+  `${formatNumber(count)} ${count === 1 ? singular : plural}`;
+
+/** "9 Oct 2026" (guide 12.3). */
+const formatDisplayDate = (date: string) => {
+  const d = new Date(date);
+  if (isNaN(d.getTime())) return '';
+  return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+};
+
+/** Stable avatar colour index from a string (guide 3.2). */
+const avatarIndex = (key: string, count: number) => {
+  let hash = 0;
+  for (let i = 0; i < key.length; i += 1) hash = (hash * 31 + key.charCodeAt(i)) | 0;
+  return Math.abs(hash) % count;
+};
 
 // Type for grouped GRN data
 interface GRNGroupData {
@@ -99,16 +120,32 @@ interface GRNGroupData {
 }
 
 // ============================================================================
-// SKELETON CARD COMPONENT (SAP Fiori Style)
+// STATUS TAG
 // ============================================================================
-interface SkeletonCardProps {
-  colors: ListColors;
-}
+const StatusTag = memo<{ status: StockStatus; label: string; styles: GRNListStyles }>(({ status, label, styles }) => {
+  const t = useTokens();
+  const s = statusTokens(t, status);
+  return (
+    <View style={[styles.statusTag, { backgroundColor: s.background }]}>
+      <Icon name={STATUS_ICON[status]} size={iconSize.sm} color={s.text} />
+      <Text style={[styles.statusTagText, { color: s.text }]} maxFontSizeMultiplier={1.6}>
+        {label}
+      </Text>
+    </View>
+  );
+});
 
-const SkeletonCard = memo<SkeletonCardProps>(({ colors }) => {
-  const opacity = useSharedValue(0.4);
+StatusTag.displayName = 'StatusTag';
+
+// ============================================================================
+// SKELETON CARD
+// ============================================================================
+const SkeletonCard = memo<{ styles: GRNListStyles }>(({ styles }) => {
+  const reduceMotion = useReducedMotion();
+  const opacity = useSharedValue(reduceMotion ? 1 : 0.4);
 
   React.useEffect(() => {
+    if (reduceMotion) return undefined;
     const animate = () => {
       opacity.value = withSpring(1, { damping: 15 }, () => {
         opacity.value = withSpring(0.4, { damping: 15 });
@@ -117,22 +154,26 @@ const SkeletonCard = memo<SkeletonCardProps>(({ colors }) => {
     animate();
     const interval = setInterval(animate, 1600);
     return () => clearInterval(interval);
-  }, []);
+  }, [reduceMotion]);
 
   const animatedStyle = useAnimatedStyle(() => ({ opacity: opacity.value }));
 
   return (
-    <Animated.View style={[styles.skeletonCard, { backgroundColor: colors.cellBackground, borderWidth: 1, borderColor: colors.cellDivider }, animatedStyle]}>
+    <Animated.View
+      style={[styles.skeletonCard, animatedStyle]}
+      accessible={false}
+      importantForAccessibility="no-hide-descendants"
+    >
       <View style={styles.skeletonObjectCell}>
-        <View style={[styles.skeletonStatusIcon, { backgroundColor: colors.gray200 }]} />
+        <View style={styles.skeletonStatusIcon} />
         <View style={styles.skeletonContent}>
-          <View style={[styles.skeletonTitle, { backgroundColor: colors.gray200 }]} />
-          <View style={[styles.skeletonSubtitle, { backgroundColor: colors.gray200 }]} />
-          <View style={[styles.skeletonFooter, { backgroundColor: colors.gray200 }]} />
+          <View style={styles.skeletonTitle} />
+          <View style={styles.skeletonSubtitle} />
+          <View style={styles.skeletonFooter} />
         </View>
         <View style={styles.skeletonAttributes}>
-          <View style={[styles.skeletonBadge, { backgroundColor: colors.gray200 }]} />
-          <View style={[styles.skeletonStockValue, { backgroundColor: colors.gray200 }]} />
+          <View style={styles.skeletonBadge} />
+          <View style={styles.skeletonStockValue} />
         </View>
       </View>
     </Animated.View>
@@ -142,7 +183,7 @@ const SkeletonCard = memo<SkeletonCardProps>(({ colors }) => {
 SkeletonCard.displayName = 'SkeletonCard';
 
 // ============================================================================
-// SAP FIORI GRN CARD COMPONENT (Object Cell Layout)
+// GRN CARD (object cell)
 // ============================================================================
 interface GRNCardProps {
   group: GRNGroupData;
@@ -152,7 +193,7 @@ interface GRNCardProps {
   onPrint: (group: GRNGroupData) => void;
   canPrint: boolean;
   defaultExpanded?: boolean;
-  colors: ListColors;
+  styles: GRNListStyles;
   /** Global expand state from parent */
   globalExpanded?: boolean;
   /** Key to trigger sync with global state (increments on toggle) */
@@ -167,10 +208,11 @@ const GRNCardFiori = memo<GRNCardProps>(({
   onPrint,
   canPrint,
   defaultExpanded = false,
-  colors,
+  styles,
   globalExpanded,
   globalExpandedKey,
 }) => {
+  const t = useTokens();
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
 
   // Sync with global expand/collapse state
@@ -180,28 +222,18 @@ const GRNCardFiori = memo<GRNCardProps>(({
     }
   }, [globalExpandedKey, globalExpanded]);
   const swipeableRef = useRef<Swipeable>(null);
-  const scale = useSharedValue(1);
 
   // Calculate totals
   const totalQty = group.items.reduce((sum, item) => sum + (item.qty || 0), 0);
   const totalWeight = group.items.reduce((sum, item) => sum + ((item.qty || 0) * (item.weight || 0)), 0);
   const totalStock = group.items.reduce((sum, item) => sum + (item.stock || 0), 0);
 
-  // Get SAP Fiori semantic status
+  // Fiori semantic status for the whole GRN
   const stockStatus = getStockStatus(totalStock, totalQty);
-  const statusColors = getStatusColors(stockStatus.status);
-
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
-  }));
-
-  const handlePressIn = () => {
-    scale.value = withSpring(0.98, { damping: 15, stiffness: 400 });
-  };
-
-  const handlePressOut = () => {
-    scale.value = withSpring(1, { damping: 15, stiffness: 400 });
-  };
+  const status = statusTokens(t, stockStatus.status);
+  const displayDate = formatDisplayDate(group.date);
+  const itemCountLabel = pluralize(group.items.length, 'item', 'items');
+  const weightLabel = `${formatNumber(Math.round(totalWeight))} kg`;
 
   const handleSwipeAction = (action: 'view' | 'edit' | 'print') => {
     Vibration.vibrate(10);
@@ -211,285 +243,214 @@ const GRNCardFiori = memo<GRNCardProps>(({
     else if (action === 'print') onPrint(group);
   };
 
-  // Get status icon container style
-  const getStatusIconStyle = (status: StockStatus) => {
-    switch (status) {
-      case 'positive':
-        return { backgroundColor: colors.statusPositiveLight, borderColor: colors.statusPositiveBorder };
-      case 'critical':
-        return { backgroundColor: colors.statusCriticalLight, borderColor: colors.statusCriticalBorder };
-      case 'negative':
-        return { backgroundColor: colors.statusNegativeLight, borderColor: colors.statusNegativeBorder };
-      default:
-        return { backgroundColor: colors.statusNoneLight, borderColor: colors.gray300 };
-    }
-  };
-
-  // Get status badge style
-  const getStatusBadgeStyle = (status: StockStatus) => {
-    switch (status) {
-      case 'positive':
-        return { backgroundColor: colors.statusPositive };
-      case 'critical':
-        return { backgroundColor: colors.statusCritical };
-      case 'negative':
-        return { backgroundColor: colors.statusNegative };
-      default:
-        return { backgroundColor: colors.statusNone };
-    }
-  };
-
-  // Get stock value color style
-  const getStockValueStyle = (status: StockStatus) => {
-    switch (status) {
-      case 'positive':
-        return { color: colors.statusPositive };
-      case 'critical':
-        return { color: colors.statusCritical };
-      case 'negative':
-        return { color: colors.statusNegative };
-      default:
-        return { color: colors.statusNone };
-    }
-  };
-
-  // Get table stock badge style
-  const getTableStockBadgeStyle = (stock: number, qty: number) => {
-    const itemStatus = getStockStatus(stock, qty);
-    switch (itemStatus.status) {
-      case 'positive':
-        return { backgroundColor: colors.statusPositive };
-      case 'critical':
-        return { backgroundColor: colors.statusCritical };
-      case 'negative':
-        return { backgroundColor: colors.statusNegative };
-      default:
-        return { backgroundColor: colors.statusNone };
-    }
-  };
-
   const renderRightActions = () => (
     <View style={styles.swipeActions}>
       {canPrint && (
         <Pressable
-          style={[styles.swipeButton, styles.swipePrint, { backgroundColor: colors.purple }]}
+          style={({ pressed }) => [styles.swipeButton, styles.swipeSecondary, pressed && styles.swipeSecondaryPressed]}
           onPress={() => handleSwipeAction('print')}
           accessibilityRole="button"
-          accessibilityLabel="Print GRN"
+          accessibilityLabel={`Print GRN ${group.grNo}`}
         >
-          <Icon name="printer" size={22} color={colors.textInverse} />
-          <Text style={[styles.swipeText, { color: colors.textInverse }]}>Print</Text>
+          <Icon name="printer-outline" size={iconSize.lg} color={t.icon.primary} />
+          <Text style={styles.swipeText} maxFontSizeMultiplier={1.6}>Print</Text>
         </Pressable>
       )}
       <Pressable
-        style={[styles.swipeButton, styles.swipeView, { backgroundColor: colors.statusNeutral }]}
+        style={({ pressed }) => [styles.swipeButton, styles.swipeSecondary, pressed && styles.swipeSecondaryPressed]}
         onPress={() => handleSwipeAction('view')}
         accessibilityRole="button"
-        accessibilityLabel="View GRN details"
+        accessibilityLabel={`View GRN ${group.grNo}`}
       >
-        <Icon name="eye-outline" size={22} color={colors.textInverse} />
-        <Text style={[styles.swipeText, { color: colors.textInverse }]}>View</Text>
+        <Icon name="eye-outline" size={iconSize.lg} color={t.icon.primary} />
+        <Text style={styles.swipeText} maxFontSizeMultiplier={1.6}>View</Text>
       </Pressable>
       <Pressable
-        style={[styles.swipeButton, styles.swipeEdit, { backgroundColor: colors.primary }]}
+        style={({ pressed }) => [styles.swipeButton, styles.swipePrimary, pressed && styles.swipePrimaryPressed]}
         onPress={() => handleSwipeAction('edit')}
         accessibilityRole="button"
-        accessibilityLabel="Edit GRN"
+        accessibilityLabel={`Edit GRN ${group.grNo}`}
       >
-        <Icon name="pencil-outline" size={22} color={colors.textInverse} />
-        <Text style={[styles.swipeText, { color: colors.textInverse }]}>Edit</Text>
+        <Icon name="pencil-outline" size={iconSize.lg} color={t.brand.onFill} />
+        <Text style={[styles.swipeText, styles.swipeTextOnFill]} maxFontSizeMultiplier={1.6}>Edit</Text>
       </Pressable>
     </View>
   );
 
   return (
-    <Animated.View style={animatedStyle}>
-      <Swipeable
-        ref={swipeableRef}
-        renderRightActions={renderRightActions}
-        overshootRight={false}
-        friction={2}
-        rightThreshold={40}
-      >
-        <Pressable
-          onPressIn={handlePressIn}
-          onPressOut={handlePressOut}
-          onPress={() => onPress(group)}
-          accessibilityRole="button"
-          accessibilityLabel={`GRN ${group.grNo} for ${group.customerName}, ${stockStatus.label} stock`}
-        >
-          <View style={[styles.card, { backgroundColor: colors.cellBackground, borderWidth: 1, borderColor: colors.cellDivider }]}>
-            <View style={styles.cardContentWrapper}>
-              {/* SAP Fiori Object Cell Row */}
-              <View style={styles.objectCellRow}>
-                {/* Status Icon (Left, 40dp) */}
-                <View style={[styles.statusIconContainer, getStatusIconStyle(stockStatus.status)]}>
-                  <Icon
-                    name={stockStatus.icon}
-                    size={20}
-                    color={statusColors.main}
-                  />
+    <Swipeable
+      ref={swipeableRef}
+      renderRightActions={renderRightActions}
+      overshootRight={false}
+      friction={2}
+      rightThreshold={40}
+    >
+      <View style={styles.card}>
+        <View style={styles.cardContentWrapper}>
+          {/* Object cell row */}
+          <Pressable
+            onPress={() => onPress(group)}
+            style={({ pressed }) => [styles.objectCellRow, pressed && styles.cardPressed]}
+            accessibilityRole="button"
+            accessibilityLabel={[
+              `GRN ${group.grNo}`,
+              group.customerName,
+              displayDate,
+              group.registration,
+              itemCountLabel,
+              `${formatNumber(totalStock)} in stock`,
+              weightLabel,
+              stockStatus.label,
+            ].filter(Boolean).join(', ')}
+            accessibilityHint="Opens the GRN. Swipe left for more actions."
+          >
+            {/* Status icon */}
+            <View style={[styles.statusIconContainer, { backgroundColor: status.background }]}>
+              <Icon name={stockStatus.icon} size={iconSize.md} color={status.text} />
+            </View>
+
+            {/* Main content */}
+            <View style={styles.mainContent}>
+              <Text style={styles.titleText} numberOfLines={2}>GRN {group.grNo}</Text>
+              <Text style={styles.subtitleText} numberOfLines={2}>
+                {group.customerName}
+              </Text>
+
+              <View style={styles.footerRow}>
+                <View style={styles.footerItem}>
+                  <Icon name="calendar-outline" size={iconSize.sm} color={t.icon.secondary} />
+                  <Text style={styles.footerText}>{displayDate}</Text>
                 </View>
-
-                {/* Main Content (Center, Flex) */}
-                <View style={styles.mainContent}>
-                  {/* Title Row - GRN Number */}
-                  <View style={styles.titleRow}>
-                    <Text style={[styles.titleText, { color: colors.textPrimary }]}>GRN-{group.grNo}</Text>
-                  </View>
-
-                  {/* Subtitle Row - Customer Name */}
-                  <View style={styles.subtitleRow}>
-                    <Text style={[styles.subtitleText, { color: colors.textSecondary }]} numberOfLines={1}>
-                      {group.customerName}
-                    </Text>
-                  </View>
-
-                  {/* Footer Row - Date, Truck, Item Count */}
-                  <View style={styles.footerRow}>
+                {group.registration && (
+                  <>
+                    <View style={styles.footerDot} />
                     <View style={styles.footerItem}>
-                      <Icon name="calendar" size={14} color={colors.textTertiary} />
-                      <Text style={[styles.footerText, { color: colors.textTertiary }]}>
-                        {new Date(group.date).toLocaleDateString('en-IN', {
-                          day: '2-digit',
-                          month: 'short',
-                        })}
-                      </Text>
+                      <Icon name="truck-outline" size={iconSize.sm} color={t.icon.secondary} />
+                      <Text style={styles.footerText}>{group.registration}</Text>
                     </View>
-                    {group.registration && (
-                      <>
-                        <View style={[styles.footerDot, { backgroundColor: colors.gray400 }]} />
-                        <View style={styles.footerItem}>
-                          <Icon name="truck" size={14} color={colors.textTertiary} />
-                          <Text style={[styles.footerText, { color: colors.textTertiary }]}>{group.registration}</Text>
-                        </View>
-                      </>
-                    )}
-                    <View style={[styles.itemCountBadge, { backgroundColor: colors.gray100 }]}>
-                      <Text style={[styles.itemCountText, { color: colors.textSecondary }]}>{group.items.length} items</Text>
-                    </View>
-                  </View>
-                </View>
+                  </>
+                )}
+                <View style={styles.footerDot} />
+                <Text style={styles.footerText}>{itemCountLabel}</Text>
+              </View>
+            </View>
 
-                {/* Attribute Stack (Right) */}
-                <View style={styles.attributeStack}>
-                  {/* Status Badge */}
-                  <View style={[styles.statusBadge, getStatusBadgeStyle(stockStatus.status)]}>
-                    <Text style={[styles.statusBadgeText, { color: colors.textInverse }]}>{stockStatus.label}</Text>
-                  </View>
+            {/* Attribute stack */}
+            <View style={styles.attributeStack}>
+              <Text style={styles.stockValueText}>{formatNumber(totalStock)}</Text>
+              <Text style={styles.stockLabel}>in stock</Text>
+              <StatusTag status={stockStatus.status} label={stockStatus.label} styles={styles} />
+              <Text style={styles.weightText}>{weightLabel}</Text>
+            </View>
+          </Pressable>
 
-                  {/* Stock Value */}
-                  <View style={styles.stockValueContainer}>
-                    <Text style={[styles.stockValueText, getStockValueStyle(stockStatus.status)]}>
-                      {formatNumber(totalStock)}
-                    </Text>
-                    <Text style={[styles.stockLabel, { color: colors.textTertiary }]}>STOCK</Text>
-                  </View>
-
-                  {/* Weight Display */}
-                  <View style={styles.weightDisplay}>
-                    <Text style={[styles.weightText, { color: colors.textTertiary }]}>{formatNumber(Math.round(totalWeight))} kg</Text>
-                  </View>
-                </View>
+          {/* Expanded items table */}
+          {isExpanded && group.items.length > 0 && (
+            <Animated.View entering={FadeIn.duration(200)} style={styles.expandedSection}>
+              <View style={styles.tableHeader} accessibilityRole="header">
+                <Text style={[styles.tableHeaderCell, styles.colItem]}>Item</Text>
+                <Text style={[styles.tableHeaderCell, styles.colQty]}>Bags</Text>
+                <Text style={[styles.tableHeaderCell, styles.colWeight]}>Kg</Text>
+                <Text style={[styles.tableHeaderCell, styles.colStock]}>Stock</Text>
               </View>
 
-              {/* Expanded Items Table */}
-              {isExpanded && group.items.length > 0 && (
-                <Animated.View entering={FadeIn.duration(200)} style={[styles.expandedSection, { borderTopColor: colors.cellDivider }]}>
-                  {/* Table Header */}
-                  <View style={[styles.tableHeader, { backgroundColor: colors.gray50, borderBottomColor: colors.cellDivider }]}>
-                    <Text style={[styles.tableHeaderCell, styles.colItem, { color: colors.textPrimary }]}>Item</Text>
-                    <Text style={[styles.tableHeaderCell, styles.colQty, { color: colors.textPrimary }]}>Qty</Text>
-                    <Text style={[styles.tableHeaderCell, styles.colWeight, { color: colors.textPrimary }]}>Kg</Text>
-                    <Text style={[styles.tableHeaderCell, styles.colStock, { color: colors.textPrimary }]}>Stock</Text>
-                  </View>
-
-                  {/* Table Rows */}
-                  {group.items.map((item, idx) => (
-                    <View
-                      key={`${item.id}-${idx}`}
-                      style={[
-                        styles.tableRow,
-                        { backgroundColor: colors.cellBackground },
-                        idx % 2 === 1 && { backgroundColor: colors.gray100 },
-                      ]}
-                    >
-                      <View style={[styles.tableCell, styles.colItem]}>
-                        <Text style={[styles.itemName, { color: colors.textPrimary }]} numberOfLines={1}>{item.item_name}</Text>
-                        {item.package_mark && (
-                          <Text style={[styles.itemMark, { color: colors.textTertiary }]} numberOfLines={1}>{item.package_mark}</Text>
-                        )}
-                      </View>
-                      <Text style={[styles.tableCell, styles.colQty, styles.cellValue, { color: colors.textSecondary }]}>{item.qty}</Text>
-                      <Text style={[styles.tableCell, styles.colWeight, styles.cellValue, { color: colors.textSecondary }]}>
-                        {Math.round(item.weight || 0)}
-                      </Text>
-                      <View style={[styles.tableCell, styles.colStock]}>
-                        <View style={[styles.tableStockBadge, getTableStockBadgeStyle(item.stock, item.qty)]}>
-                          <Text style={[styles.tableStockBadgeText, { color: colors.textInverse }]}>{item.stock}</Text>
-                        </View>
+              {group.items.map((item, idx) => {
+                const itemStatus = getStockStatus(item.stock, item.qty);
+                const itemTokens = statusTokens(t, itemStatus.status);
+                return (
+                  <View
+                    key={`${item.id}-${idx}`}
+                    style={[styles.tableRow, idx > 0 && styles.tableRowDivider]}
+                    accessible
+                    accessibilityLabel={[
+                      item.item_name,
+                      item.package_mark,
+                      pluralize(item.qty || 0, 'bag', 'bags'),
+                      `${formatNumber(Math.round(item.weight || 0))} kg`,
+                      `${formatNumber(item.stock || 0)} in stock, ${itemStatus.label}`,
+                    ].filter(Boolean).join(', ')}
+                  >
+                    <View style={[styles.tableCell, styles.colItem]}>
+                      <Text style={styles.itemName} numberOfLines={2}>{item.item_name}</Text>
+                      {item.package_mark && (
+                        <Text style={styles.itemMark} numberOfLines={1}>{item.package_mark}</Text>
+                      )}
+                    </View>
+                    <Text style={[styles.tableCell, styles.colQty, styles.cellValue]}>{formatNumber(item.qty)}</Text>
+                    <Text style={[styles.tableCell, styles.colWeight, styles.cellValue]}>
+                      {formatNumber(Math.round(item.weight || 0))}
+                    </Text>
+                    <View style={[styles.tableCell, styles.colStock]}>
+                      <View style={[styles.statusTag, { backgroundColor: itemTokens.background }]}>
+                        <Icon name={STATUS_ICON[itemStatus.status]} size={iconSize.sm} color={itemTokens.text} />
+                        <Text
+                          style={[styles.statusTagText, { color: itemTokens.text, fontVariant: ['tabular-nums'] }]}
+                          maxFontSizeMultiplier={1.6}
+                        >
+                          {formatNumber(item.stock)}
+                        </Text>
                       </View>
                     </View>
-                  ))}
-                </Animated.View>
-              )}
+                  </View>
+                );
+              })}
+            </Animated.View>
+          )}
 
-              {/* Expand/Collapse Button */}
-              {group.items.length > 0 && (
-                <Pressable
-                  onPress={(e) => {
-                    e.stopPropagation();
-                    Vibration.vibrate(5);
-                    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                    setIsExpanded(prev => !prev);
-                  }}
-                  style={({ pressed }) => [
-                    styles.expandButton,
-                    { borderTopColor: colors.cellDivider },
-                    pressed && { backgroundColor: colors.cellBackgroundPressed },
-                  ]}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                  accessibilityRole="button"
-                  accessibilityLabel={isExpanded ? 'Hide items' : `Show ${group.items.length} items`}
-                >
-                  <Text style={[styles.expandButtonText, { color: colors.primary }]}>
-                    {isExpanded ? 'Hide items' : `Show ${group.items.length} items`}
-                  </Text>
-                  <Icon
-                    name={isExpanded ? 'chevron-up' : 'chevron-down'}
-                    size={18}
-                    color={colors.primary}
-                  />
-                </Pressable>
-              )}
-            </View>
-          </View>
-        </Pressable>
-      </Swipeable>
-    </Animated.View>
+          {/* Expand / collapse */}
+          {group.items.length > 0 && (
+            <Pressable
+              onPress={(e) => {
+                e.stopPropagation();
+                Vibration.vibrate(5);
+                LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                setIsExpanded(prev => !prev);
+              }}
+              style={({ pressed }) => [styles.expandButton, pressed && styles.expandButtonPressed]}
+              accessibilityRole="button"
+              accessibilityLabel={isExpanded ? 'Hide items' : `Show ${itemCountLabel}`}
+              accessibilityState={{ expanded: isExpanded }}
+            >
+              <Text style={styles.expandButtonText}>
+                {isExpanded ? 'Hide items' : `Show ${itemCountLabel}`}
+              </Text>
+              <Icon
+                name={isExpanded ? 'chevron-up' : 'chevron-down'}
+                size={iconSize.md}
+                color={t.brand.tint}
+              />
+            </Pressable>
+          )}
+        </View>
+      </View>
+    </Swipeable>
   );
 });
 
 GRNCardFiori.displayName = 'GRNCardFiori';
 
 // ============================================================================
-// FILTER CHIPS COMPONENT
+// APPLIED FILTERS BAR
 // ============================================================================
 interface FilterChipsProps {
   filters: FilterValues;
   activeFilterCount: number;
   updateFilter: (key: string, value: FilterValueType) => void;
   clearAllFilters: () => void;
-  colors: ListColors;
+  styles: GRNListStyles;
 }
+
+const formatChipDate = (date: string) =>
+  new Date(date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 
 const FilterChips: React.FC<FilterChipsProps> = memo(({
   filters,
   activeFilterCount,
   updateFilter,
   clearAllFilters,
-  colors,
+  styles,
 }) => {
+  const t = useTokens();
   if (activeFilterCount === 0) return null;
 
   const chips: { key: string; label: string; icon: string; onRemove: () => void }[] = [];
@@ -500,7 +461,7 @@ const FilterChips: React.FC<FilterChipsProps> = memo(({
       chips.push({
         key: `item-${item.id}`,
         label: item.label,
-        icon: 'package-variant',
+        icon: 'cube-outline',
         onRemove: () => {
           const remaining = (filters.itemName ?? []).filter((i: AutocompleteSelection) => i.id !== item.id);
           updateFilter('itemName', remaining.length > 0 ? remaining : []);
@@ -515,7 +476,7 @@ const FilterChips: React.FC<FilterChipsProps> = memo(({
       chips.push({
         key: `customer-${item.id}`,
         label: item.label,
-        icon: 'account',
+        icon: 'account-outline',
         onRemove: () => {
           const remaining = (filters.customerName ?? []).filter((i: AutocompleteSelection) => i.id !== item.id);
           updateFilter('customerName', remaining.length > 0 ? remaining : []);
@@ -528,16 +489,16 @@ const FilterChips: React.FC<FilterChipsProps> = memo(({
   if (filters.grNoFrom?.length > 0) {
     chips.push({
       key: 'grn-from',
-      label: `From: ${filters.grNoFrom[0].label}`,
-      icon: 'file-document',
+      label: `From GRN ${filters.grNoFrom[0].label}`,
+      icon: 'package-down',
       onRemove: () => updateFilter('grNoFrom', []),
     });
   }
   if (filters.grNoTo?.length > 0) {
     chips.push({
       key: 'grn-to',
-      label: `To: ${filters.grNoTo[0].label}`,
-      icon: 'file-document',
+      label: `To GRN ${filters.grNoTo[0].label}`,
+      icon: 'package-down',
       onRemove: () => updateFilter('grNoTo', []),
     });
   }
@@ -546,8 +507,8 @@ const FilterChips: React.FC<FilterChipsProps> = memo(({
   if (filters.stockStatus && filters.stockStatus !== 'all') {
     chips.push({
       key: 'stock-status',
-      label: filters.stockStatus === 'in_stock' ? 'In Stock' : 'Out of Stock',
-      icon: 'chart-bar',
+      label: filters.stockStatus === 'in_stock' ? 'In stock' : 'Out of stock',
+      icon: 'warehouse',
       onRemove: () => updateFilter('stockStatus', 'all'),
     });
   }
@@ -556,7 +517,9 @@ const FilterChips: React.FC<FilterChipsProps> = memo(({
   if (filters.weightMin || filters.weightMax) {
     chips.push({
       key: 'weight-range',
-      label: `${filters.weightMin || 0} - ${filters.weightMax || '∞'} kg`,
+      label: filters.weightMax
+        ? `${formatNumber(Number(filters.weightMin) || 0)} to ${formatNumber(Number(filters.weightMax))} kg`
+        : `${formatNumber(Number(filters.weightMin) || 0)} kg or more`,
       icon: 'weight-kilogram',
       onRemove: () => {
         updateFilter('weightMin', undefined);
@@ -570,18 +533,18 @@ const FilterChips: React.FC<FilterChipsProps> = memo(({
     chips.push({
       key: 'package-mark',
       label: filters.packageMark,
-      icon: 'tag',
+      icon: 'tag-outline',
       onRemove: () => updateFilter('packageMark', ''),
     });
   }
 
   // Date range chip
   if (filters.dateFrom || filters.dateTo) {
-    const fromDate = filters.dateFrom ? new Date(filters.dateFrom).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : '...';
-    const toDate = filters.dateTo ? new Date(filters.dateTo).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : '...';
+    const fromDate = filters.dateFrom ? formatChipDate(filters.dateFrom) : null;
+    const toDate = filters.dateTo ? formatChipDate(filters.dateTo) : null;
     chips.push({
       key: 'date-range',
-      label: `${fromDate} - ${toDate}`,
+      label: fromDate && toDate ? `${fromDate} to ${toDate}` : fromDate ? `From ${fromDate}` : `Until ${toDate}`,
       icon: 'calendar-range',
       onRemove: () => {
         updateFilter('dateFrom', undefined);
@@ -591,29 +554,40 @@ const FilterChips: React.FC<FilterChipsProps> = memo(({
   }
 
   return (
-    <Animated.View entering={FadeIn} style={[styles.filterChipsContainer, { backgroundColor: colors.cellBackground, borderBottomColor: colors.cellDivider }]}>
+    <Animated.View entering={FadeIn} style={styles.filterChipsContainer}>
       <View style={styles.filterChipsHeader}>
         <View style={styles.filterCountBadge}>
-          <Icon name="filter-variant" size={14} color={colors.primary} />
-          <Text style={[styles.filterCountText, { color: colors.primary }]}>{activeFilterCount} active</Text>
+          <Icon name="filter-variant" size={iconSize.sm} color={t.icon.secondary} />
+          <Text style={styles.filterCountText}>
+            {activeFilterCount === 1 ? '1 filter applied' : `${activeFilterCount} filters applied`}
+          </Text>
         </View>
-        <Pressable onPress={clearAllFilters} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-          <Text style={[styles.clearAllText, { color: colors.statusNegative }]}>Clear all</Text>
+        <Pressable
+          onPress={clearAllFilters}
+          style={({ pressed }) => [styles.clearAllButton, pressed && styles.clearAllButtonPressed]}
+          accessibilityRole="button"
+          accessibilityLabel="Clear all filters"
+        >
+          <Text style={styles.clearAllText}>Clear all</Text>
         </Pressable>
       </View>
       <View style={styles.filterChipsList}>
         {chips.map((chip) => (
-          <Chip
-            key={chip.key}
-            icon={chip.icon}
-            onClose={chip.onRemove}
-            style={[styles.filterChip, { backgroundColor: colors.primaryLight }]}
-            textStyle={[styles.filterChipText, { color: colors.textSecondary }]}
-            closeIcon="close-circle"
-            compact
-          >
-            {chip.label}
-          </Chip>
+          <View key={chip.key} style={styles.filterChip}>
+            <Icon name={chip.icon} size={iconSize.sm} color={t.brand.tint} />
+            <Text style={styles.filterChipText} numberOfLines={1} maxFontSizeMultiplier={1.6}>
+              {chip.label}
+            </Text>
+            <Pressable
+              onPress={chip.onRemove}
+              style={styles.filterChipRemove}
+              hitSlop={{ top: 8, bottom: 8 }}
+              accessibilityRole="button"
+              accessibilityLabel={`Remove filter ${chip.label}`}
+            >
+              <Icon name="close" size={iconSize.sm} color={t.brand.tint} />
+            </Pressable>
+          </View>
         ))}
       </View>
     </Animated.View>
@@ -623,48 +597,66 @@ const FilterChips: React.FC<FilterChipsProps> = memo(({
 FilterChips.displayName = 'FilterChips';
 
 // ============================================================================
-// EMPTY STATE COMPONENT
+// EMPTY AND ERROR STATES
 // ============================================================================
 interface EmptyStateProps {
   activeFilterCount: number;
   onCreateGRN: () => void;
+  onClearFilters: () => void;
   canCreate: boolean;
-  colors: ListColors;
+  styles: GRNListStyles;
 }
 
-const EmptyState: React.FC<EmptyStateProps> = memo(({ activeFilterCount, onCreateGRN, canCreate, colors }) => (
-  <View style={styles.emptyContainer}>
-    <Surface style={[styles.emptyIconSurface, { backgroundColor: colors.gray100 }]} elevation={2}>
+const EmptyState: React.FC<EmptyStateProps> = memo(({ activeFilterCount, onCreateGRN, onClearFilters, canCreate, styles }) => {
+  const t = useTokens();
+  const filtered = activeFilterCount > 0;
+  return (
+    <View style={styles.emptyContainer}>
       <Icon
-        name={activeFilterCount > 0 ? 'filter-remove-outline' : 'package-variant-closed'}
-        size={56}
-        color={colors.primary}
+        name={filtered ? 'filter-remove-outline' : 'package-down'}
+        size={iconSize.hero}
+        color={t.icon.secondary}
       />
-    </Surface>
-    <Text style={[styles.emptyTitle, { color: colors.textPrimary }]}>
-      {activeFilterCount > 0 ? 'No matching GRNs' : 'No GRNs yet'}
-    </Text>
-    <Text style={[styles.emptySubtitle, { color: colors.textTertiary }]}>
-      {activeFilterCount > 0
-        ? 'Try adjusting your filters to see more results'
-        : 'Create your first GRN to get started with inventory tracking'}
-    </Text>
-    {canCreate && activeFilterCount === 0 && (
-      <Button
-        mode="contained"
-        onPress={onCreateGRN}
-        style={styles.emptyButton}
-        buttonColor={colors.primary}
-        icon="plus"
-        contentStyle={styles.emptyButtonContent}
-      >
-        Create GRN
-      </Button>
-    )}
-  </View>
-));
+      <Text style={styles.emptyTitle} accessibilityRole="header">
+        {filtered ? 'No GRNs match your filters' : 'No GRNs yet'}
+      </Text>
+      <Text style={styles.emptySubtitle}>
+        {filtered
+          ? 'Try removing a filter or clearing them all.'
+          : canCreate
+            ? 'GRNs you create appear here.'
+            : 'GRNs for your goods appear here once they are received.'}
+      </Text>
+      {filtered ? (
+        <Button type="secondary" variant="tint" onPress={onClearFilters}>
+          Clear filters
+        </Button>
+      ) : canCreate ? (
+        <Button type="primary" variant="tint" leftIcon="add" onPress={onCreateGRN}>
+          Create GRN
+        </Button>
+      ) : null}
+    </View>
+  );
+});
 
 EmptyState.displayName = 'EmptyState';
+
+const ErrorState: React.FC<{ onRetry: () => void; styles: GRNListStyles }> = memo(({ onRetry, styles }) => {
+  const t = useTokens();
+  return (
+    <View style={styles.emptyContainer}>
+      <Icon name="alert-circle-outline" size={iconSize.hero} color={t.status.negative.text} />
+      <Text style={styles.emptyTitle} accessibilityRole="header">Couldn't load GRNs</Text>
+      <Text style={styles.emptySubtitle}>Check your connection and try again.</Text>
+      <Button type="secondary" variant="tint" onPress={onRetry}>
+        Try again
+      </Button>
+    </View>
+  );
+});
+
+ErrorState.displayName = 'ErrorState';
 
 // ============================================================================
 // MAIN COMPONENT
@@ -681,7 +673,8 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({
   clearFiltersOnMount,
 }) => {
   const { userProfile } = useAppSelector((state) => state.auth);
-  const colors = useListColors();
+  const styles = useThemedStyles(makeGRNListStyles);
+  const t = useTokens();
   const isCustomerAccount = userProfile?.role === 'customer';
   const assignedCustomerIds = useMemo(
     () =>
@@ -698,6 +691,7 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({
   const [loadingMore, setLoadingMore] = useState(false);
   const [currentOffset, setCurrentOffset] = useState(0);
   const [showFilterModal, setShowFilterModal] = useState(false);
+  const [loadError, setLoadError] = useState(false);
 
   // Sort state
   const [sortBy, setSortBy] = useState<SortField>('grNo');
@@ -716,6 +710,8 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({
   // Refs
   const fetchInProgressRef = useRef(false);
   const printJobsBottomSheetRef = useRef<PrintJobsBottomSheetRef>(null);
+  const hasDataRef = useRef(false);
+  hasDataRef.current = (data?.items?.length ?? 0) > 0;
 
   // Filter state - MUST use same persistKey as GRN_FILTER_CONFIG
   const {
@@ -739,6 +735,20 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({
     if (clearFiltersOnMount && initialFilters) {
       clearAllFilters();
       setTimeout(() => updateFilters(initialFilters), 100);
+    }
+  }, []);
+
+  // A failed first page shows the error state; a failed later page or
+  // refresh with data on screen shows a snackbar and keeps the list.
+  const showLoadFailure = useCallback((append: boolean) => {
+    if (append) {
+      setSnackbarMessage("Couldn't load more GRNs. Scroll down to try again.");
+      setSnackbarVisible(true);
+    } else if (hasDataRef.current) {
+      setSnackbarMessage("Couldn't refresh GRNs. Check your connection and try again.");
+      setSnackbarVisible(true);
+    } else {
+      setLoadError(true);
     }
   }, []);
 
@@ -801,6 +811,7 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({
         : await getAllGRNItems(request);
 
       if (result.success && result.data) {
+        setLoadError(false);
         if (append) {
           setData(prev => prev ? { ...result.data, items: [...prev.items, ...result.data.items] } : result.data);
           setCurrentOffset(prev => prev + result.data.items.length);
@@ -809,18 +820,20 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({
           setCurrentOffset(result.data.items.length);
         }
       } else {
-        Alert.alert('Error', result.error || result.message || 'Failed to load GRN items');
+        // Keep the server message for support; show plain words to the user
+        logger.warn('Load failed:', result.error || result.message);
+        showLoadFailure(append);
       }
     } catch (error) {
-      console.error('[GRNListFiori] Exception:', error);
-      Alert.alert('Error', 'Failed to load GRN items');
+      logger.error('Exception:', error);
+      showLoadFailure(append);
     } finally {
       fetchInProgressRef.current = false;
       setLoading(false);
       setRefreshing(false);
       setLoadingMore(false);
     }
-  }, [assignedCustomerIds, filters, isCustomerAccount, sortBy, sortOrder]);
+  }, [assignedCustomerIds, filters, isCustomerAccount, sortBy, sortOrder, showLoadFailure]);
 
   useEffect(() => {
     setCurrentOffset(0);
@@ -830,7 +843,7 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({
   // Event handlers
   const handleGRNPress = useCallback((group: GRNGroupData) => {
     if (!group?.grnId) {
-      console.error('[GRNListFiori] Cannot navigate: grnId is undefined', group);
+      logger.error('Cannot navigate: grnId is undefined', group);
       return;
     }
     Vibration.vibrate(10);
@@ -861,13 +874,19 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({
     try {
       const result = await printGRNRange(start, end);
       if (result.success) {
-        setSnackbarMessage(`Print job submitted${result.print_job?.cups_job_id ? ` (Job #${result.print_job.cups_job_id})` : ''}`);
+        setSnackbarMessage(
+          result.print_job?.cups_job_id
+            ? `Print job ${result.print_job.cups_job_id} sent.`
+            : 'Print job sent.'
+        );
       } else {
-        setSnackbarMessage(result.error || 'Failed to submit print job');
+        logger.warn('Print failed:', result.error);
+        setSnackbarMessage("Couldn't send the print job. Check the printer and try again.");
       }
       setSnackbarVisible(true);
     } catch (error) {
-      setSnackbarMessage('An unexpected error occurred');
+      logger.error('Print exception:', error);
+      setSnackbarMessage("Couldn't send the print job. Check your connection and try again.");
       setSnackbarVisible(true);
     }
   }, []);
@@ -901,7 +920,7 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({
     const groups = data.items.reduce((acc, item) => {
       if (!item.gr_no) {
         if (__DEV__) {
-          console.warn('[GRNListFiori] Item missing gr_no (backend returning camelCase?):', item);
+          logger.warn('Item missing gr_no (backend returning camelCase?):', item);
         }
         return acc;
       }
@@ -972,14 +991,30 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({
     return flattenSections(sortedSections, (group) => `${group.grnId}_${group.grNo}`);
   }, [data?.items, sortBy, sortOrder]);
 
+
+  const handleRetry = useCallback(() => {
+    setLoadError(false);
+    fetchGRNItems();
+  }, [fetchGRNItems]);
+
+  const openFilters = useCallback(() => {
+    logger.info(`[FILTER_BUTTON_CLICKED] Opening filter modal`);
+    setShowFilterModal(true);
+  }, []);
+
   // Render functions
   const renderItem = useCallback(({ item }: { item: FlattenedItem<GRNGroupData> }) => {
     if (item.type === 'header') {
       return (
-        <View style={styles.sectionHeader}>
-          <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>{item.title}</Text>
-          <View style={[styles.sectionBadge, { backgroundColor: colors.gray200 }]}>
-            <Text style={[styles.sectionCount, { color: colors.textSecondary }]}>{item.count}</Text>
+        <View
+          style={styles.sectionHeader}
+          accessible
+          accessibilityRole="header"
+          accessibilityLabel={`${item.title}, ${pluralize(item.count, 'GRN', 'GRNs')}`}
+        >
+          <Text style={styles.sectionTitle}>{item.title}</Text>
+          <View style={styles.sectionBadge}>
+            <Text style={styles.sectionCount} maxFontSizeMultiplier={1.6}>{item.count}</Text>
           </View>
         </View>
       );
@@ -993,159 +1028,171 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({
         onEdit={handleEdit}
         onPrint={handlePrint}
         canPrint={canPrint ?? false}
-        colors={colors}
+        styles={styles}
         globalExpanded={allExpanded}
         globalExpandedKey={expandKey}
       />
     );
-  }, [handleGRNPress, handleViewDetails, handleEdit, handlePrint, canPrint, colors, allExpanded, expandKey]);
+  }, [handleGRNPress, handleViewDetails, handleEdit, handlePrint, canPrint, styles, allExpanded, expandKey]);
 
   const renderFooter = useCallback(() => {
     if (!loadingMore) return null;
     return (
-      <View style={styles.footerLoader}>
-        <ActivityIndicator size="small" color={colors.primary} />
-        <Text style={[styles.footerLoaderText, { color: colors.textSecondary }]}>Loading more...</Text>
+      <View style={styles.footerLoader} accessibilityLiveRegion="polite">
+        <ActivityIndicator size="small" color={t.brand.tint} />
+        <Text style={styles.footerLoaderText}>Loading more GRNs…</Text>
       </View>
     );
-  }, [loadingMore, colors]);
+  }, [loadingMore, styles, t]);
+
+  const userName = userProfile?.name || 'User';
+  const avatarColor = t.avatar[avatarIndex(userName, t.avatar.length)];
+
+  const renderHeader = (interactive: boolean) => (
+    <View style={styles.header}>
+      <Text style={styles.headerTitle} accessibilityRole="header">GRNs</Text>
+      <View style={styles.headerActions}>
+        <View>
+          <Pressable
+            style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
+            onPress={openFilters}
+            disabled={!interactive}
+            accessibilityRole="button"
+            accessibilityLabel={activeFilterCount > 0 ? `Filter GRNs, ${activeFilterCount} applied` : 'Filter GRNs'}
+            accessibilityState={{ disabled: !interactive }}
+          >
+            <Icon name="filter-variant" size={iconSize.lg} color={t.icon.primary} />
+          </Pressable>
+          {activeFilterCount > 0 && (
+            <View style={styles.filterBadge} pointerEvents="none">
+              <Text style={styles.filterBadgeText} maxFontSizeMultiplier={1.6}>{activeFilterCount}</Text>
+            </View>
+          )}
+        </View>
+        <Pressable
+          style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
+          onPress={() => router.push('/settings')}
+          accessibilityRole="button"
+          accessibilityLabel="Open settings"
+        >
+          <View style={[styles.avatar, { backgroundColor: avatarColor }]}>
+            <Text style={styles.avatarText} maxFontSizeMultiplier={1.6}>
+              {userName.charAt(0).toUpperCase()}
+            </Text>
+          </View>
+        </Pressable>
+      </View>
+    </View>
+  );
 
   // Loading state
   if (loading && !refreshing) {
     return (
-      <View style={[styles.container, { backgroundColor: colors.gray50 }]}>
-        <View style={[styles.header, { backgroundColor: colors.cellBackground, borderBottomColor: colors.cellDivider }]}>
-          <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>GRN</Text>
-          <View style={styles.headerActions}>
-            <IconButton icon="filter-variant" size={24} iconColor={colors.textSecondary} />
-          </View>
+      <View style={styles.container}>
+        {renderHeader(false)}
+        <View accessible accessibilityLabel="Loading GRNs" accessibilityState={{ busy: true }} style={{ flex: 1 }}>
+          <FlatList
+            data={[1, 2, 3, 4, 5]}
+            renderItem={() => <SkeletonCard styles={styles} />}
+            keyExtractor={(item) => item.toString()}
+            contentContainerStyle={styles.listContent}
+            scrollEnabled={false}
+          />
         </View>
-        <FlatList
-          data={[1, 2, 3, 4, 5]}
-          renderItem={() => <SkeletonCard colors={colors} />}
-          keyExtractor={(item) => item.toString()}
-          contentContainerStyle={styles.listContent}
-        />
       </View>
     );
   }
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.gray50 }]}>
+    <View style={styles.container}>
       {/* Header */}
-      <View style={[styles.header, { backgroundColor: colors.cellBackground, borderBottomColor: colors.cellDivider }]}>
-        <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>GRN</Text>
-        <View style={styles.headerActions}>
-          {canCreateGRN && (
-            <IconButton
-              icon="plus"
-              size={22}
-              iconColor={colors.textInverse}
-              style={[styles.addBtn, { backgroundColor: colors.primary }]}
-              onPress={handleCreateGRN}
-              accessibilityLabel="Create GRN"
-            />
-          )}
-          <View style={styles.filterBtnContainer}>
-            <IconButton
-              icon="filter-variant"
-              size={22}
-              iconColor={colors.textSecondary}
-              onPress={() => {
-                const logger = createLogger('GRNListFiori');
-                logger.info(`[FILTER_BUTTON_CLICKED] Opening filter modal`);
-                setShowFilterModal(true);
-              }}
-            />
-            {activeFilterCount > 0 && (
-              <Badge size={16} style={[styles.filterBadge, { backgroundColor: colors.statusNegative }]}>{activeFilterCount}</Badge>
-            )}
-          </View>
-          <Pressable onPress={() => router.push('/settings')}>
-            <Surface style={[styles.avatarSurface, { backgroundColor: colors.primary }]} elevation={1}>
-              <Text style={[styles.avatarText, { color: colors.white }]}>
-                {(userProfile?.name || 'U').charAt(0).toUpperCase()}
-              </Text>
-            </Surface>
-          </Pressable>
-        </View>
-      </View>
+      {renderHeader(true)}
 
-      {/* Filter Chips */}
+      {/* Applied filters */}
       <FilterChips
         filters={filters}
         activeFilterCount={activeFilterCount}
         updateFilter={updateFilter}
         clearAllFilters={clearAllFilters}
-        colors={colors}
+        styles={styles}
       />
 
-      {/* Sort Selector Row */}
-      <View style={[styles.sortRow, { backgroundColor: colors.cellBackground, borderBottomColor: colors.cellDivider }]}>
+      {/* Sort row */}
+      <View style={styles.sortRow}>
         <View style={styles.sortLabel}>
-          <Icon name="sort" size={16} color={colors.textTertiary} />
-          <Text style={[styles.sortLabelText, { color: colors.textTertiary }]}>Sort:</Text>
+          <Icon name="sort" size={iconSize.sm} color={t.icon.secondary} />
+          <Text style={styles.sortLabelText}>Sort by</Text>
         </View>
         <View style={styles.sortOptions}>
-          {SORT_OPTIONS.map((option) => (
-            <Pressable
-              key={option.field}
-              style={[
-                styles.sortOption,
-                { backgroundColor: colors.gray100 },
-                sortBy === option.field && { backgroundColor: colors.primaryLight },
-              ]}
-              onPress={() => {
-                Vibration.vibrate(5);
-                if (sortBy === option.field) {
-                  setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc');
-                } else {
-                  setSortBy(option.field);
-                  setSortOrder('desc');
-                }
-              }}
-            >
-              <Icon
-                name={option.icon}
-                size={14}
-                color={sortBy === option.field ? colors.primary : colors.textSecondary}
-              />
-              <Text
-                style={[
-                  styles.sortOptionText,
-                  { color: colors.textSecondary },
-                  sortBy === option.field && { color: colors.primary },
+          {SORT_OPTIONS.map((option) => {
+            const selected = sortBy === option.field;
+            return (
+              <Pressable
+                key={option.field}
+                style={({ pressed }) => [
+                  styles.chip,
+                  pressed && styles.chipPressed,
+                  selected && styles.chipSelected,
                 ]}
+                hitSlop={{ top: 8, bottom: 8 }}
+                onPress={() => {
+                  Vibration.vibrate(5);
+                  if (sortBy === option.field) {
+                    setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc');
+                  } else {
+                    setSortBy(option.field);
+                    setSortOrder('desc');
+                  }
+                }}
+                accessibilityRole="button"
+                accessibilityLabel={
+                  selected
+                    ? `Sort by ${option.a11y}, ${sortOrder === 'desc' ? 'newest first' : 'oldest first'}`
+                    : `Sort by ${option.a11y}`
+                }
+                accessibilityHint={selected ? 'Reverses the order' : undefined}
+                accessibilityState={{ selected }}
               >
-                {option.label}
-              </Text>
-              {sortBy === option.field && (
                 <Icon
-                  name={sortOrder === 'desc' ? 'arrow-down' : 'arrow-up'}
-                  size={14}
-                  color={colors.primary}
+                  name={option.icon}
+                  size={iconSize.sm}
+                  color={selected ? t.brand.tint : t.icon.secondary}
                 />
-              )}
-            </Pressable>
-          ))}
+                <Text style={[styles.chipText, selected && styles.chipTextSelected]} maxFontSizeMultiplier={1.6}>
+                  {option.label}
+                </Text>
+                {selected && (
+                  <Icon
+                    name={sortOrder === 'desc' ? 'arrow-down' : 'arrow-up'}
+                    size={iconSize.sm}
+                    color={t.brand.tint}
+                  />
+                )}
+              </Pressable>
+            );
+          })}
         </View>
-        {/* Expand All / Collapse All Toggle */}
+        {/* Expand all / collapse all */}
         <Pressable
-          style={[styles.expandAllBtn, { backgroundColor: colors.gray100 }]}
+          style={({ pressed }) => [styles.chip, styles.expandAllBtn, pressed && styles.chipPressed]}
+          hitSlop={{ top: 8, bottom: 8 }}
           onPress={handleToggleAllExpanded}
+          accessibilityRole="button"
+          accessibilityLabel={allExpanded ? 'Hide items of every GRN' : 'Show items of every GRN'}
+          accessibilityState={{ expanded: allExpanded }}
         >
           <Icon
             name={allExpanded ? 'unfold-less-horizontal' : 'unfold-more-horizontal'}
-            size={18}
-            color={colors.textSecondary}
+            size={iconSize.sm}
+            color={t.icon.primary}
           />
-          <Text style={[styles.expandAllText, { color: colors.textSecondary }]}>
-            {allExpanded ? 'Collapse' : 'Expand'}
+          <Text style={styles.chipText} maxFontSizeMultiplier={1.6}>
+            {allExpanded ? 'Collapse all' : 'Expand all'}
           </Text>
         </Pressable>
       </View>
 
-      {/* Main Content */}
+      {/* Main content */}
       {flattenedData.length > 0 ? (
         <FlashList
           data={flattenedData}
@@ -1153,22 +1200,45 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({
           keyExtractor={(item: FlattenedItem<GRNGroupData>) => item.key}
           getItemType={getItemType}
           ListFooterComponent={renderFooter}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[colors.primary]} tintColor={colors.primary} />}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              colors={[t.brand.tint]}
+              tintColor={t.brand.tint}
+              progressBackgroundColor={t.surface.card}
+            />
+          }
           onEndReached={onEndReached}
           onEndReachedThreshold={DEFAULT_LIST_CONFIG.onEndReachedThreshold}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
         />
+      ) : loadError ? (
+        <ErrorState onRetry={handleRetry} styles={styles} />
       ) : (
         <EmptyState
           activeFilterCount={activeFilterCount}
           onCreateGRN={handleCreateGRN}
+          onClearFilters={clearAllFilters}
           canCreate={canCreateGRN}
-          colors={colors}
+          styles={styles}
         />
       )}
 
-      {/* Filter Modal - Only render Portal when visible to prevent Android gesture handler issues */}
+      {/* Create GRN (floating action button, guide 14.1) */}
+      {canCreateGRN && (
+        <Pressable
+          style={({ pressed }) => [styles.fab, pressed && styles.fabPressed]}
+          onPress={handleCreateGRN}
+          accessibilityRole="button"
+          accessibilityLabel="Create GRN"
+        >
+          <Icon name="plus" size={iconSize.lg} color={t.brand.onFill} />
+        </Pressable>
+      )}
+
+      {/* Filter modal - only render the Portal when visible to avoid Android gesture handler issues */}
       {showFilterModal && (
         <Portal>
           <GenericFilterModal
@@ -1179,32 +1249,32 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({
         </Portal>
       )}
 
-      {/* Print Dialog */}
+      {/* Print dialog */}
       <PrintRangeDialog
         visible={showPrintDialog}
         onDismiss={() => setShowPrintDialog(false)}
         onConfirm={handlePrintConfirm}
-        title="Print GRN Range"
+        title="Print GRN range"
         defaultNumber={selectedGRNForPrint}
-        label="GRN Number"
-        placeholder="e.g., Z0797"
+        label="GRN number"
+        placeholder="For example, Z0797"
         onViewJobs={() => {
           setShowPrintDialog(false);
           printJobsBottomSheetRef.current?.open();
         }}
       />
 
-      {/* Print Jobs Sheet */}
+      {/* Print jobs sheet */}
       <PrintJobsBottomSheet ref={printJobsBottomSheetRef} />
 
       {/* Snackbar */}
       <Snackbar
         visible={snackbarVisible}
         onDismiss={() => setSnackbarVisible(false)}
-        duration={3000}
+        duration={4000}
         style={styles.snackbar}
       >
-        {snackbarMessage}
+        <Text style={styles.snackbarText}>{snackbarMessage}</Text>
       </Snackbar>
     </View>
   );
