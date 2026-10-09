@@ -36,6 +36,7 @@ import {
   type ThemeTokens,
 } from '@/theme/tokens';
 import type { SensorHistoryReading, SensorChartDataPoint } from '@/types/sensor-history.types';
+import { formatDate, formatDateTime, formatTemperature, toDate } from '@/utils/formatters';
 
 /** A limit drawn on the temperature scale as a dashed, labelled line. */
 export interface SensorChartThreshold {
@@ -59,31 +60,65 @@ interface SensorHistoryChartProps {
 // Formatting (guide §12.3)
 // ============================================================================
 
-const MINUS = '−';
-
-/** One decimal, degree sign, no space, true minus sign: −18.5°C */
-export function formatTemperature(value: number | null | undefined): string {
-  if (value === null || value === undefined || isNaN(value)) return '–';
-  const sign = value < 0 ? MINUS : '';
-  return `${sign}${Math.abs(value).toFixed(1)}°C`;
-}
+export { formatTemperature };
 
 /** Humidity as a whole percentage: 85% */
 export function formatHumidity(value: number | null | undefined): string {
-  if (value === null || value === undefined || isNaN(value)) return '–';
+  if (value === null || value === undefined || isNaN(value)) return '—';
   return `${Math.round(value)}%`;
 }
 
-/** "9 Oct 2026" or "9 Oct 2026, 4:05 pm" */
+/** "9 Oct 2026" or "9 Oct 2026, 4:05 pm" (guide §12.3) */
 function formatReadingTime(timestamp: string, withTime: boolean): string {
-  const date = new Date(timestamp);
-  if (isNaN(date.getTime())) return '–';
-  const day = date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
-  if (!withTime) return day;
-  const time = date
-    .toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true })
-    .toLowerCase();
-  return `${day}, ${time}`;
+  return withTime ? formatDateTime(timestamp) : formatDate(timestamp);
+}
+
+/** A reading value, or null when the sensor sent nothing for that interval. */
+function present(value: number | null | undefined): value is number {
+  return value !== null && value !== undefined && !isNaN(value);
+}
+
+/** Temperature axis: bottom, top and number of sections. */
+export interface TemperatureDomain {
+  min: number;
+  max: number;
+  sections: number;
+}
+
+/**
+ * The temperature axis comes from the data: the lowest and highest reading
+ * (and any threshold), padded by a tenth of the range (at least 1°C) and
+ * rounded out to whole steps. Zero is on the axis only when the data
+ * crosses it, so a −20°C cold room is not squashed against a 0°C floor.
+ */
+export function temperatureDomain(
+  readings: SensorHistoryReading[],
+  thresholds: number[] = [],
+  sections = 4
+): TemperatureDomain {
+  const values = [...readings.map(r => r.temperature).filter(present), ...thresholds];
+  if (values.length === 0) return { min: 0, max: 10, sections };
+  const lo = Math.min(...values);
+  const hi = Math.max(...values);
+  const pad = Math.max((hi - lo) * 0.1, 1);
+  const rawStep = (hi - lo + 2 * pad) / sections;
+  const magnitude = Math.pow(10, Math.floor(Math.log10(rawStep)));
+  const step = [1, 2, 2.5, 5, 10].map(m => m * magnitude).find(m => m >= rawStep) ?? 10 * magnitude;
+  let min = Math.floor((lo - pad) / step) * step;
+  let max = Math.ceil((hi + pad) / step) * step;
+  // Padding alone must not pull zero onto the axis when every value is on one side of it.
+  if (lo >= 0 && min < 0) min = 0;
+  if (hi <= 0 && max > 0) max = 0;
+  return { min, max, sections: Math.max(1, Math.round((max - min) / step)) };
+}
+
+/** Y-axis label with a true minus sign: "−20". */
+function formatAxisLabel(label: string): string {
+  const n = Number(label);
+  if (isNaN(n)) return label;
+  const rounded = Math.round(n * 10) / 10;
+  const text = String(Math.abs(rounded));
+  return rounded < 0 ? `\u2212${text}` : text;
 }
 
 const INTERVAL_LABELS: Record<string, string> = {
@@ -434,68 +469,48 @@ export const SensorHistoryChart: React.FC<SensorHistoryChartProps> = ({
     return indices;
   };
 
-  // Format timestamp for axis label
+  // Axis label: "9 Oct" for up to 90 days, then the month ("Oct", or "Oct 2026" full screen)
   const formatLabel = (timestamp: string, compact: boolean = true): string => {
-    const date = new Date(timestamp);
-    if (periodDays <= 14) {
-      return date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
-    } else if (periodDays <= 90) {
-      return date.toLocaleDateString('en-IN', {
-        day: 'numeric',
-        month: compact ? 'numeric' : 'short',
-      });
-    }
-    return date.toLocaleDateString('en-IN', {
-      month: 'short',
-      year: compact ? undefined : '2-digit',
-    });
+    const date = toDate(timestamp);
+    if (!date) return '';
+    if (periodDays <= 90) return formatDate(date, 'short');
+    const [, month, year] = formatDate(date, 'medium').split(' ');
+    return compact ? month : `${month} ${year}`;
   };
 
-  // Prepare chart data
-  const { tempData, humidityData, maxTemp, maxHumidity } = useMemo(() => {
-    const labelIndices = getLabelIndices(readings.length, 5);
+  // Prepare chart data. A missing reading has no value, so the line breaks
+  // there (interpolateMissingValues is off) instead of dropping to zero.
+  const thresholdValues = thresholds.slice(0, 2).map(line => line.value);
+  const domain = useMemo(
+    () => temperatureDomain(readings, thresholdValues),
+    [readings, thresholdValues.join(',')]
+  );
+  const maxHumidity = useMemo(() => {
+    const maxH = Math.max(...readings.map(r => r.humidity).filter(present), 1);
+    return Math.ceil(maxH / 10) * 10 || 100;
+  }, [readings]);
 
+  const buildSeries = (maxLabels: number, compactLabels: boolean) => {
+    const labelIndices = getLabelIndices(readings.length, maxLabels);
+    const span = domain.max - domain.min;
     const temp: SensorChartDataPoint[] = readings.map((r, index) => ({
-      value: r.temperature ?? 0,
-      label: labelIndices.has(index) ? formatLabel(r.timestamp) : '',
+      value: present(r.temperature) ? r.temperature : undefined,
+      label: labelIndices.has(index) ? formatLabel(r.timestamp, compactLabels) : '',
       dataPointText: formatTemperature(r.temperature),
     }));
-
+    // Humidity is drawn on the temperature scale so both lines share one axis:
+    // 0% sits at the bottom of the axis and the top humidity step at the top.
     const humidity: SensorChartDataPoint[] = readings.map((r) => ({
-      value: r.humidity ?? 0,
+      value: present(r.humidity) ? domain.min + (r.humidity / maxHumidity) * span : undefined,
       label: '', // Only show labels on temp line
       dataPointText: formatHumidity(r.humidity),
     }));
-
-    const maxT = Math.max(...readings.map((r) => r.temperature ?? 0), 1);
-    const maxH = Math.max(...readings.map((r) => r.humidity ?? 0), 1);
-
-    return {
-      tempData: temp,
-      humidityData: humidity,
-      maxTemp: Math.ceil(maxT / 5) * 5 || 10,
-      maxHumidity: Math.ceil(maxH / 10) * 10 || 100,
-    };
-  }, [readings, periodDays]);
-
-  // Fullscreen data with more labels
-  const fullscreenData = useMemo(() => {
-    const labelIndices = getLabelIndices(readings.length, 10);
-
-    const temp: SensorChartDataPoint[] = readings.map((r, index) => ({
-      value: r.temperature ?? 0,
-      label: labelIndices.has(index) ? formatLabel(r.timestamp, false) : '',
-      dataPointText: formatTemperature(r.temperature),
-    }));
-
-    const humidity: SensorChartDataPoint[] = readings.map((r) => ({
-      value: r.humidity ?? 0,
-      label: '',
-      dataPointText: formatHumidity(r.humidity),
-    }));
-
     return { temp, humidity };
-  }, [readings, periodDays]);
+  };
+
+  const compactData = useMemo(() => buildSeries(5, true), [readings, periodDays, domain, maxHumidity]);
+  // Fullscreen data with more labels
+  const fullscreenData = useMemo(() => buildSeries(10, false), [readings, periodDays, domain, maxHumidity]);
 
   const intervalLabel = INTERVAL_LABELS[aggregationInterval] || aggregationInterval;
   const summary = useMemo(() => summariseReadings(readings, intervalLabel), [readings, intervalLabel]);
@@ -514,12 +529,6 @@ export const SensorHistoryChart: React.FC<SensorHistoryChartProps> = ({
   const chartWidth = screenWidth - 64;
   const availableArea = chartWidth - 60; // yAxis + margins
   const spacing = readings.length > 1 ? Math.max(15, availableArea / (readings.length - 1)) : 30;
-
-  // Humidity is drawn on the temperature scale so both lines share one axis.
-  const normalise = (points: SensorChartDataPoint[]) =>
-    points.map((h) => ({ ...h, value: (h.value / maxHumidity) * maxTemp }));
-  const normalizedHumidityData = normalise(humidityData);
-  const normalizedFsHumidity = normalise(fullscreenData.humidity);
 
   // Thresholds as dashed reference lines (guide §13.11)
   const thresholdProps = (fontScale: 'compact' | 'full') => {
@@ -556,8 +565,14 @@ export const SensorHistoryChart: React.FC<SensorHistoryChartProps> = ({
     rulesColor: t.border.divider,
     xAxisLabelTextStyle: styles.axisLabel,
     yAxisTextStyle: styles.axisLabel,
-    maxValue: maxTemp,
-    yAxisOffset: 0,
+    // gifted-charts measures maxValue up from yAxisOffset, so pass the span.
+    yAxisOffset: domain.min,
+    maxValue: domain.max - domain.min,
+    noOfSections: domain.sections,
+    showFractionalValues: true,
+    roundToDigits: 1,
+    formatYLabel: formatAxisLabel,
+    interpolateMissingValues: false,
   };
 
   const fsWidth = Math.max(screenWidth - 40, readings.length * 40);
@@ -612,13 +627,12 @@ export const SensorHistoryChart: React.FC<SensorHistoryChartProps> = ({
           <LineChart
             {...sharedChartProps}
             {...thresholdProps('compact')}
-            data={tempData}
-            data2={normalizedHumidityData}
+            data={compactData.temp}
+            data2={compactData.humidity}
             width={chartWidth}
             height={140}
             hideDataPoints={readings.length > 20}
             dataPointsRadius={3}
-            noOfSections={4}
             hideRules
             spacing={spacing}
             initialSpacing={15}
@@ -710,11 +724,10 @@ export const SensorHistoryChart: React.FC<SensorHistoryChartProps> = ({
                   {...sharedChartProps}
                   {...thresholdProps('full')}
                   data={fullscreenData.temp}
-                  data2={normalizedFsHumidity}
+                  data2={fullscreenData.humidity}
                   width={fsWidth}
                   height={screenHeight * 0.45}
                   dataPointsRadius={5}
-                  noOfSections={5}
                   rulesType="dashed"
                   showVerticalLines
                   verticalLinesColor={t.border.divider}
@@ -751,7 +764,7 @@ export const SensorHistoryChart: React.FC<SensorHistoryChartProps> = ({
           <View style={[styles.footer, { paddingBottom: insets.bottom + space.md }]}>
             <Text style={styles.footerText}>{summary}</Text>
             <Text style={styles.footerText}>
-              {`Temperature axis 0 to ${formatTemperature(maxTemp)}. Humidity 0 to ${maxHumidity}% is scaled to the same axis.`}
+              {`Temperature axis ${formatTemperature(domain.min)} to ${formatTemperature(domain.max)}. Humidity 0 to ${maxHumidity}% is scaled to the same axis.`}
             </Text>
           </View>
         </View>
