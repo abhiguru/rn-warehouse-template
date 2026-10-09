@@ -10,19 +10,19 @@ import {
   View,
   Text,
   StyleSheet,
-  TouchableOpacity,
+  Pressable,
   ScrollView,
   Alert,
-  Platform,
   ActivityIndicator,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import * as ImagePicker from 'expo-image-picker';
 import { withNativeHandoff } from '@/config/nativeHandoff';
 import { router } from 'expo-router';
-import theme from '@/theme';
-import { useListColors } from '@/hooks/useListColors';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { fontWeight, iconSize, layout, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 import { useCustomerForm } from '@/hooks/useCustomerForm';
 import { GenericStepIndicatorHeader } from '@/components/GenericStepIndicatorHeader';
 import {
@@ -48,8 +48,9 @@ export function CustomerReviewStep({
   mode,
   customerId,
 }: CustomerReviewStepProps) {
-  // Theme colors
-  const colors = useListColors();
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
+  const insets = useSafeAreaInsets();
 
   // Form hook
   const {
@@ -81,17 +82,17 @@ export function CustomerReviewStep({
 
     if (isDirty) {
       Alert.alert(
-        'Discard Changes?',
-        'You have unsaved changes. Are you sure you want to leave?',
+        isCreateMode ? 'Discard this customer?' : 'Discard your changes?',
+        'Your unsaved changes will be lost.',
         [
-          { text: 'Stay', style: 'cancel' },
+          { text: 'Keep editing', style: 'cancel' },
           { text: 'Discard', style: 'destructive', onPress: confirmDiscard },
         ]
       );
     } else {
       confirmDiscard();
     }
-  }, [isDirty, resetFormState]);
+  }, [isDirty, isCreateMode, resetFormState]);
 
   const handleStepIndicatorPress = useCallback(
     async (step: number) => {
@@ -123,7 +124,7 @@ export function CustomerReviewStep({
   // Document handling
   const handleAddDocument = useCallback(async () => {
     if (formData.document_images.length >= 10) {
-      Alert.alert('Limit Reached', 'Maximum 10 documents allowed');
+      Alert.alert('Document limit reached', 'A customer can have up to 10 documents. Remove one to add another.');
       return;
     }
 
@@ -153,7 +154,7 @@ export function CustomerReviewStep({
       }
     } catch (error) {
       console.error('[CustomerReviewStep] Image picker error:', error);
-      Alert.alert('Error', 'Failed to select images');
+      Alert.alert("Couldn't add photos", 'Try again, or choose different photos.');
     } finally {
       setIsPickingImage(false);
     }
@@ -162,12 +163,12 @@ export function CustomerReviewStep({
   const handleRemoveDocument = useCallback(
     (uri: string) => {
       Alert.alert(
-        'Remove Document',
-        'Are you sure you want to remove this document?',
+        'Remove this document?',
+        'It will not be saved with the customer.',
         [
           { text: 'Cancel', style: 'cancel' },
           {
-            text: 'Remove',
+            text: 'Remove document',
             style: 'destructive',
             onPress: () => removeDocument(uri),
           },
@@ -187,31 +188,24 @@ export function CustomerReviewStep({
     step: number,
     children: React.ReactNode
   ) => (
-    <View
-      style={[
-        styles.sectionCard,
-        { backgroundColor: colors.cellBackground, borderColor: colors.gray200 },
-      ]}
-    >
-      <View
-        style={[styles.sectionHeader, { borderBottomColor: colors.gray100 }]}
-      >
+    <View style={styles.sectionCard}>
+      <View style={styles.sectionHeader}>
         <View style={styles.sectionTitleRow}>
-          <Icon name={icon} size={20} color={colors.primary} />
-          <Text style={[styles.sectionTitle, { color: colors.gray900 }]}>
+          <Icon name={icon} size={iconSize.md} color={t.brand.tint} />
+          <Text style={styles.sectionTitle} accessibilityRole="header">
             {title}
           </Text>
         </View>
-        <TouchableOpacity
-          style={[styles.editButton, { backgroundColor: colors.primaryLight }]}
+        <Pressable
+          style={({ pressed }) => [styles.editButton, pressed && styles.editButtonPressed]}
           onPress={() => handleEditSection(step)}
-          activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel={`Edit ${title.toLowerCase()}`}
+          hitSlop={space.sm}
         >
-          <Icon name="pencil" size={16} color={colors.primary} />
-          <Text style={[styles.editButtonText, { color: colors.primary }]}>
-            Edit
-          </Text>
-        </TouchableOpacity>
+          <Icon name="pencil-outline" size={iconSize.sm} color={t.brand.tint} />
+          <Text style={styles.editButtonText}>Edit</Text>
+        </Pressable>
       </View>
       <View style={styles.sectionContent}>{children}</View>
     </View>
@@ -220,13 +214,9 @@ export function CustomerReviewStep({
   const renderDetailRow = (label: string, value: string | undefined) => {
     if (!value) return null;
     return (
-      <View style={[styles.detailRow, { borderBottomColor: colors.gray100 }]}>
-        <Text style={[styles.detailLabel, { color: colors.gray600 }]}>
-          {label}
-        </Text>
-        <Text style={[styles.detailValue, { color: colors.gray900 }]}>
-          {value}
-        </Text>
+      <View style={styles.detailRow} accessible accessibilityLabel={`${label}, ${value}`}>
+        <Text style={styles.detailLabel}>{label}</Text>
+        <Text style={styles.detailValue}>{value}</Text>
       </View>
     );
   };
@@ -235,8 +225,10 @@ export function CustomerReviewStep({
   // RENDER
   // ===========================================================================
 
+  const submitLabel = isCreateMode ? 'Create customer' : 'Save customer';
+
   return (
-    <View style={[styles.container, { backgroundColor: colors.gray50 }]}>
+    <View style={styles.container}>
       {/* Step Indicator */}
       <GenericStepIndicatorHeader
         steps={CUSTOMER_STEPS}
@@ -245,7 +237,7 @@ export function CustomerReviewStep({
         onCancel={handleCancel}
         onStepPress={handleStepIndicatorPress}
         colorScheme="teal"
-        entityName={isCreateMode ? 'Customer' : 'Customer'}
+        entityName="Customer"
         entityId={isCreateMode ? undefined : formData.name || 'Editing'}
       />
 
@@ -256,39 +248,33 @@ export function CustomerReviewStep({
       >
         {/* Header */}
         <View style={styles.header}>
-          <Text style={[styles.title, { color: colors.gray900 }]}>
-            Review & Submit
+          <Text style={styles.title} accessibilityRole="header">
+            Review
           </Text>
-          <Text style={[styles.subtitle, { color: colors.gray600 }]}>
-            Verify the information below before{' '}
-            {isCreateMode ? 'creating' : 'updating'} the customer
+          <Text style={styles.subtitle}>
+            Check the details below before you {isCreateMode ? 'create' : 'save'} the customer.
           </Text>
         </View>
 
         {/* Basic Information Section */}
         {renderSectionCard(
-          'Basic Information',
-          'account',
+          'Basic information',
+          'account-outline',
           CUSTOMER_STEP_NUMBERS.BASIC,
           <>
             {renderDetailRow('Name', formData.name)}
-            {renderDetailRow(
-              'Mobile',
-              formData.mobile ? `+91 ${formData.mobile}` : undefined
-            )}
+            {renderDetailRow('Mobile', formatMobile(formData.mobile))}
             {renderDetailRow('Email', formData.email)}
             {!formData.name && !formData.mobile && (
-              <Text style={[styles.emptyText, { color: colors.gray400 }]}>
-                No basic information entered
-              </Text>
+              <Text style={styles.emptyText}>No basic information entered.</Text>
             )}
           </>
         )}
 
         {/* Address & Tax Section */}
         {renderSectionCard(
-          'Address & Tax Details',
-          'map-marker',
+          'Address and tax details',
+          'map-marker-outline',
           CUSTOMER_STEP_NUMBERS.DETAILS,
           <>
             {/* Address */}
@@ -297,9 +283,7 @@ export function CustomerReviewStep({
               formData.pincode ||
               formData.address) && (
               <View style={styles.subsection}>
-                <Text
-                  style={[styles.subsectionTitle, { color: colors.gray500 }]}
-                >
+                <Text style={styles.subsectionTitle} accessibilityRole="header">
                   Address
                 </Text>
                 {renderDetailRow('City', formData.city)}
@@ -312,10 +296,8 @@ export function CustomerReviewStep({
             {/* Tax Details */}
             {(formData.gst || formData.pan) && (
               <View style={styles.subsection}>
-                <Text
-                  style={[styles.subsectionTitle, { color: colors.gray500 }]}
-                >
-                  Tax Details
+                <Text style={styles.subsectionTitle} accessibilityRole="header">
+                  Tax details
                 </Text>
                 {renderDetailRow('GST', formData.gst)}
                 {renderDetailRow('PAN', formData.pan)}
@@ -327,128 +309,96 @@ export function CustomerReviewStep({
               formData.contact_mobile ||
               formData.contact_email) && (
               <View style={styles.subsection}>
-                <Text
-                  style={[styles.subsectionTitle, { color: colors.gray500 }]}
-                >
-                  Contact Person
+                <Text style={styles.subsectionTitle} accessibilityRole="header">
+                  Contact person
                 </Text>
                 {renderDetailRow('Name', formData.contact_name)}
-                {renderDetailRow(
-                  'Mobile',
-                  formData.contact_mobile
-                    ? `+91 ${formData.contact_mobile}`
-                    : undefined
-                )}
+                {renderDetailRow('Mobile', formatMobile(formData.contact_mobile))}
                 {renderDetailRow('Email', formData.contact_email)}
               </View>
             )}
 
             {!formData.city && !formData.gst && !formData.contact_name && (
-              <Text style={[styles.emptyText, { color: colors.gray400 }]}>
-                No additional details entered
-              </Text>
+              <Text style={styles.emptyText}>No additional details entered.</Text>
             )}
           </>
         )}
 
         {/* Documents Section */}
-        <View
-          style={[
-            styles.sectionCard,
-            {
-              backgroundColor: colors.cellBackground,
-              borderColor: colors.gray200,
-            },
-          ]}
-        >
-          <View
-            style={[
-              styles.sectionHeader,
-              { borderBottomColor: colors.gray100 },
-            ]}
-          >
+        <View style={styles.sectionCard}>
+          <View style={styles.sectionHeader}>
             <View style={styles.sectionTitleRow}>
-              <Icon name="file-document" size={20} color={colors.primary} />
-              <Text style={[styles.sectionTitle, { color: colors.gray900 }]}>
+              <Icon name="file-document-outline" size={iconSize.md} color={t.brand.tint} />
+              <Text style={styles.sectionTitle} accessibilityRole="header">
                 Documents
               </Text>
             </View>
-            <Text style={[styles.documentCount, { color: colors.gray500 }]}>
-              {formData.document_images.length}/10
+            <Text
+              style={styles.documentCount}
+              accessibilityLabel={`${formData.document_images.length} of 10 documents`}
+            >
+              {formData.document_images.length} of 10
             </Text>
           </View>
 
           <View style={styles.sectionContent}>
             {/* Document Grid */}
             <View style={styles.documentGrid}>
-              {formData.document_images.map(doc => (
+              {formData.document_images.map((doc, index) => (
                 <View key={doc.uri} style={styles.documentItem}>
                   <Image
                     source={{ uri: doc.uri }}
-                    style={[
-                      styles.documentImage,
-                      { backgroundColor: colors.gray200 },
-                    ]}
+                    style={styles.documentImage}
                     contentFit="cover"
                     cachePolicy="memory-disk"
                     transition={150}
+                    accessibilityLabel={`Customer document ${index + 1}`}
                   />
-                  <TouchableOpacity
-                    style={[
-                      styles.removeDocumentButton,
-                      { backgroundColor: colors.cellBackground },
-                    ]}
+                  <Pressable
+                    style={styles.removeDocumentButton}
                     onPress={() => handleRemoveDocument(doc.uri)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Remove document ${index + 1}`}
                   >
-                    <Icon
-                      name="close-circle"
-                      size={24}
-                      color={colors.statusNegative}
-                    />
-                  </TouchableOpacity>
+                    <View style={styles.removeDocumentCircle}>
+                      <Icon name="close" size={iconSize.sm} color={t.overlay.onImage} />
+                    </View>
+                  </Pressable>
                 </View>
               ))}
 
               {/* Add Document Button */}
               {formData.document_images.length < 10 && (
-                <TouchableOpacity
-                  style={[
+                <Pressable
+                  style={({ pressed }) => [
                     styles.addDocumentButton,
-                    {
-                      borderColor: colors.primaryLight,
-                      backgroundColor: colors.primaryLight,
-                    },
+                    pressed && styles.addDocumentButtonPressed,
                   ]}
                   onPress={() =>
                     Alert.alert(
-                      'Unavailable',
-                      'Customer document uploads are unavailable in the local demo.'
+                      'Uploads unavailable',
+                      "Customer document uploads aren't available in the local demo."
                     )
                   }
                   disabled={isPickingImage}
-                  activeOpacity={0.7}
+                  accessibilityRole="button"
+                  accessibilityLabel="Add document"
+                  accessibilityState={{ disabled: isPickingImage, busy: isPickingImage }}
                 >
                   {isPickingImage ? (
-                    <ActivityIndicator color={colors.primary} />
+                    <ActivityIndicator color={t.brand.tint} />
                   ) : (
                     <>
-                      <Icon name="plus" size={32} color={colors.primary} />
-                      <Text
-                        style={[
-                          styles.addDocumentText,
-                          { color: colors.primary },
-                        ]}
-                      >
-                        Add
-                      </Text>
+                      <Icon name="camera-outline" size={iconSize.xl} color={t.brand.tint} />
+                      <Text style={styles.addDocumentText}>Add</Text>
                     </>
                   )}
-                </TouchableOpacity>
+                </Pressable>
               )}
             </View>
 
-            <Text style={[styles.helperText, { color: colors.gray500 }]}>
-              Customer document uploads are unavailable in the local demo.
+            <Text style={styles.helperText}>
+              Customer document uploads aren't available in the local demo.
             </Text>
           </View>
         </View>
@@ -458,264 +408,299 @@ export function CustomerReviewStep({
       </ScrollView>
 
       {/* Bottom Buttons */}
-      <View
-        style={[
-          styles.buttonContainer,
-          { backgroundColor: colors.gray50, borderTopColor: colors.gray200 },
-        ]}
-      >
-        <TouchableOpacity
-          style={[
+      <View style={[styles.buttonContainer, { paddingBottom: space.lg + insets.bottom }]}>
+        <Pressable
+          style={({ pressed }) => [
             styles.backButton,
-            {
-              backgroundColor: colors.cellBackground,
-              borderColor: colors.primary,
-            },
+            pressed && styles.backButtonPressed,
+            isSubmitting && styles.disabled,
           ]}
           onPress={handleBack}
-          activeOpacity={0.7}
           disabled={isSubmitting}
+          accessibilityRole="button"
+          accessibilityLabel="Back to address and tax details"
+          accessibilityState={{ disabled: isSubmitting }}
         >
-          <Icon name="chevron-left" size={20} color={colors.primary} />
-          <Text style={[styles.backButtonText, { color: colors.primary }]}>
-            Back
-          </Text>
-        </TouchableOpacity>
+          <Icon name="chevron-left" size={iconSize.md} color={t.brand.tint} />
+          <Text style={styles.backButtonText}>Back</Text>
+        </Pressable>
 
-        <TouchableOpacity
-          style={[
-            styles.submitButton,
-            { backgroundColor: colors.statusPositive },
-            isSubmitting && styles.submitButtonDisabled,
-          ]}
+        <Pressable
+          style={({ pressed }) => [styles.submitButton, pressed && styles.submitButtonPressed]}
           onPress={handleSubmit}
-          activeOpacity={0.8}
           disabled={isSubmitting}
+          accessibilityRole="button"
+          accessibilityLabel={submitLabel}
+          accessibilityState={{ busy: isSubmitting }}
         >
           {isSubmitting ? (
-            <ActivityIndicator color={colors.white} />
+            <>
+              <ActivityIndicator color={t.brand.onFill} />
+              <Text style={styles.submitButtonText}>Saving…</Text>
+            </>
           ) : (
             <>
-              <Icon name="check" size={20} color={colors.white} />
-              <Text style={[styles.submitButtonText, { color: colors.white }]}>
-                {isCreateMode ? 'Create Customer' : 'Update Customer'}
-              </Text>
+              <Icon name="check" size={iconSize.md} color={t.brand.onFill} />
+              <Text style={styles.submitButtonText}>{submitLabel}</Text>
             </>
           )}
-        </TouchableOpacity>
+        </Pressable>
       </View>
     </View>
   );
+}
+
+/** "+91 98765 43210" for a stored 10-digit (or 91-prefixed) number. */
+function formatMobile(mobile: string | undefined): string | undefined {
+  if (!mobile) return undefined;
+  const digits = mobile.replace(/\D/g, '').replace(/^91(?=\d{10}$)/, '');
+  if (digits.length !== 10) return `+91 ${digits}`;
+  return `+91 ${digits.slice(0, 5)} ${digits.slice(5)}`;
 }
 
 // =============================================================================
 // STYLES
 // =============================================================================
 
-const styles = StyleSheet.create({
+const makeStyles = (t: ThemeTokens) => ({
   container: {
     flex: 1,
+    backgroundColor: t.background.base,
   },
   scrollView: {
     flex: 1,
   },
   scrollContent: {
-    paddingHorizontal: 16,
+    paddingHorizontal: layout.marginCompact,
     paddingBottom: 100,
   },
 
   // Header
   header: {
-    paddingVertical: 20,
+    paddingVertical: space.xl,
   },
   title: {
-    fontSize: 22,
-    fontWeight: '700',
-    marginBottom: 4,
+    ...typography.title2,
+    color: t.text.primary,
+    marginBottom: space.xs,
   },
   subtitle: {
-    fontSize: 15,
+    ...typography.subhead,
+    color: t.text.secondary,
   },
 
   // Section Cards
   sectionCard: {
-    borderRadius: 12,
-    marginBottom: 16,
-    borderWidth: 1,
-    overflow: 'hidden',
+    borderRadius: radius.card,
+    marginBottom: space.lg,
+    backgroundColor: t.surface.card,
+    ...t.shadow[2],
   },
   sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 16,
-    borderBottomWidth: 1,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.sm,
+    minHeight: touchTarget + space.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.divider,
   },
   sectionTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.sm,
+    flexShrink: 1,
   },
   sectionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
+    ...typography.headline,
+    color: t.text.primary,
+    flexShrink: 1,
   },
   sectionContent: {
-    padding: 16,
+    padding: space.lg,
   },
 
   // Edit Button
   editButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 6,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.xs,
+    paddingHorizontal: space.md,
+    minHeight: touchTarget,
+    borderRadius: radius.button,
+  },
+  editButtonPressed: {
+    backgroundColor: t.brand.subtle,
   },
   editButtonText: {
-    fontSize: 14,
-    fontWeight: '500',
+    ...typography.callout,
+    color: t.brand.tint,
   },
 
   // Subsections
   subsection: {
-    marginBottom: 16,
+    marginBottom: space.lg,
   },
   subsectionTitle: {
-    fontSize: 13,
-    fontWeight: '600',
-    marginBottom: 8,
-    textTransform: 'uppercase',
+    ...typography.footnote,
+    textTransform: 'uppercase' as const,
     letterSpacing: 0.5,
+    color: t.text.secondary,
+    marginBottom: space.sm,
   },
 
   // Detail Rows
   detailRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    paddingVertical: 8,
-    borderBottomWidth: 1,
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'flex-start' as const,
+    gap: space.md,
+    paddingVertical: space.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.divider,
   },
   detailLabel: {
-    fontSize: 14,
+    ...typography.subhead,
+    color: t.text.secondary,
     flex: 1,
   },
   detailValue: {
-    fontSize: 14,
-    fontWeight: '500',
+    ...typography.subhead,
+    fontWeight: fontWeight.medium,
+    color: t.text.primary,
     flex: 2,
-    textAlign: 'right',
+    textAlign: 'right' as const,
   },
   emptyText: {
-    fontSize: 14,
-    fontStyle: 'italic',
-    textAlign: 'center',
-    paddingVertical: 12,
+    ...typography.subhead,
+    color: t.text.secondary,
+    textAlign: 'center' as const,
+    paddingVertical: space.md,
   },
 
   // Documents
   documentCount: {
-    fontSize: 14,
-    fontWeight: '500',
+    ...typography.subhead,
+    color: t.text.secondary,
+    fontVariant: ['tabular-nums' as const],
   },
   documentGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-    marginBottom: 12,
+    flexDirection: 'row' as const,
+    flexWrap: 'wrap' as const,
+    gap: space.md,
+    marginBottom: space.md,
   },
   documentItem: {
     width: 80,
     height: 80,
-    borderRadius: 8,
-    overflow: 'hidden',
-    position: 'relative',
+    borderRadius: radius.card,
+    overflow: 'hidden' as const,
+    position: 'relative' as const,
   },
   documentImage: {
-    width: '100%',
-    height: '100%',
+    width: '100%' as const,
+    height: '100%' as const,
+    backgroundColor: t.surface.cardActive,
   },
   removeDocumentButton: {
-    position: 'absolute',
-    top: -6,
-    right: -6,
-    borderRadius: 12,
+    position: 'absolute' as const,
+    top: 0,
+    right: 0,
+    width: touchTarget,
+    height: touchTarget,
+    alignItems: 'flex-end' as const,
+    justifyContent: 'flex-start' as const,
+    padding: space.xs,
+  },
+  removeDocumentCircle: {
+    width: iconSize.lg,
+    height: iconSize.lg,
+    borderRadius: radius.pill,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    backgroundColor: t.overlay.scrim,
   },
   addDocumentButton: {
     width: 80,
     height: 80,
-    borderRadius: 8,
-    borderWidth: 2,
-    borderStyle: 'dashed',
-    alignItems: 'center',
-    justifyContent: 'center',
+    borderRadius: radius.card,
+    borderWidth: 1,
+    borderStyle: 'dashed' as const,
+    borderColor: t.border.field,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+  },
+  addDocumentButtonPressed: {
+    backgroundColor: t.surface.cardPressed,
   },
   addDocumentText: {
-    fontSize: 12,
-    fontWeight: '500',
-    marginTop: 2,
+    ...typography.caption1,
+    fontWeight: fontWeight.medium,
+    color: t.brand.tint,
+    marginTop: space.xxs,
   },
   helperText: {
-    fontSize: 13,
+    ...typography.footnote,
+    color: t.text.secondary,
   },
 
   // Bottom
   bottomSpacer: {
-    height: 40,
+    height: space.huge,
   },
   buttonContainer: {
-    position: 'absolute',
+    position: 'absolute' as const,
     bottom: 0,
     left: 0,
     right: 0,
-    flexDirection: 'row',
-    padding: 16,
-    gap: 12,
-    borderTopWidth: 1,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: -2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
-      },
-      android: {
-        elevation: 8,
-      },
-    }),
+    flexDirection: 'row' as const,
+    paddingHorizontal: space.lg,
+    paddingTop: space.lg,
+    gap: space.sm,
+    backgroundColor: t.surface.card,
+    ...t.shadow[3],
   },
   backButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
     borderWidth: 1,
-    borderRadius: 8,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    gap: 4,
+    borderRadius: radius.button,
+    borderColor: t.border.button,
+    minHeight: 48,
+    paddingHorizontal: space.lg,
+    gap: space.xs,
+  },
+  backButtonPressed: {
+    backgroundColor: t.brand.subtle,
   },
   backButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
+    ...typography.callout,
+    fontWeight: fontWeight.semibold,
+    color: t.brand.tint,
+  },
+  disabled: {
+    opacity: t.interaction.disabledOpacity,
   },
   submitButton: {
     flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 8,
-    paddingVertical: 14,
-    paddingHorizontal: 20,
-    gap: 8,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    borderRadius: radius.button,
+    minHeight: 48,
+    paddingHorizontal: space.xl,
+    gap: space.sm,
+    backgroundColor: t.brand.fill,
   },
-  submitButtonDisabled: {
-    opacity: 0.7,
+  submitButtonPressed: {
+    backgroundColor: t.brand.fillPressed,
   },
   submitButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
+    ...typography.callout,
+    fontWeight: fontWeight.semibold,
+    color: t.brand.onFill,
   },
 });
 
