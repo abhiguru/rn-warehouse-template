@@ -1,67 +1,18 @@
 /**
- * DispatchInvoicesTab Component - 100% SAP Fiori Compliant
+ * DispatchInvoicesTab Component
  *
- * Invoices tab showing invoice summary for the dispatch
- * Features:
- * - Summary cards with totals in Fiori style
- * - List of invoice numbers
- * - Dynamic colors for dark mode support
+ * Invoices tab of the dispatch object page (style guide §14.2):
+ * - KPI tiles with the invoice count and total amount (§13.11)
+ * - Read-only list of invoice numbers
  */
 
-import React, { useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView, Platform, ViewStyle } from 'react-native';
+import React from 'react';
+import { View, Text, ScrollView } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { formatCurrency } from '@/utils/formatters';
-import { useListColors } from '@/hooks/useListColors';
-
-// ============================================================================
-// FIORI DESIGN TOKENS (Static values only - colors are dynamic)
-// ============================================================================
-const FIORI_STATIC = {
-  spacing: {
-    sm: 8,
-    md: 12,
-    lg: 16,
-    xl: 20,
-  },
-  typography: {
-    headline: {
-      fontSize: 17,
-      fontWeight: '600' as const,
-    },
-    body: {
-      fontSize: 15,
-      fontWeight: '400' as const,
-    },
-    caption: {
-      fontSize: 13,
-      fontWeight: '400' as const,
-    },
-    sectionHeader: {
-      fontSize: 13,
-      fontWeight: '600' as const,
-      letterSpacing: 0.5,
-      textTransform: 'uppercase' as const,
-    },
-  },
-  dimensions: {
-    cardRadius: 12,
-    cardPadding: 16,
-  },
-  shadows: {
-    card: Platform.select({
-      ios: {
-        shadowColor: '#000000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.08,
-        shadowRadius: 3,
-      },
-      android: {
-        elevation: 2,
-      },
-    }) as ViewStyle,
-  },
-} as const;
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { fontWeight, iconSize, layout, radius, space, typography } from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
+import { formatInvoiceAmount } from '@/utils/invoiceCalculations';
 
 // Using snake_case to match backend RPC types
 export interface InvoiceSummary {
@@ -74,179 +25,181 @@ interface DispatchInvoicesTabProps {
   invoiceSummary: InvoiceSummary;
 }
 
+const makeStyles = (t: ThemeTokens) => ({
+  container: {
+    flex: 1,
+    backgroundColor: t.background.base,
+  },
+  content: {
+    paddingHorizontal: layout.marginCompact,
+    paddingTop: space.md,
+    paddingBottom: space.xxxl,
+  },
+  summaryGrid: {
+    flexDirection: 'row' as const,
+    flexWrap: 'wrap' as const,
+    gap: space.sm,
+    marginBottom: space.xxl,
+  },
+  summaryCard: {
+    flexGrow: 1,
+    flexBasis: '45%' as const,
+    backgroundColor: t.surface.card,
+    borderRadius: radius.card,
+    padding: space.lg,
+    alignItems: 'center' as const,
+    ...t.shadow[2],
+  },
+  iconCircle: {
+    width: layout.avatar.md,
+    height: layout.avatar.md,
+    borderRadius: radius.pill,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    marginBottom: space.sm,
+  },
+  iconCircleBrand: {
+    backgroundColor: t.brand.subtle,
+  },
+  iconCircleNeutral: {
+    backgroundColor: t.status.neutral.background,
+  },
+  summaryValue: {
+    ...typography.title3,
+    color: t.text.primary,
+    fontVariant: ['tabular-nums' as const],
+    textAlign: 'center' as const,
+  },
+  summaryLabel: {
+    ...typography.footnote,
+    color: t.text.secondary,
+    textAlign: 'center' as const,
+    marginTop: space.xxs,
+  },
+  sectionTitle: {
+    ...typography.footnote,
+    fontWeight: fontWeight.semibold,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase' as const,
+    color: t.text.secondary,
+    marginBottom: space.sm,
+  },
+  invoicesSection: {
+    backgroundColor: t.surface.card,
+    borderRadius: radius.card,
+    overflow: 'hidden' as const,
+    ...t.shadow[2],
+  },
+  invoiceRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    minHeight: layout.rowMinHeight,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.md,
+    gap: space.sm,
+  },
+  invoiceRowDivider: {
+    borderBottomWidth: 1,
+    borderBottomColor: t.border.divider,
+  },
+  invoiceNumberText: {
+    ...typography.body,
+    color: t.text.primary,
+    flex: 1,
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    padding: space.xl,
+    minHeight: 400,
+    backgroundColor: t.background.base,
+  },
+  emptyTitle: {
+    ...typography.title3,
+    color: t.text.primary,
+    marginTop: space.lg,
+    marginBottom: space.sm,
+    textAlign: 'center' as const,
+  },
+  emptySubtitle: {
+    ...typography.subhead,
+    color: t.text.secondary,
+    textAlign: 'center' as const,
+  },
+});
+
 export const DispatchInvoicesTab: React.FC<DispatchInvoicesTabProps> = ({
   invoiceSummary,
 }) => {
-  // Theme colors for dark mode support
-  const colors = useListColors();
-
-  // Dynamic styles based on theme
-  const dynamicStyles = useMemo(() => StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor: colors.gray50,
-    },
-    summaryCard: {
-      flex: 1,
-      backgroundColor: colors.cellBackground,
-      borderRadius: FIORI_STATIC.dimensions.cardRadius,
-      padding: FIORI_STATIC.spacing.md,
-      alignItems: 'center',
-      borderWidth: 1,
-      borderColor: colors.cellDivider,
-      ...FIORI_STATIC.shadows.card,
-    },
-    summaryLabel: {
-      ...FIORI_STATIC.typography.caption,
-      color: colors.gray600,
-      textAlign: 'center',
-    },
-    invoicesSection: {
-      backgroundColor: colors.cellBackground,
-      borderRadius: FIORI_STATIC.dimensions.cardRadius,
-      borderWidth: 1,
-      borderColor: colors.cellDivider,
-      overflow: 'hidden',
-      ...FIORI_STATIC.shadows.card,
-    },
-    sectionHeader: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      paddingHorizontal: FIORI_STATIC.dimensions.cardPadding,
-      paddingVertical: FIORI_STATIC.spacing.sm,
-      backgroundColor: colors.gray50,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.cellDivider,
-      gap: 6,
-    },
-    sectionTitle: {
-      ...FIORI_STATIC.typography.sectionHeader,
-      color: colors.gray600,
-    },
-    invoiceCard: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      paddingHorizontal: FIORI_STATIC.dimensions.cardPadding,
-      paddingVertical: FIORI_STATIC.spacing.sm,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.cellDivider,
-    },
-    invoiceIconCircle: {
-      width: 36,
-      height: 36,
-      borderRadius: 18,
-      backgroundColor: colors.primaryLight,
-      justifyContent: 'center',
-      alignItems: 'center',
-      marginRight: FIORI_STATIC.spacing.sm,
-    },
-    invoiceNumberText: {
-      ...FIORI_STATIC.typography.body,
-      fontWeight: '600' as const,
-      color: colors.gray900,
-    },
-    invoiceSubtext: {
-      ...FIORI_STATIC.typography.caption,
-      color: colors.gray500,
-      marginTop: 1,
-    },
-    emptyContainer: {
-      flex: 1,
-      justifyContent: 'center',
-      alignItems: 'center',
-      padding: FIORI_STATIC.spacing.xl,
-      minHeight: 400,
-      backgroundColor: colors.gray50,
-    },
-    emptyTitle: {
-      ...FIORI_STATIC.typography.headline,
-      color: colors.gray900,
-      marginBottom: FIORI_STATIC.spacing.sm,
-      textAlign: 'center',
-    },
-    emptySubtitle: {
-      ...FIORI_STATIC.typography.body,
-      color: colors.gray600,
-      textAlign: 'center',
-      lineHeight: 20,
-    },
-  }), [colors]);
-
-  const renderEmpty = () => (
-    <View style={dynamicStyles.emptyContainer}>
-      <View style={styles.emptyIconContainer}>
-        <Icon name="file-document-outline" size={56} color={colors.gray500} />
-      </View>
-      <Text style={dynamicStyles.emptyTitle}>No invoices found</Text>
-      <Text style={dynamicStyles.emptySubtitle}>
-        No invoices are associated with this dispatch yet
-      </Text>
-    </View>
-  );
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
 
   if (invoiceSummary.total_invoices === 0) {
-    return renderEmpty();
+    return (
+      <View style={styles.emptyContainer}>
+        <Icon name="file-document-outline" size={iconSize.hero} color={t.icon.secondary} />
+        <Text style={styles.emptyTitle} accessibilityRole="header">No invoices yet</Text>
+        <Text style={styles.emptySubtitle}>
+          Invoices created for this dispatch appear here.
+        </Text>
+      </View>
+    );
   }
 
   const invoiceNumbers = invoiceSummary.invoice_numbers || [];
+  const countLabel = invoiceSummary.total_invoices === 1 ? 'Invoice' : 'Invoices';
 
   return (
     <ScrollView
-      style={dynamicStyles.container}
+      style={styles.container}
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
     >
-      {/* Summary Cards */}
+      {/* Summary tiles */}
       <View style={styles.summaryGrid}>
-        {/* Total Invoices */}
-        <View style={dynamicStyles.summaryCard}>
-          <View style={[styles.summaryIcon, { backgroundColor: colors.tealLight }]}>
-            <Icon name="file-document-multiple" size={20} color={colors.teal} />
+        <View
+          style={styles.summaryCard}
+          accessible
+          accessibilityLabel={`${invoiceSummary.total_invoices} ${countLabel.toLowerCase()}`}
+        >
+          <View style={[styles.iconCircle, styles.iconCircleNeutral]}>
+            <Icon name="file-document-multiple-outline" size={iconSize.lg} color={t.status.neutral.text} />
           </View>
-          <Text style={[styles.summaryValue, { color: colors.teal }]}>
-            {invoiceSummary.total_invoices}
-          </Text>
-          <Text style={dynamicStyles.summaryLabel}>
-            {invoiceSummary.total_invoices === 1 ? 'Invoice' : 'Invoices'}
-          </Text>
+          <Text style={styles.summaryValue}>{invoiceSummary.total_invoices}</Text>
+          <Text style={styles.summaryLabel}>{countLabel}</Text>
         </View>
 
-        {/* Total Amount */}
-        <View style={dynamicStyles.summaryCard}>
-          <View style={[styles.summaryIcon, { backgroundColor: colors.successLight }]}>
-            <Icon name="currency-inr" size={20} color={colors.success} />
+        <View
+          style={styles.summaryCard}
+          accessible
+          accessibilityLabel={`Total amount ${formatInvoiceAmount(invoiceSummary.total_amount)}`}
+        >
+          <View style={[styles.iconCircle, styles.iconCircleBrand]}>
+            <Icon name="currency-inr" size={iconSize.lg} color={t.brand.tint} />
           </View>
-          <Text style={[styles.summaryValue, { color: colors.success }]}>
-            {formatCurrency(invoiceSummary.total_amount)}
-          </Text>
-          <Text style={dynamicStyles.summaryLabel}>Total Amount</Text>
+          <Text style={styles.summaryValue}>{formatInvoiceAmount(invoiceSummary.total_amount)}</Text>
+          <Text style={styles.summaryLabel}>Total amount</Text>
         </View>
       </View>
 
-      {/* Invoice Numbers List */}
+      {/* Invoice numbers */}
       {invoiceNumbers.length > 0 && (
-        <View style={dynamicStyles.invoicesSection}>
-          <View style={dynamicStyles.sectionHeader}>
-            <Icon name="receipt" size={16} color={colors.gray600} />
-            <Text style={dynamicStyles.sectionTitle}>Invoice Numbers</Text>
-          </View>
-          <View style={styles.invoicesList}>
+        <View>
+          <Text style={styles.sectionTitle} accessibilityRole="header">Invoices</Text>
+          <View style={styles.invoicesSection}>
             {invoiceNumbers.map((invoiceNo, index) => (
               <View
-                key={index}
+                key={`${invoiceNo}-${index}`}
                 style={[
-                  dynamicStyles.invoiceCard,
-                  index === invoiceNumbers.length - 1 && styles.invoiceCardLast
+                  styles.invoiceRow,
+                  index < invoiceNumbers.length - 1 && styles.invoiceRowDivider,
                 ]}
+                accessible
+                accessibilityLabel={`Invoice ${invoiceNo}`}
               >
-                <View style={dynamicStyles.invoiceIconCircle}>
-                  <Icon name="file-document" size={16} color={colors.primary} />
-                </View>
-                <View style={styles.invoiceInfo}>
-                  <Text style={dynamicStyles.invoiceNumberText}>Invoice #{invoiceNo}</Text>
-                  <Text style={dynamicStyles.invoiceSubtext}>Tap to view details</Text>
-                </View>
-                <Icon name="chevron-right" size={18} color={colors.gray500} />
+                <Icon name="file-document-outline" size={iconSize.md} color={t.icon.secondary} />
+                <Text style={styles.invoiceNumberText}>Invoice {invoiceNo}</Text>
               </View>
             ))}
           </View>
@@ -255,42 +208,3 @@ export const DispatchInvoicesTab: React.FC<DispatchInvoicesTabProps> = ({
     </ScrollView>
   );
 };
-
-// Static styles (layout only - colors are in dynamicStyles)
-const styles = StyleSheet.create({
-  content: {
-    paddingHorizontal: FIORI_STATIC.spacing.lg,
-    paddingTop: FIORI_STATIC.spacing.md,
-    paddingBottom: FIORI_STATIC.spacing.xl,
-  },
-  summaryGrid: {
-    flexDirection: 'row',
-    gap: FIORI_STATIC.spacing.sm,
-    marginBottom: FIORI_STATIC.spacing.md,
-  },
-  summaryIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: FIORI_STATIC.spacing.sm,
-  },
-  summaryValue: {
-    fontSize: 20,
-    fontWeight: '700',
-    marginBottom: 2,
-  },
-  invoicesList: {
-    paddingVertical: FIORI_STATIC.spacing.sm,
-  },
-  invoiceCardLast: {
-    borderBottomWidth: 0,
-  },
-  invoiceInfo: {
-    flex: 1,
-  },
-  emptyIconContainer: {
-    marginBottom: FIORI_STATIC.spacing.md,
-  },
-});

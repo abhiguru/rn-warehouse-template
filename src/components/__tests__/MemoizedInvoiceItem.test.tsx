@@ -1,6 +1,19 @@
-import { invoiceItemPropsAreEqual, type MemoizedInvoiceItemProps } from '../list-items/MemoizedInvoiceItem';
+import React from 'react';
+import { StyleSheet } from 'react-native';
+import { act, create, ReactTestRenderer } from 'react-test-renderer';
+import {
+  MemoizedInvoiceItem,
+  invoiceItemPropsAreEqual,
+  type MemoizedInvoiceItemProps,
+} from '../list-items/MemoizedInvoiceItem';
 import type { Invoice } from '@/services/invoice-service';
+import { BRANDS, getTokens, type Mode } from '@/theme/tokens';
 
+let mockState = { theme: { preference: 'light', brand: 'orange' } };
+jest.mock('@/store/hooks', () => ({
+  useAppDispatch: () => jest.fn(),
+  useAppSelector: (selector: (state: unknown) => unknown) => selector(mockState),
+}));
 jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
 
 const invoice = {
@@ -53,3 +66,28 @@ it('re-renders when the customer name, GRN number, callback, print flag or theme
   expect(invoiceItemPropsAreEqual(props(), { ...props(), canPrint: false })).toBe(false);
   expect(invoiceItemPropsAreEqual(props(), { ...props(), colors: {} as MemoizedInvoiceItemProps['colors'] })).toBe(false);
 });
+
+describe.each(BRANDS.flatMap(brand => (['light', 'dark'] as Mode[]).map(mode => [brand, mode] as const)))(
+  'invoice cell in %s %s',
+  (brand, mode) => {
+    it('renders the card on surface.card with the discount in positive text', () => {
+      mockState = { theme: { preference: mode, brand } };
+      const t = getTokens(brand, mode);
+      let tree!: ReactTestRenderer;
+      act(() => {
+        tree = create(
+          <MemoizedInvoiceItem invoice={{ ...invoice, discount: 250, labour: 20 }} onPress={onPress} />
+        );
+      });
+      const texts = tree.root.findAll(n => (n.type as unknown) === 'Text');
+      const discount = texts.find(n => [].concat(n.props.children).join('') === '−₹250.00');
+      expect(discount).toBeDefined();
+      expect(StyleSheet.flatten(discount!.props.style).color).toBe(t.status.positive.text);
+      const total = texts.find(n => [].concat(n.props.children).join('') === '₹1,000.00');
+      expect(StyleSheet.flatten(total!.props.style).color).toBe(t.text.primary);
+      const pressable = tree.root.findAll(n => n.props.accessibilityRole === 'button')[0];
+      expect(pressable.props.accessibilityLabel).toContain('Invoice FXI0001');
+      act(() => tree.unmount());
+    });
+  }
+);

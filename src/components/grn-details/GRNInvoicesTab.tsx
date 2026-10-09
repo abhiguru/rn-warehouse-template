@@ -1,18 +1,18 @@
 /**
  * GRNInvoicesTab Component
  *
- * Invoice summary and list for GRN
- * Features:
- * - Summary cards with total amounts
- * - List of invoice numbers
- * - Material Design 3 styling
+ * Invoice summary and list for a GRN (object page tab, style guide §14.2):
+ * - KPI tiles with the invoice count and amounts (§13.11)
+ * - Read-only list of invoice numbers
  */
 
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView } from 'react-native';
-import { Card } from 'react-native-paper';
+import { View, Text, ScrollView } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { useListColors } from '@/hooks/useListColors';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { fontWeight, iconSize, layout, radius, space, typography } from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
+import { formatInvoiceAmount } from '@/utils/invoiceCalculations';
 
 // Using snake_case to match backend RPC types
 interface InvoiceSummary {
@@ -26,225 +26,200 @@ interface GRNInvoicesTabProps {
   invoiceSummary: InvoiceSummary;
 }
 
+const makeStyles = (t: ThemeTokens) => ({
+  container: {
+    flex: 1,
+    backgroundColor: t.background.base,
+  },
+  contentContainer: {
+    padding: layout.marginCompact,
+    paddingBottom: space.xxxl,
+  },
+  section: {
+    marginBottom: space.xxl,
+  },
+  sectionTitle: {
+    ...typography.footnote,
+    fontWeight: fontWeight.semibold,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase' as const,
+    color: t.text.secondary,
+    marginBottom: space.sm,
+  },
+  summaryGrid: {
+    flexDirection: 'row' as const,
+    flexWrap: 'wrap' as const,
+    gap: space.sm,
+  },
+  summaryCard: {
+    flexGrow: 1,
+    flexBasis: '45%' as const,
+    backgroundColor: t.surface.card,
+    borderRadius: radius.card,
+    padding: space.lg,
+    alignItems: 'center' as const,
+    ...t.shadow[2],
+  },
+  summaryCardFull: {
+    flexBasis: '100%' as const,
+  },
+  iconCircle: {
+    width: layout.avatar.md,
+    height: layout.avatar.md,
+    borderRadius: radius.pill,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    marginBottom: space.sm,
+  },
+  iconCircleBrand: {
+    backgroundColor: t.brand.subtle,
+  },
+  iconCircleNeutral: {
+    backgroundColor: t.status.neutral.background,
+  },
+  summaryValue: {
+    ...typography.title3,
+    color: t.text.primary,
+    fontVariant: ['tabular-nums' as const],
+    textAlign: 'center' as const,
+  },
+  summaryLabel: {
+    ...typography.footnote,
+    color: t.text.secondary,
+    textAlign: 'center' as const,
+    marginTop: space.xxs,
+  },
+  listCard: {
+    backgroundColor: t.surface.card,
+    borderRadius: radius.card,
+    overflow: 'hidden' as const,
+    ...t.shadow[2],
+  },
+  invoiceRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    minHeight: layout.rowMinHeight,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.md,
+    gap: space.sm,
+  },
+  invoiceRowDivider: {
+    borderBottomWidth: 1,
+    borderBottomColor: t.border.divider,
+  },
+  invoiceNumber: {
+    ...typography.body,
+    color: t.text.primary,
+    flex: 1,
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    padding: space.giant,
+    backgroundColor: t.background.base,
+  },
+  emptyTitle: {
+    ...typography.title3,
+    color: t.text.primary,
+    marginTop: space.lg,
+    marginBottom: space.sm,
+    textAlign: 'center' as const,
+  },
+  emptySubtitle: {
+    ...typography.subhead,
+    color: t.text.secondary,
+    textAlign: 'center' as const,
+  },
+});
+
 export const GRNInvoicesTab: React.FC<GRNInvoicesTabProps> = ({
   invoiceSummary,
 }) => {
-  // Theme colors for dark mode support
-  const colors = useListColors();
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
 
   const { total_invoices, total_amount, total_with_tax, invoice_numbers } = invoiceSummary;
 
   if (total_invoices === 0) {
     return (
-      <View style={[styles.emptyContainer, { backgroundColor: colors.cellBackground }]}>
-        <View style={styles.emptyIconContainer}>
-          <Icon name="file-document-outline" size={64} color={colors.gray400} />
-        </View>
-        <Text style={[styles.emptyTitle, { color: colors.gray900 }]}>No Invoices</Text>
-        <Text style={[styles.emptySubtitle, { color: colors.gray600 }]}>
-          No invoices have been generated for this GRN yet
+      <View style={styles.emptyContainer}>
+        <Icon name="file-document-outline" size={iconSize.hero} color={t.icon.secondary} />
+        <Text style={styles.emptyTitle} accessibilityRole="header">No invoices yet</Text>
+        <Text style={styles.emptySubtitle}>
+          Invoices created for this GRN appear here.
         </Text>
       </View>
     );
   }
 
   return (
-    <ScrollView style={[styles.container, { backgroundColor: colors.cellBackground }]} contentContainerStyle={styles.contentContainer}>
-      {/* Summary Cards */}
+    <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
+      {/* Summary tiles */}
       <View style={styles.section}>
-        <Text style={[styles.sectionTitle, { color: colors.gray600 }]}>Financial Summary</Text>
+        <Text style={styles.sectionTitle} accessibilityRole="header">Financial summary</Text>
 
         <View style={styles.summaryGrid}>
-          {/* Total Invoices */}
-          <Card mode="elevated" style={[styles.summaryCard, { backgroundColor: colors.cellBackground }]}>
-            <Card.Content style={styles.summaryCardContent}>
-              <View style={[styles.iconContainer, { backgroundColor: colors.tealLight }]}>
-                <Icon name="file-document-multiple" size={24} color={colors.teal} />
-              </View>
-              <Text style={[styles.summaryValue, { color: colors.gray900 }]}>{total_invoices}</Text>
-              <Text style={[styles.summaryLabel, { color: colors.gray600 }]}>Total Invoices</Text>
-            </Card.Content>
-          </Card>
+          <View
+            style={styles.summaryCard}
+            accessible
+            accessibilityLabel={`${total_invoices} ${total_invoices === 1 ? 'invoice' : 'invoices'}`}
+          >
+            <View style={[styles.iconCircle, styles.iconCircleNeutral]}>
+              <Icon name="file-document-multiple-outline" size={iconSize.lg} color={t.status.neutral.text} />
+            </View>
+            <Text style={styles.summaryValue}>{total_invoices}</Text>
+            <Text style={styles.summaryLabel}>{total_invoices === 1 ? 'Invoice' : 'Invoices'}</Text>
+          </View>
 
-          {/* Base Amount */}
-          <Card mode="elevated" style={[styles.summaryCard, { backgroundColor: colors.cellBackground }]}>
-            <Card.Content style={styles.summaryCardContent}>
-              <View style={[styles.iconContainer, { backgroundColor: colors.primaryLight }]}>
-                <Icon name="currency-inr" size={24} color={colors.primary} />
-              </View>
-              <Text style={[styles.summaryValue, { color: colors.gray900 }]}>₹{total_amount.toLocaleString()}</Text>
-              <Text style={[styles.summaryLabel, { color: colors.gray600 }]}>Base Amount</Text>
-            </Card.Content>
-          </Card>
+          <View
+            style={styles.summaryCard}
+            accessible
+            accessibilityLabel={`Amount before tax ${formatInvoiceAmount(total_amount)}`}
+          >
+            <View style={[styles.iconCircle, styles.iconCircleBrand]}>
+              <Icon name="currency-inr" size={iconSize.lg} color={t.brand.tint} />
+            </View>
+            <Text style={styles.summaryValue}>{formatInvoiceAmount(total_amount)}</Text>
+            <Text style={styles.summaryLabel}>Amount before tax</Text>
+          </View>
 
-          {/* Total with Tax */}
-          <Card mode="elevated" style={[styles.summaryCard, styles.summaryCardFull, { backgroundColor: colors.cellBackground }]}>
-            <Card.Content style={styles.summaryCardContent}>
-              <View style={[styles.iconContainer, { backgroundColor: colors.successLight }]}>
-                <Icon name="cash-multiple" size={24} color={colors.success} />
-              </View>
-              <Text style={[styles.summaryValue, { color: colors.success }]}>
-                ₹{(total_with_tax || 0).toLocaleString()}
-              </Text>
-              <Text style={[styles.summaryLabel, { color: colors.gray600 }]}>Total with Tax</Text>
-            </Card.Content>
-          </Card>
+          <View
+            style={[styles.summaryCard, styles.summaryCardFull]}
+            accessible
+            accessibilityLabel={`Total with tax ${formatInvoiceAmount(total_with_tax || 0)}`}
+          >
+            <View style={[styles.iconCircle, styles.iconCircleBrand]}>
+              <Icon name="cash-multiple" size={iconSize.lg} color={t.brand.tint} />
+            </View>
+            <Text style={styles.summaryValue}>{formatInvoiceAmount(total_with_tax || 0)}</Text>
+            <Text style={styles.summaryLabel}>Total with tax</Text>
+          </View>
         </View>
       </View>
 
-      {/* Invoice Numbers List */}
+      {/* Invoice numbers */}
       {invoice_numbers.length > 0 && (
         <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: colors.gray600 }]}>Invoice Numbers</Text>
-          <Card mode="outlined" style={[styles.listCard, { backgroundColor: colors.cellBackground, borderColor: colors.cellDivider }]}>
-            <Card.Content>
-              {invoice_numbers.map((invoiceNo, index) => (
-                <View
-                  key={invoiceNo}
-                  style={[
-                    styles.invoiceRow,
-                    index < invoice_numbers.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.gray100 },
-                  ]}
-                >
-                  <View style={styles.invoiceLeft}>
-                    <View style={[styles.invoiceNumberCircle, { backgroundColor: colors.gray100 }]}>
-                      <Text style={[styles.invoiceNumberText, { color: colors.gray600 }]}>{index + 1}</Text>
-                    </View>
-                    <Text style={[styles.invoiceNumber, { color: colors.gray900 }]}>{invoiceNo}</Text>
-                  </View>
-                  <Icon name="chevron-right" size={20} color={colors.gray500} />
-                </View>
-              ))}
-            </Card.Content>
-          </Card>
+          <Text style={styles.sectionTitle} accessibilityRole="header">Invoices</Text>
+          <View style={styles.listCard}>
+            {invoice_numbers.map((invoiceNo, index) => (
+              <View
+                key={invoiceNo}
+                style={[
+                  styles.invoiceRow,
+                  index < invoice_numbers.length - 1 && styles.invoiceRowDivider,
+                ]}
+                accessible
+                accessibilityLabel={`Invoice ${invoiceNo}`}
+              >
+                <Icon name="file-document-outline" size={iconSize.md} color={t.icon.secondary} />
+                <Text style={styles.invoiceNumber}>Invoice {invoiceNo}</Text>
+              </View>
+            ))}
+          </View>
         </View>
       )}
     </ScrollView>
   );
 };
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fefefe',
-  },
-  contentContainer: {
-    padding: 16,
-    paddingBottom: 32,
-  },
-
-  // Section
-  section: {
-    marginBottom: 24,
-  },
-  sectionTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#4b5563',
-    marginBottom: 12,
-    paddingHorizontal: 4,
-  },
-
-  // Summary Grid
-  summaryGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-  },
-  summaryCard: {
-    flex: 1,
-    minWidth: '45%',
-    backgroundColor: '#ffffff',
-  },
-  summaryCardFull: {
-    minWidth: '100%',
-  },
-  summaryCardContent: {
-    alignItems: 'center',
-    paddingVertical: 20,
-  },
-  iconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  summaryValue: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#111827',
-    marginBottom: 4,
-  },
-  summaryLabel: {
-    fontSize: 12,
-    color: '#6b7280',
-    fontWeight: '500',
-    textAlign: 'center',
-  },
-
-  // Invoice List
-  listCard: {
-    backgroundColor: '#ffffff',
-    borderColor: '#e5e7eb',
-  },
-  invoiceRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 12,
-  },
-  invoiceRowBorder: {
-    borderBottomWidth: 1,
-    borderBottomColor: '#f3f4f6',
-  },
-  invoiceLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  invoiceNumberCircle: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: '#f3f4f6',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  invoiceNumberText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#6b7280',
-  },
-  invoiceNumber: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#111827',
-  },
-
-  // Empty State
-  emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 48,
-  },
-  emptyIconContainer: {
-    marginBottom: 16,
-  },
-  emptyTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#111827',
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  emptySubtitle: {
-    fontSize: 14,
-    color: '#6b7280',
-    textAlign: 'center',
-    lineHeight: 20,
-  },
-});
