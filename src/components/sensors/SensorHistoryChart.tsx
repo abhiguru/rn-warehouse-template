@@ -36,7 +36,7 @@ import {
   type ThemeTokens,
 } from '@/theme/tokens';
 import type { SensorHistoryReading, SensorChartDataPoint } from '@/types/sensor-history.types';
-import { formatCount, formatDate, formatDateTime, formatTemperature, toDate } from '@/utils/formatters';
+import { formatCount, formatDate, formatDateTime, formatMonth, formatTemperature, toDate } from '@/utils/formatters';
 
 /** A limit drawn on the temperature scale as a dashed, labelled line. */
 export interface SensorChartThreshold {
@@ -474,8 +474,8 @@ export const SensorHistoryChart: React.FC<SensorHistoryChartProps> = ({
     const date = toDate(timestamp);
     if (!date) return '';
     if (periodDays <= 90) return formatDate(date, 'short');
-    const [, month, year] = formatDate(date, 'medium').split(' ');
-    return compact ? month : `${month} ${year}`;
+    const month = formatMonth(date, 'short');
+    return compact ? month.split(' ')[0] : month;
   };
 
   // Prepare chart data. A missing reading has no value, so the line breaks

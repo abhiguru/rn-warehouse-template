@@ -57,7 +57,7 @@ import type {
   MonthlyTrendPoint,
   CustomerActivityPeriod,
 } from '@/types/report.types';
-import { formatCount, formatCurrency, formatDate, formatNumber, toDate } from '@/utils/formatters';
+import { formatCount, formatCurrency, formatDate, formatMonth, formatNumber, toDate } from '@/utils/formatters';
 import { Avatar, StatusTag, type StatusKind } from '@/components/ui';
 import { createLogger } from '@/utils/logger';
 
@@ -118,22 +118,14 @@ function formatLastActivity(value: string): string {
   return `Last active ${formatDate(date, 'short')}`;
 }
 
-/** "Oct" and "Oct 2026" for a "2026-10" trend month, from the shared date format. */
-function monthParts(monthStr: string): [string, string] | null {
-  const date = toDate(`${monthStr}-01`);
-  if (!date) return null;
-  const [, month, year] = formatDate(date, 'medium').split(' ');
-  return [month, year];
-}
-
-function formatShortMonth(monthStr: string): string {
-  return monthParts(monthStr)?.[0] ?? monthStr;
-}
-
-/** "Oct 2026" */
+/** "Oct 2026" for a "2026-10" trend month (guide §12.3). */
 function formatMonthYear(monthStr: string): string {
-  const parts = monthParts(monthStr);
-  return parts ? parts.join(' ') : monthStr;
+  return toDate(`${monthStr}-01`) ? formatMonth(`${monthStr}-01`, 'short') : monthStr;
+}
+
+/** "Oct": the month alone, for chart axis labels. */
+function formatShortMonth(monthStr: string): string {
+  return formatMonthYear(monthStr).split(' ')[0];
 }
 
 // ============================================================================
