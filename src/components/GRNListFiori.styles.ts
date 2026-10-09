@@ -309,7 +309,8 @@ export const makeGRNListStyles = (t: ThemeTokens) => ({
   statusIconContainer: {
     width: layout.avatar.md,
     height: layout.avatar.md,
-    borderRadius: radius.button,
+    borderRadius: radius.pill,
+    backgroundColor: t.brand.subtle,
     justifyContent: 'center' as const,
     alignItems: 'center' as const,
   },

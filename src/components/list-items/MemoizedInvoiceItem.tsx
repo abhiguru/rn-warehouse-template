@@ -55,7 +55,7 @@ const makeStyles = (t: ThemeTokens) => ({
     marginVertical: space.xs,
     padding: space.lg,
     minHeight: layout.objectCellMinHeight,
-    ...t.shadow[1],
+    ...t.shadow[2],
   },
   cardPressed: {
     backgroundColor: t.surface.cardPressed,
@@ -64,6 +64,14 @@ const makeStyles = (t: ThemeTokens) => ({
     flexDirection: 'row' as const,
     alignItems: 'flex-start' as const,
     gap: space.md,
+  },
+  iconContainer: {
+    width: layout.avatar.md,
+    height: layout.avatar.md,
+    borderRadius: radius.pill,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    backgroundColor: t.brand.subtle,
   },
   cardInfo: {
     flex: 1,
@@ -176,11 +184,15 @@ const InvoiceItemContent: React.FC<MemoizedInvoiceItemProps> = ({
       accessibilityHint="Opens the invoice"
     >
       <View style={styles.cardHeader}>
+        {/* Object icon (§13.6), as on GRN and dispatch rows */}
+        <View style={styles.iconContainer}>
+          <Icon name="file-document-outline" size={iconSize.md} color={t.brand.tint} />
+        </View>
         <View style={styles.cardInfo}>
           <Text style={styles.customerName} numberOfLines={2}>
-            {customerName}
+            Invoice {invoice.invoice_number}
           </Text>
-          <Text style={styles.invoiceNumber}>Invoice {invoice.invoice_number}</Text>
+          <Text style={styles.invoiceNumber} numberOfLines={2}>{customerName}</Text>
           <View style={styles.metaRow}>
             <Icon name="calendar-outline" size={iconSize.sm} color={t.icon.secondary} />
             <Text style={styles.metaText}>{invoiceDate}</Text>

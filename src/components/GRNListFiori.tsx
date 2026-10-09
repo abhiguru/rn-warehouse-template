@@ -192,7 +192,6 @@ const GRNCardFiori = memo<GRNCardProps>(({
 
   // Fiori semantic status for the whole GRN
   const stockStatus = stockStatusFor(totalStock, totalQty);
-  const status = t.status[stockStatus.status];
   const displayDate = formatDate(group.date, 'short');
   const itemCountLabel = formatCount(group.items.length, 'item');
   const weightLabel = formatWeight(Math.round(totalWeight));
@@ -265,9 +264,9 @@ const GRNCardFiori = memo<GRNCardProps>(({
             ].filter(Boolean).join(', ')}
             accessibilityHint="Opens the GRN. Swipe left for more actions."
           >
-            {/* Status icon */}
-            <View style={[styles.statusIconContainer, { backgroundColor: status.background }]}>
-              <Icon name={stockStatus.icon} size={iconSize.md} color={status.text} />
+            {/* Object icon (§13.6): the GRN glyph; stock status is the tag on the right */}
+            <View style={styles.statusIconContainer}>
+              <Icon name="package-down" size={iconSize.md} color={t.brand.tint} />
             </View>
 
             {/* Main content */}
