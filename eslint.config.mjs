@@ -20,6 +20,10 @@ const THEME_SYNTAX_RULES = [
     message: 'Spread a typography style from @/theme/tokens instead of a raw fontSize (style guide §4).',
   },
   {
+    selector: "CallExpression[callee.property.name=/^(split|slice|substring)$/][callee.object.callee.property.name='toISOString']",
+    message: "toISOString() is UTC: before 5:30 am in India it gives yesterday. Use toLocalISODate() from @/utils/formatters.",
+  },
+  {
     selector: "CallExpression[callee.object.name='Alert'][callee.property.name='alert']",
     message: 'Use showAlert from @/utils/alert so the dialog follows the theme (style guide §13.9).',
   },

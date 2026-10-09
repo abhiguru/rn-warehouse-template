@@ -15,9 +15,10 @@ import {
   applyBulkGroupPricing,
 } from '@/utils/invoiceCalculations';
 
+import { toLocalISODate } from '@/utils/formatters';
 // Initial header state
 const initialHeader: InvoiceHeaderData = {
-  inv_date: new Date().toISOString().split('T')[0],
+  inv_date: toLocalISODate(new Date()),
   inv_fin_year: calculateFinancialYear(new Date().toISOString()),
   inv_no: 0,
   customer_id: '',

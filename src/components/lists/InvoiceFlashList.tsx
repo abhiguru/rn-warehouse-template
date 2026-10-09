@@ -51,7 +51,7 @@ import type { AutocompleteSelection, FilterValues, FilterValueType } from '@/typ
 
 // Config
 import { INVOICE_FILTER_CONFIG } from '@/config/filterConfigs';
-import { formatCount, formatCurrency, formatDate, formatSectionDate } from '@/utils/formatters';
+import { formatCount, formatCurrency, formatDate, formatSectionDate, toLocalISODate } from '@/utils/formatters';
 import { ListEmptyState } from '@/components/list/ListEmptyState';
 import { ErrorStateView } from '@/components/ErrorBoundary';
 import { Avatar } from '@/components/ui/Avatar';
@@ -420,14 +420,14 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({
       // Date range filters
       if (filters.dateFrom) {
         const dateFrom = filters.dateFrom instanceof Date
-          ? filters.dateFrom.toISOString().split('T')[0]
+          ? toLocalISODate(filters.dateFrom)
           : filters.dateFrom;
         params.p_date_from = dateFrom;
         console.log('[InvoiceFlashList] Applied dateFrom:', params.p_date_from);
       }
       if (filters.dateTo) {
         const dateTo = filters.dateTo instanceof Date
-          ? filters.dateTo.toISOString().split('T')[0]
+          ? toLocalISODate(filters.dateTo)
           : filters.dateTo;
         params.p_date_to = dateTo;
         console.log('[InvoiceFlashList] Applied dateTo:', params.p_date_to);

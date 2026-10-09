@@ -23,6 +23,7 @@ import {
 } from '@/theme/tokens';
 import type { ReportPeriod } from '@/types/report.types';
 
+import { toLocalISODate } from '@/utils/formatters';
 interface PeriodOption {
   id: ReportPeriod;
   label: string;
@@ -54,7 +55,7 @@ interface PeriodSelectorProps {
  */
 function getDateRangeForPeriod(period: ReportPeriod): { from: string; to: string } {
   const today = new Date();
-  const toDate = today.toISOString().split('T')[0];
+  const toDate = toLocalISODate(today);
 
   // Map period to days
   const periodDays: Record<ReportPeriod, number> = {
@@ -69,7 +70,7 @@ function getDateRangeForPeriod(period: ReportPeriod): { from: string; to: string
   const from = new Date(today);
   from.setDate(from.getDate() - (days - 1)); // -1 because we include today
 
-  return { from: from.toISOString().split('T')[0], to: toDate };
+  return { from: toLocalISODate(from), to: toDate };
 }
 
 /** Segment height; the touch area is padded to `touchTarget` with hitSlop. */

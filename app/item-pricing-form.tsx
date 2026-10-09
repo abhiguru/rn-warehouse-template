@@ -53,7 +53,7 @@ import { mapCustomerSearchResponse } from '@/features/item-pricing/utils/custome
 import { createLogger } from '@/utils/logger';
 
 import { showAlert } from '@/utils/alert';
-import { formatDate } from '@/utils/formatters';
+import { formatDate, toLocalISODate } from '@/utils/formatters';
 const itemPricingFormLogger = createLogger('ItemPricingForm');
 
 interface Item {
@@ -361,8 +361,8 @@ const ItemPricingFormScreen: React.FC = () => {
           weight_max: parseFloat(weightMax),
           labour_rate: parseFloat(labourRate),
           tax_percent: parseFloat(taxPercent),
-          effective_from: effectiveFrom.toISOString().split('T')[0],
-          effective_to: effectiveTo ? effectiveTo.toISOString().split('T')[0] : null,
+          effective_from: toLocalISODate(effectiveFrom),
+          effective_to: effectiveTo ? toLocalISODate(effectiveTo) : null,
         };
 
         const result = await createItemStoragePrice(payload);
@@ -381,8 +381,8 @@ const ItemPricingFormScreen: React.FC = () => {
           weight_max: parseFloat(weightMax),
           labour_rate: parseFloat(labourRate),
           tax_percent: parseFloat(taxPercent),
-          effective_from: effectiveFrom.toISOString().split('T')[0],
-          effective_to: effectiveTo ? effectiveTo.toISOString().split('T')[0] : null,
+          effective_from: toLocalISODate(effectiveFrom),
+          effective_to: effectiveTo ? toLocalISODate(effectiveTo) : null,
         };
 
         const result = await updateItemStoragePrice(priceId, payload);

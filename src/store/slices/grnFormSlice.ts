@@ -1,5 +1,6 @@
 import { createSlice, PayloadAction, createSelector } from '@reduxjs/toolkit';
 
+import { toLocalISODate } from '@/utils/formatters';
 // Image data structure
 export interface GRNImageData {
   id: string;
@@ -86,7 +87,7 @@ const initialState: GRNFormState = {
   header: {
     gr_no: '',
     registration: '',
-    date: new Date().toISOString().split('T')[0],
+    date: toLocalISODate(new Date()),
     sender_id: '',
     sender_name: '',
     customer_id: '',
