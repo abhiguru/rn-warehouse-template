@@ -424,7 +424,7 @@ function Legend({ styles, tempColour, humidityColour, withUnits }: {
       <View style={styles.legendItem}>
         <View style={[styles.legendSwatch, { backgroundColor: humidityColour }]} />
         <Text style={styles.legendText}>
-          {withUnits ? 'Humidity (%, scaled to the temperature axis)' : 'Humidity'}
+          {withUnits ? 'Humidity (%, right axis)' : 'Humidity'}
         </Text>
       </View>
     </View>
@@ -491,16 +491,14 @@ export const SensorHistoryChart: React.FC<SensorHistoryChartProps> = ({
 
   const buildSeries = (maxLabels: number, compactLabels: boolean) => {
     const labelIndices = getLabelIndices(readings.length, maxLabels);
-    const span = domain.max - domain.min;
     const temp: SensorChartDataPoint[] = readings.map((r, index) => ({
       value: present(r.temperature) ? r.temperature : undefined,
       label: labelIndices.has(index) ? formatLabel(r.timestamp, compactLabels) : '',
       dataPointText: formatTemperature(r.temperature),
     }));
-    // Humidity is drawn on the temperature scale so both lines share one axis:
-    // 0% sits at the bottom of the axis and the top humidity step at the top.
+    // Humidity has its own axis on the right (guide §13.11), in percent.
     const humidity: SensorChartDataPoint[] = readings.map((r) => ({
-      value: present(r.humidity) ? domain.min + (r.humidity / maxHumidity) * span : undefined,
+      value: present(r.humidity) ? r.humidity : undefined,
       label: '', // Only show labels on temp line
       dataPointText: formatHumidity(r.humidity),
     }));
@@ -553,11 +551,8 @@ export const SensorHistoryChart: React.FC<SensorHistoryChartProps> = ({
 
   const sharedChartProps = {
     color: tempColour,
-    color2: humidityColour,
     thickness: 2,
-    thickness2: 2,
     dataPointsColor: tempColour,
-    dataPointsColor2: humidityColour,
     curved: true,
     xAxisColor: t.border.divider,
     yAxisColor: t.border.divider,
@@ -572,6 +567,20 @@ export const SensorHistoryChart: React.FC<SensorHistoryChartProps> = ({
     roundToDigits: 1,
     formatYLabel: formatAxisLabel,
     interpolateMissingValues: false,
+    // Humidity: its own percentage axis on the right, same number of sections.
+    secondaryYAxis: {
+      maxValue: maxHumidity,
+      noOfSections: domain.sections,
+      yAxisLabelSuffix: '%',
+      yAxisTextStyle: styles.axisLabel,
+      yAxisColor: t.border.divider,
+    },
+    secondaryLineConfig: {
+      color: humidityColour,
+      thickness: 2,
+      curved: true,
+      dataPointsColor: humidityColour,
+    },
   };
 
   const fsWidth = Math.max(screenWidth - 40, readings.length * 40);
@@ -627,7 +636,7 @@ export const SensorHistoryChart: React.FC<SensorHistoryChartProps> = ({
             {...sharedChartProps}
             {...thresholdProps('compact')}
             data={compactData.temp}
-            data2={compactData.humidity}
+            secondaryData={compactData.humidity}
             width={chartWidth}
             height={140}
             hideDataPoints={readings.length > 20}
@@ -723,7 +732,7 @@ export const SensorHistoryChart: React.FC<SensorHistoryChartProps> = ({
                   {...sharedChartProps}
                   {...thresholdProps('full')}
                   data={fullscreenData.temp}
-                  data2={fullscreenData.humidity}
+                  secondaryData={fullscreenData.humidity}
                   width={fsWidth}
                   height={screenHeight * 0.45}
                   dataPointsRadius={5}
@@ -763,7 +772,7 @@ export const SensorHistoryChart: React.FC<SensorHistoryChartProps> = ({
           <View style={[styles.footer, { paddingBottom: insets.bottom + space.md }]}>
             <Text style={styles.footerText}>{summary}</Text>
             <Text style={styles.footerText}>
-              {`Temperature axis ${formatTemperature(domain.min)} to ${formatTemperature(domain.max)}. Humidity 0 to ${maxHumidity}% is scaled to the same axis.`}
+              {`Temperature axis ${formatTemperature(domain.min)} to ${formatTemperature(domain.max)}. Humidity 0 to ${maxHumidity}% on the right axis.`}
             </Text>
           </View>
         </View>

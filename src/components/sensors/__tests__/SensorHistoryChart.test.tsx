@@ -76,7 +76,9 @@ describe.each(THEMES)('SensorHistoryChart in %s %s', (brand, mode) => {
     ));
     const chart = tree.root.findAll(n => (n.type as unknown) === 'LineChart')[0];
     expect(chart.props.color).toBe(t.chart[0]);
-    expect(chart.props.color2).toBe(t.chart[1]);
+    // Humidity has its own right-hand axis in percent (guide §13.11).
+    expect(chart.props.secondaryLineConfig.color).toBe(t.chart[1]);
+    expect(chart.props.secondaryYAxis.yAxisLabelSuffix).toBe('%');
     expect(chart.props.xAxisColor).toBe(t.border.divider);
     expect(chart.props.yAxisColor).toBe(t.border.divider);
     expect(chart.props.rulesColor).toBe(t.border.divider);
@@ -147,8 +149,10 @@ describe('temperature axis and missing readings', () => {
     expect(chart.props.yAxisOffset + chart.props.maxValue).toBeLessThan(0);
     expect(chart.props.interpolateMissingValues).toBe(false);
     expect(chart.props.data.map((p: { value?: number }) => p.value)).toEqual([-21.4, -18.2, undefined, -19.6]);
-    expect(chart.props.data2[2].value).toBeUndefined();
-    expect(chart.props.data2[0].value).toBeGreaterThanOrEqual(chart.props.yAxisOffset);
+    expect(chart.props.secondaryData[2].value).toBeUndefined();
+    // Humidity values are plotted in percent on the secondary axis, unscaled.
+    expect(chart.props.secondaryData[0].value).toBe(70);
+    expect(chart.props.secondaryYAxis.maxValue).toBeGreaterThanOrEqual(75);
     expect(chart.props.formatYLabel('-20')).toBe('\u221220');
     expect(chart.props.data[0].label).toBe('1 Oct');
     act(() => tree.unmount());
