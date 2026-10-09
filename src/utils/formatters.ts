@@ -152,6 +152,16 @@ export const formatDate = (
   return `${day} ${month} ${year}`;
 };
 
+/** Month titles (§12.3): "October 2026" (long, timelines) or "Oct 2026" (short, report rows). */
+export const formatMonth = (
+  date: string | Date | null | undefined,
+  format: 'short' | 'long' = 'long'
+): string => {
+  const d = toDate(date);
+  if (!d) return '—';
+  return `${(format === 'long' ? MONTHS_LONG : MONTHS_SHORT)[d.getMonth()]} ${d.getFullYear()}`;
+};
+
 /** "4:05 pm" (§12.3). */
 export const formatTime = (date: string | Date | null | undefined): string => {
   const d = toDate(date);

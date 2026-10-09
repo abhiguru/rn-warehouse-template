@@ -2,6 +2,7 @@ import {
   formatCount,
   formatDate,
   formatDateTime,
+  formatMonth,
   formatMobile,
   formatRelativeTime,
   formatSectionDate,
@@ -21,6 +22,8 @@ describe('style guide §12.3 formats', () => {
     expect(formatDate(`${thisYear}-10-06`, 'short')).toBe('6 Oct');
     expect(formatDate('2019-10-06', 'short')).toBe('6 Oct 2019');
     expect(formatDate(null)).toBe('—');
+    expect(formatMonth('2026-10-09')).toBe('October 2026');
+    expect(formatMonth('2026-10-09', 'short')).toBe('Oct 2026');
     expect(formatDate('not a date')).toBe('—');
   });
 
