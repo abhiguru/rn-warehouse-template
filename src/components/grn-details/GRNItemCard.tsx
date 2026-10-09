@@ -1,72 +1,17 @@
 /**
- * GRNItemCard Component - SAP Fiori Design
+ * GRNItemCard: one received item on the GRN object page (style guide §13.6).
  *
- * Item card for GRN details following SAP Fiori Card spec.
- *
- * Features:
- * - Fiori Card structure (header/body layout)
- * - Stock/Dispatch metrics with semantic colors
- * - Platform-specific shadows
- * - 44pt minimum touch targets
- * - listColors for consistent theming
+ * Title and received quantity on top, a stock status tag (icon plus word),
+ * then stock, dispatched and weight as key facts, and the lot mark, packaging
+ * and rack as neutral tags.
  */
 
 import React, { useMemo } from 'react';
-import { View, Text, StyleSheet, Platform, ViewStyle } from 'react-native';
+import { View, Text } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { useListColors } from '@/hooks/useListColors';
-
-// ============================================================================
-// FIORI CONSTANTS
-// ============================================================================
-
-const FIORI = {
-  card: {
-    cornerRadius: 12,
-    borderWidth: 1,
-    marginHorizontal: 16,
-    marginBottom: 8,
-  },
-  spacing: {
-    xs: 4,
-    sm: 8,
-    md: 12,
-    lg: 16,
-  },
-  typography: {
-    title: {
-      fontSize: 16,
-      fontWeight: '600' as const,
-      lineHeight: 22,
-    },
-    value: {
-      fontSize: 18,
-      fontWeight: '700' as const,
-    },
-    label: {
-      fontSize: 11,
-      fontWeight: '500' as const,
-      textTransform: 'uppercase' as const,
-      letterSpacing: 0.5,
-    },
-    chip: {
-      fontSize: 12,
-      fontWeight: '500' as const,
-    },
-  },
-  touchTarget: 44,
-  shadow: Platform.select({
-    ios: {
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 1 },
-      shadowOpacity: 0.08,
-      shadowRadius: 4,
-    },
-    android: {
-      elevation: 2,
-    },
-  }) as ViewStyle,
-} as const;
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { fontWeight, iconSize, layout, radius, space, typography } from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
 
 // ============================================================================
 // TYPES - Using snake_case to match backend RPC types
@@ -86,6 +31,103 @@ interface GRNItemCardProps {
   onViewDispatches?: () => void;
 }
 
+type StockStatus = 'negative' | 'critical' | 'positive';
+
+const STATUS_ICON: Record<StockStatus, string> = {
+  negative: 'alert-circle',
+  critical: 'alert',
+  positive: 'check-circle',
+};
+
+const STATUS_LABEL: Record<StockStatus, string> = {
+  negative: 'Out of stock',
+  critical: 'Partly dispatched',
+  positive: 'In stock',
+};
+
+const numberFormat = new Intl.NumberFormat('en-IN');
+const weightFormat = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 });
+
+// ============================================================================
+// STYLES
+// ============================================================================
+
+const makeStyles = (t: ThemeTokens) => ({
+  card: {
+    marginHorizontal: layout.marginCompact,
+    marginBottom: space.sm,
+    minHeight: layout.objectCellMinHeight,
+    borderRadius: radius.card,
+    backgroundColor: t.surface.card,
+    ...t.shadow[2],
+  },
+  header: {
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'flex-start' as const,
+    gap: space.sm,
+    paddingHorizontal: space.lg,
+    paddingTop: space.lg,
+    paddingBottom: space.md,
+  },
+  titleBlock: { flex: 1 },
+  itemName: { ...typography.headline, color: t.text.primary },
+  tag: {
+    flexDirection: 'row' as const,
+    alignSelf: 'flex-start' as const,
+    alignItems: 'center' as const,
+    gap: space.xs,
+    paddingHorizontal: space.sm,
+    paddingVertical: space.xxs,
+    borderRadius: radius.field,
+    marginTop: space.xs,
+  },
+  tagText: { ...typography.caption1, fontWeight: fontWeight.semibold },
+  qtyBlock: { alignItems: 'flex-end' as const },
+  qtyValue: {
+    ...typography.headline,
+    color: t.text.primary,
+    fontVariant: ['tabular-nums' as const],
+  },
+  qtyLabel: { ...typography.footnote, color: t.text.secondary },
+  metricsSection: {
+    flexDirection: 'row' as const,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.md,
+    borderTopWidth: 1,
+    borderTopColor: t.border.divider,
+    gap: space.sm,
+  },
+  metricItem: { flex: 1 },
+  metricLabel: { ...typography.footnote, color: t.text.secondary },
+  metricValue: {
+    ...typography.body,
+    fontWeight: fontWeight.semibold,
+    color: t.text.primary,
+    fontVariant: ['tabular-nums' as const],
+  },
+  detailsRow: {
+    flexDirection: 'row' as const,
+    flexWrap: 'wrap' as const,
+    paddingHorizontal: space.lg,
+    paddingTop: space.md,
+    paddingBottom: space.lg,
+    gap: space.sm,
+    borderTopWidth: 1,
+    borderTopColor: t.border.divider,
+  },
+  detailChip: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    paddingHorizontal: space.md,
+    paddingVertical: space.s6,
+    borderRadius: radius.pill,
+    gap: space.xs,
+    backgroundColor: t.status.neutral.background,
+  },
+  detailChipText: { ...typography.caption1, color: t.status.neutral.text },
+});
+
 // ============================================================================
 // COMPONENT
 // ============================================================================
@@ -100,214 +142,89 @@ const GRNItemCardComponent: React.FC<GRNItemCardProps> = ({
   rack,
   package_mark,
 }) => {
-  // Theme colors for dark mode support
-  const colors = useListColors();
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
 
-  // Determine stock status using Fiori semantic colors
-  const stockStatus = useMemo(() => {
+  const stockStatus = useMemo<StockStatus>(() => {
     if (stock === 0) return 'negative';
     if (stock === qty) return 'positive';
     return 'critical';
   }, [stock, qty]);
 
-  const stockColors = useMemo(() => {
-    switch (stockStatus) {
-      case 'negative':
-        return {
-          icon: colors.error,
-          text: colors.error,
-          bg: colors.errorLight,
-        };
-      case 'positive':
-        return {
-          icon: colors.success,
-          text: colors.success,
-          bg: colors.successLight,
-        };
-      default:
-        return {
-          icon: colors.warning,
-          text: colors.warning,
-          bg: colors.warningLight,
-        };
-    }
-  }, [stockStatus, colors]);
-
+  const statusColor = t.status[stockStatus].text;
   const hasDetails = package_mark || packaging || rack;
+  const showWeight = weight !== undefined && weight !== null;
+
+  const details = [
+    package_mark ? { icon: 'label-outline', text: `Mark ${package_mark}` } : null,
+    packaging ? { icon: 'package-variant-closed', text: packaging } : null,
+    rack ? { icon: 'view-grid-outline', text: `Rack ${rack}` } : null,
+  ].filter((d): d is { icon: string; text: string } => d !== null);
+
+  const a11yLabel = [
+    item_name,
+    `${numberFormat.format(qty)} received`,
+    STATUS_LABEL[stockStatus],
+    `${numberFormat.format(stock)} in stock`,
+    `${numberFormat.format(total_dispatched)} dispatched`,
+    showWeight ? `${weightFormat.format(Number(weight))} kg` : null,
+    ...details.map(d => d.text),
+  ]
+    .filter(Boolean)
+    .join(', ');
 
   return (
-    <View style={[styles.card, { backgroundColor: colors.cellBackground, borderColor: colors.cellDivider }]}>
-      {/* Header - Item name with quantity badge */}
+    <View style={styles.card} accessible accessibilityLabel={a11yLabel}>
       <View style={styles.header}>
-        <Text style={[styles.itemName, { color: colors.gray900 }]} numberOfLines={2}>
-          {item_name}
-        </Text>
-        <View style={[styles.quantityBadge, { backgroundColor: colors.primaryLight }]}>
-          <Icon name="package-variant" size={16} color={colors.primary} />
-          <Text style={[styles.quantityText, { color: colors.primary }]}>{qty}</Text>
+        <View style={styles.titleBlock}>
+          <Text style={styles.itemName} numberOfLines={2}>
+            {item_name}
+          </Text>
+          <View style={[styles.tag, { backgroundColor: t.status[stockStatus].background }]}>
+            <Icon name={STATUS_ICON[stockStatus]} size={iconSize.sm} color={statusColor} />
+            <Text style={[styles.tagText, { color: statusColor }]} maxFontSizeMultiplier={1.6}>
+              {STATUS_LABEL[stockStatus]}
+            </Text>
+          </View>
+        </View>
+        <View style={styles.qtyBlock}>
+          <Text style={styles.qtyValue}>{numberFormat.format(qty)}</Text>
+          <Text style={styles.qtyLabel}>Received</Text>
         </View>
       </View>
 
-      {/* Metrics Section */}
-      <View style={[styles.metricsSection, { backgroundColor: colors.gray50, borderTopColor: colors.cellDivider }]}>
-        {/* Stock */}
+      <View style={styles.metricsSection}>
         <View style={styles.metricItem}>
-          <View style={[styles.metricIconBg, { backgroundColor: stockColors.bg }]}>
-            <Icon name="cube-outline" size={18} color={stockColors.icon} />
-          </View>
-          <Text style={[styles.metricValue, { color: stockColors.text }]}>{stock}</Text>
-          <Text style={[styles.metricLabel, { color: colors.gray600 }]}>Stock</Text>
+          <Text style={styles.metricLabel}>In stock</Text>
+          <Text style={styles.metricValue}>{numberFormat.format(stock)}</Text>
         </View>
-
-        <View style={[styles.metricDivider, { backgroundColor: colors.cellDivider }]} />
-
-        {/* Dispatched */}
         <View style={styles.metricItem}>
-          <View style={[styles.metricIconBg, { backgroundColor: colors.tealLight }]}>
-            <Icon name="truck-delivery" size={18} color={colors.teal} />
-          </View>
-          <Text style={[styles.metricValue, { color: colors.teal }]}>{total_dispatched}</Text>
-          <Text style={[styles.metricLabel, { color: colors.gray600 }]}>Dispatched</Text>
+          <Text style={styles.metricLabel}>Dispatched</Text>
+          <Text style={styles.metricValue}>{numberFormat.format(total_dispatched)}</Text>
         </View>
-
-        {weight !== undefined && (
-          <>
-            <View style={[styles.metricDivider, { backgroundColor: colors.cellDivider }]} />
-            <View style={styles.metricItem}>
-              <View style={[styles.metricIconBg, { backgroundColor: colors.primaryLight }]}>
-                <Icon name="weight-kilogram" size={18} color={colors.primary} />
-              </View>
-              <Text style={[styles.metricValue, { color: colors.primary }]}>{weight}</Text>
-              <Text style={[styles.metricLabel, { color: colors.gray600 }]}>kg</Text>
-            </View>
-          </>
+        {showWeight && (
+          <View style={styles.metricItem}>
+            <Text style={styles.metricLabel}>Weight</Text>
+            <Text style={styles.metricValue}>{`${weightFormat.format(Number(weight))} kg`}</Text>
+          </View>
         )}
       </View>
 
-      {/* Details Chips */}
       {hasDetails && (
-        <View style={[styles.detailsRow, { borderTopColor: colors.cellDivider }]}>
-          {package_mark && (
-            <View style={[styles.detailChip, { backgroundColor: colors.gray100 }]}>
-              <Icon name="label-outline" size={14} color={colors.gray500} />
-              <Text style={[styles.detailChipText, { color: colors.gray600 }]}>{package_mark}</Text>
+        <View style={styles.detailsRow}>
+          {details.map(detail => (
+            <View key={detail.icon} style={styles.detailChip}>
+              <Icon name={detail.icon} size={iconSize.sm} color={t.status.neutral.text} />
+              <Text style={styles.detailChipText} maxFontSizeMultiplier={1.6}>
+                {detail.text}
+              </Text>
             </View>
-          )}
-          {packaging && (
-            <View style={[styles.detailChip, { backgroundColor: colors.gray100 }]}>
-              <Icon name="package-variant-closed" size={14} color={colors.gray500} />
-              <Text style={[styles.detailChipText, { color: colors.gray600 }]}>{packaging}</Text>
-            </View>
-          )}
-          {rack && (
-            <View style={[styles.detailChip, { backgroundColor: colors.gray100 }]}>
-              <Icon name="view-grid-outline" size={14} color={colors.gray500} />
-              <Text style={[styles.detailChipText, { color: colors.gray600 }]}>Rack: {rack}</Text>
-            </View>
-          )}
+          ))}
         </View>
       )}
     </View>
   );
 };
-
-// ============================================================================
-// STYLES
-// ============================================================================
-
-const styles = StyleSheet.create({
-  card: {
-    marginHorizontal: FIORI.card.marginHorizontal,
-    marginBottom: FIORI.card.marginBottom,
-    borderRadius: FIORI.card.cornerRadius,
-    borderWidth: FIORI.card.borderWidth,
-    overflow: 'hidden',
-    ...FIORI.shadow,
-  },
-
-  // Header
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    padding: FIORI.spacing.lg,
-    paddingBottom: FIORI.spacing.md,
-  },
-  itemName: {
-    flex: 1,
-    ...FIORI.typography.title,
-    marginRight: FIORI.spacing.sm,
-  },
-  quantityBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 14,
-    gap: FIORI.spacing.xs,
-  },
-  quantityText: {
-    fontSize: 14,
-    fontWeight: '700',
-  },
-
-  // Metrics Section
-  metricsSection: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: FIORI.spacing.lg,
-    paddingVertical: FIORI.spacing.md,
-    borderTopWidth: 1,
-  },
-  metricItem: {
-    flex: 1,
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: FIORI.spacing.xs,
-  },
-  metricIconBg: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  metricValue: {
-    ...FIORI.typography.value,
-    marginTop: FIORI.spacing.xs,
-  },
-  metricLabel: {
-    ...FIORI.typography.label,
-  },
-  metricDivider: {
-    width: 1,
-    height: 48,
-    marginHorizontal: FIORI.spacing.sm,
-  },
-
-  // Details Row
-  detailsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    paddingHorizontal: FIORI.spacing.lg,
-    paddingTop: FIORI.spacing.md,
-    paddingBottom: FIORI.spacing.lg,
-    gap: FIORI.spacing.sm,
-    borderTopWidth: 1,
-  },
-  detailChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    height: 32,
-    paddingHorizontal: FIORI.spacing.md,
-    borderRadius: 16,
-    gap: FIORI.spacing.xs,
-  },
-  detailChipText: {
-    ...FIORI.typography.chip,
-  },
-});
 
 // Export memoized component for performance
 export const GRNItemCard = React.memo(GRNItemCardComponent);

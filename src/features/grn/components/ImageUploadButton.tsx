@@ -1,12 +1,10 @@
 import React, { useState } from 'react';
 import {
-  TouchableOpacity,
+  Pressable,
   Text,
   View,
-  StyleSheet,
   Alert,
   ActivityIndicator,
-  Platform,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { withNativeHandoff } from '@/config/nativeHandoff';
@@ -22,39 +20,9 @@ import {
   ImageUploadProgress
 } from '../services/imageUploadService';
 import { GRNImageData } from '@/store/slices/grnFormSlice';
-
-// ============================================================================
-// FIORI DESIGN TOKENS
-// ============================================================================
-const FIORI = {
-  colors: {
-    primary: '#f69000',
-    primaryDark: '#dd8200',
-    white: '#FFFFFF',
-    gray400: '#9ca3af',
-    textPrimary: '#1D2D3E',
-  },
-  spacing: {
-    sm: 8,
-    md: 12,
-    lg: 16,
-    xl: 20,
-  },
-  dimensions: {
-    buttonHeight: 44,
-    buttonRadius: 8,
-  },
-  typography: {
-    button: {
-      fontSize: 15,
-      fontWeight: '600' as const,
-    },
-    progress: {
-      fontSize: 13,
-      fontWeight: '600' as const,
-    },
-  },
-} as const;
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { fontWeight, iconSize, radius, space, touchTarget, typography } from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
 
 // Type for custom upload function metadata (supports both camelCase and snake_case)
 type CustomUploadMetadata = {
@@ -130,11 +98,13 @@ export const ImageUploadButton: React.FC<ImageUploadButtonProps> = ({
   maxImages = 10,
   loading = false,
   disabled = false,
-  buttonText = 'Add Photos',
+  buttonText = 'Add photos',
   showProgress = true,
   allowMultiple = true,
   customUploadFunction,
 }) => {
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({});
   const [showCameraModal, setShowCameraModal] = useState(false);
@@ -157,7 +127,7 @@ export const ImageUploadButton: React.FC<ImageUploadButtonProps> = ({
     // Validate image before upload
     const validation = validateImageFile(asset);
     if (!validation.valid) {
-      Alert.alert('Invalid Image', validation.error);
+      Alert.alert("Can't use this photo", validation.error);
       return;
     }
 
@@ -250,8 +220,8 @@ export const ImageUploadButton: React.FC<ImageUploadButtonProps> = ({
       // Notify parent component of upload error
       onImageUploadError?.(tempImageId, errorMessage);
 
-      // Show error to user
-      Alert.alert('Upload Failed', errorMessage);
+      // Show error to user (the raw cause is logged above, not shown)
+      Alert.alert("Couldn't upload the photo", 'Check your connection and try again.');
 
       // Legacy support: remove failed upload from URLs
       if (onImagesSelected && !onImageUploadError) {
@@ -288,7 +258,7 @@ export const ImageUploadButton: React.FC<ImageUploadButtonProps> = ({
 
   const pickImages = async () => {
     if (remainingSlots <= 0) {
-      Alert.alert('Limit Reached', `Maximum ${maxImages} images allowed`);
+      Alert.alert('Photo limit reached', `You can add up to ${maxImages} photos.`);
       return;
     }
 
@@ -310,14 +280,14 @@ export const ImageUploadButton: React.FC<ImageUploadButtonProps> = ({
       }
     } catch (error) {
       console.error('[ImageUpload] Error picking images:', error);
-      Alert.alert('Error', 'Failed to pick images');
+      Alert.alert("Couldn't open your photos", 'Try again.');
     }
   };
 
   // Open custom camera modal with flash control
   const takePhoto = () => {
     if (remainingSlots <= 0) {
-      Alert.alert('Limit Reached', `Maximum ${maxImages} images allowed`);
+      Alert.alert('Photo limit reached', `You can add up to ${maxImages} photos.`);
       return;
     }
     setShowCameraModal(true);
@@ -353,55 +323,61 @@ export const ImageUploadButton: React.FC<ImageUploadButtonProps> = ({
       await uploadImage(asset);
     } catch (error) {
       console.error('[ImageUpload] Error processing captured photo:', error);
-      Alert.alert('Error', 'Failed to process photo');
+      Alert.alert("Couldn't use the photo", 'Take the photo again.');
     }
   };
 
   const showImageOptions = () => {
     Alert.alert(
-      'Add Image',
-      'Choose image source',
+      'Add photo',
+      'Take a new photo or choose one from your library.',
       [
-        { text: 'Camera', onPress: takePhoto },
-        { text: 'Photo Library', onPress: pickImages },
+        { text: 'Take photo', onPress: takePhoto },
+        { text: 'Choose from library', onPress: pickImages },
         { text: 'Cancel', style: 'cancel' },
       ],
       { cancelable: true }
     );
   };
 
-  const isDisabled = disabled || loading || isUploading || remainingSlots <= 0;
+  const isBusy = loading || isUploading;
+  const isDisabled = disabled || isBusy || remainingSlots <= 0;
   const hasActiveUploads = Object.keys(uploadProgress).length > 0;
   const averageProgress = hasActiveUploads
     ? Object.values(uploadProgress).reduce((sum, progress) => sum + progress, 0) / Object.values(uploadProgress).length
     : 0;
+  const countText = remainingSlots < maxImages ? `${currentImages.length} of ${maxImages}` : '';
+  const busyText = showProgress && hasActiveUploads ? `Uploading ${Math.round(averageProgress)}%` : 'Uploading';
 
   return (
     <View style={styles.container}>
-      <TouchableOpacity
-        style={[styles.button, isDisabled && styles.buttonDisabled]}
+      <Pressable
+        style={({ pressed }) => [
+          styles.button,
+          pressed && !isDisabled && styles.buttonPressed,
+          isDisabled && !isBusy && styles.buttonDisabled,
+        ]}
         onPress={showImageOptions}
         disabled={isDisabled}
-        activeOpacity={0.7}
+        accessibilityRole="button"
+        accessibilityLabel={isBusy ? busyText : `${buttonText}${countText ? `, ${countText} added` : ''}`}
+        accessibilityState={{ disabled: isDisabled, busy: isBusy }}
       >
-        {(loading || isUploading) ? (
+        {isBusy ? (
           <View style={styles.uploadingContainer}>
-            <ActivityIndicator size="small" color={FIORI.colors.white} />
-            {showProgress && hasActiveUploads && (
-              <Text style={styles.progressText}>{Math.round(averageProgress)}%</Text>
-            )}
+            <ActivityIndicator size="small" color={t.brand.tint} />
+            <Text style={styles.buttonText}>{busyText}</Text>
           </View>
         ) : (
           <>
-            <Icon name="camera" size={20} color={FIORI.colors.white} style={styles.buttonIcon} />
-            <Text style={styles.buttonText}>
-              {buttonText} {remainingSlots < maxImages && `(${currentImages.length}/${maxImages})`}
-            </Text>
+            <Icon name="camera-outline" size={iconSize.lg} color={t.brand.tint} />
+            <Text style={styles.buttonText}>{buttonText}</Text>
+            {!!countText && <Text style={styles.countText}>{countText}</Text>}
           </>
         )}
-      </TouchableOpacity>
+      </Pressable>
 
-      {/* Progress bar for uploads - Fiori Compliant */}
+      {/* Progress bar for uploads */}
       {showProgress && hasActiveUploads && (
         <View style={styles.progressBarContainer}>
           <FioriLinearProgress
@@ -409,7 +385,7 @@ export const ImageUploadButton: React.FC<ImageUploadButtonProps> = ({
             variant="default"
             size="default"
             showPercentage={false}
-            accessibilityLabel={`Upload progress: ${Math.round(averageProgress)}%`}
+            accessibilityLabel={`Upload progress ${Math.round(averageProgress)}%`}
           />
         </View>
       )}
@@ -425,45 +401,50 @@ export const ImageUploadButton: React.FC<ImageUploadButtonProps> = ({
 };
 
 // ============================================================================
-// STYLES
+// STYLES: dashed photo tile (docs/STYLE_GUIDE.md 13.3)
 // ============================================================================
-const styles = StyleSheet.create({
+const makeStyles = (t: ThemeTokens) => ({
   container: {
-    width: '100%',
+    width: '100%' as const,
   },
   button: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: FIORI.colors.primary,
-    paddingVertical: FIORI.spacing.md,
-    paddingHorizontal: FIORI.spacing.xl,
-    borderRadius: FIORI.dimensions.buttonRadius,
-    gap: 8,
-    minHeight: FIORI.dimensions.buttonHeight,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    flexWrap: 'wrap' as const,
+    backgroundColor: t.surface.field,
+    borderWidth: 1,
+    borderStyle: 'dashed' as const,
+    borderColor: t.border.field,
+    borderRadius: radius.card,
+    paddingVertical: space.md,
+    paddingHorizontal: space.lg,
+    gap: space.sm,
+    minHeight: Math.max(touchTarget, 56),
+  },
+  buttonPressed: {
+    backgroundColor: t.surface.cardPressed,
   },
   buttonDisabled: {
-    backgroundColor: FIORI.colors.gray400,
-    opacity: 0.6,
-  },
-  buttonIcon: {
-    fontSize: 18,
+    opacity: t.interaction.disabledOpacity,
   },
   buttonText: {
-    color: FIORI.colors.white,
-    ...FIORI.typography.button,
+    ...typography.callout,
+    color: t.brand.tint,
+  },
+  countText: {
+    ...typography.footnote,
+    fontWeight: fontWeight.regular,
+    fontVariant: ['tabular-nums' as const],
+    color: t.text.secondary,
   },
   uploadingContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  progressText: {
-    color: FIORI.colors.white,
-    ...FIORI.typography.progress,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.sm,
   },
   progressBarContainer: {
-    marginTop: FIORI.spacing.sm,
-    width: '100%',
+    marginTop: space.sm,
+    width: '100%' as const,
   },
 });

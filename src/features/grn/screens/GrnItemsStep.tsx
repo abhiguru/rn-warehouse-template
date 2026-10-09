@@ -4,11 +4,11 @@ import {
   Alert,
   Keyboard,
   Vibration,
-  StyleSheet,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
-import { useListColors } from '@/hooks/useListColors';
+import { useThemedStyles } from '@/hooks/useTheme';
+import type { ThemeTokens } from '@/theme/tokens';
 import { useAppSelector, useAppDispatch } from '@/store/hooks';
 import {
   GRNItemData,
@@ -61,8 +61,7 @@ type GrnItemsStepProps = {
 };
 
 export function GrnItemsStep({ mode }: GrnItemsStepProps) {
-  // Theme colors
-  const colors = useListColors();
+  const styles = useThemedStyles(makeStyles);
 
   // Extract ID from URL params for edit mode
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -133,8 +132,8 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
 
   const handleQtyLockedPress = useCallback(() => {
     Alert.alert(
-      'Cannot Edit Quantity',
-      'This item has dispatches. Changing quantity will affect stock calculations.'
+      "Quantity can't be changed",
+      'This item has already been dispatched, so its quantity is locked to keep stock correct.'
     );
   }, []);
 
@@ -149,11 +148,18 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
 
     if (hasUnsavedData()) {
       Alert.alert(
-        isCreateMode ? 'Discard Changes?' : 'Cancel GRN Edit',
-        `You have ${savedItems.length || items.length} item(s) that will be lost. Are you sure you want to leave?`,
+        isCreateMode ? 'Discard this GRN?' : 'Discard changes to this GRN?',
+        (() => {
+          const count = savedItems.length || items.length;
+          return `${count} ${count === 1 ? 'item' : 'items'} will be lost.`;
+        })(),
         [
-          { text: 'Stay', style: 'cancel' },
-          { text: 'Discard', style: 'destructive', onPress: confirmDiscard },
+          { text: 'Keep editing', style: 'cancel' },
+          {
+            text: isCreateMode ? 'Discard GRN' : 'Discard changes',
+            style: 'destructive',
+            onPress: confirmDiscard,
+          },
         ]
       );
     } else {
@@ -283,14 +289,14 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
 
     const isValid = await validateCurrentItem();
     if (!isValid) {
-      Alert.alert('Validation Error', 'Please fill in all required fields correctly');
+      Alert.alert('Check the item details', 'Fill in every required field, then save the item.');
       return;
     }
 
     const hasDispatches = !isCreateMode && currentItem.grn_trl_id && itemsWithDispatchesOnLoad.has(currentItem.grn_trl_id);
     const parsedQty = parseReceiptQuantity(currentItem.qty);
     if (parsedQty === null) {
-      Alert.alert('Validation Error', 'Quantity must be a whole number of at least 1');
+      Alert.alert('Check the item details', 'Enter a whole number of 1 or more for the quantity.');
       return;
     }
     // Use the original stock value from the Map (preserved from initial load)
@@ -382,11 +388,11 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
     if (image && !isTemporaryGRNImageId(image.id)) {
       const result = await deleteGRNImage(image.id, image.imageUrl);
       if (!result.success) {
-        Alert.alert('Delete Failed', result.error || 'Failed to delete image');
+        Alert.alert("Couldn't remove the photo", 'Check your connection and try again.');
         return;
       }
       if (result.partial) {
-        Alert.alert('Photo removed', result.error || 'The stored file could not be confirmed deleted.');
+        Alert.alert('Photo removed', "The photo is removed from this item, but we couldn't confirm the stored copy was deleted.");
       }
     }
 
@@ -403,7 +409,7 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
 
       const validation = validateImageFile(asset);
       if (!validation.valid) {
-        Alert.alert('Invalid Image', validation.error || 'Please select a valid image');
+        Alert.alert("Couldn't add the photo", validation.error || 'Choose a JPEG or PNG photo.');
         return;
       }
 
@@ -444,17 +450,17 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
 
   const handleCameraIconPress = () => {
     if ((currentItem.trl_images?.length || 0) >= 2) {
-      Alert.alert('Limit Reached', 'Maximum 2 images allowed per item.');
+      Alert.alert('Photo limit reached', 'You can add up to 2 photos to each item.');
       return;
     }
 
-    Alert.alert('Add Image', 'Choose an option', [
+    Alert.alert('Add photo', undefined, [
       {
-        text: 'Take Photo',
+        text: 'Take photo',
         onPress: async () => {
           const { status } = await withNativeHandoff(() => ImagePicker.requestCameraPermissionsAsync());
           if (status !== 'granted') {
-            Alert.alert('Permission needed', 'Camera permission is required');
+            Alert.alert('Allow camera access', 'To take a photo, allow camera access for this app in Settings.');
             return;
           }
           try {
@@ -472,7 +478,7 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
         },
       },
       {
-        text: 'Choose from Gallery',
+        text: 'Choose from gallery',
         onPress: async () => {
           // Note: No permissions needed - Android 13+ Photo Picker handles access
           try {
@@ -511,7 +517,7 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
       if (!alreadySaved) {
         const isValid = await validateCurrentItem();
         if (!isValid) {
-          Alert.alert('Validation Error', 'Please fix the errors in the current item details');
+          Alert.alert('Check the item details', 'Fix the highlighted fields in the item you are adding.');
           return;
         }
         allItemsToSave.push(currentItem);
@@ -520,7 +526,7 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
     }
 
     if (allItemsToSave.length === 0) {
-      Alert.alert('No Items', 'Please add at least one item');
+      Alert.alert('Add an item', 'Add at least one item to this GRN.');
       return;
     }
 
@@ -533,8 +539,8 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
     const unparsable = parsedItems.find(({ parsedQty }) => parsedQty === null);
     if (unparsable) {
       Alert.alert(
-        'Validation Error',
-        `Quantity for ${unparsable.itemToSave.item_name || 'an item'} must be a whole number of at least 1`
+        'Check the item details',
+        `Enter a whole number of 1 or more for the quantity of ${unparsable.itemToSave.item_name || 'each item'}.`
       );
       return;
     }
@@ -584,7 +590,7 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
       }
     } else {
       if (!grnId) {
-        Alert.alert('Missing GRN', 'Unable to find GRN ID for edit flow.');
+        Alert.alert("Couldn't open the review", 'Go back to the GRN list and open this GRN again.');
         setIsNavigating(false);
         return;
       }
@@ -603,22 +609,22 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
     if (currentItem.item_table_id && currentItem.qty) {
       const alreadySaved = savedItems.some((saved) => saved.grn_trl_id === currentItem.grn_trl_id);
       if (!alreadySaved && !editingItemId) {
-        Alert.alert('Unsaved Item', 'You have an unsaved item. What would you like to do?', [
-          { text: 'Cancel', style: 'cancel' },
+        Alert.alert('Save this item?', "The item you're adding hasn't been saved yet.", [
+          { text: 'Keep editing', style: 'cancel' },
           {
-            text: 'Discard',
+            text: 'Discard item',
             style: 'destructive',
             onPress: () => {
               setCurrentItem(getNewItemWithRack());
               if (savedItems.length === 0) {
-                Alert.alert('No Items', 'Please add at least one item');
+                Alert.alert('Add an item', 'Add at least one item to this GRN.');
               } else {
                 handleNext();
               }
             },
           },
           {
-            text: 'Save & Continue',
+            text: 'Save item',
             onPress: handleNext,
           },
         ]);
@@ -632,10 +638,10 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
     if (currentItem.item_table_id && currentItem.qty) {
       const alreadySaved = savedItems.some((saved) => saved.grn_trl_id === currentItem.grn_trl_id);
       if (!alreadySaved && !editingItemId) {
-        Alert.alert('Unsaved Item', 'You have an unsaved item. What would you like to do?', [
-          { text: 'Cancel', style: 'cancel' },
+        Alert.alert('Save this item?', "The item you're adding hasn't been saved yet.", [
+          { text: 'Keep editing', style: 'cancel' },
           {
-            text: 'Discard',
+            text: 'Discard item',
             style: 'destructive',
             onPress: () => {
               setCurrentItem(getNewItemWithRack());
@@ -643,14 +649,14 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
             },
           },
           {
-            text: 'Save & Go Back',
+            text: 'Save item',
             onPress: async () => {
               const isValid = await validateCurrentItem();
               if (isValid) {
                 await handleAddItem();
                 handlePrevious();
               } else {
-                Alert.alert('Validation Error', 'Please fix the errors before going back');
+                Alert.alert('Check the item details', 'Fix the highlighted fields, then save the item.');
               }
             },
           },
@@ -671,13 +677,12 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
   }, [handleSwipeLeft, handleSwipeRight]);
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.gray50 }]}>
+    <View style={styles.container}>
       <GRNStepIndicator
         steps={GRN_STEPS}
         currentStep={STEP_NUMBERS.ITEMS}
         completedSteps={getCompletedSteps(STEP_NUMBERS.ITEMS)}
         onCancel={handleCancel}
-        cancelMessage={isCreateMode ? undefined : 'Are you sure you want to cancel editing? All unsaved changes will be lost.'}
         onStepPress={handleStepIndicatorPress}
         grnNo={header.gr_no || undefined}
         isEditMode={!isCreateMode}
@@ -717,9 +722,10 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (t: ThemeTokens) => ({
   container: {
     flex: 1,
+    backgroundColor: t.background.base,
   },
   formContent: {
     flex: 1,

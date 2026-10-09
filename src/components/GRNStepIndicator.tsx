@@ -39,8 +39,13 @@ export const GRNStepIndicator: React.FC<GRNStepIndicatorProps> = ({
       onCancel={onCancel}
       entityName={isEditMode ? 'Edit' : 'GRN'}
       entityId={grnNo}
-      cancelTitle={isEditMode ? 'Cancel GRN Edit' : 'Cancel GRN Creation'}
-      cancelMessage={cancelMessage}
+      cancelTitle={isEditMode ? 'Discard changes to this GRN?' : 'Discard this GRN?'}
+      cancelMessage={
+        cancelMessage ??
+        (isEditMode
+          ? 'Your changes to this GRN will be lost.'
+          : 'The details you entered will be lost.')
+      }
       onStepPress={onStepPress}
       colorScheme="teal"
     />

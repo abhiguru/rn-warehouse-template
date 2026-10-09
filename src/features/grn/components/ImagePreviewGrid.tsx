@@ -1,16 +1,19 @@
 import React, { useState } from 'react';
 import {
   View,
-  TouchableOpacity,
+  Pressable,
   StyleSheet,
   Text,
   Dimensions,
   Alert,
   ActivityIndicator,
+  type LayoutChangeEvent,
 } from 'react-native';
 import { Image } from 'expo-image';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import theme from '@/theme';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { fontWeight, iconSize, radius, space, touchTarget, typography } from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
 import { GRNImageData } from '@/store/slices/grnFormSlice';
 import { deleteGRNImage } from '../services/imageUploadService';
 import { getSupabaseClient } from '@/config/supabaseConfig';
@@ -34,6 +37,8 @@ interface ImagePreviewGridProps {
 }
 
 const { width: screenWidth } = Dimensions.get('window');
+/** Gap between thumbnails (docs/STYLE_GUIDE.md 13.10). */
+const GRID_GAP = space.xs;
 
 export const ImagePreviewGrid: React.FC<ImagePreviewGridProps> = ({
   // Legacy props
@@ -48,11 +53,15 @@ export const ImagePreviewGrid: React.FC<ImagePreviewGridProps> = ({
   // Configuration
   maxImages = 10,
   editable = true,
-  columns = 4,
+  columns = 3,
   showMetadata = false,
   showProgress = true,
 }) => {
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
   const [deletingImages, setDeletingImages] = useState<Set<string>>(new Set());
+  // Measured grid width; falls back to the screen width minus the side margins.
+  const [gridWidth, setGridWidth] = useState<number | null>(null);
 
   // Use enhanced imageData if available, otherwise fall back to legacy images
   const rawImages = imageData.length > 0 ? imageData : images.map(url => ({
@@ -89,18 +98,23 @@ export const ImagePreviewGrid: React.FC<ImagePreviewGridProps> = ({
     });
   }
 
-  const imageSize = (screenWidth - 32 - (columns - 1) * 8) / columns;
+  const availableWidth = gridWidth ?? screenWidth - 2 * space.lg;
+  const imageSize = Math.floor((availableWidth - (columns - 1) * GRID_GAP) / columns);
+  const handleLayout = (event: LayoutChangeEvent) => {
+    const width = event.nativeEvent.layout.width;
+    if (width > 0 && width !== gridWidth) setGridWidth(width);
+  };
 
   const handleRemove = (index: number) => {
     if (!editable || !onRemove) return;
 
     Alert.alert(
-      'Remove Image',
-      'Are you sure you want to remove this image?',
+      'Remove photo?',
+      'You can add it again later.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Remove',
+          text: 'Remove photo',
           style: 'destructive',
           onPress: () => onRemove(index),
         },
@@ -123,12 +137,12 @@ export const ImagePreviewGrid: React.FC<ImagePreviewGridProps> = ({
     });
 
     Alert.alert(
-      'Remove Image',
-      'Are you sure you want to remove this image?',
+      'Remove photo?',
+      'You can add it again later.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Remove',
+          text: 'Remove photo',
           style: 'destructive',
           onPress: async () => {
             if (!imageId) return;
@@ -169,8 +183,8 @@ export const ImagePreviewGrid: React.FC<ImagePreviewGridProps> = ({
             } catch (error) {
               console.error('[ImagePreviewGrid] Delete error:', error);
               Alert.alert(
-                'Delete Failed',
-                error instanceof Error ? error.message : 'Failed to delete image'
+                "Couldn't remove the photo",
+                'Check your connection and try again.'
               );
             } finally {
               setDeletingImages(prev => {
@@ -199,12 +213,14 @@ export const ImagePreviewGrid: React.FC<ImagePreviewGridProps> = ({
 
   return (
     <View style={styles.container}>
-      <View style={styles.grid}>
+      <View style={styles.grid} onLayout={handleLayout}>
         {effectiveImages.map((imageData, index) => {
           const imageId = imageData.id || imageData.imageUrl;
           const isDeleting = deletingImages.has(imageId);
           const isUploading = imageData.uploadStatus === 'uploading';
           const hasFailed = imageData.uploadStatus === 'failed';
+          const photoLabel = `Photo ${index + 1}${imageData.fileName ? `, ${imageData.fileName}` : ''}`;
+          const stateLabel = hasFailed ? ', upload failed' : isUploading ? ', uploading' : isDeleting ? ', removing' : '';
 
           return (
             <View
@@ -219,11 +235,14 @@ export const ImagePreviewGrid: React.FC<ImagePreviewGridProps> = ({
               ]}
             >
               {/* Main Image */}
-              <TouchableOpacity
-                style={styles.imageWrapper}
+              <Pressable
+                style={({ pressed }) => [styles.imageWrapper, pressed && !!onImagePress && styles.imagePressed]}
                 onPress={() => onImagePress?.(imageData)}
-                activeOpacity={onImagePress ? 0.7 : 1}
                 disabled={!onImagePress || isDeleting || isUploading}
+                accessibilityRole={onImagePress ? 'imagebutton' : 'image'}
+                accessibilityLabel={`${photoLabel}${stateLabel}`}
+                accessibilityHint={onImagePress ? 'Opens the photo full screen' : undefined}
+                accessibilityState={{ busy: isUploading || isDeleting, disabled: !onImagePress || isDeleting || isUploading }}
               >
                 <Image
                   source={{ uri: imageData.imageUrl }}
@@ -249,7 +268,7 @@ export const ImagePreviewGrid: React.FC<ImagePreviewGridProps> = ({
                 {showProgress && isUploading && imageData.progress !== undefined && (
                   <View style={styles.progressOverlay}>
                     <View style={styles.progressCircle}>
-                      <ActivityIndicator size="small" color={theme.colors.white} />
+                      <ActivityIndicator size="small" color={t.overlay.onImage} />
                       <Text style={styles.progressPercentage}>
                         {Math.round(imageData.progress)}%
                       </Text>
@@ -260,29 +279,28 @@ export const ImagePreviewGrid: React.FC<ImagePreviewGridProps> = ({
                 {/* Delete Loading Overlay */}
                 {isDeleting && (
                   <View style={styles.progressOverlay}>
-                    <ActivityIndicator size="small" color={theme.colors.white} />
+                    <ActivityIndicator size="small" color={t.overlay.onImage} />
                   </View>
                 )}
 
-                {/* Error Overlay */}
+                {/* Error Overlay: icon and word, never colour alone */}
                 {hasFailed && (
                   <View style={styles.errorOverlay}>
-                    <Icon name="alert-circle" size={32} color={theme.colors.white} />
-                    <Text style={styles.errorText}>Failed</Text>
+                    <Icon name="alert-circle" size={iconSize.lg} color={t.overlay.onImage} />
+                    <Text style={styles.errorText}>Upload failed</Text>
                   </View>
                 )}
-              </TouchableOpacity>
+              </Pressable>
 
-              {/* Remove Button */}
+              {/* Remove Button: 44/48 target with a scrim circle (guide 13.10) */}
               {editable && !isDeleting && (
-                <TouchableOpacity
+                <Pressable
                   style={styles.removeButton}
                   accessible
                   accessibilityRole="button"
-                  accessibilityLabel={`Remove image ${index + 1}`}
-                  accessibilityHint="Removes this image from the goods receipt"
+                  accessibilityLabel={`Remove photo ${index + 1}`}
+                  accessibilityHint="Removes this photo"
                   testID={`remove-image-${index}`}
-                  hitSlop={8}
                   onPress={() => {
                     if (onRemoveImage || imageData.id) {
                       handleRemoveImage(imageData);
@@ -290,10 +308,13 @@ export const ImagePreviewGrid: React.FC<ImagePreviewGridProps> = ({
                       handleRemove(index);
                     }
                   }}
-                  activeOpacity={0.7}
                 >
-                  <Icon name="close" size={16} color={theme.colors.white} />
-                </TouchableOpacity>
+                  {({ pressed }) => (
+                    <View style={[styles.removeCircle, pressed && styles.removeCirclePressed]}>
+                      <Icon name="close" size={iconSize.sm} color={t.overlay.onImage} />
+                    </View>
+                  )}
+                </Pressable>
               )}
 
               {/* Metadata */}
@@ -313,7 +334,7 @@ export const ImagePreviewGrid: React.FC<ImagePreviewGridProps> = ({
           );
         })}
 
-        {/* Add placeholder if not at max capacity */}
+        {/* Free slot hint if not at max capacity (decorative) */}
         {editable && effectiveImages.length < maxImages && (
           <View
             style={[
@@ -323,8 +344,10 @@ export const ImagePreviewGrid: React.FC<ImagePreviewGridProps> = ({
                 height: imageSize,
               },
             ]}
+            accessible={false}
+            importantForAccessibility="no-hide-descendants"
           >
-            <Text style={styles.placeholderText}>+</Text>
+            <Icon name="plus" size={iconSize.lg} color={t.icon.secondary} />
           </View>
         )}
       </View>
@@ -332,111 +355,117 @@ export const ImagePreviewGrid: React.FC<ImagePreviewGridProps> = ({
   );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (t: ThemeTokens) => ({
   container: {
-    marginVertical: 8,
+    marginVertical: space.sm,
   },
   grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
+    flexDirection: 'row' as const,
+    flexWrap: 'wrap' as const,
+    gap: GRID_GAP,
   },
   imageContainer: {
-    borderRadius: theme.borderRadius.lg,
-    overflow: 'hidden',
-    backgroundColor: theme.colors.gray[100],
-    position: 'relative',
+    borderRadius: radius.card,
+    overflow: 'hidden' as const,
+    backgroundColor: t.surface.cardActive,
+    position: 'relative' as const,
   },
   imageContainerError: {
     borderWidth: 2,
-    borderColor: theme.colors.semantic.error,
+    borderColor: t.status.negative.border,
   },
   imageWrapper: {
-    width: '100%',
-    height: '100%',
-    position: 'relative',
+    width: '100%' as const,
+    height: '100%' as const,
+    position: 'relative' as const,
+  },
+  imagePressed: {
+    opacity: 0.85,
   },
   image: {
-    width: '100%',
-    height: '100%',
+    width: '100%' as const,
+    height: '100%' as const,
   },
   imageLoading: {
     opacity: 0.6,
   },
   progressOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: t.overlay.scrim,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
   },
   progressCircle: {
-    alignItems: 'center',
-    gap: 4,
+    alignItems: 'center' as const,
+    gap: space.xs,
   },
   progressPercentage: {
-    color: theme.colors.white,
-    fontSize: theme.fontSize.xs,
-    fontWeight: theme.fontWeight.semibold,
+    ...typography.caption1,
+    fontWeight: fontWeight.semibold,
+    fontVariant: ['tabular-nums' as const],
+    color: t.overlay.onImage,
   },
   errorOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(220, 38, 38, 0.8)',
-    justifyContent: 'center',
-    alignItems: 'center',
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: t.overlay.scrim,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    gap: space.xs,
+    padding: space.xs,
   },
   errorText: {
-    color: theme.colors.white,
-    fontSize: theme.fontSize.xs,
-    fontWeight: theme.fontWeight.semibold,
+    ...typography.caption1,
+    fontWeight: fontWeight.semibold,
+    color: t.overlay.onImage,
+    textAlign: 'center' as const,
   },
   removeButton: {
-    position: 'absolute',
-    top: 4,
-    right: 4,
-    width: 24,
-    height: 24,
-    borderRadius: theme.borderRadius.xl,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    justifyContent: 'center',
-    alignItems: 'center',
+    position: 'absolute' as const,
+    top: 0,
+    right: 0,
+    width: touchTarget,
+    height: touchTarget,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
     zIndex: 10,
     elevation: 11,
   },
+  removeCircle: {
+    width: 28,
+    height: 28,
+    borderRadius: radius.pill,
+    backgroundColor: t.overlay.scrim,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+  },
+  removeCirclePressed: {
+    backgroundColor: t.overlay.imageBackdrop,
+  },
   metadataContainer: {
-    position: 'absolute',
+    position: 'absolute' as const,
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    padding: 4,
+    backgroundColor: t.overlay.scrim,
+    paddingHorizontal: space.xs,
+    paddingVertical: space.xxs,
   },
   metadataText: {
-    color: theme.colors.white,
-    fontSize: 10,
-    fontWeight: theme.fontWeight.medium,
+    ...typography.caption2,
+    fontWeight: fontWeight.medium,
+    color: t.overlay.onImage,
   },
   metadataSize: {
-    color: theme.colors.gray[300],
-    fontSize: 9,
+    ...typography.caption2,
+    fontVariant: ['tabular-nums' as const],
+    color: t.overlay.onImage,
   },
   placeholder: {
-    borderRadius: theme.borderRadius.lg,
-    borderWidth: 2,
-    borderStyle: 'dashed',
-    borderColor: theme.colors.gray[300],
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  placeholderText: {
-    fontSize: theme.fontSize['2xl'],
-    color: theme.colors.gray[400],
+    borderRadius: radius.card,
+    borderWidth: 1,
+    borderStyle: 'dashed' as const,
+    borderColor: t.border.field,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
   },
 });

@@ -1,15 +1,10 @@
-import React from 'react';
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  StyleSheet,
-  Platform,
-  Alert,
-} from 'react-native';
+import React, { useCallback } from 'react';
+import { View, Text, Pressable, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
-import theme from '@/theme';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { iconSize, layout, radius, space, touchTarget, typography } from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
 
 export interface GRNFormHeaderProps {
   title: string; // e.g., "Create GRN"
@@ -19,127 +14,105 @@ export interface GRNFormHeaderProps {
   cancelMessage?: string; // Custom cancel confirmation message
 }
 
-const HEADER_HEIGHT_IOS = 56;
-const HEADER_HEIGHT_ANDROID = 64;
+const HEADER_HEIGHT = 56;
 
+const makeStyles = (t: ThemeTokens) => ({
+  container: {
+    backgroundColor: t.surface.header,
+    borderBottomWidth: 1,
+    borderBottomColor: t.border.divider,
+  },
+  content: {
+    minHeight: HEADER_HEIGHT,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    paddingHorizontal: layout.marginCompact,
+    gap: space.sm,
+  },
+  side: {
+    flex: 1,
+    alignItems: 'flex-start' as const,
+  },
+  cancelButton: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.xs,
+    minHeight: touchTarget,
+    minWidth: touchTarget,
+    paddingRight: space.sm,
+  },
+  cancelText: {
+    ...typography.callout,
+    color: t.brand.tint,
+  },
+  title: {
+    ...typography.headline,
+    color: t.text.primary,
+    textAlign: 'center' as const,
+    flex: 2,
+  },
+  pressed: {
+    backgroundColor: t.brand.subtle,
+    borderRadius: radius.button,
+  },
+});
+
+/**
+ * Header of the GRN form flow: Cancel on the left, step title in the centre.
+ * Cancelling asks for confirmation before discarding the draft.
+ */
 export default function GRNFormHeader({
   title,
   onCancel,
   showCancelButton = true,
   confirmCancel = true,
-  cancelMessage = 'Are you sure you want to cancel? All entered data will be lost.',
+  cancelMessage = 'The details you entered will be lost.',
 }: GRNFormHeaderProps) {
   const insets = useSafeAreaInsets();
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
 
-  const handleCancelPress = () => {
+  const handleCancelPress = useCallback(() => {
     if (confirmCancel) {
       Alert.alert(
-        'Cancel GRN Creation',
+        'Discard this GRN?',
         cancelMessage,
         [
-          {
-            text: 'Continue Editing',
-            style: 'cancel',
-          },
-          {
-            text: 'Discard',
-            style: 'destructive',
-            onPress: onCancel,
-          },
+          { text: 'Keep editing', style: 'cancel' },
+          { text: 'Discard GRN', style: 'destructive', onPress: onCancel },
         ],
         { cancelable: true }
       );
     } else {
       onCancel();
     }
-  };
+  }, [confirmCancel, cancelMessage, onCancel]);
 
   return (
-    <View
-      style={[
-        styles.container,
-        {
-          paddingTop: insets.top || theme.spacing.md,
-          height:
-            (Platform.OS === 'ios'
-              ? HEADER_HEIGHT_IOS
-              : HEADER_HEIGHT_ANDROID) + (insets.top || 0),
-        },
-      ]}
-    >
+    <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.content}>
-        {/* Cancel Button */}
-        {showCancelButton && (
-          <TouchableOpacity
-            style={styles.cancelButton}
-            onPress={handleCancelPress}
-            activeOpacity={0.7}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          >
-            <Ionicons
-              name="close"
-              size={24}
-              color={theme.colors.gray[700]}
-            />
-            <Text style={styles.cancelText}>Cancel</Text>
-          </TouchableOpacity>
-        )}
+        <View style={styles.side}>
+          {showCancelButton && (
+            <Pressable
+              style={({ pressed }) => [styles.cancelButton, pressed && styles.pressed]}
+              onPress={handleCancelPress}
+              hitSlop={space.sm}
+              accessibilityRole="button"
+              accessibilityLabel="Cancel GRN"
+              accessibilityHint="Asks before discarding the details you entered"
+            >
+              <MaterialCommunityIcons name="close" size={iconSize.lg} color={t.brand.tint} />
+              <Text style={styles.cancelText}>Cancel</Text>
+            </Pressable>
+          )}
+        </View>
 
-        {/* Title */}
-        <Text style={styles.title}>{title}</Text>
+        <Text style={styles.title} numberOfLines={2} accessibilityRole="header">
+          {title}
+        </Text>
 
-        {/* Spacer for centering title */}
-        {showCancelButton && <View style={styles.spacer} />}
+        <View style={styles.side} />
       </View>
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    backgroundColor: theme.colors.primary,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.gray[200],
-    ...Platform.select({
-      ios: {
-        shadowColor: theme.colors.black,
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.05,
-        shadowRadius: 2,
-      },
-      android: {
-        elevation: 2,
-      },
-    }),
-  },
-  content: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: theme.spacing.lg,
-  },
-  cancelButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: theme.spacing.xs,
-    paddingVertical: theme.spacing.xs,
-    paddingRight: theme.spacing.sm,
-    minHeight: 44, // iOS touch target
-  },
-  cancelText: {
-    fontSize: theme.fontSize.base,
-    fontWeight: '500',
-    color: theme.colors.gray[700],
-  },
-  title: {
-    fontSize: theme.fontSize.lg,
-    fontWeight: '600',
-    color: theme.colors.gray[900],
-    textAlign: 'center',
-    flex: 1,
-  },
-  spacer: {
-    width: 80, // Match approximate width of cancel button
-  },
-});

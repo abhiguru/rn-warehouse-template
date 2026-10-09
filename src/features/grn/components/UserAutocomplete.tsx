@@ -8,10 +8,12 @@
  */
 
 import React, { useCallback } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text } from 'react-native';
 import { RemoteAutocompleteInput } from '@/components/RemoteAutocompleteInput';
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
-import theme from '@/theme';
+import { useThemedStyles } from '@/hooks/useTheme';
+import { space, typography } from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
 
 // ============================================================================
 // TYPES
@@ -42,7 +44,7 @@ interface UserAutocompleteProps {
 export const UserAutocomplete: React.FC<UserAutocompleteProps> = ({
   value,
   onChange,
-  placeholder = 'Search supervisors...',
+  placeholder = 'Search supervisors',
   error,
   disabled = false,
   required = false,
@@ -50,6 +52,8 @@ export const UserAutocomplete: React.FC<UserAutocompleteProps> = ({
   helperText,
   zIndex = 1000,
 }) => {
+  const styles = useThemedStyles(makeStyles);
+
   // Fetch supervisors using RPC (bypasses RLS)
   const fetchUsers = useCallback(async (query: string): Promise<User[]> => {
     if (query.length < 2) {
@@ -100,10 +104,10 @@ export const UserAutocomplete: React.FC<UserAutocompleteProps> = ({
         <Text style={styles.itemName} numberOfLines={1}>
           {user.name}
         </Text>
-        {user.phone && <Text style={styles.phoneText}>{user.phone}</Text>}
+        {user.phone ? <Text style={styles.phoneText}>{user.phone}</Text> : null}
       </View>
     );
-  }, []);
+  }, [styles]);
 
   // Key extractor
   const keyExtractor = useCallback((user: User) => user.id, []);
@@ -124,7 +128,7 @@ export const UserAutocomplete: React.FC<UserAutocompleteProps> = ({
       editable={!disabled}
       minChars={2}
       debounceMs={300}
-      emptyText="No users found"
+      emptyText="No matches"
     />
   );
 };
@@ -133,22 +137,18 @@ export const UserAutocomplete: React.FC<UserAutocompleteProps> = ({
 // STYLES
 // ============================================================================
 
-const styles = StyleSheet.create({
+const makeStyles = (t: ThemeTokens) => ({
   itemContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
   },
-  itemName: {
-    fontSize: theme.fontSize.base,
-    color: theme.colors.gray[900],
-    fontWeight: '500',
-    flex: 1,
-  },
+  itemName: { ...typography.headline, color: t.text.primary, flex: 1 },
   phoneText: {
-    fontSize: theme.fontSize.sm,
-    color: theme.colors.gray[500],
-    marginLeft: theme.spacing.sm,
+    ...typography.subhead,
+    color: t.text.secondary,
+    fontVariant: ['tabular-nums' as const],
+    marginLeft: space.sm,
   },
 });
 

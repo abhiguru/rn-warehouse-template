@@ -2,16 +2,37 @@ import React, { useState, useRef, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
-  TouchableOpacity,
-  StyleSheet,
+  Pressable,
   ActivityIndicator,
   Animated,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import theme from '@/theme';
-import { useListColors } from '@/hooks/useListColors';
 import { OrderItem } from '@/types/order.types';
+import { parseLocalISODate } from '@/utils/formatters';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import {
+  fontWeight,
+  iconSize,
+  layout,
+  radius,
+  space,
+  touchTarget,
+  typography,
+  type ThemeTokens,
+} from '@/theme/tokens';
 import StockIndicator from './StockIndicator';
+
+/** "2026-10-09" -> "9 Oct 2026" (style guide §12.3). */
+const formatGrnDate = (value: string) => {
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(value) ? parseLocalISODate(value) : new Date(value);
+  return isNaN(date.getTime())
+    ? ''
+    : date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+};
+
+/** Up to two decimals, Indian grouping, unit kg (style guide §12.3). */
+const formatKg = (weight: number) =>
+  `${new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 }).format(weight)} kg`;
 
 interface OrderItemCardProps {
   item: OrderItem;
@@ -25,8 +46,8 @@ const OrderItemCardComponent: React.FC<OrderItemCardProps> = ({
   onQuantityChange,
   onRemove,
 }) => {
-  // Theme colors for dark mode support
-  const colors = useListColors();
+  const t = useTokens();
+  const styles = useThemedStyles(makeStyles);
 
   // Local state for optimistic UI updates
   const [localQuantity, setLocalQuantity] = useState(item.requested_quantity);
@@ -194,17 +215,20 @@ const OrderItemCardComponent: React.FC<OrderItemCardProps> = ({
     return null;
   }
 
+  const itemName = item.grn_item.name;
+  const quantityStatus = isPending ? 'Saving…' : showSaved ? 'Saved' : 'Qty';
+
   return (
-    <View style={[styles.container, { backgroundColor: colors.cellBackground }]}>
+    <View style={styles.container}>
       <View style={styles.itemInfo}>
         {/* Line 1: Item Name + GRN Date */}
         <View style={styles.itemHeader}>
           <View style={styles.itemNameRow}>
-            <Text style={[styles.itemName, { color: colors.gray900 }]}>{item.grn_item.name}</Text>
+            <Text style={styles.itemName} numberOfLines={2}>{itemName}</Text>
           </View>
           {item.grn_item.grn_date && (
-            <Text style={[styles.grnDate, { color: colors.gray500 }]}>
-              {new Date(item.grn_item.grn_date).toLocaleDateString()}
+            <Text style={styles.grnDate}>
+              {formatGrnDate(item.grn_item.grn_date)}
             </Text>
           )}
         </View>
@@ -212,15 +236,15 @@ const OrderItemCardComponent: React.FC<OrderItemCardProps> = ({
         {/* Line 2: Package Mark + Weight */}
         <View style={styles.packageWeightRow}>
           <View style={styles.packageMarkRow}>
-            <Icon name="package-variant" size={14} color={colors.gray500} />
-            <Text style={[styles.itemDetails, { color: colors.gray600 }]}>
+            <Icon name="package-variant" size={iconSize.sm} color={t.icon.secondary} />
+            <Text style={styles.itemDetails}>
               {item.grn_item.package_mark || 'No mark'}
             </Text>
           </View>
           {item.grn_item.weight && item.grn_item.weight > 0 && (
             <View style={styles.weightRow}>
-              <Icon name="weight-kilogram" size={16} color={colors.gray500} />
-              <Text style={[styles.weightText, { color: colors.gray600 }]}>{item.grn_item.weight}kg</Text>
+              <Icon name="weight-kilogram" size={iconSize.sm} color={t.icon.secondary} />
+              <Text style={styles.weightText}>{formatKg(item.grn_item.weight)}</Text>
             </View>
           )}
         </View>
@@ -237,247 +261,276 @@ const OrderItemCardComponent: React.FC<OrderItemCardProps> = ({
         </View>
       </View>
 
-      {/* Quantity Section */}
+      {/* Quantity Section: stepper per style guide §13.3 */}
       <View style={styles.quantitySection}>
         {/* -10 Button */}
-        <TouchableOpacity
-          style={[styles.quickButton, { backgroundColor: colors.gray100, borderColor: colors.gray200 }]}
+        <Pressable
+          style={({ pressed }) => [styles.quickButton, pressed && styles.stepPressed]}
           onPress={() => handleQuantityDecrease(10)}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          accessibilityRole="button"
+          accessibilityLabel={`Remove 10 from ${itemName}`}
         >
-          <Text style={[styles.quickButtonText, { color: colors.gray600 }]}>-10</Text>
-        </TouchableOpacity>
+          <Text style={styles.quickButtonText} maxFontSizeMultiplier={1.6}>−10</Text>
+        </Pressable>
 
-        <View style={[styles.quantityContainer, { backgroundColor: colors.gray100 }]}>
-          <TouchableOpacity
-            style={[styles.quantityButton, { backgroundColor: colors.cellBackground }]}
+        <View style={styles.quantityContainer}>
+          <Pressable
+            style={({ pressed }) => [styles.quantityButton, pressed && styles.stepPressed]}
             onPress={() => handleQuantityDecrease(1)}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            accessibilityRole="button"
+            accessibilityLabel={localQuantity <= 1 ? `Remove ${itemName} from order` : `Decrease ${itemName} by 1`}
           >
-            <Text style={[styles.quantityButtonText, { color: colors.gray700 }]}>−</Text>
-          </TouchableOpacity>
+            <Icon name="minus" size={iconSize.md} color={t.brand.tint} />
+          </Pressable>
 
-          <View style={styles.quantityWrapper}>
-            <Text style={[
-              styles.quantityLabel,
-              { color: colors.gray500 },
-              showSaved && { color: colors.success }
-            ]}>
-              {isPending ? 'SAVING...' : showSaved ? 'SAVED' : 'QTY'}
-            </Text>
+          <View
+            style={styles.quantityWrapper}
+            accessible
+            accessibilityLabel={`Quantity ${localQuantity}${isPending ? ', saving' : showSaved ? ', saved' : ''}`}
+            accessibilityLiveRegion="polite"
+          >
+            <View style={styles.quantityLabelRow}>
+              {showSaved && !isPending && (
+                <Icon name="check-circle" size={iconSize.sm} color={t.status.positive.text} />
+              )}
+              <Text
+                style={[
+                  styles.quantityLabel,
+                  isPending && styles.quantityLabelPending,
+                  showSaved && !isPending && styles.quantityLabelSaved,
+                ]}
+                maxFontSizeMultiplier={1.6}
+              >
+                {quantityStatus}
+              </Text>
+            </View>
             <View style={styles.quantityValueContainer}>
-              <Text style={[
-                styles.quantity,
-                { color: colors.gray900 },
-                isPending && { color: colors.warning },
-                showSaved && { color: colors.success }
-              ]}>
+              <Text style={styles.quantity}>
                 {localQuantity}
               </Text>
               {isPending && (
                 <ActivityIndicator
                   size="small"
-                  color={colors.warning}
+                  color={t.status.informative.text}
                   style={styles.pendingIndicator}
                 />
               )}
             </View>
           </View>
 
-          <TouchableOpacity
-            style={[styles.quantityButton, { backgroundColor: colors.cellBackground }]}
+          <Pressable
+            style={({ pressed }) => [styles.quantityButton, pressed && styles.stepPressed]}
             onPress={() => handleQuantityIncrease(1)}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            accessibilityRole="button"
+            accessibilityLabel={`Increase ${itemName} by 1`}
           >
-            <Text style={[styles.quantityButtonText, { color: colors.gray700 }]}>+</Text>
-          </TouchableOpacity>
+            <Icon name="plus" size={iconSize.md} color={t.brand.tint} />
+          </Pressable>
         </View>
 
         {/* +10 Button */}
-        <TouchableOpacity
-          style={[styles.quickButton, { backgroundColor: colors.gray100, borderColor: colors.gray200 }]}
+        <Pressable
+          style={({ pressed }) => [styles.quickButton, pressed && styles.stepPressed]}
           onPress={() => handleQuantityIncrease(10)}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          accessibilityRole="button"
+          accessibilityLabel={`Add 10 to ${itemName}`}
         >
-          <Text style={[styles.quickButtonText, { color: colors.gray600 }]}>+10</Text>
-        </TouchableOpacity>
+          <Text style={styles.quickButtonText} maxFontSizeMultiplier={1.6}>+10</Text>
+        </Pressable>
 
-        {/* Remove Button */}
-        <TouchableOpacity onPress={onRemove} style={[styles.removeButton, { backgroundColor: colors.errorLight, borderColor: colors.error }]}>
-          <Icon name="trash-can-outline" size={18} color={colors.error} />
-        </TouchableOpacity>
+        {/* Remove Button: secondary negative, last in the row */}
+        <Pressable
+          onPress={onRemove}
+          style={({ pressed }) => [styles.removeButton, pressed && styles.removeButtonPressed]}
+          accessibilityRole="button"
+          accessibilityLabel={`Remove ${itemName} from order`}
+        >
+          <Icon name="trash-can-outline" size={iconSize.md} color={t.status.negative.text} />
+        </Pressable>
       </View>
     </View>
   );
 };
 
 // ============================================================================
-// STYLES - SAP Fiori Object Cell & Stepper Compliant
+// STYLES - SAP Fiori Object Cell & Stepper (style guide §13.3, §13.6)
 // ============================================================================
 
-const styles = StyleSheet.create({
-  // Object Cell Container - Fiori spec: 12pt corner radius
+const makeStyles = (t: ThemeTokens) => ({
+  // Object Cell Container
   container: {
-    borderRadius: 12, // Fiori card corner radius
-    marginHorizontal: 16,
-    marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 2,
-    overflow: 'hidden',
+    borderRadius: radius.card,
+    marginHorizontal: layout.marginCompact,
+    marginBottom: space.md,
+    backgroundColor: t.surface.card,
+    ...t.shadow[1],
   },
   // Main Content Area - Fiori object cell body
   itemInfo: {
     flex: 1,
-    padding: 12,
-    paddingTop: 16,
+    padding: space.md,
+    paddingTop: space.lg,
   },
-  // Header Row - Fiori spec: title + attributes
+  // Header Row - title + attributes
   itemHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-    paddingHorizontal: 4,
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'center' as const,
+    marginBottom: space.sm,
+    paddingHorizontal: space.xs,
   },
   itemNameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
     flex: 1,
   },
-  // Title - Fiori spec: 17pt semibold
   itemName: {
-    fontSize: 17, // Fiori object cell title
-    fontWeight: '600',
-    letterSpacing: -0.41,
-    marginRight: 8,
+    ...typography.headline,
+    color: t.text.primary,
+    marginRight: space.sm,
   },
-  // Caption/Date - Fiori spec: 12pt
   grnDate: {
-    fontSize: 12, // Fiori caption font size
-    fontWeight: '500',
+    ...typography.caption1,
+    color: t.text.secondary,
   },
-  // Subtitle Row - Fiori spec: 13pt
+  // Subtitle Row
   packageWeightRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-    paddingVertical: 4,
-    paddingHorizontal: 4,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
+    marginBottom: space.sm,
+    paddingVertical: space.xs,
+    paddingHorizontal: space.xs,
   },
   packageMarkRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.s6,
+    flexShrink: 1,
   },
   itemDetails: {
-    fontSize: 13, // Fiori subtitle font size
-    marginRight: 4,
+    ...typography.footnote,
+    color: t.text.secondary,
+    marginRight: space.xs,
   },
   weightRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.xs,
   },
   weightText: {
-    fontSize: 13, // Fiori subtitle font size
+    ...typography.footnote,
+    color: t.text.secondary,
+    fontVariant: ['tabular-nums' as const],
   },
   // Footnote Row - Stock Status
   stockRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingHorizontal: 4,
-    paddingVertical: 4,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.md,
+    paddingHorizontal: space.xs,
+    paddingVertical: space.xs,
   },
   stockStatusContainer: {
     flex: 1,
   },
-  // Stepper Form Cell Area - Fiori spec: 44pt touch targets
+  // Stepper area, separated from the cell body by a divider
   quantitySection: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 12,
-    flexDirection: 'row',
-    gap: 8,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    padding: space.md,
+    flexDirection: 'row' as const,
+    flexWrap: 'wrap' as const,
+    gap: space.sm,
+    borderTopWidth: 1,
+    borderTopColor: t.border.divider,
   },
-  // Quick Adjust Buttons - Fiori icon button style
+  // Quick adjust buttons: secondary style (border.button, brand.tint)
   quickButton: {
-    width: 44, // Fiori touch target
-    height: 44,
-    borderRadius: 22,
-    justifyContent: 'center',
-    alignItems: 'center',
+    minWidth: touchTarget,
+    height: touchTarget,
+    paddingHorizontal: space.xs,
+    borderRadius: radius.pill,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
     borderWidth: 1,
+    borderColor: t.border.button,
   },
   quickButtonText: {
-    fontSize: 13,
-    fontWeight: '600',
+    ...typography.footnote,
+    fontWeight: fontWeight.semibold,
+    color: t.brand.tint,
+    fontVariant: ['tabular-nums' as const],
   },
-  // Stepper Container - Fiori stepper form cell
+  stepPressed: {
+    backgroundColor: t.brand.subtle,
+  },
+  // Stepper container
   quantityContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 24,
-    padding: 4,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
   },
-  // Stepper Buttons - Fiori spec: 44pt touch target
+  // Stepper buttons: border.button outline, brand.tint icon
   quantityButton: {
-    width: 44, // Fiori touch target
-    height: 44,
-    borderRadius: 22,
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.08,
-    shadowRadius: 2,
-    elevation: 1,
+    width: touchTarget,
+    height: touchTarget,
+    borderRadius: radius.pill,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    borderWidth: 1,
+    borderColor: t.border.button,
   },
-  quantityButtonText: {
-    fontSize: 20, // Fiori stepper button icon size
-    fontWeight: '600',
-    lineHeight: 24,
-  },
-  // Value Display - Fiori stepper value area
+  // Value Display
   quantityWrapper: {
-    alignItems: 'center',
-    marginHorizontal: 16,
-    minWidth: 48,
+    alignItems: 'center' as const,
+    marginHorizontal: space.md,
+    minWidth: 56,
+  },
+  quantityLabelRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.xxs,
+    marginBottom: space.xxs,
   },
   quantityLabel: {
-    fontSize: 10,
-    textTransform: 'uppercase',
-    fontWeight: '600',
-    letterSpacing: 0.5,
-    marginBottom: 2,
+    ...typography.caption1,
+    fontWeight: fontWeight.semibold,
+    color: t.text.secondary,
+  },
+  quantityLabelPending: {
+    color: t.status.informative.text,
+  },
+  quantityLabelSaved: {
+    color: t.status.positive.text,
   },
   quantityValueContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    position: 'relative',
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    position: 'relative' as const,
   },
   quantity: {
-    fontSize: 20, // Fiori large value display
-    fontWeight: '700',
+    ...typography.title3,
+    color: t.text.primary,
     minWidth: 36,
-    textAlign: 'center',
+    textAlign: 'center' as const,
+    fontVariant: ['tabular-nums' as const],
   },
   pendingIndicator: {
-    position: 'absolute',
-    right: -24,
+    position: 'absolute' as const,
+    right: -space.xxl,
   },
-  // Delete Button - Fiori secondary negative style
+  // Delete button - secondary negative style
   removeButton: {
-    width: 44, // Fiori touch target
-    height: 44,
-    borderRadius: 22,
-    justifyContent: 'center',
-    alignItems: 'center',
+    width: touchTarget,
+    height: touchTarget,
+    borderRadius: radius.pill,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
     borderWidth: 1,
+    borderColor: t.status.negative.border,
+  },
+  removeButtonPressed: {
+    backgroundColor: t.status.negative.background,
   },
 });
 

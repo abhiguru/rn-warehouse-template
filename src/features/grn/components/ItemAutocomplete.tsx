@@ -8,10 +8,12 @@
  */
 
 import React, { useCallback } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text } from 'react-native';
 import { RemoteAutocompleteInput } from '@/components/RemoteAutocompleteInput';
 import { searchService } from '@/services/search-service';
-import theme from '@/theme';
+import { useThemedStyles } from '@/hooks/useTheme';
+import { fontWeight, radius, space, typography } from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
 
 // ============================================================================
 // TYPES
@@ -43,7 +45,7 @@ interface ItemAutocompleteProps {
 export const ItemAutocomplete: React.FC<ItemAutocompleteProps> = ({
   value,
   onChange,
-  placeholder = 'Search items...',
+  placeholder = 'Search items',
   error,
   disabled = false,
   required = false,
@@ -51,6 +53,8 @@ export const ItemAutocomplete: React.FC<ItemAutocompleteProps> = ({
   helperText,
   zIndex = 1000,
 }) => {
+  const styles = useThemedStyles(makeStyles);
+
   // Fetch items using searchService RPC
   const fetchItems = useCallback(async (query: string): Promise<Item[]> => {
     if (query.length < 2) {
@@ -111,19 +115,19 @@ export const ItemAutocomplete: React.FC<ItemAutocompleteProps> = ({
         <Text style={styles.itemName} numberOfLines={1}>
           {item.name}
         </Text>
-        {item.packaging && (
+        {item.packaging ? (
           <View style={styles.packagingBadge}>
             <Text style={styles.packagingText}>{item.packaging}</Text>
           </View>
-        )}
+        ) : null}
       </View>
-      {item.description && (
+      {item.description ? (
         <Text style={styles.itemDescription} numberOfLines={1}>
           {item.description}
         </Text>
-      )}
+      ) : null}
     </View>
-  ), []);
+  ), [styles]);
 
   // Key extractor
   const keyExtractor = useCallback((item: Item) => item.id, []);
@@ -144,7 +148,7 @@ export const ItemAutocomplete: React.FC<ItemAutocompleteProps> = ({
       editable={!disabled}
       minChars={2}
       debounceMs={300}
-      emptyText="No items found"
+      emptyText="No matches"
     />
   );
 };
@@ -153,35 +157,23 @@ export const ItemAutocomplete: React.FC<ItemAutocompleteProps> = ({
 // STYLES
 // ============================================================================
 
-const styles = StyleSheet.create({
+const makeStyles = (t: ThemeTokens) => ({
   itemContainer: {},
   itemRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
   },
-  itemName: {
-    fontSize: theme.fontSize.base,
-    color: theme.colors.gray[900],
-    fontWeight: '500',
-    flex: 1,
-  },
+  itemName: { ...typography.headline, color: t.text.primary, flex: 1 },
   packagingBadge: {
-    backgroundColor: theme.colors.gray[100],
-    paddingHorizontal: theme.spacing.sm,
-    paddingVertical: theme.spacing.xs,
-    borderRadius: theme.borderRadius.sm,
-    marginLeft: theme.spacing.sm,
+    backgroundColor: t.status.neutral.background,
+    paddingHorizontal: space.sm,
+    paddingVertical: space.xs,
+    borderRadius: radius.field,
+    marginLeft: space.sm,
   },
-  packagingText: {
-    fontSize: theme.fontSize.sm,
-    color: theme.colors.gray[600],
-  },
-  itemDescription: {
-    fontSize: theme.fontSize.sm,
-    color: theme.colors.gray[600],
-    marginTop: 2,
-  },
+  packagingText: { ...typography.caption1, fontWeight: fontWeight.semibold, color: t.status.neutral.text },
+  itemDescription: { ...typography.subhead, color: t.text.secondary, marginTop: space.xxs },
 });
 
 export default ItemAutocomplete;

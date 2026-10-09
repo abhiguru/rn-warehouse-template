@@ -9,19 +9,20 @@
 import 'react-native-gesture-handler';
 import 'react-native-reanimated';
 import React, { useEffect } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, Text, ActivityIndicator } from 'react-native';
 import { router } from 'expo-router';
 import { useAppSelector, useAppDispatch } from '@/store/hooks';
 import { initializeAuth } from '@/store/slices/authSlice';
 import { useRoleBasedAccess } from '@/hooks/useRoleBasedAccess';
-import theme from '@/theme';
-import { useTheme } from '@/hooks/useTheme';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { space, typography, type ThemeTokens } from '@/theme/tokens';
 import { SupervisorOrderQueueList } from '@/components/lists';
 
 export default function OrderQueueTab() {
   const dispatch = useAppDispatch();
   const { isLoading, userProfile } = useAppSelector((state) => state.auth);
-  const { colors: themeColors, isDarkMode } = useTheme();
+  const t = useTokens();
+  const styles = useThemedStyles(makeStyles);
   const { canManageOrders } = useRoleBasedAccess();
   const [hasInitialized, setHasInitialized] = React.useState(false);
 
@@ -47,19 +48,9 @@ export default function OrderQueueTab() {
   // Show full loading screen only on first load without cached data
   if (!hasInitialized && isLoading && !userProfile) {
     return (
-      <View
-        style={[
-          styles.container,
-          styles.centered,
-          {
-            backgroundColor: isDarkMode ? themeColors.gray[900] : 'transparent',
-          },
-        ]}
-      >
-        <ActivityIndicator size="large" color={themeColors.primary} />
-        <Text style={[styles.loadingText, { color: themeColors.gray[isDarkMode ? 400 : 600] }]}>
-          Loading...
-        </Text>
+      <View style={[styles.container, styles.centered]}>
+        <ActivityIndicator size="large" color={t.brand.tint} accessibilityLabel="Loading order queue" />
+        <Text style={styles.loadingText}>Loading order queue…</Text>
       </View>
     );
   }
@@ -67,42 +58,31 @@ export default function OrderQueueTab() {
   // Don't render for customer accounts
   if (!canManageOrders) {
     return (
-      <View
-        style={[
-          styles.container,
-          styles.centered,
-          {
-            backgroundColor: isDarkMode ? themeColors.gray[900] : 'transparent',
-          },
-        ]}
-      >
-        <ActivityIndicator size="large" color={themeColors.primary} />
+      <View style={[styles.container, styles.centered]}>
+        <ActivityIndicator size="large" color={t.brand.tint} accessibilityLabel="Loading" />
       </View>
     );
   }
 
   return (
-    <View
-      style={[
-        styles.container,
-        { backgroundColor: isDarkMode ? themeColors.gray[900] : themeColors.gray[50] },
-      ]}
-    >
+    <View style={styles.container}>
       <SupervisorOrderQueueList />
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (t: ThemeTokens) => ({
   container: {
     flex: 1,
+    backgroundColor: t.background.base,
   },
   centered: {
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
   },
   loadingText: {
-    marginTop: theme.spacing.md,
-    fontSize: theme.fontSize.base,
+    ...typography.subhead,
+    color: t.text.secondary,
+    marginTop: space.lg,
   },
 });

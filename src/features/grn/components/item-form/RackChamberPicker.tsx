@@ -1,15 +1,20 @@
 /**
  * RackChamberPicker - Rack input with floor/chamber chip selectors
  *
+ * Floor and chamber are single-choice chips (radio semantics); the current
+ * choice is shown with brand.subtle, brand.tint and a check icon.
+ *
  * Extracted from HorizontalItemForm.tsx for better maintainability.
  *
  * @module features/grn/components/item-form/RackChamberPicker
  */
 
 import React, { useState, useEffect, useCallback, useMemo, useRef, forwardRef, useImperativeHandle } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Vibration } from 'react-native';
+import { View, Text, TextInput, Pressable, Vibration, Platform } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import theme from '@/theme';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { fontWeight, iconSize, radius, space, typography } from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
 
 // Floor and Chamber options
 export const FLOOR_OPTIONS = ['BASE', 'F1', 'F2', 'F3', 'F4'];
@@ -96,6 +101,8 @@ export interface RackChamberPickerProps {
 
 export const RackChamberPicker = forwardRef<RackChamberPickerRef, RackChamberPickerProps>(
   function RackChamberPickerInner({ value, onChange, error, onSubmitEditing, onFocus, onBlur }, ref) {
+    const styles = useThemedStyles(makeStyles);
+    const t = useTokens();
     const inputRef = useRef<TextInput>(null);
     const [selectedFloor, setSelectedFloor] = useState<string>('');
     const [selectedChamber, setSelectedChamber] = useState<string>('');
@@ -169,21 +176,50 @@ export const RackChamberPicker = forwardRef<RackChamberPickerRef, RackChamberPic
       onBlur?.();
     }, [onBlur]);
 
+
+    const renderChip = (option: string, selected: boolean, onPress: () => void, group: string) => (
+      <Pressable
+        key={option}
+        style={({ pressed }) => [
+          styles.chip,
+          selected && styles.chipSelected,
+          pressed && !selected && styles.chipPressed,
+        ]}
+        onPress={onPress}
+        hitSlop={{ top: space.s6, bottom: space.s6 }}
+        accessibilityRole="radio"
+        accessibilityLabel={`${group} ${option}`}
+        accessibilityState={{ selected, checked: selected }}
+      >
+        {selected && (
+          <Icon name="check" size={iconSize.sm} color={t.brand.tint} style={styles.chipCheckmark} />
+        )}
+        <Text style={[styles.chipText, selected && styles.chipTextSelected]} maxFontSizeMultiplier={1.6}>
+          {option}
+        </Text>
+      </Pressable>
+    );
+
     return (
-      <View style={styles.container}>
+      <View>
         <View style={styles.labelRow}>
-          <Icon name="warehouse" size={16} color={theme.colors.gray[500]} />
-          <Text style={styles.label}>RACK</Text>
-          {fullRackValue && <Text style={styles.rackPreviewInline}>({fullRackValue})</Text>}
+          <Icon name="view-grid-outline" size={iconSize.sm} color={t.icon.secondary} />
+          <Text style={styles.label}>Rack</Text>
+          {!!fullRackValue && (
+            <Text style={styles.rackPreviewInline} numberOfLines={1}>
+              {fullRackValue}
+            </Text>
+          )}
         </View>
 
         <TextInput
           ref={inputRef}
-          style={[styles.input, error && styles.inputError, isFocused && styles.inputFocused]}
+          accessibilityLabel="Rack"
+          style={[styles.input, !!error && styles.inputError, isFocused && styles.inputFocused]}
           value={rackTextOnly}
           onChangeText={handleRackTextChange}
-          placeholder="e.g., 20B-20C"
-          placeholderTextColor={theme.colors.gray[400]}
+          placeholder="For example 20B-20C"
+          placeholderTextColor={t.text.placeholder}
           returnKeyType="next"
           onSubmitEditing={onSubmitEditing}
           blurOnSubmit={false}
@@ -194,49 +230,30 @@ export const RackChamberPicker = forwardRef<RackChamberPickerRef, RackChamberPic
 
         {/* Floor Chips */}
         <View style={styles.chipSection}>
-          <Text style={styles.chipLabel}>FLOOR</Text>
-          <View style={styles.chipWrap}>
-            {FLOOR_OPTIONS.map((floor) => (
-              <TouchableOpacity
-                key={floor}
-                style={[styles.chip, selectedFloor === floor && styles.chipSelected]}
-                onPress={() => handleFloorSelect(floor)}
-                activeOpacity={0.7}
-              >
-                {selectedFloor === floor && (
-                  <Icon name="check" size={12} color={theme.colors.white} style={styles.chipCheckmark} />
-                )}
-                <Text style={[styles.chipText, selectedFloor === floor && styles.chipTextSelected]}>
-                  {floor}
-                </Text>
-              </TouchableOpacity>
-            ))}
+          <Text style={styles.chipLabel} accessibilityRole="header">Floor</Text>
+          <View style={styles.chipWrap} accessibilityRole="radiogroup">
+            {FLOOR_OPTIONS.map((floor) =>
+              renderChip(floor, selectedFloor === floor, () => handleFloorSelect(floor), 'Floor')
+            )}
           </View>
         </View>
 
         {/* Chamber Chips */}
         <View style={styles.chipSection}>
-          <Text style={styles.chipLabel}>CHAMBER</Text>
-          <View style={styles.chipWrap}>
-            {CHAMBER_OPTIONS.map((chamber) => (
-              <TouchableOpacity
-                key={chamber}
-                style={[styles.chip, selectedChamber === chamber && styles.chipSelected]}
-                onPress={() => handleChamberSelect(chamber)}
-                activeOpacity={0.7}
-              >
-                {selectedChamber === chamber && (
-                  <Icon name="check" size={12} color={theme.colors.white} style={styles.chipCheckmark} />
-                )}
-                <Text style={[styles.chipText, selectedChamber === chamber && styles.chipTextSelected]}>
-                  {chamber}
-                </Text>
-              </TouchableOpacity>
-            ))}
+          <Text style={styles.chipLabel} accessibilityRole="header">Chamber</Text>
+          <View style={styles.chipWrap} accessibilityRole="radiogroup">
+            {CHAMBER_OPTIONS.map((chamber) =>
+              renderChip(chamber, selectedChamber === chamber, () => handleChamberSelect(chamber), 'Chamber')
+            )}
           </View>
         </View>
 
-        {error && <Text style={styles.errorText}>{error}</Text>}
+        {!!error && (
+          <View style={styles.errorRow} accessibilityLiveRegion="polite">
+            <Icon name="alert-circle" size={iconSize.sm} color={t.status.negative.text} />
+            <Text style={styles.errorText}>{error}</Text>
+          </View>
+        )}
       </View>
     );
   }
@@ -246,94 +263,104 @@ export const RackChamberPicker = forwardRef<RackChamberPickerRef, RackChamberPic
 // STYLES
 // ============================================================================
 
-const styles = StyleSheet.create({
-  container: {},
+const makeStyles = (t: ThemeTokens) => ({
   labelRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 6,
-    gap: 4,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    marginBottom: space.xs,
+    gap: space.xs,
   },
   label: {
-    fontSize: 13,
-    fontWeight: '400',
-    color: theme.colors.fiori.text.secondary,
-    letterSpacing: 0.5,
-    lineHeight: 18,
+    ...typography.footnote,
+    color: t.text.secondary,
   },
   rackPreviewInline: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: theme.colors.primary,
-    marginLeft: 4,
+    ...typography.footnote,
+    fontWeight: fontWeight.semibold,
+    color: t.text.primary,
+    flexShrink: 1,
   },
   input: {
-    backgroundColor: theme.colors.white,
+    ...typography.body,
+    backgroundColor: t.surface.field,
     borderWidth: 1,
-    borderColor: theme.colors.fiori.objectCell.divider,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    height: 44,
-    fontSize: theme.fontSize.base,
-    color: theme.colors.fiori.text.primary,
+    borderColor: t.border.field,
+    borderRadius: radius.field,
+    paddingHorizontal: space.md,
+    minHeight: 44,
+    color: t.text.primary,
+    ...Platform.select({
+      android: { textAlignVertical: 'center' as const, includeFontPadding: false },
+      default: {},
+    }),
   },
   inputError: {
-    borderColor: theme.colors.fiori.semantic.negative,
+    borderColor: t.status.negative.border,
     borderWidth: 2,
+    paddingHorizontal: space.md - 1,
   },
   inputFocused: {
-    borderColor: '#0057D2',
+    borderColor: t.border.fieldFocus,
     borderWidth: 2,
+    paddingHorizontal: space.md - 1,
   },
   chipSection: {
-    marginTop: theme.spacing.xs,
+    marginTop: space.sm,
   },
   chipLabel: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: theme.colors.fiori.text.secondary,
+    ...typography.caption1,
+    fontWeight: fontWeight.semibold,
+    textTransform: 'uppercase' as const,
     letterSpacing: 0.5,
-    marginBottom: 4,
-    lineHeight: 16,
+    color: t.text.secondary,
+    marginBottom: space.xs,
   },
   chipWrap: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 4,
+    flexDirection: 'row' as const,
+    flexWrap: 'wrap' as const,
+    gap: space.sm,
   },
   chip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    height: 32,
-    paddingHorizontal: 12,
-    borderRadius: 16,
-    backgroundColor: '#F2F2F7',
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    minHeight: 36,
+    paddingHorizontal: space.md,
+    borderRadius: radius.pill,
+    backgroundColor: t.surface.card,
     borderWidth: 1,
-    borderColor: theme.colors.fiori.objectCell.divider,
+    borderColor: t.border.button,
     minWidth: 44,
   },
+  chipPressed: {
+    backgroundColor: t.surface.cardPressed,
+  },
   chipSelected: {
-    backgroundColor: theme.colors.primary,
-    borderColor: theme.colors.primary,
+    backgroundColor: t.brand.subtle,
+    borderColor: t.brand.tint,
   },
   chipCheckmark: {
-    marginRight: 4,
+    marginRight: space.xs,
   },
   chipText: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: theme.colors.fiori.text.secondary,
+    ...typography.caption1,
+    fontWeight: fontWeight.medium,
+    color: t.text.primary,
   },
   chipTextSelected: {
-    color: theme.colors.white,
-    fontWeight: '600',
+    color: t.brand.tint,
+    fontWeight: fontWeight.semibold,
+  },
+  errorRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'flex-start' as const,
+    gap: space.xs,
+    marginTop: space.xs,
   },
   errorText: {
-    fontSize: 13,
-    color: theme.colors.fiori.semantic.negative,
-    marginTop: 4,
-    lineHeight: 18,
+    ...typography.footnote,
+    color: t.status.negative.text,
+    flexShrink: 1,
   },
 });
 

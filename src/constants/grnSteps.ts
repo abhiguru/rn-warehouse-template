@@ -6,15 +6,15 @@ import { StepConfig } from '@/components/StepIndicator';
  */
 export const GRN_STEPS: StepConfig[] = [
   {
-    label: 'Basic Information',
-    shortLabel: 'Info',
+    label: 'GRN details',
+    shortLabel: 'Details',
   },
   {
-    label: 'Items Entry',
+    label: 'Items',
     shortLabel: 'Items',
   },
   {
-    label: 'Review & Submit',
+    label: 'Review',
     shortLabel: 'Review',
   },
 ];

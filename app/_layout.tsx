@@ -2,6 +2,7 @@ import 'react-native-gesture-handler';
 import { LogBox, Platform } from 'react-native';
 import * as SystemUI from 'expo-system-ui';
 import * as NavigationBar from 'expo-navigation-bar';
+import Constants from 'expo-constants';
 
 // Suppress LogBox error overlay for network/RPC errors in development
 // These are handled gracefully by the app's error handling
@@ -16,10 +17,17 @@ import { en, registerTranslation } from 'react-native-paper-dates';
 // Register English locale for react-native-paper-dates (pure JS date picker)
 registerTranslation('en', en);
 
+// The splash background is fixed per build in app.json (style guide §15), so
+// the JS splash and the native root background before React renders read it
+// from the build config instead of repeating the value here.
+const buildSplashBackground: string | undefined =
+  Constants.expoConfig?.splash?.backgroundColor ??
+  Constants.expoConfig?.backgroundColor;
+
 // Set the native root background before React renders on supported platforms.
 // Android edge-to-edge mode rejects this call.
-if (Platform.OS !== 'android') {
-  SystemUI.setBackgroundColorAsync('#11222c');
+if (Platform.OS !== 'android' && buildSplashBackground) {
+  SystemUI.setBackgroundColorAsync(buildSplashBackground);
 }
 
 import React, { useEffect, useState, useMemo, useRef } from 'react';
@@ -45,8 +53,6 @@ import {
   View,
   ActivityIndicator,
   AppState,
-  Text,
-  useColorScheme,
   Image,
 } from 'react-native';
 import {
@@ -60,8 +66,8 @@ import { PaperProvider, MD3LightTheme, MD3DarkTheme } from 'react-native-paper';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { store, persistor } from '@/store';
 import { queryClient } from '@/lib/queryClient';
-import theme, { getThemeColors, colors, darkColors } from '@/theme';
-import { getTokens, type Brand } from '@/theme/tokens';
+import { getTokens, radius, typography, type ThemeTokens } from '@/theme/tokens';
+import { useTheme, useTokens } from '@/hooks/useTheme';
 import ConfigService from '@/services/configService';
 import { initializeSupabase } from '@/config/supabaseConfig';
 import { clearPendingEnrollment } from '@/config/supabaseConfig';
@@ -69,7 +75,7 @@ import ConfigErrorScreen from '@/components/ConfigErrorScreen';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { OfflineBanner } from '@/components/OfflineBanner';
 import { createLogger } from '@/utils/logger';
-import { useAppDispatch, useAppSelector } from '@/store/hooks';
+import { useAppDispatch } from '@/store/hooks';
 import { initializeAuth } from '@/store/slices/authSlice';
 import { logout } from '@/store/slices/authSlice';
 import { clearSessionScopedState } from '@/store/sessionScopedState';
@@ -81,11 +87,6 @@ import { operatorResumeGate } from '@/config/operatorResume';
 import { createResumeLifecycle } from '@/config/resumeLifecycle';
 import { isNativeHandoffActive } from '@/config/nativeHandoff';
 import { hasActiveOperatorMutation } from '@/config/supabaseConfig';
-import {
-  selectThemePreference,
-  selectResolvedThemeMode,
-  selectBrand,
-} from '@/store/slices/themeSlice';
 import {
   initializeSentry,
   captureException,
@@ -162,66 +163,108 @@ if (typeof global !== 'undefined') {
   };
 }
 
-// Create Material Design 3 theme based on color mode
-const createPaperTheme = (isDark: boolean, brand: Brand = 'orange') => {
-  const baseTheme = isDark ? MD3DarkTheme : MD3LightTheme;
-  const themeColors = getThemeColors(isDark ? 'dark' : 'light', brand);
-  const tokens = getTokens(brand, isDark ? 'dark' : 'light');
+/**
+ * React Native Paper MD3 theme built from the semantic tokens for one brand and
+ * mode (style guide §15), so Paper components follow the brand and dark mode.
+ */
+export const createPaperTheme = (t: ThemeTokens) => {
+  const baseTheme = t.mode === 'dark' ? MD3DarkTheme : MD3LightTheme;
+  const raised = t.surface.card;
 
   return {
     ...baseTheme,
+    dark: t.mode === 'dark',
     colors: {
       ...baseTheme.colors,
-      primary: themeColors.primary, // Brand primary color
-      primaryContainer: themeColors.orange[100],
-      secondary: themeColors.orange[700],
-      secondaryContainer: themeColors.orange[50],
-      tertiary: themeColors.blue[500],
-      tertiaryContainer: themeColors.blue[50],
-      surface: isDark ? themeColors.gray[100] : themeColors.white,
-      surfaceVariant: themeColors.gray[isDark ? 200 : 50],
-      background: themeColors.gray[isDark ? 50 : 50],
-      error: themeColors.semantic.error,
-      errorContainer: themeColors.red[50],
-      onPrimary: tokens.brand.onFill,
-      onSecondary: isDark ? themeColors.gray[900] : '#ffffff',
-      onTertiary: isDark ? themeColors.gray[900] : '#ffffff',
-      onSurface: themeColors.gray[900],
-      onSurfaceVariant: themeColors.gray[600],
-      onError: '#ffffff',
-      outline: themeColors.gray[300],
-      outlineVariant: themeColors.gray[200],
-      inverseSurface: themeColors.gray[isDark ? 50 : 900],
-      inverseOnSurface: themeColors.gray[isDark ? 900 : 50],
-      inversePrimary: themeColors.orange[300],
-      shadow: isDark ? '#000000' : themeColors.black,
-      scrim: isDark ? '#000000' : themeColors.black,
-      backdrop: isDark ? 'rgba(0, 0, 0, 0.6)' : 'rgba(0, 0, 0, 0.4)',
+      // Filled buttons, FAB, checked controls
+      primary: t.brand.fill,
+      onPrimary: t.brand.onFill,
+      primaryContainer: t.brand.subtle,
+      onPrimaryContainer: t.brand.tint,
+      // Selected chips and tonal buttons
+      secondary: t.brand.tint,
+      onSecondary: t.surface.card,
+      secondaryContainer: t.brand.subtle,
+      onSecondaryContainer: t.brand.tint,
+      tertiary: t.status.informative.element,
+      onTertiary: t.surface.card,
+      tertiaryContainer: t.status.informative.background,
+      onTertiaryContainer: t.status.informative.text,
+      surface: t.surface.card,
+      onSurface: t.text.primary,
+      surfaceVariant: t.surface.fieldReadOnly,
+      onSurfaceVariant: t.text.secondary,
+      surfaceDisabled: t.surface.cardActive,
+      onSurfaceDisabled: t.text.disabled,
+      background: t.background.base,
+      onBackground: t.text.primary,
+      error: t.status.negative.text,
+      onError: t.destructive.onFill,
+      errorContainer: t.status.negative.background,
+      onErrorContainer: t.status.negative.text,
+      outline: t.border.field,
+      outlineVariant: t.border.divider,
+      // Snackbars: inverse surface, action in text.inverse (§13.9)
+      inverseSurface: t.surface.inverse,
+      inverseOnSurface: t.text.inverse,
+      inversePrimary: t.text.inverse,
+      shadow: t.shadow[2].shadowColor,
+      scrim: t.overlay.scrim,
+      backdrop: t.overlay.scrim,
+      // Fiori shows depth with shadows, not MD3's tinted surfaces.
+      elevation: {
+        level0: 'transparent',
+        level1: raised,
+        level2: raised,
+        level3: t.surface.sheet,
+        level4: t.surface.sheet,
+        level5: t.surface.sheet,
+      },
     },
-    roundness: 12, // Border radius for Material Design components
+    roundness: radius.card,
   };
 };
 
-// Light theme (default, used before Redux is ready)
-const paperTheme = createPaperTheme(false);
+/** React Navigation theme built from the same tokens. */
+export const createNavigationTheme = (t: ThemeTokens) => {
+  const baseTheme = t.mode === 'dark' ? DarkTheme : DefaultTheme;
+  return {
+    ...baseTheme,
+    dark: t.mode === 'dark',
+    colors: {
+      ...baseTheme.colors,
+      background: t.background.base,
+      card: t.surface.header,
+      primary: t.brand.tint,
+      text: t.text.primary,
+      border: t.border.divider,
+      notification: t.status.negative.element,
+    },
+  };
+};
 
 // Generic loading artwork; replace this asset when branding the template.
 const splashImage = require('../assets/splash-icon-1024.png');
 
-// Splash/loading screen
+// Splash/loading screen. Shown before the store is rehydrated, so it matches
+// the build-time native splash rather than a user-chosen brand.
 const SplashScreen = () => (
   <View
     style={{
       flex: 1,
       justifyContent: 'center',
       alignItems: 'center',
-      backgroundColor: '#000000',
+      backgroundColor: buildSplashBackground,
     }}
+    accessible
+    accessibilityLabel="Loading"
   >
     <Image
       source={splashImage}
       style={{ width: '100%', height: '80%' }}
       resizeMode="contain"
+      accessible={false}
+      importantForAccessibility="no"
     />
   </View>
 );
@@ -230,6 +273,7 @@ const SplashScreen = () => (
 // Must be inside SafeAreaProvider to use useSafeAreaInsets
 function NavigationStack({ screenBackground }: { screenBackground: string }) {
   const insets = useSafeAreaInsets();
+  const t = useTokens();
 
   // Only apply bottom safe area padding on Android (iOS handles it natively)
   const androidBottomPadding = Platform.OS === 'android' ? insets.bottom : 0;
@@ -238,6 +282,11 @@ function NavigationStack({ screenBackground }: { screenBackground: string }) {
     <Stack
       screenOptions={{
         headerShown: false,
+        // Stack header per style guide §13.8, for any screen that shows one.
+        headerStyle: { backgroundColor: t.surface.header },
+        headerTintColor: t.brand.tint,
+        headerTitleStyle: { ...typography.headline, color: t.text.primary },
+        headerShadowVisible: false,
         contentStyle: {
           backgroundColor: screenBackground,
           // Apply bottom safe area padding for Android system nav bar only
@@ -259,11 +308,11 @@ function NavigationStack({ screenBackground }: { screenBackground: string }) {
       />
 
       {/* Auth screens */}
-      <Stack.Screen name="login" options={{ title: 'Sign In' }} />
-      <Stack.Screen name="otp" options={{ title: 'Verify OTP' }} />
-      <Stack.Screen name="pending-enrollment" options={{ title: 'Enrollment Pending' }} />
-      <Stack.Screen name="operator-server" options={{ title: 'Warehouse Server' }} />
-      <Stack.Screen name="enrollment-review" options={{ title: 'Enrollment Review' }} />
+      <Stack.Screen name="login" options={{ title: 'Sign in' }} />
+      <Stack.Screen name="otp" options={{ title: 'Enter code' }} />
+      <Stack.Screen name="pending-enrollment" options={{ title: 'Waiting for approval' }} />
+      <Stack.Screen name="operator-server" options={{ title: 'Facility' }} />
+      <Stack.Screen name="enrollment-review" options={{ title: 'Enrollment review' }} />
 
       {/* Detail screens */}
       <Stack.Screen name="grn-details/[id]" options={{ headerShown: false }} />
@@ -312,13 +361,8 @@ function NavigationStack({ screenBackground }: { screenBackground: string }) {
 function ThemedContent() {
   const dispatch = useAppDispatch();
   const [authCheckSettled, setAuthCheckSettled] = useState(false);
-  const themePreference = useAppSelector(selectThemePreference);
-  const brand = useAppSelector(selectBrand);
-  const systemColorScheme = useColorScheme();
-  const resolvedMode = selectResolvedThemeMode(
-    themePreference,
-    systemColorScheme
-  );
+  // Brand and mode from the Settings choice (falls back to the system mode).
+  const { brand, resolvedMode, tokens } = useTheme();
   const isDarkMode = resolvedMode === 'dark';
 
   // Restore credentials before any route screen can redirect an initially
@@ -342,17 +386,17 @@ function ThemedContent() {
   // I10: Handle cold start deep links only after the root auth check settles.
   useColdStartDeepLink(authCheckSettled);
 
-  // Memoize the paper theme to avoid recreating on every render
+  // Rebuild the Paper and navigation themes only when the brand or mode changes.
   const currentPaperTheme = useMemo(
-    () => createPaperTheme(isDarkMode, brand),
-    [isDarkMode, brand]
+    () => createPaperTheme(getTokens(brand, resolvedMode)),
+    [brand, resolvedMode]
   );
-  const themeColors = getThemeColors(resolvedMode, brand);
+  const navigationTheme = useMemo(
+    () => createNavigationTheme(getTokens(brand, resolvedMode)),
+    [brand, resolvedMode]
+  );
 
-  // Background color that matches the theme
-  // Note: In darkColors, gray scale is inverted (gray[50] is dark, gray[900] is light)
-  // So we use gray[50] for both modes as it represents the "background" color
-  const screenBackground = themeColors.gray[50];
+  const screenBackground = tokens.background.base;
 
   // Keep the platform-specific system background in sync with theme changes.
   useEffect(() => {
@@ -364,22 +408,6 @@ function ThemedContent() {
     }
   }, [screenBackground, isDarkMode]);
 
-  // Create custom navigation theme to match our app colors
-  const navigationTheme = useMemo(() => {
-    const baseTheme = isDarkMode ? DarkTheme : DefaultTheme;
-    return {
-      ...baseTheme,
-      colors: {
-        ...baseTheme.colors,
-        background: screenBackground,
-        card: screenBackground,
-        primary: themeColors.primary,
-        text: themeColors.gray[900],
-        border: themeColors.gray[200],
-      },
-    };
-  }, [isDarkMode, screenBackground, themeColors]);
-
   if (!authCheckSettled) {
     return (
       <View
@@ -390,10 +418,12 @@ function ThemedContent() {
           backgroundColor: screenBackground,
         }}
       >
-        <EdgeToEdgeStatusBar
-          barStyle={isDarkMode ? 'light-content' : 'dark-content'}
+        <EdgeToEdgeStatusBar barStyle={tokens.statusBarStyle} />
+        <ActivityIndicator
+          size="large"
+          color={tokens.brand.tint}
+          accessibilityLabel="Loading"
         />
-        <ActivityIndicator size="large" color={themeColors.primary} />
       </View>
     );
   }
@@ -403,9 +433,7 @@ function ThemedContent() {
     <ThemeProvider value={navigationTheme}>
       {/* Root View fills entire screen INCLUDING status bar area */}
       <View style={{ flex: 1, backgroundColor: screenBackground }}>
-        <EdgeToEdgeStatusBar
-          barStyle={isDarkMode ? 'light-content' : 'dark-content'}
-        />
+        <EdgeToEdgeStatusBar barStyle={tokens.statusBarStyle} />
         <PaperProvider theme={currentPaperTheme}>
           <SafeAreaProvider>
             <GestureHandlerRootView style={{ flex: 1 }}>
@@ -508,7 +536,7 @@ function BootstrapApp() {
       } catch (error: any) {
         console.error('[Bootstrap] Config fetch failed:', error);
         setConfigError(
-          'Configuration API is unreachable. Please check your internet connection.'
+          "Couldn't reach the facility server. Check your connection and try again."
         );
         setIsReady(true);
         return;
@@ -523,7 +551,7 @@ function BootstrapApp() {
         console.log('[Bootstrap] Supabase client initialized successfully');
       } catch (error: any) {
         console.error('[Bootstrap] Supabase initialization failed:', error);
-        setConfigError('Failed to initialize Supabase client');
+        setConfigError("Couldn't connect to the facility server. Try again, or choose another server.");
         setIsReady(true);
         return;
       }
@@ -541,7 +569,7 @@ function BootstrapApp() {
     } catch (error: any) {
       console.error('[Bootstrap] Unexpected bootstrap error:', error);
       if (run === bootstrapRun.current) {
-        setConfigError(error instanceof Error ? error.message : 'Could not verify the selected server.');
+        setConfigError(error instanceof Error ? error.message : "Couldn't verify the selected server. Try again, or choose another server.");
         setIsReady(true);
       }
     }

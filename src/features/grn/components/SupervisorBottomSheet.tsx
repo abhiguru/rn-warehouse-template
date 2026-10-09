@@ -5,13 +5,14 @@
  * Uses the generic SearchableBottomSheet component.
  */
 
-import React, { useCallback, useMemo } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import React, { useCallback } from 'react';
+import { View, Text, Pressable } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import theme from '@/theme';
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
 import { SearchableBottomSheet } from '@/components/common';
-import { useListColors } from '@/hooks/useListColors';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { iconSize, layout, space, typography, touchTarget } from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
 
 interface Supervisor {
   id: string;
@@ -29,38 +30,36 @@ interface SupervisorBottomSheetProps {
   };
 }
 
+const makeStyles = (t: ThemeTokens) => ({
+  supervisorItem: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.md,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.md,
+    minHeight: Math.max(touchTarget, layout.rowMinHeight),
+    backgroundColor: t.surface.sheet,
+  },
+  supervisorItemPressed: { backgroundColor: t.surface.cardPressed },
+  supervisorContent: { flex: 1 },
+  supervisorMeta: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.xs,
+    marginTop: space.xs,
+  },
+  supervisorName: { ...typography.headline, color: t.text.primary },
+  metaText: { ...typography.subhead, color: t.text.secondary, fontVariant: ['tabular-nums' as const] },
+});
+
 export const SupervisorBottomSheet: React.FC<SupervisorBottomSheetProps> = ({
   isVisible,
   onClose,
   onSelect,
   currentValue,
 }) => {
-  // Theme colors for dark mode support
-  const colors = useListColors();
-
-  // Dynamic styles based on theme
-  const dynamicStyles = useMemo(
-    () =>
-      StyleSheet.create({
-        supervisorItem: {
-          flexDirection: 'row',
-          alignItems: 'center',
-          paddingHorizontal: theme.spacing.lg,
-          paddingVertical: theme.spacing.md,
-          minHeight: theme.touchTarget.minimum,
-        },
-        supervisorName: {
-          fontSize: theme.fontSize.base,
-          color: colors.textPrimary,
-          fontWeight: theme.fontWeight.medium,
-        },
-        metaText: {
-          fontSize: theme.fontSize.sm,
-          color: colors.textSecondary,
-        },
-      }),
-    [colors]
-  );
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
 
   // Search function for supervisors using RPC
   const searchSupervisors = useCallback(
@@ -116,24 +115,25 @@ export const SupervisorBottomSheet: React.FC<SupervisorBottomSheetProps> = ({
   // Render supervisor item
   const renderSupervisorItem = useCallback(
     (item: Supervisor, onItemSelect: (item: Supervisor) => void) => (
-      <TouchableOpacity
-        style={dynamicStyles.supervisorItem}
+      <Pressable
+        style={({ pressed }) => [styles.supervisorItem, pressed && styles.supervisorItemPressed]}
         onPress={() => onItemSelect(item)}
-        activeOpacity={0.7}
+        accessibilityRole="button"
+        accessibilityLabel={item.phone ? `${item.name}, ${item.phone}` : item.name}
       >
+        <Icon name="account-outline" size={iconSize.lg} color={t.icon.secondary} />
         <View style={styles.supervisorContent}>
-          <Text style={dynamicStyles.supervisorName}>{item.name}</Text>
-          {item.phone && (
+          <Text style={styles.supervisorName} numberOfLines={2}>{item.name}</Text>
+          {item.phone ? (
             <View style={styles.supervisorMeta}>
-              <Icon name="phone" size={14} color={colors.textSecondary} />
-              <Text style={dynamicStyles.metaText}>{item.phone}</Text>
+              <Icon name="phone-outline" size={iconSize.sm} color={t.icon.secondary} />
+              <Text style={styles.metaText}>{item.phone}</Text>
             </View>
-          )}
+          ) : null}
         </View>
-        <Icon name="account" size={24} color={colors.textTertiary} />
-      </TouchableOpacity>
+      </Pressable>
     ),
-    [dynamicStyles, colors]
+    [styles, t]
   );
 
   // Key extractor
@@ -144,28 +144,14 @@ export const SupervisorBottomSheet: React.FC<SupervisorBottomSheetProps> = ({
       isVisible={isVisible}
       onClose={onClose}
       onSelect={onSelect}
-      title="Select Supervisor"
-      placeholder="Search supervisors by name..."
+      title="Select supervisor"
+      placeholder="Search supervisors by name"
       searchFn={searchSupervisors}
       renderItem={renderSupervisorItem}
       keyExtractor={keyExtractor}
       currentValue={currentValue}
-      backdropOpacity={0.4}
       emptyInitialText="Search for a supervisor"
       emptySubText="Type at least 2 characters to find supervisors or admins"
     />
   );
 };
-
-// Static styles (layout only - colors are in dynamicStyles)
-const styles = StyleSheet.create({
-  supervisorContent: {
-    flex: 1,
-  },
-  supervisorMeta: {
-    marginTop: theme.spacing.xs,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: theme.spacing.xs,
-  },
-});

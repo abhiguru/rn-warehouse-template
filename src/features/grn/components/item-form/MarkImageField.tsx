@@ -7,11 +7,13 @@
  */
 
 import React, { forwardRef, useImperativeHandle, useRef, useState, useCallback } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import { View, Text, TextInput, Pressable, StyleSheet, Alert, Platform } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { Image } from 'expo-image';
-import theme from '@/theme';
 import { GRNImageData } from '@/store/slices/grnFormSlice';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { iconSize, radius, space, touchTarget, typography } from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
 
 // ============================================================================
 // TYPES
@@ -50,6 +52,8 @@ export const MarkImageField = forwardRef<MarkImageFieldRef, MarkImageFieldProps>
     },
     ref
   ) {
+    const styles = useThemedStyles(makeStyles);
+    const t = useTokens();
     const inputRef = useRef<TextInput>(null);
     const [isFocused, setIsFocused] = useState(false);
 
@@ -60,7 +64,10 @@ export const MarkImageField = forwardRef<MarkImageFieldRef, MarkImageFieldProps>
 
     const handleImagePickPress = useCallback(() => {
       if (images.length >= maxImages) {
-        Alert.alert('Limit Reached', `Maximum ${maxImages} images allowed per item.`);
+        Alert.alert(
+          'Photo limit reached',
+          `You can add up to ${maxImages} ${maxImages === 1 ? 'photo' : 'photos'} per item.`
+        );
         return;
       }
       onImagePick();
@@ -76,26 +83,28 @@ export const MarkImageField = forwardRef<MarkImageFieldRef, MarkImageFieldProps>
     }, []);
 
     return (
-      <View style={styles.container}>
+      <View>
         <View style={styles.labelRow}>
-          <Icon name="tag" size={16} color={theme.colors.gray[500]} />
-          <Text style={styles.label}>MARK</Text>
-          <TouchableOpacity
+          <Icon name="tag-outline" size={iconSize.sm} color={t.icon.secondary} />
+          <Text style={styles.label}>Mark</Text>
+          <Pressable
             onPress={handleImagePickPress}
-            style={styles.cameraButton}
-            activeOpacity={0.7}
+            style={({ pressed }) => [styles.cameraButton, pressed && styles.cameraButtonPressed]}
+            accessibilityRole="button"
+            accessibilityLabel="Add mark photo"
           >
-            <Icon name="camera" size={20} color={theme.colors.primary} />
-          </TouchableOpacity>
+            <Icon name="camera-outline" size={iconSize.md} color={t.brand.tint} />
+          </Pressable>
         </View>
 
         <TextInput
           ref={inputRef}
+          accessibilityLabel="Mark"
           style={[styles.input, isFocused && styles.inputFocused]}
           value={value}
           onChangeText={onChange}
-          placeholder="MARK001"
-          placeholderTextColor={theme.colors.gray[400]}
+          placeholder="For example MARK001"
+          placeholderTextColor={t.text.placeholder}
           returnKeyType="done"
           onSubmitEditing={onSubmitEditing}
           blurOnSubmit={false}
@@ -107,11 +116,13 @@ export const MarkImageField = forwardRef<MarkImageFieldRef, MarkImageFieldProps>
         {/* Image Previews */}
         {images.length > 0 && (
           <View style={styles.imagePreviewRow}>
-            {images.slice(0, maxImages).map((img) => (
-              <TouchableOpacity
+            {images.slice(0, maxImages).map((img, idx) => (
+              <Pressable
                 key={img.id}
-                style={styles.miniThumb}
+                style={({ pressed }) => [styles.miniThumb, pressed && styles.thumbPressed]}
                 onPress={() => onImageRemove(img.id)}
+                accessibilityRole="button"
+                accessibilityLabel={`Remove mark photo ${idx + 1}`}
               >
                 <Image
                   source={{ uri: img.imageUrl }}
@@ -120,10 +131,10 @@ export const MarkImageField = forwardRef<MarkImageFieldRef, MarkImageFieldProps>
                   cachePolicy="memory-disk"
                   transition={150}
                 />
-                <View style={styles.removeIconContainer}>
-                  <Icon name="close-circle" size={16} color={theme.colors.semantic.error} />
+                <View style={styles.removeBadge}>
+                  <Icon name="close" size={iconSize.sm} color={t.overlay.onImage} />
                 </View>
-              </TouchableOpacity>
+              </Pressable>
             ))}
             {images.length > maxImages && (
               <View style={styles.moreThumb}>
@@ -141,71 +152,87 @@ export const MarkImageField = forwardRef<MarkImageFieldRef, MarkImageFieldProps>
 // STYLES
 // ============================================================================
 
-const styles = StyleSheet.create({
-  container: {},
+const makeStyles = (t: ThemeTokens) => ({
   labelRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 6,
-    gap: 4,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    minHeight: 24,
+    marginBottom: space.xs,
+    gap: space.xs,
   },
   label: {
-    fontSize: 13,
-    fontWeight: '400',
-    color: theme.colors.fiori.text.secondary,
-    letterSpacing: 0.5,
-    lineHeight: 18,
+    ...typography.footnote,
+    color: t.text.secondary,
   },
   cameraButton: {
-    marginLeft: theme.spacing.sm,
+    marginLeft: 'auto' as const,
+    minWidth: touchTarget,
+    minHeight: touchTarget,
+    marginVertical: -(touchTarget - 24) / 2,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    borderRadius: radius.pill,
+  },
+  cameraButtonPressed: {
+    backgroundColor: t.brand.subtle,
   },
   input: {
-    backgroundColor: theme.colors.white,
+    ...typography.body,
+    backgroundColor: t.surface.field,
     borderWidth: 1,
-    borderColor: theme.colors.fiori.objectCell.divider,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    height: 44,
-    fontSize: theme.fontSize.base,
-    color: theme.colors.fiori.text.primary,
+    borderColor: t.border.field,
+    borderRadius: radius.field,
+    paddingHorizontal: space.md,
+    minHeight: 44,
+    color: t.text.primary,
+    ...Platform.select({
+      android: { textAlignVertical: 'center' as const, includeFontPadding: false },
+      default: {},
+    }),
   },
   inputFocused: {
-    borderColor: '#0057D2',
+    borderColor: t.border.fieldFocus,
     borderWidth: 2,
+    paddingHorizontal: space.md - 1,
   },
   imagePreviewRow: {
-    flexDirection: 'row',
-    marginTop: theme.spacing.xs,
-    gap: 4,
+    flexDirection: 'row' as const,
+    marginTop: space.xs,
+    gap: space.xs,
   },
   miniThumb: {
     width: 128,
     height: 128,
-    borderRadius: 12,
-    backgroundColor: theme.colors.gray[200],
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
+    borderRadius: radius.card,
+    backgroundColor: t.surface.cardActive,
+    overflow: 'hidden' as const,
   },
-  removeIconContainer: {
-    position: 'absolute',
-    top: -4,
-    right: -4,
-    backgroundColor: 'white',
-    borderRadius: 8,
+  thumbPressed: {
+    opacity: 0.8,
+  },
+  removeBadge: {
+    position: 'absolute' as const,
+    top: space.xs,
+    right: space.xs,
+    width: 28,
+    height: 28,
+    borderRadius: radius.pill,
+    backgroundColor: t.overlay.scrim,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
   },
   moreThumb: {
     width: 128,
     height: 128,
-    borderRadius: 12,
-    backgroundColor: theme.colors.gray[300],
-    alignItems: 'center',
-    justifyContent: 'center',
+    borderRadius: radius.card,
+    backgroundColor: t.surface.cardActive,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
   },
   moreText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: theme.colors.gray[600],
+    ...typography.headline,
+    fontVariant: ['tabular-nums' as const],
+    color: t.text.secondary,
   },
 });
 

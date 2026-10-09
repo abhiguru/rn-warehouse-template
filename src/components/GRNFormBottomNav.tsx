@@ -1,16 +1,10 @@
 import React, { useEffect, useRef } from 'react';
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  StyleSheet,
-  Animated,
-  ActivityIndicator,
-  Platform,
-} from 'react-native';
+import { View, Text, Pressable, Animated, ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
-import theme from '@/theme';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { iconSize, layout, motion, radius, space, touchTarget, typography } from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
 
 export interface GRNFormBottomNavProps {
   currentStep: number;
@@ -24,8 +18,81 @@ export interface GRNFormBottomNavProps {
 }
 
 const PROGRESS_BAR_HEIGHT = 4;
-const ANIMATION_DURATION = 300;
 
+const makeStyles = (t: ThemeTokens) => ({
+  container: {
+    position: 'absolute' as const,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: t.surface.card,
+    paddingTop: space.sm,
+    paddingHorizontal: layout.marginCompact,
+    ...t.shadow[3],
+  },
+  progressTrack: {
+    height: PROGRESS_BAR_HEIGHT,
+    width: '100%' as const,
+    marginBottom: space.md,
+    borderRadius: radius.pill,
+    backgroundColor: t.brand.subtleStrong,
+    overflow: 'hidden' as const,
+  },
+  progressFill: {
+    height: '100%' as const,
+    backgroundColor: t.brand.fill,
+    borderRadius: radius.pill,
+  },
+  buttonsContainer: {
+    flexDirection: 'row' as const,
+    gap: space.sm,
+    alignItems: 'center' as const,
+  },
+  button: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    paddingHorizontal: space.lg,
+    borderRadius: radius.button,
+    minHeight: Math.max(touchTarget, 48),
+    gap: space.xs,
+  },
+  backButton: {
+    flex: 1,
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: t.border.button,
+  },
+  backButtonPressed: {
+    backgroundColor: t.brand.subtle,
+  },
+  backButtonText: {
+    ...typography.callout,
+    color: t.brand.tint,
+  },
+  nextButton: {
+    flex: 2,
+    backgroundColor: t.brand.fill,
+  },
+  nextButtonPressed: {
+    backgroundColor: t.brand.fillPressed,
+  },
+  nextButtonFullWidth: {
+    flex: 1,
+  },
+  nextButtonText: {
+    ...typography.callout,
+    color: t.brand.onFill,
+  },
+  buttonDisabled: {
+    opacity: t.interaction.disabledOpacity,
+  },
+});
+
+/**
+ * Bottom bar of the GRN form flow: progress, Back (secondary) and Next or
+ * Create (primary). Sits on surface.card with shadow[3] and adds the bottom inset.
+ */
 export default function GRNFormBottomNav({
   currentStep,
   totalSteps,
@@ -37,16 +104,17 @@ export default function GRNFormBottomNav({
   showPrevious = true,
 }: GRNFormBottomNavProps) {
   const insets = useSafeAreaInsets();
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
   const progressAnim = useRef(new Animated.Value(0)).current;
 
   // Calculate progress percentage
   const progressPercentage = (currentStep / totalSteps) * 100;
 
   useEffect(() => {
-    // Animate progress bar
     Animated.timing(progressAnim, {
       toValue: progressPercentage,
-      duration: ANIMATION_DURATION,
+      duration: motion.standard,
       useNativeDriver: false,
     }).start();
   }, [progressPercentage, progressAnim]);
@@ -60,7 +128,7 @@ export default function GRNFormBottomNav({
   const getNextLabel = () => {
     if (nextLabel) return nextLabel;
     if (currentStep === totalSteps) return 'Create GRN';
-    return `Next: Step ${currentStep + 1}`;
+    return `Next: step ${currentStep + 1}`;
   };
 
   const handlePrevious = () => {
@@ -76,189 +144,71 @@ export default function GRNFormBottomNav({
   };
 
   const showPreviousButton = showPrevious && onPrevious && currentStep > 1;
+  const isLastStep = currentStep >= totalSteps;
 
   return (
-    <View
-      style={[
-        styles.container,
-        {
-          paddingBottom: insets.bottom || theme.spacing.md,
-        },
-      ]}
-    >
-      {/* Progress Bar */}
-      <View style={styles.progressBarContainer}>
-        <View style={styles.progressBarBackground} />
-        <Animated.View
-          style={[
-            styles.progressBarFill,
-            {
-              width: progressWidth,
-            },
-          ]}
-        />
+    <View style={[styles.container, { paddingBottom: Math.max(insets.bottom, space.md) }]}>
+      <View
+        style={styles.progressTrack}
+        accessible
+        accessibilityRole="progressbar"
+        accessibilityLabel={`Step ${currentStep} of ${totalSteps}`}
+        accessibilityValue={{ min: 0, max: totalSteps, now: currentStep }}
+      >
+        <Animated.View style={[styles.progressFill, { width: progressWidth }]} />
       </View>
 
-      {/* Navigation Buttons */}
       <View style={styles.buttonsContainer}>
-        {showPreviousButton ? (
-          <TouchableOpacity
-            style={[
+        {showPreviousButton && (
+          <Pressable
+            style={({ pressed }) => [
               styles.button,
-              styles.previousButton,
+              styles.backButton,
+              pressed && styles.backButtonPressed,
               isLoading && styles.buttonDisabled,
             ]}
             onPress={handlePrevious}
             disabled={isLoading}
-            activeOpacity={0.7}
             accessibilityRole="button"
-            accessibilityLabel="Go to previous step"
+            accessibilityLabel="Back to the previous step"
             accessibilityState={{ disabled: isLoading }}
           >
-            <Ionicons
-              name="chevron-back"
-              size={20}
-              color={theme.colors.gray[700]}
-              style={styles.buttonIcon}
-            />
-            <Text style={styles.previousButtonText}>Previous</Text>
-          </TouchableOpacity>
-        ) : (
-          <View style={styles.buttonSpacer} />
+            <MaterialCommunityIcons name="chevron-left" size={iconSize.md} color={t.brand.tint} />
+            <Text style={styles.backButtonText}>Back</Text>
+          </Pressable>
         )}
 
-        <TouchableOpacity
-          style={[
+        <Pressable
+          style={({ pressed }) => [
             styles.button,
             styles.nextButton,
             !showPreviousButton && styles.nextButtonFullWidth,
+            pressed && styles.nextButtonPressed,
             (nextDisabled || isLoading) && styles.buttonDisabled,
           ]}
           onPress={handleNext}
           disabled={nextDisabled || isLoading}
-          activeOpacity={0.7}
           accessibilityRole="button"
           accessibilityLabel={isLoading ? 'Creating GRN' : getNextLabel()}
           accessibilityState={{ disabled: nextDisabled || isLoading, busy: isLoading }}
         >
           {isLoading ? (
             <>
-              <ActivityIndicator size="small" color={theme.colors.white} />
-              <Text style={styles.nextButtonText}>Creating...</Text>
+              <ActivityIndicator size="small" color={t.brand.onFill} />
+              <Text style={styles.nextButtonText}>Creating GRN…</Text>
             </>
           ) : (
             <>
               <Text style={styles.nextButtonText}>{getNextLabel()}</Text>
-              {currentStep < totalSteps ? (
-                <Ionicons
-                  name="chevron-forward"
-                  size={20}
-                  color={theme.colors.white}
-                  style={styles.buttonIcon}
-                />
-              ) : (
-                <Ionicons
-                  name="checkmark"
-                  size={20}
-                  color={theme.colors.white}
-                  style={styles.buttonIcon}
-                />
-              )}
+              <MaterialCommunityIcons
+                name={isLastStep ? 'check' : 'chevron-right'}
+                size={iconSize.md}
+                color={t.brand.onFill}
+              />
             </>
           )}
-        </TouchableOpacity>
+        </Pressable>
       </View>
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: 'rgba(249, 250, 251, 0.98)', // Semi-transparent white
-    borderTopWidth: 1,
-    borderTopColor: theme.colors.gray[200],
-    paddingTop: theme.spacing.xs,
-    paddingHorizontal: theme.spacing.lg,
-    ...Platform.select({
-      ios: {
-        shadowColor: theme.colors.black,
-        shadowOffset: { width: 0, height: -2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
-      },
-      android: {
-        elevation: 8,
-      },
-    }),
-  },
-  progressBarContainer: {
-    height: PROGRESS_BAR_HEIGHT,
-    width: '100%',
-    position: 'relative',
-    marginBottom: theme.spacing.md,
-    borderRadius: PROGRESS_BAR_HEIGHT / 2,
-    overflow: 'hidden',
-  },
-  progressBarBackground: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: theme.colors.gray[200],
-    borderRadius: PROGRESS_BAR_HEIGHT / 2,
-  },
-  progressBarFill: {
-    height: '100%',
-    backgroundColor: theme.colors.primary,
-    borderRadius: PROGRESS_BAR_HEIGHT / 2,
-  },
-  buttonsContainer: {
-    flexDirection: 'row',
-    gap: theme.spacing.md,
-    alignItems: 'center',
-  },
-  button: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: theme.spacing.md,
-    paddingHorizontal: theme.spacing.lg,
-    borderRadius: theme.borderRadius.lg,
-    minHeight: 48, // Android touch target
-    gap: theme.spacing.xs,
-  },
-  previousButton: {
-    flex: 1,
-    backgroundColor: theme.colors.gray[100],
-    borderWidth: 1,
-    borderColor: theme.colors.gray[300],
-  },
-  previousButtonText: {
-    fontSize: theme.fontSize.base,
-    fontWeight: '600',
-    color: theme.colors.gray[700],
-  },
-  nextButton: {
-    flex: 2,
-    backgroundColor: theme.colors.primary,
-  },
-  nextButtonFullWidth: {
-    flex: 1,
-  },
-  nextButtonText: {
-    fontSize: theme.fontSize.base,
-    fontWeight: '600',
-    color: theme.colors.white,
-    letterSpacing: 0.3,
-  },
-  buttonDisabled: {
-    opacity: 0.5,
-  },
-  buttonSpacer: {
-    flex: 0,
-  },
-  buttonIcon: {
-    marginHorizontal: -4, // Tighten spacing
-  },
-});

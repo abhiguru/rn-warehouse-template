@@ -2,35 +2,65 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import {
   View,
   Text,
-  FlatList,
-  TouchableOpacity,
+  Pressable,
   TextInput,
   StyleSheet,
   ActivityIndicator,
-  Switch,
   Alert,
-  KeyboardAvoidingView,
+  BackHandler,
   Platform,
-  Image,
-  ScrollView,
   Animated,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { BottomSheetModal, BottomSheetView, BottomSheetFlatList, BottomSheetScrollView } from '@gorhom/bottom-sheet';
-import Slider from '@react-native-community/slider';
-import theme from '@/theme';
+import {
+  BottomSheetBackdrop,
+  BottomSheetModal,
+  BottomSheetFlatList,
+  type BottomSheetBackdropProps,
+} from '@gorhom/bottom-sheet';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import {
+  fontWeight,
+  iconSize,
+  layout,
+  radius,
+  space,
+  touchTarget,
+  typography,
+  type ThemeTokens,
+} from '@/theme/tokens';
+import { parseLocalISODate } from '@/utils/formatters';
 import { OrderService } from '@/services/order-service';
 import { StockService } from '@/services/stock-service';
 import { SessionRecentItemsService } from '@/services/session-recent-items-service';
 import { GRNItem, Catalog, EnhancedSearchFilters, SearchMetadata } from '@/types/order.types';
-import StockIndicator from './StockIndicator';
 import RecentItemsQuickAdd, { QuickAddItem } from './RecentItemsQuickAdd';
 
-// SAP Fiori semantic colors for stock status
-import { useListColors } from '@/hooks/useListColors';
-import { listColors } from '@/theme/listColors'; // Static colors for StyleSheet defaults
+type StockStatus = 'positive' | 'critical' | 'negative';
 
-// Helper components moved inside main component to access colors from hook
+// Status words and icons per guide §3.5 (stock level: low stock is critical).
+const STOCK_LABEL: Record<StockStatus, string> = {
+  positive: 'In stock',
+  critical: 'Low stock',
+  negative: 'Out of stock',
+};
+const STOCK_ICON: Record<StockStatus, string> = {
+  positive: 'check-circle',
+  critical: 'alert',
+  negative: 'alert-circle',
+};
+
+const COUNT_FORMAT = new Intl.NumberFormat('en-IN');
+const WEIGHT_FORMAT = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 });
+const formatCount = (n: number) => COUNT_FORMAT.format(n);
+const formatBags = (n: number) => `${COUNT_FORMAT.format(n)} ${n === 1 ? 'bag' : 'bags'}`;
+
+/** "9 Oct 2026" (guide §12.3). Date-only strings are read in local time. */
+const formatItemDate = (value: string): string | null => {
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(value) ? parseLocalISODate(value) : new Date(value);
+  if (isNaN(date.getTime())) return null;
+  return date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+};
 
 interface ItemCatalogBrowserProps {
   isVisible: boolean;
@@ -85,8 +115,8 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
   customerId,
   currentOrderItems = [],
 }) => {
-  // Theme colors for dark mode support
-  const colors = useListColors();
+  const t = useTokens();
+  const styles = useThemedStyles(makeStyles);
 
   const bottomSheetModalRef = useRef<BottomSheetModal>(null);
   const snapPoints = useMemo(() => ['95%'], []);
@@ -229,12 +259,12 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
         });
       } else {
         console.error('[ItemCatalogBrowser] Failed to load items:', result.message);
-        Alert.alert('Error', result.message || 'Failed to load items');
+        Alert.alert("Couldn't load items", 'Check your connection and try again.');
       }
     } catch (error) {
       if (!isCurrent()) return;
       console.error('[ItemCatalogBrowser] Error fetching items:', error);
-      Alert.alert('Error', 'Failed to load items');
+      Alert.alert("Couldn't load items", 'Check your connection and try again.');
     } finally {
       if (isCurrent()) setLoading(false);
     }
@@ -586,7 +616,7 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
     }));
 
     if (itemsToAdd.length === 0) {
-      Alert.alert('No Items Selected', 'Please select at least one item');
+      Alert.alert('No items selected', 'Choose a quantity for at least one item, then tap Add.');
       return;
     }
 
@@ -597,9 +627,9 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
   // Helper functions for search UI
   const getSearchPlaceholder = useCallback(() => {
     if (!searchQuery.trim()) {
-      return 'Search items... (try "500" for weight or "rice" for name)';
+      return 'Search by name, mark or weight, e.g. 10-20';
     }
-    return 'Search items...';
+    return 'Search items';
   }, [searchQuery]);
 
   const getSearchTypeIndicator = useCallback(() => {
@@ -748,30 +778,58 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
     );
 
     const stockStatus = getStockStatus(item.current_stock, item.original_quantity);
+    const status = t.status[stockStatus];
+    const stockWord = STOCK_LABEL[stockStatus];
+    const grnDate = item.grn_date ? formatItemDate(item.grn_date) : null;
+    const weightText = item.weight ? `${WEIGHT_FORMAT.format(item.weight)} kg` : null;
+    const rowLabel = [
+      item.name,
+      item.package_mark ? `mark ${item.package_mark}` : null,
+      item.grn_number ? `GRN ${item.grn_number}` : null,
+      weightText,
+      `${stockWord}, ${formatBags(item.current_stock)} of ${formatBags(item.original_quantity)}`,
+      isInExistingOrder ? 'already in order' : null,
+      quantity > 0 ? `${formatBags(quantity)} selected` : null,
+    ].filter(Boolean).join(', ');
+
+    const preset = (amount: number, label: string, a11y: string, disabled = false) => (
+      <Pressable
+        key={label}
+        style={({ pressed }) => [styles.presetButton, pressed && styles.secondaryPressed, disabled && styles.disabled]}
+        onPress={() => handleQuantityChange(item, amount)}
+        disabled={disabled}
+        accessibilityRole="button"
+        accessibilityLabel={a11y}
+        accessibilityState={{ disabled }}
+      >
+        <Text style={styles.presetButtonText}>{label}</Text>
+      </Pressable>
+    );
+
+    const stepper = (next: number, label: string, a11y: string, disabled: boolean) => (
+      <Pressable
+        key={label}
+        style={({ pressed }) => [styles.quantityButton, pressed && styles.secondaryPressed, disabled && styles.disabled]}
+        onPress={() => handleQuantityChange(item, next)}
+        disabled={disabled}
+        accessibilityRole="button"
+        accessibilityLabel={a11y}
+        accessibilityState={{ disabled }}
+      >
+        <Text style={label.length > 1 ? styles.smallButtonText : styles.quantityButtonText}>{label}</Text>
+      </Pressable>
+    );
 
     return (
-      <View style={[
-        styles.itemCard,
-        { backgroundColor: colors.cellBackground },
-        isInExistingOrder && { backgroundColor: colors.primaryLight, borderLeftWidth: 4, borderLeftColor: colors.primary }
-      ]}>
+      <View style={[styles.itemCard, isInExistingOrder && styles.itemCardInOrder]}>
         {/* SAP Fiori Object Cell Row */}
-        <View style={styles.objectCellRow}>
-          {/* Left: Status Icon (40dp) */}
-          <View style={[
-            styles.statusIconContainer,
-            stockStatus === 'positive' && { backgroundColor: colors.successLight, borderColor: colors.success },
-            stockStatus === 'critical' && { backgroundColor: colors.warningLight, borderColor: colors.warning },
-            stockStatus === 'negative' && { backgroundColor: colors.errorLight, borderColor: colors.error },
-          ]}>
+        <View style={styles.objectCellRow} accessible accessibilityLabel={rowLabel}>
+          {/* Left: Status Icon */}
+          <View style={[styles.statusIconContainer, { backgroundColor: status.background, borderColor: status.border }]}>
             <Icon
               name={stockStatus === 'negative' ? 'package-variant-remove' : 'package-variant'}
-              size={20}
-              color={
-                stockStatus === 'positive' ? colors.success :
-                stockStatus === 'critical' ? colors.warning :
-                colors.error
-              }
+              size={iconSize.md}
+              color={status.text}
             />
           </View>
 
@@ -779,171 +837,99 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
           <View style={styles.mainContent}>
             {/* Title Row */}
             <View style={styles.titleRow}>
-              <Text style={[styles.titleText, { color: colors.gray900 }]} numberOfLines={1}>{item.name}</Text>
-              {item.grn_date && (
-                <Text style={[styles.grnDateText, { color: colors.gray500 }]}>
-                  {new Date(item.grn_date).toLocaleDateString()}
-                </Text>
-              )}
+              <Text style={styles.titleText} numberOfLines={2}>{item.name}</Text>
               {isInExistingOrder && (
-                <View style={[styles.alreadyInOrderBadge, { borderColor: colors.primary }]}>
-                  <Text style={[styles.alreadyInOrderBadgeText, { color: colors.primary }]}>In order</Text>
+                <View style={styles.alreadyInOrderBadge}>
+                  <Icon name="check" size={iconSize.sm} color={t.brand.tint} />
+                  <Text style={styles.alreadyInOrderBadgeText} maxFontSizeMultiplier={1.6}>In order</Text>
                 </View>
               )}
             </View>
 
             {/* Subtitle Row - Package Mark */}
             <View style={styles.subtitleRow}>
-              <Text style={[styles.subtitleText, { color: colors.gray600 }]} numberOfLines={1}>
+              <Text style={styles.subtitleText} numberOfLines={1}>
                 {item.package_mark || 'No mark'}
               </Text>
             </View>
 
-            {/* Footer Row - GRN Number & Weight */}
+            {/* Footer Row - GRN Number, Date & Weight */}
             <View style={styles.footerRow}>
-              {item.grn_number && (
+              {item.grn_number ? (
                 <View style={styles.footerItem}>
-                  <Icon name="file-document-outline" size={12} color={colors.gray500} />
-                  <Text style={[styles.footerText, { color: colors.gray500 }]}>{item.grn_number}</Text>
+                  <Icon name="package-down" size={iconSize.sm} color={t.icon.secondary} />
+                  <Text style={styles.footerText}>GRN {item.grn_number}</Text>
                 </View>
-              )}
-              {item.grn_number && item.weight && <View style={[styles.footerDot, { backgroundColor: colors.gray400 }]} />}
-              {item.weight && (
+              ) : null}
+              {grnDate ? <Text style={styles.footerText}>{grnDate}</Text> : null}
+              {weightText ? (
                 <View style={styles.footerItem}>
-                  <Icon name="scale" size={12} color={colors.gray500} />
-                  <Text style={[styles.footerText, { color: colors.gray500 }]}>{item.weight}kg</Text>
+                  <Icon name="scale" size={iconSize.sm} color={t.icon.secondary} />
+                  <Text style={styles.footerText}>{weightText}</Text>
                 </View>
-              )}
+              ) : null}
             </View>
           </View>
 
-          {/* Right: Attribute Stack */}
+          {/* Right: main value with its status tag under it */}
           <View style={styles.attributeStack}>
-            {/* Stock Badge */}
-            <View style={[
-              styles.statusBadge,
-              stockStatus === 'positive' && { backgroundColor: colors.success },
-              stockStatus === 'critical' && { backgroundColor: colors.warning },
-              stockStatus === 'negative' && { backgroundColor: colors.error },
-            ]}>
-              <Text style={[styles.statusBadgeText, { color: colors.cellBackground }]}>
-                {stockStatus === 'negative' ? 'OUT' : stockStatus === 'critical' ? 'LOW' : 'OK'}
-              </Text>
-            </View>
-
-            {/* Stock Value */}
             <View style={styles.stockValueContainer}>
               <Animated.Text style={[
                 styles.stockValueText,
-                stockStatus === 'positive' && { color: colors.success },
-                stockStatus === 'critical' && { color: colors.warning },
-                stockStatus === 'negative' && { color: colors.error },
-                flashingItems.has(item.id) && { color: colors.error },
+                flashingItems.has(item.id) && styles.stockValueFlash,
               ]}>
-                {item.current_stock}
+                {formatCount(item.current_stock)}
               </Animated.Text>
-              <Text style={[styles.stockLabel, { color: colors.gray500 }]}>/ {item.original_quantity}</Text>
+              <Text style={styles.stockLabel}>of {formatBags(item.original_quantity)}</Text>
+            </View>
+            <View style={[styles.statusBadge, { backgroundColor: status.background }]}>
+              <Icon name={STOCK_ICON[stockStatus]} size={iconSize.sm} color={status.text} />
+              <Text style={[styles.statusBadgeText, { color: status.text }]} maxFontSizeMultiplier={1.6}>
+                {stockWord}
+              </Text>
             </View>
           </View>
         </View>
 
         {/* Quantity Section with Presets + Stepper */}
-        <View style={[styles.quantitySection, { borderTopColor: colors.cellDivider }]}>
+        <View style={styles.quantitySection}>
           {/* Preset Buttons Row */}
           {quantity === 0 && (
             <View style={styles.presetButtonsRow}>
-              <TouchableOpacity
-                style={[styles.presetButton, { borderColor: colors.primary }, item.current_stock < 10 && { borderColor: colors.gray300, opacity: 0.4 }]}
-                onPress={() => handleQuantityChange(item, 10)}
-                disabled={item.current_stock < 10}
-              >
-                <Text style={[styles.presetButtonText, { color: colors.primary }, item.current_stock < 10 && { color: colors.gray500 }]}>10</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.presetButton, { borderColor: colors.primary }, item.current_stock < 50 && { borderColor: colors.gray300, opacity: 0.4 }]}
-                onPress={() => handleQuantityChange(item, 50)}
-                disabled={item.current_stock < 50}
-              >
-                <Text style={[styles.presetButtonText, { color: colors.primary }, item.current_stock < 50 && { color: colors.gray500 }]}>50</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.presetButton, { borderColor: colors.primary }, item.current_stock < 100 && { borderColor: colors.gray300, opacity: 0.4 }]}
-                onPress={() => handleQuantityChange(item, 100)}
-                disabled={item.current_stock < 100}
-              >
-                <Text style={[styles.presetButtonText, { color: colors.primary }, item.current_stock < 100 && { color: colors.gray500 }]}>100</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.presetButton, { borderColor: colors.primary }]}
-                onPress={() => handleQuantityChange(item, 1)}
-              >
-                <Text style={[styles.presetButtonText, { color: colors.primary }]}>+</Text>
-              </TouchableOpacity>
+              {preset(10, '+10', `Add 10 bags of ${item.name}`, item.current_stock < 10)}
+              {preset(50, '+50', `Add 50 bags of ${item.name}`, item.current_stock < 50)}
+              {preset(100, '+100', `Add 100 bags of ${item.name}`, item.current_stock < 100)}
+              {preset(1, '+1', `Add 1 bag of ${item.name}`)}
             </View>
           )}
 
-          {/* Stepper Controls (show when quantity > 0 OR if stock is 0) */}
+          {/* Stepper Controls (show when quantity > 0) */}
           {quantity > 0 && (
             <View style={styles.quantityControlsContainer}>
               <View style={styles.quantityControls}>
-                <TouchableOpacity
-                  style={[styles.quantityButton, { backgroundColor: colors.cellBackground, borderColor: colors.gray200 }, quantity < 10 && { backgroundColor: colors.gray50, opacity: 0.5 }]}
-                  onPress={() => handleQuantityChange(item, Math.max(0, quantity - 10))}
-                  disabled={quantity < 10}
+                {stepper(Math.max(0, quantity - 10), '−10', `Remove 10 bags of ${item.name}`, quantity < 10)}
+                {stepper(quantity - 1, '−', `Remove 1 bag of ${item.name}`, quantity === 0)}
+                <Text
+                  style={styles.quantity}
+                  accessibilityLabel={`${formatBags(quantity)} of ${item.name} selected`}
+                  accessibilityLiveRegion="polite"
                 >
-                  <Text style={[
-                    styles.quantityButtonText,
-                    styles.smallButtonText,
-                    { color: colors.gray600 },
-                    quantity < 10 && { color: colors.gray400 }
-                  ]}>-10</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[styles.quantityButton, { backgroundColor: colors.cellBackground, borderColor: colors.gray200 }, quantity === 0 && { backgroundColor: colors.gray50, opacity: 0.5 }]}
-                  onPress={() => handleQuantityChange(item, quantity - 1)}
-                  disabled={quantity === 0}
-                >
-                  <Text style={[
-                    styles.quantityButtonText,
-                    { color: colors.gray600 },
-                    quantity === 0 && { color: colors.gray400 }
-                  ]}>−</Text>
-                </TouchableOpacity>
-
-                <Text style={[styles.quantity, { color: colors.gray900 }]}>{quantity}</Text>
-
-                <TouchableOpacity
-                  style={[styles.quantityButton, { backgroundColor: colors.cellBackground, borderColor: colors.gray200 }, item.current_stock === 0 && { backgroundColor: colors.gray50, opacity: 0.5 }]}
-                  onPress={() => handleQuantityChange(item, quantity + 1)}
-                  disabled={item.current_stock === 0}
-                >
-                  <Text style={[
-                    styles.quantityButtonText,
-                    { color: colors.gray600 },
-                    item.current_stock === 0 && { color: colors.gray400 }
-                  ]}>+</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[styles.quantityButton, { backgroundColor: colors.cellBackground, borderColor: colors.gray200 }, (quantity + 10 > item.current_stock || item.current_stock === 0) && { backgroundColor: colors.gray50, opacity: 0.5 }]}
-                  onPress={() => handleQuantityChange(item, Math.min(item.current_stock, quantity + 10))}
-                  disabled={quantity + 10 > item.current_stock || item.current_stock === 0}
-                >
-                  <Text style={[
-                    styles.quantityButtonText,
-                    styles.smallButtonText,
-                    { color: colors.gray600 },
-                    (quantity + 10 > item.current_stock || item.current_stock === 0) && { color: colors.gray400 }
-                  ]}>+10</Text>
-                </TouchableOpacity>
+                  {formatCount(quantity)}
+                </Text>
+                {stepper(quantity + 1, '+', `Add 1 bag of ${item.name}`, item.current_stock === 0)}
+                {stepper(
+                  Math.min(item.current_stock, quantity + 10),
+                  '+10',
+                  `Add 10 bags of ${item.name}`,
+                  quantity + 10 > item.current_stock || item.current_stock === 0
+                )}
               </View>
             </View>
           )}
         </View>
       </View>
     );
-  }, [selectedItems, currentOrderItems, colors, getStockStatus, handleQuantityChange]);
+  }, [selectedItems, currentOrderItems, getStockStatus, handleQuantityChange, styles, t, flashingItems]);
 
   const handleDismiss = useCallback(() => {
     // Reset state when dismissed
@@ -953,6 +939,28 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
     setShowSelectedItems(false);
     onClose();
   }, [onClose]);
+
+  // Android back closes the sheet before anything else (guide §13.9, §15).
+  useEffect(() => {
+    if (!isVisible) return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      bottomSheetModalRef.current?.dismiss();
+      return true;
+    });
+    return () => sub.remove();
+  }, [isVisible]);
+
+  // Scrim behind the sheet; tapping it closes the sheet.
+  const renderBackdrop = useCallback((props: BottomSheetBackdropProps) => (
+    <BottomSheetBackdrop
+      {...props}
+      appearsOnIndex={0}
+      disappearsOnIndex={-1}
+      opacity={1}
+      pressBehavior="close"
+      style={[props.style, styles.backdrop]}
+    />
+  ), [styles]);
 
   // Memoized keyExtractor for FlatList performance
   const keyExtractor = useCallback((item: GRNItem) => item.id, []);
@@ -968,41 +976,61 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
   const listHeaderComponent = useMemo(() => (
     <>
       {/* SAP Fiori Bottom Sheet Header */}
-      <View style={[styles.bottomSheetHeader, { backgroundColor: colors.cellBackground }]}>
-        <TouchableOpacity onPress={onClose} style={styles.headerButton}>
-          <Text style={[styles.headerButtonTextCancel, { color: colors.primary }]}>Cancel</Text>
-        </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: colors.gray900 }]}>Add Items</Text>
-        <TouchableOpacity
-          onPress={handleAddItems}
-          style={[styles.headerButton, selectionSummary.count === 0 && styles.headerButtonDisabled]}
-          disabled={selectionSummary.count === 0}
+      <View style={styles.bottomSheetHeader}>
+        <Pressable
+          onPress={onClose}
+          style={({ pressed }) => [styles.headerButton, pressed && styles.headerButtonPressed]}
+          accessibilityRole="button"
+          accessibilityLabel="Cancel adding items"
         >
-          <Text style={[
-            styles.headerButtonTextAction,
-            { color: colors.primary },
-            selectionSummary.count === 0 && { color: colors.gray500 }
-          ]}>
-            Add ({selectionSummary.count})
+          <Text style={styles.headerButtonTextCancel}>Cancel</Text>
+        </Pressable>
+        <Text style={styles.headerTitle} accessibilityRole="header">Add items</Text>
+        <Pressable
+          onPress={handleAddItems}
+          style={({ pressed }) => [styles.headerButton, styles.headerButtonEnd, pressed && styles.headerButtonPressed]}
+          accessibilityRole="button"
+          accessibilityLabel={
+            selectionSummary.count === 0
+              ? 'Add items to order'
+              : `Add ${selectionSummary.count} ${selectionSummary.count === 1 ? 'item' : 'items'} to order`
+          }
+        >
+          <Text style={styles.headerButtonTextAction}>
+            {selectionSummary.count > 0 ? `Add (${selectionSummary.count})` : 'Add'}
           </Text>
-        </TouchableOpacity>
+        </Pressable>
       </View>
       {/* Fiori Divider */}
-      <View style={[styles.headerDivider, { backgroundColor: colors.cellDivider }]} />
+      <View style={styles.headerDivider} />
 
       {/* Keep stock search available even when the current result is empty. */}
-      <View style={[styles.topSearchContainer, { backgroundColor: colors.cellBackground }]}>
-        <TextInput
-          accessibilityLabel="Search stock items"
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-          placeholder={getSearchPlaceholder()}
-          placeholderTextColor={colors.gray500}
-          autoCapitalize="none"
-          autoCorrect={false}
-          returnKeyType="search"
-          style={[styles.topSearchInput, { color: colors.gray900, backgroundColor: colors.gray100 }]}
-        />
+      <View style={styles.topSearchContainer}>
+        <View style={styles.searchField}>
+          <Icon name="magnify" size={iconSize.md} color={t.icon.secondary} />
+          <TextInput
+            accessibilityLabel="Search stock items"
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholder={getSearchPlaceholder()}
+            placeholderTextColor={t.text.placeholder}
+            autoCapitalize="none"
+            autoCorrect={false}
+            returnKeyType="search"
+            style={styles.topSearchInput}
+          />
+          {searchQuery.length > 0 && (
+            <Pressable
+              onPress={() => setSearchQuery('')}
+              hitSlop={space.md}
+              style={styles.clearButton}
+              accessibilityRole="button"
+              accessibilityLabel="Clear search"
+            >
+              <Icon name="close-circle" size={iconSize.md} color={t.icon.secondary} />
+            </Pressable>
+          )}
+        </View>
       </View>
 
       {/* Recent Items Quick Add */}
@@ -1016,78 +1044,83 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
         recentlyAddedItems={recentlyAddedItems.map(item => ({ id: item.id, name: item.name }))}
       />
     </>
-  ), [colors, onClose, handleAddItems, selectionSummary.count, customerId, handleRecentItemSelected, loading, customerAllItems, searchQuery, getSearchPlaceholder, recentItemsRefreshTrigger, recentlyAddedItems]);
+  ), [styles, t, onClose, handleAddItems, selectionSummary.count, customerId, handleRecentItemSelected, loading, customerAllItems, searchQuery, getSearchPlaceholder, recentItemsRefreshTrigger, recentlyAddedItems]);
 
   // Memoized ListEmptyComponent
-  const listEmptyComponent = useMemo(() => (
-    <View style={styles.emptyContainer}>
-      {searchQuery.trim() && filteredItems.length === 0 ? (
-        <>
-          <Text style={[styles.emptyText, { color: colors.gray900 }]}>
-            No stock available for "{searchQuery}"
-          </Text>
-          <Text style={[styles.emptySubtext, { color: colors.gray500 }]}>
-            This item is currently out of stock
-          </Text>
-        </>
-      ) : (
-        <Text style={[styles.emptyText, { color: colors.gray900 }]}>
-          No items available
-        </Text>
-      )}
-    </View>
-  ), [searchQuery, filteredItems.length, colors]);
+  const listEmptyComponent = useMemo(() => {
+    const searching = Boolean(searchQuery.trim()) && filteredItems.length === 0;
+    return (
+      <View style={styles.emptyContainer}>
+        <Icon
+          name={searching ? 'magnify' : 'cube-outline'}
+          size={iconSize.hero}
+          color={t.icon.secondary}
+        />
+        {searching ? (
+          <>
+            <Text style={styles.emptyText} accessibilityRole="header">
+              No stock available for "{searchQuery}"
+            </Text>
+            <Text style={styles.emptySubtext}>
+              Try fewer letters, another package mark or a weight range such as 10-20.
+            </Text>
+          </>
+        ) : (
+          <>
+            <Text style={styles.emptyText} accessibilityRole="header">
+              No items in stock
+            </Text>
+            <Text style={styles.emptySubtext}>
+              Items from this customer's GRNs appear here while they have stock.
+            </Text>
+          </>
+        )}
+      </View>
+    );
+  }, [searchQuery, filteredItems.length, styles, t]);
 
   // Memoized ListFooterComponent
   const listFooterComponent = useMemo(() => (
     <>
       {isLoadingMore && (
         <View style={styles.loadMoreRow} accessibilityLabel="Loading more items">
-          <ActivityIndicator size="small" color={colors.primary} />
-          <Text style={[styles.loadMoreText, { color: colors.gray600 }]}>Loading more...</Text>
+          <ActivityIndicator size="small" color={t.brand.tint} />
+          <Text style={styles.loadMoreText}>Loading more items…</Text>
         </View>
       )}
       {/* Catalog Filter */}
       {catalogs.length > 0 && (
         <View style={styles.bottomCatalogFilter}>
-          <TouchableOpacity
-            style={[styles.catalogChip, { backgroundColor: colors.gray100 }, !selectedCatalog && { backgroundColor: colors.primary }]}
-            onPress={() => setSelectedCatalog(null)}
-          >
-            <Text style={[
-              styles.catalogChipText,
-              { color: colors.gray900 },
-              !selectedCatalog && { color: colors.cellBackground }
-            ]}>
-              All
-            </Text>
-          </TouchableOpacity>
-          {catalogs.map(catalog => (
-            <TouchableOpacity
-              key={catalog.id}
-              style={[
-                styles.catalogChip,
-                { backgroundColor: colors.gray100 },
-                selectedCatalog === catalog.id && { backgroundColor: colors.primary }
-              ]}
-              onPress={() => setSelectedCatalog(catalog.id)}
-            >
-              <Text style={[
-                styles.catalogChipText,
-                { color: colors.gray900 },
-                selectedCatalog === catalog.id && { color: colors.cellBackground }
-              ]}>
-                {catalog.name}
-              </Text>
-            </TouchableOpacity>
-          ))}
+          {[{ id: null as string | null, name: 'All' }, ...catalogs].map(catalog => {
+            const on = selectedCatalog === catalog.id;
+            return (
+              <Pressable
+                key={catalog.id ?? 'all'}
+                style={({ pressed }) => [
+                  styles.catalogChip,
+                  on && styles.catalogChipSelected,
+                  pressed && styles.catalogChipPressed,
+                ]}
+                onPress={() => setSelectedCatalog(catalog.id)}
+                hitSlop={{ top: space.s6, bottom: space.s6 }}
+                accessibilityRole="button"
+                accessibilityLabel={catalog.id ? `Catalog ${catalog.name}` : 'All catalogs'}
+                accessibilityState={{ selected: on }}
+              >
+                {on && <Icon name="check" size={iconSize.sm} color={t.brand.tint} />}
+                <Text style={[styles.catalogChipText, on && styles.catalogChipTextSelected]} maxFontSizeMultiplier={1.6}>
+                  {catalog.name}
+                </Text>
+              </Pressable>
+            );
+          })}
         </View>
       )}
 
       {/* Extra padding at bottom */}
-      <View style={{ height: 100 }} />
+      <View style={styles.footerSpacer} />
     </>
-  ), [catalogs, selectedCatalog, colors, isLoadingMore]);
+  ), [catalogs, selectedCatalog, styles, t, isLoadingMore]);
 
   return (
     <BottomSheetModal
@@ -1097,21 +1130,23 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
       enablePanDownToClose
       keyboardBehavior="extend"
       // SAP Fiori Bottom Sheet styling
-      backgroundStyle={[styles.bottomSheetBackground, { backgroundColor: colors.cellBackground }]}
-      handleIndicatorStyle={[styles.bottomSheetHandle, { backgroundColor: colors.gray400 }]}
+      backdropComponent={renderBackdrop}
+      style={styles.sheetShadow}
+      backgroundStyle={styles.bottomSheetBackground}
+      handleIndicatorStyle={styles.bottomSheetHandle}
       handleStyle={styles.bottomSheetHandleContainer}
     >
       {loading ? (
-        <View style={[styles.loadingContainer, { backgroundColor: colors.cellBackground }]}>
-          <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={[styles.loadingText, { color: colors.gray600 }]}>Loading items...</Text>
+        <View style={styles.loadingContainer} accessibilityRole="progressbar" accessibilityLabel="Loading items">
+          <ActivityIndicator size="large" color={t.brand.tint} />
+          <Text style={styles.loadingText}>Loading items…</Text>
         </View>
       ) : (
         <BottomSheetFlatList
           data={displayItems}
           keyExtractor={keyExtractor}
           renderItem={renderItem}
-          contentContainerStyle={{ flexGrow: 1, paddingBottom: 20, backgroundColor: colors.gray50 }}
+          contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={true}
           keyboardShouldPersistTaps="handled"
           initialNumToRender={10}
@@ -1130,1056 +1165,246 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
   );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (t: ThemeTokens) => ({
+  backdrop: { backgroundColor: t.overlay.scrim },
+  sheetShadow: { ...t.shadow[4] },
+  listContent: { flexGrow: 1, paddingBottom: space.xl, backgroundColor: t.background.base },
+  footerSpacer: { height: 100 },
   loadMoreRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 16,
-    gap: 8,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    paddingVertical: space.lg,
+    gap: space.sm,
   },
-  loadMoreText: {
-    fontSize: 14,
-  },
-  bottomSheetContent: {
-    flex: 1,
-    paddingHorizontal: 0,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: theme.colors.orange[50], // #fff7ed - light orange tint to distinguish from order screen
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.orange[100],
-  },
-  closeButton: {
-    padding: 8,
-  },
-  closeButtonText: {
-    fontSize: 16,
-    color: theme.colors.gray[600],
-  },
-  title: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: theme.colors.gray[900],
-  },
-  doneButton: {
-    padding: 8,
-  },
-  doneButtonDisabled: {
-    opacity: 0.5,
-  },
-  doneButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: theme.colors.primary,
-  },
-  doneButtonTextDisabled: {
-    color: theme.colors.gray[400],
-  },
-  // SAP Fiori Chip - 32pt height, 16pt corner radius (pill shape)
+  loadMoreText: { ...typography.subhead, color: t.text.secondary },
   catalogChip: {
-    height: 32,
-    paddingHorizontal: 12,
-    borderRadius: 16,
-    backgroundColor: '#F2F2F7', // Fiori unselected chip bg
-    justifyContent: 'center',
-    alignItems: 'center',
+    minHeight: 32,
+    flexDirection: 'row' as const,
+    gap: space.xs,
+    paddingHorizontal: space.md,
+    paddingVertical: space.s6,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: t.border.button,
+    backgroundColor: t.surface.card,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
   },
-  catalogChipActive: {
-    backgroundColor: listColors.primary,
-  },
-  catalogChipText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: listColors.textPrimary,
-  },
-  catalogChipTextActive: {
-    color: listColors.white,
-  },
-  summaryBar: {
-    backgroundColor: theme.colors.primary + '10',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.primary + '20',
-  },
-  summaryText: {
-    fontSize: 14,
-    color: theme.colors.primary,
-    fontWeight: '500',
-    textAlign: 'center',
-  },
+  catalogChipSelected: { backgroundColor: t.brand.subtle, borderColor: t.brand.subtle },
+  catalogChipPressed: { backgroundColor: t.brand.subtleStrong },
+  catalogChipText: { ...typography.footnote, fontWeight: fontWeight.semibold, color: t.text.primary },
+  catalogChipTextSelected: { color: t.brand.tint },
   topSearchContainer: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: theme.colors.white,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.gray[200],
+    paddingHorizontal: layout.marginCompact,
+    paddingVertical: space.md,
+    backgroundColor: t.surface.sheet,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.divider,
+  },
+  searchField: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.sm,
+    minHeight: layout.rowMinHeight,
+    paddingHorizontal: space.md,
+    borderRadius: radius.field,
+    borderWidth: 1,
+    borderColor: t.border.field,
+    backgroundColor: t.surface.field,
   },
   topSearchInput: {
-    backgroundColor: theme.colors.gray[100],
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    paddingRight: 40, // Make room for indicator
-    fontSize: 14,
-    color: theme.colors.gray[900],
-  },
-  bottomControlsSection: {
-    backgroundColor: theme.colors.white,
-    borderTopWidth: 1,
-    borderTopColor: theme.colors.gray[200],
-    paddingBottom: 20,
-  },
-  bottomSearchRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    gap: 8,
-  },
-  filterCountBadge: {
-    backgroundColor: theme.colors.primary,
-    borderRadius: 12,
-    width: 24,
-    height: 24,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  filterCountText: {
-    color: theme.colors.white,
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  quickFiltersRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    gap: 8,
-    flexWrap: 'wrap',
-  },
-  filterButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 6,
-    backgroundColor: theme.colors.gray[100],
-    borderWidth: 1,
-    borderColor: theme.colors.gray[200],
-    gap: 6,
-  },
-  filterButtonActive: {
-    backgroundColor: theme.colors.primary,
-    borderColor: theme.colors.primary,
-  },
-  filterButtonIcon: {
-    width: 16,
-    height: 16,
-    resizeMode: 'contain',
-  },
-  filterButtonLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: theme.colors.gray[700],
-  },
-  filterButtonLabelActive: {
-    color: theme.colors.white,
-  },
-  searchInputContainer: {
+    ...typography.body,
     flex: 1,
-    position: 'relative',
+    paddingVertical: space.sm,
+    color: t.text.primary,
   },
-  bottomSearchInput: {
-    backgroundColor: theme.colors.gray[100],
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    paddingRight: 40, // Make room for indicator
-    fontSize: 14,
-    color: theme.colors.gray[900],
-  },
-  searchIndicatorContainer: {
-    position: 'absolute',
-    right: 12,
-    top: '50%',
-    transform: [{ translateY: -10 }],
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  searchTypeIndicator: {
-    fontSize: 16,
-    fontWeight: '500',
-  },
-  searchResultsSummary: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    backgroundColor: theme.colors.blue[50],
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.blue[100],
-  },
-  searchResultsText: {
-    fontSize: 12,
-    color: theme.colors.blue[700],
-    fontWeight: '500',
-    textAlign: 'center',
-  },
-  weightSliderContainer: {
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-    backgroundColor: theme.colors.green[50],
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.green[100],
-  },
-  weightSliderTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: theme.colors.green[700],
-    textAlign: 'center',
-    marginBottom: 16,
-  },
-  sliderContainer: {
-    marginBottom: 12,
-  },
-  sliderLabel: {
-    fontSize: 12,
-    color: theme.colors.gray[600],
-    marginBottom: 8,
-    fontWeight: '500',
-  },
-  dualSlider: {
-    paddingHorizontal: 8,
-  },
-  slider: {
-    width: '100%',
-    height: 40,
-  },
-  weightSliderActions: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 16,
-    gap: 12,
-  },
-  resetButton: {
-    flex: 1,
-    paddingVertical: 10,
-    backgroundColor: theme.colors.gray[100],
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: theme.colors.gray[300],
-  },
-  resetButtonText: {
-    fontSize: 14,
-    color: theme.colors.gray[700],
-    fontWeight: '500',
-    textAlign: 'center',
-  },
-  applyButton: {
-    flex: 1,
-    paddingVertical: 10,
-    backgroundColor: theme.colors.green[600],
-    borderRadius: 8,
-  },
-  applyButtonText: {
-    fontSize: 14,
-    color: theme.colors.white,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  weightRangeButton: {
-    width: 44,
-    height: 44,
-    backgroundColor: theme.colors.gray[100],
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginHorizontal: 8,
-  },
-  weightButtonIcon: {
-    width: 20,
-    height: 20,
-    resizeMode: 'contain',
-  },
-  bottomStockFilter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  bottomFilterLabel: {
-    fontSize: 12,
-    color: theme.colors.gray[700],
-    fontWeight: '500',
-  },
-  bottomSwitch: {
-    transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }],
-  },
+  clearButton: { alignItems: 'center' as const, justifyContent: 'center' as const },
   bottomCatalogFilter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 16,
-    paddingBottom: 8,
-    flexWrap: 'wrap',
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.sm,
+    paddingHorizontal: layout.marginCompact,
+    paddingVertical: space.sm,
+    flexWrap: 'wrap' as const,
   },
-  bottomSheetOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-end',
-  },
-  bottomSheetBackdrop: {
-    flex: 1,
-  },
-  // =========================================================================
-  // SAP Fiori Bottom Sheet Styling
-  // =========================================================================
   bottomSheetBackground: {
-    backgroundColor: listColors.white,
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
+    backgroundColor: t.surface.sheet,
+    borderTopLeftRadius: radius.sheet,
+    borderTopRightRadius: radius.sheet,
   },
-  bottomSheetHandleContainer: {
-    paddingTop: 8,
-    paddingBottom: 0,
-  },
+  bottomSheetHandleContainer: { paddingTop: space.sm, paddingBottom: 0 },
   bottomSheetHandle: {
     width: 36,
-    height: 5,
-    backgroundColor: '#C6C6C8', // Fiori drag handle color
-    borderRadius: 2.5,
+    height: 4,
+    backgroundColor: t.border.separator,
+    borderRadius: radius.pill,
   },
   bottomSheetHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    height: 56,
-    paddingHorizontal: 16,
-    backgroundColor: listColors.white,
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'center' as const,
+    minHeight: 56,
+    paddingHorizontal: space.sm,
+    backgroundColor: t.surface.sheet,
   },
-  headerTitle: {
-    fontSize: 17,
-    fontWeight: '600',
-    color: listColors.textPrimary,
-    textAlign: 'center',
-    flex: 1,
-  },
+  headerTitle: { ...typography.headline, color: t.text.primary, textAlign: 'center' as const, flex: 1 },
   headerButton: {
-    minWidth: 60,
-    paddingVertical: 8,
-    paddingHorizontal: 4,
+    minWidth: touchTarget,
+    minHeight: touchTarget,
+    paddingHorizontal: space.sm,
+    borderRadius: radius.button,
+    justifyContent: 'center' as const,
   },
-  headerButtonDisabled: {
-    opacity: 0.4,
-  },
-  headerButtonTextCancel: {
-    fontSize: 17,
-    fontWeight: '400',
-    color: listColors.primary,
-  },
-  headerButtonTextAction: {
-    fontSize: 17,
-    fontWeight: '600',
-    color: listColors.primary,
-  },
-  headerButtonTextDisabled: {
-    color: listColors.textTertiary,
-  },
-  headerDivider: {
-    height: 1,
-    backgroundColor: listColors.cellDivider,
-  },
-  // Legacy bottom sheet styles (for other bottom sheets)
-  bottomSheet: {
-    backgroundColor: listColors.white,
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-    maxHeight: '60%',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: -2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
-      },
-      android: {
-        elevation: 16,
-      },
-    }),
-  },
-  bottomSheetTitle: {
-    fontSize: 17,
-    fontWeight: '600',
-    color: listColors.textPrimary,
-  },
-  bottomSheetClose: {
-    fontSize: 24,
-    color: listColors.gray400,
-    fontWeight: '300',
-  },
-  bottomSheetScrollContainer: {
-    position: 'relative',
-  },
-  bottomSheetScrollIndicator: {
-    backgroundColor: theme.colors.gray[50],
-    borderTopWidth: 1,
-    borderTopColor: theme.colors.gray[200],
-    paddingVertical: 8,
-    paddingHorizontal: 20,
-    alignItems: 'center',
-  },
-  scrollIndicatorText: {
-    fontSize: 12,
-    color: theme.colors.gray[600],
-    fontWeight: '500',
-    textAlign: 'center',
-  },
-  bottomSheetItemRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 16,
-    paddingHorizontal: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.gray[100],
-  },
-  bottomSheetItemNumber: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: theme.colors.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  bottomSheetItemNumberText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: theme.colors.white,
-  },
-  bottomSheetItemInfo: {
-    flex: 1,
-    marginRight: 16,
-    padding: 4,
-  },
-  bottomSheetItemHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 6,
-  },
-  bottomSheetItemName: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: theme.colors.gray[900],
-    marginBottom: 4,
-  },
-  bottomSheetGrnDate: {
-    fontSize: 12,
-    color: theme.colors.gray[500],
-    fontWeight: '500',
-  },
-  bottomSheetItemDetails: {
-    fontSize: 13,
-    color: theme.colors.gray[600],
-    marginBottom: 4,
-  },
-  bottomSheetWeightStockRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 4,
-  },
-  bottomSheetWeightContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  bottomSheetWeightIcon: {
-    width: 16,
-    height: 16,
-    marginRight: 6,
-    resizeMode: 'contain',
-  },
-  bottomSheetWeightText: {
-    fontSize: 12,
-    color: theme.colors.gray[500],
-    marginTop: 5,
-  },
-  bottomSheetStockText: {
-    fontSize: 12,
-    color: theme.colors.gray[500],
-  },
-  bottomSheetItemActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    padding: 4,
-  },
-  bottomSheetQuantityBadge: {
-    backgroundColor: theme.colors.primary,
-    borderRadius: 16,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-  },
-  bottomSheetQuantityText: {
-    fontSize: 14,
-    color: theme.colors.white,
-    fontWeight: '600',
-  },
-  bottomSheetItemQuantity: {
-    fontSize: 14,
-    color: theme.colors.gray[700],
-    marginBottom: 6,
-  },
-  bottomSheetRemoveButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: theme.colors.gray[100],
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  bottomSheetRemoveText: {
-    fontSize: 18,
-    color: theme.colors.red[600],
-    fontWeight: '400',
-    lineHeight: 18,
-  },
+  headerButtonEnd: { alignItems: 'flex-end' as const },
+  headerButtonPressed: { backgroundColor: t.brand.subtle },
+  headerButtonTextCancel: { ...typography.body, color: t.brand.tint },
+  headerButtonTextAction: { ...typography.headline, color: t.brand.tint },
+  headerDivider: { height: StyleSheet.hairlineWidth, backgroundColor: t.border.divider },
   loadingContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    backgroundColor: t.surface.sheet,
   },
-  loadingText: {
-    marginTop: 12,
-    fontSize: 16,
-    color: theme.colors.gray[600],
-  },
-  listContent: {
-    flexGrow: 1,
-    padding: 16,
-  },
-  // SAP Fiori Object Cell card styling
+  loadingText: { ...typography.subhead, marginTop: space.md, color: t.text.secondary },
   itemCard: {
-    backgroundColor: listColors.cellBackground,
-    borderRadius: 12,
-    marginBottom: 12,
-    marginHorizontal: 12,
-    overflow: 'hidden',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.08,
-        shadowRadius: 3,
-      },
-      android: {
-        elevation: 2,
-      },
-    }),
+    backgroundColor: t.surface.card,
+    borderRadius: radius.card,
+    marginTop: space.sm,
+    marginHorizontal: layout.marginCompact,
+    overflow: 'hidden' as const,
+    ...t.shadow[2],
   },
-  itemCardExisting: {
-    backgroundColor: listColors.primaryLight, // Light orange tint for existing order items
+  itemCardInOrder: {
+    backgroundColor: t.brand.subtle,
     borderLeftWidth: 4,
-    borderLeftColor: listColors.primary,
+    borderLeftColor: t.brand.tint,
   },
-  itemCardSelected: {
-    borderWidth: 2,
-    borderColor: listColors.primary,
-    backgroundColor: listColors.cellBackgroundSelected,
-  },
-
-  // =========================================================================
-  // SAP Fiori Object Cell Layout
-  // =========================================================================
   objectCellRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    padding: 16,
-    gap: 12,
+    flexDirection: 'row' as const,
+    alignItems: 'flex-start' as const,
+    padding: space.lg,
+    gap: space.md,
+    minHeight: layout.objectCellMinHeight,
   },
-
-  // Left: Status Icon (40dp)
   statusIconContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: 10,
-    justifyContent: 'center',
-    alignItems: 'center',
+    width: layout.avatar.md,
+    height: layout.avatar.md,
+    borderRadius: radius.button,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
     borderWidth: 1,
   },
-  statusIconPositive: {
-    backgroundColor: listColors.statusPositiveLight,
-    borderColor: listColors.statusPositiveBorder,
-  },
-  statusIconCritical: {
-    backgroundColor: listColors.statusCriticalLight,
-    borderColor: listColors.statusCriticalBorder,
-  },
-  statusIconNegative: {
-    backgroundColor: listColors.statusNegativeLight,
-    borderColor: listColors.statusNegativeBorder,
-  },
-
-  // Center: Main Content
-  mainContent: {
-    flex: 1,
-    gap: 4,
-  },
-  titleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  titleText: {
-    fontSize: 16,
-    fontWeight: '600',
-    lineHeight: 22,
-    color: listColors.textPrimary,
-    flex: 1,
-  },
-  grnDateText: {
-    fontSize: 12,
-    fontWeight: '500',
-    marginLeft: 8,
-  },
-  subtitleRow: {
-    marginTop: 2,
-  },
-  subtitleText: {
-    fontSize: 14,
-    fontWeight: '400',
-    lineHeight: 20,
-    color: listColors.textSecondary,
-  },
+  mainContent: { flex: 1, gap: space.xs },
+  titleRow: { flexDirection: 'row' as const, alignItems: 'flex-start' as const, gap: space.sm },
+  titleText: { ...typography.headline, color: t.text.primary, flex: 1 },
+  subtitleRow: { marginTop: space.xxs },
+  subtitleText: { ...typography.subhead, color: t.text.secondary },
   footerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 4,
-    flexWrap: 'wrap',
-    gap: 4,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    marginTop: space.xs,
+    flexWrap: 'wrap' as const,
+    columnGap: space.md,
+    rowGap: space.xs,
   },
-  footerItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  footerText: {
-    fontSize: 12,
-    fontWeight: '400',
-    lineHeight: 16,
-    color: listColors.textTertiary,
-  },
-  footerDot: {
-    width: 3,
-    height: 3,
-    borderRadius: 1.5,
-    backgroundColor: listColors.gray400,
-    marginHorizontal: 4,
-  },
-
-  // Right: Attribute Stack
-  attributeStack: {
-    alignItems: 'flex-end',
-    gap: 8,
-    minWidth: 60,
-  },
+  footerItem: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: space.xs },
+  footerText: { ...typography.footnote, color: t.text.secondary },
+  attributeStack: { alignItems: 'flex-end' as const, gap: space.sm, minWidth: 60 },
   statusBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-    minWidth: 40,
-    alignItems: 'center',
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.xs,
+    paddingHorizontal: space.sm,
+    paddingVertical: space.xxs,
+    borderRadius: radius.field,
   },
-  statusBadgePositive: {
-    backgroundColor: listColors.statusPositive,
-  },
-  statusBadgeCritical: {
-    backgroundColor: listColors.statusCritical,
-  },
-  statusBadgeNegative: {
-    backgroundColor: listColors.statusNegative,
-  },
-  statusBadgeText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: listColors.white,
-  },
-  stockValueContainer: {
-    alignItems: 'flex-end',
-  },
+  statusBadgeText: { ...typography.caption1, fontWeight: fontWeight.semibold },
+  stockValueContainer: { alignItems: 'flex-end' as const },
   stockValueText: {
-    fontSize: 18,
-    fontWeight: '700',
-    lineHeight: 24,
+    ...typography.headline,
+    color: t.text.primary,
+    fontVariant: ['tabular-nums' as const],
   },
-  stockValuePositive: {
-    color: listColors.statusPositive,
-  },
-  stockValueCritical: {
-    color: listColors.statusCritical,
-  },
-  stockValueNegative: {
-    color: listColors.statusNegative,
-  },
-  stockValueFlashing: {
-    color: listColors.statusNegative,
-  },
-  stockLabel: {
-    fontSize: 10,
-    fontWeight: '500',
-    lineHeight: 14,
-    color: listColors.textTertiary,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-
-  // =========================================================================
-  // Legacy styles (kept for backward compatibility)
-  // =========================================================================
-  itemContent: {
-    flexDirection: 'row',
-    padding: 16,
-  },
-  itemInfo: {
-    flex: 1,
-    marginRight: 12,
-    padding: 8,
-    paddingTop: 12,
-  },
-  itemHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 6,
-    paddingHorizontal: 8,
-  },
-  itemNameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  // SAP Fiori typography - Title
-  itemName: {
-    fontSize: 16,
-    fontWeight: '600',
-    lineHeight: 22,
-    color: listColors.textPrimary,
-    marginRight: 8,
-  },
-  // SAP Fiori Tag - Primary Outlined style
+  stockValueFlash: { color: t.status.negative.text },
+  stockLabel: { ...typography.caption1, color: t.text.secondary, fontVariant: ['tabular-nums' as const] },
   alreadyInOrderBadge: {
-    backgroundColor: 'transparent',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 10,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.xxs,
+    paddingHorizontal: space.sm,
+    paddingVertical: space.xxs,
+    borderRadius: radius.pill,
     borderWidth: 1,
-    borderColor: listColors.primary,
+    borderColor: t.brand.tint,
   },
-  alreadyInOrderBadgeText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: listColors.primary,
-  },
-  // SAP Fiori typography - Footer
-  grnDate: {
-    fontSize: 12,
-    color: listColors.textTertiary,
-    fontWeight: '500',
-  },
-  itemMetadata: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 10,
-    flexWrap: 'wrap',
-  },
-  packageWeightRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-    padding: 6,
-  },
-  packageMarkRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  stockRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    padding: 4,
-  },
-  stockStatusContainer: {
-    flex: 1,
-  },
-  stockNumbersContainer: {
-    alignItems: 'flex-end',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  stockBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-    alignSelf: 'flex-start',
-  },
-  // SAP Fiori semantic stock badge styles - Positive (In Stock)
-  stockBadgePositive: {
-    backgroundColor: listColors.statusPositiveLight,
-    borderWidth: 1,
-    borderColor: listColors.statusPositiveBorder,
-  },
-  stockBadgeTextPositive: {
-    color: listColors.statusPositiveDark,
-  },
-  // SAP Fiori semantic stock badge styles - Critical (Low Stock)
-  stockBadgeCritical: {
-    backgroundColor: listColors.statusCriticalLight,
-    borderWidth: 1,
-    borderColor: listColors.statusCriticalBorder,
-  },
-  stockBadgeTextCritical: {
-    color: listColors.statusCriticalDark,
-  },
-  // SAP Fiori semantic stock badge styles - Negative (Out of Stock)
-  stockBadgeNegative: {
-    backgroundColor: listColors.statusNegativeLight,
-    borderWidth: 1,
-    borderColor: listColors.statusNegativeBorder,
-  },
-  stockBadgeTextNegative: {
-    color: listColors.statusNegativeDark,
-  },
-  stockBadgeText: {
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  stockNumbersText: {
-    fontSize: 12,
-    color: listColors.textSecondary,
-  },
-  // SAP Fiori typography - Subtitle
-  itemDetails: {
-    fontSize: 14,
-    fontWeight: '400',
-    lineHeight: 20,
-    color: listColors.textSecondary,
-    marginRight: 4,
-  },
-  weightText: {
-    fontSize: 14,
-    fontWeight: '400',
-    color: listColors.textSecondary,
-    marginRight: 4,
-  },
-  rackText: {
-    fontSize: 14,
-    fontWeight: '400',
-    color: listColors.textSecondary,
-  },
-  itemMetaRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginBottom: 8,
-    gap: 12,
-  },
-  // SAP Fiori typography - Footer
-  itemMeta: {
-    fontSize: 12,
-    fontWeight: '400',
-    lineHeight: 16,
-    color: listColors.textTertiary,
-    marginBottom: 8,
-  },
-  cardFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 12,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: listColors.cellDivider,
-  },
-  footerLeft: {
-    flex: 1,
-    justifyContent: 'center',
-  },
-  weightRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  weightIcon: {
-    width: 18,
-    height: 18,
-    marginRight: 6,
-    resizeMode: 'contain',
-  },
-  // =========================================================================
-  // SAP Fiori Quantity Controls
-  // =========================================================================
+  alreadyInOrderBadgeText: { ...typography.caption1, fontWeight: fontWeight.semibold, color: t.brand.tint },
   quantitySection: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderTopWidth: 1,
-    borderTopColor: listColors.cellDivider,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    paddingVertical: space.md,
+    paddingHorizontal: space.lg,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: t.border.divider,
   },
   presetButtonsRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 8,
+    flexDirection: 'row' as const,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    flexWrap: 'wrap' as const,
+    gap: space.sm,
   },
-  // SAP Fiori Secondary Tint Button (auto-width, 38pt height)
   presetButton: {
-    height: 38,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    backgroundColor: 'transparent',
+    minHeight: touchTarget,
+    minWidth: touchTarget,
+    paddingHorizontal: space.lg,
+    borderRadius: radius.button,
     borderWidth: 1,
-    borderColor: listColors.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-    minWidth: 44, // Minimum touch target
+    borderColor: t.border.button,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
   },
-  presetButtonDisabled: {
-    borderColor: listColors.gray300,
-    opacity: 0.4,
-  },
+  secondaryPressed: { backgroundColor: t.brand.subtle },
+  disabled: { opacity: t.interaction.disabledOpacity },
   presetButtonText: {
-    fontSize: 17,
-    fontWeight: '600',
-    color: listColors.primary,
-    textAlign: 'center',
-    letterSpacing: -0.41,
+    ...typography.callout,
+    color: t.brand.tint,
+    textAlign: 'center' as const,
+    fontVariant: ['tabular-nums' as const],
   },
-  presetButtonTextDisabled: {
-    color: listColors.textTertiary,
-  },
-  selectedBadge: {
-    backgroundColor: listColors.primary,
-    borderRadius: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    marginBottom: 8,
-  },
-  selectedBadgeText: {
-    color: listColors.white,
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  addButton: {
-    backgroundColor: listColors.primary,
-    paddingHorizontal: 20,
-    paddingVertical: 8,
-    borderRadius: 8,
-  },
-  addButtonText: {
-    color: listColors.white,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  quantityControlsContainer: {
-    alignItems: 'center',
-  },
-  quantityControls: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  // SAP Fiori Button - 44pt minimum touch target
+  quantityControlsContainer: { alignItems: 'center' as const },
+  quantityControls: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: space.sm },
   quantityButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: listColors.white,
-    justifyContent: 'center',
-    alignItems: 'center',
+    width: touchTarget,
+    height: touchTarget,
+    borderRadius: radius.button,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
     borderWidth: 1,
-    borderColor: listColors.gray200,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.05,
-        shadowRadius: 2,
-      },
-      android: {
-        elevation: 1,
-      },
-    }),
+    borderColor: t.border.button,
   },
-  minusButton: {
-    backgroundColor: listColors.gray50,
-  },
-  plusButton: {
-    backgroundColor: listColors.primary,
-    borderColor: listColors.primary,
-  },
-  clearButton: {
-    marginTop: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-  },
-  clearButtonText: {
-    fontSize: 11,
-    color: listColors.textSecondary,
-    fontWeight: '500',
-  },
-  quantityButtonDisabled: {
-    backgroundColor: listColors.gray50,
-    opacity: 0.5,
-  },
-  quantityButtonText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: listColors.textSecondary,
-  },
-  plusButtonText: {
-    color: listColors.white,
-  },
-  quantityButtonTextDisabled: {
-    color: listColors.gray400,
-  },
-  smallButtonText: {
-    fontSize: 12,
-  },
+  quantityButtonText: { ...typography.headline, color: t.brand.tint },
+  smallButtonText: { ...typography.footnote, fontWeight: fontWeight.semibold, color: t.brand.tint },
   quantity: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: listColors.textPrimary,
-    marginHorizontal: 8,
+    ...typography.body,
+    fontWeight: fontWeight.semibold,
+    color: t.text.primary,
+    marginHorizontal: space.sm,
     minWidth: 30,
-    textAlign: 'center',
+    textAlign: 'center' as const,
+    fontVariant: ['tabular-nums' as const],
   },
-  // SAP Fiori Empty State
   emptyContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: 60,
-    paddingHorizontal: 24,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    gap: space.sm,
+    paddingVertical: space.max,
+    paddingHorizontal: space.xxl,
   },
-  emptyText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: listColors.textPrimary,
-    textAlign: 'center',
-    marginBottom: 8,
-  },
-  emptySubtext: {
-    fontSize: 14,
-    lineHeight: 20,
-    color: listColors.textTertiary,
-    textAlign: 'center',
-  },
+  emptyText: { ...typography.title3, color: t.text.primary, textAlign: 'center' as const },
+  emptySubtext: { ...typography.subhead, color: t.text.secondary, textAlign: 'center' as const },
 });
 
 export default ItemCatalogBrowser;

@@ -1,59 +1,68 @@
 /**
- * GRNItemsTab Component - 100% SAP Fiori Compliant
+ * GRNItemsTab: the Items tab of the GRN object page.
  *
- * Based on SAP Fiori for iOS Design Guidelines
- *
- * Features:
- * - FlatList for performance with large datasets
- * - Fiori Empty State pattern
- * - Fiori Loading State
- * - Uses GRNItemCard components
+ * A FlatList of GRNItemCard object cells on background.base, with the
+ * empty and loading states from style guide §13.6.
  */
 
 import React, { useCallback } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  FlatList,
-  ActivityIndicator,
-  Platform,
-} from 'react-native';
-import { GRNItemCard } from './GRNItemCard';
+import { View, Text, FlatList, ActivityIndicator } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { useListColors } from '@/hooks/useListColors';
+import { GRNItemCard } from './GRNItemCard';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { iconSize, space, typography } from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
 
-// ============================================================================
-// FIORI DESIGN TOKENS
-// ============================================================================
-const FIORI = {
-  colors: {
-    pageBackground: '#F7F9FA',
-    cardBackground: '#FFFFFF',
-    textPrimary: '#1D2D3E',
-    textSecondary: '#556B82',
-    textTertiary: '#7e8e9d',
-    primary: '#f69000',
+const makeStyles = (t: ThemeTokens) => ({
+  container: {
+    flex: 1,
+    backgroundColor: t.background.base,
   },
-  spacing: {
-    xs: 4,
-    sm: 8,
-    md: 12,
-    lg: 16,
-    xl: 20,
-    xxl: 24,
+  listContent: {
+    flexGrow: 1,
+    paddingVertical: space.sm,
   },
-  typography: {
-    headline: {
-      fontSize: 17,
-      fontWeight: '600' as const,
-    },
-    body: {
-      fontSize: 15,
-      fontWeight: '400' as const,
-    },
+  // Empty state (style guide §13.6)
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    paddingHorizontal: space.xxxl,
+    paddingVertical: space.giant,
+    gap: space.sm,
   },
-} as const;
+  emptyTitle: {
+    ...typography.title3,
+    color: t.text.primary,
+    textAlign: 'center' as const,
+    marginTop: space.sm,
+  },
+  emptySubtitle: {
+    ...typography.subhead,
+    color: t.text.secondary,
+    textAlign: 'center' as const,
+  },
+  // Loading state
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    padding: space.giant,
+    gap: space.sm,
+    backgroundColor: t.background.base,
+  },
+  loadingFooter: {
+    flexDirection: 'row' as const,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    padding: space.xxl,
+    gap: space.sm,
+  },
+  loadingText: {
+    ...typography.subhead,
+    color: t.text.secondary,
+  },
+});
 
 // ============================================================================
 // TYPES - Using snake_case to match backend RPC types
@@ -97,8 +106,8 @@ export const GRNItemsTab: React.FC<GRNItemsTabProps> = ({
   onViewItemImages,
   onViewItemDispatches,
 }) => {
-  // Theme colors for dark mode support
-  const colors = useListColors();
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
   // Performance optimization: wrap renderItem in useCallback
   const renderItem = useCallback(
     ({ item }: { item: GRNItem }) => (
@@ -122,51 +131,43 @@ export const GRNItemsTab: React.FC<GRNItemsTabProps> = ({
     [onViewItemImages, onViewItemDispatches]
   );
 
-  // Fiori Empty State
   const renderEmpty = () => {
     if (loading) return null;
 
     return (
       <View style={styles.emptyContainer}>
-        <View style={[styles.emptyIconContainer, { backgroundColor: colors.cellBackground }]}>
-          <Icon
-            name="package-variant-closed"
-            size={48}
-            color={colors.gray500}
-          />
-        </View>
-        <Text style={[styles.emptyTitle, { color: colors.gray900 }]}>No Items</Text>
-        <Text style={[styles.emptySubtitle, { color: colors.gray600 }]}>
-          This GRN does not contain any items
+        <Icon name="cube-outline" size={iconSize.hero} color={t.icon.secondary} />
+        <Text style={styles.emptyTitle} accessibilityRole="header">
+          No items
         </Text>
+        <Text style={styles.emptySubtitle}>This GRN has no items. Edit the GRN to add them.</Text>
       </View>
     );
   };
 
-  // Fiori Loading Footer
   const renderFooter = () => {
     if (!loading) return null;
 
     return (
-      <View style={styles.loadingFooter}>
-        <ActivityIndicator size="small" color={colors.primary} />
-        <Text style={[styles.loadingText, { color: colors.gray600 }]}>Loading items...</Text>
+      <View style={styles.loadingFooter} accessibilityRole="progressbar" accessibilityLabel="Loading items">
+        <ActivityIndicator size="small" color={t.brand.tint} />
+        <Text style={styles.loadingText}>Loading items…</Text>
       </View>
     );
   };
 
-  // Initial Loading State
+  // Initial loading state
   if (loading && items.length === 0) {
     return (
-      <View style={[styles.loadingContainer, { backgroundColor: colors.gray50 }]}>
-        <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={[styles.loadingText, { color: colors.gray600 }]}>Loading items...</Text>
+      <View style={styles.loadingContainer} accessibilityRole="progressbar" accessibilityLabel="Loading items">
+        <ActivityIndicator size="large" color={t.brand.tint} />
+        <Text style={styles.loadingText}>Loading items…</Text>
       </View>
     );
   }
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.gray50 }]}>
+    <View style={styles.container}>
       <FlatList
         data={items}
         renderItem={renderItem}
@@ -183,78 +184,3 @@ export const GRNItemsTab: React.FC<GRNItemsTabProps> = ({
     </View>
   );
 };
-
-// ============================================================================
-// STYLES - 100% FIORI COMPLIANT
-// ============================================================================
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: FIORI.colors.pageBackground,
-  },
-  listContent: {
-    flexGrow: 1,
-    paddingVertical: FIORI.spacing.sm,
-  },
-
-  // Empty State - Fiori Spec
-  emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: FIORI.spacing.xxl * 2,
-    minHeight: 400,
-  },
-  emptyIconContainer: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: FIORI.colors.cardBackground,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: FIORI.spacing.lg,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.08,
-        shadowRadius: 3,
-      },
-      android: {
-        elevation: 2,
-      },
-    }),
-  },
-  emptyTitle: {
-    ...FIORI.typography.headline,
-    color: FIORI.colors.textPrimary,
-    marginBottom: FIORI.spacing.sm,
-    textAlign: 'center',
-  },
-  emptySubtitle: {
-    ...FIORI.typography.body,
-    color: FIORI.colors.textSecondary,
-    textAlign: 'center',
-    lineHeight: 22,
-  },
-
-  // Loading State - Fiori Spec
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: FIORI.spacing.xxl * 2,
-  },
-  loadingFooter: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: FIORI.spacing.xxl,
-    gap: FIORI.spacing.sm,
-  },
-  loadingText: {
-    ...FIORI.typography.body,
-    color: FIORI.colors.textSecondary,
-    marginLeft: FIORI.spacing.sm,
-  },
-});

@@ -197,16 +197,18 @@ const makeStyles = (t: ThemeTokens) => ({
   activeIndicator: {
     position: 'absolute' as const,
     bottom: 0,
-    left: space.lg,
-    right: space.lg,
+    left: space.sm,
+    right: space.sm,
     height: 2,
     backgroundColor: t.brand.tint,
   },
 });
 
 const styles = StyleSheet.create({
+  // Tabs share the width when they fit (up to four on phones) and scroll when they do not.
   scrollContent: {
-    paddingHorizontal: space.sm,
+    flexGrow: 1,
+    paddingHorizontal: space.xs,
     flexDirection: 'row',
     alignItems: 'stretch',
   },
@@ -215,8 +217,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     minHeight: touchTarget + space.lg,
+    flexGrow: 1,
     minWidth: 64,
-    paddingHorizontal: space.lg,
+    paddingHorizontal: space.sm,
     paddingVertical: space.sm,
     position: 'relative',
   },

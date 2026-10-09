@@ -4,9 +4,8 @@ import {
     Text,
     TextInput,
     StyleSheet,
-    Dimensions,
     ScrollView,
-    TouchableOpacity,
+    Pressable,
     Keyboard,
     Platform,
     Vibration,
@@ -15,18 +14,16 @@ import {
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { Image } from 'expo-image';
 import { RemoteAutocompleteInput } from '@/components/RemoteAutocompleteInput';
-import theme from '@/theme';
-import { useListColors } from '@/hooks/useListColors';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { fontWeight, iconSize, radius, space, touchTarget, typography } from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
 import { GRNImageData } from '@/store/slices/grnFormSlice';
 import { searchItems } from '@/services/item-search-service';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const FIELD_WIDTH = 180; // Base width for fields
 const FIELD_WIDTH_LARGE = 220; // Width for item name field
 const FIELD_WIDTH_QTY_WEIGHT = 117; // Qty & Weight reduced by 35% (was 180)
 const FIELD_WIDTH_RACK = 196; // Rack reduced by 30% (was 280), chips will wrap
 const FIELD_WIDTH_MARK = 270; // 50% wider mark field
-const INPUT_HEIGHT = 48; // Uniform height for all inputs
 
 // Floor and Chamber options
 const FLOOR_OPTIONS = ['BASE', 'F1', 'F2', 'F3', 'F4'];
@@ -145,8 +142,8 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
             savedItemsCount,
         } = props;
 
-        // Theme colors for dark mode support
-        const colors = useListColors();
+        const styles = useThemedStyles(makeStyles);
+        const t = useTokens();
 
         const scrollRef = useRef<ScrollView>(null);
         const qtyInputRef = useRef<TextInput>(null);
@@ -243,39 +240,87 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
             Vibration.vibrate(5);
         }, [rackTextOnly, selectedFloor, onFieldChange]);
 
+        const imageCount = currentItem.trl_images?.length || 0;
+        const canViewAll = savedItemsCount > 0 && !!onViewAll;
+        const itemNumber = isEditing ? editingItemNumber : savedItemsCount + 1;
+
+        const renderError = (message?: string) =>
+            message ? (
+                <View style={styles.errorRow} accessibilityLiveRegion="polite">
+                    <Icon name="alert-circle" size={iconSize.sm} color={t.status.negative.text} />
+                    <Text style={styles.errorText}>{message}</Text>
+                </View>
+            ) : null;
+
+        const renderChip = (option: string, selected: boolean, onPress: () => void, group: string) => (
+            <Pressable
+                key={option}
+                style={({ pressed }) => [
+                    styles.chip,
+                    selected && styles.chipSelected,
+                    pressed && !selected && styles.chipPressed,
+                ]}
+                onPress={onPress}
+                hitSlop={{ top: space.s6, bottom: space.s6 }}
+                accessibilityRole="radio"
+                accessibilityLabel={`${group} ${option}`}
+                accessibilityState={{ selected, checked: selected }}
+            >
+                {selected && (
+                    <Icon name="check" size={iconSize.sm} color={t.brand.tint} style={styles.chipCheckmark} />
+                )}
+                <Text style={[styles.chipText, selected && styles.chipTextSelected]} maxFontSizeMultiplier={1.6}>
+                    {option}
+                </Text>
+            </Pressable>
+        );
+
         return (
-            <View style={[styles.container, { backgroundColor: colors.gray50 }]}>
-                {/* Hero Banner - Compact */}
-                <View style={[styles.heroBanner, { backgroundColor: colors.primary }, isEditing && { backgroundColor: colors.gray400 }]}>
-                    <TouchableOpacity
-                        style={styles.heroContent}
-                        onPress={() => savedItemsCount > 0 && onViewAll?.()}
-                        activeOpacity={savedItemsCount > 0 ? 0.7 : 1}
+            <View style={styles.container}>
+                {/* Hero header: the item being added or edited (surface.card, guide 13.8) */}
+                <View style={styles.heroBanner}>
+                    <Pressable
+                        style={({ pressed }) => [styles.heroContent, canViewAll && pressed && styles.heroContentPressed]}
+                        onPress={() => canViewAll && onViewAll?.()}
+                        disabled={!canViewAll}
+                        accessibilityRole={canViewAll ? 'button' : 'header'}
+                        accessibilityLabel={
+                            canViewAll
+                                ? `${isEditing ? 'Editing' : 'New'} item ${itemNumber}. View ${savedItemsCount} saved ${savedItemsCount === 1 ? 'item' : 'items'}`
+                                : `${isEditing ? 'Editing' : 'New'} item ${itemNumber}`
+                        }
                     >
-                        <Text style={styles.heroTitle}>
-                            {isEditing
-                                ? `Editing Item ${editingItemNumber}`
-                                : savedItemsCount === 0
-                                    ? 'Adding Item 1'
-                                    : `Adding Item ${savedItemsCount + 1}`}
-                        </Text>
-                        {currentItem.packaging && (
+                        <Text style={styles.heroOverline}>{isEditing ? 'Editing item' : 'New item'}</Text>
+                        <View style={styles.heroTitleRow}>
+                            <Text style={styles.heroTitle}>Item {itemNumber}</Text>
+                            {canViewAll && (
+                                <View style={styles.viewAll}>
+                                    <Text style={styles.viewAllText}>{savedItemsCount} saved</Text>
+                                    <Icon name="chevron-right" size={iconSize.sm} color={t.brand.tint} />
+                                </View>
+                            )}
+                        </View>
+                        {!!currentItem.packaging && (
                             <View style={styles.packagingBadge}>
-                                <Icon name="package-variant-closed" size={14} color="#FFFFFF" />
+                                <Icon name="package-variant-closed" size={iconSize.sm} color={t.icon.secondary} />
                                 <Text style={styles.packagingText}>{currentItem.packaging}</Text>
                             </View>
                         )}
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                        style={[styles.saveButton, !isValid && styles.saveButtonDisabled]}
+                    </Pressable>
+                    <Pressable
+                        style={({ pressed }) => [
+                            styles.saveButton,
+                            pressed && styles.saveButtonPressed,
+                            !isValid && styles.saveButtonDisabled,
+                        ]}
                         accessibilityRole="button"
                         accessibilityLabel="Save receipt item"
+                        accessibilityState={{ disabled: !isValid }}
                         onPress={onSaveItem}
                         disabled={!isValid}
-                        activeOpacity={0.7}
                     >
-                        <Icon name="check" size={24} color="#FFFFFF" />
-                    </TouchableOpacity>
+                        <Icon name="check" size={iconSize.lg} color={t.brand.onFill} />
+                    </Pressable>
                 </View>
 
                 {/* Horizontal Scrolling Form */}
@@ -291,12 +336,12 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                     {/* Field 1: Item Name (Dropdown Picker) */}
                     <View style={[styles.fieldContainer, { width: FIELD_WIDTH_LARGE, zIndex: 1000 }]}>
                         <View style={styles.labelRow}>
-                            <Icon name="package-variant" size={16} color={colors.primary} />
-                            <Text style={[styles.label, { color: colors.textSecondary }]}>ITEM<Text style={[styles.required, { color: colors.error }]}> *</Text></Text>
+                            <Icon name="cube-outline" size={iconSize.sm} color={t.icon.secondary} />
+                            <Text style={styles.label}>Item<Text style={styles.required}> *</Text></Text>
                         </View>
                         <RemoteAutocompleteInput<{ id: string; name: string; packaging?: string }>
                             value={currentItem.item_name}
-                            placeholder="Type to search..."
+                            placeholder="Search items"
                             fetchData={searchItems}
                             suggestionPlacement="inline"
                             getItemAccessibilityLabel={(item) => `Select receipt item ${item.name}`}
@@ -319,39 +364,40 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                             }}
                             renderItem={(item) => (
                                 <View>
-                                    <Text style={[styles.dropdownText, { color: colors.textPrimary }]}>{item.name}</Text>
-                                    {item.packaging && (
-                                        <Text style={[styles.dropdownText, { fontSize: 12, color: colors.textSecondary }]}>
-                                            {item.packaging}
-                                        </Text>
+                                    <Text style={styles.dropdownText}>{item.name}</Text>
+                                    {!!item.packaging && (
+                                        <Text style={styles.dropdownSubtext}>{item.packaging}</Text>
                                     )}
                                 </View>
                             )}
                             keyExtractor={(item) => item.id}
                             zIndex={3000}
                         />
-                        {currentItem.errors.item_table_id && (
-                            <Text style={[styles.errorText, { color: colors.error }]}>{currentItem.errors.item_table_id}</Text>
-                        )}
+                        {renderError(currentItem.errors.item_table_id)}
                     </View>
 
                     {/* Field 2: Quantity */}
                     <View style={[styles.fieldContainer, { width: FIELD_WIDTH_QTY_WEIGHT }]}>
                         <View style={styles.labelRow}>
-                            <Icon name="counter" size={16} color={colors.primary} />
-                            <Text style={[styles.label, { color: colors.textSecondary }]}>QTY<Text style={[styles.required, { color: colors.error }]}> *</Text></Text>
+                            <Text style={styles.label}>Quantity<Text style={styles.required}> *</Text></Text>
                             {isQtyLocked && (
-                                <Icon name="lock" size={14} color={colors.warning} style={{ marginLeft: 4 }} />
+                                <Icon
+                                    name="lock-outline"
+                                    size={iconSize.sm}
+                                    color={t.icon.secondary}
+                                    accessibilityLabel="Quantity locked"
+                                />
                             )}
                         </View>
                         <TextInput
                             ref={qtyInputRef}
                             accessibilityLabel="Receipt item quantity"
+                            accessibilityHint={isQtyLocked ? 'Locked because this item has dispatches' : undefined}
                             style={[
                                 styles.input,
-                                { backgroundColor: colors.cellBackground, borderColor: colors.gray200, color: colors.textPrimary },
-                                currentItem.errors.qty && { borderColor: colors.error, borderWidth: 2 },
-                                isQtyLocked && { backgroundColor: colors.gray100, color: colors.textSecondary },
+                                styles.numericInput,
+                                !!currentItem.errors.qty && styles.inputError,
+                                isQtyLocked && styles.inputReadOnly,
                                 focusedField === 'qty' && !isQtyLocked && styles.inputFocused,
                             ]}
                             value={currentItem.qty}
@@ -363,7 +409,7 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                                 onFieldChange('qty', text);
                             }}
                             placeholder="0"
-                            placeholderTextColor={colors.textTertiary}
+                            placeholderTextColor={t.text.placeholder}
                             keyboardType="numeric"
                             returnKeyType="next"
                             onSubmitEditing={() => focusNext('qty')}
@@ -381,64 +427,67 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                             selectTextOnFocus={!isQtyLocked}
                             editable={!isQtyLocked}
                         />
-                        {currentItem.errors.qty && (
-                            <Text style={[styles.errorText, { color: colors.error }]}>{currentItem.errors.qty}</Text>
-                        )}
+                        {renderError(currentItem.errors.qty)}
                     </View>
 
                     {/* Field 3: Weight */}
                     <View style={[styles.fieldContainer, { width: FIELD_WIDTH_QTY_WEIGHT }]}>
                         <View style={styles.labelRow}>
-                            <Icon name="scale" size={16} color={colors.textTertiary} />
-                            <Text style={[styles.label, { color: colors.textSecondary }]}>WEIGHT (KG)</Text>
+                            <Text style={styles.label}>Weight</Text>
                         </View>
-                        <TextInput
-                            ref={weightInputRef}
-                            accessibilityLabel="Receipt item weight"
+                        <View
                             style={[
                                 styles.input,
-                                { backgroundColor: colors.cellBackground, borderColor: colors.gray200, color: colors.textPrimary },
-                                currentItem.errors.weight && { borderColor: colors.error, borderWidth: 2 },
+                                styles.suffixField,
+                                !!currentItem.errors.weight && styles.inputError,
                                 focusedField === 'weight' && styles.inputFocused,
                             ]}
-                            value={currentItem.weight}
-                            onChangeText={(text) => onFieldChange('weight', text)}
-                            placeholder="0"
-                            placeholderTextColor={colors.textTertiary}
-                            keyboardType="numeric"
-                            returnKeyType="next"
-                            onSubmitEditing={() => focusNext('weight')}
-                            blurOnSubmit={false}
-                            onFocus={() => {
-                                setFocusedField('weight');
-                                scrollToField(FIELD_WIDTH_LARGE + FIELD_WIDTH_QTY_WEIGHT);
-                            }}
-                            onBlur={() => setFocusedField(null)}
-                            selectTextOnFocus
-                        />
+                        >
+                            <TextInput
+                                ref={weightInputRef}
+                                accessibilityLabel="Receipt item weight in kilograms"
+                                style={[styles.suffixInput, styles.numericInput]}
+                                value={currentItem.weight}
+                                onChangeText={(text) => onFieldChange('weight', text)}
+                                placeholder="0"
+                                placeholderTextColor={t.text.placeholder}
+                                keyboardType="numeric"
+                                returnKeyType="next"
+                                onSubmitEditing={() => focusNext('weight')}
+                                blurOnSubmit={false}
+                                onFocus={() => {
+                                    setFocusedField('weight');
+                                    scrollToField(FIELD_WIDTH_LARGE + FIELD_WIDTH_QTY_WEIGHT);
+                                }}
+                                onBlur={() => setFocusedField(null)}
+                                selectTextOnFocus
+                            />
+                            <Text style={styles.suffix} importantForAccessibility="no">kg</Text>
+                        </View>
+                        {renderError(currentItem.errors.weight)}
                     </View>
 
                     {/* Field 4: Rack with Floor/Chamber Chips */}
                     <View style={[styles.fieldContainer, { width: FIELD_WIDTH_RACK }]}>
                         <View style={styles.labelRow}>
-                            <Icon name="warehouse" size={16} color={colors.textTertiary} />
-                            <Text style={[styles.label, { color: colors.textSecondary }]}>RACK</Text>
-                            {fullRackValue && (
-                                <Text style={[styles.rackPreviewInline, { color: colors.primary }]}>({fullRackValue})</Text>
+                            <Icon name="view-grid-outline" size={iconSize.sm} color={t.icon.secondary} />
+                            <Text style={styles.label}>Rack</Text>
+                            {!!fullRackValue && (
+                                <Text style={styles.rackPreviewInline} numberOfLines={1}>{fullRackValue}</Text>
                             )}
                         </View>
                         <TextInput
                             ref={rackInputRef}
+                            accessibilityLabel="Rack"
                             style={[
-                                styles.rackInput,
-                                { backgroundColor: colors.cellBackground, borderColor: colors.gray200, color: colors.textPrimary },
-                                currentItem.errors.rack && { borderColor: colors.error, borderWidth: 2 },
+                                styles.input,
+                                !!currentItem.errors.rack && styles.inputError,
                                 focusedField === 'rack' && styles.inputFocused,
                             ]}
                             value={rackTextOnly}
                             onChangeText={handleRackTextChange}
-                            placeholder="e.g., 20B-20C"
-                            placeholderTextColor={colors.textTertiary}
+                            placeholder="For example 20B-20C"
+                            placeholderTextColor={t.text.placeholder}
                             returnKeyType="next"
                             onSubmitEditing={() => focusNext('rack')}
                             blurOnSubmit={false}
@@ -452,99 +501,58 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
 
                         {/* Floor Chips */}
                         <View style={styles.chipSection}>
-                            <Text style={[styles.chipLabel, { color: colors.textSecondary }]}>FLOOR</Text>
-                            <View style={styles.chipWrap}>
-                                {FLOOR_OPTIONS.map((floor) => (
-                                    <TouchableOpacity
-                                        key={floor}
-                                        style={[
-                                            styles.chip,
-                                            { backgroundColor: colors.gray100, borderColor: colors.gray200 },
-                                            selectedFloor === floor && { backgroundColor: colors.primary, borderColor: colors.primary },
-                                        ]}
-                                        onPress={() => handleFloorSelect(floor)}
-                                        activeOpacity={0.7}
-                                    >
-                                        {selectedFloor === floor && (
-                                            <Icon name="check" size={12} color="#FFFFFF" style={styles.chipCheckmark} />
-                                        )}
-                                        <Text style={[
-                                            styles.chipText,
-                                            { color: colors.textSecondary },
-                                            selectedFloor === floor && styles.chipTextSelected,
-                                        ]}>
-                                            {floor}
-                                        </Text>
-                                    </TouchableOpacity>
-                                ))}
+                            <Text style={styles.chipLabel} accessibilityRole="header">Floor</Text>
+                            <View style={styles.chipWrap} accessibilityRole="radiogroup">
+                                {FLOOR_OPTIONS.map((floor) =>
+                                    renderChip(floor, selectedFloor === floor, () => handleFloorSelect(floor), 'Floor')
+                                )}
                             </View>
                         </View>
 
                         {/* Chamber Chips */}
                         <View style={styles.chipSection}>
-                            <Text style={[styles.chipLabel, { color: colors.textSecondary }]}>CHAMBER</Text>
-                            <View style={styles.chipWrap}>
-                                {CHAMBER_OPTIONS.map((chamber) => (
-                                    <TouchableOpacity
-                                        key={chamber}
-                                        style={[
-                                            styles.chip,
-                                            { backgroundColor: colors.gray100, borderColor: colors.gray200 },
-                                            selectedChamber === chamber && { backgroundColor: colors.primary, borderColor: colors.primary },
-                                        ]}
-                                        onPress={() => handleChamberSelect(chamber)}
-                                        activeOpacity={0.7}
-                                    >
-                                        {selectedChamber === chamber && (
-                                            <Icon name="check" size={12} color="#FFFFFF" style={styles.chipCheckmark} />
-                                        )}
-                                        <Text style={[
-                                            styles.chipText,
-                                            { color: colors.textSecondary },
-                                            selectedChamber === chamber && styles.chipTextSelected,
-                                        ]}>
-                                            {chamber}
-                                        </Text>
-                                    </TouchableOpacity>
-                                ))}
+                            <Text style={styles.chipLabel} accessibilityRole="header">Chamber</Text>
+                            <View style={styles.chipWrap} accessibilityRole="radiogroup">
+                                {CHAMBER_OPTIONS.map((chamber) =>
+                                    renderChip(chamber, selectedChamber === chamber, () => handleChamberSelect(chamber), 'Chamber')
+                                )}
                             </View>
                         </View>
 
-                        {currentItem.errors.rack && (
-                            <Text style={[styles.errorText, { color: colors.error }]}>{currentItem.errors.rack}</Text>
-                        )}
+                        {renderError(currentItem.errors.rack)}
                     </View>
 
                     {/* Field 5: Package Mark + Image Upload */}
                     <View style={[styles.fieldContainer, { width: FIELD_WIDTH_MARK }]}>
                         <View style={styles.labelRow}>
-                            <Icon name="tag" size={16} color={colors.textTertiary} />
-                            <Text style={[styles.label, { color: colors.textSecondary }]}>MARK</Text>
-                            <TouchableOpacity
+                            <Icon name="tag-outline" size={iconSize.sm} color={t.icon.secondary} />
+                            <Text style={styles.label}>Mark</Text>
+                            <Pressable
                                 onPress={() => {
-                                    if ((currentItem.trl_images?.length || 0) >= 2) {
-                                        Alert.alert('Limit Reached', 'Maximum 2 images allowed per item.');
+                                    if (imageCount >= 2) {
+                                        Alert.alert('Photo limit reached', 'You can add up to 2 photos per item.');
                                         return;
                                     }
                                     onImagePick();
                                 }}
-                                style={{ marginLeft: theme.spacing.sm }}
-                                activeOpacity={0.7}
+                                style={({ pressed }) => [styles.cameraButton, pressed && styles.iconButtonPressed]}
+                                accessibilityRole="button"
+                                accessibilityLabel="Add mark photo"
                             >
-                                <Icon name="camera" size={20} color={colors.primary} />
-                            </TouchableOpacity>
+                                <Icon name="camera-outline" size={iconSize.md} color={t.brand.tint} />
+                            </Pressable>
                         </View>
                         <TextInput
                             ref={packageMarkInputRef}
+                            accessibilityLabel="Mark"
                             style={[
                                 styles.input,
-                                { backgroundColor: colors.cellBackground, borderColor: colors.gray200, color: colors.textPrimary },
                                 focusedField === 'package_mark' && styles.inputFocused,
                             ]}
                             value={currentItem.package_mark}
                             onChangeText={(text) => onFieldChange('package_mark', text)}
-                            placeholder="MARK001"
-                            placeholderTextColor={colors.textTertiary}
+                            placeholder="For example MARK001"
+                            placeholderTextColor={t.text.placeholder}
                             returnKeyType="done"
                             onSubmitEditing={() => focusNext('package_mark')}
                             blurOnSubmit={false}
@@ -556,13 +564,15 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                             maxLength={60}
                         />
                         {/* Image Previews */}
-                        {(currentItem.trl_images?.length || 0) > 0 && (
+                        {imageCount > 0 && (
                             <View style={styles.imagePreviewRow}>
                                 {currentItem.trl_images.slice(0, 2).map((img, idx) => (
-                                    <TouchableOpacity
+                                    <Pressable
                                         key={img.id}
-                                        style={[styles.miniThumb, { backgroundColor: colors.gray200 }]}
+                                        style={({ pressed }) => [styles.miniThumb, pressed && styles.thumbPressed]}
                                         onPress={() => onImageRemove(img.id)}
+                                        accessibilityRole="button"
+                                        accessibilityLabel={`Remove mark photo ${idx + 1}`}
                                     >
                                         <Image
                                             source={{ uri: img.imageUrl }}
@@ -571,219 +581,314 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                                             cachePolicy="memory-disk"
                                             transition={150}
                                         />
-                                        <View style={{ position: 'absolute', top: -4, right: -4, backgroundColor: colors.cellBackground, borderRadius: 8 }}>
-                                            <Icon name="close-circle" size={16} color={colors.error} />
+                                        <View style={styles.removeBadge}>
+                                            <Icon name="close" size={iconSize.sm} color={t.overlay.onImage} />
                                         </View>
-                                    </TouchableOpacity>
+                                    </Pressable>
                                 ))}
                                 {currentItem.trl_images.length > 2 && (
-                                    <View style={[styles.moreThumb, { backgroundColor: colors.gray300 }]}>
-                                        <Text style={[styles.moreText, { color: colors.gray600 }]}>+{currentItem.trl_images.length - 2}</Text>
+                                    <View style={styles.moreThumb}>
+                                        <Text style={styles.moreText}>+{currentItem.trl_images.length - 2}</Text>
                                     </View>
                                 )}
                             </View>
                         )}
                     </View>
-
-
-
-
                 </ScrollView>
 
-                {/* Scroll hint gradient */}
-                <View style={[styles.scrollHintRight, { backgroundColor: colors.cellBackground }]} pointerEvents="none">
-                    <Icon name="chevron-right" size={20} color={colors.gray400} />
+                {/* Scroll hint: more fields to the right */}
+                <View style={styles.scrollHintRight} pointerEvents="none" importantForAccessibility="no-hide-descendants">
+                    <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />
                 </View>
             </View>
         );
     });
 
-// SAP Fiori Form Cell Styles (Layout only - colors applied inline)
-const styles = StyleSheet.create({
+// SAP Fiori form cells (guide 13.2 and 13.3) on the item entry strip
+const makeStyles = (t: ThemeTokens) => ({
     container: {
         flex: 1,
+        backgroundColor: t.background.base,
     },
     heroBanner: {
-        paddingHorizontal: theme.spacing.md,
-        paddingVertical: theme.spacing.sm,
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
+        paddingHorizontal: space.lg,
+        paddingVertical: space.sm,
+        flexDirection: 'row' as const,
+        alignItems: 'center' as const,
+        justifyContent: 'space-between' as const,
+        gap: space.md,
         minHeight: 56,
+        backgroundColor: t.surface.card,
+        borderBottomWidth: StyleSheet.hairlineWidth,
+        borderBottomColor: t.border.divider,
     },
     heroContent: {
         flex: 1,
+        borderRadius: radius.button,
+    },
+    heroContentPressed: {
+        backgroundColor: t.surface.cardPressed,
+    },
+    heroOverline: {
+        ...typography.footnote,
+        color: t.text.secondary,
+    },
+    heroTitleRow: {
+        flexDirection: 'row' as const,
+        alignItems: 'center' as const,
+        flexWrap: 'wrap' as const,
+        gap: space.sm,
     },
     heroTitle: {
-        fontSize: theme.fontSize.lg,
-        fontWeight: theme.fontWeight.semibold,
-        color: '#FFFFFF',
+        ...typography.headline,
+        color: t.text.primary,
+    },
+    viewAll: {
+        flexDirection: 'row' as const,
+        alignItems: 'center' as const,
+    },
+    viewAllText: {
+        ...typography.subhead,
+        color: t.brand.tint,
     },
     packagingBadge: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginTop: 4,
-        opacity: 0.9,
+        flexDirection: 'row' as const,
+        alignItems: 'center' as const,
+        marginTop: space.xxs,
+        gap: space.xs,
     },
     packagingText: {
-        fontSize: theme.fontSize.xs,
-        color: '#FFFFFF',
-        marginLeft: 4,
+        ...typography.footnote,
+        color: t.text.secondary,
     },
     saveButton: {
-        width: 44,
-        height: 44,
-        borderRadius: 22,
-        backgroundColor: 'rgba(255,255,255,0.2)',
-        alignItems: 'center',
-        justifyContent: 'center',
+        width: touchTarget,
+        height: touchTarget,
+        borderRadius: radius.pill,
+        backgroundColor: t.brand.fill,
+        alignItems: 'center' as const,
+        justifyContent: 'center' as const,
+    },
+    saveButtonPressed: {
+        backgroundColor: t.brand.fillPressed,
     },
     saveButtonDisabled: {
-        opacity: 0.3,
+        opacity: t.interaction.disabledOpacity,
     },
     scrollView: {
         flex: 1,
     },
     scrollContent: {
-        paddingHorizontal: theme.spacing.md,
-        paddingVertical: theme.spacing.md,
-        alignItems: 'flex-start',
+        paddingHorizontal: space.lg,
+        paddingVertical: space.md,
+        alignItems: 'flex-start' as const,
     },
     fieldContainer: {
-        marginRight: theme.spacing.md,
+        marginRight: space.md,
     },
     labelRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginBottom: 6,
-        gap: 4,
+        flexDirection: 'row' as const,
+        alignItems: 'center' as const,
+        minHeight: 24,
+        marginBottom: space.xs,
+        gap: space.xs,
     },
     label: {
-        fontSize: 13,
-        fontWeight: '400',
-        letterSpacing: 0.5,
-        lineHeight: 18,
+        ...typography.footnote,
+        color: t.text.secondary,
     },
-    required: {},
+    required: {
+        color: t.text.required,
+    },
     input: {
+        ...typography.body,
+        backgroundColor: t.surface.field,
         borderWidth: 1,
-        borderRadius: 8,
-        paddingHorizontal: 12,
-        height: 44,
-        fontSize: theme.fontSize.base,
+        borderColor: t.border.field,
+        borderRadius: radius.field,
+        paddingHorizontal: space.md,
+        minHeight: 44,
+        color: t.text.primary,
         ...Platform.select({
             android: {
-                textAlignVertical: 'center',
+                textAlignVertical: 'center' as const,
                 includeFontPadding: false,
             },
         }),
     },
+    numericInput: {
+        fontVariant: ['tabular-nums' as const],
+    },
     inputFocused: {
-        borderColor: '#0057D2',
+        borderColor: t.border.fieldFocus,
+        borderWidth: 2,
+        paddingHorizontal: space.md - 1,
+    },
+    inputError: {
+        borderColor: t.status.negative.border,
+        borderWidth: 2,
+        paddingHorizontal: space.md - 1,
+    },
+    inputReadOnly: {
+        backgroundColor: t.surface.fieldReadOnly,
+        borderWidth: 0,
+        paddingHorizontal: space.md + 1,
+    },
+    suffixField: {
+        flexDirection: 'row' as const,
+        alignItems: 'center' as const,
+    },
+    suffixInput: {
+        ...typography.body,
+        flex: 1,
+        minHeight: 40,
+        padding: 0,
+        color: t.text.primary,
         ...Platform.select({
-            ios: {
-                borderWidth: 2,
-            },
             android: {
-                borderWidth: 1,
+                textAlignVertical: 'center' as const,
+                includeFontPadding: false,
             },
         }),
     },
+    suffix: {
+        ...typography.body,
+        color: t.text.secondary,
+        marginLeft: space.xs,
+    },
     dropdownText: {
-        fontSize: theme.fontSize.sm,
+        ...typography.body,
+        color: t.text.primary,
+    },
+    dropdownSubtext: {
+        ...typography.footnote,
+        color: t.text.secondary,
+    },
+    errorRow: {
+        flexDirection: 'row' as const,
+        alignItems: 'flex-start' as const,
+        gap: space.xs,
+        marginTop: space.xs,
     },
     errorText: {
-        fontSize: 13,
-        marginTop: 4,
-        lineHeight: 18,
+        ...typography.footnote,
+        color: t.status.negative.text,
+        flexShrink: 1,
+    },
+    cameraButton: {
+        marginLeft: 'auto' as const,
+        minWidth: touchTarget,
+        minHeight: touchTarget,
+        marginVertical: -(touchTarget - 24) / 2,
+        alignItems: 'center' as const,
+        justifyContent: 'center' as const,
+        borderRadius: radius.pill,
+    },
+    iconButtonPressed: {
+        backgroundColor: t.brand.subtle,
     },
     imagePreviewRow: {
-        flexDirection: 'row',
-        marginTop: theme.spacing.xs,
-        gap: 4,
+        flexDirection: 'row' as const,
+        marginTop: space.xs,
+        gap: space.xs,
     },
     miniThumb: {
         width: 128,
         height: 128,
-        borderRadius: 12,
-        alignItems: 'center',
-        justifyContent: 'center',
-        overflow: 'hidden',
+        borderRadius: radius.card,
+        backgroundColor: t.surface.cardActive,
+        overflow: 'hidden' as const,
+    },
+    thumbPressed: {
+        opacity: 0.8,
+    },
+    removeBadge: {
+        position: 'absolute' as const,
+        top: space.xs,
+        right: space.xs,
+        width: 28,
+        height: 28,
+        borderRadius: radius.pill,
+        backgroundColor: t.overlay.scrim,
+        alignItems: 'center' as const,
+        justifyContent: 'center' as const,
     },
     moreThumb: {
         width: 128,
         height: 128,
-        borderRadius: 12,
-        alignItems: 'center',
-        justifyContent: 'center',
+        borderRadius: radius.card,
+        backgroundColor: t.surface.cardActive,
+        alignItems: 'center' as const,
+        justifyContent: 'center' as const,
     },
     moreText: {
-        fontSize: 10,
-        fontWeight: theme.fontWeight.bold,
+        ...typography.headline,
+        color: t.text.secondary,
+        fontVariant: ['tabular-nums' as const],
     },
     scrollHintRight: {
-        position: 'absolute',
+        position: 'absolute' as const,
         right: 0,
-        top: '50%',
-        marginTop: 20,
-        borderTopLeftRadius: 12,
-        borderBottomLeftRadius: 12,
-        padding: 4,
-        ...theme.shadows.sm,
-    },
-    rackInput: {
-        borderWidth: 1,
-        borderRadius: 8,
-        paddingHorizontal: 12,
-        height: 44,
-        fontSize: theme.fontSize.base,
-        ...Platform.select({
-            android: {
-                textAlignVertical: 'center',
-                includeFontPadding: false,
-            },
-        }),
+        top: '50%' as const,
+        marginTop: space.xl,
+        borderTopLeftRadius: radius.card,
+        borderBottomLeftRadius: radius.card,
+        padding: space.xs,
+        backgroundColor: t.surface.card,
+        ...t.shadow[1],
     },
     chipSection: {
-        marginTop: theme.spacing.xs,
+        marginTop: space.sm,
     },
     chipLabel: {
-        fontSize: 11,
-        fontWeight: '600',
+        ...typography.caption1,
+        fontWeight: fontWeight.semibold,
+        textTransform: 'uppercase' as const,
         letterSpacing: 0.5,
-        marginBottom: 4,
-        lineHeight: 16,
+        color: t.text.secondary,
+        marginBottom: space.xs,
     },
     chipWrap: {
-        flexDirection: 'row',
-        flexWrap: 'wrap',
-        gap: 4,
+        flexDirection: 'row' as const,
+        flexWrap: 'wrap' as const,
+        gap: space.sm,
     },
     chip: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        height: 32,
-        paddingHorizontal: 12,
-        borderRadius: 16,
+        flexDirection: 'row' as const,
+        alignItems: 'center' as const,
+        justifyContent: 'center' as const,
+        minHeight: 36,
+        paddingHorizontal: space.md,
+        borderRadius: radius.pill,
         borderWidth: 1,
+        borderColor: t.border.button,
+        backgroundColor: t.surface.card,
         minWidth: 44,
     },
+    chipPressed: {
+        backgroundColor: t.surface.cardPressed,
+    },
+    chipSelected: {
+        backgroundColor: t.brand.subtle,
+        borderColor: t.brand.tint,
+    },
     chipCheckmark: {
-        marginRight: 4,
+        marginRight: space.xs,
     },
     chipText: {
-        fontSize: 13,
-        fontWeight: '500',
+        ...typography.caption1,
+        fontWeight: fontWeight.medium,
+        color: t.text.primary,
     },
     chipTextSelected: {
-        color: '#FFFFFF',
-        fontWeight: '600',
+        color: t.brand.tint,
+        fontWeight: fontWeight.semibold,
     },
     rackPreviewInline: {
-        fontSize: 12,
-        fontWeight: theme.fontWeight.semibold,
-        marginLeft: 4,
+        ...typography.footnote,
+        fontWeight: fontWeight.semibold,
+        color: t.text.primary,
+        flexShrink: 1,
     },
 });
 

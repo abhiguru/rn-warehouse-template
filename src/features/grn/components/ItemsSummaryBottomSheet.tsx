@@ -7,7 +7,7 @@
  * Uses the generic ItemsSummaryBottomSheet component.
  */
 
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback } from 'react';
 import {
   ItemsSummaryBottomSheet as GenericItemsSummaryBottomSheet,
   TotalBadge,
@@ -15,7 +15,10 @@ import {
 import { GRNImageData } from '@/store/slices/grnFormSlice';
 import { SavedItemCard } from '@/features/grn/components/SavedItemCard';
 import { parseReceiptQuantity, parseReceiptWeight } from '@/features/grn/schemas/grnValidation';
-import { useListColors } from '@/hooks/useListColors';
+import { useTokens } from '@/hooks/useTheme';
+
+const qtyFormat = new Intl.NumberFormat('en-IN');
+const weightFormat = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 });
 
 /** Form data for a GRN item */
 export interface ItemFormData {
@@ -53,8 +56,7 @@ const ItemsSummaryBottomSheet: React.FC<ItemsSummaryBottomSheetProps> = ({
   editingItemId,
   dispatchedItemIds,
 }) => {
-  // Theme colors for dark mode support
-  const colors = useListColors();
+  const t = useTokens();
 
   // Get unique key for item
   const getItemKey = useCallback((item: ItemFormData) => item.grn_trl_id, []);
@@ -85,18 +87,18 @@ const ItemsSummaryBottomSheet: React.FC<ItemsSummaryBottomSheetProps> = ({
     return [
       {
         icon: 'counter',
-        iconColor: colors.blue,
-        label: 'Total Qty:',
-        value: totalQuantity,
+        iconColor: t.icon.secondary,
+        label: 'Total quantity:',
+        value: qtyFormat.format(totalQuantity),
       },
       {
         icon: 'weight',
-        iconColor: colors.success,
-        label: 'Total Weight:',
-        value: `${totalWeight} kg`,
+        iconColor: t.icon.secondary,
+        label: 'Total weight:',
+        value: `${weightFormat.format(totalWeight)} kg`,
       },
     ];
-  }, [colors]);
+  }, [t]);
 
   // Render item using SavedItemCard
   const renderItem = useCallback(
@@ -140,7 +142,7 @@ const ItemsSummaryBottomSheet: React.FC<ItemsSummaryBottomSheetProps> = ({
       isItemProtected={isItemProtected}
       entityName="item"
       emptyTitle="No items added yet"
-      emptySubtitle="Fill the form above and tap the checkmark to save items"
+      emptySubtitle="Fill in the item form and tap the check mark to save it here."
     />
   );
 };

@@ -32,70 +32,24 @@ import { verifyOTP, signInWithPhone } from '@/config/supabaseConfig';
 import { Button } from '@/components/ui/Button';
 import { parseErrorToFriendly } from '@/utils/errorHandler';
 import { useRateLimitCountdown } from '@/hooks/useRateLimitCountdown';
-import { useFioriColors } from '@/theme/fioriColors';
-import { useTheme } from '@/hooks/useTheme';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import {
+  fontWeight,
+  iconSize,
+  layout,
+  radius,
+  space,
+  touchTarget,
+  typography,
+  type ThemeTokens,
+} from '@/theme/tokens';
 
-// Static design tokens (typography, spacing, dimensions)
-const FIORI_STATIC = {
-  typography: {
-    displayLarge: {
-      fontSize: 34,
-      lineHeight: 41,
-      fontWeight: '700' as const,
-      letterSpacing: 0.37,
-    },
-    title1: {
-      fontSize: 28,
-      lineHeight: 34,
-      fontWeight: '700' as const,
-      letterSpacing: 0.36,
-    },
-    title3: {
-      fontSize: 20,
-      lineHeight: 25,
-      fontWeight: '600' as const,
-      letterSpacing: 0.38,
-    },
-    body: {
-      fontSize: 17,
-      lineHeight: 22,
-      fontWeight: '400' as const,
-      letterSpacing: -0.41,
-    },
-    caption1: {
-      fontSize: 13,
-      lineHeight: 18,
-      fontWeight: '400' as const,
-      letterSpacing: -0.08,
-    },
-    caption2: {
-      fontSize: 12,
-      lineHeight: 16,
-      fontWeight: '400' as const,
-      letterSpacing: 0,
-    },
-    otpDigit: {
-      fontSize: 24,
-      lineHeight: 28,
-      fontWeight: '600' as const,
-      letterSpacing: 0,
-    },
-  },
-  spacing: {
-    xs: 4,
-    sm: 8,
-    md: 16,
-    lg: 24,
-    xl: 32,
-    xxl: 48,
-  },
-  dimensions: {
-    otpBoxSize: 48,
-    otpBoxGap: 12,
-    buttonHeight: 44,
-    borderRadius: 8,
-    maxContentWidth: 375,
-  },
+const CODE_LENGTH = 6;
+
+/** "+919876543210" -> "+91 98765 43210" (style guide §12.3). */
+const formatPhoneForDisplay = (phone: string) => {
+  const match = /^\+91(\d{5})(\d{5})$/.exec(phone);
+  return match ? `+91 ${match[1]} ${match[2]}` : phone;
 };
 
 export default function OTPScreen() {
@@ -107,8 +61,8 @@ export default function OTPScreen() {
   const autoSubmitTimerRef = useRef<NodeJS.Timeout | null>(null);
   const focusTimerRef = useRef<NodeJS.Timeout | null>(null);
   const insets = useSafeAreaInsets();
-  const FIORI = useFioriColors();
-  const { isDarkMode } = useTheme();
+  const t = useTokens();
+  const styles = useThemedStyles(makeStyles);
 
   const dispatch = useAppDispatch();
   const { phoneNumber, isVerifyingOTP, isAuthenticating } = useAppSelector(
@@ -147,7 +101,7 @@ export default function OTPScreen() {
   }, [phoneNumber]);
 
   const handleOtpChange = (value: string) => {
-    const numericValue = value.replace(/[^0-9]/g, '').slice(0, 6);
+    const numericValue = value.replace(/[^0-9]/g, '').slice(0, CODE_LENGTH);
     setOtpCode(numericValue);
     setFocusedIndex(numericValue.length);
 
@@ -157,7 +111,7 @@ export default function OTPScreen() {
     }
 
     // Auto-submit when 6 digits are entered
-    if (numericValue.length === 6 && !isVerifyingOTP) {
+    if (numericValue.length === CODE_LENGTH && !isVerifyingOTP) {
       autoSubmitTimerRef.current = setTimeout(() => {
         handleVerifyOTPWithCode(numericValue);
       }, 300);
@@ -175,8 +129,8 @@ export default function OTPScreen() {
   };
 
   const handleVerifyOTPWithCode = async (code: string) => {
-    if (code.length !== 6) {
-      Alert.alert('Invalid OTP', 'Please enter the complete 6-digit OTP');
+    if (code.length !== CODE_LENGTH) {
+      Alert.alert('Enter the full code', 'Enter all 6 digits of the code we sent you.');
       return;
     }
 
@@ -204,10 +158,10 @@ export default function OTPScreen() {
         const friendlyMessage = parseErrorToFriendly(
           (result as { success: false; error: string }).error
         );
-        Alert.alert('Verification Failed', friendlyMessage);
+        Alert.alert("Couldn't verify the code", friendlyMessage);
       }
     } catch {
-      Alert.alert('Error', 'Something went wrong. Please try again.');
+      Alert.alert("Couldn't verify the code", 'Check your connection and try again.');
     } finally {
       dispatch(setVerifyingOTP(false));
     }
@@ -231,21 +185,21 @@ export default function OTPScreen() {
         setOtpCode('');
         setFocusedIndex(0);
         Alert.alert(
-          'Code Sent',
-          'A new verification code has been sent to your phone.'
+          'Code sent',
+          `A new code was sent to ${formatPhoneForDisplay(phoneNumber)}.`
         );
       } else {
         if (handleRateLimitError(result.error)) {
           return;
         }
         const friendlyMessage = parseErrorToFriendly(result.error);
-        Alert.alert('Could Not Send Code', friendlyMessage);
+        Alert.alert("Couldn't send the code", friendlyMessage);
       }
     } catch (error) {
       if (handleRateLimitError(error)) {
         return;
       }
-      Alert.alert('Error', 'Something went wrong. Please try again.');
+      Alert.alert("Couldn't send the code", 'Check your connection and try again.');
     } finally {
       dispatch(setAuthenticating(false));
     }
@@ -263,64 +217,53 @@ export default function OTPScreen() {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  return (
-    <View
-      style={[
-        styles.container,
-        {
-          paddingTop: insets.top + 8,
-          backgroundColor: FIORI.colors.background,
-        },
-      ]}
-    >
-      <EdgeToEdgeStatusBar
-        barStyle={isDarkMode ? 'light-content' : 'dark-content'}
-      />
+  const displayPhone = formatPhoneForDisplay(phoneNumber);
 
-      {/* Hidden TextInput for OTP entry */}
+  return (
+    <View style={[styles.container, { paddingTop: insets.top + space.sm }]}>
+      <EdgeToEdgeStatusBar barStyle={t.statusBarStyle} />
+
+      {/* Hidden TextInput for code entry; the boxes below mirror its value */}
       <TextInput
         ref={hiddenInputRef}
         value={otpCode}
         onChangeText={handleOtpChange}
         keyboardType="number-pad"
         textContentType="oneTimeCode"
-        autoComplete="off"
-        maxLength={6}
+        autoComplete="sms-otp"
+        maxLength={CODE_LENGTH}
         autoFocus
         caretHidden
         editable={!isVerifyingOTP}
         style={styles.hiddenInput}
-        accessibilityLabel="OTP input"
-        accessibilityHint="Enter the 6-digit code sent to your phone"
+        accessibilityLabel="Verification code"
+        accessibilityHint={`Enter the 6-digit code sent to ${displayPhone}`}
       />
 
-      {/* Fiori: Navigation Bar - Back Button - Outside ScrollView */}
+      {/* Navigation bar - back button, outside the ScrollView */}
       <Pressable
-        style={styles.backButtonNav}
+        style={({ pressed }) => [styles.backButtonNav, pressed && styles.backButtonPressed]}
         onPress={handleBack}
         accessibilityRole="button"
-        accessibilityLabel="Go back"
+        accessibilityLabel="Back"
       >
-        <Icon name="chevron-left" size={28} color={FIORI.colors.tint} />
-        <Text style={[styles.backButtonText, { color: FIORI.colors.tint }]}>
-          Back
-        </Text>
+        <Icon name="chevron-left" size={iconSize.lg} color={t.brand.tint} />
+        <Text style={styles.backButtonText}>Back</Text>
       </Pressable>
 
       <KeyboardAvoidingView
         style={styles.keyboardView}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 10 : 0}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? space.md : 0}
       >
         <ScrollView
           contentContainerStyle={[
             styles.scrollContent,
-            { paddingBottom: insets.bottom + 100 },
+            { paddingBottom: insets.bottom + space.max },
           ]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          {/* Fiori: Verification Content */}
           <View style={styles.content}>
             {/* A. Header Section */}
             <View
@@ -328,184 +271,110 @@ export default function OTPScreen() {
               accessible={true}
               accessibilityRole="header"
             >
-              <View
-                style={[
-                  styles.iconContainer,
-                  { backgroundColor: FIORI.colors.tintLight },
-                ]}
-              >
+              <View style={styles.iconContainer}>
                 <Icon
                   name="shield-check-outline"
-                  size={32}
-                  color={FIORI.colors.tint}
+                  size={iconSize.xl}
+                  color={t.brand.tint}
                 />
               </View>
-              <Text style={[styles.title, { color: FIORI.colors.textPrimary }]}>
-                Verify Your Phone
-              </Text>
-              <Text
-                style={[
-                  styles.description,
-                  { color: FIORI.colors.textSecondary },
-                ]}
-              >
+              <Text style={styles.title}>Verify your phone</Text>
+              <Text style={styles.description}>
                 Enter the 6-digit code sent to
               </Text>
-              <Text style={[styles.phoneNumber, { color: FIORI.colors.tint }]}>
-                {phoneNumber}
-              </Text>
+              <Text style={styles.phoneNumber}>{displayPhone}</Text>
             </View>
 
-            {/* B. OTP Input Section */}
+            {/* B. Code Input Section */}
             <View style={styles.otpSection}>
-              <Text
-                style={[
-                  styles.sectionHeader,
-                  { color: FIORI.colors.textSecondary },
-                ]}
-              >
+              <Text style={styles.sectionHeader} accessibilityRole="header">
                 VERIFICATION CODE
               </Text>
 
-              <Pressable style={styles.otpContainer} onPress={focusHiddenInput}>
-                {[0, 1, 2, 3, 4, 5].map(index => {
+              <Pressable
+                style={styles.otpContainer}
+                onPress={focusHiddenInput}
+                accessibilityRole="button"
+                accessibilityLabel={`Verification code, ${otpCode.length} of ${CODE_LENGTH} digits entered`}
+                accessibilityHint="Opens the keyboard to type the code"
+              >
+                {Array.from({ length: CODE_LENGTH }, (_, index) => {
                   const digit = otpCode[index] || '';
-                  const isFilled = digit !== '';
                   const isCurrent =
-                    index === otpCode.length && otpCode.length < 6;
+                    index === otpCode.length && otpCode.length < CODE_LENGTH;
 
                   return (
                     <View
                       key={index}
-                      style={[
-                        styles.otpBox,
-                        {
-                          borderColor: FIORI.colors.inputBorder,
-                          backgroundColor: FIORI.colors.backgroundSecondary,
-                        },
-                        isFilled && {
-                          backgroundColor: FIORI.colors.background,
-                        },
-                        isCurrent && {
-                          borderColor: FIORI.colors.inputBorderFocus,
-                          backgroundColor: FIORI.colors.background,
-                        },
-                      ]}
+                      style={[styles.otpBox, isCurrent && styles.otpBoxFocused]}
                     >
-                      <Text
-                        style={[
-                          styles.otpDigit,
-                          { color: FIORI.colors.textTertiary },
-                          isFilled && { color: FIORI.colors.textPrimary },
-                        ]}
-                      >
-                        {digit}
-                      </Text>
+                      <Text style={styles.otpDigit}>{digit}</Text>
                     </View>
                   );
                 })}
               </Pressable>
 
               {/* Helper text */}
-              <Text
-                style={[
-                  styles.helperText,
-                  { color: FIORI.colors.textTertiary },
-                ]}
-              >
+              <Text style={styles.helperText}>
                 Code expires in {formatTimer(expiryTimer)}
               </Text>
             </View>
 
-            {/* C. Rate Limit Warning (Fiori Message Strip) */}
+            {/* C. Rate Limit Warning (Fiori critical message strip) */}
             {isRateLimited && (
               <View
-                style={[
-                  styles.messageStrip,
-                  {
-                    backgroundColor: FIORI.colors.warningLight,
-                    borderLeftColor: FIORI.colors.warning,
-                  },
-                ]}
+                style={styles.messageStrip}
                 accessible={true}
                 accessibilityRole="alert"
-                accessibilityLabel={`Rate limited. ${rateLimitMessage}. Try again in ${countdownText}`}
+                accessibilityLabel={`Warning. ${rateLimitMessage}. Try again in ${countdownText}`}
                 accessibilityLiveRegion="polite"
               >
-                <Icon
-                  name="clock-outline"
-                  size={20}
-                  color={FIORI.colors.warning}
-                />
+                <Icon name="alert" size={iconSize.md} color={t.status.critical.text} />
                 <View style={styles.messageStripContent}>
-                  <Text
-                    style={[
-                      styles.messageStripTitle,
-                      { color: FIORI.colors.textPrimary },
-                    ]}
-                  >
-                    {rateLimitMessage}
-                  </Text>
-                  <Text
-                    style={[
-                      styles.messageStripText,
-                      { color: FIORI.colors.textSecondary },
-                    ]}
-                  >
+                  <Text style={styles.messageStripTitle}>{rateLimitMessage}</Text>
+                  <Text style={styles.messageStripText}>
                     Try again in {countdownText}
                   </Text>
                 </View>
               </View>
             )}
 
-            {/* D. Primary Action Button */}
+            {/* D. Primary Action Button: never disabled to signal a short code (§10) */}
             <View style={styles.buttonSection}>
               <Button
                 type="primary"
                 size="fullWidth"
                 onPress={handleVerifyOTP}
-                disabled={isVerifyingOTP || otpCode.length !== 6}
+                disabled={isVerifyingOTP}
                 loading={isVerifyingOTP}
+                loadingText="Verifying…"
                 accessibilityLabel="Verify code"
                 accessibilityHint="Verifies the 6-digit code you entered"
                 accessibilityState={{
-                  disabled: isVerifyingOTP || otpCode.length !== 6,
+                  disabled: isVerifyingOTP,
                   busy: isVerifyingOTP,
                 }}
               >
-                Verify
+                Verify code
               </Button>
             </View>
 
             {/* E. Resend Section */}
             <View style={styles.resendSection}>
-              <View
-                style={[
-                  styles.divider,
-                  { backgroundColor: FIORI.colors.divider },
-                ]}
-              />
+              <View style={styles.divider} />
 
-              <Text
-                style={[
-                  styles.resendLabel,
-                  { color: FIORI.colors.textSecondary },
-                ]}
-              >
+              <Text style={styles.resendLabel}>
                 Didn't receive the code?
               </Text>
 
               {resendTimer > 0 || isRateLimited ? (
                 <Text
-                  style={[
-                    styles.resendTimer,
-                    { color: FIORI.colors.textTertiary },
-                  ]}
+                  style={styles.resendTimer}
                   accessible={true}
                   accessibilityRole="timer"
                   accessibilityLabel={
                     isRateLimited
-                      ? `Rate limited, wait ${countdownText}`
+                      ? `Wait ${countdownText} before resending`
                       : `Resend available in ${formatTimer(resendTimer)}`
                   }
                   accessibilityLiveRegion="polite"
@@ -523,28 +392,28 @@ export default function OTPScreen() {
                   disabled={isAuthenticating}
                   loading={isAuthenticating}
                   accessibilityLabel="Resend code"
-                  accessibilityHint="Sends a new verification code to your phone"
+                  accessibilityHint={`Sends a new code to ${displayPhone}`}
                   accessibilityState={{
                     disabled: isAuthenticating,
                     busy: isAuthenticating,
                   }}
                 >
-                  Resend Code
+                  Resend code
                 </Button>
               )}
             </View>
 
-            {/* F. Change Number Link */}
+            {/* F. Wrong number: back to sign-in */}
             <View style={styles.changeNumberSection}>
               <Button
                 type="tertiary"
-                variant="normal"
+                variant="tint"
                 size="auto"
                 onPress={handleBack}
-                accessibilityLabel="Change phone number"
-                accessibilityHint="Go back to enter a different phone number"
+                accessibilityLabel="Wrong number? Change mobile number"
+                accessibilityHint="Goes back to enter a different mobile number"
               >
-                Change Phone Number
+                Wrong number?
               </Button>
             </View>
           </View>
@@ -555,17 +424,17 @@ export default function OTPScreen() {
 }
 
 // ============================================================================
-// SAP FIORI STYLES
+// STYLES (style guide §14.8)
 // ============================================================================
 
-const styles = StyleSheet.create({
-  // Container (color applied inline)
+const makeStyles = (t: ThemeTokens) => ({
   container: {
     flex: 1,
+    backgroundColor: t.background.base,
   },
 
   hiddenInput: {
-    position: 'absolute',
+    position: 'absolute' as const,
     top: -1000,
     left: 0,
     width: 1,
@@ -581,173 +450,190 @@ const styles = StyleSheet.create({
     flexGrow: 1,
   },
 
-  // Fiori Navigation Bar - Back button
+  // Navigation bar - back button
   backButtonNav: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: FIORI_STATIC.spacing.sm,
-    paddingVertical: FIORI_STATIC.spacing.md,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    alignSelf: 'flex-start' as const,
+    minHeight: touchTarget,
+    paddingLeft: space.xs,
+    paddingRight: space.md,
+    marginLeft: space.xs,
+    borderRadius: radius.button,
+  },
+  backButtonPressed: {
+    backgroundColor: t.brand.subtle,
   },
 
   backButtonText: {
-    ...FIORI_STATIC.typography.body,
-    marginLeft: FIORI_STATIC.spacing.xs,
+    ...typography.body,
+    color: t.brand.tint,
+    marginLeft: space.xxs,
   },
 
-  // Content wrapper
   content: {
     flex: 1,
-    paddingHorizontal: FIORI_STATIC.spacing.lg,
-    maxWidth: FIORI_STATIC.dimensions.maxContentWidth,
-    width: '100%',
-    alignSelf: 'center',
+    paddingHorizontal: layout.marginCompact,
+    maxWidth: layout.maxFormWidth,
+    width: '100%' as const,
+    alignSelf: 'center' as const,
   },
 
   // A. Header Section
   headerSection: {
-    alignItems: 'center',
-    marginBottom: FIORI_STATIC.spacing.md,
-    marginTop: FIORI_STATIC.spacing.sm,
+    alignItems: 'center' as const,
+    marginBottom: space.lg,
+    marginTop: space.sm,
   },
 
   iconContainer: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: FIORI_STATIC.spacing.sm,
+    width: layout.avatar.lg,
+    height: layout.avatar.lg,
+    borderRadius: radius.pill,
+    backgroundColor: t.brand.subtle,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    marginBottom: space.sm,
   },
 
-  // Fiori Display - Title (color applied inline)
   title: {
-    ...FIORI_STATIC.typography.title1,
-    textAlign: 'center',
-    marginBottom: FIORI_STATIC.spacing.sm,
+    ...typography.title1,
+    color: t.text.primary,
+    textAlign: 'center' as const,
+    marginBottom: space.sm,
   },
 
-  // Fiori Body - Description (color applied inline)
   description: {
-    ...FIORI_STATIC.typography.body,
-    textAlign: 'center',
+    ...typography.body,
+    color: t.text.secondary,
+    textAlign: 'center' as const,
   },
 
-  // Phone number - emphasized (color applied inline)
+  // Phone number - emphasised by weight, not colour
   phoneNumber: {
-    ...FIORI_STATIC.typography.body,
-    fontWeight: '600',
-    textAlign: 'center',
-    marginTop: FIORI_STATIC.spacing.xs,
+    ...typography.headline,
+    color: t.text.primary,
+    textAlign: 'center' as const,
+    marginTop: space.xs,
+    fontVariant: ['tabular-nums' as const],
   },
 
-  // B. OTP Section
+  // B. Code Section
   otpSection: {
-    marginBottom: FIORI_STATIC.spacing.lg,
+    marginBottom: space.xxl,
   },
 
-  // Fiori Section Header (color applied inline)
+  // Section header: footnote, capitals, secondary text
   sectionHeader: {
-    ...FIORI_STATIC.typography.caption1,
-    fontWeight: '600',
+    ...typography.footnote,
+    fontWeight: fontWeight.semibold,
     letterSpacing: 0.5,
-    marginBottom: FIORI_STATIC.spacing.md,
+    color: t.text.secondary,
+    marginBottom: space.lg,
   },
 
-  // OTP Container
   otpContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 16,
+    flexDirection: 'row' as const,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    gap: space.sm,
+    marginBottom: space.lg,
     minHeight: 70,
-    paddingVertical: 8,
+    paddingVertical: space.sm,
   },
 
-  // OTP Box (colors applied inline)
+  // One code box; shrinks on narrow phones so six always fit
   otpBox: {
-    width: 48,
+    flex: 1,
+    maxWidth: 48,
     height: 56,
+    borderWidth: 1,
+    borderColor: t.border.field,
+    borderRadius: radius.button,
+    backgroundColor: t.surface.field,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+  },
+  otpBoxFocused: {
     borderWidth: 2,
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginHorizontal: 6,
+    borderColor: t.border.fieldFocus,
   },
 
-  // OTP Digit (color applied inline)
   otpDigit: {
-    ...FIORI_STATIC.typography.otpDigit,
+    ...typography.title2,
+    fontWeight: fontWeight.semibold,
+    color: t.text.primary,
+    fontVariant: ['tabular-nums' as const],
   },
 
-  // Cursor animation
-  cursor: {
-    position: 'absolute',
-    bottom: 12,
-    width: 20,
-    height: 2,
-  },
-
-  // Helper text (color applied inline)
   helperText: {
-    ...FIORI_STATIC.typography.caption1,
-    textAlign: 'center',
+    ...typography.footnote,
+    color: t.text.secondary,
+    textAlign: 'center' as const,
   },
 
-  // C. Message Strip (colors applied inline)
+  // C. Critical message strip (style guide §13.9)
   messageStrip: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    borderRadius: FIORI_STATIC.dimensions.borderRadius,
-    padding: FIORI_STATIC.spacing.md,
-    marginBottom: FIORI_STATIC.spacing.lg,
-    borderLeftWidth: 4,
+    flexDirection: 'row' as const,
+    alignItems: 'flex-start' as const,
+    borderRadius: radius.button,
+    borderWidth: 1,
+    borderColor: t.status.critical.border,
+    backgroundColor: t.status.critical.background,
+    padding: space.md,
+    marginBottom: space.xxl,
   },
 
   messageStripContent: {
     flex: 1,
-    marginLeft: FIORI_STATIC.spacing.sm,
+    marginLeft: space.sm,
   },
 
   messageStripTitle: {
-    ...FIORI_STATIC.typography.caption1,
-    fontWeight: '600',
+    ...typography.footnote,
+    fontWeight: fontWeight.semibold,
+    color: t.status.critical.text,
   },
 
   messageStripText: {
-    ...FIORI_STATIC.typography.caption1,
-    marginTop: FIORI_STATIC.spacing.xs,
+    ...typography.footnote,
+    color: t.status.critical.text,
+    marginTop: space.xs,
   },
 
   // D. Button Section
   buttonSection: {
-    marginBottom: FIORI_STATIC.spacing.md,
+    marginBottom: space.lg,
   },
 
   // E. Resend Section
   resendSection: {
-    alignItems: 'center',
-    marginBottom: FIORI_STATIC.spacing.sm,
+    alignItems: 'center' as const,
+    marginBottom: space.sm,
   },
 
   divider: {
-    width: '100%',
-    height: 1,
-    marginBottom: FIORI_STATIC.spacing.lg,
+    width: '100%' as const,
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: t.border.divider,
+    marginBottom: space.xxl,
   },
 
   resendLabel: {
-    ...FIORI_STATIC.typography.caption1,
-    marginBottom: FIORI_STATIC.spacing.sm,
+    ...typography.footnote,
+    color: t.text.secondary,
+    marginBottom: space.sm,
   },
 
   resendTimer: {
-    ...FIORI_STATIC.typography.body,
-    fontWeight: '500',
+    ...typography.callout,
+    color: t.text.secondary,
+    fontVariant: ['tabular-nums' as const],
   },
 
-  // F. Change Number Section
+  // F. Wrong number
   changeNumberSection: {
-    alignItems: 'center',
-    marginTop: FIORI_STATIC.spacing.md,
+    alignItems: 'center' as const,
+    marginTop: space.lg,
   },
 });

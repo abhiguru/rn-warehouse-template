@@ -15,7 +15,16 @@ import { View, Text, StyleSheet, Pressable } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { formatNumber, formatRelativeTime } from '@/utils/formatters';
 import type { Order } from '@/types/order.types';
-import type { ListColors } from '@/hooks/useListColors';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import {
+  fontWeight,
+  iconSize,
+  layout,
+  radius,
+  space,
+  typography,
+  type ThemeTokens,
+} from '@/theme/tokens';
 
 // ============================================================================
 // TYPES
@@ -30,8 +39,20 @@ export interface MemoizedOrderItemProps {
   onViewDetails?: (order: Order) => void;
   /** Callback for convert to dispatch action */
   onConvertToDispatch?: (order: Order) => void;
-  /** Theme-aware list colors for dark mode support */
-  colors: ListColors;
+  /**
+   * @deprecated Colours come from the theme tokens; kept so existing callers
+   * still compile. Ignored.
+   */
+  colors?: unknown;
+}
+
+type StatusKind = 'positive' | 'neutral';
+
+/** Stable avatar colour index for a customer (style guide §3.2). */
+function avatarIndex(key: string, count: number): number {
+  let hash = 0;
+  for (let i = 0; i < key.length; i++) hash = (hash * 31 + key.charCodeAt(i)) | 0;
+  return Math.abs(hash) % count;
 }
 
 // ============================================================================
@@ -41,8 +62,9 @@ export interface MemoizedOrderItemProps {
 const OrderItemContent: React.FC<MemoizedOrderItemProps> = ({
   order,
   onPress,
-  colors,
 }) => {
+  const t = useTokens();
+  const styles = useThemedStyles(makeStyles);
   // Calculate totals - handle both legacy and new field names
   const itemCount = order.item_count ?? order.total_items ?? order.items?.length ?? 0;
   const totalQty = order.quantity_sum ?? order.total_quantity ?? 0;
@@ -60,12 +82,16 @@ const OrderItemContent: React.FC<MemoizedOrderItemProps> = ({
   // Check if order is dispatched
   const isDispatched = (order.status || '').toUpperCase() === 'DISPATCHED';
 
-  // Status config - includes dispatched state
-  const statusConfig = isDispatched
-    ? { color: colors.statusNeutral, bgColor: colors.statusNeutralLight, label: 'Dispatched' }
+  // Status per style guide §3.5: dispatched orders are positive, open ones neutral.
+  const statusConfig: { kind: StatusKind; icon: string; label: string } = isDispatched
+    ? { kind: 'positive', icon: 'check-circle', label: 'Dispatched' }
     : hasItems
-      ? { color: colors.statusPositive, bgColor: colors.statusPositiveLight, label: 'Active' }
-      : { color: colors.statusNone, bgColor: colors.statusNoneLight, label: 'Empty' };
+      ? { kind: 'neutral', icon: 'circle-outline', label: 'Open' }
+      : { kind: 'neutral', icon: 'circle-outline', label: 'Empty' };
+  const status = t.status[statusConfig.kind];
+
+  // Avatar colour from a stable hash of the customer (style guide §3.2)
+  const avatarBackground = t.avatar[avatarIndex(order.customer_id || customerName, t.avatar.length)];
 
   // Build subtitle: "3 items • 45 units" or "No items"
   const subtitle = hasItems
@@ -89,11 +115,7 @@ const OrderItemContent: React.FC<MemoizedOrderItemProps> = ({
   return (
     <Pressable
       onPress={() => onPress(order)}
-      style={({ pressed }) => [
-        styles.card,
-        { backgroundColor: colors.cellBackground },
-        pressed && { backgroundColor: colors.cellBackgroundPressed },
-      ]}
+      style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
       accessibilityRole="button"
       accessibilityLabel={accessibilityDescription}
       accessibilityHint="Double tap to view order details"
@@ -101,46 +123,47 @@ const OrderItemContent: React.FC<MemoizedOrderItemProps> = ({
       {/* SAP Fiori Object Cell Layout */}
       <View style={styles.objectCellRow}>
         {/* Detail Image: Customer Avatar (44pt) */}
-        <View style={[styles.avatar, { backgroundColor: hasItems ? colors.primaryLight : colors.gray100 }]}>
-          <Text style={[styles.avatarText, { color: hasItems ? colors.primary : colors.textTertiary }]}>
+        <View style={[styles.avatar, { backgroundColor: avatarBackground }]}>
+          <Text style={styles.avatarText} maxFontSizeMultiplier={1.6}>
             {initials}
           </Text>
         </View>
 
         {/* Main Content: Title + Subtitle + Footnote */}
         <View style={styles.mainContent}>
-          {/* Title - 17pt semibold */}
-          <Text style={[styles.title, { color: colors.textPrimary }]} numberOfLines={1}>
+          {/* Title - headline, two lines max */}
+          <Text style={styles.title} numberOfLines={2}>
             {customerName}
           </Text>
 
-          {/* Subtitle - 15pt regular */}
-          <Text style={[styles.subtitle, { color: hasItems ? colors.textSecondary : colors.textTertiary }]}>
+          {/* Subtitle - subhead */}
+          <Text style={styles.subtitle}>
             {subtitle}
           </Text>
 
-          {/* Footnote - 13pt */}
-          <Text style={[styles.footnote, { color: colors.textTertiary }]} numberOfLines={1}>
+          {/* Footnote */}
+          <Text style={styles.footnote} numberOfLines={1}>
             {footnote}
           </Text>
         </View>
 
         {/* Attribute: Status Badge + Chevron */}
         <View style={styles.attributeArea}>
-          <View style={[styles.statusBadge, { backgroundColor: statusConfig.bgColor }]}>
-            <Text style={[styles.statusBadgeText, { color: statusConfig.color }]}>
+          <View style={[styles.statusBadge, { backgroundColor: status.background }]}>
+            <Icon name={statusConfig.icon} size={iconSize.sm} color={status.text} />
+            <Text style={[styles.statusBadgeText, { color: status.text }]} maxFontSizeMultiplier={1.6}>
               {statusConfig.label}
             </Text>
           </View>
-          <Icon name="chevron-right" size={20} color={colors.gray400} />
+          <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />
         </View>
       </View>
 
       {/* Description: Note (if exists) */}
       {order.note && (
-        <View style={[styles.noteContainer, { backgroundColor: colors.gray50, borderTopColor: colors.cellDivider }]}>
-          <Icon name="note-text-outline" size={14} color={colors.textTertiary} />
-          <Text style={[styles.noteText, { color: colors.textSecondary }]} numberOfLines={1}>
+        <View style={styles.noteContainer}>
+          <Icon name="note-text-outline" size={iconSize.sm} color={t.icon.secondary} />
+          <Text style={styles.noteText} numberOfLines={1}>
             {order.note}
           </Text>
         </View>
@@ -169,8 +192,7 @@ const areEqual = (
     prevOrder.updated_at === nextOrder.updated_at &&
     prevOrder.updated_by_display_name === nextOrder.updated_by_display_name &&
     prevOrder.note === nextOrder.note &&
-    prevProps.onPress === nextProps.onPress &&
-    prevProps.colors === nextProps.colors
+    prevProps.onPress === nextProps.onPress
   );
 
   if (__DEV__ && !result) {
@@ -194,97 +216,103 @@ MemoizedOrderItem.displayName = 'MemoizedOrderItem';
 // STYLES - SAP Fiori Object Cell (01-object-cell.md)
 // ============================================================================
 
-const styles = StyleSheet.create({
+const makeStyles = (t: ThemeTokens) => ({
   // Object Cell Container - Fiori card style
   card: {
-    marginHorizontal: 16,
-    marginVertical: 4,
-    borderRadius: 12, // Fiori card corner radius
-    overflow: 'hidden',
+    marginHorizontal: layout.marginCompact,
+    marginVertical: space.xs,
+    borderRadius: radius.card,
+    overflow: 'hidden' as const,
+    backgroundColor: t.surface.card,
+  },
+  cardPressed: {
+    backgroundColor: t.surface.cardPressed,
   },
 
   // Object Cell Row - Fiori spec: horizontal layout
   objectCellRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    minHeight: 72, // Fiori object cell min height
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.md,
+    minHeight: layout.objectCellMinHeight,
   },
 
-  // Detail Image: Avatar - Fiori spec: 44pt circular
+  // Detail Image: Avatar - 44pt circular
   avatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
+    width: layout.avatar.md,
+    height: layout.avatar.md,
+    borderRadius: radius.pill,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    marginRight: space.md,
   },
+  // Initials: ink on the light avatar palette, white on the dark one (§3.2)
   avatarText: {
-    fontSize: 17,
-    fontWeight: '600',
+    ...typography.headline,
+    color: t.mode === 'dark' ? t.overlay.onImage : t.text.primary,
   },
 
   // Main Content - Fiori spec: Title + Subtitle + Footnote
   mainContent: {
     flex: 1,
-    marginRight: 8,
+    marginRight: space.sm,
   },
 
-  // Title - Fiori spec: 17pt semibold
   title: {
-    fontSize: 17,
-    fontWeight: '600',
-    letterSpacing: -0.41,
-    marginBottom: 2,
+    ...typography.headline,
+    color: t.text.primary,
+    marginBottom: space.xxs,
   },
 
-  // Subtitle - Fiori spec: 15pt regular
   subtitle: {
-    fontSize: 15,
-    fontWeight: '400',
-    marginBottom: 2,
+    ...typography.subhead,
+    color: t.text.secondary,
+    marginBottom: space.xxs,
+    fontVariant: ['tabular-nums' as const],
   },
 
-  // Footnote - Fiori spec: 13pt
   footnote: {
-    fontSize: 13,
-    fontWeight: '400',
+    ...typography.footnote,
+    color: t.text.secondary,
   },
 
-  // Attribute Area (Right) - Fiori spec: status + navigation
+  // Attribute Area (Right) - status + navigation
   attributeArea: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.sm,
   },
 
-  // Status Badge - Fiori spec: 20pt compact tag
+  // Status tag (style guide §13.5)
   statusBadge: {
-    height: 20,
-    paddingHorizontal: 8,
-    borderRadius: 10,
-    justifyContent: 'center',
-    alignItems: 'center',
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.xs,
+    paddingHorizontal: space.s6,
+    paddingVertical: space.xxs,
+    borderRadius: radius.field,
   },
   statusBadgeText: {
-    fontSize: 11,
-    fontWeight: '600',
+    ...typography.caption1,
+    fontWeight: fontWeight.semibold,
   },
 
-  // Description/Note - Fiori spec: bottom section
+  // Description/Note - bottom section inside the card
   noteContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.md,
     borderTopWidth: StyleSheet.hairlineWidth,
-    gap: 8,
+    borderTopColor: t.border.divider,
+    backgroundColor: t.background.base,
+    gap: space.sm,
   },
   noteText: {
+    ...typography.footnote,
+    color: t.text.secondary,
     flex: 1,
-    fontSize: 13,
   },
 });
 
