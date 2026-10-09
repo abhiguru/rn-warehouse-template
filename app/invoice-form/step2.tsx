@@ -9,26 +9,34 @@ import React, { useState, useCallback, useRef } from 'react';
 import {
   View,
   Text,
-  StyleSheet,
+  Pressable,
   ActivityIndicator,
 } from 'react-native';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import { router } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
-import theme from '@/theme';
-import { useListColors } from '@/hooks/useListColors';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { iconSize, space } from '@/theme/tokens';
 import { useInvoiceForm } from '@/hooks/useInvoiceForm';
 import { useBackHandler } from '@/hooks/useBackHandler';
 import { InvoiceItemsTable } from '@/features/invoice/components/InvoiceItemsTable';
 import { InvoiceItemCard } from '@/features/invoice/components/InvoiceItemCard';
 import { InvoiceStepIndicator } from '@/components/InvoiceStepIndicator';
-import { INVOICE_STEPS, STEP_NUMBERS, getCompletedSteps } from '@/constants/invoiceSteps';
+import {
+  INVOICE_STEPS,
+  STEP_NUMBERS,
+  getCompletedSteps,
+  makeInvoiceWizardStyles,
+} from '@/constants/invoiceSteps';
 import { findOrCreateItemStoragePrice, getItemStoragePrices } from '@/services/item-pricing-service';
 
 export default function InvoiceFormStep2() {
-  // Theme colors for dark mode support
-  const colors = useListColors();
+  const styles = useThemedStyles(makeInvoiceWizardStyles);
+  const t = useTokens();
+  const insets = useSafeAreaInsets();
 
   // Use the consolidated invoice form hook
   const {
@@ -141,7 +149,7 @@ export default function InvoiceFormStep2() {
   }) => {
     // Validate customer_id exists
     if (!header.customer_id) {
-      showError('Error', 'Customer must be selected before editing pricing');
+      showError('Select a customer first', 'Select a GRN on the details step, then edit the pricing.');
       return;
     }
 
@@ -175,11 +183,11 @@ export default function InvoiceFormStep2() {
         // Navigate to pricing form in edit mode
         router.push(`/item-pricing-form?id=${result.data.id}&mode=edit`);
       } else {
-        showError('Error', result.message || 'Failed to find or create pricing');
+        showError("Couldn't open the pricing", result.message || 'Check your connection and try again.');
       }
     } catch (error) {
       console.error('[InvoiceFormStep2] Error in handleEditPricing:', error);
-      showError('Error', 'Failed to open pricing form');
+      showError("Couldn't open the pricing", 'Check your connection and try again.');
     } finally {
       setIsLoadingPricing(false);
     }
@@ -202,8 +210,8 @@ export default function InvoiceFormStep2() {
 
     if (invalidItems.length > 0) {
       showError(
-        'Invalid Pricing',
-        `${invalidItems.length} item(s) have invalid pricing. Please ensure charge and duration are greater than 0.`
+        'Check the item prices',
+        `${invalidItems.length === 1 ? '1 item has' : `${invalidItems.length} items have`} no charge or duration. Enter a charge and duration greater than 0.`
       );
       return;
     }
@@ -229,7 +237,7 @@ export default function InvoiceFormStep2() {
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.gray50 }]}>
+    <View style={styles.container}>
       <InvoiceStepIndicator
         steps={INVOICE_STEPS}
         currentStep={STEP_NUMBERS.ITEMS}
@@ -248,19 +256,20 @@ export default function InvoiceFormStep2() {
         extraScrollHeight={120}
         keyboardShouldPersistTaps="handled"
       >
-        {/* Items Count Info */}
-        <View style={[styles.infoCard, { backgroundColor: colors.tealLight, borderLeftColor: colors.teal }]}>
-          <Text style={[styles.infoLabel, { color: colors.teal }]}>Total Items:</Text>
-          <Text style={[styles.infoValue, { color: colors.teal }]}>{items.length}</Text>
+        {/* Item count */}
+        <View style={[styles.card, styles.kvRow]} accessible accessibilityLabel={`${items.length} ${items.length === 1 ? 'item' : 'items'} to invoice`}>
+          <Text style={styles.kvKey}>Items to invoice</Text>
+          <Text style={[styles.kvValue, styles.bold, styles.numeric]}>{items.length}</Text>
         </View>
 
-        {/* Grouped Items Table */}
         {isLoadingPricing && (
-          <View style={styles.loadingOverlay}>
-            <ActivityIndicator size="large" color={colors.primary} />
-            <Text style={[styles.loadingText, { color: colors.gray600 }]}>Loading pricing...</Text>
+          <View style={styles.loadingRow} accessibilityRole="progressbar" accessibilityLabel="Opening pricing">
+            <ActivityIndicator size="small" color={t.brand.tint} />
+            <Text style={styles.loadingText}>Opening pricing…</Text>
           </View>
         )}
+
+        {/* Grouped Items Table */}
         <InvoiceItemsTable
           items={items}
           onItemUpdate={handleItemUpdate}
@@ -269,29 +278,54 @@ export default function InvoiceFormStep2() {
           renderItem={renderItem}
         />
 
-        {/* Helper Text */}
-        <View style={[styles.helperCard, { backgroundColor: colors.warningLight, borderLeftColor: colors.warning }]}>
-          <Text style={[styles.helperTitle, { color: colors.gray900 }]}>💡 Pricing Guide</Text>
-          <Text style={[styles.helperText, { color: colors.gray600 }]}>
-            • Tap on item group header to expand/collapse{'\n'}
-            • Use group pricing inputs to set pricing for all dispatches{'\n'}
-            • Expand dispatch to view/edit individual item pricing{'\n'}
-            • <Text style={styles.bold}>Duration</Text>: Number of months for storage (read-only){'\n'}
-            • <Text style={styles.bold}>Charge</Text>: Storage rate per unit per month{'\n'}
-            • <Text style={styles.bold}>Labour Rate</Text>: Handling charge per unit{'\n'}
-            • <Text style={styles.bold}>Tax</Text>: Tax percentage (e.g., 18 for 18%){'\n'}
-            • Items with custom pricing show orange "Custom" badge{'\n'}
-            • All amounts are calculated automatically
-          </Text>
+        {/* Pricing guide */}
+        <View style={styles.infoStrip}>
+          <Icon name="information" size={iconSize.md} color={t.status.informative.text} />
+          <View style={styles.infoStripContent}>
+            <Text style={styles.infoStripTitle} accessibilityRole="header">How pricing works</Text>
+            <Text style={styles.infoStripText}>
+              • Tap an item group to open or close it.{'\n'}
+              • Group prices apply to every dispatch in the group.{'\n'}
+              • Open a dispatch to change the price of one line.{'\n'}
+              • <Text style={styles.bold}>Duration</Text>: months in storage (calculated).{'\n'}
+              • <Text style={styles.bold}>Charge</Text>: storage rate per unit per month.{'\n'}
+              • <Text style={styles.bold}>Labour rate</Text>: handling charge per unit.{'\n'}
+              • <Text style={styles.bold}>Tax</Text>: tax percent, for example 18 for 18%.{'\n'}
+              • Lines with their own price show a &quot;Custom&quot; tag.{'\n'}
+              • Amounts are calculated for you.
+            </Text>
+          </View>
         </View>
       </KeyboardAwareScrollView>
+
+      {/* Bottom action bar */}
+      <View style={[styles.bottomBar, { paddingBottom: insets.bottom + space.md }]}>
+        <Pressable
+          style={({ pressed }) => [styles.button, styles.secondaryButton, pressed && styles.secondaryButtonPressed]}
+          onPress={handleBack}
+          accessibilityRole="button"
+          accessibilityLabel="Back to details"
+        >
+          <Icon name="chevron-left" size={iconSize.md} color={t.brand.tint} />
+          <Text style={styles.secondaryButtonText}>Back</Text>
+        </Pressable>
+        <Pressable
+          style={({ pressed }) => [styles.button, styles.primaryButton, pressed && styles.primaryButtonPressed]}
+          onPress={handleNext}
+          accessibilityRole="button"
+          accessibilityLabel="Next: review"
+        >
+          <Text style={styles.primaryButtonText}>Next: review</Text>
+          <Icon name="chevron-right" size={iconSize.md} color={t.brand.onFill} />
+        </Pressable>
+      </View>
 
       {/* Error Dialog */}
       <ConfirmDialog
         visible={errorDialog.visible}
         title={errorDialog.title}
         message={errorDialog.message}
-        confirmText="OK"
+        confirmText="Close"
         cancelText=""
         onConfirm={() => setErrorDialog({ visible: false, title: '', message: '' })}
         onCancel={() => setErrorDialog({ visible: false, title: '', message: '' })}
@@ -301,63 +335,3 @@ export default function InvoiceFormStep2() {
     </View>
   );
 }
-
-// SAP Fiori Styles
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    padding: theme.spacing.md,
-    gap: theme.spacing.md,
-  },
-  // Fiori: Info card with left accent border
-  infoCard: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: theme.spacing.md,
-    borderRadius: theme.borderRadius.md,
-    borderLeftWidth: 4,
-  },
-  infoLabel: {
-    fontSize: theme.fontSize.base,
-    fontWeight: theme.fontWeight.semibold,
-  },
-  infoValue: {
-    fontSize: theme.fontSize.xl,
-    fontWeight: theme.fontWeight.bold,
-  },
-  // Fiori: Helper card with warning accent
-  helperCard: {
-    padding: theme.spacing.md,
-    borderRadius: theme.borderRadius.md,
-    borderLeftWidth: 4,
-    marginTop: theme.spacing.md,
-  },
-  helperTitle: {
-    fontSize: theme.fontSize.base,
-    fontWeight: theme.fontWeight.semibold,
-    marginBottom: theme.spacing.sm,
-  },
-  helperText: {
-    fontSize: 13,
-    lineHeight: 20,
-  },
-  bold: {
-    fontWeight: theme.fontWeight.semibold,
-  },
-  loadingOverlay: {
-    padding: theme.spacing.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: theme.spacing.sm,
-  },
-  loadingText: {
-    fontSize: theme.fontSize.sm,
-    marginTop: theme.spacing.xs,
-  },
-});

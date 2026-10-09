@@ -9,16 +9,19 @@ import React, { useState } from 'react';
 import {
   View,
   Text,
-  StyleSheet,
-  TouchableOpacity,
+  Pressable,
   Alert,
   ScrollView,
   ActivityIndicator,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { Snackbar } from 'react-native-paper';
 import { router } from 'expo-router';
-import theme from '@/theme';
-import { useListColors } from '@/hooks/useListColors';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { iconSize, layout, space, typography, type ThemeTokens } from '@/theme/tokens';
+import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
+import { formatInvoiceDate, makeInvoiceWizardStyles } from '@/constants/invoiceSteps';
 import { triggerSuccess, triggerError } from '@/hooks/useHaptics';
 import { useInvoiceForm } from '@/hooks/useInvoiceForm';
 import { useBackHandler } from '@/hooks/useBackHandler';
@@ -28,12 +31,37 @@ import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { printInvoiceRange } from '@/services/print-service';
 import { generateInvoicePDF } from '@/services/pdf-service';
 import { downloadAndSharePDF } from '@/utils/shareDocument';
-import { calculateInvoiceBreakdown } from '@/utils/invoiceCalculations';
+import {
+  calculateInvoiceBreakdown,
+  formatInvoiceAmount,
+  formatInvoiceDeduction,
+} from '@/utils/invoiceCalculations';
 import { SavedInvoiceData } from '@/types/invoice.types';
 
+const makeHeaderStyles = (t: ThemeTokens) => ({
+  header: {
+    paddingHorizontal: layout.marginCompact,
+    paddingBottom: space.md,
+    backgroundColor: t.surface.header,
+    borderBottomWidth: 1,
+    borderBottomColor: t.border.divider,
+  },
+  headerTitle: {
+    ...typography.headline,
+    color: t.text.primary,
+  },
+  stepText: {
+    ...typography.footnote,
+    color: t.text.secondary,
+    marginTop: space.xxs,
+  },
+});
+
 export default function InvoiceFormStep4() {
-  // Theme colors for dark mode support
-  const colors = useListColors();
+  const styles = useThemedStyles(makeInvoiceWizardStyles);
+  const headerStyles = useThemedStyles(makeHeaderStyles);
+  const t = useTokens();
+  const insets = useSafeAreaInsets();
 
   // Use the consolidated invoice form hook
   const {
@@ -68,12 +96,12 @@ export default function InvoiceFormStep4() {
   const handleSubmit = async () => {
     // Final validation check
     if (items.length === 0) {
-      Alert.alert('No Items', 'Cannot create invoice without items');
+      Alert.alert('No items to invoice', 'Go back and select a GRN that has dispatched items.');
       return;
     }
 
     if (!header.gr_id || !header.customer_id) {
-      Alert.alert('Invalid Data', 'Missing GRN or customer information');
+      Alert.alert('Select a GRN', 'Go back and select the GRN for this invoice.');
       return;
     }
 
@@ -145,7 +173,7 @@ export default function InvoiceFormStep4() {
         finYearNum
       );
       if (!pdfResult.success || !pdfResult.pdfUrl) {
-        setSnackbarMessage(pdfResult.error || 'Failed to generate PDF');
+        setSnackbarMessage("Couldn't create the PDF. Try again.");
         setSnackbarVisible(true);
         return;
       }
@@ -156,12 +184,12 @@ export default function InvoiceFormStep4() {
         `Invoice_${savedInvoiceData.invoice_no}_FY${header.inv_fin_year}.pdf`
       );
       if (!shareResult.success) {
-        setSnackbarMessage(shareResult.error || 'Failed to share PDF');
+        setSnackbarMessage("Couldn't share the PDF. Try again.");
         setSnackbarVisible(true);
       }
     } catch (error) {
       console.error('[InvoiceFormStep4] Share PDF error:', error);
-      setSnackbarMessage('Failed to share PDF');
+      setSnackbarMessage("Couldn't share the PDF. Try again.");
       setSnackbarVisible(true);
     } finally {
       setIsShareLoading(false);
@@ -172,11 +200,12 @@ export default function InvoiceFormStep4() {
   const { subtotal, rounding } = calculateInvoiceBreakdown(items, header);
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.gray50 }]}>
+    <View style={styles.container}>
+      <EdgeToEdgeStatusBar barStyle={t.statusBarStyle} />
       {/* Header */}
-      <View style={[styles.header, { backgroundColor: colors.cellBackground, borderBottomColor: colors.cellDivider }]}>
-        <Text style={[styles.headerTitle, { color: colors.gray900 }]}>Review Invoice</Text>
-        <Text style={[styles.stepIndicator, { color: colors.gray600 }]}>Step 4 of 4: Review & Submit</Text>
+      <View style={[headerStyles.header, { paddingTop: insets.top + space.md }]}>
+        <Text style={headerStyles.headerTitle} accessibilityRole="header">Review invoice</Text>
+        <Text style={headerStyles.stepText}>Step 4 of 4: Review</Text>
       </View>
 
       <ScrollView
@@ -184,102 +213,108 @@ export default function InvoiceFormStep4() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={true}
       >
-        {/* Invoice Header Section */}
-        <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: colors.gray900 }]}>Invoice Details</Text>
-          <View style={[styles.card, { backgroundColor: colors.cellBackground, borderColor: colors.cellDivider }]}>
-            <View style={[styles.infoRow, { borderBottomColor: colors.cellDivider }]}>
-              <Text style={[styles.infoLabel, { color: colors.gray600 }]}>Invoice Number:</Text>
-              <Text style={[styles.infoValue, { color: colors.gray900 }]}>#{header.inv_no}</Text>
+        {/* Invoice details */}
+        <View>
+          <Text style={styles.sectionHeader} accessibilityRole="header">Invoice details</Text>
+          <View style={styles.card}>
+            <View style={styles.kvRow}>
+              <Text style={styles.kvKey}>Invoice number</Text>
+              <Text style={[styles.kvValue, styles.numeric]}>{header.inv_no}</Text>
             </View>
-            <View style={[styles.infoRow, { borderBottomColor: colors.cellDivider }]}>
-              <Text style={[styles.infoLabel, { color: colors.gray600 }]}>Invoice Date:</Text>
-              <Text style={[styles.infoValue, { color: colors.gray900 }]}>
-                {new Date(header.inv_date).toLocaleDateString()}
-              </Text>
+            <View style={[styles.kvRow, styles.kvDivider]}>
+              <Text style={styles.kvKey}>Invoice date</Text>
+              <Text style={styles.kvValue}>{formatInvoiceDate(header.inv_date)}</Text>
             </View>
-            <View style={[styles.infoRow, { borderBottomColor: colors.cellDivider }]}>
-              <Text style={[styles.infoLabel, { color: colors.gray600 }]}>Financial Year:</Text>
-              <Text style={[styles.infoValue, { color: colors.gray900 }]}>{header.inv_fin_year}</Text>
+            <View style={[styles.kvRow, styles.kvDivider]}>
+              <Text style={styles.kvKey}>Financial year</Text>
+              <Text style={[styles.kvValue, styles.numeric]}>{header.inv_fin_year}</Text>
             </View>
-            <View style={[styles.infoRow, { borderBottomColor: colors.cellDivider }]}>
-              <Text style={[styles.infoLabel, { color: colors.gray600 }]}>GR Number:</Text>
-              <Text style={[styles.infoValue, { color: colors.gray900 }]}>{header.gr_no}</Text>
+            <View style={[styles.kvRow, styles.kvDivider]}>
+              <Text style={styles.kvKey}>GRN</Text>
+              <Text style={styles.kvValue}>{header.gr_no}</Text>
             </View>
-            <View style={[styles.infoRow, { borderBottomColor: colors.cellDivider }]}>
-              <Text style={[styles.infoLabel, { color: colors.gray600 }]}>Customer:</Text>
-              <Text style={[styles.infoValue, { color: colors.gray900 }]}>{header.customer_name}</Text>
+            <View style={[styles.kvRowStacked, styles.kvDivider]}>
+              <Text style={styles.kvKey}>Customer</Text>
+              <Text style={styles.kvValueStacked}>{header.customer_name}</Text>
             </View>
-            <View style={[styles.infoRow, { borderBottomColor: colors.cellDivider }]}>
-              <Text style={[styles.infoLabel, { color: colors.gray600 }]}>One-Time Charge:</Text>
-              <Text style={[styles.infoValue, { color: colors.gray900 }]}>
-                {header.one_time_charge ? 'Yes' : 'No'}
-              </Text>
+            <View style={[styles.kvRow, styles.kvDivider]}>
+              <Text style={styles.kvKey}>One-time charge</Text>
+              <Text style={styles.kvValue}>{header.one_time_charge ? 'Yes' : 'No'}</Text>
             </View>
           </View>
         </View>
 
-        {/* Financial Summary Section */}
-        <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: colors.gray900 }]}>Financial Summary</Text>
-          <View style={[styles.card, { backgroundColor: colors.cellBackground, borderColor: colors.cellDivider }]}>
-            <View style={styles.summaryRow}>
-              <Text style={[styles.summaryLabel, { color: colors.gray600 }]}>Subtotal (Storage):</Text>
-              <Text style={[styles.summaryValue, { color: colors.gray900 }]}>₹{subtotal.toFixed(2)}</Text>
+        {/* Amounts */}
+        <View>
+          <Text style={styles.sectionHeader} accessibilityRole="header">Amounts</Text>
+          <View style={styles.card}>
+            <View style={styles.kvRow}>
+              <Text style={styles.kvKey}>Storage</Text>
+              <Text style={[styles.kvValue, styles.numeric]}>{formatInvoiceAmount(subtotal)}</Text>
             </View>
-            <View style={styles.summaryRow}>
-              <Text style={[styles.summaryLabel, { color: colors.gray600 }]}>Labour Charges:</Text>
-              <Text style={[styles.summaryValue, { color: colors.gray900 }]}>₹{header.labour.toFixed(2)}</Text>
+            <View style={[styles.kvRow, styles.kvDivider]}>
+              <Text style={styles.kvKey}>Labour</Text>
+              <Text style={[styles.kvValue, styles.numeric]}>{formatInvoiceAmount(header.labour)}</Text>
             </View>
-            <View style={styles.summaryRow}>
-              <Text style={[styles.summaryLabel, { color: colors.gray600 }]}>Tax Amount:</Text>
-              <Text style={[styles.summaryValue, { color: colors.gray900 }]}>₹{header.tax_amount.toFixed(2)}</Text>
+            <View style={[styles.kvRow, styles.kvDivider]}>
+              <Text style={styles.kvKey}>Tax</Text>
+              <Text style={[styles.kvValue, styles.numeric]}>{formatInvoiceAmount(header.tax_amount)}</Text>
             </View>
-            <View style={styles.summaryRow}>
-              <Text style={[styles.summaryLabel, { color: colors.gray600 }]}>Discount:</Text>
-              <Text style={[styles.summaryValue, { color: colors.gray900 }]}>-₹{header.discount.toFixed(2)}</Text>
+            <View style={[styles.kvRow, styles.kvDivider]}>
+              <Text style={styles.kvKey}>Discount</Text>
+              <Text style={[styles.kvValue, styles.numeric, header.discount > 0 && styles.kvDeduction]}>
+                {formatInvoiceDeduction(header.discount)}
+              </Text>
             </View>
-            <View style={styles.summaryRow}>
-              <Text style={[styles.summaryLabel, { color: colors.gray600 }]}>Rounding adjustment:</Text>
-              <Text style={[styles.summaryValue, { color: colors.gray900 }]}>₹{rounding.toFixed(2)}</Text>
+            <View style={[styles.kvRow, styles.kvDivider]}>
+              <Text style={styles.kvKey}>Rounding</Text>
+              <Text style={[styles.kvValue, styles.numeric]}>{formatInvoiceAmount(rounding)}</Text>
             </View>
-            <View style={[styles.summaryRow, styles.totalRow, { borderTopColor: colors.cellDivider }]}>
-              <Text style={[styles.totalLabel, { color: colors.gray900 }]}>Grand Total:</Text>
-              <Text style={[styles.totalValue, { color: colors.success }]}>₹{header.total.toFixed(2)}</Text>
+            <View style={[styles.kvRow, styles.kvTotalRow]}>
+              <Text style={styles.kvTotalKey}>Total</Text>
+              <Text style={styles.kvTotalValue}>{formatInvoiceAmount(header.total)}</Text>
             </View>
           </View>
         </View>
       </ScrollView>
 
-      {/* Footer Buttons */}
-      <View style={[styles.footer, { backgroundColor: colors.cellBackground, borderTopColor: colors.cellDivider }]}>
-        <TouchableOpacity
-          style={[styles.button, styles.backButton, { backgroundColor: colors.cellBackground, borderColor: colors.cellDivider }]}
+      {/* Bottom action bar */}
+      <View style={[styles.bottomBar, { paddingBottom: insets.bottom + space.md }]}>
+        <Pressable
+          style={({ pressed }) => [styles.button, styles.secondaryButton, pressed && styles.secondaryButtonPressed]}
           onPress={handleBack}
           disabled={isSaving}
+          accessibilityRole="button"
+          accessibilityLabel="Back"
+          accessibilityState={{ disabled: isSaving }}
         >
-          <Text style={[styles.backButtonText, { color: colors.gray900 }]}>← Back</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.button, styles.submitButton, { backgroundColor: colors.primary }, isSaving && styles.disabledButton]}
-          onPress={handleSubmit}
-          disabled={isSaving}
+          <Icon name="chevron-left" size={iconSize.md} color={t.brand.tint} />
+          <Text style={styles.secondaryButtonText}>Back</Text>
+        </Pressable>
+        <Pressable
+          style={({ pressed }) => [styles.button, styles.primaryButton, pressed && styles.primaryButtonPressed]}
+          onPress={isSaving ? undefined : handleSubmit}
+          accessibilityRole="button"
+          accessibilityLabel={isSaving ? 'Saving invoice' : 'Save invoice'}
+          accessibilityState={{ busy: isSaving }}
         >
           {isSaving ? (
-            <ActivityIndicator size="small" color={colors.cellBackground} />
+            <>
+              <ActivityIndicator size="small" color={t.brand.onFill} />
+              <Text style={styles.primaryButtonText}>Saving…</Text>
+            </>
           ) : (
-            <Text style={[styles.submitButtonText, { color: colors.cellBackground }]}>Submit Invoice</Text>
+            <Text style={styles.primaryButtonText}>Save invoice</Text>
           )}
-        </TouchableOpacity>
+        </Pressable>
       </View>
 
       {/* Confirm Submit Dialog */}
       <ConfirmDialog
         visible={showConfirmDialog}
-        title="Confirm Submission"
-        message={`Create invoice #${header.inv_no} for ${header.customer_name}?\n\nTotal: ₹${header.total.toFixed(2)}`}
-        confirmText="Create"
+        title={`Save invoice ${header.inv_no}?`}
+        message={`${header.customer_name}\nTotal ${formatInvoiceAmount(header.total)}`}
+        confirmText="Save invoice"
         cancelText="Cancel"
         onConfirm={handleConfirmSubmit}
         onCancel={() => setShowConfirmDialog(false)}
@@ -310,18 +345,18 @@ export default function InvoiceFormStep4() {
           const result = await printInvoiceRange(start, end);
           setShowPrintDialog(false);
           if (result.success) {
-            setSnackbarMessage(`Print job submitted for invoice ${start}${end && end !== start ? ` to ${end}` : ''}`);
+            setSnackbarMessage(end && end !== start ? `Invoices ${start} to ${end} sent to the printer.` : `Invoice ${start} sent to the printer.`);
           } else {
-            setSnackbarMessage(result.message || 'Failed to submit print job');
+            setSnackbarMessage("Couldn't print the invoice. Check the printer and try again.");
           }
           setSnackbarVisible(true);
           resetFormState();
           router.replace('/invoices');
         }}
-        title="Print Invoice"
+        title="Print invoice"
         defaultNumber={savedInvoiceData?.invoice_no?.toString() || ''}
-        label="Invoice Number"
-        placeholder="e.g., 123"
+        label="Invoice number"
+        placeholder="For example, 123"
       />
 
       {/* Snackbar for print status */}
@@ -330,7 +365,7 @@ export default function InvoiceFormStep4() {
         onDismiss={() => setSnackbarVisible(false)}
         duration={4000}
         action={{
-          label: 'OK',
+          label: 'Dismiss',
           onPress: () => setSnackbarVisible(false),
         }}
       >
@@ -340,188 +375,3 @@ export default function InvoiceFormStep4() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: theme.colors.gray[50],
-  },
-  header: {
-    backgroundColor: theme.colors.white,
-    paddingHorizontal: theme.spacing.lg,
-    paddingTop: theme.spacing.xl,
-    paddingBottom: theme.spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.gray[200],
-    ...theme.shadows.sm,
-  },
-  headerTitle: {
-    fontSize: theme.fontSize.xxl,
-    fontWeight: theme.fontWeight.bold,
-    color: theme.colors.gray[900],
-    marginBottom: theme.spacing.xs,
-  },
-  stepIndicator: {
-    fontSize: theme.fontSize.sm,
-    color: theme.colors.gray[600],
-    fontWeight: theme.fontWeight.medium,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    padding: theme.spacing.lg,
-    gap: theme.spacing.lg,
-  },
-  section: {
-    marginBottom: theme.spacing.md,
-  },
-  sectionTitle: {
-    fontSize: theme.fontSize.lg,
-    fontWeight: theme.fontWeight.bold,
-    color: theme.colors.gray[900],
-    marginBottom: theme.spacing.md,
-  },
-  card: {
-    backgroundColor: theme.colors.white,
-    borderRadius: theme.borderRadius.lg,
-    padding: theme.spacing.md,
-    borderWidth: 1,
-    borderColor: theme.colors.gray[300],
-    ...theme.shadows.sm,
-  },
-  infoRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: theme.spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.gray[200],
-  },
-  infoLabel: {
-    fontSize: theme.fontSize.base,
-    color: theme.colors.gray[700],
-  },
-  infoValue: {
-    fontSize: theme.fontSize.base,
-    fontWeight: theme.fontWeight.semibold,
-    color: theme.colors.gray[900],
-  },
-  itemsList: {
-    marginTop: theme.spacing.md,
-    gap: theme.spacing.sm,
-  },
-  itemCard: {
-    backgroundColor: theme.colors.gray[50],
-    padding: theme.spacing.sm,
-    borderRadius: theme.borderRadius.md,
-    borderLeftWidth: 3,
-    borderLeftColor: theme.colors.primary,
-  },
-  itemHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: theme.spacing.xs,
-  },
-  itemNumber: {
-    fontSize: theme.fontSize.base,
-    fontWeight: theme.fontWeight.bold,
-    color: theme.colors.primary,
-    marginRight: theme.spacing.sm,
-  },
-  itemName: {
-    flex: 1,
-    fontSize: theme.fontSize.base,
-    fontWeight: theme.fontWeight.semibold,
-    color: theme.colors.gray[900],
-  },
-  itemDetails: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  itemDetailText: {
-    fontSize: theme.fontSize.sm,
-    color: theme.colors.gray[600],
-  },
-  itemTotal: {
-    fontSize: theme.fontSize.base,
-    fontWeight: theme.fontWeight.bold,
-    color: theme.colors.semantic.success,
-  },
-  summaryRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: theme.spacing.sm,
-  },
-  summaryLabel: {
-    fontSize: theme.fontSize.base,
-    color: theme.colors.gray[700],
-  },
-  summaryValue: {
-    fontSize: theme.fontSize.base,
-    fontWeight: theme.fontWeight.semibold,
-    color: theme.colors.gray[900],
-  },
-  totalRow: {
-    marginTop: theme.spacing.md,
-    paddingTop: theme.spacing.md,
-    borderTopWidth: 2,
-    borderTopColor: theme.colors.gray[300],
-  },
-  totalLabel: {
-    fontSize: theme.fontSize.xl,
-    fontWeight: theme.fontWeight.bold,
-    color: theme.colors.gray[900],
-  },
-  totalValue: {
-    fontSize: theme.fontSize.xxl,
-    fontWeight: theme.fontWeight.bold,
-    color: theme.colors.semantic.success,
-  },
-  // Fiori: Footer with buttons
-  footer: {
-    flexDirection: 'row',
-    gap: theme.spacing.md,
-    padding: 16,
-    backgroundColor: theme.colors.white,
-    borderTopWidth: 1,
-    borderTopColor: theme.colors.fiori.objectCell.divider,
-    ...theme.shadows.sm,
-  },
-  // Fiori: Button base - 44pt height, 8pt corner radius
-  button: {
-    flex: 1,
-    height: 44,
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  // Fiori: Secondary Normal button - transparent bg, gray border
-  backButton: {
-    backgroundColor: theme.colors.white,
-    borderWidth: 1,
-    borderColor: theme.colors.fiori.objectCell.divider,
-  },
-  // Fiori: Button text - 17pt, semibold (600)
-  backButtonText: {
-    fontSize: theme.fontSize.base,
-    fontWeight: theme.fontWeight.semibold,
-    color: theme.colors.fiori.text.primary,
-  },
-  // Fiori: Primary button - primary color
-  submitButton: {
-    backgroundColor: theme.colors.primary,
-    ...theme.shadows.md,
-  },
-  // Fiori: Button text - 17pt, semibold (600), white
-  submitButtonText: {
-    fontSize: theme.fontSize.base,
-    fontWeight: theme.fontWeight.semibold,
-    color: theme.colors.white,
-  },
-  // Fiori: Disabled state - 30% opacity
-  disabledButton: {
-    opacity: 0.3,
-  },
-});

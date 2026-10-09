@@ -1,22 +1,41 @@
-import React, { useCallback, useMemo, useState, useEffect, useRef } from 'react';
+/**
+ * GRNAutocomplete - bottom sheet to pick the GRN an invoice is raised for.
+ *
+ * Style guide §13.3 (search field plus suggestion list, "No matches" empty
+ * state, match shown in bold) and §13.9 (bottom sheet on surface.sheet with
+ * radius.sheet top corners, grab handle, shadow[4] over the scrim; Android
+ * back closes it).
+ */
+import React, { useCallback, useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
-  TouchableOpacity,
-  StyleSheet,
   ActivityIndicator,
   Modal,
   FlatList,
   Pressable,
   TextInput,
   Keyboard,
+  StyleSheet,
+  type StyleProp,
+  type TextStyle,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import theme from '@/theme';
-import { useTheme } from '@/hooks/useTheme';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import {
+  fontWeight,
+  iconSize,
+  layout,
+  radius,
+  space,
+  touchTarget,
+  typography,
+  type ThemeTokens,
+} from '@/theme/tokens';
 import { InvoiceableGrn } from '@/types/invoice.types';
 import { getInvoiceableGrns } from '@/features/invoice/services/invoiceFormService';
+import { parseLocalISODate } from '@/utils/formatters';
 
 interface GRNAutocompleteProps {
   isVisible: boolean;
@@ -25,23 +44,218 @@ interface GRNAutocompleteProps {
   currentValue?: InvoiceableGrn | null;
 }
 
+const formatGrnDate = (value: string): string => {
+  if (!value) return '';
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(value) ? parseLocalISODate(value) : new Date(value);
+  if (isNaN(date.getTime())) return '';
+  return date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+};
+
+const makeStyles = (t: ThemeTokens) => ({
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end' as const,
+  },
+  backdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: t.overlay.scrim,
+  },
+  sheetContainer: {
+    flex: 1,
+    backgroundColor: t.surface.sheet,
+    borderTopLeftRadius: radius.sheet,
+    borderTopRightRadius: radius.sheet,
+    overflow: 'hidden' as const,
+    ...t.shadow[4],
+  },
+  handle: {
+    alignSelf: 'center' as const,
+    width: 36,
+    height: 4,
+    borderRadius: radius.pill,
+    backgroundColor: t.border.separator,
+    marginTop: space.sm,
+  },
+  header: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    paddingLeft: layout.marginCompact,
+    paddingRight: space.xs,
+    paddingVertical: space.xs,
+    gap: space.sm,
+  },
+  headerTitle: {
+    ...typography.headline,
+    flex: 1,
+    color: t.text.primary,
+  },
+  closeButton: {
+    width: touchTarget,
+    height: touchTarget,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+  },
+  searchContainer: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    marginHorizontal: layout.marginCompact,
+    marginBottom: space.md,
+    paddingLeft: space.md,
+    borderRadius: radius.field,
+    borderWidth: 1,
+    borderColor: t.border.field,
+    backgroundColor: t.surface.field,
+    minHeight: touchTarget,
+  },
+  searchIcon: {
+    marginRight: space.sm,
+  },
+  searchInput: {
+    ...typography.body,
+    flex: 1,
+    color: t.text.primary,
+    paddingVertical: space.sm,
+  },
+  clearButton: {
+    width: touchTarget,
+    height: touchTarget,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+  },
+  resultsCount: {
+    paddingHorizontal: layout.marginCompact,
+    paddingVertical: space.sm,
+    backgroundColor: t.background.base,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderColor: t.border.separator,
+  },
+  resultsCountText: {
+    ...typography.footnote,
+    color: t.text.secondary,
+  },
+  listContainer: {
+    flexGrow: 1,
+    paddingBottom: space.lg,
+  },
+  grnItem: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    minHeight: layout.objectCellMinHeight,
+    paddingHorizontal: layout.marginCompact,
+    paddingVertical: space.md,
+    gap: space.md,
+    backgroundColor: t.surface.sheet,
+  },
+  grnItemPressed: {
+    backgroundColor: t.surface.cardPressed,
+  },
+  grnItemSelected: {
+    backgroundColor: t.surface.selected,
+  },
+  divider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: t.border.divider,
+    marginLeft: layout.marginCompact,
+  },
+  grnContent: {
+    flex: 1,
+    gap: space.xxs,
+  },
+  grnNumber: {
+    ...typography.headline,
+    color: t.text.primary,
+  },
+  customerName: {
+    ...typography.subhead,
+    color: t.text.primary,
+  },
+  metaText: {
+    ...typography.footnote,
+    color: t.text.secondary,
+  },
+  bold: {
+    fontWeight: fontWeight.bold,
+  },
+  emptyState: {
+    flex: 1,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    paddingVertical: space.xxxl,
+    paddingHorizontal: space.xxl,
+    gap: space.sm,
+  },
+  emptyTitle: {
+    ...typography.title3,
+    color: t.text.primary,
+    textAlign: 'center' as const,
+    marginTop: space.sm,
+  },
+  emptyDescription: {
+    ...typography.subhead,
+    color: t.text.secondary,
+    textAlign: 'center' as const,
+  },
+  retryButton: {
+    marginTop: space.md,
+    minHeight: touchTarget,
+    paddingHorizontal: space.lg,
+    borderRadius: radius.button,
+    borderWidth: 1,
+    borderColor: t.border.button,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+  },
+  retryButtonPressed: {
+    backgroundColor: t.brand.subtle,
+  },
+  retryText: {
+    ...typography.callout,
+    color: t.brand.tint,
+  },
+});
+
+/** Shows the part of `text` that matches `query` in bold (style guide §14.6). */
+function HighlightedText({ text, query, style, boldStyle }: {
+  text: string;
+  query: string;
+  style: StyleProp<TextStyle>;
+  boldStyle: StyleProp<TextStyle>;
+}) {
+  const q = query.trim();
+  const index = q ? text.toLowerCase().indexOf(q.toLowerCase()) : -1;
+  if (index < 0) {
+    return <Text style={style} numberOfLines={2}>{text}</Text>;
+  }
+  return (
+    <Text style={style} numberOfLines={2}>
+      {text.slice(0, index)}
+      <Text style={boldStyle}>{text.slice(index, index + q.length)}</Text>
+      {text.slice(index + q.length)}
+    </Text>
+  );
+}
+
 export const GRNAutocomplete: React.FC<GRNAutocompleteProps> = ({
   isVisible,
   onClose,
   onSelect,
   currentValue,
 }) => {
-  const { colors: themeColors, isDarkMode } = useTheme();
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
   const insets = useSafeAreaInsets();
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const inputRef = useRef<TextInput>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [grns, setGrns] = useState<InvoiceableGrn[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [hasError, setHasError] = useState(false);
 
   // Search GRNs function
   const performSearch = useCallback(async (query: string) => {
     setIsLoading(true);
+    setHasError(false);
     try {
       const response = await getInvoiceableGrns(query.trim() || undefined);
 
@@ -49,10 +263,12 @@ export const GRNAutocomplete: React.FC<GRNAutocompleteProps> = ({
         setGrns(response.data);
       } else {
         setGrns([]);
+        setHasError(!response.success);
       }
     } catch (error) {
       console.error('[GRNAutocomplete] Search error:', error);
       setGrns([]);
+      setHasError(true);
     } finally {
       setIsLoading(false);
     }
@@ -122,87 +338,92 @@ export const GRNAutocomplete: React.FC<GRNAutocompleteProps> = ({
 
   // Render GRN item
   const renderGRNItem = useCallback(
-    ({ item, index }: { item: InvoiceableGrn; index: number }) => {
+    ({ item }: { item: InvoiceableGrn }) => {
       const isSelected = currentValue?.id === item.id;
-      const isLast = index === grns.length - 1;
+      const date = formatGrnDate(item.date);
 
       return (
-        <TouchableOpacity
-          style={[
+        <Pressable
+          style={({ pressed }) => [
             styles.grnItem,
-            {
-              backgroundColor: isDarkMode ? themeColors.gray[100] : themeColors.white,
-              borderBottomWidth: isLast ? 0 : 1,
-              borderBottomColor: themeColors.gray[200],
-            },
-            isSelected && {
-              backgroundColor: isDarkMode ? themeColors.orange[100] : themeColors.orange[50],
-              borderLeftWidth: 4,
-              borderLeftColor: themeColors.primary,
-            },
+            isSelected && styles.grnItemSelected,
+            pressed && styles.grnItemPressed,
           ]}
           onPress={() => handleGRNSelect(item)}
-          activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel={`GRN ${item.gr_no}, ${item.customer_name}${date ? `, ${date}` : ''}`}
+          accessibilityState={{ selected: isSelected }}
         >
+          <Icon name="package-down" size={iconSize.lg} color={t.icon.secondary} />
           <View style={styles.grnContent}>
-            <View style={styles.grnHeader}>
-              <View style={[styles.grnNumberBadge, { backgroundColor: themeColors.primary }]}>
-                <Text style={[styles.grnNumber, { color: themeColors.white }]}>{item.gr_no}</Text>
-              </View>
-              {isSelected && (
-                <Icon name="check-circle" size={22} color={themeColors.primary} />
-              )}
-            </View>
-            <Text style={[styles.customerName, { color: themeColors.gray[900] }]}>{item.customer_name}</Text>
-            <View style={styles.grnMeta}>
-              <View style={[styles.metaBadge, { backgroundColor: themeColors.gray[100] }]}>
-                <Icon name="calendar" size={12} color={themeColors.gray[500]} />
-                <Text style={[styles.metaText, { color: themeColors.gray[600] }]}>
-                  {new Date(item.date).toLocaleDateString('en-US', {
-                    month: 'short',
-                    day: 'numeric',
-                    year: 'numeric',
-                  })}
-                </Text>
-              </View>
-            </View>
+            <HighlightedText
+              text={`GRN ${item.gr_no}`}
+              query={searchQuery}
+              style={styles.grnNumber}
+              boldStyle={styles.bold}
+            />
+            <HighlightedText
+              text={item.customer_name}
+              query={searchQuery}
+              style={styles.customerName}
+              boldStyle={styles.bold}
+            />
+            {!!date && <Text style={styles.metaText}>{date}</Text>}
           </View>
-        </TouchableOpacity>
+          {isSelected && (
+            <Icon name="check" size={iconSize.md} color={t.brand.tint} />
+          )}
+        </Pressable>
       );
     },
-    [currentValue, handleGRNSelect, isDarkMode, themeColors, grns.length]
+    [currentValue, handleGRNSelect, searchQuery, styles, t]
   );
 
-  // Render empty state
+  const renderSeparator = useCallback(() => <View style={styles.divider} />, [styles]);
+
+  // Render empty, loading and error states
   const renderEmptyState = useCallback(() => {
     if (isLoading) {
       return (
-        <View style={styles.emptyState}>
-          <ActivityIndicator size="large" color={themeColors.primary} />
-          <Text style={[styles.emptyTitle, { color: themeColors.gray[700] }]}>
-            Loading invoiceable GRNs...
-          </Text>
+        <View style={styles.emptyState} accessibilityRole="progressbar" accessibilityLabel="Loading GRNs">
+          <ActivityIndicator size="large" color={t.brand.tint} />
+          <Text style={styles.emptyDescription}>Loading GRNs that can be invoiced…</Text>
         </View>
       );
     }
 
+    if (hasError) {
+      return (
+        <View style={styles.emptyState}>
+          <Icon name="alert-circle-outline" size={iconSize.hero} color={t.status.negative.text} />
+          <Text style={styles.emptyTitle}>Couldn&apos;t load GRNs</Text>
+          <Text style={styles.emptyDescription}>Check your connection and try again.</Text>
+          <Pressable
+            style={({ pressed }) => [styles.retryButton, pressed && styles.retryButtonPressed]}
+            onPress={() => performSearch(searchQuery)}
+            accessibilityRole="button"
+          >
+            <Text style={styles.retryText}>Try again</Text>
+          </Pressable>
+        </View>
+      );
+    }
+
+    const query = searchQuery.trim();
     return (
       <View style={styles.emptyState}>
-        <Icon name="package-variant-closed" size={48} color={themeColors.gray[300]} />
-        <Text style={[styles.emptyTitle, { color: themeColors.gray[700] }]}>
-          {searchQuery.trim() ? 'No GRNs Found' : 'No Invoiceable GRNs'}
+        <Icon name="package-down" size={iconSize.hero} color={t.icon.secondary} />
+        <Text style={styles.emptyTitle}>
+          {query ? 'No matches' : 'No GRNs to invoice'}
         </Text>
-        <Text style={[styles.emptyDescription, { color: themeColors.gray[500] }]}>
-          {searchQuery.trim()
-            ? 'Try adjusting your search query'
-            : 'No GRNs with dispatched items available for invoicing'}
+        <Text style={styles.emptyDescription}>
+          {query
+            ? `No GRNs match "${query}". Try fewer letters.`
+            : 'GRNs with dispatched items that are not yet invoiced appear here.'}
         </Text>
       </View>
     );
-  }, [isLoading, searchQuery, themeColors]);
-
-  // Background color for modal
-  const bgColor = isDarkMode ? themeColors.gray[50] : themeColors.white;
+  }, [hasError, isLoading, performSearch, searchQuery, styles, t]);
 
   return (
     <Modal
@@ -214,64 +435,71 @@ export const GRNAutocomplete: React.FC<GRNAutocompleteProps> = ({
     >
       <View style={styles.modalOverlay}>
         {/* Backdrop */}
-        <Pressable style={styles.backdrop} onPress={handleClose} />
+        <Pressable
+          style={styles.backdrop}
+          onPress={handleClose}
+          accessibilityRole="button"
+          accessibilityLabel="Close GRN list"
+        />
 
         {/* Bottom Sheet Content */}
-        <View style={[
-          styles.sheetContainer,
-          {
-            backgroundColor: bgColor,
-            paddingTop: insets.top,
-            paddingBottom: insets.bottom,
-          }
-        ]}>
+        <View
+          style={[
+            styles.sheetContainer,
+            { marginTop: insets.top + space.lg, paddingBottom: insets.bottom },
+          ]}
+          accessibilityViewIsModal
+        >
+          <View style={styles.handle} />
+
           {/* Header */}
-          <View style={[styles.header, { borderBottomColor: themeColors.gray[200] }]}>
-            <Icon name="clipboard-text" size={24} color={themeColors.primary} />
-            <Text style={[styles.headerTitle, { color: themeColors.gray[900] }]}>Select GRN</Text>
-            <TouchableOpacity
+          <View style={styles.header}>
+            <Text style={styles.headerTitle} accessibilityRole="header">Select GRN</Text>
+            <Pressable
               onPress={handleClose}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              style={styles.closeButton}
+              accessibilityRole="button"
+              accessibilityLabel="Close"
             >
-              <Icon name="close" size={24} color={themeColors.gray[500]} />
-            </TouchableOpacity>
+              <Icon name="close" size={iconSize.lg} color={t.icon.primary} />
+            </Pressable>
           </View>
 
           {/* Search Input */}
-          <View style={[styles.searchContainer, {
-            backgroundColor: isDarkMode ? themeColors.gray[200] : themeColors.gray[50],
-            borderColor: themeColors.gray[300],
-          }]}>
-            <Icon name="magnify" size={20} color={themeColors.gray[500]} style={styles.searchIcon} />
+          <View style={styles.searchContainer}>
+            <Icon name="magnify" size={iconSize.md} color={t.icon.secondary} style={styles.searchIcon} />
             <TextInput
               ref={inputRef}
-              style={[styles.searchInput, { color: themeColors.gray[900] }]}
-              placeholder="Search by GR No or Customer..."
-              placeholderTextColor={themeColors.gray[400]}
+              style={styles.searchInput}
+              placeholder="Search GRN number or customer"
+              placeholderTextColor={t.text.placeholder}
               value={searchQuery}
               onChangeText={handleSearchChange}
               autoCapitalize="none"
               autoCorrect={false}
               returnKeyType="search"
+              accessibilityLabel="Search GRN number or customer"
             />
             {searchQuery.length > 0 && (
-              <TouchableOpacity
+              <Pressable
                 onPress={() => {
                   setSearchQuery('');
                   performSearch('');
                 }}
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                style={styles.clearButton}
+                accessibilityRole="button"
+                accessibilityLabel="Clear search"
               >
-                <Icon name="close-circle" size={20} color={themeColors.gray[400]} />
-              </TouchableOpacity>
+                <Icon name="close-circle" size={iconSize.md} color={t.icon.secondary} />
+              </Pressable>
             )}
           </View>
 
           {/* Results Count */}
           {grns.length > 0 && (
-            <View style={[styles.resultsCount, { backgroundColor: themeColors.gray[50], borderBottomColor: themeColors.gray[200] }]}>
-              <Text style={[styles.resultsCountText, { color: themeColors.gray[600] }]}>
-                {grns.length} GRN{grns.length !== 1 ? 's' : ''} found
+            <View style={styles.resultsCount}>
+              <Text style={styles.resultsCountText}>
+                {grns.length === 1 ? '1 GRN' : `${new Intl.NumberFormat('en-IN').format(grns.length)} GRNs`}
               </Text>
             </View>
           )}
@@ -281,9 +509,9 @@ export const GRNAutocomplete: React.FC<GRNAutocompleteProps> = ({
             data={grns}
             keyExtractor={(item: InvoiceableGrn) => item.id}
             renderItem={renderGRNItem}
+            ItemSeparatorComponent={renderSeparator}
             contentContainerStyle={styles.listContainer}
             ListEmptyComponent={renderEmptyState}
-            style={{ backgroundColor: bgColor }}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={true}
           />
@@ -292,126 +520,3 @@ export const GRNAutocomplete: React.FC<GRNAutocompleteProps> = ({
     </Modal>
   );
 };
-
-const styles = StyleSheet.create({
-  modalOverlay: {
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
-  backdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-  },
-  sheetContainer: {
-    flex: 1,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    overflow: 'hidden',
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    gap: 12,
-  },
-  headerTitle: {
-    flex: 1,
-    fontSize: 18,
-    fontWeight: '600',
-  },
-  searchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginHorizontal: 16,
-    marginVertical: 12,
-    paddingHorizontal: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-    height: 48,
-  },
-  searchIcon: {
-    marginRight: 8,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 16,
-    height: '100%',
-  },
-  resultsCount: {
-    paddingHorizontal: 20,
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-  },
-  resultsCountText: {
-    fontSize: 13,
-    fontWeight: '500',
-  },
-  listContainer: {
-    flexGrow: 1,
-    paddingBottom: theme.spacing.lg,
-  },
-  grnItem: {
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-  },
-  grnContent: {
-    gap: theme.spacing.xs,
-  },
-  grnHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  grnNumberBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-  },
-  grnNumber: {
-    fontSize: 15,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-  },
-  customerName: {
-    fontSize: theme.fontSize.base,
-    fontWeight: theme.fontWeight.semibold,
-  },
-  grnMeta: {
-    flexDirection: 'row',
-    gap: theme.spacing.md,
-    marginTop: 4,
-  },
-  metaBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  metaText: {
-    fontSize: 11,
-    fontWeight: '500',
-  },
-  emptyState: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: theme.spacing.xl,
-    paddingHorizontal: theme.spacing.lg,
-  },
-  emptyTitle: {
-    fontSize: theme.fontSize.lg,
-    fontWeight: theme.fontWeight.semibold,
-    marginTop: theme.spacing.md,
-    marginBottom: theme.spacing.sm,
-    textAlign: 'center',
-  },
-  emptyDescription: {
-    fontSize: theme.fontSize.base,
-    textAlign: 'center',
-  },
-});
