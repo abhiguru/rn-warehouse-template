@@ -3,6 +3,13 @@ import { TextInput } from 'react-native';
 import { act, create } from 'react-test-renderer';
 import ItemCatalogBrowser from '../ItemCatalogBrowser';
 import { OrderService } from '@/services/order-service';
+import { BRANDS, getTokens, type Mode } from '@/theme/tokens';
+
+let mockState: { theme: { preference: string; brand: string } } = { theme: { preference: 'light', brand: 'orange' } };
+jest.mock('@/store/hooks', () => ({
+  useAppDispatch: () => jest.fn(),
+  useAppSelector: (selector: (state: unknown) => unknown) => selector(mockState),
+}));
 
 jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('@react-native-community/slider', () => 'Slider');
@@ -13,12 +20,12 @@ jest.mock('@gorhom/bottom-sheet', () => {
       React.useImperativeHandle(ref, () => ({ present: jest.fn(), dismiss: jest.fn() }));
       return React.createElement('BottomSheet', null, props.children);
     }),
-    BottomSheetFlatList: (props: any) => React.createElement('CatalogList', { onEndReached: props.onEndReached },
+    BottomSheetBackdrop: () => null,
+    BottomSheetFlatList: (props: any) => React.createElement('CatalogList', { onEndReached: props.onEndReached, contentContainerStyle: props.contentContainerStyle },
       props.ListHeaderComponent, props.data.length ? props.data.map((item: any) =>
         React.createElement('CatalogItem', { key: item.id, testID: `catalog-item-${item.id}` }, props.renderItem({ item }))) : props.ListEmptyComponent),
   };
 });
-jest.mock('@/hooks/useListColors', () => ({ useListColors: () => require('@/theme/listColors').listColors }));
 jest.mock('@/services/order-service', () => ({ OrderService: {
   getAvailableItems: jest.fn(() => Promise.resolve({ success: true, data: [] })),
   searchCustomerItemsForOrder: jest.fn(() => Promise.resolve({ success: true, data: [] })),
@@ -50,7 +57,7 @@ function deferred<T>() {
 const listedItemIds = (tree: ReturnType<typeof create>) =>
   tree.root.findAllByType('CatalogItem' as never).map(node => String(node.props.testID).replace('catalog-item-', ''));
 
-beforeEach(() => { jest.useFakeTimers(); jest.clearAllMocks(); });
+beforeEach(() => { jest.useFakeTimers(); jest.clearAllMocks(); mockState = { theme: { preference: 'light', brand: 'orange' } }; });
 afterEach(() => { jest.useRealTimers(); });
 
 it('exposes catalog search and runs one remote search for the final text after rapid edits', async () => {
@@ -152,4 +159,30 @@ it('loads the next search page from the current result count', async () => {
       expect.objectContaining({ search_query: 'onion', offset: 50, page_size: 50 }));
     expect(listedItemIds(tree)).toHaveLength(52);
   } finally { await act(async () => { tree.unmount(); }); }
+});
+
+const MODES: Mode[] = ['light', 'dark'];
+
+describe.each(BRANDS.flatMap(brand => MODES.map(mode => [brand, mode] as const)))('in %s %s', (brand, mode) => {
+  it('renders item cells with theme tokens and a status word beside the colour', async () => {
+    mockState = { theme: { preference: mode, brand } };
+    const t = getTokens(brand, mode);
+    jest.mocked(OrderService.getAvailableItems).mockResolvedValueOnce({
+      success: true, message: '', data: [{ ...catalogItem('lot-a', 'Fictional potatoes'), current_stock: 1 }, { ...catalogItem('lot-b', 'Fictional onions'), current_stock: 0 }],
+    } as never);
+    let tree!: ReturnType<typeof create>;
+    await act(async () => { tree = create(<ItemCatalogBrowser isVisible currentOrderItems={emptyOrderItems} customerId="customer-a" onClose={jest.fn()} onAddItems={jest.fn()} />); });
+    try {
+      const json = JSON.stringify(tree.toJSON());
+      expect(catalogList(tree).props.contentContainerStyle).toEqual(expect.objectContaining({ backgroundColor: t.background.base }));
+      expect(json).toContain(t.surface.card);
+      expect(json).toContain('Low stock');
+      expect(json).toContain('Out of stock');
+      expect(json).toContain(t.status.critical.text);
+      expect(json).toContain(t.status.negative.text);
+      expect(json).not.toMatch(/OUT|LOW/);
+      const input = tree.root.findByType(TextInput);
+      expect(input.props.placeholderTextColor).toBe(t.text.placeholder);
+    } finally { await act(async () => { tree.unmount(); }); }
+  });
 });

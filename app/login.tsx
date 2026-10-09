@@ -1,7 +1,7 @@
 /**
  * Login Screen - SAP Fiori for iOS Design
  *
- * Implements SAP Fiori onboarding/welcome screen pattern
+ * Implements SAP Fiori onboarding/welcome screen pattern (style guide §14.8)
  */
 import React, { useEffect, useState } from 'react';
 import {
@@ -30,70 +30,30 @@ import { BrandMark } from '@/components/BrandMark';
 import { PhoneInput } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { useRateLimitCountdown } from '@/hooks/useRateLimitCountdown';
-import { useFioriColors } from '@/theme/fioriColors';
-import { useTheme } from '@/hooks/useTheme';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import {
+  fontWeight,
+  iconSize,
+  layout,
+  radius,
+  space,
+  touchTarget,
+  typography,
+  type ThemeTokens,
+} from '@/theme/tokens';
 
-// Static design tokens (typography, spacing, dimensions)
-const FIORI_STATIC = {
-  typography: {
-    displayLarge: {
-      fontSize: 34,
-      lineHeight: 41,
-      fontWeight: '700' as const,
-      letterSpacing: 0.37,
-    },
-    title1: {
-      fontSize: 28,
-      lineHeight: 34,
-      fontWeight: '700' as const,
-      letterSpacing: 0.36,
-    },
-    body: {
-      fontSize: 17,
-      lineHeight: 22,
-      fontWeight: '400' as const,
-      letterSpacing: -0.41,
-    },
-    caption1: {
-      fontSize: 13,
-      lineHeight: 18,
-      fontWeight: '400' as const,
-      letterSpacing: -0.08,
-    },
-    caption2: {
-      fontSize: 12,
-      lineHeight: 16,
-      fontWeight: '400' as const,
-      letterSpacing: 0,
-    },
-  },
-  spacing: {
-    xs: 4,
-    sm: 8,
-    md: 16,
-    lg: 24,
-    xl: 32,
-    xxl: 48,
-  },
-  dimensions: {
-    logoHeight: 64,
-    buttonHeight: 44,
-    borderRadius: 8,
-    maxContentWidth: 375,
-  },
-};
-
+const APP_NAME = process.env.EXPO_PUBLIC_APP_NAME || 'Warehouse Manager';
 
 export default function LoginScreen() {
   const [phoneNumber, setPhoneNumber] = useState('');
   const dispatch = useAppDispatch();
   const { isAuthenticating } = useAppSelector((state) => state.auth);
   const insets = useSafeAreaInsets();
-  const FIORI = useFioriColors();
+  const t = useTokens();
+  const styles = useThemedStyles(makeStyles);
   // The warehouse this sign-in is for; becomes the facility picker with central login.
   const facility = getActiveOperatorServer();
   const facilityHost = facility ? facility.origin.replace(/^https:\/\//, '') : '';
-  const { isDarkMode } = useTheme();
 
   useEffect(() => {
     let active = true;
@@ -139,15 +99,12 @@ export default function LoginScreen() {
     }
 
     if (!phoneNumber.trim()) {
-      Alert.alert('Error', 'Please enter your phone number');
+      Alert.alert('Enter your mobile number', 'Enter your 10-digit mobile number to get a code.');
       return;
     }
 
     if (!validatePhoneNumber(phoneNumber)) {
-      Alert.alert(
-        'Invalid Phone Number',
-        'Please enter a valid 10-digit phone number'
-      );
+      Alert.alert('Check your mobile number', 'Enter a 10-digit mobile number.');
       return;
     }
 
@@ -167,15 +124,15 @@ export default function LoginScreen() {
           return;
         }
         Alert.alert(
-          'Error',
-          result.error || 'Failed to send OTP. Please try again.'
+          "Couldn't send the code",
+          result.error || 'Check your connection and try again.'
         );
       }
     } catch (error) {
       if (handleRateLimitError(error)) {
         return;
       }
-      Alert.alert('Error', 'Something went wrong. Please try again.');
+      Alert.alert("Couldn't send the code", 'Check your connection and try again.');
     } finally {
       dispatch(setAuthenticating(false));
     }
@@ -191,15 +148,8 @@ export default function LoginScreen() {
   };
 
   return (
-    <View
-      style={[
-        styles.container,
-        { paddingTop: insets.top, backgroundColor: FIORI.colors.background },
-      ]}
-    >
-      <EdgeToEdgeStatusBar
-        barStyle={isDarkMode ? 'light-content' : 'dark-content'}
-      />
+    <View style={[styles.container, { paddingTop: insets.top }]}>
+      <EdgeToEdgeStatusBar barStyle={t.statusBarStyle} />
 
       <KeyboardAvoidingView
         style={styles.keyboardView}
@@ -208,7 +158,7 @@ export default function LoginScreen() {
         <ScrollView
           contentContainerStyle={[
             styles.scrollContent,
-            { paddingBottom: insets.bottom + FIORI_STATIC.spacing.lg },
+            { paddingBottom: insets.bottom + space.xxl },
           ]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
@@ -216,16 +166,14 @@ export default function LoginScreen() {
           {/* Fiori: Welcome Screen Content */}
           <View style={styles.content}>
             {/* Facility line: which warehouse this sign-in is for (becomes the facility picker later) */}
-            <View
-              style={[styles.facilityRow, { backgroundColor: FIORI.colors.backgroundSecondary, borderColor: FIORI.colors.divider }]}
-            >
-              <Icon name="warehouse" size={20} color={FIORI.colors.textSecondary} />
+            <View style={styles.facilityRow}>
+              <Icon name="office-building-outline" size={iconSize.md} color={t.icon.secondary} />
               <View style={styles.facilityText}>
-                <Text style={[styles.facilityName, { color: FIORI.colors.textPrimary }]} numberOfLines={1}>
+                <Text style={styles.facilityName} numberOfLines={1}>
                   {facility?.companyName || 'No warehouse selected'}
                 </Text>
                 {facilityHost ? (
-                  <Text style={[styles.facilityHost, { color: FIORI.colors.textSecondary }]} numberOfLines={1}>
+                  <Text style={styles.facilityHost} numberOfLines={1}>
                     {facilityHost}
                   </Text>
                 ) : null}
@@ -234,14 +182,14 @@ export default function LoginScreen() {
                 onPress={() => router.push('/operator-server')}
                 accessibilityRole="button"
                 accessibilityLabel="Change warehouse server"
-                hitSlop={8}
+                style={({ pressed }) => [styles.facilityChangeButton, pressed && styles.facilityChangePressed]}
               >
-                <Text style={[styles.facilityChange, { color: FIORI.colors.tint }]}>Change</Text>
+                <Text style={styles.facilityChange}>Change</Text>
               </Pressable>
             </View>
             {/* A. Logo Section */}
             <View style={styles.logoContainer}>
-              <BrandMark label={process.env.EXPO_PUBLIC_APP_NAME || 'Warehouse Manager'} />
+              <BrandMark label={APP_NAME} />
             </View>
 
             {/* B. Welcome Message Section */}
@@ -250,54 +198,26 @@ export default function LoginScreen() {
               accessible={true}
               accessibilityRole="header"
             >
-              <Text style={[styles.appName, { color: FIORI.colors.tint }]}>
-                {process.env.EXPO_PUBLIC_APP_NAME || 'Warehouse Manager'}
-              </Text>
-              <Text
-                style={[styles.welcomeTitle, { color: FIORI.colors.textPrimary }]}
-              >
-                Sign in
-              </Text>
-              <Text style={[styles.welcomeSubtitle, { color: FIORI.colors.textSecondary }]}>
+              <Text style={styles.appName}>{APP_NAME}</Text>
+              <Text style={styles.welcomeTitle}>Sign in</Text>
+              <Text style={styles.welcomeSubtitle}>
                 Enter your mobile number to get a one-time code.
               </Text>
             </View>
 
-            {/* C. Rate Limit Warning Banner (Fiori Critical Message Strip) */}
+            {/* C. Rate Limit Warning (Fiori critical message strip) */}
             {isRateLimited && (
               <View
-                style={[
-                  styles.messageStrip,
-                  {
-                    backgroundColor: FIORI.colors.warningLight,
-                    borderLeftColor: FIORI.colors.warning,
-                  },
-                ]}
+                style={styles.messageStrip}
                 accessible={true}
                 accessibilityRole="alert"
-                accessibilityLabel={`Rate limited. ${rateLimitMessage}. Try again in ${countdownText}`}
+                accessibilityLabel={`Warning. ${rateLimitMessage}. Try again in ${countdownText}`}
                 accessibilityLiveRegion="polite"
               >
-                <Icon
-                  name="clock-outline"
-                  size={20}
-                  color={FIORI.colors.warning}
-                />
+                <Icon name="alert" size={iconSize.md} color={t.status.critical.text} />
                 <View style={styles.messageStripContent}>
-                  <Text
-                    style={[
-                      styles.messageStripTitle,
-                      { color: FIORI.colors.textPrimary },
-                    ]}
-                  >
-                    {rateLimitMessage}
-                  </Text>
-                  <Text
-                    style={[
-                      styles.messageStripText,
-                      { color: FIORI.colors.textSecondary },
-                    ]}
-                  >
+                  <Text style={styles.messageStripTitle}>{rateLimitMessage}</Text>
+                  <Text style={styles.messageStripText}>
                     Try again in {countdownText}
                   </Text>
                 </View>
@@ -307,9 +227,7 @@ export default function LoginScreen() {
             {/* D. Form Section */}
             <View style={styles.formSection}>
               {/* Fiori Section Header */}
-              <Text
-                style={[styles.sectionHeader, { color: FIORI.colors.textSecondary }]}
-              >
+              <Text style={styles.sectionHeader} accessibilityRole="header">
                 MOBILE NUMBER
               </Text>
 
@@ -323,15 +241,20 @@ export default function LoginScreen() {
                 maxLength={12}
                 editable={!isAuthenticating && !isRateLimited}
                 accessibilityLabel="Mobile number"
+                accessibilityHint="The +91 country code is added for you"
+                autoComplete="tel-national"
+                textContentType="telephoneNumber"
+                returnKeyType="send"
+                onSubmitEditing={handleSendOTP}
                 leftIcon={
-                  <View style={[styles.countryCode, { borderRightColor: FIORI.colors.divider }]}>
-                    <Text style={[styles.countryCodeText, { color: FIORI.colors.textPrimary }]}>+91</Text>
+                  <View style={styles.countryCode}>
+                    <Text style={styles.countryCodeText}>+91</Text>
                   </View>
                 }
               />
             </View>
 
-            {/* E. Primary Action Button (Fiori: 44pt height, full width) */}
+            {/* E. Primary Action Button (full width) */}
             <View style={styles.buttonSection}>
               <Button
                 type="primary"
@@ -339,12 +262,13 @@ export default function LoginScreen() {
                 onPress={handleSendOTP}
                 disabled={isAuthenticating || isRateLimited}
                 loading={isAuthenticating}
+                loadingText="Sending code…"
                 accessibilityLabel={
                   isRateLimited
-                    ? `Wait ${countdownText} before sending OTP`
-                    : 'Send OTP'
+                    ? `Wait ${countdownText} before sending a code`
+                    : 'Send code'
                 }
-                accessibilityHint="Sends a one-time password to your phone number"
+                accessibilityHint="Sends a one-time code to your mobile number"
                 accessibilityState={{
                   disabled: isAuthenticating || isRateLimited,
                   busy: isAuthenticating,
@@ -354,21 +278,17 @@ export default function LoginScreen() {
               </Button>
             </View>
 
-            {/* F. Footer Section (Fiori: Caption style, secondary text) */}
+            {/* F. Footer Section */}
             <View
               style={styles.footerSection}
               accessible={true}
               accessibilityRole="text"
             >
-              <View
-                style={[styles.footerDivider, { backgroundColor: FIORI.colors.divider }]}
-              />
-              <Text
-                style={[styles.footerText, { color: FIORI.colors.textTertiary }]}
-              >
+              <View style={styles.footerDivider} />
+              <Text style={styles.footerText}>
                 By continuing, you agree to our{' '}
                 <Text
-                  style={[styles.footerLink, { color: FIORI.colors.tint }]}
+                  style={styles.footerLink}
                   onPress={() => router.push('/terms-of-service')}
                   accessibilityRole="link"
                   accessibilityLabel="Terms of Service"
@@ -377,7 +297,7 @@ export default function LoginScreen() {
                 </Text>
                 {' '}and{' '}
                 <Text
-                  style={[styles.footerLink, { color: FIORI.colors.tint }]}
+                  style={styles.footerLink}
                   onPress={() => router.push('/privacy-policy')}
                   accessibilityRole="link"
                   accessibilityLabel="Privacy Policy"
@@ -394,13 +314,13 @@ export default function LoginScreen() {
 }
 
 // ============================================================================
-// SAP FIORI STYLES
+// STYLES (style guide §14.8)
 // ============================================================================
 
-const styles = StyleSheet.create({
-  // Container - Fiori: White background (color applied inline)
+const makeStyles = (t: ThemeTokens) => ({
   container: {
     flex: 1,
+    backgroundColor: t.background.base,
   },
 
   keyboardView: {
@@ -409,155 +329,171 @@ const styles = StyleSheet.create({
 
   scrollContent: {
     flexGrow: 1,
-    justifyContent: 'center',
+    justifyContent: 'center' as const,
   },
 
-  // Content wrapper - Fiori: Centered, max width constrained
+  // Centred form column, at most layout.maxFormWidth wide
   content: {
-    paddingHorizontal: FIORI_STATIC.spacing.lg,
-    maxWidth: FIORI_STATIC.dimensions.maxContentWidth,
-    width: '100%',
-    alignSelf: 'center',
+    paddingHorizontal: layout.marginCompact,
+    maxWidth: layout.maxFormWidth,
+    width: '100%' as const,
+    alignSelf: 'center' as const,
   },
 
   // Facility line - compact, secondary to the sign-in form
   facilityRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: FIORI_STATIC.spacing.sm,
-    paddingHorizontal: FIORI_STATIC.spacing.md,
-    paddingVertical: FIORI_STATIC.spacing.sm,
-    borderRadius: FIORI_STATIC.dimensions.borderRadius,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.sm,
+    paddingLeft: space.lg,
+    paddingRight: space.xs,
+    paddingVertical: space.xs,
+    borderRadius: radius.button,
     borderWidth: StyleSheet.hairlineWidth,
-    marginBottom: FIORI_STATIC.spacing.xxl,
+    borderColor: t.border.divider,
+    backgroundColor: t.surface.card,
+    marginBottom: space.giant,
   },
   facilityText: {
     flex: 1,
   },
   facilityName: {
-    ...FIORI_STATIC.typography.caption1,
-    fontWeight: '600',
+    ...typography.footnote,
+    fontWeight: fontWeight.semibold,
+    color: t.text.primary,
   },
   facilityHost: {
-    ...FIORI_STATIC.typography.caption2,
+    ...typography.caption1,
+    color: t.text.secondary,
+  },
+  facilityChangeButton: {
+    minHeight: touchTarget,
+    minWidth: touchTarget,
+    paddingHorizontal: space.md,
+    borderRadius: radius.button,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+  },
+  facilityChangePressed: {
+    backgroundColor: t.brand.subtle,
   },
   facilityChange: {
-    ...FIORI_STATIC.typography.caption1,
-    fontWeight: '600',
-    paddingVertical: FIORI_STATIC.spacing.xs,
+    ...typography.footnote,
+    fontWeight: fontWeight.semibold,
+    color: t.brand.tint,
   },
 
-  // A. Logo Container - Fiori: Centered, adequate spacing
   logoContainer: {
-    alignItems: 'center',
-    marginBottom: FIORI_STATIC.spacing.lg,
+    alignItems: 'center' as const,
+    marginBottom: space.xxl,
   },
 
-
-
-  // B. Welcome Section - Fiori: Centered text, hierarchical typography
   welcomeSection: {
-    alignItems: 'center',
-    marginBottom: FIORI_STATIC.spacing.xl,
+    alignItems: 'center' as const,
+    marginBottom: space.xxxl,
   },
 
-  // Fiori Display Large - Welcome title (color applied inline)
-  welcomeTitle: {
-    ...FIORI_STATIC.typography.displayLarge,
-    textAlign: 'center',
-    marginBottom: FIORI_STATIC.spacing.xs,
-  },
-
-  // App name above the title, in brand color (color applied inline)
+  // App name under the mark (style guide §13.12)
   appName: {
-    ...FIORI_STATIC.typography.caption1,
-    fontSize: 15,
-    fontWeight: '600',
-    textAlign: 'center',
-    marginBottom: FIORI_STATIC.spacing.sm,
+    ...typography.subhead,
+    color: t.text.secondary,
+    textAlign: 'center' as const,
+    marginBottom: space.sm,
+  },
+
+  welcomeTitle: {
+    ...typography.title1,
+    color: t.text.primary,
+    textAlign: 'center' as const,
+    marginBottom: space.xs,
   },
 
   welcomeSubtitle: {
-    ...FIORI_STATIC.typography.caption1,
-    textAlign: 'center',
+    ...typography.subhead,
+    color: t.text.secondary,
+    textAlign: 'center' as const,
   },
 
   // Fixed country code inside the phone field
   countryCode: {
-    paddingRight: FIORI_STATIC.spacing.sm,
-    marginRight: FIORI_STATIC.spacing.xs,
+    paddingRight: space.sm,
+    marginRight: space.xs,
     borderRightWidth: StyleSheet.hairlineWidth,
+    borderRightColor: t.border.divider,
   },
   countryCodeText: {
-    fontSize: 17,
-    fontWeight: '600',
+    ...typography.body,
+    fontWeight: fontWeight.semibold,
+    color: t.text.primary,
   },
 
-  // C. Message Strip (Fiori Critical/Warning Banner) (colors applied inline)
+  // Critical message strip (style guide §13.9)
   messageStrip: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    borderRadius: FIORI_STATIC.dimensions.borderRadius,
-    padding: FIORI_STATIC.spacing.md,
-    marginBottom: FIORI_STATIC.spacing.lg,
-    borderLeftWidth: 4,
+    flexDirection: 'row' as const,
+    alignItems: 'flex-start' as const,
+    borderRadius: radius.button,
+    borderWidth: 1,
+    borderColor: t.status.critical.border,
+    backgroundColor: t.status.critical.background,
+    padding: space.md,
+    marginBottom: space.xxl,
   },
 
   messageStripContent: {
     flex: 1,
-    marginLeft: FIORI_STATIC.spacing.sm,
+    marginLeft: space.sm,
   },
 
   messageStripTitle: {
-    ...FIORI_STATIC.typography.caption1,
-    fontWeight: '600',
+    ...typography.footnote,
+    fontWeight: fontWeight.semibold,
+    color: t.status.critical.text,
   },
 
   messageStripText: {
-    ...FIORI_STATIC.typography.caption1,
-    marginTop: FIORI_STATIC.spacing.xs,
+    ...typography.footnote,
+    color: t.status.critical.text,
+    marginTop: space.xs,
   },
 
-  // D. Form Section - Fiori: Section with header
   formSection: {
-    marginBottom: FIORI_STATIC.spacing.lg,
+    marginBottom: space.xxl,
   },
 
-  // Fiori Section Header - 13pt, uppercase, secondary color (color applied inline)
+  // Section header: footnote, capitals, secondary text
   sectionHeader: {
-    ...FIORI_STATIC.typography.caption1,
-    fontWeight: '600',
+    ...typography.footnote,
+    fontWeight: fontWeight.semibold,
     letterSpacing: 0.5,
-    marginBottom: FIORI_STATIC.spacing.sm,
+    color: t.text.secondary,
+    marginBottom: space.sm,
   },
 
-  // E. Button Section
   buttonSection: {
-    marginBottom: FIORI_STATIC.spacing.lg,
+    marginBottom: space.xxl,
   },
 
-  // F. Footer Section - Fiori: Divider + caption text
   footerSection: {
-    alignItems: 'center',
-    marginTop: FIORI_STATIC.spacing.md,
+    alignItems: 'center' as const,
+    marginTop: space.lg,
   },
 
-  // Fiori Divider (color applied inline)
   footerDivider: {
-    width: '100%',
-    height: 1,
-    marginBottom: FIORI_STATIC.spacing.md,
+    width: '100%' as const,
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: t.border.divider,
+    marginBottom: space.lg,
   },
 
-  // Fiori Caption 2 - Footer text (color applied inline)
   footerText: {
-    ...FIORI_STATIC.typography.caption2,
-    textAlign: 'center',
+    ...typography.caption1,
+    color: t.text.secondary,
+    textAlign: 'center' as const,
   },
 
-  // Footer link text
   footerLink: {
-    ...FIORI_STATIC.typography.caption2,
-    textDecorationLine: 'underline',
+    ...typography.caption1,
+    color: t.brand.tint,
+    textDecorationLine: 'underline' as const,
   },
 });
