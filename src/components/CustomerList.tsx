@@ -5,21 +5,31 @@
  * Used in the customer management screen for supervisors.
  */
 
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   FlatList,
-  TouchableOpacity,
+  Pressable,
   RefreshControl,
   ActivityIndicator,
-  Platform,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { router } from 'expo-router';
-import theme from '@/theme';
 import { CustomerListItem } from '@/types/customer.types';
+import { Button } from '@/components/ui/Button';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import {
+  fontWeight,
+  iconSize,
+  layout,
+  radius,
+  space,
+  touchTarget,
+  typography,
+  type ThemeTokens,
+} from '@/theme/tokens';
 
 // =============================================================================
 // TYPES
@@ -37,6 +47,19 @@ interface CustomerListProps {
   emptyMessage?: string;
 }
 
+/** Stable avatar colour index for a customer (style guide §3.2). */
+function avatarIndex(key: string, count: number): number {
+  let hash = 0;
+  for (let i = 0; i < key.length; i++) hash = (hash * 31 + key.charCodeAt(i)) | 0;
+  return Math.abs(hash) % count;
+}
+
+/** "9876543210" -> "+91 98765 43210" (style guide §12.3). */
+function formatMobile(mobile: string): string {
+  const digits = mobile.replace(/\D/g, '').replace(/^91(?=\d{10}$)/, '');
+  return digits.length === 10 ? `+91 ${digits.slice(0, 5)} ${digits.slice(5)}` : `+91 ${mobile}`;
+}
+
 // =============================================================================
 // CUSTOMER CARD COMPONENT
 // =============================================================================
@@ -48,33 +71,47 @@ interface CustomerCardProps {
 }
 
 function CustomerCard({ customer, onEdit, onToggleActive }: CustomerCardProps) {
-  const handlePress = useCallback(() => {
-    // Navigate to edit on card press
-    onEdit();
-  }, [onEdit]);
+  const t = useTokens();
+  const styles = useThemedStyles(makeStyles);
+  const name = customer.name || 'Customer';
+  const avatarBackground = customer.active
+    ? t.avatar[avatarIndex(customer.id || name, t.avatar.length)]
+    : t.status.neutral.background;
+  const rowLabel = [
+    name,
+    customer.active ? null : 'Inactive',
+    customer.mobile ? formatMobile(customer.mobile) : null,
+    customer.city,
+  ].filter(Boolean).join(', ');
 
   return (
-    <TouchableOpacity
-      style={[styles.card, !customer.active && styles.cardInactive]}
-      onPress={handlePress}
-      activeOpacity={0.7}
+    <Pressable
+      style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
+      onPress={onEdit}
+      accessibilityRole="button"
+      accessibilityLabel={rowLabel}
+      accessibilityHint="Opens the customer to edit"
     >
       {/* Customer Avatar */}
-      <View style={[styles.avatar, !customer.active && styles.avatarInactive]}>
-        <Text style={[styles.avatarText, !customer.active && styles.avatarTextInactive]}>
-          {(customer.name || 'C').charAt(0).toUpperCase()}
+      <View style={[styles.avatar, { backgroundColor: avatarBackground }]}>
+        <Text
+          style={[styles.avatarText, !customer.active && styles.avatarTextInactive]}
+          maxFontSizeMultiplier={1.6}
+        >
+          {name.charAt(0).toUpperCase()}
         </Text>
       </View>
 
       {/* Customer Info */}
       <View style={styles.cardContent}>
         <View style={styles.cardHeader}>
-          <Text style={[styles.customerName, !customer.active && styles.textInactive]} numberOfLines={1}>
-            {customer.name}
+          <Text style={styles.customerName} numberOfLines={2}>
+            {name}
           </Text>
           {!customer.active && (
             <View style={styles.inactiveBadge}>
-              <Text style={styles.inactiveBadgeText}>Inactive</Text>
+              <Icon name="circle-outline" size={iconSize.sm} color={t.status.neutral.text} />
+              <Text style={styles.inactiveBadgeText} maxFontSizeMultiplier={1.6}>Inactive</Text>
             </View>
           )}
         </View>
@@ -82,24 +119,24 @@ function CustomerCard({ customer, onEdit, onToggleActive }: CustomerCardProps) {
         <View style={styles.cardDetails}>
           {customer.mobile && (
             <View style={styles.detailRow}>
-              <Icon name="phone" size={14} color={theme.colors.gray[400]} />
-              <Text style={[styles.detailText, !customer.active && styles.textInactive]}>
-                +91 {customer.mobile}
+              <Icon name="phone-outline" size={iconSize.sm} color={t.icon.secondary} />
+              <Text style={[styles.detailText, styles.numeric]}>
+                {formatMobile(customer.mobile)}
               </Text>
             </View>
           )}
           {customer.city && (
             <View style={styles.detailRow}>
-              <Icon name="map-marker" size={14} color={theme.colors.gray[400]} />
-              <Text style={[styles.detailText, !customer.active && styles.textInactive]}>
+              <Icon name="map-marker-outline" size={iconSize.sm} color={t.icon.secondary} />
+              <Text style={styles.detailText}>
                 {customer.city}
               </Text>
             </View>
           )}
           {customer.email && (
             <View style={styles.detailRow}>
-              <Icon name="email-outline" size={14} color={theme.colors.gray[400]} />
-              <Text style={[styles.detailText, !customer.active && styles.textInactive]} numberOfLines={1}>
+              <Icon name="email-outline" size={iconSize.sm} color={t.icon.secondary} />
+              <Text style={styles.detailText} numberOfLines={1}>
                 {customer.email}
               </Text>
             </View>
@@ -109,26 +146,28 @@ function CustomerCard({ customer, onEdit, onToggleActive }: CustomerCardProps) {
 
       {/* Action Buttons */}
       <View style={styles.cardActions}>
-        <TouchableOpacity
-          style={styles.actionButton}
+        <Pressable
+          style={({ pressed }) => [styles.actionButton, pressed && styles.actionButtonPressed]}
           onPress={onEdit}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          accessibilityRole="button"
+          accessibilityLabel={`Edit ${name}`}
         >
-          <Icon name="pencil" size={20} color={theme.colors.primary[500]} />
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.actionButton}
+          <Icon name="pencil-outline" size={iconSize.md} color={t.brand.tint} />
+        </Pressable>
+        <Pressable
+          style={({ pressed }) => [styles.actionButton, pressed && styles.actionButtonPressed]}
           onPress={onToggleActive}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          accessibilityRole="button"
+          accessibilityLabel={customer.active ? `Deactivate ${name}` : `Activate ${name}`}
         >
           <Icon
-            name={customer.active ? 'eye-off' : 'eye'}
-            size={20}
-            color={customer.active ? theme.colors.gray[400] : theme.colors.semantic.success}
+            name={customer.active ? 'eye-off-outline' : 'eye-outline'}
+            size={iconSize.md}
+            color={customer.active ? t.icon.primary : t.brand.tint}
           />
-        </TouchableOpacity>
+        </Pressable>
       </View>
-    </TouchableOpacity>
+    </Pressable>
   );
 }
 
@@ -145,8 +184,11 @@ export function CustomerList({
   hasMore = false,
   onEditCustomer,
   onInactivateCustomer,
-  emptyMessage = 'No customers found',
+  emptyMessage = 'Customers you add appear here.',
 }: CustomerListProps) {
+  const t = useTokens();
+  const styles = useThemedStyles(makeStyles);
+
   // ===========================================================================
   // RENDER CALLBACKS
   // ===========================================================================
@@ -168,39 +210,39 @@ export function CustomerList({
     if (loading) {
       return (
         <View style={styles.emptyContainer}>
-          <ActivityIndicator size="large" color={theme.colors.primary[500]} />
-          <Text style={styles.emptyText}>Loading customers...</Text>
+          <ActivityIndicator size="large" color={t.brand.tint} accessibilityLabel="Loading customers" />
+          <Text style={styles.emptyText}>Loading customers…</Text>
         </View>
       );
     }
 
     return (
       <View style={styles.emptyContainer}>
-        <Icon name="account-group-outline" size={64} color={theme.colors.gray[300]} />
-        <Text style={styles.emptyTitle}>No Customers</Text>
+        <Icon name="account-group-outline" size={iconSize.hero} color={t.icon.secondary} />
+        <Text style={styles.emptyTitle} accessibilityRole="header">No customers yet</Text>
         <Text style={styles.emptyText}>{emptyMessage}</Text>
-        <TouchableOpacity
-          style={styles.emptyButton}
+        <Button
+          type="primary"
+          size="standalone"
+          leftIcon="add"
           onPress={() => router.push('/customer-form/step1')}
-          activeOpacity={0.8}
         >
-          <Icon name="plus" size={20} color="#FFFFFF" />
-          <Text style={styles.emptyButtonText}>Add Customer</Text>
-        </TouchableOpacity>
+          Add customer
+        </Button>
       </View>
     );
-  }, [loading, emptyMessage]);
+  }, [loading, emptyMessage, styles, t]);
 
   const renderFooter = useCallback(() => {
     if (!hasMore || !onLoadMore) return null;
 
     return (
       <View style={styles.footerContainer}>
-        <ActivityIndicator size="small" color={theme.colors.primary[500]} />
-        <Text style={styles.footerText}>Loading more...</Text>
+        <ActivityIndicator size="small" color={t.brand.tint} />
+        <Text style={styles.footerText}>Loading more customers…</Text>
       </View>
     );
-  }, [hasMore, onLoadMore]);
+  }, [hasMore, onLoadMore, styles, t]);
 
   const handleEndReached = useCallback(() => {
     if (hasMore && onLoadMore && !loading) {
@@ -217,6 +259,7 @@ export function CustomerList({
       data={customers}
       renderItem={renderItem}
       keyExtractor={keyExtractor}
+      style={styles.list}
       contentContainerStyle={[
         styles.listContent,
         customers.length === 0 && styles.listContentEmpty,
@@ -225,8 +268,9 @@ export function CustomerList({
         <RefreshControl
           refreshing={refreshing}
           onRefresh={onRefresh}
-          colors={[theme.colors.primary[500]]}
-          tintColor={theme.colors.primary[500]}
+          colors={[t.brand.tint]}
+          tintColor={t.brand.tint}
+          progressBackgroundColor={t.surface.card}
         />
       }
       ListEmptyComponent={renderEmpty}
@@ -234,181 +278,164 @@ export function CustomerList({
       onEndReached={handleEndReached}
       onEndReachedThreshold={0.3}
       showsVerticalScrollIndicator={false}
-      ItemSeparatorComponent={() => <View style={styles.separator} />}
+      ItemSeparatorComponent={Separator}
     />
   );
 }
+
+const Separator = () => <View style={staticStyles.separator} />;
 
 // =============================================================================
 // STYLES
 // =============================================================================
 
-const styles = StyleSheet.create({
+const staticStyles = StyleSheet.create({
+  // Between cards in a list (style guide §5.1)
+  separator: {
+    height: space.sm,
+  },
+});
+
+const makeStyles = (t: ThemeTokens) => ({
+  list: {
+    backgroundColor: t.background.base,
+  },
   listContent: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingHorizontal: layout.marginCompact,
+    paddingVertical: space.md,
   },
   listContentEmpty: {
     flex: 1,
   },
-  separator: {
-    height: 12,
-  },
 
-  // Card
+  // Card (object cell)
   card: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: theme.colors.gray[200],
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.05,
-        shadowRadius: 2,
-      },
-      android: {
-        elevation: 1,
-      },
-    }),
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    minHeight: layout.objectCellMinHeight,
+    backgroundColor: t.surface.card,
+    borderRadius: radius.card,
+    padding: space.md,
+    ...t.shadow[2],
   },
-  cardInactive: {
-    backgroundColor: theme.colors.gray[50],
-    borderColor: theme.colors.gray[300],
+  cardPressed: {
+    backgroundColor: t.surface.cardPressed,
   },
 
   // Avatar
   avatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: theme.colors.primary[100],
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
+    width: layout.avatar.md,
+    height: layout.avatar.md,
+    borderRadius: radius.pill,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    marginRight: space.md,
   },
-  avatarInactive: {
-    backgroundColor: theme.colors.gray[200],
-  },
+  // Initials: ink on the light avatar palette, white on the dark one (§3.2)
   avatarText: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: theme.colors.primary[600],
+    ...typography.headline,
+    color: t.mode === 'dark' ? t.overlay.onImage : t.text.primary,
   },
   avatarTextInactive: {
-    color: theme.colors.gray[500],
+    color: t.status.neutral.text,
   },
 
   // Card Content
   cardContent: {
     flex: 1,
-    marginRight: 8,
+    marginRight: space.sm,
   },
   cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 4,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.sm,
+    marginBottom: space.xs,
   },
   customerName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: theme.colors.gray[900],
+    ...typography.headline,
+    color: t.text.primary,
     flex: 1,
   },
-  textInactive: {
-    color: theme.colors.gray[500],
-  },
+  // Neutral status tag (style guide §13.5)
   inactiveBadge: {
-    backgroundColor: theme.colors.gray[200],
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 10,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.xs,
+    backgroundColor: t.status.neutral.background,
+    paddingHorizontal: space.s6,
+    paddingVertical: space.xxs,
+    borderRadius: radius.field,
   },
   inactiveBadgeText: {
-    fontSize: 11,
-    fontWeight: '500',
-    color: theme.colors.gray[600],
+    ...typography.caption1,
+    fontWeight: fontWeight.semibold,
+    color: t.status.neutral.text,
   },
   cardDetails: {
-    gap: 2,
+    gap: space.xxs,
   },
   detailRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.xs,
   },
   detailText: {
-    fontSize: 13,
-    color: theme.colors.gray[600],
+    ...typography.subhead,
+    color: t.text.secondary,
     flex: 1,
+  },
+  numeric: {
+    fontVariant: ['tabular-nums' as const],
   },
 
   // Actions
   cardActions: {
-    flexDirection: 'column',
-    gap: 8,
+    flexDirection: 'column' as const,
+    gap: space.xs,
   },
   actionButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 8,
-    backgroundColor: theme.colors.gray[50],
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: touchTarget,
+    height: touchTarget,
+    borderRadius: radius.pill,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+  },
+  actionButtonPressed: {
+    backgroundColor: t.brand.subtle,
   },
 
-  // Empty State
+  // Empty State (style guide §13.6)
   emptyContainer: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 32,
-    paddingVertical: 48,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    paddingHorizontal: space.xxxl,
+    paddingVertical: space.giant,
   },
   emptyTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: theme.colors.gray[700],
-    marginTop: 16,
-    marginBottom: 8,
+    ...typography.title3,
+    color: t.text.primary,
+    marginTop: space.lg,
+    marginBottom: space.sm,
   },
   emptyText: {
-    fontSize: 15,
-    color: theme.colors.gray[500],
-    textAlign: 'center',
-    marginBottom: 24,
-  },
-  emptyButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: theme.colors.primary[500],
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 8,
-    gap: 8,
-  },
-  emptyButtonText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#FFFFFF',
+    ...typography.subhead,
+    color: t.text.secondary,
+    textAlign: 'center' as const,
+    marginBottom: space.xxl,
   },
 
   // Footer
   footerContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 16,
-    gap: 8,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    paddingVertical: space.lg,
+    gap: space.sm,
   },
   footerText: {
-    fontSize: 14,
-    color: theme.colors.gray[500],
+    ...typography.footnote,
+    color: t.text.secondary,
   },
 });
 

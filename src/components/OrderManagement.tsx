@@ -8,19 +8,28 @@ import {
   StyleSheet,
   Alert,
   RefreshControl,
-  TouchableOpacity,
+  Pressable,
   TextInput,
+  Modal,
 } from 'react-native';
 import {
   Surface,
   ActivityIndicator,
-  Button,
 } from 'react-native-paper';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import theme from '@/theme';
-import { useListColors } from '@/hooks/useListColors';
+import { Button } from '@/components/ui/Button';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import {
+  iconSize,
+  layout,
+  radius,
+  space,
+  touchTarget,
+  typography,
+  type ThemeTokens,
+} from '@/theme/tokens';
 import { OrderService } from '@/services/order-service';
 import { Order, OrderItem, Customer } from '@/types/order.types';
 import { useAppSelector } from '@/store/hooks';
@@ -43,8 +52,8 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
   itemCatalogOpen,
   onCloseItemCatalog,
 }) => {
-  // Theme colors for dark mode support
-  const colors = useListColors();
+  const t = useTokens();
+  const styles = useThemedStyles(makeStyles);
 
   const { userProfile } = useAppSelector((state) => state.auth);
   const insets = useSafeAreaInsets();
@@ -76,7 +85,7 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
       const orderResult = await OrderService.getOrCreateOrder(custId);
       
       if (!orderResult.success) {
-        Alert.alert('Error', orderResult.message);
+        Alert.alert("Couldn't open the order", orderResult.message || 'Check your connection and try again.');
         return;
       }
 
@@ -113,11 +122,11 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
           error: orderDetailsResult.error,
           message: orderDetailsResult.message
         });
-        Alert.alert('Error', orderDetailsResult.message || 'Failed to load order details');
+        Alert.alert("Couldn't load the order", 'Check your connection and try again.');
       }
     } catch (error) {
       console.error('[OrderManagement] Error initializing order:', error);
-      Alert.alert('Error', 'Failed to initialize order');
+      Alert.alert("Couldn't open the order", 'Check your connection and try again.');
     } finally {
       setLoading(false);
     }
@@ -204,11 +213,11 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
         await onRefresh();
         return true;
       }
-      Alert.alert('Error', result.message);
+      Alert.alert("Couldn't change the quantity", result.message || 'Check your connection and try again.');
       return false;
     } catch (error) {
       console.error('[OrderManagement] Update quantity error:', error);
-      Alert.alert('Error', 'Failed to update quantity');
+      Alert.alert("Couldn't change the quantity", 'Check your connection and try again.');
       return false;
     }
   }, [order, onRefresh]);
@@ -217,13 +226,14 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
   const handleRemoveItem = useCallback(async (item: OrderItem) => {
     if (!order) return;
 
+    const itemName = item.grn_item?.name || 'this item';
     Alert.alert(
-      'Remove Item',
-      `Remove ${item.grn_item?.name} from order?`,
+      `Remove ${itemName}?`,
+      `${itemName} will be taken off this order.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Remove',
+          text: 'Remove item',
           style: 'destructive',
           onPress: async () => {
             try {
@@ -231,11 +241,11 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
               if (result.success) {
                 await onRefresh();
               } else {
-                Alert.alert('Error', result.message);
+                Alert.alert("Couldn't remove the item", result.message || 'Check your connection and try again.');
               }
             } catch (error) {
               console.error('[OrderManagement] Remove item error:', error);
-              Alert.alert('Error', 'Failed to remove item');
+              Alert.alert("Couldn't remove the item", 'Check your connection and try again.');
             }
           }
         }
@@ -317,28 +327,35 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
 
       if (failureCount > 0) {
         Alert.alert(
-          'Warning',
-          `Some operations failed. Please check and try again.`
+          "Some items weren't updated",
+          'Check the order and try again.'
         );
       }
     } catch (error) {
       console.error('[OrderManagement] Update items error:', error);
-      Alert.alert('Error', 'Failed to update items');
+      Alert.alert("Couldn't update the order", 'Check your connection and try again.');
     }
   }, [order, onRefresh]);
 
 
   if (loading && !order) {
     return (
-      <View style={[styles.loadingContainer, { backgroundColor: colors.gray50 }]}>
-        <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={[styles.loadingText, { color: colors.gray600 }]}>Loading order...</Text>
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={t.brand.tint} accessibilityLabel="Loading order" />
+        <Text style={styles.loadingText}>Loading order…</Text>
       </View>
     );
   }
 
+  const closeCustomerSearch = () => {
+    setShowCustomerSearch(false);
+    if (!selectedCustomer) {
+      router.back();
+    }
+  };
+
   return (
-    <Surface style={[styles.container, { backgroundColor: colors.gray50 }]} elevation={0}>
+    <Surface style={styles.container} elevation={0}>
 
       {/* Order Items */}
       <ScrollView
@@ -348,7 +365,9 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            colors={[colors.primary]}
+            colors={[t.brand.tint]}
+            tintColor={t.brand.tint}
+            progressBackgroundColor={t.surface.card}
           />
         }
         showsVerticalScrollIndicator={false}
@@ -375,21 +394,20 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
           </>
         ) : (
           <View style={styles.emptyState}>
-            <View style={[styles.emptyIconContainer, { backgroundColor: colors.gray100 }]}>
-              <Icon name="cart-outline" size={64} color={colors.gray400} />
-            </View>
-            <Text style={[styles.emptyText, { color: colors.gray900 }]}>No items in order</Text>
-            <Text style={[styles.emptySubtext, { color: colors.gray500 }]}>
-              Tap the + button above to add items from stock
+            <Icon name="clipboard-list-outline" size={iconSize.hero} color={t.icon.secondary} />
+            <Text style={styles.emptyText} accessibilityRole="header">No items in this order</Text>
+            <Text style={styles.emptySubtext}>
+              Items you add from this customer's stock appear here.
             </Text>
-            <TouchableOpacity
-              style={[styles.emptyStateCTA, { backgroundColor: colors.primary }]}
+            <Button
+              type="primary"
+              size="standalone"
+              leftIcon="add"
               onPress={() => setShowItemCatalog(true)}
-              activeOpacity={0.8}
+              accessibilityLabel="Add items to order"
             >
-              <Icon name="plus" size={20} color={colors.cellBackground} />
-              <Text style={[styles.emptyStateCTAText, { color: colors.cellBackground }]}>Add Items</Text>
-            </TouchableOpacity>
+              Add items
+            </Button>
           </View>
         )}
       </ScrollView>
@@ -402,55 +420,74 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
         <CustomerOrderSummary order={order} />
       )}
 
-      {/* Customer Search Modal */}
-      {showCustomerSearch && (
+      {/* Customer search dialog (style guide §13.9); Android back closes it */}
+      <Modal
+        visible={showCustomerSearch}
+        transparent
+        animationType="fade"
+        onRequestClose={closeCustomerSearch}
+        statusBarTranslucent
+      >
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { paddingTop: insets.top + 24, backgroundColor: colors.cellBackground }]}>
-            <View style={[styles.modalHeader, { borderBottomColor: colors.cellDivider }]}>
-              <Text style={[styles.modalTitle, { color: colors.gray900 }]}>Select Customer</Text>
-              <TouchableOpacity
-                onPress={() => {
-                  setShowCustomerSearch(false);
-                  if (!selectedCustomer) {
-                    router.back();
-                  }
-                }}
-                style={styles.modalCloseButton}
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={closeCustomerSearch}
+            accessibilityRole="button"
+            accessibilityLabel="Close customer search"
+          />
+          <View style={[styles.modalContent, { marginTop: insets.top + space.xxl }]}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle} accessibilityRole="header">Select customer</Text>
+              <Pressable
+                onPress={closeCustomerSearch}
+                style={({ pressed }) => [styles.modalCloseButton, pressed && styles.modalCloseButtonPressed]}
+                accessibilityRole="button"
+                accessibilityLabel="Close customer search"
               >
-                <Icon name="close" size={24} color={colors.gray600} />
-              </TouchableOpacity>
+                <Icon name="close" size={iconSize.lg} color={t.icon.primary} />
+              </Pressable>
             </View>
 
-            <TextInput
-              style={[styles.searchInput, { backgroundColor: colors.gray100, color: colors.gray900 }]}
-              placeholder="Search customers..."
-              value={customerSearchQuery}
-              onChangeText={setCustomerSearchQuery}
-              placeholderTextColor={colors.gray400}
-              autoFocus
-            />
+            <View style={styles.searchField}>
+              <Icon name="magnify" size={iconSize.md} color={t.icon.secondary} />
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Search customers"
+                value={customerSearchQuery}
+                onChangeText={setCustomerSearchQuery}
+                placeholderTextColor={t.text.placeholder}
+                accessibilityLabel="Search customers"
+                autoCorrect={false}
+                returnKeyType="search"
+                autoFocus
+              />
+            </View>
 
-            <ScrollView style={styles.customerList}>
+            <ScrollView style={styles.customerList} keyboardShouldPersistTaps="handled">
               {customerSearchResults.map((customer) => (
-                <TouchableOpacity
+                <Pressable
                   key={customer.value}
-                  style={[styles.customerItem, { borderBottomColor: colors.cellDivider }]}
+                  style={({ pressed }) => [styles.customerItem, pressed && styles.customerItemPressed]}
                   onPress={() => handleCustomerSelect(customer)}
+                  accessibilityRole="button"
+                  accessibilityLabel={customer.detail ? `${customer.label}, ${customer.detail}` : customer.label}
                 >
-                  <Text style={[styles.customerName, { color: colors.gray900 }]}>{customer.label}</Text>
+                  <Text style={styles.customerName}>{customer.label}</Text>
                   {customer.detail && (
-                    <Text style={[styles.customerDetail, { color: colors.gray600 }]}>{customer.detail}</Text>
+                    <Text style={styles.customerDetail}>{customer.detail}</Text>
                   )}
-                </TouchableOpacity>
+                </Pressable>
               ))}
 
               {customerSearchQuery.length > 2 && customerSearchResults.length === 0 && (
-                <Text style={[styles.noResults, { color: colors.gray500 }]}>No customers found</Text>
+                <Text style={styles.noResults}>
+                  {`No customers match "${customerSearchQuery}". Try fewer letters.`}
+                </Text>
               )}
             </ScrollView>
           </View>
         </View>
-      )}
+      </Modal>
 
       {/* Item Catalog Modal */}
       {showItemCatalog && order && selectedCustomer && (
@@ -473,213 +510,138 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
   );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (t: ThemeTokens) => ({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.gray[50],
-  },
-  badgeText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: theme.colors.orange[600],
-  },
-  headerSpacer: {
-    width: 60, // Match back button width for center alignment
-  },
-  headerAddButton: {
-    position: 'absolute',
-    right: 16,
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  headerAddIcon: {
-    fontSize: 28,
-    fontWeight: '600',
-    color: theme.colors.white,
-    lineHeight: 28,
-  },
-  customerBar: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: theme.colors.gray[50],
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.gray[200],
-  },
-  customerInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  customerIcon: {
-    fontSize: 24,
-  },
-  customerName: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: theme.colors.gray[900],
-  },
-  customerMobile: {
-    fontSize: 13,
-    color: theme.colors.gray[600],
-  },
-  expandIcon: {
-    fontSize: 24,
-    color: theme.colors.gray[400],
+    backgroundColor: t.background.base,
   },
   loadingContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: theme.colors.gray[50],
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    backgroundColor: t.background.base,
   },
   loadingText: {
-    marginTop: 12,
-    fontSize: 16,
-    color: theme.colors.gray[600],
+    ...typography.subhead,
+    color: t.text.secondary,
+    marginTop: space.md,
   },
   scrollView: {
     flex: 1,
   },
   scrollContent: {
-    paddingTop: 20,
-    paddingBottom: 80, // Space for compact sticky summary bar at bottom
+    paddingTop: space.xl,
+    paddingBottom: space.max + space.lg, // Space for the sticky summary bar
   },
-  sectionTitle: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: theme.colors.gray[600],
-    marginHorizontal: 16,
-    marginBottom: 12,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
+  // Empty state (style guide §13.6)
   emptyState: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: 60,
-    paddingHorizontal: 32,
-  },
-  emptyIconContainer: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: theme.colors.gray[100],
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 24,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    paddingVertical: space.giant,
+    paddingHorizontal: space.xxxl,
+    gap: space.sm,
   },
   emptyText: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: theme.colors.gray[900],
-    marginBottom: 8,
+    ...typography.title3,
+    color: t.text.primary,
+    textAlign: 'center' as const,
+    marginTop: space.md,
   },
   emptySubtext: {
-    fontSize: 15,
-    color: theme.colors.gray[500],
-    textAlign: 'center',
-    lineHeight: 22,
-    marginBottom: 32,
+    ...typography.subhead,
+    color: t.text.secondary,
+    textAlign: 'center' as const,
+    marginBottom: space.lg,
   },
-  emptyStateCTA: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: theme.colors.primary,
-    paddingHorizontal: 24,
-    paddingVertical: 14,
-    borderRadius: 12,
-    gap: 8,
-    shadowColor: theme.colors.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  emptyStateCTAText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: theme.colors.white,
-  },
+  // Dialog over the scrim
   modalOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
+    flex: 1,
+    backgroundColor: t.overlay.scrim,
+    justifyContent: 'flex-start' as const,
+    alignItems: 'center' as const,
+    paddingHorizontal: layout.marginCompact,
   },
   modalContent: {
-    backgroundColor: theme.colors.white,
-    width: '90%',
-    maxHeight: '80%',
-    // paddingTop is set dynamically with insets
-    borderRadius: 16,
-    shadowColor: theme.colors.black,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 10,
+    backgroundColor: t.surface.sheet,
+    width: '100%' as const,
+    maxWidth: layout.maxFormWidth,
+    maxHeight: '80%' as const,
+    borderRadius: radius.card,
+    ...t.shadow[4],
   },
   modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.gray[200],
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'center' as const,
+    paddingLeft: space.lg,
+    paddingRight: space.xs,
+    paddingVertical: space.xs,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.divider,
   },
   modalTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: theme.colors.gray[900],
+    ...typography.headline,
+    color: t.text.primary,
   },
   modalCloseButton: {
-    padding: 4,
+    width: touchTarget,
+    height: touchTarget,
+    borderRadius: radius.pill,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
   },
-  modalCloseText: {
-    fontSize: 24,
-    color: theme.colors.gray[400],
+  modalCloseButtonPressed: {
+    backgroundColor: t.surface.cardPressed,
+  },
+  searchField: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.sm,
+    margin: space.lg,
+    paddingHorizontal: space.md,
+    minHeight: layout.rowMinHeight,
+    borderRadius: radius.field,
+    borderWidth: 1,
+    borderColor: t.border.field,
+    backgroundColor: t.surface.field,
   },
   searchInput: {
-    margin: 16,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: theme.colors.gray[100],
-    borderRadius: 8,
-    fontSize: 16,
-    color: theme.colors.gray[900],
+    ...typography.body,
+    flex: 1,
+    color: t.text.primary,
+    paddingVertical: space.sm,
   },
   customerList: {
     maxHeight: 400,
-    paddingHorizontal: 16,
-    paddingBottom: 16,
+    paddingHorizontal: space.lg,
+    paddingBottom: space.lg,
   },
   customerItem: {
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.gray[100],
+    minHeight: layout.rowMinHeight,
+    justifyContent: 'center' as const,
+    paddingVertical: space.md,
+    paddingHorizontal: space.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.divider,
+  },
+  customerItemPressed: {
+    backgroundColor: t.surface.cardPressed,
+  },
+  customerName: {
+    ...typography.headline,
+    color: t.text.primary,
   },
   customerDetail: {
-    fontSize: 14,
-    color: theme.colors.gray[600],
-    marginTop: 4,
+    ...typography.subhead,
+    color: t.text.secondary,
+    marginTop: space.xxs,
   },
   noResults: {
-    fontSize: 16,
-    color: theme.colors.gray[500],
-    textAlign: 'center',
-    marginTop: 32,
+    ...typography.subhead,
+    color: t.text.secondary,
+    textAlign: 'center' as const,
+    marginTop: space.xxxl,
   },
 });
 

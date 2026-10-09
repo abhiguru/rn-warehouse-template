@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, StyleSheet, ActivityIndicator, Text, TouchableOpacity } from 'react-native';
+import { View, ActivityIndicator, Text, Pressable, Platform } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { Stack } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -10,14 +10,14 @@ import OrderManagement from '@/components/OrderManagement';
 import ChangeLogBottomSheet from '@/components/ChangeLogBottomSheet';
 import { ChangeLogService } from '@/services/change-log-service';
 import type { ChangeLogEntry, ChangeLogAnalytics, CustomerSummary } from '@/types/order.types';
-import theme from '@/theme';
-import { useListColors } from '@/hooks/useListColors';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { iconSize, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 
 export default function CustomerOrderScreen() {
-  // Theme colors for dark mode support
-  const colors = useListColors();
+  const t = useTokens();
+  const styles = useThemedStyles(makeStyles);
 
   const { customerId } = useLocalSearchParams<{ customerId: string }>();
   const { user, session, userProfile } = useAppSelector((state) => state.auth);
@@ -61,11 +61,11 @@ export default function CustomerOrderScreen() {
         setChangelogHasMore(result.data.pagination.has_more);
         setChangelogOffset(offset);
       } else {
-        setChangelogError(result.error?.message || 'Failed to load changelog');
+        setChangelogError("Couldn't load the order history. Check your connection and try again.");
       }
     } catch (error) {
       console.error('[CustomerOrderScreen] Error fetching changelog:', error);
-      setChangelogError('Failed to load changelog');
+      setChangelogError("Couldn't load the order history. Check your connection and try again.");
     } finally {
       setChangelogLoading(false);
     }
@@ -96,13 +96,13 @@ export default function CustomerOrderScreen() {
 
       if (error) {
         console.error('[CustomerOrderScreen] Error fetching customer:', error);
-        setCustomerName('Customer Order');
+        setCustomerName('Customer');
       } else {
-        setCustomerName(data?.name || 'Customer Order');
+        setCustomerName(data?.name || 'Customer');
       }
     } catch (error) {
       console.error('[CustomerOrderScreen] Exception:', error);
-      setCustomerName('Customer Order');
+      setCustomerName('Customer');
     } finally {
       setLoading(false);
     }
@@ -132,54 +132,59 @@ export default function CustomerOrderScreen() {
 
   if (loading) {
     return (
-      <View style={[styles.loadingContainer, { backgroundColor: colors.gray50 }]}>
-        <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={[styles.loadingText, { color: colors.gray600 }]}>Loading customer...</Text>
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={t.brand.tint} accessibilityLabel="Loading customer" />
+        <Text style={styles.loadingText}>Loading customer…</Text>
       </View>
     );
   }
 
   return (
     <>
-      <EdgeToEdgeStatusBar barStyle="light-content" />
+      <EdgeToEdgeStatusBar barStyle={t.statusBarStyle} />
       <Stack.Screen options={{ headerShown: false }} />
-      <View style={{ flex: 1, backgroundColor: colors.gray50 }}>
-        {/* Custom Header that extends behind status bar */}
-        <View style={[styles.customHeader, { backgroundColor: colors.primary }]}>
-          {/* Orange background extends to top of screen */}
+      <View style={styles.screen}>
+        {/* Object page header (style guide §13.8): surface.header, brand.tint actions */}
+        <View style={styles.customHeader}>
           <View style={[styles.customHeaderContent, { paddingTop: insets.top }]}>
-            <TouchableOpacity
-              style={styles.backButton}
+            <Pressable
+              style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
               onPress={() => router.back()}
+              accessibilityRole="button"
+              accessibilityLabel="Back"
             >
-              <Icon name="arrow-left" size={24} color={colors.cellBackground} />
-            </TouchableOpacity>
+              <Icon
+                name={Platform.OS === 'ios' ? 'chevron-left' : 'arrow-left'}
+                size={iconSize.lg}
+                color={t.brand.tint}
+              />
+            </Pressable>
             <View style={styles.headerTitleContainer}>
-              <Text style={[styles.headerTitle, { color: colors.cellBackground }]} numberOfLines={1}>
+              <Text style={styles.headerTitle} numberOfLines={2} accessibilityRole="header">
                 Order for {customerName}
               </Text>
             </View>
-            <TouchableOpacity
-              style={styles.headerButton}
+            <Pressable
+              style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
               onPress={handleOpenChangelog}
               accessibilityLabel="View order history"
               accessibilityRole="button"
             >
-              <Icon name="history" size={22} color={colors.cellBackground} />
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.addButton}
+              <Icon name="history" size={iconSize.lg} color={t.brand.tint} />
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
               onPress={handleOpenItemCatalog}
-              accessibilityLabel="Add item to order"
+              accessibilityLabel="Add items to order"
               accessibilityRole="button"
             >
-              <Icon name="plus" size={24} color={colors.cellBackground} />
-            </TouchableOpacity>
+              <Icon name="plus" size={iconSize.lg} color={t.brand.tint} />
+            </Pressable>
           </View>
         </View>
 
         {/* Main Content Area */}
-        <View style={[styles.container, { backgroundColor: colors.gray50 }]}>
+        <View style={styles.container}>
           <OrderManagement
             customerId={customerId}
             itemCatalogOpen={showItemCatalog}
@@ -211,63 +216,55 @@ export default function CustomerOrderScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (t: ThemeTokens) => ({
+  screen: {
+    flex: 1,
+    backgroundColor: t.background.base,
+  },
   container: {
     flex: 1,
+    backgroundColor: t.background.base,
   },
   loadingContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    backgroundColor: t.background.base,
   },
   loadingText: {
-    marginTop: theme.spacing.md,
-    fontSize: theme.fontSize.base,
+    ...typography.subhead,
+    color: t.text.secondary,
+    marginTop: space.lg,
   },
-  // Custom Header Styles
+  // Header extends behind the status bar; no shadow, hairline bottom
   customHeader: {
-    // No paddingTop here - header extends to very top of screen
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
-    elevation: 4,
+    backgroundColor: t.surface.header,
+    borderBottomWidth: 1,
+    borderBottomColor: t.border.divider,
   },
   customHeaderContent: {
     // paddingTop is set dynamically with insets
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 4,
-    paddingBottom: 8, // Padding below the header content
-  },
-  backButton: {
-    padding: 8,
-    marginRight: 4,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    paddingHorizontal: space.xs,
+    paddingBottom: space.xs,
   },
   headerTitleContainer: {
     flex: 1,
-    marginRight: 16,
+    marginHorizontal: space.xs,
   },
   headerTitle: {
-    fontSize: 18,
-    fontWeight: '500',
+    ...typography.headline,
+    color: t.text.primary,
   },
-  headerButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 8,
+  iconButton: {
+    width: touchTarget,
+    height: touchTarget,
+    borderRadius: radius.pill,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
   },
-  addButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 8,
+  iconButtonPressed: {
+    backgroundColor: t.brand.subtle,
   },
 });

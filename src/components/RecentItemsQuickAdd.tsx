@@ -1,14 +1,23 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
-  TouchableOpacity,
+  Pressable,
   Text,
-  StyleSheet,
   ActivityIndicator,
 } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
-import theme from '@/theme';
-import { useListColors } from '@/hooks/useListColors';
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import {
+  fontWeight,
+  iconSize,
+  layout,
+  radius,
+  space,
+  touchTarget,
+  typography,
+  type ThemeTokens,
+} from '@/theme/tokens';
 import { RecentItemsService, RecentItem } from '@/services/recent-items-service';
 
 /**
@@ -39,8 +48,8 @@ const RecentItemsQuickAdd: React.FC<RecentItemsQuickAddProps> = ({
   refreshTrigger = 0,
   recentlyAddedItems = [],
 }) => {
-  // Theme colors for dark mode support
-  const colors = useListColors();
+  const t = useTokens();
+  const styles = useThemedStyles(makeStyles);
 
   const [recentItems, setRecentItems] = useState<RecentItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -132,38 +141,35 @@ const RecentItemsQuickAdd: React.FC<RecentItemsQuickAddProps> = ({
     // Use index + id for unique key since same item can appear from different sources
     const uniqueKey = `${index}-${item.id || item.name}`;
     return (
-      <TouchableOpacity
+      <Pressable
         key={uniqueKey}
-        style={[
+        style={({ pressed }) => [
           styles.itemChip,
-          { backgroundColor: colors.gray100 },
-          isSelected && { backgroundColor: colors.primary }
+          (pressed || isSelected) && styles.itemChipActive,
         ]}
         onPress={() => handleItemPress(item)}
+        hitSlop={CHIP_HIT_SLOP}
         accessibilityLabel={`Select ${item.name}`}
         accessibilityRole="button"
         accessibilityState={{ selected: isSelected }}
-        activeOpacity={0.7}
       >
+        {isSelected && <Icon name="check" size={iconSize.sm} color={t.brand.tint} />}
         <Text
-          style={[
-            styles.itemName,
-            { color: colors.gray900 },
-            isSelected && { color: colors.cellBackground }
-          ]}
+          style={[styles.itemName, isSelected && styles.itemNameSelected]}
           numberOfLines={1}
+          maxFontSizeMultiplier={1.6}
         >
           {item.name}
         </Text>
-      </TouchableOpacity>
+      </Pressable>
     );
-  }, [selectedItemName, colors, handleItemPress]);
+  }, [selectedItemName, styles, t, handleItemPress]);
 
   // Early returns after all hooks are declared
   if (loading || externalIsLoading) {
     return (
-      <View style={[styles.container, { backgroundColor: colors.cellBackground, borderBottomColor: colors.cellDivider }]}>
-        <ActivityIndicator size="small" color={colors.primary} />
+      <View style={styles.container}>
+        <ActivityIndicator size="small" color={t.brand.tint} accessibilityLabel="Loading recent items" />
       </View>
     );
   }
@@ -175,7 +181,7 @@ const RecentItemsQuickAdd: React.FC<RecentItemsQuickAddProps> = ({
   if (__DEV__) console.log('[RecentItemsQuickAdd] 🔄 Rendering component with', displayItems.length, 'items');
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.cellBackground, borderBottomColor: colors.cellDivider }]}>
+    <View style={styles.container}>
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -194,30 +200,50 @@ const RecentItemsQuickAdd: React.FC<RecentItemsQuickAddProps> = ({
 };
 
 // =========================================================================
-// SAP Fiori Chip Styles (per 09-chip.md spec)
+// Quick-add tiles (style guide §13.13): brand.subtle with brand.tint text
 // =========================================================================
-const styles = StyleSheet.create({
+const CHIP_HEIGHT = 32;
+// Pads the 32 px chip to the 44/48 touch target.
+const CHIP_HIT_SLOP = {
+  top: (touchTarget - CHIP_HEIGHT) / 2,
+  bottom: (touchTarget - CHIP_HEIGHT) / 2,
+  left: 0,
+  right: 0,
+};
+
+const makeStyles = (t: ThemeTokens) => ({
   container: {
-    paddingVertical: 12,
+    paddingVertical: space.md,
     borderBottomWidth: 1,
+    borderBottomColor: t.border.divider,
+    backgroundColor: t.surface.card,
   },
   scrollContent: {
-    paddingHorizontal: 16,
-    gap: 8, // Fiori chip spacing
+    paddingHorizontal: layout.marginCompact,
+    gap: space.sm,
   },
-  // SAP Fiori Chip - 32pt height, 16pt corner radius (pill shape)
   itemChip: {
-    height: 32,
-    borderRadius: 16,
-    paddingHorizontal: 12,
-    marginRight: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
+    flexDirection: 'row' as const,
+    gap: space.xs,
+    minHeight: CHIP_HEIGHT,
+    borderRadius: radius.pill,
+    paddingHorizontal: space.md,
+    paddingVertical: space.s6,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    backgroundColor: t.brand.subtle,
   },
-  // SAP Fiori Chip text - 14pt medium
+  // Pressed and selected: the stronger subtle; selection also gets a check
+  itemChipActive: {
+    backgroundColor: t.brand.subtleStrong,
+  },
   itemName: {
-    fontSize: 14,
-    fontWeight: '500',
+    ...typography.footnote,
+    fontWeight: fontWeight.medium,
+    color: t.brand.tint,
+  },
+  itemNameSelected: {
+    fontWeight: fontWeight.semibold,
   },
 });
 

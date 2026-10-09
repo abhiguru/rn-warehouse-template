@@ -6,9 +6,17 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import theme from '@/theme';
-import { useListColors } from '@/hooks/useListColors';
 import { Order } from '@/types/order.types';
+import { formatNumber } from '@/utils/formatters';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import {
+  fontWeight,
+  iconSize,
+  layout,
+  space,
+  typography,
+  type ThemeTokens,
+} from '@/theme/tokens';
 
 interface CustomerOrderSummaryProps {
   order: Order;
@@ -24,8 +32,8 @@ interface CustomerOrderSummaryProps {
  * - Fixed at bottom, doesn't scroll
  */
 const CustomerOrderSummary: React.FC<CustomerOrderSummaryProps> = ({ order }) => {
-  // Theme colors for dark mode support
-  const colors = useListColors();
+  const t = useTokens();
+  const styles = useThemedStyles(makeStyles);
   const insets = useSafeAreaInsets();
 
   // Filter out fulfilled items for accurate counts
@@ -57,94 +65,100 @@ const CustomerOrderSummary: React.FC<CustomerOrderSummaryProps> = ({ order }) =>
   const diffMs = now.getTime() - lastUpdatedDate.getTime();
   const diffMins = Math.floor(diffMs / 60000);
 
-  // Format relative time
+  // Relative time under 24 hours, then the date (style guide §12.3)
   let timeAgo = '';
   if (diffMins < 1) {
     timeAgo = 'just now';
   } else if (diffMins < 60) {
-    timeAgo = `${diffMins}m ago`;
+    timeAgo = `${diffMins} min ago`;
+  } else if (diffMins < 24 * 60) {
+    timeAgo = `${Math.floor(diffMins / 60)} h ago`;
   } else {
-    const diffHours = Math.floor(diffMins / 60);
-    timeAgo = `${diffHours}h ago`;
+    timeAgo = lastUpdatedDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
   }
+  const updatedBy = order.updated_by_display_name || order.updated_by_name;
+  const savedText = `Saved ${timeAgo}${updatedBy ? ` · ${updatedBy}` : ''}`;
+  const itemsText = `${formatNumber(activeItemCount)} ${activeItemCount === 1 ? 'item' : 'items'}`;
+  const quantityText = `${formatNumber(activeQuantity)} ${activeQuantity === 1 ? 'unit' : 'units'}`;
 
   return (
     <View
-      style={[
-        styles.toolbar,
-        {
-          paddingBottom: Math.min(insets.bottom, 8) || 4,
-          backgroundColor: colors.cellBackground,
-          borderTopColor: colors.cellDivider,
-        },
-      ]}
+      style={[styles.toolbar, { paddingBottom: Math.min(insets.bottom, space.sm) || space.xs }]}
+      accessible
+      accessibilityLabel={`${savedText}. ${itemsText}, ${quantityText}`}
     >
       {/* Left: Auto-save status */}
       <View style={styles.helperSection}>
-        <Icon name="check-circle" size={12} color={colors.success} />
-        <Text style={[styles.helperText, { color: colors.textSecondary }]} numberOfLines={1}>
-          {timeAgo}{(order.updated_by_display_name || order.updated_by_name) ? ` · ${order.updated_by_display_name || order.updated_by_name}` : ''}
+        <Icon name="check-circle" size={iconSize.sm} color={t.status.positive.text} />
+        <Text style={styles.helperText} numberOfLines={1}>
+          {savedText}
         </Text>
       </View>
 
       {/* Right: Compact metrics - using active (non-fulfilled) counts */}
       <View style={styles.metricsSection}>
-        <Icon name="package-variant" size={14} color={colors.primary} />
-        <Text style={[styles.metricValue, { color: colors.textPrimary }]}>{activeItemCount}</Text>
-        <View style={[styles.divider, { backgroundColor: colors.gray300 }]} />
-        <Icon name="counter" size={14} color={colors.success} />
-        <Text style={[styles.metricValue, { color: colors.textPrimary }]}>{activeQuantity}</Text>
+        <Icon name="package-variant" size={iconSize.sm} color={t.icon.secondary} />
+        <Text style={styles.metricValue}>{itemsText}</Text>
+        <View style={styles.divider} />
+        <Icon name="counter" size={iconSize.sm} color={t.icon.secondary} />
+        <Text style={styles.metricValue}>{quantityText}</Text>
       </View>
     </View>
   );
 };
 
 // ============================================================================
-// STYLES - SAP Fiori Toolbar Compliant
+// STYLES - SAP Fiori Toolbar
 // ============================================================================
 
-const styles = StyleSheet.create({
-  // Toolbar Container - Fiori spec: 56pt height (compact), fixed at bottom
+const makeStyles = (t: ThemeTokens) => ({
+  // Toolbar container, fixed at the bottom
   toolbar: {
-    position: 'absolute',
+    position: 'absolute' as const,
     bottom: 0,
     left: 0,
     right: 0,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    minHeight: 44, // Fiori minimum touch target
-    paddingHorizontal: 16, // Fiori horizontal padding
-    paddingTop: 8, // Fiori vertical padding
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
+    minHeight: layout.rowMinHeight,
+    paddingHorizontal: layout.marginCompact,
+    paddingTop: space.sm,
     borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: t.border.separator,
+    backgroundColor: t.surface.card,
     zIndex: 100,
   },
-  // Helper Text Section - Fiori spec: left-aligned status info
+  // Helper text section: left-aligned status info
   helperSection: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.s6,
     flex: 1,
+    marginRight: space.sm,
   },
-  // Helper Text - Fiori spec: 13pt
   helperText: {
-    fontSize: 13, // Fiori helper text font size
-    fontWeight: '400',
+    ...typography.footnote,
+    color: t.text.secondary,
+    flexShrink: 1,
   },
-  // Metrics Section - Fiori attribute display
+  // Metrics section
   metricsSection: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.xs,
   },
-  // Metric Value - Fiori spec: 15pt semibold
   metricValue: {
-    fontSize: 15,
-    fontWeight: '600',
+    ...typography.subhead,
+    fontWeight: fontWeight.semibold,
+    color: t.text.primary,
+    fontVariant: ['tabular-nums' as const],
   },
   divider: {
-    width: 1,
-    height: 16,
+    width: StyleSheet.hairlineWidth,
+    height: space.lg,
+    marginHorizontal: space.xs,
+    backgroundColor: t.border.separator,
   },
 });
 

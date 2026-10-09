@@ -22,84 +22,45 @@ import {
   Vibration,
   Platform,
   ActivityIndicator,
+  BackHandler,
 } from 'react-native';
 import BottomSheet, { BottomSheetBackdrop, BottomSheetBackdropProps, BottomSheetTextInput, BottomSheetFlatList } from '@gorhom/bottom-sheet';
-import Icon from 'react-native-vector-icons/Ionicons';
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { searchService } from '@/services/search-service';
 import { RecentCustomersService, RecentCustomer } from '@/services/recent-customers-service';
-import { useListColors } from '@/hooks/useListColors';
 import { useAppSelector } from '@/store/hooks';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import {
+  fontWeight,
+  iconSize,
+  layout,
+  radius,
+  space,
+  touchTarget,
+  typography,
+  type ThemeTokens,
+} from '@/theme/tokens';
 
-// =============================================================================
-// FIORI DESIGN CONSTANTS
-// =============================================================================
-const FIORI = {
-  // Bottom Sheet dimensions (from 07-bottom-sheet.md)
-  sheet: {
-    cornerRadius: 16,
-    handleWidth: 36,
-    handleHeight: 5,
-    handleColor: '#C6C6C8',
-  },
-  // Header
-  header: {
-    height: 56,
-    paddingHorizontal: 16,
-  },
-  // Search bar (from 04-search-bar.md)
-  search: {
-    height: 36,
-    touchTarget: 44,
-    borderRadius: 10,
-    iconSize: 20,
-    fontSize: 17,
-    clearIconSize: 16,
-    padding: 12,
-    iconMargin: 8,
-  },
-  // Typography
-  typography: {
-    title: {
-      fontSize: 17,
-      fontWeight: '600' as const,
-      lineHeight: 22,
-    },
-    itemTitle: {
-      fontSize: 16,
-      fontWeight: '400' as const,
-      lineHeight: 22,
-    },
-    empty: {
-      fontSize: 15,
-      fontWeight: '400' as const,
-      lineHeight: 20,
-    },
-  },
-  // List item
-  listItem: {
-    minHeight: 44,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
-  // Touch target
-  touchTarget: {
-    minHeight: 44,
-    minWidth: 44,
-  },
-  // Spacing
-  spacing: {
-    xs: 8,
-    sm: 12,
-    md: 16,
-    lg: 20,
-    xl: 24,
-  },
-  // Backdrop
-  backdrop: {
-    opacity: 0.4,
-  },
-} as const;
+/** Shows the part of `text` that matches `query` in bold (style guide §14.6). */
+function HighlightedText({ text, query, style, boldStyle }: {
+  text: string;
+  query: string;
+  style: object;
+  boldStyle: object;
+}) {
+  const index = query ? text.toLowerCase().indexOf(query.toLowerCase()) : -1;
+  if (index < 0) {
+    return <Text style={style} numberOfLines={2}>{text}</Text>;
+  }
+  return (
+    <Text style={style} numberOfLines={2}>
+      {text.slice(0, index)}
+      <Text style={boldStyle}>{text.slice(index, index + query.length)}</Text>
+      {text.slice(index + query.length)}
+    </Text>
+  );
+}
 
 export interface CustomerSearchResult {
     value: string;
@@ -120,7 +81,7 @@ export interface CustomerSearchBottomSheetRef {
 }
 
 export const CustomerSearchBottomSheet = forwardRef<CustomerSearchBottomSheetRef, CustomerSearchBottomSheetProps>(
-    ({ onSelect, title = 'Select Customer' }, ref) => {
+    ({ onSelect, title = 'Select customer' }, ref) => {
         const bottomSheetRef = useRef<BottomSheet>(null);
         const searchInputRef = useRef<any>(null);
         const insets = useSafeAreaInsets();
@@ -130,9 +91,10 @@ export const CustomerSearchBottomSheet = forwardRef<CustomerSearchBottomSheetRef
         const [searchResults, setSearchResults] = useState<CustomerSearchResult[]>([]);
         const [recentCustomers, setRecentCustomers] = useState<RecentCustomer[]>([]);
         const [isSearching, setIsSearching] = useState(false);
+        const [isOpen, setIsOpen] = useState(false);
 
-        // Theme colors for dark mode support
-        const colors = useListColors();
+        const t = useTokens();
+        const styles = useThemedStyles(makeStyles);
 
         // Get user ID for scoping recent customers storage
         const userId = useAppSelector((state) => state.auth.userProfile?.id);
@@ -202,17 +164,28 @@ export const CustomerSearchBottomSheet = forwardRef<CustomerSearchBottomSheetRef
             onSelect({ id: customer.value, name: customer.label, address: detail, city, mobile });
         }, [onSelect, userId]);
 
-        // Render backdrop (Fiori 40% opacity)
+        // Android back closes the sheet first (style guide §15)
+        useEffect(() => {
+            if (!isOpen) return;
+            const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+                bottomSheetRef.current?.close();
+                return true;
+            });
+            return () => subscription.remove();
+        }, [isOpen]);
+
+        // Backdrop: the scrim token carries its own opacity
         const renderBackdrop = useCallback(
             (props: BottomSheetBackdropProps) => (
                 <BottomSheetBackdrop
                     {...props}
                     disappearsOnIndex={-1}
                     appearsOnIndex={0}
-                    opacity={FIORI.backdrop.opacity}
+                    opacity={1}
+                    style={[props.style, styles.backdrop]}
                 />
             ),
-            []
+            [styles]
         );
 
         // Get display data - include detail for address/city display
@@ -224,21 +197,35 @@ export const CustomerSearchBottomSheet = forwardRef<CustomerSearchBottomSheetRef
             return recentCustomers.map(c => ({ value: c.id, label: c.name, detail: c.detail }));
         }, [searchQuery, searchResults, recentCustomers]);
 
+        const isSearchMode = searchQuery.length >= 1;
+        const emptyTitle = isSearching
+            ? 'Searching…'
+            : isSearchMode
+                ? `No customers match "${searchQuery}"`
+                : 'No recent customers';
+        const emptyMessage = isSearching
+            ? undefined
+            : isSearchMode
+                ? 'Try fewer letters or another spelling.'
+                : 'Type a name to search. Customers you pick appear here.';
+
         return (
             <BottomSheet
                 ref={bottomSheetRef}
                 index={-1}
                 snapPoints={snapPoints}
                 enablePanDownToClose
+                onChange={index => setIsOpen(index >= 0)}
                 backdropComponent={renderBackdrop}
-                backgroundStyle={{ backgroundColor: colors.cellBackground }}
-                handleIndicatorStyle={{ backgroundColor: colors.gray300, width: 36 }}
+                backgroundStyle={styles.sheetBackground}
+                style={styles.sheetShadow}
+                handleIndicatorStyle={styles.handle}
                 topInset={insets.top}
             >
                 <View style={styles.content}>
-                    {/* Fiori Header */}
-                    <View style={[styles.header, { borderBottomColor: colors.cellDivider }]}>
-                        <Text style={[styles.title, { color: colors.textPrimary }]}>{title}</Text>
+                    {/* Sheet header */}
+                    <View style={styles.header}>
+                        <Text style={styles.title} accessibilityRole="header">{title}</Text>
                         <Pressable
                             onPress={() => bottomSheetRef.current?.close()}
                             style={({ pressed }) => [
@@ -246,46 +233,49 @@ export const CustomerSearchBottomSheet = forwardRef<CustomerSearchBottomSheetRef
                                 pressed && styles.closeButtonPressed,
                             ]}
                             accessibilityRole="button"
-                            accessibilityLabel="Close"
+                            accessibilityLabel="Close customer search"
                         >
-                            <Icon name="close" size={24} color={colors.gray600} />
+                            <Icon name="close" size={iconSize.lg} color={t.icon.primary} />
                         </Pressable>
                     </View>
 
-                    {/* Fiori Search Input */}
+                    {/* Search field, kept at the top */}
                     <View style={styles.searchContainer}>
-                        <View style={[styles.searchBar, { backgroundColor: colors.gray100 }]}>
+                        <View style={styles.searchBar}>
                             <Icon
-                                name="search-outline"
-                                size={FIORI.search.iconSize}
-                                color={colors.gray500}
+                                name="magnify"
+                                size={iconSize.md}
+                                color={t.icon.secondary}
                                 style={styles.searchIcon}
                             />
                             <BottomSheetTextInput
                                 ref={searchInputRef}
-                                placeholder="Search customers..."
+                                placeholder="Search customers"
                                 value={searchQuery}
                                 onChangeText={setSearchQuery}
-                                style={[styles.searchInput, { color: colors.textPrimary }]}
-                                placeholderTextColor={colors.gray500}
+                                style={styles.searchInput}
+                                placeholderTextColor={t.text.placeholder}
                                 autoCapitalize="none"
                                 autoCorrect={false}
                                 returnKeyType="search"
+                                accessibilityLabel="Search customers"
                             />
                             {isSearching && (
-                                <ActivityIndicator size="small" color={colors.primary} style={styles.searchLoader} />
+                                <ActivityIndicator
+                                    size="small"
+                                    color={t.brand.tint}
+                                    style={styles.searchLoader}
+                                    accessibilityLabel="Searching"
+                                />
                             )}
                             {searchQuery.length > 0 && !isSearching && (
                                 <Pressable
                                     onPress={() => setSearchQuery('')}
                                     style={styles.clearButton}
-                                    hitSlop={8}
                                     accessibilityRole="button"
                                     accessibilityLabel="Clear search"
                                 >
-                                    <View style={[styles.clearIconContainer, { backgroundColor: colors.gray400 }]}>
-                                        <Icon name="close" size={FIORI.search.clearIconSize} color="#FFFFFF" />
-                                    </View>
+                                    <Icon name="close-circle" size={iconSize.md} color={t.icon.secondary} />
                                 </Pressable>
                             )}
                         </View>
@@ -295,57 +285,61 @@ export const CustomerSearchBottomSheet = forwardRef<CustomerSearchBottomSheetRef
                     <BottomSheetFlatList
                         data={displayData}
                         keyExtractor={(item: { value: string; label: string; detail?: string }) => item.value}
+                        ListHeaderComponent={
+                            !isSearchMode && displayData.length > 0 ? (
+                                <Text style={styles.sectionHeader} accessibilityRole="header">RECENT CUSTOMERS</Text>
+                            ) : null
+                        }
                         renderItem={({ item }: { item: { value: string; label: string; detail?: string } }) => (
                             <Pressable
                                 style={({ pressed }) => [
                                     styles.customerItem,
-                                    { borderBottomColor: colors.cellDivider, backgroundColor: colors.cellBackground },
-                                    pressed && { backgroundColor: colors.gray100 },
+                                    pressed && styles.customerItemPressed,
                                 ]}
                                 onPress={() => handleSelect(item)}
                                 accessibilityRole="button"
-                                accessibilityLabel={item.label}
+                                accessibilityLabel={item.detail ? `${item.label}, ${item.detail}` : item.label}
                             >
                                 <View style={styles.customerItemContent}>
-                                    {searchQuery.length < 1 && (
-                                        <Icon
-                                            name="time-outline"
-                                            size={20}
-                                            color={colors.gray500}
-                                            style={styles.customerItemIcon}
-                                        />
-                                    )}
+                                    <Icon
+                                        name={isSearchMode ? 'account-outline' : 'history'}
+                                        size={iconSize.md}
+                                        color={t.icon.secondary}
+                                        style={styles.customerItemIcon}
+                                    />
                                     <View style={styles.customerItemTextContainer}>
-                                        <Text style={[styles.customerItemText, { color: colors.textPrimary }]} numberOfLines={1}>{item.label}</Text>
+                                        <HighlightedText
+                                            text={item.label}
+                                            query={isSearchMode ? searchQuery : ''}
+                                            style={styles.customerItemText}
+                                            boldStyle={styles.customerItemMatch}
+                                        />
                                         {item.detail && (
-                                            <Text style={[styles.customerItemDetail, { color: colors.textSecondary }]} numberOfLines={1}>
+                                            <Text style={styles.customerItemDetail} numberOfLines={1}>
                                                 {item.detail}
                                             </Text>
                                         )}
                                     </View>
-                                    <Icon name="chevron-forward" size={20} color={colors.gray400} />
+                                    <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />
                                 </View>
                             </Pressable>
                         )}
                         ListEmptyComponent={
                             <View style={styles.emptyContainer}>
-                                <Icon
-                                    name={searchQuery.length >= 1 ? 'search-outline' : 'time-outline'}
-                                    size={48}
-                                    color={colors.gray300}
-                                />
-                                <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
-                                    {isSearching
-                                        ? 'Searching...'
-                                        : searchQuery.length >= 1
-                                            ? 'No customers found'
-                                            : recentCustomers.length === 0
-                                                ? 'Start typing to search'
-                                                : 'Recent customers will appear here'}
-                                </Text>
+                                {isSearching ? (
+                                    <ActivityIndicator color={t.brand.tint} accessibilityLabel="Searching" />
+                                ) : (
+                                    <Icon
+                                        name={isSearchMode ? 'magnify' : 'history'}
+                                        size={iconSize.hero}
+                                        color={t.icon.secondary}
+                                    />
+                                )}
+                                <Text style={styles.emptyTitle}>{emptyTitle}</Text>
+                                {emptyMessage ? <Text style={styles.emptyText}>{emptyMessage}</Text> : null}
                             </View>
                         }
-                        contentContainerStyle={styles.customerList}
+                        contentContainerStyle={[styles.customerList, { paddingBottom: insets.bottom + space.xxl }]}
                         showsVerticalScrollIndicator={false}
                         keyboardShouldPersistTaps="handled"
                     />
@@ -358,115 +352,152 @@ export const CustomerSearchBottomSheet = forwardRef<CustomerSearchBottomSheetRef
 CustomerSearchBottomSheet.displayName = 'CustomerSearchBottomSheet';
 
 // =============================================================================
-// STYLES - Layout only (colors applied inline)
+// STYLES (style guide §13.9 bottom sheets)
 // =============================================================================
-const styles = StyleSheet.create({
+const makeStyles = (t: ThemeTokens) => ({
+  backdrop: {
+    backgroundColor: t.overlay.scrim,
+  },
+  sheetBackground: {
+    backgroundColor: t.surface.sheet,
+    borderTopLeftRadius: radius.sheet,
+    borderTopRightRadius: radius.sheet,
+  },
+  sheetShadow: {
+    ...t.shadow[4],
+  },
+  handle: {
+    backgroundColor: t.border.separator,
+    width: 36,
+    height: space.xs,
+  },
   content: {
     flex: 1,
-    paddingHorizontal: FIORI.spacing.md,
+    paddingHorizontal: layout.marginCompact,
   },
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    height: FIORI.header.height,
-    borderBottomWidth: 1,
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'center' as const,
+    minHeight: 56,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.divider,
   },
   title: {
-    fontSize: FIORI.typography.title.fontSize,
-    fontWeight: FIORI.typography.title.fontWeight,
-    lineHeight: FIORI.typography.title.lineHeight,
+    ...typography.headline,
+    color: t.text.primary,
+    flex: 1,
   },
   closeButton: {
-    width: FIORI.touchTarget.minWidth,
-    height: FIORI.touchTarget.minHeight,
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: touchTarget,
+    height: touchTarget,
+    borderRadius: radius.pill,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    marginRight: -space.md,
   },
   closeButtonPressed: {
-    opacity: 0.7,
+    backgroundColor: t.surface.cardPressed,
   },
   searchContainer: {
-    paddingVertical: FIORI.spacing.sm,
+    paddingVertical: space.md,
   },
+  // Text field per §13.2
   searchBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: FIORI.search.borderRadius,
-    paddingHorizontal: FIORI.search.padding,
-    height: FIORI.search.height,
-    minHeight: FIORI.search.touchTarget,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    borderRadius: radius.field,
+    borderWidth: 1,
+    borderColor: t.border.field,
+    backgroundColor: t.surface.field,
+    paddingLeft: space.md,
+    minHeight: layout.rowMinHeight,
   },
   searchIcon: {
-    marginRight: FIORI.search.iconMargin,
+    marginRight: space.sm,
   },
   searchInput: {
+    ...typography.body,
     flex: 1,
-    fontSize: FIORI.search.fontSize,
+    color: t.text.primary,
     paddingVertical: 0,
     ...Platform.select({
       android: {
-        paddingVertical: 8,
+        paddingVertical: space.sm,
       },
     }),
   },
   searchLoader: {
-    marginLeft: FIORI.search.iconMargin,
+    marginHorizontal: space.md,
   },
   clearButton: {
-    marginLeft: FIORI.search.iconMargin,
-    padding: 2,
+    width: touchTarget,
+    height: touchTarget,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
   },
-  clearIconContainer: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    justifyContent: 'center',
-    alignItems: 'center',
+  sectionHeader: {
+    ...typography.footnote,
+    fontWeight: fontWeight.semibold,
+    letterSpacing: 0.5,
+    color: t.text.secondary,
+    paddingTop: space.sm,
+    paddingBottom: space.sm,
   },
   customerList: {
-    paddingBottom: FIORI.spacing.xl,
     flexGrow: 1,
   },
   customerItem: {
-    minHeight: FIORI.listItem.minHeight,
-    paddingVertical: FIORI.listItem.paddingVertical,
-    borderBottomWidth: 1,
+    minHeight: layout.rowMinHeight,
+    paddingVertical: space.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.divider,
+    backgroundColor: t.surface.sheet,
+  },
+  customerItemPressed: {
+    backgroundColor: t.surface.cardPressed,
   },
   customerItemContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
   },
   customerItemIcon: {
-    marginRight: FIORI.spacing.sm,
+    marginRight: space.md,
   },
   customerItemTextContainer: {
     flex: 1,
   },
   customerItemText: {
-    fontSize: FIORI.typography.itemTitle.fontSize,
-    fontWeight: FIORI.typography.itemTitle.fontWeight,
-    lineHeight: FIORI.typography.itemTitle.lineHeight,
+    ...typography.body,
+    color: t.text.primary,
+  },
+  customerItemMatch: {
+    fontWeight: fontWeight.semibold,
   },
   customerItemDetail: {
-    fontSize: 13,
-    lineHeight: 18,
-    marginTop: 2,
+    ...typography.footnote,
+    color: t.text.secondary,
+    marginTop: space.xxs,
   },
   emptyContainer: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 64,
-    gap: FIORI.spacing.md,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    paddingVertical: space.max,
+    gap: space.sm,
     minHeight: 200,
   },
+  emptyTitle: {
+    ...typography.title3,
+    color: t.text.primary,
+    textAlign: 'center' as const,
+    paddingHorizontal: space.xxl,
+  },
   emptyText: {
-    fontSize: FIORI.typography.empty.fontSize,
-    fontWeight: FIORI.typography.empty.fontWeight,
-    lineHeight: FIORI.typography.empty.lineHeight,
-    textAlign: 'center',
-    paddingHorizontal: FIORI.spacing.xl,
+    ...typography.subhead,
+    color: t.text.secondary,
+    textAlign: 'center' as const,
+    paddingHorizontal: space.xxl,
   },
 });
 
