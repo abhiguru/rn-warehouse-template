@@ -41,9 +41,10 @@ If this guide and the code disagree, the code wins and this guide is the bug.
 13. [Components](#13-components)
 14. [Patterns](#14-patterns)
 15. [Platform notes](#15-platform-notes)
-16. [Migration and enforcement](#16-migration-and-enforcement)
-17. [Review checklist](#17-review-checklist)
-18. [Sources](#18-sources)
+16. [Enforcement](#16-enforcement)
+17. [Making changes](#17-making-changes)
+18. [Review checklist](#18-review-checklist)
+19. [Sources](#19-sources)
 
 ---
 
@@ -372,19 +373,38 @@ Rules:
 - A list shows at most one status per row. Put the most severe one in the row, and the rest on the object page.
 - Statuses used in the app map as follows:
 
-| Object | Value | Status |
-|---|---|---|
-| Order | `PENDING`, `OPEN` | Neutral |
-| Order line | `partial` (partly dispatched) | Critical |
-| Order, order line | `DISPATCHED`, `fulfilled`, `completed` | Positive |
-| Invoice | `pending` | Critical |
-| Invoice | `paid` | Positive |
-| Stock filter | `in_stock` / `out_of_stock` | Positive / Negative |
-| Stock level | below the low-stock threshold | Critical |
-| Sensor | `healthy` / `warning` / `critical` | Positive / Critical / Negative |
-| Print job | `pending` / `printing` / `completed` / `failed` / `cancelled` | Neutral / Informative / Positive / Negative / Neutral |
-| Image upload | `pending` / `uploading` / `completed` / `failed` | Neutral / Informative / Positive / Negative |
-| Operation result | `success` / `error` | Positive / Negative |
+| Object | Value | Status | Word on screen |
+|---|---|---|---|
+| Order | `PENDING`, `OPEN` | Neutral | Open |
+| Order | no lines | Neutral | Empty |
+| Order line | `partial` (partly dispatched) | Critical | Partly dispatched |
+| Order, order line | `DISPATCHED`, `fulfilled`, `completed` | Positive | Dispatched |
+| Stock (order lines, items, GRN items) | quantity left ≥ 20% of received | Positive | In stock |
+| Stock | quantity left > 0 and < 20% of received (`LOW_STOCK_RATIO` in `src/utils/stockStatus.ts`) | Critical | Low stock |
+| Stock of an item someone wants to dispatch | 0 left | Negative | Out of stock |
+| GRN, GRN item | 0 left because everything was dispatched | Neutral | Fully dispatched |
+| GRN | not invoiced / invoiced | Critical / Positive | Not invoiced / Invoiced |
+| Invoice | `pending` / `paid` | Critical / Positive | Pending / Paid |
+| Dispatch (activity report) | has quantity / no quantity | Positive / Critical | Complete / Pending |
+| Stock age | 0–120 / 121–240 / 241–364 / over 364 days | Positive / Informative / Critical / Negative | 0–120 days … |
+| Sensor health | `healthy` / `warning` / `critical` | Positive / Critical / Negative | Healthy / Warning / Critical |
+| Sensor battery | `GOOD` / `LOW` / `CRITICAL` | Positive / Critical / Negative | Battery good / low / critical |
+| Sensor connection | online / stale / offline | Positive / Critical / Negative | Online / No recent data / Offline |
+| Printer | online / busy / offline or error | Positive / Informative / Negative | Online / Busy / Offline |
+| Print job | `pending` / `printing` / `completed` / `failed` / `cancelled` | Neutral / Informative / Positive / Negative / Neutral | Waiting / Printing / Printed / Failed / Cancelled |
+| Image upload | `pending` / `uploading` / `completed` / `failed` | Neutral / Informative / Positive / Negative | Waiting / Uploading / Uploaded / Upload failed |
+| Facility access (enrollment) | requested / approved / rejected / revoked | Critical / Positive / Negative / Negative | Requested / Approved / Not approved / Revoked |
+| Customer, item, user | active / inactive | no tag / Neutral | Inactive |
+| Operation result | `success` / `error` | Positive / Negative | — |
+
+Show every status with the `StatusTag` component (`@/components/ui`), which pairs the word with the standard icon above.
+
+Not statuses, so never status-coloured by meaning:
+
+- **Categories** such as user roles, price types or packaging: neutral tags (`status="neutral"`, usually `icon={null}`). At most one category in a set may use informative to stand out. Never brand colours.
+- **A row being edited** in a list: `surface.selected` background and an informative "Editing" tag.
+- **A row already in the current order**: `brand.subtle` background, a 4 px `brand.tint` bar on the leading edge and an "In order" tag with a check.
+- **A value changed from its default**: a "Custom" tag in `brand.subtle` with `brand.tint` text and `pencil-outline`.
 
 A new status value gets a row here before it ships.
 
@@ -418,7 +438,7 @@ The app uses the system font (San Francisco on iOS, Roboto on Android). Fiori's 
 | `caption1` | 12 / 16 | 400 | Timestamps, chip and badge text |
 | `caption2` | 11 / 13 | 400 | Tab bar labels; the smallest text allowed |
 
-Weights: regular 400, medium 500, semibold 600, bold 700. Nothing lighter than 400 and nothing heavier than 700, except the wordmark.
+Weights: regular 400, medium 500, semibold 600, bold 700. Nothing lighter than 400 and nothing heavier than 700, except `typography.wordmark` (800), which only `BrandMark` uses.
 
 Rules:
 
@@ -508,6 +528,9 @@ Rules:
 - **Touch area.** An icon button is at least `touchTarget` square (44 iOS, 48 Android), even if the glyph is 24. Use `hitSlop` when space is tight.
 - **Labels.** Every icon-only button has an `accessibilityLabel` that names the action ("Delete item", not "Trash").
 - **Style.** Outline glyphs by default, filled glyphs for the selected tab and for a selected state.
+- **Tags.** Icons inside caption-sized tags and badges use `iconSize.xs` (12).
+- **Back on headerless screens.** Screens that hide the stack header (OTP, customer order page, object pages with hero headers) draw their own back control: the platform glyph (`chevron-left` on iOS, `arrow-left` on Android) in `brand.tint` with the word "Back", at least `touchTarget` in size. Everywhere else, use the stack header's back button.
+- **One icon set.** Ionicons is not used; the lint guard rejects `@expo/vector-icons` imports.
 
 Standard glyphs:
 
@@ -523,7 +546,7 @@ Standard glyphs:
 | Print | `printer-outline` |
 | More actions | `dots-vertical` (Android), `dots-horizontal` (iOS) |
 | Close | `close` |
-| Back | platform back button; never a custom arrow |
+| Back | platform back button; on headerless screens see the rule above |
 | Next / drill down | `chevron-right` |
 | Order | `clipboard-list-outline` |
 | GRN (goods received) | `package-down` |
@@ -577,7 +600,7 @@ Rules:
 
 - Pressed feedback shows within 100 ms. Use `Pressable` with a pressed style, not `TouchableOpacity` fading, for rows.
 - Disabled controls stay visible only when the user can do something to enable them. Say what, with helper text. Otherwise hide them.
-- Never disable the primary button to signal invalid input. Let the user press it, then show every error at once and move focus to the first.
+- Never disable the primary button to signal invalid input. Let the user press it, then show every error at once and move focus to the first. The one exception is a bottom sheet with an on-screen number keypad (dispatch lot and item sheets): its Save stays disabled until a quantity is entered, because the sheet has no room for an error message above the keypad.
 - Selection always has a non-colour cue: a check icon, a filled radio, or a bold label.
 
 
@@ -689,7 +712,25 @@ Confirmation buttons repeat the verb: "Delete GRN" and "Cancel", never "Yes" and
 | Document numbers | Type, then number | GRN 311, Invoice 2026-0042 |
 | Rack and chamber | Chamber, then rack | Chamber 2 · Rack B-14 |
 
-Use `Intl.NumberFormat('en-IN')` and the shared date helpers. Never format numbers by string concatenation.
+Use the shared helpers in `src/utils/formatters.ts`; never format by string concatenation or with `toLocaleDateString` (some phones print "Sept" for en-IN).
+
+| Helper | Output |
+|---|---|
+| `formatDate(d)` | 9 Oct 2026 (details, headers) |
+| `formatDate(d, 'short')` | 9 Oct in the current year, else 9 Oct 2026 (list rows) |
+| `formatDate(d, 'long')` | 9 October 2026 |
+| `formatTime(d)` / `formatDateTime(d)` | 4:05 pm / 9 Oct 2026, 4:05 pm |
+| `formatSectionDate(d)` | Today, Yesterday, Tue, 6 Oct |
+| `formatRelativeTime(d)` | 5 min ago, 3 h ago, then the short date |
+| `formatMobile(n)` | +91 98765 43210 |
+| `formatCount(n, 'item')` | 1 item, 12 items (`formatCount(n, 'dispatch', 'dispatches')`) |
+| `formatCurrency(n)` / invoice `formatInvoiceAmount(n)` | ₹1,23,457 / ₹1,23,456.50 |
+| `formatWeight(n)` | 1,250.5 kg |
+| `formatTemperature(n)` | −18.5°C |
+
+Empty values show "—", never "-", "N/A", "null" or "0" for unknown.
+
+Avatars use `Avatar` (or `avatarInitials` and `avatarColors` from `src/utils/avatar.ts`), keyed by the record id, so a person or customer has the same initials and colour on every screen.
 
 ---
 
@@ -720,6 +761,8 @@ Anatomy: container, optional left icon, label, optional right icon, optional spi
 
 Rules: one primary button per view. Label in `callout`, radius `radius.button`. Loading replaces the left icon with a spinner and shows `loadingText`, and the button ignores presses. In a dialog the primary button is on the right on iOS and on the far right on Android; on a full-screen form it is the bottom, full width. The filled negative button uses the `destructive` tokens, not `status.negative.element`: white on Horizon's `#F53232` is only 3.9:1.
 
+React Native Paper buttons and checked controls use Paper's `primary`, which is `brand.fill`. That is a fill colour only: a Paper text-mode button must set `textColor={tokens.brand.tint}`, or orange text fails contrast in Orange light. Prefer `ui/Button`.
+
 ### 13.2 Text fields — `ui/Input.tsx`, `GhostTextInput.tsx`, `RemoteAutocompleteInput.tsx`, `form/*`, `FormFieldWrapper.tsx`
 
 Anatomy: label (`FormLabel`), required asterisk, field, optional left and right icons, clear button, helper or error text, optional character count.
@@ -739,18 +782,22 @@ Anatomy: label (`FormLabel`), required asterisk, field, optional left and right 
 
 Rules: label above the field, never only a placeholder. Height 44 minimum, radius `radius.field`. Set the right `keyboardType`, `autoComplete`, `textContentType` and `returnKeyType`. Validate on blur and on submit, not on every keystroke. `GhostTextInput` (inline editing in tables) shows its border only when focused. Autocomplete inputs show suggestions in a list under the field or in a bottom sheet with the match highlighted in bold, never in colour alone.
 
+`GhostTextInput` keeps the 1 px field border when it is used as a form field (vehicle registration on the GRN and dispatch headers); it is borderless only inside tables. Editable number cells in tables are borderless `TextInput`s that show a 2 px `border.fieldFocus` border while focused.
+
 ### 13.3 Specialised inputs
 
 | Component | Spec |
 |---|---|
 | `ui/DatePickerInput.tsx` | Looks like a text field with a `calendar-outline` icon; opens the platform picker; shows the date format from [12.3](#123-formats). |
 | `DateRangePicker.tsx` | Two date fields, from and to; the to date cannot be before the from date; quick ranges are chips. |
-| `ui/CompoundRackInput.tsx` | Chamber and rack fields side by side, stacked at large text sizes; values shown as "Chamber 2 · Rack B-14". |
-| `fiori/StepperInput.tsx` | Minus and plus buttons in `border.button` with `brand.tint` icons; value in `body` with tabular numbers; the buttons disable at min and max; layouts `stacked`, `inline`, `compact`. |
+| `ui/CompoundRackInput.tsx` | Rack, floor and chamber pickers side by side, stacked at large text sizes; values shown as "Chamber 2 · Rack B-14". The Android picker dropdown follows the system theme, not the app's. |
+| `fiori/StepperInput.tsx` | Minus and plus buttons in `border.button` with `brand.tint` icons, `brand.subtle` while pressed; value in `body` with tabular numbers; the buttons disable at min and max; layouts `stacked`, `inline`, `compact`. |
 | `grn/components/item-form/QuantityWeightFields.tsx` | Numeric keypad, unit as a suffix in `text.secondary`, tabular numbers. |
-| `grn/components/item-form/RackChamberPicker.tsx` | Bottom sheet list; current choice checked. |
+| `grn/components/item-form/RackChamberPicker.tsx` | Floor and chamber are single-choice chips with radio semantics (`brand.subtle` and a check when selected); use a bottom sheet only when there are more than eight options. Wrapping choice chips are at least 36 tall with an 8 gap and `hitSlop` up to `touchTarget`. |
 | `grn/components/item-form/ItemSearchField.tsx`, `ItemAutocomplete`, `CustomerAutocomplete`, `UserAutocomplete`, `invoice/components/GRNAutocomplete` | Search field plus suggestion list; recent picks first; empty state "No matches". |
 | `grn/components/ImageUploadButton.tsx`, `item-form/MarkImageField.tsx`, `CameraModal.tsx` | Dashed `border.field` tile with `camera-outline` icon and label; upload progress uses `FioriLinearProgress`; failure shows a retry action. |
+
+Sheets with an on-screen keypad (the GRN picker in dispatch) keep the search field directly above the keypad rather than at the top of the sheet.
 
 ### 13.4 Selection controls
 
@@ -770,9 +817,10 @@ Rules: label above the field, never only a placeholder. Height 44 minimum, radiu
 | `QuickFilterChips.tsx` | Unselected: `surface.card`, 1 px `border.button`, `text.primary`. Selected: `brand.subtle`, `brand.tint`, check icon. Horizontal scroll with 16 side padding. |
 | `filters/AppliedFiltersBar.tsx` | Row of `FilterChip`s plus a tertiary "Clear all". |
 | `common/overview-tab/InfoChip.tsx` | Neutral tag: `status.neutral.background`, `status.neutral.text`. |
-| Status tag | `status.*.background`, `status.*.text`, icon from [3.5](#35-status-colours), `radius.field`, `caption1` weight 600. |
-| Count badge (tab bar, filters) | `status.negative.element` with white text when it means "needs action"; `brand.fill` with `brand.onFill` for plain counts; minimum 18 px, `caption2`. |
-| `StockIndicator.tsx` | Bar track `brand.subtleStrong`; fill `status.positive.element` above 50%, `status.critical.element` from 10% to 50%, `status.negative.element` below 10%; text "120 of 200 bags" beside it; `flashRed` pulses once, not in a loop. |
+| `ui/StatusTag.tsx` | `status.*.background`, `status.*.text`, the standard icon from [3.5](#35-status-colours) at `iconSize.xs`, `radius.field`, `caption1` weight 600. Use it for every status; do not build local tags. |
+| `ui/Avatar.tsx` | Initials (first letters of the first two words) on the avatar palette colour for the record id; sizes `sm` 32, `md` 44, `lg` 60. |
+| Count badge | A "needs action" count (tab bar items waiting for you) uses `destructive.fill` with `destructive.onFill`. Plain counts (section headers, detail tabs, active filters) use `brand.fill` with `brand.onFill`. Minimum 18 px, `caption2`. |
+| `StockIndicator.tsx` | Bar track `brand.subtleStrong`; fill and tag follow the single stock rule in [3.5](#35-status-colours) (in stock, low stock below 20%, out of stock); text "120 of 200 bags" beside it; `flashRed` pulses once, not in a loop. |
 | `FioriLinearProgress.tsx` | Height 4 (default) or 8 (prominent), pill radius; track `brand.subtleStrong` or the status background with `coloredTrack`; fill `brand.fill` (`default`) or `status.*.element` (`success`, `warning`, `error`, `info`); percentage in `caption1`. Segmented progress uses chart colours in order. |
 
 ### 13.6 Cells, cards and lists
@@ -790,6 +838,10 @@ Rules: label above the field, never only a placeholder. Height 44 minimum, radiu
 | `list/LoadingState.tsx` | Use skeletons for lists and object pages; a centred spinner in `brand.tint` only for short unknown waits. |
 | `list/ListErrorBoundary.tsx`, `ErrorBoundary.tsx`, `FeatureErrorBoundary.tsx` | Icon `alert-circle-outline` in `status.negative.text`, title "Something went wrong", plain-language cause, "Try again" secondary button. No stack trace outside development builds. |
 
+Swipe actions on rows: each action is at least 72 wide and full row height, with an icon over a `caption1` weight 600 label. The primary action (Edit) uses `brand.fill` with `brand.onFill`; others use `surface.cardActive` with `text.primary`; destructive ones use `destructive.fill` with `destructive.onFill` and ask for confirmation. Destructive and state-changing actions (delete, deactivate) live in swipe actions or on the object page, never as a one-tap icon in the row.
+
+A surcharge (a negative discount) shows with a plus sign in `text.primary`; a discount shows with a minus sign in `status.positive.text`.
+
 ### 13.7 Tables — `FioriDataTable.tsx`, `fiori/FioriDataTable.tsx`, `reports/FioriDataTable.tsx`, `grn-details/GRNItemDispatchTable.tsx`, `invoice/components/InvoiceItemsTable.tsx`
 
 The three `FioriDataTable` copies follow one spec and are merged during migration.
@@ -799,7 +851,9 @@ The three `FioriDataTable` copies follow one spec and are merged during migratio
 - Numbers are right-aligned with tabular figures. Text is left-aligned. Status uses a status tag.
 - Totals row: weight 600, top border 1 px `border.separator`.
 - On phones, tables with more than three columns scroll horizontally with the first column pinned, or turn into object cells. Show a fade at the scroll edge.
-- Editable cells use `GhostTextInput`.
+- Editable cells follow the editable-cell rule in section 13.2.
+- Empty cells show "—".
+- Pinning the first column and the scroll-edge fade are required for new tables with more than three columns; the existing invoice and dispatch tables scroll as a whole until they are rebuilt.
 
 ### 13.8 Headers and navigation
 
@@ -812,6 +866,15 @@ The three `FioriDataTable` copies follow one spec and are merged during migratio
 | Step indicators (`StepIndicator.tsx`, `GenericStepIndicatorHeader.tsx`, `GRNStepIndicator`, `DispatchStepIndicator`, `InvoiceStepIndicator`) | Circles 28 px. Current: `brand.fill` with `brand.onFill` number. Completed: `brand.tint` outline with a check. Upcoming: `border.field` outline with `text.secondary` number. Connector 2 px, completed `brand.tint`, else `border.divider`. Step names under the circles in `caption1`; on phones show only the current step name. |
 | Form chrome (`GRNFormHeader.tsx`, `GRNFormBottomNav.tsx`, `dispatch/components/DispatchFormHeader.tsx`, `form/FormStepWrapper.tsx`, `SwipeableFormStep.tsx`) | Header shows the step title and progress. The bottom bar sits on `surface.card` with `shadow[3]`, holds Back (secondary) and Next or Save (primary), and adds the bottom inset. |
 
+More header rules:
+
+- Object headers show a status tag only when the object has a status. Dispatches and invoices have none, so their headers show key facts only.
+- Key facts in a hero header are compact pairs: label in `footnote` `text.secondary` above the value in `headline`, up to three side by side.
+- Search bars in headers: `background.base` fill, `radius.button`, minimum height 44, no border, `magnify` icon in `icon.secondary`.
+- Top-level tab list headers use `largeTitle` (or `title1` when actions crowd it); other screens use the stack header's `headline` title. Native-stack `headerTitleStyle` takes only `fontSize`, `fontWeight` and `color` from `typography.headline`.
+- Detail tabs share the width when they fit (four on phones) and scroll sideways when they do not.
+- Staff currently have six bottom tabs, one more than Fiori's five; the sixth (Reports) stays until a product decision moves it.
+
 ### 13.9 Dialogs, sheets and messages
 
 | Component | Spec |
@@ -823,6 +886,15 @@ The three `FioriDataTable` copies follow one spec and are merged during migratio
 | Banners (`OfflineBanner.tsx`, `TokenExpiryBanner.tsx`) | Full-width under the header. Offline: `status.neutral.background`, `cloud-off-outline`. Session expiring: `status.critical.background` with a "Sign in again" tertiary action. Never cover content; push it down. |
 | Snackbar / toast | `surface.inverse` background with `text.inverse` text (16.86:1 light, 14.64:1 dark), `shadow[3]`, `radius.button`, above the tab bar, 4 seconds. One optional action in `text.inverse`, weight 600, underlined. Never for errors that need action; use a message strip or dialog for those. |
 | Full-screen states (`MaintenanceScreen.tsx`, `ConfigErrorScreen.tsx`, `InvalidRouteScreen.tsx`, `BiometricLockScreen.tsx`) | Centred empty-state layout on `background.base` with a hero icon, title, plain message and one primary action. |
+
+More rules:
+
+- **Alerts.** Every alert uses `showAlert` (`src/utils/alert.ts`), which takes the same arguments as `Alert.alert` and is drawn by `AlertHost` as a themed dialog: cancel is a secondary button, destructive uses the destructive fill, the last default button is the primary action; two buttons sit side by side and three or more stack. The lint guard rejects `Alert.alert`.
+- **Snackbar text** is a `Text` child in `subhead` with `text.inverse` (Paper's Snackbar does not take a text colour).
+- **Full-screen states** have one primary action only when the user can do something (maintenance has none).
+- **Offline banner.** It is mounted once in `app/_layout.tsx`, above the navigation stack, and pushes content down. While it shows, the screens below get a zero top inset, because the banner already pads for the status bar.
+- **Camera and photo views** use `light-content` status bar icons whatever the mode.
+- **Sheet metrics**: grab handle 36 × 4 in `border.separator`; badge minimum 18.
 
 ### 13.10 Media
 
@@ -838,14 +910,20 @@ The three `FioriDataTable` copies follow one spec and are merged during migratio
 |---|---|
 | `reports/KPICard.tsx`, `reports/KPIGrid.tsx` | `surface.card`, `radius.card`, `shadow[2]`. Icon 32 in a 44 circle of `brand.subtle` with `brand.tint` glyph (`primary` and `accent`), status background and text for `success` and `warning`, neutral for `neutral` and `secondary`. Value `title3` tabular, unit `subhead` `text.secondary`, label `footnote` `text.secondary`. Trend: `arrow-up`/`arrow-down` icon plus value in positive or negative text; whether up is good is set per KPI, never assumed. |
 | `sensors/SensorHistoryChart.tsx` and other charts | Series colours from `tokens.chart` in order. Thresholds as dashed lines in `status.critical.element` and `status.negative.element` with labels. Axes and grid `border.divider`, axis labels `caption1` `text.secondary`. A text summary and a values table are available. |
-| `reports/PeriodSelector.tsx` | Segmented control per [13.4](#134-selection-controls) or quick chips. |
+| `reports/PeriodSelector.tsx` | Segmented control per [13.4](#134-selection-controls), 36 tall with the touch area padded to `touchTarget`; a custom period is a separate chip. |
 | `invoice/components/InvoiceCalculationSummary.tsx`, `invoice-details/InvoiceBreakdownTab.tsx` | Key-value rows, amounts right-aligned with tabular numbers; total in `headline`; discounts in `status.positive.text` with a minus sign; taxes listed separately. |
+
+More rules:
+
+- KPI trends: whether up is good is set per KPI with `upIsGood`; without it the trend shows in `text.secondary`.
+- A second series in another unit (humidity next to temperature) gets a secondary axis or its own chart, never the first series' scale.
+- Temperature charts take their y range from the readings (cold rooms run below zero) and leave gaps for missing readings rather than drawing zero.
 
 ### 13.12 Branding
 
 | Component | Spec |
 |---|---|
-| `BrandMark.tsx` | Orange brand: the template logo image. GCSA brand: the "GCSA" wordmark in navy (`brand.tint` in light mode), a 4 px rule in `brand.secondary`, and "COLD STORAGE ASSOCIATION" in `caption1`. In dark mode the GCSA mark sits on a white panel with `radius.sheet` so the logo navy is kept. The association's own logo file replaces the wordmark once the association approves its use. |
+| `BrandMark.tsx` | Orange brand: the template logo image. GCSA brand: the "GCSA" wordmark (`typography.wordmark`, `brandMark.wordmark`), a 4 px rule (`brandMark.rule`) and "COLD STORAGE ASSOCIATION" in `caption1` (`brandMark.caption`). In dark mode the GCSA mark sits on `brandMark.panel` (white) with `radius.sheet` so the logo navy is kept. The association's own logo file replaces the wordmark once the association approves its use. |
 | App name | `EXPO_PUBLIC_APP_NAME`, shown under the mark on sign-in in `subhead` `text.secondary`. |
 
 ### 13.13 Other components
@@ -869,7 +947,7 @@ The main pattern for orders, GRNs, dispatches, invoices, customers, items and us
 2. Quick filter chips under the header (period or status).
 3. Applied filters bar when any filter is set.
 4. The list of object cells, newest first, with pull to refresh and infinite scroll.
-5. A primary create action: a floating action button (`brand.fill`, `shadow[3]`, 56 px, bottom right above the tab bar) for the role that can create, hidden for others.
+5. A primary create action: a floating action button (`brand.fill` with a `plus` in `brand.onFill`, `shadow[3]`, 56 px, bottom right above the tab bar, label "Create GRN" and so on) for the role that can create, hidden for others. Lists with an A–Z index rail (customers, items) put Create in the header instead, because a floating button would cover the rail.
 6. Empty, filtered-empty, loading (skeleton), error and offline states.
 
 ### 14.2 Object page
@@ -887,7 +965,8 @@ GRN, dispatch and invoice creation.
 
 - A step indicator at the top; step names are nouns ("Customer", "Items", "Review").
 - One topic per step. The last step is always Review, with an edit link per section.
-- Back and Next in the bottom bar. Next validates only the current step.
+- Every step has the same bottom bar on `surface.card` with `shadow[3]` and the bottom inset: the first step shows Next, middle steps Back and Next, the review step Back and the save action ("Create GRN", "Save dispatch"). Next validates only the current step. Swiping between steps is a shortcut, never the only way.
+- Section edit links on the review step are tertiary "Edit" buttons in `brand.tint`.
 - Drafts are kept on the phone. Leaving with unsaved changes asks "Discard this GRN?".
 - After saving, show a success dialog with the document number and actions (Print, Share, View, Create another).
 
@@ -947,7 +1026,7 @@ The app has one central sign-in that only proves who the user is, then facility 
 ### 14.12 Settings
 
 - Grouped list on `background.grouped`.
-- Sections: Account, Appearance (System, Light, Dark), Brand (Orange, GCSA navy, each with two swatches), Security, About, and Development (development builds only, with the style guide gallery).
+- Sections, in order: profile card, App features, Appearance (System, Light, Dark), Brand (Orange, GCSA navy, each with two swatches drawn from that brand's own tokens), Account (Delete account last), About, and Development (development builds only, with the style guide gallery). A Security section joins when the app gets a lock setting.
 
 ---
 
@@ -967,52 +1046,84 @@ The app has one central sign-in that only proves who the user is, then facility 
 
 **Build-time colours.** The splash screen background and the launcher icon come from `app.json` and the Android resources (`colorPrimary`). They are fixed per build and cannot follow the brand chosen in Settings. A build for the association sets them to GCSA navy; the template build keeps the current values.
 
+**Splash before the store loads.** The JavaScript splash shown before preferences are restored uses the build's splash colour from `app.json` (read through `Constants.expoConfig`), never a token, so it matches the native splash.
+
+**Native pickers.** The Android picker dropdown and the date picker dialog follow the system theme, not the app's.
+
 **Paper and navigation themes.** `app/_layout.tsx` builds the React Native Paper MD3 theme and the navigation theme from the tokens for the current brand and mode, so Paper components and native headers follow the brand.
 
 ---
 
-## 16. Migration and enforcement
+## 16. Enforcement
 
-The app still has six older colour systems. They keep working through adapters while screens move to tokens, in phases, each a separate pull request:
+All screens use the tokens; the six older colour systems and their adapters are gone. `eslint.config.mjs` keeps it that way. In `app/` and `src/` (except `src/theme/` and tests) these are lint errors:
 
-| Phase | Scope |
+| Rule | Use instead |
 |---|---|
-| P1 | Tokens, brand setting, adapters, Settings picker, this guide, the gallery |
-| P2 | Shared components: `ui/*`, `fiori/*`, tab bar, progress, dialogs, sheets, filters, list states, `common/overview-tab`, `styles/common.ts`, every component calling `useColorScheme` directly |
-| P3 | Sign-in screens, orders, GRN |
-| P4 | Dispatch and invoices |
-| P5 | Customers, items and pricing, reports, sensors, settings, profile, users, legal pages |
-| P6 | Lint rule against colour literals and static theme imports outside `src/theme`; delete the adapters |
+| Hex and `rgb()`/`rgba()` colour literals | Semantic tokens |
+| `fontSize` with a literal number | A `typography` style |
+| `Alert.alert` | `showAlert` from `src/utils/alert.ts` |
+| `useColorScheme` or `Appearance` from react-native | `useTheme()` (only `src/hooks/useTheme.ts` reads the system scheme) |
+| `@expo/vector-icons` | `react-native-vector-icons/MaterialCommunityIcons` |
+| The old colour modules (`listColors`, `fioriColors`, `useListColors`, `fioriDesignTokens`, overview-tab `FioriTokens`) and `colors`/`getThemeColors` from `@/theme` | Semantic tokens |
 
-Migrating a file:
-
-1. Move colours out of module-scope `StyleSheet.create` into a `makeStyles(t)` used with `useThemedStyles`.
-2. Replace every hex, `rgb()` and named colour with a semantic token.
-3. Replace local `FIORI` and `FIORI_STATIC` objects with `metrics.ts` values.
-4. Replace `useColorScheme()` and `Appearance` with `useTheme()`.
-5. Replace fixed `StatusBar` styles with `tokens.statusBarStyle`.
-6. Check the screen in all four themes on a device.
+The contrast test (`src/theme/tokens/__tests__/contrast.test.ts`) checks every token pair in all four themes, and render tests draw each area of the app in all four themes.
 
 ---
 
-## 17. Review checklist
+## 17. Making changes
+
+### 17.1 A new screen or component
+
+1. Write styles as a module-level `const makeStyles = (t: ThemeTokens) => ({ ... })` and call `useThemedStyles(makeStyles)` in the component. Colours passed as props come from `useTokens()`.
+2. Spread `typography.*` for text; use `space`, `radius`, `iconSize`, `touchTarget` and `layout` from `@/theme/tokens`; spread `t.shadow[n]` for elevation.
+3. Build from the shared parts before writing new ones: `ui/Button`, `ui/Input`, `ui/Card`, `ui/StatusTag`, `ui/Avatar`, `ui/SectionHeader`, `fiori/KeyValueCell`, `list/ListEmptyState`, `ConfirmDialog`, the bottom sheets in `common/`, `FioriDataTable`.
+4. Format every date, time, number, weight, phone number and count with `src/utils/formatters.ts`; ask with `showAlert`.
+5. Pick the pattern in section 14 and follow it, including loading, empty, error and offline states.
+6. Add a render test that draws it in all four themes (`BRANDS × ['light','dark']`, mocking `@/store/hooks` as in `src/components/__tests__/StyleGuideScreen.test.tsx`).
+7. Check it on a device in all four themes and at the largest font size.
+
+### 17.2 A new colour role
+
+1. If no semantic token fits, add one to `ThemeTokens` and `buildTokens()` in `src/theme/tokens/semantic.ts`, with a value for each brand and mode (raw values go in `reference.ts`).
+2. Add its pairs to the contrast test.
+3. Add it to the tables in 3.3 and 3.4 and to the gallery (`app/style-guide.tsx`).
+
+### 17.3 A new status value
+
+Add a row to the table in 3.5 (object, value, status, word on screen) and show it with `StatusTag`.
+
+### 17.4 A new brand
+
+1. Add a reference palette in `reference.ts` and a branch in `brandGroup()` (and `brandMark`) in `semantic.ts`. Neutrals and status colours stay Horizon.
+2. Add the brand to `Brand`, `BRANDS` and `BRAND_LABELS`. The Settings picker and the gallery list it automatically.
+3. Run the contrast test; fix every failing pair before anything else.
+4. Add its column to the tables in section 3.
+
+### 17.5 Changing this guide
+
+Change the code first, then this guide in the same pull request. Regenerate the tables in 3.3 from `buildTokens()` when tokens change.
+
+---
+
+## 18. Review checklist
 
 Before merging any UI change:
 
-- [ ] No colour literals, no module-scope colours, no `useColorScheme()` in the change.
+- [ ] `npm run lint` shows no style-guard errors; no module-scope colours.
 - [ ] Text uses `typography` styles; spacing uses `space`; radii use `radius`.
 - [ ] Checked in Orange light, Orange dark, GCSA light and GCSA dark.
 - [ ] Checked at the largest font size and with a screen reader.
 - [ ] Every pressable element is at least 44 or 48 and has a role and label.
 - [ ] Status has a word or icon as well as colour.
 - [ ] Loading, empty, error and offline states exist.
-- [ ] Wording follows [Content and wording](#12-content-and-wording); no developer text.
+- [ ] Wording follows [Content and wording](#12-content-and-wording); no developer text; dates and numbers use the shared formatters; alerts use `showAlert`.
 - [ ] Contrast test passes if tokens changed.
 - [ ] `npm test`, `npm run typecheck` and `npm run lint` pass.
 
 ---
 
-## 18. Sources
+## 19. Sources
 
 - SAP Fiori for iOS Design Guidelines: colour, design tokens, typography, layout. https://experience.sap.com/fiori-design-ios/
 - SAP Fiori for Android Design Guidelines: colour, design tokens, typography, elevation. https://experience.sap.com/fiori-design-android/
