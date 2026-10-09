@@ -11,11 +11,10 @@
  * Used by GRN and Dispatch item summary sheets.
  */
 
-import React, { useCallback, useMemo, ReactNode } from 'react';
+import React, { useCallback, ReactNode } from 'react';
 import {
   View,
   Text,
-  TouchableOpacity,
   StyleSheet,
   Alert,
   Modal,
@@ -25,8 +24,9 @@ import {
 import { Swipeable, GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import theme from '@/theme';
-import { useListColors } from '@/hooks/useListColors';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { fontWeight, iconSize, radius, space, touchTarget, typography } from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
 
 /** Total badge configuration */
 export interface TotalBadge {
@@ -65,7 +65,7 @@ export interface ItemsSummaryBottomSheetProps<T> {
   editingItemKey?: string;
   /** Check if an item is protected from deletion */
   isItemProtected?: (item: T) => boolean;
-  /** Title for the header (default: "Saved Items") */
+  /** Title for the header (default: "Saved items") */
   title?: string;
   /** Entity name for dialogs (default: "item") */
   entityName?: string;
@@ -92,124 +92,17 @@ function ItemsSummaryBottomSheetInner<T>(
     onEditItem,
     editingItemKey,
     isItemProtected,
-    title = 'Saved Items',
+    title = 'Saved items',
     entityName = 'item',
-    emptyTitle = 'No items added yet',
-    emptySubtitle = 'Fill the form above and tap to save items',
+    emptyTitle = 'No items yet',
+    emptySubtitle = 'Items you save with the form above appear here.',
     headerIcon = 'package-variant',
   } = props;
 
   const insets = useSafeAreaInsets();
 
-  // Theme colors for dark mode support
-  const colors = useListColors();
-
-  // Dynamic styles based on theme
-  const dynamicStyles = useMemo(() => StyleSheet.create({
-    sheetContainer: {
-      backgroundColor: colors.cellBackground,
-      borderTopLeftRadius: 20,
-      borderTopRightRadius: 20,
-      flex: 1,
-    },
-    header: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      paddingHorizontal: 20,
-      paddingVertical: 12,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.cellDivider,
-      gap: 12,
-    },
-    headerTitle: {
-      flex: 1,
-      fontSize: 18,
-      fontWeight: '600',
-      color: colors.textPrimary,
-    },
-    totalsContainer: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      paddingHorizontal: 20,
-      paddingVertical: 12,
-      backgroundColor: colors.gray50,
-      gap: 8,
-    },
-    totalBadge: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 4,
-      paddingHorizontal: 12,
-      paddingVertical: 6,
-      backgroundColor: colors.cellBackground,
-      borderRadius: 8,
-      borderWidth: 1,
-      borderColor: colors.cellDivider,
-    },
-    totalLabel: {
-      fontSize: 12,
-      fontWeight: '500',
-      color: colors.textSecondary,
-    },
-    totalValue: {
-      fontSize: 12,
-      fontWeight: '700',
-      color: colors.textPrimary,
-    },
-    hintContainer: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 6,
-      paddingHorizontal: 20,
-      paddingVertical: 8,
-      backgroundColor: colors.blueLight,
-    },
-    hintText: {
-      fontSize: 12,
-      color: colors.textSecondary,
-    },
-    hintSeparator: {
-      fontSize: 12,
-      color: colors.textTertiary,
-      marginHorizontal: 4,
-    },
-    deleteAction: {
-      backgroundColor: colors.error,
-      justifyContent: 'center',
-      alignItems: 'center',
-      width: 80,
-      height: '100%',
-      gap: 4,
-    },
-    deleteActionDisabled: {
-      backgroundColor: colors.gray400,
-    },
-    deleteText: {
-      fontSize: 12,
-      fontWeight: '600',
-      color: colors.white,
-    },
-    emptyContainer: {
-      flex: 1,
-      justifyContent: 'center',
-      alignItems: 'center',
-      paddingVertical: 60,
-      paddingHorizontal: 40,
-    },
-    emptyText: {
-      fontSize: 16,
-      fontWeight: '600',
-      color: colors.textSecondary,
-      marginTop: 16,
-      textAlign: 'center',
-    },
-    emptySubtext: {
-      fontSize: 14,
-      color: colors.textTertiary,
-      marginTop: 8,
-      textAlign: 'center',
-    },
-  }), [colors]);
+  const t = useTokens();
+  const dynamicStyles = useThemedStyles(makeStyles);
 
   // Check if an item is protected
   const checkItemProtected = useCallback(
@@ -226,20 +119,20 @@ function ItemsSummaryBottomSheetInner<T>(
       // Check if item is protected
       if (checkItemProtected(item)) {
         Alert.alert(
-          `Cannot Delete ${entityName.charAt(0).toUpperCase() + entityName.slice(1)}`,
-          `"${itemName}" has been partially dispatched and cannot be removed.`,
+          `Can't delete this ${entityName}`,
+          `"${itemName}" is partly dispatched, so it can't be removed.`,
           [{ text: 'OK', style: 'default' }]
         );
         return;
       }
 
       Alert.alert(
-        `Delete ${entityName.charAt(0).toUpperCase() + entityName.slice(1)}`,
-        `Remove "${itemName}"?`,
+        `Delete ${entityName}?`,
+        `"${itemName}" will be removed from this list.`,
         [
           { text: 'Cancel', style: 'cancel' },
           {
-            text: 'Delete',
+            text: `Delete ${entityName}`,
             style: 'destructive',
             onPress: () => {
               if (__DEV__) console.log('[ItemsSummaryBottomSheet] Deleting:', itemKey);
@@ -258,23 +151,28 @@ function ItemsSummaryBottomSheetInner<T>(
       const isProtected = checkItemProtected(item);
 
       return (
-        <TouchableOpacity
-          style={[dynamicStyles.deleteAction, isProtected && dynamicStyles.deleteActionDisabled]}
+        <Pressable
+          style={({ pressed }) => [
+            dynamicStyles.deleteAction,
+            isProtected && dynamicStyles.deleteActionDisabled,
+            pressed && !isProtected && dynamicStyles.deleteActionPressed,
+          ]}
           onPress={() => handleDeleteItem(item)}
-          activeOpacity={isProtected ? 1 : 0.7}
+          accessibilityRole="button"
+          accessibilityLabel={isProtected ? `${getItemName(item)} is protected` : `Delete ${getItemName(item)}`}
         >
           <Icon
-            name={isProtected ? 'lock' : 'delete'}
-            size={24}
-            color={colors.white}
+            name={isProtected ? 'lock-outline' : 'trash-can-outline'}
+            size={iconSize.lg}
+            color={isProtected ? t.icon.secondary : t.destructive.onFill}
           />
-          <Text style={dynamicStyles.deleteText}>
+          <Text style={[dynamicStyles.deleteText, isProtected && dynamicStyles.deleteTextDisabled]}>
             {isProtected ? 'Protected' : 'Delete'}
           </Text>
-        </TouchableOpacity>
+        </Pressable>
       );
     },
-    [handleDeleteItem, checkItemProtected, dynamicStyles, colors]
+    [handleDeleteItem, checkItemProtected, getItemName, dynamicStyles, t]
   );
 
   // Handle item tap for editing
@@ -295,12 +193,12 @@ function ItemsSummaryBottomSheetInner<T>(
   const renderEmptyState = useCallback(() => {
     return (
       <View style={dynamicStyles.emptyContainer}>
-        <Icon name="package-variant-closed" size={48} color={colors.gray300} />
+        <Icon name="package-variant-closed" size={iconSize.hero} color={t.icon.secondary} />
         <Text style={dynamicStyles.emptyText}>{emptyTitle}</Text>
         <Text style={dynamicStyles.emptySubtext}>{emptySubtitle}</Text>
       </View>
     );
-  }, [emptyTitle, emptySubtitle, dynamicStyles, colors]);
+  }, [emptyTitle, emptySubtitle, dynamicStyles, t]);
 
   return (
     <Modal
@@ -309,27 +207,36 @@ function ItemsSummaryBottomSheetInner<T>(
       animationType="slide"
       onRequestClose={onClose}
       statusBarTranslucent={false}
+      accessibilityViewIsModal
     >
       {/* GestureHandlerRootView is required for Swipeable to work inside Modal */}
       <GestureHandlerRootView style={styles.gestureRoot}>
         <View style={[styles.modalOverlay, { paddingTop: insets.top }]}>
           {/* Backdrop - tap to close */}
-          <Pressable style={styles.backdrop} onPress={onClose} />
+          <Pressable
+            style={dynamicStyles.backdrop}
+            onPress={onClose}
+            accessibilityRole="button"
+            accessibilityLabel={`Close ${title.toLowerCase()}`}
+          />
 
         {/* Bottom Sheet Content */}
         <View style={[dynamicStyles.sheetContainer, { paddingBottom: insets.bottom }]}>
+          <View style={dynamicStyles.handle} importantForAccessibility="no" />
           {/* Header */}
           <View style={dynamicStyles.header}>
-            <Icon name={headerIcon} size={24} color={colors.primary} />
-            <Text style={dynamicStyles.headerTitle}>
+            <Icon name={headerIcon} size={iconSize.lg} color={t.brand.tint} />
+            <Text style={dynamicStyles.headerTitle} accessibilityRole="header">
               {title} ({items.length})
             </Text>
-            <TouchableOpacity
+            <Pressable
               onPress={onClose}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              style={styles.closeButton}
+              accessibilityRole="button"
+              accessibilityLabel="Close"
             >
-              <Icon name="close" size={24} color={colors.textSecondary} />
-            </TouchableOpacity>
+              <Icon name="close" size={iconSize.lg} color={t.icon.primary} />
+            </Pressable>
           </View>
 
           {/* Totals Summary */}
@@ -337,7 +244,7 @@ function ItemsSummaryBottomSheetInner<T>(
             <View style={dynamicStyles.totalsContainer}>
               {totals.map((total, index) => (
                 <View key={index} style={dynamicStyles.totalBadge}>
-                  <Icon name={total.icon} size={16} color={total.iconColor} />
+                  <Icon name={total.icon} size={iconSize.sm} color={total.iconColor} />
                   <Text style={dynamicStyles.totalLabel}>{total.label}</Text>
                   <Text style={dynamicStyles.totalValue}>{total.value}</Text>
                 </View>
@@ -350,12 +257,12 @@ function ItemsSummaryBottomSheetInner<T>(
             <View style={dynamicStyles.hintContainer}>
               {onEditItem && (
                 <>
-                  <Icon name="hand-pointing-up" size={16} color={colors.primary} />
+                  <Icon name="gesture-tap" size={iconSize.sm} color={t.status.informative.text} />
                   <Text style={dynamicStyles.hintText}>Tap to edit</Text>
                   <Text style={dynamicStyles.hintSeparator}>•</Text>
                 </>
               )}
-              <Icon name="gesture-swipe-left" size={16} color={colors.textSecondary} />
+              <Icon name="gesture-swipe-left" size={iconSize.sm} color={t.status.informative.text} />
               <Text style={dynamicStyles.hintText}>Swipe left to delete</Text>
             </View>
           )}
@@ -382,13 +289,15 @@ function ItemsSummaryBottomSheetInner<T>(
                     friction={2}
                     rightThreshold={40}
                   >
-                    <TouchableOpacity
+                    <Pressable
                       onPress={() => handleItemTap(item)}
-                      activeOpacity={0.7}
                       disabled={!onEditItem}
+                      style={({ pressed }) => [dynamicStyles.itemRow, pressed && dynamicStyles.itemRowPressed]}
+                      accessibilityRole={onEditItem ? 'button' : undefined}
+                      accessibilityHint={onEditItem ? `Opens this ${entityName} for editing` : undefined}
                     >
                       {renderItem(item, index, isEditing, isProtected)}
-                    </TouchableOpacity>
+                    </Pressable>
                   </Swipeable>
                 );
               })
@@ -401,7 +310,137 @@ function ItemsSummaryBottomSheetInner<T>(
   );
 }
 
-// Static styles (layout only - colors are in dynamicStyles)
+const makeStyles = (t: ThemeTokens) => ({
+  backdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: t.overlay.scrim,
+  },
+  sheetContainer: {
+    backgroundColor: t.surface.sheet,
+    borderTopLeftRadius: radius.sheet,
+    borderTopRightRadius: radius.sheet,
+    flex: 1,
+    ...t.shadow[4],
+  },
+  handle: {
+    alignSelf: 'center' as const,
+    width: 36,
+    height: 4,
+    borderRadius: radius.pill,
+    backgroundColor: t.border.separator,
+    marginTop: space.sm,
+  },
+  header: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    paddingLeft: space.xl,
+    paddingRight: space.sm,
+    paddingVertical: space.xs,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.divider,
+    gap: space.md,
+  },
+  headerTitle: {
+    ...typography.headline,
+    flex: 1,
+    color: t.text.primary,
+  },
+  totalsContainer: {
+    flexDirection: 'row' as const,
+    flexWrap: 'wrap' as const,
+    paddingHorizontal: space.xl,
+    paddingVertical: space.md,
+    backgroundColor: t.background.base,
+    gap: space.sm,
+  },
+  totalBadge: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.xs,
+    paddingHorizontal: space.md,
+    paddingVertical: space.s6,
+    backgroundColor: t.surface.card,
+    borderRadius: radius.button,
+    borderWidth: 1,
+    borderColor: t.border.divider,
+  },
+  totalLabel: {
+    ...typography.caption1,
+    fontWeight: fontWeight.medium,
+    color: t.text.secondary,
+  },
+  totalValue: {
+    ...typography.caption1,
+    fontWeight: fontWeight.bold,
+    color: t.text.primary,
+    fontVariant: ['tabular-nums' as const],
+  },
+  hintContainer: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.s6,
+    paddingHorizontal: space.xl,
+    paddingVertical: space.sm,
+    backgroundColor: t.status.informative.background,
+  },
+  hintText: {
+    ...typography.caption1,
+    color: t.status.informative.text,
+  },
+  hintSeparator: {
+    ...typography.caption1,
+    color: t.status.informative.text,
+    marginHorizontal: space.xs,
+  },
+  itemRow: {
+    backgroundColor: t.surface.sheet,
+  },
+  itemRowPressed: {
+    backgroundColor: t.surface.cardPressed,
+  },
+  deleteAction: {
+    backgroundColor: t.destructive.fill,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    width: 80,
+    height: '100%' as const,
+    gap: space.xs,
+  },
+  deleteActionPressed: {
+    backgroundColor: t.destructive.fillPressed,
+  },
+  deleteActionDisabled: {
+    backgroundColor: t.surface.fieldReadOnly,
+  },
+  deleteText: {
+    ...typography.caption1,
+    fontWeight: fontWeight.semibold,
+    color: t.destructive.onFill,
+  },
+  deleteTextDisabled: {
+    color: t.text.secondary,
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    paddingVertical: space.max,
+    paddingHorizontal: space.huge,
+  },
+  emptyText: {
+    ...typography.title3,
+    color: t.text.primary,
+    marginTop: space.lg,
+    textAlign: 'center' as const,
+  },
+  emptySubtext: {
+    ...typography.subhead,
+    color: t.text.secondary,
+    marginTop: space.sm,
+    textAlign: 'center' as const,
+  },
+});
+
 const styles = StyleSheet.create({
   gestureRoot: {
     flex: 1,
@@ -410,16 +449,18 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'flex-end',
   },
-  backdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  closeButton: {
+    width: touchTarget,
+    height: touchTarget,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   scrollView: {
     flex: 1,
   },
   listContent: {
     flexGrow: 1,
-    paddingBottom: 20,
+    paddingBottom: space.xl,
   },
 });
 

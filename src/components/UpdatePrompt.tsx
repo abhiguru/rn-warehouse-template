@@ -1,28 +1,146 @@
 /**
  * Update Prompt Component
  *
- * Displays a modal when an OTA update is available.
- * Allows users to download and apply updates.
+ * Offers an over-the-air update (docs/STYLE_GUIDE.md §13.9 and §14.11): a
+ * dialog on surface.sheet with radius.card and shadow[4] over overlay.scrim.
+ * "A new version is available" is informative news; a downloaded update ready
+ * to apply is positive. The Android back button and a tap on the scrim
+ * dismiss it.
  */
 
 import React, { useEffect } from 'react';
-import { View, StyleSheet, Modal, ActivityIndicator } from 'react-native';
-import { Text, Button, Surface, Portal, useTheme } from 'react-native-paper';
-import { Ionicons } from '@expo/vector-icons';
+import { View, Text, Modal, ActivityIndicator, Pressable, StyleSheet } from 'react-native';
+import { Portal } from 'react-native-paper';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useOTAUpdates } from '@/hooks/useOTAUpdates';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { fontWeight, iconSize, layout, radius, space, touchTarget, typography } from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
 
 interface UpdatePromptProps {
   /** Whether to show the prompt as a modal (true) or inline banner (false) */
   asModal?: boolean;
 }
 
+const ICON_CIRCLE = layout.avatar.lg;
+
+const makeStyles = (t: ThemeTokens) => ({
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: t.overlay.scrim,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    padding: space.xxl,
+  },
+  container: {
+    backgroundColor: t.surface.sheet,
+    borderRadius: radius.card,
+    padding: space.xxl,
+    maxWidth: layout.maxFormWidth,
+    width: '100%' as const,
+    alignItems: 'center' as const,
+    ...t.shadow[4],
+  },
+  iconContainer: {
+    width: ICON_CIRCLE,
+    height: ICON_CIRCLE,
+    borderRadius: radius.pill,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    marginBottom: space.lg,
+  },
+  iconInformative: { backgroundColor: t.status.informative.background },
+  iconPositive: { backgroundColor: t.status.positive.background },
+  title: {
+    ...typography.title3,
+    color: t.text.primary,
+    marginBottom: space.sm,
+    textAlign: 'center' as const,
+  },
+  description: {
+    ...typography.body,
+    color: t.text.secondary,
+    textAlign: 'center' as const,
+    marginBottom: space.lg,
+  },
+  progressContainer: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.sm,
+    marginBottom: space.lg,
+  },
+  progressText: {
+    ...typography.footnote,
+    fontVariant: ['tabular-nums' as const],
+    color: t.text.secondary,
+  },
+  errorRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'flex-start' as const,
+    gap: space.sm,
+    width: '100%' as const,
+    padding: space.md,
+    marginBottom: space.lg,
+    borderRadius: radius.button,
+    borderWidth: 1,
+    borderColor: t.status.negative.border,
+    backgroundColor: t.status.negative.background,
+  },
+  errorText: {
+    ...typography.footnote,
+    color: t.status.negative.text,
+    flex: 1,
+  },
+  actions: {
+    flexDirection: 'row' as const,
+    flexWrap: 'wrap' as const,
+    gap: space.sm,
+    width: '100%' as const,
+  },
+  button: {
+    flexGrow: 1,
+    flexBasis: 120,
+    minHeight: touchTarget,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.sm,
+    borderRadius: radius.button,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+  },
+  secondaryButton: {
+    borderWidth: 1,
+    borderColor: t.border.button,
+  },
+  secondaryButtonPressed: {
+    backgroundColor: t.brand.subtle,
+  },
+  secondaryButtonText: {
+    ...typography.callout,
+    fontWeight: fontWeight.semibold,
+    color: t.text.primary,
+    textAlign: 'center' as const,
+  },
+  primaryButton: {
+    backgroundColor: t.brand.fill,
+  },
+  primaryButtonPressed: {
+    backgroundColor: t.brand.fillPressed,
+  },
+  primaryButtonText: {
+    ...typography.callout,
+    fontWeight: fontWeight.semibold,
+    color: t.brand.onFill,
+    textAlign: 'center' as const,
+  },
+});
+
 export function UpdatePrompt({ asModal = true }: UpdatePromptProps) {
-  const theme = useTheme();
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
   const {
     isUpdateAvailable,
     isUpdatePending,
     isDownloading,
-    isChecking,
     error,
     downloadProgress,
     downloadUpdate,
@@ -51,93 +169,82 @@ export function UpdatePrompt({ asModal = true }: UpdatePromptProps) {
     return null;
   }
 
+  const percent = downloadProgress > 0 ? Math.round(downloadProgress * 100) : null;
+
+  const renderButton = (label: string, onPress: () => void, primary: boolean) => (
+    <Pressable
+      key={label}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.button,
+        primary ? styles.primaryButton : styles.secondaryButton,
+        pressed && (primary ? styles.primaryButtonPressed : styles.secondaryButtonPressed),
+      ]}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+    >
+      <Text style={primary ? styles.primaryButtonText : styles.secondaryButtonText}>{label}</Text>
+    </Pressable>
+  );
+
   const content = (
-    <Surface style={[styles.container, { backgroundColor: theme.colors.surface }]} elevation={4}>
-      {/* Icon */}
-      <View style={[styles.iconContainer, { backgroundColor: theme.colors.primaryContainer }]}>
-        <Ionicons
-          name={isUpdatePending ? 'checkmark-circle' : 'cloud-download'}
-          size={32}
-          color={theme.colors.primary}
+    <View style={styles.container} accessibilityViewIsModal={asModal}>
+      <View
+        style={[styles.iconContainer, isUpdatePending ? styles.iconPositive : styles.iconInformative]}
+        accessible={false}
+        importantForAccessibility="no-hide-descendants"
+      >
+        <MaterialCommunityIcons
+          name={isUpdatePending ? 'check-circle-outline' : 'information-outline'}
+          size={iconSize.xl}
+          color={isUpdatePending ? t.status.positive.text : t.status.informative.text}
         />
       </View>
 
-      {/* Title */}
-      <Text variant="titleMedium" style={[styles.title, { color: theme.colors.onSurface }]}>
-        {isUpdatePending ? 'Update Ready' : 'Update Available'}
+      <Text style={styles.title} accessibilityRole="header">
+        {isUpdatePending ? 'Update ready' : 'Update available'}
       </Text>
 
-      {/* Description */}
-      <Text variant="bodyMedium" style={[styles.description, { color: theme.colors.onSurfaceVariant }]}>
+      <Text style={styles.description}>
         {isDownloading
-          ? 'Downloading update...'
+          ? 'Downloading the new version of the app.'
           : isUpdatePending
-            ? 'A new version has been downloaded. Restart to apply the update.'
+            ? 'The new version has been downloaded. Restart the app to use it.'
             : 'A new version of the app is available.'}
       </Text>
 
-      {/* Progress indicator */}
       {isDownloading && (
-        <View style={styles.progressContainer}>
-          <ActivityIndicator size="small" color={theme.colors.primary} />
-          <Text variant="bodySmall" style={[styles.progressText, { color: theme.colors.onSurfaceVariant }]}>
-            {downloadProgress > 0 ? `${Math.round(downloadProgress * 100)}%` : 'Downloading...'}
+        <View
+          style={styles.progressContainer}
+          accessible
+          accessibilityLabel={percent !== null ? `Downloading, ${percent}%` : 'Downloading'}
+          accessibilityState={{ busy: true }}
+        >
+          <ActivityIndicator size="small" color={t.brand.tint} />
+          <Text style={styles.progressText}>
+            {percent !== null ? `Downloading… ${percent}%` : 'Downloading…'}
           </Text>
         </View>
       )}
 
-      {/* Error message */}
       {error && (
-        <Text variant="bodySmall" style={[styles.error, { color: theme.colors.error }]}>
-          {error.message}
-        </Text>
+        <View style={styles.errorRow} accessibilityRole="alert">
+          <MaterialCommunityIcons name="alert-circle" size={iconSize.md} color={t.status.negative.text} />
+          <Text style={styles.errorText}>
+            Couldn&apos;t download the update. Check your connection and try again.
+          </Text>
+        </View>
       )}
 
-      {/* Actions */}
       <View style={styles.actions}>
-        {isUpdatePending ? (
-          <>
-            <Button
-              mode="outlined"
-              onPress={dismissUpdate}
-              style={styles.button}
-              textColor={theme.colors.onSurfaceVariant}
-            >
-              Later
-            </Button>
-            <Button
-              mode="contained"
-              onPress={applyUpdate}
-              style={styles.button}
-              buttonColor={theme.colors.primary}
-            >
-              Restart Now
-            </Button>
-          </>
-        ) : (
-          !isDownloading && (
-            <>
-              <Button
-                mode="outlined"
-                onPress={dismissUpdate}
-                style={styles.button}
-                textColor={theme.colors.onSurfaceVariant}
-              >
-                Not Now
-              </Button>
-              <Button
-                mode="contained"
-                onPress={downloadUpdate}
-                style={styles.button}
-                buttonColor={theme.colors.primary}
-              >
-                Download
-              </Button>
-            </>
-          )
-        )}
+        {isUpdatePending
+          ? [renderButton('Later', dismissUpdate, false), renderButton('Restart app', applyUpdate, true)]
+          : !isDownloading && [
+              renderButton('Not now', dismissUpdate, false),
+              renderButton('Download update', downloadUpdate, true),
+            ]}
       </View>
-    </Surface>
+    </View>
   );
 
   if (asModal) {
@@ -147,9 +254,16 @@ export function UpdatePrompt({ asModal = true }: UpdatePromptProps) {
           visible={isUpdateAvailable || isUpdatePending}
           transparent
           animationType="fade"
+          statusBarTranslucent
           onRequestClose={dismissUpdate}
         >
           <View style={styles.modalOverlay}>
+            <Pressable
+              style={StyleSheet.absoluteFill}
+              onPress={dismissUpdate}
+              accessible={false}
+              importantForAccessibility="no"
+            />
             {content}
           </View>
         </Modal>
@@ -159,61 +273,5 @@ export function UpdatePrompt({ asModal = true }: UpdatePromptProps) {
 
   return content;
 }
-
-const styles = StyleSheet.create({
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 24,
-  },
-  container: {
-    borderRadius: 16,
-    padding: 24,
-    maxWidth: 340,
-    width: '100%',
-    alignItems: 'center',
-  },
-  iconContainer: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  title: {
-    fontWeight: '600',
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  description: {
-    textAlign: 'center',
-    marginBottom: 16,
-  },
-  progressContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  progressText: {
-    marginLeft: 8,
-  },
-  error: {
-    marginBottom: 16,
-    textAlign: 'center',
-  },
-  actions: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 12,
-    width: '100%',
-  },
-  button: {
-    flex: 1,
-    minWidth: 100,
-  },
-});
 
 export default UpdatePrompt;

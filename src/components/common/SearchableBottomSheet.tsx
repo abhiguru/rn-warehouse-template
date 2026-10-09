@@ -17,8 +17,8 @@
  *   isVisible={isVisible}
  *   onClose={onClose}
  *   onSelect={handleSelect}
- *   title="Select Customer"
- *   placeholder="Search customers..."
+ *   title="Select customer"
+ *   placeholder="Search customers"
  *   searchFn={searchCustomers}
  *   renderItem={renderCustomerItem}
  *   keyExtractor={(item) => item.id}
@@ -37,9 +37,10 @@ import React, {
 import {
   View,
   Text,
-  TouchableOpacity,
+  Pressable,
   StyleSheet,
   ActivityIndicator,
+  BackHandler,
   ListRenderItem,
 } from 'react-native';
 import {
@@ -50,10 +51,12 @@ import {
   BottomSheetBackdropProps,
 } from '@gorhom/bottom-sheet';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import theme from '@/theme';
 import { useSearchAutocomplete } from '@/hooks';
-import { useListColors } from '@/hooks/useListColors';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { fontWeight, iconSize, layout, radius, space, touchTarget, typography } from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
 import { useAppSelector } from '@/store/hooks';
 
 // ============================================================================
@@ -91,7 +94,10 @@ export interface SearchableBottomSheetProps<T> {
   debounceMs?: number;
   /** Optional: Snap points (default: ['60%', '95%']) */
   snapPoints?: string[];
-  /** Optional: Backdrop opacity (default: 0.4) */
+  /**
+   * @deprecated The scrim colour now comes from the theme (`overlay.scrim`);
+   * this value is ignored and kept only so existing callers still compile.
+   */
   backdropOpacity?: number;
   /** Optional: Empty state when no search results */
   emptySearchText?: string;
@@ -164,7 +170,7 @@ export function SearchableBottomSheet<T extends { id: string }>({
   onClose,
   onSelect,
   title,
-  placeholder = 'Search...',
+  placeholder = 'Search',
   searchFn,
   renderItem,
   keyExtractor,
@@ -175,10 +181,9 @@ export function SearchableBottomSheet<T extends { id: string }>({
   minQueryLength = 2,
   debounceMs = 300,
   snapPoints: customSnapPoints,
-  backdropOpacity = 0.4,
   emptySearchText,
   emptyInitialText = 'Search to find items',
-  emptySubText = 'Type at least 2 characters',
+  emptySubText = 'Type at least 2 letters.',
 }: SearchableBottomSheetProps<T>): ReactElement {
   const bottomSheetRef = useRef<BottomSheetModal>(null);
   const inputRef = useRef<React.ElementRef<typeof BottomSheetTextInput>>(null);
@@ -186,116 +191,9 @@ export function SearchableBottomSheet<T extends { id: string }>({
   // Get user ID for scoping recent items storage
   const userId = useAppSelector((state) => state.auth.userProfile?.id);
 
-  // Theme colors for dark mode support
-  const colors = useListColors();
-
-  // Dynamic styles based on theme
-  const dynamicStyles = useMemo(() => StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor: colors.cellBackground,
-    },
-    header: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      paddingHorizontal: theme.spacing.lg,
-      paddingVertical: theme.spacing.md,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.cellDivider,
-    },
-    headerTitle: {
-      fontSize: theme.fontSize.lg,
-      fontWeight: theme.fontWeight.semibold,
-      color: colors.textPrimary,
-    },
-    closeButton: {
-      padding: theme.spacing.sm,
-      borderRadius: theme.borderRadius.full,
-      backgroundColor: colors.gray100,
-      minHeight: theme.touchTarget.minimum,
-      minWidth: theme.touchTarget.minimum,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    searchContainer: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      backgroundColor: colors.gray50,
-      borderRadius: theme.borderRadius.lg,
-      paddingHorizontal: theme.spacing.md,
-      minHeight: theme.touchTarget.minimum,
-      marginHorizontal: theme.spacing.lg,
-      marginTop: theme.spacing.lg,
-      marginBottom: theme.spacing.sm,
-      borderWidth: 1,
-      borderColor: colors.gray200,
-    },
-    input: {
-      flex: 1,
-      fontSize: theme.fontSize.base,
-      color: colors.textPrimary,
-    },
-    separator: {
-      height: 1,
-      backgroundColor: colors.gray100,
-      marginHorizontal: theme.spacing.lg,
-    },
-    emptyContainer: {
-      flex: 1,
-      justifyContent: 'center',
-      alignItems: 'center',
-      paddingVertical: theme.spacing['3xl'],
-      paddingHorizontal: theme.spacing['2xl'],
-    },
-    emptyText: {
-      fontSize: theme.fontSize.base,
-      color: colors.textSecondary,
-      textAlign: 'center',
-      marginBottom: theme.spacing.sm,
-    },
-    emptySubText: {
-      fontSize: theme.fontSize.sm,
-      color: colors.textTertiary,
-      textAlign: 'center',
-    },
-    recentSection: {
-      width: '100%',
-      paddingHorizontal: theme.spacing.md,
-    },
-    recentTitle: {
-      fontSize: theme.fontSize.sm,
-      fontWeight: theme.fontWeight.semibold,
-      color: colors.textTertiary,
-      textTransform: 'uppercase',
-      letterSpacing: 0.5,
-      marginBottom: theme.spacing.md,
-    },
-    recentItem: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      paddingVertical: theme.spacing.md,
-      paddingHorizontal: theme.spacing.sm,
-      backgroundColor: colors.gray50,
-      borderRadius: theme.borderRadius.lg,
-      marginBottom: theme.spacing.sm,
-    },
-    recentIcon: {
-      width: 32,
-      height: 32,
-      borderRadius: 16,
-      backgroundColor: colors.cellBackground,
-      alignItems: 'center',
-      justifyContent: 'center',
-      marginRight: theme.spacing.md,
-    },
-    recentName: {
-      fontSize: theme.fontSize.base,
-      color: colors.textPrimary,
-      fontWeight: theme.fontWeight.medium,
-      flex: 1,
-    },
-  }), [colors]);
+  const t = useTokens();
+  const dynamicStyles = useThemedStyles(makeStyles);
+  const insets = useSafeAreaInsets();
 
   // Recent items (optional feature, user-scoped)
   const { recentItems, loadRecentItems, saveToRecent } = useRecentItems<T>(
@@ -347,10 +245,12 @@ export function SearchableBottomSheet<T extends { id: string }>({
         {...props}
         disappearsOnIndex={-1}
         appearsOnIndex={0}
-        opacity={backdropOpacity}
+        opacity={1}
+        pressBehavior="close"
+        style={[props.style, dynamicStyles.backdrop]}
       />
     ),
-    [backdropOpacity]
+    [dynamicStyles.backdrop]
   );
 
   // Handle item selection
@@ -373,24 +273,25 @@ export function SearchableBottomSheet<T extends { id: string }>({
 
     return (
       <View style={dynamicStyles.recentSection}>
-        <Text style={dynamicStyles.recentTitle}>Recent</Text>
+        <Text style={dynamicStyles.recentTitle} accessibilityRole="header">Recent</Text>
         {recentItems.map((item) => (
           <React.Fragment key={keyExtractor(item)}>
             {renderRecentItem ? (
               renderRecentItem(item, handleItemSelect)
             ) : (
-              <TouchableOpacity
-                style={dynamicStyles.recentItem}
+              <Pressable
+                style={({ pressed }) => [dynamicStyles.recentItem, pressed && dynamicStyles.recentItemPressed]}
                 onPress={() => handleItemSelect(item)}
-                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel={`Select ${(item as T & { name?: string }).name || keyExtractor(item)}`}
               >
                 <View style={dynamicStyles.recentIcon}>
-                  <Icon name="clock-outline" size={16} color={colors.textSecondary} />
+                  <Icon name="clock-outline" size={iconSize.sm} color={t.icon.secondary} />
                 </View>
                 <Text style={dynamicStyles.recentName} numberOfLines={1}>
                   {(item as T & { name?: string }).name || keyExtractor(item)}
                 </Text>
-              </TouchableOpacity>
+              </Pressable>
             )}
           </React.Fragment>
         ))}
@@ -404,7 +305,7 @@ export function SearchableBottomSheet<T extends { id: string }>({
     renderRecentItem,
     handleItemSelect,
     dynamicStyles,
-    colors,
+    t,
   ]);
 
   // Empty component
@@ -412,8 +313,8 @@ export function SearchableBottomSheet<T extends { id: string }>({
     if (isLoading) {
       return (
         <View style={dynamicStyles.emptyContainer}>
-          <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={dynamicStyles.emptyText}>Searching...</Text>
+          <ActivityIndicator size="large" color={t.brand.tint} />
+          <Text style={dynamicStyles.emptyText}>Searching…</Text>
         </View>
       );
     }
@@ -421,10 +322,16 @@ export function SearchableBottomSheet<T extends { id: string }>({
     if (searchQuery.length >= minQueryLength) {
       return (
         <View style={dynamicStyles.emptyContainer}>
+          <Icon
+            name="magnify"
+            size={iconSize.hero}
+            color={t.icon.secondary}
+            style={styles.emptyIcon}
+          />
           <Text style={dynamicStyles.emptyText}>
-            {emptySearchText || `No results for "${searchQuery}"`}
+            {emptySearchText || `Nothing matches "${searchQuery}"`}
           </Text>
-          <Text style={dynamicStyles.emptySubText}>Try different search terms</Text>
+          <Text style={dynamicStyles.emptySubText}>Try fewer letters or a different word.</Text>
         </View>
       );
     }
@@ -436,9 +343,9 @@ export function SearchableBottomSheet<T extends { id: string }>({
           <>
             <Icon
               name="magnify"
-              size={48}
-              color={colors.textTertiary}
-              style={{ marginBottom: theme.spacing.lg }}
+              size={iconSize.hero}
+              color={t.icon.secondary}
+              style={styles.emptyIcon}
             />
             <Text style={dynamicStyles.emptyText}>{emptyInitialText}</Text>
             <Text style={dynamicStyles.emptySubText}>{emptySubText}</Text>
@@ -456,7 +363,7 @@ export function SearchableBottomSheet<T extends { id: string }>({
     recentItems,
     renderRecentSection,
     dynamicStyles,
-    colors,
+    t,
   ]);
 
   // Wrapped renderItem - passes item and onSelect to parent's renderItem
@@ -480,6 +387,16 @@ export function SearchableBottomSheet<T extends { id: string }>({
     }
   }, [isVisible, recentItemsKey, loadRecentItems]);
 
+  // Android back closes the sheet before leaving the screen (style guide 15)
+  useEffect(() => {
+    if (!isVisible) return undefined;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      bottomSheetRef.current?.dismiss();
+      return true;
+    });
+    return () => sub.remove();
+  }, [isVisible]);
+
   // Set initial search query if currentValue exists
   useEffect(() => {
     if (currentValue?.name && isVisible) {
@@ -499,35 +416,39 @@ export function SearchableBottomSheet<T extends { id: string }>({
       enablePanDownToClose
       android_keyboardInputMode="adjustResize"
       enableDynamicSizing={false}
-      backgroundStyle={{ backgroundColor: colors.cellBackground }}
-      handleIndicatorStyle={{ backgroundColor: colors.gray300 }}
+      backgroundStyle={dynamicStyles.sheetBackground}
+      handleIndicatorStyle={dynamicStyles.handleIndicator}
     >
       <View style={dynamicStyles.container}>
         {/* Header */}
         <View style={dynamicStyles.header}>
-          <Text style={dynamicStyles.headerTitle}>{title}</Text>
-          <TouchableOpacity
-            style={dynamicStyles.closeButton}
+          <Text style={dynamicStyles.headerTitle} accessibilityRole="header" numberOfLines={2}>
+            {title}
+          </Text>
+          <Pressable
+            style={({ pressed }) => [dynamicStyles.closeButton, pressed && dynamicStyles.closeButtonPressed]}
             onPress={() => bottomSheetRef.current?.dismiss()}
-            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="Close"
           >
-            <Icon name="close" size={24} color={colors.textSecondary} />
-          </TouchableOpacity>
+            <Icon name="close" size={iconSize.lg} color={t.icon.primary} />
+          </Pressable>
         </View>
 
         {/* Search Input */}
         <View style={dynamicStyles.searchContainer}>
           <Icon
             name="magnify"
-            size={18}
-            color={colors.textSecondary}
-            style={{ marginRight: theme.spacing.sm }}
+            size={iconSize.md}
+            color={t.icon.secondary}
+            style={styles.searchIcon}
           />
           <BottomSheetTextInput
             ref={inputRef}
             style={dynamicStyles.input}
             placeholder={placeholder}
-            placeholderTextColor={colors.textTertiary}
+            placeholderTextColor={t.text.placeholder}
+            accessibilityLabel={placeholder}
             value={searchQuery}
             onChangeText={handleSearchChange}
             returnKeyType="search"
@@ -538,21 +459,22 @@ export function SearchableBottomSheet<T extends { id: string }>({
           {isLoading && (
             <ActivityIndicator
               size="small"
-              color={colors.primary}
+              color={t.brand.tint}
               style={styles.loader}
             />
           )}
           {searchQuery.length > 0 && !isLoading && (
-            <TouchableOpacity
+            <Pressable
               style={styles.clearButton}
               onPress={() => {
                 clearSearch();
                 inputRef.current?.focus();
               }}
-              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel="Clear search"
             >
-              <Icon name="close" size={18} color={colors.textSecondary} />
-            </TouchableOpacity>
+              <Icon name="close-circle" size={iconSize.md} color={t.icon.secondary} />
+            </Pressable>
           )}
         </View>
 
@@ -561,7 +483,7 @@ export function SearchableBottomSheet<T extends { id: string }>({
           data={results}
           renderItem={wrappedRenderItem}
           keyExtractor={keyExtractor}
-          contentContainerStyle={styles.listContent}
+          contentContainerStyle={[styles.listContent, { paddingBottom: space.xl + insets.bottom }]}
           showsVerticalScrollIndicator={true}
           keyboardShouldPersistTaps="handled"
           ListEmptyComponent={ListEmptyComponent}
@@ -573,18 +495,157 @@ export function SearchableBottomSheet<T extends { id: string }>({
 }
 
 // ============================================================================
-// Styles (Static layout only - colors are in dynamicStyles)
+// Styles
 // ============================================================================
+
+const makeStyles = (t: ThemeTokens) => ({
+  backdrop: {
+    backgroundColor: t.overlay.scrim,
+  },
+  sheetBackground: {
+    backgroundColor: t.surface.sheet,
+    borderTopLeftRadius: radius.sheet,
+    borderTopRightRadius: radius.sheet,
+    ...t.shadow[4],
+  },
+  handleIndicator: {
+    backgroundColor: t.border.separator,
+    width: 36,
+    height: 4,
+  },
+  container: {
+    flex: 1,
+    backgroundColor: t.surface.sheet,
+  },
+  header: {
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'center' as const,
+    paddingLeft: space.lg,
+    paddingRight: space.sm,
+    paddingVertical: space.xs,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.divider,
+  },
+  headerTitle: {
+    ...typography.headline,
+    flex: 1,
+    color: t.text.primary,
+  },
+  closeButton: {
+    borderRadius: radius.pill,
+    minHeight: touchTarget,
+    minWidth: touchTarget,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+  },
+  closeButtonPressed: {
+    backgroundColor: t.surface.cardPressed,
+  },
+  searchContainer: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    backgroundColor: t.surface.field,
+    borderRadius: radius.field,
+    paddingHorizontal: space.md,
+    minHeight: touchTarget,
+    marginHorizontal: space.lg,
+    marginTop: space.lg,
+    marginBottom: space.sm,
+    borderWidth: 1,
+    borderColor: t.border.field,
+  },
+  input: {
+    ...typography.body,
+    flex: 1,
+    color: t.text.primary,
+  },
+  separator: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: t.border.divider,
+    marginLeft: space.lg,
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    paddingVertical: space.giant,
+    paddingHorizontal: space.xxxl,
+  },
+  emptyText: {
+    ...typography.title3,
+    color: t.text.primary,
+    textAlign: 'center' as const,
+    marginBottom: space.sm,
+  },
+  emptySubText: {
+    ...typography.subhead,
+    color: t.text.secondary,
+    textAlign: 'center' as const,
+  },
+  recentSection: {
+    width: '100%' as const,
+    paddingHorizontal: space.md,
+  },
+  recentTitle: {
+    ...typography.footnote,
+    fontWeight: fontWeight.semibold,
+    color: t.text.secondary,
+    textTransform: 'uppercase' as const,
+    letterSpacing: 0.5,
+    marginBottom: space.md,
+  },
+  recentItem: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    minHeight: layout.rowMinHeight,
+    paddingVertical: space.md,
+    paddingHorizontal: space.sm,
+    backgroundColor: t.surface.card,
+    borderRadius: radius.card,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: t.border.divider,
+    marginBottom: space.sm,
+  },
+  recentItemPressed: {
+    backgroundColor: t.surface.cardPressed,
+  },
+  recentIcon: {
+    width: layout.avatar.sm,
+    height: layout.avatar.sm,
+    borderRadius: radius.pill,
+    backgroundColor: t.background.base,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    marginRight: space.md,
+  },
+  recentName: {
+    ...typography.body,
+    fontWeight: fontWeight.medium,
+    color: t.text.primary,
+    flex: 1,
+  },
+});
 
 const styles = StyleSheet.create({
   loader: {
-    marginLeft: theme.spacing.sm,
+    marginLeft: space.sm,
+  },
+  searchIcon: {
+    marginRight: space.sm,
+  },
+  emptyIcon: {
+    marginBottom: space.lg,
   },
   clearButton: {
-    padding: theme.spacing.xs,
+    minWidth: touchTarget,
+    minHeight: touchTarget,
+    marginRight: -space.md,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   listContent: {
-    paddingBottom: theme.spacing.xl,
+    paddingBottom: space.xl,
   },
 });
 

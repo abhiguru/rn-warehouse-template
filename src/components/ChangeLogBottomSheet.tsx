@@ -7,13 +7,14 @@
  * Shows activity analytics, item changes, dispatches, and attribution.
  */
 
-import React, { useCallback, useMemo, useRef, forwardRef, useImperativeHandle } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, forwardRef, useImperativeHandle } from 'react';
 import {
   View,
   Text,
   Pressable,
   StyleSheet,
   ActivityIndicator,
+  BackHandler,
   Platform,
 } from 'react-native';
 import {
@@ -22,46 +23,12 @@ import {
   BottomSheetBackdrop,
   BottomSheetBackdropProps,
 } from '@gorhom/bottom-sheet';
-import { Ionicons } from '@expo/vector-icons';
-import { useListColors } from '@/hooks/useListColors';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { fontWeight, iconSize, radius, space, touchTarget, typography } from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
 import { ChangeLogEntry, CustomerSummary, ChangeLogAnalytics } from '@/types/order.types';
-
-// ============================================================================
-// SAP Fiori Design Constants
-// ============================================================================
-const FIORI = {
-  // Bottom Sheet dimensions
-  bottomSheet: {
-    cornerRadius: 16,
-    handleWidth: 36,
-    handleHeight: 5,
-    handleTopMargin: 8,
-    handleColor: '#C6C6C8',
-    backdropOpacity: 0.4,
-  },
-  // Header
-  header: {
-    height: 56,
-    paddingHorizontal: 16,
-  },
-  // Touch targets
-  touch: {
-    minHeight: 44,
-  },
-  // Typography
-  typography: {
-    title: { fontSize: 17, fontWeight: '600' as const, lineHeight: 22 },
-    subtitle: { fontSize: 15, fontWeight: '400' as const, lineHeight: 20 },
-    body: { fontSize: 15, fontWeight: '400' as const, lineHeight: 20 },
-    caption: { fontSize: 13, fontWeight: '400' as const, lineHeight: 18 },
-    badge: { fontSize: 11, fontWeight: '600' as const, lineHeight: 14 },
-  },
-  // Colors
-  colors: {
-    background: '#FFFFFF',
-    divider: '#E5E5E5',
-  },
-} as const;
 
 interface ChangeLogBottomSheetProps {
   isVisible: boolean;
@@ -94,203 +61,9 @@ const ChangeLogBottomSheet = forwardRef<ChangeLogBottomSheetRef, ChangeLogBottom
   const bottomSheetModalRef = useRef<BottomSheetModal>(null);
   const snapPoints = useMemo(() => ['25%', '50%', '90%'], []);
 
-  // Theme colors for dark mode support
-  const colors = useListColors();
-
-  // Dynamic styles based on theme
-  const dynamicStyles = useMemo(() => StyleSheet.create({
-    header: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      minHeight: FIORI.header.height,
-      paddingHorizontal: FIORI.header.paddingHorizontal,
-      paddingVertical: 12,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.cellDivider,
-    },
-    headerTitle: {
-      fontSize: FIORI.typography.title.fontSize,
-      fontWeight: FIORI.typography.title.fontWeight,
-      lineHeight: FIORI.typography.title.lineHeight,
-      color: colors.textPrimary,
-    },
-    headerCustomerName: {
-      fontSize: FIORI.typography.subtitle.fontSize,
-      fontWeight: '500' as const,
-      color: colors.textSecondary,
-      marginBottom: 2,
-    },
-    headerSubtitle: {
-      fontSize: FIORI.typography.caption.fontSize,
-      color: colors.textTertiary,
-      marginTop: 2,
-    },
-    closeButtonPressed: {
-      backgroundColor: colors.gray100,
-    },
-    loadingText: {
-      marginTop: 16,
-      fontSize: FIORI.typography.body.fontSize,
-      color: colors.textSecondary,
-    },
-    relativeTime: {
-      fontSize: FIORI.typography.caption.fontSize,
-      fontWeight: '600',
-      color: colors.textPrimary,
-    },
-    actionDescription: {
-      fontSize: FIORI.typography.body.fontSize,
-      fontWeight: '600',
-      color: colors.textPrimary,
-      marginBottom: 6,
-      lineHeight: 22,
-    },
-    grnDetails: {
-      fontSize: FIORI.typography.caption.fontSize,
-      color: colors.textSecondary,
-      marginBottom: 8,
-      lineHeight: 18,
-      fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
-    },
-    quantityChange: {
-      fontSize: 14,
-      fontWeight: '500',
-      color: colors.textPrimary,
-      lineHeight: 20,
-    },
-    changeAmount: {
-      fontSize: FIORI.typography.badge.fontSize,
-      fontWeight: '600',
-      paddingHorizontal: 6,
-      paddingVertical: 2,
-      borderRadius: 4,
-      backgroundColor: colors.gray100,
-      overflow: 'hidden',
-    },
-    itemDetailRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 6,
-      backgroundColor: colors.gray50,
-      paddingHorizontal: 10,
-      paddingVertical: 6,
-      borderRadius: 8,
-    },
-    itemDetail: {
-      fontSize: 12,
-      color: colors.textSecondary,
-      lineHeight: 16,
-      flexShrink: 1,
-    },
-    stockInfoRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 6,
-      backgroundColor: colors.blueLight || colors.gray50,
-      paddingHorizontal: 10,
-      paddingVertical: 6,
-      borderRadius: 8,
-      marginBottom: 8,
-    },
-    stockInfo: {
-      fontSize: 12,
-      color: colors.textSecondary,
-      lineHeight: 16,
-      flexShrink: 1,
-    },
-    recentBadge: {
-      fontSize: FIORI.typography.badge.fontSize,
-      fontWeight: '600',
-      color: colors.warning,
-    },
-    analyticsContainer: {
-      backgroundColor: colors.gray50,
-      marginHorizontal: FIORI.header.paddingHorizontal,
-      marginVertical: 8,
-      borderRadius: 12,
-      padding: 16,
-      ...Platform.select({
-        ios: {
-          shadowColor: '#000',
-          shadowOffset: { width: 0, height: 1 },
-          shadowOpacity: 0.05,
-          shadowRadius: 2,
-        },
-        android: {
-          elevation: 1,
-        },
-      }),
-    },
-    analyticsTitle: {
-      fontSize: FIORI.typography.caption.fontSize,
-      fontWeight: '600',
-      color: colors.textPrimary,
-      marginBottom: 12,
-    },
-    analyticsNumber: {
-      fontSize: 20,
-      fontWeight: '700',
-      color: colors.primary,
-    },
-    analyticsLabel: {
-      fontSize: FIORI.typography.badge.fontSize,
-      color: colors.textTertiary,
-      textAlign: 'center',
-      marginTop: 4,
-    },
-    attribution: {
-      fontSize: FIORI.typography.caption.fontSize,
-      color: colors.textTertiary,
-      lineHeight: 18,
-      marginTop: 4,
-    },
-    separator: {
-      height: StyleSheet.hairlineWidth,
-      backgroundColor: colors.gray200,
-      marginTop: 16,
-      marginLeft: 20,
-    },
-    emptyText: {
-      fontSize: FIORI.typography.title.fontSize,
-      fontWeight: '600',
-      color: colors.textPrimary,
-      marginBottom: 8,
-      textAlign: 'center',
-    },
-    emptySubtext: {
-      fontSize: FIORI.typography.body.fontSize,
-      color: colors.textSecondary,
-      textAlign: 'center',
-      lineHeight: 22,
-    },
-    errorText: {
-      fontSize: FIORI.typography.title.fontSize,
-      fontWeight: '600',
-      color: colors.error,
-      marginBottom: 8,
-      textAlign: 'center',
-    },
-    loadMoreButton: {
-      marginHorizontal: FIORI.header.paddingHorizontal,
-      marginTop: 16,
-      minHeight: FIORI.touch.minHeight,
-      paddingVertical: 12,
-      paddingHorizontal: 24,
-      backgroundColor: colors.gray100,
-      borderRadius: 8,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    loadMoreButtonPressed: {
-      backgroundColor: colors.gray200,
-    },
-    loadMoreText: {
-      fontSize: FIORI.typography.body.fontSize,
-      fontWeight: '600',
-      color: colors.textPrimary,
-    },
-  }), [colors]);
+  const t = useTokens();
+  const dynamicStyles = useThemedStyles(makeStyles);
+  const insets = useSafeAreaInsets();
 
   useImperativeHandle(ref, () => ({
     present: () => bottomSheetModalRef.current?.present(),
@@ -305,44 +78,53 @@ const ChangeLogBottomSheet = forwardRef<ChangeLogBottomSheetRef, ChangeLogBottom
     }
   }, [isVisible]);
 
+  // Android back closes the sheet before leaving the screen (style guide 15)
+  useEffect(() => {
+    if (!isVisible) return undefined;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      onClose();
+      return true;
+    });
+    return () => sub.remove();
+  }, [isVisible, onClose]);
+
   const renderBackdrop = useCallback(
     (props: BottomSheetBackdropProps) => (
       <BottomSheetBackdrop
         {...props}
         disappearsOnIndex={-1}
         appearsOnIndex={0}
-        opacity={0.5}
+        opacity={1}
+        pressBehavior="close"
+        style={[props.style, dynamicStyles.backdrop]}
       />
     ),
-    []
+    [dynamicStyles.backdrop]
   );
 
-  // Helper function to get status color based on change type (Fiori semantic colors)
+  // Dot colour for the kind of change. The action text beside it carries the meaning.
   const getStatusColor = useCallback((changeType: string): string => {
     switch (changeType.toLowerCase()) {
       case 'order_item_added':
       case 'item_added':
-        return colors.success;
-      case 'quantity_updated':
-      case 'item_updated':
-        return colors.primary;
-      case 'order_item_removed':
-      case 'item_removed':
-        return colors.error;
-      case 'order_created':
-        return colors.teal; // Teal for creation
-      case 'order':
-      case 'order_updated':
-        return colors.primary;
       case 'dispatch':
       case 'dispatch_created':
-        return colors.success;
+        return t.status.positive.element;
+      case 'order_item_removed':
+      case 'item_removed':
+        return t.status.negative.element;
       case 'status_changed':
-        return colors.warning;
+        return t.status.critical.element;
+      case 'quantity_updated':
+      case 'item_updated':
+      case 'order_created':
+      case 'order':
+      case 'order_updated':
+        return t.status.informative.element;
       default:
-        return colors.gray400;
+        return t.status.neutral.element;
     }
-  }, [colors]);
+  }, [t]);
 
   // Format action description based on change details
   const formatActionDescription = useCallback((entry: ChangeLogEntry): string => {
@@ -413,7 +195,7 @@ const ChangeLogBottomSheet = forwardRef<ChangeLogBottomSheetRef, ChangeLogBottom
       <View style={styles.timelineEntry}>
         <View style={styles.timelineHeader}>
           <View style={styles.timestampSection}>
-            <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
+            <View style={[styles.statusDot, { backgroundColor: statusColor }]} importantForAccessibility="no" />
             <Text style={dynamicStyles.relativeTime}>{entry.relative_time}</Text>
           </View>
         </View>
@@ -439,7 +221,7 @@ const ChangeLogBottomSheet = forwardRef<ChangeLogBottomSheetRef, ChangeLogBottom
               {hasQuantityChange.change_amount !== undefined && hasQuantityChange.change_amount !== 0 && (
                 <Text style={[
                   dynamicStyles.changeAmount,
-                  { color: hasQuantityChange.change_amount > 0 ? colors.success : colors.error }
+                  { color: hasQuantityChange.change_amount > 0 ? t.status.positive.text : t.status.negative.text }
                 ]}>
                   {hasQuantityChange.change_amount > 0 ? '+' : ''}{hasQuantityChange.change_amount}
                 </Text>
@@ -452,7 +234,7 @@ const ChangeLogBottomSheet = forwardRef<ChangeLogBottomSheetRef, ChangeLogBottom
             <View style={styles.itemDetailsContainer}>
               {(itemDetails.rack || itemDetails.grn_item_rack) && (
                 <View style={dynamicStyles.itemDetailRow}>
-                  <Ionicons name="location-outline" size={12} color={colors.textSecondary} />
+                  <MaterialCommunityIcons name="view-grid-outline" size={iconSize.sm} color={t.icon.secondary} />
                   <Text style={dynamicStyles.itemDetail} numberOfLines={1}>
                     {itemDetails.rack || itemDetails.grn_item_rack}
                   </Text>
@@ -460,15 +242,15 @@ const ChangeLogBottomSheet = forwardRef<ChangeLogBottomSheetRef, ChangeLogBottom
               )}
               {(itemDetails.weight || itemDetails.grn_item_weight) && (
                 <View style={dynamicStyles.itemDetailRow}>
-                  <Ionicons name="scale-outline" size={12} color={colors.textSecondary} />
+                  <MaterialCommunityIcons name="scale" size={iconSize.sm} color={t.icon.secondary} />
                   <Text style={dynamicStyles.itemDetail} numberOfLines={1}>
-                    {itemDetails.weight || itemDetails.grn_item_weight}kg
+                    {itemDetails.weight || itemDetails.grn_item_weight} kg
                   </Text>
                 </View>
               )}
               {(itemDetails.package_mark || itemDetails.grn_item_package_mark) && (
                 <View style={dynamicStyles.itemDetailRow}>
-                  <Ionicons name="cube-outline" size={12} color={colors.textSecondary} />
+                  <MaterialCommunityIcons name="cube-outline" size={iconSize.sm} color={t.icon.secondary} />
                   <Text style={dynamicStyles.itemDetail} numberOfLines={1}>
                     {itemDetails.package_mark || itemDetails.grn_item_package_mark}
                   </Text>
@@ -480,9 +262,9 @@ const ChangeLogBottomSheet = forwardRef<ChangeLogBottomSheetRef, ChangeLogBottom
           {/* Stock information */}
           {hasStockInfo && (
             <View style={dynamicStyles.stockInfoRow}>
-              <Ionicons name="bar-chart-outline" size={12} color={colors.textSecondary} />
+              <MaterialCommunityIcons name="warehouse" size={iconSize.sm} color={t.icon.secondary} />
               <Text style={dynamicStyles.stockInfo} numberOfLines={1}>
-                Available Stock: {hasStockInfo.available_stock}
+                Available stock: {hasStockInfo.available_stock}
                 {hasStockInfo.stock_at_time !== hasStockInfo.available_stock &&
                   ` (was ${hasStockInfo.stock_at_time})`
                 }
@@ -493,22 +275,23 @@ const ChangeLogBottomSheet = forwardRef<ChangeLogBottomSheetRef, ChangeLogBottom
           <Text style={dynamicStyles.attribution} numberOfLines={2}>
             by {entry.changed_by_display_name || entry.changed_by_name}
             {entry.change_details?.reason && ` • ${entry.change_details.reason}`}
-            {entry.is_recent && <Text style={dynamicStyles.recentBadge}> • RECENT</Text>}
+            {entry.is_recent && <Text style={dynamicStyles.recentBadge}> • Recent</Text>}
           </Text>
         </View>
 
         <View style={dynamicStyles.separator} />
       </View>
     );
-  }, [getStatusColor, formatActionDescription, formatGRNDetails, dynamicStyles, colors]);
+  }, [getStatusColor, formatActionDescription, formatGRNDetails, dynamicStyles, t]);
 
   const renderEmpty = useCallback(() => {
     if (error) {
       return (
-        <View style={styles.emptyContainer}>
-          <Text style={dynamicStyles.errorText}>Failed to load changes</Text>
+        <View style={styles.emptyContainer} accessibilityRole="alert">
+          <MaterialCommunityIcons name="alert-circle-outline" size={iconSize.hero} color={t.status.negative.text} />
+          <Text style={dynamicStyles.errorText}>Couldn&apos;t load the change history</Text>
           <Text style={dynamicStyles.emptySubtext}>
-            {error}
+            Check your connection and try again.
           </Text>
         </View>
       );
@@ -516,13 +299,14 @@ const ChangeLogBottomSheet = forwardRef<ChangeLogBottomSheetRef, ChangeLogBottom
 
     return (
       <View style={styles.emptyContainer}>
-        <Text style={dynamicStyles.emptyText}>No changes recorded</Text>
+        <MaterialCommunityIcons name="history" size={iconSize.hero} color={t.icon.secondary} />
+        <Text style={dynamicStyles.emptyText}>No changes yet</Text>
         <Text style={dynamicStyles.emptySubtext}>
-          Changes to this customer's orders will appear here
+          Changes to this customer&apos;s orders appear here.
         </Text>
       </View>
     );
-  }, [error, dynamicStyles]);
+  }, [error, dynamicStyles, t]);
 
   const renderLoadMore = useCallback(() => {
     if (!hasMore && entries.length > 0) return null;
@@ -538,33 +322,34 @@ const ChangeLogBottomSheet = forwardRef<ChangeLogBottomSheetRef, ChangeLogBottom
         disabled={loading}
         accessibilityRole="button"
         accessibilityLabel="Load more changes"
+        accessibilityState={{ busy: loading && entries.length > 0, disabled: loading }}
       >
         {loading && entries.length > 0 ? (
           <View style={styles.loadMoreLoading}>
-            <ActivityIndicator size="small" color={colors.textSecondary} />
-            <Text style={dynamicStyles.loadMoreText}>Loading...</Text>
+            <ActivityIndicator size="small" color={t.brand.tint} />
+            <Text style={dynamicStyles.loadMoreText}>Loading…</Text>
           </View>
         ) : (
-          <Text style={dynamicStyles.loadMoreText}>Load More Changes</Text>
+          <Text style={dynamicStyles.loadMoreText}>Load more changes</Text>
         )}
       </Pressable>
     );
-  }, [hasMore, onLoadMore, loading, entries.length, dynamicStyles, colors]);
+  }, [hasMore, onLoadMore, loading, entries.length, dynamicStyles, t]);
 
   const renderAnalytics = useCallback(() => {
     if (!analytics) return null;
 
     return (
       <View style={dynamicStyles.analyticsContainer}>
-        <Text style={dynamicStyles.analyticsTitle}>Activity Summary</Text>
+        <Text style={dynamicStyles.analyticsTitle} accessibilityRole="header">Activity summary</Text>
         <View style={styles.analyticsGrid}>
           <View style={styles.analyticsStat}>
             <Text style={dynamicStyles.analyticsNumber}>{analytics.breakdown.item_changes}</Text>
-            <Text style={dynamicStyles.analyticsLabel}>Item Changes</Text>
+            <Text style={dynamicStyles.analyticsLabel}>Item changes</Text>
           </View>
           <View style={styles.analyticsStat}>
             <Text style={dynamicStyles.analyticsNumber}>{analytics.breakdown.order_changes}</Text>
-            <Text style={dynamicStyles.analyticsLabel}>Order Changes</Text>
+            <Text style={dynamicStyles.analyticsLabel}>Order changes</Text>
           </View>
           <View style={styles.analyticsStat}>
             <Text style={dynamicStyles.analyticsNumber}>{analytics.breakdown.dispatch_changes}</Text>
@@ -572,7 +357,7 @@ const ChangeLogBottomSheet = forwardRef<ChangeLogBottomSheetRef, ChangeLogBottom
           </View>
           <View style={styles.analyticsStat}>
             <Text style={dynamicStyles.analyticsNumber}>{analytics.activity_summary.recent_changes_24h}</Text>
-            <Text style={dynamicStyles.analyticsLabel}>Last 24h</Text>
+            <Text style={dynamicStyles.analyticsLabel}>Last 24 h</Text>
           </View>
         </View>
       </View>
@@ -585,8 +370,8 @@ const ChangeLogBottomSheet = forwardRef<ChangeLogBottomSheetRef, ChangeLogBottom
         <Text style={dynamicStyles.headerCustomerName} numberOfLines={1}>
           {customer?.name}
         </Text>
-        <Text style={dynamicStyles.headerTitle}>
-          Change History
+        <Text style={dynamicStyles.headerTitle} accessibilityRole="header">
+          Change history
         </Text>
         <Text style={dynamicStyles.headerSubtitle}>
           {analytics?.total_changes || entries.length} {(analytics?.total_changes || entries.length) === 1 ? 'change' : 'changes'}
@@ -602,10 +387,10 @@ const ChangeLogBottomSheet = forwardRef<ChangeLogBottomSheetRef, ChangeLogBottom
         accessibilityLabel="Close change history"
         accessibilityRole="button"
       >
-        <Ionicons name="close" size={24} color={colors.textTertiary} />
+        <MaterialCommunityIcons name="close" size={iconSize.lg} color={t.icon.primary} />
       </Pressable>
     </View>
-  ), [customer, entries.length, analytics, onClose, dynamicStyles, colors]);
+  ), [customer, entries.length, analytics, onClose, dynamicStyles, t]);
 
   return (
     <BottomSheetModal
@@ -615,16 +400,16 @@ const ChangeLogBottomSheet = forwardRef<ChangeLogBottomSheetRef, ChangeLogBottom
       onDismiss={onClose}
       backdropComponent={renderBackdrop}
       enablePanDownToClose
-      backgroundStyle={{ backgroundColor: colors.cellBackground }}
-      handleIndicatorStyle={{ backgroundColor: colors.gray300, width: 36 }}
+      backgroundStyle={dynamicStyles.sheetBackground}
+      handleIndicatorStyle={dynamicStyles.handleIndicator}
     >
       {renderHeader()}
       {renderAnalytics()}
 
       {loading ? (
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={dynamicStyles.loadingText}>Loading change history...</Text>
+          <ActivityIndicator size="large" color={t.brand.tint} />
+          <Text style={dynamicStyles.loadingText}>Loading change history…</Text>
         </View>
       ) : (
         <BottomSheetFlatList
@@ -633,7 +418,7 @@ const ChangeLogBottomSheet = forwardRef<ChangeLogBottomSheetRef, ChangeLogBottom
             `${item.change_id || item.order_id}-${item.change_timestamp}-${item.change_type}-${item.grn_no || ''}-${index}`
           }
           renderItem={renderTimelineEntry}
-          contentContainerStyle={styles.listContent}
+          contentContainerStyle={[styles.listContent, { paddingBottom: space.xxxl + insets.bottom }]}
           ListEmptyComponent={renderEmpty}
           ListFooterComponent={renderLoadMore}
           showsVerticalScrollIndicator={false}
@@ -644,17 +429,209 @@ const ChangeLogBottomSheet = forwardRef<ChangeLogBottomSheetRef, ChangeLogBottom
 });
 
 // ============================================================================
-// Styles - Layout only (colors in dynamicStyles)
+// Styles
 // ============================================================================
+const makeStyles = (t: ThemeTokens) => ({
+  backdrop: {
+    backgroundColor: t.overlay.scrim,
+  },
+  sheetBackground: {
+    backgroundColor: t.surface.sheet,
+    borderTopLeftRadius: radius.sheet,
+    borderTopRightRadius: radius.sheet,
+    ...t.shadow[4],
+  },
+  handleIndicator: {
+    backgroundColor: t.border.separator,
+    width: 36,
+    height: 4,
+  },
+  header: {
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'center' as const,
+    minHeight: 56,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.divider,
+  },
+  headerTitle: {
+    ...typography.headline,
+    color: t.text.primary,
+  },
+  headerCustomerName: {
+    ...typography.subhead,
+    fontWeight: fontWeight.medium,
+    color: t.text.secondary,
+    marginBottom: space.xxs,
+  },
+  headerSubtitle: {
+    ...typography.footnote,
+    color: t.text.secondary,
+    marginTop: space.xxs,
+  },
+  closeButtonPressed: {
+    backgroundColor: t.surface.cardPressed,
+  },
+  loadingText: {
+    ...typography.subhead,
+    marginTop: space.lg,
+    color: t.text.secondary,
+  },
+  relativeTime: {
+    ...typography.footnote,
+    fontWeight: fontWeight.semibold,
+    color: t.text.primary,
+  },
+  actionDescription: {
+    ...typography.subhead,
+    fontWeight: fontWeight.semibold,
+    color: t.text.primary,
+    marginBottom: space.s6,
+  },
+  grnDetails: {
+    ...typography.footnote,
+    color: t.text.secondary,
+    marginBottom: space.sm,
+    fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
+  },
+  quantityChange: {
+    ...typography.subhead,
+    fontWeight: fontWeight.medium,
+    color: t.text.primary,
+    fontVariant: ['tabular-nums' as const],
+  },
+  changeAmount: {
+    ...typography.caption1,
+    fontWeight: fontWeight.semibold,
+    paddingHorizontal: space.s6,
+    paddingVertical: space.xxs,
+    borderRadius: radius.field,
+    backgroundColor: t.status.neutral.background,
+    overflow: 'hidden' as const,
+    fontVariant: ['tabular-nums' as const],
+  },
+  itemDetailRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.s6,
+    backgroundColor: t.background.base,
+    paddingHorizontal: space.md,
+    paddingVertical: space.s6,
+    borderRadius: radius.button,
+  },
+  itemDetail: {
+    ...typography.caption1,
+    color: t.text.secondary,
+    flexShrink: 1,
+  },
+  stockInfoRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.s6,
+    backgroundColor: t.background.base,
+    paddingHorizontal: space.md,
+    paddingVertical: space.s6,
+    borderRadius: radius.button,
+    marginBottom: space.sm,
+  },
+  stockInfo: {
+    ...typography.caption1,
+    color: t.text.secondary,
+    flexShrink: 1,
+  },
+  recentBadge: {
+    ...typography.caption1,
+    fontWeight: fontWeight.semibold,
+    color: t.status.informative.text,
+  },
+  analyticsContainer: {
+    backgroundColor: t.background.base,
+    marginHorizontal: space.lg,
+    marginVertical: space.sm,
+    borderRadius: radius.card,
+    padding: space.lg,
+  },
+  analyticsTitle: {
+    ...typography.footnote,
+    fontWeight: fontWeight.semibold,
+    textTransform: 'uppercase' as const,
+    letterSpacing: 0.5,
+    color: t.text.secondary,
+    marginBottom: space.md,
+  },
+  analyticsNumber: {
+    ...typography.title3,
+    color: t.text.primary,
+    fontVariant: ['tabular-nums' as const],
+  },
+  analyticsLabel: {
+    ...typography.caption1,
+    color: t.text.secondary,
+    textAlign: 'center' as const,
+    marginTop: space.xs,
+  },
+  attribution: {
+    ...typography.footnote,
+    color: t.text.secondary,
+    marginTop: space.xs,
+  },
+  separator: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: t.border.divider,
+    marginTop: space.lg,
+    marginLeft: space.xl,
+  },
+  emptyText: {
+    ...typography.title3,
+    color: t.text.primary,
+    marginTop: space.lg,
+    marginBottom: space.sm,
+    textAlign: 'center' as const,
+  },
+  emptySubtext: {
+    ...typography.subhead,
+    color: t.text.secondary,
+    textAlign: 'center' as const,
+  },
+  errorText: {
+    ...typography.title3,
+    color: t.text.primary,
+    marginTop: space.lg,
+    marginBottom: space.sm,
+    textAlign: 'center' as const,
+  },
+  loadMoreButton: {
+    marginHorizontal: space.lg,
+    marginTop: space.lg,
+    minHeight: touchTarget,
+    paddingVertical: space.md,
+    paddingHorizontal: space.xxl,
+    borderWidth: 1,
+    borderColor: t.border.button,
+    borderRadius: radius.button,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+  },
+  loadMoreButtonPressed: {
+    backgroundColor: t.brand.subtle,
+  },
+  loadMoreText: {
+    ...typography.callout,
+    color: t.brand.tint,
+  },
+});
+
 const styles = StyleSheet.create({
   headerContent: {
     flex: 1,
-    marginRight: 12,
+    marginRight: space.md,
   },
   closeButton: {
-    width: FIORI.touch.minHeight,
-    height: FIORI.touch.minHeight,
-    borderRadius: FIORI.touch.minHeight / 2,
+    width: touchTarget,
+    height: touchTarget,
+    borderRadius: radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -662,21 +639,21 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingVertical: 40,
+    paddingVertical: space.huge,
   },
   listContent: {
-    paddingBottom: 32,
-    paddingTop: 8,
+    paddingBottom: space.xxxl,
+    paddingTop: space.sm,
   },
   timelineEntry: {
-    paddingHorizontal: FIORI.header.paddingHorizontal,
-    paddingVertical: 14,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.md,
   },
   timelineHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: space.sm,
   },
   timestampSection: {
     flexDirection: 'row',
@@ -685,25 +662,25 @@ const styles = StyleSheet.create({
   statusDot: {
     width: 10,
     height: 10,
-    borderRadius: 5,
-    marginRight: 12,
+    borderRadius: radius.pill,
+    marginRight: space.md,
   },
   timelineContent: {
     marginLeft: 22,
-    paddingRight: 8,
+    paddingRight: space.sm,
   },
   quantityChangeContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 10,
-    gap: 10,
+    marginBottom: space.sm,
+    gap: space.sm,
     flexWrap: 'wrap',
   },
   itemDetailsContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: 10,
+    gap: space.sm,
+    marginBottom: space.sm,
   },
   analyticsGrid: {
     flexDirection: 'row',
@@ -717,16 +694,16 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingVertical: 60,
-    paddingHorizontal: 32,
+    paddingVertical: space.max,
+    paddingHorizontal: space.xxxl,
   },
   loadMoreButtonDisabled: {
-    opacity: 0.6,
+    opacity: 0.4,
   },
   loadMoreLoading: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: space.sm,
   },
 });
 

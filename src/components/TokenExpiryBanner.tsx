@@ -1,62 +1,122 @@
 /**
  * Token Expiry Banner Component
  *
- * SAP Fiori Design System - Banner/Snackbar Component
+ * Full-width banner for session and sign-in problems (docs/STYLE_GUIDE.md §13.9):
+ * - Session expiring soon: status.critical background, "Sign in again".
+ * - Session expired or a sign-in error: status.negative background.
+ * - App configuration could not be loaded: status.critical background.
  *
- * Displays a warning banner when the authentication token is about to expire.
- * Shows a prominent notification with options to continue session or logout.
- *
- * Note: This is a persistent banner (not auto-dismissing) as it requires user action.
- * Uses Fiori semantic colors for warning/error states.
+ * The banner sits in the layout (it pushes content down, never covers it) and
+ * stays until the user acts. Actions are tertiary buttons in brand.tint.
  */
 
 import React from 'react';
-import { View, Text, StyleSheet, Pressable, Platform, useColorScheme } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { View, Text, Pressable } from 'react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useAppSelector, useAppDispatch } from '@/store/hooks';
-import { clearTokenExpiryStates, clearAuthError, clearAllAuthAlerts, logout, setConfigFetchFailed } from '@/store/slices/authSlice';
-import { colors, darkColors } from '@/theme';
-import { listColors } from '@/theme/listColors';
+import { clearTokenExpiryStates, clearAuthError, logout, setConfigFetchFailed } from '@/store/slices/authSlice';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { fontWeight, iconSize, layout, radius, space, touchTarget, typography } from '@/theme/tokens';
+import type { StatusTokens, ThemeTokens } from '@/theme/tokens';
 
-// ============================================================================
-// SAP Fiori Design Constants
-// ============================================================================
-const FIORI = {
-  // Banner dimensions
+type BannerTone = 'critical' | 'negative';
+
+interface BannerAction {
+  label: string;
+  accessibilityLabel?: string;
+  onPress: () => void;
+}
+
+const makeStyles = (t: ThemeTokens) => ({
   banner: {
-    minHeight: 56,
-    horizontalPadding: 16,
-    verticalPadding: 12,
-    borderRadius: 0, // Full-width banner, no radius
-    borderBottomWidth: 3,
+    paddingHorizontal: layout.marginCompact,
+    paddingTop: space.md,
+    paddingBottom: space.xs,
+    borderBottomWidth: 1,
   },
-  // Icon
+  critical: {
+    backgroundColor: t.status.critical.background,
+    borderBottomColor: t.status.critical.border,
+  },
+  negative: {
+    backgroundColor: t.status.negative.background,
+    borderBottomColor: t.status.negative.border,
+  },
+  contentRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'flex-start' as const,
+    gap: space.md,
+  },
   icon: {
-    size: 24,
-    marginRight: 12,
+    marginTop: space.xxs,
   },
-  // Typography
-  typography: {
-    message: { fontSize: 14, fontWeight: '500' as const, lineHeight: 20 },
-    button: { fontSize: 14, fontWeight: '600' as const },
+  message: {
+    ...typography.subhead,
+    flex: 1,
+    color: t.text.primary,
   },
-  // Button
-  button: {
-    height: 36,
-    minWidth: 64,
-    paddingHorizontal: 12,
-    borderRadius: 6,
-    gap: 8,
+  actionsRow: {
+    flexDirection: 'row' as const,
+    flexWrap: 'wrap' as const,
+    justifyContent: 'flex-end' as const,
+    alignItems: 'center' as const,
+    gap: space.sm,
   },
-} as const;
+  action: {
+    minHeight: touchTarget,
+    minWidth: touchTarget,
+    paddingHorizontal: space.md,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    borderRadius: radius.button,
+  },
+  actionPressed: {
+    backgroundColor: t.interaction.pressedOverlay,
+  },
+  actionText: {
+    ...typography.callout,
+    fontWeight: fontWeight.semibold,
+    color: t.brand.tint,
+  },
+});
+
+interface BannerProps {
+  tone: BannerTone;
+  icon: React.ComponentProps<typeof MaterialCommunityIcons>['name'];
+  message: string;
+  actions: BannerAction[];
+}
+
+function Banner({ tone, icon, message, actions }: BannerProps) {
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
+  const status: StatusTokens = t.status[tone];
+
+  return (
+    <View style={[styles.banner, styles[tone]]} accessibilityRole="alert" accessibilityLiveRegion="polite">
+      <View style={styles.contentRow}>
+        <MaterialCommunityIcons name={icon} size={iconSize.md} color={status.text} style={styles.icon} />
+        <Text style={styles.message}>{message}</Text>
+      </View>
+      <View style={styles.actionsRow}>
+        {actions.map(action => (
+          <Pressable
+            key={action.label}
+            style={({ pressed }) => [styles.action, pressed && styles.actionPressed]}
+            onPress={action.onPress}
+            accessibilityRole="button"
+            accessibilityLabel={action.accessibilityLabel ?? action.label}
+          >
+            <Text style={styles.actionText}>{action.label}</Text>
+          </Pressable>
+        ))}
+      </View>
+    </View>
+  );
+}
 
 export const TokenExpiryBanner: React.FC = () => {
-  // Dark mode support
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
-  const themeColors = isDark ? darkColors : colors;
-
   const router = useRouter();
   const dispatch = useAppDispatch();
   const { tokenExpiryWarning, tokenExpired, error: authError, configFetchFailed } = useAppSelector(
@@ -85,313 +145,59 @@ export const TokenExpiryBanner: React.FC = () => {
     router.push('/login');
   };
 
-  // Auth Error state - show user-facing auth errors
+  // A sign-in error the user must act on
   if (authError) {
     return (
-      <View
-        style={[styles.bannerError, { backgroundColor: themeColors.semantic.errorLight, borderBottomColor: themeColors.semantic.error }]}
-        accessible={true}
-        accessibilityRole="alert"
-        accessibilityLabel={`Authentication error: ${authError}`}
-      >
-        <View style={styles.contentRow}>
-          <Ionicons
-            name="warning"
-            size={FIORI.icon.size}
-            color={themeColors.semantic.error}
-            style={styles.icon}
-          />
-          <Text style={[styles.messageError, { color: themeColors.fiori.text.primary }]}>
-            {authError}
-          </Text>
-        </View>
-        <View style={styles.actionsRow}>
-          <Pressable
-            style={({ pressed }) => [
-              styles.secondaryButton,
-              pressed && styles.secondaryButtonPressed,
-            ]}
-            onPress={handleDismissAuthError}
-            accessibilityRole="button"
-            accessibilityLabel="Dismiss error"
-          >
-            <Text style={[styles.secondaryButtonText, { color: themeColors.fiori.text.secondary }]}>Dismiss</Text>
-          </Pressable>
-          <Pressable
-            style={({ pressed }) => [
-              styles.primaryButton,
-              styles.errorButton,
-              { backgroundColor: themeColors.semantic.error },
-              pressed && styles.buttonPressed,
-            ]}
-            onPress={handleLogout}
-            accessibilityRole="button"
-            accessibilityLabel="Sign in again"
-          >
-            <Ionicons
-              name="log-in-outline"
-              size={18}
-              color={themeColors.white}
-              style={styles.buttonIcon}
-            />
-            <Text style={[styles.primaryButtonText, { color: themeColors.white }]}>Sign In</Text>
-          </Pressable>
-        </View>
-      </View>
+      <Banner
+        tone="negative"
+        icon="alert-circle"
+        message={authError}
+        actions={[
+          { label: 'Dismiss', accessibilityLabel: 'Dismiss error', onPress: handleDismissAuthError },
+          { label: 'Sign in again', onPress: handleLogout },
+        ]}
+      />
     );
   }
 
-  // Config fetch failed warning - show if app config couldn't be loaded
+  // The app configuration could not be loaded
   if (configFetchFailed) {
     return (
-      <View
-        style={[styles.bannerWarning, { backgroundColor: themeColors.semantic.warningLight, borderBottomColor: themeColors.semantic.warning }]}
-        accessible={true}
-        accessibilityRole="alert"
-        accessibilityLabel="Configuration warning. Some features may not work as expected."
-      >
-        <View style={styles.contentRow}>
-          <Ionicons
-            name="cloud-offline-outline"
-            size={FIORI.icon.size}
-            color={themeColors.semantic.warning}
-            style={styles.icon}
-          />
-          <Text style={[styles.messageWarning, { color: themeColors.fiori.text.primary }]}>
-            Unable to load app configuration. Some features may not work correctly.
-          </Text>
-        </View>
-        <View style={styles.actionsRow}>
-          <Pressable
-            style={({ pressed }) => [
-              styles.secondaryButton,
-              pressed && styles.secondaryButtonPressed,
-            ]}
-            onPress={handleDismissConfigError}
-            accessibilityRole="button"
-            accessibilityLabel="Dismiss warning"
-          >
-            <Text style={[styles.secondaryButtonText, { color: themeColors.fiori.text.secondary }]}>Dismiss</Text>
-          </Pressable>
-        </View>
-      </View>
+      <Banner
+        tone="critical"
+        icon="alert"
+        message="Couldn't load the app settings, so some features may not work. Check your connection and open the app again."
+        actions={[{ label: 'Dismiss', accessibilityLabel: 'Dismiss warning', onPress: handleDismissConfigError }]}
+      />
     );
   }
 
-  // Session Expired - Error state
+  // Session expired
   if (tokenExpired) {
     return (
-      <View
-        style={[styles.bannerError, { backgroundColor: themeColors.semantic.errorLight, borderBottomColor: themeColors.semantic.error }]}
-        accessible={true}
-        accessibilityRole="alert"
-        accessibilityLabel="Session expired. Your session has expired. Please sign in again to continue."
-      >
-        <View style={styles.contentRow}>
-          <Ionicons
-            name="alert-circle"
-            size={FIORI.icon.size}
-            color={themeColors.semantic.error}
-            style={styles.icon}
-          />
-          <Text style={[styles.messageError, { color: themeColors.fiori.text.primary }]}>
-            Your session has expired. Please sign in again to continue.
-          </Text>
-        </View>
-        <View style={styles.actionsRow}>
-          <Pressable
-            style={({ pressed }) => [
-              styles.primaryButton,
-              styles.errorButton,
-              { backgroundColor: themeColors.semantic.error },
-              pressed && styles.buttonPressed,
-            ]}
-            onPress={handleLogout}
-            accessibilityRole="button"
-            accessibilityLabel="Sign in again"
-          >
-            <Ionicons
-              name="log-in-outline"
-              size={18}
-              color={themeColors.white}
-              style={styles.buttonIcon}
-            />
-            <Text style={[styles.primaryButtonText, { color: themeColors.white }]}>Sign In Again</Text>
-          </Pressable>
-        </View>
-      </View>
+      <Banner
+        tone="negative"
+        icon="alert-circle"
+        message="Your session has ended. Sign in again to continue."
+        actions={[{ label: 'Sign in again', onPress: handleLogout }]}
+      />
     );
   }
 
-  // Session Expiring Warning
+  // Session expiring soon
   if (tokenExpiryWarning) {
     return (
-      <View
-        style={[styles.bannerWarning, { backgroundColor: themeColors.semantic.warningLight, borderBottomColor: themeColors.semantic.warning }]}
-        accessible={true}
-        accessibilityRole="alert"
-        accessibilityLabel="Session warning. Your session will expire soon. Please refresh your session to avoid being logged out."
-      >
-        <View style={styles.contentRow}>
-          <Ionicons
-            name="time-outline"
-            size={FIORI.icon.size}
-            color={themeColors.semantic.warning}
-            style={styles.icon}
-          />
-          <Text style={[styles.messageWarning, { color: themeColors.fiori.text.primary }]}>
-            Your session will expire soon. Refresh to stay logged in.
-          </Text>
-        </View>
-        <View style={styles.actionsRow}>
-          <Pressable
-            style={({ pressed }) => [
-              styles.secondaryButton,
-              pressed && styles.secondaryButtonPressed,
-            ]}
-            onPress={handleDismissTokenExpiry}
-            accessibilityRole="button"
-            accessibilityLabel="Dismiss warning"
-          >
-            <Text style={[styles.secondaryButtonText, { color: themeColors.fiori.text.secondary }]}>Dismiss</Text>
-          </Pressable>
-          <Pressable
-            style={({ pressed }) => [
-              styles.primaryButton,
-              styles.warningButton,
-              { backgroundColor: themeColors.semantic.warning },
-              pressed && styles.buttonPressed,
-            ]}
-            onPress={handleRefresh}
-            accessibilityRole="button"
-            accessibilityLabel="Refresh session"
-          >
-            <Ionicons
-              name="refresh-outline"
-              size={18}
-              color={themeColors.white}
-              style={styles.buttonIcon}
-            />
-            <Text style={[styles.primaryButtonText, { color: themeColors.white }]}>Refresh</Text>
-          </Pressable>
-        </View>
-      </View>
+      <Banner
+        tone="critical"
+        icon="alert"
+        message="Your session ends soon. Sign in again to stay signed in."
+        actions={[
+          { label: 'Dismiss', accessibilityLabel: 'Dismiss warning', onPress: handleDismissTokenExpiry },
+          { label: 'Sign in again', onPress: handleRefresh },
+        ]}
+      />
     );
   }
 
   return null;
 };
-
-// ============================================================================
-// Styles - SAP Fiori Design System
-// ============================================================================
-const styles = StyleSheet.create({
-  // Banner base styles
-  bannerBase: {
-    minHeight: FIORI.banner.minHeight,
-    paddingHorizontal: FIORI.banner.horizontalPadding,
-    paddingVertical: FIORI.banner.verticalPadding,
-    borderBottomWidth: FIORI.banner.borderBottomWidth,
-  },
-
-  // Warning banner - Fiori Critical semantic
-  bannerWarning: {
-    minHeight: FIORI.banner.minHeight,
-    paddingHorizontal: FIORI.banner.horizontalPadding,
-    paddingVertical: FIORI.banner.verticalPadding,
-    borderBottomWidth: FIORI.banner.borderBottomWidth,
-  },
-
-  // Error banner - Fiori Negative semantic
-  bannerError: {
-    minHeight: FIORI.banner.minHeight,
-    paddingHorizontal: FIORI.banner.horizontalPadding,
-    paddingVertical: FIORI.banner.verticalPadding,
-    borderBottomWidth: FIORI.banner.borderBottomWidth,
-  },
-
-  // Content row with icon and message
-  contentRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: 12,
-  },
-  icon: {
-    marginRight: FIORI.icon.marginRight,
-    marginTop: 2,
-  },
-  messageWarning: {
-    flex: 1,
-    fontSize: FIORI.typography.message.fontSize,
-    fontWeight: FIORI.typography.message.fontWeight,
-    lineHeight: FIORI.typography.message.lineHeight,
-  },
-  messageError: {
-    flex: 1,
-    fontSize: FIORI.typography.message.fontSize,
-    fontWeight: FIORI.typography.message.fontWeight,
-    lineHeight: FIORI.typography.message.lineHeight,
-  },
-
-  // Actions row
-  actionsRow: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    alignItems: 'center',
-    gap: FIORI.button.gap,
-    marginLeft: FIORI.icon.size + FIORI.icon.marginRight, // Align with text
-  },
-
-  // Primary action button
-  primaryButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    height: FIORI.button.height,
-    minWidth: FIORI.button.minWidth,
-    paddingHorizontal: FIORI.button.paddingHorizontal,
-    borderRadius: FIORI.button.borderRadius,
-    // Platform-specific shadows
-    ...Platform.select({
-      ios: {
-        shadowColor: listColors.black,
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.15,
-        shadowRadius: 2,
-      },
-      android: {
-        elevation: 2,
-      },
-    }),
-  },
-  warningButton: {},
-  errorButton: {},
-  buttonPressed: {
-    opacity: 0.9,
-    transform: [{ scale: 0.98 }],
-  },
-  buttonIcon: {
-    marginRight: 6,
-  },
-  primaryButtonText: {
-    fontSize: FIORI.typography.button.fontSize,
-    fontWeight: FIORI.typography.button.fontWeight,
-  },
-
-  // Secondary action button (text only)
-  secondaryButton: {
-    height: FIORI.button.height,
-    minWidth: FIORI.button.minWidth,
-    paddingHorizontal: FIORI.button.paddingHorizontal,
-    borderRadius: FIORI.button.borderRadius,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  secondaryButtonPressed: {
-    backgroundColor: 'rgba(0,0,0,0.05)',
-  },
-  secondaryButtonText: {
-    fontSize: FIORI.typography.button.fontSize,
-    fontWeight: FIORI.typography.button.fontWeight,
-  },
-});

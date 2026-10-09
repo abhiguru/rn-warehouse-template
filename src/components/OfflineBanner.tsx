@@ -1,17 +1,23 @@
 /**
  * Offline Banner Component
  *
- * Displays a banner when the device is offline.
- * Auto-hides when connection is restored.
+ * Full-width banner shown while the device is offline (docs/STYLE_GUIDE.md
+ * §13.9 and §14.9): status.neutral background, cloud-off-outline icon, and the
+ * state plus what still works. It sits in the layout above the app, so it
+ * pushes content down instead of covering it, and adds the top safe-area inset.
+ * Auto-hides when the connection is restored.
  *
  * Issue: I1 - No Network State Monitoring
  */
 
 import React from 'react';
-import { View, Text, StyleSheet, Animated } from 'react-native';
+import { View, Text, Animated } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useIsOffline } from '@/hooks/useNetworkStatus';
-import theme from '@/theme';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { iconSize, layout, motion, space, typography } from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
 
 interface OfflineBannerProps {
   /**
@@ -20,16 +26,44 @@ interface OfflineBannerProps {
   message?: string;
 }
 
+/** Distance the banner slides in from. */
+const HIDDEN_OFFSET = -space.giant;
+
+const makeStyles = (t: ThemeTokens) => ({
+  container: {
+    backgroundColor: t.status.neutral.background,
+    borderBottomWidth: 1,
+    borderBottomColor: t.border.divider,
+    paddingBottom: space.sm,
+    paddingHorizontal: layout.marginCompact,
+  },
+  content: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    gap: space.sm,
+    paddingTop: space.sm,
+  },
+  text: {
+    ...typography.footnote,
+    color: t.text.primary,
+    flexShrink: 1,
+  },
+});
+
 /**
  * Banner that appears when device is offline
  * Automatically shows/hides based on network status
  */
 export const OfflineBanner: React.FC<OfflineBannerProps> = ({
-  message = 'No internet connection',
+  message = "You're offline. Actions that need the server will work again when you reconnect.",
 }) => {
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
+  const insets = useSafeAreaInsets();
   const isOffline = useIsOffline();
   const [visible, setVisible] = React.useState(false);
-  const translateY = React.useRef(new Animated.Value(-50)).current;
+  const translateY = React.useRef(new Animated.Value(HIDDEN_OFFSET)).current;
 
   React.useEffect(() => {
     let current = true;
@@ -44,8 +78,8 @@ export const OfflineBanner: React.FC<OfflineBannerProps> = ({
       });
     } else if (visible) {
       animation = Animated.timing(translateY, {
-        toValue: -50,
-        duration: 200,
+        toValue: HIDDEN_OFFSET,
+        duration: motion.standard,
         useNativeDriver: true,
       });
     }
@@ -65,42 +99,17 @@ export const OfflineBanner: React.FC<OfflineBannerProps> = ({
     <Animated.View
       style={[
         styles.container,
-        { transform: [{ translateY }] },
+        { paddingTop: insets.top, transform: [{ translateY }] },
       ]}
+      accessibilityRole="alert"
+      accessibilityLiveRegion="polite"
     >
       <View style={styles.content}>
-        <Icon name="wifi-off" size={18} color={styles.icon.color} />
+        <Icon name="cloud-off-outline" size={iconSize.md} color={t.status.neutral.text} />
         <Text style={styles.text}>{message}</Text>
       </View>
     </Animated.View>
   );
 };
-
-const styles = StyleSheet.create({
-  container: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    zIndex: 9999,
-    backgroundColor: theme.colors.gray[800],
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-  },
-  content: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  text: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  icon: {
-    color: '#FFFFFF',
-  },
-});
 
 export default OfflineBanner;
