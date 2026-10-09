@@ -46,15 +46,15 @@ const PINCODE_REGEX = /^[1-9][0-9]{5}$/;
 export const basicInfoSchema = yup.object().shape({
   name: yup
     .string()
-    .required('Customer name is required')
-    .min(2, 'Name must be at least 2 characters')
-    .max(200, 'Name must be at most 200 characters')
+    .required('Enter the customer name.')
+    .min(2, 'Enter at least 2 characters.')
+    .max(200, 'Use 200 characters or fewer.')
     .trim(),
 
   mobile: yup
     .string()
-    .required('Mobile number is required')
-    .test('valid-mobile', 'Please enter a valid 10-digit mobile number', (value) => {
+    .required('Enter a mobile number.')
+    .test('valid-mobile', 'Enter a 10-digit mobile number.', (value) => {
       if (!value) return false;
       // Remove country code if present
       const cleaned = value.replace(/^91/, '').replace(/\D/g, '');
@@ -65,11 +65,11 @@ export const basicInfoSchema = yup.object().shape({
     .string()
     .nullable()
     .transform((value) => (value === '' ? null : value))
-    .test('valid-email', 'Please enter a valid email address', (value) => {
+    .test('valid-email', 'Enter an email address like name@example.com.', (value) => {
       if (!value || value === '') return true; // Optional field
       return EMAIL_REGEX.test(value);
     })
-    .max(100, 'Email must be at most 100 characters'),
+    .max(100, 'Use 100 characters or fewer.'),
 });
 
 // =============================================================================
@@ -82,19 +82,19 @@ export const detailsSchema = yup.object().shape({
     .string()
     .nullable()
     .transform((value) => (value === '' ? null : value))
-    .max(50, 'City must be at most 50 characters'),
+    .max(50, 'Use 50 characters or fewer.'),
 
   state: yup
     .string()
     .nullable()
     .transform((value) => (value === '' ? null : value))
-    .max(50, 'State must be at most 50 characters'),
+    .max(50, 'Use 50 characters or fewer.'),
 
   pincode: yup
     .string()
     .nullable()
     .transform((value) => (value === '' ? null : value))
-    .test('valid-pincode', 'Please enter a valid 6-digit pincode', (value) => {
+    .test('valid-pincode', 'Enter a 6-digit pincode.', (value) => {
       if (!value || value === '') return true;
       return PINCODE_REGEX.test(value);
     }),
@@ -103,14 +103,14 @@ export const detailsSchema = yup.object().shape({
     .string()
     .nullable()
     .transform((value) => (value === '' ? null : value))
-    .max(500, 'Address must be at most 500 characters'),
+    .max(500, 'Use 500 characters or fewer.'),
 
   // Tax fields (optional with format validation)
   gst: yup
     .string()
     .nullable()
     .transform((value) => (value === '' ? null : value?.toUpperCase()))
-    .test('valid-gst', 'Please enter a valid 15-character GST number', (value) => {
+    .test('valid-gst', 'Enter a 15-character GST number, like 22AAAAA0000A1Z5.', (value) => {
       if (!value || value === '') return true;
       return GST_REGEX.test(value);
     }),
@@ -119,7 +119,7 @@ export const detailsSchema = yup.object().shape({
     .string()
     .nullable()
     .transform((value) => (value === '' ? null : value?.toUpperCase()))
-    .test('valid-pan', 'Please enter a valid 10-character PAN number', (value) => {
+    .test('valid-pan', 'Enter a 10-character PAN, like AAAAA0000A.', (value) => {
       if (!value || value === '') return true;
       return PAN_REGEX.test(value);
     }),
@@ -129,13 +129,13 @@ export const detailsSchema = yup.object().shape({
     .string()
     .nullable()
     .transform((value) => (value === '' ? null : value))
-    .max(100, 'Contact name must be at most 100 characters'),
+    .max(100, 'Use 100 characters or fewer.'),
 
   contact_mobile: yup
     .string()
     .nullable()
     .transform((value) => (value === '' ? null : value))
-    .test('valid-contact-mobile', 'Please enter a valid mobile number', (value) => {
+    .test('valid-contact-mobile', 'Enter a 10-digit mobile number.', (value) => {
       if (!value || value === '') return true;
       const cleaned = value.replace(/^91/, '').replace(/\D/g, '');
       return cleaned.length === 10 && /^[6-9]\d{9}$/.test(cleaned);
@@ -145,11 +145,11 @@ export const detailsSchema = yup.object().shape({
     .string()
     .nullable()
     .transform((value) => (value === '' ? null : value))
-    .test('valid-contact-email', 'Please enter a valid email address', (value) => {
+    .test('valid-contact-email', 'Enter an email address like name@example.com.', (value) => {
       if (!value || value === '') return true;
       return EMAIL_REGEX.test(value);
     })
-    .max(100, 'Contact email must be at most 100 characters'),
+    .max(100, 'Use 100 characters or fewer.'),
 });
 
 // =============================================================================
@@ -160,32 +160,32 @@ export const documentsSchema = yup.object().shape({
   document_urls: yup
     .array()
     .of(
-      yup.string().test('valid-url', 'Invalid document URL', (value) => {
+      yup.string().test('valid-url', 'This document link is not valid.', (value) => {
         if (!value) return true;
         // Allow http/https URLs and local file URIs
         return /^(https?:\/\/|file:\/\/\/)/.test(value);
       })
     )
-    .max(10, 'Maximum 10 documents allowed'),
+    .max(10, 'Add up to 10 documents.'),
 
   document_images: yup
     .array()
-    .max(10, 'Maximum 10 documents allowed'),
+    .max(10, 'Add up to 10 documents.'),
 
   image_urls: yup
     .array()
     .of(
-      yup.string().test('valid-url', 'Invalid image URL', (value) => {
+      yup.string().test('valid-url', 'This image link is not valid.', (value) => {
         if (!value) return true;
         // Allow http/https URLs and local file URIs
         return /^(https?:\/\/|file:\/\/\/)/.test(value);
       })
     )
-    .max(10, 'Maximum 10 images allowed'),
+    .max(10, 'Add up to 10 images.'),
 
   customer_images: yup
     .array()
-    .max(10, 'Maximum 10 images allowed'),
+    .max(10, 'Add up to 10 images.'),
 });
 
 // =============================================================================
