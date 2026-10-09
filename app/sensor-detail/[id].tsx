@@ -1,6 +1,10 @@
 /**
  * Sensor Detail Screen
- * Shows historical temperature/humidity charts for a specific sensor
+ * Shows historical temperature/humidity charts for a specific sensor.
+ *
+ * Object page per docs/STYLE_GUIDE.md §14.2: hero card with the sensor name,
+ * status tags and key facts, then the period chips, the history chart (§13.11)
+ * and the summary statistics.
  */
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
@@ -13,28 +17,45 @@ import {
   RefreshControl,
   ActivityIndicator,
 } from 'react-native';
-import { useLocalSearchParams, router } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useListColors } from '@/hooks/useListColors';
+import { useLocalSearchParams } from 'expo-router';
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import { ReportHeader, ReportEmptyState } from '@/components/reports';
+import { SensorHistoryChart, formatHumidity, formatTemperature } from '@/components/sensors/SensorHistoryChart';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import {
+  fontWeight,
+  iconSize,
+  layout,
+  radius,
+  space,
+  touchTarget,
+  typography,
+  type ThemeTokens,
+} from '@/theme/tokens';
 import { SensorService } from '@/services/sensor-service';
-import { getSensorHistory, getAggregationLabel, getPeriodLabel } from '@/services/sensor-history-service';
-import { SensorHistoryChart } from '@/components/sensors/SensorHistoryChart';
+import { getSensorHistory, getPeriodLabel } from '@/services/sensor-history-service';
 import type { SensorDevice } from '@/types/sensor.types';
 import type {
   SensorHistoryPeriod,
   SensorHistoryData,
   SensorHistorySummary,
 } from '@/types/sensor-history.types';
+import { createLogger } from '@/utils/logger';
+
+const logger = createLogger('SensorDetail');
 
 // All period options
 const ALL_PERIOD_OPTIONS: { value: SensorHistoryPeriod; label: string; days: number }[] = [
-  { value: 7, label: '7D', days: 7 },
-  { value: 14, label: '14D', days: 14 },
-  { value: 30, label: '30D', days: 30 },
-  { value: 90, label: '90D', days: 90 },
-  { value: 365, label: '1Y', days: 365 },
+  { value: 7, label: '7 days', days: 7 },
+  { value: 14, label: '14 days', days: 14 },
+  { value: 30, label: '30 days', days: 30 },
+  { value: 90, label: '90 days', days: 90 },
+  { value: 365, label: '1 year', days: 365 },
 ];
+
+const DEVICE_ERROR = "Couldn't load this sensor. Check your connection and try again.";
+const HISTORY_ERROR = "Couldn't load the sensor history. Check your connection and try again.";
+const NOT_FOUND = 'This sensor was not found. It may have been removed.';
 
 /**
  * Calculate how many days of historical data are available
@@ -47,10 +68,331 @@ const getDaysOfDataAvailable = (earliestReadingAt: string | null): number => {
   return Math.floor(diffMs / (1000 * 60 * 60 * 24));
 };
 
+// ============================================================================
+// Status (guide §3.5)
+// ============================================================================
+
+type StatusKind = 'negative' | 'critical' | 'positive' | 'neutral';
+
+const STATUS_ICON: Record<StatusKind, string> = {
+  negative: 'alert-circle',
+  critical: 'alert',
+  positive: 'check-circle',
+  neutral: 'circle-outline',
+};
+
+interface SensorStatus {
+  kind: StatusKind;
+  label: string;
+}
+
+function healthStatus(health: SensorDevice['health_status']): SensorStatus {
+  switch (health) {
+    case 'healthy':
+      return { kind: 'positive', label: 'Healthy' };
+    case 'warning':
+      return { kind: 'critical', label: 'Warning' };
+    case 'critical':
+      return { kind: 'negative', label: 'Critical' };
+    default:
+      return { kind: 'neutral', label: 'Unknown' };
+  }
+}
+
+function connectionStatus(device: SensorDevice): SensorStatus {
+  if (device.connectivity_status === 'OFFLINE') return { kind: 'negative', label: 'Offline' };
+  if (device.is_stale) return { kind: 'critical', label: 'No recent data' };
+  if (device.connectivity_status === 'ONLINE') return { kind: 'positive', label: 'Online' };
+  return { kind: 'neutral', label: 'Unknown' };
+}
+
+function batteryStatus(device: SensorDevice): SensorStatus {
+  switch (device.battery_status) {
+    case 'GOOD':
+      return { kind: 'positive', label: 'Good' };
+    case 'LOW':
+      return { kind: 'critical', label: 'Low' };
+    case 'CRITICAL':
+      return { kind: 'negative', label: 'Critical' };
+    default:
+      return { kind: 'neutral', label: 'Unknown' };
+  }
+}
+
+/** "9 Oct 2026, 4:05 pm" */
+function formatDateTime(iso: string): string {
+  const date = new Date(iso);
+  if (isNaN(date.getTime())) return '–';
+  const day = date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+  const time = date.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true }).toLowerCase();
+  return `${day}, ${time}`;
+}
+
+/** Humidity statistics keep one decimal in the report summary (guide §12.3). */
+function formatHumidityStat(value: number | null | undefined): string {
+  if (value === null || value === undefined || isNaN(value)) return '–';
+  return `${value.toFixed(1)}%`;
+}
+
+// ============================================================================
+// Styles
+// ============================================================================
+
+const makeStyles = (t: ThemeTokens) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: t.background.base,
+    },
+    loadingContainer: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      gap: space.lg,
+    },
+    loadingText: {
+      ...typography.subhead,
+      color: t.text.secondary,
+    },
+    scrollContent: {
+      paddingBottom: space.xxxl,
+    },
+    card: {
+      backgroundColor: t.surface.card,
+      borderRadius: radius.card,
+      padding: space.lg,
+      marginHorizontal: layout.marginCompact,
+      marginTop: space.lg,
+      gap: space.md,
+      ...t.shadow[2],
+    },
+    heroType: {
+      ...typography.footnote,
+      color: t.text.secondary,
+    },
+    heroTitle: {
+      ...typography.title2,
+      color: t.text.primary,
+    },
+    heroLocation: {
+      ...typography.subhead,
+      color: t.text.secondary,
+    },
+    tagRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: space.sm,
+    },
+    tag: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: space.xs,
+      paddingHorizontal: space.sm,
+      paddingVertical: space.xxs,
+      borderRadius: radius.field,
+    },
+    tagText: {
+      ...typography.caption1,
+      fontWeight: fontWeight.semibold,
+    },
+    keyValueRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      gap: space.md,
+      minHeight: layout.rowMinHeight,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: t.border.divider,
+    },
+    keyLabel: {
+      ...typography.subhead,
+      color: t.text.secondary,
+    },
+    keyValue: {
+      ...typography.body,
+      color: t.text.primary,
+      textAlign: 'right',
+      flexShrink: 1,
+    },
+    readingsRow: {
+      flexDirection: 'row',
+      gap: space.sm,
+    },
+    readingBox: {
+      flex: 1,
+      borderRadius: radius.button,
+      padding: space.md,
+      gap: space.xxs,
+      alignItems: 'center',
+      backgroundColor: t.background.base,
+    },
+    readingLabel: {
+      ...typography.footnote,
+      color: t.text.secondary,
+    },
+    readingValue: {
+      ...typography.title2,
+      color: t.text.primary,
+      fontVariant: ['tabular-nums'],
+    },
+    periodSection: {
+      paddingTop: space.xxl,
+      paddingBottom: space.sm,
+      gap: space.sm,
+    },
+    sectionTitle: {
+      ...typography.footnote,
+      fontWeight: fontWeight.semibold,
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+      color: t.text.secondary,
+      paddingHorizontal: layout.marginCompact,
+    },
+    periodContainer: {
+      paddingHorizontal: layout.marginCompact,
+      gap: space.sm,
+    },
+    chip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: space.xs,
+      minHeight: 36,
+      paddingHorizontal: space.md,
+      borderRadius: radius.pill,
+      borderWidth: 1,
+      borderColor: t.border.button,
+      backgroundColor: t.surface.card,
+    },
+    chipSelected: {
+      backgroundColor: t.brand.subtle,
+      borderColor: t.brand.tint,
+    },
+    chipPressed: {
+      backgroundColor: t.surface.cardPressed,
+    },
+    chipText: {
+      ...typography.footnote,
+      fontWeight: fontWeight.semibold,
+      color: t.text.primary,
+    },
+    chipTextSelected: {
+      color: t.brand.tint,
+    },
+    noPeriodsText: {
+      ...typography.subhead,
+      color: t.text.secondary,
+      paddingHorizontal: layout.marginCompact,
+    },
+    summaryTitle: {
+      ...typography.headline,
+      color: t.text.primary,
+    },
+    summarySection: {
+      gap: space.sm,
+    },
+    summaryHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: space.sm,
+    },
+    summaryLabel: {
+      ...typography.subhead,
+      fontWeight: fontWeight.semibold,
+      color: t.text.primary,
+    },
+    summaryRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+    },
+    summaryItem: {
+      flex: 1,
+      alignItems: 'center',
+    },
+    summaryItemLabel: {
+      ...typography.footnote,
+      color: t.text.secondary,
+    },
+    summaryItemValue: {
+      ...typography.headline,
+      color: t.text.primary,
+      fontVariant: ['tabular-nums'],
+    },
+    readingsCount: {
+      ...typography.footnote,
+      color: t.text.secondary,
+      textAlign: 'center',
+    },
+    chartLoading: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: space.md,
+      padding: space.huge,
+      marginHorizontal: layout.marginCompact,
+      marginVertical: space.sm,
+      borderRadius: radius.card,
+      backgroundColor: t.surface.card,
+      ...t.shadow[2],
+    },
+    messageStrip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: space.sm,
+      marginHorizontal: layout.marginCompact,
+      marginVertical: space.sm,
+      paddingLeft: space.md,
+      borderRadius: radius.button,
+      borderWidth: 1,
+      borderColor: t.status.negative.border,
+      backgroundColor: t.status.negative.background,
+    },
+    messageText: {
+      ...typography.subhead,
+      color: t.status.negative.text,
+      flex: 1,
+      paddingVertical: space.sm,
+    },
+    stripAction: {
+      minHeight: touchTarget,
+      paddingHorizontal: space.md,
+      justifyContent: 'center',
+    },
+    stripActionText: {
+      ...typography.subhead,
+      fontWeight: fontWeight.semibold,
+      color: t.brand.tint,
+    },
+  });
+
+type Styles = ReturnType<typeof makeStyles>;
+
+function StatusTag({ status, styles, t }: { status: SensorStatus; styles: Styles; t: ThemeTokens }) {
+  const tone = t.status[status.kind];
+  return (
+    <View style={[styles.tag, { backgroundColor: tone.background }]}>
+      <Icon name={STATUS_ICON[status.kind]} size={iconSize.sm} color={tone.text} />
+      <Text style={[styles.tagText, { color: tone.text }]} maxFontSizeMultiplier={1.6}>
+        {status.label}
+      </Text>
+    </View>
+  );
+}
+
+function KeyValue({ label, value, styles, accessory }: {
+  label: string; value: string; styles: Styles; accessory?: React.ReactNode;
+}) {
+  return (
+    <View style={styles.keyValueRow} accessible accessibilityLabel={`${label}: ${value}`}>
+      <Text style={styles.keyLabel}>{label}</Text>
+      {accessory ?? <Text style={styles.keyValue}>{value}</Text>}
+    </View>
+  );
+}
+
 const SensorDetailScreen: React.FC = () => {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const insets = useSafeAreaInsets();
-  const colors = useListColors();
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
 
   // State
   const [device, setDevice] = useState<SensorDevice | null>(null);
@@ -65,7 +407,7 @@ const SensorDetailScreen: React.FC = () => {
   const availablePeriods = useMemo(() => {
     const daysAvailable = getDaysOfDataAvailable(device?.earliest_reading_at ?? null);
     // Only show periods where we have at least some data (period <= days available)
-    // Always show 7D as minimum if any data exists
+    // Always show 7 days as minimum if any data exists
     if (daysAvailable < 1) return [];
     return ALL_PERIOD_OPTIONS.filter((opt) => opt.days <= daysAvailable || opt.days === 7);
   }, [device?.earliest_reading_at]);
@@ -79,13 +421,15 @@ const SensorDetailScreen: React.FC = () => {
         if (foundDevice) {
           setDevice(foundDevice);
         } else {
-          setError('Device not found');
+          setError(NOT_FOUND);
         }
       } else {
-        setError(result.message || 'Failed to load device info');
+        logger.warn('Device load failed', { message: result.message });
+        setError(DEVICE_ERROR);
       }
     } catch (err) {
-      setError('Failed to load device info');
+      logger.error('Device load exception', err);
+      setError(DEVICE_ERROR);
     }
   }, [id]);
 
@@ -101,10 +445,12 @@ const SensorDetailScreen: React.FC = () => {
       if (result.success && result.data) {
         setHistoryData(result.data);
       } else {
-        setError(result.message || 'Failed to load history');
+        logger.warn('History load failed', { message: result.message });
+        setError(HISTORY_ERROR);
       }
     } catch (err) {
-      setError('Failed to load historical data');
+      logger.error('History load exception', err);
+      setError(HISTORY_ERROR);
     } finally {
       setHistoryLoading(false);
     }
@@ -135,14 +481,10 @@ const SensorDetailScreen: React.FC = () => {
     setRefreshing(false);
   }, [fetchDeviceInfo, fetchHistory, selectedPeriod]);
 
-  // Render period selector (only shows periods with available data)
+  // Period chips (only periods with available data)
   const renderPeriodSelector = () => {
     if (availablePeriods.length === 0) {
-      return (
-        <Text style={[styles.noPeriodsText, { color: colors.gray500 }]}>
-          No historical data available
-        </Text>
-      );
+      return <Text style={styles.noPeriodsText}>No history yet. Readings appear here once the sensor reports them.</Text>;
     }
 
     return (
@@ -150,27 +492,27 @@ const SensorDetailScreen: React.FC = () => {
         horizontal
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.periodContainer}
+        accessibilityRole="radiogroup"
+        accessibilityLabel="History period"
       >
         {availablePeriods.map((option) => {
           const isSelected = selectedPeriod === option.value;
           return (
             <Pressable
               key={option.value}
-              style={[
-                styles.periodChip,
-                {
-                  backgroundColor: isSelected ? colors.primary : colors.gray100,
-                  borderColor: isSelected ? colors.primary : colors.gray200,
-                },
+              style={({ pressed }) => [
+                styles.chip,
+                pressed && !isSelected && styles.chipPressed,
+                isSelected && styles.chipSelected,
               ]}
+              hitSlop={{ top: 6, bottom: 6 }}
               onPress={() => handlePeriodChange(option.value)}
+              accessibilityRole="radio"
+              accessibilityState={{ selected: isSelected, checked: isSelected }}
+              accessibilityLabel={`Last ${option.label}`}
             >
-              <Text
-                style={[
-                  styles.periodChipText,
-                  { color: isSelected ? colors.white : colors.gray700 },
-                ]}
-              >
+              {isSelected && <Icon name="check" size={iconSize.sm} color={t.brand.tint} />}
+              <Text style={[styles.chipText, isSelected && styles.chipTextSelected]} maxFontSizeMultiplier={1.6}>
                 {option.label}
               </Text>
             </Pressable>
@@ -180,90 +522,68 @@ const SensorDetailScreen: React.FC = () => {
     );
   };
 
+  const renderStat = (label: string, value: string) => (
+    <View style={styles.summaryItem} accessible accessibilityLabel={`${label} ${value}`}>
+      <Text style={styles.summaryItemLabel}>{label}</Text>
+      <Text style={styles.summaryItemValue}>{value}</Text>
+    </View>
+  );
+
   // Render summary stats
   const renderSummary = (summary: SensorHistorySummary) => (
-    <View style={[styles.summaryCard, { backgroundColor: colors.cellBackground }]}>
-      <Text style={[styles.summaryTitle, { color: colors.gray900 }]}>
-        Summary ({getPeriodLabel(selectedPeriod)})
+    <View style={styles.card}>
+      <Text style={styles.summaryTitle} accessibilityRole="header">
+        {`Summary, last ${getPeriodLabel(selectedPeriod)}`}
       </Text>
 
-      {/* Temperature Summary */}
       <View style={styles.summarySection}>
         <View style={styles.summaryHeader}>
-          <Ionicons name="thermometer" size={18} color={colors.primary} />
-          <Text style={[styles.summaryLabel, { color: colors.gray700 }]}>Temperature</Text>
+          <Icon name="thermometer" size={iconSize.md} color={t.icon.secondary} />
+          <Text style={styles.summaryLabel}>Temperature</Text>
         </View>
         <View style={styles.summaryRow}>
-          <View style={styles.summaryItem}>
-            <Text style={[styles.summaryItemLabel, { color: colors.gray500 }]}>Avg</Text>
-            <Text style={[styles.summaryItemValue, { color: colors.gray900 }]}>
-              {summary.avg_temperature?.toFixed(1) ?? '—'}°C
-            </Text>
-          </View>
-          <View style={styles.summaryItem}>
-            <Text style={[styles.summaryItemLabel, { color: colors.gray500 }]}>Min</Text>
-            <Text style={[styles.summaryItemValue, { color: colors.statusPositive }]}>
-              {summary.min_temperature?.toFixed(1) ?? '—'}°C
-            </Text>
-          </View>
-          <View style={styles.summaryItem}>
-            <Text style={[styles.summaryItemLabel, { color: colors.gray500 }]}>Max</Text>
-            <Text style={[styles.summaryItemValue, { color: colors.statusNegative }]}>
-              {summary.max_temperature?.toFixed(1) ?? '—'}°C
-            </Text>
-          </View>
+          {renderStat('Average', formatTemperature(summary.avg_temperature))}
+          {renderStat('Lowest', formatTemperature(summary.min_temperature))}
+          {renderStat('Highest', formatTemperature(summary.max_temperature))}
         </View>
       </View>
 
-      {/* Humidity Summary */}
-      <View style={[styles.summarySection, { marginTop: 12 }]}>
+      <View style={styles.summarySection}>
         <View style={styles.summaryHeader}>
-          <Ionicons name="water" size={18} color={colors.statusPositive} />
-          <Text style={[styles.summaryLabel, { color: colors.gray700 }]}>Humidity</Text>
+          <Icon name="water-percent" size={iconSize.md} color={t.icon.secondary} />
+          <Text style={styles.summaryLabel}>Humidity</Text>
         </View>
         <View style={styles.summaryRow}>
-          <View style={styles.summaryItem}>
-            <Text style={[styles.summaryItemLabel, { color: colors.gray500 }]}>Avg</Text>
-            <Text style={[styles.summaryItemValue, { color: colors.gray900 }]}>
-              {summary.avg_humidity?.toFixed(1) ?? '—'}%
-            </Text>
-          </View>
-          <View style={styles.summaryItem}>
-            <Text style={[styles.summaryItemLabel, { color: colors.gray500 }]}>Min</Text>
-            <Text style={[styles.summaryItemValue, { color: colors.statusPositive }]}>
-              {summary.min_humidity?.toFixed(1) ?? '—'}%
-            </Text>
-          </View>
-          <View style={styles.summaryItem}>
-            <Text style={[styles.summaryItemLabel, { color: colors.gray500 }]}>Max</Text>
-            <Text style={[styles.summaryItemValue, { color: colors.statusNegative }]}>
-              {summary.max_humidity?.toFixed(1) ?? '—'}%
-            </Text>
-          </View>
+          {renderStat('Average', formatHumidityStat(summary.avg_humidity))}
+          {renderStat('Lowest', formatHumidityStat(summary.min_humidity))}
+          {renderStat('Highest', formatHumidityStat(summary.max_humidity))}
         </View>
       </View>
 
-      <Text style={[styles.readingsCount, { color: colors.gray500 }]}>
-        Based on {summary.total_readings} data points
+      <Text style={styles.readingsCount}>
+        {`Based on ${new Intl.NumberFormat('en-IN').format(summary.total_readings)} ${summary.total_readings === 1 ? 'reading' : 'readings'}`}
       </Text>
     </View>
+  );
+
+  const header = (
+    <ReportHeader
+      title={device?.device_name || 'Sensor'}
+      subtitle={device?.location}
+      actionIcon={device ? 'refresh' : undefined}
+      actionLabel="Refresh sensor data"
+      onAction={device ? onRefresh : undefined}
+    />
   );
 
   // Loading state
   if (loading) {
     return (
-      <View style={[styles.container, { backgroundColor: colors.gray50 }]}>
-        <View style={[styles.statusBar, { height: insets.top, backgroundColor: colors.cellBackground }]} />
-        <View style={[styles.header, { backgroundColor: colors.cellBackground }]}>
-          <Pressable style={styles.backButton} onPress={() => router.back()}>
-            <Ionicons name="arrow-back" size={24} color={colors.gray700} />
-          </Pressable>
-          <Text style={[styles.headerTitle, { color: colors.gray900 }]}>Sensor Details</Text>
-          <View style={styles.backButton} />
-        </View>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={[styles.loadingText, { color: colors.gray600 }]}>Loading sensor data...</Text>
+      <View style={styles.container}>
+        {header}
+        <View style={styles.loadingContainer} accessibilityLiveRegion="polite">
+          <ActivityIndicator size="large" color={t.brand.tint} />
+          <Text style={styles.loadingText}>Loading sensor</Text>
         </View>
       </View>
     );
@@ -271,103 +591,130 @@ const SensorDetailScreen: React.FC = () => {
 
   // Error state
   if (error && !device) {
+    const notFound = error === NOT_FOUND;
     return (
-      <View style={[styles.container, { backgroundColor: colors.gray50 }]}>
-        <View style={[styles.statusBar, { height: insets.top, backgroundColor: colors.cellBackground }]} />
-        <View style={[styles.header, { backgroundColor: colors.cellBackground }]}>
-          <Pressable style={styles.backButton} onPress={() => router.back()}>
-            <Ionicons name="arrow-back" size={24} color={colors.gray700} />
-          </Pressable>
-          <Text style={[styles.headerTitle, { color: colors.gray900 }]}>Sensor Details</Text>
-          <View style={styles.backButton} />
-        </View>
-        <View style={styles.errorContainer}>
-          <Ionicons name="alert-circle-outline" size={64} color={colors.statusNegative} />
-          <Text style={[styles.errorText, { color: colors.gray700 }]}>{error}</Text>
-          <Pressable
-            style={[styles.retryButton, { backgroundColor: colors.primary }]}
-            onPress={onRefresh}
-          >
-            <Text style={[styles.retryButtonText, { color: colors.white }]}>Retry</Text>
-          </Pressable>
-        </View>
+      <View style={styles.container}>
+        {header}
+        <ReportEmptyState
+          icon={notFound ? 'thermometer-off' : 'alert-circle-outline'}
+          tone={notFound ? 'default' : 'error'}
+          message={notFound ? 'Sensor not found' : 'Something went wrong'}
+          description={error}
+          actionLabel="Try again"
+          onAction={onRefresh}
+        />
       </View>
     );
   }
 
-  return (
-    <View style={[styles.container, { backgroundColor: colors.gray50 }]}>
-      <View style={[styles.statusBar, { height: insets.top, backgroundColor: colors.cellBackground }]} />
+  const health = device ? healthStatus(device.health_status) : null;
+  const connection = device ? connectionStatus(device) : null;
+  const battery = device ? batteryStatus(device) : null;
 
-      {/* Header */}
-      <View style={[styles.header, { backgroundColor: colors.cellBackground, borderBottomColor: colors.gray200 }]}>
-        <Pressable style={styles.backButton} onPress={() => router.back()}>
-          <Ionicons name="arrow-back" size={24} color={colors.gray700} />
-        </Pressable>
-        <Text style={[styles.headerTitle, { color: colors.gray900 }]} numberOfLines={1}>
-          {device?.device_name || 'Sensor Details'}
-        </Text>
-        <Pressable style={styles.backButton} onPress={onRefresh}>
-          <Ionicons name="refresh" size={24} color={colors.primary} />
-        </Pressable>
-      </View>
+  return (
+    <View style={styles.container}>
+      {header}
 
       <ScrollView
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            colors={[t.brand.tint]}
+            tintColor={t.brand.tint}
+          />
         }
         contentContainerStyle={styles.scrollContent}
       >
-        {/* Device Info Card */}
-        {device && (
-          <View style={[styles.deviceCard, { backgroundColor: colors.cellBackground }]}>
-            <View style={styles.deviceHeader}>
-              <Ionicons name="thermometer" size={24} color={colors.primary} />
-              <View style={styles.deviceInfo}>
-                <Text style={[styles.deviceName, { color: colors.gray900 }]}>{device.device_name}</Text>
-                <Text style={[styles.deviceLocation, { color: colors.gray500 }]}>{device.location}</Text>
-              </View>
+        {/* Hero card */}
+        {device && health && connection && battery && (
+          <View style={styles.card}>
+            <View>
+              <Text style={styles.heroType}>Sensor</Text>
+              <Text style={styles.heroTitle} accessibilityRole="header">
+                {device.device_name}
+              </Text>
+              <Text style={styles.heroLocation}>{device.location}</Text>
+            </View>
+
+            <View style={styles.tagRow}>
+              <StatusTag status={health} styles={styles} t={t} />
             </View>
 
             {/* Current Readings */}
-            <View style={styles.currentReadings}>
-              <View style={[styles.readingBox, { backgroundColor: colors.gray50 }]}>
-                <Ionicons name="thermometer" size={20} color={colors.primary} />
-                <Text style={[styles.readingLabel, { color: colors.gray600 }]}>Temperature</Text>
-                <Text style={[styles.readingValue, { color: colors.gray900 }]}>
-                  {device.latest_temperature?.toFixed(1) ?? '--'}°C
-                </Text>
+            <View style={styles.readingsRow}>
+              <View
+                style={styles.readingBox}
+                accessible
+                accessibilityLabel={`Temperature ${formatTemperature(device.latest_temperature)}`}
+              >
+                <Icon name="thermometer" size={iconSize.md} color={t.icon.secondary} />
+                <Text style={styles.readingLabel}>Temperature</Text>
+                <Text style={styles.readingValue}>{formatTemperature(device.latest_temperature)}</Text>
               </View>
-              <View style={[styles.readingBox, { backgroundColor: colors.gray50 }]}>
-                <Ionicons name="water" size={20} color={colors.statusPositive} />
-                <Text style={[styles.readingLabel, { color: colors.gray600 }]}>Humidity</Text>
-                <Text style={[styles.readingValue, { color: colors.gray900 }]}>
-                  {device.latest_humidity?.toFixed(1) ?? '--'}%
-                </Text>
+              <View
+                style={styles.readingBox}
+                accessible
+                accessibilityLabel={`Humidity ${formatHumidity(device.latest_humidity)}`}
+              >
+                <Icon name="water-percent" size={iconSize.md} color={t.icon.secondary} />
+                <Text style={styles.readingLabel}>Humidity</Text>
+                <Text style={styles.readingValue}>{formatHumidity(device.latest_humidity)}</Text>
               </View>
             </View>
 
-            {device.latest_reading_timestamp && (
-              <Text style={[styles.timestamp, { color: colors.gray500 }]}>
-                Last reading: {new Date(device.latest_reading_timestamp).toLocaleString()}
-              </Text>
-            )}
+            <View>
+              <KeyValue
+                label="Connection"
+                value={connection.label}
+                styles={styles}
+                accessory={<StatusTag status={connection} styles={styles} t={t} />}
+              />
+              <KeyValue
+                label="Battery"
+                value={battery.label}
+                styles={styles}
+                accessory={<StatusTag status={battery} styles={styles} t={t} />}
+              />
+              {device.latest_reading_timestamp && (
+                <KeyValue
+                  label="Last reading"
+                  value={formatDateTime(device.latest_reading_timestamp)}
+                  styles={styles}
+                />
+              )}
+            </View>
           </View>
         )}
 
         {/* Period Selector */}
         <View style={styles.periodSection}>
-          <Text style={[styles.sectionTitle, { color: colors.gray700 }]}>Historical Data</Text>
+          <Text style={styles.sectionTitle} accessibilityRole="header">
+            History
+          </Text>
           {renderPeriodSelector()}
         </View>
 
+        {error && device && (
+          <View style={styles.messageStrip} accessibilityLiveRegion="polite">
+            <Icon name="alert-circle" size={iconSize.md} color={t.status.negative.text} />
+            <Text style={styles.messageText}>{error}</Text>
+            <Pressable
+              style={styles.stripAction}
+              onPress={() => fetchHistory(selectedPeriod)}
+              accessibilityRole="button"
+              accessibilityLabel="Try again"
+            >
+              <Text style={styles.stripActionText}>Try again</Text>
+            </Pressable>
+          </View>
+        )}
+
         {/* Chart */}
         {historyLoading ? (
-          <View style={[styles.chartLoading, { backgroundColor: colors.cellBackground }]}>
-            <ActivityIndicator size="small" color={colors.primary} />
-            <Text style={[styles.chartLoadingText, { color: colors.gray600 }]}>
-              Loading {getPeriodLabel(selectedPeriod)} history...
-            </Text>
+          <View style={styles.chartLoading} accessibilityLiveRegion="polite">
+            <ActivityIndicator size="small" color={t.brand.tint} />
+            <Text style={styles.loadingText}>{`Loading ${getPeriodLabel(selectedPeriod)} of history`}</Text>
           </View>
         ) : historyData ? (
           <>
@@ -380,248 +727,12 @@ const SensorDetailScreen: React.FC = () => {
             {/* Summary */}
             {renderSummary(historyData.summary)}
           </>
-        ) : (
-          <View style={[styles.noDataCard, { backgroundColor: colors.cellBackground }]}>
-            <Ionicons name="analytics-outline" size={48} color={colors.gray400} />
-            <Text style={[styles.noDataText, { color: colors.gray600 }]}>
-              No historical data available
-            </Text>
-          </View>
-        )}
+        ) : !error ? (
+          <SensorHistoryChart readings={[]} aggregationInterval="" periodDays={selectedPeriod} />
+        ) : null}
       </ScrollView>
     </View>
   );
 };
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  statusBar: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    zIndex: 10,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 8,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    marginTop: 44, // Account for status bar
-  },
-  backButton: {
-    width: 44,
-    height: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerTitle: {
-    flex: 1,
-    fontSize: 18,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  scrollContent: {
-    paddingBottom: 32,
-  },
-  loadingContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 16,
-  },
-  loadingText: {
-    fontSize: 14,
-  },
-  errorContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 32,
-    gap: 16,
-  },
-  errorText: {
-    fontSize: 16,
-    textAlign: 'center',
-  },
-  retryButton: {
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 8,
-  },
-  retryButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-
-  // Device Card
-  deviceCard: {
-    margin: 16,
-    padding: 16,
-    borderRadius: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
-    elevation: 2,
-  },
-  deviceHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginBottom: 16,
-  },
-  deviceInfo: {
-    flex: 1,
-  },
-  deviceName: {
-    fontSize: 18,
-    fontWeight: '600',
-  },
-  deviceLocation: {
-    fontSize: 13,
-    marginTop: 2,
-  },
-  currentReadings: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  readingBox: {
-    flex: 1,
-    alignItems: 'center',
-    padding: 12,
-    borderRadius: 10,
-    gap: 4,
-  },
-  readingLabel: {
-    fontSize: 11,
-    fontWeight: '500',
-    textTransform: 'uppercase',
-  },
-  readingValue: {
-    fontSize: 24,
-    fontWeight: '700',
-  },
-  timestamp: {
-    fontSize: 12,
-    textAlign: 'center',
-    marginTop: 12,
-  },
-
-  // Period Selector
-  periodSection: {
-    marginHorizontal: 16,
-    marginTop: 8,
-    marginBottom: 8,
-  },
-  sectionTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    marginBottom: 12,
-  },
-  periodContainer: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  periodChip: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    borderWidth: 1,
-  },
-  periodChipText: {
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  noPeriodsText: {
-    fontSize: 14,
-    fontStyle: 'italic',
-  },
-
-  // Chart loading
-  chartLoading: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
-    padding: 40,
-    margin: 16,
-    borderRadius: 12,
-  },
-  chartLoadingText: {
-    fontSize: 14,
-  },
-
-  // Summary
-  summaryCard: {
-    margin: 16,
-    marginTop: 8,
-    padding: 16,
-    borderRadius: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
-    elevation: 2,
-  },
-  summaryTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 16,
-  },
-  summarySection: {
-    borderRadius: 8,
-  },
-  summaryHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 8,
-  },
-  summaryLabel: {
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  summaryRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  summaryItem: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  summaryItemLabel: {
-    fontSize: 11,
-    fontWeight: '500',
-    textTransform: 'uppercase',
-  },
-  summaryItemValue: {
-    fontSize: 18,
-    fontWeight: '700',
-    marginTop: 4,
-  },
-  readingsCount: {
-    fontSize: 12,
-    textAlign: 'center',
-    marginTop: 16,
-  },
-
-  // No data
-  noDataCard: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 40,
-    margin: 16,
-    borderRadius: 12,
-    gap: 12,
-  },
-  noDataText: {
-    fontSize: 14,
-  },
-});
 
 export default SensorDetailScreen;

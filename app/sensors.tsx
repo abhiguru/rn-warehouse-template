@@ -1,8 +1,10 @@
 /**
  * Temperature & Humidity Sensors Screen
  *
- * SAP Fiori Design System
- * Displays real-time sensor data with auto-polling
+ * Displays real-time sensor data with auto-polling. Styling follows
+ * docs/STYLE_GUIDE.md: list report on `background.base`, sensor object cards on
+ * `surface.card`, one status tag per sensor (§3.5: healthy / warning / critical
+ * map to positive / critical / negative, each with its icon and word).
  */
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
@@ -16,99 +18,347 @@ import {
   Text,
   Pressable,
   ActivityIndicator,
-  Platform,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { router } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useListColors } from '@/hooks/useListColors';
-import { SensorService } from '@/services/sensor-service';
+import { ReportHeader, ReportEmptyState } from '@/components/reports';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import {
-  SensorDevice,
-  SensorDashboard,
-  SensorReading,
-} from '@/types/sensor.types';
-import { useAppSelector } from '@/store/hooks';
+  fontWeight,
+  iconSize,
+  layout,
+  radius,
+  space,
+  touchTarget,
+  typography,
+  type ThemeTokens,
+} from '@/theme/tokens';
+import { SensorService } from '@/services/sensor-service';
+import { SensorDevice, SensorDashboard } from '@/types/sensor.types';
+import { createLogger } from '@/utils/logger';
 
-// ============================================================================
-// SAP Fiori Design Constants
-// ============================================================================
-const FIORI = {
-  // Card
-  card: {
-    borderRadius: 12,
-    padding: 16,
-    gap: 12,
-  },
-  // Dashboard Cards
-  dashboard: {
-    primaryCard: {
-      borderRadius: 16,
-      padding: 16,
-      gap: 8,
-    },
-    statusCard: {
-      borderRadius: 12,
-      padding: 12,
-      gap: 4,
-    },
-  },
-  // Chip
-  chip: {
-    height: 32,
-    borderRadius: 16,
-    paddingHorizontal: 12,
-    gap: 6,
-  },
-  // Typography
-  typography: {
-    headerTitle: { fontSize: 20, fontWeight: '700' as const },
-    cardTitle: { fontSize: 16, fontWeight: '600' as const },
-    cardLabel: {
-      fontSize: 11,
-      fontWeight: '500' as const,
-      textTransform: 'uppercase' as const,
-      letterSpacing: 0.5,
-    },
-    cardValue: { fontSize: 24, fontWeight: '700' as const },
-    readingLabel: {
-      fontSize: 11,
-      fontWeight: '500' as const,
-      textTransform: 'uppercase' as const,
-    },
-    readingValue: { fontSize: 22, fontWeight: '700' as const },
-    timestamp: { fontSize: 12, fontWeight: '400' as const },
-  },
-  // Icon
-  icon: {
-    button: 24,
-    card: 28,
-    status: 12,
-    battery: 20,
-    reading: 20,
-  },
-  // Button
-  button: {
-    size: 44,
-  },
-} as const;
+const logger = createLogger('SensorsScreen');
 
 const POLL_INTERVAL = 10 * 1000; // 10 seconds
 const LAST_POLL_KEY = 'sensor_last_poll_timestamp';
+const LOAD_ERROR = "Couldn't load sensor data. Check your connection and try again.";
+
+// ============================================================================
+// Status and formatting helpers (guide §3.5, §12.3)
+// ============================================================================
+
+type StatusKind = 'negative' | 'critical' | 'positive' | 'informative' | 'neutral';
+
+const STATUS_ICON: Record<StatusKind, string> = {
+  negative: 'alert-circle',
+  critical: 'alert',
+  positive: 'check-circle',
+  informative: 'information',
+  neutral: 'circle-outline',
+};
+
+const SEVERITY: Record<StatusKind, number> = {
+  negative: 4,
+  critical: 3,
+  informative: 2,
+  neutral: 1,
+  positive: 0,
+};
+
+interface SensorStatus {
+  kind: StatusKind;
+  label: string;
+}
+
+/** Health status of a sensor: healthy / warning / critical → positive / critical / negative. */
+export function healthStatus(health: SensorDevice['health_status']): SensorStatus {
+  switch (health) {
+    case 'healthy':
+      return { kind: 'positive', label: 'Healthy' };
+    case 'warning':
+      return { kind: 'critical', label: 'Warning' };
+    case 'critical':
+      return { kind: 'negative', label: 'Critical' };
+    default:
+      return { kind: 'neutral', label: 'Unknown' };
+  }
+}
+
+/** Battery status, or null when the battery is fine. */
+export function batteryStatus(battery: SensorDevice['battery_status']): SensorStatus | null {
+  switch (battery) {
+    case 'LOW':
+      return { kind: 'critical', label: 'Low battery' };
+    case 'CRITICAL':
+      return { kind: 'negative', label: 'Battery critical' };
+    default:
+      return null;
+  }
+}
+
+/** The one status shown in the list: the most severe of connectivity, health and battery. */
+export function rowStatus(device: SensorDevice): SensorStatus {
+  const candidates: SensorStatus[] = [healthStatus(device.health_status)];
+  if (device.connectivity_status === 'OFFLINE') candidates.push({ kind: 'negative', label: 'Offline' });
+  else if (device.is_stale) candidates.push({ kind: 'critical', label: 'No recent data' });
+  const battery = batteryStatus(device.battery_status);
+  if (battery) candidates.push(battery);
+  return candidates.reduce((worst, s) => (SEVERITY[s.kind] > SEVERITY[worst.kind] ? s : worst));
+}
+
+const MINUS = '−';
+
+/** −18.5°C */
+function formatTemperature(value: number | null | undefined): string {
+  if (value === null || value === undefined || isNaN(value)) return '–';
+  return `${value < 0 ? MINUS : ''}${Math.abs(value).toFixed(1)}°C`;
+}
+
+/** 85% */
+function formatHumidity(value: number | null | undefined): string {
+  if (value === null || value === undefined || isNaN(value)) return '–';
+  return `${Math.round(value)}%`;
+}
+
+/** "5 min ago", "3 h ago", then "9 Oct 2026, 4:05 pm" */
+function formatWhen(iso: string): string {
+  const date = new Date(iso);
+  if (isNaN(date.getTime())) return '';
+  const minutes = Math.floor((Date.now() - date.getTime()) / 60000);
+  if (minutes >= 0 && minutes < 1) return 'Just now';
+  if (minutes >= 0 && minutes < 60) return `${minutes} min ago`;
+  if (minutes >= 0 && minutes < 24 * 60) return `${Math.floor(minutes / 60)} h ago`;
+  const day = date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+  const time = date.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true }).toLowerCase();
+  return `${day}, ${time}`;
+}
+
+/** "4:05 pm" */
+function formatClock(iso: string): string {
+  const date = new Date(iso);
+  if (isNaN(date.getTime())) return '';
+  return date.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true }).toLowerCase();
+}
+
+// ============================================================================
+// Styles
+// ============================================================================
+
+const makeStyles = (t: ThemeTokens) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: t.background.base,
+    },
+    loadingContainer: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      gap: space.lg,
+    },
+    loadingText: {
+      ...typography.subhead,
+      color: t.text.secondary,
+    },
+    listContent: {
+      flexGrow: 1,
+      paddingHorizontal: layout.marginCompact,
+      paddingBottom: space.xxxl,
+      gap: space.sm,
+    },
+    dashboardSection: {
+      paddingTop: space.lg,
+      paddingBottom: space.sm,
+      gap: space.md,
+    },
+    tileRow: {
+      flexDirection: 'row',
+      gap: space.sm,
+    },
+    tile: {
+      flex: 1,
+      backgroundColor: t.surface.card,
+      borderRadius: radius.card,
+      padding: space.md,
+      gap: space.xs,
+      alignItems: 'flex-start',
+      ...t.shadow[2],
+    },
+    tileIcon: {
+      width: layout.avatar.sm,
+      height: layout.avatar.sm,
+      borderRadius: radius.pill,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    tileLabel: {
+      ...typography.footnote,
+      color: t.text.secondary,
+    },
+    tileValue: {
+      ...typography.title3,
+      color: t.text.primary,
+      fontVariant: ['tabular-nums'],
+    },
+    alertsRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: space.sm,
+    },
+    tag: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      alignSelf: 'flex-start',
+      gap: space.xs,
+      paddingHorizontal: space.sm,
+      paddingVertical: space.xxs,
+      borderRadius: radius.field,
+    },
+    tagText: {
+      ...typography.caption1,
+      fontWeight: fontWeight.semibold,
+    },
+    pollingInfo: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      alignItems: 'center',
+      columnGap: space.md,
+      rowGap: space.xxs,
+    },
+    pollingRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: space.xs,
+    },
+    pollingText: {
+      ...typography.footnote,
+      color: t.text.secondary,
+      fontVariant: ['tabular-nums'],
+    },
+    sectionHeader: {
+      ...typography.footnote,
+      fontWeight: fontWeight.semibold,
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+      color: t.text.secondary,
+      marginTop: space.md,
+    },
+    messageStrip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: space.sm,
+      paddingLeft: space.md,
+      borderRadius: radius.button,
+      borderWidth: 1,
+      borderColor: t.status.negative.border,
+      backgroundColor: t.status.negative.background,
+    },
+    messageText: {
+      ...typography.subhead,
+      color: t.status.negative.text,
+      flex: 1,
+      paddingVertical: space.sm,
+    },
+    stripAction: {
+      minHeight: touchTarget,
+      paddingHorizontal: space.md,
+      justifyContent: 'center',
+    },
+    stripActionText: {
+      ...typography.subhead,
+      fontWeight: fontWeight.semibold,
+      color: t.brand.tint,
+    },
+    deviceCard: {
+      backgroundColor: t.surface.card,
+      borderRadius: radius.card,
+      padding: space.lg,
+      gap: space.md,
+      ...t.shadow[2],
+    },
+    deviceCardPressed: {
+      backgroundColor: t.surface.cardPressed,
+    },
+    deviceHeader: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: space.md,
+    },
+    deviceInfo: {
+      flex: 1,
+      gap: space.xxs,
+    },
+    deviceName: {
+      ...typography.headline,
+      color: t.text.primary,
+    },
+    deviceLocation: {
+      ...typography.subhead,
+      color: t.text.secondary,
+    },
+    readingsRow: {
+      flexDirection: 'row',
+      gap: space.sm,
+    },
+    readingBox: {
+      flex: 1,
+      borderRadius: radius.button,
+      padding: space.md,
+      gap: space.xxs,
+      alignItems: 'center',
+      backgroundColor: t.background.base,
+    },
+    readingLabel: {
+      ...typography.footnote,
+      color: t.text.secondary,
+      textAlign: 'center',
+    },
+    readingValue: {
+      ...typography.title2,
+      color: t.text.primary,
+      fontVariant: ['tabular-nums'],
+    },
+    timestampText: {
+      ...typography.caption1,
+      color: t.text.secondary,
+    },
+    offlineContainer: {
+      alignItems: 'center',
+      paddingVertical: space.lg,
+      gap: space.xs,
+      borderRadius: radius.button,
+      backgroundColor: t.background.base,
+    },
+    offlineText: {
+      ...typography.headline,
+      color: t.text.primary,
+    },
+  });
+
+type Styles = ReturnType<typeof makeStyles>;
+
+function StatusTag({ status, styles, t }: { status: SensorStatus; styles: Styles; t: ThemeTokens }) {
+  const tone = t.status[status.kind];
+  return (
+    <View style={[styles.tag, { backgroundColor: tone.background }]}>
+      <Icon name={STATUS_ICON[status.kind]} size={iconSize.sm} color={tone.text} />
+      <Text style={[styles.tagText, { color: tone.text }]} maxFontSizeMultiplier={1.6}>
+        {status.label}
+      </Text>
+    </View>
+  );
+}
 
 const SensorsScreen: React.FC = () => {
-  const { userProfile } = useAppSelector(state => state.auth);
-  const insets = useSafeAreaInsets();
-  const colors = useListColors();
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
 
   const [devices, setDevices] = useState<SensorDevice[]>([]);
   const [dashboard, setDashboard] = useState<SensorDashboard | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [errorVisible, setErrorVisible] = useState(false);
-  const [errorMessage, setErrorMessage] = useState('');
-  const [lastPollTime, setLastPollTime] = useState<string | null>(null);
   const [nextPollIn, setNextPollIn] = useState<number>(POLL_INTERVAL);
 
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -128,27 +378,25 @@ const SensorsScreen: React.FC = () => {
         if (result.success && result.data) {
           setDevices(result.data.devices);
           setDashboard(result.data.dashboard);
+          setErrorVisible(false);
 
           // Store the poll timestamp
           await AsyncStorage.setItem(LAST_POLL_KEY, result.data.poll_timestamp);
-          setLastPollTime(result.data.poll_timestamp);
 
           // Reset countdown
           setNextPollIn(POLL_INTERVAL);
 
-          if (__DEV__)
-            console.log('[SensorsScreen] Poll successful:', {
-              devices: result.data.devices.length,
-              newReadings: result.data.new_readings.length,
-              timestamp: result.data.poll_timestamp,
-            });
+          logger.debug('Poll successful', {
+            devices: result.data.devices.length,
+            newReadings: result.data.new_readings.length,
+            timestamp: result.data.poll_timestamp,
+          });
         } else {
-          setErrorMessage(result.message || 'Failed to load sensor data');
+          logger.warn('Poll failed', { message: result.message });
           setErrorVisible(true);
         }
       } catch (error) {
-        console.error('[SensorsScreen] Exception:', error);
-        setErrorMessage('Failed to load sensor data');
+        logger.error('Exception', error);
         setErrorVisible(true);
       } finally {
         setLoading(false);
@@ -171,16 +419,13 @@ const SensorsScreen: React.FC = () => {
 
   // Setup polling interval
   useEffect(() => {
-    // Clear any existing interval
     if (pollIntervalRef.current) {
       clearInterval(pollIntervalRef.current);
     }
 
-    // Set up new interval
     pollIntervalRef.current = setInterval(async () => {
       const lastPoll = await AsyncStorage.getItem(LAST_POLL_KEY);
-      if (__DEV__)
-        console.log('[SensorsScreen] Auto-polling (10 second interval)');
+      logger.debug('Auto-polling (10 second interval)');
       await fetchSensorData(false, lastPoll || undefined);
     }, POLL_INTERVAL);
 
@@ -213,23 +458,16 @@ const SensorsScreen: React.FC = () => {
 
   // Handle app state changes (pause polling when app is in background)
   useEffect(() => {
-    const subscription = AppState.addEventListener(
-      'change',
-      (nextAppState: AppStateStatus) => {
-        if (
-          appState.current.match(/inactive|background/) &&
-          nextAppState === 'active'
-        ) {
-          // App has come to foreground - trigger a poll
-          if (__DEV__)
-            console.log('[SensorsScreen] App foregrounded - polling');
-          AsyncStorage.getItem(LAST_POLL_KEY).then(lastPoll => {
-            fetchSensorData(false, lastPoll || undefined);
-          });
-        }
-        appState.current = nextAppState;
+    const subscription = AppState.addEventListener('change', (nextAppState: AppStateStatus) => {
+      if (appState.current.match(/inactive|background/) && nextAppState === 'active') {
+        // App has come to foreground - trigger a poll
+        logger.debug('App foregrounded - polling');
+        AsyncStorage.getItem(LAST_POLL_KEY).then(lastPoll => {
+          fetchSensorData(false, lastPoll || undefined);
+        });
       }
-    );
+      appState.current = nextAppState;
+    });
 
     return () => {
       subscription.remove();
@@ -241,803 +479,271 @@ const SensorsScreen: React.FC = () => {
     await fetchSensorData(true, lastPoll || undefined);
   }, [fetchSensorData]);
 
-  const getHealthColor = useCallback(
-    (status: string) => {
-      switch (status) {
-        case 'healthy':
-          return colors.statusPositive;
-        case 'warning':
-          return colors.statusCritical;
-        case 'critical':
-          return colors.statusNegative;
-        default:
-          return colors.gray400;
-      }
-    },
-    [colors]
+  const renderTile = (
+    label: string,
+    value: number,
+    icon: string,
+    iconColour: string,
+    iconBackground: string
+  ) => (
+    <View style={styles.tile} accessible accessibilityLabel={`${label}: ${value}`}>
+      <View style={[styles.tileIcon, { backgroundColor: iconBackground }]}>
+        <Icon name={icon} size={iconSize.md} color={iconColour} />
+      </View>
+      <Text style={styles.tileLabel}>{label}</Text>
+      <Text style={styles.tileValue}>{value}</Text>
+    </View>
   );
-
-  const getBatteryIcon = (
-    status: string
-  ): 'battery-full' | 'battery-half' | 'warning' | 'help-circle' => {
-    switch (status) {
-      case 'GOOD':
-        return 'battery-full';
-      case 'LOW':
-        return 'battery-half';
-      case 'CRITICAL':
-        return 'warning';
-      default:
-        return 'help-circle';
-    }
-  };
-
-  const getBatteryColor = useCallback(
-    (status: string) => {
-      switch (status) {
-        case 'GOOD':
-          return colors.statusPositive;
-        case 'LOW':
-          return colors.statusCritical;
-        case 'CRITICAL':
-          return colors.statusNegative;
-        default:
-          return colors.gray400;
-      }
-    },
-    [colors]
-  );
-
-  const formatNextPoll = (ms: number) => {
-    const seconds = Math.floor(ms / 1000);
-    return `${seconds}s`;
-  };
 
   const renderDashboard = () => {
     if (!dashboard) return null;
 
+    const alerts: SensorStatus[] = [];
+    if (dashboard.stale_sensors > 0) {
+      alerts.push({ kind: 'critical', label: `${dashboard.stale_sensors} with no recent data` });
+    }
+    if (dashboard.low_battery_count > 0) {
+      alerts.push({ kind: 'critical', label: `${dashboard.low_battery_count} low battery` });
+    }
+    if (dashboard.critical_battery_count > 0) {
+      alerts.push({ kind: 'negative', label: `${dashboard.critical_battery_count} battery critical` });
+    }
+
+    const seconds = Math.max(0, Math.floor(nextPollIn / 1000));
+
     return (
-      <View
-        style={[
-          styles.dashboardSection,
-          { backgroundColor: colors.cellBackground },
-        ]}
-      >
-        {/* Status Overview */}
-        <View style={styles.statusRow}>
-          <View
-            style={[
-              styles.statusCard,
-              styles.primaryCard,
-              { backgroundColor: colors.primary },
-            ]}
-          >
-            <Ionicons
-              name="hardware-chip-outline"
-              size={FIORI.icon.card}
-              color={colors.white}
-            />
-            <Text style={[styles.primaryCardLabel, { color: colors.white }]}>
-              Total Sensors
-            </Text>
-            <Text style={[styles.primaryCardValue, { color: colors.white }]}>
-              {dashboard.total_active_sensors}
-            </Text>
-          </View>
-
-          <View style={styles.statusColumn}>
-            <View
-              style={[
-                styles.statusCard,
-                { backgroundColor: colors.cellBackground },
-              ]}
-            >
-              <Ionicons
-                name="checkmark-circle"
-                size={FIORI.icon.status + 8}
-                color={colors.statusPositive}
-              />
-              <Text style={[styles.cardLabel, { color: colors.gray600 }]}>
-                Online
-              </Text>
-              <Text style={[styles.cardValue, { color: colors.gray900 }]}>
-                {dashboard.online_sensors}
-              </Text>
-            </View>
-
-            <View
-              style={[
-                styles.statusCard,
-                { backgroundColor: colors.cellBackground },
-              ]}
-            >
-              <Ionicons
-                name="close-circle"
-                size={FIORI.icon.status + 8}
-                color={colors.statusNegative}
-              />
-              <Text style={[styles.cardLabel, { color: colors.gray600 }]}>
-                Offline
-              </Text>
-              <Text style={[styles.cardValue, { color: colors.gray900 }]}>
-                {dashboard.offline_sensors}
-              </Text>
-            </View>
-          </View>
+      <View style={styles.dashboardSection}>
+        <View style={styles.tileRow}>
+          {renderTile('Sensors', dashboard.total_active_sensors, 'thermometer', t.brand.tint, t.brand.subtle)}
+          {renderTile(
+            'Online',
+            dashboard.online_sensors,
+            STATUS_ICON.positive,
+            t.status.positive.text,
+            t.status.positive.background
+          )}
+          {renderTile(
+            'Offline',
+            dashboard.offline_sensors,
+            STATUS_ICON.negative,
+            t.status.negative.text,
+            t.status.negative.background
+          )}
         </View>
 
-        {/* Alert Chips */}
-        {(dashboard.stale_sensors > 0 ||
-          dashboard.low_battery_count > 0 ||
-          dashboard.critical_battery_count > 0) && (
+        {alerts.length > 0 && (
           <View style={styles.alertsRow}>
-            {dashboard.stale_sensors > 0 && (
-              <View
-                style={[
-                  styles.chip,
-                  {
-                    borderColor: colors.statusCritical,
-                    backgroundColor: colors.statusCriticalLight,
-                  },
-                ]}
-              >
-                <Ionicons
-                  name="alert-circle-outline"
-                  size={16}
-                  color={colors.statusCritical}
-                />
-                <Text
-                  style={[
-                    styles.chipText,
-                    { color: colors.statusCriticalDark },
-                  ]}
-                >
-                  {dashboard.stale_sensors} Stale
-                </Text>
-              </View>
-            )}
-            {dashboard.low_battery_count > 0 && (
-              <View
-                style={[
-                  styles.chip,
-                  {
-                    borderColor: colors.statusCritical,
-                    backgroundColor: colors.statusCriticalLight,
-                  },
-                ]}
-              >
-                <Ionicons
-                  name="battery-half"
-                  size={16}
-                  color={colors.statusCritical}
-                />
-                <Text
-                  style={[
-                    styles.chipText,
-                    { color: colors.statusCriticalDark },
-                  ]}
-                >
-                  {dashboard.low_battery_count} Low Battery
-                </Text>
-              </View>
-            )}
-            {dashboard.critical_battery_count > 0 && (
-              <View
-                style={[
-                  styles.chip,
-                  {
-                    borderColor: colors.statusNegative,
-                    backgroundColor: colors.statusNegativeLight,
-                  },
-                ]}
-              >
-                <Ionicons
-                  name="warning"
-                  size={16}
-                  color={colors.statusNegative}
-                />
-                <Text
-                  style={[
-                    styles.chipText,
-                    { color: colors.statusNegativeDark },
-                  ]}
-                >
-                  {dashboard.critical_battery_count} Critical
-                </Text>
-              </View>
-            )}
+            {alerts.map(alert => (
+              <StatusTag key={alert.label} status={alert} styles={styles} t={t} />
+            ))}
           </View>
         )}
 
-        {/* Polling Info */}
-        <View style={[styles.pollingInfo, { backgroundColor: colors.gray50 }]}>
+        <View style={styles.pollingInfo}>
           <View style={styles.pollingRow}>
-            <Ionicons name="time-outline" size={16} color={colors.gray600} />
-            <Text style={[styles.pollingText, { color: colors.gray700 }]}>
-              Next poll in {formatNextPoll(nextPollIn)}
-            </Text>
+            <Icon name="timer-outline" size={iconSize.sm} color={t.icon.secondary} />
+            <Text style={styles.pollingText}>{`Next update in ${seconds} s`}</Text>
           </View>
           {dashboard.most_recent_sync && (
-            <Text style={[styles.syncText, { color: colors.gray500 }]}>
-              Last sync:{' '}
-              {new Date(dashboard.most_recent_sync).toLocaleTimeString()}
-            </Text>
+            <Text style={styles.pollingText}>{`Last sync ${formatClock(dashboard.most_recent_sync)}`}</Text>
           )}
         </View>
+
+        {errorVisible && (
+          <View style={styles.messageStrip} accessibilityLiveRegion="polite">
+            <Icon name={STATUS_ICON.negative} size={iconSize.md} color={t.status.negative.text} />
+            <Text style={styles.messageText}>{LOAD_ERROR}</Text>
+            <Pressable
+              style={styles.stripAction}
+              onPress={() => {
+                setErrorVisible(false);
+                onRefresh();
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Try again"
+            >
+              <Text style={styles.stripActionText}>Try again</Text>
+            </Pressable>
+          </View>
+        )}
+
+        {devices.length > 0 && (
+          <Text style={styles.sectionHeader} accessibilityRole="header">
+            Sensors
+          </Text>
+        )}
       </View>
     );
   };
 
   const renderDevice = ({ item: device }: { item: SensorDevice }) => {
-    const isOffline =
-      device.connectivity_status === 'OFFLINE' || device.is_stale;
+    const isOffline = device.connectivity_status === 'OFFLINE' || device.is_stale;
+    const status = rowStatus(device);
+    const hasReading = !isOffline && device.latest_temperature !== null;
+    const a11yLabel = [
+      device.device_name,
+      device.location,
+      status.label,
+      hasReading ? `temperature ${formatTemperature(device.latest_temperature)}` : null,
+      hasReading ? `humidity ${formatHumidity(device.latest_humidity)}` : null,
+    ]
+      .filter(Boolean)
+      .join(', ');
 
     return (
       <Pressable
-        style={({ pressed }) => [
-          styles.deviceCard,
-          {
-            backgroundColor: colors.cellBackground,
-            borderColor: colors.cellDivider,
-          },
-          pressed && { opacity: 0.8 },
-        ]}
+        style={({ pressed }) => [styles.deviceCard, pressed && styles.deviceCardPressed]}
         onPress={() => router.push(`/sensor-detail/${device.id}`)}
+        accessibilityRole="button"
+        accessibilityLabel={a11yLabel}
+        accessibilityHint="Opens sensor history"
       >
         {/* Device Header */}
         <View style={styles.deviceHeader}>
-          <View style={styles.deviceTitleRow}>
-            <Ionicons
-              name={isOffline ? 'thermometer-outline' : 'thermometer'}
-              size={24}
-              color={isOffline ? colors.gray400 : colors.primary}
-            />
-            <View style={styles.deviceInfo}>
-              <Text style={[styles.deviceName, { color: colors.gray900 }]}>
-                {device.device_name}
-              </Text>
-              <Text style={[styles.deviceLocation, { color: colors.gray500 }]}>
-                {device.location}
-              </Text>
-            </View>
+          <Icon
+            name={isOffline ? 'thermometer-off' : 'thermometer'}
+            size={iconSize.lg}
+            color={isOffline ? t.icon.secondary : t.icon.primary}
+          />
+          <View style={styles.deviceInfo}>
+            <Text style={styles.deviceName} numberOfLines={2}>
+              {device.device_name}
+            </Text>
+            <Text style={styles.deviceLocation} numberOfLines={1}>
+              {device.location}
+            </Text>
+            <StatusTag status={status} styles={styles} t={t} />
           </View>
-
-          {/* Status Indicators */}
-          <View style={styles.statusIndicators}>
-            <Ionicons
-              name="ellipse"
-              size={FIORI.icon.status}
-              color={getHealthColor(device.health_status)}
-            />
-            <Ionicons
-              name={getBatteryIcon(device.battery_status)}
-              size={FIORI.icon.battery}
-              color={getBatteryColor(device.battery_status)}
-            />
-          </View>
+          <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />
         </View>
 
         {/* Temperature & Humidity */}
-        {!isOffline && device.latest_temperature !== null ? (
+        {hasReading ? (
           <>
             <View style={styles.readingsRow}>
-              <View
-                style={[styles.readingCard, { backgroundColor: colors.gray50 }]}
-              >
-                <Ionicons
-                  name="thermometer"
-                  size={FIORI.icon.reading}
-                  color={colors.primary}
-                />
-                <Text style={[styles.readingLabel, { color: colors.gray600 }]}>
-                  Temperature
-                </Text>
-                <Text style={[styles.readingValue, { color: colors.gray900 }]}>
-                  {device.latest_temperature.toFixed(1)}°C
-                </Text>
+              <View style={styles.readingBox}>
+                <Icon name="thermometer" size={iconSize.md} color={t.icon.secondary} />
+                <Text style={styles.readingLabel}>Temperature</Text>
+                <Text style={styles.readingValue}>{formatTemperature(device.latest_temperature)}</Text>
               </View>
 
-              <View
-                style={[styles.readingCard, { backgroundColor: colors.gray50 }]}
-              >
-                <Ionicons
-                  name="water"
-                  size={FIORI.icon.reading}
-                  color={colors.statusPositive}
-                />
-                <Text style={[styles.readingLabel, { color: colors.gray600 }]}>
-                  Humidity
-                </Text>
-                <Text style={[styles.readingValue, { color: colors.gray900 }]}>
-                  {device.latest_humidity?.toFixed(1) || '0.0'}%
-                </Text>
+              <View style={styles.readingBox}>
+                <Icon name="water-percent" size={iconSize.md} color={t.icon.secondary} />
+                <Text style={styles.readingLabel}>Humidity</Text>
+                <Text style={styles.readingValue}>{formatHumidity(device.latest_humidity)}</Text>
               </View>
             </View>
 
             {device.latest_reading_timestamp && (
-              <Text style={[styles.timestampText, { color: colors.gray500 }]}>
-                Updated:{' '}
-                {new Date(device.latest_reading_timestamp).toLocaleString()}
-              </Text>
+              <Text style={styles.timestampText}>{`Updated ${formatWhen(device.latest_reading_timestamp)}`}</Text>
             )}
           </>
         ) : (
           <View style={styles.offlineContainer}>
-            <Ionicons
-              name="cloud-offline-outline"
-              size={32}
-              color={colors.gray400}
-            />
-            <Text style={[styles.offlineText, { color: colors.gray500 }]}>
-              {device.is_stale ? 'Stale Data' : 'Offline'}
-            </Text>
+            <Icon name="cloud-off-outline" size={iconSize.xl} color={t.icon.secondary} />
+            <Text style={styles.offlineText}>{device.is_stale ? 'No recent data' : 'Offline'}</Text>
             {device.last_reading_at && (
-              <Text style={[styles.lastSeenText, { color: colors.gray400 }]}>
-                Last seen: {new Date(device.last_reading_at).toLocaleString()}
-              </Text>
+              <Text style={styles.timestampText}>{`Last seen ${formatWhen(device.last_reading_at)}`}</Text>
             )}
           </View>
         )}
-
-        {/* Tap indicator */}
-        <View style={styles.tapIndicator}>
-          <Ionicons name="chevron-forward" size={20} color={colors.gray400} />
-        </View>
       </Pressable>
     );
   };
 
   const renderEmpty = () => (
-    <View style={styles.emptyContainer}>
-      <Ionicons name="thermometer-outline" size={64} color={colors.gray300} />
-      <Text style={[styles.emptyText, { color: colors.gray700 }]}>
-        No sensors available
-      </Text>
-      <Text style={[styles.emptySubtext, { color: colors.gray500 }]}>
-        Check your sensor configuration
-      </Text>
-    </View>
+    <ReportEmptyState
+      icon="thermometer-off"
+      message="No sensors yet"
+      description="Sensors set up for this facility appear here."
+    />
   );
 
-  const renderHeader = () => (
-    <>
-      <View
-        style={[
-          styles.header,
-          {
-            paddingTop: insets.top + 16,
-            backgroundColor: colors.cellBackground,
-          },
-        ]}
-      >
-        <Pressable
-          onPress={() => router.back()}
-          style={({ pressed }) => [
-            styles.backButton,
-            pressed && styles.buttonPressed,
-          ]}
-        >
-          <Ionicons
-            name="arrow-back"
-            size={FIORI.icon.button}
-            color={colors.gray700}
-          />
-        </Pressable>
-        <Text
-          style={[styles.title, { color: colors.gray900 }]}
-          numberOfLines={1}
-        >
-          Temperature & Humidity
-        </Text>
-        <Pressable
-          onPress={onRefresh}
-          style={({ pressed }) => [
-            styles.refreshButton,
-            pressed && styles.buttonPressed,
-          ]}
-        >
-          <Ionicons
-            name="refresh"
-            size={FIORI.icon.button}
-            color={colors.primary}
-          />
-        </Pressable>
-      </View>
-      {renderDashboard()}
-    </>
+  const header = (
+    <ReportHeader
+      title="Temperature and humidity"
+      actionIcon="refresh"
+      actionLabel="Refresh sensor data"
+      onAction={onRefresh}
+    />
   );
 
   if (loading && !refreshing) {
     return (
-      <View style={[styles.container, { backgroundColor: colors.gray50 }]}>
-        {/* Status Bar Background */}
-        <View
-          style={[
-            styles.statusBarCover,
-            { height: insets.top, backgroundColor: colors.cellBackground },
-          ]}
-        />
-
-        {renderHeader()}
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={[styles.loadingText, { color: colors.gray600 }]}>
-            Loading sensor data...
-          </Text>
+      <View style={styles.container}>
+        {header}
+        <View style={styles.loadingContainer} accessibilityLiveRegion="polite">
+          <ActivityIndicator size="large" color={t.brand.tint} />
+          <Text style={styles.loadingText}>Loading sensors</Text>
         </View>
       </View>
     );
   }
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.gray50 }]}>
-      {/* Status Bar Background */}
-      <View
-        style={[
-          styles.statusBarCover,
-          { height: insets.top, backgroundColor: colors.cellBackground },
-        ]}
-      />
-
+    <View style={styles.container}>
+      {header}
       <FlatList
         data={devices}
         renderItem={renderDevice}
         keyExtractor={device => device.id}
-        ListHeaderComponent={renderHeader()}
-        ListEmptyComponent={renderEmpty}
+        ListHeaderComponent={renderDashboard()}
+        ListEmptyComponent={
+          errorVisible && !dashboard ? (
+            <ReportEmptyState
+              icon="alert-circle-outline"
+              tone="error"
+              message="Something went wrong"
+              description={LOAD_ERROR}
+              actionLabel="Try again"
+              onAction={onRefresh}
+            />
+          ) : (
+            renderEmpty
+          )
+        }
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            colors={[colors.primary]}
+            colors={[t.brand.tint]}
+            tintColor={t.brand.tint}
           />
         }
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
       />
-
-      {/* Error Snackbar */}
-      {errorVisible && (
-        <View style={[styles.snackbar, { backgroundColor: colors.gray900 }]}>
-          <Text style={[styles.snackbarText, { color: colors.white }]}>
-            {errorMessage}
-          </Text>
-          <Pressable
-            onPress={() => {
-              setErrorVisible(false);
-              onRefresh();
-            }}
-            style={({ pressed }) => [
-              styles.snackbarButton,
-              pressed && styles.buttonPressed,
-            ]}
-          >
-            <Text
-              style={[styles.snackbarButtonText, { color: colors.primary }]}
-            >
-              Retry
-            </Text>
-          </Pressable>
-          <Pressable
-            onPress={() => setErrorVisible(false)}
-            style={({ pressed }) => [
-              styles.snackbarCloseButton,
-              pressed && styles.buttonPressed,
-            ]}
-          >
-            <Ionicons name="close" size={20} color={colors.white} />
-          </Pressable>
-        </View>
-      )}
     </View>
   );
 };
 
-// ============================================================================
-// Styles - SAP Fiori Design System (colors applied inline for dark mode)
-// ============================================================================
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  statusBarCover: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    zIndex: 999,
-  },
-  header: {
-    paddingHorizontal: 8,
-    paddingBottom: 16,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  backButton: {
-    width: FIORI.button.size,
-    height: FIORI.button.size,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderRadius: FIORI.button.size / 2,
-  },
-  refreshButton: {
-    width: FIORI.button.size,
-    height: FIORI.button.size,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderRadius: FIORI.button.size / 2,
-  },
-  buttonPressed: {
-    opacity: 0.6,
-  },
-  title: {
-    flex: 1,
-    fontSize: FIORI.typography.headerTitle.fontSize,
-    fontWeight: FIORI.typography.headerTitle.fontWeight,
-    textAlign: 'center',
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 16,
-  },
-  loadingText: {
-    fontSize: 16,
-  },
-  dashboardSection: {
-    padding: 16,
-    gap: 12,
-  },
-  statusRow: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  statusColumn: {
-    flex: 1,
-    gap: 12,
-  },
-  statusCard: {
-    borderRadius: FIORI.dashboard.statusCard.borderRadius,
-    padding: FIORI.dashboard.statusCard.padding,
-    gap: FIORI.dashboard.statusCard.gap,
-    alignItems: 'flex-start',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
-      },
-      android: {
-        elevation: 2,
-      },
-    }),
-  },
-  primaryCard: {
-    flex: 1,
-  },
-  primaryCardLabel: {
-    fontSize: FIORI.typography.cardLabel.fontSize,
-    fontWeight: FIORI.typography.cardLabel.fontWeight,
-    textTransform: FIORI.typography.cardLabel.textTransform,
-    letterSpacing: FIORI.typography.cardLabel.letterSpacing,
-    opacity: 0.9,
-  },
-  primaryCardValue: {
-    fontSize: FIORI.typography.cardValue.fontSize,
-    fontWeight: FIORI.typography.cardValue.fontWeight,
-  },
-  cardLabel: {
-    fontSize: FIORI.typography.cardLabel.fontSize,
-    fontWeight: FIORI.typography.cardLabel.fontWeight,
-    textTransform: FIORI.typography.cardLabel.textTransform,
-    letterSpacing: FIORI.typography.cardLabel.letterSpacing,
-  },
-  cardValue: {
-    fontSize: FIORI.typography.cardValue.fontSize,
-    fontWeight: FIORI.typography.cardValue.fontWeight,
-  },
-  alertsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  chip: {
-    height: FIORI.chip.height,
-    borderRadius: FIORI.chip.borderRadius,
-    paddingHorizontal: FIORI.chip.paddingHorizontal,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: FIORI.chip.gap,
-    borderWidth: 1,
-  },
-  chipText: {
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  pollingInfo: {
-    borderRadius: 12,
-    padding: 12,
-    gap: 4,
-  },
-  pollingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  pollingText: {
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  syncText: {
-    fontSize: 12,
-  },
-  listContent: {
-    flexGrow: 1,
-    padding: 16,
-    paddingTop: 0,
-    gap: 12,
-  },
-  deviceCard: {
-    borderRadius: FIORI.card.borderRadius,
-    padding: FIORI.card.padding,
-    gap: FIORI.card.gap,
-    borderWidth: 1,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.08,
-        shadowRadius: 4,
-      },
-      android: {
-        elevation: 2,
-      },
-    }),
-  },
-  deviceHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-  },
-  deviceTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    flex: 1,
-  },
-  deviceInfo: {
-    flex: 1,
-    gap: 2,
-  },
-  deviceName: {
-    fontSize: FIORI.typography.cardTitle.fontSize,
-    fontWeight: FIORI.typography.cardTitle.fontWeight,
-  },
-  deviceLocation: {
-    fontSize: 14,
-  },
-  statusIndicators: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  readingsRow: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  readingCard: {
-    flex: 1,
-    borderRadius: 12,
-    padding: 12,
-    gap: 4,
-    alignItems: 'center',
-  },
-  readingLabel: {
-    fontSize: FIORI.typography.readingLabel.fontSize,
-    fontWeight: FIORI.typography.readingLabel.fontWeight,
-    textTransform: FIORI.typography.readingLabel.textTransform,
-    letterSpacing: 0.5,
-    textAlign: 'center',
-  },
-  readingValue: {
-    fontSize: FIORI.typography.readingValue.fontSize,
-    fontWeight: FIORI.typography.readingValue.fontWeight,
-  },
-  timestampText: {
-    fontSize: FIORI.typography.timestamp.fontSize,
-    fontWeight: FIORI.typography.timestamp.fontWeight,
-    textAlign: 'center',
-  },
-  offlineContainer: {
-    alignItems: 'center',
-    paddingVertical: 24,
-    gap: 8,
-  },
-  tapIndicator: {
-    position: 'absolute',
-    right: 12,
-    top: '50%',
-    marginTop: -10,
-  },
-  offlineText: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  lastSeenText: {
-    fontSize: 12,
-  },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: 64,
-    gap: 12,
-  },
-  emptyText: {
-    fontSize: 18,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  emptySubtext: {
-    fontSize: 16,
-    textAlign: 'center',
-  },
-  // Snackbar (Fiori style)
-  snackbar: {
-    position: 'absolute',
-    bottom: 16,
-    left: 16,
-    right: 16,
-    borderRadius: 8,
-    padding: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 8,
-      },
-      android: {
-        elevation: 6,
-      },
-    }),
-  },
-  snackbarText: {
-    flex: 1,
-    fontSize: 14,
-  },
-  snackbarButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 6,
-  },
-  snackbarButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  snackbarCloseButton: {
-    width: 32,
-    height: 32,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderRadius: 16,
-  },
-});
+const makeEntryStyles = (t: ThemeTokens) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: t.background.base,
+    },
+  });
 
+/**
+ * Sensor monitoring is not part of the local demo (see src/config/demoCapabilities.ts),
+ * so the route shows an explanation instead of SensorsScreen.
+ */
 function SensorsEntry() {
+  const styles = useThemedStyles(makeEntryStyles);
   return (
-    <View style={{ flex: 1, padding: 32, justifyContent: 'center' }}>
-      <Text>Sensor monitoring is unavailable in the local demo.</Text>
-      <Pressable onPress={() => router.back()} accessibilityRole="button">
-        <Text style={{ paddingTop: 20 }}>Back</Text>
-      </Pressable>
+    <View style={styles.container}>
+      <ReportHeader title="Temperature and humidity" />
+      <ReportEmptyState
+        icon="thermometer-off"
+        message="Sensors aren't available"
+        description="Sensor monitoring is unavailable in the local demo."
+        actionLabel="Go back"
+        onAction={() => router.back()}
+      />
     </View>
   );
 }
+
+export { SensorsScreen };
 export default SensorsEntry;
