@@ -51,10 +51,13 @@ it('loads profile and assignments through authenticated queries', async () => {
   expect(rpc).toHaveBeenCalledWith('user_accessible_customers');
 });
 
-it('calculates order summaries through authenticated queries', async () => {
-  chain.gt.mockResolvedValue({ data: [{ requested_quantity: 20 }, { requested_quantity: 5 }], error: null });
-  expect(await OrderService.getOrderSummary('order')).toMatchObject({ success: true, data: { item_count: 2, total_quantity: 25 } });
-  expect(from).toHaveBeenCalledWith('order_items');
+it('loads an order with its items through the authenticated client', async () => {
+  rpc.mockResolvedValue({
+    data: { success: true, data: { order_data: { id: 'order', customer_id: 'customer' }, items: [{ id: 'line', requested_quantity: 20 }, { id: 'line2', requested_quantity: 5 }] } },
+    error: null,
+  });
+  expect(await OrderService.getOrderWithItems('order')).toMatchObject({ success: true, data: { total_items: 2, total_quantity: 25 } });
+  expect(rpc).toHaveBeenCalledWith('get_order_with_items', { p_order_id: 'order' });
 });
 
 it('does not query business data when authentication fails', async () => {
@@ -68,9 +71,9 @@ it('does not query business data when authentication fails', async () => {
 });
 
 
-it('does not report an order empty after authorization or connection failure', async () => {
-  chain.gt.mockResolvedValue({ count: 0, error: { message: 'Permission denied' } });
-  expect(await OrderService.isOrderEmpty('order')).toBe(false);
+it('does not report orders as empty after an authorization or connection failure', async () => {
+  rpc.mockResolvedValue({ data: null, error: { message: 'Permission denied', code: '42501' } });
+  expect((await OrderService.getOrdersList()).success).toBe(false);
   jest.mocked(getAuthenticatedClient).mockRejectedValueOnce(new Error('Offline'));
-  expect(await OrderService.isOrderEmpty('order')).toBe(false);
+  expect((await OrderService.getOrdersList()).success).toBe(false);
 });

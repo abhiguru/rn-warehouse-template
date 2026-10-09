@@ -1,5 +1,5 @@
 /**
- * Order Queue Tab (Supervisor Only)
+ * Order Queue Tab (admin, supervisor and staff)
  *
  * Displays all customer orders with items for supervisor/staff users.
  * Allows viewing, editing, and generating dispatches from orders.
@@ -22,7 +22,7 @@ export default function OrderQueueTab() {
   const dispatch = useAppDispatch();
   const { isLoading, userProfile } = useAppSelector((state) => state.auth);
   const { colors: themeColors, isDarkMode } = useTheme();
-  const { isStaff } = useRoleBasedAccess();
+  const { canManageOrders } = useRoleBasedAccess();
   const [hasInitialized, setHasInitialized] = React.useState(false);
 
   useEffect(() => {
@@ -36,13 +36,13 @@ export default function OrderQueueTab() {
       });
   }, [dispatch]);
 
-  // Redirect non-staff users to home
+  // Redirect customer accounts to home
   useEffect(() => {
-    if (hasInitialized && !isLoading && !isStaff) {
-      if (__DEV__) console.log('[OrderQueueTab] Non-staff user, redirecting to home');
+    if (hasInitialized && !isLoading && !canManageOrders) {
+      if (__DEV__) console.log('[OrderQueueTab] Customer account, redirecting to home');
       router.replace('/');
     }
-  }, [hasInitialized, isLoading, isStaff]);
+  }, [hasInitialized, isLoading, canManageOrders]);
 
   // Show full loading screen only on first load without cached data
   if (!hasInitialized && isLoading && !userProfile) {
@@ -64,8 +64,8 @@ export default function OrderQueueTab() {
     );
   }
 
-  // Don't render for non-staff users
-  if (!isStaff) {
+  // Don't render for customer accounts
+  if (!canManageOrders) {
     return (
       <View
         style={[

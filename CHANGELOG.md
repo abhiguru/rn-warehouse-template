@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased — orders screen review fixes (2026-10-09)
+
+Requires backend migrations 28 and 29 (`supabase-warehouse-template`).
+
+- The orders list, the order queue and the item catalog (browse and search) load
+  more rows as you scroll, instead of stopping at 200 orders or 50 lots.
+- A quantity shows SAVED only after the server stores it; a refused change
+  reverts to the stored quantity.
+- Removing a cart line uses the `remove_item_from_order` RPC, so removals appear
+  in the order history.
+- Staff accounts see the Queue tab and can work every customer's cart.
+- Recent dispatches on the order screen are sorted by date (the sort key was
+  ignored before). Catalog lot photos now appear.
+- A refused item search shows as an error instead of "no items".
+- Catalog submit no longer removes fulfilled lines it never showed.
+- Removed unused order service methods (`createDispatchFromOrder`,
+  `getOrderDispatches`, `getOrderSummary`, `isOrderEmpty`).
+
 ## Unreleased — gateway source-demo closure (2026-09-23)
 
 - Recorded the reviewed mobile/backend merge checkpoint and successful exact-main

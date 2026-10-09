@@ -15,7 +15,8 @@ import StockIndicator from './StockIndicator';
 
 interface OrderItemCardProps {
   item: OrderItem;
-  onQuantityChange: (newQuantity: number) => void;
+  /** Resolves true once the server stored the quantity. */
+  onQuantityChange: (newQuantity: number) => Promise<boolean> | boolean | void;
   onRemove: () => void;
 }
 
@@ -72,6 +73,10 @@ const OrderItemCardComponent: React.FC<OrderItemCardProps> = ({
   // Track if item is being removed (to skip force-save on unmount)
   const isRemovingRef = useRef(false);
 
+  // Async saves finish after unmount when the list refreshes.
+  const isMountedRef = useRef(true);
+  useEffect(() => () => { isMountedRef.current = false; }, []);
+
   // Cleanup on unmount - force save if pending
   useEffect(() => {
     return () => {
@@ -82,7 +87,7 @@ const OrderItemCardComponent: React.FC<OrderItemCardProps> = ({
         const lastSavedQty = lastSavedQuantityRef.current;
         if (currentLocalQty !== lastSavedQty && !isRemovingRef.current) {
           if (__DEV__) console.log(`[OrderItemCard] Force saving on unmount: ${lastSavedQty} → ${currentLocalQty}`);
-          onQuantityChangeRef.current(currentLocalQty);
+          void onQuantityChangeRef.current(currentLocalQty);
         }
       }
     };
@@ -99,24 +104,40 @@ const OrderItemCardComponent: React.FC<OrderItemCardProps> = ({
     setIsPending(true);
     
     // Set new timer
-    debounceTimerRef.current = setTimeout(() => {
-      // Only send update if quantity actually changed from last saved value
-      if (newQuantity !== lastSavedQuantityRef.current) {
-        if (__DEV__) console.log(`[OrderItemCard] Sending debounced update: ${lastSavedQuantityRef.current} → ${newQuantity}`);
-        onQuantityChange(newQuantity);
-        lastSavedQuantityRef.current = newQuantity;
-      }
-      setIsPending(false);
-
-      // Show saved confirmation
-      setShowSaved(true);
-      setTimeout(() => {
-        setShowSaved(false);
-      }, 2000); // Show "Saved" for 2 seconds
-
+    debounceTimerRef.current = setTimeout(async () => {
       debounceTimerRef.current = null;
+      // Only send update if quantity actually changed from last saved value
+      if (newQuantity === lastSavedQuantityRef.current) {
+        if (isMountedRef.current) setIsPending(false);
+        return;
+      }
+      if (__DEV__) console.log(`[OrderItemCard] Sending debounced update: ${lastSavedQuantityRef.current} → ${newQuantity}`);
+      let saved = false;
+      try {
+        saved = (await onQuantityChange(newQuantity)) !== false;
+      } catch {
+        saved = false;
+      }
+      if (!isMountedRef.current) return;
+      // A newer edit started while this one was saving; it owns the indicator.
+      const superseded = debounceTimerRef.current !== null;
+      if (saved) {
+        lastSavedQuantityRef.current = newQuantity;
+      } else if (!superseded) {
+        // The server refused the change: show the stored quantity again.
+        setLocalQuantity(lastSavedQuantityRef.current);
+        triggerStockError();
+      }
+      if (superseded) return;
+      setIsPending(false);
+      if (saved) {
+        setShowSaved(true);
+        setTimeout(() => {
+          if (isMountedRef.current) setShowSaved(false);
+        }, 2000); // Show "Saved" for 2 seconds
+      }
     }, 2000); // 2 second delay
-  }, [onQuantityChange]);
+  }, [onQuantityChange, triggerStockError]);
   
   const handleQuantityDecrease = (amount: number = 1) => {
     if (localQuantity > amount) {

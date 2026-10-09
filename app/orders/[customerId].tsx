@@ -84,22 +84,7 @@ export default function CustomerOrderScreen() {
     }
   }, [fetchChangelog, changelogLoading, changelogHasMore, changelogOffset]);
 
-  useEffect(() => {
-    if (!userProfile && (!user || !session)) {
-      router.replace('/login');
-      return;
-    }
-
-    if (!customerId) {
-      router.back();
-      return;
-    }
-
-    fetchCustomerName();
-  }, [user, session, customerId]);
-
-  // Configure StatusBar for this screen
-  const fetchCustomerName = async () => {
+  const fetchCustomerName = useCallback(async () => {
     try {
       setLoading(true);
       const authenticatedClient = await getAuthenticatedClient();
@@ -121,7 +106,21 @@ export default function CustomerOrderScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [customerId]);
+
+  useEffect(() => {
+    if (!userProfile && (!user || !session)) {
+      router.replace('/login');
+      return;
+    }
+
+    if (!customerId) {
+      router.back();
+      return;
+    }
+
+    fetchCustomerName();
+  }, [user, session, userProfile, customerId, fetchCustomerName]);
 
   if (!userProfile && (!user || !session)) {
     return null; // Will redirect in useEffect

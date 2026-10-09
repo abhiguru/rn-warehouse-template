@@ -64,7 +64,7 @@ const TAB_ICONS: Record<string, { outline: string; filled: string }> = {
   reports: { outline: 'warehouse', filled: 'warehouse' },
 };
 
-// Tabs that should only be visible to staff (admin/supervisor)
+// Tabs that should only be visible to warehouse roles (admin/supervisor/staff)
 const STAFF_ONLY_TABS = ['order-queue'];
 
 interface FioriTabBarProps extends BottomTabBarProps {
@@ -80,18 +80,18 @@ export default function FioriTabBar({
 }: FioriTabBarProps) {
   const insets = useSafeAreaInsets();
   const { colors: themeColors, isDarkMode } = useTheme();
-  const { isStaff } = useRoleBasedAccess();
+  const { canManageOrders } = useRoleBasedAccess();
 
   // Filter routes based on user role
   const visibleRoutes = React.useMemo(() => {
     return state.routes.filter(route => {
-      // Hide staff-only tabs for non-staff users
+      // Hide the order queue from customer accounts
       if (STAFF_ONLY_TABS.includes(route.name)) {
-        return isStaff;
+        return canManageOrders;
       }
       return true;
     });
-  }, [state.routes, isStaff]);
+  }, [state.routes, canManageOrders]);
 
   // Minimal additional padding for visual comfort
   const additionalPadding = Platform.select({

@@ -3,6 +3,7 @@
  *
  * Extracts common role-checking logic used across all report screens:
  * - isStaff: Whether user is admin or supervisor
+ * - canManageOrders: Whether user works every customer's cart (admin, supervisor, staff)
  * - assignedCustomerIds: Customer IDs assigned to the user
  * - singleAssignedCustomerId: The single customer ID if user has exactly one
  * - shouldShowListView: Whether to show all-customers list view
@@ -17,6 +18,8 @@ import type { RootState } from '@/store';
 export interface RoleBasedAccess {
   /** Whether user is admin or supervisor */
   isStaff: boolean;
+  /** Whether user may work every customer's cart and the order queue (admin, supervisor, staff) */
+  canManageOrders: boolean;
   /** Customer IDs assigned to the user */
   assignedCustomerIds: string[];
   /** Single customer ID if user has exactly one assigned (null otherwise) */
@@ -54,6 +57,10 @@ export function useRoleBasedAccess(): RoleBasedAccess {
     return role === 'admin' || role === 'supervisor';
   }, [role]);
 
+  const canManageOrders = useMemo(() => {
+    return role === 'admin' || role === 'supervisor' || role === 'staff';
+  }, [role]);
+
   const assignedCustomerIds = useMemo(() => {
     return userProfile?.assignedCustomerIds || userProfile?.assignedCustomers?.map((customer) => customer.id) || [];
   }, [userProfile]);
@@ -71,6 +78,7 @@ export function useRoleBasedAccess(): RoleBasedAccess {
 
   return {
     isStaff,
+    canManageOrders,
     assignedCustomerIds,
     singleAssignedCustomerId,
     shouldShowListView,
