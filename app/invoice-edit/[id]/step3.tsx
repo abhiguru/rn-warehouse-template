@@ -15,6 +15,7 @@ import { useListColors } from '@/hooks/useListColors';
 import { useAppSelector, useAppDispatch } from '@/store/hooks';
 import {
   updateDiscount,
+  updateHeader,
   resetForm,
   setIsSaving,
   setCurrentStep,
@@ -33,6 +34,8 @@ import {
   transformFormDataToPayload,
 } from '@/features/invoice/services/invoiceFormService';
 import { SavedInvoiceData } from '@/types/invoice.types';
+import { useRoleBasedAccess } from '@/hooks/useRoleBasedAccess';
+import { discountNeedsReason } from '@/utils/invoiceCalculations';
 import { InvoiceStepIndicator } from '@/components/InvoiceStepIndicator';
 import { INVOICE_STEPS, STEP_NUMBERS, getCompletedSteps } from '@/constants/invoiceSteps';
 
@@ -53,6 +56,12 @@ export default function InvoiceEditStep3() {
 
   const handleDiscountChange = (value: number) => {
     dispatch(updateDiscount(value));
+  };
+
+  const { role } = useRoleBasedAccess();
+  const reasonRequired = discountNeedsReason(header, role);
+  const handleDiscountReasonChange = (reason: string) => {
+    dispatch(updateHeader({ discount_reason: reason }));
   };
 
   const handleBack = () => {
@@ -88,6 +97,11 @@ export default function InvoiceEditStep3() {
 
     if (!invoiceId) {
       Alert.alert('Error', 'Invoice ID not found');
+      return;
+    }
+
+    if (reasonRequired) {
+      Alert.alert('Reason Required', 'Enter the reason for this discount change before updating the invoice.');
       return;
     }
 
@@ -305,6 +319,8 @@ export default function InvoiceEditStep3() {
           header={header}
           items={items}
           onDiscountChange={handleDiscountChange}
+          onDiscountReasonChange={handleDiscountReasonChange}
+          reasonRequired={reasonRequired}
         />
 
         {/* Update Invoice Button - Inline at bottom of content */}

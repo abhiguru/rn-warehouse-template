@@ -13,12 +13,18 @@ interface InvoiceCalculationSummaryProps {
   header: InvoiceHeaderData;
   items: InvoiceItemData[];
   onDiscountChange: (value: number) => void;
+  /** Shown whenever there is a discount; omit to hide the reason field. */
+  onDiscountReasonChange?: (reason: string) => void;
+  /** The current user must give a reason before saving (staff changing the discount). */
+  reasonRequired?: boolean;
 }
 
 export const InvoiceCalculationSummary: React.FC<InvoiceCalculationSummaryProps> = ({
   header,
   items,
   onDiscountChange,
+  onDiscountReasonChange,
+  reasonRequired = false,
 }) => {
   const { colors: themeColors, isDarkMode } = useTheme();
   const [discountError, setDiscountError] = useState<string | null>(null);
@@ -220,6 +226,29 @@ export const InvoiceCalculationSummary: React.FC<InvoiceCalculationSummaryProps>
           />
         </View>
 
+        {/* Reason for the discount: recorded with the invoice, required from staff */}
+        {onDiscountReasonChange && header.discount !== 0 && (
+          <View style={[styles.reasonContainer, { backgroundColor: cardBg }]}>
+            <Text style={[styles.discountLabel, { color: textSecondary }]}>
+              Discount reason{reasonRequired ? ' (required)' : ''}
+            </Text>
+            <TextInput
+              style={[
+                styles.reasonInput,
+                { color: textPrimary, backgroundColor: inputBg, borderColor },
+                reasonRequired && styles.discountInputError,
+              ]}
+              accessibilityLabel="Discount reason"
+              value={header.discount_reason || ''}
+              onChangeText={onDiscountReasonChange}
+              placeholder="Why is this discount given?"
+              placeholderTextColor={textSecondary}
+              maxLength={500}
+              multiline
+            />
+          </View>
+        )}
+
         <KeyValueCell
           keyLabel="Rounding adjustment"
           value={formatCurrency(rounding, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -393,6 +422,19 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     fontSize: theme.fontSize.base,
     textAlign: 'right',
+  },
+  reasonContainer: {
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+    gap: 6,
+  },
+  reasonInput: {
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    minHeight: 44,
+    fontSize: theme.fontSize.base,
   },
   discountInputError: {
     borderColor: theme.colors.fiori.semantic.negative,

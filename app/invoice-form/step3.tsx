@@ -21,6 +21,8 @@ import { router } from 'expo-router';
 import theme from '@/theme';
 import { useListColors } from '@/hooks/useListColors';
 import { useInvoiceForm } from '@/hooks/useInvoiceForm';
+import { useRoleBasedAccess } from '@/hooks/useRoleBasedAccess';
+import { discountNeedsReason } from '@/utils/invoiceCalculations';
 import { useBackHandler } from '@/hooks/useBackHandler';
 import { InvoiceCalculationSummary } from '@/features/invoice/components/InvoiceCalculationSummary';
 import { InvoiceSuccessDialog } from '@/features/invoice/components/InvoiceSuccessDialog';
@@ -42,6 +44,7 @@ export default function InvoiceFormStep3() {
     items,
     isSaving,
     updateDiscountAmount,
+    updateHeaderField,
     navigateToStep,
     submitForm,
     resetFormState,
@@ -74,6 +77,12 @@ export default function InvoiceFormStep3() {
     updateDiscountAmount(value);
   };
 
+  const { role } = useRoleBasedAccess();
+  const reasonRequired = discountNeedsReason(header, role);
+  const handleDiscountReasonChange = (reason: string) => {
+    updateHeaderField('discount_reason', reason);
+  };
+
   const handleBack = async () => {
     await navigateToStep(2);
   };
@@ -99,6 +108,15 @@ export default function InvoiceFormStep3() {
         visible: true,
         title: 'Invalid Data',
         message: 'Missing GRN or customer information',
+      });
+      return;
+    }
+
+    if (reasonRequired) {
+      setErrorDialog({
+        visible: true,
+        title: 'Reason Required',
+        message: 'Enter the reason for this discount before submitting the invoice.',
       });
       return;
     }
@@ -285,6 +303,8 @@ export default function InvoiceFormStep3() {
           header={header}
           items={items}
           onDiscountChange={handleDiscountChange}
+          onDiscountReasonChange={handleDiscountReasonChange}
+          reasonRequired={reasonRequired}
         />
 
         {/* Submit Invoice Button - Inline at bottom of content */}
