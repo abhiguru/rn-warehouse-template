@@ -77,12 +77,35 @@ export function useTokens(): ThemeTokens {
  *
  *   const styles = useThemedStyles(t => ({ card: { backgroundColor: t.surface.card } }));
  */
+// One stylesheet per (factory, theme), shared by every instance of a component,
+// so list rows do not each build their own. Token objects are memoised per
+// brand and mode, so the inner WeakMap holds at most four entries per factory.
+const styleCache = new WeakMap<object, WeakMap<ThemeTokens, unknown>>();
+
+/** Build (or reuse) the stylesheet for a factory and a token set. */
+export function getThemedStyles<T extends StyleSheet.NamedStyles<T>>(
+  factory: (tokens: ThemeTokens) => T,
+  tokens: ThemeTokens
+): T {
+  let byTheme = styleCache.get(factory);
+  if (!byTheme) {
+    byTheme = new WeakMap();
+    styleCache.set(factory, byTheme);
+  }
+  let styles = byTheme.get(tokens) as T | undefined;
+  if (!styles) {
+    styles = StyleSheet.create(factory(tokens));
+    byTheme.set(tokens, styles);
+  }
+  return styles;
+}
+
 export function useThemedStyles<T extends StyleSheet.NamedStyles<T>>(
   factory: (tokens: ThemeTokens) => T
 ): T {
   const tokens = useTokens();
-  // The factory is expected to be stable (module-level or memoised by the caller).
-  return useMemo(() => StyleSheet.create(factory(tokens)), [tokens]);
+  // Declare the factory at module level so the cache is shared across instances.
+  return useMemo(() => getThemedStyles(factory, tokens), [factory, tokens]);
 }
 
 export default useTheme;
