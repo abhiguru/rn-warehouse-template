@@ -21,7 +21,7 @@
  * ```
  */
 
-import React, { useState, useCallback, useRef, forwardRef, useImperativeHandle, useMemo } from 'react';
+import React, { useState, useCallback, useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
 import {
   View,
   Text,
@@ -29,73 +29,78 @@ import {
   RefreshControl,
   ActivityIndicator,
   Pressable,
-  Platform,
+  BackHandler,
 } from 'react-native';
-import BottomSheet, { BottomSheetFlatList } from '@gorhom/bottom-sheet';
-import { Ionicons } from '@expo/vector-icons';
+import BottomSheet, {
+  BottomSheetBackdrop,
+  BottomSheetBackdropProps,
+  BottomSheetFlatList,
+} from '@gorhom/bottom-sheet';
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { router } from 'expo-router';
-import { useListColors } from '@/hooks/useListColors';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import {
+  fontWeight,
+  iconSize,
+  layout,
+  radius,
+  space,
+  touchTarget,
+  typography,
+} from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
 import { getPrintJobs, cancelPrintJob, PrintJob, PrinterStatus } from '@/services/print-service';
 import { usePrintJobPolling } from '@/hooks/usePrintJobPolling';
 
-// ============================================================================
-// SAP Fiori Design Constants
-// ============================================================================
-const FIORI = {
-  // Bottom Sheet dimensions
-  bottomSheet: {
-    cornerRadius: 16,
-    handleWidth: 36,
-    handleHeight: 5,
-    handleTopMargin: 8,
-    handleColor: '#C6C6C8',
-    backdropOpacity: 0.4,
-  },
-  // Header
-  header: {
-    height: 56,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
-  // Chips (per 09-chip.md)
-  chip: {
-    height: 32,
-    borderRadius: 16,
-    paddingHorizontal: 12,
-    fontSize: 14,
-    fontWeight: '500' as const,
-  },
-  // Tabs (per 15-segmented-control.md)
-  tab: {
-    minHeight: 44,
-    fontSize: 15,
-    fontWeight: '600' as const,
-    indicatorHeight: 3,
-  },
-  // Cards
-  card: {
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-  },
-  // Touch targets
-  touch: {
-    minHeight: 44,
-  },
-  // Typography
-  typography: {
-    title: { fontSize: 17, fontWeight: '600' as const, lineHeight: 22 },
-    body: { fontSize: 15, fontWeight: '400' as const, lineHeight: 20 },
-    caption: { fontSize: 13, fontWeight: '400' as const, lineHeight: 18 },
-    badge: { fontSize: 12, fontWeight: '600' as const, lineHeight: 16 },
-  },
-  // Colors
-  colors: {
-    background: '#FFFFFF',
-    divider: '#E5E5E5',
-    backdrop: 'rgba(0, 0, 0, 0.4)',
-  },
-} as const;
+const LOAD_ERROR_MESSAGE = "Couldn't load print jobs. Pull down to try again.";
+/** Snackbars hide after 4 seconds (guide §13.9). */
+const SNACKBAR_DURATION_MS = 4000;
+
+type StatusKind = 'negative' | 'critical' | 'positive' | 'informative' | 'neutral';
+
+/** Print job status → Fiori status (guide §3.5). */
+const JOB_STATUS: Record<PrintJob['status'], { kind: StatusKind; icon: string; label: string }> = {
+  pending: { kind: 'neutral', icon: 'circle-outline', label: 'Pending' },
+  printing: { kind: 'informative', icon: 'information', label: 'Printing' },
+  completed: { kind: 'positive', icon: 'check-circle', label: 'Completed' },
+  failed: { kind: 'negative', icon: 'alert-circle', label: 'Failed' },
+  cancelled: { kind: 'neutral', icon: 'circle-outline', label: 'Cancelled' },
+};
+
+const PRINTER_STATUS: Record<PrinterStatus, { kind: StatusKind; icon: string; label: string }> = {
+  online: { kind: 'positive', icon: 'check-circle', label: 'Online' },
+  offline: { kind: 'negative', icon: 'alert-circle', label: 'Offline' },
+  error: { kind: 'negative', icon: 'alert-circle', label: 'Error' },
+  busy: { kind: 'informative', icon: 'information', label: 'Busy' },
+};
+
+const JOB_TYPE: Record<string, { icon: string; label: string }> = {
+  grn: { icon: 'package-down', label: 'GRN' },
+  dispatch: { icon: 'truck-delivery-outline', label: 'Dispatch' },
+  invoice: { icon: 'file-document-outline', label: 'Invoice' },
+};
+
+const getJobType = (jobType: string) =>
+  JOB_TYPE[jobType.toLowerCase()] ?? { icon: 'file-outline', label: 'Document' };
+
+/** Relative time under 24 hours, then the date (guide §12.3). */
+const formatTimestamp = (timestamp: string) => {
+  const date = new Date(timestamp);
+  const diffMs = Date.now() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+
+  if (diffMins < 1) return 'Just now';
+  if (diffMins < 60) return `${diffMins} min ago`;
+  if (diffHours < 24) return `${diffHours} h ago`;
+
+  return date.toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
+};
 
 export interface PrintJobsBottomSheetRef {
   open: () => void;
@@ -122,10 +127,11 @@ const PrintJobsBottomSheet: React.ForwardRefRenderFunction<
 
     // Printer status state
     const [printerStatus, setPrinterStatus] = useState<PrinterStatus | null>(null);
-    const [printerMessage, setPrinterMessage] = useState<string>('Checking...');
+    const [printerMessage, setPrinterMessage] = useState<string>('Checking…');
 
-    // Theme colors for dark mode support
-    const colors = useListColors();
+    const styles = useThemedStyles(makeStyles);
+    const t = useTokens();
+    const insets = useSafeAreaInsets();
 
     // Expose open/close methods to parent
     useImperativeHandle(ref, () => ({
@@ -181,11 +187,11 @@ const PrintJobsBottomSheet: React.ForwardRefRenderFunction<
         } else if (recentJob.status === 'failed') {
           // ❌ Printer offline (last job failed)
           setPrinterStatus('offline');
-          setPrinterMessage(recentJob.error_message || 'Printer error');
+          setPrinterMessage(recentJob.error_message || 'The last print job failed');
         } else if (recentJob.status === 'printing') {
           // 🔄 Currently printing
           setPrinterStatus('busy');
-          setPrinterMessage('Printing in progress...');
+          setPrinterMessage('Printing in progress');
         } else if (recentJob.status === 'pending') {
           // ⏳ Job queued
           setPrinterStatus('busy');
@@ -260,7 +266,7 @@ const PrintJobsBottomSheet: React.ForwardRefRenderFunction<
             const error = pendingResult.error || printingResult.error;
             console.error('[PrintJobsBottomSheet] Failed to fetch in-progress jobs:', error);
             if (!isRefreshing) {
-              setSnackbarMessage(error || 'Failed to load print jobs');
+              setSnackbarMessage(LOAD_ERROR_MESSAGE);
               setSnackbarVisible(true);
             }
           }
@@ -299,7 +305,7 @@ const PrintJobsBottomSheet: React.ForwardRefRenderFunction<
             const error = completedResult.error || failedResult.error || cancelledResult.error;
             console.error('[PrintJobsBottomSheet] Failed to fetch completed jobs:', error);
             if (!isRefreshing) {
-              setSnackbarMessage(error || 'Failed to load print jobs');
+              setSnackbarMessage(LOAD_ERROR_MESSAGE);
               setSnackbarVisible(true);
             }
           }
@@ -319,7 +325,7 @@ const PrintJobsBottomSheet: React.ForwardRefRenderFunction<
       } catch (error) {
         console.error('[PrintJobsBottomSheet] Error fetching jobs:', error);
         if (!isRefreshing) {
-          setSnackbarMessage('An error occurred while loading print jobs');
+          setSnackbarMessage(LOAD_ERROR_MESSAGE);
           setSnackbarVisible(true);
         }
       } finally {
@@ -340,97 +346,37 @@ const PrintJobsBottomSheet: React.ForwardRefRenderFunction<
         const result = await cancelPrintJob(jobId);
 
         if (result.success) {
-          setSnackbarMessage(result.message || 'Print job cancelled successfully');
+          setSnackbarMessage('Print job cancelled.');
           setSnackbarVisible(true);
           // Refresh the list immediately
           fetchPrintJobs();
         } else {
-          setSnackbarMessage(result.error || 'Failed to cancel print job');
+          setSnackbarMessage("Couldn't cancel the print job. Try again.");
           setSnackbarVisible(true);
         }
       } catch (error) {
         console.error('[PrintJobsBottomSheet] Error cancelling job:', error);
-        setSnackbarMessage('An error occurred while cancelling the job');
+        setSnackbarMessage("Couldn't cancel the print job. Try again.");
         setSnackbarVisible(true);
       }
     }, [fetchPrintJobs]);
 
-    // Get status color and background (Fiori semantic colors)
-    const getStatusColors = useCallback((status: string) => {
-      switch (status) {
-        case 'completed':
-          return {
-            background: colors.success,
-            text: '#FFFFFF',
-            lightBg: colors.successLight,
-          };
-        case 'pending':
-          return {
-            background: colors.warning,
-            text: '#FFFFFF',
-            lightBg: colors.warningLight,
-          };
-        case 'printing':
-          return {
-            background: colors.primary,
-            text: '#FFFFFF',
-            lightBg: colors.primaryLight,
-          };
-        case 'failed':
-          return {
-            background: colors.error,
-            text: '#FFFFFF',
-            lightBg: colors.errorLight,
-          };
-        case 'cancelled':
-          return {
-            background: colors.gray400,
-            text: '#FFFFFF',
-            lightBg: colors.gray100,
-          };
-        default:
-          return {
-            background: colors.gray400,
-            text: '#FFFFFF',
-            lightBg: colors.gray100,
-          };
-      }
-    }, [colors]);
+    // Snackbars dismiss themselves after 4 seconds
+    useEffect(() => {
+      if (!snackbarVisible) return undefined;
+      const timer = setTimeout(() => setSnackbarVisible(false), SNACKBAR_DURATION_MS);
+      return () => clearTimeout(timer);
+    }, [snackbarVisible, snackbarMessage]);
 
-    // Get job type icon (Ionicons)
-    const getJobTypeIcon = (jobType: string): keyof typeof Ionicons.glyphMap => {
-      switch (jobType) {
-        case 'grn':
-          return 'cube-outline';
-        case 'dispatch':
-          return 'car-outline';
-        case 'invoice':
-          return 'receipt-outline';
-        default:
-          return 'document-outline';
-      }
-    };
-
-    // Format timestamp (relative time)
-    const formatTimestamp = (timestamp: string) => {
-      const date = new Date(timestamp);
-      const now = new Date();
-      const diffMs = now.getTime() - date.getTime();
-      const diffMins = Math.floor(diffMs / 60000);
-      const diffHours = Math.floor(diffMs / 3600000);
-      const diffDays = Math.floor(diffMs / 86400000);
-
-      if (diffMins < 1) return 'Just now';
-      if (diffMins < 60) return `${diffMins} minute${diffMins > 1 ? 's' : ''} ago`;
-      if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
-      if (diffDays < 7) return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
-
-      return date.toLocaleDateString('en-US', {
-        month: 'short',
-        day: 'numeric',
-        year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined,
+    // Android back closes the sheet first
+    useEffect(() => {
+      if (!isOpen) return undefined;
+      const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+        bottomSheetRef.current?.close();
+        return true;
       });
-    };
+      return () => sub.remove();
+    }, [isOpen]);
 
     // Use custom polling hook for jobs and printer status
     usePrintJobPolling({
@@ -470,130 +416,157 @@ const PrintJobsBottomSheet: React.ForwardRefRenderFunction<
       }
     }, []);
 
+    // Status tag: icon + word on the status background (guide §13.5)
+    const renderStatusTag = (kind: StatusKind, icon: string, label: string) => (
+      <View
+        style={[
+          styles.statusTag,
+          { backgroundColor: t.status[kind].background },
+        ]}
+      >
+        <Icon name={icon} size={iconSize.sm} color={t.status[kind].text} />
+        <Text
+          style={[styles.statusTagText, { color: t.status[kind].text }]}
+          maxFontSizeMultiplier={1.6}
+        >
+          {label}
+        </Text>
+      </View>
+    );
+
     // Render job card
-    const renderJobCard = useCallback(({ item: job }: { item: PrintJob }) => {
-      const statusColors = getStatusColors(job.status);
+    const renderJobCard = ({ item: job }: { item: PrintJob }) => {
+      const status = JOB_STATUS[job.status] ?? JOB_STATUS.pending;
+      const type = getJobType(job.job_type);
+      const docCount = `${job.document_count} ${job.document_count === 1 ? 'document' : 'documents'}`;
 
       return (
         <Pressable
           onPress={() => handleJobCardPress(job)}
-          style={({ pressed }) => [
-            {
-              backgroundColor: colors.cellBackground,
-              borderRadius: FIORI.card.borderRadius,
-              padding: FIORI.card.padding,
-              marginBottom: FIORI.card.marginBottom,
-              borderWidth: 1,
-              borderColor: colors.cellDivider,
-            },
-            pressed && { backgroundColor: colors.gray100 },
-          ]}
+          style={({ pressed }) => [styles.jobCard, pressed && styles.jobCardPressed]}
           accessibilityRole="button"
-          accessibilityLabel={`${job.job_type.toUpperCase()} print job, ${job.document_range_start} to ${job.document_range_end}, status ${job.status}`}
-          accessibilityHint="Double tap to view documents"
+          accessibilityLabel={`${type.label} print job, ${job.document_range_start} to ${job.document_range_end}, ${docCount}, ${status.label}`}
+          accessibilityHint="Opens the printed documents"
         >
           {/* Header Row: Job Type + Status */}
           <View style={styles.jobHeader}>
-            {/* Type Chip */}
-            <View style={[styles.typeChip, { backgroundColor: colors.gray100 }]}>
-              <Ionicons
-                name={getJobTypeIcon(job.job_type)}
-                size={14}
-                color={colors.textSecondary}
-              />
-              <Text style={[styles.typeChipText, { color: colors.textSecondary }]}>
-                {job.job_type.toUpperCase()}
+            <View style={styles.typeTag}>
+              <Icon name={type.icon} size={iconSize.sm} color={t.status.neutral.text} />
+              <Text style={styles.typeTagText} maxFontSizeMultiplier={1.6}>
+                {type.label}
               </Text>
             </View>
-
-            {/* Status Chip */}
-            <View style={[styles.statusChip, { backgroundColor: statusColors.background }]}>
-              <Text style={styles.statusChipText}>
-                {job.status.toUpperCase()}
-              </Text>
-            </View>
+            {renderStatusTag(status.kind, status.icon, status.label)}
           </View>
 
           {/* Range */}
-          <Text style={[styles.rangeText, { color: colors.textPrimary }]}>
-            {job.document_range_start} - {job.document_range_end}
+          <Text style={styles.rangeText}>
+            {job.document_range_start} – {job.document_range_end}
           </Text>
 
           {/* Printer Info */}
           <View style={styles.printerInfo}>
-            <Ionicons name="print-outline" size={14} color={colors.gray600} />
-            <Text style={[styles.printerText, { color: colors.textSecondary }]}>{job.printer_name}</Text>
-            <Text style={[styles.printerSeparator, { color: colors.gray400 }]}>•</Text>
-            <Text style={[styles.documentCountText, { color: colors.textSecondary }]}>
-              {job.document_count} doc{job.document_count !== 1 ? 's' : ''}
+            <Icon name="printer-outline" size={iconSize.sm} color={t.icon.secondary} />
+            <Text style={styles.metaText}>
+              {job.printer_name} · {docCount}
             </Text>
           </View>
 
           {/* Footer: Timestamp + Cancel Button */}
           <View style={styles.jobFooter}>
-            <Text style={[styles.timestampText, { color: colors.textTertiary }]}>
-              {formatTimestamp(job.created_at)}
-            </Text>
+            <Text style={styles.timestampText}>{formatTimestamp(job.created_at)}</Text>
 
             {job.status === 'pending' && activeTab === 'inProgress' && (
               <Pressable
                 onPress={() => handleCancelJob(job.id)}
                 style={({ pressed }) => [
                   styles.cancelButton,
-                  { borderColor: colors.error },
-                  pressed && { backgroundColor: colors.errorLight },
+                  pressed && styles.cancelButtonPressed,
                 ]}
                 accessibilityRole="button"
-                accessibilityLabel="Cancel print job"
+                accessibilityLabel={`Cancel print job ${job.document_range_start} to ${job.document_range_end}`}
               >
-                <Text style={[styles.cancelButtonText, { color: colors.error }]}>Cancel</Text>
+                <Text style={styles.cancelButtonText}>Cancel job</Text>
               </Pressable>
             )}
           </View>
 
-          {/* Success Message (if completed successfully) */}
+          {/* Success message strip */}
           {job.status === 'completed' && !job.error_message && (
-            <View style={[styles.successContainer, { backgroundColor: colors.successLight, borderColor: colors.success }]}>
-              <Ionicons name="checkmark-circle" size={16} color={colors.success} />
-              <Text style={[styles.successText, { color: colors.success }]}>Printed successfully</Text>
+            <View style={[styles.messageStrip, styles.messageStripPositive]}>
+              <Icon name="check-circle" size={iconSize.sm} color={t.status.positive.text} />
+              <Text style={[styles.messageText, { color: t.status.positive.text }]}>
+                Printed
+              </Text>
             </View>
           )}
 
-          {/* Error Message (if failed) */}
+          {/* Error message strip */}
           {job.error_message && (
-            <View style={[styles.errorContainer, { backgroundColor: colors.errorLight, borderColor: colors.error }]}>
-              <Ionicons name="alert-circle" size={16} color={colors.error} />
-              <Text style={[styles.errorText, { color: colors.error }]}>{job.error_message}</Text>
+            <View style={[styles.messageStrip, styles.messageStripNegative]}>
+              <Icon name="alert-circle" size={iconSize.sm} color={t.status.negative.text} />
+              <Text style={[styles.messageText, { color: t.status.negative.text }]}>
+                {job.error_message}
+              </Text>
             </View>
           )}
         </Pressable>
       );
-    }, [handleCancelJob, activeTab, handleJobCardPress, getStatusColors, colors]);
+    };
 
-    // Empty state (Fiori Empty State pattern)
-    const renderEmpty = useCallback(() => (
+    // Empty state (guide §13.6)
+    const renderEmpty = () => (
       <View style={styles.emptyContainer}>
-        <View style={[styles.emptyIconContainer, { backgroundColor: colors.gray50 }]}>
-          <Ionicons name="print-outline" size={64} color={colors.gray400} />
-        </View>
-        <Text style={[styles.emptyTitle, { color: colors.textPrimary }]}>
-          {activeTab === 'inProgress' ? 'No Jobs In Progress' : 'No Completed Jobs'}
+        <Icon name="printer-outline" size={iconSize.hero} color={t.icon.secondary} />
+        <Text style={styles.emptyTitle}>
+          {activeTab === 'inProgress' ? 'No print jobs in progress' : 'No finished print jobs'}
         </Text>
-        <Text style={[styles.emptySubtext, { color: colors.textSecondary }]}>
+        <Text style={styles.emptySubtext}>
           {activeTab === 'inProgress'
-            ? 'Your active print jobs will appear here'
-            : 'Your completed print jobs will appear here'}
+            ? 'Print jobs you send appear here until they finish.'
+            : 'Completed, failed and cancelled print jobs appear here.'}
         </Text>
       </View>
-    ), [activeTab, colors]);
+    );
 
     // Loading state
-    const renderLoading = useCallback(() => (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Loading print jobs...</Text>
+    const renderLoading = () => (
+      <View style={styles.loadingContainer} accessibilityRole="progressbar" accessibilityLabel="Loading print jobs">
+        <ActivityIndicator size="large" color={t.brand.tint} />
+        <Text style={styles.loadingText}>Loading print jobs…</Text>
       </View>
-    ), [colors]);
+    );
+
+    const renderBackdrop = useCallback(
+      (props: BottomSheetBackdropProps) => (
+        <BottomSheetBackdrop
+          {...props}
+          disappearsOnIndex={-1}
+          appearsOnIndex={0}
+          opacity={1}
+          style={[props.style, { backgroundColor: t.overlay.scrim }]}
+        />
+      ),
+      [t]
+    );
+
+    const printer = printerStatus ? PRINTER_STATUS[printerStatus] : null;
+
+    const renderTab = (key: 'inProgress' | 'completed', label: string) => {
+      const selected = activeTab === key;
+      return (
+        <Pressable
+          style={({ pressed }) => [styles.tab, pressed && styles.tabPressed]}
+          onPress={() => setActiveTab(key)}
+          accessibilityRole="tab"
+          accessibilityLabel={`${label} print jobs`}
+          accessibilityState={{ selected }}
+        >
+          <Text style={[styles.tabText, selected && styles.tabTextSelected]}>{label}</Text>
+          {selected && <View style={styles.tabIndicator} />}
+        </Pressable>
+      );
+    };
 
     return (
       <>
@@ -603,94 +576,56 @@ const PrintJobsBottomSheet: React.ForwardRefRenderFunction<
           snapPoints={['50%', '90%']}
           enablePanDownToClose
           onChange={handleSheetChanges}
-          backgroundStyle={{ backgroundColor: colors.cellBackground }}
-          handleIndicatorStyle={{ backgroundColor: colors.gray300, width: 36 }}
+          backdropComponent={renderBackdrop}
+          backgroundStyle={styles.sheetBackground}
+          handleIndicatorStyle={styles.handleIndicator}
         >
           <View style={styles.contentContainer}>
-            {/* Header - Fiori 56pt height */}
-            <View style={[styles.header, { borderBottomColor: colors.cellDivider }]}>
+            {/* Header */}
+            <View style={styles.header}>
               <View style={styles.headerLeft}>
-                <Ionicons name="print" size={24} color={colors.primary} />
-                <Text style={[styles.title, { color: colors.textPrimary }]}>Print Jobs</Text>
-              </View>
-              <View style={[styles.jobCountBadge, { backgroundColor: colors.primary }]}>
-                <Text style={styles.jobCountText}>
-                  {printJobs.length}
+                <Text style={styles.title} accessibilityRole="header">
+                  Print jobs
                 </Text>
+                <View
+                  style={styles.jobCountBadge}
+                  accessible
+                  accessibilityLabel={`${printJobs.length} ${printJobs.length === 1 ? 'job' : 'jobs'}`}
+                >
+                  <Text style={styles.jobCountText} maxFontSizeMultiplier={1.6}>
+                    {printJobs.length}
+                  </Text>
+                </View>
               </View>
+              <Pressable
+                onPress={() => bottomSheetRef.current?.close()}
+                style={({ pressed }) => [styles.closeButton, pressed && styles.closeButtonPressed]}
+                accessibilityRole="button"
+                accessibilityLabel="Close print jobs"
+              >
+                <Icon name="close" size={iconSize.lg} color={t.icon.primary} />
+              </Pressable>
             </View>
 
-            {/* Printer Status Chip - Fiori style */}
-            <View style={[styles.printerStatusContainer, { borderBottomColor: colors.cellDivider }]}>
-              <View style={[
-                styles.printerStatusChip,
-                printerStatus === 'online' && { backgroundColor: colors.successLight },
-                printerStatus === 'offline' && { backgroundColor: colors.errorLight },
-                printerStatus === 'error' && { backgroundColor: colors.errorLight },
-                printerStatus === 'busy' && { backgroundColor: colors.warningLight },
-                !printerStatus && { backgroundColor: colors.gray100 },
-              ]}>
-                <View style={[
-                  styles.statusDot,
-                  printerStatus === 'online' && { backgroundColor: colors.success },
-                  printerStatus === 'offline' && { backgroundColor: colors.error },
-                  printerStatus === 'error' && { backgroundColor: colors.error },
-                  printerStatus === 'busy' && { backgroundColor: colors.warning },
-                  !printerStatus && { backgroundColor: colors.gray400 },
-                ]} />
-                <Text style={[styles.printerStatusText, { color: colors.textPrimary }]}>
-                  {printerStatus ? printerStatus.charAt(0).toUpperCase() + printerStatus.slice(1) : 'Checking...'}
-                </Text>
-              </View>
-              {printerMessage && (
-                <Text style={[styles.printerStatusMessage, { color: colors.textSecondary }]}>{printerMessage}</Text>
+            {/* Printer status */}
+            <View
+              style={styles.printerStatusContainer}
+              accessible
+              accessibilityLabel={`Printer ${printer ? printer.label : 'status checking'}. ${printerMessage}`}
+            >
+              <Text style={styles.printerStatusLabel}>Printer</Text>
+              {printer
+                ? renderStatusTag(printer.kind, printer.icon, printer.label)
+                : renderStatusTag('neutral', 'circle-outline', 'Checking…')}
+              {!!printerMessage && (
+                <Text style={styles.printerStatusMessage}>{printerMessage}</Text>
               )}
             </View>
 
-            {/* Tabs - Fiori Segmented Control style */}
-            <View style={[styles.tabContainer, { borderBottomColor: colors.cellDivider }]} accessibilityRole="tablist">
-              <Pressable
-                style={[
-                  styles.tab,
-                  activeTab === 'inProgress' && styles.activeTab,
-                ]}
-                onPress={() => setActiveTab('inProgress')}
-                accessibilityRole="tab"
-                accessibilityLabel="In Progress print jobs"
-                accessibilityState={{ selected: activeTab === 'inProgress' }}
-              >
-                <Text
-                  style={[
-                    styles.tabText,
-                    { color: colors.textSecondary },
-                    activeTab === 'inProgress' && { color: colors.primary, fontWeight: '600' },
-                  ]}
-                >
-                  In Progress
-                </Text>
-                {activeTab === 'inProgress' && <View style={[styles.tabIndicator, { backgroundColor: colors.primary }]} />}
-              </Pressable>
-              <Pressable
-                style={[
-                  styles.tab,
-                  activeTab === 'completed' && styles.activeTab,
-                ]}
-                onPress={() => setActiveTab('completed')}
-                accessibilityRole="tab"
-                accessibilityLabel="Completed print jobs"
-                accessibilityState={{ selected: activeTab === 'completed' }}
-              >
-                <Text
-                  style={[
-                    styles.tabText,
-                    { color: colors.textSecondary },
-                    activeTab === 'completed' && { color: colors.primary, fontWeight: '600' },
-                  ]}
-                >
-                  Completed
-                </Text>
-                {activeTab === 'completed' && <View style={[styles.tabIndicator, { backgroundColor: colors.primary }]} />}
-              </Pressable>
+            {/* Tabs */}
+            <View style={styles.tabContainer} accessibilityRole="tablist">
+              {renderTab('inProgress', 'In progress')}
+              {renderTab('completed', 'Finished')}
             </View>
 
             {/* Job List */}
@@ -706,30 +641,33 @@ const PrintJobsBottomSheet: React.ForwardRefRenderFunction<
                   <RefreshControl
                     refreshing={refreshing}
                     onRefresh={handleRefresh}
-                    colors={[colors.primary]}
-                    tintColor={colors.gray400}
-                    progressBackgroundColor={colors.cellBackground}
+                    colors={[t.brand.tint]}
+                    tintColor={t.brand.tint}
+                    progressBackgroundColor={t.surface.card}
                   />
                 }
-                contentContainerStyle={styles.listContent}
+                contentContainerStyle={[
+                  styles.listContent,
+                  { paddingBottom: space.xxl + insets.bottom },
+                ]}
                 showsVerticalScrollIndicator={false}
               />
             )}
           </View>
         </BottomSheet>
 
-        {/* Snackbar for feedback - Native implementation */}
+        {/* Snackbar (guide §13.9) */}
         {snackbarVisible && (
-          <View style={styles.snackbar}>
-            <View style={[styles.snackbarContent, { backgroundColor: colors.gray900 }]}>
+          <View style={[styles.snackbar, { bottom: space.xxl + insets.bottom }]}>
+            <View style={styles.snackbarContent} accessibilityLiveRegion="polite">
               <Text style={styles.snackbarText}>{snackbarMessage}</Text>
               <Pressable
                 onPress={() => setSnackbarVisible(false)}
                 style={styles.snackbarDismiss}
                 accessibilityRole="button"
-                accessibilityLabel="Dismiss"
+                accessibilityLabel="Dismiss message"
               >
-                <Ionicons name="close" size={20} color="#FFFFFF" />
+                <Icon name="close" size={iconSize.md} color={t.text.inverse} />
               </Pressable>
             </View>
           </View>
@@ -741,271 +679,280 @@ const PrintJobsBottomSheet: React.ForwardRefRenderFunction<
 export default forwardRef(PrintJobsBottomSheet);
 
 // ============================================================================
-// Styles - Layout only (colors applied inline)
+// Styles (docs/STYLE_GUIDE.md §13.9 bottom sheets)
 // ============================================================================
-const styles = StyleSheet.create({
+const makeStyles = (t: ThemeTokens) => ({
+  sheetBackground: {
+    backgroundColor: t.surface.sheet,
+    borderTopLeftRadius: radius.sheet,
+    borderTopRightRadius: radius.sheet,
+    ...t.shadow[4],
+  },
+  handleIndicator: {
+    backgroundColor: t.border.separator,
+    width: 36,
+    height: 4,
+  },
   contentContainer: {
     flex: 1,
-    paddingHorizontal: FIORI.header.paddingHorizontal,
+    paddingHorizontal: layout.marginCompact,
   },
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    height: FIORI.header.height,
-    borderBottomWidth: 1,
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'center' as const,
+    minHeight: touchTarget + space.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.divider,
   },
   headerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.sm,
+    flexShrink: 1,
   },
   title: {
-    fontSize: FIORI.typography.title.fontSize,
-    fontWeight: FIORI.typography.title.fontWeight,
-    lineHeight: FIORI.typography.title.lineHeight,
+    ...typography.headline,
+    color: t.text.primary,
   },
   jobCountBadge: {
-    borderRadius: 12,
-    minWidth: 24,
-    height: 24,
-    paddingHorizontal: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
+    borderRadius: radius.pill,
+    minWidth: 18,
+    minHeight: 18,
+    paddingHorizontal: space.s6,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    backgroundColor: t.brand.fill,
   },
   jobCountText: {
-    fontSize: FIORI.typography.badge.fontSize,
-    fontWeight: FIORI.typography.badge.fontWeight,
-    color: '#FFFFFF',
+    ...typography.caption2,
+    fontWeight: fontWeight.semibold,
+    color: t.brand.onFill,
+    fontVariant: ['tabular-nums' as const],
+  },
+  closeButton: {
+    width: touchTarget,
+    height: touchTarget,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    borderRadius: radius.pill,
+    marginRight: -space.sm,
+  },
+  closeButtonPressed: {
+    backgroundColor: t.surface.cardPressed,
   },
   printerStatusContainer: {
-    paddingVertical: 12,
-    borderBottomWidth: 1,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    flexWrap: 'wrap' as const,
+    gap: space.sm,
+    paddingVertical: space.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.divider,
   },
-  printerStatusChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-    height: FIORI.chip.height,
-    paddingHorizontal: FIORI.chip.paddingHorizontal,
-    borderRadius: FIORI.chip.borderRadius,
-    gap: 6,
-  },
-  statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  printerStatusText: {
-    fontSize: FIORI.chip.fontSize,
-    fontWeight: FIORI.chip.fontWeight,
+  printerStatusLabel: {
+    ...typography.subhead,
+    color: t.text.secondary,
   },
   printerStatusMessage: {
-    fontSize: FIORI.typography.caption.fontSize,
-    marginTop: 4,
+    ...typography.footnote,
+    color: t.text.secondary,
+    width: '100%' as const,
   },
-  listContent: {
-    paddingTop: 16,
-    paddingBottom: 24,
+  statusTag: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.xs,
+    paddingHorizontal: space.sm,
+    paddingVertical: space.xxs,
+    borderRadius: radius.field,
   },
-  jobHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
+  statusTagText: {
+    ...typography.caption1,
+    fontWeight: fontWeight.semibold,
   },
-  typeChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    height: FIORI.chip.height,
-    paddingHorizontal: FIORI.chip.paddingHorizontal,
-    borderRadius: FIORI.chip.borderRadius,
-    gap: 4,
+  typeTag: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.xs,
+    paddingHorizontal: space.sm,
+    paddingVertical: space.xxs,
+    borderRadius: radius.field,
+    backgroundColor: t.status.neutral.background,
   },
-  typeChipText: {
-    fontSize: FIORI.chip.fontSize,
-    fontWeight: FIORI.chip.fontWeight,
-  },
-  statusChip: {
-    height: FIORI.chip.height,
-    paddingHorizontal: FIORI.chip.paddingHorizontal,
-    borderRadius: FIORI.chip.borderRadius,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  statusChipText: {
-    fontSize: FIORI.chip.fontSize,
-    fontWeight: FIORI.chip.fontWeight,
-    color: '#FFFFFF',
-  },
-  rangeText: {
-    fontSize: FIORI.typography.body.fontSize,
-    fontWeight: '600',
-    lineHeight: FIORI.typography.body.lineHeight,
-    marginBottom: 4,
-  },
-  printerInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 12,
-  },
-  printerText: {
-    fontSize: FIORI.typography.caption.fontSize,
-    fontWeight: '500',
-  },
-  printerSeparator: {
-    fontSize: FIORI.typography.caption.fontSize,
-    marginHorizontal: 2,
-  },
-  documentCountText: {
-    fontSize: FIORI.typography.caption.fontSize,
-  },
-  jobFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    minHeight: FIORI.touch.minHeight,
-  },
-  timestampText: {
-    fontSize: FIORI.typography.caption.fontSize,
-  },
-  cancelButton: {
-    height: 36,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    borderWidth: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  cancelButtonText: {
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  successContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 12,
-    padding: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-  },
-  successText: {
-    flex: 1,
-    fontSize: FIORI.typography.caption.fontSize,
-    fontWeight: '500',
-  },
-  errorContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 12,
-    padding: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-  },
-  errorText: {
-    flex: 1,
-    fontSize: FIORI.typography.caption.fontSize,
-  },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: 48,
-  },
-  emptyIconContainer: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  emptyTitle: {
-    fontSize: FIORI.typography.title.fontSize,
-    fontWeight: '600',
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  emptySubtext: {
-    fontSize: FIORI.typography.body.fontSize,
-    textAlign: 'center',
-    paddingHorizontal: 32,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: 48,
-  },
-  loadingText: {
-    marginTop: 16,
-    fontSize: FIORI.typography.body.fontSize,
+  typeTagText: {
+    ...typography.caption1,
+    fontWeight: fontWeight.semibold,
+    color: t.status.neutral.text,
   },
   tabContainer: {
-    flexDirection: 'row',
-    borderBottomWidth: 1,
-    marginTop: 8,
+    flexDirection: 'row' as const,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.separator,
   },
   tab: {
     flex: 1,
-    minHeight: FIORI.tab.minHeight,
-    justifyContent: 'center',
-    alignItems: 'center',
-    position: 'relative',
+    minHeight: touchTarget,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
   },
-  activeTab: {},
+  tabPressed: {
+    backgroundColor: t.surface.cardPressed,
+  },
   tabText: {
-    fontSize: FIORI.tab.fontSize,
-    fontWeight: '500',
+    ...typography.subhead,
+    fontWeight: fontWeight.semibold,
+    color: t.text.secondary,
+  },
+  tabTextSelected: {
+    color: t.brand.tint,
   },
   tabIndicator: {
-    position: 'absolute',
+    position: 'absolute' as const,
     bottom: 0,
     left: 0,
     right: 0,
-    height: FIORI.tab.indicatorHeight,
-    borderTopLeftRadius: 2,
-    borderTopRightRadius: 2,
+    height: 2,
+    backgroundColor: t.brand.tint,
+  },
+  listContent: {
+    paddingTop: space.lg,
+  },
+  jobCard: {
+    backgroundColor: t.surface.card,
+    borderRadius: radius.card,
+    padding: space.lg,
+    marginBottom: space.sm,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: t.border.divider,
+  },
+  jobCardPressed: {
+    backgroundColor: t.surface.cardPressed,
+  },
+  jobHeader: {
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'center' as const,
+    marginBottom: space.md,
+  },
+  rangeText: {
+    ...typography.headline,
+    color: t.text.primary,
+    fontVariant: ['tabular-nums' as const],
+    marginBottom: space.xs,
+  },
+  printerInfo: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.s6,
+  },
+  metaText: {
+    ...typography.subhead,
+    color: t.text.secondary,
+    flexShrink: 1,
+  },
+  jobFooter: {
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'center' as const,
+    minHeight: touchTarget,
+  },
+  timestampText: {
+    ...typography.footnote,
+    color: t.text.secondary,
+  },
+  cancelButton: {
+    minHeight: touchTarget,
+    paddingHorizontal: space.lg,
+    borderRadius: radius.button,
+    borderWidth: 1,
+    borderColor: t.status.negative.border,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+  },
+  cancelButtonPressed: {
+    backgroundColor: t.status.negative.background,
+  },
+  cancelButtonText: {
+    ...typography.callout,
+    color: t.status.negative.text,
+  },
+  messageStrip: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.sm,
+    marginTop: space.md,
+    padding: space.md,
+    borderRadius: radius.button,
+    borderWidth: 1,
+  },
+  messageStripPositive: {
+    backgroundColor: t.status.positive.background,
+    borderColor: t.status.positive.border,
+  },
+  messageStripNegative: {
+    backgroundColor: t.status.negative.background,
+    borderColor: t.status.negative.border,
+  },
+  messageText: {
+    ...typography.footnote,
+    flex: 1,
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    paddingVertical: space.giant,
+    paddingHorizontal: space.xxxl,
+    gap: space.sm,
+  },
+  emptyTitle: {
+    ...typography.title3,
+    color: t.text.primary,
+    textAlign: 'center' as const,
+    marginTop: space.sm,
+  },
+  emptySubtext: {
+    ...typography.subhead,
+    color: t.text.secondary,
+    textAlign: 'center' as const,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    paddingVertical: space.giant,
+  },
+  loadingText: {
+    ...typography.subhead,
+    color: t.text.secondary,
+    marginTop: space.lg,
   },
   snackbar: {
-    position: 'absolute',
-    bottom: 24,
-    left: 16,
-    right: 16,
+    position: 'absolute' as const,
+    left: space.lg,
+    right: space.lg,
     zIndex: 1000,
   },
   snackbarContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 8,
-      },
-      android: {
-        elevation: 6,
-      },
-    }),
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    borderRadius: radius.button,
+    paddingVertical: space.xs,
+    paddingLeft: space.lg,
+    paddingRight: space.xs,
+    backgroundColor: t.surface.inverse,
+    ...t.shadow[3],
   },
   snackbarText: {
+    ...typography.subhead,
     flex: 1,
-    fontSize: FIORI.typography.body.fontSize,
-    color: '#FFFFFF',
+    color: t.text.inverse,
   },
   snackbarDismiss: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginLeft: 8,
+    width: touchTarget,
+    height: touchTarget,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
   },
 });

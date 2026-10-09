@@ -6,9 +6,18 @@
  */
 
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Pressable } from 'react-native';
+import { View, Text, ScrollView, ActivityIndicator, Pressable } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { useListColors } from '@/hooks/useListColors';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import {
+  iconSize,
+  layout,
+  radius,
+  space,
+  touchTarget,
+  typography,
+} from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
 import { DispatchRecord } from '@/services/grn-detail-service';
 import { GRNItem } from './GRNItemsTab';
 import { GRNItemDispatchTable } from './GRNItemDispatchTable';
@@ -26,6 +35,67 @@ interface GRNDispatchesTabProps {
   onRetry?: () => void;
 }
 
+const makeStyles = (t: ThemeTokens) => ({
+  container: {
+    flex: 1,
+    backgroundColor: t.background.base,
+  },
+  contentContainer: {
+    padding: layout.marginCompact,
+    paddingBottom: space.xxxl,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    gap: space.md,
+    backgroundColor: t.background.base,
+  },
+  loadingText: {
+    ...typography.subhead,
+    color: t.text.secondary,
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    padding: space.xxxl,
+    backgroundColor: t.background.base,
+  },
+  emptyIcon: {
+    marginBottom: space.lg,
+  },
+  emptyTitle: {
+    ...typography.title3,
+    color: t.text.primary,
+    marginBottom: space.sm,
+    textAlign: 'center' as const,
+  },
+  emptyMessage: {
+    ...typography.subhead,
+    color: t.text.secondary,
+    textAlign: 'center' as const,
+  },
+  retryButton: {
+    marginTop: space.xl,
+    minHeight: touchTarget,
+    minWidth: 120,
+    paddingHorizontal: space.xl,
+    borderRadius: radius.button,
+    borderWidth: 1,
+    borderColor: t.border.button,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+  },
+  retryButtonPressed: {
+    backgroundColor: t.brand.subtle,
+  },
+  retryText: {
+    ...typography.callout,
+    color: t.brand.tint,
+  },
+});
+
 export const GRNDispatchesTab: React.FC<GRNDispatchesTabProps> = ({
   items,
   dispatchesByItem,
@@ -33,34 +103,39 @@ export const GRNDispatchesTab: React.FC<GRNDispatchesTabProps> = ({
   error = null,
   onRetry,
 }) => {
-  // Theme colors for dark mode support
-  const colors = useListColors();
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
 
   if (loading) {
     return (
-      <View style={[styles.loadingContainer, { backgroundColor: colors.gray50 }]}>
-        <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={[styles.loadingText, { color: colors.gray500 }]}>Loading dispatches...</Text>
+      <View style={styles.loadingContainer} accessibilityLabel="Loading dispatches">
+        <ActivityIndicator size="large" color={t.brand.tint} />
+        <Text style={styles.loadingText}>Loading dispatches…</Text>
       </View>
     );
   }
 
   if (error) {
     return (
-      <View style={[styles.emptyContainer, { backgroundColor: colors.gray50 }]}>
-        <View style={[styles.emptyIconContainer, { backgroundColor: colors.gray100 }]}>
-          <Icon name="alert-circle-outline" size={48} color={colors.statusNegative || colors.gray500} />
-        </View>
-        <Text style={[styles.emptyTitle, { color: colors.gray700 }]}>Dispatches Unavailable</Text>
-        <Text style={[styles.emptyMessage, { color: colors.gray500 }]}>{error}</Text>
+      <View style={styles.emptyContainer}>
+        <Icon
+          name="alert-circle-outline"
+          size={iconSize.hero}
+          color={t.status.negative.text}
+          style={styles.emptyIcon}
+        />
+        <Text style={styles.emptyTitle} accessibilityRole="header">
+          Couldn't load dispatches
+        </Text>
+        <Text style={styles.emptyMessage}>{error}</Text>
         {onRetry ? (
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Retry loading dispatches"
             onPress={onRetry}
-            style={[styles.retryButton, { backgroundColor: colors.primary }]}
+            style={({ pressed }) => [styles.retryButton, pressed && styles.retryButtonPressed]}
           >
-            <Text style={styles.retryText}>Retry</Text>
+            <Text style={styles.retryText}>Try again</Text>
           </Pressable>
         ) : null}
       </View>
@@ -74,13 +149,16 @@ export const GRNDispatchesTab: React.FC<GRNDispatchesTabProps> = ({
 
   if (!hasAnyDispatches) {
     return (
-      <View style={[styles.emptyContainer, { backgroundColor: colors.gray50 }]}>
-        <View style={[styles.emptyIconContainer, { backgroundColor: colors.gray100 }]}>
-          <Icon name="truck-outline" size={48} color={colors.gray400} />
-        </View>
-        <Text style={[styles.emptyTitle, { color: colors.gray700 }]}>No Dispatches Yet</Text>
-        <Text style={[styles.emptyMessage, { color: colors.gray500 }]}>
-          Items from this GRN have not been dispatched yet.
+      <View style={styles.emptyContainer}>
+        <Icon
+          name="truck-delivery-outline"
+          size={iconSize.hero}
+          color={t.icon.secondary}
+          style={styles.emptyIcon}
+        />
+        <Text style={styles.emptyTitle}>No dispatches yet</Text>
+        <Text style={styles.emptyMessage}>
+          Dispatches of items from this GRN appear here.
         </Text>
       </View>
     );
@@ -93,7 +171,7 @@ export const GRNDispatchesTab: React.FC<GRNDispatchesTabProps> = ({
 
   return (
     <ScrollView
-      style={[styles.container, { backgroundColor: colors.gray50 }]}
+      style={styles.container}
       contentContainerStyle={styles.contentContainer}
       showsVerticalScrollIndicator={false}
     >
@@ -113,62 +191,5 @@ export const GRNDispatchesTab: React.FC<GRNDispatchesTabProps> = ({
     </ScrollView>
   );
 };
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  contentContainer: {
-    padding: 16,
-    paddingBottom: 32,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 12,
-  },
-  loadingText: {
-    fontSize: 14,
-  },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 32,
-  },
-  emptyIconContainer: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  emptyTitle: {
-    fontSize: 17,
-    fontWeight: '600',
-    marginBottom: 8,
-  },
-  emptyMessage: {
-    fontSize: 14,
-    textAlign: 'center',
-    lineHeight: 20,
-  },
-  retryButton: {
-    marginTop: 20,
-    minHeight: 44,
-    minWidth: 120,
-    paddingHorizontal: 20,
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  retryText: {
-    color: '#FFFFFF',
-    fontSize: 15,
-    fontWeight: '600',
-  },
-});
 
 export default GRNDispatchesTab;

@@ -1,67 +1,16 @@
 /**
- * InvoiceHeroHeader Component - 100% SAP Fiori Compliant
+ * InvoiceHeroHeader: object page header for an invoice (style guide §13.8).
  *
- * KPI Header for Invoice details screen showing key metrics
- * Based on SAP Fiori for iOS Design Guidelines
- *
- *
- * Features:
- * - Three KPI metrics with semantic colors
- * - Fiori semantic status colors
- * - Platform-specific shadows
- * - Accessible labels
- * - Dynamic colors for dark mode support
+ * On surface.card: the document type, the invoice number, the customer and
+ * date, then the key facts (items, total, tax) as key-value pairs with
+ * tabular, right-aligned money.
  */
-
-import React, { useMemo } from 'react';
-import { View, Text, StyleSheet, Platform, ViewStyle } from 'react-native';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { formatCurrency } from '@/utils/formatters';
-import { useListColors } from '@/hooks/useListColors';
-
-// ============================================================================
-// FIORI DESIGN TOKENS (Static values only - colors are dynamic)
-// ============================================================================
-const FIORI_STATIC = {
-  // Spacing
-  spacing: {
-    xs: 4,
-    sm: 8,
-    md: 12,
-    lg: 16,
-  },
-  // Dimensions
-  dimensions: {
-    kpiCardRadius: 10,
-    kpiIconSize: 20,
-    containerPadding: 16,
-  },
-  // Typography - Fiori iOS
-  typography: {
-    kpiValue: {
-      fontSize: 20,
-      fontWeight: '700' as const,
-      letterSpacing: 0.35,
-    },
-    kpiLabel: {
-      fontSize: 11,
-      fontWeight: '500' as const,
-      letterSpacing: 0.07,
-    },
-  },
-  // Shadow - Fiori elevation
-  shadow: Platform.select({
-    ios: {
-      shadowColor: '#000000',
-      shadowOffset: { width: 0, height: 1 },
-      shadowOpacity: 0.08,
-      shadowRadius: 4,
-    },
-    android: {
-      elevation: 2,
-    },
-  }) as ViewStyle,
-} as const;
+import React from 'react';
+import { View, Text, StyleSheet } from 'react-native';
+import { useThemedStyles } from '@/hooks/useTheme';
+import { fontWeight, space, typography } from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
+import { formatInvoiceAmount } from '@/utils/invoiceCalculations';
 
 // ============================================================================
 // TYPES
@@ -75,144 +24,108 @@ interface InvoiceHeroHeaderProps {
   customer_name?: string;
 }
 
+const formatHeaderDate = (value: string) => {
+  const date = new Date(value);
+  if (isNaN(date.getTime())) return '';
+  return date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+};
+
+// ============================================================================
+// STYLES
+// ============================================================================
+const makeStyles = (t: ThemeTokens) => ({
+  container: {
+    backgroundColor: t.surface.card,
+    paddingHorizontal: space.lg,
+    paddingTop: space.md,
+    paddingBottom: space.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.divider,
+  },
+  docType: { ...typography.footnote, color: t.text.secondary },
+  number: {
+    ...typography.title2,
+    color: t.text.primary,
+    fontVariant: ['tabular-nums' as const],
+  },
+  subtitle: { ...typography.subhead, color: t.text.secondary, marginTop: space.xxs },
+  factsRow: {
+    flexDirection: 'row' as const,
+    flexWrap: 'wrap' as const,
+    marginTop: space.md,
+    paddingTop: space.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: t.border.divider,
+    gap: space.md,
+  },
+  fact: { flexGrow: 1, flexBasis: 90, gap: space.xxs },
+  factLabel: { ...typography.footnote, color: t.text.secondary },
+  factValue: {
+    ...typography.headline,
+    color: t.text.primary,
+    fontVariant: ['tabular-nums' as const],
+  },
+  factValueTotal: { fontWeight: fontWeight.bold },
+});
+
 // ============================================================================
 // COMPONENT
 // ============================================================================
 export const InvoiceHeroHeader: React.FC<InvoiceHeroHeaderProps> = ({
+  invoice_number,
+  date,
   total_items,
   total_amount,
   tax_amount,
+  customer_name,
 }) => {
-  // Theme colors for dark mode support
-  const colors = useListColors();
+  const styles = useThemedStyles(makeStyles);
 
   // Ensure all numeric values are valid numbers (handle null/undefined)
   const safeItems = Number(total_items) || 0;
   const safeAmount = Number(total_amount) || 0;
   const safeTax = Number(tax_amount) || 0;
+  const formattedDate = formatHeaderDate(date);
+  const subtitle = [customer_name, formattedDate].filter(Boolean).join(' · ');
 
-  // Dynamic styles based on theme
-  const dynamicStyles = useMemo(() => StyleSheet.create({
-    container: {
-      backgroundColor: colors.gray50,
-      paddingHorizontal: FIORI_STATIC.dimensions.containerPadding,
-      paddingVertical: FIORI_STATIC.spacing.md,
-      ...FIORI_STATIC.shadow,
+  const facts = [
+    {
+      key: 'items',
+      label: 'Items',
+      value: new Intl.NumberFormat('en-IN').format(safeItems),
+      a11y: `${safeItems} ${safeItems === 1 ? 'item' : 'items'}`,
     },
-    kpiCard: {
-      flex: 1,
-      backgroundColor: colors.cellBackground,
-      borderRadius: FIORI_STATIC.dimensions.kpiCardRadius,
-      borderWidth: 1,
-      borderColor: colors.cellDivider,
-      paddingVertical: FIORI_STATIC.spacing.sm,
-      paddingHorizontal: FIORI_STATIC.spacing.xs,
-      flexDirection: 'column',
-      alignItems: 'center',
-      justifyContent: 'center',
-      minHeight: 72,
+    {
+      key: 'total',
+      label: 'Total',
+      value: formatInvoiceAmount(safeAmount),
+      a11y: `Total ${formatInvoiceAmount(safeAmount)}`,
+      emphasized: true,
     },
-    kpiValue: {
-      ...FIORI_STATIC.typography.kpiValue,
-      color: colors.gray900,
-      textAlign: 'center',
-      marginTop: FIORI_STATIC.spacing.xs,
+    {
+      key: 'tax',
+      label: 'Tax',
+      value: formatInvoiceAmount(safeTax),
+      a11y: `Tax ${formatInvoiceAmount(safeTax)}`,
     },
-    kpiLabel: {
-      ...FIORI_STATIC.typography.kpiLabel,
-      color: colors.gray600,
-      textAlign: 'center',
-      marginTop: 2,
-    },
-  }), [colors]);
-
-  // KPI Card Component - Fiori Style (Vertical Layout for better readability)
-  const KPICard = ({
-    icon,
-    iconColor,
-    value,
-    label,
-    valueColor,
-    accessibilityLabel,
-    isAmount = false,
-  }: {
-    icon: string;
-    iconColor: string;
-    value: number;
-    label: string;
-    valueColor?: string;
-    accessibilityLabel: string;
-    isAmount?: boolean;
-  }) => (
-    <View
-      style={dynamicStyles.kpiCard}
-      accessible={true}
-      accessibilityLabel={accessibilityLabel}
-      accessibilityRole="text"
-    >
-      {/* Icon - Top */}
-      <Icon name={icon} size={FIORI_STATIC.dimensions.kpiIconSize} color={iconColor} />
-
-      {/* Value - Center (single line) */}
-      <Text
-        style={[dynamicStyles.kpiValue, valueColor ? { color: valueColor } : null]}
-        numberOfLines={1}
-        adjustsFontSizeToFit
-        minimumFontScale={0.7}
-      >
-        {isAmount ? formatCurrency(value) : value}
-      </Text>
-
-      {/* Label - Bottom */}
-      <Text style={dynamicStyles.kpiLabel} numberOfLines={1}>{label}</Text>
-    </View>
-  );
+  ];
 
   return (
-    <View style={dynamicStyles.container}>
-      {/* KPI Cards Row */}
-      <View style={styles.kpiRow}>
-        {/* Items KPI */}
-        <KPICard
-          icon="package-variant"
-          iconColor={colors.primary}
-          value={safeItems}
-          label="Items"
-          accessibilityLabel={`Total items: ${safeItems}`}
-        />
+    <View style={styles.container}>
+      <View accessible accessibilityRole="header" accessibilityLabel={`Invoice ${invoice_number}${subtitle ? `, ${subtitle}` : ''}`}>
+        <Text style={styles.docType}>Invoice</Text>
+        <Text style={styles.number}>{invoice_number}</Text>
+        {subtitle ? <Text style={styles.subtitle} numberOfLines={2}>{subtitle}</Text> : null}
+      </View>
 
-        {/* Total Amount KPI */}
-        <KPICard
-          icon="currency-inr"
-          iconColor={colors.success}
-          value={safeAmount}
-          label="Total"
-          valueColor={colors.success}
-          accessibilityLabel={`Total amount: ${formatCurrency(safeAmount)}`}
-          isAmount
-        />
-
-        {/* Tax Amount KPI */}
-        <KPICard
-          icon="percent"
-          iconColor={colors.primary}
-          value={safeTax}
-          label="Tax"
-          valueColor={colors.primary}
-          accessibilityLabel={`Tax amount: ${formatCurrency(safeTax)}`}
-          isAmount
-        />
+      <View style={styles.factsRow}>
+        {facts.map(fact => (
+          <View key={fact.key} style={styles.fact} accessible accessibilityLabel={fact.a11y}>
+            <Text style={styles.factLabel}>{fact.label}</Text>
+            <Text style={[styles.factValue, fact.emphasized && styles.factValueTotal]}>{fact.value}</Text>
+          </View>
+        ))}
       </View>
     </View>
   );
 };
-
-// ============================================================================
-// STYLES (Static layout only - colors are in dynamicStyles)
-// ============================================================================
-const styles = StyleSheet.create({
-  kpiRow: {
-    flexDirection: 'row',
-    gap: FIORI_STATIC.spacing.sm,
-  },
-});

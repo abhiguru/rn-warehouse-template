@@ -1,7 +1,8 @@
 /**
  * DocumentSuccessDialog - Success confirmation modal
  *
- * SAP Fiori Design System - Modal/Dialog Component
+ * SAP Fiori dialog (docs/STYLE_GUIDE.md §13.9, wizard §14.3): surface.sheet,
+ * radius.card, shadow[4] over overlay.scrim, success icon in status.positive.
  *
  * Displays success confirmation after document creation/update.
  * Provides actions for creating another, sharing PDF, printing, and viewing list.
@@ -11,53 +12,24 @@ import React from 'react';
 import {
   View,
   Text,
-  StyleSheet,
   Modal,
   Pressable,
   ActivityIndicator,
-  Platform,
-  useColorScheme,
+  ScrollView,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import theme, { colors, darkColors } from '@/theme';
-import { listColors } from '@/theme/listColors';
-
-// ============================================================================
-// SAP Fiori Design Constants
-// ============================================================================
-const FIORI = {
-  // Modal dimensions
-  modal: {
-    cornerRadius: 16,
-    padding: 24,
-    maxWidth: 400,
-    backdropOpacity: 0.4,
-  },
-  // Button dimensions (per 08-button.md)
-  button: {
-    height: 44,
-    borderRadius: 8,
-    fontSize: 15,
-    fontWeight: '600' as const,
-  },
-  // Touch targets
-  touch: {
-    minHeight: 44,
-  },
-  // Typography
-  typography: {
-    title: { fontSize: 22, fontWeight: '700' as const, lineHeight: 28 },
-    body: { fontSize: 15, fontWeight: '400' as const, lineHeight: 20 },
-    caption: { fontSize: 13, fontWeight: '400' as const, lineHeight: 18 },
-    label: { fontSize: 15, fontWeight: '400' as const, lineHeight: 20 },
-    value: { fontSize: 15, fontWeight: '600' as const, lineHeight: 20 },
-  },
-  // Icon
-  icon: {
-    containerSize: 80,
-    iconSize: 40,
-  },
-} as const;
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import {
+  fontWeight,
+  iconSize,
+  layout,
+  radius,
+  space,
+  touchTarget,
+  typography,
+} from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
+import { formatCurrency } from '@/utils/formatters';
 
 export type DocumentType = 'GRN' | 'Dispatch' | 'Invoice';
 
@@ -85,35 +57,158 @@ interface DocumentSuccessDialogProps {
 const getDocumentConfig = (type: DocumentType, isEditMode: boolean) => {
   const configs = {
     GRN: {
-      title: isEditMode ? 'GRN Updated Successfully!' : 'GRN Created Successfully!',
-      message: isEditMode
-        ? 'The GRN has been updated successfully.'
-        : 'The GRN has been saved successfully.',
-      listRoute: 'GRN List',
-      createText: isEditMode ? 'Edit Another' : 'Create Another',
-      numberLabel: 'GRN Number:',
+      noun: 'GRN',
+      title: isEditMode ? 'GRN updated' : 'GRN created',
+      message: isEditMode ? 'Your changes to the GRN are saved.' : 'The GRN is saved.',
+      listLabel: 'View GRNs',
+      createText: isEditMode ? 'Edit another GRN' : 'Create another GRN',
+      numberLabel: 'GRN number',
     },
     Dispatch: {
-      title: isEditMode ? 'Dispatch Updated Successfully!' : 'Dispatch Created Successfully!',
+      noun: 'Dispatch',
+      title: isEditMode ? 'Dispatch updated' : 'Dispatch created',
       message: isEditMode
-        ? 'The dispatch has been updated successfully.'
-        : 'The dispatch has been saved successfully.',
-      listRoute: 'Dispatch List',
-      createText: isEditMode ? 'Edit Another' : 'Create Another',
-      numberLabel: 'Dispatch Number:',
+        ? 'Your changes to the dispatch are saved.'
+        : 'The dispatch is saved.',
+      listLabel: 'View dispatches',
+      createText: isEditMode ? 'Edit another dispatch' : 'Create another dispatch',
+      numberLabel: 'Dispatch number',
     },
     Invoice: {
-      title: isEditMode ? 'Invoice Updated Successfully!' : 'Invoice Created Successfully!',
+      noun: 'Invoice',
+      title: isEditMode ? 'Invoice updated' : 'Invoice created',
       message: isEditMode
-        ? 'The invoice has been updated successfully.'
-        : 'The invoice has been saved successfully.',
-      listRoute: 'Invoice List',
-      createText: isEditMode ? 'Edit Another' : 'Create Another',
-      numberLabel: 'Invoice Number:',
+        ? 'Your changes to the invoice are saved.'
+        : 'The invoice is saved.',
+      listLabel: 'View invoices',
+      createText: isEditMode ? 'Edit another invoice' : 'Create another invoice',
+      numberLabel: 'Invoice number',
     },
   };
   return configs[type];
 };
+
+const makeStyles = (t: ThemeTokens) => ({
+  overlay: {
+    flex: 1,
+    backgroundColor: t.overlay.scrim,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    padding: space.lg,
+  },
+  dialog: {
+    backgroundColor: t.surface.sheet,
+    borderRadius: radius.card,
+    width: '100%' as const,
+    maxWidth: layout.maxFormWidth,
+    maxHeight: '90%' as const,
+    ...t.shadow[4],
+  },
+  scrollContent: {
+    padding: space.xxl,
+  },
+  iconContainer: {
+    width: 64,
+    height: 64,
+    borderRadius: radius.pill,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    alignSelf: 'center' as const,
+    marginBottom: space.lg,
+    backgroundColor: t.status.positive.background,
+  },
+  title: {
+    ...typography.title3,
+    color: t.text.primary,
+    textAlign: 'center' as const,
+    marginBottom: space.xs,
+  },
+  message: {
+    ...typography.body,
+    color: t.text.secondary,
+    textAlign: 'center' as const,
+    marginBottom: space.xl,
+  },
+  detailsContainer: {
+    borderRadius: radius.button,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.sm,
+    marginBottom: space.xxl,
+    backgroundColor: t.background.base,
+  },
+  detailRow: {
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'center' as const,
+    flexWrap: 'wrap' as const,
+    gap: space.sm,
+    minHeight: layout.rowMinHeight,
+    paddingVertical: space.xs,
+  },
+  detailLabel: {
+    ...typography.subhead,
+    color: t.text.secondary,
+  },
+  detailValue: {
+    ...typography.body,
+    fontWeight: fontWeight.semibold,
+    color: t.text.primary,
+    flexShrink: 1,
+    textAlign: 'right' as const,
+    fontVariant: ['tabular-nums' as const],
+  },
+  totalRow: {
+    marginTop: space.xs,
+    borderTopWidth: 1,
+    borderTopColor: t.border.separator,
+  },
+  totalLabel: {
+    ...typography.headline,
+    color: t.text.primary,
+  },
+  totalValue: {
+    ...typography.title3,
+    color: t.text.primary,
+    fontVariant: ['tabular-nums' as const],
+  },
+  buttonContainer: {
+    gap: space.sm,
+  },
+  button: {
+    minHeight: touchTarget,
+    borderRadius: radius.button,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    flexDirection: 'row' as const,
+    gap: space.sm,
+    paddingHorizontal: space.lg,
+  },
+  secondaryButton: {
+    borderWidth: 1,
+    borderColor: t.border.button,
+  },
+  secondaryButtonPressed: {
+    backgroundColor: t.brand.subtle,
+  },
+  secondaryButtonText: {
+    ...typography.callout,
+    color: t.brand.tint,
+  },
+  primaryButton: {
+    backgroundColor: t.brand.fill,
+  },
+  primaryButtonPressed: {
+    backgroundColor: t.brand.fillPressed,
+  },
+  primaryButtonText: {
+    ...typography.callout,
+    fontWeight: fontWeight.semibold,
+    color: t.brand.onFill,
+  },
+  buttonDisabled: {
+    opacity: t.interaction.disabledOpacity,
+  },
+});
 
 export const DocumentSuccessDialog: React.FC<DocumentSuccessDialogProps> = ({
   isVisible,
@@ -126,10 +221,9 @@ export const DocumentSuccessDialog: React.FC<DocumentSuccessDialogProps> = ({
   isShareLoading = false,
   isEditMode = false,
 }) => {
-  // Dark mode support - hooks must be called before any early returns
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
-  const themeColors = isDark ? darkColors : colors;
+  // Hooks must be called before any early returns
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
 
   const config = getDocumentConfig(documentType, isEditMode);
 
@@ -142,355 +236,147 @@ export const DocumentSuccessDialog: React.FC<DocumentSuccessDialogProps> = ({
       transparent
       animationType="fade"
       onRequestClose={onViewList}
-      accessibilityViewIsModal={true}
-      accessibilityLabel={`${documentType} Success Dialog`}
     >
       <View style={styles.overlay}>
-        <View style={[styles.dialog, { backgroundColor: themeColors.white }]}>
-          {/* Success Icon - Fiori style */}
-          <View style={[styles.iconContainer, { backgroundColor: themeColors.fiori.semantic.positiveLight }]}>
-            <Ionicons
-              name="checkmark"
-              size={FIORI.icon.iconSize}
-              color={themeColors.fiori.semantic.positive}
-            />
-          </View>
-
-          {/* Title */}
-          <Text style={[styles.title, { color: themeColors.fiori.text.primary }]}>{config.title}</Text>
-
-          {/* Document Details - Fiori Card style */}
-          <View style={[styles.detailsContainer, { backgroundColor: themeColors.gray[50] }]}>
-            <View style={styles.detailRow}>
-              <Text style={[styles.detailLabel, { color: themeColors.fiori.text.secondary }]}>{config.numberLabel}</Text>
-              <Text style={[styles.detailValue, { color: themeColors.fiori.text.primary }]}>#{documentData.documentNo}</Text>
+        <View
+          style={styles.dialog}
+          accessibilityViewIsModal
+          accessibilityLabel={`${config.title}, ${config.noun} ${documentData.documentNo}`}
+        >
+          <ScrollView contentContainerStyle={styles.scrollContent} bounces={false}>
+            {/* Success icon */}
+            <View style={styles.iconContainer} accessible={false} importantForAccessibility="no">
+              <Icon name="check-circle" size={iconSize.xl} color={t.status.positive.text} />
             </View>
 
-            {documentData.finYear && (
+            {/* Title and message */}
+            <Text style={styles.title} accessibilityRole="header">
+              {config.title}
+            </Text>
+            <Text style={styles.message}>{config.message}</Text>
+
+            {/* Document details */}
+            <View style={styles.detailsContainer}>
               <View style={styles.detailRow}>
-                <Text style={[styles.detailLabel, { color: themeColors.fiori.text.secondary }]}>Financial Year:</Text>
-                <Text style={[styles.detailValue, { color: themeColors.fiori.text.primary }]}>{documentData.finYear}</Text>
+                <Text style={styles.detailLabel}>{config.numberLabel}</Text>
+                <Text style={styles.detailValue}>{documentData.documentNo}</Text>
               </View>
-            )}
 
-            <View style={styles.detailRow}>
-              <Text style={[styles.detailLabel, { color: themeColors.fiori.text.secondary }]}>Customer:</Text>
-              <Text style={[styles.detailValue, { color: themeColors.fiori.text.primary }]} numberOfLines={1}>
-                {documentData.customerName}
-              </Text>
-            </View>
+              {documentData.finYear && (
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Financial year</Text>
+                  <Text style={styles.detailValue}>{documentData.finYear}</Text>
+                </View>
+              )}
 
-            {documentData.date && (
               <View style={styles.detailRow}>
-                <Text style={[styles.detailLabel, { color: themeColors.fiori.text.secondary }]}>Date:</Text>
-                <Text style={[styles.detailValue, { color: themeColors.fiori.text.primary }]}>{documentData.date}</Text>
-              </View>
-            )}
-
-            {documentData.itemCount !== undefined && (
-              <View style={styles.detailRow}>
-                <Text style={[styles.detailLabel, { color: themeColors.fiori.text.secondary }]}>Items:</Text>
-                <Text style={[styles.detailValue, { color: themeColors.fiori.text.primary }]}>{documentData.itemCount}</Text>
-              </View>
-            )}
-
-            {documentData.totalAmount !== undefined && (
-              <View style={[styles.detailRow, styles.totalRow, { borderTopColor: themeColors.fiori.objectCell.divider }]}>
-                <Text style={[styles.totalLabel, { color: themeColors.fiori.text.primary }]}>Total Amount:</Text>
-                <Text style={[styles.totalValue, { color: themeColors.fiori.semantic.positive }]}>
-                  ₹{documentData.totalAmount.toFixed(2)}
+                <Text style={styles.detailLabel}>Customer</Text>
+                <Text style={styles.detailValue} numberOfLines={2}>
+                  {documentData.customerName}
                 </Text>
               </View>
-            )}
-          </View>
 
-          {/* Message */}
-          <Text style={[styles.message, { color: themeColors.fiori.text.secondary }]}>{config.message}</Text>
-
-          {/* Action Buttons - Fiori Button styles */}
-          <View style={styles.buttonContainer}>
-            {/* Secondary Tint (outlined) */}
-            <Pressable
-              style={({ pressed }) => [
-                styles.button,
-                styles.secondaryButton,
-                { borderColor: themeColors.primary },
-                pressed && [styles.secondaryButtonPressed, { backgroundColor: themeColors.orange[50] }],
-              ]}
-              onPress={onCreateAnother}
-              accessibilityRole="button"
-              accessibilityLabel={config.createText}
-            >
-              <Text style={[styles.secondaryButtonText, { color: themeColors.primary }]}>{config.createText}</Text>
-            </Pressable>
-
-            {/* Share PDF Button - Fiori positive style */}
-            <Pressable
-              style={({ pressed }) => [
-                styles.button,
-                styles.shareButton,
-                { backgroundColor: themeColors.fiori.semantic.positive },
-                pressed && { backgroundColor: themeColors.fiori.semantic.positiveDark },
-                isShareLoading && styles.buttonDisabled,
-              ]}
-              onPress={onSharePDF}
-              disabled={isShareLoading}
-              accessibilityRole="button"
-              accessibilityLabel="Share PDF"
-            >
-              {isShareLoading ? (
-                <ActivityIndicator size="small" color={themeColors.white} />
-              ) : (
-                <>
-                  <Ionicons
-                    name="share-outline"
-                    size={20}
-                    color={themeColors.white}
-                    style={styles.buttonIcon}
-                  />
-                  <Text style={[styles.shareButtonText, { color: themeColors.white }]}>Share PDF</Text>
-                </>
+              {documentData.date && (
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Date</Text>
+                  <Text style={styles.detailValue}>{documentData.date}</Text>
+                </View>
               )}
-            </Pressable>
 
-            {/* Print Button - Fiori secondary style */}
-            {onPrint && (
+              {documentData.itemCount !== undefined && (
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Items</Text>
+                  <Text style={styles.detailValue}>{documentData.itemCount}</Text>
+                </View>
+              )}
+
+              {documentData.totalAmount !== undefined && (
+                <View style={[styles.detailRow, styles.totalRow]}>
+                  <Text style={styles.totalLabel}>Total amount</Text>
+                  <Text style={styles.totalValue}>
+                    {formatCurrency(documentData.totalAmount, {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })}
+                  </Text>
+                </View>
+              )}
+            </View>
+
+            {/* Actions: one primary, the rest secondary */}
+            <View style={styles.buttonContainer}>
+              {onPrint && (
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.button,
+                    styles.secondaryButton,
+                    pressed && styles.secondaryButtonPressed,
+                  ]}
+                  onPress={onPrint}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Print ${config.noun === 'GRN' ? 'GRN' : config.noun.toLowerCase()}`}
+                >
+                  <Icon name="printer-outline" size={iconSize.md} color={t.brand.tint} />
+                  <Text style={styles.secondaryButtonText}>Print</Text>
+                </Pressable>
+              )}
+
               <Pressable
                 style={({ pressed }) => [
                   styles.button,
-                  styles.printButton,
-                  { backgroundColor: themeColors.fiori.semantic.neutral },
-                  pressed && { backgroundColor: themeColors.fiori.semantic.neutralDark },
+                  styles.secondaryButton,
+                  pressed && styles.secondaryButtonPressed,
+                  isShareLoading && styles.buttonDisabled,
                 ]}
-                onPress={onPrint}
+                onPress={onSharePDF}
+                disabled={isShareLoading}
                 accessibilityRole="button"
-                accessibilityLabel="Print document"
+                accessibilityLabel="Share PDF"
+                accessibilityState={{ busy: isShareLoading, disabled: isShareLoading }}
               >
-                <Ionicons
-                  name="print-outline"
-                  size={20}
-                  color={themeColors.white}
-                  style={styles.buttonIcon}
-                />
-                <Text style={[styles.printButtonText, { color: themeColors.white }]}>Print</Text>
+                {isShareLoading ? (
+                  <ActivityIndicator size="small" color={t.brand.tint} />
+                ) : (
+                  <Icon name="share-variant-outline" size={iconSize.md} color={t.brand.tint} />
+                )}
+                <Text style={styles.secondaryButtonText}>
+                  {isShareLoading ? 'Preparing PDF…' : 'Share PDF'}
+                </Text>
               </Pressable>
-            )}
 
-            {/* Primary Button */}
-            <Pressable
-              style={({ pressed }) => [
-                styles.button,
-                styles.primaryButton,
-                { backgroundColor: themeColors.primary },
-                pressed && { backgroundColor: themeColors.orange[600] },
-              ]}
-              onPress={onViewList}
-              accessibilityRole="button"
-              accessibilityLabel={`View ${config.listRoute}`}
-            >
-              <Text style={[styles.primaryButtonText, { color: themeColors.white }]}>View {config.listRoute}</Text>
-            </Pressable>
-          </View>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.button,
+                  styles.secondaryButton,
+                  pressed && styles.secondaryButtonPressed,
+                ]}
+                onPress={onCreateAnother}
+                accessibilityRole="button"
+                accessibilityLabel={config.createText}
+              >
+                <Icon name="plus" size={iconSize.md} color={t.brand.tint} />
+                <Text style={styles.secondaryButtonText}>{config.createText}</Text>
+              </Pressable>
+
+              <Pressable
+                style={({ pressed }) => [
+                  styles.button,
+                  styles.primaryButton,
+                  pressed && styles.primaryButtonPressed,
+                ]}
+                onPress={onViewList}
+                accessibilityRole="button"
+                accessibilityLabel={config.listLabel}
+              >
+                <Text style={styles.primaryButtonText}>{config.listLabel}</Text>
+              </Pressable>
+            </View>
+          </ScrollView>
         </View>
       </View>
     </Modal>
   );
 };
 
-// ============================================================================
-// Styles - SAP Fiori Design System
-// ============================================================================
-const styles = StyleSheet.create({
-  // Overlay - Fiori backdrop 40% opacity
-  overlay: {
-    flex: 1,
-    backgroundColor: `rgba(0, 0, 0, ${FIORI.modal.backdropOpacity})`,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 16,
-  },
-
-  // Dialog - Fiori Form Sheet style
-  dialog: {
-    borderRadius: FIORI.modal.cornerRadius,
-    padding: FIORI.modal.padding,
-    width: '100%',
-    maxWidth: FIORI.modal.maxWidth,
-    // Platform-specific shadows (Fiori elevation 16)
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: 0.25,
-        shadowRadius: 16,
-      },
-      android: {
-        elevation: 16,
-      },
-    }),
-  },
-
-  // Success Icon - Fiori positive semantic
-  iconContainer: {
-    width: FIORI.icon.containerSize,
-    height: FIORI.icon.containerSize,
-    borderRadius: FIORI.icon.containerSize / 2,
-    justifyContent: 'center',
-    alignItems: 'center',
-    alignSelf: 'center',
-    marginBottom: 20,
-  },
-
-  // Title - Fiori title typography
-  title: {
-    fontSize: FIORI.typography.title.fontSize,
-    fontWeight: FIORI.typography.title.fontWeight,
-    lineHeight: FIORI.typography.title.lineHeight,
-    textAlign: 'center',
-    marginBottom: 20,
-  },
-
-  // Details Container - Fiori Card style
-  detailsContainer: {
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 20,
-    gap: 8,
-  },
-  detailRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    minHeight: FIORI.touch.minHeight,
-    paddingVertical: 4,
-  },
-  detailLabel: {
-    fontSize: FIORI.typography.label.fontSize,
-    flex: 1,
-  },
-  detailValue: {
-    fontSize: FIORI.typography.value.fontSize,
-    fontWeight: FIORI.typography.value.fontWeight,
-    flex: 1,
-    textAlign: 'right',
-  },
-
-  // Total Row
-  totalRow: {
-    marginTop: 8,
-    paddingTop: 12,
-    borderTopWidth: 1,
-  },
-  totalLabel: {
-    fontSize: 17,
-    fontWeight: '700',
-  },
-  totalValue: {
-    fontSize: 20,
-    fontWeight: '700',
-  },
-
-  // Message
-  message: {
-    fontSize: FIORI.typography.body.fontSize,
-    textAlign: 'center',
-    lineHeight: 22,
-    marginBottom: 24,
-  },
-
-  // Button Container
-  buttonContainer: {
-    flexDirection: 'column',
-    gap: 12,
-  },
-
-  // Base Button - Fiori 44pt height
-  button: {
-    height: FIORI.button.height,
-    borderRadius: FIORI.button.borderRadius,
-    justifyContent: 'center',
-    alignItems: 'center',
-    flexDirection: 'row',
-  },
-  buttonIcon: {
-    marginRight: 8,
-  },
-  buttonDisabled: {
-    opacity: 0.6,
-  },
-
-  // Primary Button - Fiori Primary Tint
-  primaryButton: {
-    // Platform-specific shadows
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.3,
-        shadowRadius: 4,
-      },
-      android: {
-        elevation: 4,
-      },
-    }),
-  },
-  primaryButtonPressed: {},
-  primaryButtonText: {
-    fontSize: FIORI.button.fontSize,
-    fontWeight: FIORI.button.fontWeight,
-  },
-
-  // Secondary Button - Fiori Secondary Tint (outlined)
-  secondaryButton: {
-    borderWidth: 1,
-  },
-  secondaryButtonPressed: {},
-  secondaryButtonText: {
-    fontSize: FIORI.button.fontSize,
-    fontWeight: FIORI.button.fontWeight,
-  },
-
-  // Share Button - Fiori Positive style
-  shareButton: {
-    // Platform-specific shadows
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.3,
-        shadowRadius: 4,
-      },
-      android: {
-        elevation: 4,
-      },
-    }),
-  },
-  shareButtonPressed: {},
-  shareButtonText: {
-    fontSize: FIORI.button.fontSize,
-    fontWeight: FIORI.button.fontWeight,
-  },
-
-  // Print Button - Fiori Neutral/Info style
-  printButton: {
-    // Platform-specific shadows
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.3,
-        shadowRadius: 4,
-      },
-      android: {
-        elevation: 4,
-      },
-    }),
-  },
-  printButtonPressed: {},
-  printButtonText: {
-    fontSize: FIORI.button.fontSize,
-    fontWeight: FIORI.button.fontWeight,
-  },
-});
 
 export default DocumentSuccessDialog;

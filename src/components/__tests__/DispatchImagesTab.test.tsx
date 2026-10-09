@@ -4,7 +4,11 @@ import { DispatchImagesTab } from '../dispatch-details/DispatchImagesTab';
 
 jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('expo-image', () => ({ Image: 'Image' }));
-jest.mock('@/hooks/useListColors', () => ({ useListColors: () => require('@/theme/listColors').listColors }));
+jest.mock('@/store/hooks', () => ({
+  useAppDispatch: () => jest.fn(),
+  useAppSelector: (sel: (s: unknown) => unknown) =>
+    sel({ theme: { preference: 'light', brand: 'orange' } }),
+}));
 
 const addButtons = (tree: ReturnType<typeof create>) =>
   tree.root.findAll(node => node.props.accessibilityLabel === 'Add dispatch photo' && typeof node.props.onPress === 'function');

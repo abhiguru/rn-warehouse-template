@@ -9,6 +9,7 @@ import {
   TAB_ICONS,
   type TabConfig,
 } from '@/components/common/GenericDetailTabNavigator';
+import { iconSize } from '@/theme/tokens';
 
 // ============================================================================
 // TYPES
@@ -39,7 +40,7 @@ export const InvoiceTabNavigator: React.FC<InvoiceTabNavigatorProps> = ({
     },
     {
       key: 'items',
-      label: 'Line Items',
+      label: 'Line items',
       icon: TAB_ICONS.lineItems,
       badgeCount: item_count > 0 ? item_count : undefined,
     },
@@ -55,7 +56,7 @@ export const InvoiceTabNavigator: React.FC<InvoiceTabNavigatorProps> = ({
       tabs={tabs}
       activeTab={active_tab}
       onTabChange={on_tab_change}
-      iconSize={24}
+      iconSize={iconSize.lg}
     />
   );
 };

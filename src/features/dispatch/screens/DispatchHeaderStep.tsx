@@ -10,9 +10,8 @@ import React, { useState, useRef } from 'react';
 import {
     View,
     Text,
-    StyleSheet,
     TextInput,
-    TouchableOpacity,
+    Pressable,
     ActivityIndicator,
     LayoutAnimation,
 } from 'react-native';
@@ -21,15 +20,24 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { DatePickerModal } from 'react-native-paper-dates';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import theme from '@/theme';
-import { useListColors } from '@/hooks/useListColors';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import {
+    fontWeight,
+    iconSize,
+    layout,
+    radius,
+    space,
+    touchTarget,
+    typography,
+} from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
 import { useDispatchForm } from '@/hooks/useDispatchForm';
 import { CustomerSearchBottomSheet, CustomerSearchBottomSheetRef } from '@/components/CustomerSearchBottomSheet';
 import { SupervisorBottomSheet } from '@/features/grn/components/SupervisorBottomSheet';
 import { DispatchStepIndicator } from '@/components/DispatchStepIndicator';
 import SwipeableFormStep from '@/components/SwipeableFormStep';
 import { DISPATCH_STEPS, DISPATCH_STEP_NUMBERS, getDispatchCompletedSteps } from '@/constants/dispatchSteps';
-import { toLocalISODate } from '@/utils/formatters';
+import { parseLocalISODate, toLocalISODate } from '@/utils/formatters';
 import { GhostTextInput } from '@/components/GhostTextInput';
 import { getTopVehicleSuggestion } from '@/services/vehicle-suggestion-service';
 
@@ -37,9 +45,176 @@ type DispatchHeaderStepProps = {
     mode: 'create' | 'edit';
 };
 
+// SAP Fiori form cell styles (guide 13.2)
+const makeStyles = (t: ThemeTokens) => ({
+    container: {
+        flex: 1,
+        backgroundColor: t.background.base,
+    },
+    loadingContainer: {
+        flex: 1,
+        justifyContent: 'center' as const,
+        alignItems: 'center' as const,
+        backgroundColor: t.background.base,
+    },
+    loadingText: {
+        ...typography.body,
+        marginTop: space.md,
+        color: t.text.secondary,
+    },
+    scrollView: {
+        flex: 1,
+    },
+    scrollContent: {
+        padding: space.lg,
+        paddingBottom: space.huge,
+    },
+    formSection: {
+        backgroundColor: t.surface.card,
+        borderRadius: radius.card,
+        padding: space.lg,
+        marginBottom: space.lg,
+        ...t.shadow[2],
+    },
+    formGroup: {
+        marginBottom: space.lg,
+    },
+    formGroupLast: {
+        marginBottom: 0,
+    },
+    label: {
+        ...typography.footnote,
+        color: t.text.secondary,
+        marginBottom: space.xs,
+    },
+    required: {
+        color: t.text.required,
+    },
+    inputContainer: {
+        flexDirection: 'row' as const,
+        alignItems: 'center' as const,
+        borderWidth: 1,
+        borderColor: t.border.field,
+        backgroundColor: t.surface.field,
+        borderRadius: radius.field,
+        minHeight: touchTarget,
+        paddingHorizontal: space.md,
+    },
+    inputContainerPressed: {
+        backgroundColor: t.surface.cardPressed,
+    },
+    inputContainerError: {
+        borderColor: t.status.negative.border,
+        borderWidth: 2,
+    },
+    loadingInputContainer: {
+        flexDirection: 'row' as const,
+        alignItems: 'center' as const,
+        justifyContent: 'center' as const,
+        padding: space.md,
+        borderRadius: radius.field,
+        minHeight: touchTarget,
+        backgroundColor: t.surface.fieldReadOnly,
+    },
+    inputIcon: {
+        marginRight: space.sm,
+    },
+    input: {
+        ...typography.body,
+        flex: 1,
+        color: t.text.primary,
+        padding: 0,
+    },
+    textArea: {
+        minHeight: 88,
+        textAlignVertical: 'top' as const,
+        paddingVertical: space.sm,
+    },
+    valueText: {
+        ...typography.body,
+        flex: 1,
+        color: t.text.primary,
+    },
+    placeholderText: {
+        color: t.text.placeholder,
+    },
+    errorRow: {
+        flexDirection: 'row' as const,
+        alignItems: 'center' as const,
+        gap: space.xs,
+        marginTop: space.xs,
+    },
+    errorText: {
+        ...typography.footnote,
+        flex: 1,
+        color: t.status.negative.text,
+    },
+    charCount: {
+        ...typography.caption1,
+        marginTop: space.xs,
+        textAlign: 'right' as const,
+        color: t.text.secondary,
+    },
+    compactRow: {
+        flexDirection: 'row' as const,
+        gap: space.md,
+    },
+    halfField: {
+        flex: 1,
+    },
+    optionalToggle: {
+        flexDirection: 'row' as const,
+        alignItems: 'center' as const,
+        justifyContent: 'space-between' as const,
+        paddingHorizontal: space.lg,
+        paddingVertical: space.md,
+        minHeight: layout.rowMinHeight,
+        borderRadius: radius.card,
+        marginBottom: space.lg,
+        backgroundColor: t.surface.card,
+        ...t.shadow[2],
+    },
+    optionalTogglePressed: {
+        backgroundColor: t.surface.cardPressed,
+    },
+    optionalToggleLeft: {
+        flexDirection: 'row' as const,
+        alignItems: 'center' as const,
+        gap: space.sm,
+    },
+    optionalToggleText: {
+        ...typography.callout,
+        color: t.brand.tint,
+    },
+    optionalBadge: {
+        paddingHorizontal: space.sm,
+        paddingVertical: space.xxs,
+        borderRadius: radius.field,
+        backgroundColor: t.status.neutral.background,
+    },
+    optionalBadgeText: {
+        ...typography.caption1,
+        fontWeight: fontWeight.semibold,
+        color: t.status.neutral.text,
+    },
+});
+
+type Styles = ReturnType<typeof makeStyles>;
+
+/** Field error per guide 13.2: footnote, status.negative.text, alert-circle icon. */
+function FieldError({ message, styles, color }: { message?: string; styles: Styles; color: string }) {
+    if (!message) return null;
+    return (
+        <View style={styles.errorRow} accessibilityLiveRegion="polite">
+            <Icon name="alert-circle" size={iconSize.sm} color={color} />
+            <Text style={styles.errorText}>{message}</Text>
+        </View>
+    );
+}
+
 export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
-    // Theme colors for dark mode support
-    const colors = useListColors();
+    const styles = useThemedStyles(makeStyles);
+    const t = useTokens();
 
     const { id } = useLocalSearchParams<{ id: string }>();
 
@@ -147,30 +322,20 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
         updateHeaderField('note', text);
     };
 
-    const getNextRoute = () => {
-        return isCreateMode ? '/dispatch-form/step2' : `/dispatch-edit/${id}/step2`;
-    };
-
-    const handleNext = async () => {
-        console.log('[DispatchHeaderStep] Navigating to step 2 via hook');
-        await navigateToStep(2);
-    };
-
+    // Guide 12.3: "9 Oct 2026"
     const formatDisplayDate = (isoDate: string) => {
         if (!isoDate) return '';
-        const date = new Date(isoDate);
-        const day = date.getDate();
-        const month = date.getMonth() + 1;
-        const year = date.getFullYear().toString().slice(-2);
-        return `${day}/${month}/${year}`;
+        const date = /^\d{4}-\d{2}-\d{2}$/.test(isoDate) ? parseLocalISODate(isoDate) : new Date(isoDate);
+        if (isNaN(date.getTime())) return '';
+        return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
     };
 
     // Loading state (edit mode)
     if (isLoading) {
         return (
-            <View style={[styles.loadingContainer, { backgroundColor: colors.gray50 }]}>
-                <ActivityIndicator size="large" color={colors.primary} />
-                <Text style={[styles.loadingText, { color: colors.gray600 }]}>Loading dispatch data...</Text>
+            <View style={styles.loadingContainer} accessibilityRole="progressbar" accessibilityState={{ busy: true }}>
+                <ActivityIndicator size="large" color={t.brand.tint} />
+                <Text style={styles.loadingText}>Loading dispatch…</Text>
             </View>
         );
     }
@@ -183,8 +348,10 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
         }
     };
 
+    const displayDate = header.disp_date ? formatDisplayDate(header.disp_date) : '';
+
     return (
-        <View style={[styles.container, { backgroundColor: colors.gray50 }]}>
+        <View style={styles.container}>
             {/* Step Indicator with Cancel Pill */}
             <DispatchStepIndicator
                 steps={DISPATCH_STEPS}
@@ -193,8 +360,8 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
                 onCancel={handleCancel}
                 cancelMessage={
                     isCreateMode
-                        ? 'Are you sure you want to cancel? All entered data will be lost.'
-                        : 'Are you sure you want to cancel editing? All unsaved changes will be lost.'
+                        ? 'Discard this dispatch? The details you entered will be lost.'
+                        : 'Discard your changes to this dispatch? Unsaved changes will be lost.'
                 }
                 dispNo={header.disp_no}
                 onStepPress={handleStepIndicatorPress}
@@ -219,86 +386,94 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
                     extraScrollHeight={200}
                 >
                     {/* Form Section Card */}
-                    <View style={[styles.formSection, { backgroundColor: colors.cellBackground }]}>
+                    <View style={styles.formSection}>
                         {/* Compact Row: Dispatch Number & Date */}
                         <View style={styles.compactRow}>
                             {/* Dispatch Number */}
                             <View style={[styles.formGroup, styles.halfField]}>
-                                <Text style={[styles.label, { color: colors.gray600 }]}>
-                                    DISPATCH NO<Text style={[styles.required, { color: colors.error }]}> *</Text>
+                                <Text style={styles.label}>
+                                    Dispatch number<Text style={styles.required}> *</Text>
                                 </Text>
                                 {isCreateMode && isGeneratingNumber ? (
-                                    <View style={[styles.loadingInputContainer, { backgroundColor: colors.gray100 }]}>
-                                        <ActivityIndicator size="small" color={colors.primary} />
+                                    <View
+                                        style={styles.loadingInputContainer}
+                                        accessibilityLabel="Generating dispatch number"
+                                        accessibilityState={{ busy: true }}
+                                    >
+                                        <ActivityIndicator size="small" color={t.brand.tint} />
                                     </View>
                                 ) : (
-                                    <View style={[styles.inputContainer, { backgroundColor: colors.cellBackground, borderColor: colors.cellDivider }, validationErrors.disp_no && { borderColor: colors.error, borderWidth: 2 }]}>
-                                        <Icon name="truck" size={18} color={colors.gray400} style={styles.inputIcon} />
+                                    <View style={[styles.inputContainer, validationErrors.disp_no && styles.inputContainerError]}>
+                                        <Icon name="truck-delivery-outline" size={iconSize.md} color={t.icon.secondary} style={styles.inputIcon} />
                                         <TextInput
-                                            style={[styles.input, { color: colors.gray900 }]}
+                                            style={styles.input}
                                             accessibilityLabel="Dispatch number"
                                             value={header.disp_no}
                                             onChangeText={(text) => handleDispNoChange(text.toUpperCase())}
                                             placeholder="I####"
-                                            placeholderTextColor={colors.gray400}
+                                            placeholderTextColor={t.text.placeholder}
                                             autoCapitalize="characters"
                                             maxLength={8}
                                         />
                                     </View>
                                 )}
-                                {validationErrors.disp_no && (
-                                    <Text style={[styles.errorText, { color: colors.error }]}>{validationErrors.disp_no}</Text>
-                                )}
+                                <FieldError message={validationErrors.disp_no} styles={styles} color={t.status.negative.text} />
                             </View>
 
                             {/* Date */}
                             <View style={[styles.formGroup, styles.halfField]}>
-                                <Text style={[styles.label, { color: colors.gray600 }]}>
-                                    DATE<Text style={[styles.required, { color: colors.error }]}> *</Text>
+                                <Text style={styles.label}>
+                                    Date<Text style={styles.required}> *</Text>
                                 </Text>
-                                <TouchableOpacity
-                                    style={[styles.inputContainer, { backgroundColor: colors.cellBackground, borderColor: colors.cellDivider }, validationErrors.disp_date && { borderColor: colors.error, borderWidth: 2 }]}
+                                <Pressable
+                                    style={({ pressed }) => [
+                                        styles.inputContainer,
+                                        pressed && styles.inputContainerPressed,
+                                        validationErrors.disp_date && styles.inputContainerError,
+                                    ]}
                                     onPress={openDatePicker}
-                                    activeOpacity={0.7}
+                                    accessibilityRole="button"
+                                    accessibilityLabel={displayDate ? `Dispatch date, ${displayDate}` : 'Choose dispatch date'}
                                 >
-                                    <Icon name="calendar" size={18} color={colors.gray500} style={styles.inputIcon} />
-                                    <Text style={[styles.dateText, { color: colors.gray900 }, !header.disp_date && { color: colors.gray400 }]} numberOfLines={1}>
-                                        {header.disp_date ? formatDisplayDate(header.disp_date) : 'Select'}
+                                    <Icon name="calendar-outline" size={iconSize.md} color={t.icon.secondary} style={styles.inputIcon} />
+                                    <Text style={[styles.valueText, !header.disp_date && styles.placeholderText]} numberOfLines={1}>
+                                        {displayDate || 'Choose date'}
                                     </Text>
-                                </TouchableOpacity>
-                                {validationErrors.disp_date && (
-                                    <Text style={[styles.errorText, { color: colors.error }]}>{validationErrors.disp_date}</Text>
-                                )}
+                                </Pressable>
+                                <FieldError message={validationErrors.disp_date} styles={styles} color={t.status.negative.text} />
                             </View>
                         </View>
 
                         {/* Customer - before Registration so we can use customer-specific suggestions */}
                         <View style={styles.formGroup}>
-                            <Text style={[styles.label, { color: colors.gray600 }]}>
-                                CUSTOMER<Text style={[styles.required, { color: colors.error }]}> *</Text>
+                            <Text style={styles.label}>
+                                Customer<Text style={styles.required}> *</Text>
                             </Text>
-                            <TouchableOpacity
-                                style={[styles.inputContainer, { backgroundColor: colors.cellBackground, borderColor: colors.cellDivider }, validationErrors.customer_id && { borderColor: colors.error, borderWidth: 2 }]}
+                            <Pressable
+                                style={({ pressed }) => [
+                                    styles.inputContainer,
+                                    pressed && styles.inputContainerPressed,
+                                    validationErrors.customer_id && styles.inputContainerError,
+                                ]}
                                 onPress={() => customerBottomSheetRef.current?.open()}
-                                activeOpacity={0.7}
+                                accessibilityRole="button"
+                                accessibilityLabel={header.customer_name ? `Customer, ${header.customer_name}` : 'Choose customer'}
                             >
                                 <Text
-                                    style={[styles.selectorText, { color: colors.gray900 }, !header.customer_name && { color: colors.gray400 }]}
+                                    style={[styles.valueText, !header.customer_name && styles.placeholderText]}
                                     numberOfLines={1}
                                 >
-                                    {header.customer_name || 'Select customer...'}
+                                    {header.customer_name || 'Choose customer'}
                                 </Text>
-                                <Icon name="magnify" size={20} color={colors.gray400} />
-                            </TouchableOpacity>
-                            {validationErrors.customer_id && (
-                                <Text style={[styles.errorText, { color: colors.error }]}>{validationErrors.customer_id}</Text>
-                            )}
+                                <Icon name="magnify" size={iconSize.md} color={t.icon.secondary} />
+                            </Pressable>
+                            <FieldError message={validationErrors.customer_id} styles={styles} color={t.status.negative.text} />
                         </View>
 
                         {/* Vehicle Registration - uses customer-specific suggestions */}
                         <View style={styles.formGroup}>
-                            <Text style={[styles.label, { color: colors.gray600 }]}>
-                                REGISTRATION<Text style={[styles.required, { color: colors.error }]}> *</Text>
+                            <Text style={styles.label}>
+                                Vehicle registration<Text style={styles.required}> *</Text>
                             </Text>
                             <GhostTextInput
                                 accessibilityLabel="Vehicle registration"
@@ -312,76 +487,80 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
                                 icon="car"
                                 hasError={!!validationErrors.registration}
                             />
-                            {validationErrors.registration && (
-                                <Text style={[styles.errorText, { color: colors.error }]}>{validationErrors.registration}</Text>
-                            )}
+                            <FieldError message={validationErrors.registration} styles={styles} color={t.status.negative.text} />
                         </View>
 
                         {/* Supervisor */}
-                        <View style={styles.formGroup}>
-                            <Text style={[styles.label, { color: colors.gray600 }]}>
-                                SUPERVISOR<Text style={[styles.required, { color: colors.error }]}> *</Text>
+                        <View style={[styles.formGroup, styles.formGroupLast]}>
+                            <Text style={styles.label}>
+                                Supervisor<Text style={styles.required}> *</Text>
                             </Text>
-                            <TouchableOpacity
-                                style={[styles.inputContainer, { backgroundColor: colors.cellBackground, borderColor: colors.cellDivider }, validationErrors.supervisor_id && { borderColor: colors.error, borderWidth: 2 }]}
+                            <Pressable
+                                style={({ pressed }) => [
+                                    styles.inputContainer,
+                                    pressed && styles.inputContainerPressed,
+                                    validationErrors.supervisor_id && styles.inputContainerError,
+                                ]}
                                 onPress={() => setShowSupervisorBottomSheet(true)}
-                                activeOpacity={0.7}
+                                accessibilityRole="button"
+                                accessibilityLabel={header.supervisor_name ? `Supervisor, ${header.supervisor_name}` : 'Choose supervisor'}
                             >
                                 <Text
-                                    style={[styles.selectorText, { color: colors.gray900 }, !header.supervisor_name && { color: colors.gray400 }]}
+                                    style={[styles.valueText, !header.supervisor_name && styles.placeholderText]}
                                     numberOfLines={1}
                                 >
-                                    {header.supervisor_name || 'Select supervisor...'}
+                                    {header.supervisor_name || 'Choose supervisor'}
                                 </Text>
-                                <Icon name="magnify" size={20} color={colors.gray400} />
-                            </TouchableOpacity>
-                            {validationErrors.supervisor_id && (
-                                <Text style={[styles.errorText, { color: colors.error }]}>{validationErrors.supervisor_id}</Text>
-                            )}
+                                <Icon name="magnify" size={iconSize.md} color={t.icon.secondary} />
+                            </Pressable>
+                            <FieldError message={validationErrors.supervisor_id} styles={styles} color={t.status.negative.text} />
                         </View>
                     </View>
                     {isCreateMode && (
-                        <TouchableOpacity
-                            style={[styles.optionalToggle, { backgroundColor: colors.cellBackground }]}
+                        <Pressable
+                            style={({ pressed }) => [styles.optionalToggle, pressed && styles.optionalTogglePressed]}
                             onPress={toggleOptionalFields}
-                            activeOpacity={0.7}
+                            accessibilityRole="button"
+                            accessibilityLabel={showOptionalFields ? 'Hide optional fields' : 'Show optional fields'}
+                            accessibilityState={{ expanded: showOptionalFields }}
                         >
                             <View style={styles.optionalToggleLeft}>
                                 <Icon
                                     name={showOptionalFields ? 'chevron-up' : 'chevron-down'}
-                                    size={20}
-                                    color={colors.gray600}
+                                    size={iconSize.md}
+                                    color={t.brand.tint}
                                 />
-                                <Text style={[styles.optionalToggleText, { color: colors.gray600 }]}>
-                                    {showOptionalFields ? 'Hide' : 'Show'} Optional Fields
+                                <Text style={styles.optionalToggleText}>
+                                    {showOptionalFields ? 'Hide' : 'Show'} optional fields
                                 </Text>
                             </View>
                             {header.note && !showOptionalFields && (
-                                <View style={[styles.optionalBadge, { backgroundColor: colors.primaryLight }]}>
-                                    <Text style={[styles.optionalBadgeText, { color: colors.primary }]}>Has notes</Text>
+                                <View style={styles.optionalBadge}>
+                                    <Text style={styles.optionalBadgeText} maxFontSizeMultiplier={1.6}>Has notes</Text>
                                 </View>
                             )}
-                        </TouchableOpacity>
+                        </Pressable>
                     )}
 
                     {/* Notes (Optional) */}
                     {showOptionalFields && (
                         <View style={styles.formGroup}>
-                            <Text style={[styles.label, { color: colors.gray600 }]}>NOTES</Text>
-                            <View style={[styles.inputContainer, { backgroundColor: colors.cellBackground, borderColor: colors.cellDivider }]}>
-                                <Icon name="note-text" size={20} color={colors.gray400} style={styles.inputIcon} />
+                            <Text style={styles.label}>Notes</Text>
+                            <View style={styles.inputContainer}>
+                                <Icon name="note-text-outline" size={iconSize.md} color={t.icon.secondary} style={styles.inputIcon} />
                                 <TextInput
-                                    style={[styles.input, styles.textArea, { color: colors.gray900 }]}
+                                    style={[styles.input, styles.textArea]}
+                                    accessibilityLabel="Notes"
                                     value={header.note}
                                     onChangeText={handleNoteChange}
-                                    placeholder="Additional notes (max 250 characters)"
-                                    placeholderTextColor={colors.gray400}
+                                    placeholder="Additional notes (up to 250 characters)"
+                                    placeholderTextColor={t.text.placeholder}
                                     multiline
                                     maxLength={250}
                                 />
                             </View>
                             {header.note.length > 0 && (
-                                <Text style={[styles.charCount, { color: colors.gray500 }]}>{header.note.length}/250</Text>
+                                <Text style={styles.charCount}>{header.note.length}/250</Text>
                             )}
                         </View>
                     )}
@@ -392,7 +571,7 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
             <CustomerSearchBottomSheet
                 ref={customerBottomSheetRef}
                 onSelect={handleCustomerSelect}
-                title="Select Customer"
+                title="Choose customer"
             />
 
             <SupervisorBottomSheet
@@ -416,16 +595,16 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
                 onConfirm={handleDateConfirm}
                 onChange={handleDateConfirm}
                 validRange={{ endDate: new Date() }}
-                label="Select date"
+                label="Choose date"
             />
 
             {/* Discard Changes Dialog */}
             <ConfirmDialog
                 visible={showDiscardDialog}
-                title="Discard Changes?"
-                message="You have unsaved changes. Are you sure you want to leave?"
-                confirmText="Discard"
-                cancelText="Stay"
+                title="Discard this dispatch?"
+                message="The details you entered will be lost."
+                confirmText="Discard dispatch"
+                cancelText="Keep editing"
                 onConfirm={handleDiscardConfirm}
                 onCancel={() => setShowDiscardDialog(false)}
                 variant="danger"
@@ -434,183 +613,5 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
         </View>
     );
 }
-
-// SAP Fiori Form Cell Styles
-const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-    },
-    loadingContainer: {
-        flex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    loadingText: {
-        marginTop: theme.spacing.md,
-        fontSize: theme.fontSize.base,
-    },
-    scrollView: {
-        flex: 1,
-    },
-    scrollContent: {
-        padding: theme.spacing.md,
-        paddingBottom: 40,
-    },
-    formSection: {
-        borderRadius: theme.borderRadius.xl,
-        padding: theme.spacing.md,
-        marginBottom: theme.spacing.lg,
-    },
-    formGroup: {
-        marginBottom: theme.spacing.md,
-    },
-    // Fiori: Label - 13pt
-    label: {
-        fontSize: 13,
-        fontWeight: '400',
-        marginBottom: 6,
-        letterSpacing: 0.5,
-        lineHeight: 18,
-    },
-    // Fiori: Required indicator
-    required: {
-    },
-    // Fiori: Input container - 44pt min height
-    inputContainer: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        borderWidth: 1,
-        borderRadius: 8,
-        minHeight: 44,
-        paddingHorizontal: 12,
-    },
-    // Fiori: Loading input
-    loadingInputContainer: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: 12,
-        borderRadius: 8,
-        minHeight: 44,
-    },
-    inputIcon: {
-        marginRight: 8,
-    },
-    // Fiori: Input text - 17pt
-    input: {
-        flex: 1,
-        fontSize: theme.fontSize.base,
-        padding: 0,
-    },
-    // Fiori: Text area - 88pt min height
-    textArea: {
-        minHeight: 88,
-        textAlignVertical: 'top',
-        paddingVertical: 10,
-    },
-    dateText: {
-        flex: 1,
-        fontSize: theme.fontSize.base,
-        lineHeight: 22,
-    },
-    selectorText: {
-        flex: 1,
-        fontSize: theme.fontSize.base,
-        lineHeight: 22,
-    },
-    // Fiori: Error text - 13pt
-    errorText: {
-        fontSize: 13,
-        marginTop: 4,
-        lineHeight: 18,
-    },
-    // Fiori: Helper text - 13pt
-    charCount: {
-        fontSize: 13,
-        marginTop: 4,
-        textAlign: 'right',
-        lineHeight: 18,
-    },
-    compactRow: {
-        flexDirection: 'row',
-        gap: theme.spacing.md,
-    },
-    halfField: {
-        flex: 1,
-    },
-    optionalToggle: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        paddingHorizontal: theme.spacing.lg,
-        paddingVertical: theme.spacing.md,
-        borderRadius: theme.borderRadius.lg,
-        marginBottom: theme.spacing.md,
-        borderWidth: 1,
-        borderColor: theme.colors.gray[200],
-    },
-    optionalToggleLeft: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: theme.spacing.sm,
-    },
-    optionalToggleText: {
-        fontSize: theme.fontSize.sm,
-        fontWeight: theme.fontWeight.medium,
-    },
-    optionalBadge: {
-        paddingHorizontal: theme.spacing.sm,
-        paddingVertical: 2,
-        borderRadius: theme.borderRadius.sm,
-    },
-    optionalBadgeText: {
-        fontSize: theme.fontSize.xs,
-        fontWeight: theme.fontWeight.medium,
-    },
-    // iOS Date Picker Overlay styles (matching GRN form)
-    iosDatePickerOverlay: {
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        justifyContent: 'flex-end',
-    },
-    iosDatePickerBackdrop: {
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        backgroundColor: 'rgba(0, 0, 0, 0.4)',
-    },
-    iosDatePickerContainer: {
-        borderTopLeftRadius: 16,
-        borderTopRightRadius: 16,
-        paddingBottom: 20,
-    },
-    iosDatePickerHeader: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        paddingHorizontal: 16,
-        paddingVertical: 14,
-        borderBottomWidth: 1,
-    },
-    iosDatePickerTitle: {
-        fontSize: 17,
-        fontWeight: '600',
-    },
-    iosDatePickerCancel: {
-        fontSize: 17,
-    },
-    iosDatePickerDone: {
-        fontSize: 17,
-        fontWeight: '600',
-    },
-    iosDatePicker: {
-        height: 216,
-    },
-});
 
 export default DispatchHeaderStep;

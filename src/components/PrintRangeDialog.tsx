@@ -2,7 +2,8 @@ import { DEMO_CAPABILITIES } from '@/config/demoCapabilities';
 /**
  * PrintRangeDialog - Reusable dialog for selecting print range
  *
- * SAP Fiori Design System - Modal/Dialog Component
+ * SAP Fiori dialog (docs/STYLE_GUIDE.md §13.9): surface.sheet, radius.card,
+ * shadow[4] over overlay.scrim; Cancel secondary, Print primary.
  *
  * Pre-populates both start and end fields with the selected item number
  * User can override to print a range or just click OK to print single item
@@ -19,85 +20,19 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
-  useColorScheme,
 } from 'react-native';
-import Icon from 'react-native-vector-icons/Ionicons';
-import theme, { colors, darkColors } from '@/theme';
-import { listColors } from '@/theme/listColors';
-
-// =============================================================================
-// FIORI DESIGN CONSTANTS
-// =============================================================================
-const FIORI = {
-  // Modal dimensions (from 10-modal-dialog.md)
-  modal: {
-    cornerRadius: 16,
-    maxWidth: 400,
-  },
-  // Header
-  header: {
-    height: 56,
-    paddingHorizontal: 16,
-  },
-  // Typography
-  typography: {
-    title: {
-      fontSize: 17,
-      fontWeight: '600' as const,
-      lineHeight: 22,
-    },
-    body: {
-      fontSize: 15,
-      fontWeight: '400' as const,
-      lineHeight: 20,
-    },
-    caption: {
-      fontSize: 13,
-      fontWeight: '400' as const,
-      lineHeight: 18,
-    },
-    button: {
-      fontSize: 17,
-      fontWeight: '600' as const,
-    },
-    label: {
-      fontSize: 14,
-      fontWeight: '600' as const,
-      lineHeight: 20,
-    },
-  },
-  // Buttons
-  button: {
-    height: 44,
-    borderRadius: 8,
-    paddingHorizontal: 20,
-  },
-  // Input
-  input: {
-    height: 44,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    fontSize: 17,
-  },
-  // Touch targets
-  touchTarget: {
-    minHeight: 44,
-    minWidth: 44,
-  },
-  // Spacing
-  spacing: {
-    xxs: 4,
-    xs: 8,
-    sm: 12,
-    md: 16,
-    lg: 20,
-    xl: 24,
-  },
-  // Backdrop
-  backdrop: {
-    opacity: 0.4,
-  },
-} as const;
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import {
+  fontWeight,
+  iconSize,
+  layout,
+  radius,
+  space,
+  touchTarget,
+  typography,
+} from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
 
 interface PrintRangeDialogProps {
   visible: boolean;
@@ -110,6 +45,189 @@ interface PrintRangeDialogProps {
   onViewJobs?: () => void;
 }
 
+const makeStyles = (t: ThemeTokens) => ({
+  backdrop: {
+    flex: 1,
+    backgroundColor: t.overlay.scrim,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    padding: space.lg,
+  },
+  dialogContainer: {
+    width: '100%' as const,
+    maxWidth: layout.maxFormWidth,
+  },
+  dialog: {
+    backgroundColor: t.surface.sheet,
+    borderRadius: radius.card,
+    ...t.shadow[4],
+  },
+  header: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    minHeight: touchTarget + space.sm,
+    paddingLeft: space.lg,
+    paddingRight: space.xs,
+    gap: space.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.divider,
+  },
+  title: {
+    ...typography.title3,
+    flex: 1,
+    color: t.text.primary,
+  },
+  iconButton: {
+    width: touchTarget,
+    height: touchTarget,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    borderRadius: radius.pill,
+  },
+  iconButtonPressed: {
+    backgroundColor: t.surface.cardPressed,
+  },
+  content: {
+    padding: space.lg,
+  },
+  description: {
+    ...typography.body,
+    color: t.text.secondary,
+    marginBottom: space.xs,
+  },
+  helpText: {
+    ...typography.footnote,
+    color: t.text.secondary,
+    marginBottom: space.lg,
+  },
+  rangeSection: {
+    gap: space.lg,
+  },
+  inputGroup: {
+    gap: space.xs,
+  },
+  inputLabelText: {
+    ...typography.footnote,
+    color: t.text.secondary,
+  },
+  input: {
+    ...typography.body,
+    minHeight: layout.rowMinHeight,
+    borderRadius: radius.field,
+    paddingHorizontal: space.md,
+    borderWidth: 1,
+    borderColor: t.border.field,
+    backgroundColor: t.surface.field,
+    color: t.text.primary,
+    fontVariant: ['tabular-nums' as const],
+  },
+  inputFocused: {
+    borderWidth: 2,
+    borderColor: t.border.fieldFocus,
+    paddingHorizontal: space.md - 1,
+  },
+  inputDisabled: {
+    opacity: t.interaction.disabledOpacity,
+  },
+  errorContainer: {
+    flexDirection: 'row' as const,
+    alignItems: 'flex-start' as const,
+    gap: space.sm,
+    padding: space.md,
+    borderRadius: radius.button,
+    marginTop: space.lg,
+    borderWidth: 1,
+    borderColor: t.status.negative.border,
+    backgroundColor: t.status.negative.background,
+  },
+  errorText: {
+    ...typography.footnote,
+    flex: 1,
+    color: t.status.negative.text,
+  },
+  actions: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
+    flexWrap: 'wrap' as const,
+    gap: space.sm,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: t.border.divider,
+  },
+  leftActions: {
+    flexShrink: 1,
+  },
+  rightActions: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.sm,
+    marginLeft: 'auto' as const,
+  },
+  tertiaryButton: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    minHeight: touchTarget,
+    paddingHorizontal: space.sm,
+    gap: space.xs,
+    borderRadius: radius.button,
+  },
+  tertiaryButtonPressed: {
+    backgroundColor: t.brand.subtle,
+  },
+  tertiaryButtonText: {
+    ...typography.callout,
+    color: t.brand.tint,
+  },
+  secondaryButton: {
+    minHeight: touchTarget,
+    paddingHorizontal: space.lg,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    borderRadius: radius.button,
+    borderWidth: 1,
+    borderColor: t.border.button,
+  },
+  secondaryButtonPressed: {
+    backgroundColor: t.brand.subtle,
+  },
+  secondaryButtonText: {
+    ...typography.callout,
+    color: t.text.primary,
+  },
+  primaryButton: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    minHeight: touchTarget,
+    paddingHorizontal: space.lg,
+    borderRadius: radius.button,
+    gap: space.sm,
+    minWidth: 100,
+    backgroundColor: t.brand.fill,
+  },
+  primaryButtonPressed: {
+    backgroundColor: t.brand.fillPressed,
+  },
+  primaryButtonText: {
+    ...typography.callout,
+    fontWeight: fontWeight.semibold,
+    color: t.brand.onFill,
+  },
+  buttonDisabled: {
+    opacity: t.interaction.disabledOpacity,
+  },
+  noticeBody: {
+    padding: space.lg,
+    gap: space.sm,
+  },
+  noticeText: {
+    ...typography.body,
+    color: t.text.secondary,
+  },
+});
+
 export const PrintRangeDialog: React.FC<PrintRangeDialogProps> = ({
   visible,
   onDismiss,
@@ -120,15 +238,14 @@ export const PrintRangeDialog: React.FC<PrintRangeDialogProps> = ({
   placeholder = '',
   onViewJobs,
 }) => {
-  // Dark mode support
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
-  const themeColors = isDark ? darkColors : colors;
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
 
   const [startNumber, setStartNumber] = useState(defaultNumber);
   const [endNumber, setEndNumber] = useState(defaultNumber);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [focused, setFocused] = useState<'start' | 'end' | null>(null);
 
   useEffect(() => {
     if (visible) {
@@ -148,7 +265,7 @@ export const PrintRangeDialog: React.FC<PrintRangeDialogProps> = ({
     setError(null);
 
     if (!startNumber.trim() || !endNumber.trim()) {
-      setError('Please enter both start and end numbers');
+      setError('Enter both a start and an end number.');
       return;
     }
 
@@ -158,13 +275,19 @@ export const PrintRangeDialog: React.FC<PrintRangeDialogProps> = ({
       await onConfirm(startNumber.trim(), endNumber.trim());
       onDismiss();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Print failed');
+      setError(
+        err instanceof Error && err.message
+          ? err.message
+          : "Couldn't print. Check the printer and try again."
+      );
     } finally {
       setLoading(false);
     }
   };
 
   if (!visible) return null;
+
+  const lowerLabel = label.toLowerCase();
 
   // Keep every entry point honest, including direct document detail actions.
   if (!DEMO_CAPABILITIES.printing)
@@ -176,25 +299,42 @@ export const PrintRangeDialog: React.FC<PrintRangeDialogProps> = ({
         onRequestClose={onDismiss}
       >
         <View style={styles.backdrop}>
-          <View
-            style={[
-              styles.dialog,
-              { backgroundColor: themeColors.white, padding: 24 },
-            ]}
-          >
-            <Text style={{ color: themeColors.fiori.text.primary }}>
-              Printing is unavailable in the local demo. Use PDF download or
-              sharing.
-            </Text>
-            <Pressable
-              onPress={onDismiss}
-              accessibilityRole="button"
-              accessibilityLabel="Close printing notice"
-            >
-              <Text style={{ color: themeColors.primary, paddingTop: 20 }}>
-                Close
-              </Text>
-            </Pressable>
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={onDismiss}
+            accessibilityRole="button"
+            accessibilityLabel="Close printing notice"
+          />
+          <View style={styles.dialogContainer}>
+            <View style={styles.dialog} accessibilityViewIsModal>
+              <View style={styles.header}>
+                <Icon name="printer-outline" size={iconSize.lg} color={t.brand.tint} />
+                <Text style={styles.title} accessibilityRole="header">
+                  Printing unavailable
+                </Text>
+              </View>
+              <View style={styles.noticeBody}>
+                <Text style={styles.noticeText}>
+                  Printing is unavailable in the local demo. Download the PDF or
+                  share it instead.
+                </Text>
+              </View>
+              <View style={styles.actions}>
+                <View style={styles.rightActions}>
+                  <Pressable
+                    onPress={onDismiss}
+                    style={({ pressed }) => [
+                      styles.secondaryButton,
+                      pressed && styles.secondaryButtonPressed,
+                    ]}
+                    accessibilityRole="button"
+                    accessibilityLabel="Close printing notice"
+                  >
+                    <Text style={styles.secondaryButtonText}>Close</Text>
+                  </Pressable>
+                </View>
+              </View>
+            </View>
           </View>
         </View>
       </Modal>
@@ -211,289 +351,168 @@ export const PrintRangeDialog: React.FC<PrintRangeDialogProps> = ({
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.backdrop}
       >
-        <Pressable style={styles.backdropPressable} onPress={onDismiss} />
+        <Pressable
+          style={StyleSheet.absoluteFill}
+          onPress={onDismiss}
+          accessibilityRole="button"
+          accessibilityLabel="Cancel printing"
+        />
 
         <View style={styles.dialogContainer}>
-          <View style={[styles.dialog, { backgroundColor: themeColors.white }]}>
-            {/* Fiori Header */}
-            <View
-              style={[
-                styles.header,
-                { borderBottomColor: themeColors.gray[200] },
-              ]}
-            >
-              <View style={styles.headerIcon}>
-                <Icon
-                  name="print-outline"
-                  size={24}
-                  color={themeColors.primary}
-                />
-              </View>
-              <Text
-                style={[
-                  styles.title,
-                  { color: themeColors.fiori.text.primary },
-                ]}
-              >
+          <View style={styles.dialog} accessibilityViewIsModal>
+            {/* Header */}
+            <View style={styles.header}>
+              <Icon name="printer-outline" size={iconSize.lg} color={t.brand.tint} />
+              <Text style={styles.title} accessibilityRole="header">
                 {title}
               </Text>
               <Pressable
                 onPress={onDismiss}
                 style={({ pressed }) => [
-                  styles.closeButton,
-                  pressed && styles.closeButtonPressed,
+                  styles.iconButton,
+                  pressed && styles.iconButtonPressed,
                 ]}
                 accessibilityRole="button"
-                accessibilityLabel="Close"
+                accessibilityLabel="Close print dialog"
               >
-                <Icon
-                  name="close"
-                  size={24}
-                  color={themeColors.fiori.text.secondary}
-                />
+                <Icon name="close" size={iconSize.lg} color={t.icon.primary} />
               </Pressable>
             </View>
 
-            {/* Divider */}
-            <View
-              style={[
-                styles.divider,
-                { backgroundColor: themeColors.gray[200] },
-              ]}
-            />
-
             {/* Content */}
             <View style={styles.content}>
-              {/* Description */}
-              <Text
-                style={[
-                  styles.description,
-                  { color: themeColors.fiori.text.primary },
-                ]}
-              >
-                Select the range of {label.toLowerCase()}s to print.
+              <Text style={styles.description}>
+                Choose the range of {lowerLabel}s to print.
               </Text>
-              <Text
-                style={[
-                  styles.helpText,
-                  { color: themeColors.fiori.text.secondary },
-                ]}
-              >
-                Leave both fields the same to print a single item.
+              <Text style={styles.helpText}>
+                Use the same number in both fields to print one {lowerLabel}.
               </Text>
 
-              {/* Range Input Section */}
               <View style={styles.rangeSection}>
                 {/* From Input */}
                 <View style={styles.inputGroup}>
-                  <View style={styles.inputLabel}>
-                    <Icon
-                      name="arrow-forward-circle"
-                      size={18}
-                      color={themeColors.primary}
-                    />
-                    <Text
-                      style={[
-                        styles.inputLabelText,
-                        { color: themeColors.fiori.text.primary },
-                      ]}
-                    >
-                      From
-                    </Text>
-                  </View>
+                  <Text style={styles.inputLabelText} nativeID="print-range-from">
+                    From
+                  </Text>
                   <TextInput
                     value={startNumber}
                     onChangeText={setStartNumber}
-                    placeholder={placeholder || `Start ${label}`}
-                    placeholderTextColor={themeColors.gray[400]}
+                    placeholder={placeholder || `Start ${lowerLabel}`}
+                    placeholderTextColor={t.text.placeholder}
                     editable={!loading}
+                    onFocus={() => setFocused('start')}
+                    onBlur={() => setFocused(null)}
                     style={[
                       styles.input,
-                      {
-                        color: themeColors.fiori.text.primary,
-                        backgroundColor: themeColors.gray[50],
-                        borderColor: themeColors.gray[200],
-                      },
+                      focused === 'start' && styles.inputFocused,
                       loading && styles.inputDisabled,
                     ]}
+                    accessibilityLabel={`From ${lowerLabel}`}
+                    accessibilityLabelledBy="print-range-from"
                     returnKeyType="next"
-                  />
-                </View>
-
-                {/* Arrow */}
-                <View style={styles.arrowContainer}>
-                  <Icon
-                    name="arrow-forward"
-                    size={20}
-                    color={themeColors.gray[400]}
                   />
                 </View>
 
                 {/* To Input */}
                 <View style={styles.inputGroup}>
-                  <View style={styles.inputLabel}>
-                    <Icon
-                      name="arrow-forward-circle"
-                      size={18}
-                      color={themeColors.primary}
-                    />
-                    <Text
-                      style={[
-                        styles.inputLabelText,
-                        { color: themeColors.fiori.text.primary },
-                      ]}
-                    >
-                      To
-                    </Text>
-                  </View>
+                  <Text style={styles.inputLabelText} nativeID="print-range-to">
+                    To
+                  </Text>
                   <TextInput
                     value={endNumber}
                     onChangeText={setEndNumber}
-                    placeholder={placeholder || `End ${label}`}
-                    placeholderTextColor={themeColors.gray[400]}
+                    placeholder={placeholder || `End ${lowerLabel}`}
+                    placeholderTextColor={t.text.placeholder}
                     editable={!loading}
+                    onFocus={() => setFocused('end')}
+                    onBlur={() => setFocused(null)}
                     style={[
                       styles.input,
-                      {
-                        color: themeColors.fiori.text.primary,
-                        backgroundColor: themeColors.gray[50],
-                        borderColor: themeColors.gray[200],
-                      },
+                      focused === 'end' && styles.inputFocused,
                       loading && styles.inputDisabled,
                     ]}
+                    accessibilityLabel={`To ${lowerLabel}`}
+                    accessibilityLabelledBy="print-range-to"
                     returnKeyType="done"
                     onSubmitEditing={handleConfirm}
                   />
                 </View>
               </View>
 
-              {/* Error Message */}
+              {/* Error message strip */}
               {error && (
-                <View style={styles.errorContainer}>
+                <View style={styles.errorContainer} accessibilityRole="alert">
                   <Icon
                     name="alert-circle"
-                    size={18}
-                    color={themeColors.semantic.error}
+                    size={iconSize.md}
+                    color={t.status.negative.text}
                   />
-                  <Text
-                    style={[
-                      styles.errorText,
-                      { color: themeColors.semantic.error },
-                    ]}
-                  >
-                    {error}
-                  </Text>
+                  <Text style={styles.errorText}>{error}</Text>
                 </View>
               )}
             </View>
 
-            {/* Divider */}
-            <View
-              style={[
-                styles.divider,
-                { backgroundColor: themeColors.gray[200] },
-              ]}
-            />
-
             {/* Actions */}
             <View style={styles.actions}>
-              {/* Left Actions */}
-              <View style={styles.leftActions}>
-                {onViewJobs && (
+              {onViewJobs && (
+                <View style={styles.leftActions}>
                   <Pressable
                     onPress={onViewJobs}
                     disabled={loading}
                     style={({ pressed }) => [
-                      styles.viewJobsButton,
-                      { borderColor: themeColors.primary },
-                      pressed && { backgroundColor: themeColors.orange[50] },
+                      styles.tertiaryButton,
+                      pressed && styles.tertiaryButtonPressed,
                       loading && styles.buttonDisabled,
                     ]}
                     accessibilityRole="button"
                     accessibilityLabel="View print jobs"
+                    accessibilityState={{ disabled: loading }}
                   >
                     <Icon
-                      name="list-outline"
-                      size={20}
-                      color={themeColors.primary}
+                      name="format-list-bulleted"
+                      size={iconSize.md}
+                      color={t.brand.tint}
                     />
-                    <Text
-                      style={[
-                        styles.viewJobsButtonText,
-                        { color: themeColors.primary },
-                      ]}
-                    >
-                      View Jobs
-                    </Text>
+                    <Text style={styles.tertiaryButtonText}>Print jobs</Text>
                   </Pressable>
-                )}
-              </View>
+                </View>
+              )}
 
-              {/* Right Actions */}
               <View style={styles.rightActions}>
-                {/* Cancel Button - Fiori Tertiary */}
                 <Pressable
                   onPress={onDismiss}
                   disabled={loading}
                   style={({ pressed }) => [
-                    styles.cancelButton,
-                    pressed && styles.buttonPressed,
+                    styles.secondaryButton,
+                    pressed && styles.secondaryButtonPressed,
                     loading && styles.buttonDisabled,
                   ]}
                   accessibilityRole="button"
                   accessibilityLabel="Cancel"
+                  accessibilityState={{ disabled: loading }}
                 >
-                  <Text
-                    style={[
-                      styles.cancelButtonText,
-                      { color: themeColors.fiori.text.secondary },
-                    ]}
-                  >
-                    Cancel
-                  </Text>
+                  <Text style={styles.secondaryButtonText}>Cancel</Text>
                 </Pressable>
 
-                {/* Print Button - Fiori Primary */}
                 <Pressable
                   onPress={handleConfirm}
                   disabled={loading}
                   style={({ pressed }) => [
-                    styles.printButton,
-                    { backgroundColor: themeColors.primary },
-                    pressed && { backgroundColor: themeColors.orange[600] },
-                    loading && styles.printButtonLoading,
+                    styles.primaryButton,
+                    pressed && styles.primaryButtonPressed,
                   ]}
                   accessibilityRole="button"
-                  accessibilityLabel="Print"
+                  accessibilityLabel={loading ? 'Printing' : 'Print'}
+                  accessibilityState={{ busy: loading, disabled: loading }}
                 >
                   {loading ? (
-                    <View style={styles.loadingContainer}>
-                      <ActivityIndicator
-                        size="small"
-                        color={themeColors.white}
-                      />
-                      <Text
-                        style={[
-                          styles.printButtonText,
-                          { color: themeColors.white },
-                        ]}
-                      >
-                        Printing...
-                      </Text>
-                    </View>
+                    <ActivityIndicator size="small" color={t.brand.onFill} />
                   ) : (
-                    <>
-                      <Icon name="print" size={18} color={themeColors.white} />
-                      <Text
-                        style={[
-                          styles.printButtonText,
-                          { color: themeColors.white },
-                        ]}
-                      >
-                        Print
-                      </Text>
-                    </>
+                    <Icon name="printer-outline" size={iconSize.md} color={t.brand.onFill} />
                   )}
+                  <Text style={styles.primaryButtonText}>
+                    {loading ? 'Printing…' : 'Print'}
+                  </Text>
                 </Pressable>
               </View>
             </View>
@@ -503,231 +522,5 @@ export const PrintRangeDialog: React.FC<PrintRangeDialogProps> = ({
     </Modal>
   );
 };
-
-// =============================================================================
-// STYLES - SAP Fiori Design System
-// =============================================================================
-const styles = StyleSheet.create({
-  // Backdrop
-  backdrop: {
-    flex: 1,
-    backgroundColor: `rgba(0, 0, 0, ${FIORI.backdrop.opacity})`,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  backdropPressable: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-  },
-
-  // Dialog Container
-  dialogContainer: {
-    width: '90%',
-    maxWidth: FIORI.modal.maxWidth,
-  },
-  dialog: {
-    borderRadius: FIORI.modal.cornerRadius,
-    overflow: 'hidden',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.25,
-        shadowRadius: 16,
-      },
-      android: {
-        elevation: 8,
-      },
-    }),
-  },
-
-  // ==========================================================================
-  // HEADER
-  // ==========================================================================
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    height: FIORI.header.height,
-    paddingHorizontal: FIORI.header.paddingHorizontal,
-    gap: FIORI.spacing.sm,
-  },
-  headerIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  title: {
-    flex: 1,
-    fontSize: FIORI.typography.title.fontSize,
-    fontWeight: FIORI.typography.title.fontWeight,
-    lineHeight: FIORI.typography.title.lineHeight,
-  },
-  closeButton: {
-    width: FIORI.touchTarget.minWidth,
-    height: FIORI.touchTarget.minHeight,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: -FIORI.spacing.xs,
-  },
-  closeButtonPressed: {
-    opacity: 0.7,
-  },
-  divider: {
-    height: 1,
-  },
-
-  // ==========================================================================
-  // CONTENT
-  // ==========================================================================
-  content: {
-    padding: FIORI.spacing.md,
-  },
-  description: {
-    fontSize: FIORI.typography.body.fontSize,
-    fontWeight: '500' as const,
-    lineHeight: FIORI.typography.body.lineHeight,
-    marginBottom: FIORI.spacing.xs,
-  },
-  helpText: {
-    fontSize: FIORI.typography.caption.fontSize,
-    fontWeight: FIORI.typography.caption.fontWeight,
-    lineHeight: FIORI.typography.caption.lineHeight,
-    marginBottom: FIORI.spacing.lg,
-  },
-
-  // Range Section
-  rangeSection: {
-    gap: FIORI.spacing.md,
-  },
-  inputGroup: {
-    gap: FIORI.spacing.xs,
-  },
-  inputLabel: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: FIORI.spacing.xs,
-  },
-  inputLabelText: {
-    fontSize: FIORI.typography.label.fontSize,
-    fontWeight: FIORI.typography.label.fontWeight,
-    lineHeight: FIORI.typography.label.lineHeight,
-  },
-  input: {
-    height: FIORI.input.height,
-    borderRadius: FIORI.input.borderRadius,
-    paddingHorizontal: FIORI.input.paddingHorizontal,
-    fontSize: FIORI.input.fontSize,
-    borderWidth: 1,
-  },
-  inputDisabled: {
-    opacity: 0.5,
-  },
-  arrowContainer: {
-    alignItems: 'center',
-    paddingVertical: FIORI.spacing.xxs,
-  },
-
-  // Error
-  errorContainer: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: FIORI.spacing.xs,
-    paddingHorizontal: FIORI.spacing.sm,
-    paddingVertical: FIORI.spacing.xs,
-    borderRadius: 8,
-    marginTop: FIORI.spacing.md,
-    borderLeftWidth: 3,
-  },
-  errorText: {
-    flex: 1,
-    fontSize: FIORI.typography.caption.fontSize,
-    fontWeight: '500' as const,
-    lineHeight: FIORI.typography.caption.lineHeight,
-  },
-
-  // ==========================================================================
-  // ACTIONS
-  // ==========================================================================
-  actions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: FIORI.spacing.md,
-    paddingVertical: FIORI.spacing.sm,
-  },
-  leftActions: {
-    flex: 1,
-  },
-  rightActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: FIORI.spacing.xs,
-  },
-
-  // View Jobs Button - Fiori Tertiary Tint
-  viewJobsButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    height: FIORI.button.height,
-    paddingHorizontal: FIORI.spacing.sm,
-    gap: FIORI.spacing.xs,
-    borderWidth: 1,
-    borderRadius: FIORI.button.borderRadius,
-  },
-  viewJobsButtonText: {
-    fontSize: FIORI.typography.button.fontSize,
-    fontWeight: '400' as const,
-  },
-
-  // Cancel Button - Fiori Tertiary
-  cancelButton: {
-    height: FIORI.button.height,
-    paddingHorizontal: FIORI.button.paddingHorizontal,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  cancelButtonText: {
-    fontSize: FIORI.typography.button.fontSize,
-    fontWeight: '400' as const,
-  },
-
-  // Print Button - Fiori Primary
-  printButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    height: FIORI.button.height,
-    paddingHorizontal: FIORI.button.paddingHorizontal,
-    borderRadius: FIORI.button.borderRadius,
-    gap: FIORI.spacing.xs,
-    minWidth: 100,
-  },
-  printButtonPressed: {},
-  printButtonLoading: {
-    opacity: 0.8,
-  },
-  printButtonText: {
-    fontSize: FIORI.typography.button.fontSize,
-    fontWeight: FIORI.typography.button.fontWeight,
-  },
-  buttonPressed: {
-    opacity: 0.7,
-  },
-  buttonDisabled: {
-    opacity: 0.5,
-  },
-
-  // Loading
-  loadingContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: FIORI.spacing.xs,
-  },
-});
 
 export default PrintRangeDialog;

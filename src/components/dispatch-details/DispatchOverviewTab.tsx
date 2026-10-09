@@ -6,8 +6,8 @@
 
 import React from 'react';
 import { View, ScrollView } from 'react-native';
+import { useTokens } from '@/hooks/useTheme';
 import {
-  FIORI,
   overviewStyles,
   useOverviewColors,
   SectionHeader,
@@ -65,6 +65,7 @@ export const DispatchOverviewTab: React.FC<DispatchOverviewTabProps> = ({
   is_print_loading = false,
 }) => {
   const colorStyles = useOverviewColors();
+  const t = useTokens();
 
   return (
     <ScrollView
@@ -83,9 +84,9 @@ export const DispatchOverviewTab: React.FC<DispatchOverviewTabProps> = ({
               name={customer_details.name}
               phone={customer_details.mobile || undefined}
               email={customer_details.email || undefined}
-              iconName="account"
-              iconColor={FIORI.colors.primary}
-              iconBgColor={FIORI.colors.primaryLight}
+              iconName="account-outline"
+              iconColor={t.brand.tint}
+              iconBgColor={t.brand.subtle}
             />
           )}
 
@@ -95,8 +96,8 @@ export const DispatchOverviewTab: React.FC<DispatchOverviewTabProps> = ({
               name={supervisor_details.name}
               phone={supervisor_details.mobile || undefined}
               iconName="account-tie"
-              iconColor={FIORI.colors.info}
-              iconBgColor={FIORI.colors.infoLight}
+              iconColor={t.status.informative.text}
+              iconBgColor={t.status.informative.background}
             />
           )}
         </>
@@ -105,20 +106,20 @@ export const DispatchOverviewTab: React.FC<DispatchOverviewTabProps> = ({
       {/* SECTION: ADDITIONAL INFORMATION */}
       {(registration || source_order_no) && (
         <>
-          <SectionHeader title="Additional Information" />
+          <SectionHeader title="Additional information" />
           <View style={overviewStyles.chipsCard}>
             {registration && (
               <InfoChip
-                icon="truck"
+                icon="truck-outline"
                 label={registration}
-                iconColor={FIORI.colors.success}
+                iconColor={t.icon.secondary}
               />
             )}
             {source_order_no && (
               <InfoChip
                 icon="file-document-outline"
                 label={source_order_no}
-                iconColor={FIORI.colors.warning}
+                iconColor={t.icon.secondary}
               />
             )}
           </View>

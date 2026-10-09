@@ -5,10 +5,7 @@
 
 import React from 'react';
 import type { StepConfig } from '@/components/StepIndicator';
-import {
-  GenericStepIndicatorHeader,
-  type GenericStepIndicatorHeaderProps,
-} from './GenericStepIndicatorHeader';
+import { GenericStepIndicatorHeader } from './GenericStepIndicatorHeader';
 
 export interface InvoiceStepIndicatorProps {
   steps: StepConfig[];
@@ -31,8 +28,8 @@ export const InvoiceStepIndicator: React.FC<InvoiceStepIndicatorProps> = ({
   invoiceNo,
   isEditMode = false,
 }) => {
-  // Format invoice number for display
-  const displayInvoiceNo = invoiceNo ? `#${invoiceNo}` : undefined;
+  // Document numbers read "Invoice 2026-0042" (style guide §12.3), so no "#".
+  const displayInvoiceNo = invoiceNo ? String(invoiceNo) : undefined;
 
   return (
     <GenericStepIndicatorHeader
@@ -40,11 +37,15 @@ export const InvoiceStepIndicator: React.FC<InvoiceStepIndicatorProps> = ({
       currentStep={currentStep}
       completedSteps={completedSteps}
       onCancel={onCancel}
-      entityName={isEditMode ? 'Edit Invoice' : 'Invoice'}
+      entityName={isEditMode ? 'Edit invoice' : 'Invoice'}
       entityId={displayInvoiceNo}
-      cancelTitle={isEditMode ? 'Cancel Invoice Edit' : 'Cancel Invoice Creation'}
-      cancelMessage={cancelMessage}
-      colorScheme="blue"
+      cancelTitle={isEditMode ? 'Discard changes to this invoice?' : 'Discard this invoice?'}
+      cancelMessage={
+        cancelMessage ??
+        (isEditMode
+          ? 'Your changes to this invoice will be lost.'
+          : 'The details you entered for this invoice will be lost.')
+      }
       onStepPress={onStepPress}
     />
   );

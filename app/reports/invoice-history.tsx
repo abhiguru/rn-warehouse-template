@@ -9,7 +9,6 @@ import {
   View,
   Text,
   ScrollView,
-  TouchableOpacity,
   Pressable,
   StyleSheet,
   RefreshControl,
@@ -26,53 +25,31 @@ import {
   getDateRangeForPeriod,
   type KPIItem,
 } from '@/components/reports';
+import { Button } from '@/components/ui/Button';
 import { getCustomerInvoiceHistory, getAllInvoiceHistory } from '@/services/reporting/invoice-history-service';
 import { useRoleBasedAccess } from '@/hooks/useRoleBasedAccess';
-import theme from '@/theme';
-import { useFioriColors } from '@/theme/fioriColors';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { fontWeight, iconSize, layout, radius, space, typography } from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
 import type {
   InvoiceHistoryData,
   InvoiceHistoryRecord,
-  InvoiceLineItem,
   InvoiceMonthlyBreakdown,
   ReportPeriod,
   AllInvoiceHistoryData,
   CustomerInvoiceSummary,
 } from '@/types/report.types';
-import { formatNumber, formatDate } from '@/utils/formatters';
+import { formatDate } from '@/utils/formatters';
+import { formatInvoiceAmount } from '@/utils/invoiceCalculations';
 
 // ============================================================================
-// SAP Fiori Design Tokens - Static values (dimensions, typography)
-// Colors are now dynamic via useFioriColors hook
+// Formatting
 // ============================================================================
-const FIORI_STATIC = {
-  dimensions: {
-    objectCellMinHeight: 72,
-    objectCellImageSize: 44,
-    objectCellImageRadius: 10,
-    cardCornerRadius: 12,
-    cardPadding: 16,
-    sectionHeaderHeight: 32,
-    touchTarget: 44,
-  },
-  typography: {
-    sectionHeader: {
-      fontSize: 13,
-      fontWeight: '600' as const,
-      letterSpacing: 0.5,
-      textTransform: 'uppercase' as const,
-    },
-    title: { fontSize: 16, fontWeight: '600' as const, lineHeight: 22 },
-    subtitle: { fontSize: 14, lineHeight: 18 },
-    footnote: { fontSize: 13, lineHeight: 16 },
-    caption: { fontSize: 12, lineHeight: 16 },
-  },
-};
 
-// Format currency
-const formatCurrency = (amount: number): string => {
-  return `₹${formatNumber(Math.round(amount))}`;
-};
+const summaryMoneyFormat = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 });
+
+/** Totals in summaries: Indian grouping, rupee sign, no decimals (style guide §12.3). */
+const formatSummaryAmount = (amount: number): string => `₹${summaryMoneyFormat.format(Math.round(amount || 0))}`;
 
 // Format month (2025-12 -> Dec 2025)
 const formatMonth = (monthStr: string): string => {
@@ -81,21 +58,159 @@ const formatMonth = (monthStr: string): string => {
   return date.toLocaleDateString('en-IN', { month: 'short', year: 'numeric' });
 };
 
+const LOAD_ERROR = "Couldn't load the invoice history. Check your connection and try again.";
+
+// ============================================================================
+// Styles
+// ============================================================================
+
+const makeStyles = (t: ThemeTokens) => ({
+  container: { flex: 1, backgroundColor: t.background.base },
+  loadingContainer: { flex: 1 },
+  scrollView: { flex: 1 },
+  scrollContent: { paddingBottom: space.xxxl },
+
+  dateRangeText: {
+    ...typography.caption1,
+    color: t.text.secondary,
+    textAlign: 'center' as const,
+    paddingVertical: space.xs,
+  },
+
+  section: { marginTop: space.sm, paddingHorizontal: layout.marginCompact },
+
+  sectionHeader: {
+    paddingTop: space.lg,
+    paddingBottom: space.sm,
+  },
+  sectionHeaderText: {
+    ...typography.footnote,
+    fontWeight: fontWeight.semibold,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase' as const,
+    color: t.text.secondary,
+  },
+
+  // Monthly card
+  monthlyCard: {
+    backgroundColor: t.surface.card,
+    borderRadius: radius.card,
+    overflow: 'hidden' as const,
+    ...t.shadow[2],
+  },
+  monthlyHeader: {
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'center' as const,
+    minHeight: layout.rowMinHeight,
+    padding: space.lg,
+  },
+  monthlyHeaderPressed: { backgroundColor: t.surface.cardPressed },
+  monthlyHeaderLeft: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: space.sm },
+  monthlyHeaderTitle: { ...typography.headline, color: t.text.primary },
+  monthlyContent: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: t.border.divider },
+  monthRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
+    minHeight: layout.rowMinHeight,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.md,
+    gap: space.md,
+  },
+  monthRowBorder: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: t.border.divider },
+  monthLabel: { ...typography.body, color: t.text.primary },
+  monthCount: { ...typography.footnote, color: t.text.secondary },
+  monthAmount: {
+    ...typography.subhead,
+    fontWeight: fontWeight.semibold,
+    color: t.text.primary,
+    fontVariant: ['tabular-nums' as const],
+    textAlign: 'right' as const,
+  },
+  monthStats: { alignItems: 'flex-end' as const },
+
+  // Invoices list
+  invoicesList: { gap: space.sm },
+
+  // Invoice object cell
+  card: {
+    backgroundColor: t.surface.card,
+    borderRadius: radius.card,
+    overflow: 'hidden' as const,
+    ...t.shadow[1],
+  },
+  cardPressed: { backgroundColor: t.surface.cardPressed },
+  objectCell: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    minHeight: layout.objectCellMinHeight,
+    paddingVertical: space.md,
+    paddingHorizontal: space.lg,
+    gap: space.md,
+  },
+  cellIcon: {
+    width: layout.avatar.md,
+    height: layout.avatar.md,
+    borderRadius: radius.card,
+    backgroundColor: t.background.base,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+  },
+  cellIconBrand: { backgroundColor: t.brand.subtle },
+  cellContent: { flex: 1 },
+  cellTitle: { ...typography.headline, color: t.text.primary },
+  cellSubtitle: { ...typography.subhead, color: t.text.secondary, marginTop: space.xxs },
+  amountInfo: { alignItems: 'flex-end' as const, gap: space.xs },
+  amountValue: {
+    ...typography.headline,
+    color: t.text.primary,
+    fontVariant: ['tabular-nums' as const],
+    textAlign: 'right' as const,
+  },
+  amountLabel: { ...typography.footnote, color: t.text.secondary },
+  statusTag: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.xs,
+    paddingHorizontal: space.s6,
+    paddingVertical: space.xxs,
+    borderRadius: radius.field,
+  },
+  statusTagPaid: { backgroundColor: t.status.positive.background },
+  statusTagPending: { backgroundColor: t.status.critical.background },
+  statusTagText: { ...typography.caption1, fontWeight: fontWeight.semibold },
+  statusTagTextPaid: { color: t.status.positive.text },
+  statusTagTextPending: { color: t.status.critical.text },
+
+  // Customers card
+  customersCard: {
+    backgroundColor: t.surface.card,
+    borderRadius: radius.card,
+    overflow: 'hidden' as const,
+    ...t.shadow[2],
+  },
+  divider: {
+    height: StyleSheet.hairlineWidth,
+    marginLeft: space.lg + layout.avatar.md + space.md,
+    backgroundColor: t.border.divider,
+  },
+  retry: { alignItems: 'center' as const, paddingHorizontal: layout.marginCompact },
+});
+
+type Styles = ReturnType<typeof makeStyles>;
+
 // ============================================================================
 // Components
 // ============================================================================
 
-const FioriSectionHeader: React.FC<{ title: string }> = ({ title }) => {
-  const FIORI = useFioriColors();
-
-  return (
-    <View style={styles.fioriSectionHeader}>
-      <Text style={[styles.fioriSectionHeaderText, { color: FIORI.colors.textSecondary }]}>
-        {title.toUpperCase()}
-      </Text>
-    </View>
-  );
-};
+const SectionHeader: React.FC<{ title: string; styles: Styles }> = ({ title, styles }) => (
+  <View style={styles.sectionHeader}>
+    <Text style={styles.sectionHeaderText} accessibilityRole="header">
+      {title}
+    </Text>
+  </View>
+);
 
 // Monthly Breakdown Card
 interface MonthlyBreakdownCardProps {
@@ -105,34 +220,49 @@ interface MonthlyBreakdownCardProps {
 }
 
 const MonthlyBreakdownCard: React.FC<MonthlyBreakdownCardProps> = ({ months, isExpanded, onToggle }) => {
-  const FIORI = useFioriColors();
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
 
   if (months.length === 0) return null;
 
   return (
-    <View style={[styles.monthlyCard, { backgroundColor: FIORI.colors.background, borderColor: FIORI.colors.divider }]}>
-      <Pressable style={styles.monthlyHeader} onPress={onToggle}>
+    <View style={styles.monthlyCard}>
+      <Pressable
+        style={({ pressed }) => [styles.monthlyHeader, pressed && styles.monthlyHeaderPressed]}
+        onPress={onToggle}
+        accessibilityRole="button"
+        accessibilityLabel="Monthly breakdown"
+        accessibilityState={{ expanded: isExpanded }}
+      >
         <View style={styles.monthlyHeaderLeft}>
-          <Icon name="calendar-month" size={20} color={FIORI.colors.tint} />
-          <Text style={[styles.monthlyHeaderTitle, { color: FIORI.colors.textPrimary }]}>Monthly Breakdown</Text>
+          <Icon name="calendar-month-outline" size={iconSize.md} color={t.brand.tint} />
+          <Text style={styles.monthlyHeaderTitle}>Monthly breakdown</Text>
         </View>
         <Icon
           name={isExpanded ? 'chevron-up' : 'chevron-down'}
-          size={20}
-          color={FIORI.colors.textSecondary}
+          size={iconSize.md}
+          color={t.icon.secondary}
         />
       </Pressable>
       {isExpanded && (
-        <View style={[styles.monthlyContent, { borderTopColor: FIORI.colors.divider }]}>
-          {months.map((m, index) => (
-            <View key={m.month} style={[styles.monthRow, index < months.length - 1 && [styles.monthRowBorder, { borderBottomColor: FIORI.colors.divider }]]}>
-              <Text style={[styles.monthLabel, { color: FIORI.colors.textPrimary }]}>{formatMonth(m.month)}</Text>
-              <View style={styles.monthStats}>
-                <Text style={[styles.monthCount, { color: FIORI.colors.textSecondary }]}>{m.invoice_count} inv</Text>
-                <Text style={[styles.monthAmount, { color: FIORI.colors.textPrimary }]}>{formatCurrency(m.total_amount)}</Text>
+        <View style={styles.monthlyContent}>
+          {months.map((m, index) => {
+            const countLabel = `${m.invoice_count} ${m.invoice_count === 1 ? 'invoice' : 'invoices'}`;
+            return (
+              <View
+                key={m.month}
+                style={[styles.monthRow, index < months.length - 1 && styles.monthRowBorder]}
+                accessible
+                accessibilityLabel={`${formatMonth(m.month)}, ${countLabel}, ${formatSummaryAmount(m.total_amount)}`}
+              >
+                <Text style={styles.monthLabel}>{formatMonth(m.month)}</Text>
+                <View style={styles.monthStats}>
+                  <Text style={styles.monthAmount}>{formatSummaryAmount(m.total_amount)}</Text>
+                  <Text style={styles.monthCount}>{countLabel}</Text>
+                </View>
               </View>
-            </View>
-          ))}
+            );
+          })}
         </View>
       )}
     </View>
@@ -145,7 +275,14 @@ interface InvoiceCardProps {
 }
 
 const InvoiceCard: React.FC<InvoiceCardProps> = ({ invoice }) => {
-  const FIORI = useFioriColors();
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
+  const isPaid = invoice.payment_status?.status === 'paid';
+  const statusLabel = isPaid ? 'Paid' : 'Pending';
+  const itemsLabel = `${invoice.item_count} ${invoice.item_count === 1 ? 'item' : 'items'}`;
+  const subtitle = [formatDate(invoice.invoice_date, 'medium'), invoice.grn_ref ? `GRN ${invoice.grn_ref}` : null]
+    .filter(Boolean)
+    .join(' · ');
 
   const handlePress = () => {
     router.push(`/invoice-details/${invoice.invoice_id}`);
@@ -153,47 +290,45 @@ const InvoiceCard: React.FC<InvoiceCardProps> = ({ invoice }) => {
 
   return (
     <Pressable
-      style={({ pressed }) => [
-        styles.fioriCard,
-        { backgroundColor: FIORI.colors.background, borderColor: FIORI.colors.divider },
-        pressed && { backgroundColor: FIORI.colors.backgroundSecondary },
-      ]}
+      style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
       onPress={handlePress}
       accessibilityRole="button"
-      accessibilityLabel={`Invoice ${invoice.invoice_number}, ${formatCurrency(invoice.net_total)}`}
+      accessibilityLabel={`Invoice ${invoice.invoice_number}, ${subtitle}, ${formatInvoiceAmount(invoice.net_total)}, ${itemsLabel}, ${statusLabel}`}
+      accessibilityHint="Opens the invoice"
     >
-      <View style={styles.fioriObjectCell}>
-        {/* Icon */}
-        <View style={[styles.invoiceIcon, { backgroundColor: FIORI.colors.backgroundSecondary }]}>
-          <Icon
-            name="receipt"
-            size={20}
-            color={FIORI.colors.textSecondary}
-          />
+      <View style={styles.objectCell}>
+        <View style={styles.cellIcon}>
+          <Icon name="file-document-outline" size={iconSize.md} color={t.icon.secondary} />
         </View>
 
-        {/* Content */}
-        <View style={styles.fioriObjectCellContent}>
-          <Text style={[styles.fioriObjectCellTitle, { color: FIORI.colors.textPrimary }]} numberOfLines={1}>
-            {invoice.invoice_number}
+        <View style={styles.cellContent}>
+          <Text style={styles.cellTitle} numberOfLines={2}>
+            Invoice {invoice.invoice_number}
           </Text>
-          <Text style={[styles.fioriObjectCellSubtitle, { color: FIORI.colors.textSecondary }]} numberOfLines={1}>
-            {formatDate(invoice.invoice_date, 'short')} • {invoice.grn_ref}
+          <Text style={styles.cellSubtitle} numberOfLines={2}>
+            {subtitle}
           </Text>
         </View>
 
-        {/* Amount */}
         <View style={styles.amountInfo}>
-          <Text style={[styles.amountValue, { color: FIORI.colors.textPrimary }]}>{formatCurrency(invoice.net_total)}</Text>
-          <Text style={[styles.amountLabel, { color: FIORI.colors.textSecondary }]}>{invoice.item_count} items</Text>
+          <Text style={styles.amountValue}>{formatInvoiceAmount(invoice.net_total)}</Text>
+          <Text style={styles.amountLabel}>{itemsLabel}</Text>
+          <View style={[styles.statusTag, isPaid ? styles.statusTagPaid : styles.statusTagPending]}>
+            <Icon
+              name={isPaid ? 'check-circle' : 'alert'}
+              size={iconSize.sm}
+              color={isPaid ? t.status.positive.text : t.status.critical.text}
+            />
+            <Text
+              style={[styles.statusTagText, isPaid ? styles.statusTagTextPaid : styles.statusTagTextPending]}
+              maxFontSizeMultiplier={1.6}
+            >
+              {statusLabel}
+            </Text>
+          </View>
         </View>
 
-        {/* Navigate Icon */}
-        <Icon
-          name="chevron-right"
-          size={20}
-          color={FIORI.colors.textSecondary}
-        />
+        <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />
       </View>
     </Pressable>
   );
@@ -206,27 +341,31 @@ interface CustomerCardProps {
 }
 
 const CustomerCard: React.FC<CustomerCardProps> = ({ customer, onPress }) => {
-  const FIORI = useFioriColors();
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
+  const countLabel = `${customer.invoice_count} ${customer.invoice_count === 1 ? 'invoice' : 'invoices'}`;
+  const latest = customer.latest_invoice_date ? formatDate(customer.latest_invoice_date, 'medium') : null;
 
   return (
     <Pressable
-      style={({ pressed }) => [
-        styles.customerCard,
-        { backgroundColor: FIORI.colors.background },
-        pressed && { backgroundColor: FIORI.colors.backgroundSecondary },
-      ]}
+      style={({ pressed }) => [pressed && styles.cardPressed]}
       onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={[customer.customer_name, countLabel, latest ? `latest ${latest}` : null].filter(Boolean).join(', ')}
+      accessibilityHint="Shows this customer's invoices"
     >
-      <View style={[styles.customerAvatar, { backgroundColor: FIORI.colors.tintLight }]}>
-        <Icon name="account-outline" size={22} color={FIORI.colors.tint} />
+      <View style={styles.objectCell}>
+        <View style={[styles.cellIcon, styles.cellIconBrand]}>
+          <Icon name="account-outline" size={iconSize.md} color={t.brand.tint} />
+        </View>
+        <View style={styles.cellContent}>
+          <Text style={styles.cellTitle} numberOfLines={2}>{customer.customer_name}</Text>
+          <Text style={styles.cellSubtitle}>
+            {countLabel}{latest ? ` · Latest ${latest}` : ''}
+          </Text>
+        </View>
+        <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />
       </View>
-      <View style={styles.customerContent}>
-        <Text style={[styles.customerName, { color: FIORI.colors.textPrimary }]} numberOfLines={1}>{customer.customer_name}</Text>
-        <Text style={[styles.customerSubtitle, { color: FIORI.colors.textSecondary }]}>
-          {customer.invoice_count} invoice{customer.invoice_count !== 1 ? 's' : ''} • Latest: {formatDate(customer.latest_invoice_date, 'compact')}
-        </Text>
-      </View>
-      <Icon name="chevron-right" size={20} color={FIORI.colors.textSecondary} />
     </Pressable>
   );
 };
@@ -236,7 +375,8 @@ const CustomerCard: React.FC<CustomerCardProps> = ({ customer, onPress }) => {
 // ============================================================================
 
 export default function InvoiceHistoryScreen() {
-  const FIORI = useFioriColors();
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
 
   // Role-based access (J12 fix)
   const {
@@ -280,10 +420,10 @@ export default function InvoiceHistoryScreen() {
         // Backend now filters by user permissions via auth.uid()
         setAllCustomersData(response.data);
       } else {
-        setError(response.error || 'Failed to load invoice history');
+        setError(LOAD_ERROR);
       }
     } catch (err) {
-      setError('An unexpected error occurred');
+      setError(LOAD_ERROR);
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
@@ -307,10 +447,10 @@ export default function InvoiceHistoryScreen() {
       if (response.success && response.data) {
         setData(response.data);
       } else {
-        setError(response.error || 'Failed to load invoice history');
+        setError(LOAD_ERROR);
       }
     } catch (err) {
-      setError('An unexpected error occurred');
+      setError(LOAD_ERROR);
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
@@ -336,7 +476,7 @@ export default function InvoiceHistoryScreen() {
     } else if (singleAssignedCustomerId) {
       fetchSingleCustomerData(singleAssignedCustomerId, selectedPeriod);
     } else {
-      setError('No customer assigned to your account');
+      setError('Your account has no customer assigned yet. Ask your facility to assign one.');
       setIsLoading(false);
     }
   }, []);
@@ -420,8 +560,8 @@ export default function InvoiceHistoryScreen() {
     if (!allCustomersData?.summary) return [];
     const s = allCustomersData.summary;
     return [
-      { icon: 'receipt', value: s.total_invoices, label: 'Invoices', variant: 'primary' },
-      { icon: 'currency-inr', value: formatCurrency(s.net_amount), label: 'Net Amount', variant: 'secondary' },
+      { icon: 'file-document-outline', value: s.total_invoices, label: 'Invoices', variant: 'primary' },
+      { icon: 'currency-inr', value: formatSummaryAmount(s.net_amount), label: 'Net amount', variant: 'secondary' },
     ];
   }, [allCustomersData?.summary]);
 
@@ -430,14 +570,14 @@ export default function InvoiceHistoryScreen() {
     if (!data?.summary) return [];
     const s = data.summary;
     return [
-      { icon: 'receipt', value: s.total_invoices, label: 'Invoices', variant: 'primary' },
-      { icon: 'check-circle', value: formatCurrency(s.paid_amount), label: `Paid (${s.paid_count})`, variant: 'success' },
-      { icon: 'clock-outline', value: formatCurrency(s.pending_amount), label: `Pending (${s.pending_count})`, variant: 'warning' },
+      { icon: 'file-document-outline', value: s.total_invoices, label: 'Invoices', variant: 'primary' },
+      { icon: 'check-circle', value: formatSummaryAmount(s.paid_amount), label: `Paid (${s.paid_count})`, variant: 'success' },
+      { icon: 'alert', value: formatSummaryAmount(s.pending_amount), label: `Pending (${s.pending_count})`, variant: 'warning' },
     ];
   }, [data?.summary]);
 
   const { from, to } = getDateRangeForPeriod(selectedPeriod);
-  const dateRangeText = `${formatDate(from, 'compact')} - ${formatDate(to, 'compact')}`;
+  const dateRangeText = `${formatDate(from, 'medium')} – ${formatDate(to, 'medium')}`;
 
   const isListView = shouldShowListView && viewMode === 'all';
   const hasData = isListView ? allCustomersData : data;
@@ -445,13 +585,13 @@ export default function InvoiceHistoryScreen() {
   // Loading
   if (isLoading && !hasData) {
     return (
-      <View style={[styles.container, { backgroundColor: FIORI.colors.backgroundGrouped }]}>
-        <ReportHeader title="Invoice History" />
+      <View style={styles.container}>
+        <ReportHeader title="Invoice history" />
         <PeriodSelector selectedPeriod={selectedPeriod} onPeriodChange={handlePeriodChange} />
         <View style={styles.loadingContainer}>
           <KPIGrid
             items={[
-              { icon: 'receipt', value: '-', label: 'Invoices', variant: 'primary' },
+              { icon: 'file-document-outline', value: '-', label: 'Invoices', variant: 'primary' },
               { icon: 'currency-inr', value: '-', label: 'Amount', variant: 'secondary' },
             ]}
             isLoading={true}
@@ -465,10 +605,15 @@ export default function InvoiceHistoryScreen() {
   // Error
   if (error && !hasData) {
     return (
-      <View style={[styles.container, { backgroundColor: FIORI.colors.backgroundGrouped }]}>
-        <ReportHeader title="Invoice History" />
+      <View style={styles.container}>
+        <ReportHeader title="Invoice history" />
         <PeriodSelector selectedPeriod={selectedPeriod} onPeriodChange={handlePeriodChange} />
-        <ReportEmptyState icon="alert-circle-outline" message="Failed to load data" description={error} />
+        <ReportEmptyState icon="alert-circle-outline" message="Something went wrong" description={error} />
+        {(shouldShowListView || singleAssignedCustomerId || selectedCustomer) && (
+          <View style={styles.retry}>
+            <Button type="secondary" onPress={() => handlePeriodChange(selectedPeriod)}>Try again</Button>
+          </View>
+        )}
       </View>
     );
   }
@@ -478,10 +623,10 @@ export default function InvoiceHistoryScreen() {
     const hasCustomers = allCustomersData.by_customer.length > 0;
 
     return (
-      <View style={[styles.container, { backgroundColor: FIORI.colors.backgroundGrouped }]}>
-        <ReportHeader title="Invoice History" subtitle={isStaff ? 'All Customers' : 'My Customers'} />
+      <View style={styles.container}>
+        <ReportHeader title="Invoice history" subtitle={isStaff ? 'All customers' : 'My customers'} />
         <PeriodSelector selectedPeriod={selectedPeriod} onPeriodChange={handlePeriodChange} />
-        <Text style={[styles.dateRangeText, { color: FIORI.colors.textSecondary }]}>{dateRangeText}</Text>
+        <Text style={styles.dateRangeText}>{dateRangeText}</Text>
 
         <ScrollView
           style={styles.scrollView}
@@ -491,8 +636,8 @@ export default function InvoiceHistoryScreen() {
             <RefreshControl
               refreshing={isRefreshing}
               onRefresh={handleRefresh}
-              colors={[FIORI.colors.tint]}
-              tintColor={FIORI.colors.tint}
+              colors={[t.brand.tint]}
+              tintColor={t.brand.tint}
             />
           }
         >
@@ -508,18 +653,22 @@ export default function InvoiceHistoryScreen() {
 
           {filteredCustomers.length > 0 ? (
             <View style={styles.section}>
-              <FioriSectionHeader title="Customers" />
-              <View style={[styles.customersCard, { backgroundColor: FIORI.colors.background, borderColor: FIORI.colors.divider }]}>
+              <SectionHeader title="Customers" styles={styles} />
+              <View style={styles.customersCard}>
                 {filteredCustomers.map((customer, index) => (
                   <React.Fragment key={customer.customer_id}>
                     <CustomerCard customer={customer} onPress={() => handleCustomerSelect(customer)} />
-                    {index < filteredCustomers.length - 1 && <View style={[styles.divider, { backgroundColor: FIORI.colors.divider }]} />}
+                    {index < filteredCustomers.length - 1 && <View style={styles.divider} />}
                   </React.Fragment>
                 ))}
               </View>
             </View>
           ) : (
-            <ReportEmptyState icon="receipt" message="No Invoices Found" description="No invoices in the selected period." />
+            <ReportEmptyState
+              icon="file-document-outline"
+              message={customerSearchQuery.trim() ? 'No customers match' : 'No invoices in this period'}
+              description={customerSearchQuery.trim() ? 'Try fewer letters or another name.' : 'Choose a longer period to see older invoices.'}
+            />
           )}
         </ScrollView>
       </View>
@@ -529,28 +678,32 @@ export default function InvoiceHistoryScreen() {
   // Single Customer View
   if (!data?.invoices || data.invoices.length === 0) {
     return (
-      <View style={[styles.container, { backgroundColor: FIORI.colors.backgroundGrouped }]}>
+      <View style={styles.container}>
         <ReportHeader
-          title="Invoice History"
+          title="Invoice history"
           subtitle={selectedCustomer?.customer_name}
           onBack={shouldShowListView || cameFromRouteParams.current ? handleBackToAll : undefined}
         />
         <PeriodSelector selectedPeriod={selectedPeriod} onPeriodChange={handlePeriodChange} />
-        <Text style={[styles.dateRangeText, { color: FIORI.colors.textSecondary }]}>{dateRangeText}</Text>
-        <ReportEmptyState icon="receipt" message="No Invoices Found" description="No invoices in the selected period." />
+        <Text style={styles.dateRangeText}>{dateRangeText}</Text>
+        <ReportEmptyState
+          icon="file-document-outline"
+          message="No invoices in this period"
+          description="Choose a longer period to see older invoices."
+        />
       </View>
     );
   }
 
   return (
-    <View style={[styles.container, { backgroundColor: FIORI.colors.backgroundGrouped }]}>
+    <View style={styles.container}>
       <ReportHeader
-        title="Invoice History"
+        title="Invoice history"
         subtitle={selectedCustomer?.customer_name}
         onBack={shouldShowListView || cameFromRouteParams.current ? handleBackToAll : undefined}
       />
       <PeriodSelector selectedPeriod={selectedPeriod} onPeriodChange={handlePeriodChange} />
-      <Text style={[styles.dateRangeText, { color: FIORI.colors.textSecondary }]}>{dateRangeText}</Text>
+      <Text style={styles.dateRangeText}>{dateRangeText}</Text>
 
       <ScrollView
         style={styles.scrollView}
@@ -560,8 +713,8 @@ export default function InvoiceHistoryScreen() {
           <RefreshControl
             refreshing={isRefreshing}
             onRefresh={handleRefresh}
-            colors={[FIORI.colors.tint]}
-            tintColor={FIORI.colors.tint}
+            colors={[t.brand.tint]}
+            tintColor={t.brand.tint}
           />
         }
       >
@@ -581,7 +734,7 @@ export default function InvoiceHistoryScreen() {
 
         {/* Invoices List */}
         <View style={styles.section}>
-          <FioriSectionHeader title="Invoices" />
+          <SectionHeader title="Invoices" styles={styles} />
           <View style={styles.invoicesList}>
             {data.invoices.map((invoice) => (
               <InvoiceCard key={invoice.invoice_id} invoice={invoice} />
@@ -592,127 +745,3 @@ export default function InvoiceHistoryScreen() {
     </View>
   );
 }
-
-// ============================================================================
-// Styles
-// Colors are applied dynamically via inline styles using useFioriColors hook
-// ============================================================================
-const styles = StyleSheet.create({
-  container: { flex: 1 },
-  loadingContainer: { flex: 1 },
-  scrollView: { flex: 1 },
-  scrollContent: { paddingBottom: 32 },
-
-  dateRangeText: {
-    fontSize: 12,
-    textAlign: 'center',
-    paddingVertical: 4,
-  },
-
-  section: { marginTop: 8, paddingHorizontal: FIORI_STATIC.dimensions.cardPadding },
-
-  fioriSectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingTop: 8,
-    paddingBottom: 4,
-    minHeight: FIORI_STATIC.dimensions.sectionHeaderHeight,
-  },
-  fioriSectionHeaderText: {
-    fontSize: FIORI_STATIC.typography.sectionHeader.fontSize,
-    fontWeight: FIORI_STATIC.typography.sectionHeader.fontWeight,
-    letterSpacing: FIORI_STATIC.typography.sectionHeader.letterSpacing,
-    textTransform: FIORI_STATIC.typography.sectionHeader.textTransform,
-  },
-
-  // Monthly Card
-  monthlyCard: {
-    borderRadius: FIORI_STATIC.dimensions.cardCornerRadius,
-    borderWidth: 1,
-    overflow: 'hidden',
-    ...theme.shadows.sm,
-  },
-  monthlyHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: FIORI_STATIC.dimensions.cardPadding,
-  },
-  monthlyHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  monthlyHeaderTitle: { fontSize: 15, fontWeight: '600' },
-  monthlyContent: { borderTopWidth: StyleSheet.hairlineWidth },
-  monthRow: { padding: FIORI_STATIC.dimensions.cardPadding },
-  monthRowBorder: { borderBottomWidth: StyleSheet.hairlineWidth },
-  monthLabel: { fontSize: 14, fontWeight: '600', marginBottom: 4 },
-  monthStats: { flexDirection: 'row', gap: 12, marginBottom: 2 },
-  monthCount: { fontSize: 12 },
-  monthAmount: { fontSize: 12, fontWeight: '600' },
-  monthPayments: { flexDirection: 'row', gap: 12 },
-  monthPaid: { fontSize: 11 },
-  monthPending: { fontSize: 11 },
-
-  // Invoices List
-  invoicesList: { gap: 10 },
-
-  // Invoice Card
-  fioriCard: {
-    borderRadius: FIORI_STATIC.dimensions.cardCornerRadius,
-    borderWidth: 1,
-    overflow: 'hidden',
-    ...theme.shadows.sm,
-  },
-  fioriObjectCell: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    minHeight: FIORI_STATIC.dimensions.objectCellMinHeight,
-    paddingVertical: 14,
-    paddingHorizontal: FIORI_STATIC.dimensions.cardPadding,
-    gap: 12,
-  },
-  invoiceIcon: {
-    width: FIORI_STATIC.dimensions.objectCellImageSize,
-    height: FIORI_STATIC.dimensions.objectCellImageSize,
-    borderRadius: FIORI_STATIC.dimensions.objectCellImageRadius,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  fioriObjectCellContent: { flex: 1 },
-  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  fioriObjectCellTitle: { fontSize: 16, fontWeight: '600', flexShrink: 1 },
-  fioriObjectCellSubtitle: { fontSize: 13, marginTop: 2 },
-  paymentBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10 },
-  paymentBadgeText: { fontSize: 10, fontWeight: '600' },
-  amountInfo: { alignItems: 'flex-end' },
-  amountValue: { fontSize: 15, fontWeight: '600' },
-  amountLabel: { fontSize: 11 },
-
-  // Customers Card
-  customersCard: {
-    borderRadius: FIORI_STATIC.dimensions.cardCornerRadius,
-    borderWidth: 1,
-    overflow: 'hidden',
-    ...theme.shadows.sm,
-  },
-  customerCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: FIORI_STATIC.dimensions.cardPadding,
-    gap: 12,
-  },
-  customerAvatar: {
-    width: FIORI_STATIC.dimensions.objectCellImageSize,
-    height: FIORI_STATIC.dimensions.objectCellImageSize,
-    borderRadius: FIORI_STATIC.dimensions.objectCellImageRadius,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  customerContent: { flex: 1 },
-  customerName: { fontSize: 16, fontWeight: '600' },
-  customerSubtitle: { fontSize: 13, marginTop: 2 },
-  customerAmount: { alignItems: 'flex-end' },
-  customerAmountValue: { fontSize: 15, fontWeight: '600' },
-  customerAmountLabel: { fontSize: 11 },
-  divider: { height: StyleSheet.hairlineWidth, marginLeft: 72 },
-});

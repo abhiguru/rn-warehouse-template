@@ -1,60 +1,39 @@
 /**
- * DispatchImagesTab Component - 100% SAP Fiori Compliant
+ * DispatchImagesTab Component - SAP Fiori image grid (docs/STYLE_GUIDE.md §13.10)
  *
- * Grid layout for dispatch images in Fiori style
  * Features:
- * - 3-column grid optimized for mobile
+ * - 3-column grid with 4 px gaps, square thumbnails
  * - Tap to view full screen
- * - Empty state when no images
- * - Dynamic colors for dark mode support
+ * - Empty state when no images, with "Add photo" when uploads are allowed
  */
 
-import React, { useMemo } from 'react';
+import React from 'react';
 import {
   View,
   Text,
-  StyleSheet,
-  TouchableOpacity,
+  Pressable,
   FlatList,
   Dimensions,
-  Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { Image } from 'expo-image';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { useListColors } from '@/hooks/useListColors';
-
-// ============================================================================
-// FIORI DESIGN TOKENS (Static values only - colors are dynamic)
-// ============================================================================
-const FIORI_STATIC = {
-  spacing: {
-    sm: 8,
-    md: 12,
-    lg: 16,
-    xl: 20,
-  },
-  typography: {
-    body: {
-      fontSize: 15,
-      fontWeight: '400' as const,
-    },
-    caption: {
-      fontSize: 13,
-      fontWeight: '400' as const,
-    },
-    sectionHeader: {
-      fontSize: 13,
-      fontWeight: '600' as const,
-      letterSpacing: 0.5,
-      textTransform: 'uppercase' as const,
-    },
-  },
-} as const;
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import {
+  fontWeight,
+  iconSize,
+  layout,
+  radius,
+  space,
+  touchTarget,
+  typography,
+} from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const NUM_COLUMNS = 3;
-const GRID_PADDING = 8;
-const IMAGE_GAP = 4;
+const GRID_PADDING = space.sm;
+const IMAGE_GAP = space.xs;
 const IMAGE_SIZE = (SCREEN_WIDTH - GRID_PADDING * 2 - IMAGE_GAP * (NUM_COLUMNS - 1)) / NUM_COLUMNS;
 
 // Using snake_case to match backend RPC types
@@ -72,95 +51,150 @@ interface DispatchImagesTabProps {
   isUploading?: boolean;
 }
 
+const makeStyles = (t: ThemeTokens) => ({
+  container: {
+    flex: 1,
+    backgroundColor: t.background.base,
+  },
+  headerRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    paddingLeft: layout.marginCompact,
+    paddingRight: space.xs,
+    paddingTop: space.md,
+    paddingBottom: space.xs,
+    gap: space.sm,
+  },
+  sectionHeaderText: {
+    ...typography.footnote,
+    fontWeight: fontWeight.semibold,
+    textTransform: 'uppercase' as const,
+    letterSpacing: 0.5,
+    color: t.text.secondary,
+    flex: 1,
+  },
+  addIconButton: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.xs,
+    minHeight: touchTarget,
+    paddingHorizontal: space.md,
+    borderRadius: radius.button,
+  },
+  addIconButtonPressed: {
+    backgroundColor: t.brand.subtle,
+  },
+  addIconButtonText: {
+    ...typography.callout,
+    color: t.brand.tint,
+  },
+  grid: {
+    padding: GRID_PADDING,
+  },
+  row: {
+    gap: IMAGE_GAP,
+    marginBottom: IMAGE_GAP,
+  },
+  imageWrapper: {
+    width: IMAGE_SIZE,
+    height: IMAGE_SIZE,
+    borderRadius: radius.card,
+    overflow: 'hidden' as const,
+    backgroundColor: t.surface.cardActive,
+  },
+  imageWrapperPressed: {
+    opacity: 0.85,
+  },
+  image: {
+    width: '100%' as const,
+    height: '100%' as const,
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    padding: space.xl,
+    backgroundColor: t.background.base,
+  },
+  emptyTitle: {
+    ...typography.title3,
+    color: t.text.primary,
+    marginTop: space.lg,
+    textAlign: 'center' as const,
+  },
+  emptySubtitle: {
+    ...typography.subhead,
+    color: t.text.secondary,
+    marginTop: space.sm,
+    textAlign: 'center' as const,
+  },
+  uploadButton: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    gap: space.sm,
+    marginTop: space.xl,
+    minHeight: touchTarget,
+    minWidth: 120,
+    paddingHorizontal: space.lg,
+    borderRadius: radius.button,
+    backgroundColor: t.brand.fill,
+  },
+  uploadButtonPressed: {
+    backgroundColor: t.brand.fillPressed,
+  },
+  uploadButtonText: {
+    ...typography.callout,
+    fontWeight: fontWeight.semibold,
+    color: t.brand.onFill,
+  },
+});
+
 export const DispatchImagesTab: React.FC<DispatchImagesTabProps> = ({
   images,
   onImagePress,
   onUpload,
   isUploading = false,
 }) => {
-  // Theme colors for dark mode support
-  const colors = useListColors();
-
-  // Dynamic styles based on theme
-  const dynamicStyles = useMemo(() => StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor: colors.gray50,
-    },
-    sectionHeaderText: {
-      ...FIORI_STATIC.typography.sectionHeader,
-      color: colors.gray600,
-    },
-    headerRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      paddingHorizontal: FIORI_STATIC.spacing.lg,
-      paddingVertical: FIORI_STATIC.spacing.sm,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.cellDivider,
-      gap: 6,
-    },
-    headerText: {
-      ...FIORI_STATIC.typography.caption,
-      color: colors.gray600,
-    },
-    imageWrapper: {
-      width: IMAGE_SIZE,
-      height: IMAGE_SIZE,
-      borderRadius: 8,
-      overflow: 'hidden',
-      backgroundColor: colors.gray200,
-    },
-    emptyContainer: {
-      flex: 1,
-      justifyContent: 'center',
-      alignItems: 'center',
-      padding: FIORI_STATIC.spacing.xl,
-      backgroundColor: colors.gray50,
-    },
-    emptyTitle: {
-      ...FIORI_STATIC.typography.body,
-      fontWeight: '600' as const,
-      color: colors.gray900,
-      marginTop: FIORI_STATIC.spacing.sm,
-    },
-    emptySubtitle: {
-      ...FIORI_STATIC.typography.caption,
-      color: colors.gray600,
-      marginTop: 4,
-    },
-  }), [colors]);
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
 
   if (images.length === 0) {
     return (
-      <View style={dynamicStyles.emptyContainer}>
-        <Icon name="image-off-outline" size={48} color={colors.gray500} />
-        <Text style={dynamicStyles.emptyTitle}>No Images</Text>
-        <Text style={dynamicStyles.emptySubtitle}>No images uploaded for this dispatch</Text>
+      <View style={styles.emptyContainer}>
+        <Icon name="image-outline" size={iconSize.hero} color={t.icon.secondary} />
+        <Text style={styles.emptyTitle}>No photos yet</Text>
+        <Text style={styles.emptySubtitle}>
+          {onUpload ? 'Add a photo of the loaded vehicle or goods.' : 'Photos of this dispatch appear here.'}
+        </Text>
         {onUpload && (
-          <TouchableOpacity
+          <Pressable
             accessibilityRole="button"
             accessibilityLabel="Add dispatch photo"
-            accessibilityState={{ disabled: isUploading }}
-            style={[styles.uploadButton, { backgroundColor: colors.primary }]}
+            accessibilityState={{ disabled: isUploading, busy: isUploading }}
+            style={({ pressed }) => [styles.uploadButton, pressed && styles.uploadButtonPressed]}
             onPress={onUpload}
             disabled={isUploading}
           >
-            <Icon name="image-plus" size={18} color="#fff" />
-            <Text style={styles.uploadButtonText}>{isUploading ? 'Uploading…' : 'Add Photo'}</Text>
-          </TouchableOpacity>
+            {isUploading ? (
+              <ActivityIndicator size="small" color={t.brand.onFill} />
+            ) : (
+              <Icon name="camera-plus-outline" size={iconSize.md} color={t.brand.onFill} />
+            )}
+            <Text style={styles.uploadButtonText}>{isUploading ? 'Uploading…' : 'Add photo'}</Text>
+          </Pressable>
         )}
       </View>
     );
   }
 
   const renderImage = ({ item, index }: { item: DispatchImageData; index: number }) => (
-    <TouchableOpacity
-      style={dynamicStyles.imageWrapper}
+    <Pressable
+      style={({ pressed }) => [styles.imageWrapper, pressed && styles.imageWrapperPressed]}
       onPress={() => onImagePress?.(images, index)}
-      activeOpacity={0.8}
-      accessibilityRole="button"
-      accessibilityLabel={`View image ${index + 1} of ${images.length}`}
+      accessibilityRole="imagebutton"
+      accessibilityLabel={`Dispatch photo ${index + 1} of ${images.length}`}
+      accessibilityHint="Opens the photo full screen"
     >
       <Image
         source={{ uri: item.image_url }}
@@ -169,30 +203,34 @@ export const DispatchImagesTab: React.FC<DispatchImagesTabProps> = ({
         cachePolicy="memory-disk"
         transition={150}
       />
-    </TouchableOpacity>
+    </Pressable>
   );
 
-  return (
-    <View style={dynamicStyles.container}>
-      {/* Image Header - Fiori Section Header */}
-      <View style={styles.sectionHeader}>
-        <Text style={dynamicStyles.sectionHeaderText}>Dispatch Images</Text>
-      </View>
+  const countLabel = `${images.length} ${images.length === 1 ? 'photo' : 'photos'}`;
 
-      <View style={dynamicStyles.headerRow}>
-        <Icon name="image-multiple" size={18} color={colors.gray600} />
-        <Text style={dynamicStyles.headerText}>{images.length} image{images.length !== 1 ? 's' : ''}</Text>
+  return (
+    <View style={styles.container}>
+      {/* Section header with count and add action */}
+      <View style={styles.headerRow}>
+        <Text style={styles.sectionHeaderText} accessibilityRole="header">
+          {countLabel}
+        </Text>
         {onUpload && (
-          <TouchableOpacity
+          <Pressable
             accessibilityRole="button"
             accessibilityLabel="Add dispatch photo"
-            accessibilityState={{ disabled: isUploading }}
-            style={[styles.compactUploadButton, { backgroundColor: colors.primary }]}
+            accessibilityState={{ disabled: isUploading, busy: isUploading }}
+            style={({ pressed }) => [styles.addIconButton, pressed && styles.addIconButtonPressed]}
             onPress={onUpload}
             disabled={isUploading}
           >
-            <Icon name={isUploading ? 'progress-upload' : 'image-plus'} size={16} color="#fff" />
-          </TouchableOpacity>
+            {isUploading ? (
+              <ActivityIndicator size="small" color={t.brand.tint} />
+            ) : (
+              <Icon name="camera-plus-outline" size={iconSize.md} color={t.brand.tint} />
+            )}
+            <Text style={styles.addIconButtonText}>{isUploading ? 'Uploading…' : 'Add photo'}</Text>
+          </Pressable>
         )}
       </View>
 
@@ -210,41 +248,3 @@ export const DispatchImagesTab: React.FC<DispatchImagesTabProps> = ({
   );
 };
 
-// Static styles (layout only - colors are in dynamicStyles)
-const styles = StyleSheet.create({
-  sectionHeader: {
-    paddingHorizontal: FIORI_STATIC.spacing.lg,
-    paddingTop: FIORI_STATIC.spacing.md,
-    paddingBottom: FIORI_STATIC.spacing.sm,
-  },
-  grid: {
-    padding: FIORI_STATIC.spacing.sm,
-  },
-  row: {
-    gap: IMAGE_GAP,
-    marginBottom: IMAGE_GAP,
-  },
-  image: {
-    width: '100%',
-    height: '100%',
-  },
-  uploadButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 20,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 8,
-  },
-  uploadButtonText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  compactUploadButton: {
-    marginLeft: 'auto',
-    padding: 7,
-    borderRadius: 14,
-  },
-});

@@ -2,21 +2,29 @@
  * GRNItemDispatchTable Component
  *
  * Collapsible accordion section for one GRN item's dispatches
- * with SAP Fiori data table inside.
+ * with a SAP Fiori data table inside (docs/STYLE_GUIDE.md §13.7).
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  TouchableOpacity,
+  Pressable,
   LayoutAnimation,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { router } from 'expo-router';
-import theme from '@/theme';
-import { useListColors } from '@/hooks/useListColors';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import {
+  fontWeight,
+  iconSize,
+  layout,
+  radius,
+  space,
+  typography,
+} from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
 import { DispatchRecord } from '@/services/grn-detail-service';
 import { GRNItem } from './GRNItemsTab';
 
@@ -26,13 +34,138 @@ interface GRNItemDispatchTableProps {
   defaultExpanded?: boolean;
 }
 
+// Format date for display (guide §12.3: 9 Oct 2026)
+const formatDate = (dateString: string) => {
+  const date = new Date(dateString);
+  return date.toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
+};
+
+const makeStyles = (t: ThemeTokens) => ({
+  container: {
+    backgroundColor: t.surface.card,
+    borderRadius: radius.card,
+    marginBottom: space.sm,
+    overflow: 'hidden' as const,
+    ...t.shadow[2],
+  },
+  header: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
+    paddingVertical: space.md,
+    paddingHorizontal: space.md,
+    backgroundColor: t.surface.card,
+    minHeight: 56,
+  },
+  headerPressed: {
+    backgroundColor: t.surface.cardPressed,
+  },
+  headerLeft: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    flex: 1,
+  },
+  itemInfo: {
+    flex: 1,
+    marginLeft: space.sm,
+  },
+  itemName: {
+    ...typography.headline,
+    color: t.text.primary,
+  },
+  itemMeta: {
+    flexDirection: 'row' as const,
+    gap: space.sm,
+  },
+  metaText: {
+    ...typography.footnote,
+    color: t.text.secondary,
+  },
+  headerRight: {
+    alignItems: 'flex-end' as const,
+    marginLeft: space.md,
+    gap: space.xxs,
+  },
+  totalText: {
+    ...typography.headline,
+    color: t.text.primary,
+    fontVariant: ['tabular-nums' as const],
+  },
+  dispatchCount: {
+    ...typography.caption1,
+    color: t.text.secondary,
+  },
+  content: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: t.border.divider,
+  },
+  emptyState: {
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    paddingVertical: space.xxl,
+    gap: space.sm,
+  },
+  emptyText: {
+    ...typography.subhead,
+    color: t.text.secondary,
+  },
+  tableHeader: {
+    flexDirection: 'row' as const,
+    backgroundColor: t.background.base,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.separator,
+    minHeight: layout.rowMinHeight,
+    alignItems: 'center' as const,
+    paddingHorizontal: space.md,
+  },
+  headerCell: {
+    ...typography.footnote,
+    fontWeight: fontWeight.semibold,
+    color: t.text.secondary,
+  },
+  tableRow: {
+    flexDirection: 'row' as const,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.divider,
+    minHeight: layout.rowMinHeight,
+    alignItems: 'center' as const,
+    paddingHorizontal: space.md,
+    backgroundColor: t.surface.card,
+  },
+  tableRowPressed: {
+    backgroundColor: t.surface.cardPressed,
+  },
+  dataCell: {
+    ...typography.subhead,
+    color: t.text.primary,
+  },
+  dispNoCell: {
+    flex: 1,
+    color: t.brand.tint,
+  },
+  dateCell: {
+    width: 100,
+    textAlign: 'left' as const,
+  },
+  qtyCell: {
+    width: 56,
+    textAlign: 'right' as const,
+    fontVariant: ['tabular-nums' as const],
+  },
+});
+
 export const GRNItemDispatchTable: React.FC<GRNItemDispatchTableProps> = ({
   item,
   dispatches,
   defaultExpanded = false,
 }) => {
   const [expanded, setExpanded] = useState(defaultExpanded);
-  const colors = useListColors();
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
 
   const toggleExpanded = () => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -46,173 +179,89 @@ export const GRNItemDispatchTable: React.FC<GRNItemDispatchTableProps> = ({
   // Calculate totals
   const totalDispatched = dispatches.reduce((sum, d) => sum + d.disp_quantity, 0);
   const totalQty = item.qty || 0;
-
-  // Format date for display
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-GB', {
-      day: '2-digit',
-      month: '2-digit',
-      year: '2-digit',
-    });
-  };
-
-  // Dynamic styles for dark mode support
-  const dynamicStyles = useMemo(() => StyleSheet.create({
-    container: {
-      backgroundColor: colors.cellBackground,
-      borderRadius: 12,
-      marginBottom: 12,
-      overflow: 'hidden',
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 1 },
-      shadowOpacity: 0.05,
-      shadowRadius: 2,
-      elevation: 1,
-    },
-    header: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      paddingVertical: 12,
-      paddingHorizontal: 12,
-      backgroundColor: colors.gray100,
-      minHeight: 56,
-    },
-    itemName: {
-      fontSize: 15,
-      fontWeight: '600',
-      color: colors.gray900,
-      marginBottom: 2,
-    },
-    metaText: {
-      fontSize: 13,
-      color: colors.gray500,
-    },
-    dispatchCount: {
-      fontSize: 11,
-      color: colors.gray500,
-    },
-    content: {
-      borderTopWidth: 1,
-      borderTopColor: colors.gray200,
-    },
-    emptyText: {
-      fontSize: 13,
-      color: colors.gray400,
-    },
-    tableHeader: {
-      flexDirection: 'row',
-      backgroundColor: colors.gray100,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.gray200,
-      minHeight: 44,
-      alignItems: 'center',
-      paddingHorizontal: 12,
-    },
-    headerCell: {
-      fontSize: 13,
-      fontWeight: '600',
-      color: colors.gray700,
-      textTransform: 'uppercase',
-      letterSpacing: 0.5,
-    },
-    tableRow: {
-      flexDirection: 'row',
-      borderBottomWidth: 1,
-      borderBottomColor: colors.gray200,
-      minHeight: 44,
-      alignItems: 'center',
-      paddingHorizontal: 12,
-      backgroundColor: colors.cellBackground,
-    },
-    dataCell: {
-      fontSize: 15,
-      color: colors.gray900,
-    },
-  }), [colors]);
+  const countLabel = `${dispatches.length} ${dispatches.length === 1 ? 'dispatch' : 'dispatches'}`;
 
   return (
-    <View style={dynamicStyles.container}>
+    <View style={styles.container}>
       {/* Accordion Header */}
-      <TouchableOpacity
-        style={dynamicStyles.header}
+      <Pressable
+        style={({ pressed }) => [styles.header, pressed && styles.headerPressed]}
         onPress={toggleExpanded}
-        activeOpacity={0.7}
+        accessibilityRole="button"
+        accessibilityLabel={`${item.item_name}, ${totalDispatched} of ${totalQty} bags dispatched, ${countLabel}`}
+        accessibilityState={{ expanded }}
       >
         <View style={styles.headerLeft}>
           <Icon
             name={expanded ? 'chevron-down' : 'chevron-right'}
-            size={24}
-            color={colors.gray600}
+            size={iconSize.lg}
+            color={t.icon.secondary}
           />
           <View style={styles.itemInfo}>
-            <Text style={dynamicStyles.itemName} numberOfLines={1}>
+            <Text style={styles.itemName} numberOfLines={2}>
               {item.item_name}
             </Text>
             <View style={styles.itemMeta}>
               {item.package_mark && (
-                <Text style={dynamicStyles.metaText}>{item.package_mark}</Text>
+                <Text style={styles.metaText}>{item.package_mark}</Text>
               )}
               {item.weight && (
-                <Text style={dynamicStyles.metaText}>{item.weight} kg</Text>
+                <Text style={styles.metaText}>{item.weight} kg</Text>
               )}
             </View>
           </View>
         </View>
         <View style={styles.headerRight}>
-          <View style={styles.stockBadge}>
-            <Text style={styles.stockText}>
-              {totalDispatched}/{totalQty}
-            </Text>
-          </View>
-          <Text style={dynamicStyles.dispatchCount}>
-            {dispatches.length} dispatch{dispatches.length !== 1 ? 'es' : ''}
+          <Text style={styles.totalText}>
+            {totalDispatched} of {totalQty}
           </Text>
+          <Text style={styles.dispatchCount}>{countLabel}</Text>
         </View>
-      </TouchableOpacity>
+      </Pressable>
 
       {/* Expandable Content */}
       {expanded && (
-        <View style={dynamicStyles.content}>
+        <View style={styles.content}>
           {dispatches.length === 0 ? (
             <View style={styles.emptyState}>
               <Icon
-                name="truck-outline"
-                size={32}
-                color={colors.gray300}
+                name="truck-delivery-outline"
+                size={iconSize.xl}
+                color={t.icon.secondary}
               />
-              <Text style={dynamicStyles.emptyText}>No dispatches for this item</Text>
+              <Text style={styles.emptyText}>This item has not been dispatched yet.</Text>
             </View>
           ) : (
-            <View style={styles.table}>
+            <View>
               {/* Table Header */}
-              <View style={dynamicStyles.tableHeader}>
-                <Text style={[dynamicStyles.headerCell, styles.dispNoCell]}>
-                  DISPATCH #
+              <View style={styles.tableHeader}>
+                <Text style={[styles.headerCell, styles.dispNoCell, { color: t.text.secondary }]}>
+                  Dispatch
                 </Text>
-                <Text style={[dynamicStyles.headerCell, styles.dateCell]}>DATE</Text>
-                <Text style={[dynamicStyles.headerCell, styles.qtyCell]}>QTY</Text>
+                <Text style={[styles.headerCell, styles.dateCell]}>Date</Text>
+                <Text style={[styles.headerCell, styles.qtyCell]}>Bags</Text>
               </View>
 
               {/* Table Rows */}
               {dispatches.map((dispatch) => (
-                <TouchableOpacity
+                <Pressable
                   key={dispatch.id}
-                  style={dynamicStyles.tableRow}
+                  style={({ pressed }) => [styles.tableRow, pressed && styles.tableRowPressed]}
                   onPress={() => handleDispatchPress(dispatch)}
-                  activeOpacity={0.6}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Dispatch ${dispatch.disp_no}, ${formatDate(dispatch.disp_date)}, ${dispatch.disp_quantity} ${dispatch.disp_quantity === 1 ? 'bag' : 'bags'}`}
+                  accessibilityHint="Opens the dispatch"
                 >
-                  <Text style={[dynamicStyles.dataCell, styles.dispNoCell]}>
+                  <Text style={[styles.dataCell, styles.dispNoCell]}>
                     {dispatch.disp_no}
                   </Text>
-                  <Text style={[dynamicStyles.dataCell, styles.dateCell]}>
+                  <Text style={[styles.dataCell, styles.dateCell]}>
                     {formatDate(dispatch.disp_date)}
                   </Text>
-                  <Text style={[dynamicStyles.dataCell, styles.qtyCell]}>
+                  <Text style={[styles.dataCell, styles.qtyCell]}>
                     {dispatch.disp_quantity}
                   </Text>
-                </TouchableOpacity>
+                </Pressable>
               ))}
             </View>
           )}
@@ -221,59 +270,5 @@ export const GRNItemDispatchTable: React.FC<GRNItemDispatchTableProps> = ({
     </View>
   );
 };
-
-// Static styles (layout only - colors are in dynamicStyles for dark mode)
-const styles = StyleSheet.create({
-  headerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  itemInfo: {
-    flex: 1,
-    marginLeft: 8,
-  },
-  itemMeta: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  headerRight: {
-    alignItems: 'flex-end',
-    marginLeft: 12,
-  },
-  stockBadge: {
-    backgroundColor: theme.colors.primary,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 10,
-    marginBottom: 2,
-  },
-  stockText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: theme.colors.white,
-  },
-  emptyState: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 24,
-    gap: 8,
-  },
-  table: {
-    // Data table container
-  },
-  // Column widths
-  dispNoCell: {
-    flex: 1,
-  },
-  dateCell: {
-    width: 90,
-    textAlign: 'left',
-  },
-  qtyCell: {
-    width: 50,
-    textAlign: 'right',
-  },
-});
 
 export default GRNItemDispatchTable;

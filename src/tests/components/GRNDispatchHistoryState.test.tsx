@@ -3,19 +3,10 @@ import { act, create } from 'react-test-renderer';
 import { GRNDispatchesTab } from '@/components/grn-details/GRNDispatchesTab';
 import { GRNItemsTab } from '@/components/grn-details/GRNItemsTab';
 
-jest.mock('@/hooks/useListColors', () => ({
-  useListColors: () => ({
-    primary: '#f69000',
-    gray50: '#11222c',
-    gray100: '#20343f',
-    gray400: '#78909c',
-    gray500: '#90a4ae',
-    gray600: '#b0bec5',
-    gray700: '#cfd8dc',
-    gray900: '#ffffff',
-    cellBackground: '#20343f',
-    statusNegative: '#bb0000',
-  }),
+jest.mock('@/store/hooks', () => ({
+  useAppDispatch: () => jest.fn(),
+  useAppSelector: (sel: (s: unknown) => unknown) =>
+    sel({ theme: { preference: 'dark', brand: 'orange' } }),
 }));
 jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
@@ -58,7 +49,7 @@ it('shows a retryable error instead of an empty-success dispatch state', async (
     );
   });
 
-  expect(renderer.root.findByProps({ children: 'Dispatches Unavailable' })).toBeTruthy();
+  expect(renderer.root.findByProps({ children: "Couldn't load dispatches" })).toBeTruthy();
   expect(renderer.root.findByProps({ children: 'Customer access denied' })).toBeTruthy();
 
   await act(async () => {

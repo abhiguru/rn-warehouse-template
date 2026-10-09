@@ -10,30 +10,36 @@ import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
   Text,
-  StyleSheet,
   TextInput,
-  TouchableOpacity,
+  Pressable,
   Switch,
-  Platform,
   ActivityIndicator,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { router } from 'expo-router';
 import { DatePickerModal } from 'react-native-paper-dates';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
-import theme from '@/theme';
-import { useListColors } from '@/hooks/useListColors';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { iconSize, space } from '@/theme/tokens';
 import { useInvoiceForm } from '@/hooks/useInvoiceForm';
 import { useBackHandler } from '@/hooks/useBackHandler';
 import { GRNAutocomplete } from '@/features/invoice/components/GRNAutocomplete';
 import { InvoiceableGrn } from '@/types/invoice.types';
 import { InvoiceStepIndicator } from '@/components/InvoiceStepIndicator';
-import { INVOICE_STEPS, STEP_NUMBERS, getCompletedSteps } from '@/constants/invoiceSteps';
+import {
+  INVOICE_STEPS,
+  STEP_NUMBERS,
+  getCompletedSteps,
+  formatInvoiceDate,
+  makeInvoiceWizardStyles,
+} from '@/constants/invoiceSteps';
 
 export default function InvoiceFormStep1() {
-  // Theme colors for dark mode support
-  const colors = useListColors();
+  const styles = useThemedStyles(makeInvoiceWizardStyles);
+  const t = useTokens();
+  const insets = useSafeAreaInsets();
 
   // Use the consolidated invoice form hook - handles initialization
   const {
@@ -56,8 +62,6 @@ export default function InvoiceFormStep1() {
   const [showGRNBottomSheet, setShowGRNBottomSheet] = useState(false);
   const [selectedGrn, setSelectedGrn] = useState<InvoiceableGrn | null>(null);
 
-  // Dialog states for dark mode compliance
-  const [showCancelDialog, setShowCancelDialog] = useState(false);
   const [showNoItemsDialog, setShowNoItemsDialog] = useState(false);
 
   // Track focus count to skip initial mount for data reload
@@ -141,12 +145,8 @@ export default function InvoiceFormStep1() {
     }
   };
 
+  // The step header already asks "Discard this invoice?" before calling this.
   const handleCancel = () => {
-    setShowCancelDialog(true);
-  };
-
-  const handleCancelConfirm = () => {
-    setShowCancelDialog(false);
     resetFormState();
     router.back();
   };
@@ -175,8 +175,20 @@ export default function InvoiceFormStep1() {
     }
   };
 
+  const invDateError = validationErrors.inv_date;
+  const invNoError = validationErrors.inv_no;
+  const grError = validationErrors.gr_id;
+
+  const renderError = (message?: string) =>
+    message ? (
+      <View style={styles.messageRow} accessibilityLiveRegion="polite">
+        <Icon name="alert-circle" size={iconSize.sm} color={t.status.negative.text} />
+        <Text style={styles.errorText}>{message}</Text>
+      </View>
+    ) : null;
+
   return (
-    <View style={[styles.container, { backgroundColor: colors.gray50 }]}>
+    <View style={styles.container}>
       <InvoiceStepIndicator
         steps={INVOICE_STEPS}
         currentStep={STEP_NUMBERS.HEADER}
@@ -191,27 +203,29 @@ export default function InvoiceFormStep1() {
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
+        enableOnAndroid
       >
-        {/* Invoice Date */}
+        {/* Invoice date */}
         <View style={styles.formGroup}>
-          <Text style={[styles.label, { color: colors.gray900 }]}>
-            Invoice Date <Text style={[styles.required, { color: colors.error }]}>*</Text>
+          <Text style={[styles.label, !!invDateError && styles.labelError]}>
+            Invoice date <Text style={styles.required}>*</Text>
           </Text>
-          <TouchableOpacity
-            style={[styles.input, styles.dateInput, { backgroundColor: colors.cellBackground, borderColor: colors.cellDivider }, validationErrors.inv_date && { borderColor: colors.error, borderWidth: 2 }]}
+          <Pressable
+            style={({ pressed }) => [styles.field, styles.fieldRow, pressed && styles.fieldPressed, !!invDateError && styles.fieldError]}
             onPress={() => setShowDatePicker(true)}
+            accessibilityRole="button"
+            accessibilityLabel={`Invoice date, ${formatInvoiceDate(header.inv_date) || 'not set'}`}
+            accessibilityHint="Opens the date picker"
           >
-            <Icon name="calendar" size={20} color={colors.gray500} />
-            <Text style={[styles.dateText, { color: colors.gray900 }]}>
-              {new Date(header.inv_date).toLocaleDateString()}
-            </Text>
-          </TouchableOpacity>
-          {validationErrors.inv_date && (
-            <Text style={[styles.errorText, { color: colors.error }]}>{validationErrors.inv_date}</Text>
-          )}
+            <Text style={styles.fieldValue}>{formatInvoiceDate(header.inv_date)}</Text>
+            <View style={styles.fieldIconButton}>
+              <Icon name="calendar-outline" size={iconSize.md} color={t.icon.secondary} />
+            </View>
+          </Pressable>
+          {renderError(invDateError)}
         </View>
 
-        {/* Date Picker Modal - Pure JS with dark mode support */}
+        {/* Date Picker Modal */}
         <DatePickerModal
           locale="en"
           mode="single"
@@ -224,129 +238,146 @@ export default function InvoiceFormStep1() {
           label="Select invoice date"
         />
 
-        {/* Financial Year (Read-only, Auto-calculated) */}
+        {/* Financial year (read-only, calculated) */}
         <View style={styles.formGroup}>
-          <Text style={[styles.label, { color: colors.gray900 }]}>Financial Year</Text>
-          <View style={[styles.readOnlyField, { backgroundColor: colors.gray100 }]}>
-            <Text style={[styles.readOnlyText, { color: colors.gray900 }]}>{header.inv_fin_year}</Text>
+          <Text style={styles.label}>Financial year</Text>
+          <View style={styles.readOnlyField}>
+            <Text style={[styles.readOnlyText, styles.numeric]}>{header.inv_fin_year}</Text>
           </View>
-          <Text style={[styles.helperText, { color: colors.gray500 }]}>Auto-calculated from invoice date</Text>
+          <Text style={styles.helperText}>Set from the invoice date.</Text>
         </View>
 
-        {/* Invoice Number */}
+        {/* Invoice number */}
         <View style={styles.formGroup}>
-          <Text style={[styles.label, { color: colors.gray900 }]}>
-            Invoice Number <Text style={[styles.required, { color: colors.error }]}>*</Text>
+          <Text style={[styles.label, !!invNoError && styles.labelError]}>
+            Invoice number <Text style={styles.required}>*</Text>
           </Text>
-          <View style={styles.inputWithLoadingContainer}>
+          <View style={[styles.field, styles.fieldRow, !!invNoError && styles.fieldError]}>
             <TextInput
-              style={[styles.input, { backgroundColor: colors.cellBackground, borderColor: colors.cellDivider, color: colors.gray900 }, validationErrors.inv_no && { borderColor: colors.error, borderWidth: 2 }]}
+              style={[styles.fieldValue, styles.numeric]}
               value={header.inv_no > 0 ? header.inv_no.toString() : ''}
               onChangeText={handleInvoiceNumberChange}
-              placeholder="Auto-generated..."
-              placeholderTextColor={colors.gray400}
-              keyboardType="numeric"
+              placeholder={isLoading ? 'Generating…' : 'Invoice number'}
+              placeholderTextColor={t.text.placeholder}
+              keyboardType="number-pad"
+              returnKeyType="done"
               editable={!isLoading}
+              accessibilityLabel="Invoice number"
             />
             {isLoading && (
-              <View style={styles.loadingIndicator}>
-                <ActivityIndicator size="small" color={colors.primary} />
+              <View style={styles.fieldSpinner}>
+                <ActivityIndicator size="small" color={t.brand.tint} />
               </View>
             )}
           </View>
-          {validationErrors.inv_no && (
-            <Text style={[styles.errorText, { color: colors.error }]}>{validationErrors.inv_no}</Text>
-          )}
-          <Text style={[styles.helperText, { color: colors.gray500 }]}>
-            {isLoading ? 'Generating invoice number...' : 'Auto-generated, can be edited'}
+          {renderError(invNoError)}
+          <Text style={styles.helperText}>
+            {isLoading ? 'Getting the next invoice number…' : 'The next number is filled in. You can change it.'}
           </Text>
         </View>
 
-        {/* GR Number Selection */}
+        {/* GRN selection */}
         <View style={styles.formGroup}>
-          <Text style={[styles.label, { color: colors.gray900 }]}>
-            GR Number <Text style={[styles.required, { color: colors.error }]}>*</Text>
+          <Text style={[styles.label, !!grError && styles.labelError]}>
+            GRN <Text style={styles.required}>*</Text>
           </Text>
-          <View
-            style={[styles.input, styles.selectInput, { backgroundColor: colors.cellBackground, borderColor: colors.cellDivider }, validationErrors.gr_id && { borderColor: colors.error, borderWidth: 2 }]}
-          >
-            <TouchableOpacity
-              style={styles.selectTextContainer}
+          <View style={[styles.field, styles.fieldRow, !!grError && styles.fieldError]}>
+            <Pressable
+              style={styles.fieldValue}
               onPress={() => setShowGRNBottomSheet(true)}
               disabled={isLoadingItems}
+              accessibilityRole="button"
+              accessibilityLabel={header.gr_no ? `GRN ${header.gr_no}. Change GRN` : 'Select GRN'}
+              accessibilityState={{ disabled: isLoadingItems, busy: isLoadingItems }}
             >
               <Text
-                style={[styles.selectText, { color: colors.gray900 }, !header.gr_no && { color: colors.gray400 }]}
+                style={[styles.readOnlyText, !header.gr_no && styles.fieldPlaceholder]}
                 numberOfLines={1}
               >
-                {header.gr_no || 'Search and select GRN...'}
+                {header.gr_no ? `GRN ${header.gr_no}` : 'Search and select a GRN'}
               </Text>
-            </TouchableOpacity>
+            </Pressable>
 
-            <View style={styles.selectIcons}>
-              {isLoadingItems ? (
-                <ActivityIndicator size="small" color={colors.primary} />
-              ) : (
-                <>
-                  {/* View Details button - only show when GRN is selected */}
-                  {header.gr_id && (
-                    <TouchableOpacity
-                      onPress={handleViewGRNDetails}
-                      style={styles.iconButton}
-                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                    >
-                      <Icon name="eye-outline" size={20} color={colors.primary} />
-                    </TouchableOpacity>
-                  )}
-                  {/* Change GRN button */}
-                  <TouchableOpacity
-                    onPress={() => setShowGRNBottomSheet(true)}
-                    style={styles.iconButton}
-                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            {isLoadingItems ? (
+              <View style={styles.fieldSpinner}>
+                <ActivityIndicator size="small" color={t.brand.tint} />
+              </View>
+            ) : (
+              <>
+                {!!header.gr_id && (
+                  <Pressable
+                    onPress={handleViewGRNDetails}
+                    style={styles.fieldIconButton}
+                    accessibilityRole="button"
+                    accessibilityLabel="View GRN details"
                   >
-                    <Icon name="magnify" size={20} color={colors.gray400} />
-                  </TouchableOpacity>
-                </>
-              )}
-            </View>
+                    <Icon name="eye-outline" size={iconSize.md} color={t.brand.tint} />
+                  </Pressable>
+                )}
+                <Pressable
+                  onPress={() => setShowGRNBottomSheet(true)}
+                  style={styles.fieldIconButton}
+                  accessibilityRole="button"
+                  accessibilityLabel="Search GRNs"
+                >
+                  <Icon name="magnify" size={iconSize.md} color={t.icon.primary} />
+                </Pressable>
+              </>
+            )}
           </View>
-          {validationErrors.gr_id && (
-            <Text style={[styles.errorText, { color: colors.error }]}>{validationErrors.gr_id}</Text>
-          )}
+          {renderError(grError)}
         </View>
 
-        {/* Customer Name (Auto-filled, Read-only) */}
+        {/* Customer (filled from the GRN, read-only) */}
         <View style={styles.formGroup}>
-          <Text style={[styles.label, { color: colors.gray900 }]}>Customer Name</Text>
-          <View style={[styles.readOnlyField, { backgroundColor: colors.gray100 }]}>
-            <Text style={[styles.readOnlyText, { color: colors.gray900 }]}>
-              {header.customer_name || 'Select GRN to auto-fill'}
+          <Text style={styles.label}>Customer</Text>
+          <View style={styles.readOnlyField}>
+            <Text style={[styles.readOnlyText, !header.customer_name && styles.readOnlyPlaceholder]}>
+              {header.customer_name || 'Filled in when you select a GRN'}
             </Text>
           </View>
-          <Text style={[styles.helperText, { color: colors.gray500 }]}>Auto-filled from selected GRN</Text>
         </View>
 
-        {/* One-Time Charge Toggle */}
-        <View style={styles.formGroup}>
-          <View style={[styles.switchRow, { backgroundColor: colors.cellBackground }]}>
-            <View style={styles.switchLabelContainer}>
-              <Text style={[styles.label, { color: colors.gray900 }]}>One-Time Charge</Text>
-              <Text style={[styles.helperText, { color: colors.gray500 }]}>
-                Enable to set all durations to 1 month (single billing). Disable to restore calculated durations (recurring charges).
-              </Text>
-            </View>
-            <Switch
-              value={header.one_time_charge}
-              onValueChange={(value) => {
-                updateHeaderField('one_time_charge', value);
-              }}
-              trackColor={{ false: colors.gray200, true: colors.primary }}
-              thumbColor={colors.cellBackground}
-              ios_backgroundColor={colors.gray200}
-            />
+        {/* One-time charge */}
+        <Pressable
+          style={({ pressed }) => [styles.switchRow, pressed && styles.switchRowPressed]}
+          onPress={() => updateHeaderField('one_time_charge', !header.one_time_charge)}
+          accessibilityRole="switch"
+          accessibilityLabel="One-time charge"
+          accessibilityState={{ checked: header.one_time_charge }}
+        >
+          <View style={styles.switchLabelContainer}>
+            <Text style={styles.switchLabel}>One-time charge</Text>
+            <Text style={styles.helperText}>
+              On: every item is charged for 1 month. Off: items are charged for the months they were stored.
+            </Text>
           </View>
-        </View>
+          <Switch
+            value={header.one_time_charge}
+            onValueChange={(value) => {
+              updateHeaderField('one_time_charge', value);
+            }}
+            trackColor={{ false: t.control.trackOff, true: t.brand.fill }}
+            thumbColor={t.control.thumb}
+            ios_backgroundColor={t.control.trackOff}
+            accessibilityElementsHidden
+            importantForAccessibility="no-hide-descendants"
+          />
+        </Pressable>
       </KeyboardAwareScrollView>
+
+      {/* Bottom action bar */}
+      <View style={[styles.bottomBar, { paddingBottom: insets.bottom + space.md }]}>
+        <Pressable
+          style={({ pressed }) => [styles.button, styles.primaryButton, pressed && styles.primaryButtonPressed]}
+          onPress={handleNext}
+          accessibilityRole="button"
+          accessibilityLabel="Next: items"
+        >
+          <Text style={styles.primaryButtonText}>Next: items</Text>
+          <Icon name="chevron-right" size={iconSize.md} color={t.brand.onFill} />
+        </Pressable>
+      </View>
 
       {/* GRN Selection Bottom Sheet */}
       <GRNAutocomplete
@@ -356,27 +387,17 @@ export default function InvoiceFormStep1() {
         currentValue={selectedGrn}
       />
 
-      {/* Cancel Confirmation Dialog */}
-      <ConfirmDialog
-        visible={showCancelDialog}
-        title="Cancel Invoice Creation"
-        message="Are you sure you want to cancel? All entered data will be lost."
-        confirmText="Yes, Cancel"
-        cancelText="No, Continue"
-        onConfirm={handleCancelConfirm}
-        onCancel={() => setShowCancelDialog(false)}
-        variant="danger"
-        icon="close-circle"
-      />
-
       {/* No Items Dialog */}
       <ConfirmDialog
         visible={showNoItemsDialog}
-        title="No Items"
-        message="Please select a GRN with dispatch items before proceeding."
-        confirmText="OK"
-        cancelText=""
-        onConfirm={() => setShowNoItemsDialog(false)}
+        title="No items to invoice"
+        message="Select a GRN that has dispatched items, then continue."
+        confirmText="Select GRN"
+        cancelText="Close"
+        onConfirm={() => {
+          setShowNoItemsDialog(false);
+          setShowGRNBottomSheet(true);
+        }}
         onCancel={() => setShowNoItemsDialog(false)}
         variant="warning"
         icon="alert-circle"
@@ -384,118 +405,3 @@ export default function InvoiceFormStep1() {
     </View>
   );
 }
-
-// SAP Fiori Form Cell Styles
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    padding: theme.spacing.md,
-  },
-  formGroup: {
-    marginBottom: theme.spacing.md,
-  },
-  // Fiori: Label uses 13pt
-  label: {
-    fontSize: 13,
-    fontWeight: theme.fontWeight.normal,
-    marginBottom: 6,
-    lineHeight: 18,
-  },
-  required: {
-  },
-  // Fiori: Input field - 44pt min height, 17pt text
-  input: {
-    borderWidth: 1,
-    borderRadius: theme.borderRadius.md,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    fontSize: theme.fontSize.base,
-    minHeight: 44,
-  },
-  inputWithLoadingContainer: {
-    position: 'relative',
-  },
-  loadingIndicator: {
-    position: 'absolute',
-    right: 12,
-    top: 0,
-    bottom: 0,
-    justifyContent: 'center',
-  },
-  dateInput: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: theme.spacing.sm,
-  },
-  dateText: {
-    fontSize: theme.fontSize.base,
-    lineHeight: 22,
-  },
-  // Select input (GRN picker) - row layout with icon
-  selectInput: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: theme.spacing.sm,
-  },
-  selectText: {
-    flex: 1,
-    fontSize: theme.fontSize.base,
-    lineHeight: 22,
-  },
-  selectTextContainer: {
-    flex: 1,
-  },
-  selectIcons: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  iconButton: {
-    padding: 4,
-  },
-  // Fiori: Read-only field
-  readOnlyField: {
-    borderWidth: 0,
-    borderRadius: theme.borderRadius.md,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    minHeight: 44,
-    justifyContent: 'center',
-  },
-  readOnlyText: {
-    fontSize: theme.fontSize.base,
-    lineHeight: 22,
-  },
-  // Fiori: Helper text - 13pt
-  helperText: {
-    fontSize: 13,
-    marginTop: 4,
-    lineHeight: 18,
-  },
-  // Fiori: Error text - 13pt
-  errorText: {
-    fontSize: 13,
-    marginTop: 4,
-    lineHeight: 18,
-  },
-  // Fiori: Switch cell - 44pt min height, 16pt horizontal padding
-  switchRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: theme.borderRadius.md,
-    minHeight: 44,
-  },
-  switchLabelContainer: {
-    flex: 1,
-    marginRight: 12,
-  },
-});

@@ -1,75 +1,19 @@
 /**
- * InvoiceLineItemsTab Component - 100% SAP Fiori Compliant
+ * InvoiceLineItemsTab Component
  *
- * Line items tab showing invoice items grouped by GRN item
- * Based on SAP Fiori for iOS Design Guidelines
- *
- *
- * Features:
- * - FlatList for performance with large datasets
- * - Grouped accordion view with expandable dispatch items
- * - Empty state and loading state
- * - Summary footer with totals
- * - Dynamic colors for dark mode support
+ * Line items of an invoice grouped by GRN item (style guide §13.6), with
+ * empty and loading states and a summary card whose amounts are right-aligned
+ * tabular figures (§13.11).
  */
 
-import React, { useMemo } from 'react';
-import { View, Text, StyleSheet, FlatList, ActivityIndicator, Platform, ViewStyle } from 'react-native';
+import React from 'react';
+import { View, Text, StyleSheet, FlatList, ActivityIndicator } from 'react-native';
 import { InvoiceLineItemGroup, InvoiceLineItemGroupData, DispatchLineItem } from './InvoiceLineItemGroup';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { formatCurrency } from '@/utils/formatters';
-import { useListColors } from '@/hooks/useListColors';
-import { calculateItemAmounts, roundMoney } from '@/utils/invoiceCalculations';
-
-// ============================================================================
-// FIORI DESIGN TOKENS (Static values only - colors are dynamic)
-// ============================================================================
-const FIORI_STATIC = {
-  spacing: {
-    xs: 4,
-    sm: 8,
-    md: 12,
-    lg: 16,
-    xl: 20,
-    xxl: 24,
-  },
-  typography: {
-    headline: {
-      fontSize: 17,
-      fontWeight: '600' as const,
-    },
-    body: {
-      fontSize: 15,
-      fontWeight: '400' as const,
-    },
-    bodyMedium: {
-      fontSize: 15,
-      fontWeight: '500' as const,
-    },
-    caption: {
-      fontSize: 13,
-      fontWeight: '400' as const,
-    },
-  },
-  dimensions: {
-    cardRadius: 12,
-    cardPadding: 16,
-    avatarSize: 44,
-  },
-  shadows: {
-    card: Platform.select({
-      ios: {
-        shadowColor: '#000000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.08,
-        shadowRadius: 3,
-      },
-      android: {
-        elevation: 2,
-      },
-    }) as ViewStyle,
-  },
-} as const;
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { iconSize, layout, radius, space, typography } from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
+import { calculateItemAmounts, roundMoney, formatInvoiceAmount } from '@/utils/invoiceCalculations';
 
 // Legacy interface for backward compatibility
 export interface InvoiceLineItem {
@@ -204,6 +148,93 @@ export const groupItemsByGrnItem = (
   return Array.from(groupMap.values());
 };
 
+const formatCount = (value: number) => new Intl.NumberFormat('en-IN').format(value);
+
+const makeStyles = (t: ThemeTokens) => ({
+  container: { flex: 1, backgroundColor: t.background.base },
+  listContent: { flexGrow: 1, paddingVertical: space.sm },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    padding: space.xxl,
+    minHeight: 400,
+    gap: space.sm,
+  },
+  emptyTitle: { ...typography.title3, color: t.text.primary, textAlign: 'center' as const, marginTop: space.sm },
+  emptySubtitle: { ...typography.subhead, color: t.text.secondary, textAlign: 'center' as const },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    padding: space.xxl,
+    backgroundColor: t.background.base,
+    gap: space.md,
+  },
+  loadingFooter: {
+    flexDirection: 'row' as const,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    padding: space.xl,
+    gap: space.md,
+  },
+  loadingText: { ...typography.body, color: t.text.secondary },
+  summaryCard: {
+    marginHorizontal: layout.marginCompact,
+    marginTop: space.sm,
+    marginBottom: space.xl,
+    backgroundColor: t.surface.card,
+    borderRadius: radius.card,
+    overflow: 'hidden' as const,
+    ...t.shadow[2],
+  },
+  summaryHeader: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    padding: space.lg,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.divider,
+  },
+  summaryAvatar: {
+    width: layout.avatar.md,
+    height: layout.avatar.md,
+    borderRadius: radius.pill,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    marginRight: space.md,
+    backgroundColor: t.brand.subtle,
+  },
+  summaryTitle: { ...typography.headline, color: t.text.primary },
+  summaryContent: { padding: space.lg },
+  summaryRow: {
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'center' as const,
+    gap: space.md,
+    paddingVertical: space.sm,
+  },
+  summaryLabel: { ...typography.body, color: t.text.secondary, flexShrink: 1 },
+  summaryValue: {
+    ...typography.body,
+    color: t.text.primary,
+    textAlign: 'right' as const,
+    fontVariant: ['tabular-nums' as const],
+  },
+  summaryRowTotal: {
+    paddingTop: space.md,
+    marginTop: space.sm,
+    borderTopWidth: 1,
+    borderTopColor: t.border.separator,
+  },
+  summaryLabelTotal: { ...typography.headline, color: t.text.primary },
+  summaryValueTotal: {
+    ...typography.headline,
+    color: t.text.primary,
+    textAlign: 'right' as const,
+    fontVariant: ['tabular-nums' as const],
+  },
+});
+
 export const InvoiceLineItemsTab: React.FC<InvoiceLineItemsTabProps> = ({
   items,
   loading = false,
@@ -213,117 +244,14 @@ export const InvoiceLineItemsTab: React.FC<InvoiceLineItemsTabProps> = ({
   on_view_grn,
   on_view_dispatch,
 }) => {
-  // Theme colors for dark mode support
-  const colors = useListColors();
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
 
   // Group items by GRN item
   const groupedItems = React.useMemo(
     () => groupItemsByGrnItem(items, on_view_grn, on_view_dispatch),
     [items, on_view_grn, on_view_dispatch]
   );
-
-  // Dynamic styles based on theme
-  const dynamicStyles = useMemo(() => StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor: colors.gray50,
-    },
-    emptyContainer: {
-      flex: 1,
-      justifyContent: 'center',
-      alignItems: 'center',
-      padding: FIORI_STATIC.spacing.xxl,
-      minHeight: 400,
-    },
-    emptyIconContainer: {
-      width: 80,
-      height: 80,
-      borderRadius: 40,
-      backgroundColor: colors.cellBackground,
-      alignItems: 'center',
-      justifyContent: 'center',
-      marginBottom: FIORI_STATIC.spacing.lg,
-      ...FIORI_STATIC.shadows.card,
-    },
-    emptyTitle: {
-      ...FIORI_STATIC.typography.headline,
-      color: colors.gray900,
-      marginBottom: FIORI_STATIC.spacing.sm,
-      textAlign: 'center',
-    },
-    emptySubtitle: {
-      ...FIORI_STATIC.typography.body,
-      color: colors.gray600,
-      textAlign: 'center',
-      lineHeight: 20,
-    },
-    loadingContainer: {
-      flex: 1,
-      justifyContent: 'center',
-      alignItems: 'center',
-      padding: FIORI_STATIC.spacing.xxl,
-      backgroundColor: colors.gray50,
-    },
-    loadingText: {
-      ...FIORI_STATIC.typography.body,
-      color: colors.gray600,
-      marginLeft: FIORI_STATIC.spacing.md,
-    },
-    summaryCard: {
-      marginHorizontal: FIORI_STATIC.spacing.lg,
-      marginTop: FIORI_STATIC.spacing.sm,
-      marginBottom: FIORI_STATIC.spacing.xl,
-      backgroundColor: colors.cellBackground,
-      borderRadius: FIORI_STATIC.dimensions.cardRadius,
-      borderWidth: 1,
-      borderColor: colors.cellDivider,
-      overflow: 'hidden',
-      ...FIORI_STATIC.shadows.card,
-    },
-    summaryHeader: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      padding: FIORI_STATIC.dimensions.cardPadding,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.cellDivider,
-    },
-    summaryAvatar: {
-      width: FIORI_STATIC.dimensions.avatarSize,
-      height: FIORI_STATIC.dimensions.avatarSize,
-      borderRadius: FIORI_STATIC.dimensions.avatarSize / 2,
-      alignItems: 'center',
-      justifyContent: 'center',
-      marginRight: FIORI_STATIC.spacing.md,
-      backgroundColor: colors.primaryLight,
-    },
-    summaryTitle: {
-      ...FIORI_STATIC.typography.headline,
-      color: colors.gray900,
-    },
-    summaryLabel: {
-      ...FIORI_STATIC.typography.body,
-      color: colors.gray600,
-    },
-    summaryValue: {
-      ...FIORI_STATIC.typography.bodyMedium,
-      color: colors.gray900,
-    },
-    summaryRowTotal: {
-      paddingTop: FIORI_STATIC.spacing.md,
-      marginTop: FIORI_STATIC.spacing.sm,
-      borderTopWidth: 2,
-      borderTopColor: colors.cellDivider,
-    },
-    summaryLabelTotal: {
-      ...FIORI_STATIC.typography.headline,
-      color: colors.gray900,
-    },
-    summaryValueTotal: {
-      fontSize: 18,
-      fontWeight: '700',
-      color: colors.success,
-    },
-  }), [colors]);
 
   const renderGroupItem = ({ item }: { item: InvoiceLineItemGroupData }) => (
     <InvoiceLineItemGroup
@@ -336,24 +264,29 @@ export const InvoiceLineItemsTab: React.FC<InvoiceLineItemsTabProps> = ({
     if (loading) return null;
 
     return (
-      <View style={dynamicStyles.emptyContainer}>
-        <View style={dynamicStyles.emptyIconContainer}>
-          <Icon name="receipt-text-outline" size={48} color={colors.gray500} />
-        </View>
-        <Text style={dynamicStyles.emptyTitle}>No line items</Text>
-        <Text style={dynamicStyles.emptySubtitle}>
-          This invoice does not contain any line items
+      <View style={styles.emptyContainer}>
+        <Icon name="file-document-outline" size={iconSize.hero} color={t.icon.secondary} />
+        <Text style={styles.emptyTitle} accessibilityRole="header">No line items</Text>
+        <Text style={styles.emptySubtitle}>
+          This invoice has no line items. Items billed on it appear here.
         </Text>
       </View>
     );
   };
 
+  const renderSummaryRow = (label: string, value: string) => (
+    <View style={styles.summaryRow} accessible accessibilityLabel={`${label}, ${value}`}>
+      <Text style={styles.summaryLabel}>{label}</Text>
+      <Text style={styles.summaryValue}>{value}</Text>
+    </View>
+  );
+
   const renderFooter = () => {
     if (loading) {
       return (
-        <View style={styles.loadingFooter}>
-          <ActivityIndicator size="small" color={colors.primary} />
-          <Text style={dynamicStyles.loadingText}>Loading items...</Text>
+        <View style={styles.loadingFooter} accessibilityRole="progressbar" accessibilityState={{ busy: true }}>
+          <ActivityIndicator size="small" color={t.brand.tint} />
+          <Text style={styles.loadingText}>Loading items…</Text>
         </View>
       );
     }
@@ -361,41 +294,28 @@ export const InvoiceLineItemsTab: React.FC<InvoiceLineItemsTabProps> = ({
     // Summary footer
     if (groupedItems.length > 0 && (total_items !== undefined || total_dispatch_qty !== undefined || total_amount !== undefined)) {
       return (
-        <View style={dynamicStyles.summaryCard}>
-          {/* Card Header */}
-          <View style={dynamicStyles.summaryHeader}>
-            <View style={dynamicStyles.summaryAvatar}>
-              <Icon name="sigma" size={20} color={colors.primary} />
+        <View style={styles.summaryCard}>
+          <View style={styles.summaryHeader}>
+            <View style={styles.summaryAvatar}>
+              <Icon name="sigma" size={iconSize.md} color={t.brand.tint} />
             </View>
-            <Text style={dynamicStyles.summaryTitle}>Invoice Summary</Text>
+            <Text style={styles.summaryTitle} accessibilityRole="header">Invoice summary</Text>
           </View>
 
-          {/* Summary Content */}
           <View style={styles.summaryContent}>
-            <View style={styles.summaryRow}>
-              <Text style={dynamicStyles.summaryLabel}>Total Items</Text>
-              <Text style={dynamicStyles.summaryValue}>{total_items ?? groupedItems.length}</Text>
-            </View>
-            <View style={styles.summaryRow}>
-              <Text style={dynamicStyles.summaryLabel}>GRN Items</Text>
-              <Text style={dynamicStyles.summaryValue}>{groupedItems.length}</Text>
-            </View>
-            <View style={styles.summaryRow}>
-              <Text style={dynamicStyles.summaryLabel}>Dispatch Entries</Text>
-              <Text style={dynamicStyles.summaryValue}>{items.length}</Text>
-            </View>
-            {total_dispatch_qty !== undefined && (
-              <View style={styles.summaryRow}>
-                <Text style={dynamicStyles.summaryLabel}>Total Dispatch Qty</Text>
-                <Text style={dynamicStyles.summaryValue}>{total_dispatch_qty}</Text>
-              </View>
-            )}
+            {renderSummaryRow('Total items', formatCount(total_items ?? groupedItems.length))}
+            {renderSummaryRow('GRN items', formatCount(groupedItems.length))}
+            {renderSummaryRow('Dispatch entries', formatCount(items.length))}
+            {total_dispatch_qty !== undefined &&
+              renderSummaryRow('Total dispatch qty', formatCount(total_dispatch_qty))}
             {total_amount !== undefined && (
-              <View style={[styles.summaryRow, dynamicStyles.summaryRowTotal]}>
-                <Text style={dynamicStyles.summaryLabelTotal}>Total Amount</Text>
-                <Text style={dynamicStyles.summaryValueTotal}>
-                  {formatCurrency(total_amount)}
-                </Text>
+              <View
+                style={[styles.summaryRow, styles.summaryRowTotal]}
+                accessible
+                accessibilityLabel={`Total amount, ${formatInvoiceAmount(total_amount)}`}
+              >
+                <Text style={styles.summaryLabelTotal}>Total amount</Text>
+                <Text style={styles.summaryValueTotal}>{formatInvoiceAmount(total_amount)}</Text>
               </View>
             )}
           </View>
@@ -408,15 +328,15 @@ export const InvoiceLineItemsTab: React.FC<InvoiceLineItemsTabProps> = ({
 
   if (loading && items.length === 0) {
     return (
-      <View style={dynamicStyles.loadingContainer}>
-        <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={dynamicStyles.loadingText}>Loading items...</Text>
+      <View style={styles.loadingContainer} accessibilityRole="progressbar" accessibilityState={{ busy: true }}>
+        <ActivityIndicator size="large" color={t.brand.tint} />
+        <Text style={styles.loadingText}>Loading items…</Text>
       </View>
     );
   }
 
   return (
-    <View style={dynamicStyles.container}>
+    <View style={styles.container}>
       <FlatList
         data={groupedItems}
         renderItem={renderGroupItem}
@@ -433,28 +353,3 @@ export const InvoiceLineItemsTab: React.FC<InvoiceLineItemsTabProps> = ({
     </View>
   );
 };
-
-// ============================================================================
-// STYLES (Static layout only - colors are in dynamicStyles)
-// ============================================================================
-const styles = StyleSheet.create({
-  listContent: {
-    flexGrow: 1,
-    paddingVertical: FIORI_STATIC.spacing.sm,
-  },
-  loadingFooter: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: FIORI_STATIC.spacing.xl,
-  },
-  summaryContent: {
-    padding: FIORI_STATIC.dimensions.cardPadding,
-  },
-  summaryRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: FIORI_STATIC.spacing.sm,
-  },
-});

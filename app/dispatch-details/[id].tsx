@@ -13,14 +13,17 @@
  */
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { View, StyleSheet, Alert, Text, TouchableOpacity, Platform, Pressable } from 'react-native';
+import { View, Alert, Text, Platform, Pressable } from 'react-native';
 import { DetailSkeleton } from '@/components/skeletons';
 import { isAbortError } from '@/hooks/useAbortableFetch';
 import { useLocalSearchParams, router, Stack } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import theme from '@/theme';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { iconSize, radius, space, touchTarget, typography } from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
+import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
 import { getDispatchDetails, DispatchDetailsResponse } from '@/services/dispatch-detail-service';
 import { deleteDispatch } from '@/services/dispatch-service';
 import { generateDispatchPDF } from '@/services/pdf-service';
@@ -44,76 +47,112 @@ import {
   DispatchImageData,
 } from '@/components/dispatch-details';
 import { ImageOverlay, ImageData } from '@/components/ImageOverlay';
-import { useFioriColors } from '@/theme/fioriColors';
 import * as ImagePicker from 'expo-image-picker';
 import { withNativeHandoff } from '@/config/nativeHandoff';
 import { uploadDispatchImage } from '@/features/dispatch/services/dispatchImageService';
 
 // ============================================================================
-// FIORI DESIGN TOKENS - Static values (typography, spacing, dimensions)
-// Colors are now dynamic via useFioriColors hook
+// STYLES (docs/STYLE_GUIDE.md §14.2 object page)
 // ============================================================================
-const FIORI_STATIC = {
-  spacing: {
-    xs: 4,
-    sm: 8,
-    md: 12,
-    lg: 16,
-    xl: 20,
-    xxl: 24,
+const makeStyles = (t: ThemeTokens) => ({
+  container: {
+    flex: 1,
+    backgroundColor: t.background.base,
   },
-  typography: {
-    largeTitle: {
-      fontSize: 22,
-      fontWeight: '700' as const,
-      letterSpacing: 0.35,
-    },
-    headline: {
-      fontSize: 17,
-      fontWeight: '600' as const,
-    },
-    body: {
-      fontSize: 15,
-      fontWeight: '400' as const,
-    },
-    caption: {
-      fontSize: 13,
-      fontWeight: '400' as const,
-    },
-    badge: {
-      fontSize: 10,
-      fontWeight: '700' as const,
-      letterSpacing: 0.5,
-    },
+  centerContainer: {
+    flex: 1,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    backgroundColor: t.background.base,
   },
-  dimensions: {
-    cardRadius: 12,
-    buttonHeight: 44,
-    buttonRadius: 8,
-    touchTarget: 44,
-    avatarSize: 40,
+  tabContent: {
+    flex: 1,
   },
-  shadows: {
-    card: Platform.select({
-      ios: {
-        shadowColor: '#000000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.08,
-        shadowRadius: 3,
-      },
-      android: {
-        elevation: 2,
-      },
-    }),
+  errorContainer: {
+    alignItems: 'center' as const,
+    padding: space.xl,
+    maxWidth: 320,
   },
-} as const;
+  errorTitle: {
+    ...typography.title3,
+    marginTop: space.lg,
+    color: t.text.primary,
+    textAlign: 'center' as const,
+  },
+  errorMessage: {
+    ...typography.subhead,
+    marginTop: space.sm,
+    color: t.text.secondary,
+    textAlign: 'center' as const,
+  },
+  retryButton: {
+    marginTop: space.xl,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    minHeight: touchTarget,
+    minWidth: 120,
+    paddingHorizontal: space.xl,
+    borderRadius: radius.button,
+    borderWidth: 1,
+    borderColor: t.border.button,
+    gap: space.sm,
+  },
+  retryButtonPressed: {
+    backgroundColor: t.brand.subtle,
+  },
+  retryButtonText: {
+    ...typography.callout,
+    color: t.brand.tint,
+  },
+  tertiaryButton: {
+    marginTop: space.sm,
+    minHeight: touchTarget,
+    justifyContent: 'center' as const,
+    paddingHorizontal: space.xl,
+    borderRadius: radius.button,
+  },
+  tertiaryButtonPressed: {
+    backgroundColor: t.brand.subtle,
+  },
+  tertiaryButtonText: {
+    ...typography.callout,
+    color: t.brand.tint,
+  },
+  backButton: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    minHeight: touchTarget,
+    paddingRight: space.sm,
+    marginLeft: -space.sm,
+  },
+  backButtonText: {
+    ...typography.body,
+    color: t.brand.tint,
+    marginLeft: -space.xs,
+  },
+  headerTitle: {
+    ...typography.headline,
+    color: t.text.primary,
+    textAlign: 'center' as const,
+  },
+  snackbar: {
+    backgroundColor: t.surface.inverse,
+    borderRadius: radius.button,
+  },
+  snackbarText: {
+    ...typography.subhead,
+    color: t.text.inverse,
+  },
+});
 
 function DispatchDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { user, session, userProfile } = useAppSelector((state) => state.auth);
   const { canUpdate, canDelete, isCustomer } = usePermissions();
   const insets = useSafeAreaInsets();
-  const FIORI = useFioriColors();
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
 
   // State
   const [activeTab, setActiveTab] = useState<TabKey>('items');
@@ -170,7 +209,7 @@ function DispatchDetailScreen() {
         setData(result.data);
         setError(null);
       } else {
-        setError(result.error || result.message || 'Failed to load dispatch details');
+        setError(result.error || result.message || "Check your connection and try again.");
       }
     } catch (err) {
       // Ignore abort errors - they're expected when navigating away
@@ -179,7 +218,7 @@ function DispatchDetailScreen() {
         return;
       }
       console.error('[DispatchDetailScreen] Exception:', err);
-      setError('Failed to load dispatch details. Please check your connection and try again.');
+      setError('Check your connection and try again.');
     } finally {
       // Only update loading state if not aborted
       if (!controller.signal.aborted) {
@@ -238,11 +277,11 @@ function DispatchDetailScreen() {
 
       if (result.success) {
         Alert.alert(
-          'Success',
-          result.message || 'Dispatch deleted successfully',
+          'Dispatch deleted',
+          data?.dispatch.disp_no ? `Dispatch ${data.dispatch.disp_no} is deleted.` : 'The dispatch is deleted.',
           [
             {
-              text: 'OK',
+              text: 'View dispatches',
               onPress: () => {
                 // Navigate back to dispatch list
                 router.replace('/dispatch');
@@ -254,17 +293,17 @@ function DispatchDetailScreen() {
         // Handle invoice blocking case specially
         if (result.blockingReason === 'invoices_exist') {
           Alert.alert(
-            'Cannot Delete Dispatch',
-            `${result.error}\n\n${result.instructions || 'Please delete all related invoices first.'}`,
-            [{ text: 'OK' }]
+            "Can't delete dispatch",
+            `${result.error}\n\n${result.instructions || 'Delete its invoices first, then try again.'}`,
+            [{ text: 'Close' }]
           );
         } else {
-          Alert.alert('Error', result.error || result.message || 'Failed to delete dispatch');
+          Alert.alert("Couldn't delete dispatch", result.error || result.message || 'Try again.');
         }
       }
     } catch (error) {
       console.error('[DispatchDetailScreen] Error deleting dispatch:', error);
-      Alert.alert('Error', 'An unexpected error occurred while deleting the dispatch');
+      Alert.alert("Couldn't delete dispatch", 'Check your connection and try again.');
     }
   };
 
@@ -280,7 +319,7 @@ function DispatchDetailScreen() {
       const pdfResult = await generateDispatchPDF(data.dispatch.disp_no);
 
       if (!pdfResult.success || !pdfResult.pdfUrl) {
-        Alert.alert('Error', pdfResult.error || 'Failed to generate PDF');
+        Alert.alert("Couldn't create the PDF", 'Check your connection and try again.');
         return;
       }
 
@@ -293,11 +332,11 @@ function DispatchDetailScreen() {
       );
 
       if (!shareResult.success) {
-        Alert.alert('Error', shareResult.error || 'Failed to share PDF');
+        Alert.alert("Couldn't share the PDF", 'Try again.');
       }
     } catch (error) {
       console.error('[DispatchDetailScreen] Share PDF error:', error);
-      Alert.alert('Error', 'Failed to share PDF');
+      Alert.alert("Couldn't share the PDF", 'Try again.');
     } finally {
       setIsShareLoading(false);
     }
@@ -324,173 +363,66 @@ function DispatchDetailScreen() {
     setOverlayVisible(true);
   };
 
-  // ============================================================================
-  // Dynamic styles based on theme
-  // ============================================================================
-  const dynamicStyles = useMemo(() => StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor: FIORI.colors.backgroundGrouped,
-    },
-    centerContainer: {
-      flex: 1,
-      justifyContent: 'center',
-      alignItems: 'center',
-      backgroundColor: FIORI.colors.backgroundGrouped,
-    },
-    tabContent: {
-      flex: 1,
-    },
-    errorContainer: {
-      alignItems: 'center',
-      padding: FIORI_STATIC.spacing.xl,
-      maxWidth: 300,
-    },
-    errorTitle: {
-      marginTop: FIORI_STATIC.spacing.md,
-      fontSize: 20,
-      fontWeight: '700',
-      color: FIORI.colors.textPrimary,
-    },
-    errorMessage: {
-      marginTop: FIORI_STATIC.spacing.sm,
-      fontSize: 15,
-      color: FIORI.colors.textSecondary,
-      textAlign: 'center',
-      lineHeight: 22,
-    },
-    retryButton: {
-      marginTop: FIORI_STATIC.spacing.xl,
-      flexDirection: 'row',
-      alignItems: 'center',
-      backgroundColor: FIORI.colors.tint,
-      paddingHorizontal: FIORI_STATIC.spacing.xl,
-      paddingVertical: FIORI_STATIC.spacing.md,
-      borderRadius: FIORI_STATIC.dimensions.buttonRadius,
-      gap: FIORI_STATIC.spacing.sm,
-    },
-    retryButtonText: {
-      color: FIORI.colors.iconOnPrimary,
-      fontSize: 15,
-      fontWeight: '600',
-    },
-    backButtonStyle: {
-      marginTop: FIORI_STATIC.spacing.md,
-      paddingHorizontal: FIORI_STATIC.spacing.xl,
-      paddingVertical: FIORI_STATIC.spacing.sm,
-    },
-    backButtonTextStyle: {
-      color: FIORI.colors.tint,
-      fontSize: 15,
-      fontWeight: '500',
-    },
-  }), [FIORI]);
-
-  const dynamicHeaderStyles = useMemo(() => StyleSheet.create({
-    navBar: {
-      backgroundColor: FIORI.colors.background,
-      borderBottomWidth: 1,
-      borderBottomColor: FIORI.colors.divider,
-      ...Platform.select({
-        ios: {
-          shadowColor: '#000000',
-          shadowOffset: { width: 0, height: 1 },
-          shadowOpacity: 0.06,
-          shadowRadius: 2,
-        },
-        android: {
-          elevation: 2,
-        },
-      }),
-    },
-    backButton: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      minHeight: 44,
-      paddingRight: 8,
-      marginLeft: -8,
-    },
-    backButtonText: {
-      fontSize: 17,
-      fontWeight: '400',
-      color: FIORI.colors.tint,
-      marginLeft: -4,
-    },
-    container: {
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    title: {
-      fontSize: 17,
-      fontWeight: '600',
-      color: FIORI.colors.textPrimary,
-      letterSpacing: -0.41,
-      textAlign: 'center',
-    },
-    subtitle: {
-      fontSize: 12,
-      fontWeight: '400',
-      color: FIORI.colors.textSecondary,
-      textAlign: 'center',
-      marginTop: 2,
-      maxWidth: 220,
-    },
-    date: {
-      fontSize: 11,
-      fontWeight: '500',
-      color: FIORI.colors.textTertiary,
-      textAlign: 'center',
-      marginTop: 1,
-    },
-  }), [FIORI]);
-
   // Prepare data for components
   if (!data) {
     return (
       <>
         <Stack.Screen
           options={{
-            title: loading ? 'Loading...' : error ? 'Error' : 'Dispatch Not Found',
+            title: !loading && !error ? 'Dispatch not found' : 'Dispatch',
             headerBackTitle: 'Back',
             headerShown: true,
+            headerStyle: { backgroundColor: t.surface.header },
+            headerShadowVisible: false,
+            headerTintColor: t.brand.tint,
+            headerTitleStyle: styles.headerTitle,
           }}
         />
-        <View style={dynamicStyles.centerContainer}>
+        <EdgeToEdgeStatusBar barStyle={t.statusBarStyle} />
+        <View style={styles.centerContainer}>
           {loading ? (
             <DetailSkeleton tabCount={5} cardCount={3} />
           ) : error ? (
-            <View style={dynamicStyles.errorContainer}>
-              <Icon name="alert-circle-outline" size={64} color={FIORI.colors.destructive} />
-              <Text style={dynamicStyles.errorTitle}>Failed to Load</Text>
-              <Text style={dynamicStyles.errorMessage}>{error}</Text>
-              <TouchableOpacity
-                style={dynamicStyles.retryButton}
+            <View style={styles.errorContainer}>
+              <Icon name="alert-circle-outline" size={iconSize.hero} color={t.status.negative.text} />
+              <Text style={styles.errorTitle} accessibilityRole="header">Couldn't load the dispatch</Text>
+              <Text style={styles.errorMessage}>{error}</Text>
+              <Pressable
+                style={({ pressed }) => [styles.retryButton, pressed && styles.retryButtonPressed]}
                 onPress={() => {
                   setLoading(true);
                   fetchDispatchDetails();
                 }}
+                accessibilityRole="button"
+                accessibilityLabel="Try loading the dispatch again"
               >
-                <Icon name="refresh" size={20} color={FIORI.colors.iconOnPrimary} />
-                <Text style={dynamicStyles.retryButtonText}>Try Again</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={dynamicStyles.backButtonStyle}
+                <Icon name="refresh" size={iconSize.md} color={t.brand.tint} />
+                <Text style={styles.retryButtonText}>Try again</Text>
+              </Pressable>
+              <Pressable
+                style={({ pressed }) => [styles.tertiaryButton, pressed && styles.tertiaryButtonPressed]}
                 onPress={() => router.back()}
+                accessibilityRole="button"
+                accessibilityLabel="Go back"
               >
-                <Text style={dynamicStyles.backButtonTextStyle}>Go Back</Text>
-              </TouchableOpacity>
+                <Text style={styles.tertiaryButtonText}>Go back</Text>
+              </Pressable>
             </View>
           ) : (
-            <View style={dynamicStyles.errorContainer}>
-              <Icon name="truck-delivery-outline" size={64} color={FIORI.colors.textTertiary} />
-              <Text style={dynamicStyles.errorTitle}>Dispatch Not Found</Text>
-              <Text style={dynamicStyles.errorMessage}>The requested dispatch could not be found.</Text>
-              <TouchableOpacity
-                style={dynamicStyles.backButtonStyle}
+            <View style={styles.errorContainer}>
+              <Icon name="truck-delivery-outline" size={iconSize.hero} color={t.icon.secondary} />
+              <Text style={styles.errorTitle} accessibilityRole="header">Dispatch not found</Text>
+              <Text style={styles.errorMessage}>
+                It may have been deleted. Go back to the dispatch list.
+              </Text>
+              <Pressable
+                style={({ pressed }) => [styles.tertiaryButton, pressed && styles.tertiaryButtonPressed]}
                 onPress={() => router.back()}
+                accessibilityRole="button"
+                accessibilityLabel="Go back"
               >
-                <Text style={dynamicStyles.backButtonTextStyle}>Go Back</Text>
-              </TouchableOpacity>
+                <Text style={styles.tertiaryButtonText}>Go back</Text>
+              </Pressable>
             </View>
           )}
         </View>
@@ -561,7 +493,7 @@ function DispatchDetailScreen() {
       if (Platform.OS !== 'android') {
         const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
         if (!permission.granted) {
-          setSnackbarMessage('Photo library permission is required to add a photo');
+          setSnackbarMessage('Allow photo access in Settings to add a photo.');
           setSnackbarVisible(true);
           return;
         }
@@ -579,15 +511,15 @@ function DispatchDetailScreen() {
       setIsUploadingImage(true);
       const result = await uploadDispatchImage(picked.assets[0], id);
       if (!result.success) {
-        setSnackbarMessage(result.error || 'Photo upload failed');
+        setSnackbarMessage("Couldn't upload the photo. Try again.");
         setSnackbarVisible(true);
         return;
       }
       await fetchDispatchDetails();
-      setSnackbarMessage('Photo added');
+      setSnackbarMessage('Photo added.');
       setSnackbarVisible(true);
     } catch {
-      setSnackbarMessage('Photo upload failed');
+      setSnackbarMessage("Couldn't upload the photo. Try again.");
       setSnackbarVisible(true);
     } finally {
       setIsUploadingImage(false);
@@ -602,54 +534,38 @@ function DispatchDetailScreen() {
     file_name: img.file_name,
   }));
 
-  // Format date for display - Fiori spec: keep it concise
-  const formattedDate = new Date(dispatch.disp_date || new Date()).toLocaleDateString('en-US', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  });
-
   return (
     <>
       <Stack.Screen
         options={{
           headerShown: true,
-          headerStyle: dynamicHeaderStyles.navBar,
-          headerTintColor: FIORI.colors.tint,
+          headerStyle: { backgroundColor: t.surface.header },
+          headerShadowVisible: false,
+          headerTintColor: t.brand.tint,
           headerTitleAlign: 'center',
           // Custom back button to ensure it always works
           headerLeft: () => (
             <Pressable
               onPress={() => router.back()}
-              style={dynamicHeaderStyles.backButton}
+              style={styles.backButton}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               accessibilityRole="button"
               accessibilityLabel="Go back"
             >
-              <Icon name="chevron-left" size={28} color={FIORI.colors.tint} />
-              <Text style={dynamicHeaderStyles.backButtonText}>Back</Text>
+              <Icon name="chevron-left" size={iconSize.lg + 4} color={t.brand.tint} />
+              <Text style={styles.backButtonText}>Back</Text>
             </Pressable>
           ),
           headerTitle: () => (
-            <View style={dynamicHeaderStyles.container}>
-              {/* Title - Dispatch Number (Fiori: mandatory, max 24 chars with subtitle) */}
-              <Text style={dynamicHeaderStyles.title} numberOfLines={1}>
-                {dispatch.disp_no}
-              </Text>
-
-              {/* Subtitle - Customer & Date (Fiori: optional) */}
-              {dispatch.customer_details?.name ? (
-                <Text style={dynamicHeaderStyles.subtitle} numberOfLines={1}>
-                  {dispatch.customer_details.name}
-                </Text>
-              ) : null}
-              <Text style={dynamicHeaderStyles.date}>{formattedDate}</Text>
-            </View>
+            <Text style={styles.headerTitle} numberOfLines={1} accessibilityRole="header">
+              Dispatch
+            </Text>
           ),
         }}
       />
+      <EdgeToEdgeStatusBar barStyle={t.statusBarStyle} />
 
-      <View style={[dynamicStyles.container, { paddingBottom: insets.bottom }]}>
+      <View style={[styles.container, { paddingBottom: insets.bottom }]}>
         {/* Hero Header - Quick Stats Only */}
         <DispatchHeroHeader
           disp_no={dispatch.disp_no}
@@ -670,7 +586,7 @@ function DispatchDetailScreen() {
         />
 
         {/* Tab Content */}
-        <View style={dynamicStyles.tabContent}>
+        <View style={styles.tabContent}>
           {activeTab === 'overview' && (
             <DispatchOverviewTab
               customer_details={dispatch.customer_details}
@@ -736,29 +652,29 @@ function DispatchDetailScreen() {
           const result = await printDispatchRange(start, end);
           if (result.success) {
             setSnackbarMessage(
-              `Print job submitted${result.print_job?.cups_job_id ? ` (Job #${result.print_job.cups_job_id})` : ''}`
+              `Print job${result.print_job?.cups_job_id ? ` ${result.print_job.cups_job_id}` : ''} sent to the printer.`
             );
           } else {
-            setSnackbarMessage(result.error || 'Failed to submit print job');
+            setSnackbarMessage("Couldn't send the print job. Try again.");
           }
           setSnackbarVisible(true);
           setShowPrintDialog(false);
         }}
-        title="Print Dispatch"
+        title="Print dispatches"
         defaultNumber={dispatch.disp_no || ''}
-        label="Dispatch Number"
-        placeholder="e.g., I4613"
+        label="Dispatch number"
+        placeholder="For example, I4613"
       />
 
-      {/* Snackbar for print feedback */}
+      {/* Snackbar for print and photo feedback (guide §13.9) */}
       <Portal>
         <Snackbar
           visible={snackbarVisible}
           onDismiss={() => setSnackbarVisible(false)}
-          duration={3000}
-          style={{ backgroundColor: '#323232' }}
+          duration={4000}
+          style={styles.snackbar}
         >
-          {snackbarMessage}
+          <Text style={styles.snackbarText}>{snackbarMessage}</Text>
         </Snackbar>
       </Portal>
     </>

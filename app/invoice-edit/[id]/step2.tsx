@@ -2,13 +2,15 @@ import React, { useState } from 'react';
 import {
   View,
   Text,
-  StyleSheet,
+  Pressable,
   Alert,
 } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import { router } from 'expo-router';
-import theme from '@/theme';
-import { useListColors } from '@/hooks/useListColors';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { iconSize, space } from '@/theme/tokens';
 import { useAppSelector, useAppDispatch } from '@/store/hooks';
 import {
   updateEditedItem,
@@ -24,12 +26,19 @@ import { InvoiceItemsTable } from '@/features/invoice/components/InvoiceItemsTab
 import { InvoiceItemCard } from '@/features/invoice/components/InvoiceItemCard';
 import { validateStep2 } from '@/features/invoice/schemas/invoiceValidation';
 import { InvoiceStepIndicator } from '@/components/InvoiceStepIndicator';
-import { INVOICE_STEPS, STEP_NUMBERS, getCompletedSteps } from '@/constants/invoiceSteps';
+import {
+  INVOICE_STEPS,
+  STEP_NUMBERS,
+  getCompletedSteps,
+  makeInvoiceWizardStyles,
+} from '@/constants/invoiceSteps';
 import { canNavigateFromStep2 } from '@/features/invoice/utils/swipeNavigationHelpers';
 
 export default function InvoiceEditStep2() {
   const dispatch = useAppDispatch();
-  const colors = useListColors(); // Dark mode support
+  const styles = useThemedStyles(makeInvoiceWizardStyles);
+  const t = useTokens();
+  const insets = useSafeAreaInsets();
   const header = useAppSelector(selectInvoiceFormHeader);
   const items = useAppSelector(selectInvoiceFormItems);
   const itemOverrides = useAppSelector(selectInvoiceFormItemOverrides);
@@ -50,18 +59,10 @@ export default function InvoiceEditStep2() {
     router.back();
   };
 
+  // The step header already asks "Discard changes to this invoice?" before calling this.
   const handleCancel = () => {
-    Alert.alert('Cancel Invoice Edit', 'Are you sure you want to cancel? All unsaved changes will be lost.', [
-      { text: 'Continue Editing', style: 'cancel' },
-      {
-        text: 'Discard',
-        style: 'destructive',
-        onPress: () => {
-          router.dismiss(3);
-          router.push('/invoices');
-        },
-      },
-    ]);
+    router.dismiss(3);
+    router.push('/invoices');
   };
 
   const handleNext = async () => {
@@ -72,13 +73,7 @@ export default function InvoiceEditStep2() {
       setLocalValidationErrors(validation.errors);
       dispatch(setValidationErrors(validation.errors));
 
-      const errorFields = Object.keys(validation.errors);
-      const errorMessage =
-        errorFields.length > 0
-          ? `Please check: ${errorFields.join(', ')}`
-          : 'Please ensure all items have valid pricing';
-
-      Alert.alert('Validation Error', errorMessage);
+      Alert.alert('Check the item prices', 'Every item needs a charge and a duration greater than 0.');
       return;
     }
 
@@ -89,8 +84,8 @@ export default function InvoiceEditStep2() {
 
     if (invalidItems.length > 0) {
       Alert.alert(
-        'Invalid Pricing',
-        `${invalidItems.length} item(s) have invalid pricing. Please ensure charge and duration are greater than 0.`
+        'Check the item prices',
+        `${invalidItems.length === 1 ? '1 item has' : `${invalidItems.length} items have`} no charge or duration. Enter a charge and duration greater than 0.`
       );
       return;
     }
@@ -122,7 +117,7 @@ export default function InvoiceEditStep2() {
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.gray50 }]}>
+    <View style={styles.container}>
       <InvoiceStepIndicator
         steps={INVOICE_STEPS}
         currentStep={STEP_NUMBERS.ITEMS}
@@ -142,10 +137,10 @@ export default function InvoiceEditStep2() {
         extraScrollHeight={120}
         keyboardShouldPersistTaps="handled"
       >
-        {/* Items Count Info */}
-        <View style={[styles.infoCard, { backgroundColor: colors.infoLight, borderLeftColor: colors.info }]}>
-          <Text style={[styles.infoLabel, { color: colors.info }]}>Total Items:</Text>
-          <Text style={[styles.infoValue, { color: colors.info }]}>{items.length}</Text>
+        {/* Item count */}
+        <View style={[styles.card, styles.kvRow]} accessible accessibilityLabel={`${items.length} ${items.length === 1 ? 'item' : 'items'} to invoice`}>
+          <Text style={styles.kvKey}>Items to invoice</Text>
+          <Text style={[styles.kvValue, styles.bold, styles.numeric]}>{items.length}</Text>
         </View>
 
         {/* Grouped Items Table */}
@@ -156,70 +151,47 @@ export default function InvoiceEditStep2() {
           renderItem={renderItem}
         />
 
-        {/* Helper Text */}
-        <View style={[styles.helperCard, { backgroundColor: colors.warningLight, borderLeftColor: colors.warning }]}>
-          <Text style={[styles.helperTitle, { color: colors.gray900 }]}>💡 Pricing Guide</Text>
-          <Text style={[styles.helperText, { color: colors.gray600 }]}>
-            • Tap on item group header to expand/collapse{'\n'}
-            • Use group pricing inputs to set pricing for all dispatches{'\n'}
-            • Expand dispatch to view/edit individual item pricing{'\n'}
-            • <Text style={styles.bold}>Duration</Text>: Number of months for storage (read-only){'\n'}
-            • <Text style={styles.bold}>Charge</Text>: Storage rate per unit per month{'\n'}
-            • <Text style={styles.bold}>Labour Rate</Text>: Handling charge per unit{'\n'}
-            • <Text style={styles.bold}>Tax</Text>: Tax percentage (e.g., 18 for 18%){'\n'}
-            • Items with custom pricing show orange "Custom" badge{'\n'}
-            • All amounts are calculated automatically
-          </Text>
+        {/* Pricing guide */}
+        <View style={styles.infoStrip}>
+          <Icon name="information" size={iconSize.md} color={t.status.informative.text} />
+          <View style={styles.infoStripContent}>
+            <Text style={styles.infoStripTitle} accessibilityRole="header">How pricing works</Text>
+            <Text style={styles.infoStripText}>
+              • Tap an item group to open or close it.{'\n'}
+              • Group prices apply to every dispatch in the group.{'\n'}
+              • Open a dispatch to change the price of one line.{'\n'}
+              • <Text style={styles.bold}>Duration</Text>: months in storage (calculated).{'\n'}
+              • <Text style={styles.bold}>Charge</Text>: storage rate per unit per month.{'\n'}
+              • <Text style={styles.bold}>Labour rate</Text>: handling charge per unit.{'\n'}
+              • <Text style={styles.bold}>Tax</Text>: tax percent, for example 18 for 18%.{'\n'}
+              • Lines with their own price show a &quot;Custom&quot; tag.{'\n'}
+              • Amounts are calculated for you.
+            </Text>
+          </View>
         </View>
       </KeyboardAwareScrollView>
+
+      {/* Bottom action bar */}
+      <View style={[styles.bottomBar, { paddingBottom: insets.bottom + space.md }]}>
+        <Pressable
+          style={({ pressed }) => [styles.button, styles.secondaryButton, pressed && styles.secondaryButtonPressed]}
+          onPress={handleBack}
+          accessibilityRole="button"
+          accessibilityLabel="Back to details"
+        >
+          <Icon name="chevron-left" size={iconSize.md} color={t.brand.tint} />
+          <Text style={styles.secondaryButtonText}>Back</Text>
+        </Pressable>
+        <Pressable
+          style={({ pressed }) => [styles.button, styles.primaryButton, pressed && styles.primaryButtonPressed]}
+          onPress={handleNext}
+          accessibilityRole="button"
+          accessibilityLabel="Next: review"
+        >
+          <Text style={styles.primaryButtonText}>Next: review</Text>
+          <Icon name="chevron-right" size={iconSize.md} color={t.brand.onFill} />
+        </Pressable>
+      </View>
     </View>
   );
 }
-
-// SAP Fiori Styles - colors applied inline for dark mode support
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    padding: theme.spacing.md,
-    gap: theme.spacing.md,
-  },
-  infoCard: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: theme.spacing.md,
-    borderRadius: theme.borderRadius.md,
-    borderLeftWidth: 4,
-  },
-  infoLabel: {
-    fontSize: theme.fontSize.base,
-    fontWeight: theme.fontWeight.semibold,
-  },
-  infoValue: {
-    fontSize: theme.fontSize.xl,
-    fontWeight: theme.fontWeight.bold,
-  },
-  helperCard: {
-    padding: theme.spacing.md,
-    borderRadius: theme.borderRadius.md,
-    borderLeftWidth: 4,
-    marginTop: theme.spacing.md,
-  },
-  helperTitle: {
-    fontSize: theme.fontSize.base,
-    fontWeight: theme.fontWeight.semibold,
-    marginBottom: theme.spacing.sm,
-  },
-  helperText: {
-    fontSize: 13,
-    lineHeight: 20,
-  },
-  bold: {
-    fontWeight: theme.fontWeight.semibold,
-  },
-});

@@ -3,16 +3,26 @@ import {
   View,
   Text,
   SectionList,
-  TouchableOpacity,
+  Pressable,
   StyleSheet,
   RefreshControl,
   ActivityIndicator,
-  Platform,
 } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import theme from '@/theme';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import {
+  fontWeight,
+  iconSize,
+  layout,
+  radius,
+  space,
+  touchTarget,
+  typography,
+} from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
+import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
 import { OrderService } from '@/services/order-service';
 import { CustomerDispatchItem } from '@/types/order.types';
 import DispatchGroupCard, { DispatchGroup } from '@/components/DispatchGroupCard';
@@ -34,47 +44,47 @@ const filterFields: FilterConfig['fields'] = [
   {
     type: 'autocomplete',
     key: 'items',
-    label: 'Item Name',
+    label: 'Item name',
     icon: '📦',
     autocompleteType: 'item',
-    placeholder: 'Select item...',
-    searchPlaceholder: 'Search items...',
+    placeholder: 'Choose item',
+    searchPlaceholder: 'Search items',
     renderAsChips: true,
     multiSelect: false,
   },
   {
     type: 'autocomplete',
     key: 'grNo',
-    label: 'GRN Number',
+    label: 'GRN number',
     icon: '📋',
     autocompleteType: 'grn',
-    placeholder: 'Select GRN...',
-    searchPlaceholder: 'Search GRN numbers...',
+    placeholder: 'Choose GRN',
+    searchPlaceholder: 'Search GRN numbers',
     renderAsChips: true,
     multiSelect: false,
   },
   {
     type: 'autocomplete',
     key: 'dispNo',
-    label: 'Dispatch Number',
+    label: 'Dispatch number',
     icon: '🚚',
     autocompleteType: 'dispatch',
-    placeholder: 'Select dispatch...',
-    searchPlaceholder: 'Search dispatch numbers...',
+    placeholder: 'Choose dispatch',
+    searchPlaceholder: 'Search dispatch numbers',
     renderAsChips: true,
     multiSelect: false,
   },
   {
     type: 'date-range',
     key: ['dateFrom', 'dateTo'],
-    label: 'Date Range',
+    label: 'Date range',
     icon: '📅',
     placeholder: ['From date', 'To date'],
   },
   {
     type: 'number-range',
     key: ['dispQtyMin', 'dispQtyMax'],
-    label: 'Dispatch Quantity',
+    label: 'Bags dispatched',
     icon: '🔢',
     placeholder: ['Min qty', 'Max qty'],
     minValue: 0,
@@ -84,6 +94,9 @@ const filterFields: FilterConfig['fields'] = [
 const CustomerDispatches: React.FC = () => {
   const { customerId } = useLocalSearchParams<{ customerId: string }>();
   const insets = useSafeAreaInsets();
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
+  const [loadError, setLoadError] = useState(false);
 
   const [dispatches, setDispatches] = useState<CustomerDispatchItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -108,7 +121,7 @@ const CustomerDispatches: React.FC = () => {
   const filterConfig = useMemo((): FilterConfig => ({
     persistKey: `dispatch-history-${customerId}`,
     debounceMs: 500,
-    title: 'Filter Dispatches',
+    title: 'Filter dispatches',
     fields: filterFields,
   }), [customerId]);
 
@@ -194,9 +207,13 @@ const CustomerDispatches: React.FC = () => {
         offsetRef.current = newOffset;
         setOffset(newOffset);
         setAggregations(responseData.aggregations);
+        setLoadError(false);
+      } else if (reset) {
+        setLoadError(true);
       }
     } catch (error) {
       console.error('[CustomerDispatches] Exception:', error);
+      if (reset) setLoadError(true);
     } finally {
       isFetchingRef.current = false;
       setLoading(false);
@@ -307,12 +324,12 @@ const CustomerDispatches: React.FC = () => {
       else if (sectionDate.getMonth() === today.getMonth() &&
           sectionDate.getFullYear() === today.getFullYear() &&
           diffDays >= 2 && diffDays <= 7) {
-        label = 'This Week';
+        label = 'This week';
       }
       // This Month (current month, older than 7 days)
       else if (sectionDate.getMonth() === today.getMonth() &&
           sectionDate.getFullYear() === today.getFullYear()) {
-        label = 'This Month';
+        label = 'This month';
       }
       // Last Month
       else {
@@ -320,7 +337,7 @@ const CustomerDispatches: React.FC = () => {
         lastMonth.setMonth(lastMonth.getMonth() - 1);
         if (sectionDate.getMonth() === lastMonth.getMonth() &&
             sectionDate.getFullYear() === lastMonth.getFullYear()) {
-          label = 'Last Month';
+          label = 'Last month';
         } else {
           // Specific month and year (e.g., "March 2025")
           const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
@@ -360,89 +377,43 @@ const CustomerDispatches: React.FC = () => {
   // Check if any filters are active (now provided by useFilterState hook)
   const hasActiveFilters = activeFilterCount > 0;
 
-  // Get section icon and color (Material Design 3 approach)
-  const getSectionStyle = (title: string) => {
+  // Section header icon (neutral; dates carry no status meaning)
+  const getSectionIcon = (title: string) => {
     switch (title) {
       case 'Today':
-        return {
-          iconName: 'calendar-today',
-          bgColor: '#F3E5F5',
-          textColor: '#62109F',
-          badgeColor: '#62109F'
-        };
+        return 'calendar-today';
       case 'Yesterday':
-        return {
-          iconName: 'calendar-minus',
-          bgColor: theme.colors.orange[50],
-          textColor: theme.colors.orange[900],
-          badgeColor: theme.colors.orange[700]
-        };
-      case 'This Week':
-        return {
-          iconName: 'calendar-week',
-          bgColor: theme.colors.purple[50],
-          textColor: theme.colors.purple[900],
-          badgeColor: theme.colors.purple[700]
-        };
-      case 'Last Week':
-        return {
-          iconName: 'calendar-range',
-          bgColor: theme.colors.indigo[50],
-          textColor: theme.colors.indigo[900],
-          badgeColor: theme.colors.indigo[700]
-        };
-      case 'This Month':
-        return {
-          iconName: 'calendar-month',
-          bgColor: theme.colors.green[50],
-          textColor: theme.colors.green[900],
-          badgeColor: theme.colors.green[700]
-        };
-      case 'Last Month':
-        return {
-          iconName: 'calendar-arrow-left',
-          bgColor: '#FFDEB9',
-          textColor: '#8B4513',
-          badgeColor: '#D2691E'
-        };
+        return 'calendar-minus';
+      case 'This week':
+        return 'calendar-week';
+      case 'Last week':
+        return 'calendar-range';
+      case 'This month':
+        return 'calendar-month';
+      case 'Last month':
+        return 'calendar-arrow-left';
       default:
-        // For specific months like "March 2025"
-        return {
-          iconName: 'calendar-blank',
-          bgColor: theme.colors.gray[100],
-          textColor: theme.colors.gray[900],
-          badgeColor: theme.colors.gray[700]
-        };
+        return 'calendar-blank-outline';
     }
   };
 
-  // Render section header with Material Design 3
+  // Render section header (guide §13.6 SectionHeader: footnote, capitals, text.secondary)
   const renderSectionHeader = useCallback(({ section }: { section: DispatchSection }) => {
-    const { iconName, bgColor, textColor, badgeColor } = getSectionStyle(section.title);
     const dispatchCount = section.data.length;
 
     return (
-      <View style={[styles.sectionHeader, { backgroundColor: bgColor }]}>
-        <Icon name={iconName} size={24} color={textColor} />
-        <Text
-          style={[styles.sectionHeaderText, { color: textColor }]}
-          accessibilityRole="header"
-          accessibilityLabel={`${section.title} section`}
-        >
-          {section.title.toUpperCase()}
-        </Text>
-        <View
-          style={[styles.sectionCountBadge, { backgroundColor: badgeColor }]}
-          accessible
-          accessibilityLabel={`${dispatchCount} ${dispatchCount === 1 ? 'dispatch' : 'dispatches'}`}
-        >
-          <Text style={styles.sectionCountText}>
-            {dispatchCount}
-          </Text>
-        </View>
+      <View
+        style={styles.sectionHeader}
+        accessible
+        accessibilityRole="header"
+        accessibilityLabel={`${section.title}, ${dispatchCount} ${dispatchCount === 1 ? 'dispatch' : 'dispatches'}`}
+      >
+        <Icon name={getSectionIcon(section.title)} size={iconSize.sm} color={t.icon.secondary} />
+        <Text style={styles.sectionHeaderText}>{section.title}</Text>
+        <Text style={styles.sectionCountText}>{dispatchCount}</Text>
       </View>
     );
-  }, []);
+  }, [styles, t]);
 
   // Render dispatch group card
   const renderDispatchGroupCard = useCallback(({ item }: { item: DispatchWithItems }) => (
@@ -452,39 +423,67 @@ const CustomerDispatches: React.FC = () => {
     />
   ), []);
 
-  // Render empty state with Material Design 3
+  // Render empty / error state (guide §13.6 ListEmptyState)
   const renderEmpty = () => {
     if (loading) return null;
+
+    if (loadError) {
+      return (
+        <View style={styles.emptyContainer}>
+          <Icon
+            name="alert-circle-outline"
+            size={iconSize.hero}
+            color={t.status.negative.text}
+            style={styles.emptyIcon}
+          />
+          <Text style={styles.emptyTitle} accessibilityRole="header">
+            Couldn't load dispatches
+          </Text>
+          <Text style={styles.emptySubtext}>
+            Check your connection and try again.
+          </Text>
+          <Pressable
+            style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryButtonPressed]}
+            onPress={onRefresh}
+            accessibilityLabel="Try loading dispatches again"
+            accessibilityRole="button"
+          >
+            <Icon name="refresh" size={iconSize.md} color={t.brand.tint} />
+            <Text style={styles.secondaryButtonText}>Try again</Text>
+          </Pressable>
+        </View>
+      );
+    }
 
     const hasFilters = hasActiveFilters;
 
     return (
-      <View style={styles.emptyContainer} accessible accessibilityRole="text">
+      <View style={styles.emptyContainer}>
         <Icon
-          name={hasFilters ? 'magnify' : 'package-variant'}
-          size={80}
-          color={theme.colors.gray[300]}
+          name={hasFilters ? 'magnify' : 'truck-delivery-outline'}
+          size={iconSize.hero}
+          color={t.icon.secondary}
           style={styles.emptyIcon}
         />
-        <Text style={styles.emptyTitle}>
-          {hasFilters ? 'No Matching Dispatches' : 'No Dispatch History'}
+        <Text style={styles.emptyTitle} accessibilityRole="header">
+          {hasFilters ? 'No dispatches match your filters' : 'No dispatches yet'}
         </Text>
         <Text style={styles.emptySubtext}>
           {hasFilters
-            ? 'Try adjusting your filters to see more results'
-            : 'This customer has no dispatch history yet'}
+            ? 'Try fewer filters to see more dispatches.'
+            : "This customer's dispatches appear here."}
         </Text>
         {hasFilters && (
-          <TouchableOpacity
-            style={styles.clearFiltersButton}
+          <Pressable
+            style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryButtonPressed]}
             onPress={clearFilter}
-            accessibilityLabel="Clear all filters"
-            accessibilityHint="Removes all active filters to show all dispatches"
+            accessibilityLabel="Clear filters"
+            accessibilityHint="Removes all filters to show every dispatch"
             accessibilityRole="button"
           >
-            <Icon name="filter-remove" size={20} color={theme.colors.white} />
-            <Text style={styles.clearFiltersButtonText}>Clear All Filters</Text>
-          </TouchableOpacity>
+            <Icon name="filter-remove-outline" size={iconSize.md} color={t.brand.tint} />
+            <Text style={styles.secondaryButtonText}>Clear filters</Text>
+          </Pressable>
         )}
       </View>
     );
@@ -495,98 +494,91 @@ const CustomerDispatches: React.FC = () => {
     if (!loadingMore) return null;
     return (
       <View style={styles.loadingFooter}>
-        <ActivityIndicator size="small" color={theme.colors.primary} />
-        <Text style={styles.loadingText}>Loading more...</Text>
+        <ActivityIndicator size="small" color={t.brand.tint} />
+        <Text style={styles.loadingText}>Loading more…</Text>
       </View>
     );
   };
 
-  // Render applied filters with Material Design 3 Chips
+  // One applied-filter chip (guide §13.5 FilterChip)
+  const renderChip = (key: string, label: string, onRemove: () => void, removeLabel: string) => (
+    <View key={key} style={styles.filterChip}>
+      <Text style={styles.filterChipText} maxFontSizeMultiplier={1.6}>{label}</Text>
+      <Pressable
+        onPress={onRemove}
+        style={styles.chipRemove}
+        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        accessibilityLabel={removeLabel}
+        accessibilityRole="button"
+      >
+        <Icon name="close" size={iconSize.sm} color={t.brand.tint} />
+      </Pressable>
+    </View>
+  );
+
+  // Render applied filters bar
   const renderAppliedFilters = () => {
     if (!hasActiveFilters) return null;
 
     return (
       <View style={styles.appliedFiltersContainer}>
         <View style={styles.appliedFiltersHeader}>
-          <Text style={styles.appliedFiltersTitle}>
-            Active Filters ({activeFilterCount})
+          <Text style={styles.appliedFiltersTitle} accessibilityRole="header">
+            Filters ({activeFilterCount})
           </Text>
-          <TouchableOpacity
+          <Pressable
             onPress={clearFilter}
+            style={styles.clearAllButton}
             accessibilityLabel="Clear all filters"
             accessibilityRole="button"
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
-            <Text style={styles.clearAllText}>Clear All</Text>
-          </TouchableOpacity>
+            <Text style={styles.clearAllText}>Clear all</Text>
+          </Pressable>
         </View>
         <View style={styles.appliedFiltersList}>
-          {getAutocompleteSelections(filters.items).map((item) => (
-            <View key={item.id} style={styles.filterChip}>
-              <Text style={styles.filterChipText}>Item: {item.label}</Text>
-              <TouchableOpacity
-                onPress={() => {
-                  const newItems = getAutocompleteSelections(filters.items).filter((i) => i.id !== item.id);
-                  updateFilter('items', newItems);
-                }}
-                hitSlop={{ top: 5, bottom: 5, left: 5, right: 5 }}
-                accessibilityLabel={`Remove ${item.label} filter`}
-                accessibilityRole="button"
-              >
-                <Icon name="close" size={16} color={theme.colors.primary} />
-              </TouchableOpacity>
-            </View>
-          ))}
-          {getAutocompleteSelections(filters.grNo).map((grn) => (
-            <View key={grn.id} style={styles.filterChip}>
-              <Text style={styles.filterChipText}>GRN: {grn.label}</Text>
-              <TouchableOpacity
-                onPress={() => {
-                  const newGrns = getAutocompleteSelections(filters.grNo).filter((g) => g.id !== grn.id);
-                  updateFilter('grNo', newGrns);
-                }}
-                hitSlop={{ top: 5, bottom: 5, left: 5, right: 5 }}
-                accessibilityLabel={`Remove ${grn.label} filter`}
-                accessibilityRole="button"
-              >
-                <Icon name="close" size={16} color={theme.colors.primary} />
-              </TouchableOpacity>
-            </View>
-          ))}
-          {getAutocompleteSelections(filters.dispNo).map((dispatch) => (
-            <View key={dispatch.id} style={styles.filterChip}>
-              <Text style={styles.filterChipText}>Dispatch: {dispatch.label}</Text>
-              <TouchableOpacity
-                onPress={() => {
-                  const newDispatches = getAutocompleteSelections(filters.dispNo).filter((d) => d.id !== dispatch.id);
-                  updateFilter('dispNo', newDispatches);
-                }}
-                hitSlop={{ top: 5, bottom: 5, left: 5, right: 5 }}
-                accessibilityLabel={`Remove ${dispatch.label} filter`}
-                accessibilityRole="button"
-              >
-                <Icon name="close" size={16} color={theme.colors.primary} />
-              </TouchableOpacity>
-            </View>
-          ))}
-          {(filters.dispQtyMin !== undefined || filters.dispQtyMax !== undefined) && (
-            <View style={styles.filterChip}>
-              <Text style={styles.filterChipText}>
-                Qty: {getNumberValue(filters.dispQtyMin) ?? '0'} - {getNumberValue(filters.dispQtyMax) ?? '∞'}
-              </Text>
-              <TouchableOpacity
-                onPress={() => {
-                  updateFilter('dispQtyMin', undefined);
-                  updateFilter('dispQtyMax', undefined);
-                }}
-                hitSlop={{ top: 5, bottom: 5, left: 5, right: 5 }}
-                accessibilityLabel="Remove quantity range filter"
-                accessibilityRole="button"
-              >
-                <Icon name="close" size={16} color={theme.colors.primary} />
-              </TouchableOpacity>
-            </View>
+          {getAutocompleteSelections(filters.items).map((item) =>
+            renderChip(
+              `item-${item.id}`,
+              `Item: ${item.label}`,
+              () => {
+                const newItems = getAutocompleteSelections(filters.items).filter((i) => i.id !== item.id);
+                updateFilter('items', newItems);
+              },
+              `Remove filter item ${item.label}`
+            )
           )}
+          {getAutocompleteSelections(filters.grNo).map((grn) =>
+            renderChip(
+              `grn-${grn.id}`,
+              `GRN ${grn.label}`,
+              () => {
+                const newGrns = getAutocompleteSelections(filters.grNo).filter((g) => g.id !== grn.id);
+                updateFilter('grNo', newGrns);
+              },
+              `Remove filter GRN ${grn.label}`
+            )
+          )}
+          {getAutocompleteSelections(filters.dispNo).map((dispatch) =>
+            renderChip(
+              `disp-${dispatch.id}`,
+              `Dispatch ${dispatch.label}`,
+              () => {
+                const newDispatches = getAutocompleteSelections(filters.dispNo).filter((d) => d.id !== dispatch.id);
+                updateFilter('dispNo', newDispatches);
+              },
+              `Remove filter dispatch ${dispatch.label}`
+            )
+          )}
+          {(filters.dispQtyMin !== undefined || filters.dispQtyMax !== undefined) &&
+            renderChip(
+              'qty',
+              `Bags: ${getNumberValue(filters.dispQtyMin) ?? 0} to ${getNumberValue(filters.dispQtyMax) ?? 'any'}`,
+              () => {
+                updateFilter('dispQtyMin', undefined);
+                updateFilter('dispQtyMax', undefined);
+              },
+              'Remove filter quantity range'
+            )}
         </View>
       </View>
     );
@@ -594,44 +586,53 @@ const CustomerDispatches: React.FC = () => {
 
   if (loading && !refreshing) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={theme.colors.primary} />
-        <Text style={styles.loadingText}>Loading dispatch history...</Text>
+      <View style={styles.loadingContainer} accessibilityLabel="Loading dispatches">
+        <EdgeToEdgeStatusBar barStyle={t.statusBarStyle} />
+        <ActivityIndicator size="large" color={t.brand.tint} />
+        <Text style={styles.loadingText}>Loading dispatches…</Text>
       </View>
     );
   }
 
   return (
     <View style={styles.container}>
-      {/* Material Design 3 Header */}
-      <View style={[styles.header, { paddingTop: insets.top + theme.spacing.md }]}>
-        <TouchableOpacity
+      <EdgeToEdgeStatusBar barStyle={t.statusBarStyle} />
+      {/* Header */}
+      <View style={[styles.header, { paddingTop: insets.top + space.sm }]}>
+        <Pressable
           onPress={() => router.back()}
-          style={styles.backButton}
-          accessibilityLabel="Go back"
+          style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
+          accessibilityLabel="Back"
           accessibilityRole="button"
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
-          <Icon name="arrow-left" size={24} color={theme.colors.gray[900]} />
-        </TouchableOpacity>
+          <Icon name="arrow-left" size={iconSize.lg} color={t.brand.tint} />
+        </Pressable>
         <View style={styles.headerContent}>
-          <Text style={styles.title}>Dispatch History</Text>
-          {customerName && <Text style={styles.subtitle}>{customerName}</Text>}
+          <Text style={styles.title} accessibilityRole="header" numberOfLines={2}>
+            Dispatch history
+          </Text>
+          {!!customerName && <Text style={styles.subtitle}>{customerName}</Text>}
         </View>
-        <TouchableOpacity
+        <Pressable
           onPress={() => setShowFilterModal(true)}
-          style={styles.filterButton}
-          accessibilityLabel="Open filters"
-          accessibilityHint="Filter dispatches by item, GRN, or date"
+          style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
+          accessibilityLabel={
+            activeFilterCount > 0
+              ? `Filter dispatches, ${activeFilterCount} ${activeFilterCount === 1 ? 'filter' : 'filters'} set`
+              : 'Filter dispatches'
+          }
+          accessibilityHint="Filter dispatches by item, GRN or date"
           accessibilityRole="button"
         >
-          <Icon name="filter-variant" size={24} color={theme.colors.white} />
+          <Icon name="filter-variant" size={iconSize.lg} color={t.brand.tint} />
           {activeFilterCount > 0 && (
             <View style={styles.filterBadge}>
-              <Text style={styles.filterBadgeText}>{activeFilterCount}</Text>
+              <Text style={styles.filterBadgeText} maxFontSizeMultiplier={1.6}>
+                {activeFilterCount}
+              </Text>
             </View>
           )}
-        </TouchableOpacity>
+        </Pressable>
       </View>
 
       {/* Applied Filters */}
@@ -649,13 +650,14 @@ const CustomerDispatches: React.FC = () => {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            colors={[theme.colors.primary]}
-            tintColor={theme.colors.primary}
+            colors={[t.brand.tint]}
+            tintColor={t.brand.tint}
+            progressBackgroundColor={t.surface.card}
           />
         }
         onEndReached={loadMore}
         onEndReachedThreshold={0.3}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[styles.listContent, { paddingBottom: space.xl + insets.bottom }]}
         showsVerticalScrollIndicator={false}
         stickySectionHeadersEnabled
         // Performance optimizations
@@ -677,221 +679,196 @@ const CustomerDispatches: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (t: ThemeTokens) => ({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.gray[50],
+    backgroundColor: t.background.base,
   },
   loadingContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: theme.colors.gray[50],
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    backgroundColor: t.background.base,
   },
   loadingText: {
-    marginTop: theme.spacing.md,
-    fontSize: theme.fontSize.base,
-    color: theme.colors.gray[600],
+    ...typography.subhead,
+    marginTop: space.md,
+    color: t.text.secondary,
   },
-  // Material Design 3 Header styles
+  // Stack-style header (guide §13.8)
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: theme.colors.white,
-    paddingHorizontal: theme.spacing.md,
-    paddingBottom: theme.spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.gray[200],
-    ...theme.shadows.sm,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
+    backgroundColor: t.surface.header,
+    paddingHorizontal: space.xs,
+    paddingBottom: space.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.divider,
+    gap: space.xs,
   },
-  backButton: {
-    padding: theme.spacing.sm,
-    marginRight: theme.spacing.xs,
+  iconButton: {
+    width: touchTarget,
+    height: touchTarget,
+    borderRadius: radius.pill,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+  },
+  iconButtonPressed: {
+    backgroundColor: t.surface.cardPressed,
   },
   headerContent: {
     flex: 1,
   },
   title: {
-    fontSize: theme.fontSize.xl,
-    fontWeight: theme.fontWeight.bold,
-    color: theme.colors.gray[900],
+    ...typography.headline,
+    color: t.text.primary,
   },
   subtitle: {
-    fontSize: theme.fontSize.sm,
-    color: theme.colors.gray[600],
-    marginTop: 2,
-  },
-  filterButton: {
-    backgroundColor: theme.colors.primary,
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'relative',
-    ...theme.shadows.md,
+    ...typography.subhead,
+    color: t.text.secondary,
   },
   filterBadge: {
-    position: 'absolute',
-    top: -4,
-    right: -4,
-    backgroundColor: theme.colors.red[600],
-    borderRadius: theme.borderRadius.full,
-    minWidth: 20,
-    height: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 4,
-    borderWidth: 2,
-    borderColor: theme.colors.white,
+    position: 'absolute' as const,
+    top: space.xs,
+    right: space.xxs,
+    backgroundColor: t.brand.fill,
+    borderRadius: radius.pill,
+    minWidth: 18,
+    minHeight: 18,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    paddingHorizontal: space.xs,
   },
   filterBadgeText: {
-    fontSize: 10,
-    fontWeight: theme.fontWeight.bold,
-    color: theme.colors.white,
+    ...typography.caption2,
+    fontWeight: fontWeight.semibold,
+    color: t.brand.onFill,
   },
   appliedFiltersContainer: {
-    backgroundColor: theme.colors.white,
-    paddingHorizontal: theme.spacing.lg,
-    paddingVertical: theme.spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.gray[100],
+    backgroundColor: t.surface.card,
+    paddingHorizontal: layout.marginCompact,
+    paddingVertical: space.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.divider,
   },
   appliedFiltersHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: theme.spacing.sm,
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'center' as const,
   },
   appliedFiltersTitle: {
-    fontSize: theme.fontSize.xs,
-    fontWeight: theme.fontWeight.semibold,
-    color: theme.colors.gray[600],
-    textTransform: 'uppercase',
+    ...typography.footnote,
+    fontWeight: fontWeight.semibold,
+    color: t.text.secondary,
+    textTransform: 'uppercase' as const,
     letterSpacing: 0.5,
   },
+  clearAllButton: {
+    minHeight: touchTarget,
+    justifyContent: 'center' as const,
+    paddingHorizontal: space.sm,
+  },
   clearAllText: {
-    fontSize: theme.fontSize.sm,
-    fontWeight: theme.fontWeight.semibold,
-    color: theme.colors.primary,
+    ...typography.callout,
+    color: t.brand.tint,
   },
   appliedFiltersList: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
+    flexDirection: 'row' as const,
+    flexWrap: 'wrap' as const,
+    gap: space.sm,
   },
-  // Material Design 3 Chip styles
   filterChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: theme.colors.primary + '15',
-    borderRadius: theme.borderRadius.xl,
-    paddingHorizontal: theme.spacing.md,
-    paddingVertical: 6,
-    gap: 8,
-    borderWidth: 1,
-    borderColor: theme.colors.primary + '40',
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    backgroundColor: t.brand.subtle,
+    borderRadius: radius.pill,
+    paddingLeft: space.md,
+    paddingRight: space.xs,
+    paddingVertical: space.xxs,
+    gap: space.xs,
   },
   filterChipText: {
-    fontSize: theme.fontSize.sm,
-    color: theme.colors.primary,
-    fontWeight: theme.fontWeight.medium,
+    ...typography.caption1,
+    fontWeight: fontWeight.semibold,
+    color: t.brand.tint,
   },
-  // Material Design 3 Section Header styles
+  chipRemove: {
+    width: 28,
+    height: 28,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+  },
   sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: theme.spacing.xl,
-    paddingVertical: 20,
-    gap: 12,
-    marginTop: theme.spacing.xl,
-    marginBottom: theme.spacing.lg,
-    marginHorizontal: 0,
-    width: '100%',
-    // iOS shadow
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.35,
-    shadowRadius: 8,
-    // Android elevation
-    elevation: 10,
-    // Ensure proper z-index for stacking
-    zIndex: 10,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    paddingHorizontal: layout.marginCompact,
+    paddingTop: space.xxl,
+    paddingBottom: space.sm,
+    gap: space.sm,
+    backgroundColor: t.background.base,
   },
   sectionHeaderText: {
+    ...typography.footnote,
     flex: 1,
-    fontSize: theme.fontSize.base,
-    fontWeight: theme.fontWeight.bold,
-    letterSpacing: 1,
-  },
-  sectionCountBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: theme.borderRadius.full,
-    minWidth: 32,
-    alignItems: 'center',
+    fontWeight: fontWeight.semibold,
+    color: t.text.secondary,
+    textTransform: 'uppercase' as const,
+    letterSpacing: 0.5,
   },
   sectionCountText: {
-    fontSize: theme.fontSize.sm,
-    fontWeight: theme.fontWeight.bold,
-    color: theme.colors.white,
+    ...typography.footnote,
+    color: t.text.secondary,
+    fontVariant: ['tabular-nums' as const],
   },
   listContent: {
     flexGrow: 1,
-    paddingBottom: 20,
   },
-  // Material Design 3 Empty State styles
   emptyContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: 80,
-    paddingHorizontal: theme.spacing.xl,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    paddingVertical: space.max,
+    paddingHorizontal: space.xl,
   },
   emptyIcon: {
-    marginBottom: theme.spacing.xl,
+    marginBottom: space.lg,
   },
   emptyTitle: {
-    fontSize: theme.fontSize['2xl'],
-    fontWeight: theme.fontWeight.bold,
-    color: theme.colors.gray[900],
-    textAlign: 'center',
-    marginBottom: theme.spacing.md,
-    marginTop: theme.spacing.md,
+    ...typography.title3,
+    color: t.text.primary,
+    textAlign: 'center' as const,
+    marginBottom: space.sm,
   },
   emptySubtext: {
-    fontSize: theme.fontSize.base,
-    color: theme.colors.gray[500],
-    textAlign: 'center',
-    lineHeight: 24,
-    marginBottom: theme.spacing.lg,
+    ...typography.subhead,
+    color: t.text.secondary,
+    textAlign: 'center' as const,
   },
-  clearFiltersButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: theme.spacing.sm,
-    marginTop: theme.spacing.lg,
-    paddingHorizontal: theme.spacing.xl,
-    paddingVertical: theme.spacing.md,
-    backgroundColor: theme.colors.primary,
-    borderRadius: theme.borderRadius.xl,
-    ...theme.shadows.md,
+  secondaryButton: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.sm,
+    marginTop: space.xl,
+    paddingHorizontal: space.xl,
+    minHeight: touchTarget,
+    borderRadius: radius.button,
+    borderWidth: 1,
+    borderColor: t.border.button,
   },
-  clearFiltersButtonText: {
-    fontSize: theme.fontSize.base,
-    fontWeight: theme.fontWeight.semibold,
-    color: theme.colors.white,
+  secondaryButtonPressed: {
+    backgroundColor: t.brand.subtle,
+  },
+  secondaryButtonText: {
+    ...typography.callout,
+    color: t.brand.tint,
   },
   loadingFooter: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: 20,
-    gap: 10,
+    flexDirection: 'row' as const,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    paddingVertical: space.xl,
+    gap: space.sm,
   },
 });
 

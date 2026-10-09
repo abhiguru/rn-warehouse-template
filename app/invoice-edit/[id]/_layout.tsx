@@ -1,7 +1,8 @@
 import React, { useEffect, useRef } from 'react';
 import { Stack, useLocalSearchParams, router, useNavigation } from 'expo-router';
-import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
-import theme from '@/theme';
+import { View, Text, ActivityIndicator } from 'react-native';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { space, typography, type ThemeTokens } from '@/theme/tokens';
 import { useAppSelector, useAppDispatch } from '@/store/hooks';
 import { usePermissions } from '@/hooks/usePermissions';
 import {
@@ -22,6 +23,8 @@ export default function InvoiceEditLayout() {
   const invoiceId = useAppSelector(selectInvoiceFormId);
   const { is_loading: isLoading } = useAppSelector((state) => state.invoiceForm);
   const { canUpdate } = usePermissions();
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
 
   // Protect edit routes - redirect if user cannot update
   useEffect(() => {
@@ -46,7 +49,7 @@ export default function InvoiceEditLayout() {
   useEffect(() => {
     const initializeEdit = async () => {
       if (!id) {
-        Alert.alert('Error', 'No Invoice ID provided');
+        Alert.alert("Couldn't open the invoice", 'The invoice link is incomplete. Open the invoice again from the list.');
         router.back();
         return;
       }
@@ -90,13 +93,13 @@ export default function InvoiceEditLayout() {
             grId: result.data.header.gr_id || '',
           }));
         } else {
-          Alert.alert('Error', result.message || 'Failed to load invoice data');
+          Alert.alert("Couldn't load the invoice", result.message || 'Check your connection and try again.');
           router.back();
         }
       } catch (error) {
         if (mountedRef.current && loadingIdRef.current === id) {
           console.error('[InvoiceEditLayout] Failed to load invoice data:', error);
-          Alert.alert('Error', 'Failed to load invoice data');
+          Alert.alert("Couldn't load the invoice", 'Check your connection and try again.');
           router.back();
         }
       } finally {
@@ -126,9 +129,9 @@ export default function InvoiceEditLayout() {
 
   if (isLoading) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={theme.colors.primary} />
-        <Text style={styles.loadingText}>Loading invoice data...</Text>
+      <View style={styles.loadingContainer} accessibilityRole="progressbar" accessibilityLabel="Loading invoice">
+        <ActivityIndicator size="large" color={t.brand.tint} />
+        <Text style={styles.loadingText}>Loading invoice…</Text>
       </View>
     );
   }
@@ -142,16 +145,16 @@ export default function InvoiceEditLayout() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (t: ThemeTokens) => ({
   loadingContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: theme.colors.gray[50],
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    backgroundColor: t.background.base,
   },
   loadingText: {
-    marginTop: 16,
-    fontSize: 16,
-    color: theme.colors.gray[600],
+    ...typography.body,
+    marginTop: space.lg,
+    color: t.text.secondary,
   },
 });

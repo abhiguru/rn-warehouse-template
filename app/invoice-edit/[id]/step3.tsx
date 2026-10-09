@@ -2,16 +2,17 @@ import React, { useState } from 'react';
 import {
   View,
   Text,
-  StyleSheet,
-  TouchableOpacity,
+  Pressable,
   Alert,
   ActivityIndicator,
 } from 'react-native';
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import { Snackbar } from 'react-native-paper';
 import { router } from 'expo-router';
-import theme from '@/theme';
-import { useListColors } from '@/hooks/useListColors';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { iconSize, space } from '@/theme/tokens';
 import { useAppSelector, useAppDispatch } from '@/store/hooks';
 import {
   updateDiscount,
@@ -35,13 +36,21 @@ import {
 } from '@/features/invoice/services/invoiceFormService';
 import { SavedInvoiceData } from '@/types/invoice.types';
 import { useRoleBasedAccess } from '@/hooks/useRoleBasedAccess';
-import { discountNeedsReason } from '@/utils/invoiceCalculations';
+import { discountNeedsReason, formatInvoiceAmount } from '@/utils/invoiceCalculations';
 import { InvoiceStepIndicator } from '@/components/InvoiceStepIndicator';
-import { INVOICE_STEPS, STEP_NUMBERS, getCompletedSteps } from '@/constants/invoiceSteps';
+import {
+  INVOICE_STEPS,
+  STEP_NUMBERS,
+  getCompletedSteps,
+  formatInvoiceDate,
+  makeInvoiceWizardStyles,
+} from '@/constants/invoiceSteps';
 
 export default function InvoiceEditStep3() {
   const dispatch = useAppDispatch();
-  const colors = useListColors(); // Dark mode support
+  const styles = useThemedStyles(makeInvoiceWizardStyles);
+  const t = useTokens();
+  const insets = useSafeAreaInsets();
   const header = useAppSelector(selectInvoiceFormHeader);
   const items = useAppSelector(selectInvoiceFormItems);
   const invoiceId = useAppSelector(selectInvoiceFormId);
@@ -68,57 +77,49 @@ export default function InvoiceEditStep3() {
     router.back();
   };
 
+  // The step header already asks "Discard changes to this invoice?" before calling this.
   const handleCancel = () => {
-    Alert.alert('Cancel Invoice Edit', 'Are you sure you want to cancel? All unsaved changes will be lost.', [
-      { text: 'Continue Editing', style: 'cancel' },
-      {
-        text: 'Discard',
-        style: 'destructive',
-        onPress: () => {
-          dispatch(resetForm());
-          router.dismiss(3);
-          router.push('/invoices');
-        },
-      },
-    ]);
+    dispatch(resetForm());
+    router.dismiss(3);
+    router.push('/invoices');
   };
 
   const handleSubmit = async () => {
     // Final validation check
     if (items.length === 0) {
-      Alert.alert('No Items', 'Cannot update invoice without items');
+      Alert.alert('No items to invoice', 'Go back to the details step and select a GRN that has dispatched items.');
       return;
     }
 
     if (!header.gr_id || !header.customer_id) {
-      Alert.alert('Invalid Data', 'Missing GRN or customer information');
+      Alert.alert('Select a GRN', 'Go back to the details step and select the GRN for this invoice.');
       return;
     }
 
     if (!invoiceId) {
-      Alert.alert('Error', 'Invoice ID not found');
+      Alert.alert("Couldn't find the invoice", 'Open the invoice again from the list.');
       return;
     }
 
     if (reasonRequired) {
-      Alert.alert('Reason Required', 'Enter the reason for this discount change before updating the invoice.');
+      Alert.alert('Enter a discount reason', 'Enter the reason for this discount change before updating the invoice.');
       return;
     }
 
     // Confirm submission
     Alert.alert(
-      'Confirm Update',
-      `Update invoice #${header.inv_no} for ${header.customer_name}?\n\nTotal: ₹${header.total.toFixed(2)}`,
+      `Update invoice ${header.inv_no}?`,
+      `${header.customer_name}\nTotal ${formatInvoiceAmount(header.total)}`,
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Update', style: 'default', onPress: submitInvoiceUpdate },
+        { text: 'Update invoice', style: 'default', onPress: submitInvoiceUpdate },
       ]
     );
   };
 
   const submitInvoiceUpdate = async () => {
     if (!invoiceId) {
-      Alert.alert('Error', 'Invoice ID not found');
+      Alert.alert("Couldn't find the invoice", 'Open the invoice again from the list.');
       return;
     }
 
@@ -145,11 +146,11 @@ export default function InvoiceEditStep3() {
         setShowSuccessDialog(true);
       } else {
         console.error('[InvoiceEditStep3] Failed to update invoice:', response.message);
-        Alert.alert('Error', response.message || 'Failed to update invoice');
+        Alert.alert("Couldn't update the invoice", response.message || 'Check your connection and try again.');
       }
     } catch (error: any) {
       console.error('[InvoiceEditStep3] Error updating invoice:', error);
-      Alert.alert('Error', error.message || 'An error occurred while updating the invoice');
+      Alert.alert("Couldn't update the invoice", 'Check your connection and try again.');
     } finally {
       dispatch(setIsSaving(false));
     }
@@ -191,7 +192,7 @@ export default function InvoiceEditStep3() {
         finYearNum
       );
       if (!pdfResult.success || !pdfResult.pdfUrl) {
-        setSnackbarMessage(pdfResult.error || 'Failed to generate PDF');
+        setSnackbarMessage("Couldn't create the PDF. Try again.");
         setSnackbarVisible(true);
         return;
       }
@@ -202,12 +203,12 @@ export default function InvoiceEditStep3() {
         `Invoice_${savedInvoiceData.invoice_no}_FY${header.inv_fin_year}.pdf`
       );
       if (!shareResult.success) {
-        setSnackbarMessage(shareResult.error || 'Failed to share PDF');
+        setSnackbarMessage("Couldn't share the PDF. Try again.");
         setSnackbarVisible(true);
       }
     } catch (error) {
       console.error('[InvoiceEditStep3] Share PDF error:', error);
-      setSnackbarMessage('Failed to share PDF');
+      setSnackbarMessage("Couldn't share the PDF. Try again.");
       setSnackbarVisible(true);
     } finally {
       setIsShareLoading(false);
@@ -240,8 +241,10 @@ export default function InvoiceEditStep3() {
     }
   };
 
+  const qty = (n: number) => new Intl.NumberFormat('en-IN').format(n);
+
   return (
-    <View style={[styles.container, { backgroundColor: colors.gray50 }]}>
+    <View style={styles.container}>
       <InvoiceStepIndicator
         steps={INVOICE_STEPS}
         currentStep={STEP_NUMBERS.REVIEW}
@@ -260,56 +263,72 @@ export default function InvoiceEditStep3() {
         enableOnAndroid={true}
         extraScrollHeight={100}
       >
-        {/* Items Summary Card */}
-        <View style={[styles.card, { backgroundColor: colors.cellBackground, borderColor: colors.cellDivider }]}>
-          <View style={[styles.cardHeader, { borderBottomColor: colors.cellDivider }]}>
-            <Text style={[styles.cardTitle, { color: colors.gray900 }]}>Items Summary</Text>
+        {/* Invoice details */}
+        <View>
+          <View style={styles.sectionHeaderRow}>
+            <Text style={[styles.sectionHeader, styles.sectionHeaderInRow]} accessibilityRole="header">
+              Invoice details
+            </Text>
+            <Pressable
+              onPress={() => handleStepPress(STEP_NUMBERS.HEADER)}
+              style={styles.editLink}
+              accessibilityRole="link"
+              accessibilityLabel="Edit invoice details"
+            >
+              <Text style={styles.secondaryButtonText}>Edit</Text>
+            </Pressable>
           </View>
-          <View style={styles.cardContent}>
-            <View style={styles.summaryRow}>
-              <Text style={[styles.summaryLabel, { color: colors.gray600 }]}>Total GRN Qty:</Text>
-              <Text style={[styles.summaryValue, { color: colors.gray900 }]}>{totalGRQty}</Text>
+          <View style={styles.card}>
+            <View style={styles.kvRowStacked}>
+              <Text style={styles.kvKey}>Customer</Text>
+              <Text style={styles.kvValueStacked}>{header.customer_name}</Text>
             </View>
-            <View style={styles.summaryRow}>
-              <Text style={[styles.summaryLabel, { color: colors.gray600 }]}>Total Dispatch Qty:</Text>
-              <Text style={[styles.summaryValue, { color: colors.gray900 }]}>{totalDispatchQty}</Text>
+            <View style={[styles.kvRow, styles.kvDivider]}>
+              <Text style={styles.kvKey}>Invoice number</Text>
+              <Text style={[styles.kvValue, styles.numeric]}>{header.inv_no}</Text>
+            </View>
+            <View style={[styles.kvRow, styles.kvDivider]}>
+              <Text style={styles.kvKey}>Invoice date</Text>
+              <Text style={styles.kvValue}>{formatInvoiceDate(header.inv_date)}</Text>
+            </View>
+            <View style={[styles.kvRow, styles.kvDivider]}>
+              <Text style={styles.kvKey}>Financial year</Text>
+              <Text style={[styles.kvValue, styles.numeric]}>{header.inv_fin_year}</Text>
+            </View>
+            <View style={[styles.kvRow, styles.kvDivider]}>
+              <Text style={styles.kvKey}>GRN</Text>
+              <Text style={styles.kvValue}>{header.gr_no}</Text>
+            </View>
+            <View style={[styles.kvRow, styles.kvDivider]}>
+              <Text style={styles.kvKey}>One-time charge</Text>
+              <Text style={styles.kvValue}>{header.one_time_charge ? 'Yes' : 'No'}</Text>
             </View>
           </View>
         </View>
 
-        {/* Invoice Details Card */}
-        <View style={[styles.card, { backgroundColor: colors.cellBackground, borderColor: colors.cellDivider }]}>
-          <View style={[styles.cardHeader, { borderBottomColor: colors.cellDivider }]}>
-            <Text style={[styles.cardTitle, { color: colors.gray900 }]}>Invoice Details</Text>
+        {/* Items */}
+        <View>
+          <View style={styles.sectionHeaderRow}>
+            <Text style={[styles.sectionHeader, styles.sectionHeaderInRow]} accessibilityRole="header">
+              Items
+            </Text>
+            <Pressable
+              onPress={() => handleStepPress(STEP_NUMBERS.ITEMS)}
+              style={styles.editLink}
+              accessibilityRole="link"
+              accessibilityLabel="Edit items"
+            >
+              <Text style={styles.secondaryButtonText}>Edit</Text>
+            </Pressable>
           </View>
-          <View style={styles.cardContent}>
-            <View style={styles.summaryRowColumn}>
-              <Text style={[styles.summaryLabel, { color: colors.gray600 }]}>Customer:</Text>
-              <Text style={[styles.summaryValueMultiline, { color: colors.gray900 }]}>{header.customer_name}</Text>
+          <View style={styles.card}>
+            <View style={styles.kvRow}>
+              <Text style={styles.kvKey}>Quantity received on the GRN</Text>
+              <Text style={[styles.kvValue, styles.numeric]}>{qty(totalGRQty)}</Text>
             </View>
-            <View style={styles.summaryRow}>
-              <Text style={[styles.summaryLabel, { color: colors.gray600 }]}>Invoice Number:</Text>
-              <Text style={[styles.summaryValue, { color: colors.gray900 }]}>#{header.inv_no}</Text>
-            </View>
-            <View style={styles.summaryRow}>
-              <Text style={[styles.summaryLabel, { color: colors.gray600 }]}>Invoice Date:</Text>
-              <Text style={[styles.summaryValue, { color: colors.gray900 }]}>
-                {new Date(header.inv_date).toLocaleDateString()}
-              </Text>
-            </View>
-            <View style={styles.summaryRow}>
-              <Text style={[styles.summaryLabel, { color: colors.gray600 }]}>Financial Year:</Text>
-              <Text style={[styles.summaryValue, { color: colors.gray900 }]}>{header.inv_fin_year}</Text>
-            </View>
-            <View style={styles.summaryRow}>
-              <Text style={[styles.summaryLabel, { color: colors.gray600 }]}>GR Number:</Text>
-              <Text style={[styles.summaryValue, { color: colors.gray900 }]}>{header.gr_no}</Text>
-            </View>
-            <View style={styles.summaryRow}>
-              <Text style={[styles.summaryLabel, { color: colors.gray600 }]}>One-Time Charge:</Text>
-              <Text style={[styles.summaryValue, { color: colors.gray900 }]}>
-                {header.one_time_charge ? 'Yes' : 'No'}
-              </Text>
+            <View style={[styles.kvRow, styles.kvDivider]}>
+              <Text style={styles.kvKey}>Quantity dispatched</Text>
+              <Text style={[styles.kvValue, styles.numeric]}>{qty(totalDispatchQty)}</Text>
             </View>
           </View>
         </View>
@@ -322,23 +341,41 @@ export default function InvoiceEditStep3() {
           onDiscountReasonChange={handleDiscountReasonChange}
           reasonRequired={reasonRequired}
         />
-
-        {/* Update Invoice Button - Inline at bottom of content */}
-        <View style={styles.bottomButtonContainer}>
-          <TouchableOpacity
-            style={[styles.submitButton, { backgroundColor: colors.primary }, isSaving && styles.submitButtonDisabled]}
-            onPress={handleSubmit}
-            disabled={isSaving}
-            activeOpacity={0.8}
-          >
-            {isSaving ? (
-              <ActivityIndicator size="small" color={colors.white} />
-            ) : (
-              <Text style={[styles.submitButtonText, { color: colors.white }]}>Update Invoice ✓</Text>
-            )}
-          </TouchableOpacity>
-        </View>
       </KeyboardAwareScrollView>
+
+      {/* Bottom action bar */}
+      <View style={[styles.bottomBar, { paddingBottom: insets.bottom + space.md }]}>
+        <Pressable
+          style={({ pressed }) => [styles.button, styles.secondaryButton, pressed && styles.secondaryButtonPressed]}
+          onPress={handleBack}
+          disabled={isSaving}
+          accessibilityRole="button"
+          accessibilityLabel="Back to items"
+          accessibilityState={{ disabled: isSaving }}
+        >
+          <Icon name="chevron-left" size={iconSize.md} color={t.brand.tint} />
+          <Text style={styles.secondaryButtonText}>Back</Text>
+        </Pressable>
+        <Pressable
+          style={({ pressed }) => [styles.button, styles.primaryButton, pressed && styles.primaryButtonPressed]}
+          onPress={isSaving ? undefined : handleSubmit}
+          accessibilityRole="button"
+          accessibilityLabel={isSaving ? 'Saving invoice' : 'Update invoice'}
+          accessibilityState={{ busy: isSaving }}
+        >
+          {isSaving ? (
+            <>
+              <ActivityIndicator size="small" color={t.brand.onFill} />
+              <Text style={styles.primaryButtonText}>Saving…</Text>
+            </>
+          ) : (
+            <>
+              <Icon name="check" size={iconSize.md} color={t.brand.onFill} />
+              <Text style={styles.primaryButtonText}>Update invoice</Text>
+            </>
+          )}
+        </Pressable>
+      </View>
 
       {/* Success Dialog */}
       <InvoiceSuccessDialog
@@ -365,19 +402,19 @@ export default function InvoiceEditStep3() {
           const result = await printInvoiceRange(start, end);
           setShowPrintDialog(false);
           if (result.success) {
-            setSnackbarMessage(`Print job submitted for invoice ${start}${end && end !== start ? ` to ${end}` : ''}`);
+            setSnackbarMessage(end && end !== start ? `Invoices ${start} to ${end} sent to the printer.` : `Invoice ${start} sent to the printer.`);
           } else {
-            setSnackbarMessage(result.message || 'Failed to submit print job');
+            setSnackbarMessage("Couldn't print the invoice. Check the printer and try again.");
           }
           setSnackbarVisible(true);
           dispatch(resetForm());
           router.dismiss(3);
           router.push('/invoices');
         }}
-        title="Print Invoice"
+        title="Print invoice"
         defaultNumber={savedInvoiceData?.invoice_no?.toString() || ''}
-        label="Invoice Number"
-        placeholder="e.g., 123"
+        label="Invoice number"
+        placeholder="For example, 123"
       />
 
       {/* Snackbar for print status */}
@@ -386,7 +423,7 @@ export default function InvoiceEditStep3() {
         onDismiss={() => setSnackbarVisible(false)}
         duration={4000}
         action={{
-          label: 'OK',
+          label: 'Dismiss',
           onPress: () => setSnackbarVisible(false),
         }}
       >
@@ -396,80 +433,3 @@ export default function InvoiceEditStep3() {
   );
 }
 
-// SAP Fiori Styles - colors applied inline for dark mode support
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    padding: theme.spacing.md,
-    gap: theme.spacing.md,
-  },
-  card: {
-    borderRadius: theme.borderRadius.lg,
-    borderWidth: 1,
-    ...theme.shadows.sm,
-  },
-  cardHeader: {
-    padding: theme.spacing.md,
-    borderBottomWidth: 1,
-  },
-  cardTitle: {
-    fontSize: theme.fontSize.lg,
-    fontWeight: theme.fontWeight.semibold,
-  },
-  cardContent: {
-    padding: theme.spacing.md,
-  },
-  summaryRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: theme.spacing.sm,
-    minHeight: 44,
-  },
-  summaryLabel: {
-    fontSize: theme.fontSize.base,
-    lineHeight: 22,
-  },
-  summaryValue: {
-    fontSize: theme.fontSize.base,
-    fontWeight: theme.fontWeight.semibold,
-    lineHeight: 22,
-  },
-  summaryRowColumn: {
-    flexDirection: 'column',
-    alignItems: 'flex-start',
-    paddingVertical: theme.spacing.sm,
-  },
-  summaryValueMultiline: {
-    fontSize: theme.fontSize.base,
-    fontWeight: theme.fontWeight.semibold,
-    marginTop: theme.spacing.xs,
-    flexWrap: 'wrap',
-    lineHeight: 22,
-  },
-  bottomButtonContainer: {
-    marginTop: theme.spacing.xl,
-    marginBottom: theme.spacing.xl,
-  },
-  submitButton: {
-    paddingVertical: 11,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 44,
-    ...theme.shadows.md,
-  },
-  submitButtonDisabled: {
-    opacity: 0.3,
-  },
-  submitButtonText: {
-    fontSize: theme.fontSize.base,
-    fontWeight: theme.fontWeight.semibold,
-  },
-});

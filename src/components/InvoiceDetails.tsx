@@ -1,23 +1,25 @@
+/**
+ * InvoiceDetails: a self-contained invoice view (header, amounts and line items).
+ *
+ * The routed object page lives in app/invoice-details/[id].tsx; this component
+ * is kept for embedding. Styles follow docs/STYLE_GUIDE.md (§13.6 cells, §13.11
+ * calculation summary).
+ */
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   ScrollView,
-  StyleSheet,
   RefreshControl,
-} from 'react-native';
-import {
   Text,
-  Card,
-  Surface,
+  Pressable,
   ActivityIndicator,
-  Divider,
-  Chip,
-  Portal,
-  Snackbar,
-  IconButton,
-} from 'react-native-paper';
+  StyleSheet,
+} from 'react-native';
+import { Portal, Snackbar } from 'react-native-paper';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import theme from '@/theme';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { fontWeight, iconSize, radius, space, touchTarget, typography } from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
 import {
   getInvoiceDetails,
   getInvoiceItemsDetailed,
@@ -27,17 +29,143 @@ import {
   InvoiceItemsSummary
 } from '@/services/invoice-service';
 import { isAbortError } from '@/hooks/useAbortableFetch';
+import { formatInvoiceAmount, formatInvoiceDeduction } from '@/utils/invoiceCalculations';
 
 interface InvoiceDetailsProps {
   invoiceId: string;
   onBack?: () => void;
 }
 
+const formatDisplayDate = (value?: string) => {
+  if (!value) return '';
+  const date = new Date(value);
+  if (isNaN(date.getTime())) return '';
+  return date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+};
+
+const formatQty = (value?: number) => new Intl.NumberFormat('en-IN').format(value || 0);
+
+const makeStyles = (t: ThemeTokens) => ({
+  container: { flex: 1, backgroundColor: t.background.base },
+  content: { padding: space.lg, gap: space.lg },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    backgroundColor: t.background.base,
+    gap: space.lg,
+  },
+  loadingText: { ...typography.body, color: t.text.secondary },
+  topBar: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: space.sm },
+  backButton: {
+    width: touchTarget,
+    height: touchTarget,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    borderRadius: radius.pill,
+  },
+  backButtonPressed: { backgroundColor: t.surface.cardPressed },
+  pageTitle: { ...typography.title2, color: t.text.primary, flex: 1 },
+  card: {
+    backgroundColor: t.surface.card,
+    borderRadius: radius.card,
+    padding: space.lg,
+    ...t.shadow[2],
+  },
+  docType: { ...typography.footnote, color: t.text.secondary },
+  docNumber: { ...typography.title2, color: t.text.primary, fontVariant: ['tabular-nums' as const] },
+  docDate: { ...typography.subhead, color: t.text.secondary, marginTop: space.xxs },
+  infoRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.md,
+    paddingVertical: space.sm,
+    minHeight: 44,
+  },
+  infoTextContainer: { flex: 1, gap: space.xxs },
+  infoLabel: { ...typography.subhead, color: t.text.secondary },
+  infoValue: { ...typography.body, color: t.text.primary },
+  divider: { height: StyleSheet.hairlineWidth, backgroundColor: t.border.divider },
+  amountRow: {
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'center' as const,
+    gap: space.md,
+    paddingVertical: space.sm,
+  },
+  amountLabel: { ...typography.body, color: t.text.secondary, flexShrink: 1 },
+  amountValue: {
+    ...typography.body,
+    color: t.text.primary,
+    textAlign: 'right' as const,
+    fontVariant: ['tabular-nums' as const],
+  },
+  discountValue: { color: t.status.positive.text },
+  totalRow: {
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'center' as const,
+    gap: space.md,
+    marginTop: space.sm,
+    paddingTop: space.md,
+    borderTopWidth: 1,
+    borderTopColor: t.border.separator,
+  },
+  totalLabel: { ...typography.headline, color: t.text.primary },
+  totalValue: {
+    ...typography.headline,
+    color: t.text.primary,
+    textAlign: 'right' as const,
+    fontVariant: ['tabular-nums' as const],
+  },
+  sectionHeader: {
+    ...typography.footnote,
+    color: t.text.secondary,
+    textTransform: 'uppercase' as const,
+    letterSpacing: 0.5,
+    marginTop: space.sm,
+  },
+  summaryLine: { ...typography.subhead, color: t.text.secondary, fontVariant: ['tabular-nums' as const] },
+  itemHeader: {
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'flex-start' as const,
+    gap: space.md,
+  },
+  itemName: { ...typography.headline, color: t.text.primary, flex: 1 },
+  itemCharge: {
+    ...typography.headline,
+    color: t.text.primary,
+    textAlign: 'right' as const,
+    fontVariant: ['tabular-nums' as const],
+  },
+  itemSubtitle: { ...typography.subhead, color: t.text.secondary, marginTop: space.xxs },
+  detailsGrid: {
+    flexDirection: 'row' as const,
+    flexWrap: 'wrap' as const,
+    gap: space.md,
+    marginTop: space.md,
+    paddingTop: space.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: t.border.divider,
+  },
+  detailItem: { flexGrow: 1, flexBasis: '45%' as const, gap: space.xxs },
+  detailLabel: { ...typography.footnote, color: t.text.secondary },
+  detailValue: { ...typography.subhead, color: t.text.primary, fontVariant: ['tabular-nums' as const] },
+  emptySection: { paddingVertical: space.max, alignItems: 'center' as const, gap: space.md },
+  emptyTitle: { ...typography.title3, color: t.text.primary, textAlign: 'center' as const },
+  emptyText: { ...typography.subhead, color: t.text.secondary, textAlign: 'center' as const },
+  snackbar: { backgroundColor: t.surface.inverse, borderRadius: radius.button },
+  emphasis: { fontWeight: fontWeight.semibold },
+});
+
 const InvoiceDetails: React.FC<InvoiceDetailsProps> = ({ invoiceId, onBack }) => {
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [invoiceHeader, setInvoiceHeader] = useState<InvoiceDetail | null>(null);
-  const [invoiceItems, setInvoiceItems] = useState<InvoiceItem[]>([]);
+  const [, setInvoiceItems] = useState<InvoiceItem[]>([]);
   const [detailedItems, setDetailedItems] = useState<InvoiceItemDetailed[]>([]);
   const [itemsSummary, setItemsSummary] = useState<InvoiceItemsSummary | null>(null);
   const [errorVisible, setErrorVisible] = useState(false);
@@ -79,7 +207,7 @@ const InvoiceDetails: React.FC<InvoiceDetailsProps> = ({ invoiceId, onBack }) =>
         setInvoiceHeader(headerResult.data.header);
         setInvoiceItems(headerResult.data.items || []);
       } else {
-        setErrorMessage(headerResult.message || 'Failed to load invoice details');
+        setErrorMessage("Couldn't load the invoice. Check your connection and try again.");
         setErrorVisible(true);
         return;
       }
@@ -100,7 +228,7 @@ const InvoiceDetails: React.FC<InvoiceDetailsProps> = ({ invoiceId, onBack }) =>
         return;
       }
       console.error('[InvoiceDetails] Error fetching data:', error);
-      setErrorMessage('Failed to load invoice data');
+      setErrorMessage("Couldn't load the invoice. Check your connection and try again.");
       setErrorVisible(true);
     } finally {
       // Only update loading state if not aborted
@@ -129,139 +257,73 @@ const InvoiceDetails: React.FC<InvoiceDetailsProps> = ({ invoiceId, onBack }) =>
     fetchInvoiceData();
   };
 
+  const renderInfoRow = (icon: string, label: string, value?: string | null) => (
+    <View style={styles.infoRow} accessible accessibilityLabel={`${label}, ${value || 'not set'}`}>
+      <Icon name={icon} size={iconSize.md} color={t.icon.secondary} />
+      <View style={styles.infoTextContainer}>
+        <Text style={styles.infoLabel}>{label}</Text>
+        <Text style={styles.infoValue}>{value || '—'}</Text>
+      </View>
+    </View>
+  );
+
+  const renderAmountRow = (label: string, value: string, isDiscount = false) => (
+    <View style={styles.amountRow} accessible accessibilityLabel={`${label}, ${value}`}>
+      <Text style={styles.amountLabel}>{label}</Text>
+      <Text style={[styles.amountValue, isDiscount && styles.discountValue]}>{value}</Text>
+    </View>
+  );
+
   const renderInvoiceHeader = () => {
     if (!invoiceHeader) return null;
 
     return (
-      <View style={styles.headerSection}>
-        {/* Header with back button */}
-        <Surface style={styles.topBar} elevation={0}>
-          <Text variant="headlineSmall" style={styles.pageTitle}>
-            Invoice Details
-          </Text>
+      <>
+        <View style={styles.topBar}>
           {onBack && (
-            <IconButton
-              icon="arrow-left"
-              size={24}
+            <Pressable
               onPress={onBack}
-              iconColor={theme.colors.gray[700]}
-            />
+              style={({ pressed }) => [styles.backButton, pressed && styles.backButtonPressed]}
+              accessibilityRole="button"
+              accessibilityLabel="Go back"
+            >
+              <Icon name="arrow-left" size={iconSize.lg} color={t.icon.primary} />
+            </Pressable>
           )}
-        </Surface>
+          <Text style={styles.pageTitle} accessibilityRole="header">Invoice details</Text>
+        </View>
 
-        {/* Invoice Number Badge */}
-        <Surface style={styles.invoiceBadge} elevation={2}>
-          <Icon name="file-document" size={32} color={theme.colors.white} />
-          <View style={styles.badgeContent}>
-            <Text variant="labelSmall" style={styles.badgeLabel}>
-              INVOICE
-            </Text>
-            <Text variant="headlineSmall" style={styles.invoiceNumber}>
-              #{invoiceHeader.invoice_number}
-            </Text>
-          </View>
-          <Chip
-            mode="flat"
-            style={styles.dateChip}
-            textStyle={styles.dateChipText}
-            icon="calendar"
+        {/* Object header */}
+        <View style={styles.card}>
+          <Text style={styles.docType}>Invoice</Text>
+          <Text style={styles.docNumber}>{invoiceHeader.invoice_number}</Text>
+          <Text style={styles.docDate}>{formatDisplayDate(invoiceHeader.invoice_date)}</Text>
+        </View>
+
+        {/* Customer and GRN */}
+        <View style={styles.card}>
+          {renderInfoRow('account-outline', 'Customer', invoiceHeader.customer?.name || invoiceHeader.invoice_customer_name)}
+          <View style={styles.divider} />
+          {renderInfoRow('package-down', 'GRN', invoiceHeader.grn?.number || invoiceHeader.gr_no)}
+          <View style={styles.divider} />
+          {renderInfoRow('calendar-range', 'Financial year', invoiceHeader.financial_year)}
+        </View>
+
+        {/* Amounts */}
+        <View style={styles.card}>
+          {renderAmountRow('Labour', formatInvoiceAmount(invoiceHeader.labour))}
+          {renderAmountRow('Discount', formatInvoiceDeduction(invoiceHeader.discount), true)}
+          {renderAmountRow('Tax', formatInvoiceAmount(invoiceHeader.tax_amount))}
+          <View
+            style={styles.totalRow}
+            accessible
+            accessibilityLabel={`Total amount, ${formatInvoiceAmount(invoiceHeader.total)}`}
           >
-            {new Date(invoiceHeader.invoice_date).toLocaleDateString('en-US', {
-              month: 'short',
-              day: 'numeric',
-              year: 'numeric'
-            })}
-          </Chip>
-        </Surface>
-
-        {/* Customer & GRN Info */}
-        <Card style={styles.infoCard} mode="contained">
-          <Card.Content style={styles.infoContent}>
-            <View style={styles.infoRow}>
-              <Icon name="account" size={20} color={theme.colors.gray[600]} />
-              <View style={styles.infoTextContainer}>
-                <Text variant="labelSmall" style={styles.infoLabel}>
-                  Customer
-                </Text>
-                <Text variant="bodyMedium" style={styles.infoValue}>
-                  {invoiceHeader.customer?.name || invoiceHeader.invoice_customer_name}
-                </Text>
-              </View>
-            </View>
-
-            <Divider style={styles.divider} />
-
-            <View style={styles.infoRow}>
-              <Icon name="package-variant" size={20} color={theme.colors.gray[600]} />
-              <View style={styles.infoTextContainer}>
-                <Text variant="labelSmall" style={styles.infoLabel}>
-                  GRN Number
-                </Text>
-                <Text variant="bodyMedium" style={styles.infoValue}>
-                  {invoiceHeader.grn?.number || invoiceHeader.gr_no}
-                </Text>
-              </View>
-            </View>
-
-            <Divider style={styles.divider} />
-
-            <View style={styles.infoRow}>
-              <Icon name="calendar-range" size={20} color={theme.colors.gray[600]} />
-              <View style={styles.infoTextContainer}>
-                <Text variant="labelSmall" style={styles.infoLabel}>
-                  Financial Year
-                </Text>
-                <Text variant="bodyMedium" style={styles.infoValue}>
-                  {invoiceHeader.financial_year}
-                </Text>
-              </View>
-            </View>
-          </Card.Content>
-        </Card>
-
-        {/* Amount Breakdown */}
-        <Card style={styles.amountCard} mode="elevated">
-          <Card.Content>
-            <View style={styles.amountRow}>
-              <Text variant="bodyMedium" style={styles.amountLabel}>
-                Labour
-              </Text>
-              <Text variant="bodyMedium" style={styles.amountValue}>
-                ₹{invoiceHeader.labour.toLocaleString()}
-              </Text>
-            </View>
-
-            <View style={styles.amountRow}>
-              <Text variant="bodyMedium" style={styles.amountLabel}>
-                Discount
-              </Text>
-              <Text variant="bodyMedium" style={styles.amountValue}>
-                -₹{invoiceHeader.discount.toLocaleString()}
-              </Text>
-            </View>
-
-            <View style={styles.amountRow}>
-              <Text variant="bodyMedium" style={styles.amountLabel}>
-                Tax
-              </Text>
-              <Text variant="bodyMedium" style={styles.amountValue}>
-                ₹{invoiceHeader.tax_amount.toLocaleString()}
-              </Text>
-            </View>
-
-            <Divider style={styles.totalDivider} />
-
-            <View style={styles.totalRow}>
-              <Text variant="titleMedium" style={styles.totalLabel}>
-                Total Amount
-              </Text>
-              <Text variant="titleLarge" style={styles.totalValue}>
-                ₹{invoiceHeader.total.toLocaleString()}
-              </Text>
-            </View>
-          </Card.Content>
-        </Card>
-      </View>
+            <Text style={styles.totalLabel}>Total amount</Text>
+            <Text style={styles.totalValue}>{formatInvoiceAmount(invoiceHeader.total)}</Text>
+          </View>
+        </View>
+      </>
     );
   };
 
@@ -271,187 +333,90 @@ const InvoiceDetails: React.FC<InvoiceDetailsProps> = ({ invoiceId, onBack }) =>
     if (itemsToShow.length === 0) {
       return (
         <View style={styles.emptySection}>
-          <Icon name="package-variant-closed" size={64} color={theme.colors.gray[300]} />
-          <Text variant="titleMedium" style={styles.emptyText}>
-            No line items available
-          </Text>
+          <Icon name="cube-outline" size={iconSize.hero} color={t.icon.secondary} />
+          <Text style={styles.emptyTitle}>No line items</Text>
+          <Text style={styles.emptyText}>Items billed on this invoice appear here.</Text>
         </View>
       );
     }
 
     return (
-      <View style={styles.itemsSection}>
-        {/* Section Header */}
-        <View style={styles.sectionHeader}>
-          <Text variant="titleLarge" style={styles.sectionTitle}>
-            Line Items
-          </Text>
-          {itemsSummary && (
-            <View style={styles.summaryChips}>
-              <Chip icon="package-variant" mode="outlined" compact style={styles.chip}>
-                {itemsSummary.totalItems} items
-              </Chip>
-              <Chip icon="currency-inr" mode="outlined" compact style={styles.chip}>
-                ₹{itemsSummary.totalAmount.toLocaleString()}
-              </Chip>
-            </View>
-          )}
-        </View>
-
-        {/* Line Items */}
-        {itemsToShow.map((item, index) => (
-          <Card key={`${item.id}-${index}`} style={styles.itemCard} mode="elevated">
-            <Card.Content>
-              {/* Item Header */}
-              <View style={styles.itemHeader}>
-                <Text variant="titleMedium" style={styles.itemName} numberOfLines={2}>
-                  {item.itemName}
-                </Text>
-                <Surface style={styles.chargeChip} elevation={0}>
-                  <Text variant="titleMedium" style={styles.chargeText}>
-                    ₹{item.charge.toLocaleString()}
-                  </Text>
-                </Surface>
-              </View>
-
-              {/* Duration Badge */}
-              <Chip
-                icon="clock-outline"
-                mode="flat"
-                compact
-                style={styles.durationChip}
-                textStyle={styles.durationText}
-              >
-                {item.duration} ({item.noOfDays} days)
-              </Chip>
-
-              <Divider style={styles.itemDivider} />
-
-              {/* Item Details Grid */}
-              <View style={styles.detailsGrid}>
-                <View style={styles.detailItem}>
-                  <Text variant="labelSmall" style={styles.detailLabel}>
-                    GRN
-                  </Text>
-                  <Text variant="bodyMedium" style={styles.detailValue}>
-                    {item.grNo}
-                  </Text>
-                </View>
-
-                <View style={styles.detailItem}>
-                  <Text variant="labelSmall" style={styles.detailLabel}>
-                    Dispatch
-                  </Text>
-                  <Text variant="bodyMedium" style={styles.detailValue}>
-                    {item.dispatchNo}
-                  </Text>
-                </View>
-
-                <View style={styles.detailItem}>
-                  <Text variant="labelSmall" style={styles.detailLabel}>
-                    Package Mark
-                  </Text>
-                  <Text variant="bodyMedium" style={styles.detailValue}>
-                    {item.packageMark}
-                  </Text>
-                </View>
-
-                <View style={styles.detailItem}>
-                  <Text variant="labelSmall" style={styles.detailLabel}>
-                    Rack
-                  </Text>
-                  <Text variant="bodyMedium" style={styles.detailValue}>
-                    {item.rack}
-                  </Text>
-                </View>
-              </View>
-
-              <Divider style={styles.itemDivider} />
-
-              {/* Quantity Metrics */}
-              <View style={styles.metricsRow}>
-                <View style={styles.metricItem}>
-                  <Icon name="package-up" size={16} color={theme.colors.gray[600]} />
-                  <Text variant="labelSmall" style={styles.metricLabel}>
-                    Dispatch Qty
-                  </Text>
-                  <Text variant="titleSmall" style={styles.metricValue}>
-                    {item.dispatchQty}
-                  </Text>
-                </View>
-
-                <View style={styles.metricItem}>
-                  <Icon name="package-down" size={16} color={theme.colors.gray[600]} />
-                  <Text variant="labelSmall" style={styles.metricLabel}>
-                    GRN Qty
-                  </Text>
-                  <Text variant="titleSmall" style={styles.metricValue}>
-                    {item.grnQuantity}
-                  </Text>
-                </View>
-
-                <View style={styles.metricItem}>
-                  <Icon name="receipt" size={16} color={theme.colors.gray[600]} />
-                  <Text variant="labelSmall" style={styles.metricLabel}>
-                    Tax
-                  </Text>
-                  <Text variant="titleSmall" style={styles.metricValue}>
-                    ₹{item.tax.toLocaleString()}
-                  </Text>
-                </View>
-              </View>
-            </Card.Content>
-          </Card>
-        ))}
-
-        {/* Items Summary Card */}
+      <>
+        <Text style={styles.sectionHeader} accessibilityRole="header">Line items</Text>
         {itemsSummary && (
-          <Surface style={styles.summarySurface} elevation={1}>
-            <Text variant="titleMedium" style={styles.summaryTitle}>
-              Items Summary
+          <Text style={styles.summaryLine}>
+            {`${itemsSummary.totalItems} ${itemsSummary.totalItems === 1 ? 'item' : 'items'} · ${formatInvoiceAmount(itemsSummary.totalAmount)}`}
+          </Text>
+        )}
+
+        {itemsToShow.map((item, index) => (
+          <View
+            key={`${item.id}-${index}`}
+            style={styles.card}
+            accessible
+            accessibilityLabel={`${item.itemName}, ${formatInvoiceAmount(item.charge)}, ${item.duration}`}
+          >
+            <View style={styles.itemHeader}>
+              <Text style={styles.itemName} numberOfLines={2}>{item.itemName}</Text>
+              <Text style={styles.itemCharge}>{formatInvoiceAmount(item.charge)}</Text>
+            </View>
+            <Text style={styles.itemSubtitle}>
+              {`${item.duration} (${item.noOfDays} ${item.noOfDays === 1 ? 'day' : 'days'})`}
             </Text>
 
-            <View style={styles.summaryRow}>
-              <Text variant="bodyMedium" style={styles.summaryLabel}>
-                Total Items
-              </Text>
-              <Text variant="bodyMedium" style={styles.summaryValue}>
-                {itemsSummary.totalItems}
-              </Text>
+            <View style={styles.detailsGrid}>
+              <View style={styles.detailItem}>
+                <Text style={styles.detailLabel}>GRN</Text>
+                <Text style={styles.detailValue}>{item.grNo || '—'}</Text>
+              </View>
+              <View style={styles.detailItem}>
+                <Text style={styles.detailLabel}>Dispatch</Text>
+                <Text style={styles.detailValue}>{item.dispatchNo ?? '—'}</Text>
+              </View>
+              <View style={styles.detailItem}>
+                <Text style={styles.detailLabel}>Package mark</Text>
+                <Text style={styles.detailValue}>{item.packageMark || '—'}</Text>
+              </View>
+              <View style={styles.detailItem}>
+                <Text style={styles.detailLabel}>Rack</Text>
+                <Text style={styles.detailValue}>{item.rack || '—'}</Text>
+              </View>
+              <View style={styles.detailItem}>
+                <Text style={styles.detailLabel}>Dispatch qty</Text>
+                <Text style={styles.detailValue}>{formatQty(item.dispatchQty)}</Text>
+              </View>
+              <View style={styles.detailItem}>
+                <Text style={styles.detailLabel}>GRN qty</Text>
+                <Text style={styles.detailValue}>{formatQty(item.grnQuantity)}</Text>
+              </View>
+              <View style={styles.detailItem}>
+                <Text style={styles.detailLabel}>Tax</Text>
+                <Text style={styles.detailValue}>{formatInvoiceAmount(item.tax)}</Text>
+              </View>
             </View>
+          </View>
+        ))}
 
-            <View style={styles.summaryRow}>
-              <Text variant="bodyMedium" style={styles.summaryLabel}>
-                Total Dispatch Qty
-              </Text>
-              <Text variant="bodyMedium" style={styles.summaryValue}>
-                {itemsSummary.totalDispatchQty}
-              </Text>
+        {itemsSummary && (
+          <View style={styles.card}>
+            <Text style={[styles.infoValue, styles.emphasis]} accessibilityRole="header">Items summary</Text>
+            {renderAmountRow('Total items', formatQty(itemsSummary.totalItems))}
+            {renderAmountRow('Total dispatch qty', formatQty(itemsSummary.totalDispatchQty))}
+            <View style={styles.totalRow}>
+              <Text style={styles.totalLabel}>Total amount</Text>
+              <Text style={styles.totalValue}>{formatInvoiceAmount(itemsSummary.totalAmount)}</Text>
             </View>
-
-            <Divider style={styles.summaryDivider} />
-
-            <View style={styles.summaryTotalRow}>
-              <Text variant="titleMedium" style={styles.summaryTotalLabel}>
-                Total Amount
-              </Text>
-              <Text variant="titleLarge" style={styles.summaryTotalValue}>
-                ₹{itemsSummary.totalAmount.toLocaleString()}
-              </Text>
-            </View>
-          </Surface>
+          </View>
         )}
-      </View>
+      </>
     );
   };
 
-  if (loading) {
+  if (loading && !refreshing) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={theme.colors.primary} />
-        <Text variant="bodyLarge" style={styles.loadingText}>
-          Loading invoice details...
-        </Text>
+      <View style={styles.loadingContainer} accessibilityRole="progressbar" accessibilityState={{ busy: true }}>
+        <ActivityIndicator size="large" color={t.brand.tint} />
+        <Text style={styles.loadingText}>Loading invoice…</Text>
       </View>
     );
   }
@@ -460,11 +425,14 @@ const InvoiceDetails: React.FC<InvoiceDetailsProps> = ({ invoiceId, onBack }) =>
     <>
       <ScrollView
         style={styles.container}
+        contentContainerStyle={styles.content}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            colors={[theme.colors.primary]}
+            tintColor={t.brand.tint}
+            colors={[t.brand.tint]}
+            progressBackgroundColor={t.surface.card}
           />
         }
         showsVerticalScrollIndicator={false}
@@ -473,14 +441,17 @@ const InvoiceDetails: React.FC<InvoiceDetailsProps> = ({ invoiceId, onBack }) =>
         {renderDetailedItems()}
       </ScrollView>
 
-      {/* Error Snackbar */}
+      {/* Error snackbar */}
       <Portal>
         <Snackbar
           visible={errorVisible}
           onDismiss={() => setErrorVisible(false)}
           duration={4000}
+          style={styles.snackbar}
+          theme={{ colors: { inverseOnSurface: t.text.inverse, inversePrimary: t.text.inverse } }}
           action={{
-            label: 'Retry',
+            label: 'Try again',
+            textColor: t.text.inverse,
             onPress: () => fetchInvoiceData(),
           }}
         >
@@ -490,269 +461,5 @@ const InvoiceDetails: React.FC<InvoiceDetailsProps> = ({ invoiceId, onBack }) =>
     </>
   );
 };
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: theme.colors.gray[50],
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: theme.colors.gray[50],
-    gap: 16,
-  },
-  loadingText: {
-    color: theme.colors.gray[600],
-  },
-  headerSection: {
-    padding: 16,
-    gap: 16,
-  },
-  topBar: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: 'transparent',
-  },
-  pageTitle: {
-    color: theme.colors.gray[900],
-    fontWeight: '700',
-  },
-  invoiceBadge: {
-    backgroundColor: theme.colors.primary,
-    borderRadius: 16,
-    padding: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  badgeContent: {
-    flex: 1,
-  },
-  badgeLabel: {
-    color: theme.colors.white,
-    opacity: 0.9,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  invoiceNumber: {
-    color: theme.colors.white,
-    fontWeight: '700',
-  },
-  dateChip: {
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-  },
-  dateChipText: {
-    color: theme.colors.white,
-    fontSize: 11,
-  },
-  infoCard: {
-    backgroundColor: theme.colors.white,
-    borderRadius: 16,
-  },
-  infoContent: {
-    gap: 12,
-  },
-  infoRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  infoTextContainer: {
-    flex: 1,
-    gap: 4,
-  },
-  infoLabel: {
-    color: theme.colors.gray[500],
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  infoValue: {
-    color: theme.colors.gray[900],
-    fontWeight: '600',
-  },
-  divider: {
-    backgroundColor: theme.colors.gray[200],
-  },
-  amountCard: {
-    backgroundColor: theme.colors.white,
-    borderRadius: 16,
-  },
-  amountRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: 8,
-  },
-  amountLabel: {
-    color: theme.colors.gray[600],
-  },
-  amountValue: {
-    color: theme.colors.gray[900],
-    fontWeight: '600',
-  },
-  totalDivider: {
-    backgroundColor: theme.colors.gray[300],
-    marginVertical: 12,
-  },
-  totalRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  totalLabel: {
-    color: theme.colors.gray[900],
-    fontWeight: '700',
-  },
-  totalValue: {
-    color: theme.colors.primary,
-    fontWeight: '700',
-  },
-  itemsSection: {
-    padding: 16,
-    paddingTop: 0,
-    gap: 16,
-  },
-  sectionHeader: {
-    gap: 8,
-  },
-  sectionTitle: {
-    color: theme.colors.gray[900],
-    fontWeight: '700',
-  },
-  summaryChips: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  chip: {
-    backgroundColor: theme.colors.gray[100],
-  },
-  itemCard: {
-    backgroundColor: theme.colors.white,
-    borderRadius: 16,
-  },
-  itemHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    gap: 12,
-    marginBottom: 12,
-  },
-  itemName: {
-    flex: 1,
-    color: theme.colors.gray[900],
-    fontWeight: '600',
-  },
-  chargeChip: {
-    backgroundColor: theme.colors.primary + '15',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-  },
-  chargeText: {
-    color: theme.colors.primary,
-    fontWeight: '700',
-  },
-  durationChip: {
-    backgroundColor: theme.colors.gray[100],
-    alignSelf: 'flex-start',
-    marginBottom: 12,
-  },
-  durationText: {
-    fontSize: 11,
-  },
-  itemDivider: {
-    backgroundColor: theme.colors.gray[200],
-    marginVertical: 12,
-  },
-  detailsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-  },
-  detailItem: {
-    flex: 1,
-    minWidth: '45%',
-    gap: 4,
-  },
-  detailLabel: {
-    color: theme.colors.gray[500],
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  detailValue: {
-    color: theme.colors.gray[900],
-    fontWeight: '500',
-  },
-  metricsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    gap: 8,
-  },
-  metricItem: {
-    flex: 1,
-    alignItems: 'center',
-    gap: 4,
-  },
-  metricLabel: {
-    color: theme.colors.gray[500],
-    textAlign: 'center',
-  },
-  metricValue: {
-    color: theme.colors.gray[900],
-    fontWeight: '700',
-  },
-  summarySurface: {
-    backgroundColor: theme.colors.primary + '10',
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: theme.colors.primary + '30',
-  },
-  summaryTitle: {
-    color: theme.colors.gray[900],
-    fontWeight: '700',
-    marginBottom: 12,
-  },
-  summaryRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: 6,
-  },
-  summaryLabel: {
-    color: theme.colors.gray[600],
-  },
-  summaryValue: {
-    color: theme.colors.gray[900],
-    fontWeight: '600',
-  },
-  summaryDivider: {
-    backgroundColor: theme.colors.primary + '40',
-    marginVertical: 12,
-  },
-  summaryTotalRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  summaryTotalLabel: {
-    color: theme.colors.gray[900],
-    fontWeight: '700',
-  },
-  summaryTotalValue: {
-    color: theme.colors.primary,
-    fontWeight: '700',
-  },
-  emptySection: {
-    padding: 64,
-    alignItems: 'center',
-    gap: 16,
-  },
-  emptyText: {
-    color: theme.colors.gray[500],
-    textAlign: 'center',
-  },
-});
 
 export default InvoiceDetails;

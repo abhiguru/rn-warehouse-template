@@ -2,14 +2,17 @@
  * GRN Item Bottom Sheet
  * Shows unique items from a selected GRN for dispatch selection
  * Used in dispatch form Step 2 after GRN is selected
+ *
+ * Bottom sheet per docs/STYLE_GUIDE.md §13.9.
  */
 
 import React, { useCallback, useMemo, useRef, useEffect } from 'react';
 import {
   View,
   Text,
-  TouchableOpacity,
+  Pressable,
   StyleSheet,
+  BackHandler,
 } from 'react-native';
 import {
   BottomSheetModal,
@@ -18,8 +21,18 @@ import {
   BottomSheetBackdropProps,
 } from '@gorhom/bottom-sheet';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import theme from '@/theme';
-import { useListColors } from '@/hooks/useListColors';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import {
+  fontWeight,
+  iconSize,
+  layout,
+  radius,
+  space,
+  touchTarget,
+  typography,
+} from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
 import type { GRNDetailItem } from '@/types/dispatch.types';
 
 interface GRNItemBottomSheetProps {
@@ -33,6 +46,142 @@ interface GRNItemBottomSheetProps {
   };
 }
 
+const makeStyles = (t: ThemeTokens) => ({
+  sheetBackground: {
+    backgroundColor: t.surface.sheet,
+    borderTopLeftRadius: radius.sheet,
+    borderTopRightRadius: radius.sheet,
+    ...t.shadow[4],
+  },
+  handleIndicator: {
+    backgroundColor: t.border.separator,
+    width: 36,
+    height: 4,
+  },
+  container: {
+    flex: 1,
+    backgroundColor: t.surface.sheet,
+  },
+  header: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    paddingLeft: layout.marginCompact,
+    paddingRight: space.xs,
+    minHeight: touchTarget + space.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.divider,
+    gap: space.sm,
+  },
+  headerTitle: {
+    ...typography.headline,
+    flex: 1,
+    color: t.text.primary,
+  },
+  closeButton: {
+    width: touchTarget,
+    height: touchTarget,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    borderRadius: radius.pill,
+  },
+  closeButtonPressed: {
+    backgroundColor: t.surface.cardPressed,
+  },
+  countContainer: {
+    paddingHorizontal: layout.marginCompact,
+    paddingVertical: space.md,
+  },
+  countText: {
+    ...typography.footnote,
+    fontWeight: fontWeight.semibold,
+    textTransform: 'uppercase' as const,
+    letterSpacing: 0.5,
+    color: t.text.secondary,
+  },
+  itemCard: {
+    marginHorizontal: layout.marginCompact,
+    marginVertical: space.xs,
+    padding: space.lg,
+    minHeight: layout.objectCellMinHeight,
+    justifyContent: 'center' as const,
+    backgroundColor: t.surface.card,
+    borderRadius: radius.card,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: t.border.divider,
+  },
+  itemCardPressed: {
+    backgroundColor: t.surface.cardPressed,
+  },
+  itemCardSelected: {
+    borderColor: t.brand.tint,
+    borderWidth: 2,
+    backgroundColor: t.surface.selected,
+  },
+  itemHeader: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.md,
+  },
+  itemIcon: {
+    width: layout.avatar.md,
+    height: layout.avatar.md,
+    borderRadius: radius.pill,
+    backgroundColor: t.brand.subtle,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+  },
+  itemInfo: {
+    flex: 1,
+    gap: space.xs,
+  },
+  itemName: {
+    ...typography.headline,
+    color: t.text.primary,
+  },
+  itemMeta: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    flexWrap: 'wrap' as const,
+    gap: space.sm,
+  },
+  metaBadge: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.xs,
+    paddingHorizontal: space.sm,
+    paddingVertical: space.xxs,
+    backgroundColor: t.status.neutral.background,
+    borderRadius: radius.field,
+  },
+  metaText: {
+    ...typography.caption1,
+    fontWeight: fontWeight.semibold,
+    color: t.status.neutral.text,
+    fontVariant: ['tabular-nums' as const],
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    paddingVertical: space.max,
+    paddingHorizontal: space.huge,
+  },
+  emptyText: {
+    ...typography.title3,
+    color: t.text.primary,
+    marginTop: space.lg,
+    textAlign: 'center' as const,
+  },
+  emptySubtext: {
+    ...typography.subhead,
+    color: t.text.secondary,
+    marginTop: space.sm,
+    textAlign: 'center' as const,
+  },
+});
+
+type UniqueItem = { item_id: string; item_name: string; totalStock: number; lotCount: number };
+
 export const GRNItemBottomSheet: React.FC<GRNItemBottomSheetProps> = ({
   isVisible,
   onClose,
@@ -41,102 +190,16 @@ export const GRNItemBottomSheet: React.FC<GRNItemBottomSheetProps> = ({
   currentValue,
 }) => {
   const bottomSheetRef = useRef<BottomSheetModal>(null);
-
-  // Theme colors for dark mode support
-  const colors = useListColors();
-
-  // Dynamic styles based on theme
-  const dynamicStyles = useMemo(() => StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor: colors.cellBackground,
-    },
-    header: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      paddingHorizontal: 20,
-      paddingVertical: 16,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.cellDivider,
-      gap: 12,
-    },
-    headerTitle: {
-      flex: 1,
-      fontSize: 18,
-      fontWeight: '600',
-      color: colors.textPrimary,
-    },
-    countContainer: {
-      paddingHorizontal: 20,
-      paddingVertical: 12,
-      backgroundColor: colors.gray50,
-    },
-    countText: {
-      fontSize: 14,
-      fontWeight: '500',
-      color: colors.textSecondary,
-    },
-    itemCard: {
-      marginHorizontal: 20,
-      marginVertical: 6,
-      padding: 16,
-      backgroundColor: colors.cellBackground,
-      borderRadius: 12,
-      borderWidth: 1,
-      borderColor: colors.gray200,
-    },
-    itemCardSelected: {
-      borderColor: colors.primary,
-      borderWidth: 2,
-      backgroundColor: colors.primaryLight,
-    },
-    itemName: {
-      fontSize: 16,
-      fontWeight: '600',
-      color: colors.textPrimary,
-    },
-    metaBadge: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 4,
-      paddingHorizontal: 8,
-      paddingVertical: 4,
-      backgroundColor: colors.gray100,
-      borderRadius: 6,
-    },
-    metaText: {
-      fontSize: 12,
-      fontWeight: '500',
-      color: colors.textSecondary,
-    },
-    emptyContainer: {
-      flex: 1,
-      justifyContent: 'center',
-      alignItems: 'center',
-      paddingVertical: 60,
-      paddingHorizontal: 40,
-    },
-    emptyText: {
-      fontSize: 16,
-      fontWeight: '600',
-      color: colors.textSecondary,
-      marginTop: 16,
-      textAlign: 'center',
-    },
-    emptySubtext: {
-      fontSize: 14,
-      color: colors.textTertiary,
-      marginTop: 8,
-      textAlign: 'center',
-    },
-  }), [colors]);
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
+  const insets = useSafeAreaInsets();
 
   // Snap points for the bottom sheet - full screen
   const snapPoints = useMemo(() => ['100%'], []);
 
   // Group items by unique item_id and calculate total stock
   const uniqueItems = useMemo(() => {
-    const itemMap = new Map<string, { item_id: string; item_name: string; totalStock: number; lotCount: number }>();
+    const itemMap = new Map<string, UniqueItem>();
 
     items.forEach((item) => {
       if (itemMap.has(item.item_id)) {
@@ -159,7 +222,6 @@ export const GRNItemBottomSheet: React.FC<GRNItemBottomSheetProps> = ({
   // Handle sheet changes
   const handleSheetChanges = useCallback(
     (index: number) => {
-      console.log('[GRNItemBottomSheet] Sheet index changed to:', index);
       if (index === -1) {
         onClose();
       }
@@ -174,16 +236,16 @@ export const GRNItemBottomSheet: React.FC<GRNItemBottomSheetProps> = ({
         {...props}
         disappearsOnIndex={-1}
         appearsOnIndex={0}
-        opacity={0.5}
+        opacity={1}
+        style={[props.style, { backgroundColor: t.overlay.scrim }]}
       />
     ),
-    []
+    [t]
   );
 
   // Handle item selection
   const handleItemSelect = useCallback(
     (item: { item_id: string; item_name: string }) => {
-      console.log('[GRNItemBottomSheet] Item selected:', item.item_name);
       onSelect(item);
       bottomSheetRef.current?.dismiss();
     },
@@ -192,56 +254,62 @@ export const GRNItemBottomSheet: React.FC<GRNItemBottomSheetProps> = ({
 
   // Render item
   const renderItem = useCallback(
-    ({ item }: { item: { item_id: string; item_name: string; totalStock: number; lotCount: number } }) => {
+    ({ item }: { item: UniqueItem }) => {
       const isSelected = currentValue?.item_id === item.item_id;
+      const lots = `${item.lotCount} ${item.lotCount === 1 ? 'lot' : 'lots'}`;
+      const available = `${item.totalStock} ${item.totalStock === 1 ? 'bag' : 'bags'} available`;
 
       return (
-        <TouchableOpacity
-          style={[dynamicStyles.itemCard, isSelected && dynamicStyles.itemCardSelected]}
+        <Pressable
+          style={({ pressed }) => [
+            styles.itemCard,
+            pressed && styles.itemCardPressed,
+            isSelected && styles.itemCardSelected,
+          ]}
           onPress={() => handleItemSelect({ item_id: item.item_id, item_name: item.item_name })}
-          activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel={`${item.item_name}, ${lots}, ${available}`}
+          accessibilityState={{ selected: isSelected }}
         >
-          <View style={styles.itemContent}>
-            <View style={styles.itemHeader}>
-              <View style={styles.itemIcon}>
-                <Icon name="package-variant" size={24} color={colors.primary} />
-              </View>
-              <View style={styles.itemInfo}>
-                <Text style={dynamicStyles.itemName}>{item.item_name}</Text>
-                <View style={styles.itemMeta}>
-                  <View style={dynamicStyles.metaBadge}>
-                    <Icon name="layers" size={12} color={colors.blue} />
-                    <Text style={dynamicStyles.metaText}>{item.lotCount} {item.lotCount === 1 ? 'lot' : 'lots'}</Text>
-                  </View>
-                  <View style={dynamicStyles.metaBadge}>
-                    <Icon name="package" size={12} color={colors.success} />
-                    <Text style={dynamicStyles.metaText}>{item.totalStock} available</Text>
-                  </View>
+          <View style={styles.itemHeader}>
+            <View style={styles.itemIcon}>
+              <Icon name="cube-outline" size={iconSize.lg} color={t.brand.tint} />
+            </View>
+            <View style={styles.itemInfo}>
+              <Text style={styles.itemName} numberOfLines={2}>{item.item_name}</Text>
+              <View style={styles.itemMeta}>
+                <View style={styles.metaBadge}>
+                  <Icon name="layers-outline" size={iconSize.sm} color={t.status.neutral.text} />
+                  <Text style={styles.metaText} maxFontSizeMultiplier={1.6}>{lots}</Text>
+                </View>
+                <View style={styles.metaBadge}>
+                  <Icon name="warehouse" size={iconSize.sm} color={t.status.neutral.text} />
+                  <Text style={styles.metaText} maxFontSizeMultiplier={1.6}>{available}</Text>
                 </View>
               </View>
-              {isSelected && (
-                <Icon name="check-circle" size={24} color={colors.primary} />
-              )}
             </View>
+            {isSelected && (
+              <Icon name="check-circle" size={iconSize.lg} color={t.brand.tint} />
+            )}
           </View>
-        </TouchableOpacity>
+        </Pressable>
       );
     },
-    [currentValue, handleItemSelect, dynamicStyles, colors]
+    [currentValue, handleItemSelect, styles, t]
   );
 
   // Empty state
   const renderEmptyState = useCallback(() => {
     return (
-      <View style={dynamicStyles.emptyContainer}>
-        <Icon name="package-variant-closed" size={48} color={colors.gray300} />
-        <Text style={dynamicStyles.emptyText}>No items available</Text>
-        <Text style={dynamicStyles.emptySubtext}>
-          This GRN has no items with available stock
+      <View style={styles.emptyContainer}>
+        <Icon name="package-variant-closed" size={iconSize.hero} color={t.icon.secondary} />
+        <Text style={styles.emptyText}>No items in stock</Text>
+        <Text style={styles.emptySubtext}>
+          This GRN has no items with stock left to dispatch. Choose another GRN.
         </Text>
       </View>
     );
-  }, [dynamicStyles, colors]);
+  }, [styles, t]);
 
   // Handle visibility changes
   useEffect(() => {
@@ -250,6 +318,16 @@ export const GRNItemBottomSheet: React.FC<GRNItemBottomSheetProps> = ({
     } else {
       bottomSheetRef.current?.dismiss();
     }
+  }, [isVisible]);
+
+  // Android back closes the sheet first
+  useEffect(() => {
+    if (!isVisible) return undefined;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      bottomSheetRef.current?.dismiss();
+      return true;
+    });
+    return () => sub.remove();
   }, [isVisible]);
 
   return (
@@ -261,27 +339,28 @@ export const GRNItemBottomSheet: React.FC<GRNItemBottomSheetProps> = ({
       onChange={handleSheetChanges}
       backdropComponent={renderBackdrop}
       enablePanDownToClose
-      backgroundStyle={{ backgroundColor: colors.cellBackground }}
-      handleIndicatorStyle={{ backgroundColor: colors.gray300 }}
+      backgroundStyle={styles.sheetBackground}
+      handleIndicatorStyle={styles.handleIndicator}
     >
-      <View style={dynamicStyles.container}>
+      <View style={styles.container}>
         {/* Header */}
-        <View style={dynamicStyles.header}>
-          <Icon name="package-variant" size={24} color={colors.primary} />
-          <Text style={dynamicStyles.headerTitle}>Select Item</Text>
-          <TouchableOpacity
+        <View style={styles.header}>
+          <Text style={styles.headerTitle} accessibilityRole="header">Choose item</Text>
+          <Pressable
             onPress={() => bottomSheetRef.current?.dismiss()}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            style={({ pressed }) => [styles.closeButton, pressed && styles.closeButtonPressed]}
+            accessibilityRole="button"
+            accessibilityLabel="Close item list"
           >
-            <Icon name="close" size={24} color={colors.textSecondary} />
-          </TouchableOpacity>
+            <Icon name="close" size={iconSize.lg} color={t.icon.primary} />
+          </Pressable>
         </View>
 
         {/* Item count */}
         {uniqueItems.length > 0 && (
-          <View style={dynamicStyles.countContainer}>
-            <Text style={dynamicStyles.countText}>
-              {uniqueItems.length} {uniqueItems.length === 1 ? 'item' : 'items'} available
+          <View style={styles.countContainer}>
+            <Text style={styles.countText} accessibilityRole="header">
+              {uniqueItems.length} {uniqueItems.length === 1 ? 'item' : 'items'} in stock
             </Text>
           </View>
         )}
@@ -290,8 +369,8 @@ export const GRNItemBottomSheet: React.FC<GRNItemBottomSheetProps> = ({
         <BottomSheetFlatList
           data={uniqueItems}
           renderItem={renderItem}
-          keyExtractor={(item) => item.item_id}
-          contentContainerStyle={styles.listContent}
+          keyExtractor={(item: UniqueItem) => item.item_id}
+          contentContainerStyle={{ paddingBottom: space.xl + insets.bottom }}
           ListEmptyComponent={renderEmptyState}
           showsVerticalScrollIndicator={false}
         />
@@ -299,35 +378,3 @@ export const GRNItemBottomSheet: React.FC<GRNItemBottomSheetProps> = ({
     </BottomSheetModal>
   );
 };
-
-// Static styles (layout only - colors are in dynamicStyles)
-const styles = StyleSheet.create({
-  listContent: {
-    paddingBottom: 20,
-  },
-  itemContent: {
-    gap: 8,
-  },
-  itemHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  itemIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: theme.colors.primary + '15',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  itemInfo: {
-    flex: 1,
-    gap: 4,
-  },
-  itemMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-});

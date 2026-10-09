@@ -1,89 +1,19 @@
 /**
- * InvoiceBreakdownTab Component - 100% SAP Fiori Compliant
+ * InvoiceBreakdownTab Component
  *
- * Breakdown tab showing charges breakdown and related documents
- * Based on SAP Fiori for iOS Design Guidelines
- *
- *
- * Features:
- * - Visual breakdown of charges
- * - Percentage distribution with color indicators
- * - Related GRN and Dispatch references (tappable)
- * - Fiori Card pattern
+ * Saved invoice amounts and related documents (style guide §13.11):
+ * key-value rows with right-aligned tabular amounts, discounts in
+ * status.positive.text with a minus sign, tax listed separately and the total
+ * in headline weight. Related GRN and dispatch references are tappable rows.
  */
 
-import React, { useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView, Platform, Pressable, ViewStyle } from 'react-native';
+import React from 'react';
+import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { savedInvoiceAmounts } from '@/utils/invoiceCalculations';
-import { formatCurrency } from '@/utils/formatters';
-import { useListColors } from '@/hooks/useListColors';
-
-// ============================================================================
-// FIORI DESIGN TOKENS (Static values only - colors are dynamic)
-// Based on SAP Fiori for iOS Design Guidelines
-// ============================================================================
-const FIORI_STATIC = {
-  // Chart Colors (static - semantic meaning)
-  chartColors: {
-    subtotal: '#0057D2', // Blue for subtotal
-    labour: '#8B5CF6', // Purple for labour
-    tax: '#f69000', // Orange for tax
-    discount: '#D32030', // Red for discount
-  },
-  spacing: {
-    xs: 4,
-    sm: 8,
-    md: 12,
-    lg: 16,
-    xl: 20,
-    xxl: 24,
-  },
-  typography: {
-    headline: {
-      fontSize: 17,
-      fontWeight: '600' as const,
-    },
-    body: {
-      fontSize: 15,
-      fontWeight: '400' as const,
-    },
-    bodyMedium: {
-      fontSize: 15,
-      fontWeight: '500' as const,
-    },
-    caption: {
-      fontSize: 13,
-      fontWeight: '400' as const,
-    },
-    sectionHeader: {
-      fontSize: 13,
-      fontWeight: '600' as const,
-      letterSpacing: 0.5,
-      textTransform: 'uppercase' as const,
-    },
-  },
-  dimensions: {
-    cardRadius: 12,
-    cardPadding: 16,
-    touchTarget: 44,
-    avatarSize: 48,
-    dotSize: 12,
-  },
-  shadows: {
-    card: Platform.select({
-      ios: {
-        shadowColor: '#000000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.08,
-        shadowRadius: 3,
-      },
-      android: {
-        elevation: 2,
-      },
-    }) as ViewStyle,
-  },
-} as const;
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { fontWeight, iconSize, layout, radius, space, touchTarget, typography } from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
+import { savedInvoiceAmounts, formatInvoiceAmount, formatInvoiceDeduction } from '@/utils/invoiceCalculations';
 
 // ============================================================================
 // TYPES
@@ -110,6 +40,148 @@ interface InvoiceBreakdownTabProps {
 }
 
 // ============================================================================
+// STYLES
+// ============================================================================
+const makeStyles = (t: ThemeTokens) => ({
+  container: { flex: 1, backgroundColor: t.background.base },
+  content: { paddingHorizontal: layout.marginCompact, paddingTop: space.md },
+  bottomSpacer: { height: space.xxxl },
+  sectionHeader: { paddingTop: space.lg, paddingBottom: space.sm },
+  sectionHeaderText: {
+    ...typography.footnote,
+    color: t.text.secondary,
+    textTransform: 'uppercase' as const,
+    letterSpacing: 0.5,
+  },
+  card: {
+    backgroundColor: t.surface.card,
+    borderRadius: radius.card,
+    marginBottom: space.md,
+    overflow: 'hidden' as const,
+    ...t.shadow[2],
+  },
+  cardHeader: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    padding: space.lg,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.divider,
+  },
+  avatar: {
+    width: layout.avatar.md,
+    height: layout.avatar.md,
+    borderRadius: radius.pill,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    marginRight: space.md,
+    backgroundColor: t.brand.subtle,
+  },
+  cardTitle: { ...typography.headline, color: t.text.primary, flex: 1 },
+  breakdownContainer: { paddingHorizontal: space.lg, paddingVertical: space.sm },
+  breakdownRow: {
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'center' as const,
+    gap: space.md,
+    paddingVertical: space.md,
+    minHeight: layout.rowMinHeight,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.divider,
+  },
+  breakdownRowTotal: {
+    borderBottomWidth: 0,
+    borderTopWidth: 1,
+    borderTopColor: t.border.separator,
+  },
+  breakdownLabel: { ...typography.body, color: t.text.secondary, flex: 1 },
+  breakdownRight: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: space.md },
+  breakdownPercent: {
+    ...typography.subhead,
+    color: t.text.secondary,
+    textAlign: 'right' as const,
+    fontVariant: ['tabular-nums' as const],
+  },
+  breakdownValue: {
+    ...typography.body,
+    color: t.text.primary,
+    textAlign: 'right' as const,
+    fontVariant: ['tabular-nums' as const],
+  },
+  discountValue: { color: t.status.positive.text },
+  breakdownLabelTotal: { ...typography.headline, color: t.text.primary, flex: 1 },
+  breakdownValueTotal: {
+    ...typography.headline,
+    color: t.text.primary,
+    textAlign: 'right' as const,
+    fontVariant: ['tabular-nums' as const],
+  },
+  documentsContainer: { paddingVertical: space.xs },
+  docSection: { paddingTop: space.sm },
+  docSectionBorder: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: t.border.divider },
+  docSectionTitle: {
+    ...typography.footnote,
+    color: t.text.secondary,
+    textTransform: 'uppercase' as const,
+    letterSpacing: 0.5,
+    paddingHorizontal: space.lg,
+    paddingBottom: space.xs,
+  },
+  docButton: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.sm,
+    gap: space.md,
+    minHeight: touchTarget,
+  },
+  docButtonPressed: { backgroundColor: t.surface.cardPressed },
+  docNumber: {
+    ...typography.body,
+    fontWeight: fontWeight.medium,
+    color: t.text.primary,
+    flex: 1,
+    fontVariant: ['tabular-nums' as const],
+  },
+});
+
+type Styles = ReturnType<typeof makeStyles>;
+
+// ============================================================================
+// SUB-COMPONENTS
+// ============================================================================
+const SectionHeader = ({ title, styles }: { title: string; styles: Styles }) => (
+  <View style={styles.sectionHeader}>
+    <Text style={styles.sectionHeaderText} accessibilityRole="header">{title}</Text>
+  </View>
+);
+
+const BreakdownRow = ({
+  label,
+  percent,
+  value,
+  isDiscount = false,
+  styles,
+}: {
+  label: string;
+  percent?: number;
+  value: string;
+  isDiscount?: boolean;
+  styles: Styles;
+}) => (
+  <View
+    style={styles.breakdownRow}
+    accessible
+    accessibilityLabel={`${label}, ${value}${percent !== undefined ? `, ${percent}% of total` : ''}`}
+  >
+    <Text style={styles.breakdownLabel}>{label}</Text>
+    <View style={styles.breakdownRight}>
+      {percent !== undefined && <Text style={styles.breakdownPercent}>{`${percent}%`}</Text>}
+      <Text style={[styles.breakdownValue, isDiscount && styles.discountValue]}>{value}</Text>
+    </View>
+  </View>
+);
+
+// ============================================================================
 // COMPONENT
 // ============================================================================
 export const InvoiceBreakdownTab: React.FC<InvoiceBreakdownTabProps> = ({
@@ -118,111 +190,8 @@ export const InvoiceBreakdownTab: React.FC<InvoiceBreakdownTabProps> = ({
   on_view_grn,
   on_view_dispatch,
 }) => {
-  // Theme colors for dark mode support
-  const colors = useListColors();
-
-  // Dynamic styles based on theme
-  const dynamicStyles = useMemo(() => StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor: colors.gray50,
-    },
-    sectionHeaderText: {
-      ...FIORI_STATIC.typography.sectionHeader,
-      color: colors.gray600,
-    },
-    card: {
-      backgroundColor: colors.cellBackground,
-      borderRadius: FIORI_STATIC.dimensions.cardRadius,
-      borderWidth: 1,
-      borderColor: colors.cellDivider,
-      marginBottom: FIORI_STATIC.spacing.md,
-      overflow: 'hidden',
-      ...FIORI_STATIC.shadows.card,
-    },
-    cardHeader: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      padding: FIORI_STATIC.dimensions.cardPadding,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.cellDivider,
-    },
-    cardTitle: {
-      ...FIORI_STATIC.typography.headline,
-      color: colors.gray900,
-    },
-    breakdownRow: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      paddingVertical: FIORI_STATIC.spacing.md,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.cellDivider,
-    },
-    breakdownRowTotal: {
-      paddingTop: FIORI_STATIC.spacing.lg,
-      marginTop: FIORI_STATIC.spacing.sm,
-      borderTopWidth: 2,
-      borderTopColor: colors.cellDivider,
-      borderBottomWidth: 0,
-    },
-    breakdownLabel: {
-      ...FIORI_STATIC.typography.body,
-      color: colors.gray600,
-    },
-    breakdownPercent: {
-      ...FIORI_STATIC.typography.bodyMedium,
-      color: colors.gray500,
-      minWidth: 40,
-      textAlign: 'right',
-    },
-    breakdownValue: {
-      ...FIORI_STATIC.typography.bodyMedium,
-      color: colors.gray900,
-      minWidth: 100,
-      textAlign: 'right',
-    },
-    breakdownLabelTotal: {
-      ...FIORI_STATIC.typography.headline,
-      color: colors.gray900,
-    },
-    breakdownValueTotal: {
-      fontSize: 20,
-      fontWeight: '700',
-      color: colors.success,
-    },
-    docSectionBorder: {
-      paddingTop: FIORI_STATIC.spacing.md,
-      borderTopWidth: 1,
-      borderTopColor: colors.cellDivider,
-    },
-    docSectionTitle: {
-      ...FIORI_STATIC.typography.caption,
-      color: colors.gray600,
-      fontWeight: '600',
-      textTransform: 'uppercase',
-      letterSpacing: 0.5,
-      marginBottom: FIORI_STATIC.spacing.sm,
-    },
-    docButton: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      backgroundColor: colors.gray50,
-      padding: FIORI_STATIC.spacing.md,
-      borderRadius: 8,
-      gap: FIORI_STATIC.spacing.md,
-      marginBottom: FIORI_STATIC.spacing.sm,
-      minHeight: FIORI_STATIC.dimensions.touchTarget,
-    },
-    docButtonPressed: {
-      backgroundColor: colors.gray100,
-    },
-    docNumber: {
-      flex: 1,
-      ...FIORI_STATIC.typography.bodyMedium,
-      color: colors.gray900,
-    },
-  }), [colors]);
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
 
   const calculatePercentage = (amount: number, total: number) => {
     if (total === 0) return 0;
@@ -241,193 +210,115 @@ export const InvoiceBreakdownTab: React.FC<InvoiceBreakdownTabProps> = ({
   const saved = savedInvoiceAmounts(breakdown);
   const subtotalPercent = calculatePercentage(saved.netBeforeTax, breakdown.total);
   const taxPercent = calculatePercentage(breakdown.tax_amount, breakdown.total);
+  const isDiscount = breakdown.discount > 0;
+  const adjustmentValue = isDiscount
+    ? formatInvoiceDeduction(saved.adjustmentAmount)
+    : `+${formatInvoiceAmount(saved.adjustmentAmount)}`;
 
   const grnDocs = related_documents.filter(doc => doc.type === 'grn');
   const dispatchDocs = related_documents.filter(doc => doc.type === 'dispatch');
 
-  // Section Header - Fiori Spec
-  const SectionHeader = ({ title }: { title: string }) => (
-    <View style={styles.sectionHeader}>
-      <Text style={dynamicStyles.sectionHeaderText}>{title.toUpperCase()}</Text>
-    </View>
-  );
-
-  // Breakdown Row Component
-  const BreakdownRow = ({
-    color,
-    label,
-    percent,
-    amount,
-    isNegative = false,
-  }: {
-    color: string;
-    label: string;
-    percent?: number;
-    amount: number;
-    isNegative?: boolean;
-  }) => (
-    <View style={dynamicStyles.breakdownRow}>
-      <View style={styles.breakdownLeft}>
-        <View style={[styles.colorDot, { backgroundColor: color }]} />
-        <Text style={dynamicStyles.breakdownLabel}>{label}</Text>
-      </View>
-      <View style={styles.breakdownRight}>
-        {percent !== undefined && <Text style={dynamicStyles.breakdownPercent}>{percent}%</Text>}
-        <Text style={[dynamicStyles.breakdownValue, isNegative && { color: colors.error }]}>
-          {isNegative ? '- ' : ''}{formatCurrency(amount)}
-        </Text>
-      </View>
-    </View>
-  );
-
-  // Document Button Component
-  const DocumentButton = ({
-    doc,
-    iconName,
-    iconColor,
-    label,
-    hasNavigation,
-  }: {
-    doc: RelatedDocument;
-    iconName: string;
-    iconColor: string;
-    label: string;
-    hasNavigation: boolean;
-  }) => (
+  const renderDocumentButton = (
+    doc: RelatedDocument,
+    iconName: string,
+    label: string,
+    hasNavigation: boolean,
+  ) => (
     <Pressable
-      style={({ pressed }) => [
-        dynamicStyles.docButton,
-        pressed && dynamicStyles.docButtonPressed,
-      ]}
+      key={doc.id}
+      style={({ pressed }) => [styles.docButton, pressed && hasNavigation && styles.docButtonPressed]}
       onPress={() => handleDocumentPress(doc)}
       disabled={!hasNavigation}
       accessibilityRole="button"
       accessibilityLabel={`View ${label} ${doc.number}`}
+      accessibilityState={{ disabled: !hasNavigation }}
     >
-      <View style={[styles.docIconContainer, { backgroundColor: `${iconColor}15` }]}>
-        <Icon name={iconName} size={20} color={iconColor} />
-      </View>
-      <Text style={dynamicStyles.docNumber}>{label} {doc.number}</Text>
+      <Icon name={iconName} size={iconSize.md} color={t.icon.secondary} />
+      <Text style={styles.docNumber}>{`${label} ${doc.number}`}</Text>
       {hasNavigation && (
-        <Icon name="chevron-right" size={20} color={colors.primary} />
+        <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />
       )}
     </Pressable>
   );
 
   return (
     <ScrollView
-      style={dynamicStyles.container}
+      style={styles.container}
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
     >
-      {/* ================================================================
-          SECTION: CHARGES BREAKDOWN
-      ================================================================ */}
-      <SectionHeader title="Charges Breakdown" />
-      <View style={dynamicStyles.card}>
-        {/* Card Header */}
-        <View style={dynamicStyles.cardHeader}>
-          <View style={[styles.avatar, { backgroundColor: colors.primaryLight }]}>
-            <Icon name="chart-pie" size={24} color={colors.primary} />
+      {/* SECTION: CHARGES BREAKDOWN */}
+      <SectionHeader title="Charges breakdown" styles={styles} />
+      <View style={styles.card}>
+        <View style={styles.cardHeader}>
+          <View style={styles.avatar}>
+            <Icon name="chart-pie" size={iconSize.lg} color={t.brand.tint} />
           </View>
-          <Text style={dynamicStyles.cardTitle}>Saved Invoice Amounts</Text>
+          <Text style={styles.cardTitle}>Saved invoice amounts</Text>
         </View>
 
-        {/* Breakdown Rows */}
         <View style={styles.breakdownContainer}>
-          {/* Subtotal */}
           <BreakdownRow
-            color={FIORI_STATIC.chartColors.subtotal}
             label="Net before tax"
             percent={subtotalPercent}
-            amount={saved.netBeforeTax}
+            value={formatInvoiceAmount(saved.netBeforeTax)}
+            styles={styles}
           />
 
-          {/* Discount */}
           {saved.hasAdjustment && (
             <BreakdownRow
-              color={FIORI_STATIC.chartColors.discount}
               label={`${saved.adjustmentLabel} (included)`}
-              amount={saved.adjustmentAmount}
-              isNegative={breakdown.discount > 0}
+              value={adjustmentValue}
+              isDiscount={isDiscount}
+              styles={styles}
             />
           )}
 
-          {/* Labour */}
           {breakdown.labour > 0 && (
             <BreakdownRow
-              color={FIORI_STATIC.chartColors.labour}
               label="Labour (included)"
-              amount={breakdown.labour}
+              value={formatInvoiceAmount(breakdown.labour)}
+              styles={styles}
             />
           )}
 
-          {/* Tax */}
           <BreakdownRow
-            color={FIORI_STATIC.chartColors.tax}
-            label="Tax Amount"
+            label="Tax"
             percent={taxPercent}
-            amount={breakdown.tax_amount}
+            value={formatInvoiceAmount(breakdown.tax_amount)}
+            styles={styles}
           />
 
-          {/* Total */}
-          <View style={[dynamicStyles.breakdownRow, dynamicStyles.breakdownRowTotal]}>
-            <Text style={dynamicStyles.breakdownLabelTotal}>Total Amount</Text>
-            <Text style={dynamicStyles.breakdownValueTotal}>
-              {formatCurrency(breakdown.total)}
-            </Text>
+          <View
+            style={[styles.breakdownRow, styles.breakdownRowTotal]}
+            accessible
+            accessibilityLabel={`Total amount, ${formatInvoiceAmount(breakdown.total)}`}
+          >
+            <Text style={styles.breakdownLabelTotal}>Total amount</Text>
+            <Text style={styles.breakdownValueTotal}>{formatInvoiceAmount(breakdown.total)}</Text>
           </View>
         </View>
       </View>
 
-      {/* ================================================================
-          SECTION: RELATED DOCUMENTS
-      ================================================================ */}
+      {/* SECTION: RELATED DOCUMENTS */}
       {related_documents.length > 0 && (
         <>
-          <SectionHeader title="Related Documents" />
-          <View style={dynamicStyles.card}>
-            {/* Card Header */}
-            <View style={dynamicStyles.cardHeader}>
-              <View style={[styles.avatar, { backgroundColor: colors.blueLight }]}>
-                <Icon name="file-document-multiple" size={24} color={colors.blue} />
-              </View>
-              <Text style={dynamicStyles.cardTitle}>Linked Documents</Text>
-            </View>
-
-            {/* Documents List */}
+          <SectionHeader title="Related documents" styles={styles} />
+          <View style={styles.card}>
             <View style={styles.documentsContainer}>
-              {/* GRN Documents */}
               {grnDocs.length > 0 && (
                 <View style={styles.docSection}>
-                  <Text style={dynamicStyles.docSectionTitle}>Goods Receipt Notes</Text>
-                  {grnDocs.map((doc) => (
-                    <DocumentButton
-                      key={doc.id}
-                      doc={doc}
-                      iconName="receipt"
-                      iconColor={colors.blue}
-                      label="GRN"
-                      hasNavigation={!!on_view_grn}
-                    />
-                  ))}
+                  <Text style={styles.docSectionTitle} accessibilityRole="header">GRNs</Text>
+                  {grnDocs.map(doc => renderDocumentButton(doc, 'package-down', 'GRN', !!on_view_grn))}
                 </View>
               )}
 
-              {/* Dispatch Documents */}
               {dispatchDocs.length > 0 && (
-                <View style={[styles.docSection, grnDocs.length > 0 && dynamicStyles.docSectionBorder]}>
-                  <Text style={dynamicStyles.docSectionTitle}>Dispatches</Text>
-                  {dispatchDocs.map((doc) => (
-                    <DocumentButton
-                      key={doc.id}
-                      doc={doc}
-                      iconName="truck-delivery"
-                      iconColor={colors.primary}
-                      label="DISP"
-                      hasNavigation={!!on_view_dispatch}
-                    />
-                  ))}
+                <View style={[styles.docSection, grnDocs.length > 0 && styles.docSectionBorder]}>
+                  <Text style={styles.docSectionTitle} accessibilityRole="header">Dispatches</Text>
+                  {dispatchDocs.map(doc =>
+                    renderDocumentButton(doc, 'truck-delivery-outline', 'Dispatch', !!on_view_dispatch)
+                  )}
                 </View>
               )}
             </View>
@@ -435,78 +326,7 @@ export const InvoiceBreakdownTab: React.FC<InvoiceBreakdownTabProps> = ({
         </>
       )}
 
-      {/* Bottom Spacing */}
       <View style={styles.bottomSpacer} />
     </ScrollView>
   );
 };
-
-// ============================================================================
-// STYLES (Static layout only - colors are in dynamicStyles)
-// ============================================================================
-const styles = StyleSheet.create({
-  // Container
-  content: {
-    paddingHorizontal: FIORI_STATIC.spacing.lg,
-    paddingTop: FIORI_STATIC.spacing.md,
-  },
-  bottomSpacer: {
-    height: 32,
-  },
-
-  // Section Header - Fiori Spec
-  sectionHeader: {
-    paddingTop: FIORI_STATIC.spacing.lg,
-    paddingBottom: FIORI_STATIC.spacing.sm,
-  },
-
-  // Card - Fiori Card Spec
-  avatar: {
-    width: FIORI_STATIC.dimensions.avatarSize,
-    height: FIORI_STATIC.dimensions.avatarSize,
-    borderRadius: FIORI_STATIC.dimensions.avatarSize / 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: FIORI_STATIC.spacing.md,
-  },
-
-  // Breakdown Container
-  breakdownContainer: {
-    padding: FIORI_STATIC.dimensions.cardPadding,
-  },
-
-  // Breakdown Rows
-  breakdownLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  colorDot: {
-    width: FIORI_STATIC.dimensions.dotSize,
-    height: FIORI_STATIC.dimensions.dotSize,
-    borderRadius: FIORI_STATIC.dimensions.dotSize / 2,
-    marginRight: FIORI_STATIC.spacing.md,
-  },
-  breakdownRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: FIORI_STATIC.spacing.lg,
-  },
-
-  // Documents Container
-  documentsContainer: {
-    padding: FIORI_STATIC.dimensions.cardPadding,
-  },
-  docSection: {
-    marginBottom: FIORI_STATIC.spacing.md,
-  },
-
-  // Document Button
-  docIconContainer: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-});

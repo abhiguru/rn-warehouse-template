@@ -2,17 +2,19 @@
  * Add Item Bottom Sheet
  * Bottom sheet for adding dispatch items with GRN, Item, Lot selection
  * Used in dispatch form Step 2 when adding items from order flow
+ *
+ * Bottom sheet per docs/STYLE_GUIDE.md §13.9; fields per §13.2.
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
-  TouchableOpacity,
+  Pressable,
   StyleSheet,
   TextInput,
   Alert,
-  Platform,
+  BackHandler,
 } from 'react-native';
 import {
   BottomSheetModal,
@@ -21,8 +23,18 @@ import {
   BottomSheetBackdropProps,
 } from '@gorhom/bottom-sheet';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import theme from '@/theme';
-import { useListColors } from '@/hooks/useListColors';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import {
+  fontWeight,
+  iconSize,
+  layout,
+  radius,
+  space,
+  touchTarget,
+  typography,
+} from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
 import { getGRNDetailByNumber } from '../services/grnDetailService';
 import { validateSingleItem, checkDuplicateLots } from '../schemas/dispatchValidation';
 import type { GRNDetailItem, DispatchItemData, ItemFormData } from '@/types/dispatch.types';
@@ -41,187 +53,237 @@ interface AddItemBottomSheetProps {
   existingItems: DispatchItemData[]; // To check for duplicates
 }
 
+const makeStyles = (t: ThemeTokens) => ({
+  sheetBackground: {
+    backgroundColor: t.surface.sheet,
+    borderTopLeftRadius: radius.sheet,
+    borderTopRightRadius: radius.sheet,
+    ...t.shadow[4],
+  },
+  handleIndicator: {
+    backgroundColor: t.border.separator,
+    width: 36,
+    height: 4,
+  },
+  container: {
+    flex: 1,
+    backgroundColor: t.surface.sheet,
+  },
+  header: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    paddingLeft: layout.marginCompact,
+    paddingRight: space.xs,
+    minHeight: touchTarget + space.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.divider,
+    gap: space.sm,
+  },
+  headerTitle: {
+    ...typography.headline,
+    flex: 1,
+    color: t.text.primary,
+  },
+  closeButton: {
+    width: touchTarget,
+    height: touchTarget,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    borderRadius: radius.pill,
+  },
+  closeButtonPressed: {
+    backgroundColor: t.surface.cardPressed,
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    padding: layout.marginCompact,
+    paddingBottom: space.huge,
+  },
+  formGroup: {
+    marginBottom: space.lg,
+  },
+  label: {
+    ...typography.footnote,
+    color: t.text.secondary,
+    marginBottom: space.xs,
+  },
+  labelError: {
+    color: t.status.negative.text,
+  },
+  required: {
+    color: t.text.required,
+  },
+  inputContainer: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    borderWidth: 1,
+    borderColor: t.border.field,
+    borderRadius: radius.field,
+    backgroundColor: t.surface.field,
+    minHeight: touchTarget,
+    paddingHorizontal: space.md,
+  },
+  inputPressed: {
+    backgroundColor: t.surface.cardPressed,
+  },
+  inputDisabled: {
+    opacity: t.interaction.disabledOpacity,
+  },
+  inputError: {
+    borderColor: t.status.negative.border,
+    borderWidth: 2,
+    paddingHorizontal: space.md - 1,
+  },
+  inputIcon: {
+    marginRight: space.sm,
+  },
+  selectorText: {
+    ...typography.body,
+    flex: 1,
+    color: t.text.primary,
+  },
+  placeholderText: {
+    color: t.text.placeholder,
+  },
+  input: {
+    ...typography.body,
+    flex: 1,
+    color: t.text.primary,
+    padding: 0,
+    fontVariant: ['tabular-nums' as const],
+  },
+  inputDisabledText: {
+    color: t.text.disabled,
+  },
+  errorRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.xs,
+    marginTop: space.xs,
+  },
+  errorText: {
+    ...typography.footnote,
+    flex: 1,
+    color: t.status.negative.text,
+  },
+  lotDetailsCard: {
+    backgroundColor: t.background.base,
+    borderRadius: radius.card,
+    padding: space.lg,
+    marginBottom: space.lg,
+  },
+  lotDetailsTitle: {
+    ...typography.footnote,
+    fontWeight: fontWeight.semibold,
+    textTransform: 'uppercase' as const,
+    letterSpacing: 0.5,
+    color: t.text.secondary,
+    marginBottom: space.md,
+  },
+  lotDetailsGrid: {
+    gap: space.sm,
+  },
+  detailItem: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.sm,
+  },
+  detailLabel: {
+    ...typography.subhead,
+    color: t.text.secondary,
+    minWidth: 100,
+  },
+  detailValue: {
+    ...typography.subhead,
+    fontWeight: fontWeight.semibold,
+    color: t.text.primary,
+    flex: 1,
+    fontVariant: ['tabular-nums' as const],
+  },
+  stockDisplayCard: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    backgroundColor: t.status.informative.background,
+    borderWidth: 1,
+    borderColor: t.status.informative.border,
+    borderRadius: radius.button,
+    padding: space.md,
+    gap: space.sm,
+    marginBottom: space.md,
+    flexWrap: 'wrap' as const,
+  },
+  stockDisplayText: {
+    ...typography.subhead,
+    color: t.status.informative.text,
+  },
+  stockDisplayValue: {
+    fontWeight: fontWeight.semibold,
+    fontVariant: ['tabular-nums' as const],
+  },
+  footer: {
+    flexDirection: 'row' as const,
+    paddingHorizontal: layout.marginCompact,
+    paddingTop: space.md,
+    backgroundColor: t.surface.card,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: t.border.separator,
+    gap: space.sm,
+    ...t.shadow[3],
+  },
+  secondaryButton: {
+    flex: 1,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    borderWidth: 1,
+    borderColor: t.border.button,
+    minHeight: touchTarget,
+    paddingHorizontal: space.lg,
+    borderRadius: radius.button,
+    gap: space.sm,
+  },
+  secondaryButtonPressed: {
+    backgroundColor: t.brand.subtle,
+  },
+  secondaryButtonText: {
+    ...typography.callout,
+    color: t.brand.tint,
+  },
+  primaryButton: {
+    flex: 1,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    backgroundColor: t.brand.fill,
+    minHeight: touchTarget,
+    paddingHorizontal: space.lg,
+    borderRadius: radius.button,
+    gap: space.sm,
+  },
+  primaryButtonPressed: {
+    backgroundColor: t.brand.fillPressed,
+  },
+  primaryButtonText: {
+    ...typography.callout,
+    fontWeight: fontWeight.semibold,
+    color: t.brand.onFill,
+  },
+  buttonDisabled: {
+    opacity: t.interaction.disabledOpacity,
+  },
+});
+
 export const AddItemBottomSheet: React.FC<AddItemBottomSheetProps> = ({
   isVisible, onClose,
   onAddItem,
   existingItems,
 }) => {
   const bottomSheetRef = useRef<BottomSheetModal>(null);
-
-  // Theme colors for dark mode support
-  const colors = useListColors();
-
-  // Dynamic styles based on theme
-  const dynamicStyles = useMemo(() => StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor: colors.cellBackground,
-    },
-    header: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      paddingHorizontal: 20,
-      paddingVertical: 16,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.cellDivider,
-      gap: 12,
-    },
-    headerTitle: {
-      flex: 1,
-      fontSize: 18,
-      fontWeight: '600',
-      color: colors.textPrimary,
-    },
-    label: {
-      fontSize: 14,
-      fontWeight: '600',
-      color: colors.textSecondary,
-      marginBottom: 8,
-    },
-    inputContainer: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      borderWidth: 1,
-      borderColor: colors.gray200,
-      borderRadius: 8,
-      backgroundColor: colors.cellBackground,
-      minHeight: 48,
-      paddingHorizontal: 12,
-    },
-    inputDisabled: {
-      backgroundColor: colors.gray50,
-      opacity: 0.6,
-    },
-    inputError: {
-      borderColor: colors.error,
-      borderWidth: 2,
-    },
-    selectorText: {
-      flex: 1,
-      fontSize: 16,
-      color: colors.textPrimary,
-    },
-    placeholderText: {
-      color: colors.textTertiary,
-    },
-    lotDetailsCard: {
-      backgroundColor: colors.gray50,
-      borderRadius: 12,
-      padding: 16,
-      marginBottom: 20,
-      borderWidth: 1,
-      borderColor: colors.gray200,
-    },
-    lotDetailsTitle: {
-      fontSize: 14,
-      fontWeight: '600',
-      color: colors.textPrimary,
-      marginBottom: 12,
-    },
-    detailLabel: {
-      fontSize: 13,
-      fontWeight: '500',
-      color: colors.textSecondary,
-      minWidth: 100,
-    },
-    detailValue: {
-      fontSize: 13,
-      fontWeight: '600',
-      color: colors.textPrimary,
-      flex: 1,
-    },
-    stockDisplayCard: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      backgroundColor: colors.blueLight,
-      borderRadius: 8,
-      padding: 12,
-      gap: 8,
-      marginBottom: 12,
-      flexWrap: 'wrap',
-    },
-    stockDisplayText: {
-      fontSize: 14,
-      color: colors.blue,
-    },
-    stockDisplayValue: {
-      fontWeight: '700',
-      color: colors.blue,
-    },
-    stockDisplaySeparator: {
-      fontSize: 14,
-      color: colors.blue,
-      marginHorizontal: 4,
-    },
-    input: {
-      flex: 1,
-      fontSize: 16,
-      color: colors.textPrimary,
-      padding: 0,
-    },
-    inputDisabledText: {
-      color: colors.textTertiary,
-    },
-    inputErrorText: {
-      color: colors.error,
-    },
-    footer: {
-      flexDirection: 'row',
-      padding: 16,
-      backgroundColor: colors.cellBackground,
-      borderTopWidth: 1,
-      borderTopColor: colors.gray200,
-      gap: 12,
-      ...Platform.select({
-        ios: {
-          shadowColor: colors.black,
-          shadowOffset: { width: 0, height: -2 },
-          shadowOpacity: 0.1,
-          shadowRadius: 4,
-        },
-        android: {
-          elevation: 8,
-        },
-      }),
-    },
-    addAnotherButton: {
-      flex: 1,
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      backgroundColor: colors.orangeLight,
-      borderWidth: 1,
-      borderColor: colors.primary,
-      paddingVertical: 14,
-      paddingHorizontal: 16,
-      borderRadius: 8,
-      gap: 8,
-    },
-    addAnotherButtonText: {
-      fontSize: 15,
-      fontWeight: '600',
-      color: colors.primary,
-    },
-    doneButton: {
-      flex: 1,
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      backgroundColor: colors.primary,
-      paddingVertical: 14,
-      paddingHorizontal: 16,
-      borderRadius: 8,
-      gap: 8,
-    },
-    doneButtonText: {
-      fontSize: 15,
-      fontWeight: '600',
-      color: colors.white,
-    },
-    buttonTextDisabled: {
-      color: colors.textTertiary,
-    },
-  }), [colors]);
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
+  const insets = useSafeAreaInsets();
 
   // Current item form state
   const [currentItem, setCurrentItem] = useState<ItemFormData>({
@@ -278,10 +340,11 @@ export const AddItemBottomSheet: React.FC<AddItemBottomSheetProps> = ({
         {...props}
         disappearsOnIndex={-1}
         appearsOnIndex={0}
-        opacity={0.5}
+        opacity={1}
+        style={[props.style, { backgroundColor: t.overlay.scrim }]}
       />
     ),
-    []
+    [t]
   );
 
   // Handle GRN selection
@@ -294,7 +357,8 @@ export const AddItemBottomSheet: React.FC<AddItemBottomSheetProps> = ({
         const result = await getGRNDetailByNumber(grn.gr_no);
 
         if (!result.success || !result.data) {
-          Alert.alert('Error', result.error || 'Failed to load GRN details');
+          addItemBottomSheetLogger.error('[AddItemBottomSheet] GRN load failed:', result.error);
+          Alert.alert("Couldn't load the GRN", 'Check your connection and try again.');
           return;
         }
 
@@ -323,7 +387,7 @@ export const AddItemBottomSheet: React.FC<AddItemBottomSheetProps> = ({
         });
       } catch (err) {
         addItemBottomSheetLogger.error('[AddItemBottomSheet] Error loading GRN:', err);
-        Alert.alert('Error', 'Failed to load GRN details');
+        Alert.alert("Couldn't load the GRN", 'Check your connection and try again.');
       } finally {
         setIsLoadingGRN(false);
       }
@@ -420,7 +484,7 @@ export const AddItemBottomSheet: React.FC<AddItemBottomSheetProps> = ({
 
     if (!validation.isValid) {
       setValidationErrors(validation.errors);
-      Alert.alert('Validation Error', 'Please fill in all required fields correctly');
+      Alert.alert('Check the item', 'Fix the fields marked in red, then try again.');
       return;
     }
 
@@ -430,8 +494,8 @@ export const AddItemBottomSheet: React.FC<AddItemBottomSheetProps> = ({
 
     if (duplicateCheck.hasDuplicates) {
       Alert.alert(
-        'Duplicate Lot',
-        'This lot has already been added. Each lot can only be dispatched once.'
+        'Lot already added',
+        'This lot is already in the dispatch. Each lot can be dispatched once.'
       );
       return;
     }
@@ -451,7 +515,7 @@ export const AddItemBottomSheet: React.FC<AddItemBottomSheetProps> = ({
 
     if (!validation.isValid) {
       setValidationErrors(validation.errors);
-      Alert.alert('Validation Error', 'Please fill in all required fields correctly');
+      Alert.alert('Check the item', 'Fix the fields marked in red, then try again.');
       return;
     }
 
@@ -460,8 +524,8 @@ export const AddItemBottomSheet: React.FC<AddItemBottomSheetProps> = ({
 
     if (duplicateCheck.hasDuplicates) {
       Alert.alert(
-        'Duplicate Lot',
-        'This lot has already been added. Each lot can only be dispatched once.'
+        'Lot already added',
+        'This lot is already in the dispatch. Each lot can be dispatched once.'
       );
       return;
     }
@@ -480,6 +544,26 @@ export const AddItemBottomSheet: React.FC<AddItemBottomSheetProps> = ({
     }
   }, [isVisible, resetForm]);
 
+  // Android back closes the sheet first (nested sheets register their own handler later and win)
+  useEffect(() => {
+    if (!isVisible) return undefined;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      bottomSheetRef.current?.dismiss();
+      return true;
+    });
+    return () => sub.remove();
+  }, [isVisible]);
+
+  const exceedsStock = (currentItem.disp_quantity || 0) > (currentItem.grnItems_stock || 0);
+
+  const renderError = (message?: string) =>
+    message ? (
+      <View style={styles.errorRow} accessibilityRole="alert">
+        <Icon name="alert-circle" size={iconSize.sm} color={t.status.negative.text} />
+        <Text style={styles.errorText}>{message}</Text>
+      </View>
+    ) : null;
+
   return (
     <>
       <BottomSheetModal
@@ -491,20 +575,21 @@ export const AddItemBottomSheet: React.FC<AddItemBottomSheetProps> = ({
         enablePanDownToClose
         keyboardBehavior="interactive"
         keyboardBlurBehavior="restore"
-        backgroundStyle={{ backgroundColor: colors.cellBackground }}
-        handleIndicatorStyle={{ backgroundColor: colors.gray300 }}
+        backgroundStyle={styles.sheetBackground}
+        handleIndicatorStyle={styles.handleIndicator}
       >
-        <View style={dynamicStyles.container}>
+        <View style={styles.container}>
           {/* Header */}
-          <View style={dynamicStyles.header}>
-            <Icon name="plus-circle" size={24} color={colors.primary} />
-            <Text style={dynamicStyles.headerTitle}>Add Item</Text>
-            <TouchableOpacity
+          <View style={styles.header}>
+            <Text style={styles.headerTitle} accessibilityRole="header">Add item</Text>
+            <Pressable
               onPress={() => bottomSheetRef.current?.dismiss()}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              style={({ pressed }) => [styles.closeButton, pressed && styles.closeButtonPressed]}
+              accessibilityRole="button"
+              accessibilityLabel="Close add item"
             >
-              <Icon name="close" size={24} color={colors.textSecondary} />
-            </TouchableOpacity>
+              <Icon name="close" size={iconSize.lg} color={t.icon.primary} />
+            </Pressable>
           </View>
 
           <BottomSheetScrollView
@@ -512,126 +597,132 @@ export const AddItemBottomSheet: React.FC<AddItemBottomSheetProps> = ({
             contentContainerStyle={styles.scrollContent}
             showsVerticalScrollIndicator={false}
           >
-            {/* GR No Selector */}
+            {/* GRN Selector */}
             <View style={styles.formGroup}>
-              <Text style={dynamicStyles.label}>
-                GR No <Text style={styles.required}>*</Text>
+              <Text style={[styles.label, validationErrors.grns_gr_no && styles.labelError]}>
+                GRN <Text style={styles.required}>*</Text>
               </Text>
-              <TouchableOpacity
-                style={[
-                  dynamicStyles.inputContainer,
-                  validationErrors.grns_gr_no && dynamicStyles.inputError,
+              <Pressable
+                style={({ pressed }) => [
+                  styles.inputContainer,
+                  pressed && styles.inputPressed,
+                  validationErrors.grns_gr_no && styles.inputError,
                 ]}
                 onPress={() => setShowGRNBottomSheet(true)}
-                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel={`GRN, required, ${currentItem.grns_gr_no || 'not chosen'}`}
+                accessibilityHint="Opens the GRN list"
+                accessibilityState={{ busy: isLoadingGRN }}
               >
-                <Icon name="clipboard-text" size={20} color={colors.textTertiary} style={styles.inputIcon} />
+                <Icon name="package-down" size={iconSize.md} color={t.icon.secondary} style={styles.inputIcon} />
                 <Text
                   style={[
-                    dynamicStyles.selectorText,
-                    !currentItem.grns_gr_no && dynamicStyles.placeholderText,
+                    styles.selectorText,
+                    !currentItem.grns_gr_no && styles.placeholderText,
                   ]}
                 >
-                  {currentItem.grns_gr_no || 'Select GR No'}
+                  {currentItem.grns_gr_no || 'Choose GRN'}
                 </Text>
-                <Icon name="chevron-down" size={20} color={colors.textTertiary} />
-              </TouchableOpacity>
-              {validationErrors.grns_gr_no && (
-                <Text style={styles.errorText}>{validationErrors.grns_gr_no}</Text>
-              )}
+                <Icon name="chevron-down" size={iconSize.md} color={t.icon.secondary} />
+              </Pressable>
+              {renderError(validationErrors.grns_gr_no)}
             </View>
 
             {/* Item Selector */}
             <View style={styles.formGroup}>
-              <Text style={dynamicStyles.label}>
+              <Text style={[styles.label, validationErrors.grnItems_item_id && styles.labelError]}>
                 Item <Text style={styles.required}>*</Text>
               </Text>
-              <TouchableOpacity
-                style={[
-                  dynamicStyles.inputContainer,
-                  !selectedGRN && dynamicStyles.inputDisabled,
-                  validationErrors.grnItems_item_id && dynamicStyles.inputError,
+              <Pressable
+                style={({ pressed }) => [
+                  styles.inputContainer,
+                  pressed && !!selectedGRN && styles.inputPressed,
+                  !selectedGRN && styles.inputDisabled,
+                  validationErrors.grnItems_item_id && styles.inputError,
                 ]}
                 onPress={() => selectedGRN && setShowItemBottomSheet(true)}
                 disabled={!selectedGRN}
-                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel={`Item, required, ${currentItem.grnItems_item_name || 'not chosen'}`}
+                accessibilityHint={selectedGRN ? 'Opens the item list' : 'Choose a GRN first'}
+                accessibilityState={{ disabled: !selectedGRN }}
               >
-                <Icon name="package-variant" size={20} color={colors.textTertiary} style={styles.inputIcon} />
+                <Icon name="cube-outline" size={iconSize.md} color={t.icon.secondary} style={styles.inputIcon} />
                 <Text
                   style={[
-                    dynamicStyles.selectorText,
-                    !currentItem.grnItems_item_name && dynamicStyles.placeholderText,
+                    styles.selectorText,
+                    !currentItem.grnItems_item_name && styles.placeholderText,
                   ]}
                 >
-                  {currentItem.grnItems_item_name || 'Select item'}
+                  {currentItem.grnItems_item_name || 'Choose item'}
                 </Text>
-                <Icon name="chevron-down" size={20} color={colors.textTertiary} />
-              </TouchableOpacity>
-              {validationErrors.grnItems_item_id && (
-                <Text style={styles.errorText}>{validationErrors.grnItems_item_id}</Text>
-              )}
+                <Icon name="chevron-down" size={iconSize.md} color={t.icon.secondary} />
+              </Pressable>
+              {renderError(validationErrors.grnItems_item_id)}
             </View>
 
             {/* Lot Selector */}
             <View style={styles.formGroup}>
-              <Text style={dynamicStyles.label}>
+              <Text style={[styles.label, validationErrors.grnItems_id && styles.labelError]}>
                 Lot <Text style={styles.required}>*</Text>
               </Text>
-              <TouchableOpacity
-                style={[
-                  dynamicStyles.inputContainer,
-                  !currentItem.grnItems_item_id && dynamicStyles.inputDisabled,
-                  validationErrors.grnItems_id && dynamicStyles.inputError,
+              <Pressable
+                style={({ pressed }) => [
+                  styles.inputContainer,
+                  pressed && !!currentItem.grnItems_item_id && styles.inputPressed,
+                  !currentItem.grnItems_item_id && styles.inputDisabled,
+                  validationErrors.grnItems_id && styles.inputError,
                 ]}
                 onPress={() => currentItem.grnItems_item_id && setShowLotBottomSheet(true)}
                 disabled={!currentItem.grnItems_item_id}
-                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel={`Lot, required, ${currentItem.grnItems_id ? 'chosen' : 'not chosen'}`}
+                accessibilityHint={currentItem.grnItems_item_id ? 'Opens the lot list' : 'Choose an item first'}
+                accessibilityState={{ disabled: !currentItem.grnItems_item_id }}
               >
-                <Icon name="layers" size={20} color={colors.textTertiary} style={styles.inputIcon} />
+                <Icon name="layers-outline" size={iconSize.md} color={t.icon.secondary} style={styles.inputIcon} />
                 <Text
                   style={[
-                    dynamicStyles.selectorText,
-                    !currentItem.grnItems_id && dynamicStyles.placeholderText,
+                    styles.selectorText,
+                    !currentItem.grnItems_id && styles.placeholderText,
                   ]}
                 >
-                  {currentItem.grnItems_id ? 'Lot selected' : 'Select lot'}
+                  {currentItem.grnItems_id ? 'Lot chosen' : 'Choose lot'}
                 </Text>
-                <Icon name="chevron-down" size={20} color={colors.textTertiary} />
-              </TouchableOpacity>
-              {validationErrors.grnItems_id && (
-                <Text style={styles.errorText}>{validationErrors.grnItems_id}</Text>
-              )}
+                <Icon name="chevron-down" size={iconSize.md} color={t.icon.secondary} />
+              </Pressable>
+              {renderError(validationErrors.grnItems_id)}
             </View>
 
             {/* Lot Details */}
             {currentItem.grnItems_id && (
-              <View style={dynamicStyles.lotDetailsCard}>
-                <Text style={dynamicStyles.lotDetailsTitle}>Lot Details</Text>
+              <View style={styles.lotDetailsCard}>
+                <Text style={styles.lotDetailsTitle} accessibilityRole="header">Lot details</Text>
                 <View style={styles.lotDetailsGrid}>
                   {currentItem.grnItems_package_mark && (
                     <View style={styles.detailItem}>
-                      <Icon name="label" size={16} color={colors.textSecondary} />
-                      <Text style={dynamicStyles.detailLabel}>Package Mark:</Text>
-                      <Text style={dynamicStyles.detailValue}>{currentItem.grnItems_package_mark}</Text>
+                      <Icon name="label-outline" size={iconSize.sm} color={t.icon.secondary} />
+                      <Text style={styles.detailLabel}>Package mark</Text>
+                      <Text style={styles.detailValue}>{currentItem.grnItems_package_mark}</Text>
                     </View>
                   )}
                   {currentItem.grnItems_rack && (
                     <View style={styles.detailItem}>
-                      <Icon name="warehouse" size={16} color={colors.textSecondary} />
-                      <Text style={dynamicStyles.detailLabel}>Rack:</Text>
-                      <Text style={dynamicStyles.detailValue}>{currentItem.grnItems_rack}</Text>
+                      <Icon name="view-grid-outline" size={iconSize.sm} color={t.icon.secondary} />
+                      <Text style={styles.detailLabel}>Rack</Text>
+                      <Text style={styles.detailValue}>{currentItem.grnItems_rack}</Text>
                     </View>
                   )}
                   <View style={styles.detailItem}>
-                    <Icon name="weight" size={16} color={colors.textSecondary} />
-                    <Text style={dynamicStyles.detailLabel}>Weight:</Text>
-                    <Text style={dynamicStyles.detailValue}>{currentItem.grnItems_weight} kg</Text>
+                    <Icon name="weight" size={iconSize.sm} color={t.icon.secondary} />
+                    <Text style={styles.detailLabel}>Weight</Text>
+                    <Text style={styles.detailValue}>{currentItem.grnItems_weight} kg</Text>
                   </View>
                   <View style={styles.detailItem}>
-                    <Icon name="package" size={16} color={colors.textSecondary} />
-                    <Text style={dynamicStyles.detailLabel}>In Stock:</Text>
-                    <Text style={[dynamicStyles.detailValue, styles.stockValue]}>
-                      {currentItem.grnItems_stock}
+                    <Icon name="warehouse" size={iconSize.sm} color={t.icon.secondary} />
+                    <Text style={styles.detailLabel}>In stock</Text>
+                    <Text style={styles.detailValue}>
+                      {currentItem.grnItems_stock} {currentItem.grnItems_stock === 1 ? 'bag' : 'bags'}
                     </Text>
                   </View>
                 </View>
@@ -640,78 +731,89 @@ export const AddItemBottomSheet: React.FC<AddItemBottomSheetProps> = ({
 
             {/* Quantity Input */}
             <View style={styles.formGroup}>
-              <Text style={dynamicStyles.label}>
-                Dispatch Quantity <Text style={styles.required}>*</Text>
+              <Text
+                style={[styles.label, (validationErrors.disp_quantity || exceedsStock) && styles.labelError]}
+                nativeID="add-item-quantity-label"
+              >
+                Bags to dispatch <Text style={styles.required}>*</Text>
               </Text>
 
               {/* Dynamic Stock Display */}
               {currentItem.grnItems_id && (
-                <View style={dynamicStyles.stockDisplayCard}>
-                  <Icon name="database" size={18} color={colors.blue} />
-                  <Text style={dynamicStyles.stockDisplayText}>
-                    In Stock: <Text style={dynamicStyles.stockDisplayValue}>{currentItem.grnItems_stock}</Text>
+                <View style={styles.stockDisplayCard}>
+                  <Icon name="information" size={iconSize.sm} color={t.status.informative.text} />
+                  <Text style={styles.stockDisplayText}>
+                    In stock <Text style={styles.stockDisplayValue}>{currentItem.grnItems_stock}</Text>
                   </Text>
                   {(currentItem.disp_quantity || 0) > 0 && (
-                    <>
-                      <Text style={dynamicStyles.stockDisplaySeparator}>•</Text>
-                      <Text style={dynamicStyles.stockDisplayText}>
-                        Remaining: <Text style={dynamicStyles.stockDisplayValue}>{displayStock}</Text>
-                      </Text>
-                    </>
+                    <Text style={styles.stockDisplayText}>
+                      · Left after dispatch <Text style={styles.stockDisplayValue}>{displayStock}</Text>
+                    </Text>
                   )}
                 </View>
               )}
 
-              <View style={dynamicStyles.inputContainer}>
-                <Icon name="counter" size={20} color={colors.textTertiary} style={styles.inputIcon} />
+              <View
+                style={[
+                  styles.inputContainer,
+                  !currentItem.grnItems_id && styles.inputDisabled,
+                  (validationErrors.disp_quantity || exceedsStock) && styles.inputError,
+                ]}
+              >
+                <Icon name="counter" size={iconSize.md} color={t.icon.secondary} style={styles.inputIcon} />
                 <TextInput
                   style={[
-                    dynamicStyles.input,
-                    !currentItem.grnItems_id && dynamicStyles.inputDisabledText,
-                    validationErrors.disp_quantity && dynamicStyles.inputErrorText,
-                    (currentItem.disp_quantity || 0) > (currentItem.grnItems_stock || 0) && dynamicStyles.inputErrorText,
+                    styles.input,
+                    !currentItem.grnItems_id && styles.inputDisabledText,
                   ]}
                   value={(currentItem.disp_quantity || 0) > 0 ? (currentItem.disp_quantity || 0).toString() : ''}
                   onChangeText={handleQuantityChange}
-                  placeholder="Enter quantity"
+                  placeholder="Enter bags"
                   keyboardType="numeric"
                   editable={!!currentItem.grnItems_id}
-                  placeholderTextColor={colors.textTertiary}
+                  placeholderTextColor={t.text.placeholder}
+                  accessibilityLabel="Bags to dispatch"
+                  accessibilityLabelledBy="add-item-quantity-label"
                 />
               </View>
-              {(currentItem.disp_quantity || 0) > (currentItem.grnItems_stock || 0) && (
-                <Text style={styles.errorText}>
-                  Quantity exceeds available stock ({currentItem.grnItems_stock})
-                </Text>
-              )}
-              {validationErrors.disp_quantity && (
-                <Text style={styles.errorText}>{validationErrors.disp_quantity}</Text>
-              )}
+              {exceedsStock &&
+                renderError(`Enter ${currentItem.grnItems_stock} bags or fewer. That is the stock in hand.`)}
+              {renderError(validationErrors.disp_quantity)}
             </View>
           </BottomSheetScrollView>
 
           {/* Footer Buttons */}
-          <View style={dynamicStyles.footer}>
-            <TouchableOpacity
-              style={[dynamicStyles.addAnotherButton, !isCurrentItemValid && styles.buttonDisabled]}
+          <View style={[styles.footer, { paddingBottom: space.md + insets.bottom }]}>
+            <Pressable
+              style={({ pressed }) => [
+                styles.secondaryButton,
+                pressed && styles.secondaryButtonPressed,
+                !isCurrentItemValid && styles.buttonDisabled,
+              ]}
               onPress={handleAddItem}
               disabled={!isCurrentItemValid}
-              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel="Add item and add another"
+              accessibilityState={{ disabled: !isCurrentItemValid }}
             >
-              <Icon name="plus" size={20} color={isCurrentItemValid ? colors.primary : colors.textTertiary} />
-              <Text style={[dynamicStyles.addAnotherButtonText, !isCurrentItemValid && dynamicStyles.buttonTextDisabled]}>
-                Add Another
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[dynamicStyles.doneButton, !isCurrentItemValid && styles.buttonDisabled]}
+              <Icon name="plus" size={iconSize.md} color={t.brand.tint} />
+              <Text style={styles.secondaryButtonText}>Add another</Text>
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [
+                styles.primaryButton,
+                pressed && styles.primaryButtonPressed,
+                !isCurrentItemValid && styles.buttonDisabled,
+              ]}
               onPress={handleAddAndClose}
               disabled={!isCurrentItemValid}
-              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel="Add item"
+              accessibilityState={{ disabled: !isCurrentItemValid }}
             >
-              <Icon name="check" size={20} color={colors.white} />
-              <Text style={dynamicStyles.doneButtonText}>Done</Text>
-            </TouchableOpacity>
+              <Icon name="check" size={iconSize.md} color={t.brand.onFill} />
+              <Text style={styles.primaryButtonText}>Add item</Text>
+            </Pressable>
           </View>
         </View>
       </BottomSheetModal>
@@ -755,42 +857,3 @@ export const AddItemBottomSheet: React.FC<AddItemBottomSheetProps> = ({
     </>
   );
 };
-
-// Static styles (layout only - colors are in dynamicStyles)
-const styles = StyleSheet.create({
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    padding: 20,
-    paddingBottom: 40,
-  },
-  formGroup: {
-    marginBottom: 20,
-  },
-  required: {
-    color: theme.colors.semantic.error,
-  },
-  inputIcon: {
-    marginRight: 8,
-  },
-  errorText: {
-    fontSize: 12,
-    color: theme.colors.semantic.error,
-    marginTop: 4,
-  },
-  lotDetailsGrid: {
-    gap: 8,
-  },
-  detailItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  stockValue: {
-    color: theme.colors.semantic.success,
-  },
-  buttonDisabled: {
-    opacity: 0.5,
-  },
-});

@@ -10,6 +10,8 @@
  * - Loading, error, and empty states
  * - Tapping a dispatch navigates to dispatch details
  *
+ * Composed of a section card and object cells only (docs/STYLE_GUIDE.md §13.13).
+ *
  * @module components/RecentDispatchedOrdersSection
  */
 
@@ -17,18 +19,27 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
+  Pressable,
   StyleSheet,
-  TouchableOpacity,
   LayoutAnimation,
-  Platform,
   ActivityIndicator,
 } from 'react-native';
 import { router } from 'expo-router';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { useListColors } from '@/hooks/useListColors';
 import { getRecentDispatchedOrders } from '@/services/dispatch-service';
 import { RecentDispatchedOrderCard } from './list-items/RecentDispatchedOrderCard';
 import type { RecentDispatchedOrder } from '@/types/dispatch.types';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import {
+  fontWeight,
+  iconSize,
+  layout,
+  radius,
+  space,
+  touchTarget,
+  typography,
+} from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
 
 interface RecentDispatchedOrdersSectionProps {
   /** Optional trigger to force refresh (increment to refresh) */
@@ -37,11 +48,111 @@ interface RecentDispatchedOrdersSectionProps {
   limit?: number;
 }
 
+const makeStyles = (t: ThemeTokens) => ({
+  wrapper: {
+    marginTop: space.sm,
+    marginBottom: space.lg,
+  },
+  sectionCard: {
+    marginHorizontal: layout.marginCompact,
+    borderRadius: radius.card,
+    backgroundColor: t.surface.card,
+    overflow: 'hidden' as const,
+    ...t.shadow[2],
+  },
+  header: {
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'center' as const,
+    minHeight: touchTarget,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.md,
+    backgroundColor: t.surface.card,
+  },
+  headerPressed: {
+    backgroundColor: t.surface.cardPressed,
+  },
+  headerLeft: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.sm,
+    flex: 1,
+  },
+  headerTitle: {
+    ...typography.headline,
+    color: t.text.primary,
+    flexShrink: 1,
+  },
+  countBadge: {
+    minHeight: 18,
+    minWidth: 18,
+    paddingHorizontal: space.s6,
+    borderRadius: radius.pill,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    backgroundColor: t.brand.fill,
+  },
+  countText: {
+    ...typography.caption2,
+    fontWeight: fontWeight.semibold,
+    color: t.brand.onFill,
+    fontVariant: ['tabular-nums' as const],
+  },
+  loadingContainer: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    paddingVertical: space.xxl,
+    gap: space.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: t.border.divider,
+  },
+  loadingText: {
+    ...typography.subhead,
+    color: t.text.secondary,
+  },
+  errorContainer: {
+    alignItems: 'center' as const,
+    paddingVertical: space.xxl,
+    paddingHorizontal: space.xxl,
+    gap: space.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: t.border.divider,
+  },
+  errorText: {
+    ...typography.subhead,
+    color: t.text.secondary,
+    textAlign: 'center' as const,
+  },
+  retryButton: {
+    minHeight: touchTarget,
+    paddingHorizontal: space.lg,
+    borderRadius: radius.button,
+    borderWidth: 1,
+    borderColor: t.border.button,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+  },
+  retryButtonPressed: {
+    backgroundColor: t.brand.subtle,
+  },
+  retryText: {
+    ...typography.callout,
+    color: t.brand.tint,
+  },
+  list: {
+    paddingTop: space.xs,
+  },
+});
+
+const LOAD_ERROR = "Couldn't load recent dispatches. Check your connection and try again.";
+
 const RecentDispatchedOrdersSection: React.FC<RecentDispatchedOrdersSectionProps> = ({
   refreshTrigger = 0,
   limit = 10,
 }) => {
-  const colors = useListColors();
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
   const [isExpanded, setIsExpanded] = useState(false); // Collapsed by default
   const [dispatches, setDispatches] = useState<RecentDispatchedOrder[]>([]);
   const [loading, setLoading] = useState(true);
@@ -71,12 +182,12 @@ const RecentDispatchedOrdersSection: React.FC<RecentDispatchedOrdersSectionProps
         }
         setDispatches(result.data.dispatches || []);
       } else {
-        setError(result.error || 'Failed to load recent dispatches');
+        setError(LOAD_ERROR);
       }
     } catch (err) {
       if (!isMountedRef.current) return;
       console.error('[RecentDispatchedOrdersSection] Error:', err);
-      setError('An error occurred while loading recent dispatches');
+      setError(LOAD_ERROR);
     } finally {
       if (isMountedRef.current) {
         setLoading(false);
@@ -116,181 +227,85 @@ const RecentDispatchedOrdersSection: React.FC<RecentDispatchedOrdersSectionProps
     return null;
   }
 
-  return (
-    <View style={[styles.container, { backgroundColor: colors.cellBackground }]}>
-      {/* Section Header */}
-      <TouchableOpacity
-        style={[styles.header, { backgroundColor: colors.statusPositiveLight }]}
-        onPress={toggleExpand}
-        activeOpacity={0.7}
-        accessibilityRole="button"
-        accessibilityLabel={`Recent Dispatched Orders, ${dispatches.length} items, ${isExpanded ? 'collapse' : 'expand'}`}
-      >
-        <View style={styles.headerLeft}>
-          <Icon name="truck-check" size={20} color={colors.statusPositive} />
-          <Text style={[styles.headerTitle, { color: colors.gray900 }]}>
-            Recent Dispatched Orders
-          </Text>
-          {!loading && dispatches.length > 0 && (
-            <View style={[styles.countBadge, { backgroundColor: colors.statusPositive }]}>
-              <Text style={[styles.countText, { color: colors.cellBackground }]}>
-                {dispatches.length}
-              </Text>
-            </View>
-          )}
-        </View>
-        <Icon
-          name={isExpanded ? 'chevron-up' : 'chevron-down'}
-          size={20}
-          color={colors.gray600}
-        />
-      </TouchableOpacity>
+  const countLabel = `${dispatches.length} ${dispatches.length === 1 ? 'dispatch' : 'dispatches'}`;
 
-      {/* Content */}
-      {isExpanded && (
-        <View style={styles.content}>
-          {loading ? (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator size="small" color={colors.primary} />
-              <Text style={[styles.loadingText, { color: colors.gray500 }]}>
-                Loading recent dispatches...
-              </Text>
-            </View>
-          ) : error ? (
-            <View style={styles.errorContainer}>
-              <Icon name="alert-circle-outline" size={32} color={colors.error} />
-              <Text style={[styles.errorText, { color: colors.gray700 }]}>{error}</Text>
-              <TouchableOpacity onPress={fetchDispatches} style={styles.retryButton}>
-                <Text style={[styles.retryText, { color: colors.primary }]}>Retry</Text>
-              </TouchableOpacity>
-            </View>
-          ) : dispatches.length === 0 ? (
-            <View style={styles.emptyContainer}>
-              <Icon name="truck-outline" size={32} color={colors.gray400} />
-              <Text style={[styles.emptyText, { color: colors.gray500 }]}>
-                No recent order dispatches
-              </Text>
-            </View>
-          ) : (
-            <View style={styles.dispatchList}>
-              {dispatches.map(dispatch => (
-                <RecentDispatchedOrderCard
-                  key={dispatch.dispatch_id}
-                  dispatch={dispatch}
-                  onPress={handleDispatchPress}
-                  colors={colors}
-                />
-              ))}
-            </View>
-          )}
+  return (
+    <View style={styles.wrapper}>
+      <View style={styles.sectionCard}>
+        {/* Section Header */}
+        <Pressable
+          style={({ pressed }) => [styles.header, pressed && styles.headerPressed]}
+          onPress={toggleExpand}
+          accessibilityRole="button"
+          accessibilityLabel={`Recently dispatched orders, ${countLabel}`}
+          accessibilityState={{ expanded: isExpanded }}
+        >
+          <View style={styles.headerLeft}>
+            <Icon name="truck-check-outline" size={iconSize.md} color={t.brand.tint} />
+            <Text style={styles.headerTitle} accessibilityRole="header">
+              Recently dispatched orders
+            </Text>
+            {!loading && dispatches.length > 0 && (
+              <View style={styles.countBadge}>
+                <Text style={styles.countText} maxFontSizeMultiplier={1.6}>
+                  {dispatches.length}
+                </Text>
+              </View>
+            )}
+          </View>
+          <Icon
+            name={isExpanded ? 'chevron-up' : 'chevron-down'}
+            size={iconSize.md}
+            color={t.icon.secondary}
+          />
+        </Pressable>
+
+        {isExpanded && loading && (
+          <View style={styles.loadingContainer} accessibilityLabel="Loading recent dispatches">
+            <ActivityIndicator size="small" color={t.brand.tint} />
+            <Text style={styles.loadingText}>Loading recent dispatches…</Text>
+          </View>
+        )}
+
+        {isExpanded && !loading && error && (
+          <View style={styles.errorContainer}>
+            <Icon name="alert-circle-outline" size={iconSize.xl} color={t.status.negative.text} />
+            <Text style={styles.errorText}>{error}</Text>
+            <Pressable
+              onPress={fetchDispatches}
+              style={({ pressed }) => [styles.retryButton, pressed && styles.retryButtonPressed]}
+              accessibilityRole="button"
+              accessibilityLabel="Try loading recent dispatches again"
+            >
+              <Text style={styles.retryText}>Try again</Text>
+            </Pressable>
+          </View>
+        )}
+
+        {isExpanded && !loading && !error && dispatches.length === 0 && (
+          <View style={styles.errorContainer}>
+            <Icon name="truck-delivery-outline" size={iconSize.xl} color={t.icon.secondary} />
+            <Text style={styles.errorText}>
+              No orders dispatched yet. Dispatches created from orders appear here.
+            </Text>
+          </View>
+        )}
+      </View>
+
+      {/* Dispatch cards sit on the screen background, not inside the section card */}
+      {isExpanded && !loading && !error && dispatches.length > 0 && (
+        <View style={styles.list}>
+          {dispatches.map(dispatch => (
+            <RecentDispatchedOrderCard
+              key={dispatch.dispatch_id}
+              dispatch={dispatch}
+              onPress={handleDispatchPress}
+            />
+          ))}
         </View>
       )}
     </View>
   );
 };
-
-// ============================================================================
-// STYLES - SAP Fiori Card & Section Header Compliant
-// ============================================================================
-
-const styles = StyleSheet.create({
-  container: {
-    marginHorizontal: 16,
-    marginTop: 8,
-    marginBottom: 8,
-    borderRadius: 12,
-    overflow: 'hidden',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.08,
-        shadowRadius: 4,
-      },
-      android: {
-        elevation: 2,
-      },
-    }),
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    minHeight: 44,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
-  headerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    flex: 1,
-  },
-  headerTitle: {
-    fontSize: 17,
-    fontWeight: '600',
-    letterSpacing: -0.41,
-    flex: 1,
-  },
-  countBadge: {
-    height: 20,
-    minWidth: 20,
-    paddingHorizontal: 8,
-    borderRadius: 10,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  countText: {
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  content: {
-    paddingBottom: 8,
-  },
-  loadingContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 24,
-    gap: 8,
-  },
-  loadingText: {
-    fontSize: 14,
-  },
-  errorContainer: {
-    alignItems: 'center',
-    paddingVertical: 24,
-    paddingHorizontal: 24,
-    gap: 12,
-  },
-  errorText: {
-    fontSize: 14,
-    lineHeight: 20,
-    textAlign: 'center',
-  },
-  retryButton: {
-    minHeight: 44,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-  },
-  retryText: {
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  emptyContainer: {
-    alignItems: 'center',
-    paddingVertical: 24,
-    paddingHorizontal: 24,
-    gap: 8,
-  },
-  emptyText: {
-    fontSize: 14,
-    textAlign: 'center',
-  },
-  dispatchList: {
-    paddingHorizontal: 0,
-    paddingTop: 8,
-  },
-});
 
 export default RecentDispatchedOrdersSection;

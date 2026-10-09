@@ -1,22 +1,27 @@
 /**
- * MemoizedInvoiceItem - Optimized Invoice Card Component
+ * MemoizedInvoiceItem - invoice object cell for the invoice list.
  *
- * 2025 Best Practices Implementation:
- * - React.memo with custom areEqual comparison
+ * - React.memo with a custom areEqual comparison
  * - Stable callbacks via props (no inline functions)
- * - Minimal re-renders through prop comparison
- * - SAP Fiori design compliance
+ * - Style guide §13.6 object cell: title, subtitle, footnote, main value on the
+ *   right, chevron because it drills down, pressed `surface.cardPressed`.
  *
  * @module list-items/MemoizedInvoiceItem
  */
 
 import React from 'react';
-import { View, Text, StyleSheet, Pressable } from 'react-native';
+import { View, Text, Pressable } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { savedInvoiceAmounts } from '@/utils/invoiceCalculations';
-import { formatCurrency, formatDate } from '@/utils/formatters';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { fontWeight, iconSize, layout, radius, space, typography } from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
+import {
+  formatInvoiceAmount,
+  formatInvoiceDeduction,
+  savedInvoiceAmounts,
+} from '@/utils/invoiceCalculations';
+import { formatDate } from '@/utils/formatters';
 import type { Invoice } from '@/services/invoice-service';
-import type { ListColors } from '@/hooks/useListColors';
 
 // ============================================================================
 // TYPES
@@ -35,9 +40,130 @@ export interface MemoizedInvoiceItemProps {
   onPrint?: (invoice: Invoice) => void;
   /** Whether print action is available */
   canPrint?: boolean;
-  /** Theme-aware list colors for dark mode support */
-  colors: ListColors;
+  /**
+   * Deprecated: the cell reads theme tokens itself. Still accepted (and
+   * compared) so existing list callers keep working.
+   */
+  colors?: unknown;
 }
+
+// ============================================================================
+// STYLES
+// ============================================================================
+
+const makeStyles = (t: ThemeTokens) => ({
+  card: {
+    backgroundColor: t.surface.card,
+    borderRadius: radius.card,
+    marginHorizontal: layout.marginCompact,
+    marginVertical: space.xs,
+    padding: space.lg,
+    minHeight: layout.objectCellMinHeight,
+    ...t.shadow[1],
+  },
+  cardPressed: {
+    backgroundColor: t.surface.cardPressed,
+  },
+  cardHeader: {
+    flexDirection: 'row' as const,
+    alignItems: 'flex-start' as const,
+    gap: space.md,
+  },
+  cardInfo: {
+    flex: 1,
+  },
+  customerName: {
+    ...typography.headline,
+    color: t.text.primary,
+  },
+  invoiceNumber: {
+    ...typography.subhead,
+    color: t.text.secondary,
+    marginTop: space.xxs,
+  },
+  metaRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    flexWrap: 'wrap' as const,
+    gap: space.xs,
+    marginTop: space.xs,
+  },
+  metaText: {
+    ...typography.footnote,
+    color: t.text.secondary,
+  },
+  amountContainer: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.xs,
+  },
+  amountValue: {
+    ...typography.headline,
+    color: t.text.primary,
+    fontVariant: ['tabular-nums' as const],
+    textAlign: 'right' as const,
+  },
+  metricsBar: {
+    flexDirection: 'row' as const,
+    flexWrap: 'wrap' as const,
+    marginTop: space.md,
+    paddingTop: space.md,
+    borderTopWidth: 1,
+    borderTopColor: t.border.divider,
+    rowGap: space.sm,
+  },
+  metric: {
+    flexGrow: 1,
+    flexBasis: '45%' as const,
+  },
+  metricLabel: {
+    ...typography.caption1,
+    color: t.text.secondary,
+  },
+  metricValue: {
+    ...typography.subhead,
+    fontWeight: fontWeight.semibold,
+    color: t.text.primary,
+    fontVariant: ['tabular-nums' as const],
+  },
+  metricValueDiscount: {
+    color: t.status.positive.text,
+  },
+  tagRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.sm,
+    marginTop: space.md,
+  },
+  neutralTag: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    backgroundColor: t.status.neutral.background,
+    borderRadius: radius.field,
+    paddingHorizontal: space.s6,
+    paddingVertical: space.xxs,
+    gap: space.xs,
+  },
+  neutralTagText: {
+    ...typography.caption1,
+    fontWeight: fontWeight.semibold,
+    color: t.status.neutral.text,
+  },
+  infoTag: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    backgroundColor: t.status.informative.background,
+    borderRadius: radius.field,
+    paddingHorizontal: space.s6,
+    paddingVertical: space.xxs,
+    gap: space.xs,
+  },
+  infoTagText: {
+    ...typography.caption1,
+    fontWeight: fontWeight.semibold,
+    color: t.status.informative.text,
+  },
+});
 
 // ============================================================================
 // COMPONENT
@@ -46,123 +172,104 @@ export interface MemoizedInvoiceItemProps {
 const InvoiceItemContent: React.FC<MemoizedInvoiceItemProps> = ({
   invoice,
   onPress,
-  colors,
 }) => {
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
+
   // Calculate values
   const saved = savedInvoiceAmounts(invoice);
   const hasLabour = invoice.labour > 0;
-  const hasDiscount = saved.hasAdjustment;
+  const hasAdjustment = saved.hasAdjustment;
+  const isDiscount = invoice.discount > 0;
+  const adjustmentText = isDiscount
+    ? formatInvoiceDeduction(saved.adjustmentAmount)
+    : `+${formatInvoiceAmount(saved.adjustmentAmount)}`;
+  const customerName = invoice.customer?.name || 'Customer not set';
+  const invoiceDate = formatDate(invoice.invoice_date, 'medium');
 
-  // Build comprehensive accessibility label
+  // One element for screen readers (style guide §11.3)
   const accessibilityDescription = [
     `Invoice ${invoice.invoice_number}`,
-    `for ${invoice.customer?.name || 'Unknown Customer'}`,
-    `Total: ${formatCurrency(invoice.total)}`,
-    `Date: ${formatDate(invoice.invoice_date, 'medium')}`,
-    invoice.grn?.gr_no ? `GRN: ${invoice.grn.gr_no}` : null,
-    hasLabour ? `Labour: ${formatCurrency(invoice.labour)}` : null,
-    hasDiscount ? `${saved.adjustmentLabel}: ${formatCurrency(saved.adjustmentAmount)}` : null,
+    customerName,
+    `Total ${formatInvoiceAmount(invoice.total)}`,
+    invoiceDate,
+    invoice.grn?.gr_no ? `GRN ${invoice.grn.gr_no}` : null,
+    hasLabour ? `Labour ${formatInvoiceAmount(invoice.labour)}` : null,
+    hasAdjustment ? `${saved.adjustmentLabel} ${adjustmentText}` : null,
+    invoice.is_auto_generated ? 'Auto-generated' : null,
   ].filter(Boolean).join(', ');
 
   return (
     <Pressable
       onPress={() => onPress(invoice)}
-      style={({ pressed }) => [
-        styles.card,
-        { backgroundColor: colors.cellBackground, borderWidth: 1, borderColor: colors.cellDivider },
-        pressed && { backgroundColor: colors.cellBackgroundPressed },
-      ]}
+      style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
       accessibilityRole="button"
       accessibilityLabel={accessibilityDescription}
-      accessibilityHint="Double tap to view invoice details"
+      accessibilityHint="Opens the invoice"
     >
-      {/* Card Header */}
       <View style={styles.cardHeader}>
-        {/* Invoice Badge */}
-        <View style={[styles.invoiceBadge, { backgroundColor: colors.primary }]}>
-          <Text style={[styles.invoiceBadgeText, { color: colors.white }]}>{invoice.invoice_number}</Text>
-        </View>
-
-        {/* Customer & Date Info */}
         <View style={styles.cardInfo}>
-          <Text style={[styles.customerName, { color: colors.textPrimary }]} numberOfLines={1}>
-            {invoice.customer?.name || 'Unknown Customer'}
+          <Text style={styles.customerName} numberOfLines={2}>
+            {customerName}
           </Text>
+          <Text style={styles.invoiceNumber}>Invoice {invoice.invoice_number}</Text>
           <View style={styles.metaRow}>
-            <Icon name="calendar-outline" size={12} color={colors.textTertiary} />
-            <Text style={[styles.metaText, { color: colors.textTertiary }]}>
-              {formatDate(invoice.invoice_date, 'medium')}
-            </Text>
-            {invoice.grn?.gr_no && (
+            <Icon name="calendar-outline" size={iconSize.sm} color={t.icon.secondary} />
+            <Text style={styles.metaText}>{invoiceDate}</Text>
+            {invoice.grn?.gr_no ? (
               <>
-                <View style={[styles.metaDot, { backgroundColor: colors.gray400 }]} />
-                <Icon name="clipboard-text-outline" size={12} color={colors.textTertiary} />
-                <Text style={[styles.metaText, { color: colors.textTertiary }]}>{invoice.grn.gr_no}</Text>
+                <Text style={styles.metaText}>·</Text>
+                <Icon name="package-down" size={iconSize.sm} color={t.icon.secondary} />
+                <Text style={styles.metaText}>GRN {invoice.grn.gr_no}</Text>
               </>
-            )}
+            ) : null}
           </View>
         </View>
 
-        {/* Total Amount */}
         <View style={styles.amountContainer}>
-          <Text style={[styles.amountValue, { color: colors.textPrimary }]}>{formatCurrency(invoice.total)}</Text>
+          <Text style={styles.amountValue}>{formatInvoiceAmount(invoice.total)}</Text>
+          <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />
         </View>
       </View>
 
-      {/* Metrics Row */}
-      <View style={[styles.metricsBar, { backgroundColor: colors.gray50 }]}>
+      {/* Key amounts */}
+      <View style={styles.metricsBar}>
         <View style={styles.metric}>
-          <Text style={[styles.metricValue, { color: colors.textPrimary }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
-            {formatCurrency(saved.netBeforeTax)}
-          </Text>
-          <Text style={[styles.metricLabel, { color: colors.textTertiary }]}>Net before tax</Text>
+          <Text style={styles.metricLabel}>Net before tax</Text>
+          <Text style={styles.metricValue}>{formatInvoiceAmount(saved.netBeforeTax)}</Text>
         </View>
-        <View style={[styles.metricDivider, { backgroundColor: colors.gray200 }]} />
         <View style={styles.metric}>
-          <Text style={[styles.metricValue, { color: colors.textPrimary }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
-            {formatCurrency(invoice.tax_amount)}
-          </Text>
-          <Text style={[styles.metricLabel, { color: colors.textTertiary }]}>Tax</Text>
+          <Text style={styles.metricLabel}>Tax</Text>
+          <Text style={styles.metricValue}>{formatInvoiceAmount(invoice.tax_amount)}</Text>
         </View>
         {hasLabour && (
-          <>
-            <View style={[styles.metricDivider, { backgroundColor: colors.gray200 }]} />
-            <View style={styles.metric}>
-              <Text style={[styles.metricValue, { color: colors.textPrimary }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
-                {formatCurrency(invoice.labour)}
-              </Text>
-              <Text style={[styles.metricLabel, { color: colors.textTertiary }]}>Labour</Text>
-            </View>
-          </>
+          <View style={styles.metric}>
+            <Text style={styles.metricLabel}>Labour</Text>
+            <Text style={styles.metricValue}>{formatInvoiceAmount(invoice.labour)}</Text>
+          </View>
         )}
-        {hasDiscount && (
-          <>
-            <View style={[styles.metricDivider, { backgroundColor: colors.gray200 }]} />
-            <View style={styles.metric}>
-              <Text
-                style={[styles.metricValue, { color: colors.statusPositive }]}
-                numberOfLines={1}
-                adjustsFontSizeToFit
-                minimumFontScale={0.7}
-              >
-                {saved.adjustmentSign}{formatCurrency(saved.adjustmentAmount)}
-              </Text>
-              <Text style={[styles.metricLabel, { color: colors.textTertiary }]}>{saved.adjustmentLabel}</Text>
-            </View>
-          </>
+        {hasAdjustment && (
+          <View style={styles.metric}>
+            <Text style={styles.metricLabel}>{saved.adjustmentLabel}</Text>
+            <Text style={[styles.metricValue, isDiscount && styles.metricValueDiscount]}>
+              {adjustmentText}
+            </Text>
+          </View>
         )}
       </View>
 
-      {/* Footer - FY Badge */}
-      <View style={styles.fyContainer}>
-        <View style={[styles.fyBadge, { backgroundColor: colors.gray100 }]}>
-          <Icon name="calendar-check" size={10} color={colors.textTertiary} />
-          <Text style={[styles.fyText, { color: colors.textTertiary }]}>FY {invoice.financial_year}</Text>
+      {/* Financial year and origin */}
+      <View style={styles.tagRow}>
+        <View style={styles.neutralTag}>
+          <Icon name="calendar-check" size={iconSize.sm} color={t.status.neutral.text} />
+          <Text style={styles.neutralTagText} maxFontSizeMultiplier={1.6}>
+            FY {invoice.financial_year}
+          </Text>
         </View>
         {invoice.is_auto_generated && (
-          <View style={[styles.autoBadge, { backgroundColor: colors.blueLight }]}>
-            <Icon name="auto-fix" size={10} color={colors.blue} />
-            <Text style={[styles.autoText, { color: colors.blue }]}>Auto</Text>
+          <View style={styles.infoTag}>
+            <Icon name="auto-fix" size={iconSize.sm} color={t.status.informative.text} />
+            <Text style={styles.infoTagText} maxFontSizeMultiplier={1.6}>Auto-generated</Text>
           </View>
         )}
       </View>
@@ -173,6 +280,7 @@ const InvoiceItemContent: React.FC<MemoizedInvoiceItemProps> = ({
 /**
  * Custom comparison function for React.memo. Every rendered invoice field is
  * compared, so an edit that only moves the invoice date re-renders the card.
+ * Theme changes re-render through the cell's own theme hooks.
  */
 export const invoiceItemPropsAreEqual = (
   prevProps: MemoizedInvoiceItemProps,
@@ -195,7 +303,6 @@ export const invoiceItemPropsAreEqual = (
     prevInvoice.grn?.gr_no === nextInvoice.grn?.gr_no &&
     prevProps.onPress === nextProps.onPress &&
     prevProps.canPrint === nextProps.canPrint &&
-    // Compare colors (same reference means same theme)
     prevProps.colors === nextProps.colors
   );
 };
@@ -209,136 +316,5 @@ export const invoiceItemPropsAreEqual = (
 export const MemoizedInvoiceItem = React.memo(InvoiceItemContent, invoiceItemPropsAreEqual);
 
 MemoizedInvoiceItem.displayName = 'MemoizedInvoiceItem';
-
-// ============================================================================
-// STYLES
-// ============================================================================
-
-const styles = StyleSheet.create({
-  card: {
-    // backgroundColor: applied inline for dark mode
-    borderRadius: 12,
-    marginHorizontal: 16,
-    marginVertical: 6,
-    padding: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: 12,
-  },
-  invoiceBadge: {
-    // backgroundColor: applied inline for dark mode
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    marginRight: 12,
-  },
-  invoiceBadgeText: {
-    fontSize: 14,
-    fontWeight: '700',
-    // color: applied inline for dark mode
-  },
-  cardInfo: {
-    flex: 1,
-    marginRight: 12,
-  },
-  customerName: {
-    fontSize: 15,
-    fontWeight: '600',
-    // color: applied inline for dark mode
-    marginBottom: 4,
-  },
-  metaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  metaText: {
-    fontSize: 12,
-    // color: applied inline for dark mode
-  },
-  metaDot: {
-    width: 3,
-    height: 3,
-    borderRadius: 1.5,
-    // backgroundColor: applied inline for dark mode
-    marginHorizontal: 6,
-  },
-  amountContainer: {
-    alignItems: 'flex-end',
-  },
-  amountValue: {
-    fontSize: 18,
-    fontWeight: '700',
-    // color: applied inline for dark mode
-  },
-  metricsBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    // backgroundColor: applied inline for dark mode
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 12,
-  },
-  metric: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  metricValue: {
-    fontSize: 14,
-    fontWeight: '600',
-    // color: applied inline for dark mode
-    marginBottom: 2,
-  },
-  metricLabel: {
-    fontSize: 11,
-    // color: applied inline for dark mode
-  },
-  metricDivider: {
-    width: 1,
-    height: 24,
-    // backgroundColor: applied inline for dark mode
-    marginHorizontal: 8,
-  },
-  fyContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  fyBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    // backgroundColor: applied inline for dark mode
-    borderRadius: 4,
-    paddingHorizontal: 6,
-    paddingVertical: 3,
-    gap: 4,
-  },
-  fyText: {
-    fontSize: 10,
-    // color: applied inline for dark mode
-    fontWeight: '500',
-  },
-  autoBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    // backgroundColor: applied inline for dark mode
-    borderRadius: 4,
-    paddingHorizontal: 6,
-    paddingVertical: 3,
-    gap: 4,
-  },
-  autoText: {
-    fontSize: 10,
-    // color: applied inline for dark mode
-    fontWeight: '500',
-  },
-});
 
 export default MemoizedInvoiceItem;

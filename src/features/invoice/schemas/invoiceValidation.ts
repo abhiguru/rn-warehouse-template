@@ -17,7 +17,7 @@ export const step1Schema = yup.object().shape({
   inv_fin_year: yup
     .string()
     .required('Financial year is required')
-    .matches(/^\d{4}-\d{2}$/, 'Invalid financial year format (e.g., 2025-26)'),
+    .matches(/^\d{4}-\d{2}$/, 'Enter the financial year as YYYY-YY, for example 2025-26.'),
 
   inv_no: quantityField('Invoice number'),
 
@@ -74,7 +74,7 @@ export const step2Schema = yup.object().shape({
         tax: itemPricingSchema.fields.tax,
       })
     )
-    .min(1, 'At least one item is required')
+    .min(1, 'Add at least one item.')
     .required('Items are required'),
 });
 

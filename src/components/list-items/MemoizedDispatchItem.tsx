@@ -5,18 +5,29 @@
  * - React.memo with custom areEqual comparison
  * - Stable callbacks via props (no inline functions)
  * - Minimal re-renders through prop comparison
- * - SAP Fiori design compliance
+ * - SAP Fiori object cell (docs/STYLE_GUIDE.md §13.6)
  *
  * @module list-items/MemoizedDispatchItem
  */
 
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { View, Text, StyleSheet, Pressable, LayoutAnimation, Vibration } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { formatNumber, formatDate } from '@/utils/formatters';
 import type { Dispatch } from '@/services/dispatch-service';
-import type { ListColors } from '@/hooks/useListColors';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import {
+  fontWeight,
+  iconSize,
+  layout,
+  motion,
+  radius,
+  space,
+  touchTarget,
+  typography,
+} from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
 
 // ============================================================================
 // TYPES
@@ -35,8 +46,11 @@ export interface MemoizedDispatchItemProps {
   onPrint?: (dispatch: Dispatch) => void;
   /** Whether print action is available */
   canPrint?: boolean;
-  /** Theme-aware list colors for dark mode support */
-  colors: ListColors;
+  /**
+   * @deprecated Colours now come from the semantic tokens. Still accepted so
+   * existing callers keep compiling; it only triggers a re-render on change.
+   */
+  colors?: unknown;
   /** Global expand state from parent */
   globalExpanded?: boolean;
   /** Key to trigger sync with global state (increments on toggle) */
@@ -44,38 +58,221 @@ export interface MemoizedDispatchItemProps {
 }
 
 // ============================================================================
-// STATUS HELPERS
+// STATUS HELPERS (guide §3.5)
 // ============================================================================
 
-type DispatchStatus = 'delivered' | 'pending' | 'partial';
+type StatusKind = 'positive' | 'critical';
 
 interface StatusConfig {
-  status: DispatchStatus;
+  kind: StatusKind;
   label: string;
   icon: string;
-  color: string;
-  backgroundColor: string;
 }
 
-const getDispatchStatus = (dispatch: Dispatch, colors: ListColors): StatusConfig => {
+const getDispatchStatus = (dispatch: Dispatch): StatusConfig => {
   // Determine status based on total_qty
   if (dispatch.total_qty && dispatch.total_qty > 0) {
-    return {
-      status: 'delivered',
-      label: 'Complete',
-      icon: 'check-circle',
-      color: colors.statusPositive,
-      backgroundColor: colors.statusPositiveLight,
-    };
+    return { kind: 'positive', label: 'Complete', icon: 'check-circle' };
   }
-  return {
-    status: 'pending',
-    label: 'Pending',
-    icon: 'clock-outline',
-    color: colors.statusCritical,
-    backgroundColor: colors.statusCriticalLight,
-  };
+  return { kind: 'critical', label: 'Pending', icon: 'alert' };
 };
+
+// ============================================================================
+// STYLES - SAP Fiori Object Cell
+// ============================================================================
+
+const makeStyles = (t: ThemeTokens) => ({
+  card: {
+    backgroundColor: t.surface.card,
+    borderRadius: radius.card,
+    marginHorizontal: layout.marginCompact,
+    marginVertical: space.xs,
+    ...t.shadow[2],
+    overflow: 'hidden' as const,
+  },
+  cardContent: {
+    padding: space.lg,
+    minHeight: layout.objectCellMinHeight,
+    backgroundColor: t.surface.card,
+  },
+  cardContentPressed: {
+    backgroundColor: t.surface.cardPressed,
+  },
+  objectCellRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'flex-start' as const,
+  },
+  iconContainer: {
+    width: layout.avatar.md,
+    height: layout.avatar.md,
+    borderRadius: radius.pill,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    marginRight: space.md,
+    backgroundColor: t.brand.subtle,
+  },
+  mainContent: {
+    flex: 1,
+    marginRight: space.md,
+  },
+  titleText: {
+    ...typography.headline,
+    color: t.text.primary,
+  },
+  subtitleText: {
+    ...typography.subhead,
+    color: t.text.secondary,
+    marginBottom: space.xs,
+  },
+  footerRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    flexWrap: 'wrap' as const,
+    columnGap: space.sm,
+    rowGap: space.xxs,
+  },
+  footerItem: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.xs,
+  },
+  footerText: {
+    ...typography.footnote,
+    color: t.text.secondary,
+  },
+  attributeStack: {
+    alignItems: 'flex-end' as const,
+    minWidth: 70,
+    gap: space.xxs,
+  },
+  quantityValue: {
+    ...typography.headline,
+    color: t.text.primary,
+    fontVariant: ['tabular-nums' as const],
+  },
+  weightText: {
+    ...typography.footnote,
+    color: t.text.secondary,
+    fontVariant: ['tabular-nums' as const],
+  },
+  statusTag: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.xs,
+    paddingHorizontal: space.s6,
+    paddingVertical: space.xxs,
+    borderRadius: radius.field,
+    marginTop: space.xs,
+  },
+  statusTagText: {
+    ...typography.caption1,
+    fontWeight: fontWeight.semibold,
+  },
+  // Data table (guide §13.7)
+  expandedSection: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: t.border.divider,
+  },
+  tableHeader: {
+    flexDirection: 'row' as const,
+    paddingVertical: space.sm,
+    paddingHorizontal: space.lg,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.separator,
+    minHeight: layout.rowMinHeight,
+    alignItems: 'center' as const,
+    backgroundColor: t.background.base,
+  },
+  tableHeaderCell: {
+    ...typography.footnote,
+    fontWeight: fontWeight.semibold,
+    color: t.text.secondary,
+  },
+  tableRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    paddingVertical: space.sm,
+    paddingHorizontal: space.lg,
+    minHeight: layout.rowMinHeight,
+    backgroundColor: t.surface.card,
+  },
+  tableRowDivider: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: t.border.divider,
+  },
+  tableCell: {
+    justifyContent: 'center' as const,
+  },
+  colItem: {
+    flex: 1,
+    paddingRight: space.sm,
+  },
+  colWeight: {
+    width: 48,
+    textAlign: 'right' as const,
+    paddingRight: space.md,
+  },
+  colGrn: {
+    width: 96,
+    textAlign: 'center' as const,
+    paddingRight: space.sm,
+  },
+  colQty: {
+    width: 48,
+    textAlign: 'right' as const,
+  },
+  tableCellValue: {
+    ...typography.subhead,
+    color: t.text.secondary,
+    fontVariant: ['tabular-nums' as const],
+  },
+  tableCellQty: {
+    ...typography.subhead,
+    fontWeight: fontWeight.semibold,
+    color: t.text.primary,
+    fontVariant: ['tabular-nums' as const],
+  },
+  itemNameRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
+    gap: space.sm,
+  },
+  tableCellItemName: {
+    ...typography.subhead,
+    fontWeight: fontWeight.medium,
+    color: t.text.primary,
+    flex: 1,
+  },
+  tableCellRack: {
+    ...typography.caption1,
+    color: t.text.secondary,
+    flexShrink: 0,
+  },
+  tableCellItemMark: {
+    ...typography.caption1,
+    color: t.text.secondary,
+    marginTop: space.xxs,
+  },
+  expandButton: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    paddingVertical: space.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: t.border.divider,
+    gap: space.xs,
+    minHeight: touchTarget,
+    backgroundColor: t.surface.card,
+  },
+  expandButtonPressed: {
+    backgroundColor: t.surface.cardPressed,
+  },
+  expandButtonText: {
+    ...typography.callout,
+    color: t.brand.tint,
+  },
+});
 
 // ============================================================================
 // COMPONENT
@@ -84,20 +281,11 @@ const getDispatchStatus = (dispatch: Dispatch, colors: ListColors): StatusConfig
 const DispatchItemContent: React.FC<MemoizedDispatchItemProps> = ({
   dispatch,
   onPress,
-  colors,
   globalExpanded,
   globalExpandedKey,
 }) => {
-  // Debug logging for missing dispatch date
-  if (__DEV__) {
-    console.log('[MemoizedDispatchItem] Dispatch date debug:', {
-      disp_no: dispatch.disp_no,
-      disp_date: dispatch.disp_date,
-      dispatch_date: (dispatch as any).dispatch_date,
-      formatted: formatDate(dispatch.disp_date, 'short'),
-    });
-  }
-
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
   const [isExpanded, setIsExpanded] = useState(false);
 
   // Sync with global expand/collapse state
@@ -106,13 +294,17 @@ const DispatchItemContent: React.FC<MemoizedDispatchItemProps> = ({
       setIsExpanded(globalExpanded ?? false);
     }
   }, [globalExpandedKey, globalExpanded]);
-  const statusConfig = getDispatchStatus(dispatch, colors);
+  const statusConfig = getDispatchStatus(dispatch);
+  const status = t.status[statusConfig.kind];
 
   // Calculate totals (using snake_case properties)
   const totalQty = dispatch.total_qty || 0;
   const totalWeight = dispatch.total_weight || 0;
   const totalItems = dispatch.total_items || (dispatch.items?.length ?? 0);
   const hasItems = dispatch.items && dispatch.items.length > 0;
+  const itemsLabel = `${totalItems} ${totalItems === 1 ? 'item' : 'items'}`;
+  const bagsLabel = `${formatNumber(totalQty)} ${totalQty === 1 ? 'bag' : 'bags'}`;
+  const dateLabel = formatDate(dispatch.disp_date, 'short');
 
   const handleToggleExpand = useCallback(() => {
     Vibration.vibrate(5);
@@ -120,146 +312,118 @@ const DispatchItemContent: React.FC<MemoizedDispatchItemProps> = ({
     setIsExpanded(prev => !prev);
   }, []);
 
-  // Build comprehensive accessibility label
+  // One combined label for the row (guide §11.3)
   const accessibilityDescription = [
     `Dispatch ${dispatch.disp_no}`,
-    `for ${dispatch.customer_name}`,
+    dispatch.customer_name,
+    itemsLabel,
+    bagsLabel,
+    `${formatNumber(Math.round(totalWeight))} kg`,
+    dispatch.registration ? `Vehicle ${dispatch.registration}` : null,
+    dateLabel,
     statusConfig.label,
-    `${totalItems} items`,
-    `${totalQty} quantity`,
-    `${Math.round(totalWeight)} kg`,
-    dispatch.registration ? `Truck: ${dispatch.registration}` : null,
-    `Date: ${formatDate(dispatch.disp_date, 'short')}`,
   ].filter(Boolean).join(', ');
 
   return (
-    <View style={[styles.card, { backgroundColor: colors.cellBackground, borderWidth: 1, borderColor: colors.cellDivider }]}>
+    <View style={styles.card}>
       <Pressable
         onPress={() => onPress(dispatch)}
-        style={({ pressed }) => [
-          styles.cardContent,
-          pressed && { backgroundColor: colors.cellBackgroundPressed },
-        ]}
+        style={({ pressed }) => [styles.cardContent, pressed && styles.cardContentPressed]}
         accessibilityRole="button"
         accessibilityLabel={accessibilityDescription}
-        accessibilityHint="Double tap to view dispatch details"
+        accessibilityHint="Opens the dispatch"
       >
-        {/* SAP Fiori Object Cell Row */}
         <View style={styles.objectCellRow}>
-          {/* Status Icon (Left) */}
-          <View style={[styles.statusIconContainer, { backgroundColor: statusConfig.backgroundColor }]}>
-            <Icon
-              name={statusConfig.icon}
-              size={20}
-              color={statusConfig.color}
-            />
+          {/* Object icon (left) */}
+          <View style={styles.iconContainer}>
+            <Icon name="truck-delivery-outline" size={iconSize.md} color={t.brand.tint} />
           </View>
 
-          {/* Main Content (Center) */}
+          {/* Main content */}
           <View style={styles.mainContent}>
-            {/* Title Row - Dispatch Number */}
-            <Text style={[styles.titleText, { color: colors.textPrimary }]}>DISP-{dispatch.disp_no}</Text>
-
-            {/* Subtitle Row - Customer Name */}
-            <Text style={[styles.subtitleText, { color: colors.textSecondary }]} numberOfLines={1}>
+            <Text style={styles.titleText} numberOfLines={2}>
+              Dispatch {dispatch.disp_no}
+            </Text>
+            <Text style={styles.subtitleText} numberOfLines={1}>
               {dispatch.customer_name}
             </Text>
 
-            {/* Footer Row - Date, Truck, Item Count */}
+            {/* Footnote: date, vehicle, item count */}
             <View style={styles.footerRow}>
               <View style={styles.footerItem}>
-                <Icon name="calendar" size={14} color={colors.textTertiary} />
-                <Text style={[styles.footerText, { color: colors.textTertiary }]}>
-                  {formatDate(dispatch.disp_date, 'short')}
-                </Text>
+                <Icon name="calendar-outline" size={iconSize.sm} color={t.icon.secondary} />
+                <Text style={styles.footerText}>{dateLabel}</Text>
               </View>
               {dispatch.registration && (
-                <>
-                  <View style={[styles.footerDot, { backgroundColor: colors.textTertiary }]} />
-                  <View style={styles.footerItem}>
-                    <Icon name="truck" size={14} color={colors.textTertiary} />
-                    <Text style={[styles.footerText, { color: colors.textTertiary }]}>{dispatch.registration}</Text>
-                  </View>
-                </>
+                <View style={styles.footerItem}>
+                  <Icon name="truck-outline" size={iconSize.sm} color={t.icon.secondary} />
+                  <Text style={styles.footerText}>{dispatch.registration}</Text>
+                </View>
               )}
-              <View style={[styles.itemCountBadge, { backgroundColor: colors.gray100 }]}>
-                <Text style={[styles.itemCountText, { color: colors.textSecondary }]}>{totalItems} items</Text>
-              </View>
+              <Text style={styles.footerText}>{itemsLabel}</Text>
             </View>
           </View>
 
-          {/* Attribute Stack (Right) */}
+          {/* Attribute stack (right): main value, weight, status tag */}
           <View style={styles.attributeStack}>
-            {/* Status Badge */}
-            <View style={[styles.statusBadge, { backgroundColor: statusConfig.backgroundColor }]}>
-              <Text style={[styles.statusBadgeText, { color: statusConfig.color }]}>
+            <Text style={styles.quantityValue}>{bagsLabel}</Text>
+            <Text style={styles.weightText}>
+              {formatNumber(Math.round(totalWeight))} kg
+            </Text>
+            <View style={[styles.statusTag, { backgroundColor: status.background }]}>
+              <Icon name={statusConfig.icon} size={iconSize.sm} color={status.text} />
+              <Text
+                style={[styles.statusTagText, { color: status.text }]}
+                maxFontSizeMultiplier={1.6}
+              >
                 {statusConfig.label}
               </Text>
             </View>
-
-            {/* Quantity Value */}
-            <View style={styles.quantityContainer}>
-              <Text style={[styles.quantityValue, { color: statusConfig.color }]}>
-                {formatNumber(totalQty)}
-              </Text>
-              <Text style={[styles.quantityLabel, { color: colors.textTertiary }]}>QTY</Text>
-            </View>
-
-            {/* Weight Display */}
-            <Text style={[styles.weightText, { color: colors.textSecondary }]}>
-              {formatNumber(Math.round(totalWeight))} kg
-            </Text>
           </View>
         </View>
       </Pressable>
 
       {/* Expanded Items Table - SAP Fiori Data Table */}
       {isExpanded && hasItems && (
-        <Animated.View entering={FadeIn.duration(200)} style={[styles.expandedSection, { borderTopColor: colors.cellDivider }]}>
-          {/* Table Header */}
-          <View style={[styles.tableHeader, { backgroundColor: colors.gray50, borderBottomColor: colors.cellDivider }]}>
-            <Text style={[styles.tableHeaderCell, styles.colItem, { color: colors.textPrimary }]}>Item</Text>
-            <Text style={[styles.tableHeaderCell, styles.colWeight, { color: colors.textPrimary }]}>Kg</Text>
-            <Text style={[styles.tableHeaderCell, styles.colGrn, { color: colors.textPrimary }]}>GRN</Text>
-            <Text style={[styles.tableHeaderCell, styles.colQty, { color: colors.textPrimary }]}>Qty</Text>
+        <Animated.View entering={FadeIn.duration(motion.standard)} style={styles.expandedSection}>
+          <View style={styles.tableHeader}>
+            <Text style={[styles.tableHeaderCell, styles.colItem]}>Item</Text>
+            <Text style={[styles.tableHeaderCell, styles.colWeight]}>Kg</Text>
+            <Text style={[styles.tableHeaderCell, styles.colGrn]}>GRN</Text>
+            <Text style={[styles.tableHeaderCell, styles.colQty]}>Qty</Text>
           </View>
 
-          {/* Table Rows */}
           {dispatch.items!.map((item, idx) => (
             <View
               key={`${dispatch.dispatch_id}-item-${item.grn_item_id}-${idx}`}
-              style={[
-                styles.tableRow,
-                { backgroundColor: colors.cellBackground },
-                idx % 2 === 1 && { backgroundColor: colors.gray50 },
-              ]}
+              style={[styles.tableRow, idx > 0 && styles.tableRowDivider]}
+              accessible
+              accessibilityLabel={`${item.item_name}${item.rack ? `, rack ${item.rack}` : ''}, ${Math.round(item.weight || 0)} kg, GRN ${item.gr_no}, ${item.disp_qty} dispatched`}
             >
               <View style={[styles.tableCell, styles.colItem]}>
                 <View style={styles.itemNameRow}>
-                  <Text style={[styles.tableCellItemName, { color: colors.textPrimary }]} numberOfLines={1}>
+                  <Text style={styles.tableCellItemName} numberOfLines={1}>
                     {item.item_name}
                   </Text>
                   {item.rack && (
-                    <Text style={[styles.tableCellRack, { color: colors.textTertiary }]}>({item.rack})</Text>
+                    <Text style={styles.tableCellRack}>({item.rack})</Text>
                   )}
                 </View>
                 {item.package_mark && (
-                  <Text style={[styles.tableCellItemMark, { color: colors.textTertiary }]} numberOfLines={1}>
+                  <Text style={styles.tableCellItemMark} numberOfLines={1}>
                     {item.package_mark}
                   </Text>
                 )}
               </View>
-              <Text style={[styles.tableCell, styles.colWeight, styles.tableCellValue, { color: colors.textSecondary }]}>
+              <Text style={[styles.tableCell, styles.colWeight, styles.tableCellValue]}>
                 {Math.round(item.weight || 0)}
               </Text>
-              <Text style={[styles.tableCell, styles.colGrn, styles.tableCellValue, { color: colors.textSecondary }]}>
+              <Text style={[styles.tableCell, styles.colGrn, styles.tableCellValue]}>
                 {item.gr_no}/{item.grn_qty}
               </Text>
-              <View style={[styles.tableCell, styles.colQty]}>
-                <View style={[styles.tableQtyBadge, { backgroundColor: colors.statusPositive }]}>
-                  <Text style={[styles.tableQtyBadgeText, { color: colors.white }]}>{item.disp_qty}</Text>
-                </View>
-              </View>
+              <Text style={[styles.tableCell, styles.colQty, styles.tableCellQty]}>
+                {item.disp_qty}
+              </Text>
             </View>
           ))}
         </Animated.View>
@@ -269,22 +433,18 @@ const DispatchItemContent: React.FC<MemoizedDispatchItemProps> = ({
       {hasItems && (
         <Pressable
           onPress={handleToggleExpand}
-          style={({ pressed }) => [
-            styles.expandButton,
-            { borderTopColor: colors.cellDivider, backgroundColor: colors.cellBackground },
-            pressed && { backgroundColor: colors.cellBackgroundPressed },
-          ]}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          style={({ pressed }) => [styles.expandButton, pressed && styles.expandButtonPressed]}
           accessibilityRole="button"
-          accessibilityLabel={isExpanded ? 'Hide items' : `Show ${totalItems} items`}
+          accessibilityLabel={isExpanded ? 'Hide items' : `Show ${itemsLabel}`}
+          accessibilityState={{ expanded: isExpanded }}
         >
-          <Text style={[styles.expandButtonText, { color: colors.primary }]}>
-            {isExpanded ? 'Hide items' : `Show ${totalItems} items`}
+          <Text style={styles.expandButtonText}>
+            {isExpanded ? 'Hide items' : `Show ${itemsLabel}`}
           </Text>
           <Icon
             name={isExpanded ? 'chevron-up' : 'chevron-down'}
-            size={18}
-            color={colors.primary}
+            size={iconSize.md}
+            color={t.brand.tint}
           />
         </Pressable>
       )}
@@ -313,7 +473,7 @@ const areEqual = (
     // Compare callback references
     prevProps.onPress === nextProps.onPress &&
     prevProps.canPrint === nextProps.canPrint &&
-    // Compare colors (same reference means same theme)
+    // Legacy colours prop (same reference means same theme); tokens re-render via the store
     prevProps.colors === nextProps.colors &&
     // Compare global expand state
     prevProps.globalExpanded === nextProps.globalExpanded &&
@@ -330,250 +490,5 @@ const areEqual = (
 export const MemoizedDispatchItem = React.memo(DispatchItemContent, areEqual);
 
 MemoizedDispatchItem.displayName = 'MemoizedDispatchItem';
-
-// ============================================================================
-// STYLES - SAP Fiori Object Cell Compliant
-// ============================================================================
-
-const styles = StyleSheet.create({
-  // Object Cell Card Container - Fiori spec: 12pt corner radius
-  card: {
-    borderRadius: 12, // Fiori card corner radius
-    marginHorizontal: 16,
-    marginVertical: 6,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 2,
-    overflow: 'hidden',
-  },
-  cardContent: {
-    padding: 16, // Fiori card padding
-  },
-  // Object Cell Row - Fiori layout structure
-  objectCellRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-  },
-  // Detail Image - Fiori spec: 44pt frame
-  statusIconContainer: {
-    width: 44, // Fiori detail image size
-    height: 44,
-    borderRadius: 22, // Circular for status icons
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  // Main Content - Fiori object cell main content area
-  mainContent: {
-    flex: 1,
-    marginRight: 12,
-  },
-  // Title - Fiori spec: 17pt semibold
-  titleText: {
-    fontSize: 17, // Fiori object cell title
-    fontWeight: '600',
-    letterSpacing: -0.41,
-    marginBottom: 2,
-  },
-  // Subtitle - Fiori spec: 13pt
-  subtitleText: {
-    fontSize: 13, // Fiori subtitle font size
-    marginBottom: 8,
-  },
-  // Footnote Row - Fiori spec: 12pt
-  footerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: 4,
-  },
-  footerItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  footerDot: {
-    width: 4,
-    height: 4,
-    borderRadius: 2,
-    marginHorizontal: 6,
-  },
-  footerText: {
-    fontSize: 12, // Fiori caption font size
-  },
-  // Item Count Badge - Fiori tag style
-  itemCountBadge: {
-    height: 20, // Fiori compact tag height
-    borderRadius: 10, // Fiori pill shape
-    paddingHorizontal: 8,
-    marginLeft: 8,
-    justifyContent: 'center',
-  },
-  itemCountText: {
-    fontSize: 11, // Fiori compact tag font size
-    fontWeight: '600',
-  },
-  // Attribute Stack (Right) - Fiori spec
-  attributeStack: {
-    alignItems: 'flex-end',
-    minWidth: 70,
-  },
-  // Status Badge/Tag - Fiori spec: 20pt height, pill shape
-  statusBadge: {
-    height: 20, // Fiori compact tag height
-    borderRadius: 10, // Fiori pill shape
-    paddingHorizontal: 8,
-    marginBottom: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  statusBadgeText: {
-    fontSize: 11, // Fiori compact tag font size
-    fontWeight: '600',
-  },
-  // Quantity Display - Fiori large attribute
-  quantityContainer: {
-    alignItems: 'flex-end',
-    marginBottom: 4,
-  },
-  quantityValue: {
-    fontSize: 20, // Fiori large attribute value
-    fontWeight: '700',
-  },
-  quantityLabel: {
-    fontSize: 11, // Fiori attribute label
-    fontWeight: '500',
-    textTransform: 'uppercase',
-    letterSpacing: 0.3,
-  },
-  weightText: {
-    fontSize: 12, // Fiori caption font size
-  },
-
-  // =========================================================================
-  // SAP Fiori Data Table Styles
-  // =========================================================================
-  expandedSection: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-  },
-
-  // Table Header - Fiori spec: 44pt row height
-  tableHeader: {
-    flexDirection: 'row',
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    minHeight: 44, // Fiori table header height
-    alignItems: 'center',
-  },
-
-  // Header Cell - Fiori spec: 13pt semibold
-  tableHeaderCell: {
-    fontSize: 13, // Fiori table header font size
-    fontWeight: '600',
-    letterSpacing: 0.3,
-  },
-
-  // Table Row - Fiori spec: 44pt touch target
-  tableRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    minHeight: 44, // Fiori touch target
-  },
-
-  tableCell: {
-    justifyContent: 'center',
-  },
-
-  colItem: {
-    flex: 1,
-    paddingRight: 8,
-  },
-
-  colWeight: {
-    width: 40,
-    textAlign: 'right',
-    paddingRight: 12,
-  },
-
-  colGrn: {
-    width: 96,
-    textAlign: 'center',
-    paddingRight: 8,
-  },
-
-  colQty: {
-    width: 48,
-    alignItems: 'flex-end',
-  },
-
-  // Table Cell Value - Fiori spec: 15pt
-  tableCellValue: {
-    fontSize: 15, // Fiori table cell font size
-    fontWeight: '400',
-  },
-
-  itemNameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-  },
-
-  // Primary Cell Text - Fiori spec: 15pt medium
-  tableCellItemName: {
-    fontSize: 15,
-    fontWeight: '500',
-    flex: 1,
-  },
-
-  // Secondary Cell Text - Fiori spec: 12pt
-  tableCellRack: {
-    fontSize: 12,
-    fontWeight: '400',
-    flexShrink: 0,
-  },
-
-  tableCellItemMark: {
-    fontSize: 12,
-    marginTop: 2,
-  },
-
-  // Quantity Badge - Fiori tag style
-  tableQtyBadge: {
-    height: 24, // Fiori default tag height
-    minWidth: 36,
-    paddingHorizontal: 8,
-    borderRadius: 12, // Fiori pill shape
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  tableQtyBadgeText: {
-    fontSize: 12, // Fiori tag font size
-    fontWeight: '600',
-  },
-
-  // Expand/Collapse Button - Fiori tertiary button style
-  expandButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 12,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    gap: 6,
-    minHeight: 44, // Fiori touch target
-  },
-
-  // Button Text - Fiori spec: 15pt
-  expandButtonText: {
-    fontSize: 15, // Fiori button font size
-    fontWeight: '600',
-  },
-});
 
 export default MemoizedDispatchItem;

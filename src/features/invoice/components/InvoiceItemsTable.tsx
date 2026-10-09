@@ -1,55 +1,371 @@
 /**
- * Invoice Items Table - SAP Fiori Compliant
+ * Invoice items table (style guide §13.7).
  *
- * Displays invoice items grouped by Item Name + Package Mark.
- * Each group contains a Fiori-compliant data table for dispatch items.
+ * Displays invoice items grouped by item name + package mark. Each group has
+ * group pricing fields and a data table of its dispatch lines with editable
+ * charge, labour and tax cells.
  */
 import React, { useMemo, useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, Platform } from 'react-native';
+import { View, Text, StyleSheet, Pressable, TextInput, ScrollView, Platform } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import theme from '@/theme';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { fontWeight, iconSize, layout, radius, space, touchTarget, typography } from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
 import { InvoiceItemData, GroupedInvoiceItems } from '@/types/invoice.types';
 import { useAppSelector } from '@/store/hooks';
 import { selectInvoiceFormBulkPricing } from '@/store/slices/invoiceFormSlice';
+import { formatInvoiceAmount } from '@/utils/invoiceCalculations';
 
-// Fiori Data Table Spec Constants
-const FIORI = {
-  // Dimensions
-  headerHeight: 44,
-  rowHeight: 48,
-  cellPaddingH: 12,
-  cellPaddingV: 8,
-  headerFontSize: 13,
-  dataFontSize: 15,
-  // Colors
-  headerBg: '#F7F9FA',
-  headerText: '#1D2D3E',
-  rowBgDefault: '#FFFFFF',
-  rowBgAlternate: '#F7F9FA',
-  rowBgSelected: '#FFF4E6',
-  activeCellStroke: '#f69000',
-  border: '#E5E5E5',
-  readOnlyBg: '#F5F6F7',
-};
+/** Table rows with editable cells keep the full 44 minimum (§13.7). */
+const ROW_MIN_HEIGHT = 44;
 
-// Safe date formatting helper
+const COLUMN_WIDTH = {
+  dispatch: 104,
+  qty: 64,
+  duration: 76,
+  charge: 88,
+  labour: 88,
+  tax: 64,
+  total: 120,
+} as const;
+
+// Safe date formatting helper: "9 Oct 26"
 const formatDate = (dateStr: string | null | undefined): string => {
-  if (!dateStr) return 'N/A';
-  try {
-    const date = new Date(dateStr);
-    return isNaN(date.getTime()) ? 'Invalid' : date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
-  } catch {
-    return 'Invalid';
-  }
+  if (!dateStr) return '—';
+  const date = new Date(dateStr);
+  return isNaN(date.getTime())
+    ? '—'
+    : date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: '2-digit' });
 };
 
-// Format number - show decimals only if needed
+// Format number with Indian grouping - show decimals only if needed
 const formatNumber = (value: number, maxDecimals: number = 2): string => {
-  if (value === 0) return '0';
-  // Check if value has meaningful decimals
-  const rounded = Math.round(value * Math.pow(10, maxDecimals)) / Math.pow(10, maxDecimals);
-  return Number.isInteger(rounded) ? rounded.toString() : rounded.toFixed(maxDecimals).replace(/\.?0+$/, '');
+  if (!value) return '0';
+  return new Intl.NumberFormat('en-IN', { maximumFractionDigits: maxDecimals }).format(value);
 };
+
+const plural = (count: number, one: string, many: string) => `${formatNumber(count)} ${count === 1 ? one : many}`;
+
+const tabular = { fontVariant: ['tabular-nums' as const] };
+
+const makeStyles = (t: ThemeTokens) => ({
+  container: {
+    flex: 1,
+    gap: space.md,
+  },
+
+  // Empty state
+  emptyContainer: {
+    padding: space.giant,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    gap: space.sm,
+  },
+  emptyTitle: {
+    ...typography.title3,
+    color: t.text.primary,
+    textAlign: 'center' as const,
+  },
+  emptyText: {
+    ...typography.subhead,
+    color: t.text.secondary,
+    textAlign: 'center' as const,
+  },
+
+  // Group card
+  groupCard: {
+    backgroundColor: t.surface.card,
+    borderRadius: radius.card,
+    overflow: 'hidden' as const,
+    ...t.shadow[2],
+  },
+
+  // Group header
+  groupHeader: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    minHeight: layout.objectCellMinHeight,
+    padding: space.lg,
+    gap: space.sm,
+    backgroundColor: t.surface.card,
+  },
+  groupHeaderPressed: {
+    backgroundColor: t.surface.cardPressed,
+  },
+  groupHeaderContent: {
+    flex: 1,
+  },
+  groupTitle: {
+    ...typography.headline,
+    color: t.text.primary,
+    marginBottom: space.xs,
+  },
+  groupMeta: {
+    flexDirection: 'row' as const,
+    gap: space.xs,
+    flexWrap: 'wrap' as const,
+  },
+  metaBadge: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    backgroundColor: t.status.neutral.background,
+    paddingHorizontal: space.sm,
+    paddingVertical: space.xxs,
+    borderRadius: radius.field,
+    gap: space.xs,
+  },
+  metaText: {
+    ...typography.caption1,
+    ...tabular,
+    fontWeight: fontWeight.semibold,
+    color: t.status.neutral.text,
+  },
+  groupTotal: {
+    alignItems: 'flex-end' as const,
+    flexShrink: 0,
+  },
+  groupTotalLabel: {
+    ...typography.caption1,
+    color: t.text.secondary,
+  },
+  groupTotalValue: {
+    ...typography.headline,
+    ...tabular,
+    color: t.text.primary,
+    textAlign: 'right' as const,
+  },
+
+  // Group pricing section
+  bulkPricingSection: {
+    backgroundColor: t.background.base,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: t.border.divider,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.divider,
+  },
+  bulkPricingHeader: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    flexWrap: 'wrap' as const,
+    gap: space.xs,
+    marginBottom: space.sm,
+  },
+  bulkPricingLabel: {
+    ...typography.footnote,
+    fontWeight: fontWeight.semibold,
+    textTransform: 'uppercase' as const,
+    letterSpacing: 0.5,
+    color: t.text.secondary,
+  },
+  bulkPricingHint: {
+    ...typography.caption1,
+    color: t.text.secondary,
+    flexShrink: 1,
+  },
+  editPricingButton: {
+    width: touchTarget,
+    height: touchTarget,
+    marginVertical: -space.md,
+    borderRadius: radius.button,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+  },
+  editPricingButtonPressed: {
+    backgroundColor: t.brand.subtle,
+  },
+  bulkPricingInputs: {
+    flexDirection: 'row' as const,
+    gap: space.sm,
+  },
+  bulkInputWrapper: {
+    flex: 1,
+  },
+  inputLabel: {
+    ...typography.footnote,
+    color: t.text.secondary,
+    marginBottom: space.xs,
+  },
+  field: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    minHeight: 44,
+    backgroundColor: t.surface.field,
+    borderWidth: 1,
+    borderColor: t.border.field,
+    borderRadius: radius.field,
+    paddingHorizontal: space.sm,
+  },
+  affix: {
+    ...typography.subhead,
+    color: t.text.secondary,
+  },
+  bulkInput: {
+    ...typography.body,
+    ...tabular,
+    flex: 1,
+    minWidth: 0,
+    minHeight: 44,
+    paddingHorizontal: space.xs,
+    color: t.text.primary,
+    textAlign: 'right' as const,
+    ...Platform.select({
+      android: {
+        textAlignVertical: 'center' as const,
+        includeFontPadding: false,
+      },
+    }),
+  },
+
+  // Data table
+  tableContainer: {
+    backgroundColor: t.surface.card,
+  },
+  tableHeaderRow: {
+    flexDirection: 'row' as const,
+    backgroundColor: t.background.base,
+    borderBottomWidth: 1,
+    borderBottomColor: t.border.separator,
+    minHeight: ROW_MIN_HEIGHT,
+  },
+  tableHeaderCell: {
+    paddingHorizontal: space.md,
+    paddingVertical: space.sm,
+    justifyContent: 'center' as const,
+  },
+  tableHeaderText: {
+    ...typography.footnote,
+    fontWeight: fontWeight.semibold,
+    color: t.text.secondary,
+  },
+  tableTotalText: {
+    fontWeight: fontWeight.semibold,
+  },
+  tableHeaderTextNumeric: {
+    textAlign: 'right' as const,
+  },
+  tableDataRow: {
+    flexDirection: 'row' as const,
+    backgroundColor: t.surface.card,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.divider,
+    minHeight: ROW_MIN_HEIGHT,
+  },
+  tableDataCell: {
+    paddingHorizontal: space.md,
+    paddingVertical: space.sm,
+    justifyContent: 'center' as const,
+    minHeight: ROW_MIN_HEIGHT,
+  },
+  tableDataText: {
+    ...typography.subhead,
+    ...tabular,
+    color: t.text.primary,
+    textAlign: 'right' as const,
+  },
+
+  // Column widths: text left, numbers right
+  colDispatch: { width: COLUMN_WIDTH.dispatch, alignItems: 'flex-start' as const },
+  colQty: { width: COLUMN_WIDTH.qty, alignItems: 'flex-end' as const },
+  colDuration: { width: COLUMN_WIDTH.duration, alignItems: 'flex-end' as const },
+  colCharge: { width: COLUMN_WIDTH.charge, alignItems: 'flex-end' as const },
+  colLabour: { width: COLUMN_WIDTH.labour, alignItems: 'flex-end' as const },
+  colTax: { width: COLUMN_WIDTH.tax, alignItems: 'flex-end' as const },
+  colTotal: { width: COLUMN_WIDTH.total, alignItems: 'flex-end' as const },
+
+  // Dispatch cell
+  dispatchNo: {
+    ...typography.subhead,
+    fontWeight: fontWeight.semibold,
+    color: t.text.primary,
+  },
+  secondaryText: {
+    ...typography.caption1,
+    ...tabular,
+    color: t.text.secondary,
+    textAlign: 'right' as const,
+  },
+  dispatchDate: {
+    ...typography.caption1,
+    color: t.text.secondary,
+  },
+
+  // Editable cells: ghost border, shown only while editing (§13.2)
+  editableCell: {
+    borderWidth: 2,
+    borderColor: 'transparent',
+    borderRadius: radius.field,
+  },
+  editableCellPressed: {
+    backgroundColor: t.surface.cardPressed,
+  },
+  editingCell: {
+    borderColor: t.border.fieldFocus,
+    backgroundColor: t.surface.field,
+  },
+  cellInput: {
+    ...typography.subhead,
+    ...tabular,
+    alignSelf: 'stretch' as const,
+    minHeight: 36,
+    color: t.text.primary,
+    textAlign: 'right' as const,
+    paddingVertical: 0,
+    paddingHorizontal: 0,
+    margin: 0,
+    ...Platform.select({
+      android: {
+        textAlignVertical: 'center' as const,
+        includeFontPadding: false,
+      },
+    }),
+  },
+
+  // Totals row
+  tableFooter: {
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'center' as const,
+    gap: space.md,
+    minHeight: ROW_MIN_HEIGHT,
+    backgroundColor: t.surface.card,
+    borderTopWidth: 1,
+    borderTopColor: t.border.separator,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.sm,
+  },
+  tableFooterLabel: {
+    ...typography.subhead,
+    fontWeight: fontWeight.semibold,
+    color: t.text.primary,
+    flexShrink: 1,
+  },
+  tableFooterTotal: {
+    ...typography.headline,
+    ...tabular,
+    color: t.text.primary,
+    textAlign: 'right' as const,
+  },
+
+  // Collapsed state
+  collapsedInfo: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    gap: space.xs,
+    minHeight: touchTarget,
+    paddingVertical: space.sm,
+  },
+  collapsedInfoPressed: {
+    backgroundColor: t.brand.subtle,
+  },
+  collapsedText: {
+    ...typography.subhead,
+    fontWeight: fontWeight.semibold,
+    color: t.brand.tint,
+  },
+});
 
 interface EditPricingParams {
   item_id: string;
@@ -74,6 +390,9 @@ export const InvoiceItemsTable: React.FC<InvoiceItemsTableProps> = ({
   onBulkEdit,
   onEditPricing,
 }) => {
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
+
   // Get bulk pricing from Redux
   const bulkPricingFromRedux = useAppSelector(selectInvoiceFormBulkPricing);
 
@@ -286,8 +605,9 @@ export const InvoiceItemsTable: React.FC<InvoiceItemsTableProps> = ({
   if (items.length === 0) {
     return (
       <View style={styles.emptyContainer}>
-        <Icon name="table-off" size={48} color={FIORI.border} />
-        <Text style={styles.emptyText}>No items to display</Text>
+        <Icon name="table-off" size={iconSize.hero} color={t.icon.secondary} />
+        <Text style={styles.emptyTitle}>No items to invoice</Text>
+        <Text style={styles.emptyText}>Items from the selected dispatches appear here.</Text>
       </View>
     );
   }
@@ -302,79 +622,121 @@ export const InvoiceItemsTable: React.FC<InvoiceItemsTableProps> = ({
 
         // #23 Fix: Use pre-computed allItems instead of flatMap in render
         const { allItems } = itemGroup;
+        const dispatchCount = plural(allItems.length, 'dispatch', 'dispatches');
+        const groupTotalText = formatInvoiceAmount(groupTotal);
+
+        const renderEditableCell = (
+          item: InvoiceItemData,
+          field: 'charge' | 'labour_rate' | 'tax',
+          columnStyle: object,
+          label: string,
+          display: string
+        ) => {
+          const isEditing = editingCell?.tempId === item.temp_id && editingCell?.field === field;
+          const rawValue = item[field];
+          return (
+            <Pressable
+              style={({ pressed }) => [
+                styles.tableDataCell,
+                columnStyle,
+                styles.editableCell,
+                pressed && !isEditing && styles.editableCellPressed,
+                isEditing && styles.editingCell,
+              ]}
+              onPress={() => setEditingCell({ tempId: item.temp_id, field })}
+              accessibilityRole="button"
+              accessibilityLabel={`${label}, dispatch ${item.dispatch_no}, ${display}`}
+              accessibilityHint="Edits the value"
+            >
+              {isEditing ? (
+                <TextInput
+                  style={styles.cellInput}
+                  accessibilityLabel={`${label}, dispatch ${item.dispatch_no}`}
+                  value={rawValue > 0 ? rawValue.toString() : ''}
+                  onChangeText={(text) => handleCellValueChange(item.temp_id, field, text)}
+                  keyboardType="decimal-pad"
+                  autoFocus
+                  selectTextOnFocus
+                  onBlur={() => setEditingCell(null)}
+                />
+              ) : (
+                <Text style={styles.tableDataText}>{display}</Text>
+              )}
+            </Pressable>
+          );
+        };
 
         return (
           <View key={groupKey} style={styles.groupCard}>
-            {/* Group Header - Tappable */}
-            <TouchableOpacity
-              style={styles.groupHeader}
+            {/* Group header - tappable */}
+            <Pressable
+              style={({ pressed }) => [styles.groupHeader, pressed && styles.groupHeaderPressed]}
               onPress={() => toggleItemGroup(groupKey)}
-              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityState={{ expanded: isExpanded }}
+              accessibilityLabel={`${itemGroup.item_name}, mark ${itemGroup.package_mark}, ${formatNumber(itemGroup.total_weight)} kg, GRN quantity ${formatNumber(itemGroup.gr_quantity)}, dispatched ${formatNumber(itemGroup.total_dispatched)}, total ${groupTotalText}`}
             >
               <Icon
                 name={isExpanded ? 'chevron-down' : 'chevron-right'}
-                size={24}
-                color={theme.colors.white}
+                size={iconSize.lg}
+                color={t.icon.secondary}
               />
               <View style={styles.groupHeaderContent}>
-                <Text style={styles.groupTitle} numberOfLines={1}>
+                <Text style={styles.groupTitle} numberOfLines={2}>
                   {itemGroup.item_name}
                 </Text>
                 <View style={styles.groupMeta}>
                   <View style={styles.metaBadge}>
-                    <Icon name="package-variant" size={12} color="rgba(255,255,255,0.9)" />
+                    <Icon name="tag-outline" size={iconSize.sm} color={t.status.neutral.text} />
                     <Text style={styles.metaText}>{itemGroup.package_mark}</Text>
                   </View>
                   <View style={styles.metaBadge}>
-                    <Icon name="weight-kilogram" size={12} color="rgba(255,255,255,0.9)" />
-                    <Text style={styles.metaText}>{itemGroup.total_weight} kg</Text>
+                    <Icon name="weight-kilogram" size={iconSize.sm} color={t.status.neutral.text} />
+                    <Text style={styles.metaText}>{formatNumber(itemGroup.total_weight)} kg</Text>
                   </View>
                   <View style={styles.metaBadge}>
-                    <Text style={styles.metaText}>GR: {itemGroup.gr_quantity}</Text>
+                    <Text style={styles.metaText}>GRN qty {formatNumber(itemGroup.gr_quantity)}</Text>
                   </View>
                   <View style={styles.metaBadge}>
-                    <Text style={styles.metaText}>Disp: {itemGroup.total_dispatched}</Text>
+                    <Text style={styles.metaText}>Dispatched {formatNumber(itemGroup.total_dispatched)}</Text>
                   </View>
                 </View>
               </View>
-              <View style={styles.groupTotalBadge}>
+              <View style={styles.groupTotal}>
                 <Text style={styles.groupTotalLabel}>Total</Text>
-                <Text style={styles.groupTotalValue} numberOfLines={1} adjustsFontSizeToFit>
-                  ₹{formatNumber(groupTotal)}
-                </Text>
+                <Text style={styles.groupTotalValue}>{groupTotalText}</Text>
               </View>
-            </TouchableOpacity>
+            </Pressable>
 
-            {/* Bulk Pricing Section */}
+            {/* Group pricing section */}
             <View style={styles.bulkPricingSection}>
               <View style={styles.bulkPricingHeader}>
-                <Icon name="clipboard-edit-outline" size={16} color={theme.colors.gray[700]} />
-                <Text style={styles.bulkPricingLabel}>Group Pricing</Text>
-                {/* Edit Pricing Button */}
+                <Text style={styles.bulkPricingLabel} accessibilityRole="header">Group pricing</Text>
                 {onEditPricing && (
-                  <TouchableOpacity
-                    style={styles.editPricingButton}
+                  <Pressable
+                    style={({ pressed }) => [styles.editPricingButton, pressed && styles.editPricingButtonPressed]}
                     onPress={() => handleEditPricingPress(itemGroup)}
-                    activeOpacity={0.7}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Edit pricing for ${itemGroup.item_name}`}
                   >
-                    <Icon name="pencil" size={14} color={theme.colors.primary} />
-                  </TouchableOpacity>
+                    <Icon name="pencil-outline" size={iconSize.md} color={t.brand.tint} />
+                  </Pressable>
                 )}
-                <Text style={styles.bulkPricingHint}>(applies to all {allItems.length} items)</Text>
+                <Text style={styles.bulkPricingHint}>Applies to all {plural(allItems.length, 'line', 'lines')}</Text>
               </View>
               <View style={styles.bulkPricingInputs}>
                 {/* Charge */}
                 <View style={styles.bulkInputWrapper}>
                   <Text style={styles.inputLabel}>Charge</Text>
-                  <View style={styles.inputWithIcon}>
-                    <Text style={styles.currencySymbol}>₹</Text>
+                  <View style={styles.field}>
+                    <Text style={styles.affix}>₹</Text>
                     <TextInput
                       style={styles.bulkInput}
+                      accessibilityLabel={`Storage charge for ${itemGroup.item_name}`}
                       value={currentInputs.charge}
                       onChangeText={(text) => handleBulkPricingChange(groupKey, 'charge', text)}
                       placeholder="0"
-                      placeholderTextColor={theme.colors.gray[400]}
+                      placeholderTextColor={t.text.placeholder}
                       keyboardType="decimal-pad"
                     />
                   </View>
@@ -382,223 +744,148 @@ export const InvoiceItemsTable: React.FC<InvoiceItemsTableProps> = ({
                 {/* Labour */}
                 <View style={styles.bulkInputWrapper}>
                   <Text style={styles.inputLabel}>Labour</Text>
-                  <View style={styles.inputWithIcon}>
-                    <Text style={styles.currencySymbol}>₹</Text>
+                  <View style={styles.field}>
+                    <Text style={styles.affix}>₹</Text>
                     <TextInput
                       style={styles.bulkInput}
+                      accessibilityLabel={`Labour rate for ${itemGroup.item_name}`}
                       value={currentInputs.labour_rate}
                       onChangeText={(text) => handleBulkPricingChange(groupKey, 'labour_rate', text)}
                       placeholder="0"
-                      placeholderTextColor={theme.colors.gray[400]}
+                      placeholderTextColor={t.text.placeholder}
                       keyboardType="decimal-pad"
                     />
                   </View>
                 </View>
                 {/* Tax */}
                 <View style={styles.bulkInputWrapper}>
-                  <Text style={styles.inputLabel}>Tax %</Text>
-                  <View style={styles.inputWithIcon}>
+                  <Text style={styles.inputLabel}>Tax</Text>
+                  <View style={styles.field}>
                     <TextInput
                       style={styles.bulkInput}
+                      accessibilityLabel={`Tax percent for ${itemGroup.item_name}`}
                       value={currentInputs.tax}
                       onChangeText={(text) => handleBulkPricingChange(groupKey, 'tax', text)}
                       placeholder="0"
-                      placeholderTextColor={theme.colors.gray[400]}
+                      placeholderTextColor={t.text.placeholder}
                       keyboardType="decimal-pad"
                     />
-                    <Text style={styles.percentSymbol}>%</Text>
+                    <Text style={styles.affix}>%</Text>
                   </View>
                 </View>
               </View>
             </View>
 
-            {/* Expanded Data Table */}
+            {/* Expanded data table */}
             {isExpanded && (
               <View style={styles.tableContainer}>
-                {/* Fiori Data Table Header */}
-                <ScrollView horizontal showsHorizontalScrollIndicator={true} bounces={false}>
+                <ScrollView horizontal showsHorizontalScrollIndicator bounces={false}>
                   <View>
-                    {/* Header Row */}
+                    {/* Header row */}
                     <View style={styles.tableHeaderRow}>
                       <View style={[styles.tableHeaderCell, styles.colDispatch]}>
                         <Text style={styles.tableHeaderText}>Dispatch</Text>
                       </View>
                       <View style={[styles.tableHeaderCell, styles.colQty]}>
-                        <Text style={styles.tableHeaderText}>Qty</Text>
+                        <Text style={[styles.tableHeaderText, styles.tableHeaderTextNumeric]}>Qty</Text>
                       </View>
                       <View style={[styles.tableHeaderCell, styles.colDuration]}>
-                        <Text style={styles.tableHeaderText}>Duration</Text>
+                        <Text style={[styles.tableHeaderText, styles.tableHeaderTextNumeric]}>Duration</Text>
                       </View>
                       <View style={[styles.tableHeaderCell, styles.colCharge]}>
-                        <Text style={styles.tableHeaderText}>Charge ₹</Text>
+                        <Text style={[styles.tableHeaderText, styles.tableHeaderTextNumeric]}>Charge (₹)</Text>
                       </View>
                       <View style={[styles.tableHeaderCell, styles.colLabour]}>
-                        <Text style={styles.tableHeaderText}>Labour ₹</Text>
+                        <Text style={[styles.tableHeaderText, styles.tableHeaderTextNumeric]}>Labour (₹)</Text>
                       </View>
                       <View style={[styles.tableHeaderCell, styles.colTax]}>
-                        <Text style={styles.tableHeaderText}>Tax %</Text>
+                        <Text style={[styles.tableHeaderText, styles.tableHeaderTextNumeric]}>Tax (%)</Text>
                       </View>
                       <View style={[styles.tableHeaderCell, styles.colTotal]}>
-                        <Text style={styles.tableHeaderText}>Total ₹</Text>
+                        <Text style={[styles.tableHeaderText, styles.tableHeaderTextNumeric]}>Total</Text>
                       </View>
                     </View>
 
-                    {/* Data Rows */}
-                    {allItems.map((item, index) => {
-                      const isAlternate = index % 2 === 1;
-                      const isChargeEditing =
-                        editingCell?.tempId === item.temp_id && editingCell?.field === 'charge';
-                      const isLabourEditing =
-                        editingCell?.tempId === item.temp_id && editingCell?.field === 'labour_rate';
-                      const isTaxEditing =
-                        editingCell?.tempId === item.temp_id && editingCell?.field === 'tax';
-
-                      return (
-                        <View
-                          key={item.temp_id}
-                          style={[styles.tableDataRow, isAlternate && styles.tableDataRowAlternate]}
-                        >
-                          {/* Dispatch Info */}
-                          <View style={[styles.tableDataCell, styles.colDispatch]}>
-                            <Text style={styles.dispatchNo}>{item.dispatch_no}</Text>
-                            <Text style={styles.dispatchDate}>{formatDate(item.dispatch_date)}</Text>
-                          </View>
-
-                          {/* Qty - Read Only */}
-                          <View style={[styles.tableDataCell, styles.colQty]}>
-                            <Text style={styles.tableDataText}>{item.qty}</Text>
-                          </View>
-
-                          {/* Duration - Read Only */}
-                          <View style={[styles.tableDataCell, styles.colDuration]}>
-                            <Text style={styles.tableDataText}>{formatNumber(item.duration, 1)}m</Text>
-                            <Text style={styles.daysText}>{item.no_of_days}d</Text>
-                          </View>
-
-                          {/* Charge - Editable */}
-                          <TouchableOpacity
-                            style={[
-                              styles.tableDataCell,
-                              styles.colCharge,
-                              styles.editableCell,
-                              isChargeEditing && styles.editingCell,
-                            ]}
-                            onPress={() => setEditingCell({ tempId: item.temp_id, field: 'charge' })}
-                            activeOpacity={0.7}
-                          >
-                            {isChargeEditing ? (
-                              <TextInput
-                                style={styles.cellInput}
-                                value={item.charge > 0 ? item.charge.toString() : ''}
-                                onChangeText={(text) =>
-                                  handleCellValueChange(item.temp_id, 'charge', text)
-                                }
-                                keyboardType="decimal-pad"
-                                autoFocus
-                                selectTextOnFocus
-                                onBlur={() => setEditingCell(null)}
-                              />
-                            ) : (
-                              <Text style={styles.editableText}>
-                                {item.charge > 0 ? formatNumber(item.charge) : '-'}
-                              </Text>
-                            )}
-                          </TouchableOpacity>
-
-                          {/* Labour - Editable */}
-                          <TouchableOpacity
-                            style={[
-                              styles.tableDataCell,
-                              styles.colLabour,
-                              styles.editableCell,
-                              isLabourEditing && styles.editingCell,
-                            ]}
-                            onPress={() =>
-                              setEditingCell({ tempId: item.temp_id, field: 'labour_rate' })
-                            }
-                            activeOpacity={0.7}
-                          >
-                            {isLabourEditing ? (
-                              <TextInput
-                                style={styles.cellInput}
-                                value={item.labour_rate > 0 ? item.labour_rate.toString() : ''}
-                                onChangeText={(text) =>
-                                  handleCellValueChange(item.temp_id, 'labour_rate', text)
-                                }
-                                keyboardType="decimal-pad"
-                                autoFocus
-                                selectTextOnFocus
-                                onBlur={() => setEditingCell(null)}
-                              />
-                            ) : (
-                              <Text style={styles.editableText}>
-                                {item.labour_rate > 0 ? formatNumber(item.labour_rate) : '-'}
-                              </Text>
-                            )}
-                          </TouchableOpacity>
-
-                          {/* Tax - Editable */}
-                          <TouchableOpacity
-                            style={[
-                              styles.tableDataCell,
-                              styles.colTax,
-                              styles.editableCell,
-                              isTaxEditing && styles.editingCell,
-                            ]}
-                            onPress={() => setEditingCell({ tempId: item.temp_id, field: 'tax' })}
-                            activeOpacity={0.7}
-                          >
-                            {isTaxEditing ? (
-                              <TextInput
-                                style={styles.cellInput}
-                                value={item.tax > 0 ? item.tax.toString() : ''}
-                                onChangeText={(text) =>
-                                  handleCellValueChange(item.temp_id, 'tax', text)
-                                }
-                                keyboardType="decimal-pad"
-                                autoFocus
-                                selectTextOnFocus
-                                onBlur={() => setEditingCell(null)}
-                              />
-                            ) : (
-                              <Text style={styles.editableText}>
-                                {item.tax > 0 ? formatNumber(item.tax, 1) : '-'}
-                              </Text>
-                            )}
-                          </TouchableOpacity>
-
-                          {/* Total - Calculated */}
-                          <View style={[styles.tableDataCell, styles.colTotal]}>
-                            <Text style={styles.totalText} numberOfLines={1} adjustsFontSizeToFit>
-                              ₹{formatNumber(item.item_total)}
-                            </Text>
-                          </View>
+                    {/* Data rows */}
+                    {allItems.map((item) => (
+                      <View key={item.temp_id} style={styles.tableDataRow}>
+                        {/* Dispatch info */}
+                        <View style={[styles.tableDataCell, styles.colDispatch]}>
+                          <Text style={styles.dispatchNo}>{item.dispatch_no}</Text>
+                          <Text style={styles.dispatchDate}>{formatDate(item.dispatch_date)}</Text>
                         </View>
-                      );
-                    })}
+
+                        {/* Qty - read only */}
+                        <View style={[styles.tableDataCell, styles.colQty]}>
+                          <Text style={styles.tableDataText}>{formatNumber(item.qty)}</Text>
+                        </View>
+
+                        {/* Duration - read only */}
+                        <View
+                          style={[styles.tableDataCell, styles.colDuration]}
+                          accessible
+                          accessibilityLabel={`${formatNumber(item.duration, 1)} months, ${plural(item.no_of_days, 'day', 'days')}`}
+                        >
+                          <Text style={styles.tableDataText}>{formatNumber(item.duration, 1)} mo</Text>
+                          <Text style={styles.secondaryText}>{plural(item.no_of_days, 'day', 'days')}</Text>
+                        </View>
+
+                        {renderEditableCell(
+                          item,
+                          'charge',
+                          styles.colCharge,
+                          'Charge',
+                          item.charge > 0 ? formatNumber(item.charge) : '—'
+                        )}
+                        {renderEditableCell(
+                          item,
+                          'labour_rate',
+                          styles.colLabour,
+                          'Labour rate',
+                          item.labour_rate > 0 ? formatNumber(item.labour_rate) : '—'
+                        )}
+                        {renderEditableCell(
+                          item,
+                          'tax',
+                          styles.colTax,
+                          'Tax percent',
+                          item.tax > 0 ? formatNumber(item.tax, 1) : '—'
+                        )}
+
+                        {/* Total - calculated */}
+                        <View style={[styles.tableDataCell, styles.colTotal]}>
+                          <Text style={[styles.tableDataText, styles.tableTotalText]}>
+                            {formatInvoiceAmount(item.item_total)}
+                          </Text>
+                        </View>
+                      </View>
+                    ))}
                   </View>
                 </ScrollView>
 
-                {/* Table Footer - Group Summary */}
-                <View style={styles.tableFooter}>
-                  <Text style={styles.tableFooterLabel}>
-                    {allItems.length} dispatch{allItems.length !== 1 ? 'es' : ''} • Group Total
-                  </Text>
-                  <Text style={styles.tableFooterTotal} numberOfLines={1} adjustsFontSizeToFit>
-                    ₹{formatNumber(groupTotal)}
-                  </Text>
+                {/* Totals row */}
+                <View
+                  style={styles.tableFooter}
+                  accessible
+                  accessibilityLabel={`Group total for ${dispatchCount}, ${groupTotalText}`}
+                >
+                  <Text style={styles.tableFooterLabel}>Group total · {dispatchCount}</Text>
+                  <Text style={styles.tableFooterTotal}>{groupTotalText}</Text>
                 </View>
               </View>
             )}
 
-            {/* Collapsed State - Show item count */}
+            {/* Collapsed state - show the dispatch count */}
             {!isExpanded && (
-              <View style={styles.collapsedInfo}>
-                <Icon name="table" size={16} color={theme.colors.gray[500]} />
-                <Text style={styles.collapsedText}>
-                  {allItems.length} dispatch{allItems.length !== 1 ? 'es' : ''} • Tap to expand
-                </Text>
-              </View>
+              <Pressable
+                style={({ pressed }) => [styles.collapsedInfo, pressed && styles.collapsedInfoPressed]}
+                onPress={() => toggleItemGroup(groupKey)}
+                accessibilityRole="button"
+                accessibilityState={{ expanded: false }}
+              >
+                <Icon name="table" size={iconSize.sm} color={t.brand.tint} />
+                <Text style={styles.collapsedText}>Show {dispatchCount}</Text>
+              </Pressable>
             )}
           </View>
         );
@@ -606,319 +893,5 @@ export const InvoiceItemsTable: React.FC<InvoiceItemsTableProps> = ({
     </View>
   );
 };
-
-// Fiori-compliant styles
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    gap: theme.spacing.md,
-  },
-
-  // Empty State
-  emptyContainer: {
-    padding: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  emptyText: {
-    marginTop: 16,
-    fontSize: FIORI.dataFontSize,
-    color: theme.colors.fiori.text.secondary,
-  },
-
-  // Group Card
-  groupCard: {
-    backgroundColor: theme.colors.white,
-    borderRadius: theme.borderRadius.lg,
-    overflow: 'hidden',
-    ...theme.shadows.md,
-  },
-
-  // Group Header
-  groupHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: theme.colors.primary,
-    padding: theme.spacing.md,
-    gap: theme.spacing.sm,
-  },
-  groupHeaderContent: {
-    flex: 1,
-  },
-  groupTitle: {
-    fontSize: theme.fontSize.lg,
-    fontWeight: '700',
-    color: theme.colors.white,
-    marginBottom: 4,
-  },
-  groupMeta: {
-    flexDirection: 'row',
-    gap: theme.spacing.xs,
-    flexWrap: 'wrap',
-  },
-  metaBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 4,
-    gap: 4,
-  },
-  metaText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: theme.colors.white,
-  },
-  editPricingButton: {
-    backgroundColor: theme.colors.orange[50],
-    borderRadius: 6,
-    padding: 6,
-    marginLeft: theme.spacing.xs,
-    borderWidth: 1,
-    borderColor: theme.colors.orange[200],
-  },
-  groupTotalBadge: {
-    alignItems: 'flex-end',
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-    minWidth: 100,
-    flexShrink: 0,
-  },
-  groupTotalLabel: {
-    fontSize: 10,
-    color: 'rgba(255,255,255,0.8)',
-    fontWeight: '500',
-  },
-  groupTotalValue: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: theme.colors.white,
-    minWidth: 80,
-  },
-
-  // Bulk Pricing Section
-  bulkPricingSection: {
-    backgroundColor: FIORI.headerBg,
-    padding: theme.spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: FIORI.border,
-  },
-  bulkPricingHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: theme.spacing.xs,
-    marginBottom: theme.spacing.sm,
-  },
-  bulkPricingLabel: {
-    fontSize: FIORI.headerFontSize,
-    fontWeight: '600',
-    color: FIORI.headerText,
-  },
-  bulkPricingHint: {
-    fontSize: 11,
-    color: theme.colors.gray[500],
-  },
-  bulkPricingInputs: {
-    flexDirection: 'row',
-    gap: theme.spacing.sm,
-  },
-  bulkInputWrapper: {
-    flex: 1,
-  },
-  inputLabel: {
-    fontSize: 11,
-    fontWeight: '500',
-    color: theme.colors.gray[600],
-    marginBottom: 4,
-  },
-  inputWithIcon: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    position: 'relative',
-  },
-  bulkInput: {
-    flex: 1,
-    height: 44,
-    backgroundColor: theme.colors.white,
-    borderWidth: 1,
-    borderColor: FIORI.border,
-    borderRadius: 8,
-    paddingHorizontal: 24,
-    paddingVertical: 8,
-    fontSize: 14,
-    color: FIORI.headerText,
-    textAlign: 'center',
-    ...Platform.select({
-      android: {
-        textAlignVertical: 'center',
-        includeFontPadding: false,
-        paddingTop: 10,
-        paddingBottom: 10,
-      },
-    }),
-  },
-  currencySymbol: {
-    position: 'absolute',
-    left: 8,
-    fontSize: 14,
-    fontWeight: '600',
-    color: theme.colors.gray[600],
-    zIndex: 1,
-  },
-  percentSymbol: {
-    position: 'absolute',
-    right: 8,
-    fontSize: 14,
-    fontWeight: '600',
-    color: theme.colors.gray[600],
-  },
-
-  // Data Table Container
-  tableContainer: {
-    backgroundColor: theme.colors.white,
-  },
-
-  // Table Header Row
-  tableHeaderRow: {
-    flexDirection: 'row',
-    backgroundColor: FIORI.headerBg,
-    borderBottomWidth: 1,
-    borderBottomColor: FIORI.border,
-    minHeight: FIORI.headerHeight,
-  },
-  tableHeaderCell: {
-    paddingHorizontal: FIORI.cellPaddingH,
-    paddingVertical: FIORI.cellPaddingV,
-    justifyContent: 'center',
-    minHeight: FIORI.headerHeight,
-  },
-  tableHeaderText: {
-    fontSize: FIORI.headerFontSize,
-    fontWeight: '600',
-    color: FIORI.headerText,
-  },
-
-  // Table Data Row
-  tableDataRow: {
-    flexDirection: 'row',
-    backgroundColor: FIORI.rowBgDefault,
-    borderBottomWidth: 1,
-    borderBottomColor: FIORI.border,
-    minHeight: FIORI.rowHeight,
-  },
-  tableDataRowAlternate: {
-    backgroundColor: FIORI.rowBgAlternate,
-  },
-  tableDataCell: {
-    paddingHorizontal: FIORI.cellPaddingH,
-    paddingVertical: FIORI.cellPaddingV,
-    justifyContent: 'center',
-    minHeight: FIORI.rowHeight,
-  },
-  tableDataText: {
-    fontSize: FIORI.dataFontSize,
-    color: FIORI.headerText,
-  },
-
-  // Column Widths
-  colDispatch: { width: 100 },
-  colQty: { width: 60, alignItems: 'center' },
-  colDuration: { width: 70, alignItems: 'center' },
-  colCharge: { width: 80, alignItems: 'flex-end' },
-  colLabour: { width: 80, alignItems: 'flex-end' },
-  colTax: { width: 60, alignItems: 'flex-end' },
-  colTotal: { width: 90, alignItems: 'flex-end' },
-
-  // Dispatch cell
-  dispatchNo: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: theme.colors.blue[700],
-  },
-  dispatchDate: {
-    fontSize: 11,
-    color: theme.colors.gray[500],
-  },
-  daysText: {
-    fontSize: 11,
-    color: theme.colors.gray[500],
-  },
-
-  // Editable cells
-  editableCell: {
-    backgroundColor: theme.colors.white,
-    borderRadius: 4,
-    marginVertical: 4,
-    marginHorizontal: 2,
-  },
-  editingCell: {
-    borderWidth: 2,
-    borderColor: FIORI.activeCellStroke,
-  },
-  editableText: {
-    fontSize: FIORI.dataFontSize,
-    color: FIORI.headerText,
-    fontWeight: '500',
-  },
-  cellInput: {
-    flex: 1,
-    height: 36,
-    fontSize: FIORI.dataFontSize,
-    color: FIORI.headerText,
-    textAlign: 'right',
-    paddingVertical: 0,
-    paddingHorizontal: 4,
-    margin: 0,
-    ...Platform.select({
-      android: {
-        textAlignVertical: 'center',
-        includeFontPadding: false,
-      },
-    }),
-  },
-
-  // Total column
-  totalText: {
-    fontSize: FIORI.dataFontSize,
-    fontWeight: '600',
-    color: theme.colors.fiori.semantic.positive,
-  },
-
-  // Table Footer
-  tableFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: theme.colors.primary,
-    paddingHorizontal: theme.spacing.md,
-    paddingVertical: theme.spacing.sm,
-  },
-  tableFooterLabel: {
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.9)',
-  },
-  tableFooterTotal: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: theme.colors.white,
-  },
-
-  // Collapsed state
-  collapsedInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: theme.spacing.xs,
-    paddingVertical: theme.spacing.sm,
-    backgroundColor: FIORI.rowBgAlternate,
-  },
-  collapsedText: {
-    fontSize: 13,
-    color: theme.colors.gray[600],
-  },
-});
 
 export default InvoiceItemsTable;

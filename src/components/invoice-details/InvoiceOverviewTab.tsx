@@ -1,24 +1,23 @@
 /**
  * InvoiceOverviewTab Component
  *
- * Uses shared overview tab components for consistent Fiori styling
- * Includes unique sections for customer details, GRN reference, and financial summary
+ * Overview of an invoice (style guide §14.2): customer, linked GRN, financial
+ * summary (§13.11), notes and actions. Uses the shared overview-tab section
+ * header, notes and actions components.
  */
 
-import React, { useMemo } from 'react';
+import React from 'react';
 import { View, Text, ScrollView, Pressable, Linking, StyleSheet } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import {
-  FIORI,
-  overviewStyles,
-  useOverviewColors,
   SectionHeader,
   NotesSection,
   ActionsSection,
 } from '@/components/common/overview-tab';
-import { useListColors } from '@/hooks/useListColors';
-import { savedInvoiceAmounts } from '@/utils/invoiceCalculations';
-import { formatCurrency } from '@/utils/formatters';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { fontWeight, iconSize, layout, radius, space, touchTarget, typography } from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
+import { savedInvoiceAmounts, formatInvoiceAmount, formatInvoiceDeduction } from '@/utils/invoiceCalculations';
 
 // ============================================================================
 // TYPES
@@ -72,6 +71,110 @@ interface InvoiceOverviewTabProps {
   is_print_loading?: boolean;
 }
 
+const formatDisplayDate = (value?: string) => {
+  if (!value) return '';
+  const date = new Date(value);
+  if (isNaN(date.getTime())) return '';
+  return date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+};
+
+// ============================================================================
+// STYLES
+// ============================================================================
+const makeStyles = (t: ThemeTokens) => ({
+  container: { flex: 1, backgroundColor: t.background.base },
+  content: { paddingHorizontal: layout.marginCompact, paddingTop: space.md },
+  bottomSpacer: { height: space.xxxl },
+  card: {
+    backgroundColor: t.surface.card,
+    borderRadius: radius.card,
+    marginBottom: space.md,
+    overflow: 'hidden' as const,
+    ...t.shadow[2],
+  },
+  cardPressed: { backgroundColor: t.surface.cardPressed },
+  objectCellHeader: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    padding: space.lg,
+    minHeight: layout.objectCellMinHeight,
+  },
+  avatar: {
+    width: layout.avatar.md,
+    height: layout.avatar.md,
+    borderRadius: radius.pill,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    marginRight: space.md,
+    backgroundColor: t.brand.subtle,
+  },
+  objectCellContent: { flex: 1 },
+  objectCellLabel: { ...typography.footnote, color: t.text.secondary, marginBottom: space.xxs },
+  objectCellHeadline: { ...typography.headline, color: t.text.primary },
+  objectCellSubheadline: { ...typography.subhead, color: t.text.secondary, marginTop: space.xxs },
+  detailsContainer: {
+    paddingHorizontal: space.lg,
+    paddingTop: space.md,
+    paddingBottom: space.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: t.border.divider,
+    gap: space.sm,
+  },
+  detailRow: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: space.sm },
+  detailText: { ...typography.subhead, color: t.text.primary, flex: 1 },
+  taxChipsRow: { flexDirection: 'row' as const, flexWrap: 'wrap' as const, gap: space.sm },
+  taxChip: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    backgroundColor: t.status.neutral.background,
+    paddingHorizontal: space.md,
+    paddingVertical: space.s6,
+    borderRadius: radius.pill,
+    gap: space.xs,
+  },
+  taxChipLabel: { ...typography.caption1, color: t.status.neutral.text, fontWeight: fontWeight.semibold },
+  taxChipValue: { ...typography.caption1, color: t.text.primary, fontVariant: ['tabular-nums' as const] },
+  contactAction: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.md,
+    minHeight: touchTarget,
+    gap: space.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: t.border.divider,
+  },
+  contactActionText: { ...typography.body, color: t.brand.tint, flex: 1 },
+  financialRow: {
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'center' as const,
+    gap: space.md,
+    paddingVertical: space.sm,
+  },
+  financialLabel: { ...typography.body, color: t.text.secondary, flexShrink: 1 },
+  financialValue: {
+    ...typography.body,
+    color: t.text.primary,
+    textAlign: 'right' as const,
+    fontVariant: ['tabular-nums' as const],
+  },
+  discountValue: { color: t.status.positive.text },
+  financialRowTotal: {
+    paddingTop: space.md,
+    marginTop: space.sm,
+    borderTopWidth: 1,
+    borderTopColor: t.border.separator,
+  },
+  financialLabelTotal: { ...typography.headline, color: t.text.primary },
+  financialValueTotal: {
+    ...typography.headline,
+    color: t.text.primary,
+    textAlign: 'right' as const,
+    fontVariant: ['tabular-nums' as const],
+  },
+});
+
 // ============================================================================
 // COMPONENT
 // ============================================================================
@@ -94,72 +197,8 @@ export const InvoiceOverviewTab: React.FC<InvoiceOverviewTabProps> = ({
   on_print,
   is_print_loading = false,
 }) => {
-  const colorStyles = useOverviewColors();
-  const colors = useListColors();
-
-  // Dynamic styles for invoice-specific components
-  const dynamicStyles = useMemo(() => StyleSheet.create({
-    customerDetailsContainer: {
-      paddingHorizontal: FIORI.dimensions.cardPadding,
-      paddingBottom: FIORI.spacing.md,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.cellDivider,
-    },
-    taxChip: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      backgroundColor: colors.gray50,
-      paddingHorizontal: FIORI.spacing.md,
-      paddingVertical: FIORI.spacing.xs,
-      borderRadius: 16,
-      gap: FIORI.spacing.xs,
-    },
-    taxChipLabel: {
-      ...FIORI.typography.caption,
-      color: colors.gray600,
-      fontWeight: '600',
-    },
-    taxChipValue: {
-      ...FIORI.typography.caption,
-      color: colors.gray900,
-      fontWeight: '500',
-    },
-    grnDetailsContainer: {
-      paddingHorizontal: FIORI.dimensions.cardPadding,
-      paddingBottom: FIORI.dimensions.cardPadding,
-      borderTopWidth: 1,
-      borderTopColor: colors.cellDivider,
-    },
-    financialContainer: {
-      paddingHorizontal: FIORI.dimensions.cardPadding,
-      paddingBottom: FIORI.dimensions.cardPadding,
-      borderTopWidth: 1,
-      borderTopColor: colors.cellDivider,
-    },
-    financialRowTotal: {
-      paddingTop: FIORI.spacing.md,
-      marginTop: FIORI.spacing.sm,
-      borderTopWidth: 2,
-      borderTopColor: colors.cellDivider,
-    },
-    financialLabel: {
-      ...FIORI.typography.body,
-      color: colors.gray600,
-    },
-    financialValue: {
-      ...FIORI.typography.bodyMedium,
-      color: colors.gray900,
-    },
-    financialLabelTotal: {
-      ...FIORI.typography.headline,
-      color: colors.gray900,
-    },
-    financialValueTotal: {
-      fontSize: 20,
-      fontWeight: '700',
-      color: colors.success,
-    },
-  }), [colors]);
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
 
   const handlePhonePress = (phone: string) => {
     Linking.openURL(`tel:${phone}`);
@@ -176,29 +215,28 @@ export const InvoiceOverviewTab: React.FC<InvoiceOverviewTabProps> = ({
   };
 
   // Invoice-specific Customer Card with address and tax details
-  const CustomerCard = () => {
+  const renderCustomerCard = () => {
     if (!customer_details) return null;
 
     return (
-      <View style={[overviewStyles.card, colorStyles.card]}>
-        {/* Object Cell Header */}
-        <View style={overviewStyles.objectCellHeader}>
-          <View style={[overviewStyles.avatar, { backgroundColor: colors.primaryLight }]}>
-            <Icon name="account" size={24} color={colors.primary} />
+      <View style={styles.card}>
+        <View style={styles.objectCellHeader} accessible accessibilityLabel={`Customer, ${customer_details.name}`}>
+          <View style={styles.avatar}>
+            <Icon name="account-outline" size={iconSize.lg} color={t.brand.tint} />
           </View>
-          <View style={overviewStyles.objectCellContent}>
-            <Text style={[overviewStyles.objectCellLabel, colorStyles.objectCellLabel]}>Customer</Text>
-            <Text style={[overviewStyles.objectCellHeadline, colorStyles.objectCellHeadline]}>{customer_details.name}</Text>
+          <View style={styles.objectCellContent}>
+            <Text style={styles.objectCellLabel}>Customer</Text>
+            <Text style={styles.objectCellHeadline} numberOfLines={2}>{customer_details.name}</Text>
           </View>
         </View>
 
         {/* Address & Tax Info */}
         {(customer_details.address || customer_details.city || customer_details.gst || customer_details.pan) && (
-          <View style={dynamicStyles.customerDetailsContainer}>
+          <View style={styles.detailsContainer}>
             {(customer_details.address || customer_details.city) && (
-              <View style={overviewStyles.detailRow}>
-                <Icon name="map-marker" size={18} color={colorStyles.iconTertiary} />
-                <Text style={[overviewStyles.detailText, colorStyles.detailText]}>
+              <View style={styles.detailRow}>
+                <Icon name="map-marker-outline" size={iconSize.md} color={t.icon.secondary} />
+                <Text style={styles.detailText}>
                   {[
                     customer_details.address,
                     customer_details.city,
@@ -214,15 +252,15 @@ export const InvoiceOverviewTab: React.FC<InvoiceOverviewTabProps> = ({
             {(customer_details.gst || customer_details.pan) && (
               <View style={styles.taxChipsRow}>
                 {customer_details.gst && (
-                  <View style={dynamicStyles.taxChip}>
-                    <Text style={dynamicStyles.taxChipLabel}>GST</Text>
-                    <Text style={dynamicStyles.taxChipValue}>{customer_details.gst}</Text>
+                  <View style={styles.taxChip} accessible accessibilityLabel={`GST ${customer_details.gst}`}>
+                    <Text style={styles.taxChipLabel} maxFontSizeMultiplier={1.6}>GST</Text>
+                    <Text style={styles.taxChipValue} maxFontSizeMultiplier={1.6}>{customer_details.gst}</Text>
                   </View>
                 )}
                 {customer_details.pan && (
-                  <View style={dynamicStyles.taxChip}>
-                    <Text style={dynamicStyles.taxChipLabel}>PAN</Text>
-                    <Text style={dynamicStyles.taxChipValue}>{customer_details.pan}</Text>
+                  <View style={styles.taxChip} accessible accessibilityLabel={`PAN ${customer_details.pan}`}>
+                    <Text style={styles.taxChipLabel} maxFontSizeMultiplier={1.6}>PAN</Text>
+                    <Text style={styles.taxChipValue} maxFontSizeMultiplier={1.6}>{customer_details.pan}</Text>
                   </View>
                 )}
               </View>
@@ -231,161 +269,138 @@ export const InvoiceOverviewTab: React.FC<InvoiceOverviewTabProps> = ({
         )}
 
         {/* Contact Actions */}
-        {(customer_details.mobile || customer_details.email) && (
-          <View style={[overviewStyles.contactActionsContainer, colorStyles.contactActionsContainer]}>
-            {customer_details.mobile && (
-              <Pressable
-                style={({ pressed }) => [
-                  overviewStyles.contactAction,
-                  pressed && colorStyles.contactActionPressed,
-                ]}
-                onPress={() => handlePhonePress(customer_details.mobile!)}
-                accessibilityRole="button"
-                accessibilityLabel={`Call ${customer_details.name}`}
-              >
-                <View style={[overviewStyles.contactActionIcon, colorStyles.contactActionIcon]}>
-                  <Icon name="phone" size={18} color={colorStyles.iconSuccess} />
-                </View>
-                <Text style={[overviewStyles.contactActionText, colorStyles.contactActionText]}>{customer_details.mobile}</Text>
-                <Icon name="chevron-right" size={20} color={colorStyles.iconTertiary} />
-              </Pressable>
-            )}
+        {customer_details.mobile && (
+          <Pressable
+            style={({ pressed }) => [styles.contactAction, pressed && styles.cardPressed]}
+            onPress={() => handlePhonePress(customer_details.mobile!)}
+            accessibilityRole="button"
+            accessibilityLabel={`Call ${customer_details.name}, ${customer_details.mobile}`}
+          >
+            <Icon name="phone-outline" size={iconSize.md} color={t.brand.tint} />
+            <Text style={styles.contactActionText}>{customer_details.mobile}</Text>
+            <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />
+          </Pressable>
+        )}
 
-            {customer_details.email && (
-              <Pressable
-                style={({ pressed }) => [
-                  overviewStyles.contactAction,
-                  customer_details.mobile && overviewStyles.contactActionBorder,
-                  customer_details.mobile && colorStyles.contactActionBorder,
-                  pressed && colorStyles.contactActionPressed,
-                ]}
-                onPress={() => handleEmailPress(customer_details.email!)}
-                accessibilityRole="button"
-                accessibilityLabel={`Email ${customer_details.name}`}
-              >
-                <View style={[overviewStyles.contactActionIcon, colorStyles.contactActionIcon]}>
-                  <Icon name="email" size={18} color={colorStyles.iconInfo} />
-                </View>
-                <Text style={[overviewStyles.contactActionText, colorStyles.contactActionText]}>{customer_details.email}</Text>
-                <Icon name="chevron-right" size={20} color={colorStyles.iconTertiary} />
-              </Pressable>
-            )}
-          </View>
+        {customer_details.email && (
+          <Pressable
+            style={({ pressed }) => [styles.contactAction, pressed && styles.cardPressed]}
+            onPress={() => handleEmailPress(customer_details.email!)}
+            accessibilityRole="button"
+            accessibilityLabel={`Email ${customer_details.name}, ${customer_details.email}`}
+          >
+            <Icon name="email-outline" size={iconSize.md} color={t.brand.tint} />
+            <Text style={styles.contactActionText}>{customer_details.email}</Text>
+            <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />
+          </Pressable>
         )}
       </View>
     );
   };
 
   // GRN Reference Card with navigation
-  const GRNReferenceCard = () => {
+  const renderGRNReferenceCard = () => {
     if (!grn_details) return null;
+    const grnDate = formatDisplayDate(grn_details.date);
 
     return (
       <Pressable
-        style={({ pressed }) => [
-          overviewStyles.card,
-          colorStyles.card,
-          pressed && on_view_grn && colorStyles.cardPressed,
-        ]}
+        style={({ pressed }) => [styles.card, pressed && on_view_grn && styles.cardPressed]}
         onPress={handleGRNPress}
         disabled={!on_view_grn}
-        accessibilityRole="button"
-        accessibilityLabel={`View GRN ${grn_details.number}`}
+        accessibilityRole={on_view_grn ? 'button' : undefined}
+        accessibilityLabel={`GRN ${grn_details.number}${grnDate ? `, ${grnDate}` : ''}`}
+        accessibilityHint={on_view_grn ? 'Opens the GRN' : undefined}
       >
-        <View style={overviewStyles.objectCellHeader}>
-          <View style={[overviewStyles.avatar, { backgroundColor: colors.tealLight }]}>
-            <Icon name="receipt" size={24} color={colors.teal} />
+        <View style={styles.objectCellHeader}>
+          <View style={styles.avatar}>
+            <Icon name="package-down" size={iconSize.lg} color={t.brand.tint} />
           </View>
-          <View style={overviewStyles.objectCellContent}>
-            <Text style={[overviewStyles.objectCellLabel, colorStyles.objectCellLabel]}>Linked GRN</Text>
-            <Text style={[overviewStyles.objectCellHeadline, colorStyles.objectCellHeadline]}>{grn_details.number}</Text>
+          <View style={styles.objectCellContent}>
+            <Text style={styles.objectCellLabel}>Linked GRN</Text>
+            <Text style={styles.objectCellHeadline}>{`GRN ${grn_details.number}`}</Text>
           </View>
           {on_view_grn && (
-            <Icon name="chevron-right" size={24} color={colors.primary} />
+            <Icon name="chevron-right" size={iconSize.lg} color={t.icon.secondary} />
           )}
         </View>
 
-        <View style={dynamicStyles.grnDetailsContainer}>
-          <View style={overviewStyles.detailRow}>
-            <Icon name="file-document-outline" size={18} color={colorStyles.iconTertiary} />
-            <Text style={[overviewStyles.detailText, colorStyles.detailText]}>GRN No: {grn_details.number}</Text>
+        {(grnDate || grn_details.supervisor_name || grn_details.registration) && (
+          <View style={styles.detailsContainer}>
+            {grnDate ? (
+              <View style={styles.detailRow}>
+                <Icon name="calendar-outline" size={iconSize.md} color={t.icon.secondary} />
+                <Text style={styles.detailText}>{grnDate}</Text>
+              </View>
+            ) : null}
+            {grn_details.supervisor_name && (
+              <View style={styles.detailRow}>
+                <Icon name="account-tie-outline" size={iconSize.md} color={t.icon.secondary} />
+                <Text style={styles.detailText}>{grn_details.supervisor_name}</Text>
+              </View>
+            )}
+            {grn_details.registration && (
+              <View style={styles.detailRow}>
+                <Icon name="truck-outline" size={iconSize.md} color={t.icon.secondary} />
+                <Text style={styles.detailText}>{grn_details.registration}</Text>
+              </View>
+            )}
           </View>
-          <View style={overviewStyles.detailRow}>
-            <Icon name="calendar" size={18} color={colorStyles.iconTertiary} />
-            <Text style={[overviewStyles.detailText, colorStyles.detailText]}>
-              {new Date(grn_details.date).toLocaleDateString('en-US', {
-                day: '2-digit',
-                month: 'short',
-                year: 'numeric',
-              })}
-            </Text>
-          </View>
-          {grn_details.supervisor_name && (
-            <View style={overviewStyles.detailRow}>
-              <Icon name="account-tie" size={18} color={colorStyles.iconTertiary} />
-              <Text style={[overviewStyles.detailText, colorStyles.detailText]}>{grn_details.supervisor_name}</Text>
-            </View>
-          )}
-          {grn_details.registration && (
-            <View style={overviewStyles.detailRow}>
-              <Icon name="truck" size={18} color={colorStyles.iconTertiary} />
-              <Text style={[overviewStyles.detailText, colorStyles.detailText]}>{grn_details.registration}</Text>
-            </View>
-          )}
-        </View>
+        )}
       </Pressable>
     );
   };
 
   const saved = savedInvoiceAmounts(financial_summary);
+  const isDiscount = saved.adjustmentLabel === 'Discount';
+  const adjustmentText = isDiscount
+    ? formatInvoiceDeduction(saved.adjustmentAmount)
+    : `+${formatInvoiceAmount(saved.adjustmentAmount)}`;
+
+  const renderFinancialRow = (label: string, value: string, valueStyle?: object) => (
+    <View style={styles.financialRow} accessible accessibilityLabel={`${label}, ${value}`}>
+      <Text style={styles.financialLabel}>{label}</Text>
+      <Text style={[styles.financialValue, valueStyle]}>{value}</Text>
+    </View>
+  );
 
   // Financial Summary Card
-  const FinancialSummaryCard = () => (
-    <View style={[overviewStyles.card, colorStyles.card]}>
-      <View style={overviewStyles.objectCellHeader}>
-        <View style={[overviewStyles.avatar, { backgroundColor: colors.successLight }]}>
-          <Icon name="currency-inr" size={24} color={colors.success} />
+  const renderFinancialSummaryCard = () => (
+    <View style={styles.card}>
+      <View style={styles.objectCellHeader}>
+        <View style={styles.avatar}>
+          <Icon name="currency-inr" size={iconSize.lg} color={t.brand.tint} />
         </View>
-        <View style={overviewStyles.objectCellContent}>
-          <Text style={[overviewStyles.objectCellLabel, colorStyles.objectCellLabel]}>Financial Summary</Text>
+        <View style={styles.objectCellContent}>
+          <Text style={styles.objectCellHeadline}>Amounts</Text>
           {financial_year && (
-            <Text style={[overviewStyles.objectCellSubheadline, colorStyles.objectCellSubheadline]}>FY {financial_year}</Text>
+            <Text style={styles.objectCellSubheadline}>{`Financial year ${financial_year}`}</Text>
           )}
         </View>
       </View>
 
-      <View style={dynamicStyles.financialContainer}>
-        <View style={styles.financialRow}>
-          <Text style={dynamicStyles.financialLabel}>Net before tax</Text>
-          <Text style={dynamicStyles.financialValue}>{formatCurrency(saved.netBeforeTax)}</Text>
-        </View>
+      <View style={styles.detailsContainer}>
+        {renderFinancialRow('Net before tax', formatInvoiceAmount(saved.netBeforeTax))}
 
-        {saved.hasAdjustment && (
-          <View style={styles.financialRow}>
-            <Text style={dynamicStyles.financialLabel}>{saved.adjustmentLabel} (included)</Text>
-            <Text style={[dynamicStyles.financialValue, { color: colors.error }]}>
-              {saved.adjustmentSign} {formatCurrency(saved.adjustmentAmount)}
-            </Text>
-          </View>
-        )}
+        {saved.hasAdjustment &&
+          renderFinancialRow(
+            `${saved.adjustmentLabel} (included)`,
+            adjustmentText,
+            isDiscount ? styles.discountValue : undefined
+          )}
 
-        {financial_summary.labour > 0 && (
-          <View style={styles.financialRow}>
-            <Text style={dynamicStyles.financialLabel}>Labour (included)</Text>
-            <Text style={dynamicStyles.financialValue}>{formatCurrency(financial_summary.labour)}</Text>
-          </View>
-        )}
+        {financial_summary.labour > 0 &&
+          renderFinancialRow('Labour (included)', formatInvoiceAmount(financial_summary.labour))}
 
-        <View style={styles.financialRow}>
-          <Text style={dynamicStyles.financialLabel}>Tax Amount</Text>
-          <Text style={[dynamicStyles.financialValue, { color: colors.primary }]}>
-            {formatCurrency(financial_summary.tax_amount)}
-          </Text>
-        </View>
+        {renderFinancialRow('Tax', formatInvoiceAmount(financial_summary.tax_amount))}
 
-        <View style={[styles.financialRow, dynamicStyles.financialRowTotal]}>
-          <Text style={dynamicStyles.financialLabelTotal}>Total Amount</Text>
-          <Text style={dynamicStyles.financialValueTotal}>{formatCurrency(financial_summary.total)}</Text>
+        <View
+          style={[styles.financialRow, styles.financialRowTotal]}
+          accessible
+          accessibilityLabel={`Total amount, ${formatInvoiceAmount(financial_summary.total)}`}
+        >
+          <Text style={styles.financialLabelTotal}>Total amount</Text>
+          <Text style={styles.financialValueTotal}>{formatInvoiceAmount(financial_summary.total)}</Text>
         </View>
       </View>
     </View>
@@ -393,15 +408,15 @@ export const InvoiceOverviewTab: React.FC<InvoiceOverviewTabProps> = ({
 
   return (
     <ScrollView
-      style={[overviewStyles.container, colorStyles.container]}
-      contentContainerStyle={overviewStyles.content}
+      style={styles.container}
+      contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
     >
       {/* SECTION: CUSTOMER */}
       {customer_details && (
         <>
           <SectionHeader title="Customer" />
-          <CustomerCard />
+          {renderCustomerCard()}
         </>
       )}
 
@@ -409,13 +424,13 @@ export const InvoiceOverviewTab: React.FC<InvoiceOverviewTabProps> = ({
       {grn_details && (
         <>
           <SectionHeader title="Reference" />
-          <GRNReferenceCard />
+          {renderGRNReferenceCard()}
         </>
       )}
 
       {/* SECTION: FINANCIAL SUMMARY */}
-      <SectionHeader title="Financial Summary" />
-      <FinancialSummaryCard />
+      <SectionHeader title="Financial summary" />
+      {renderFinancialSummaryCard()}
 
       {/* SECTION: NOTES */}
       {notes && <NotesSection note={notes} />}
@@ -437,25 +452,7 @@ export const InvoiceOverviewTab: React.FC<InvoiceOverviewTabProps> = ({
       />
 
       {/* Bottom Spacing */}
-      <View style={overviewStyles.bottomSpacer} />
+      <View style={styles.bottomSpacer} />
     </ScrollView>
   );
 };
-
-// ============================================================================
-// INVOICE-SPECIFIC STYLES (Static layout only - colors are in dynamicStyles)
-// ============================================================================
-const styles = StyleSheet.create({
-  taxChipsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: FIORI.spacing.sm,
-    marginTop: FIORI.spacing.sm,
-  },
-  financialRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: FIORI.spacing.sm,
-  },
-});
