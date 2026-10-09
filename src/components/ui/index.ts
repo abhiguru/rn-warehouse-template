@@ -62,3 +62,6 @@ export type { AvatarProps } from './Avatar';
 
 export { Fab, FAB_SIZE, FAB_CLEARANCE } from './Fab';
 export type { FabProps } from './Fab';
+
+export { HeaderBackButton, BACK_GLYPH } from './HeaderBackButton';
+export type { HeaderBackButtonProps } from './HeaderBackButton';
