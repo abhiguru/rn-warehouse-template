@@ -1,52 +1,20 @@
 /**
- * DispatchItemsTab Component - 100% SAP Fiori Compliant
- *
- * Items tab showing all dispatch items in a scrollable list
- * Based on SAP Fiori for iOS Design Guidelines
- *
+ * DispatchItemsTab Component - SAP Fiori list of dispatch items
  *
  * Features:
  * - FlatList for performance with large datasets
- * - Fiori empty state pattern
- * - Fiori loading state
+ * - Fiori empty state pattern (docs/STYLE_GUIDE.md §13.6)
+ * - Loading state
  * - Uses DispatchItemCard components
- * - Dynamic colors for dark mode support
  */
 
-import React, { useMemo } from 'react';
-import { View, Text, StyleSheet, FlatList, ActivityIndicator, Platform } from 'react-native';
+import React from 'react';
+import { View, Text, FlatList, ActivityIndicator } from 'react-native';
 import { DispatchItemCard } from './DispatchItemCard';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { useListColors } from '@/hooks/useListColors';
-
-// ============================================================================
-// FIORI DESIGN TOKENS (Static values only - colors are dynamic)
-// ============================================================================
-const FIORI_STATIC = {
-  spacing: {
-    xs: 4,
-    sm: 8,
-    md: 12,
-    lg: 16,
-    xl: 20,
-    xxl: 24,
-    '3xl': 32,
-  },
-  typography: {
-    headline: {
-      fontSize: 17,
-      fontWeight: '600' as const,
-    },
-    body: {
-      fontSize: 15,
-      fontWeight: '400' as const,
-    },
-    caption: {
-      fontSize: 13,
-      fontWeight: '400' as const,
-    },
-  },
-} as const;
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { iconSize, space, typography } from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
 
 // Using snake_case to match backend RPC types
 export interface DispatchItem {
@@ -67,52 +35,65 @@ interface DispatchItemsTabProps {
   onViewGRN?: (grn_id: string) => void;
 }
 
+const makeStyles = (t: ThemeTokens) => ({
+  container: {
+    flex: 1,
+    backgroundColor: t.background.base,
+  },
+  listContent: {
+    flexGrow: 1,
+    paddingTop: space.md,
+    paddingBottom: space.xxl,
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    padding: space.xxxl,
+    minHeight: 400,
+  },
+  emptyIcon: {
+    marginBottom: space.md,
+  },
+  emptyTitle: {
+    ...typography.title3,
+    color: t.text.primary,
+    marginBottom: space.sm,
+    textAlign: 'center' as const,
+  },
+  emptySubtitle: {
+    ...typography.subhead,
+    color: t.text.secondary,
+    textAlign: 'center' as const,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    padding: space.xxxl,
+    gap: space.md,
+    backgroundColor: t.background.base,
+  },
+  loadingFooter: {
+    flexDirection: 'row' as const,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    gap: space.sm,
+    padding: space.xl,
+  },
+  loadingText: {
+    ...typography.subhead,
+    color: t.text.secondary,
+  },
+});
+
 export const DispatchItemsTab: React.FC<DispatchItemsTabProps> = ({
   items,
   loading = false,
   onViewGRN,
 }) => {
-  // Theme colors for dark mode support
-  const colors = useListColors();
-
-  // Dynamic styles based on theme
-  const dynamicStyles = useMemo(() => StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor: colors.gray50,
-    },
-    emptyContainer: {
-      flex: 1,
-      justifyContent: 'center',
-      alignItems: 'center',
-      padding: FIORI_STATIC.spacing['3xl'],
-      minHeight: 400,
-    },
-    emptyTitle: {
-      ...FIORI_STATIC.typography.headline,
-      color: colors.gray900,
-      marginBottom: FIORI_STATIC.spacing.sm,
-      textAlign: 'center',
-    },
-    emptySubtitle: {
-      ...FIORI_STATIC.typography.caption,
-      color: colors.gray600,
-      textAlign: 'center',
-      lineHeight: 20,
-    },
-    loadingContainer: {
-      flex: 1,
-      justifyContent: 'center',
-      alignItems: 'center',
-      padding: FIORI_STATIC.spacing['3xl'],
-      backgroundColor: colors.gray50,
-    },
-    loadingText: {
-      ...FIORI_STATIC.typography.caption,
-      color: colors.gray600,
-      marginLeft: FIORI_STATIC.spacing.sm,
-    },
-  }), [colors]);
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
 
   const renderItem = ({ item }: { item: DispatchItem }) => (
     <DispatchItemCard
@@ -132,13 +113,16 @@ export const DispatchItemsTab: React.FC<DispatchItemsTabProps> = ({
     if (loading) return null;
 
     return (
-      <View style={dynamicStyles.emptyContainer}>
-        <View style={styles.emptyIconContainer}>
-          <Icon name="package-variant-closed" size={56} color={colors.gray500} />
-        </View>
-        <Text style={dynamicStyles.emptyTitle}>No items in this dispatch</Text>
-        <Text style={dynamicStyles.emptySubtitle}>
-          This dispatch does not contain any items
+      <View style={styles.emptyContainer}>
+        <Icon
+          name="cube-outline"
+          size={iconSize.hero}
+          color={t.icon.secondary}
+          style={styles.emptyIcon}
+        />
+        <Text style={styles.emptyTitle}>No items in this dispatch</Text>
+        <Text style={styles.emptySubtitle}>
+          Items added to this dispatch appear here.
         </Text>
       </View>
     );
@@ -149,23 +133,23 @@ export const DispatchItemsTab: React.FC<DispatchItemsTabProps> = ({
 
     return (
       <View style={styles.loadingFooter}>
-        <ActivityIndicator size="small" color={colors.primary} />
-        <Text style={dynamicStyles.loadingText}>Loading items...</Text>
+        <ActivityIndicator size="small" color={t.brand.tint} />
+        <Text style={styles.loadingText}>Loading items…</Text>
       </View>
     );
   };
 
   if (loading && items.length === 0) {
     return (
-      <View style={dynamicStyles.loadingContainer}>
-        <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={dynamicStyles.loadingText}>Loading items...</Text>
+      <View style={styles.loadingContainer} accessibilityLabel="Loading items">
+        <ActivityIndicator size="large" color={t.brand.tint} />
+        <Text style={styles.loadingText}>Loading items…</Text>
       </View>
     );
   }
 
   return (
-    <View style={dynamicStyles.container}>
+    <View style={styles.container}>
       <FlatList
         data={items}
         renderItem={renderItem}
@@ -183,21 +167,3 @@ export const DispatchItemsTab: React.FC<DispatchItemsTabProps> = ({
   );
 };
 
-// ============================================================================
-// STYLES (Static layout only - colors are in dynamicStyles)
-// ============================================================================
-const styles = StyleSheet.create({
-  listContent: {
-    flexGrow: 1,
-    paddingVertical: FIORI_STATIC.spacing.xs,
-  },
-  emptyIconContainer: {
-    marginBottom: FIORI_STATIC.spacing.md,
-  },
-  loadingFooter: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: FIORI_STATIC.spacing.xl,
-  },
-});

@@ -1,69 +1,26 @@
 /**
- * DispatchGRNsTab Component - 100% SAP Fiori Compliant
+ * DispatchGRNsTab Component - SAP Fiori object cells (docs/STYLE_GUIDE.md §13.6)
  *
  * Shows all GRNs involved in this dispatch
  * Features:
- * - List of GRN cards in Fiori style
+ * - List of GRN cards
  * - Each GRN shows items from that GRN
- * - Clickable to navigate to GRN details
- * - Dynamic colors for dark mode support
+ * - Pressable to navigate to GRN details
  */
 
-import React, { useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, Platform, ViewStyle } from 'react-native';
+import React from 'react';
+import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { useListColors } from '@/hooks/useListColors';
-
-// ============================================================================
-// FIORI DESIGN TOKENS (Static values only - colors are dynamic)
-// ============================================================================
-const FIORI_STATIC = {
-  spacing: {
-    sm: 8,
-    md: 12,
-    lg: 16,
-    xl: 20,
-  },
-  typography: {
-    headline: {
-      fontSize: 17,
-      fontWeight: '600' as const,
-    },
-    body: {
-      fontSize: 15,
-      fontWeight: '400' as const,
-    },
-    caption: {
-      fontSize: 13,
-      fontWeight: '400' as const,
-    },
-    sectionHeader: {
-      fontSize: 13,
-      fontWeight: '600' as const,
-      letterSpacing: 0.5,
-      textTransform: 'uppercase' as const,
-    },
-  },
-  dimensions: {
-    cardRadius: 12,
-    cardPadding: 16,
-    avatarSize: 44,
-    touchTarget: 44,
-  },
-  shadows: {
-    card: Platform.select({
-      ios: {
-        shadowColor: '#000000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.08,
-        shadowRadius: 3,
-      },
-      android: {
-        elevation: 2,
-      },
-    }) as ViewStyle,
-  },
-} as const;
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import {
+  fontWeight,
+  iconSize,
+  layout,
+  radius,
+  space,
+  typography,
+} from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
 
 // Using snake_case to match backend RPC types
 interface GRNItemSummary {
@@ -86,124 +43,165 @@ interface DispatchGRNsTabProps {
   onViewGRN?: (grn_id: string) => void;
 }
 
+const formatDate = (value: string) => {
+  const date = new Date(value);
+  if (isNaN(date.getTime())) return '';
+  return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+};
+
+const bags = (qty: number) => `${qty} ${qty === 1 ? 'bag' : 'bags'}`;
+
+const makeStyles = (t: ThemeTokens) => ({
+  container: {
+    flex: 1,
+    backgroundColor: t.background.base,
+  },
+  content: {
+    paddingHorizontal: layout.marginCompact,
+    paddingTop: space.md,
+    paddingBottom: space.xxl,
+  },
+  sectionHeaderText: {
+    ...typography.footnote,
+    fontWeight: fontWeight.semibold,
+    textTransform: 'uppercase' as const,
+    letterSpacing: 0.5,
+    color: t.text.secondary,
+    paddingBottom: space.sm,
+  },
+  card: {
+    backgroundColor: t.surface.card,
+    borderRadius: radius.card,
+    marginBottom: space.sm,
+    overflow: 'hidden' as const,
+    ...t.shadow[2],
+  },
+  cardPressed: {
+    backgroundColor: t.surface.cardPressed,
+  },
+  grnHeader: {
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'center' as const,
+    padding: space.lg,
+    paddingBottom: space.md,
+    minHeight: layout.objectCellMinHeight,
+  },
+  grnHeaderLeft: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    flex: 1,
+  },
+  iconCircle: {
+    width: layout.avatar.md,
+    height: layout.avatar.md,
+    borderRadius: radius.pill,
+    backgroundColor: t.brand.subtle,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    marginRight: space.md,
+  },
+  grnInfo: {
+    flex: 1,
+  },
+  grnNo: {
+    ...typography.headline,
+    color: t.text.primary,
+  },
+  grnDate: {
+    ...typography.footnote,
+    color: t.text.secondary,
+  },
+  itemsSection: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: t.border.divider,
+    paddingHorizontal: space.lg,
+    paddingTop: space.sm,
+    paddingBottom: space.md,
+  },
+  itemsLabel: {
+    ...typography.footnote,
+    fontWeight: fontWeight.semibold,
+    textTransform: 'uppercase' as const,
+    letterSpacing: 0.5,
+    color: t.text.secondary,
+    marginBottom: space.sm,
+  },
+  itemsContainer: {
+    gap: space.xs,
+  },
+  itemCard: {
+    backgroundColor: t.background.base,
+    borderRadius: radius.button,
+    padding: space.sm,
+  },
+  itemRow: {
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'center' as const,
+    gap: space.sm,
+  },
+  itemName: {
+    ...typography.subhead,
+    flex: 1,
+    color: t.text.primary,
+  },
+  quantityText: {
+    ...typography.subhead,
+    fontWeight: fontWeight.semibold,
+    color: t.text.primary,
+    fontVariant: ['tabular-nums' as const],
+  },
+  itemDetailsRow: {
+    flexDirection: 'row' as const,
+    flexWrap: 'wrap' as const,
+    marginTop: space.s6,
+    gap: space.s6,
+  },
+  detailPill: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    backgroundColor: t.status.neutral.background,
+    paddingHorizontal: space.s6,
+    paddingVertical: space.xxs,
+    borderRadius: radius.field,
+    gap: space.xs,
+  },
+  detailPillText: {
+    ...typography.caption1,
+    color: t.status.neutral.text,
+    fontVariant: ['tabular-nums' as const],
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    padding: space.xl,
+    minHeight: 400,
+    backgroundColor: t.background.base,
+  },
+  emptyIcon: {
+    marginBottom: space.md,
+  },
+  emptyTitle: {
+    ...typography.title3,
+    color: t.text.primary,
+    marginBottom: space.sm,
+    textAlign: 'center' as const,
+  },
+  emptySubtitle: {
+    ...typography.subhead,
+    color: t.text.secondary,
+    textAlign: 'center' as const,
+  },
+});
+
 export const DispatchGRNsTab: React.FC<DispatchGRNsTabProps> = ({
   grns,
   onViewGRN,
 }) => {
-  // Theme colors for dark mode support
-  const colors = useListColors();
-
-  // Dynamic styles based on theme
-  const dynamicStyles = useMemo(() => StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor: colors.gray50,
-    },
-    sectionHeaderText: {
-      ...FIORI_STATIC.typography.sectionHeader,
-      color: colors.gray600,
-    },
-    card: {
-      backgroundColor: colors.cellBackground,
-      borderRadius: FIORI_STATIC.dimensions.cardRadius,
-      borderWidth: 1,
-      borderColor: colors.cellDivider,
-      marginBottom: FIORI_STATIC.spacing.md,
-      overflow: 'hidden',
-      ...FIORI_STATIC.shadows.card,
-    },
-    cardPressed: {
-      backgroundColor: colors.gray100,
-    },
-    iconCircle: {
-      width: FIORI_STATIC.dimensions.avatarSize,
-      height: FIORI_STATIC.dimensions.avatarSize,
-      borderRadius: FIORI_STATIC.dimensions.avatarSize / 2,
-      backgroundColor: colors.primaryLight,
-      justifyContent: 'center',
-      alignItems: 'center',
-      marginRight: FIORI_STATIC.spacing.md,
-    },
-    grnNo: {
-      ...FIORI_STATIC.typography.headline,
-      color: colors.gray900,
-      marginBottom: 2,
-    },
-    grnDate: {
-      ...FIORI_STATIC.typography.caption,
-      color: colors.gray600,
-    },
-    itemsSection: {
-      borderTopWidth: 1,
-      borderTopColor: colors.cellDivider,
-      paddingHorizontal: FIORI_STATIC.dimensions.cardPadding,
-      paddingTop: FIORI_STATIC.spacing.sm,
-      paddingBottom: FIORI_STATIC.spacing.md,
-    },
-    itemsLabel: {
-      ...FIORI_STATIC.typography.sectionHeader,
-      color: colors.gray600,
-    },
-    itemCard: {
-      backgroundColor: colors.gray50,
-      borderRadius: 8,
-      padding: FIORI_STATIC.spacing.sm,
-      marginBottom: 6,
-    },
-    itemName: {
-      flex: 1,
-      ...FIORI_STATIC.typography.body,
-      color: colors.gray900,
-      marginRight: FIORI_STATIC.spacing.sm,
-    },
-    quantityChip: {
-      paddingHorizontal: FIORI_STATIC.spacing.md,
-      paddingVertical: FIORI_STATIC.spacing.sm,
-      backgroundColor: colors.primaryLight,
-      borderRadius: 12,
-    },
-    quantityChipText: {
-      ...FIORI_STATIC.typography.caption,
-      fontWeight: '700' as const,
-      color: colors.primary,
-    },
-    detailPill: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      backgroundColor: colors.cellBackground,
-      paddingHorizontal: 6,
-      paddingVertical: 3,
-      borderRadius: 4,
-      gap: 3,
-      borderWidth: 1,
-      borderColor: colors.cellDivider,
-    },
-    detailPillText: {
-      fontSize: 10,
-      fontWeight: '500',
-      color: colors.gray600,
-    },
-    emptyContainer: {
-      flex: 1,
-      justifyContent: 'center',
-      alignItems: 'center',
-      padding: FIORI_STATIC.spacing.xl,
-      minHeight: 400,
-      backgroundColor: colors.gray50,
-    },
-    emptyTitle: {
-      ...FIORI_STATIC.typography.headline,
-      color: colors.gray900,
-      marginBottom: FIORI_STATIC.spacing.sm,
-      textAlign: 'center',
-    },
-    emptySubtitle: {
-      ...FIORI_STATIC.typography.body,
-      color: colors.gray600,
-      textAlign: 'center',
-      lineHeight: 20,
-    },
-  }), [colors]);
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
 
   const handleGRNPress = (grn_id: string) => {
     if (onViewGRN) {
@@ -211,167 +209,107 @@ export const DispatchGRNsTab: React.FC<DispatchGRNsTabProps> = ({
     }
   };
 
-  const renderEmpty = () => (
-    <View style={dynamicStyles.emptyContainer}>
-      <View style={styles.emptyIconContainer}>
-        <Icon name="receipt" size={56} color={colors.gray500} />
-      </View>
-      <Text style={dynamicStyles.emptyTitle}>No GRNs found</Text>
-      <Text style={dynamicStyles.emptySubtitle}>
-        No GRNs are associated with this dispatch
-      </Text>
-    </View>
-  );
-
   if (grns.length === 0) {
-    return renderEmpty();
+    return (
+      <View style={styles.emptyContainer}>
+        <Icon name="package-down" size={iconSize.hero} color={t.icon.secondary} style={styles.emptyIcon} />
+        <Text style={styles.emptyTitle}>No GRNs for this dispatch</Text>
+        <Text style={styles.emptySubtitle}>
+          GRNs whose items are in this dispatch appear here.
+        </Text>
+      </View>
+    );
   }
 
   return (
     <ScrollView
-      style={dynamicStyles.container}
+      style={styles.container}
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
     >
-      <View style={styles.sectionHeader}>
-        <Text style={dynamicStyles.sectionHeaderText}>Source GRNs</Text>
-      </View>
+      <Text style={styles.sectionHeaderText} accessibilityRole="header">Source GRNs</Text>
 
-      {grns.map((grn) => (
-        <Pressable
-          key={grn.grn_id}
-          onPress={() => handleGRNPress(grn.grn_id)}
-          disabled={!onViewGRN}
-          accessibilityRole="button"
-          accessibilityLabel={`View GRN ${grn.grn_no}`}
-          style={({ pressed }) => [
-            dynamicStyles.card,
-            pressed && onViewGRN && dynamicStyles.cardPressed,
-          ]}
-        >
-          {/* GRN Header */}
-          <View style={styles.grnHeader}>
-            <View style={styles.grnHeaderLeft}>
-              <View style={dynamicStyles.iconCircle}>
-                <Icon name="receipt" size={20} color={colors.primary} />
-              </View>
-              <View style={styles.grnInfo}>
-                <Text style={dynamicStyles.grnNo}>{grn.grn_no}</Text>
-                <Text style={dynamicStyles.grnDate}>
-                  {new Date(grn.grn_date).toLocaleDateString('en-US', {
-                    day: '2-digit',
-                    month: 'short',
-                    year: 'numeric',
-                  })}
-                </Text>
-              </View>
-            </View>
-            {onViewGRN && (
-              <Icon name="chevron-right" size={20} color={colors.primary} />
-            )}
-          </View>
-
-          {/* Items Section */}
-          <View style={dynamicStyles.itemsSection}>
-            <View style={styles.itemsHeader}>
-              <Icon name="package-variant" size={14} color={colors.gray600} />
-              <Text style={dynamicStyles.itemsLabel}>
-                {grn.items.length} {grn.items.length === 1 ? 'Item' : 'Items'} Dispatched
-              </Text>
-            </View>
-
-            <View style={styles.itemsContainer}>
-              {grn.items.map((item, index) => (
-                <View key={index} style={dynamicStyles.itemCard}>
-                  <View style={styles.itemRow}>
-                    <Text style={dynamicStyles.itemName} numberOfLines={1}>
-                      {item.item_name}
-                    </Text>
-                    <View style={dynamicStyles.quantityChip}>
-                      <Text style={dynamicStyles.quantityChipText}>
-                        {item.dispatch_quantity}
-                      </Text>
-                    </View>
-                  </View>
-                  {/* Item Details Row */}
-                  {(item.original_quantity !== undefined || item.weight !== undefined || item.package_mark) && (
-                    <View style={styles.itemDetailsRow}>
-                      {item.original_quantity !== undefined && (
-                        <View style={dynamicStyles.detailPill}>
-                          <Icon name="package-variant-closed" size={11} color={colors.gray600} />
-                          <Text style={dynamicStyles.detailPillText}>Orig: {item.original_quantity}</Text>
-                        </View>
-                      )}
-                      {item.weight !== undefined && (
-                        <View style={dynamicStyles.detailPill}>
-                          <Icon name="weight-kilogram" size={11} color={colors.gray600} />
-                          <Text style={dynamicStyles.detailPillText}>{item.weight}kg</Text>
-                        </View>
-                      )}
-                      {item.package_mark && (
-                        <View style={dynamicStyles.detailPill}>
-                          <Icon name="tag-outline" size={11} color={colors.gray600} />
-                          <Text style={dynamicStyles.detailPillText}>{item.package_mark}</Text>
-                        </View>
-                      )}
-                    </View>
-                  )}
+      {grns.map((grn) => {
+        const dateLabel = formatDate(grn.grn_date);
+        const itemCount = `${grn.items.length} ${grn.items.length === 1 ? 'item' : 'items'} dispatched`;
+        return (
+          <Pressable
+            key={grn.grn_id}
+            onPress={() => handleGRNPress(grn.grn_id)}
+            disabled={!onViewGRN}
+            accessibilityRole={onViewGRN ? 'button' : undefined}
+            accessibilityLabel={`GRN ${grn.grn_no}${dateLabel ? `, ${dateLabel}` : ''}, ${itemCount}`}
+            accessibilityHint={onViewGRN ? 'Opens the GRN' : undefined}
+            style={({ pressed }) => [
+              styles.card,
+              pressed && onViewGRN && styles.cardPressed,
+            ]}
+          >
+            {/* GRN Header */}
+            <View style={styles.grnHeader}>
+              <View style={styles.grnHeaderLeft}>
+                <View style={styles.iconCircle}>
+                  <Icon name="package-down" size={iconSize.md} color={t.brand.tint} />
                 </View>
-              ))}
+                <View style={styles.grnInfo}>
+                  <Text style={styles.grnNo}>GRN {grn.grn_no}</Text>
+                  {!!dateLabel && <Text style={styles.grnDate}>{dateLabel}</Text>}
+                </View>
+              </View>
+              {onViewGRN && (
+                <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />
+              )}
             </View>
-          </View>
-        </Pressable>
-      ))}
+
+            {/* Items Section */}
+            <View style={styles.itemsSection}>
+              <Text style={styles.itemsLabel}>{itemCount}</Text>
+
+              <View style={styles.itemsContainer}>
+                {grn.items.map((item, index) => (
+                  <View key={index} style={styles.itemCard}>
+                    <View style={styles.itemRow}>
+                      <Text style={styles.itemName} numberOfLines={2}>
+                        {item.item_name}
+                      </Text>
+                      <Text style={styles.quantityText}>{bags(item.dispatch_quantity)}</Text>
+                    </View>
+                    {/* Item Details Row */}
+                    {(item.original_quantity !== undefined || item.weight !== undefined || item.package_mark) && (
+                      <View style={styles.itemDetailsRow}>
+                        {item.original_quantity !== undefined && (
+                          <View style={styles.detailPill}>
+                            <Icon name="package-variant-closed" size={iconSize.sm} color={t.status.neutral.text} />
+                            <Text style={styles.detailPillText} maxFontSizeMultiplier={1.6}>
+                              Received {bags(item.original_quantity)}
+                            </Text>
+                          </View>
+                        )}
+                        {item.weight !== undefined && (
+                          <View style={styles.detailPill}>
+                            <Icon name="weight-kilogram" size={iconSize.sm} color={t.status.neutral.text} />
+                            <Text style={styles.detailPillText} maxFontSizeMultiplier={1.6}>
+                              {item.weight} kg
+                            </Text>
+                          </View>
+                        )}
+                        {item.package_mark && (
+                          <View style={styles.detailPill}>
+                            <Icon name="tag-outline" size={iconSize.sm} color={t.status.neutral.text} />
+                            <Text style={styles.detailPillText} maxFontSizeMultiplier={1.6}>
+                              {item.package_mark}
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+                    )}
+                  </View>
+                ))}
+              </View>
+            </View>
+          </Pressable>
+        );
+      })}
     </ScrollView>
   );
 };
-
-// Static styles (layout only - colors are in dynamicStyles)
-const styles = StyleSheet.create({
-  content: {
-    paddingHorizontal: FIORI_STATIC.spacing.lg,
-    paddingTop: FIORI_STATIC.spacing.md,
-    paddingBottom: FIORI_STATIC.spacing.xl,
-  },
-  sectionHeader: {
-    paddingBottom: FIORI_STATIC.spacing.sm,
-  },
-  grnHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: FIORI_STATIC.dimensions.cardPadding,
-    paddingBottom: FIORI_STATIC.spacing.sm,
-  },
-  grnHeaderLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  grnInfo: {
-    flex: 1,
-  },
-  itemsHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: FIORI_STATIC.spacing.sm,
-    gap: 6,
-  },
-  itemsContainer: {
-    gap: 2,
-  },
-  itemRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  itemDetailsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginTop: 6,
-    gap: 6,
-  },
-  emptyIconContainer: {
-    marginBottom: FIORI_STATIC.spacing.md,
-  },
-});
