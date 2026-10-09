@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, Platform } from 'react-native';
+import { View, Text, StyleSheet, TextInput, Pressable, Platform } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import theme from '@/theme';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { fontWeight, iconSize, layout, radius, space, touchTarget, typography } from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
 import { InvoiceItemData } from '@/types/invoice.types';
-import { formatCurrency } from '@/utils/formatters';
-import { KeyValueCell } from '@/components/fiori';
+import { formatInvoiceAmount } from '@/utils/invoiceCalculations';
 
 interface InvoiceItemCardProps {
   item: InvoiceItemData;
@@ -12,7 +13,251 @@ interface InvoiceItemCardProps {
   overriddenFields?: string[]; // List of fields that are individually overridden
 }
 
+const tabular = { fontVariant: ['tabular-nums' as const] };
+
+/** Quantities use Indian digit grouping. */
+const qtyFormat = new Intl.NumberFormat('en-IN');
+
+const makeStyles = (t: ThemeTokens) => ({
+  card: {
+    backgroundColor: t.surface.card,
+    borderRadius: radius.card,
+    marginBottom: space.sm,
+    overflow: 'hidden' as const,
+    ...t.shadow[2],
+  },
+  header: {
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'flex-start' as const,
+    gap: space.md,
+    minHeight: layout.objectCellMinHeight,
+    padding: space.lg,
+  },
+  headerPressed: {
+    backgroundColor: t.surface.cardPressed,
+  },
+  itemInfo: {
+    flex: 1,
+  },
+  itemName: {
+    ...typography.headline,
+    color: t.text.primary,
+    marginBottom: space.xs,
+  },
+  metaRow: {
+    flexDirection: 'row' as const,
+    flexWrap: 'wrap' as const,
+    gap: space.xs,
+  },
+  chip: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    backgroundColor: t.status.neutral.background,
+    paddingHorizontal: space.sm,
+    paddingVertical: space.xxs,
+    borderRadius: radius.field,
+    gap: space.xs,
+  },
+  chipText: {
+    ...typography.caption1,
+    ...tabular,
+    color: t.status.neutral.text,
+  },
+  rightSection: {
+    alignItems: 'flex-end' as const,
+  },
+  totalAmount: {
+    ...typography.headline,
+    ...tabular,
+    color: t.text.primary,
+    textAlign: 'right' as const,
+  },
+  expandIcon: {
+    marginTop: space.xs,
+  },
+  expandedContent: {
+    paddingHorizontal: space.lg,
+    paddingBottom: space.lg,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: t.border.divider,
+  },
+  inputSection: {
+    marginTop: space.lg,
+  },
+  sectionTitle: {
+    ...typography.footnote,
+    fontWeight: fontWeight.semibold,
+    textTransform: 'uppercase' as const,
+    letterSpacing: 0.5,
+    color: t.text.secondary,
+    marginBottom: space.sm,
+  },
+  inputGroup: {
+    marginBottom: space.lg,
+  },
+  inputLabel: {
+    ...typography.footnote,
+    color: t.text.secondary,
+    flexShrink: 1,
+  },
+  readOnlyLabel: {
+    marginBottom: space.xs,
+  },
+  required: {
+    color: t.text.required,
+  },
+  labelRow: {
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'center' as const,
+    gap: space.sm,
+    marginBottom: space.xs,
+  },
+  overrideBadge: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    backgroundColor: t.brand.subtle,
+    paddingHorizontal: space.sm,
+    paddingVertical: space.xxs,
+    borderRadius: radius.field,
+    gap: space.xs,
+  },
+  overrideBadgeText: {
+    ...typography.caption1,
+    fontWeight: fontWeight.semibold,
+    color: t.brand.tint,
+  },
+  readOnlyField: {
+    minHeight: 44,
+    backgroundColor: t.surface.fieldReadOnly,
+    borderRadius: radius.field,
+    paddingHorizontal: space.md,
+    justifyContent: 'center' as const,
+  },
+  readOnlyText: {
+    ...typography.body,
+    ...tabular,
+    color: t.text.primary,
+  },
+  field: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    minHeight: 44,
+    backgroundColor: t.surface.field,
+    borderWidth: 1,
+    borderColor: t.border.field,
+    borderRadius: radius.field,
+    paddingHorizontal: space.md,
+  },
+  fieldOverridden: {
+    borderWidth: 2,
+    borderColor: t.brand.tint,
+  },
+  input: {
+    ...typography.body,
+    ...tabular,
+    flex: 1,
+    minHeight: 44,
+    color: t.text.primary,
+    ...Platform.select({
+      android: {
+        textAlignVertical: 'center' as const,
+        includeFontPadding: false,
+      },
+    }),
+  },
+  affix: {
+    ...typography.body,
+    color: t.text.secondary,
+  },
+  prefix: {
+    marginRight: space.sm,
+  },
+  suffix: {
+    marginLeft: space.sm,
+  },
+  calculationSection: {
+    marginBottom: space.sm,
+  },
+  amountRow: {
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'center' as const,
+    gap: space.md,
+    minHeight: 44,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.divider,
+  },
+  amountLabel: {
+    ...typography.subhead,
+    color: t.text.secondary,
+    flexShrink: 1,
+  },
+  amountValue: {
+    ...typography.body,
+    ...tabular,
+    color: t.text.primary,
+    textAlign: 'right' as const,
+  },
+  totalRow: {
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'center' as const,
+    gap: space.md,
+    minHeight: 44,
+    borderTopWidth: 1,
+    borderTopColor: t.border.separator,
+  },
+  totalLabel: {
+    ...typography.headline,
+    color: t.text.primary,
+    flexShrink: 1,
+  },
+  formulaToggle: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    gap: space.xs,
+    minHeight: touchTarget,
+    borderRadius: radius.button,
+  },
+  formulaTogglePressed: {
+    backgroundColor: t.brand.subtle,
+  },
+  formulaToggleText: {
+    ...typography.subhead,
+    fontWeight: fontWeight.semibold,
+    color: t.brand.tint,
+  },
+  formulaSection: {
+    backgroundColor: t.background.base,
+    padding: space.md,
+    borderRadius: radius.button,
+    marginTop: space.sm,
+    gap: space.sm,
+  },
+  formulaText: {
+    ...typography.footnote,
+    ...tabular,
+    color: t.text.secondary,
+  },
+});
+
+type Styles = ReturnType<typeof makeStyles>;
+
+function AmountRow({ label, value, styles }: { label: string; value: string; styles: Styles }) {
+  return (
+    <View style={styles.amountRow} accessible accessibilityLabel={`${label}, ${value}`}>
+      <Text style={styles.amountLabel}>{label}</Text>
+      <Text style={styles.amountValue}>{value}</Text>
+    </View>
+  );
+}
+
 export const InvoiceItemCard: React.FC<InvoiceItemCardProps> = ({ item, onUpdate, overriddenFields = [] }) => {
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
   const [isExpanded, setIsExpanded] = useState(false);
   const [showFormula, setShowFormula] = useState(false);
 
@@ -32,120 +277,135 @@ export const InvoiceItemCard: React.FC<InvoiceItemCardProps> = ({ item, onUpdate
     setIsExpanded(!isExpanded);
   };
 
+  const customBadge = (
+    <View style={styles.overrideBadge} accessible accessibilityLabel="Custom price for this item">
+      <Icon name="pencil-outline" size={iconSize.sm} color={t.brand.tint} />
+      <Text style={styles.overrideBadgeText}>Custom</Text>
+    </View>
+  );
+
+  const total = formatInvoiceAmount(item.item_total);
+  const summaryLabel = [
+    item.item_name,
+    `quantity ${qtyFormat.format(item.qty)}`,
+    item.package_mark ? `mark ${item.package_mark}` : null,
+    item.rack ? `rack ${item.rack}` : null,
+    total,
+  ]
+    .filter(Boolean)
+    .join(', ');
+
   return (
-    <TouchableOpacity
-      style={[styles.card, isExpanded && styles.cardExpanded]}
-      onPress={toggleExpand}
-      activeOpacity={0.7}
-    >
-      {/* Collapsed State - Always Visible */}
-      <View style={styles.collapsedContent}>
-        <View style={styles.headerRow}>
-          <View style={styles.itemInfo}>
-            <Text style={styles.itemName} numberOfLines={2}>
-              {item.item_name}
-            </Text>
-            <View style={styles.metaRow}>
+    <View style={styles.card}>
+      {/* Collapsed state - always visible */}
+      <Pressable
+        style={({ pressed }) => [styles.header, pressed && styles.headerPressed]}
+        onPress={toggleExpand}
+        accessibilityRole="button"
+        accessibilityLabel={summaryLabel}
+        accessibilityHint={isExpanded ? 'Hides the pricing' : 'Shows the pricing to edit'}
+        accessibilityState={{ expanded: isExpanded }}
+      >
+        <View style={styles.itemInfo}>
+          <Text style={styles.itemName} numberOfLines={2}>
+            {item.item_name}
+          </Text>
+          <View style={styles.metaRow}>
+            <View style={styles.chip}>
+              <Icon name="cube-outline" size={iconSize.sm} color={t.status.neutral.text} />
+              <Text style={styles.chipText}>Qty {qtyFormat.format(item.qty)}</Text>
+            </View>
+            {!!item.package_mark && (
               <View style={styles.chip}>
-                <Icon name="package-variant" size={14} color={theme.colors.gray[600]} />
-                <Text style={styles.chipText}>Qty: {item.qty}</Text>
+                <Icon name="tag-outline" size={iconSize.sm} color={t.status.neutral.text} />
+                <Text style={styles.chipText}>{item.package_mark}</Text>
               </View>
-              {item.package_mark && (
-                <View style={styles.chip}>
-                  <Icon name="package-variant" size={14} color={theme.colors.gray[600]} style={{ marginRight: 4 }} />
-                  <Text style={styles.chipText}>{item.package_mark}</Text>
-                </View>
-              )}
-              {item.rack && (
-                <View style={styles.chip}>
-                  <Icon name="map-marker" size={14} color={theme.colors.gray[600]} style={{ marginRight: 4 }} />
-                  <Text style={styles.chipText}>{item.rack}</Text>
-                </View>
-              )}
-            </View>
-          </View>
-          <View style={styles.rightSection}>
-            <Text style={styles.totalAmount}>{formatCurrency(item.item_total, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</Text>
-            <View style={styles.expandButton}>
-              <Icon
-                name={isExpanded ? 'chevron-up' : 'chevron-down'}
-                size={24}
-                color={theme.colors.primary}
-              />
-            </View>
+            )}
+            {!!item.rack && (
+              <View style={styles.chip}>
+                <Icon name="view-grid-outline" size={iconSize.sm} color={t.status.neutral.text} />
+                <Text style={styles.chipText}>{item.rack}</Text>
+              </View>
+            )}
           </View>
         </View>
-      </View>
+        <View style={styles.rightSection}>
+          <Text style={styles.totalAmount}>{total}</Text>
+          <Icon
+            name={isExpanded ? 'chevron-up' : 'chevron-down'}
+            size={iconSize.lg}
+            color={t.icon.secondary}
+            style={styles.expandIcon}
+          />
+        </View>
+      </Pressable>
 
-      {/* Expanded State - Pricing Inputs */}
+      {/* Expanded state - pricing inputs */}
       {isExpanded && (
         <View style={styles.expandedContent}>
-          <View style={styles.divider} />
-
-          {/* Pricing Fields - Single Column */}
           <View style={styles.inputSection}>
-            <Text style={styles.sectionTitle}>Pricing Details</Text>
+            <Text style={styles.sectionTitle} accessibilityRole="header">Pricing</Text>
 
-            {/* Duration - Read Only */}
+            {/* Duration - read only */}
             <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Duration (Months)</Text>
+              <Text style={[styles.inputLabel, styles.readOnlyLabel]}>Duration</Text>
               <View style={styles.readOnlyField}>
-                <Text style={styles.readOnlyText}>{item.duration} months</Text>
+                <Text style={styles.readOnlyText}>
+                  {item.duration} {item.duration === 1 ? 'month' : 'months'}
+                </Text>
               </View>
             </View>
 
-            {/* Number of Days - Read Only */}
+            {/* Number of days - read only */}
             <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Number of Days</Text>
+              <Text style={[styles.inputLabel, styles.readOnlyLabel]}>Number of days</Text>
               <View style={styles.readOnlyField}>
-                <Text style={styles.readOnlyText}>{item.no_of_days} days</Text>
+                <Text style={styles.readOnlyText}>
+                  {item.no_of_days} {item.no_of_days === 1 ? 'day' : 'days'}
+                </Text>
               </View>
             </View>
 
             {/* Charge */}
             <View style={styles.inputGroup}>
               <View style={styles.labelRow}>
-                <Text style={styles.inputLabel}>Storage Charge (₹/unit/month) *</Text>
-                {isOverridden('charge') && (
-                  <View style={styles.overrideBadge}>
-                    <Icon name="pencil" size={12} color={theme.colors.white} />
-                    <Text style={styles.overrideBadgeText}>Custom</Text>
-                  </View>
-                )}
+                <Text style={styles.inputLabel}>
+                  Storage charge (₹ per unit per month)<Text style={styles.required}> *</Text>
+                </Text>
+                {isOverridden('charge') && customBadge}
               </View>
-              <View style={[styles.inputWithIcon, isOverridden('charge') && styles.inputOverridden]}>
-                <Text style={styles.currencyIcon}>₹</Text>
+              <View style={[styles.field, isOverridden('charge') && styles.fieldOverridden]}>
+                <Text style={[styles.affix, styles.prefix]}>₹</Text>
                 <TextInput
-                  style={[styles.input, styles.inputWithPadding]}
+                  style={styles.input}
+                  accessibilityLabel="Storage charge per unit per month"
                   value={item.charge > 0 ? item.charge.toString() : ''}
                   onChangeText={(text) => handleFieldChange('charge', text)}
                   placeholder="0.00"
                   keyboardType="decimal-pad"
-                  placeholderTextColor={theme.colors.gray[400]}
+                  placeholderTextColor={t.text.placeholder}
                 />
               </View>
             </View>
 
-            {/* Labour Rate */}
+            {/* Labour rate */}
             <View style={styles.inputGroup}>
               <View style={styles.labelRow}>
-                <Text style={styles.inputLabel}>Labour Rate (₹/unit) *</Text>
-                {isOverridden('labour_rate') && (
-                  <View style={styles.overrideBadge}>
-                    <Icon name="pencil" size={12} color={theme.colors.white} />
-                    <Text style={styles.overrideBadgeText}>Custom</Text>
-                  </View>
-                )}
+                <Text style={styles.inputLabel}>
+                  Labour rate (₹ per unit)<Text style={styles.required}> *</Text>
+                </Text>
+                {isOverridden('labour_rate') && customBadge}
               </View>
-              <View style={[styles.inputWithIcon, isOverridden('labour_rate') && styles.inputOverridden]}>
-                <Text style={styles.currencyIcon}>₹</Text>
+              <View style={[styles.field, isOverridden('labour_rate') && styles.fieldOverridden]}>
+                <Text style={[styles.affix, styles.prefix]}>₹</Text>
                 <TextInput
-                  style={[styles.input, styles.inputWithPadding]}
+                  style={styles.input}
+                  accessibilityLabel="Labour rate per unit"
                   value={item.labour_rate > 0 ? item.labour_rate.toString() : ''}
                   onChangeText={(text) => handleFieldChange('labour_rate', text)}
                   placeholder="0.00"
                   keyboardType="decimal-pad"
-                  placeholderTextColor={theme.colors.gray[400]}
+                  placeholderTextColor={t.text.placeholder}
                 />
               </View>
             </View>
@@ -153,305 +413,73 @@ export const InvoiceItemCard: React.FC<InvoiceItemCardProps> = ({ item, onUpdate
             {/* Tax */}
             <View style={styles.inputGroup}>
               <View style={styles.labelRow}>
-                <Text style={styles.inputLabel}>Tax (%) *</Text>
-                {isOverridden('tax') && (
-                  <View style={styles.overrideBadge}>
-                    <Icon name="pencil" size={12} color={theme.colors.white} />
-                    <Text style={styles.overrideBadgeText}>Custom</Text>
-                  </View>
-                )}
+                <Text style={styles.inputLabel}>
+                  Tax (%)<Text style={styles.required}> *</Text>
+                </Text>
+                {isOverridden('tax') && customBadge}
               </View>
-              <View style={[styles.inputWithIcon, isOverridden('tax') && styles.inputOverridden]}>
+              <View style={[styles.field, isOverridden('tax') && styles.fieldOverridden]}>
                 <TextInput
-                  style={[styles.input, styles.inputWithPadding]}
+                  style={styles.input}
+                  accessibilityLabel="Tax percent"
                   value={item.tax > 0 ? item.tax.toString() : ''}
                   onChangeText={(text) => handleFieldChange('tax', text)}
                   placeholder="0"
                   keyboardType="decimal-pad"
-                  placeholderTextColor={theme.colors.gray[400]}
+                  placeholderTextColor={t.text.placeholder}
                 />
-                <Text style={styles.percentIcon}>%</Text>
+                <Text style={[styles.affix, styles.suffix]}>%</Text>
               </View>
             </View>
           </View>
 
-          {/* Calculated Amounts - Fiori Key Value Table View Cell */}
+          {/* Calculated amounts */}
           <View style={styles.calculationSection}>
-            <Text style={styles.sectionTitle}>Calculated Amounts</Text>
-            <View style={styles.keyValueContainer}>
-              <KeyValueCell
-                keyLabel="Storage Amount"
-                value={formatCurrency(item.amount, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                showDivider
-              />
-              <KeyValueCell
-                keyLabel="Labour Amount"
-                value={formatCurrency(item.labour_amount, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                showDivider
-              />
-              <KeyValueCell
-                keyLabel="Tax Amount"
-                value={formatCurrency(item.tax_amount, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                showDivider
-              />
-              <View style={styles.totalRow}>
-                <KeyValueCell
-                  keyLabel="Item Total"
-                  value={formatCurrency(item.item_total, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  emphasized
-                />
-              </View>
+            <Text style={styles.sectionTitle} accessibilityRole="header">Calculated amounts</Text>
+            <AmountRow styles={styles} label="Storage amount" value={formatInvoiceAmount(item.amount)} />
+            <AmountRow styles={styles} label="Labour amount" value={formatInvoiceAmount(item.labour_amount)} />
+            <AmountRow styles={styles} label="Tax" value={formatInvoiceAmount(item.tax_amount)} />
+            <View style={styles.totalRow} accessible accessibilityLabel={`Item total, ${total}`}>
+              <Text style={styles.totalLabel}>Item total</Text>
+              <Text style={styles.totalAmount}>{total}</Text>
             </View>
           </View>
 
-          {/* Formula Section - Collapsible */}
-          <TouchableOpacity
-            style={styles.formulaToggle}
+          {/* Formula section - collapsible */}
+          <Pressable
+            style={({ pressed }) => [styles.formulaToggle, pressed && styles.formulaTogglePressed]}
             onPress={() => setShowFormula(!showFormula)}
+            accessibilityRole="button"
+            accessibilityState={{ expanded: showFormula }}
           >
+            <Icon
+              name={showFormula ? 'chevron-up' : 'chevron-down'}
+              size={iconSize.md}
+              color={t.brand.tint}
+            />
             <Text style={styles.formulaToggleText}>
-              {showFormula ? '▼' : '▶'} View Calculation Formula
+              {showFormula ? 'Hide calculation' : 'Show calculation'}
             </Text>
-          </TouchableOpacity>
+          </Pressable>
 
           {showFormula && (
             <View style={styles.formulaSection}>
               <Text style={styles.formulaText}>
                 Storage = Qty × Charge × Duration{'\n'}
-                = {item.qty} × {formatCurrency(item.charge)} × {item.duration} = {formatCurrency(item.amount, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                = {item.qty} × {formatInvoiceAmount(item.charge)} × {item.duration} = {formatInvoiceAmount(item.amount)}
               </Text>
               <Text style={styles.formulaText}>
-                Labour = Qty × Labour Rate{'\n'}
-                = {item.qty} × {formatCurrency(item.labour_rate)} = {formatCurrency(item.labour_amount, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                Labour = Qty × Labour rate{'\n'}
+                = {item.qty} × {formatInvoiceAmount(item.labour_rate)} = {formatInvoiceAmount(item.labour_amount)}
               </Text>
               <Text style={styles.formulaText}>
                 Tax = (Storage + Labour) × Tax %{'\n'}
-                = {formatCurrency(item.amount + item.labour_amount, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} × {item.tax}% = {formatCurrency(item.tax_amount, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                = {formatInvoiceAmount(item.amount + item.labour_amount)} × {item.tax}% = {formatInvoiceAmount(item.tax_amount)}
               </Text>
             </View>
           )}
         </View>
       )}
-    </TouchableOpacity>
+    </View>
   );
 };
-
-// SAP Fiori Form Cell Styles
-const styles = StyleSheet.create({
-  card: {
-    backgroundColor: theme.colors.white,
-    borderRadius: theme.borderRadius.lg,
-    borderWidth: 1,
-    borderColor: theme.colors.fiori.objectCell.divider,
-    marginBottom: theme.spacing.md,
-    overflow: 'hidden',
-    ...theme.shadows.sm,
-  },
-  cardExpanded: {
-    borderLeftWidth: 4,
-    borderLeftColor: theme.colors.primary,
-    ...theme.shadows.md,
-  },
-  collapsedContent: {
-    padding: theme.spacing.md,
-  },
-  headerRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-  },
-  itemInfo: {
-    flex: 1,
-    marginRight: theme.spacing.sm,
-  },
-  itemName: {
-    fontSize: theme.fontSize.base,
-    fontWeight: theme.fontWeight.semibold,
-    color: theme.colors.fiori.text.primary,
-    marginBottom: theme.spacing.xs,
-    lineHeight: 22,
-  },
-  metaRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: theme.spacing.xs,
-  },
-  chip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: theme.colors.fiori.semantic.noneLight,
-    paddingHorizontal: theme.spacing.sm,
-    paddingVertical: 4,
-    borderRadius: theme.borderRadius.sm,
-    gap: 4,
-  },
-  chipText: {
-    fontSize: theme.fontSize.sm,
-    color: theme.colors.fiori.text.secondary,
-  },
-  rightSection: {
-    alignItems: 'flex-end',
-  },
-  totalAmount: {
-    fontSize: theme.fontSize.lg,
-    fontWeight: theme.fontWeight.bold,
-    color: theme.colors.fiori.semantic.positive,
-    marginBottom: theme.spacing.xs,
-  },
-  expandButton: {
-    width: 44,
-    height: 44,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: -theme.spacing.sm,
-    marginBottom: -theme.spacing.sm,
-  },
-  expandedContent: {
-    paddingHorizontal: theme.spacing.md,
-    paddingBottom: theme.spacing.md,
-  },
-  divider: {
-    height: 1,
-    backgroundColor: theme.colors.fiori.objectCell.divider,
-    marginBottom: theme.spacing.md,
-  },
-  inputSection: {
-    marginBottom: theme.spacing.md,
-  },
-  sectionTitle: {
-    fontSize: theme.fontSize.base,
-    fontWeight: theme.fontWeight.semibold,
-    color: theme.colors.fiori.text.primary,
-    marginBottom: theme.spacing.sm,
-  },
-  inputGroup: {
-    marginBottom: theme.spacing.md,
-  },
-  // Fiori: Label uses 13pt, primary text color
-  inputLabel: {
-    fontSize: 13,
-    fontWeight: theme.fontWeight.normal,
-    color: theme.colors.fiori.text.primary,
-    marginBottom: 6,
-    lineHeight: 18,
-  },
-  labelRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 6,
-  },
-  overrideBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: theme.colors.primary,
-    paddingHorizontal: theme.spacing.sm,
-    paddingVertical: 2,
-    borderRadius: theme.borderRadius.sm,
-    gap: 4,
-  },
-  overrideBadgeText: {
-    fontSize: theme.fontSize.xs,
-    fontWeight: theme.fontWeight.semibold,
-    color: theme.colors.white,
-  },
-  // Fiori: Read-only field - gray background #F2F2F7, no border
-  readOnlyField: {
-    height: 44,
-    backgroundColor: '#F2F2F7',
-    borderWidth: 0,
-    borderRadius: theme.borderRadius.md,
-    paddingHorizontal: 12,
-    justifyContent: 'center',
-  },
-  readOnlyText: {
-    fontSize: theme.fontSize.base,
-    color: theme.colors.fiori.text.secondary,
-    lineHeight: 22,
-  },
-  inputOverridden: {
-    borderWidth: 2,
-    borderColor: theme.colors.primary,
-  },
-  // Fiori: Input field - 44pt height, 17pt text, #E5E5E5 border
-  input: {
-    height: 44,
-    backgroundColor: theme.colors.white,
-    borderWidth: 1,
-    borderColor: theme.colors.fiori.objectCell.divider,
-    borderRadius: theme.borderRadius.md,
-    paddingHorizontal: 12,
-    fontSize: theme.fontSize.base,
-    color: theme.colors.fiori.text.primary,
-    ...Platform.select({
-      android: {
-        textAlignVertical: 'center',
-        includeFontPadding: false,
-      },
-    }),
-  },
-  inputWithIcon: {
-    position: 'relative',
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  inputWithPadding: {
-    paddingLeft: 36,
-  },
-  currencyIcon: {
-    position: 'absolute',
-    left: 12,
-    fontSize: theme.fontSize.base,
-    fontWeight: theme.fontWeight.semibold,
-    color: theme.colors.fiori.text.secondary,
-    zIndex: 1,
-  },
-  percentIcon: {
-    position: 'absolute',
-    right: 12,
-    fontSize: theme.fontSize.base,
-    fontWeight: theme.fontWeight.semibold,
-    color: theme.colors.fiori.text.secondary,
-  },
-  // Fiori: Calculation section with Key Value cells
-  calculationSection: {
-    marginBottom: theme.spacing.sm,
-  },
-  // Fiori: Key Value container - white bg, rounded corners
-  keyValueContainer: {
-    backgroundColor: theme.colors.white,
-    borderRadius: theme.borderRadius.md,
-    borderWidth: 1,
-    borderColor: theme.colors.fiori.objectCell.divider,
-    overflow: 'hidden',
-  },
-  // Fiori: Total row - emphasized with top border
-  totalRow: {
-    borderTopWidth: 1,
-    borderTopColor: theme.colors.fiori.objectCell.divider,
-    backgroundColor: theme.colors.fiori.semantic.positiveLight,
-  },
-  formulaToggle: {
-    paddingVertical: theme.spacing.sm,
-    alignItems: 'center',
-  },
-  formulaToggleText: {
-    fontSize: 13,
-    color: theme.colors.primary,
-    fontWeight: theme.fontWeight.medium,
-    lineHeight: 18,
-  },
-  formulaSection: {
-    backgroundColor: theme.colors.fiori.semantic.criticalLight,
-    padding: theme.spacing.md,
-    borderRadius: theme.borderRadius.md,
-    marginTop: theme.spacing.sm,
-  },
-  formulaText: {
-    fontSize: 13,
-    fontFamily: 'monospace',
-    color: theme.colors.fiori.text.secondary,
-    lineHeight: 20,
-    marginBottom: theme.spacing.sm,
-  },
-});

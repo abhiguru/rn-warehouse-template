@@ -1,13 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TextInput, Platform, TouchableOpacity } from 'react-native';
+import { View, Text, TextInput, Platform, Pressable, StyleSheet } from 'react-native';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import theme from '@/theme';
-import { useTheme } from '@/hooks/useTheme';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { fontWeight, iconSize, radius, space, touchTarget, typography } from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
 import { InvoiceHeaderData, InvoiceItemData } from '@/types/invoice.types';
-import { calculateInvoiceBreakdown } from '@/utils/invoiceCalculations';
-import { formatCurrency } from '@/utils/formatters';
-import { KeyValueCell, InlineValidation } from '@/components/fiori';
+import {
+  calculateInvoiceBreakdown,
+  formatInvoiceAmount,
+  formatInvoiceDeduction,
+} from '@/utils/invoiceCalculations';
+import { InlineValidation } from '@/components/fiori';
 
 interface InvoiceCalculationSummaryProps {
   header: InvoiceHeaderData;
@@ -19,6 +23,270 @@ interface InvoiceCalculationSummaryProps {
   reasonRequired?: boolean;
 }
 
+/** Visual size of the round up/down buttons; hitSlop pads them to the touch target. */
+const ROUND_BUTTON_SIZE = 36;
+const ROUND_BUTTON_SLOP = Math.ceil((touchTarget - ROUND_BUTTON_SIZE) / 2);
+
+const tabular = { fontVariant: ['tabular-nums' as const] };
+
+const makeStyles = (t: ThemeTokens) => ({
+  container: {
+    backgroundColor: t.surface.card,
+    borderRadius: radius.card,
+    padding: space.lg,
+    ...t.shadow[2],
+  },
+  title: {
+    ...typography.title3,
+    color: t.text.primary,
+    marginBottom: space.sm,
+  },
+  row: {
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'center' as const,
+    gap: space.md,
+    minHeight: 44,
+    paddingVertical: space.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.divider,
+  },
+  rowLabel: {
+    ...typography.subhead,
+    color: t.text.secondary,
+    flexShrink: 1,
+  },
+  rowValue: {
+    ...typography.body,
+    ...tabular,
+    color: t.text.primary,
+    textAlign: 'right' as const,
+  },
+  discountText: {
+    color: t.status.positive.text,
+  },
+  discountRow: {
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'center' as const,
+    gap: space.md,
+    minHeight: touchTarget,
+    paddingVertical: space.sm,
+  },
+  discountLabelContainer: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.sm,
+    flexShrink: 1,
+  },
+  roundButtonsContainer: {
+    flexDirection: 'row' as const,
+    gap: space.sm,
+  },
+  roundButton: {
+    width: ROUND_BUTTON_SIZE,
+    height: ROUND_BUTTON_SIZE,
+    borderRadius: radius.button,
+    borderWidth: 1,
+    borderColor: t.border.button,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+  },
+  roundButtonPressed: {
+    backgroundColor: t.brand.subtle,
+  },
+  field: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    backgroundColor: t.surface.field,
+    borderWidth: 1,
+    borderColor: t.border.field,
+    borderRadius: radius.field,
+    paddingHorizontal: space.md,
+    minHeight: 44,
+  },
+  fieldError: {
+    borderWidth: 2,
+    borderColor: t.status.negative.border,
+  },
+  currencySymbol: {
+    ...typography.body,
+    color: t.text.secondary,
+    marginRight: space.xs,
+  },
+  discountInput: {
+    ...typography.body,
+    ...tabular,
+    color: t.text.primary,
+    width: 96,
+    paddingVertical: space.s6,
+    textAlign: 'right' as const,
+  },
+  validationContainer: {
+    paddingBottom: space.sm,
+  },
+  reasonContainer: {
+    paddingBottom: space.md,
+    gap: space.xs,
+  },
+  fieldLabel: {
+    ...typography.footnote,
+    color: t.text.secondary,
+  },
+  reasonInput: {
+    ...typography.body,
+    color: t.text.primary,
+    backgroundColor: t.surface.field,
+    borderWidth: 1,
+    borderColor: t.border.field,
+    borderRadius: radius.field,
+    paddingHorizontal: space.md,
+    paddingVertical: space.sm,
+    minHeight: 44,
+  },
+  calculatorHeader: {
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'center' as const,
+    minHeight: touchTarget,
+    paddingVertical: space.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.divider,
+  },
+  calculatorHeaderPressed: {
+    backgroundColor: t.surface.cardPressed,
+  },
+  calculatorHeaderContent: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.sm,
+    flexShrink: 1,
+  },
+  calculatorHeaderText: {
+    ...typography.subhead,
+    fontWeight: fontWeight.semibold,
+    color: t.brand.tint,
+  },
+  calculatorContent: {
+    backgroundColor: t.background.base,
+    borderRadius: radius.button,
+    padding: space.md,
+    marginTop: space.sm,
+  },
+  calculatorLabel: {
+    ...typography.footnote,
+    color: t.text.secondary,
+    marginBottom: space.sm,
+  },
+  calculatorInputRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.sm,
+  },
+  calculatorField: {
+    flex: 1,
+  },
+  calculatorInput: {
+    ...typography.body,
+    ...tabular,
+    color: t.text.primary,
+    flex: 1,
+    paddingVertical: space.sm,
+  },
+  applyButton: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    gap: space.xs,
+    paddingHorizontal: space.lg,
+    borderRadius: radius.button,
+    minHeight: touchTarget,
+    backgroundColor: t.brand.fill,
+  },
+  applyButtonPressed: {
+    backgroundColor: t.brand.fillPressed,
+  },
+  applyButtonText: {
+    ...typography.callout,
+    color: t.brand.onFill,
+  },
+  calculatorHint: {
+    ...typography.caption1,
+    ...tabular,
+    color: t.text.secondary,
+    marginTop: space.sm,
+  },
+  totalRow: {
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'center' as const,
+    gap: space.md,
+    minHeight: 44,
+    marginTop: space.sm,
+    paddingTop: space.md,
+    borderTopWidth: 1,
+    borderTopColor: t.border.separator,
+  },
+  totalLabel: {
+    ...typography.headline,
+    color: t.text.primary,
+    flexShrink: 1,
+  },
+  totalValue: {
+    ...typography.headline,
+    ...tabular,
+    color: t.text.primary,
+    textAlign: 'right' as const,
+  },
+  note: {
+    ...typography.footnote,
+    color: t.text.secondary,
+    marginTop: space.sm,
+  },
+  breakdownContainer: {
+    marginTop: space.md,
+    padding: space.md,
+    borderRadius: radius.button,
+    backgroundColor: t.background.base,
+  },
+  breakdownHeader: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.s6,
+    marginBottom: space.sm,
+  },
+  breakdownTitle: {
+    ...typography.footnote,
+    fontWeight: fontWeight.semibold,
+    color: t.text.secondary,
+  },
+  breakdownText: {
+    ...typography.footnote,
+    ...tabular,
+    color: t.text.secondary,
+  },
+});
+
+type Styles = ReturnType<typeof makeStyles>;
+
+/** One read-only key-value row: label left, amount right-aligned with tabular figures. */
+function SummaryRow({
+  label,
+  value,
+  styles,
+}: {
+  label: string;
+  value: string;
+  styles: Styles;
+}) {
+  return (
+    <View style={styles.row} accessible accessibilityLabel={`${label}, ${value}`}>
+      <Text style={styles.rowLabel}>{label}</Text>
+      <Text style={styles.rowValue}>{value}</Text>
+    </View>
+  );
+}
+
 export const InvoiceCalculationSummary: React.FC<InvoiceCalculationSummaryProps> = ({
   header,
   items,
@@ -26,7 +294,8 @@ export const InvoiceCalculationSummary: React.FC<InvoiceCalculationSummaryProps>
   onDiscountReasonChange,
   reasonRequired = false,
 }) => {
-  const { colors: themeColors, isDarkMode } = useTheme();
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
   const [discountError, setDiscountError] = useState<string | null>(null);
   // Local state for the input text to preserve decimal point while typing
   const [discountText, setDiscountText] = useState<string>(
@@ -36,7 +305,7 @@ export const InvoiceCalculationSummary: React.FC<InvoiceCalculationSummaryProps>
   const [isCalculatorExpanded, setIsCalculatorExpanded] = useState(false);
   const [finalAmountText, setFinalAmountText] = useState<string>('');
 
-  // Dialog state for dark mode compliance
+  // Themed dialog instead of the system alert
   const [errorDialog, setErrorDialog] = useState<{ visible: boolean; title: string; message: string }>({
     visible: false,
     title: '',
@@ -70,14 +339,14 @@ export const InvoiceCalculationSummary: React.FC<InvoiceCalculationSummaryProps>
     } else if (isNaN(value)) {
       // Allow partial input like "235." or "-235." - don't show error, just don't update parent
       if (!text.endsWith('.') && text !== '-') {
-        setDiscountError('Invalid discount value');
+        setDiscountError('Enter the discount as a number, for example 250.50.');
       }
     } else if (value > maxDiscount) {
-      setDiscountError(`Discount cannot exceed ${formatCurrency(maxDiscount, { maximumFractionDigits: 2 })}`);
+      setDiscountError(`The discount can't be more than ${formatInvoiceAmount(maxDiscount)}.`);
       setErrorDialog({
         visible: true,
-        title: 'Invalid Discount',
-        message: `Discount cannot exceed the total invoice amount (${formatCurrency(maxDiscount, { maximumFractionDigits: 2 })})`,
+        title: 'Discount too large',
+        message: `The discount can't be more than the invoice amount (${formatInvoiceAmount(maxDiscount)}). Enter a smaller discount.`,
       });
     } else {
       // Valid number (positive or negative)
@@ -119,8 +388,8 @@ export const InvoiceCalculationSummary: React.FC<InvoiceCalculationSummaryProps>
     if (isNaN(finalAmount) || finalAmount <= 0) {
       setErrorDialog({
         visible: true,
-        title: 'Invalid Amount',
-        message: 'Please enter a valid positive amount',
+        title: 'Amount not valid',
+        message: 'Enter a final amount greater than zero.',
       });
       return;
     }
@@ -138,398 +407,171 @@ export const InvoiceCalculationSummary: React.FC<InvoiceCalculationSummaryProps>
     setFinalAmountText('');
   };
 
-  // Dynamic colors for dark mode
-  const cardBg = isDarkMode ? themeColors.gray[100] : themeColors.white;
-  const borderColor = isDarkMode ? themeColors.gray[300] : themeColors.gray[200];
-  const textPrimary = themeColors.gray[900];
-  const textSecondary = themeColors.gray[500];
-  const inputBg = isDarkMode ? themeColors.gray[200] : themeColors.white;
-  const totalBg = isDarkMode ? themeColors.green[100] : themeColors.green[50];
-  const infoBg = isDarkMode ? themeColors.gray[200] : themeColors.gray[100];
-  const infoIconColor = themeColors.gray[500];
+  const closeDialog = () => setErrorDialog({ visible: false, title: '', message: '' });
+
+  // A negative discount is a surcharge: it adds to the total.
+  const discountPart =
+    header.discount < 0
+      ? `+ ${formatInvoiceAmount(-header.discount)} (surcharge)`
+      : `${formatInvoiceDeduction(header.discount)} (discount)`;
 
   return (
-    <View style={[styles.container, { backgroundColor: cardBg, borderColor }]}>
-      <Text style={[styles.title, { color: textPrimary }]}>Invoice Summary</Text>
+    <View style={styles.container}>
+      <Text style={styles.title} accessibilityRole="header">Invoice summary</Text>
 
-      {/* Fiori: Key Value cells for summary */}
-      <View style={[styles.keyValueContainer, { backgroundColor: cardBg, borderColor }]}>
-        <KeyValueCell
-          keyLabel="Subtotal (Storage)"
-          value={formatCurrency(subtotal, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-          showDivider
-        />
-        <KeyValueCell
-          keyLabel="Labour Charges"
-          value={formatCurrency(header.labour, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-          showDivider
-        />
-        <KeyValueCell
-          keyLabel="Tax Amount"
-          value={formatCurrency(header.tax_amount, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-          showDivider
-        />
+      <SummaryRow styles={styles} label="Subtotal (storage)" value={formatInvoiceAmount(subtotal)} />
+      <SummaryRow styles={styles} label="Labour charges" value={formatInvoiceAmount(header.labour)} />
+      <SummaryRow styles={styles} label="Tax" value={formatInvoiceAmount(header.tax_amount)} />
 
-        {/* Discount (Editable) with Round Up/Down buttons */}
-        <View style={[styles.discountRow, { backgroundColor: cardBg }]}>
-          <View style={styles.discountLabelContainer}>
-            <Text style={[styles.discountLabel, { color: textSecondary }]}>Discount</Text>
-            {/* Round Up/Down buttons */}
-            <View style={styles.roundButtonsContainer}>
-              <TouchableOpacity
-                style={[
-                  styles.roundButton,
-                  { backgroundColor: themeColors.blue[50], borderColor: themeColors.blue[200] },
-                ]}
-                onPress={handleRoundDown}
-                activeOpacity={0.7}
-              >
-                <Icon name="arrow-down" size={14} color={themeColors.blue[600]} />
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.roundButton,
-                  { backgroundColor: themeColors.green[50], borderColor: themeColors.green[200] },
-                ]}
-                onPress={handleRoundUp}
-                activeOpacity={0.7}
-              >
-                <Icon name="arrow-up" size={14} color={themeColors.green[600]} />
-              </TouchableOpacity>
-            </View>
-          </View>
-          <View
-            style={[
-              styles.discountInputContainer,
-              { backgroundColor: inputBg, borderColor },
-              discountError && styles.discountInputError,
-            ]}
-          >
-            <Text style={[styles.currencySymbol, { color: textSecondary }]}>₹</Text>
-            <TextInput
-              style={[styles.discountInput, { color: textPrimary }]}
-              accessibilityLabel="Invoice discount"
-              value={discountText}
-              onChangeText={handleDiscountChange}
-              placeholder="0.00"
-              keyboardType={Platform.OS === 'ios' ? 'numbers-and-punctuation' : 'default'}
-              placeholderTextColor={textSecondary}
-            />
+      {/* Discount (editable) with round down / round up buttons */}
+      <View style={styles.discountRow}>
+        <View style={styles.discountLabelContainer}>
+          <Text style={styles.rowLabel}>Discount</Text>
+          <View style={styles.roundButtonsContainer}>
+            <Pressable
+              style={({ pressed }) => [styles.roundButton, pressed && styles.roundButtonPressed]}
+              onPress={handleRoundDown}
+              hitSlop={ROUND_BUTTON_SLOP}
+              accessibilityRole="button"
+              accessibilityLabel="Round total down to whole rupees"
+            >
+              <Icon name="arrow-down" size={iconSize.sm} color={t.brand.tint} />
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [styles.roundButton, pressed && styles.roundButtonPressed]}
+              onPress={handleRoundUp}
+              hitSlop={ROUND_BUTTON_SLOP}
+              accessibilityRole="button"
+              accessibilityLabel="Round total up to whole rupees"
+            >
+              <Icon name="arrow-up" size={iconSize.sm} color={t.brand.tint} />
+            </Pressable>
           </View>
         </View>
-        {/* Fiori Inline Validation for discount error */}
-        <View style={styles.validationContainer}>
-          <InlineValidation
-            message={discountError || ''}
-            variant="error"
-            visible={!!discountError}
+        <View style={[styles.field, discountError ? styles.fieldError : null]}>
+          <Text style={styles.currencySymbol}>₹</Text>
+          <TextInput
+            style={styles.discountInput}
+            accessibilityLabel="Invoice discount"
+            value={discountText}
+            onChangeText={handleDiscountChange}
+            placeholder="0.00"
+            keyboardType={Platform.OS === 'ios' ? 'numbers-and-punctuation' : 'default'}
+            placeholderTextColor={t.text.placeholder}
           />
         </View>
+      </View>
+      <View style={styles.validationContainer}>
+        <InlineValidation message={discountError || ''} variant="error" visible={!!discountError} />
+      </View>
 
-        {/* Reason for the discount: recorded with the invoice, required from staff */}
-        {onDiscountReasonChange && header.discount !== 0 && (
-          <View style={[styles.reasonContainer, { backgroundColor: cardBg }]}>
-            <Text style={[styles.discountLabel, { color: textSecondary }]}>
-              Discount reason{reasonRequired ? ' (required)' : ''}
-            </Text>
-            <TextInput
-              style={[
-                styles.reasonInput,
-                { color: textPrimary, backgroundColor: inputBg, borderColor },
-                reasonRequired && styles.discountInputError,
-              ]}
-              accessibilityLabel="Discount reason"
-              value={header.discount_reason || ''}
-              onChangeText={onDiscountReasonChange}
-              placeholder="Why is this discount given?"
-              placeholderTextColor={textSecondary}
-              maxLength={500}
-              multiline
-            />
-          </View>
-        )}
-
-        <KeyValueCell
-          keyLabel="Rounding adjustment"
-          value={formatCurrency(rounding, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-          showDivider
-        />
-
-        {/* Collapsible Discount Calculator */}
-        <TouchableOpacity
-          style={[
-            styles.calculatorHeader,
-            { borderTopColor: themeColors.gray[200] },
-          ]}
-          onPress={() => setIsCalculatorExpanded(!isCalculatorExpanded)}
-          activeOpacity={0.7}
-        >
-          <View style={styles.calculatorHeaderContent}>
-            <Icon name="calculator" size={16} color={themeColors.primary} />
-            <Text style={[styles.calculatorHeaderText, { color: themeColors.primary }]}>
-              Calculate from Final Amount
-            </Text>
-          </View>
-          <Icon
-            name={isCalculatorExpanded ? 'chevron-up' : 'chevron-down'}
-            size={20}
-            color={themeColors.gray[500]}
+      {/* Reason for the discount: recorded with the invoice, required from staff */}
+      {onDiscountReasonChange && header.discount !== 0 && (
+        <View style={styles.reasonContainer}>
+          <Text style={styles.fieldLabel}>
+            Discount reason{reasonRequired ? ' (required)' : ''}
+          </Text>
+          <TextInput
+            style={[styles.reasonInput, reasonRequired && styles.fieldError]}
+            accessibilityLabel="Discount reason"
+            value={header.discount_reason || ''}
+            onChangeText={onDiscountReasonChange}
+            placeholder="Why is this discount given?"
+            placeholderTextColor={t.text.placeholder}
+            maxLength={500}
+            multiline
           />
-        </TouchableOpacity>
+        </View>
+      )}
 
-        {isCalculatorExpanded && (
-          <View style={[styles.calculatorContent, { backgroundColor: themeColors.gray[50] }]}>
-            <Text style={[styles.calculatorLabel, { color: textSecondary }]}>
-              Enter an amount before whole-rupee rounding:
-            </Text>
-            <View style={styles.calculatorInputRow}>
-              <View
-                style={[
-                  styles.calculatorInputContainer,
-                  { backgroundColor: inputBg, borderColor },
-                ]}
-              >
-                <Text style={[styles.currencySymbol, { color: textSecondary }]}>₹</Text>
-                <TextInput
-                  style={[styles.calculatorInput, { color: textPrimary }]}
-                  value={finalAmountText}
-                  onChangeText={handleFinalAmountChange}
-                  placeholder={Math.round(base).toString()}
-                  keyboardType="numeric"
-                  placeholderTextColor={themeColors.gray[400]}
-                />
-              </View>
-              <TouchableOpacity
-                style={[styles.applyButton, { backgroundColor: themeColors.primary }]}
-                onPress={applyFinalAmount}
-                activeOpacity={0.8}
-              >
-                <Icon name="check" size={18} color={themeColors.white} />
-                <Text style={[styles.applyButtonText, { color: themeColors.white }]}>Apply</Text>
-              </TouchableOpacity>
-            </View>
-            <Text style={[styles.calculatorHint, { color: themeColors.gray[400] }]}>
-              Current base: {formatCurrency(base, { minimumFractionDigits: 2 })}
-            </Text>
-          </View>
-        )}
-      </View>
+      <SummaryRow styles={styles} label="Rounding adjustment" value={formatInvoiceAmount(rounding)} />
 
-      {/* Grand Total - Fiori emphasized */}
-      <View style={[styles.totalRow, { backgroundColor: totalBg }]}>
-        <KeyValueCell
-          keyLabel="Grand Total"
-          value={formatCurrency(header.total, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-          emphasized
+      {/* Collapsible discount calculator */}
+      <Pressable
+        style={({ pressed }) => [styles.calculatorHeader, pressed && styles.calculatorHeaderPressed]}
+        onPress={() => setIsCalculatorExpanded(!isCalculatorExpanded)}
+        accessibilityRole="button"
+        accessibilityState={{ expanded: isCalculatorExpanded }}
+        accessibilityLabel="Calculate discount from final amount"
+      >
+        <View style={styles.calculatorHeaderContent}>
+          <Icon name="calculator" size={iconSize.md} color={t.brand.tint} />
+          <Text style={styles.calculatorHeaderText}>Calculate from final amount</Text>
+        </View>
+        <Icon
+          name={isCalculatorExpanded ? 'chevron-up' : 'chevron-down'}
+          size={iconSize.md}
+          color={t.icon.secondary}
         />
+      </Pressable>
+
+      {isCalculatorExpanded && (
+        <View style={styles.calculatorContent}>
+          <Text style={styles.calculatorLabel}>Enter an amount before whole-rupee rounding.</Text>
+          <View style={styles.calculatorInputRow}>
+            <View style={[styles.field, styles.calculatorField]}>
+              <Text style={styles.currencySymbol}>₹</Text>
+              <TextInput
+                style={styles.calculatorInput}
+                accessibilityLabel="Final amount"
+                value={finalAmountText}
+                onChangeText={handleFinalAmountChange}
+                placeholder={Math.round(base).toString()}
+                keyboardType="numeric"
+                placeholderTextColor={t.text.placeholder}
+              />
+            </View>
+            <Pressable
+              style={({ pressed }) => [styles.applyButton, pressed && styles.applyButtonPressed]}
+              onPress={applyFinalAmount}
+              accessibilityRole="button"
+              accessibilityLabel="Apply final amount"
+            >
+              <Icon name="check" size={iconSize.md} color={t.brand.onFill} />
+              <Text style={styles.applyButtonText}>Apply</Text>
+            </Pressable>
+          </View>
+          <Text style={styles.calculatorHint}>Current base: {formatInvoiceAmount(base)}</Text>
+        </View>
+      )}
+
+      {/* Grand total */}
+      <View
+        style={styles.totalRow}
+        accessible
+        accessibilityLabel={`Grand total, ${formatInvoiceAmount(header.total)}`}
+      >
+        <Text style={styles.totalLabel}>Grand total</Text>
+        <Text style={styles.totalValue}>{formatInvoiceAmount(header.total)}</Text>
       </View>
 
-      <Text style={{ color: textSecondary }}>
+      <Text style={styles.note}>
         Header tax and the final amount round up to whole rupees. Discount is preserved.
       </Text>
 
-      {/* Breakdown Info - Fiori info card */}
-      <View style={[styles.breakdownContainer, { backgroundColor: infoBg }]}>
+      {/* How the total is made up */}
+      <View style={styles.breakdownContainer}>
         <View style={styles.breakdownHeader}>
-          <Icon name="information-outline" size={16} color={infoIconColor} />
-          <Text style={[styles.breakdownTitle, { color: infoIconColor }]}>Calculation Breakdown</Text>
+          <Icon name="information-outline" size={iconSize.sm} color={t.icon.secondary} />
+          <Text style={styles.breakdownTitle}>How the total is calculated</Text>
         </View>
-        <Text style={[styles.breakdownText, { color: textSecondary }]}>
-          {formatCurrency(subtotal, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (Storage) + {formatCurrency(header.labour, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (Labour) + {formatCurrency(header.tax_amount, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (Tax) - {formatCurrency(header.discount, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (Discount) + {formatCurrency(rounding, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (Rounding) = {formatCurrency(header.total, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+        <Text style={styles.breakdownText}>
+          {formatInvoiceAmount(subtotal)} (storage) + {formatInvoiceAmount(header.labour)} (labour) + {formatInvoiceAmount(header.tax_amount)} (tax){' '}
+          <Text style={header.discount > 0 ? styles.discountText : undefined}>{discountPart}</Text> +{formatInvoiceAmount(rounding)} (rounding) = {formatInvoiceAmount(header.total)}
         </Text>
       </View>
 
-      {/* Error Dialog */}
       <ConfirmDialog
         visible={errorDialog.visible}
         title={errorDialog.title}
         message={errorDialog.message}
-        confirmText="OK"
+        confirmText="Close"
         cancelText=""
-        onConfirm={() => setErrorDialog({ visible: false, title: '', message: '' })}
-        onCancel={() => setErrorDialog({ visible: false, title: '', message: '' })}
+        onConfirm={closeDialog}
+        onCancel={closeDialog}
         variant="warning"
         icon="alert-circle"
       />
     </View>
   );
 };
-
-// SAP Fiori Form Cell Styles
-// Colors applied dynamically for dark mode support
-const styles = StyleSheet.create({
-  container: {
-    borderRadius: theme.borderRadius.lg,
-    padding: theme.spacing.md,
-    borderWidth: 1,
-    ...theme.shadows.sm,
-  },
-  title: {
-    fontSize: theme.fontSize.lg,
-    fontWeight: theme.fontWeight.semibold,
-    marginBottom: theme.spacing.md,
-  },
-  keyValueContainer: {
-    borderRadius: theme.borderRadius.md,
-    borderWidth: 1,
-    overflow: 'hidden',
-  },
-  discountRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 11,
-    minHeight: 44,
-  },
-  discountLabelContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  discountLabel: {
-    fontSize: 13,
-    fontWeight: '400',
-    lineHeight: 18,
-  },
-  roundButtonsContainer: {
-    flexDirection: 'row',
-    gap: 4,
-  },
-  roundButton: {
-    width: 28,
-    height: 28,
-    borderRadius: 6,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  discountInputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    minHeight: 36,
-  },
-  currencySymbol: {
-    fontSize: theme.fontSize.base,
-    fontWeight: theme.fontWeight.semibold,
-    marginRight: 4,
-  },
-  discountInput: {
-    width: 80,
-    paddingVertical: 6,
-    fontSize: theme.fontSize.base,
-    textAlign: 'right',
-  },
-  reasonContainer: {
-    paddingHorizontal: 16,
-    paddingBottom: 12,
-    gap: 6,
-  },
-  reasonInput: {
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    minHeight: 44,
-    fontSize: theme.fontSize.base,
-  },
-  discountInputError: {
-    borderColor: theme.colors.fiori.semantic.negative,
-    borderWidth: 2,
-    backgroundColor: theme.colors.fiori.semantic.negativeLight,
-  },
-  validationContainer: {
-    paddingHorizontal: 16,
-    paddingBottom: 8,
-  },
-  totalRow: {
-    borderRadius: theme.borderRadius.md,
-    marginTop: theme.spacing.md,
-    overflow: 'hidden',
-  },
-  breakdownContainer: {
-    marginTop: theme.spacing.md,
-    padding: theme.spacing.md,
-    borderRadius: theme.borderRadius.md,
-  },
-  breakdownHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 8,
-  },
-  breakdownTitle: {
-    fontSize: 13,
-    fontWeight: theme.fontWeight.semibold,
-    lineHeight: 18,
-  },
-  breakdownText: {
-    fontSize: 13,
-    lineHeight: 20,
-  },
-  // Calculator styles
-  calculatorHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderTopWidth: 1,
-  },
-  calculatorHeaderContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  calculatorHeaderText: {
-    fontSize: 13,
-    fontWeight: '500',
-  },
-  calculatorContent: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
-  calculatorLabel: {
-    fontSize: 13,
-    marginBottom: 8,
-  },
-  calculatorInputRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  calculatorInputContainer: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    minHeight: 40,
-  },
-  calculatorInput: {
-    flex: 1,
-    paddingVertical: 8,
-    fontSize: theme.fontSize.base,
-  },
-  applyButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 8,
-    minHeight: 40,
-  },
-  applyButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  calculatorHint: {
-    fontSize: 11,
-    marginTop: 8,
-  },
-});

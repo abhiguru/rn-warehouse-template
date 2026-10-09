@@ -7,8 +7,9 @@ import type { InvoiceHeaderData } from '@/types/invoice.types';
 jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('@/components/ConfirmDialog', () => ({ ConfirmDialog: () => null }));
 jest.mock('@/components/fiori', () => ({ KeyValueCell: () => null, InlineValidation: () => null }));
-jest.mock('@/hooks/useTheme', () => ({
-  useTheme: () => ({ isDarkMode: false, colors: { ...require('@/theme').default.colors } }),
+jest.mock('@/store/hooks', () => ({
+  useAppDispatch: () => jest.fn(),
+  useAppSelector: (selector: (state: unknown) => unknown) => selector({ theme: { preference: 'light', brand: 'orange' } }),
 }));
 
 const header = (discount: number, discount_reason = ''): InvoiceHeaderData => ({
