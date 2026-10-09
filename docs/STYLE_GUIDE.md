@@ -1067,6 +1067,7 @@ All screens use the tokens; the six older colour systems and their adapters are 
 | Hex and `rgb()`/`rgba()` colour literals | Semantic tokens |
 | `fontSize` with a literal number | A `typography` style |
 | `Alert.alert` | `showAlert` from `src/utils/alert.ts` |
+| `toISOString().split('T')[0]` and similar (UTC: yesterday before 5:30 am in India) | `toLocalISODate()` from `src/utils/formatters.ts` |
 | `useColorScheme` or `Appearance` from react-native | `useTheme()` (only `src/hooks/useTheme.ts` reads the system scheme) |
 | `@expo/vector-icons` | `react-native-vector-icons/MaterialCommunityIcons` |
 | The old colour modules (`listColors`, `fioriColors`, `useListColors`, `fioriDesignTokens`, overview-tab `FioriTokens`) and `colors`/`getThemeColors` from `@/theme` | Semantic tokens |
