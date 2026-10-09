@@ -9,12 +9,13 @@ export const canNavigateFromStep1 = async (header: any): Promise<boolean> => {
   const validation = await validateStep1(header);
 
   if (!validation.isValid) {
-    const errorFields = Object.keys(validation.errors);
-    const errorMessage = errorFields.length > 0
-      ? `Please fix: ${errorFields.join(', ')}`
-      : 'Please fill all required fields correctly';
+    // Show the plain-language messages, never the raw field keys.
+    const messages = Array.from(new Set(Object.values(validation.errors).filter(Boolean)));
+    const errorMessage = messages.length > 0
+      ? messages.map(message => `• ${message}`).join('\n')
+      : 'Fill in the required fields.';
 
-    Alert.alert('Validation Error', errorMessage);
+    Alert.alert('Check the GRN details', errorMessage);
     return false;
   }
 
@@ -91,21 +92,21 @@ export const showUnsavedDataAlert = (
   onCancel: () => void
 ): void => {
   Alert.alert(
-    'Unsaved Item',
-    'You have unsaved changes in the current item. What would you like to do?',
+    'Save this item?',
+    "The item you're adding hasn't been saved yet.",
     [
       {
-        text: 'Cancel',
+        text: 'Keep editing',
         style: 'cancel',
         onPress: onCancel,
       },
       {
-        text: 'Discard',
+        text: 'Discard item',
         style: 'destructive',
         onPress: onDiscard,
       },
       {
-        text: 'Save & Continue',
+        text: 'Save item',
         onPress: onSave,
       },
     ],
