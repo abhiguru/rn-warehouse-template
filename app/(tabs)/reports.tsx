@@ -6,81 +6,83 @@
  */
 
 import React, { useMemo } from 'react';
-import {
-  View,
-  Text,
-  ScrollView,
-  TouchableOpacity,
-  StyleSheet,
-  Pressable,
-} from 'react-native';
+import { View, Text, ScrollView, StyleSheet, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useAppSelector } from '@/store/hooks';
-import theme from '@/theme';
-import { useListColors, type ListColors } from '@/hooks/useListColors';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import {
+  fontWeight,
+  iconSize,
+  layout,
+  radius,
+  space,
+  touchTarget,
+  typography,
+  type ThemeTokens,
+} from '@/theme/tokens';
 import type { ReportDefinition } from '@/types/report.types';
 
 // Define all available reports
 const CUSTOMER_REPORTS: ReportDefinition[] = [
   {
     id: 'customer-activity',
-    title: 'Customer Activity',
+    title: 'Customer activity',
     description: 'Consolidated view of all customer operations',
-    icon: 'account-group',
+    icon: 'account-group-outline',
     route: '/reports/customer-activity',
     staffOnly: false,
     category: 'operations',
   },
   {
     id: 'stock-summary',
-    title: 'Stock Summary',
+    title: 'Stock summary',
     description: 'View current inventory at a glance',
-    icon: 'package-variant',
+    icon: 'warehouse',
     route: '/reports/stock-summary',
     staffOnly: false,
     category: 'stock',
   },
   {
     id: 'item-stock-summary',
-    title: 'Item Stock Summary',
+    title: 'Item stock summary',
     description: 'View all items aggregated across customers',
-    icon: 'cube-scan',
+    icon: 'cube-outline',
     route: '/reports/item-stock-summary',
     staffOnly: false,
     category: 'stock',
   },
   {
     id: 'dispatch-activity',
-    title: 'Dispatch Activity',
+    title: 'Dispatch activity',
     description: 'Recent dispatches and outbound goods',
-    icon: 'truck-fast',
+    icon: 'truck-delivery-outline',
     route: '/reports/dispatch-activity',
     staffOnly: false,
     category: 'movement',
   },
   {
     id: 'grn-activity',
-    title: 'GRN Activity',
+    title: 'GRN activity',
     description: 'Recent goods received with invoice status',
-    icon: 'file-document-multiple-outline',
+    icon: 'package-down',
     route: '/reports/grn-activity',
     staffOnly: false,
     category: 'movement',
   },
   {
     id: 'invoice-history',
-    title: 'Invoice History',
+    title: 'Invoice history',
     description: 'Billing history with payment status',
-    icon: 'receipt',
+    icon: 'file-document-outline',
     route: '/reports/invoice-history',
     staffOnly: false,
     category: 'financial',
   },
   {
     id: 'stock-aging',
-    title: 'Stock Aging',
-    description: 'Analyze stock age distribution',
+    title: 'Stock aging',
+    description: 'Analyse how long stock has been stored',
     icon: 'calendar-clock',
     route: '/reports/stock-aging',
     staffOnly: false,
@@ -91,100 +93,181 @@ const CUSTOMER_REPORTS: ReportDefinition[] = [
 const STAFF_REPORTS: ReportDefinition[] = [
   {
     id: 'operations-dashboard',
-    title: 'Operations Dashboard',
+    title: 'Operations dashboard',
     description: 'Daily KPIs and activity overview',
-    icon: 'view-dashboard',
+    icon: 'view-dashboard-outline',
     route: '/reports/operations-dashboard',
     staffOnly: true,
     category: 'operations',
   },
 ];
 
+const makeStyles = (t: ThemeTokens) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: t.background.base,
+    },
+    header: {
+      paddingHorizontal: layout.marginCompact,
+      paddingTop: space.md,
+      paddingBottom: space.lg,
+      backgroundColor: t.surface.header,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: t.border.divider,
+    },
+    headerRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'flex-start',
+      gap: space.md,
+    },
+    headerTitleContainer: {
+      flex: 1,
+    },
+    headerTitle: {
+      ...typography.title2,
+      color: t.text.primary,
+    },
+    headerSubtitle: {
+      ...typography.subhead,
+      color: t.text.secondary,
+      marginTop: space.xs,
+    },
+    profileButton: {
+      width: touchTarget,
+      height: touchTarget,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderRadius: radius.pill,
+    },
+    profileButtonPressed: {
+      backgroundColor: t.brand.subtle,
+    },
+    profileAvatar: {
+      width: layout.avatar.sm + space.xs,
+      height: layout.avatar.sm + space.xs,
+      borderRadius: radius.pill,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    profileAvatarText: {
+      ...typography.callout,
+      fontWeight: fontWeight.semibold,
+      // Avatar initials: text.primary on light avatars, overlay.onImage on dark ones (guide §3.2)
+      color: t.mode === 'dark' ? t.overlay.onImage : t.text.primary,
+    },
+    scrollView: {
+      flex: 1,
+    },
+    scrollContent: {
+      padding: layout.marginCompact,
+      paddingBottom: space.huge,
+    },
+    section: {
+      marginBottom: space.xxl,
+    },
+    sectionTitle: {
+      ...typography.footnote,
+      fontWeight: fontWeight.semibold,
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+      color: t.text.secondary,
+      marginBottom: space.sm,
+      marginLeft: space.xs,
+    },
+    sectionContent: {
+      gap: space.sm,
+    },
+    reportCard: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      minHeight: layout.objectCellMinHeight,
+      borderRadius: radius.card,
+      padding: space.lg,
+      gap: space.lg,
+      backgroundColor: t.surface.card,
+      ...t.shadow[2],
+    },
+    reportCardPressed: {
+      backgroundColor: t.surface.cardPressed,
+    },
+    reportIconContainer: {
+      width: layout.avatar.md,
+      height: layout.avatar.md,
+      borderRadius: radius.card,
+      justifyContent: 'center',
+      alignItems: 'center',
+      backgroundColor: t.brand.subtle,
+    },
+    reportContent: {
+      flex: 1,
+    },
+    reportTitle: {
+      ...typography.headline,
+      color: t.text.primary,
+      marginBottom: space.xxs,
+    },
+    reportDescription: {
+      ...typography.subhead,
+      color: t.text.secondary,
+    },
+  });
+
+type Styles = ReturnType<typeof makeStyles>;
+
+/** Stable avatar colour index for a person (guide §3.2). */
+function avatarIndex(key: string, count: number): number {
+  let hash = 0;
+  for (let i = 0; i < key.length; i++) {
+    hash = (hash * 31 + key.charCodeAt(i)) | 0;
+  }
+  return Math.abs(hash) % count;
+}
+
 interface ReportCardProps {
   report: ReportDefinition;
   onPress: () => void;
-  colors: ListColors;
+  styles: Styles;
+  t: ThemeTokens;
 }
 
-const ReportCard: React.FC<ReportCardProps> = ({
-  report,
-  onPress,
-  colors,
-}) => {
-  return (
-    <TouchableOpacity
-      style={[
-        styles.reportCard,
-        {
-          backgroundColor: colors.cellBackground,
-          borderWidth: 1,
-          borderColor: colors.cellDivider,
-        },
-      ]}
-      onPress={onPress}
-      activeOpacity={0.7}
-      accessibilityLabel={`${report.title}: ${report.description}`}
-      accessibilityRole="button"
-    >
-      <View
-        style={[
-          styles.reportIconContainer,
-          { backgroundColor: colors.primaryLight },
-        ]}
-      >
-        <Icon name={report.icon} size={28} color={colors.primary} />
-      </View>
-      <View style={styles.reportContent}>
-        <Text
-          style={[
-            styles.reportTitle,
-            { color: colors.textPrimary },
-          ]}
-        >
-          {report.title}
-        </Text>
-        <Text
-          style={[
-            styles.reportDescription,
-            { color: colors.textSecondary },
-          ]}
-          numberOfLines={2}
-        >
-          {report.description}
-        </Text>
-      </View>
-      <Icon
-        name="chevron-right"
-        size={24}
-        color={colors.textTertiary}
-      />
-    </TouchableOpacity>
-  );
-};
+const ReportCard: React.FC<ReportCardProps> = ({ report, onPress, styles, t }) => (
+  <Pressable
+    style={({ pressed }) => [styles.reportCard, pressed && styles.reportCardPressed]}
+    onPress={onPress}
+    accessibilityLabel={`${report.title}. ${report.description}`}
+    accessibilityRole="button"
+  >
+    <View style={styles.reportIconContainer}>
+      <Icon name={report.icon} size={iconSize.lg} color={t.brand.tint} />
+    </View>
+    <View style={styles.reportContent}>
+      <Text style={styles.reportTitle} numberOfLines={2}>
+        {report.title}
+      </Text>
+      <Text style={styles.reportDescription} numberOfLines={2}>
+        {report.description}
+      </Text>
+    </View>
+    <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />
+  </Pressable>
+);
 
 interface ReportSectionProps {
   title: string;
   reports: ReportDefinition[];
   onReportPress: (report: ReportDefinition) => void;
-  colors: ListColors;
+  styles: Styles;
+  t: ThemeTokens;
 }
 
-const ReportSection: React.FC<ReportSectionProps> = ({
-  title,
-  reports,
-  onReportPress,
-  colors,
-}) => {
+const ReportSection: React.FC<ReportSectionProps> = ({ title, reports, onReportPress, styles, t }) => {
   if (reports.length === 0) return null;
 
   return (
     <View style={styles.section}>
-      <Text
-        style={[
-          styles.sectionTitle,
-          { color: colors.textSecondary },
-        ]}
-      >
+      <Text style={styles.sectionTitle} accessibilityRole="header">
         {title}
       </Text>
       <View style={styles.sectionContent}>
@@ -193,7 +276,8 @@ const ReportSection: React.FC<ReportSectionProps> = ({
             key={report.id}
             report={report}
             onPress={() => onReportPress(report)}
-            colors={colors}
+            styles={styles}
+            t={t}
           />
         ))}
       </View>
@@ -204,7 +288,8 @@ const ReportSection: React.FC<ReportSectionProps> = ({
 export default function ReportsScreen() {
   const router = useRouter();
   const { userProfile } = useAppSelector((state) => state.auth);
-  const colors = useListColors();
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
 
   // Determine if user is staff (admin or supervisor)
   const isStaff = useMemo(() => {
@@ -221,52 +306,31 @@ export default function ReportsScreen() {
   const staffReports = isStaff ? STAFF_REPORTS : [];
 
   return (
-    <View
-      style={[
-        styles.container,
-        { backgroundColor: colors.gray50 },
-      ]}
-    >
+    <View style={styles.container}>
       {/* Header */}
-      <View
-        style={[
-          styles.header,
-          {
-            paddingTop: theme.spacing.md,
-            backgroundColor: colors.cellBackground,
-            borderBottomColor: colors.cellDivider,
-          },
-        ]}
-      >
+      <View style={styles.header}>
         <View style={styles.headerRow}>
           <View style={styles.headerTitleContainer}>
-            <Text
-              style={[
-                styles.headerTitle,
-                { color: colors.textPrimary },
-              ]}
-            >
+            <Text style={styles.headerTitle} accessibilityRole="header">
               Reports
             </Text>
-            <Text
-              style={[
-                styles.headerSubtitle,
-                { color: colors.textSecondary },
-              ]}
-            >
-              {isStaff
-                ? 'View operations and customer reports'
-                : 'View your inventory reports'}
+            <Text style={styles.headerSubtitle}>
+              {isStaff ? 'View operations and customer reports' : 'View your inventory reports'}
             </Text>
           </View>
           <Pressable
             onPress={() => router.push('/settings')}
-            style={styles.profileButton}
+            style={({ pressed }) => [styles.profileButton, pressed && styles.profileButtonPressed]}
+            accessibilityRole="button"
+            accessibilityLabel="Profile and settings"
           >
             <View
-              style={[styles.profileAvatar, { backgroundColor: colors.primary }]}
+              style={[
+                styles.profileAvatar,
+                { backgroundColor: t.avatar[avatarIndex(userProfile?.id || userProfile?.name || 'U', t.avatar.length)] },
+              ]}
             >
-              <Text style={styles.profileAvatarText}>
+              <Text style={styles.profileAvatarText} maxFontSizeMultiplier={1.6}>
                 {(userProfile?.name || 'U').charAt(0).toUpperCase()}
               </Text>
             </View>
@@ -281,111 +345,23 @@ export default function ReportsScreen() {
         showsVerticalScrollIndicator={false}
       >
         <ReportSection
-          title="Inventory Reports"
+          title="Inventory reports"
           reports={customerReports}
           onReportPress={handleReportPress}
-          colors={colors}
+          styles={styles}
+          t={t}
         />
 
         {isStaff && (
           <ReportSection
-            title="Operations Reports"
+            title="Operations reports"
             reports={staffReports}
             onReportPress={handleReportPress}
-            colors={colors}
+            styles={styles}
+            t={t}
           />
         )}
       </ScrollView>
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  header: {
-    paddingHorizontal: theme.spacing.lg,
-    paddingBottom: theme.spacing.lg,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  headerRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-  },
-  headerTitleContainer: {
-    flex: 1,
-  },
-  headerTitle: {
-    fontSize: theme.fontSize['2xl'],
-    fontWeight: theme.fontWeight.bold,
-  },
-  headerSubtitle: {
-    fontSize: theme.fontSize.sm,
-    marginTop: 4,
-  },
-  profileButton: {
-    marginLeft: theme.spacing.md,
-  },
-  profileAvatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  profileAvatarText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#FFFFFF',
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    padding: theme.spacing.lg,
-    paddingBottom: theme.spacing.xl * 2,
-  },
-  section: {
-    marginBottom: theme.spacing.xl,
-  },
-  sectionTitle: {
-    fontSize: theme.fontSize.sm,
-    fontWeight: theme.fontWeight.semibold,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: theme.spacing.md,
-    marginLeft: theme.spacing.xs,
-  },
-  sectionContent: {
-    gap: 12,
-  },
-  reportCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: theme.borderRadius.lg,
-    padding: theme.spacing.lg,
-    gap: 16,
-    ...theme.shadows.sm,
-  },
-  reportIconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  reportContent: {
-    flex: 1,
-  },
-  reportTitle: {
-    fontSize: theme.fontSize.base,
-    fontWeight: theme.fontWeight.semibold,
-    marginBottom: 4,
-  },
-  reportDescription: {
-    fontSize: theme.fontSize.sm,
-    lineHeight: 18,
-  },
-});
