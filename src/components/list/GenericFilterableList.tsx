@@ -47,7 +47,7 @@ import {
   SectionListRenderItem,
 } from 'react-native';
 import { FlashList, ListRenderItem } from '@shopify/flash-list';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';

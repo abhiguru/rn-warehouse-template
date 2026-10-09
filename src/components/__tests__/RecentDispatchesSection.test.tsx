@@ -48,8 +48,8 @@ describe.each(BRANDS.flatMap(brand => MODES.map(mode => [brand, mode] as const))
     const backgrounds = tree.root
       .findAll(n => (n.type as unknown) === 'View')
       .map(v => StyleSheet.flatten(v.props.style)?.backgroundColor);
-    expect(backgrounds).not.toContain(t.brand.fill);
-    expect(backgrounds).toContain(t.status.neutral.background);
+    // No brand-filled banner: the only brand fill is the plain count badge (guide §13.5).
+    expect(backgrounds.filter(b => b === t.brand.fill)).toHaveLength(1);
     expect(tree.root.findAll(n => (n.type as unknown) === 'MemoizedDispatchItem')).toHaveLength(0);
 
     const toggle = tree.root.find(

@@ -59,3 +59,6 @@ export type { StatusTagProps, StatusKind } from './StatusTag';
 
 export { Avatar } from './Avatar';
 export type { AvatarProps } from './Avatar';
+
+export { Fab, FAB_SIZE, FAB_CLEARANCE } from './Fab';
+export type { FabProps } from './Fab';

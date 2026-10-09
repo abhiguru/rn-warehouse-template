@@ -62,6 +62,7 @@ import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, layout, radius, space, touchTarget, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 
+import { FAB_CLEARANCE } from '@/components/ui/Fab';
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -702,17 +703,6 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({
       <View style={styles.header}>
         <Text style={styles.headerTitle} accessibilityRole="header">Invoices</Text>
         <View style={styles.headerActions}>
-          {canCreateInvoice && (
-            <IconButton
-              icon="plus"
-              size={iconSize.lg}
-              iconColor={t.brand.onFill}
-              containerColor={t.brand.fill}
-              style={styles.addBtn}
-              onPress={handleCreateInvoice}
-              accessibilityLabel="Create invoice"
-            />
-          )}
           {filterButton}
           <Pressable
             onPress={navigateToSettings}
@@ -906,7 +896,9 @@ const makeStyles = (t: ThemeTokens) => ({
     flexShrink: 1,
   },
   listContent: {
-    paddingVertical: space.sm,
+    paddingTop: space.sm,
+    // Room for the floating create button on the tab screen
+    paddingBottom: FAB_CLEARANCE,
   },
   // Section header: footnote, capitals, text.secondary, letter spacing 0.5 (§4, §13.6)
   sectionHeader: {

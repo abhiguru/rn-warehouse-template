@@ -8,6 +8,7 @@
  */
 
 import { StyleSheet } from 'react-native';
+import { FAB_CLEARANCE } from '@/components/ui/Fab';
 import {
   fontWeight,
   layout,
@@ -274,7 +275,7 @@ export const makeGRNListStyles = (t: ThemeTokens) => ({
     paddingHorizontal: layout.marginCompact,
     paddingTop: space.sm,
     // Room for the floating create button
-    paddingBottom: 56 + space.xxxl,
+    paddingBottom: FAB_CLEARANCE,
   },
 
   // =========================================================================
@@ -619,26 +620,6 @@ export const makeGRNListStyles = (t: ThemeTokens) => ({
     color: t.text.secondary,
     textAlign: 'center' as const,
     marginBottom: space.lg,
-  },
-
-  // =========================================================================
-  // Floating create button (guide 14.1)
-  // =========================================================================
-  fab: {
-    position: 'absolute' as const,
-    right: layout.marginCompact,
-    bottom: layout.marginCompact,
-    width: 56,
-    height: 56,
-    borderRadius: radius.pill,
-    backgroundColor: t.brand.fill,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    ...t.shadow[3],
-  },
-
-  fabPressed: {
-    backgroundColor: t.brand.fillPressed,
   },
 
   // =========================================================================

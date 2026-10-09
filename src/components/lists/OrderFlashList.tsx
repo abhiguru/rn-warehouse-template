@@ -60,6 +60,7 @@ import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, layout, radius, space, touchTarget, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 
+import { Fab, FAB_CLEARANCE } from '@/components/ui/Fab';
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -499,14 +500,6 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
     <View style={styles.headerActions}>
       <OrderRefreshAction onRefresh={handleRefresh} refreshing={isRefreshing} label="Refresh orders" />
       <IconButton
-        icon="plus"
-        size={iconSize.lg}
-        iconColor={t.brand.tint}
-        style={styles.iconButton}
-        onPress={handleAddOrder}
-        accessibilityLabel="Add order"
-      />
-      <IconButton
         icon={showWithItemsOnly ? 'filter-check' : 'filter-variant'}
         size={iconSize.lg}
         iconColor={showWithItemsOnly ? t.brand.tint : t.icon.primary}
@@ -569,6 +562,8 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
           isFiltered={showWithItemsOnly}
           onClearFilters={handleClearFilters}
         />
+
+        <Fab label="Create order" onPress={handleAddOrder} />
 
         {/* Customer Search Bottom Sheet */}
         <CustomerSearchBottomSheet
@@ -643,6 +638,8 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
           showsVerticalScrollIndicator={false}
         />
       </View>
+
+      <Fab label="Create order" onPress={handleAddOrder} />
 
       {/* Snackbar */}
       <Snackbar
@@ -761,7 +758,8 @@ const makeStyles = (t: ThemeTokens) => ({
     flex: 1,
   },
   listContent: {
-    paddingBottom: space.sm,
+    // Room for the floating create button
+    paddingBottom: FAB_CLEARANCE,
   },
   // Section header: footnote, capitals, text.secondary, letter spacing 0.5 (§4, §13.6)
   sectionHeader: {

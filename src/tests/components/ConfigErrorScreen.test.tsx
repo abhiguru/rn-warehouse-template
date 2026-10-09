@@ -68,7 +68,7 @@ describe.each(BRANDS.flatMap(brand => (['light', 'dark'] as Mode[]).map(mode => 
       const backgrounds = renderer!.root.findAll(node =>
         [].concat(node.props.style ?? []).some((s: { backgroundColor?: string } | null) => s?.backgroundColor === t.background.base));
       expect(backgrounds.length).toBeGreaterThan(0);
-      const icon = renderer!.root.findAll(node => (node.type as unknown) === 'MaterialCommunityIcons' && node.props.name === 'cloud-off-outline');
+      const icon = renderer!.root.findAll(node => (node.type as unknown) === 'Icon' && node.props.name === 'cloud-off-outline');
       expect(icon[0].props.color).toBe(t.status.negative.text);
     });
   }

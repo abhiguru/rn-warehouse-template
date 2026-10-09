@@ -70,6 +70,7 @@ import { makeGRNListStyles, type GRNListStyles } from './GRNListFiori.styles';
 // Shared formatters
 import { formatSectionDate, formatNumber, formatCount, formatDate, formatWeight } from '@/utils/formatters';
 
+import { Fab } from '@/components/ui/Fab';
 const logger = createLogger('GRNListFiori');
 
 // Sort configuration
@@ -1168,14 +1169,7 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({
 
       {/* Create GRN (floating action button, guide 14.1) */}
       {canCreateGRN && (
-        <Pressable
-          style={({ pressed }) => [styles.fab, pressed && styles.fabPressed]}
-          onPress={handleCreateGRN}
-          accessibilityRole="button"
-          accessibilityLabel="Create GRN"
-        >
-          <Icon name="plus" size={iconSize.lg} color={t.brand.onFill} />
-        </Pressable>
+        <Fab label="Create GRN" onPress={handleCreateGRN} />
       )}
 
       {/* Filter modal - only render the Portal when visible to avoid Android gesture handler issues */}
