@@ -70,12 +70,13 @@ const NO_CUSTOMER = 'No customer is linked to your account. Ask your facility to
 // Status (guide §3.5)
 // ============================================================================
 
-type StatusKind = 'negative' | 'critical' | 'positive' | 'neutral';
+type StatusKind = 'negative' | 'critical' | 'positive' | 'informative' | 'neutral';
 
 const STATUS_ICON: Record<StatusKind, string> = {
   negative: 'alert-circle',
   critical: 'alert',
   positive: 'check-circle',
+  informative: 'information',
   neutral: 'circle-outline',
 };
 
@@ -84,10 +85,10 @@ interface StatusInfo {
   label: string;
 }
 
-/** Stock age buckets: newest positive, middle buckets critical, oldest negative. */
+/** Stock age buckets, as in the stock aging report: positive, informative, critical, negative. */
 const AGING_STATUS: Record<string, StatusKind> = {
   '0-120': 'positive',
-  '121-240': 'critical',
+  '121-240': 'informative',
   '241-364': 'critical',
   '364+': 'negative',
 };
