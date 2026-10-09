@@ -850,7 +850,7 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
                 onConfirm={handleConfirmSubmit}
                 onCancel={() => setShowConfirmDialog(false)}
                 variant="default"
-                icon={isCreateMode ? 'checkmark-circle' : 'create'}
+                icon={isCreateMode ? 'check-circle' : 'pencil-outline'}
             />
 
             {/* Success Dialog (create mode) */}
@@ -934,7 +934,7 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
                 onConfirm={handleDiscardConfirm}
                 onCancel={() => setShowDiscardDialog(false)}
                 variant="danger"
-                icon="trash-outline"
+                icon="trash-can-outline"
             />
 
             {/* Edit Success Dialog (edit mode) */}
@@ -947,7 +947,7 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
                 onConfirm={handleEditSuccessConfirm}
                 onCancel={handleEditSuccessConfirm}
                 variant="default"
-                icon="checkmark-circle"
+                icon="check-circle"
             />
         </View>
     );

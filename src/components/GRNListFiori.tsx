@@ -632,7 +632,7 @@ const EmptyState: React.FC<EmptyStateProps> = memo(({ activeFilterCount, onCreat
           Clear filters
         </Button>
       ) : canCreate ? (
-        <Button type="primary" variant="tint" leftIcon="add" onPress={onCreateGRN}>
+        <Button type="primary" variant="tint" leftIcon="plus" onPress={onCreateGRN}>
           Create GRN
         </Button>
       ) : null}

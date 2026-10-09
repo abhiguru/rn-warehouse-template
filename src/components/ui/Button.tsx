@@ -23,7 +23,7 @@ import {
   View,
   Insets,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, radius, space, touchTarget, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
@@ -52,10 +52,10 @@ export interface ButtonProps extends Omit<TouchableOpacityProps, 'style'> {
   loadingText?: string;
   /** Disabled state */
   disabled?: boolean;
-  /** Left icon name (Ionicons) */
-  leftIcon?: keyof typeof Ionicons.glyphMap;
-  /** Right icon name (Ionicons) */
-  rightIcon?: keyof typeof Ionicons.glyphMap;
+  /** Left icon name (MaterialCommunityIcons) */
+  leftIcon?: string;
+  /** Right icon name (MaterialCommunityIcons) */
+  rightIcon?: string;
   /** Icon-only button (no text); children becomes the accessibility label */
   iconOnly?: boolean;
   /** Custom container style */
@@ -261,7 +261,7 @@ export function Button({
           />
         ) : (
           leftIcon && (
-            <Ionicons
+            <Icon
               name={leftIcon}
               size={glyphSize}
               color={colors.text}
@@ -278,7 +278,7 @@ export function Button({
         )}
 
         {rightIcon && !loading && (
-          <Ionicons
+          <Icon
             name={rightIcon}
             size={glyphSize}
             color={colors.text}

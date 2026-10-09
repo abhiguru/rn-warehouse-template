@@ -710,7 +710,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
         onConfirm={handleConfirmSubmit}
         onCancel={() => setShowConfirmDialog(false)}
         variant="default"
-        icon={isCreateMode ? 'add-circle' : 'create'}
+        icon={isCreateMode ? 'plus-circle' : 'pencil-outline'}
       />
 
       <DocumentSuccessDialog

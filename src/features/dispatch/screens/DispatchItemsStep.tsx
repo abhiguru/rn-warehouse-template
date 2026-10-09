@@ -1181,7 +1181,7 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
                 onConfirm={handleDiscardConfirm}
                 onCancel={() => setShowDiscardDialog(false)}
                 variant="danger"
-                icon="trash-outline"
+                icon="trash-can-outline"
             />
 
             <ConfirmDialog
@@ -1205,7 +1205,7 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
                 onConfirm={handleUnsavedBackConfirm}
                 onCancel={() => setShowUnsavedBackDialog(false)}
                 variant="warning"
-                icon="arrow-back-circle-outline"
+                icon="arrow-left-circle-outline"
             />
 
             <ConfirmDialog

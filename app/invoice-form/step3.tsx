@@ -443,7 +443,7 @@ export default function InvoiceFormStep3() {
         }}
         onCancel={() => setShowConfirmSubmitDialog(false)}
         variant="default"
-        icon="checkmark-circle"
+        icon="check-circle"
       />
     </View>
   );

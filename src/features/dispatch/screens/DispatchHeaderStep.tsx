@@ -608,7 +608,7 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
                 onConfirm={handleDiscardConfirm}
                 onCancel={() => setShowDiscardDialog(false)}
                 variant="danger"
-                icon="trash-outline"
+                icon="trash-can-outline"
             />
         </View>
     );

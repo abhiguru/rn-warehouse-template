@@ -319,7 +319,7 @@ export default function InvoiceFormStep4() {
         onConfirm={handleConfirmSubmit}
         onCancel={() => setShowConfirmDialog(false)}
         variant="default"
-        icon="document-text"
+        icon="file-document-outline"
       />
 
       {/* Success Dialog */}

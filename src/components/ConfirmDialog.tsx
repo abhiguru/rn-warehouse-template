@@ -11,14 +11,14 @@
  * confirm button repeats the verb ("Delete GRN", "Cancel").
  */
 
-import React, { ComponentProps } from 'react';
+import React from 'react';
 import { View, Text, Modal, Pressable, StyleSheet } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, layout, radius, space, touchTarget, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 
-type IoniconsName = ComponentProps<typeof Ionicons>['name'];
+
 
 export type ConfirmVariant = 'default' | 'warning' | 'danger';
 
@@ -31,8 +31,8 @@ export interface ConfirmDialogProps {
   onConfirm: () => void;
   onCancel: () => void;
   variant?: ConfirmVariant;
-  /** Optional icon name (Ionicons) */
-  icon?: IoniconsName;
+  /** Optional icon name (MaterialCommunityIcons) */
+  icon?: string;
   /** Whether tapping the scrim cancels (default true). The back button always cancels. */
   dismissible?: boolean;
 }
@@ -139,8 +139,8 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   const destructive = variant === 'danger';
 
   // Icon: status colours for warning and danger, brand tint otherwise
-  const iconName: IoniconsName | undefined =
-    icon ?? (variant === 'danger' ? 'alert-circle-outline' : variant === 'warning' ? 'warning-outline' : undefined);
+  const iconName: string | undefined =
+    icon ?? (variant === 'danger' ? 'alert-circle-outline' : variant === 'warning' ? 'alert-outline' : undefined);
   const iconColor =
     variant === 'danger' ? t.status.negative.text : variant === 'warning' ? t.status.critical.text : t.brand.tint;
   const iconBg =
@@ -170,7 +170,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
         >
           {iconName && (
             <View style={[styles.iconContainer, iconBg]} accessible={false} importantForAccessibility="no-hide-descendants">
-              <Ionicons name={iconName} size={iconSize.xl} color={iconColor} />
+              <Icon name={iconName} size={iconSize.xl} color={iconColor} />
             </View>
           )}
 

@@ -402,7 +402,7 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
             <Button
               type="primary"
               size="standalone"
-              leftIcon="add"
+              leftIcon="plus"
               onPress={() => setShowItemCatalog(true)}
               accessibilityLabel="Add items to order"
             >

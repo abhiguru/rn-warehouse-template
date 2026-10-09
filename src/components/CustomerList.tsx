@@ -224,7 +224,7 @@ export function CustomerList({
         <Button
           type="primary"
           size="standalone"
-          leftIcon="add"
+          leftIcon="plus"
           onPress={() => router.push('/customer-form/step1')}
         >
           Add customer
