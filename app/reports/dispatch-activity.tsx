@@ -2,8 +2,8 @@
  * Dispatch Activity Report Screen (C3)
  *
  * Displays recent dispatch activity with item-level details.
- * 100% SAP Fiori compliant following design specs.
- *
+ * Reports pattern (docs/STYLE_GUIDE.md §14.10): period selector, KPI grid,
+ * then object cells grouped by date.
  */
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
@@ -11,7 +11,6 @@ import {
   View,
   Text,
   ScrollView,
-  TouchableOpacity,
   Pressable,
   StyleSheet,
   RefreshControl,
@@ -31,8 +30,17 @@ import {
 } from '@/components/reports';
 import { getCustomerDispatchActivity, getAllDispatchActivity } from '@/services/reporting';
 import { useRoleBasedAccess } from '@/hooks/useRoleBasedAccess';
-import theme from '@/theme';
-import { useFioriColors } from '@/theme/fioriColors';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import {
+  fontWeight,
+  iconSize,
+  layout,
+  radius,
+  space,
+  touchTarget,
+  typography,
+} from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
 import type {
   DispatchActivityData,
   DispatchActivityRecord,
@@ -43,53 +51,257 @@ import type {
 } from '@/types/report.types';
 import { formatNumber, formatWeight, formatDate, formatSectionDate } from '@/utils/formatters';
 
-// ============================================================================
-// SAP Fiori Design Tokens - Static values (dimensions, typography)
-// Colors are now dynamic via useFioriColors hook
-// ============================================================================
-const FIORI_STATIC = {
-  // Dimensions from Fiori spec
-  dimensions: {
-    objectCellMinHeight: 72,
-    objectCellImageSize: 44,
-    objectCellImageRadius: 10,
-    cardCornerRadius: 12,
-    cardPadding: 16,
-    cardBodyPadding: 16,
-    sectionHeaderHeight: 32,
-    touchTarget: 44,
-    iconButtonSize: 24,
-  },
-  // Typography from Fiori spec
-  typography: {
-    sectionHeader: {
-      fontSize: 13,
-      fontWeight: '600' as const,
-      letterSpacing: 0.5,
-      textTransform: 'uppercase' as const,
-    },
-    title: {
-      fontSize: 16,
-      fontWeight: '600' as const,
-      lineHeight: 22,
-    },
-    subtitle: {
-      fontSize: 14,
-      lineHeight: 18,
-    },
-    footnote: {
-      fontSize: 13,
-      lineHeight: 16,
-    },
-    caption: {
-      fontSize: 12,
-      lineHeight: 16,
-    },
-  },
-};
+const LOAD_ERROR = "Couldn't load dispatch activity. Check your connection and try again.";
+
+const bagsLabel = (qty: number) => `${formatNumber(qty)} ${qty === 1 ? 'bag' : 'bags'}`;
 
 // ============================================================================
-// Fiori Section Header Component
+// Styles (tokens only)
+// ============================================================================
+const makeStyles = (t: ThemeTokens) => ({
+  container: {
+    flex: 1,
+    backgroundColor: t.background.base,
+  },
+  loadingContainer: {
+    flex: 1,
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingBottom: space.xxxl,
+  },
+  periodInfo: {
+    paddingHorizontal: layout.marginCompact,
+    paddingVertical: space.sm,
+  },
+  periodText: {
+    ...typography.footnote,
+    color: t.text.secondary,
+    textAlign: 'center' as const,
+  },
+  retryRow: {
+    alignItems: 'center' as const,
+    paddingBottom: space.xxl,
+  },
+  retryButton: {
+    minHeight: touchTarget,
+    minWidth: 120,
+    paddingHorizontal: space.xl,
+    borderRadius: radius.button,
+    borderWidth: 1,
+    borderColor: t.border.button,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+  },
+  retryButtonPressed: {
+    backgroundColor: t.brand.subtle,
+  },
+  retryText: {
+    ...typography.callout,
+    color: t.brand.tint,
+  },
+  // Section header (guide §13.6)
+  sectionHeader: {
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'center' as const,
+    paddingTop: space.sm,
+    paddingBottom: space.sm,
+    minHeight: 32,
+  },
+  sectionHeaderText: {
+    ...typography.footnote,
+    fontWeight: fontWeight.semibold,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase' as const,
+    color: t.text.secondary,
+  },
+  sectionHeaderButton: {
+    minWidth: touchTarget,
+    minHeight: touchTarget,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+  },
+  sectionHeaderAction: {
+    ...typography.subhead,
+    fontWeight: fontWeight.medium,
+    color: t.brand.tint,
+  },
+  section: {
+    marginTop: space.lg,
+    paddingHorizontal: layout.marginCompact,
+  },
+  dateGroup: {
+    marginBottom: space.xl,
+  },
+  dispatchList: {
+    gap: space.sm,
+  },
+  // Cards (guide §13.6)
+  card: {
+    backgroundColor: t.surface.card,
+    borderRadius: radius.card,
+    overflow: 'hidden' as const,
+    ...t.shadow[2],
+  },
+  cardBody: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: t.border.divider,
+  },
+  listCard: {
+    backgroundColor: t.surface.card,
+    borderRadius: radius.card,
+    overflow: 'hidden' as const,
+    ...t.shadow[2],
+  },
+  divider: {
+    height: StyleSheet.hairlineWidth,
+    marginLeft: 72, // Inset past the 44 icon + padding
+    backgroundColor: t.border.divider,
+  },
+  objectCell: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    minHeight: layout.objectCellMinHeight,
+    paddingVertical: space.md,
+    paddingLeft: space.lg,
+    paddingRight: space.xs,
+    gap: space.md,
+    backgroundColor: t.surface.card,
+  },
+  objectCellPressed: {
+    backgroundColor: t.surface.cardPressed,
+  },
+  objectCellImage: {
+    width: layout.avatar.md,
+    height: layout.avatar.md,
+    borderRadius: radius.pill,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    backgroundColor: t.brand.subtle,
+  },
+  objectCellContent: {
+    flex: 1,
+    justifyContent: 'center' as const,
+  },
+  objectCellTitle: {
+    ...typography.headline,
+    color: t.text.primary,
+  },
+  objectCellSubtitle: {
+    ...typography.subhead,
+    color: t.text.secondary,
+  },
+  objectCellAttributes: {
+    alignItems: 'flex-end' as const,
+    justifyContent: 'center' as const,
+  },
+  objectCellAttributeValue: {
+    ...typography.headline,
+    color: t.text.primary,
+    fontVariant: ['tabular-nums' as const],
+  },
+  objectCellAttributeLabel: {
+    ...typography.caption1,
+    color: t.text.secondary,
+  },
+  objectCellAccessory: {
+    width: iconSize.lg,
+    height: iconSize.lg,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+  },
+  navButton: {
+    width: touchTarget,
+    height: touchTarget,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    borderRadius: radius.pill,
+  },
+  navButtonPressed: {
+    backgroundColor: t.surface.cardActive,
+  },
+  // Item rows inside a dispatch card (no shadow: card on card)
+  itemRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.md,
+    minHeight: 56,
+    gap: space.md,
+    backgroundColor: t.background.base,
+  },
+  itemRowPressed: {
+    backgroundColor: t.surface.cardPressed,
+  },
+  itemRowBorder: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.divider,
+  },
+  itemRowContent: {
+    flex: 1,
+  },
+  itemRowTitleRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.sm,
+    flexWrap: 'wrap' as const,
+  },
+  itemRowTitle: {
+    ...typography.subhead,
+    fontWeight: fontWeight.medium,
+    color: t.text.primary,
+    flexShrink: 1,
+  },
+  itemRowFootnote: {
+    ...typography.footnote,
+    color: t.text.secondary,
+    marginTop: space.xxs,
+  },
+  itemRowAttributes: {
+    alignItems: 'flex-end' as const,
+  },
+  itemRowQtyRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'baseline' as const,
+    gap: space.xxs,
+  },
+  itemRowQty: {
+    ...typography.subhead,
+    fontWeight: fontWeight.semibold,
+    color: t.text.primary,
+    fontVariant: ['tabular-nums' as const],
+  },
+  itemRowOrigQty: {
+    ...typography.caption1,
+    color: t.text.secondary,
+    fontVariant: ['tabular-nums' as const],
+  },
+  itemRowWeight: {
+    ...typography.caption1,
+    color: t.text.secondary,
+    marginTop: space.xxs,
+    fontVariant: ['tabular-nums' as const],
+  },
+  // Neutral tag for the package mark (guide §13.5 InfoChip)
+  tag: {
+    paddingHorizontal: space.sm,
+    paddingVertical: space.xxs,
+    borderRadius: radius.field,
+    alignSelf: 'flex-start' as const,
+    backgroundColor: t.status.neutral.background,
+  },
+  tagText: {
+    ...typography.caption1,
+    fontWeight: fontWeight.semibold,
+    color: t.status.neutral.text,
+  },
+});
+
+// ============================================================================
+// Section Header Component
 // ============================================================================
 interface FioriSectionHeaderProps {
   title: string;
@@ -101,33 +313,32 @@ interface FioriSectionHeaderProps {
 }
 
 const FioriSectionHeader: React.FC<FioriSectionHeaderProps> = ({ title, action }) => {
-  const FIORI = useFioriColors();
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
 
   return (
-    <View style={[styles.fioriSectionHeader, { backgroundColor: 'transparent' }]}>
-      <Text style={[styles.fioriSectionHeaderText, { color: FIORI.colors.textSecondary }]}>
-        {title.toUpperCase()}
+    <View style={styles.sectionHeader}>
+      <Text style={styles.sectionHeaderText} accessibilityRole="header">
+        {title}
       </Text>
       {action && (
         action.icon ? (
-          <TouchableOpacity
+          <Pressable
             onPress={action.onPress}
-            style={styles.fioriSectionHeaderButton}
+            style={styles.sectionHeaderButton}
             accessibilityRole="button"
             accessibilityLabel={action.label || title}
           >
-            <Icon name={action.icon} size={20} color={FIORI.colors.tint} />
-          </TouchableOpacity>
+            <Icon name={action.icon} size={iconSize.md} color={t.brand.tint} />
+          </Pressable>
         ) : (
-          <TouchableOpacity
+          <Pressable
             onPress={action.onPress}
-            style={styles.fioriSectionHeaderButton}
+            style={styles.sectionHeaderButton}
             accessibilityRole="button"
           >
-            <Text style={[styles.fioriSectionHeaderAction, { color: FIORI.colors.tint }]}>
-              {action.label}
-            </Text>
-          </TouchableOpacity>
+            <Text style={styles.sectionHeaderAction}>{action.label}</Text>
+          </Pressable>
         )
       )}
     </View>
@@ -135,7 +346,7 @@ const FioriSectionHeader: React.FC<FioriSectionHeaderProps> = ({ title, action }
 };
 
 // ============================================================================
-// Fiori Object Cell - Dispatch Card
+// Object Cell - Dispatch Card
 // ============================================================================
 interface DispatchCardProps {
   dispatch: DispatchActivityRecord;
@@ -144,7 +355,8 @@ interface DispatchCardProps {
 }
 
 const DispatchCard: React.FC<DispatchCardProps> = ({ dispatch, isExpanded, onToggle }) => {
-  const FIORI = useFioriColors();
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
 
   const handleNavigateToDetails = () => {
     if (dispatch.disp_id) {
@@ -152,70 +364,64 @@ const DispatchCard: React.FC<DispatchCardProps> = ({ dispatch, isExpanded, onTog
     }
   };
 
+  const dateLabel = formatDate(dispatch.disp_date, 'short');
+
   return (
-    <View style={[styles.fioriCard, { backgroundColor: FIORI.colors.background, borderColor: FIORI.colors.divider }]}>
-      {/* Object Cell Header - Main touchable area */}
+    <View style={styles.card}>
+      {/* Object cell header - toggles the item list */}
       <Pressable
-        style={({ pressed }) => [
-          styles.fioriObjectCell,
-          { backgroundColor: FIORI.colors.background },
-          pressed && { backgroundColor: FIORI.colors.backgroundSecondary },
-        ]}
+        style={({ pressed }) => [styles.objectCell, pressed && styles.objectCellPressed]}
         onPress={onToggle}
         accessibilityRole="button"
-        accessibilityLabel={`Dispatch ${dispatch.disp_no}, ${dispatch.total_qty} units`}
-        accessibilityHint={isExpanded ? 'Tap to collapse' : 'Tap to expand items'}
+        accessibilityLabel={`Dispatch ${dispatch.disp_no}, ${dateLabel}, ${dispatch.supervisor_name}, ${bagsLabel(dispatch.total_qty)}`}
+        accessibilityHint={isExpanded ? 'Hides the items' : 'Shows the items'}
+        accessibilityState={{ expanded: isExpanded }}
       >
-        {/* A. Detail Image (44pt per Fiori spec) */}
-        <View style={[styles.fioriObjectCellImage, { backgroundColor: FIORI.colors.infoLight }]}>
-          <Icon name="truck-fast" size={22} color={FIORI.colors.info} />
+        <View style={styles.objectCellImage}>
+          <Icon name="truck-delivery-outline" size={iconSize.md} color={t.brand.tint} />
         </View>
 
-        {/* C. Main Content */}
-        <View style={styles.fioriObjectCellContent}>
-          {/* Title (mandatory) */}
-          <Text style={[styles.fioriObjectCellTitle, { color: FIORI.colors.textPrimary }]} numberOfLines={1}>
-            {dispatch.disp_no}
+        <View style={styles.objectCellContent}>
+          <Text style={styles.objectCellTitle} numberOfLines={2}>
+            Dispatch {dispatch.disp_no}
           </Text>
-          {/* Subtitle */}
-          <Text style={[styles.fioriObjectCellSubtitle, { color: FIORI.colors.textSecondary }]} numberOfLines={1}>
-            {formatDate(dispatch.disp_date, 'short')} • {dispatch.supervisor_name}
+          <Text style={styles.objectCellSubtitle} numberOfLines={1}>
+            {dateLabel} · {dispatch.supervisor_name}
           </Text>
         </View>
 
-        {/* E. Attributes */}
-        <View style={styles.fioriObjectCellAttributes}>
-          <Text style={[styles.fioriObjectCellAttributeValue, { color: FIORI.colors.textPrimary }]}>
+        <View style={styles.objectCellAttributes}>
+          <Text style={styles.objectCellAttributeValue}>
             {formatNumber(dispatch.total_qty)}
           </Text>
-          <Text style={[styles.fioriObjectCellAttributeLabel, { color: FIORI.colors.textSecondary }]}>units</Text>
+          <Text style={styles.objectCellAttributeLabel}>
+            {dispatch.total_qty === 1 ? 'bag' : 'bags'}
+          </Text>
         </View>
 
-        {/* F. Accessory View - Expand/Collapse */}
-        <View style={styles.fioriObjectCellAccessory}>
+        <View style={styles.objectCellAccessory}>
           <Icon
             name={isExpanded ? 'chevron-up' : 'chevron-down'}
-            size={20}
-            color={FIORI.colors.textSecondary}
+            size={iconSize.md}
+            color={t.icon.secondary}
           />
         </View>
 
-        {/* F. Accessory View - Navigation (if navigable) */}
         {dispatch.disp_id && (
-          <TouchableOpacity
-            style={styles.fioriObjectCellNavButton}
+          <Pressable
+            style={({ pressed }) => [styles.navButton, pressed && styles.navButtonPressed]}
             onPress={handleNavigateToDetails}
             accessibilityRole="button"
-            accessibilityLabel="View dispatch details"
+            accessibilityLabel={`Open dispatch ${dispatch.disp_no}`}
           >
-            <Icon name="chevron-right" size={20} color={FIORI.colors.textSecondary} />
-          </TouchableOpacity>
+            <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />
+          </Pressable>
         )}
       </Pressable>
 
-      {/* Expandable Item List */}
+      {/* Expandable item list */}
       {isExpanded && dispatch.items.length > 0 && (
-        <View style={[styles.fioriCardBody, { backgroundColor: FIORI.colors.backgroundSecondary, borderTopColor: FIORI.colors.divider }]}>
+        <View style={styles.cardBody}>
           {dispatch.items.map((item, index) => (
             <ItemRow
               key={`${dispatch.disp_id || 'item'}-${index}`}
@@ -230,7 +436,7 @@ const DispatchCard: React.FC<DispatchCardProps> = ({ dispatch, isExpanded, onTog
 };
 
 // ============================================================================
-// Fiori Object Cell - Item Row (nested within dispatch card)
+// Item Row (nested within dispatch card)
 // ============================================================================
 interface ItemRowProps {
   item: DispatchItemDetail;
@@ -238,7 +444,8 @@ interface ItemRowProps {
 }
 
 const ItemRow: React.FC<ItemRowProps> = ({ item, isLast = false }) => {
-  const FIORI = useFioriColors();
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
 
   const handlePress = () => {
     if (item.source_grn_id) {
@@ -250,42 +457,36 @@ const ItemRow: React.FC<ItemRowProps> = ({ item, isLast = false }) => {
 
   const content = (
     <>
-      {/* Main Content */}
-      <View style={styles.fioriItemRowContent}>
-        {/* Title with Tag */}
-        <View style={styles.fioriItemRowTitleRow}>
-          <Text style={[styles.fioriItemRowTitle, { color: FIORI.colors.textPrimary }]} numberOfLines={1}>
+      <View style={styles.itemRowContent}>
+        <View style={styles.itemRowTitleRow}>
+          <Text style={styles.itemRowTitle} numberOfLines={2}>
             {item.item_name}
           </Text>
-          {/* Fiori Tag/Badge for package mark */}
           {item.package_mark && (
-            <View style={[styles.fioriTag, { backgroundColor: FIORI.colors.infoLight }]}>
-              <Text style={[styles.fioriTagText, { color: FIORI.colors.info }]}>{item.package_mark}</Text>
+            <View style={styles.tag}>
+              <Text style={styles.tagText} maxFontSizeMultiplier={1.6}>{item.package_mark}</Text>
             </View>
           )}
         </View>
-        {/* Footnote */}
-        <Text style={[styles.fioriItemRowFootnote, { color: FIORI.colors.textSecondary }]} numberOfLines={1}>
-          {[`From: ${item.source_grn}`, item.rack].filter(Boolean).join(' • ')}
+        <Text style={styles.itemRowFootnote} numberOfLines={1}>
+          {[`GRN ${item.source_grn}`, item.rack].filter(Boolean).join(' · ')}
         </Text>
       </View>
 
-      {/* Attributes */}
-      <View style={styles.fioriItemRowAttributes}>
-        <View style={styles.fioriItemRowQtyRow}>
-          <Text style={[styles.fioriItemRowQty, { color: FIORI.colors.textPrimary }]}>{formatNumber(item.qty)}</Text>
+      <View style={styles.itemRowAttributes}>
+        <View style={styles.itemRowQtyRow}>
+          <Text style={styles.itemRowQty}>{formatNumber(item.qty)}</Text>
           {item.orig_qty && item.orig_qty !== item.qty && (
-            <Text style={[styles.fioriItemRowOrigQty, { color: FIORI.colors.textSecondary }]}>/ {formatNumber(item.orig_qty)}</Text>
+            <Text style={styles.itemRowOrigQty}>of {formatNumber(item.orig_qty)}</Text>
           )}
         </View>
         {item.weight && (
-          <Text style={[styles.fioriItemRowWeight, { color: FIORI.colors.textSecondary }]}>{formatWeight(item.weight)}</Text>
+          <Text style={styles.itemRowWeight}>{formatWeight(item.weight)}</Text>
         )}
       </View>
 
-      {/* Accessory - Navigation Chevron */}
       {isNavigable && (
-        <Icon name="chevron-right" size={16} color={FIORI.colors.textSecondary} />
+        <Icon name="chevron-right" size={iconSize.sm} color={t.icon.secondary} />
       )}
     </>
   );
@@ -294,15 +495,14 @@ const ItemRow: React.FC<ItemRowProps> = ({ item, isLast = false }) => {
     return (
       <Pressable
         style={({ pressed }) => [
-          styles.fioriItemRow,
-          { backgroundColor: FIORI.colors.backgroundSecondary },
-          !isLast && [styles.fioriItemRowBorder, { borderBottomColor: FIORI.colors.divider }],
-          pressed && { backgroundColor: FIORI.colors.cardBackgroundPressed },
+          styles.itemRow,
+          !isLast && styles.itemRowBorder,
+          pressed && styles.itemRowPressed,
         ]}
         onPress={handlePress}
         accessibilityRole="button"
-        accessibilityLabel={`${item.item_name}, ${item.qty} units`}
-        accessibilityHint="Tap to view source GRN"
+        accessibilityLabel={`${item.item_name}, ${bagsLabel(item.qty)}, GRN ${item.source_grn}`}
+        accessibilityHint="Opens the source GRN"
       >
         {content}
       </Pressable>
@@ -310,11 +510,11 @@ const ItemRow: React.FC<ItemRowProps> = ({ item, isLast = false }) => {
   }
 
   return (
-    <View style={[
-      styles.fioriItemRow,
-      { backgroundColor: FIORI.colors.backgroundSecondary },
-      !isLast && [styles.fioriItemRowBorder, { borderBottomColor: FIORI.colors.divider }],
-    ]}>
+    <View
+      style={[styles.itemRow, !isLast && styles.itemRowBorder]}
+      accessible
+      accessibilityLabel={`${item.item_name}, ${bagsLabel(item.qty)}, GRN ${item.source_grn}`}
+    >
       {content}
     </View>
   );
@@ -337,7 +537,8 @@ function groupDispatchesByDate(dispatches: DispatchActivityRecord[]): Map<string
 // CustomerCard moved to @/components/reports/ReportCustomerCard (J14 fix)
 
 export default function DispatchActivityScreen() {
-  const FIORI = useFioriColors();
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
 
   // Role-based access (J12 fix)
   const {
@@ -391,11 +592,11 @@ export default function DispatchActivityScreen() {
         // Backend now filters by user permissions via auth.uid()
         setAllCustomersData(response.data);
       } else {
-        setError(response.error || 'Failed to load dispatch activity');
+        setError(LOAD_ERROR);
       }
     } catch (err) {
       console.error('[DispatchActivity] Error fetching all customers data:', err);
-      setError('An unexpected error occurred');
+      setError(LOAD_ERROR);
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
@@ -423,11 +624,11 @@ export default function DispatchActivityScreen() {
       if (response.success && response.data) {
         setData(response.data);
       } else {
-        setError(response.error || 'Failed to load dispatch activity');
+        setError(LOAD_ERROR);
       }
     } catch (err) {
       console.error('[DispatchActivity] Error fetching single customer data:', err);
-      setError('An unexpected error occurred');
+      setError(LOAD_ERROR);
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
@@ -454,7 +655,7 @@ export default function DispatchActivityScreen() {
       // Regular users with only one assigned customer go directly to that customer
       fetchSingleCustomerData(singleAssignedCustomerId);
     } else {
-      setError('No customer assigned to your account');
+      setError('No customer is linked to your account. Ask your facility to add one.');
       setIsLoading(false);
     }
   }, []);
@@ -564,7 +765,7 @@ export default function DispatchActivityScreen() {
     const summary = allCustomersData.summary;
     return [
       {
-        icon: 'truck-fast',
+        icon: 'truck-delivery-outline',
         value: summary.total_dispatches,
         label: 'Dispatches',
         variant: 'primary',
@@ -572,7 +773,7 @@ export default function DispatchActivityScreen() {
       {
         icon: 'package-variant',
         value: summary.total_quantity,
-        label: 'Units Dispatched',
+        label: 'Bags dispatched',
         variant: 'secondary',
       },
     ];
@@ -585,7 +786,7 @@ export default function DispatchActivityScreen() {
     const summary = data.summary;
     return [
       {
-        icon: 'truck-fast',
+        icon: 'truck-delivery-outline',
         value: summary.total_dispatches,
         label: 'Dispatches',
         variant: 'secondary',
@@ -593,7 +794,7 @@ export default function DispatchActivityScreen() {
       {
         icon: 'package-variant',
         value: summary.total_quantity,
-        label: 'Units Dispatched',
+        label: 'Bags dispatched',
         variant: 'primary',
       },
     ];
@@ -606,21 +807,42 @@ export default function DispatchActivityScreen() {
   }, [data?.dispatches]);
 
   const getDateRangeSubtitle = (): string => {
-    return `${formatDate(dateRange.from, 'short')} - ${formatDate(dateRange.to, 'short')}`;
+    return `${formatDate(dateRange.from, 'short')} – ${formatDate(dateRange.to, 'short')}`;
   };
+
+  // Retry after a failed load (same fetch as the current view, with the full loading state)
+  const handleRetry = useCallback(() => {
+    if (shouldShowListView && viewMode === 'all') {
+      fetchAllCustomersData();
+    } else if (selectedCustomer) {
+      fetchSingleCustomerData(selectedCustomer.customer_id);
+    } else if (singleAssignedCustomerId) {
+      fetchSingleCustomerData(singleAssignedCustomerId);
+    }
+  }, [shouldShowListView, viewMode, selectedCustomer, singleAssignedCustomerId, fetchAllCustomersData, fetchSingleCustomerData]);
 
   // Determine which view to show
   const isListView = shouldShowListView && viewMode === 'all';
   const hasData = isListView ? allCustomersData : data;
 
   // Subtitle for list view
-  const listViewSubtitle = isStaff ? 'All Customers' : 'My Customers';
+  const listViewSubtitle = isStaff ? 'All customers' : 'My customers';
+
+  const refreshControl = (
+    <RefreshControl
+      refreshing={isRefreshing}
+      onRefresh={handleRefresh}
+      colors={[t.brand.tint]}
+      tintColor={t.brand.tint}
+      progressBackgroundColor={t.surface.card}
+    />
+  );
 
   // Loading skeleton
   if (isLoading && !hasData) {
     return (
-      <View style={[styles.container, { backgroundColor: FIORI.colors.backgroundGrouped }]}>
-        <ReportHeader title="Dispatch Activity" />
+      <View style={styles.container}>
+        <ReportHeader title="Dispatch activity" />
         <PeriodSelector
           selectedPeriod={selectedPeriod}
           onPeriodChange={handlePeriodChange}
@@ -628,8 +850,8 @@ export default function DispatchActivityScreen() {
         <View style={styles.loadingContainer}>
           <KPIGrid
             items={[
-              { icon: 'truck-fast', value: '-', label: 'Dispatches', variant: 'secondary' },
-              { icon: 'package-variant', value: '-', label: 'Units Dispatched', variant: 'primary' },
+              { icon: 'truck-delivery-outline', value: '-', label: 'Dispatches', variant: 'secondary' },
+              { icon: 'package-variant', value: '-', label: 'Bags dispatched', variant: 'primary' },
             ]}
             isLoading={true}
             compact
@@ -641,29 +863,42 @@ export default function DispatchActivityScreen() {
 
   // Error state
   if (error && !hasData) {
+    const canRetry = Boolean(
+      (shouldShowListView && viewMode === 'all') || selectedCustomer || singleAssignedCustomerId
+    );
     return (
-      <View style={[styles.container, { backgroundColor: FIORI.colors.backgroundGrouped }]}>
-        <ReportHeader title="Dispatch Activity" />
+      <View style={styles.container}>
+        <ReportHeader title="Dispatch activity" />
         <PeriodSelector
           selectedPeriod={selectedPeriod}
           onPeriodChange={handlePeriodChange}
         />
         <ReportEmptyState
           icon="alert-circle-outline"
-          message="Failed to load data"
+          message="Couldn't load dispatch activity"
           description={error}
         />
+        {canRetry && (
+          <View style={styles.retryRow}>
+            <Pressable
+              onPress={handleRetry}
+              style={({ pressed }) => [styles.retryButton, pressed && styles.retryButtonPressed]}
+              accessibilityRole="button"
+              accessibilityLabel="Try loading dispatch activity again"
+            >
+              <Text style={styles.retryText}>Try again</Text>
+            </Pressable>
+          </View>
+        )}
       </View>
     );
   }
 
   // List View (Staff sees all customers, regular users see their assigned customers)
   if (isListView && allCustomersData) {
-    const hasCustomers = allCustomersData.by_customer.length > 0;
-
     return (
-      <View style={[styles.container, { backgroundColor: FIORI.colors.backgroundGrouped }]}>
-        <ReportHeader title="Dispatch Activity" subtitle={listViewSubtitle} />
+      <View style={styles.container}>
+        <ReportHeader title="Dispatch activity" subtitle={listViewSubtitle} />
 
         <PeriodSelector
           selectedPeriod={selectedPeriod}
@@ -674,25 +909,18 @@ export default function DispatchActivityScreen() {
           style={styles.scrollView}
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
-          refreshControl={
-            <RefreshControl
-              refreshing={isRefreshing}
-              onRefresh={handleRefresh}
-              colors={[FIORI.colors.tint]}
-              tintColor={FIORI.colors.tint}
-            />
-          }
+          refreshControl={refreshControl}
         >
           {/* KPI Summary */}
           <KPIGrid items={allCustomersKpiItems} isLoading={isLoading} compact />
 
           {/* Period Info */}
           <View style={styles.periodInfo}>
-            <Text style={[styles.periodText, { color: FIORI.colors.textSecondary }]}>{getDateRangeSubtitle()}</Text>
+            <Text style={styles.periodText}>{getDateRangeSubtitle()}</Text>
           </View>
 
           {/* Customer Search */}
-          <View style={styles.fioriSection}>
+          <View style={styles.section}>
             <ReportCustomerSearch
               searchQuery={customerSearchQuery}
               onSearchChange={setCustomerSearchQuery}
@@ -701,33 +929,39 @@ export default function DispatchActivityScreen() {
             />
           </View>
 
-          {/* Customers List - Fiori List Card Pattern */}
+          {/* Customers List */}
           {filteredCustomers.length > 0 ? (
-            <View style={styles.fioriSection}>
-              <FioriSectionHeader title="Customers with Dispatches" />
-              <View style={[styles.fioriListCard, { backgroundColor: FIORI.colors.background, borderColor: FIORI.colors.divider }]}>
+            <View style={styles.section}>
+              <FioriSectionHeader title="Customers with dispatches" />
+              <View style={styles.listCard}>
                 {filteredCustomers.map((customer, index) => (
                   <React.Fragment key={customer.customer_id}>
                     <ReportCustomerCard
                       title={customer.customer_name}
-                      subtitle={`${customer.dispatch_count} dispatch${customer.dispatch_count !== 1 ? 'es' : ''}`}
+                      subtitle={`${customer.dispatch_count} ${customer.dispatch_count === 1 ? 'dispatch' : 'dispatches'}`}
                       value={customer.total_quantity}
-                      valueLabel="units"
+                      valueLabel={customer.total_quantity === 1 ? 'bag' : 'bags'}
                       onPress={() => handleCustomerSelect(customer)}
-                      accessibilityHint="Tap to view customer dispatches"
+                      accessibilityHint="Shows this customer's dispatches"
                     />
                     {index < filteredCustomers.length - 1 && (
-                      <View style={[styles.fioriDivider, { backgroundColor: FIORI.colors.divider }]} />
+                      <View style={styles.divider} />
                     )}
                   </React.Fragment>
                 ))}
               </View>
             </View>
+          ) : customerSearchQuery.trim() && allCustomersData.by_customer.length > 0 ? (
+            <ReportEmptyState
+              icon="magnify"
+              message={`No customers match "${customerSearchQuery.trim()}"`}
+              description="Try fewer letters."
+            />
           ) : (
             <ReportEmptyState
-              icon="truck-remove-outline"
-              message="No Dispatches Found"
-              description="No dispatch activity in the selected period."
+              icon="truck-delivery-outline"
+              message="No dispatches in this period"
+              description="Choose a longer period to see more dispatch activity."
             />
           )}
         </ScrollView>
@@ -739,9 +973,9 @@ export default function DispatchActivityScreen() {
   // Empty state
   if (!data?.dispatches || data.dispatches.length === 0) {
     return (
-      <View style={[styles.container, { backgroundColor: FIORI.colors.backgroundGrouped }]}>
+      <View style={styles.container}>
         <ReportHeader
-          title="Dispatch Activity"
+          title="Dispatch activity"
           subtitle={selectedCustomer?.customer_name}
           onBack={shouldShowListView || cameFromRouteParams.current ? handleBackToAll : undefined}
         />
@@ -750,18 +984,18 @@ export default function DispatchActivityScreen() {
           onPeriodChange={handlePeriodChange}
         />
         <ReportEmptyState
-          icon="truck-remove-outline"
-          message="No Dispatches Found"
-          description="No dispatch activity in the selected period for this customer."
+          icon="truck-delivery-outline"
+          message="No dispatches in this period"
+          description="This customer has no dispatches in the selected period. Choose a longer period to see more."
         />
       </View>
     );
   }
 
   return (
-    <View style={[styles.container, { backgroundColor: FIORI.colors.backgroundGrouped }]}>
+    <View style={styles.container}>
       <ReportHeader
-        title="Dispatch Activity"
+        title="Dispatch activity"
         subtitle={selectedCustomer?.customer_name || getDateRangeSubtitle()}
         onBack={shouldShowListView ? handleBackToAll : undefined}
       />
@@ -775,24 +1009,17 @@ export default function DispatchActivityScreen() {
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={isRefreshing}
-            onRefresh={handleRefresh}
-            colors={[FIORI.colors.tint]}
-            tintColor={FIORI.colors.tint}
-          />
-        }
+        refreshControl={refreshControl}
       >
         {/* KPI Summary */}
         <KPIGrid items={singleCustomerKpiItems} isLoading={isLoading} compact />
 
-        {/* Dispatches List - Grouped by Date with Fiori Section Headers */}
-        <View style={styles.fioriSection}>
+        {/* Dispatches list, grouped by date */}
+        <View style={styles.section}>
           {Array.from(groupedDispatches.entries()).map(([date, dispatches]) => (
-            <View key={date} style={styles.fioriDateGroup}>
+            <View key={date} style={styles.dateGroup}>
               <FioriSectionHeader title={formatSectionDate(date)} />
-              <View style={styles.fioriDispatchList}>
+              <View style={styles.dispatchList}>
                 {dispatches.map((dispatch: DispatchActivityRecord, index: number) => {
                   const dispatchKey = getDispatchKey(dispatch, date, index);
                   return (
@@ -812,254 +1039,3 @@ export default function DispatchActivityScreen() {
     </View>
   );
 }
-
-// ============================================================================
-// SAP Fiori Compliant Styles
-// ============================================================================
-// Colors are applied dynamically via inline styles using useFioriColors hook
-// ============================================================================
-const styles = StyleSheet.create({
-  // =========================================================================
-  // Layout
-  // =========================================================================
-  container: {
-    flex: 1,
-  },
-  loadingContainer: {
-    flex: 1,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingBottom: 32,
-  },
-
-  // =========================================================================
-  // Period Info
-  // =========================================================================
-  periodInfo: {
-    paddingHorizontal: FIORI_STATIC.dimensions.cardPadding,
-    paddingVertical: 8,
-  },
-  periodText: {
-    fontSize: FIORI_STATIC.typography.footnote.fontSize,
-    textAlign: 'center',
-  },
-
-  // =========================================================================
-  // Fiori Section Header (14-section-header.md)
-  // =========================================================================
-  fioriSectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: FIORI_STATIC.dimensions.cardPadding,
-    paddingTop: 8,
-    paddingBottom: 4,
-    minHeight: FIORI_STATIC.dimensions.sectionHeaderHeight,
-    backgroundColor: 'transparent',
-  },
-  fioriSectionHeaderText: {
-    fontSize: FIORI_STATIC.typography.sectionHeader.fontSize,
-    fontWeight: FIORI_STATIC.typography.sectionHeader.fontWeight,
-    letterSpacing: FIORI_STATIC.typography.sectionHeader.letterSpacing,
-    textTransform: FIORI_STATIC.typography.sectionHeader.textTransform,
-  },
-  fioriSectionHeaderButton: {
-    minWidth: FIORI_STATIC.dimensions.touchTarget,
-    minHeight: 28,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  fioriSectionHeaderAction: {
-    fontSize: 14,
-    fontWeight: '500',
-  },
-
-  // =========================================================================
-  // Fiori Section Container
-  // =========================================================================
-  fioriSection: {
-    marginTop: 16,
-    paddingHorizontal: FIORI_STATIC.dimensions.cardPadding,
-  },
-  fioriDateGroup: {
-    marginBottom: 20,
-  },
-  fioriDispatchList: {
-    gap: 10,
-  },
-
-  // =========================================================================
-  // Fiori Card Container (13-card.md)
-  // =========================================================================
-  fioriCard: {
-    borderRadius: FIORI_STATIC.dimensions.cardCornerRadius,
-    borderWidth: 1,
-    overflow: 'hidden',
-    ...theme.shadows.sm,
-  },
-  fioriCardBody: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-  },
-  fioriListCard: {
-    borderRadius: FIORI_STATIC.dimensions.cardCornerRadius,
-    borderWidth: 1,
-    overflow: 'hidden',
-    ...theme.shadows.sm,
-  },
-  fioriDivider: {
-    height: StyleSheet.hairlineWidth,
-    marginLeft: 72, // Align with content after image
-  },
-
-  // =========================================================================
-  // Fiori Object Cell (01-object-cell.md)
-  // =========================================================================
-  fioriObjectCell: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    minHeight: FIORI_STATIC.dimensions.objectCellMinHeight,
-    paddingVertical: 14,
-    paddingHorizontal: FIORI_STATIC.dimensions.cardPadding,
-    gap: 12,
-  },
-  fioriObjectCellCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    minHeight: FIORI_STATIC.dimensions.objectCellMinHeight,
-    paddingVertical: 14,
-    paddingHorizontal: FIORI_STATIC.dimensions.cardPadding,
-    gap: 12,
-  },
-
-  // B. Detail Image (44pt per Fiori spec)
-  fioriObjectCellImage: {
-    width: FIORI_STATIC.dimensions.objectCellImageSize,
-    height: FIORI_STATIC.dimensions.objectCellImageSize,
-    borderRadius: FIORI_STATIC.dimensions.objectCellImageRadius,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  fioriObjectCellImagePrimary: {
-    width: FIORI_STATIC.dimensions.objectCellImageSize,
-    height: FIORI_STATIC.dimensions.objectCellImageSize,
-    borderRadius: FIORI_STATIC.dimensions.objectCellImageRadius,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-
-  // C. Main Content
-  fioriObjectCellContent: {
-    flex: 1,
-    justifyContent: 'center',
-  },
-  fioriObjectCellTitle: {
-    fontSize: FIORI_STATIC.typography.title.fontSize,
-    fontWeight: FIORI_STATIC.typography.title.fontWeight,
-    lineHeight: FIORI_STATIC.typography.title.lineHeight,
-  },
-  fioriObjectCellSubtitle: {
-    fontSize: FIORI_STATIC.typography.subtitle.fontSize,
-    lineHeight: FIORI_STATIC.typography.subtitle.lineHeight,
-    marginTop: 2,
-  },
-
-  // E. Attributes
-  fioriObjectCellAttributes: {
-    alignItems: 'flex-end',
-    justifyContent: 'center',
-  },
-  fioriObjectCellAttributeValue: {
-    fontSize: 15,
-    fontWeight: '600',
-    lineHeight: 20,
-  },
-  fioriObjectCellAttributeLabel: {
-    fontSize: FIORI_STATIC.typography.caption.fontSize,
-    lineHeight: FIORI_STATIC.typography.caption.lineHeight,
-  },
-
-  // F. Accessory View
-  fioriObjectCellAccessory: {
-    width: 24,
-    height: 24,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  fioriObjectCellNavButton: {
-    width: FIORI_STATIC.dimensions.touchTarget,
-    height: FIORI_STATIC.dimensions.touchTarget,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginLeft: -8,
-  },
-
-  // =========================================================================
-  // Fiori Item Row (nested Object Cell)
-  // =========================================================================
-  fioriItemRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: FIORI_STATIC.dimensions.cardPadding,
-    paddingVertical: 12,
-    minHeight: 56,
-    gap: 12,
-  },
-  fioriItemRowBorder: {
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  fioriItemRowContent: {
-    flex: 1,
-  },
-  fioriItemRowTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    flexWrap: 'wrap',
-  },
-  fioriItemRowTitle: {
-    fontSize: 15,
-    fontWeight: '500',
-    flexShrink: 1,
-  },
-  fioriItemRowFootnote: {
-    fontSize: FIORI_STATIC.typography.footnote.fontSize,
-    lineHeight: FIORI_STATIC.typography.footnote.lineHeight,
-    marginTop: 3,
-  },
-  fioriItemRowAttributes: {
-    alignItems: 'flex-end',
-  },
-  fioriItemRowQtyRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    gap: 3,
-  },
-  fioriItemRowQty: {
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  fioriItemRowOrigQty: {
-    fontSize: 12,
-  },
-  fioriItemRowWeight: {
-    fontSize: FIORI_STATIC.typography.caption.fontSize,
-    marginTop: 2,
-  },
-
-  // =========================================================================
-  // Fiori Tags/Badges (18-tags-badges.md)
-  // =========================================================================
-  fioriTag: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 10, // Pill shape per Fiori spec
-    alignSelf: 'flex-start',
-  },
-  fioriTagText: {
-    fontSize: 11,
-    fontWeight: '600',
-  },
-});

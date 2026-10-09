@@ -10,6 +10,8 @@
  * - Created by name
  * - Expandable items list
  *
+ * SAP Fiori object cell (docs/STYLE_GUIDE.md §13.6).
+ *
  * @module list-items/RecentDispatchedOrderCard
  */
 
@@ -26,7 +28,18 @@ import Animated, { FadeIn } from 'react-native-reanimated';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { formatNumber, formatDate } from '@/utils/formatters';
 import type { RecentDispatchedOrder } from '@/types/dispatch.types';
-import type { ListColors } from '@/hooks/useListColors';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import {
+  fontWeight,
+  iconSize,
+  layout,
+  motion,
+  radius,
+  space,
+  touchTarget,
+  typography,
+} from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
 
 // ============================================================================
 // TYPES
@@ -37,9 +50,219 @@ export interface RecentDispatchedOrderCardProps {
   dispatch: RecentDispatchedOrder;
   /** Callback when card is pressed (navigates to dispatch details) */
   onPress: (dispatch: RecentDispatchedOrder) => void;
-  /** Theme-aware list colors for dark mode support */
-  colors: ListColors;
+  /**
+   * @deprecated Colours now come from the semantic tokens. Still accepted so
+   * existing callers keep compiling.
+   */
+  colors?: unknown;
 }
+
+// ============================================================================
+// STYLES - SAP Fiori Object Cell
+// ============================================================================
+
+const makeStyles = (t: ThemeTokens) => ({
+  card: {
+    backgroundColor: t.surface.card,
+    borderRadius: radius.card,
+    marginHorizontal: layout.marginCompact,
+    marginVertical: space.xs,
+    ...t.shadow[2],
+    overflow: 'hidden' as const,
+  },
+  cardContent: {
+    padding: space.lg,
+    minHeight: layout.objectCellMinHeight,
+    backgroundColor: t.surface.card,
+  },
+  cardContentPressed: {
+    backgroundColor: t.surface.cardPressed,
+  },
+  objectCellRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'flex-start' as const,
+  },
+  iconContainer: {
+    width: layout.avatar.md,
+    height: layout.avatar.md,
+    borderRadius: radius.pill,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    marginRight: space.md,
+    backgroundColor: t.brand.subtle,
+  },
+  mainContent: {
+    flex: 1,
+    marginRight: space.md,
+  },
+  titleText: {
+    ...typography.headline,
+    color: t.text.primary,
+  },
+  subtitleText: {
+    ...typography.subhead,
+    color: t.text.secondary,
+  },
+  orderRefRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.xs,
+    marginBottom: space.xs,
+  },
+  orderRefText: {
+    ...typography.footnote,
+    color: t.text.secondary,
+  },
+  footerRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    flexWrap: 'wrap' as const,
+    columnGap: space.sm,
+    rowGap: space.xxs,
+  },
+  footerItem: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.xs,
+  },
+  footerText: {
+    ...typography.footnote,
+    color: t.text.secondary,
+  },
+  attributeStack: {
+    alignItems: 'flex-end' as const,
+    minWidth: 60,
+    gap: space.xxs,
+  },
+  quantityValue: {
+    ...typography.headline,
+    color: t.text.primary,
+    fontVariant: ['tabular-nums' as const],
+  },
+  itemCountText: {
+    ...typography.footnote,
+    color: t.text.secondary,
+  },
+  statusTag: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.xs,
+    paddingHorizontal: space.s6,
+    paddingVertical: space.xxs,
+    borderRadius: radius.field,
+    marginTop: space.xs,
+    backgroundColor: t.status.positive.background,
+  },
+  statusTagText: {
+    ...typography.caption1,
+    fontWeight: fontWeight.semibold,
+    color: t.status.positive.text,
+  },
+  // Data table (guide §13.7)
+  expandedSection: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: t.border.divider,
+  },
+  tableHeader: {
+    flexDirection: 'row' as const,
+    paddingVertical: space.sm,
+    paddingHorizontal: space.lg,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.separator,
+    minHeight: layout.rowMinHeight,
+    alignItems: 'center' as const,
+    backgroundColor: t.background.base,
+  },
+  tableHeaderCell: {
+    ...typography.footnote,
+    fontWeight: fontWeight.semibold,
+    color: t.text.secondary,
+  },
+  tableRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    paddingVertical: space.sm,
+    paddingHorizontal: space.lg,
+    minHeight: layout.rowMinHeight,
+    backgroundColor: t.surface.card,
+  },
+  tableRowDivider: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: t.border.divider,
+  },
+  tableCell: {
+    justifyContent: 'center' as const,
+  },
+  colItem: {
+    flex: 1,
+    paddingRight: space.sm,
+  },
+  colWeight: {
+    width: 48,
+    textAlign: 'right' as const,
+    paddingRight: space.md,
+  },
+  colGrn: {
+    width: 60,
+    textAlign: 'center' as const,
+    paddingRight: space.sm,
+  },
+  colQty: {
+    width: 48,
+    textAlign: 'right' as const,
+  },
+  tableCellValue: {
+    ...typography.subhead,
+    color: t.text.secondary,
+    fontVariant: ['tabular-nums' as const],
+  },
+  tableCellQty: {
+    ...typography.subhead,
+    fontWeight: fontWeight.semibold,
+    color: t.text.primary,
+    fontVariant: ['tabular-nums' as const],
+  },
+  itemNameRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
+    gap: space.sm,
+  },
+  tableCellItemName: {
+    ...typography.subhead,
+    fontWeight: fontWeight.medium,
+    color: t.text.primary,
+    flex: 1,
+  },
+  tableCellRack: {
+    ...typography.caption1,
+    color: t.text.secondary,
+    flexShrink: 0,
+  },
+  tableCellItemMark: {
+    ...typography.caption1,
+    color: t.text.secondary,
+    marginTop: space.xxs,
+  },
+  expandButton: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    paddingVertical: space.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: t.border.divider,
+    gap: space.xs,
+    minHeight: touchTarget,
+    backgroundColor: t.surface.card,
+  },
+  expandButtonPressed: {
+    backgroundColor: t.surface.cardPressed,
+  },
+  expandButtonText: {
+    ...typography.callout,
+    color: t.brand.tint,
+  },
+});
 
 // ============================================================================
 // COMPONENT
@@ -48,12 +271,16 @@ export interface RecentDispatchedOrderCardProps {
 const RecentDispatchedOrderCardContent: React.FC<RecentDispatchedOrderCardProps> = ({
   dispatch,
   onPress,
-  colors,
 }) => {
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
   const [isExpanded, setIsExpanded] = useState(false);
 
   const hasItems = dispatch.items && dispatch.items.length > 0;
   const itemCount = dispatch.item_count || dispatch.items?.length || 0;
+  const itemsLabel = `${itemCount} ${itemCount === 1 ? 'item' : 'items'}`;
+  const bagsLabel = `${formatNumber(dispatch.total_qty)} ${dispatch.total_qty === 1 ? 'bag' : 'bags'}`;
+  const dateLabel = formatDate(dispatch.disp_date, 'short');
 
   const handleToggleExpand = useCallback(() => {
     Vibration.vibrate(5);
@@ -61,108 +288,83 @@ const RecentDispatchedOrderCardContent: React.FC<RecentDispatchedOrderCardProps>
     setIsExpanded(prev => !prev);
   }, []);
 
-  // Build accessibility label
+  // One combined label for the row (guide §11.3)
   const accessibilityDescription = [
     `Dispatch ${dispatch.disp_no}`,
-    `for ${dispatch.customer_name}`,
+    dispatch.customer_name,
     `from order ${dispatch.order_no}`,
-    `${itemCount} items`,
-    `${dispatch.total_qty} quantity`,
-    dispatch.registration ? `Truck: ${dispatch.registration}` : null,
+    itemsLabel,
+    bagsLabel,
+    dispatch.registration ? `Vehicle ${dispatch.registration}` : null,
     `Created by ${dispatch.created_by_name}`,
-    `Date: ${formatDate(dispatch.disp_date, 'short')}`,
+    dateLabel,
+    'Dispatched',
   ]
     .filter(Boolean)
     .join(', ');
 
   return (
-    <View
-      style={[
-        styles.card,
-        { backgroundColor: colors.cellBackground, borderWidth: 1, borderColor: colors.cellDivider },
-      ]}
-    >
+    <View style={styles.card}>
       <Pressable
         onPress={() => onPress(dispatch)}
-        style={({ pressed }) => [
-          styles.cardContent,
-          pressed && { backgroundColor: colors.cellBackgroundPressed },
-        ]}
+        style={({ pressed }) => [styles.cardContent, pressed && styles.cardContentPressed]}
         accessibilityRole="button"
         accessibilityLabel={accessibilityDescription}
-        accessibilityHint="Double tap to view dispatch details"
+        accessibilityHint="Opens the dispatch"
       >
-        {/* Main Row */}
         <View style={styles.objectCellRow}>
-          {/* Status Icon (Left) - Checkmark for completed dispatches */}
-          <View style={[styles.statusIconContainer, { backgroundColor: colors.statusPositiveLight }]}>
-            <Icon name="check-circle" size={20} color={colors.statusPositive} />
+          {/* Object icon (left) */}
+          <View style={styles.iconContainer}>
+            <Icon name="truck-delivery-outline" size={iconSize.md} color={t.brand.tint} />
           </View>
 
-          {/* Main Content (Center) */}
+          {/* Main content */}
           <View style={styles.mainContent}>
-            {/* Title Row - Dispatch Number */}
-            <Text style={[styles.titleText, { color: colors.textPrimary }]}>
-              DISP-{dispatch.disp_no}
+            <Text style={styles.titleText} numberOfLines={2}>
+              Dispatch {dispatch.disp_no}
             </Text>
-
-            {/* Subtitle Row - Customer Name */}
-            <Text style={[styles.subtitleText, { color: colors.textSecondary }]} numberOfLines={1}>
+            <Text style={styles.subtitleText} numberOfLines={1}>
               {dispatch.customer_name}
             </Text>
 
-            {/* Order Reference */}
+            {/* Order reference */}
             <View style={styles.orderRefRow}>
-              <Icon name="clipboard-list-outline" size={12} color={colors.primary} />
-              <Text style={[styles.orderRefText, { color: colors.primary }]} numberOfLines={1}>
-                {dispatch.order_no}
+              <Icon name="clipboard-list-outline" size={iconSize.sm} color={t.icon.secondary} />
+              <Text style={styles.orderRefText} numberOfLines={1}>
+                Order {dispatch.order_no}
               </Text>
             </View>
 
-            {/* Footer Row - Date, Truck, Created By */}
+            {/* Footnote: date, vehicle, created by */}
             <View style={styles.footerRow}>
               <View style={styles.footerItem}>
-                <Icon name="calendar" size={14} color={colors.textTertiary} />
-                <Text style={[styles.footerText, { color: colors.textTertiary }]}>
-                  {formatDate(dispatch.disp_date, 'short')}
-                </Text>
+                <Icon name="calendar-outline" size={iconSize.sm} color={t.icon.secondary} />
+                <Text style={styles.footerText}>{dateLabel}</Text>
               </View>
               {dispatch.registration && (
-                <>
-                  <View style={[styles.footerDot, { backgroundColor: colors.textTertiary }]} />
-                  <View style={styles.footerItem}>
-                    <Icon name="truck" size={14} color={colors.textTertiary} />
-                    <Text style={[styles.footerText, { color: colors.textTertiary }]}>
-                      {dispatch.registration}
-                    </Text>
-                  </View>
-                </>
+                <View style={styles.footerItem}>
+                  <Icon name="truck-outline" size={iconSize.sm} color={t.icon.secondary} />
+                  <Text style={styles.footerText}>{dispatch.registration}</Text>
+                </View>
               )}
-              <View style={[styles.footerDot, { backgroundColor: colors.textTertiary }]} />
               <View style={styles.footerItem}>
-                <Icon name="account" size={14} color={colors.textTertiary} />
-                <Text style={[styles.footerText, { color: colors.textTertiary }]} numberOfLines={1}>
+                <Icon name="account-outline" size={iconSize.sm} color={t.icon.secondary} />
+                <Text style={styles.footerText} numberOfLines={1}>
                   {dispatch.created_by_name}
                 </Text>
               </View>
             </View>
           </View>
 
-          {/* Attribute Stack (Right) */}
+          {/* Attribute stack (right): main value, item count, status tag */}
           <View style={styles.attributeStack}>
-            {/* Item Count Badge */}
-            <View style={[styles.itemCountBadge, { backgroundColor: colors.gray100 }]}>
-              <Text style={[styles.itemCountText, { color: colors.textSecondary }]}>
-                {itemCount} items
+            <Text style={styles.quantityValue}>{bagsLabel}</Text>
+            <Text style={styles.itemCountText}>{itemsLabel}</Text>
+            <View style={styles.statusTag}>
+              <Icon name="check-circle" size={iconSize.sm} color={t.status.positive.text} />
+              <Text style={styles.statusTagText} maxFontSizeMultiplier={1.6}>
+                Dispatched
               </Text>
-            </View>
-
-            {/* Quantity Value */}
-            <View style={styles.quantityContainer}>
-              <Text style={[styles.quantityValue, { color: colors.statusPositive }]}>
-                {formatNumber(dispatch.total_qty)}
-              </Text>
-              <Text style={[styles.quantityLabel, { color: colors.textTertiary }]}>QTY</Text>
             </View>
           </View>
         </View>
@@ -170,91 +372,43 @@ const RecentDispatchedOrderCardContent: React.FC<RecentDispatchedOrderCardProps>
 
       {/* Expanded Items Table */}
       {isExpanded && hasItems && (
-        <Animated.View
-          entering={FadeIn.duration(200)}
-          style={[styles.expandedSection, { borderTopColor: colors.cellDivider }]}
-        >
-          {/* Table Header */}
-          <View
-            style={[
-              styles.tableHeader,
-              { backgroundColor: colors.gray50, borderBottomColor: colors.cellDivider },
-            ]}
-          >
-            <Text style={[styles.tableHeaderCell, styles.colItem, { color: colors.textPrimary }]}>
-              Item
-            </Text>
-            <Text style={[styles.tableHeaderCell, styles.colWeight, { color: colors.textPrimary }]}>
-              Kg
-            </Text>
-            <Text style={[styles.tableHeaderCell, styles.colGrn, { color: colors.textPrimary }]}>
-              GRN
-            </Text>
-            <Text style={[styles.tableHeaderCell, styles.colQty, { color: colors.textPrimary }]}>
-              Qty
-            </Text>
+        <Animated.View entering={FadeIn.duration(motion.standard)} style={styles.expandedSection}>
+          <View style={styles.tableHeader}>
+            <Text style={[styles.tableHeaderCell, styles.colItem]}>Item</Text>
+            <Text style={[styles.tableHeaderCell, styles.colWeight]}>Kg</Text>
+            <Text style={[styles.tableHeaderCell, styles.colGrn]}>GRN</Text>
+            <Text style={[styles.tableHeaderCell, styles.colQty]}>Qty</Text>
           </View>
 
-          {/* Table Rows */}
           {dispatch.items.map((item, idx) => (
             <View
               key={`${dispatch.dispatch_id}-item-${idx}`}
-              style={[
-                styles.tableRow,
-                { backgroundColor: colors.cellBackground },
-                idx % 2 === 1 && { backgroundColor: colors.gray50 },
-              ]}
+              style={[styles.tableRow, idx > 0 && styles.tableRowDivider]}
+              accessible
+              accessibilityLabel={`${item.item_name}${item.rack ? `, rack ${item.rack}` : ''}, ${Math.round(item.weight || 0)} kg, GRN ${item.gr_no}, ${item.disp_qty} dispatched`}
             >
               <View style={[styles.tableCell, styles.colItem]}>
                 <View style={styles.itemNameRow}>
-                  <Text
-                    style={[styles.tableCellItemName, { color: colors.textPrimary }]}
-                    numberOfLines={1}
-                  >
+                  <Text style={styles.tableCellItemName} numberOfLines={1}>
                     {item.item_name}
                   </Text>
-                  {item.rack && (
-                    <Text style={[styles.tableCellRack, { color: colors.textTertiary }]}>
-                      ({item.rack})
-                    </Text>
-                  )}
+                  {item.rack && <Text style={styles.tableCellRack}>({item.rack})</Text>}
                 </View>
                 {item.package_mark && (
-                  <Text
-                    style={[styles.tableCellItemMark, { color: colors.textTertiary }]}
-                    numberOfLines={1}
-                  >
+                  <Text style={styles.tableCellItemMark} numberOfLines={1}>
                     {item.package_mark}
                   </Text>
                 )}
               </View>
-              <Text
-                style={[
-                  styles.tableCell,
-                  styles.colWeight,
-                  styles.tableCellValue,
-                  { color: colors.textSecondary },
-                ]}
-              >
+              <Text style={[styles.tableCell, styles.colWeight, styles.tableCellValue]}>
                 {Math.round(item.weight || 0)}
               </Text>
-              <Text
-                style={[
-                  styles.tableCell,
-                  styles.colGrn,
-                  styles.tableCellValue,
-                  { color: colors.textSecondary },
-                ]}
-              >
+              <Text style={[styles.tableCell, styles.colGrn, styles.tableCellValue]}>
                 {item.gr_no}
               </Text>
-              <View style={[styles.tableCell, styles.colQty]}>
-                <View style={[styles.tableQtyBadge, { backgroundColor: colors.statusPositive }]}>
-                  <Text style={[styles.tableQtyBadgeText, { color: colors.white }]}>
-                    {item.disp_qty}
-                  </Text>
-                </View>
-              </View>
+              <Text style={[styles.tableCell, styles.colQty, styles.tableCellQty]}>
+                {item.disp_qty}
+              </Text>
             </View>
           ))}
         </Animated.View>
@@ -264,19 +418,19 @@ const RecentDispatchedOrderCardContent: React.FC<RecentDispatchedOrderCardProps>
       {hasItems && (
         <Pressable
           onPress={handleToggleExpand}
-          style={({ pressed }) => [
-            styles.expandButton,
-            { borderTopColor: colors.cellDivider, backgroundColor: colors.cellBackground },
-            pressed && { backgroundColor: colors.cellBackgroundPressed },
-          ]}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          style={({ pressed }) => [styles.expandButton, pressed && styles.expandButtonPressed]}
           accessibilityRole="button"
-          accessibilityLabel={isExpanded ? 'Hide items' : `Show ${itemCount} items`}
+          accessibilityLabel={isExpanded ? 'Hide items' : `Show ${itemsLabel}`}
+          accessibilityState={{ expanded: isExpanded }}
         >
-          <Text style={[styles.expandButtonText, { color: colors.primary }]}>
-            {isExpanded ? 'Hide items' : `Show ${itemCount} items`}
+          <Text style={styles.expandButtonText}>
+            {isExpanded ? 'Hide items' : `Show ${itemsLabel}`}
           </Text>
-          <Icon name={isExpanded ? 'chevron-up' : 'chevron-down'} size={18} color={colors.primary} />
+          <Icon
+            name={isExpanded ? 'chevron-up' : 'chevron-down'}
+            size={iconSize.md}
+            color={t.brand.tint}
+          />
         </Pressable>
       )}
     </View>
@@ -311,203 +465,5 @@ const areEqual = (
 export const RecentDispatchedOrderCard = React.memo(RecentDispatchedOrderCardContent, areEqual);
 
 RecentDispatchedOrderCard.displayName = 'RecentDispatchedOrderCard';
-
-// ============================================================================
-// STYLES - SAP Fiori Object Cell Compliant
-// ============================================================================
-
-const styles = StyleSheet.create({
-  card: {
-    borderRadius: 12,
-    marginHorizontal: 16,
-    marginVertical: 6,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 2,
-    overflow: 'hidden',
-  },
-  cardContent: {
-    padding: 16,
-  },
-  objectCellRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-  },
-  statusIconContainer: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  mainContent: {
-    flex: 1,
-    marginRight: 12,
-  },
-  titleText: {
-    fontSize: 17,
-    fontWeight: '600',
-    letterSpacing: -0.41,
-    marginBottom: 2,
-  },
-  subtitleText: {
-    fontSize: 13,
-    marginBottom: 4,
-  },
-  orderRefRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginBottom: 8,
-  },
-  orderRefText: {
-    fontSize: 12,
-    fontWeight: '500',
-  },
-  footerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: 4,
-  },
-  footerItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  footerDot: {
-    width: 4,
-    height: 4,
-    borderRadius: 2,
-    marginHorizontal: 4,
-  },
-  footerText: {
-    fontSize: 12,
-  },
-  attributeStack: {
-    alignItems: 'flex-end',
-    minWidth: 60,
-  },
-  itemCountBadge: {
-    height: 20,
-    borderRadius: 10,
-    paddingHorizontal: 8,
-    marginBottom: 8,
-    justifyContent: 'center',
-  },
-  itemCountText: {
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  quantityContainer: {
-    alignItems: 'flex-end',
-  },
-  quantityValue: {
-    fontSize: 20,
-    fontWeight: '700',
-  },
-  quantityLabel: {
-    fontSize: 11,
-    fontWeight: '500',
-    textTransform: 'uppercase',
-    letterSpacing: 0.3,
-  },
-  expandedSection: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-  },
-  tableHeader: {
-    flexDirection: 'row',
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    minHeight: 44,
-    alignItems: 'center',
-  },
-  tableHeaderCell: {
-    fontSize: 13,
-    fontWeight: '600',
-    letterSpacing: 0.3,
-  },
-  tableRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    minHeight: 44,
-  },
-  tableCell: {
-    justifyContent: 'center',
-  },
-  colItem: {
-    flex: 1,
-    paddingRight: 8,
-  },
-  colWeight: {
-    width: 40,
-    textAlign: 'right',
-    paddingRight: 12,
-  },
-  colGrn: {
-    width: 60,
-    textAlign: 'center',
-    paddingRight: 8,
-  },
-  colQty: {
-    width: 48,
-    alignItems: 'flex-end',
-  },
-  tableCellValue: {
-    fontSize: 15,
-    fontWeight: '400',
-  },
-  itemNameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-  },
-  tableCellItemName: {
-    fontSize: 15,
-    fontWeight: '500',
-    flex: 1,
-  },
-  tableCellRack: {
-    fontSize: 12,
-    fontWeight: '400',
-    flexShrink: 0,
-  },
-  tableCellItemMark: {
-    fontSize: 12,
-    marginTop: 2,
-  },
-  tableQtyBadge: {
-    height: 24,
-    minWidth: 36,
-    paddingHorizontal: 8,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  tableQtyBadgeText: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  expandButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 12,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    gap: 6,
-    minHeight: 44,
-  },
-  expandButtonText: {
-    fontSize: 15,
-    fontWeight: '600',
-  },
-});
 
 export default RecentDispatchedOrderCard;
