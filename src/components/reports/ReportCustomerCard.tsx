@@ -22,8 +22,7 @@ import {
   typography,
   type ThemeTokens,
 } from '@/theme/tokens';
-import { Avatar } from '@/components/ui/Avatar';
-import { StatusTag, type StatusKind } from '@/components/ui/StatusTag';
+import { Avatar, StatusTag, type StatusKind } from '@/components/ui';
 import { formatNumber as formatShared } from '@/utils/formatters';
 
 // ============================================================================

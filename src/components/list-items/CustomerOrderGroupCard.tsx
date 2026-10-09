@@ -19,8 +19,7 @@ import {
 import { useRouter } from 'expo-router';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { formatCount, formatNumber, formatRelativeTime } from '@/utils/formatters';
-import { Avatar } from '@/components/ui/Avatar';
-import { StatusTag } from '@/components/ui/StatusTag';
+import { Avatar, StatusTag } from '@/components/ui';
 import { useAppDispatch } from '@/store/hooks';
 import { loadFromOrder } from '@/store/slices/dispatchFormSlice';
 import { convertOrderToDispatchData, canConvertToDispatch } from '@/utils/orderToDispatchConverter';

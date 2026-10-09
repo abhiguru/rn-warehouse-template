@@ -41,7 +41,7 @@ import type {
   CustomerAgingSummary,
 } from '@/types/report.types';
 import { formatCount, formatDate, formatNumber } from '@/utils/formatters';
-import { StatusTag, type StatusKind } from '@/components/ui/StatusTag';
+import { StatusTag, type StatusKind } from '@/components/ui';
 import { createLogger } from '@/utils/logger';
 
 const logger = createLogger('StockAging');

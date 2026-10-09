@@ -23,8 +23,7 @@ import {
 } from '@/theme/tokens';
 import type { ItemStoragePrice } from '@/types/item-pricing.types';
 import { formatCurrency, formatDate } from '@/utils/formatters';
-import { Avatar } from '@/components/ui/Avatar';
-import { StatusTag } from '@/components/ui/StatusTag';
+import { Avatar, StatusTag } from '@/components/ui';
 
 interface ItemPricingCardProps {
   price: ItemStoragePrice;

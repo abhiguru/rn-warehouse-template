@@ -42,7 +42,7 @@ import type {
 } from '@/types/sensor-history.types';
 import { createLogger } from '@/utils/logger';
 import { formatCount, formatDateTime } from '@/utils/formatters';
-import { StatusTag, type StatusKind } from '@/components/ui/StatusTag';
+import { StatusTag, type StatusKind } from '@/components/ui';
 
 const logger = createLogger('SensorDetail');
 

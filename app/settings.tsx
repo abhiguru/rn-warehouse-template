@@ -39,7 +39,7 @@ import {
 import { ThemePreference } from '@/store/slices/themeSlice';
 
 import { showAlert } from '@/utils/alert';
-import { Avatar } from '@/components/ui/Avatar';
+import { Avatar } from '@/components/ui';
 const THEME_OPTIONS: {
   value: ThemePreference;
   label: string;

@@ -38,7 +38,7 @@ import { SensorService } from '@/services/sensor-service';
 import { SensorDevice, SensorDashboard } from '@/types/sensor.types';
 import { createLogger } from '@/utils/logger';
 import { formatRelativeTime, formatTemperature, formatTime } from '@/utils/formatters';
-import { StatusTag, STATUS_ICONS, type StatusKind } from '@/components/ui/StatusTag';
+import { StatusTag, STATUS_ICONS, type StatusKind } from '@/components/ui';
 import { formatHumidity } from '@/components/sensors/SensorHistoryChart';
 
 const logger = createLogger('SensorsScreen');
@@ -82,7 +82,7 @@ export function healthStatus(health: SensorDevice['health_status']): SensorStatu
 export function batteryStatus(battery: SensorDevice['battery_status']): SensorStatus | null {
   switch (battery) {
     case 'LOW':
-      return { kind: 'critical', label: 'Low battery' };
+      return { kind: 'critical', label: 'Battery low' };
     case 'CRITICAL':
       return { kind: 'negative', label: 'Battery critical' };
     default:

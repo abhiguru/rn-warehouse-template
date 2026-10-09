@@ -58,8 +58,7 @@ import type {
   CustomerActivityPeriod,
 } from '@/types/report.types';
 import { formatCount, formatCurrency, formatDate, formatNumber, toDate } from '@/utils/formatters';
-import { Avatar } from '@/components/ui/Avatar';
-import { StatusTag, type StatusKind } from '@/components/ui/StatusTag';
+import { Avatar, StatusTag, type StatusKind } from '@/components/ui';
 import { createLogger } from '@/utils/logger';
 
 const logger = createLogger('CustomerActivity');

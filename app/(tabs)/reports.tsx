@@ -22,7 +22,7 @@ import {
   type ThemeTokens,
 } from '@/theme/tokens';
 import type { ReportDefinition } from '@/types/report.types';
-import { Avatar } from '@/components/ui/Avatar';
+import { Avatar } from '@/components/ui';
 
 // Define all available reports
 const CUSTOMER_REPORTS: ReportDefinition[] = [

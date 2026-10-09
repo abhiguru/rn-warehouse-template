@@ -39,8 +39,7 @@ import {
   type ThemeTokens,
 } from '@/theme/tokens';
 
-import { Avatar } from '@/components/ui/Avatar';
-import { StatusTag } from '@/components/ui/StatusTag';
+import { Avatar, StatusTag } from '@/components/ui';
 import { showAlert } from '@/utils/alert';
 import { formatCount, formatMobile } from '@/utils/formatters';
 // =============================================================================

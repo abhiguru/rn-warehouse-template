@@ -32,7 +32,7 @@ import {
 import { showAlert } from '@/utils/alert';
 import { avatarColors, avatarInitials } from '@/utils/avatar';
 import { formatMobile } from '@/utils/formatters';
-import { StatusTag } from '@/components/ui/StatusTag';
+import { StatusTag } from '@/components/ui';
 
 /** Roles are categories, not statuses: staff roles informative, others neutral (as in the users list). */
 const ROLE_TONE: Record<string, 'informative' | 'neutral'> = {

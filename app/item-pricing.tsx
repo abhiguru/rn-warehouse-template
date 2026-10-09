@@ -39,7 +39,7 @@ import { ListSkeletonCard } from '@/components/list/ListSkeletonCard';
 import { createLogger } from '@/utils/logger';
 
 import { showAlert } from '@/utils/alert';
-import { Avatar } from '@/components/ui/Avatar';
+import { Avatar } from '@/components/ui';
 import { formatCount, formatDate } from '@/utils/formatters';
 const itemPricingScreenLogger = createLogger('ItemPricingScreen');
 
