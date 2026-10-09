@@ -1,86 +1,19 @@
 /**
- * InvoiceLineItemCard Component - SAP Fiori Design
+ * InvoiceLineItemCard Component
  *
- * Card displaying individual invoice line items.
- *
- * Features:
- * - Fiori Card structure (header/body/footer layout)
- * - Clean financial summary with semantic colors
- * - Clickable GRN and Dispatch references with 44pt touch targets
- * - Platform-specific shadows
- * - listColors for consistent theming
+ * Object cell for one invoice line item (style guide §13.6): item name and
+ * packaging, storage facts, quantities, charge / tax / total with tabular
+ * figures, and tappable GRN and dispatch references (44 pt targets).
  */
 
 import React, { useCallback, useMemo } from 'react';
-import { View, Text, StyleSheet, Pressable, Platform, ViewStyle } from 'react-native';
+import { View, Text, StyleSheet, Pressable } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { useListColors } from '@/hooks/useListColors';
-import { formatCurrency, formatNumber, formatDate } from '@/utils/formatters';
-
-// ============================================================================
-// FIORI CONSTANTS
-// ============================================================================
-
-const FIORI = {
-  card: {
-    cornerRadius: 12,
-    borderWidth: 1,
-    marginHorizontal: 16,
-    marginBottom: 12,
-  },
-  spacing: {
-    xs: 4,
-    sm: 8,
-    md: 12,
-    lg: 16,
-  },
-  typography: {
-    title: {
-      fontSize: 16,
-      fontWeight: '600' as const,
-      lineHeight: 22,
-    },
-    subtitle: {
-      fontSize: 14,
-      fontWeight: '600' as const,
-    },
-    label: {
-      fontSize: 11,
-      fontWeight: '500' as const,
-      textTransform: 'uppercase' as const,
-      letterSpacing: 0.5,
-    },
-    body: {
-      fontSize: 13,
-      fontWeight: '400' as const,
-    },
-    value: {
-      fontSize: 14,
-      fontWeight: '700' as const,
-    },
-    badge: {
-      fontSize: 18,
-      fontWeight: '700' as const,
-    },
-    small: {
-      fontSize: 10,
-      fontWeight: '500' as const,
-      letterSpacing: 0.5,
-    },
-  },
-  touchTarget: 44,
-  shadow: Platform.select({
-    ios: {
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 1 },
-      shadowOpacity: 0.08,
-      shadowRadius: 4,
-    },
-    android: {
-      elevation: 2,
-    },
-  }) as ViewStyle,
-} as const;
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { fontWeight, iconSize, layout, radius, space, touchTarget, typography } from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
+import { formatNumber, formatDate } from '@/utils/formatters';
+import { formatInvoiceAmount } from '@/utils/invoiceCalculations';
 
 // ============================================================================
 // TYPES
@@ -109,6 +42,96 @@ export interface InvoiceLineItemCardProps {
 }
 
 // ============================================================================
+// STYLES
+// ============================================================================
+
+const makeStyles = (t: ThemeTokens) => ({
+  card: {
+    marginHorizontal: layout.marginCompact,
+    marginBottom: space.md,
+    backgroundColor: t.surface.card,
+    borderRadius: radius.card,
+    overflow: 'hidden' as const,
+    ...t.shadow[2],
+  },
+  headerSection: {
+    flexDirection: 'row' as const,
+    alignItems: 'flex-start' as const,
+    padding: space.lg,
+    paddingBottom: space.md,
+    gap: space.md,
+  },
+  itemIconContainer: {
+    width: layout.avatar.md,
+    height: layout.avatar.md,
+    borderRadius: radius.pill,
+    backgroundColor: t.brand.subtle,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+  },
+  headerContent: { flex: 1 },
+  itemName: { ...typography.headline, color: t.text.primary },
+  packagingLabel: { ...typography.subhead, color: t.text.secondary, marginTop: space.xxs },
+  daysValue: {
+    ...typography.subhead,
+    fontWeight: fontWeight.semibold,
+    color: t.text.primary,
+    textAlign: 'right' as const,
+    fontVariant: ['tabular-nums' as const],
+  },
+  section: {
+    paddingHorizontal: space.lg,
+    paddingVertical: space.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: t.border.divider,
+  },
+  storageSection: { flexDirection: 'row' as const, flexWrap: 'wrap' as const, gap: space.lg },
+  storageItem: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: space.xs },
+  storageLabel: { ...typography.footnote, color: t.text.secondary },
+  storageValue: {
+    ...typography.footnote,
+    color: t.text.primary,
+    fontWeight: fontWeight.semibold,
+    fontVariant: ['tabular-nums' as const],
+  },
+  quantitiesSection: { flexDirection: 'row' as const, gap: space.lg },
+  quantityItem: { flex: 1, gap: space.xxs },
+  quantityLabel: { ...typography.footnote, color: t.text.secondary },
+  quantityValue: { ...typography.headline, color: t.text.primary, fontVariant: ['tabular-nums' as const] },
+  financialGrid: { flexDirection: 'row' as const, gap: space.md },
+  financialItem: { flex: 1, alignItems: 'flex-end' as const, gap: space.xxs },
+  financialLabel: { ...typography.footnote, color: t.text.secondary },
+  amount: {
+    ...typography.subhead,
+    color: t.text.primary,
+    textAlign: 'right' as const,
+    fontVariant: ['tabular-nums' as const],
+  },
+  totalAmount: {
+    ...typography.headline,
+    color: t.text.primary,
+    textAlign: 'right' as const,
+    fontVariant: ['tabular-nums' as const],
+  },
+  referencesSection: { gap: space.xs, paddingVertical: space.xs, paddingHorizontal: 0 },
+  referenceButton: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    paddingVertical: space.sm,
+    paddingHorizontal: space.lg,
+    minHeight: touchTarget,
+    gap: space.md,
+  },
+  referenceButtonPressed: { backgroundColor: t.surface.cardPressed },
+  referenceContent: { flex: 1 },
+  referenceType: { ...typography.footnote, color: t.text.secondary },
+  referenceNumber: { ...typography.body, color: t.text.primary, fontVariant: ['tabular-nums' as const] },
+  dispatchDetailsRow: { flexDirection: 'row' as const, flexWrap: 'wrap' as const, gap: space.lg, marginTop: space.xxs },
+  dispatchDetail: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: space.xs },
+  dispatchDetailText: { ...typography.footnote, color: t.text.secondary, fontVariant: ['tabular-nums' as const] },
+});
+
+// ============================================================================
 // COMPONENT
 // ============================================================================
 
@@ -131,211 +154,8 @@ const InvoiceLineItemCardComponent: React.FC<InvoiceLineItemCardProps> = ({
   onViewGRN,
   onViewDispatch,
 }) => {
-  // Theme colors for dark mode support
-  const colors = useListColors();
-
-  // Dynamic styles based on theme
-  const dynamicStyles = useMemo(() => StyleSheet.create({
-    card: {
-      marginHorizontal: FIORI.card.marginHorizontal,
-      marginBottom: FIORI.card.marginBottom,
-      backgroundColor: colors.cellBackground,
-      borderRadius: FIORI.card.cornerRadius,
-      borderWidth: FIORI.card.borderWidth,
-      borderColor: colors.cellDivider,
-      overflow: 'hidden',
-      ...FIORI.shadow,
-    },
-    itemIconContainer: {
-      width: 40,
-      height: 40,
-      borderRadius: 10,
-      backgroundColor: colors.primaryLight,
-      justifyContent: 'center',
-      alignItems: 'center',
-      marginRight: FIORI.spacing.md,
-    },
-    itemName: {
-      ...FIORI.typography.title,
-      color: colors.gray900,
-    },
-    packagingLabel: {
-      fontSize: 12,
-      color: colors.gray600,
-      marginTop: 2,
-      fontWeight: '500',
-    },
-    daysBadge: {
-      backgroundColor: colors.secondaryLight,
-      paddingHorizontal: 10,
-      paddingVertical: 6,
-      borderRadius: 10,
-      alignItems: 'center',
-      minWidth: 52,
-    },
-    daysNumber: {
-      ...FIORI.typography.badge,
-      color: colors.secondary,
-      lineHeight: 22,
-    },
-    daysLabel: {
-      ...FIORI.typography.small,
-      color: colors.secondary,
-      textTransform: 'uppercase',
-    },
-    storageSection: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      paddingHorizontal: FIORI.spacing.lg,
-      paddingBottom: FIORI.spacing.md,
-      gap: FIORI.spacing.lg,
-      borderTopWidth: 1,
-      borderTopColor: colors.cellDivider,
-      paddingTop: FIORI.spacing.md,
-    },
-    storageLabel: {
-      ...FIORI.typography.label,
-      color: colors.gray400,
-    },
-    storageValue: {
-      ...FIORI.typography.body,
-      color: colors.gray900,
-      fontWeight: '600',
-      marginLeft: 2,
-    },
-    quantityBadge: {
-      flex: 1,
-      flexDirection: 'row',
-      alignItems: 'center',
-      backgroundColor: colors.statusPositiveLight,
-      paddingHorizontal: FIORI.spacing.md,
-      paddingVertical: FIORI.spacing.sm,
-      borderRadius: 10,
-      gap: FIORI.spacing.sm,
-    },
-    dispatchBadge: {
-      backgroundColor: colors.primaryLight,
-    },
-    quantityLabel: {
-      ...FIORI.typography.small,
-      color: colors.gray600,
-      textTransform: 'uppercase',
-    },
-    quantityValue: {
-      fontSize: 15,
-      fontWeight: '700',
-      color: colors.statusPositiveDark,
-    },
-    dispatchValue: {
-      color: colors.primary,
-    },
-    financialSection: {
-      marginHorizontal: FIORI.spacing.lg,
-      marginBottom: FIORI.spacing.md,
-      borderRadius: FIORI.card.cornerRadius,
-      backgroundColor: colors.gray50,
-      overflow: 'hidden',
-    },
-    financialDivider: {
-      width: 1,
-      height: 32,
-      backgroundColor: colors.cellDivider,
-    },
-    financialLabel: {
-      ...FIORI.typography.small,
-      color: colors.gray600,
-      textTransform: 'uppercase',
-      marginBottom: FIORI.spacing.xs,
-    },
-    chargeAmount: {
-      ...FIORI.typography.value,
-      color: colors.gray900,
-    },
-    taxAmount: {
-      ...FIORI.typography.value,
-      color: colors.primary,
-    },
-    totalAmount: {
-      ...FIORI.typography.value,
-      color: colors.statusPositiveDark,
-    },
-    referencesSection: {
-      paddingHorizontal: FIORI.spacing.lg,
-      paddingBottom: FIORI.spacing.lg,
-      gap: FIORI.spacing.sm,
-      borderTopWidth: 1,
-      borderTopColor: colors.cellDivider,
-      paddingTop: FIORI.spacing.md,
-    },
-    referenceButton: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      backgroundColor: colors.gray50,
-      paddingVertical: 10,
-      paddingHorizontal: FIORI.spacing.md,
-      borderRadius: 10,
-      minHeight: FIORI.touchTarget,
-    },
-    referenceButtonPressed: {
-      backgroundColor: colors.gray100,
-    },
-    grnIcon: {
-      backgroundColor: colors.secondaryLight,
-    },
-    dispatchIcon: {
-      backgroundColor: colors.primaryLight,
-    },
-    referenceType: {
-      ...FIORI.typography.small,
-      color: colors.gray600,
-      textTransform: 'uppercase',
-    },
-    referenceNumber: {
-      ...FIORI.typography.body,
-      fontWeight: '600',
-      color: colors.gray900,
-      marginTop: 1,
-    },
-    dispatchReferenceButton: {
-      backgroundColor: colors.gray50,
-      paddingVertical: FIORI.spacing.md,
-      paddingHorizontal: FIORI.spacing.md,
-      borderRadius: FIORI.card.cornerRadius,
-      minHeight: FIORI.touchTarget,
-      borderWidth: 1,
-      borderColor: colors.cellDivider,
-    },
-    dispatchNumber: {
-      fontSize: 15,
-      fontWeight: '700',
-      color: colors.primary,
-      marginTop: 1,
-    },
-    dispatchNumberMuted: {
-      ...FIORI.typography.body,
-      color: colors.gray600,
-      marginTop: 1,
-    },
-    dispatchDetailsRow: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      marginTop: 10,
-      paddingTop: 10,
-      borderTopWidth: 1,
-      borderTopColor: colors.cellDivider,
-      gap: FIORI.spacing.lg,
-    },
-    dispatchDetailText: {
-      fontSize: 12,
-      color: colors.gray600,
-      fontWeight: '500',
-    },
-    dispatchDetailTextMuted: {
-      fontSize: 12,
-      color: colors.gray400,
-      fontWeight: '500',
-    },
-  }), [colors]);
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
 
   const handleGRNPress = useCallback(() => {
     if (grNo && onViewGRN) {
@@ -362,191 +182,165 @@ const InvoiceLineItemCardComponent: React.FC<InvoiceLineItemCardProps> = ({
     };
   }, [charge, tax, duration, packageMark, rack, weight, grnQuantity, dispatchQty, dispatchId, dispatchNo, dispatchDate]);
 
-  const isGrnClickable = grNo && onViewGRN;
-  const isDispatchClickable = onViewDispatch && dispatchId;
+  const isGrnClickable = !!(grNo && onViewGRN);
+  const isDispatchClickable = !!(onViewDispatch && dispatchId);
+  const durationText = `${Number.isInteger(durationNum) ? durationNum : durationNum.toFixed(1)} ${durationNum === 1 ? 'month' : 'months'}`;
 
   return (
-    <View style={dynamicStyles.card}>
-      {/* Header Section - Item Name with Icon */}
+    <View style={styles.card}>
+      {/* Header - item name */}
       <View style={styles.headerSection}>
-        <View style={dynamicStyles.itemIconContainer}>
-          <Icon name="package-variant" size={20} color={colors.primary} />
+        <View style={styles.itemIconContainer}>
+          <Icon name="cube-outline" size={iconSize.md} color={t.brand.tint} />
         </View>
         <View style={styles.headerContent}>
-          <Text style={dynamicStyles.itemName} numberOfLines={2}>
+          <Text style={styles.itemName} numberOfLines={2}>
             {itemName}
           </Text>
           {packaging && (
-            <Text style={dynamicStyles.packagingLabel}>{packaging}</Text>
+            <Text style={styles.packagingLabel}>{packaging}</Text>
           )}
         </View>
         {noOfDays !== undefined && noOfDays > 0 && (
-          <View style={dynamicStyles.daysBadge}>
-            <Text style={dynamicStyles.daysNumber}>{noOfDays}</Text>
-            <Text style={dynamicStyles.daysLabel}>{noOfDays === 1 ? 'day' : 'days'}</Text>
-          </View>
+          <Text style={styles.daysValue}>{`${noOfDays} ${noOfDays === 1 ? 'day' : 'days'}`}</Text>
         )}
       </View>
 
-      {/* Storage Details Row */}
+      {/* Storage details */}
       {hasStorageDetails && (
-        <View style={dynamicStyles.storageSection}>
+        <View style={[styles.section, styles.storageSection]}>
           {durationNum > 0 && (
             <View style={styles.storageItem}>
-              <Icon name="clock-outline" size={14} color={colors.gray500} />
-              <Text style={dynamicStyles.storageLabel}>Duration</Text>
-              <Text style={dynamicStyles.storageValue}>{Number.isInteger(durationNum) ? durationNum : durationNum.toFixed(1)} {durationNum === 1 ? 'month' : 'months'}</Text>
+              <Icon name="clock-outline" size={iconSize.sm} color={t.icon.secondary} />
+              <Text style={styles.storageLabel}>Duration</Text>
+              <Text style={styles.storageValue}>{durationText}</Text>
             </View>
           )}
           {packageMark && (
             <View style={styles.storageItem}>
-              <Icon name="tag-outline" size={14} color={colors.gray500} />
-              <Text style={dynamicStyles.storageLabel}>Mark</Text>
-              <Text style={dynamicStyles.storageValue}>{packageMark}</Text>
+              <Icon name="tag-outline" size={iconSize.sm} color={t.icon.secondary} />
+              <Text style={styles.storageLabel}>Mark</Text>
+              <Text style={styles.storageValue}>{packageMark}</Text>
             </View>
           )}
           {rack && (
             <View style={styles.storageItem}>
-              <Icon name="warehouse" size={14} color={colors.gray500} />
-              <Text style={dynamicStyles.storageLabel}>Rack</Text>
-              <Text style={dynamicStyles.storageValue}>{rack}</Text>
+              <Icon name="view-grid-outline" size={iconSize.sm} color={t.icon.secondary} />
+              <Text style={styles.storageLabel}>Rack</Text>
+              <Text style={styles.storageValue}>{rack}</Text>
             </View>
           )}
           {weight !== undefined && weight > 0 && (
             <View style={styles.storageItem}>
-              <Icon name="weight" size={14} color={colors.gray500} />
-              <Text style={dynamicStyles.storageLabel}>Weight</Text>
-              <Text style={dynamicStyles.storageValue}>{formatNumber(weight)} kg</Text>
+              <Icon name="weight" size={iconSize.sm} color={t.icon.secondary} />
+              <Text style={styles.storageLabel}>Weight</Text>
+              <Text style={styles.storageValue}>{`${formatNumber(weight)} kg`}</Text>
             </View>
           )}
         </View>
       )}
 
-      {/* Quantities Section */}
+      {/* Quantities */}
       {hasQuantities && (
-        <View style={styles.quantitiesSection}>
+        <View style={[styles.section, styles.quantitiesSection]}>
           {grnQuantity !== undefined && grnQuantity > 0 && (
-            <View style={dynamicStyles.quantityBadge}>
-              <Icon name="arrow-down-bold-circle" size={16} color={colors.success} />
-              <View style={styles.quantityContent}>
-                <Text style={dynamicStyles.quantityLabel}>Received</Text>
-                <Text style={dynamicStyles.quantityValue}>{formatNumber(grnQuantity)}</Text>
-              </View>
+            <View style={styles.quantityItem} accessible accessibilityLabel={`Received ${formatNumber(grnQuantity)}`}>
+              <Text style={styles.quantityLabel}>Received</Text>
+              <Text style={styles.quantityValue}>{formatNumber(grnQuantity)}</Text>
             </View>
           )}
           {dispatchQty !== undefined && dispatchQty > 0 && (
-            <View style={[dynamicStyles.quantityBadge, dynamicStyles.dispatchBadge]}>
-              <Icon name="arrow-up-bold-circle" size={16} color={colors.primary} />
-              <View style={styles.quantityContent}>
-                <Text style={dynamicStyles.quantityLabel}>Dispatched</Text>
-                <Text style={[dynamicStyles.quantityValue, dynamicStyles.dispatchValue]}>{formatNumber(dispatchQty)}</Text>
-              </View>
+            <View style={styles.quantityItem} accessible accessibilityLabel={`Dispatched ${formatNumber(dispatchQty)}`}>
+              <Text style={styles.quantityLabel}>Dispatched</Text>
+              <Text style={styles.quantityValue}>{formatNumber(dispatchQty)}</Text>
             </View>
           )}
         </View>
       )}
 
-      {/* Financial Summary - Clean 3-column layout */}
-      <View style={dynamicStyles.financialSection}>
-        <View style={styles.financialGrid}>
-          <View style={styles.financialItem}>
-            <Text style={dynamicStyles.financialLabel}>Charge</Text>
-            <Text style={dynamicStyles.chargeAmount}>{formatCurrency(charge)}</Text>
-          </View>
-          <View style={dynamicStyles.financialDivider} />
-          <View style={styles.financialItem}>
-            <Text style={dynamicStyles.financialLabel}>Tax</Text>
-            <Text style={dynamicStyles.taxAmount}>{formatCurrency(tax)}</Text>
-          </View>
-          <View style={dynamicStyles.financialDivider} />
-          <View style={styles.financialItem}>
-            <Text style={dynamicStyles.financialLabel}>Total</Text>
-            <Text style={dynamicStyles.totalAmount}>{formatCurrency(total)}</Text>
-          </View>
+      {/* Amounts */}
+      <View
+        style={[styles.section, styles.financialGrid]}
+        accessible
+        accessibilityLabel={`Charge ${formatInvoiceAmount(charge)}, tax ${formatInvoiceAmount(tax)}, total ${formatInvoiceAmount(total)}`}
+      >
+        <View style={styles.financialItem}>
+          <Text style={styles.financialLabel}>Charge</Text>
+          <Text style={styles.amount}>{formatInvoiceAmount(charge)}</Text>
+        </View>
+        <View style={styles.financialItem}>
+          <Text style={styles.financialLabel}>Tax</Text>
+          <Text style={styles.amount}>{formatInvoiceAmount(tax)}</Text>
+        </View>
+        <View style={styles.financialItem}>
+          <Text style={styles.financialLabel}>Total</Text>
+          <Text style={styles.totalAmount}>{formatInvoiceAmount(total)}</Text>
         </View>
       </View>
 
-      {/* Reference Links Section */}
+      {/* References */}
       {(grNo || hasDispatch) && (
-        <View style={dynamicStyles.referencesSection}>
-          {/* GRN Reference */}
+        <View style={[styles.section, styles.referencesSection]}>
           {grNo && (
             <Pressable
               style={({ pressed }) => [
-                dynamicStyles.referenceButton,
-                pressed && isGrnClickable && dynamicStyles.referenceButtonPressed,
+                styles.referenceButton,
+                pressed && isGrnClickable && styles.referenceButtonPressed,
               ]}
               onPress={handleGRNPress}
               disabled={!isGrnClickable}
               accessibilityRole="button"
               accessibilityLabel={`View GRN ${grNo}`}
-              accessibilityHint="Opens the GRN details screen"
+              accessibilityHint="Opens the GRN"
+              accessibilityState={{ disabled: !isGrnClickable }}
             >
-              <View style={[styles.referenceIcon, dynamicStyles.grnIcon]}>
-                <Icon name="file-document-outline" size={18} color={colors.secondary} />
-              </View>
+              <Icon name="package-down" size={iconSize.md} color={t.icon.secondary} />
               <View style={styles.referenceContent}>
-                <Text style={dynamicStyles.referenceType}>GRN</Text>
-                <Text style={dynamicStyles.referenceNumber}>{grNo}</Text>
+                <Text style={styles.referenceType}>GRN</Text>
+                <Text style={styles.referenceNumber}>{grNo}</Text>
               </View>
               {isGrnClickable && (
-                <Icon name="chevron-right" size={20} color={colors.gray400} />
+                <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />
               )}
             </Pressable>
           )}
 
-          {/* Dispatch Reference - Enhanced with No, Date, Qty */}
           {hasDispatch && (
             <Pressable
               style={({ pressed }) => [
-                dynamicStyles.dispatchReferenceButton,
-                pressed && isDispatchClickable && dynamicStyles.referenceButtonPressed,
+                styles.referenceButton,
+                pressed && isDispatchClickable && styles.referenceButtonPressed,
               ]}
               onPress={handleDispatchPress}
               disabled={!isDispatchClickable}
               accessibilityRole="button"
-              accessibilityLabel={`View Dispatch ${dispatchNo || ''}`}
-              accessibilityHint="Opens the dispatch details screen"
+              accessibilityLabel={dispatchNo ? `View dispatch ${dispatchNo}` : 'View dispatch'}
+              accessibilityHint="Opens the dispatch"
+              accessibilityState={{ disabled: !isDispatchClickable }}
             >
-              <View style={styles.dispatchHeader}>
-                <View style={[styles.referenceIcon, dynamicStyles.dispatchIcon]}>
-                  <Icon name="truck-fast-outline" size={18} color={colors.primary} />
-                </View>
-                <View style={styles.dispatchTitleSection}>
-                  <Text style={dynamicStyles.referenceType}>DISPATCH</Text>
-                  {dispatchNo ? (
-                    <Text style={dynamicStyles.dispatchNumber}>#{dispatchNo}</Text>
-                  ) : (
-                    <Text style={dynamicStyles.dispatchNumberMuted}>View Details</Text>
-                  )}
-                </View>
-                {isDispatchClickable && (
-                  <Icon name="chevron-right" size={20} color={colors.gray400} />
+              <Icon name="truck-delivery-outline" size={iconSize.md} color={t.icon.secondary} />
+              <View style={styles.referenceContent}>
+                <Text style={styles.referenceType}>Dispatch</Text>
+                <Text style={styles.referenceNumber}>{dispatchNo || 'View dispatch'}</Text>
+                {(dispatchDate || (dispatchQty !== undefined && dispatchQty > 0)) && (
+                  <View style={styles.dispatchDetailsRow}>
+                    {dispatchDate && (
+                      <View style={styles.dispatchDetail}>
+                        <Icon name="calendar-outline" size={iconSize.sm} color={t.icon.secondary} />
+                        <Text style={styles.dispatchDetailText}>{formatDate(dispatchDate)}</Text>
+                      </View>
+                    )}
+                    {dispatchQty !== undefined && dispatchQty > 0 && (
+                      <View style={styles.dispatchDetail}>
+                        <Icon name="cube-outline" size={iconSize.sm} color={t.icon.secondary} />
+                        <Text style={styles.dispatchDetailText}>{`Qty ${formatNumber(dispatchQty)}`}</Text>
+                      </View>
+                    )}
+                  </View>
                 )}
               </View>
-
-              {/* Dispatch Details Row */}
-              {(dispatchDate || dispatchQty || (!dispatchDate && !dispatchNo && dispatchId)) && (
-                <View style={dynamicStyles.dispatchDetailsRow}>
-                  {dispatchDate && (
-                    <View style={styles.dispatchDetail}>
-                      <Icon name="calendar" size={12} color={colors.gray400} />
-                      <Text style={dynamicStyles.dispatchDetailText}>{formatDate(dispatchDate)}</Text>
-                    </View>
-                  )}
-                  {dispatchQty !== undefined && dispatchQty > 0 && (
-                    <View style={styles.dispatchDetail}>
-                      <Icon name="package-variant" size={12} color={colors.gray400} />
-                      <Text style={dynamicStyles.dispatchDetailText}>{formatNumber(dispatchQty)} units</Text>
-                    </View>
-                  )}
-                  {!dispatchDate && !dispatchNo && dispatchId && (
-                    <View style={styles.dispatchDetail}>
-                      <Icon name="identifier" size={12} color={colors.gray400} />
-                      <Text style={dynamicStyles.dispatchDetailTextMuted}>ID: {dispatchId.substring(0, 8)}...</Text>
-                    </View>
-                  )}
-                </View>
+              {isDispatchClickable && (
+                <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />
               )}
             </Pressable>
           )}
@@ -555,81 +349,6 @@ const InvoiceLineItemCardComponent: React.FC<InvoiceLineItemCardProps> = ({
     </View>
   );
 };
-
-// ============================================================================
-// STYLES (Static layout only - colors are in dynamicStyles)
-// ============================================================================
-
-const styles = StyleSheet.create({
-  // Header Section
-  headerSection: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    padding: FIORI.spacing.lg,
-    paddingBottom: FIORI.spacing.md,
-  },
-  headerContent: {
-    flex: 1,
-    paddingRight: FIORI.spacing.sm,
-  },
-
-  // Storage Details Section
-  storageItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: FIORI.spacing.xs,
-  },
-
-  // Quantities Section
-  quantitiesSection: {
-    flexDirection: 'row',
-    paddingHorizontal: FIORI.spacing.lg,
-    paddingBottom: FIORI.spacing.md,
-    gap: FIORI.spacing.md,
-  },
-  quantityContent: {
-    flex: 1,
-  },
-
-  // Financial Section
-  financialGrid: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  financialItem: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: FIORI.spacing.md,
-    paddingHorizontal: FIORI.spacing.sm,
-  },
-
-  // References Section
-  referenceIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 10,
-  },
-  referenceContent: {
-    flex: 1,
-  },
-
-  // Dispatch Reference - Enhanced
-  dispatchHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  dispatchTitleSection: {
-    flex: 1,
-  },
-  dispatchDetail: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: FIORI.spacing.xs,
-  },
-});
 
 // Export memoized component
 export const InvoiceLineItemCard = React.memo(InvoiceLineItemCardComponent);

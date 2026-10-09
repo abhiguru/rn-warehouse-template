@@ -1,115 +1,41 @@
 /**
- * InvoiceLineItemGroup Component - 100% SAP Fiori Compliant
+ * InvoiceLineItemGroup Component
  *
- * Expandable accordion showing GRN item grouped with related dispatch line items
- * Based on SAP Fiori for iOS Design Guidelines
- *
- *
- * Features:
- * - Collapsible header with common item details
- * - Fiori Data Table for dispatch items with sticky header
- * - Horizontal scrolling with sticky first column
- * - Alternating row colors
- * - Financial calculations display
- * - Animated expand/collapse
+ * Expandable object cell for one GRN item with its dispatch line items
+ * (style guide §13.6 and §13.7):
+ * - Collapsible header with the item, quantities, rates and amounts
+ * - Read-only data table of dispatches with a pinned first column,
+ *   right-aligned tabular numbers, no alternate shading and a totals row
  */
 
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  TouchableOpacity,
+  Pressable,
   ScrollView,
   LayoutAnimation,
-  Platform,
   Vibration,
-  ViewStyle,
 } from 'react-native';
-import { Surface } from 'react-native-paper';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { formatCurrency, formatNumber, formatDate } from '@/utils/formatters';
-import { useListColors, ListColors } from '@/hooks/useListColors';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { fontWeight, iconSize, layout, radius, space, touchTarget, typography } from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
+import { formatNumber, formatDate } from '@/utils/formatters';
+import { formatInvoiceAmount } from '@/utils/invoiceCalculations';
 
-// ============================================================================
-// FIORI DESIGN TOKENS (Static values only - colors are dynamic)
-// Based on SAP Fiori Data Table Specification (20-data-table.md)
-// ============================================================================
-const FIORI_STATIC = {
-  spacing: {
-    xs: 4,
-    sm: 8,
-    md: 12,
-    lg: 16,
-    xl: 20,
-  },
-  // Data Table dimensions from spec
-  dataTable: {
-    headerRowHeight: 44,                 // Fiori spec: 44pt min touch target
-    dataRowHeight: 48,                   // Fiori spec: 48-56pt comfortable
-    columnMinWidth: 80,                  // Fiori spec: 80pt
-    cellPaddingH: 12,                    // Fiori spec: 12pt horizontal
-    cellPaddingV: 8,                     // Fiori spec: 8pt vertical
-    stickyColumnWidth: 100,              // Width for sticky first column
-  },
-  typography: {
-    // Data table specific
-    tableHeader: {
-      fontSize: 13,                      // Fiori spec: 13pt
-      fontWeight: '600' as const,        // Fiori spec: Semibold
-    },
-    tableData: {
-      fontSize: 15,                      // Fiori spec: 15pt
-      fontWeight: '400' as const,        // Fiori spec: Regular
-    },
-    tableDataMedium: {
-      fontSize: 15,
-      fontWeight: '500' as const,
-    },
-    // Card typography
-    headline: {
-      fontSize: 16,
-      fontWeight: '600' as const,
-      letterSpacing: 0.15,
-    },
-    body: {
-      fontSize: 14,
-      fontWeight: '400' as const,
-    },
-    bodyMedium: {
-      fontSize: 14,
-      fontWeight: '600' as const,
-    },
-    caption: {
-      fontSize: 12,
-      fontWeight: '500' as const,
-    },
-    badge: {
-      fontSize: 10,
-      fontWeight: '700' as const,
-      letterSpacing: 0.5,
-      textTransform: 'uppercase' as const,
-    },
-  },
-  dimensions: {
-    cardRadius: 16,
-    cardPadding: 16,
-    avatarSize: 40,
-    touchTarget: 44,
-  },
-  shadows: {
-    card: Platform.select({
-      ios: {
-        shadowColor: '#000000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.08,
-        shadowRadius: 3,
-      },
-      android: {
-        elevation: 2,
-      },
-    }) as ViewStyle,
-  },
+// Read-only compact table metrics (§5.2 density, §13.7)
+const TABLE = {
+  headerRowHeight: 44,
+  dataRowHeight: 48,
+  cellPaddingH: space.md,
+  stickyColumnWidth: 104,
+  colQty: 72,
+  colDays: 64,
+  colDuration: 88,
+  colRate: 104,
+  colAmount: 120,
 } as const;
 
 // ============================================================================
@@ -168,255 +94,185 @@ interface InvoiceLineItemGroupProps {
 }
 
 // ============================================================================
-// DYNAMIC STYLES FACTORY
+// STYLES
 // ============================================================================
-const createDynamicStyles = (colors: ListColors) => StyleSheet.create({
+const tabular = ['tabular-nums' as const];
+
+const makeStyles = (t: ThemeTokens) => ({
   card: {
-    marginHorizontal: FIORI_STATIC.spacing.lg,
-    marginBottom: FIORI_STATIC.spacing.md,
-    backgroundColor: colors.cellBackground,
-    borderRadius: FIORI_STATIC.dimensions.cardRadius,
-    borderWidth: 1,
-    borderColor: colors.cellDivider,
-    overflow: 'hidden',
-    ...FIORI_STATIC.shadows.card,
+    marginHorizontal: layout.marginCompact,
+    marginBottom: space.md,
+    backgroundColor: t.surface.card,
+    borderRadius: radius.card,
+    overflow: 'hidden' as const,
+    ...t.shadow[2],
   },
+  headerPressable: {},
+  headerPressed: { backgroundColor: t.surface.cardPressed },
+  headerSection: { padding: space.lg },
+  headerTop: { flexDirection: 'row' as const, alignItems: 'flex-start' as const, gap: space.md },
   itemIconContainer: {
-    width: FIORI_STATIC.dimensions.avatarSize,
-    height: FIORI_STATIC.dimensions.avatarSize,
-    borderRadius: 12,
-    backgroundColor: colors.primaryLight,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: FIORI_STATIC.spacing.md,
+    width: layout.avatar.md,
+    height: layout.avatar.md,
+    borderRadius: radius.pill,
+    backgroundColor: t.brand.subtle,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
   },
-  itemName: {
-    ...FIORI_STATIC.typography.headline,
-    color: colors.gray900,
-    lineHeight: 22,
+  headerTitleArea: { flex: 1 },
+  itemName: { ...typography.headline, color: t.text.primary },
+  packagingLabel: { ...typography.subhead, color: t.text.secondary, marginTop: space.xxs },
+  metricsRow: {
+    flexDirection: 'row' as const,
+    flexWrap: 'wrap' as const,
+    marginTop: space.md,
+    gap: space.lg,
   },
-  packagingLabel: {
-    ...FIORI_STATIC.typography.caption,
-    color: colors.gray500,
-    marginTop: 2,
-  },
-  expandIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: colors.gray50,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  metricBadgeTeal: {
-    backgroundColor: colors.statusPositiveLight,
-    paddingHorizontal: FIORI_STATIC.spacing.sm,
-    paddingVertical: FIORI_STATIC.spacing.xs,
-    borderRadius: 8,
-  },
-  metricBadgePrimary: {
-    backgroundColor: colors.primaryLight,
-    paddingHorizontal: FIORI_STATIC.spacing.sm,
-    paddingVertical: FIORI_STATIC.spacing.xs,
-    borderRadius: 8,
-  },
-  metricLabel: {
-    ...FIORI_STATIC.typography.badge,
-    color: colors.gray500,
-  },
+  metricItem: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: space.xs },
+  metricLabel: { ...typography.footnote, color: t.text.secondary },
   metricValue: {
-    fontSize: 13,
-    color: colors.gray600,
-    fontWeight: '700',
+    ...typography.footnote,
+    color: t.text.primary,
+    fontWeight: fontWeight.semibold,
+    fontVariant: tabular,
   },
   summaryRow: {
-    marginTop: FIORI_STATIC.spacing.md,
-    paddingTop: FIORI_STATIC.spacing.md,
-    borderTopWidth: 1,
-    borderTopColor: colors.cellDivider,
+    marginTop: space.md,
+    paddingTop: space.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: t.border.divider,
+    flexDirection: 'row' as const,
+    flexWrap: 'wrap' as const,
+    gap: space.lg,
   },
-  rateLabel: {
-    fontSize: 11,
-    color: colors.gray500,
-    fontWeight: '500',
+  financialRow: {
+    flexDirection: 'row' as const,
+    marginTop: space.md,
+    gap: space.md,
   },
-  rateValue: {
-    fontSize: 13,
-    color: colors.gray900,
-    fontWeight: '600',
-  },
-  financialBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: FIORI_STATIC.spacing.md,
-    borderRadius: 10,
-    backgroundColor: colors.gray50,
-    overflow: 'hidden',
-  },
-  financialDivider: {
-    width: 1,
-    height: 28,
-    backgroundColor: colors.cellDivider,
-  },
-  financialLabel: {
-    ...FIORI_STATIC.typography.badge,
-    color: colors.gray500,
-    marginBottom: 2,
-  },
-  baseAmount: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: colors.gray900,
-  },
-  taxAmount: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: colors.primary,
+  financialItem: { flex: 1, alignItems: 'flex-end' as const, gap: space.xxs },
+  financialLabel: { ...typography.footnote, color: t.text.secondary },
+  amount: {
+    ...typography.subhead,
+    color: t.text.primary,
+    textAlign: 'right' as const,
+    fontVariant: tabular,
   },
   totalAmount: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: colors.success,
+    ...typography.headline,
+    color: t.text.primary,
+    textAlign: 'right' as const,
+    fontVariant: tabular,
   },
   dispatchCountRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: FIORI_STATIC.spacing.md,
-    paddingTop: FIORI_STATIC.spacing.md,
-    borderTopWidth: 1,
-    borderTopColor: colors.cellDivider,
-    gap: 6,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    marginTop: space.md,
+    paddingTop: space.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: t.border.divider,
+    gap: space.sm,
   },
-  dispatchCountText: {
-    ...FIORI_STATIC.typography.caption,
-    color: colors.gray600,
-    flex: 1,
-  },
-  tapHint: {
-    fontSize: 11,
-    color: colors.gray500,
-    fontWeight: '500',
-  },
-  expandedSection: {
-    borderTopWidth: 1,
-    borderTopColor: colors.cellDivider,
-  },
+  dispatchCountText: { ...typography.subhead, color: t.text.secondary, flex: 1 },
+  expandedSection: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: t.border.divider },
+  dataTableContainer: { flexDirection: 'row' as const },
   stickyColumn: {
-    width: FIORI_STATIC.dataTable.stickyColumnWidth,
-    borderRightWidth: 1,
-    borderRightColor: colors.cellDivider,
-    backgroundColor: colors.cellBackground,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000000',
-        shadowOffset: { width: 2, height: 0 },
-        shadowOpacity: 0.08,
-        shadowRadius: 2,
-      },
-      android: {
-        elevation: 3,
-      },
-    }),
+    width: TABLE.stickyColumnWidth,
+    borderRightWidth: StyleSheet.hairlineWidth,
+    borderRightColor: t.border.separator,
+    backgroundColor: t.surface.card,
     zIndex: 1,
   },
-  stickyHeaderCell: {
-    height: FIORI_STATIC.dataTable.headerRowHeight,
-    justifyContent: 'center',
-    paddingHorizontal: FIORI_STATIC.dataTable.cellPaddingH,
-    backgroundColor: colors.gray50,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.cellDivider,
-  },
-  stickyDataCell: {
-    height: FIORI_STATIC.dataTable.dataRowHeight,
-    justifyContent: 'center',
-    paddingHorizontal: FIORI_STATIC.dataTable.cellPaddingH,
-    backgroundColor: colors.cellBackground,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.cellDivider,
-  },
-  dispatchNoText: {
-    ...FIORI_STATIC.typography.tableDataMedium,
-    color: colors.primary,
-  },
-  dispatchDateText: {
-    fontSize: 11,
-    color: colors.gray500,
-    marginTop: 2,
-  },
   headerRow: {
-    flexDirection: 'row',
-    height: FIORI_STATIC.dataTable.headerRowHeight,
-    backgroundColor: colors.gray50,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.cellDivider,
+    flexDirection: 'row' as const,
+    height: TABLE.headerRowHeight,
+    backgroundColor: t.background.base,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.separator,
   },
-  headerCellText: {
-    ...FIORI_STATIC.typography.tableHeader,
-    color: colors.gray900,
+  stickyHeaderCell: {
+    height: TABLE.headerRowHeight,
+    justifyContent: 'center' as const,
+    paddingHorizontal: TABLE.cellPaddingH,
+    backgroundColor: t.background.base,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.separator,
   },
-  rowAlt: {
-    backgroundColor: colors.gray50,
+  headerCell: { justifyContent: 'center' as const, paddingHorizontal: TABLE.cellPaddingH },
+  headerCellText: { ...typography.footnote, fontWeight: fontWeight.semibold, color: t.text.secondary },
+  headerCellTextRight: { textAlign: 'right' as const },
+  stickyDataCell: {
+    height: TABLE.dataRowHeight,
+    justifyContent: 'center' as const,
+    paddingHorizontal: TABLE.cellPaddingH,
+    backgroundColor: t.surface.card,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.divider,
   },
+  stickyDataCellPressed: { backgroundColor: t.surface.cardPressed },
+  dispatchNoText: { ...typography.subhead, fontWeight: fontWeight.semibold, color: t.brand.tint, fontVariant: tabular },
+  dispatchNoTextPlain: { color: t.text.primary },
+  dispatchDateText: { ...typography.caption1, color: t.text.secondary, marginTop: space.xxs },
+  dataRow: {
+    flexDirection: 'row' as const,
+    height: TABLE.dataRowHeight,
+    backgroundColor: t.surface.card,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.divider,
+  },
+  lastRow: { borderBottomWidth: 0 },
+  dataCell: { justifyContent: 'center' as const, paddingHorizontal: TABLE.cellPaddingH },
+  dataCellText: {
+    ...typography.subhead,
+    color: t.text.primary,
+    textAlign: 'right' as const,
+    fontVariant: tabular,
+  },
+  taxSubtext: {
+    ...typography.caption1,
+    color: t.text.secondary,
+    textAlign: 'right' as const,
+    marginTop: space.xxs,
+    fontVariant: tabular,
+  },
+  colQty: { width: TABLE.colQty },
+  colDays: { width: TABLE.colDays },
+  colDuration: { width: TABLE.colDuration },
+  colRate: { width: TABLE.colRate },
+  colAmount: { width: TABLE.colAmount },
   tableFooter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.primaryLight,
-    paddingLeft: FIORI_STATIC.spacing.lg,
-    paddingRight: FIORI_STATIC.spacing.xl,
-    paddingVertical: FIORI_STATIC.spacing.lg,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.md,
     borderTopWidth: 1,
-    borderTopColor: colors.cellDivider,
+    borderTopColor: t.border.separator,
+    gap: space.xs,
   },
-  footerLabel: {
-    ...FIORI_STATIC.typography.tableHeader,
-    color: colors.primary,
-  },
-  footerValueLabel: {
-    fontSize: 11,
-    color: colors.gray500,
-    fontWeight: '500',
-    marginBottom: 4,
-    textTransform: 'uppercase',
-    letterSpacing: 0.3,
-  },
+  footerLabel: { ...typography.subhead, fontWeight: fontWeight.semibold, color: t.text.primary },
+  footerValues: { flexDirection: 'row' as const, flexWrap: 'wrap' as const, gap: space.md },
+  footerValueItem: { flexGrow: 1, alignItems: 'flex-end' as const, gap: space.xxs },
+  footerValueLabel: { ...typography.caption1, color: t.text.secondary },
   footerValueText: {
-    ...FIORI_STATIC.typography.tableDataMedium,
-    color: colors.gray900,
-    fontSize: 14,
-  },
-  footerTotalAmount: {
-    color: colors.success,
-    fontWeight: '700',
-    fontSize: 15,
+    ...typography.subhead,
+    fontWeight: fontWeight.semibold,
+    color: t.text.primary,
+    textAlign: 'right' as const,
+    fontVariant: tabular,
   },
   grnReferenceButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: FIORI_STATIC.spacing.lg,
-    paddingVertical: FIORI_STATIC.spacing.md,
-    backgroundColor: colors.blueLight,
-    gap: FIORI_STATIC.spacing.sm,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.sm,
+    minHeight: touchTarget,
+    gap: space.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: t.border.divider,
   },
-  grnIcon: {
-    width: 28,
-    height: 28,
-    borderRadius: 8,
-    backgroundColor: colors.cellBackground,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  grnLabel: {
-    ...FIORI_STATIC.typography.caption,
-    color: colors.gray600,
-  },
-  grnNumber: {
-    fontSize: 13,
-    color: colors.blue,
-    fontWeight: '600',
-    flex: 1,
-  },
+  grnReferenceButtonPressed: { backgroundColor: t.surface.cardPressed },
+  grnLabel: { ...typography.body, color: t.brand.tint, flex: 1 },
 });
+
+type Styles = ReturnType<typeof makeStyles>;
 
 // ============================================================================
 // COMPONENT
@@ -426,12 +282,8 @@ const InvoiceLineItemGroupComponent: React.FC<InvoiceLineItemGroupProps> = ({
   default_expanded = false,
 }) => {
   const [expanded, setExpanded] = useState(default_expanded);
-
-  // Theme colors for dark mode support
-  const colors = useListColors();
-
-  // Dynamic styles based on theme
-  const dynamicStyles = useMemo(() => createDynamicStyles(colors), [colors]);
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
 
   const toggleExpanded = useCallback(() => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -445,247 +297,218 @@ const InvoiceLineItemGroupComponent: React.FC<InvoiceLineItemGroupProps> = ({
     }
   }, [group.grn_id, group.gr_no, group.on_view_grn]);
 
+  const dispatchItems = group.dispatch_items ?? [];
+  const dispatchCount = dispatchItems.length;
+  const dispatchCountText = `${dispatchCount} ${dispatchCount === 1 ? 'dispatch' : 'dispatches'}`;
+
   return (
-    <View style={dynamicStyles.card}>
-      {/* Header Section - Tappable to expand/collapse */}
-      <TouchableOpacity
+    <View style={styles.card}>
+      {/* Header - tap to expand or collapse */}
+      <Pressable
         onPress={toggleExpanded}
-        activeOpacity={0.7}
+        style={({ pressed }) => [styles.headerPressable, pressed && styles.headerPressed]}
         accessibilityRole="button"
-        accessibilityLabel={`${group.item_name}, ${expanded ? 'collapse' : 'expand'} to see ${group.dispatch_items?.length ?? 0} dispatch items`}
+        accessibilityState={{ expanded }}
+        accessibilityLabel={`${group.item_name}, ${dispatchCountText}, total ${formatInvoiceAmount(group.total_amount)}`}
+        accessibilityHint={expanded ? 'Hides the dispatches' : 'Shows the dispatches'}
       >
         <View style={styles.headerSection}>
-          {/* Item Icon & Name */}
           <View style={styles.headerTop}>
-            <View style={dynamicStyles.itemIconContainer}>
-              <Icon name="package-variant" size={20} color={colors.primary} />
+            <View style={styles.itemIconContainer}>
+              <Icon name="cube-outline" size={iconSize.md} color={t.brand.tint} />
             </View>
             <View style={styles.headerTitleArea}>
-              <Text style={dynamicStyles.itemName} numberOfLines={2}>
+              <Text style={styles.itemName} numberOfLines={2}>
                 {group.item_name}
               </Text>
               {group.packaging && (
-                <Text style={dynamicStyles.packagingLabel}>{group.packaging}</Text>
+                <Text style={styles.packagingLabel}>{group.packaging}</Text>
               )}
             </View>
-            <View style={dynamicStyles.expandIcon}>
-              <Icon
-                name={expanded ? 'chevron-up' : 'chevron-down'}
-                size={24}
-                color={colors.gray500}
-              />
-            </View>
+            <Icon
+              name={expanded ? 'chevron-up' : 'chevron-down'}
+              size={iconSize.lg}
+              color={t.icon.secondary}
+            />
           </View>
 
-          {/* Key Metrics Row */}
+          {/* Key metrics */}
           <View style={styles.metricsRow}>
-            {/* Weight */}
             {group.weight > 0 && (
               <View style={styles.metricItem}>
-                <Icon name="weight" size={14} color={colors.gray500} />
-                <Text style={dynamicStyles.metricValue}>{formatNumber(group.weight)} kg</Text>
+                <Icon name="weight" size={iconSize.sm} color={t.icon.secondary} />
+                <Text style={styles.metricValue}>{`${formatNumber(group.weight)} kg`}</Text>
               </View>
             )}
-            {/* GRN Qty */}
-            <View style={[styles.metricItem, dynamicStyles.metricBadgeTeal]}>
-              <Icon name="arrow-down-bold-circle" size={14} color={colors.success} />
-              <Text style={dynamicStyles.metricLabel}>GRN</Text>
-              <Text style={[dynamicStyles.metricValue, { color: colors.success }]}>
-                {formatNumber(group.grn_quantity)}
-              </Text>
+            <View style={styles.metricItem}>
+              <Text style={styles.metricLabel}>Received</Text>
+              <Text style={styles.metricValue}>{formatNumber(group.grn_quantity)}</Text>
             </View>
-            {/* Total Dispatch Qty */}
-            <View style={[styles.metricItem, dynamicStyles.metricBadgePrimary]}>
-              <Icon name="arrow-up-bold-circle" size={14} color={colors.primary} />
-              <Text style={dynamicStyles.metricLabel}>Disp</Text>
-              <Text style={[dynamicStyles.metricValue, { color: colors.primary }]}>
-                {formatNumber(group.total_dispatch_qty)}
-              </Text>
+            <View style={styles.metricItem}>
+              <Text style={styles.metricLabel}>Dispatched</Text>
+              <Text style={styles.metricValue}>{formatNumber(group.total_dispatch_qty)}</Text>
             </View>
           </View>
 
-          {/* Rates & Totals Summary */}
-          <View style={dynamicStyles.summaryRow}>
-            <View style={styles.rateSection}>
-              <View style={styles.rateItem}>
-                <Text style={dynamicStyles.rateLabel}>Charge/Unit</Text>
-                <Text style={dynamicStyles.rateValue}>{formatCurrency(group.charge_per_unit)}</Text>
+          {/* Rates */}
+          <View style={styles.summaryRow}>
+            <View style={styles.metricItem}>
+              <Text style={styles.metricLabel}>Charge per unit</Text>
+              <Text style={styles.metricValue}>{formatInvoiceAmount(group.charge_per_unit)}</Text>
+            </View>
+            {group.labour_rate > 0 && (
+              <View style={styles.metricItem}>
+                <Text style={styles.metricLabel}>Labour</Text>
+                <Text style={styles.metricValue}>{formatInvoiceAmount(group.labour_rate)}</Text>
               </View>
-              {group.labour_rate > 0 && (
-                <View style={styles.rateItem}>
-                  <Text style={dynamicStyles.rateLabel}>Labour</Text>
-                  <Text style={dynamicStyles.rateValue}>{formatCurrency(group.labour_rate)}</Text>
-                </View>
-              )}
-              {group.tax_rate !== undefined && group.tax_rate > 0 && (
-                <View style={styles.rateItem}>
-                  <Text style={dynamicStyles.rateLabel}>Tax</Text>
-                  <Text style={dynamicStyles.rateValue}>{group.tax_rate}%</Text>
-                </View>
-              )}
+            )}
+            {group.tax_rate !== undefined && group.tax_rate > 0 && (
+              <View style={styles.metricItem}>
+                <Text style={styles.metricLabel}>Tax</Text>
+                <Text style={styles.metricValue}>{`${group.tax_rate}%`}</Text>
+              </View>
+            )}
+          </View>
+
+          {/* Amounts */}
+          <View style={styles.financialRow}>
+            <View style={styles.financialItem}>
+              <Text style={styles.financialLabel}>Base</Text>
+              <Text style={styles.amount}>{formatInvoiceAmount(group.total_base_amount)}</Text>
+            </View>
+            <View style={styles.financialItem}>
+              <Text style={styles.financialLabel}>Tax</Text>
+              <Text style={styles.amount}>{formatInvoiceAmount(group.total_tax_amount)}</Text>
+            </View>
+            <View style={styles.financialItem}>
+              <Text style={styles.financialLabel}>Total</Text>
+              <Text style={styles.totalAmount}>{formatInvoiceAmount(group.total_amount)}</Text>
             </View>
           </View>
 
-          {/* Financial Summary Bar */}
-          <Surface style={dynamicStyles.financialBar} elevation={0}>
-            <View style={styles.financialItem}>
-              <Text style={dynamicStyles.financialLabel}>BASE</Text>
-              <Text style={dynamicStyles.baseAmount}>{formatCurrency(group.total_base_amount)}</Text>
-            </View>
-            <View style={dynamicStyles.financialDivider} />
-            <View style={styles.financialItem}>
-              <Text style={dynamicStyles.financialLabel}>TAX</Text>
-              <Text style={dynamicStyles.taxAmount}>{formatCurrency(group.total_tax_amount)}</Text>
-            </View>
-            <View style={dynamicStyles.financialDivider} />
-            <View style={styles.financialItem}>
-              <Text style={dynamicStyles.financialLabel}>TOTAL</Text>
-              <Text style={dynamicStyles.totalAmount}>{formatCurrency(group.total_amount)}</Text>
-            </View>
-          </Surface>
-
-          {/* Dispatch Count Indicator */}
-          <View style={dynamicStyles.dispatchCountRow}>
-            <Icon name="truck-fast-outline" size={16} color={colors.gray500} />
-            <Text style={dynamicStyles.dispatchCountText}>
-              {group.dispatch_items?.length ?? 0} {(group.dispatch_items?.length ?? 0) === 1 ? 'dispatch' : 'dispatches'}
-            </Text>
-            <Text style={dynamicStyles.tapHint}>
-              {expanded ? 'Tap to collapse' : 'Tap to expand'}
-            </Text>
+          {/* Dispatch count */}
+          <View style={styles.dispatchCountRow}>
+            <Icon name="truck-delivery-outline" size={iconSize.sm} color={t.icon.secondary} />
+            <Text style={styles.dispatchCountText}>{dispatchCountText}</Text>
           </View>
         </View>
-      </TouchableOpacity>
+      </Pressable>
 
-      {/* Expanded Dispatch Items - Fiori Data Table */}
+      {/* Expanded dispatch items - read-only data table */}
       {expanded && (
-        <View style={dynamicStyles.expandedSection}>
-          {/* Data Table with Horizontal Scroll */}
+        <View style={styles.expandedSection}>
           <View style={styles.dataTableContainer}>
-            {/* Sticky First Column (Dispatch Info) */}
-            <View style={dynamicStyles.stickyColumn}>
-              {/* Sticky Header Cell */}
-              <View style={dynamicStyles.stickyHeaderCell}>
-                <Text style={dynamicStyles.headerCellText}>Dispatch</Text>
+            {/* Pinned first column */}
+            <View style={styles.stickyColumn}>
+              <View style={styles.stickyHeaderCell}>
+                <Text style={styles.headerCellText}>Dispatch</Text>
               </View>
-              {/* Sticky Data Cells */}
-              {(group.dispatch_items ?? []).map((item, index) => (
-                <TouchableOpacity
-                  key={`sticky-${item.id}-${index}`}
-                  style={[
-                    dynamicStyles.stickyDataCell,
-                    index % 2 === 1 && dynamicStyles.rowAlt,
-                    index === (group.dispatch_items?.length ?? 0) - 1 && styles.lastRow,
-                  ]}
-                  onPress={() => {
-                    if (item.dispatch_id && item.on_view_dispatch) {
-                      Vibration.vibrate(10);
-                      item.on_view_dispatch(item.dispatch_id);
-                    }
-                  }}
-                  disabled={!item.dispatch_id || !item.on_view_dispatch}
-                  activeOpacity={0.7}
-                >
-                  <Text style={dynamicStyles.dispatchNoText}>
-                    {item.dispatch_no ? `#${item.dispatch_no}` : '-'}
-                  </Text>
-                  <Text style={dynamicStyles.dispatchDateText}>
-                    {formatDate(item.dispatch_date)}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+              {dispatchItems.map((item, index) => {
+                const canOpen = !!(item.dispatch_id && item.on_view_dispatch);
+                return (
+                  <Pressable
+                    key={`sticky-${item.id}-${index}`}
+                    style={({ pressed }) => [
+                      styles.stickyDataCell,
+                      pressed && canOpen && styles.stickyDataCellPressed,
+                      index === dispatchCount - 1 && styles.lastRow,
+                    ]}
+                    onPress={() => {
+                      if (item.dispatch_id && item.on_view_dispatch) {
+                        Vibration.vibrate(10);
+                        item.on_view_dispatch(item.dispatch_id);
+                      }
+                    }}
+                    disabled={!canOpen}
+                    accessibilityRole={canOpen ? 'link' : undefined}
+                    accessibilityLabel={`Dispatch ${item.dispatch_no || ''}, ${formatDate(item.dispatch_date)}`}
+                    accessibilityHint={canOpen ? 'Opens the dispatch' : undefined}
+                  >
+                    <Text style={[styles.dispatchNoText, !canOpen && styles.dispatchNoTextPlain]}>
+                      {item.dispatch_no || '—'}
+                    </Text>
+                    <Text style={styles.dispatchDateText}>
+                      {formatDate(item.dispatch_date)}
+                    </Text>
+                  </Pressable>
+                );
+              })}
             </View>
 
-            {/* Scrollable Columns */}
+            {/* Scrollable columns */}
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={true}
               bounces={false}
-              style={styles.scrollableArea}
-              contentContainerStyle={styles.scrollableContent}
+              style={localStyles.scrollableArea}
+              contentContainerStyle={localStyles.scrollableContent}
             >
               <View>
-                {/* Header Row */}
-                <View style={dynamicStyles.headerRow}>
+                <View style={styles.headerRow}>
                   <View style={[styles.headerCell, styles.colQty]}>
-                    <Text style={dynamicStyles.headerCellText}>Qty</Text>
+                    <Text style={[styles.headerCellText, styles.headerCellTextRight]}>Qty</Text>
                   </View>
                   <View style={[styles.headerCell, styles.colDays]}>
-                    <Text style={dynamicStyles.headerCellText}>Days</Text>
+                    <Text style={[styles.headerCellText, styles.headerCellTextRight]}>Days</Text>
                   </View>
                   <View style={[styles.headerCell, styles.colDuration]}>
-                    <Text style={dynamicStyles.headerCellText}>Duration</Text>
+                    <Text style={[styles.headerCellText, styles.headerCellTextRight]}>Months</Text>
                   </View>
                   <View style={[styles.headerCell, styles.colRate]}>
-                    <Text style={dynamicStyles.headerCellText}>Rate</Text>
+                    <Text style={[styles.headerCellText, styles.headerCellTextRight]}>Rate</Text>
                   </View>
                   <View style={[styles.headerCell, styles.colAmount]}>
-                    <Text style={dynamicStyles.headerCellText}>Amount</Text>
+                    <Text style={[styles.headerCellText, styles.headerCellTextRight]}>Amount</Text>
                   </View>
                 </View>
 
-                {/* Data Rows */}
-                {(group.dispatch_items ?? []).map((item, index) => (
+                {dispatchItems.map((item, index) => (
                   <DispatchDataTableRow
                     key={`row-${item.id}-${index}`}
                     item={item}
-                    isAlt={index % 2 === 1}
-                    isLast={index === (group.dispatch_items?.length ?? 0) - 1}
-                    colors={colors}
+                    isLast={index === dispatchCount - 1}
+                    styles={styles}
                   />
                 ))}
               </View>
             </ScrollView>
           </View>
 
-          {/* Table Footer - Totals Row */}
-          <View style={dynamicStyles.tableFooter}>
-            <View style={styles.footerLabelCell}>
-              <Icon name="sigma" size={16} color={colors.primary} />
-              <Text style={dynamicStyles.footerLabel}>Totals</Text>
-            </View>
+          {/* Totals row */}
+          <View style={styles.tableFooter}>
+            <Text style={styles.footerLabel} accessibilityRole="header">Totals</Text>
             <View style={styles.footerValues}>
               <View style={styles.footerValueItem}>
-                <Text style={dynamicStyles.footerValueLabel}>Qty</Text>
-                <Text style={dynamicStyles.footerValueText}>
-                  {formatNumber(group.total_dispatch_qty)}
-                </Text>
+                <Text style={styles.footerValueLabel}>Qty</Text>
+                <Text style={styles.footerValueText}>{formatNumber(group.total_dispatch_qty)}</Text>
               </View>
               <View style={styles.footerValueItem}>
-                <Text style={dynamicStyles.footerValueLabel}>Base</Text>
-                <Text style={dynamicStyles.footerValueText}>
-                  {formatCurrency(group.total_base_amount)}
-                </Text>
+                <Text style={styles.footerValueLabel}>Base</Text>
+                <Text style={styles.footerValueText}>{formatInvoiceAmount(group.total_base_amount)}</Text>
               </View>
               <View style={styles.footerValueItem}>
-                <Text style={dynamicStyles.footerValueLabel}>Tax</Text>
-                <Text style={[dynamicStyles.footerValueText, { color: colors.primary }]}>
-                  {formatCurrency(group.total_tax_amount)}
-                </Text>
+                <Text style={styles.footerValueLabel}>Tax</Text>
+                <Text style={styles.footerValueText}>{formatInvoiceAmount(group.total_tax_amount)}</Text>
               </View>
-              <View style={[styles.footerValueItem, styles.footerValueItemLast]}>
-                <Text style={dynamicStyles.footerValueLabel}>Total</Text>
-                <Text style={[dynamicStyles.footerValueText, dynamicStyles.footerTotalAmount]}>
-                  {formatCurrency(group.total_amount)}
-                </Text>
+              <View style={styles.footerValueItem}>
+                <Text style={styles.footerValueLabel}>Total</Text>
+                <Text style={styles.footerValueText}>{formatInvoiceAmount(group.total_amount)}</Text>
               </View>
             </View>
           </View>
 
-          {/* GRN Reference Link */}
+          {/* GRN reference link */}
           {group.gr_no && group.on_view_grn && (
-            <TouchableOpacity
-              style={dynamicStyles.grnReferenceButton}
+            <Pressable
+              style={({ pressed }) => [styles.grnReferenceButton, pressed && styles.grnReferenceButtonPressed]}
               onPress={handleViewGRN}
-              activeOpacity={0.7}
+              accessibilityRole="link"
+              accessibilityLabel={`View GRN ${group.gr_no}`}
             >
-              <View style={dynamicStyles.grnIcon}>
-                <Icon name="file-document-outline" size={16} color={colors.blue} />
-              </View>
-              <Text style={dynamicStyles.grnLabel}>View GRN</Text>
-              <Text style={dynamicStyles.grnNumber}>{group.gr_no}</Text>
-              <Icon name="chevron-right" size={18} color={colors.primary} />
-            </TouchableOpacity>
+              <Icon name="package-down" size={iconSize.md} color={t.brand.tint} />
+              <Text style={styles.grnLabel}>{`View GRN ${group.gr_no}`}</Text>
+              <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />
+            </Pressable>
           )}
         </View>
       )}
@@ -694,221 +517,50 @@ const InvoiceLineItemGroupComponent: React.FC<InvoiceLineItemGroupProps> = ({
 };
 
 // ============================================================================
-// DISPATCH DATA TABLE ROW - Fiori Data Table Spec Compliant
+// DISPATCH DATA TABLE ROW
 // ============================================================================
 interface DispatchDataTableRowProps {
   item: DispatchLineItem;
-  isAlt: boolean;
   isLast: boolean;
-  colors: ListColors;
+  styles: Styles;
 }
 
 const DispatchDataTableRow = React.memo<DispatchDataTableRowProps>(({
   item,
-  isAlt,
   isLast,
-  colors,
-}) => {
-  // Debug: log duration value
-  if (__DEV__) console.log('[InvoiceLineItemGroup] DispatchDataTableRow - duration:', item.duration, 'no_of_days:', item.no_of_days);
-
-  // Dynamic styles for this row
-  const rowDynamicStyles = useMemo(() => StyleSheet.create({
-    dataRow: {
-      flexDirection: 'row',
-      height: FIORI_STATIC.dataTable.dataRowHeight,
-      backgroundColor: colors.cellBackground,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.cellDivider,
-    },
-    rowAlt: {
-      backgroundColor: colors.gray50,
-    },
-    dataCellText: {
-      ...FIORI_STATIC.typography.tableData,
-      color: colors.gray900,
-      textAlign: 'center',
-    },
-    amountCellText: {
-      ...FIORI_STATIC.typography.tableDataMedium,
-      color: colors.success,
-      textAlign: 'right',
-    },
-    taxSubtext: {
-      fontSize: 11,
-      color: colors.gray500,
-      textAlign: 'right',
-      marginTop: 2,
-    },
-  }), [colors]);
-
-  return (
-    <View
-      style={[
-        rowDynamicStyles.dataRow,
-        isAlt && rowDynamicStyles.rowAlt,
-        isLast && styles.lastRow,
-      ]}
-    >
-      {/* Qty Cell */}
-      <View style={[styles.dataCell, styles.colQty]}>
-        <Text style={rowDynamicStyles.dataCellText}>
-          {formatNumber(item.dispatch_qty)}
-        </Text>
-      </View>
-
-      {/* Days Cell */}
-      <View style={[styles.dataCell, styles.colDays]}>
-        <Text style={rowDynamicStyles.dataCellText}>{item.no_of_days}</Text>
-      </View>
-
-      {/* Duration Cell */}
-      <View style={[styles.dataCell, styles.colDuration]}>
-        <Text style={rowDynamicStyles.dataCellText}>{formatNumber(item.duration, 1)}m</Text>
-      </View>
-
-      {/* Rate Cell */}
-      <View style={[styles.dataCell, styles.colRate]}>
-        <Text style={rowDynamicStyles.dataCellText}>
-          {formatCurrency(item.charge_per_unit)}
-        </Text>
-      </View>
-
-      {/* Amount Cell */}
-      <View style={[styles.dataCell, styles.colAmount]}>
-        <Text style={rowDynamicStyles.amountCellText}>
-          {formatCurrency(item.line_item_amount)}
-        </Text>
-        {item.tax > 0 && (
-          <Text style={rowDynamicStyles.taxSubtext}>+{formatCurrency(item.tax)}</Text>
-        )}
-      </View>
+  styles,
+}) => (
+  <View
+    style={[styles.dataRow, isLast && styles.lastRow]}
+    accessible
+    accessibilityLabel={`Qty ${formatNumber(item.dispatch_qty)}, ${item.no_of_days} days, ${formatNumber(item.duration, 1)} months, rate ${formatInvoiceAmount(item.charge_per_unit)}, amount ${formatInvoiceAmount(item.line_item_amount)}${item.tax > 0 ? `, tax ${formatInvoiceAmount(item.tax)}` : ''}`}
+  >
+    <View style={[styles.dataCell, styles.colQty]}>
+      <Text style={styles.dataCellText}>{formatNumber(item.dispatch_qty)}</Text>
     </View>
-  );
-});
+    <View style={[styles.dataCell, styles.colDays]}>
+      <Text style={styles.dataCellText}>{item.no_of_days}</Text>
+    </View>
+    <View style={[styles.dataCell, styles.colDuration]}>
+      <Text style={styles.dataCellText}>{formatNumber(item.duration, 1)}</Text>
+    </View>
+    <View style={[styles.dataCell, styles.colRate]}>
+      <Text style={styles.dataCellText}>{formatInvoiceAmount(item.charge_per_unit)}</Text>
+    </View>
+    <View style={[styles.dataCell, styles.colAmount]}>
+      <Text style={styles.dataCellText}>{formatInvoiceAmount(item.line_item_amount)}</Text>
+      {item.tax > 0 && (
+        <Text style={styles.taxSubtext}>{`+${formatInvoiceAmount(item.tax)} tax`}</Text>
+      )}
+    </View>
+  </View>
+));
+DispatchDataTableRow.displayName = 'DispatchDataTableRow';
 
-// ============================================================================
-// STYLES (Static layout only - colors are in dynamicStyles)
-// ============================================================================
-const styles = StyleSheet.create({
-  // Header Section
-  headerSection: {
-    padding: FIORI_STATIC.dimensions.cardPadding,
-  },
-  headerTop: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-  },
-  headerTitleArea: {
-    flex: 1,
-    paddingRight: FIORI_STATIC.spacing.sm,
-  },
-
-  // Metrics Row
-  metricsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginTop: FIORI_STATIC.spacing.md,
-    gap: FIORI_STATIC.spacing.sm,
-  },
-  metricItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: FIORI_STATIC.spacing.xs,
-  },
-
-  // Summary Row
-  rateSection: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: FIORI_STATIC.spacing.lg,
-  },
-  rateItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-
-  // Financial Bar
-  financialItem: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: 10,
-  },
-
-  // Data Table Container - enables sticky column
-  dataTableContainer: {
-    flexDirection: 'row',
-  },
-
-  // Scrollable Area
-  scrollableArea: {
-    flex: 1,
-  },
-  scrollableContent: {
-    flexGrow: 1,
-  },
-
-  // Header Cell
-  headerCell: {
-    justifyContent: 'center',
-    paddingHorizontal: FIORI_STATIC.dataTable.cellPaddingH,
-    paddingVertical: FIORI_STATIC.dataTable.cellPaddingV,
-  },
-
-  // Last Row - no bottom border
-  lastRow: {
-    borderBottomWidth: 0,
-  },
-
-  // Data Cell
-  dataCell: {
-    justifyContent: 'center',
-    paddingHorizontal: FIORI_STATIC.dataTable.cellPaddingH,
-    paddingVertical: FIORI_STATIC.dataTable.cellPaddingV,
-  },
-
-  // Column Widths - Fiori spec: min 80pt
-  colQty: {
-    width: FIORI_STATIC.dataTable.columnMinWidth,
-  },
-  colDays: {
-    width: FIORI_STATIC.dataTable.columnMinWidth,
-  },
-  colDuration: {
-    width: FIORI_STATIC.dataTable.columnMinWidth,
-  },
-  colRate: {
-    width: 90,
-  },
-  colAmount: {
-    width: 100,
-  },
-
-  // Table Footer
-  footerLabelCell: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: FIORI_STATIC.spacing.sm,
-    minWidth: 70,
-    marginRight: FIORI_STATIC.spacing.sm,
-  },
-  footerValues: {
-    flex: 1,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  footerValueItem: {
-    alignItems: 'center',
-    minWidth: 55,
-    paddingHorizontal: FIORI_STATIC.spacing.xs,
-  },
-  // Last item (Total) needs more space on the right
-  footerValueItemLast: {
-    alignItems: 'flex-end', // Right-align the total
-    minWidth: 70,
-    paddingRight: 0,
-  },
+// Colour-free layout
+const localStyles = StyleSheet.create({
+  scrollableArea: { flex: 1 },
+  scrollableContent: { flexGrow: 1 },
 });
 
 // Custom areEqual comparator for performance optimization

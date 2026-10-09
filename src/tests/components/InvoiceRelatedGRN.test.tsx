@@ -14,13 +14,13 @@ jest.mock('expo-router', () => ({
   router: { push: jest.fn(), replace: jest.fn() },
   Stack: { Screen: () => null },
 }));
-jest.mock('@/store/hooks', () => ({ useAppSelector: () => mockAuth }));
+jest.mock('@/store/hooks', () => ({
+  useAppDispatch: () => jest.fn(),
+  useAppSelector: (selector: (state: unknown) => unknown) =>
+    selector({ auth: mockAuth, theme: { preference: 'light', brand: 'orange' } }),
+}));
 jest.mock('@/hooks/usePermissions', () => ({ usePermissions: () => ({}) }));
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ bottom: 0 }) }));
-jest.mock('@/theme/fioriColors', () => ({
-  useFioriColors: () => ({ colors: new Proxy({}, { get: () => '#ffffff' }) }),
-}));
-jest.mock('@/hooks/useListColors', () => ({ useListColors: () => new Proxy({}, { get: () => '#ffffff' }) }));
 jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('react-native-paper', () => ({ Portal: 'Portal', Snackbar: 'Snackbar' }));
 jest.mock('@/components/skeletons', () => ({ DetailSkeleton: () => null }));

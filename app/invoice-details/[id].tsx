@@ -1,19 +1,12 @@
 /**
- * Invoice Details Screen - 100% SAP Fiori Compliant
+ * Invoice details screen (style guide §14.2 object page).
  *
- * Based on SAP Fiori for iOS Design Guidelines
- *
- * Features:
- * - Fiori Object Header pattern
- * - Tab Bar navigation (Fiori spec)
- * - Card-based content layout
- * - Semantic colors and typography
- * - Platform-specific shadows
- * - 44pt minimum touch targets
+ * Hero header with the key facts, detail tabs (overview, line items,
+ * breakdown), share and print actions, and loading and not-found states.
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
-import { View, StyleSheet, Alert, Text, Pressable, Platform } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Alert, Text, Pressable } from 'react-native';
 import { DetailSkeleton } from '@/components/skeletons';
 import { useLocalSearchParams, router, Stack } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -44,78 +37,75 @@ import {
   TabKey,
   InvoiceLineItem,
 } from '@/components/invoice-details';
-import { useFioriColors } from '@/theme/fioriColors';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { iconSize, layout, radius, space, touchTarget, typography } from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
 
 // ============================================================================
-// FIORI DESIGN TOKENS - Static values (typography, spacing, dimensions)
-// Colors are now dynamic via useFioriColors hook
+// STYLES
 // ============================================================================
-const FIORI_STATIC = {
-  spacing: {
-    xs: 4,
-    sm: 8,
-    md: 12,
-    lg: 16,
-    xl: 20,
-    xxl: 24,
+const makeStyles = (t: ThemeTokens) => ({
+  container: { flex: 1, backgroundColor: t.background.base },
+  centerContainer: {
+    flex: 1,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    backgroundColor: t.background.base,
   },
-  typography: {
-    largeTitle: {
-      fontSize: 22,
-      fontWeight: '700' as const,
-      letterSpacing: 0.35,
-    },
-    headline: {
-      fontSize: 17,
-      fontWeight: '600' as const,
-    },
-    body: {
-      fontSize: 15,
-      fontWeight: '400' as const,
-    },
-    caption: {
-      fontSize: 13,
-      fontWeight: '400' as const,
-    },
-    badge: {
-      fontSize: 10,
-      fontWeight: '700' as const,
-      letterSpacing: 0.5,
-    },
+  tabContent: { flex: 1 },
+  errorContainer: {
+    alignItems: 'center' as const,
+    padding: space.xl,
+    maxWidth: layout.maxFormWidth,
+    gap: space.sm,
   },
-  dimensions: {
-    cardRadius: 12,
-    buttonHeight: 44,
-    buttonRadius: 8,
-    touchTarget: 44,
-    avatarSize: 40,
+  errorTitle: { ...typography.title3, color: t.text.primary, textAlign: 'center' as const, marginTop: space.lg },
+  errorMessage: { ...typography.subhead, color: t.text.secondary, textAlign: 'center' as const, marginBottom: space.lg },
+  secondaryButton: {
+    minHeight: touchTarget,
+    minWidth: 120,
+    paddingHorizontal: space.lg,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    borderRadius: radius.button,
+    borderWidth: 1,
+    borderColor: t.border.button,
   },
-  shadows: {
-    card: Platform.select({
-      ios: {
-        shadowColor: '#000000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.08,
-        shadowRadius: 3,
-      },
-      android: {
-        elevation: 2,
-      },
-    }),
+  secondaryButtonPressed: { backgroundColor: t.brand.subtle },
+  secondaryButtonText: { ...typography.callout, color: t.brand.tint },
+  navBar: { backgroundColor: t.surface.header },
+  backButton: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    minHeight: touchTarget,
+    minWidth: touchTarget,
+    paddingRight: space.sm,
+    marginLeft: -space.xs,
   },
-} as const;
+  backButtonText: { ...typography.body, color: t.brand.tint },
+  headerTitleContainer: { alignItems: 'center' as const, justifyContent: 'center' as const },
+  headerTitle: { ...typography.headline, color: t.text.primary, textAlign: 'center' as const },
+  headerSubtitle: {
+    ...typography.caption1,
+    color: t.text.secondary,
+    textAlign: 'center' as const,
+    maxWidth: 220,
+  },
+  snackbar: { backgroundColor: t.surface.inverse, borderRadius: radius.button },
+});
 
 function InvoiceDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { user, session, userProfile } = useAppSelector((state) => state.auth);
   const { canUpdate, canDelete, isCustomer } = usePermissions();
   const insets = useSafeAreaInsets();
-  const FIORI = useFioriColors();
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
 
   // State
   const [activeTab, setActiveTab] = useState<TabKey>('items');
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  const [, setRefreshing] = useState(false);
   const [data, setData] = useState<InvoiceDetailsResponse['data'] | null>(null);
   const [detailedItems, setDetailedItems] = useState<InvoiceItemDetailed[]>([]);
   const [itemsSummary, setItemsSummary] = useState<InvoiceItemsSummary | null>(null);
@@ -146,7 +136,7 @@ function InvoiceDetailScreen() {
       if (result.success && result.data) {
         setData(result.data);
       } else {
-        Alert.alert('Error', parseErrorToFriendly(result.error || result.message, 'Invoice'));
+        Alert.alert("Couldn't load invoice", parseErrorToFriendly(result.error || result.message, 'Invoice'));
         return;
       }
 
@@ -164,7 +154,7 @@ function InvoiceDetailScreen() {
       }
     } catch (error) {
       console.error('[InvoiceDetailScreen] Exception:', error);
-      Alert.alert('Error', getUserFriendlyError('invoice', 'load'));
+      Alert.alert("Couldn't load invoice", getUserFriendlyError('invoice', 'load'));
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -206,12 +196,12 @@ function InvoiceDetailScreen() {
     const customerName = data.header.customer?.name || data.header.invoice_customer_name;
 
     Alert.alert(
-      'Delete Invoice',
-      `Are you sure you want to delete Invoice #${invoiceNumber} for ${customerName}?\n\nThis action cannot be undone.`,
+      `Delete invoice ${invoiceNumber}?`,
+      `Invoice ${invoiceNumber}${customerName ? ` for ${customerName}` : ''} will be deleted. This can't be undone.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Delete',
+          text: 'Delete invoice',
           style: 'destructive',
           onPress: async () => {
             setIsDeleting(true);
@@ -220,11 +210,11 @@ function InvoiceDetailScreen() {
 
               if (result.success) {
                 Alert.alert(
-                  'Invoice Deleted',
-                  result.message || 'Invoice deleted successfully',
+                  `Invoice ${invoiceNumber} deleted.`,
+                  undefined,
                   [
                     {
-                      text: 'OK',
+                      text: 'Done',
                       onPress: () => {
                         router.back();
                       },
@@ -232,11 +222,11 @@ function InvoiceDetailScreen() {
                   ]
                 );
               } else {
-                Alert.alert('Error', parseErrorToFriendly(result.error, 'Invoice'));
+                Alert.alert("Couldn't delete invoice", parseErrorToFriendly(result.error, 'Invoice'));
               }
             } catch (error) {
               console.error('[InvoiceDetailScreen] Delete error:', error);
-              Alert.alert('Error', getUserFriendlyError('invoice', 'delete'));
+              Alert.alert("Couldn't delete invoice", getUserFriendlyError('invoice', 'delete'));
             } finally {
               setIsDeleting(false);
             }
@@ -252,9 +242,10 @@ function InvoiceDetailScreen() {
 
     const invoiceNo = data.header.invoice_number;
     const finYear = data.header.financial_year;
+    const shareError = "Couldn't share the invoice PDF. Check your connection and try again.";
 
     if (!invoiceNo || !finYear) {
-      Alert.alert('Error', 'Invalid invoice data');
+      Alert.alert("Couldn't share invoice", 'This invoice is missing its number or financial year. Reload it and try again.');
       return;
     }
 
@@ -271,7 +262,7 @@ function InvoiceDetailScreen() {
       const pdfResult = await generateInvoicePDF(invoiceNo, finYearNum);
 
       if (!pdfResult.success || !pdfResult.pdfUrl) {
-        Alert.alert('Error', pdfResult.error || 'Failed to generate PDF');
+        Alert.alert("Couldn't share invoice", shareError);
         return;
       }
 
@@ -284,11 +275,11 @@ function InvoiceDetailScreen() {
       );
 
       if (!shareResult.success) {
-        Alert.alert('Error', shareResult.error || 'Failed to share PDF');
+        Alert.alert("Couldn't share invoice", shareError);
       }
     } catch (error) {
       console.error('[InvoiceDetailScreen] Share PDF error:', error);
-      Alert.alert('Error', 'Failed to share PDF');
+      Alert.alert("Couldn't share invoice", shareError);
     } finally {
       setIsShareLoading(false);
     }
@@ -300,130 +291,6 @@ function InvoiceDetailScreen() {
   };
 
   // ============================================================================
-  // Dynamic styles based on theme
-  // ============================================================================
-  const dynamicStyles = useMemo(() => StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor: FIORI.colors.backgroundGrouped,
-    },
-    centerContainer: {
-      flex: 1,
-      justifyContent: 'center',
-      alignItems: 'center',
-      backgroundColor: FIORI.colors.backgroundGrouped,
-    },
-    tabContent: {
-      flex: 1,
-    },
-    errorContainer: {
-      alignItems: 'center',
-      padding: FIORI_STATIC.spacing.xl,
-      maxWidth: 300,
-    },
-    emptyIconContainer: {
-      width: 80,
-      height: 80,
-      borderRadius: 40,
-      backgroundColor: FIORI.colors.backgroundSecondary,
-      alignItems: 'center',
-      justifyContent: 'center',
-      marginBottom: FIORI_STATIC.spacing.lg,
-    },
-    errorTitle: {
-      ...FIORI_STATIC.typography.headline,
-      color: FIORI.colors.textPrimary,
-      marginBottom: FIORI_STATIC.spacing.sm,
-    },
-    errorMessage: {
-      ...FIORI_STATIC.typography.body,
-      color: FIORI.colors.textSecondary,
-      textAlign: 'center',
-      lineHeight: 22,
-      marginBottom: FIORI_STATIC.spacing.lg,
-    },
-    tertiaryButton: {
-      height: FIORI_STATIC.dimensions.buttonHeight,
-      paddingHorizontal: FIORI_STATIC.spacing.lg,
-      alignItems: 'center',
-      justifyContent: 'center',
-      borderRadius: FIORI_STATIC.dimensions.buttonRadius,
-    },
-    tertiaryButtonPressed: {
-      backgroundColor: FIORI.colors.tintLight,
-    },
-    tertiaryButtonText: {
-      ...FIORI_STATIC.typography.headline,
-      color: FIORI.colors.tint,
-      fontWeight: '400',
-    },
-  }), [FIORI]);
-
-  const dynamicHeaderStyles = useMemo(() => StyleSheet.create({
-    navBar: {
-      backgroundColor: FIORI.colors.background,
-      borderBottomWidth: 1,
-      borderBottomColor: FIORI.colors.divider,
-      ...Platform.select({
-        ios: {
-          shadowColor: '#000000',
-          shadowOffset: { width: 0, height: 1 },
-          shadowOpacity: 0.06,
-          shadowRadius: 2,
-        },
-        android: {
-          elevation: 2,
-        },
-      }),
-    },
-    backButton: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      minHeight: 44,
-      paddingRight: 8,
-      marginLeft: -4,
-    },
-    backIcon: {
-      height: 24,
-      width: 24,
-    },
-    backButtonText: {
-      fontSize: 17,
-      fontWeight: '400',
-      color: FIORI.colors.tint,
-      lineHeight: 24,
-      includeFontPadding: false,
-      textAlignVertical: 'center',
-    },
-    container: {
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    title: {
-      fontSize: 17,
-      fontWeight: '600',
-      color: FIORI.colors.textPrimary,
-      letterSpacing: -0.41,
-      textAlign: 'center',
-    },
-    subtitle: {
-      fontSize: 12,
-      fontWeight: '400',
-      color: FIORI.colors.textSecondary,
-      textAlign: 'center',
-      marginTop: 2,
-      maxWidth: 220,
-    },
-    date: {
-      fontSize: 11,
-      fontWeight: '500',
-      color: FIORI.colors.textTertiary,
-      textAlign: 'center',
-      marginTop: 1,
-    },
-  }), [FIORI]);
-
-  // ============================================================================
   // LOADING / ERROR STATES
   // ============================================================================
   if (!data) {
@@ -431,35 +298,37 @@ function InvoiceDetailScreen() {
       <>
         <Stack.Screen
           options={{
-            title: loading ? 'Loading...' : 'Invoice Not Found',
+            title: loading ? 'Invoice' : 'Invoice not found',
             headerBackTitle: 'Back',
             headerShown: true,
+            headerStyle: styles.navBar,
+            headerTintColor: t.brand.tint,
           }}
         />
-        <View style={dynamicStyles.centerContainer}>
+        <View style={styles.centerContainer}>
           {loading ? (
             <DetailSkeleton tabCount={3} cardCount={3} />
           ) : (
-            <View style={dynamicStyles.errorContainer}>
-              <View style={dynamicStyles.emptyIconContainer}>
-                <Icon
-                  name="file-document-outline"
-                  size={48}
-                  color={FIORI.colors.textTertiary}
-                />
-              </View>
-              <Text style={dynamicStyles.errorTitle}>Invoice Not Found</Text>
-              <Text style={dynamicStyles.errorMessage}>
-                The requested invoice could not be found.
+            <View style={styles.errorContainer}>
+              <Icon
+                name="file-document-outline"
+                size={iconSize.hero}
+                color={t.icon.secondary}
+              />
+              <Text style={styles.errorTitle} accessibilityRole="header">Invoice not found</Text>
+              <Text style={styles.errorMessage}>
+                This invoice may have been deleted, or you may not have access to it.
               </Text>
               <Pressable
                 style={({ pressed }) => [
-                  dynamicStyles.tertiaryButton,
-                  pressed && dynamicStyles.tertiaryButtonPressed,
+                  styles.secondaryButton,
+                  pressed && styles.secondaryButtonPressed,
                 ]}
                 onPress={() => router.back()}
+                accessibilityRole="button"
+                accessibilityLabel="Go back"
               >
-                <Text style={dynamicStyles.tertiaryButtonText}>Go Back</Text>
+                <Text style={styles.secondaryButtonText}>Go back</Text>
               </Pressable>
             </View>
           )}
@@ -467,6 +336,7 @@ function InvoiceDetailScreen() {
       </>
     );
   }
+
 
   const { header: invoice, items: invoiceItems } = data;
 
@@ -584,65 +454,65 @@ function InvoiceDetailScreen() {
     itemsSummary?.total_amount ??
     invoice.total;
 
-  // Format date for display - Fiori spec: keep it concise
-  const formattedDate = new Date(invoice.invoice_date || new Date()).toLocaleDateString('en-US', {
-    day: '2-digit',
+  // Date per style guide §12.3, e.g. "9 Oct 2026"
+  const formattedDate = new Date(invoice.invoice_date || new Date()).toLocaleDateString('en-IN', {
+    day: 'numeric',
     month: 'short',
     year: 'numeric',
   });
+
+
+  const grnNumber = invoice.gr_no || invoice.grn?.number;
+  const customerName = invoice.customer?.name || invoice.invoice_customer_name;
 
   return (
     <>
       <Stack.Screen
         options={{
           headerShown: true,
-          headerStyle: dynamicHeaderStyles.navBar,
-          headerTintColor: FIORI.colors.tint,
+          headerStyle: styles.navBar,
+          headerTintColor: t.brand.tint,
           headerTitleAlign: 'center',
           // Custom back button to ensure it always works
           headerLeft: () => (
             <Pressable
               onPress={() => router.back()}
-              style={dynamicHeaderStyles.backButton}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              style={styles.backButton}
+              hitSlop={space.sm}
               accessibilityRole="button"
               accessibilityLabel="Go back"
             >
-              <Icon name="chevron-left" size={24} color={FIORI.colors.tint} style={dynamicHeaderStyles.backIcon} />
-              <Text style={dynamicHeaderStyles.backButtonText}>Back</Text>
+              <Icon name="chevron-left" size={iconSize.lg} color={t.brand.tint} />
+              <Text style={styles.backButtonText}>Back</Text>
             </Pressable>
           ),
           headerTitle: () => (
-            <View style={dynamicHeaderStyles.container}>
-              {/* Title - Invoice Number (Fiori: mandatory, max 24 chars with subtitle) */}
-              <Text style={dynamicHeaderStyles.title} numberOfLines={1}>
-                INV-{invoice.invoice_number}
+            <View
+              style={styles.headerTitleContainer}
+              accessible
+              accessibilityRole="header"
+              accessibilityLabel={`Invoice ${invoice.invoice_number}`}
+            >
+              <Text style={styles.headerTitle} numberOfLines={1}>
+                {`Invoice ${invoice.invoice_number}`}
               </Text>
-
-              {/* Subtitle - Customer (Fiori: optional) */}
-              {(invoice.customer?.name || invoice.invoice_customer_name) && (
-                <Text style={dynamicHeaderStyles.subtitle} numberOfLines={1}>
-                  {invoice.customer?.name || invoice.invoice_customer_name}
-                </Text>
-              )}
-              <Text style={dynamicHeaderStyles.date}>
-                {formattedDate}
-                {(invoice.gr_no || invoice.grn?.number) && ` • GRN ${invoice.gr_no || invoice.grn?.number}`}
+              <Text style={styles.headerSubtitle} numberOfLines={1}>
+                {grnNumber ? `${formattedDate} · GRN ${grnNumber}` : formattedDate}
               </Text>
             </View>
           ),
         }}
       />
 
-      <View style={[dynamicStyles.container, { paddingBottom: insets.bottom }]}>
-        {/* Hero Header - Quick Stats Only */}
+      <View style={[styles.container, { paddingBottom: insets.bottom }]}>
+        {/* Hero header */}
         <InvoiceHeroHeader
           invoice_number={invoice.invoice_number || 0}
           date={invoice.invoice_date || new Date().toISOString()}
           total_items={totalItems}
           total_amount={total}
           tax_amount={tax_amount}
-          customer_name={invoice.customer?.name || invoice.invoice_customer_name}
+          customer_name={customerName}
         />
 
         {/* Tab Navigator */}
@@ -653,7 +523,7 @@ function InvoiceDetailScreen() {
         />
 
         {/* Tab Content */}
-        <View style={dynamicStyles.tabContent}>
+        <View style={styles.tabContent}>
           {activeTab === 'overview' && (
             <InvoiceOverviewTab
               customer_details={invoice.customer}
@@ -715,18 +585,18 @@ function InvoiceDetailScreen() {
           const result = await printInvoiceRange(start, end, finYearNum);
           if (result.success) {
             setSnackbarMessage(
-              `Print job submitted${result.print_job?.cups_job_id ? ` (Job #${result.print_job.cups_job_id})` : ''}`
+              `Sent to the printer${result.print_job?.cups_job_id ? ` (job ${result.print_job.cups_job_id})` : ''}.`
             );
           } else {
-            setSnackbarMessage(result.error || 'Failed to submit print job');
+            setSnackbarMessage("Couldn't print the invoice. Check the printer and try again.");
           }
           setSnackbarVisible(true);
           setShowPrintDialog(false);
         }}
-        title="Print Invoice"
+        title="Print invoices"
         defaultNumber={String(invoice.invoice_number) || ''}
-        label="Invoice Number"
-        placeholder="e.g., 2555"
+        label="Invoice number"
+        placeholder="e.g. 2555"
       />
 
       {/* Snackbar for print feedback */}
@@ -734,8 +604,9 @@ function InvoiceDetailScreen() {
         <Snackbar
           visible={snackbarVisible}
           onDismiss={() => setSnackbarVisible(false)}
-          duration={3000}
-          style={{ backgroundColor: '#323232' }}
+          duration={4000}
+          style={styles.snackbar}
+          theme={{ colors: { inverseOnSurface: t.text.inverse } }}
         >
           {snackbarMessage}
         </Snackbar>
