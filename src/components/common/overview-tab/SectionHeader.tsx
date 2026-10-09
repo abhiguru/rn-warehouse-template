@@ -1,8 +1,8 @@
 /**
  * SectionHeader Component
  *
- * Reusable section header for overview tabs
- * Based on SAP Fiori for iOS Design Guidelines
+ * Section title for overview tabs: footnote, capitals, text.secondary
+ * (docs/STYLE_GUIDE.md §13.6).
  */
 
 import React from 'react';
@@ -18,7 +18,11 @@ export const SectionHeader: React.FC<SectionHeaderProps> = ({ title }) => {
 
   return (
     <View style={overviewStyles.sectionHeader}>
-      <Text style={[overviewStyles.sectionHeaderText, colorStyles.sectionHeaderText]}>
+      <Text
+        style={[overviewStyles.sectionHeaderText, colorStyles.sectionHeaderText]}
+        accessibilityRole="header"
+        accessibilityLabel={title}
+      >
         {title.toUpperCase()}
       </Text>
     </View>

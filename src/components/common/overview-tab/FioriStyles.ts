@@ -1,246 +1,349 @@
 /**
- * Shared FIORI Styles for Overview Tabs
+ * Overview tab styles (GRN, dispatch and invoice overview tabs).
  *
- * Based on SAP Fiori for iOS Design Guidelines
- * Extracted from GRN/Dispatch/Invoice OverviewTab components
+ * Layout lives in the static `overviewStyles`; colours, shadows and the icon
+ * colours come from `useOverviewColors()`, which is built from the semantic
+ * tokens for the current brand and mode (docs/STYLE_GUIDE.md §13.6).
  *
- * NOTE: This file now exports STATIC (non-color) styles only.
- * Color styles are applied dynamically via useOverviewColors() hook.
+ * `FIORI` is a legacy adapter for screens that still read a static object of
+ * sizes and colours. Its sizes come from the metrics tokens and its colours
+ * from the default brand in light mode, so it cannot follow dark mode or the
+ * brand chosen in Settings. New code uses tokens directly. Deleted in phase 6.
  */
 
-import { StyleSheet, ViewStyle, TextStyle } from 'react-native';
+import { StyleSheet, TextStyle, ViewStyle } from 'react-native';
 import { useMemo } from 'react';
-import { FIORI } from './FioriTokens';
-import { useListColors, ListColors } from '@/hooks/useListColors';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { DEFAULT_BRAND } from '@/store/slices/themeSlice';
+import {
+  fontWeight,
+  getTokens,
+  iconSize,
+  layout,
+  radius,
+  space,
+  touchTarget,
+  typography,
+} from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
 
-// Static styles - no colors, just layout/spacing
+// =============================================================================
+// Legacy static adapter (exported as FIORI)
+// =============================================================================
+
+const staticTokens = getTokens(DEFAULT_BRAND, 'light');
+
+const sectionHeaderType = {
+  ...typography.footnote,
+  fontWeight: fontWeight.semibold,
+  letterSpacing: 0.5,
+  textTransform: 'uppercase' as const,
+};
+
+const legacyOverviewTokens = {
+  colors: {
+    pageBackground: staticTokens.background.base,
+    cardBackground: staticTokens.surface.card,
+    textPrimary: staticTokens.text.primary,
+    textSecondary: staticTokens.text.secondary,
+    textTertiary: staticTokens.text.secondary,
+    primary: staticTokens.brand.fill,
+    primaryDark: staticTokens.brand.fillPressed,
+    primaryLight: staticTokens.brand.subtle,
+    success: staticTokens.status.positive.text,
+    successDark: staticTokens.status.positive.text,
+    successLight: staticTokens.status.positive.background,
+    warning: staticTokens.status.critical.text,
+    warningLight: staticTokens.status.critical.background,
+    negative: staticTokens.status.negative.text,
+    negativeDark: staticTokens.status.negative.text,
+    negativeLight: staticTokens.status.negative.background,
+    positive: staticTokens.status.positive.text,
+    positiveLight: staticTokens.status.positive.background,
+    info: staticTokens.status.informative.text,
+    infoLight: staticTokens.status.informative.background,
+    divider: staticTokens.border.divider,
+    cardBorder: staticTokens.border.divider,
+  },
+  spacing: {
+    xs: space.xs,
+    sm: space.sm,
+    md: space.md,
+    lg: space.lg,
+    xl: space.xl,
+    xxl: space.xxl,
+  },
+  typography: {
+    headline: typography.headline,
+    body: typography.subhead,
+    bodyMedium: { ...typography.subhead, fontWeight: fontWeight.medium },
+    caption: typography.footnote,
+    sectionHeader: sectionHeaderType,
+    button: typography.callout,
+  },
+  dimensions: {
+    cardRadius: radius.card,
+    cardPadding: space.lg,
+    buttonHeight: touchTarget,
+    buttonRadius: radius.button,
+    touchTarget,
+    avatarSize: layout.avatar.md,
+    iconSize: iconSize.md,
+  },
+  shadows: {
+    card: staticTokens.shadow[2] as ViewStyle,
+  },
+} as const;
+
+export { legacyOverviewTokens as FIORI };
+
+// =============================================================================
+// Static layout (no colours)
+// =============================================================================
+
 export const overviewStyles = StyleSheet.create({
-  // Container
   container: {
     flex: 1,
   },
   content: {
-    paddingHorizontal: FIORI.spacing.lg,
-    paddingTop: FIORI.spacing.md,
+    paddingHorizontal: layout.marginCompact,
+    paddingTop: space.md,
   },
   bottomSpacer: {
-    height: 32,
+    height: space.xxxl,
   },
 
-  // Section Header - Fiori Spec
+  // Section header (§13.6): footnote, capitals, 24 above, 8 below
   sectionHeader: {
-    paddingTop: FIORI.spacing.lg,
-    paddingBottom: FIORI.spacing.sm,
+    paddingTop: space.xxl,
+    paddingBottom: space.sm,
   },
   sectionHeaderText: {
-    ...FIORI.typography.sectionHeader,
+    ...sectionHeaderType,
   },
 
-  // Card - Fiori Card Spec
+  // Card
   card: {
-    borderRadius: FIORI.dimensions.cardRadius,
-    borderWidth: 1,
-    marginBottom: FIORI.spacing.md,
+    borderRadius: radius.card,
+    marginBottom: space.md,
+  },
+  cardClip: {
+    borderRadius: radius.card,
     overflow: 'hidden',
-    ...FIORI.shadows.card,
   },
 
-  // Object Cell - Fiori Object Cell Spec
+  // Object cell
   objectCellHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: FIORI.dimensions.cardPadding,
+    padding: space.lg,
+    minHeight: layout.objectCellMinHeight,
   },
   avatar: {
-    width: FIORI.dimensions.avatarSize,
-    height: FIORI.dimensions.avatarSize,
-    borderRadius: FIORI.dimensions.avatarSize / 2,
+    width: layout.avatar.md,
+    height: layout.avatar.md,
+    borderRadius: radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: FIORI.spacing.md,
+    marginRight: space.md,
   },
   objectCellContent: {
     flex: 1,
   },
   objectCellLabel: {
-    ...FIORI.typography.caption,
-    marginBottom: 2,
+    ...typography.footnote,
+    marginBottom: space.xxs,
   },
   objectCellHeadline: {
-    ...FIORI.typography.headline,
+    ...typography.headline,
   },
   objectCellSubheadline: {
-    ...FIORI.typography.bodyMedium,
-    marginTop: 2,
+    ...typography.subhead,
+    fontWeight: fontWeight.medium,
+    marginTop: space.xxs,
   },
 
-  // Contact Actions
+  // Contact actions
   contactActionsContainer: {
-    borderTopWidth: 1,
+    borderTopWidth: StyleSheet.hairlineWidth,
   },
   contactAction: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: FIORI.dimensions.cardPadding,
-    paddingVertical: FIORI.spacing.md,
-    minHeight: FIORI.dimensions.touchTarget,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.sm,
+    minHeight: touchTarget,
   },
   contactActionBorder: {
-    borderTopWidth: 1,
+    borderTopWidth: StyleSheet.hairlineWidth,
   },
   contactActionIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
+    width: space.xxxl,
+    height: space.xxxl,
+    borderRadius: radius.button,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: FIORI.spacing.md,
+    marginRight: space.md,
   },
   contactActionText: {
-    ...FIORI.typography.body,
+    ...typography.body,
     flex: 1,
   },
 
-  // Info Chips Card
+  // Info chips
   chipsCard: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: FIORI.spacing.sm,
-    marginBottom: FIORI.spacing.md,
+    gap: space.sm,
+    marginBottom: space.md,
   },
   infoChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: FIORI.spacing.md,
-    paddingVertical: FIORI.spacing.sm,
-    borderRadius: 20,
-    borderWidth: 1,
-    gap: FIORI.spacing.sm,
+    paddingHorizontal: space.md,
+    paddingVertical: space.s6,
+    borderRadius: radius.pill,
+    gap: space.s6,
   },
   infoChipText: {
-    ...FIORI.typography.bodyMedium,
+    ...typography.footnote,
+    fontWeight: fontWeight.semibold,
   },
 
   // Notes
   notesContent: {
     flexDirection: 'row',
-    padding: FIORI.dimensions.cardPadding,
+    padding: space.lg,
   },
   notesIcon: {
-    marginRight: FIORI.spacing.md,
-    marginTop: 2,
+    marginRight: space.md,
+    marginTop: space.xxs,
   },
   notesText: {
     flex: 1,
-    ...FIORI.typography.body,
-    lineHeight: 22,
+    ...typography.body,
   },
 
-  // Actions Container
+  // Actions
   actionsContainer: {
-    gap: FIORI.spacing.md,
-    marginBottom: FIORI.spacing.lg,
+    gap: space.md,
+    marginBottom: space.lg,
   },
 
-  // Primary Button - Fiori Primary Tint
+  // Primary button (§13.1)
   primaryButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    height: FIORI.dimensions.buttonHeight,
-    borderRadius: FIORI.dimensions.buttonRadius,
-    paddingHorizontal: FIORI.spacing.lg,
-    gap: FIORI.spacing.sm,
+    minHeight: touchTarget,
+    borderRadius: radius.button,
+    paddingHorizontal: space.lg,
+    gap: space.sm,
   },
   primaryButtonText: {
-    ...FIORI.typography.button,
+    ...typography.callout,
   },
 
-  // Secondary Tint Button (Success variant for Share)
+  // Secondary tint button
   secondaryTintButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'transparent',
-    height: FIORI.dimensions.buttonHeight,
-    borderRadius: FIORI.dimensions.buttonRadius,
-    paddingHorizontal: FIORI.spacing.lg,
+    minHeight: touchTarget,
+    borderRadius: radius.button,
+    paddingHorizontal: space.lg,
     borderWidth: 1,
-    gap: FIORI.spacing.sm,
+    gap: space.sm,
   },
   secondaryTintButtonText: {
-    ...FIORI.typography.button,
+    ...typography.callout,
   },
 
-  // Secondary Negative Button - Fiori Spec
+  // Secondary negative button
   secondaryNegativeButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'transparent',
-    height: FIORI.dimensions.buttonHeight,
-    borderRadius: FIORI.dimensions.buttonRadius,
-    paddingHorizontal: FIORI.spacing.lg,
+    minHeight: touchTarget,
+    borderRadius: radius.button,
+    paddingHorizontal: space.lg,
     borderWidth: 1,
-    gap: FIORI.spacing.sm,
+    gap: space.sm,
   },
   secondaryNegativeButtonText: {
-    ...FIORI.typography.button,
+    ...typography.callout,
   },
 
-  // Disabled state
+  // Disabled and busy controls
   buttonDisabled: {
-    opacity: 0.5,
+    opacity: 0.4,
   },
 
-  // Detail rows (used in invoice)
+  // Detail rows (invoice)
   detailRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: FIORI.spacing.sm,
-    gap: FIORI.spacing.sm,
+    marginBottom: space.sm,
+    gap: space.sm,
   },
   detailText: {
     flex: 1,
-    ...FIORI.typography.body,
-    lineHeight: 20,
+    ...typography.subhead,
   },
 });
 
-// Dynamic color styles hook
-export function useOverviewColors() {
-  const colors = useListColors();
+// =============================================================================
+// Themed colours
+// =============================================================================
 
-  return useMemo(() => ({
-    container: { backgroundColor: colors.gray50 } as ViewStyle,
-    sectionHeaderText: { color: colors.gray600 } as TextStyle,
-    card: { backgroundColor: colors.cellBackground, borderColor: colors.cellDivider } as ViewStyle,
-    cardPressed: { backgroundColor: colors.gray50 } as ViewStyle,
-    objectCellLabel: { color: colors.gray600 } as TextStyle,
-    objectCellHeadline: { color: colors.gray900 } as TextStyle,
-    objectCellSubheadline: { color: colors.gray900 } as TextStyle,
-    contactActionsContainer: { borderTopColor: colors.cellDivider } as ViewStyle,
-    contactActionBorder: { borderTopColor: colors.cellDivider } as ViewStyle,
-    contactActionPressed: { backgroundColor: colors.gray50 } as ViewStyle,
-    contactActionIcon: { backgroundColor: colors.gray50 } as ViewStyle,
-    contactActionText: { color: colors.gray900 } as TextStyle,
-    infoChip: { backgroundColor: colors.cellBackground, borderColor: colors.cellDivider } as ViewStyle,
-    infoChipText: { color: colors.gray900 } as TextStyle,
-    notesText: { color: colors.gray900 } as TextStyle,
-    primaryButton: { backgroundColor: colors.primary } as ViewStyle,
-    primaryButtonPressed: { backgroundColor: colors.primaryDark } as ViewStyle,
-    primaryButtonText: { color: '#fff' } as TextStyle,
-    secondaryTintButton: { borderColor: colors.success } as ViewStyle,
-    secondaryTintButtonPressed: { backgroundColor: colors.successLight } as ViewStyle,
-    secondaryTintButtonText: { color: colors.success } as TextStyle,
-    secondaryNegativeButton: { borderColor: colors.error } as ViewStyle,
-    secondaryNegativeButtonPressed: { backgroundColor: colors.errorLight } as ViewStyle,
-    secondaryNegativeButtonText: { color: colors.error } as TextStyle,
-    detailText: { color: colors.gray900 } as TextStyle,
-    // Raw colors for icon usage
-    iconTertiary: colors.gray500,
-    iconSuccess: colors.success,
-    iconInfo: colors.teal,
-    iconError: colors.error,
-  }), [colors]);
+const makeOverviewColorStyles = (t: ThemeTokens) => ({
+  container: { backgroundColor: t.background.base } as ViewStyle,
+  sectionHeaderText: { color: t.text.secondary } as TextStyle,
+  card: { backgroundColor: t.surface.card, ...t.shadow[2] } as ViewStyle,
+  cardPressed: { backgroundColor: t.surface.cardPressed } as ViewStyle,
+  objectCellLabel: { color: t.text.secondary } as TextStyle,
+  objectCellHeadline: { color: t.text.primary } as TextStyle,
+  objectCellSubheadline: { color: t.text.primary } as TextStyle,
+  contactActionsContainer: { borderTopColor: t.border.divider } as ViewStyle,
+  contactActionBorder: { borderTopColor: t.border.divider } as ViewStyle,
+  contactActionPressed: { backgroundColor: t.surface.cardPressed } as ViewStyle,
+  contactActionIcon: { backgroundColor: t.brand.subtle } as ViewStyle,
+  contactActionText: { color: t.text.primary } as TextStyle,
+  infoChip: { backgroundColor: t.status.neutral.background } as ViewStyle,
+  infoChipText: { color: t.status.neutral.text } as TextStyle,
+  notesText: { color: t.text.primary } as TextStyle,
+  primaryButton: { backgroundColor: t.brand.fill } as ViewStyle,
+  primaryButtonPressed: { backgroundColor: t.brand.fillPressed } as ViewStyle,
+  primaryButtonText: { color: t.brand.onFill } as TextStyle,
+  secondaryTintButton: { borderColor: t.border.button } as ViewStyle,
+  secondaryTintButtonPressed: { backgroundColor: t.brand.subtle } as ViewStyle,
+  secondaryTintButtonText: { color: t.brand.tint } as TextStyle,
+  secondaryNegativeButton: { borderColor: t.status.negative.border } as ViewStyle,
+  secondaryNegativeButtonPressed: { backgroundColor: t.status.negative.background } as ViewStyle,
+  secondaryNegativeButtonText: { color: t.status.negative.text } as TextStyle,
+  detailText: { color: t.text.primary } as TextStyle,
+});
+
+/** Theme colours for the overview tab building blocks, plus raw icon colours. */
+export function useOverviewColors() {
+  const styles = useThemedStyles(makeOverviewColorStyles);
+  const t = useTokens();
+
+  return useMemo(
+    () => ({
+      ...styles,
+      // Raw colours for icon props
+      iconTertiary: t.icon.secondary,
+      iconSuccess: t.brand.tint,
+      iconInfo: t.brand.tint,
+      iconError: t.status.negative.text,
+      iconPrimary: t.icon.primary,
+      iconOnFill: t.brand.onFill,
+      iconBrand: t.brand.tint,
+      iconNeutral: t.status.neutral.text,
+    }),
+    [styles, t]
+  );
 }

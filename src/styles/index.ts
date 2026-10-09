@@ -11,6 +11,8 @@ export {
   textStyles,
   containerStyles,
   overlayStyles,
+  makeCommonThemedStyles,
+  useCommonStyles,
 } from './common';
 
 export { default } from './common';

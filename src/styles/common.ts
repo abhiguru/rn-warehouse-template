@@ -6,6 +6,12 @@
  *
  * Issue #37: Replace inline styles with StyleSheet
  *
+ * Layout and spacing styles carry no colour. Styles with colour are built from
+ * the semantic tokens: use `useCommonStyles()` (follows brand and mode). The
+ * static `textStyles`, `containerStyles`, `overlayStyles` and `commonStyles`
+ * exports are legacy adapters fixed to the default brand in light mode; they
+ * are deleted in migration phase 6.
+ *
  * @example
  * ```tsx
  * import { commonStyles } from '@/styles/common';
@@ -16,8 +22,11 @@
  * ```
  */
 
-import { StyleSheet, ViewStyle, TextStyle } from 'react-native';
-import theme from '@/theme';
+import { StyleSheet } from 'react-native';
+import { useThemedStyles } from '@/hooks/useTheme';
+import { DEFAULT_BRAND } from '@/store/slices/themeSlice';
+import { getTokens, layout, radius, space, typography } from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
 
 /**
  * Common layout styles
@@ -98,138 +107,106 @@ export const spacingStyles = StyleSheet.create({
 
   /** Standard padding */
   padding: {
-    padding: theme.spacing.md,
+    padding: space.lg,
   },
 
   /** Horizontal padding */
   paddingHorizontal: {
-    paddingHorizontal: theme.spacing.md,
+    paddingHorizontal: space.lg,
   },
 
   /** Vertical padding */
   paddingVertical: {
-    paddingVertical: theme.spacing.md,
+    paddingVertical: space.lg,
   },
 
   /** Standard margin */
   margin: {
-    margin: theme.spacing.md,
+    margin: space.lg,
   },
 });
 
 /**
- * Common text styles
+ * Colour-bearing common styles, built from the semantic tokens
+ * (docs/STYLE_GUIDE.md §2).
  */
-export const textStyles = StyleSheet.create({
-  /** Centered text */
-  textCenter: {
-    textAlign: 'center',
-  },
+export const makeCommonThemedStyles = (t: ThemeTokens) => ({
+  // Text
+  textCenter: { textAlign: 'center' as const },
+  textRight: { textAlign: 'right' as const },
+  heading: { ...typography.title3, color: t.text.primary },
+  subheading: { ...typography.headline, color: t.text.primary },
+  body: { ...typography.body, color: t.text.primary },
+  caption: { ...typography.footnote, color: t.text.secondary },
+  error: { ...typography.footnote, color: t.status.negative.text },
 
-  /** Right-aligned text */
-  textRight: {
-    textAlign: 'right',
-  },
-
-  /** Primary heading */
-  heading: {
-    fontSize: theme.fontSize.xl,
-    fontWeight: theme.fontWeight.bold,
-    color: theme.colors.gray[900],
-  },
-
-  /** Secondary heading */
-  subheading: {
-    fontSize: theme.fontSize.lg,
-    fontWeight: theme.fontWeight.semibold,
-    color: theme.colors.gray[800],
-  },
-
-  /** Body text */
-  body: {
-    fontSize: theme.fontSize.base,
-    color: theme.colors.gray[700],
-  },
-
-  /** Caption text */
-  caption: {
-    fontSize: theme.fontSize.sm,
-    color: theme.colors.gray[500],
-  },
-
-  /** Error text */
-  error: {
-    fontSize: theme.fontSize.sm,
-    color: theme.colors.semantic.error,
-  },
-});
-
-/**
- * Common container styles
- */
-export const containerStyles = StyleSheet.create({
-  /** Full-screen container with white background */
-  screenWhite: {
-    flex: 1,
-    backgroundColor: theme.colors.white,
-  },
-
-  /** Full-screen container with gray background */
-  screenGray: {
-    flex: 1,
-    backgroundColor: theme.colors.background,
-  },
-
-  /** Card container */
+  // Containers
+  screenWhite: { flex: 1, backgroundColor: t.surface.card },
+  screenGray: { flex: 1, backgroundColor: t.background.base },
   card: {
-    backgroundColor: theme.colors.white,
-    borderRadius: theme.borderRadius.lg,
-    padding: theme.spacing.md,
-    shadowColor: theme.colors.gray[900],
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
+    backgroundColor: t.surface.card,
+    borderRadius: radius.card,
+    padding: space.lg,
+    ...t.shadow[2],
   },
-
-  /** Surface container */
   surface: {
-    backgroundColor: theme.colors.white,
-    borderRadius: theme.borderRadius.md,
-    padding: theme.spacing.md,
-  },
-});
-
-/**
- * Common modal/overlay styles
- */
-export const overlayStyles = StyleSheet.create({
-  /** Semi-transparent backdrop */
-  backdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: t.surface.card,
+    borderRadius: radius.card,
+    padding: space.lg,
   },
 
-  /** Dark backdrop */
-  backdropDark: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-  },
-
-  /** Centered modal container */
+  // Overlays
+  backdrop: { flex: 1, backgroundColor: t.overlay.scrim },
+  backdropDark: { flex: 1, backgroundColor: t.overlay.scrim },
   modalContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: theme.spacing.lg,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    padding: layout.marginCompact,
   },
-
-  /** Bottom sheet style container */
-  bottomSheetContainer: {
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
+  bottomSheetContainer: { flex: 1, justifyContent: 'flex-end' as const },
 });
+
+/** Common text, container and overlay styles for the current brand and mode. */
+export function useCommonStyles() {
+  return useThemedStyles(makeCommonThemedStyles);
+}
+
+// Legacy static adapters: default brand, light mode.
+const legacy = StyleSheet.create(makeCommonThemedStyles(getTokens(DEFAULT_BRAND, 'light')));
+
+/**
+ * Common text styles (legacy, light mode only). Prefer useCommonStyles().
+ */
+export const textStyles = {
+  textCenter: legacy.textCenter,
+  textRight: legacy.textRight,
+  heading: legacy.heading,
+  subheading: legacy.subheading,
+  body: legacy.body,
+  caption: legacy.caption,
+  error: legacy.error,
+};
+
+/**
+ * Common container styles (legacy, light mode only). Prefer useCommonStyles().
+ */
+export const containerStyles = {
+  screenWhite: legacy.screenWhite,
+  screenGray: legacy.screenGray,
+  card: legacy.card,
+  surface: legacy.surface,
+};
+
+/**
+ * Common modal and overlay styles (legacy, light mode only). Prefer useCommonStyles().
+ */
+export const overlayStyles = {
+  backdrop: legacy.backdrop,
+  backdropDark: legacy.backdropDark,
+  modalContainer: legacy.modalContainer,
+  bottomSheetContainer: legacy.bottomSheetContainer,
+};
 
 /**
  * Combined export for convenience

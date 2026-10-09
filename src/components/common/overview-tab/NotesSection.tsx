@@ -1,13 +1,13 @@
 /**
  * NotesSection Component
  *
- * Reusable notes/remarks section for overview tabs
- * Based on SAP Fiori for iOS Card Pattern
+ * Notes or remarks card for overview tabs (docs/STYLE_GUIDE.md §13.6).
  */
 
 import React from 'react';
 import { View, Text } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import { iconSize } from '@/theme/tokens';
 import { overviewStyles, useOverviewColors } from './FioriStyles';
 import { SectionHeader } from './SectionHeader';
 
@@ -29,9 +29,11 @@ export const NotesSection: React.FC<NotesSectionProps> = ({
         <View style={overviewStyles.notesContent}>
           <Icon
             name="note-text-outline"
-            size={20}
+            size={iconSize.md}
             color={colorStyles.iconTertiary}
             style={overviewStyles.notesIcon}
+            accessible={false}
+            importantForAccessibility="no"
           />
           <Text style={[overviewStyles.notesText, colorStyles.notesText]}>{note}</Text>
         </View>
