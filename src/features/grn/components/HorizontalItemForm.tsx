@@ -8,7 +8,6 @@ import {
   Pressable,
   Keyboard,
   Platform,
-  Vibration,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { Image } from 'expo-image';
@@ -229,7 +228,6 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
             // Update the combined rack value
             const combined = buildRackValue(rackTextOnly, floor, selectedChamber);
             onFieldChange('rack', combined || rackTextOnly);
-            Vibration.vibrate(5);
         }, [rackTextOnly, selectedChamber, onFieldChange]);
 
         // Handle chamber chip selection (radio-style)
@@ -238,7 +236,6 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
             // Update the combined rack value
             const combined = buildRackValue(rackTextOnly, selectedFloor, chamber);
             onFieldChange('rack', combined || rackTextOnly);
-            Vibration.vibrate(5);
         }, [rackTextOnly, selectedFloor, onFieldChange]);
 
         const imageCount = currentItem.trl_images?.length || 0;

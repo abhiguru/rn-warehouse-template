@@ -15,7 +15,6 @@ import {
   FlatList,
   RefreshControl,
   Pressable,
-  Vibration,
   LayoutAnimation,
   ActivityIndicator,
 } from 'react-native';
@@ -71,13 +70,14 @@ import { makeGRNListStyles, type GRNListStyles } from './GRNListFiori.styles';
 import { formatSectionDate, formatNumber, formatCount, formatDate, formatWeight } from '@/utils/formatters';
 
 import { Fab } from '@/components/ui/Fab';
+import { SortBar, type SortOption } from '@/components/list/SortBar';
 const logger = createLogger('GRNListFiori');
 
 // Sort configuration
 type SortField = 'grNo' | 'date';
 type SortOrder = 'asc' | 'desc';
 
-const SORT_OPTIONS: Array<{ field: SortField; label: string; a11y: string; icon: string }> = [
+const SORT_OPTIONS: SortOption<SortField>[] = [
   { field: 'grNo', label: 'GRN no.', a11y: 'GRN number', icon: 'numeric' },
   { field: 'date', label: 'Date', a11y: 'date', icon: 'calendar-outline' },
 ];
@@ -198,7 +198,6 @@ const GRNCardFiori = memo<GRNCardProps>(({
   const weightLabel = formatWeight(Math.round(totalWeight));
 
   const handleSwipeAction = (action: 'view' | 'edit' | 'print') => {
-    Vibration.vibrate(10);
     swipeableRef.current?.close();
     if (action === 'view') onViewDetails(group);
     else if (action === 'edit') onEdit(group);
@@ -355,7 +354,6 @@ const GRNCardFiori = memo<GRNCardProps>(({
             <Pressable
               onPress={(e) => {
                 e.stopPropagation();
-                Vibration.vibrate(5);
                 LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
                 setIsExpanded(prev => !prev);
               }}
@@ -796,7 +794,6 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({
       logger.error('Cannot navigate: grnId is undefined', group);
       return;
     }
-    Vibration.vibrate(10);
     router.push(`/grn-details/${group.grnId}`);
   }, []);
 
@@ -811,7 +808,6 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({
   }, []);
 
   const handleCreateGRN = useCallback(() => {
-    Vibration.vibrate(10);
     router.push('/grn-form/step1');
   }, []);
 
@@ -854,7 +850,6 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({
 
   // Toggle expand/collapse all cards
   const handleToggleAllExpanded = useCallback(() => {
-    Vibration.vibrate(5);
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setAllExpanded(prev => !prev);
     setExpandKey(prev => prev + 1);
@@ -1062,76 +1057,17 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({
         styles={styles}
       />
 
-      {/* Sort row */}
-      <View style={styles.sortRow}>
-        <View style={styles.sortLabel}>
-          <Icon name="sort" size={iconSize.sm} color={t.icon.secondary} />
-          <Text style={styles.sortLabelText}>Sort by</Text>
-        </View>
-        <View style={styles.sortOptions}>
-          {SORT_OPTIONS.map((option) => {
-            const selected = sortBy === option.field;
-            return (
-              <Pressable
-                key={option.field}
-                style={({ pressed }) => [
-                  styles.chip,
-                  pressed && styles.chipPressed,
-                  selected && styles.chipSelected,
-                ]}
-                hitSlop={{ top: 8, bottom: 8 }}
-                onPress={() => {
-                  Vibration.vibrate(5);
-                  if (sortBy === option.field) {
-                    setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc');
-                  } else {
-                    setSortBy(option.field);
-                    setSortOrder('desc');
-                  }
-                }}
-                accessibilityRole="button"
-                accessibilityLabel={
-                  selected
-                    ? `Sort by ${option.a11y}, ${sortOrder === 'desc' ? 'newest first' : 'oldest first'}`
-                    : `Sort by ${option.a11y}`
-                }
-                accessibilityHint={selected ? 'Reverses the order' : undefined}
-                accessibilityState={{ selected }}
-              >
-                <Icon
-                  name={option.icon}
-                  size={iconSize.sm}
-                  color={selected ? t.brand.tint : t.icon.secondary}
-                />
-                <Text style={[styles.chipText, selected && styles.chipTextSelected]} maxFontSizeMultiplier={1.6}>
-                  {option.label}
-                </Text>
-                {selected && (
-                  <Icon
-                    name={sortOrder === 'desc' ? 'arrow-down' : 'arrow-up'}
-                    size={iconSize.sm}
-                    color={t.brand.tint}
-                  />
-                )}
-              </Pressable>
-            );
-          })}
-        </View>
-        {/* Expand all / collapse all: icon button so the sort chips keep one row on phones */}
-        <Pressable
-          style={({ pressed }) => [styles.expandAllBtn, pressed && styles.chipPressed]}
-          onPress={handleToggleAllExpanded}
-          accessibilityRole="button"
-          accessibilityLabel={allExpanded ? 'Collapse all GRNs' : 'Expand all GRNs'}
-          accessibilityState={{ expanded: allExpanded }}
-        >
-          <Icon
-            name={allExpanded ? 'unfold-less-horizontal' : 'unfold-more-horizontal'}
-            size={iconSize.lg}
-            color={t.brand.tint}
-          />
-        </Pressable>
-      </View>
+      {/* Sort bar (guide §14.5) */}
+      <SortBar
+        options={SORT_OPTIONS}
+        field={sortBy}
+        order={sortOrder}
+        onFieldChange={field => { setSortBy(field); setSortOrder('desc'); }}
+        onOrderToggle={() => setSortOrder(prev => (prev === 'desc' ? 'asc' : 'desc'))}
+        expanded={allExpanded}
+        onExpandToggle={handleToggleAllExpanded}
+        itemsLabel="GRNs"
+      />
 
       {/* Main content */}
       {flattenedData.length > 0 ? (

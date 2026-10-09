@@ -10,7 +10,7 @@
  */
 
 import React, { useState, useEffect, useCallback, useMemo, useRef, forwardRef, useImperativeHandle } from 'react';
-import { View, Text, TextInput, Pressable, Vibration, Platform } from 'react-native';
+import { View, Text, TextInput, Pressable, Platform } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, radius, space, typography } from '@/theme/tokens';
@@ -150,7 +150,6 @@ export const RackChamberPicker = forwardRef<RackChamberPickerRef, RackChamberPic
         setSelectedFloor(floor);
         const combined = buildRackValue(rackTextOnly, floor, selectedChamber);
         onChange(combined || rackTextOnly);
-        Vibration.vibrate(5);
       },
       [rackTextOnly, selectedChamber, onChange]
     );
@@ -161,7 +160,6 @@ export const RackChamberPicker = forwardRef<RackChamberPickerRef, RackChamberPic
         setSelectedChamber(chamber);
         const combined = buildRackValue(rackTextOnly, selectedFloor, chamber);
         onChange(combined || rackTextOnly);
-        Vibration.vibrate(5);
       },
       [rackTextOnly, selectedFloor, onChange]
     );

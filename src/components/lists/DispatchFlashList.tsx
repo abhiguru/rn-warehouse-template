@@ -80,6 +80,7 @@ import { fontWeight, iconSize, layout, radius, space, touchTarget, typography } 
 import type { ThemeTokens } from '@/theme/tokens';
 
 import { FAB_CLEARANCE } from '@/components/ui/Fab';
+import { SortBar, type SortOption } from '@/components/list/SortBar';
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -757,73 +758,17 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
         </View>
       </View>
 
-      {/* Sort Toggle Bar */}
-      <View style={styles.sortBar}>
-        <Text style={styles.sortLabel}>Sort by</Text>
-        <View style={styles.segmented} accessibilityRole="radiogroup">
-          <Pressable
-            style={[styles.segment, sortField === 'dispDate' && styles.segmentSelected]}
-            onPress={sortField === 'dispDate' ? undefined : toggleSortField}
-            hitSlop={space.sm}
-            accessibilityRole="radio"
-            accessibilityLabel="Sort by date"
-            accessibilityState={{ selected: sortField === 'dispDate', checked: sortField === 'dispDate' }}
-          >
-            <Icon
-              name="calendar-outline"
-              size={iconSize.sm}
-              color={sortField === 'dispDate' ? t.brand.onFill : t.icon.primary}
-            />
-            <Text style={[styles.segmentText, sortField === 'dispDate' && styles.segmentTextSelected]}>
-              Date
-            </Text>
-          </Pressable>
-          <Pressable
-            style={[styles.segment, sortField === 'dispNo' && styles.segmentSelected]}
-            onPress={sortField === 'dispNo' ? undefined : toggleSortField}
-            hitSlop={space.sm}
-            accessibilityRole="radio"
-            accessibilityLabel="Sort by number"
-            accessibilityState={{ selected: sortField === 'dispNo', checked: sortField === 'dispNo' }}
-          >
-            <Icon
-              name="pound"
-              size={iconSize.sm}
-              color={sortField === 'dispNo' ? t.brand.onFill : t.icon.primary}
-            />
-            <Text style={[styles.segmentText, sortField === 'dispNo' && styles.segmentTextSelected]}>
-              Number
-            </Text>
-          </Pressable>
-        </View>
-        <Pressable
-          style={({ pressed }) => [styles.sortOrderBtn, pressed && styles.toolPressed]}
-          onPress={toggleSortOrder}
-          accessibilityRole="button"
-          accessibilityLabel={sortOrder === 'desc' ? 'Sorted newest first. Sort oldest first' : 'Sorted oldest first. Sort newest first'}
-        >
-          <Icon
-            name={sortOrder === 'desc' ? 'sort-descending' : 'sort-ascending'}
-            size={iconSize.md}
-            color={t.icon.primary}
-          />
-        </Pressable>
-        {/* Expand All / Collapse All Toggle */}
-        <Pressable
-          style={({ pressed }) => [styles.expandAllBtn, pressed && styles.toolPressed]}
-          onPress={handleToggleAllExpanded}
-          
-          accessibilityRole="button"
-          accessibilityLabel={allExpanded ? 'Collapse all dispatches' : 'Expand all dispatches'}
-          accessibilityState={{ expanded: allExpanded }}
-        >
-          <Icon
-            name={allExpanded ? 'unfold-less-horizontal' : 'unfold-more-horizontal'}
-            size={iconSize.lg}
-            color={t.brand.tint}
-          />
-        </Pressable>
-      </View>
+      {/* Sort bar (guide §14.5) */}
+      <SortBar
+        options={DISPATCH_SORT_OPTIONS}
+        field={sortField}
+        order={sortOrder}
+        onFieldChange={field => { if (field !== sortField) toggleSortField(); }}
+        onOrderToggle={toggleSortOrder}
+        expanded={allExpanded}
+        onExpandToggle={handleToggleAllExpanded}
+        itemsLabel="dispatches"
+      />
 
       {/* Filter Chips */}
       <FilterChips
@@ -884,6 +829,11 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
 // STYLES - tokens only (docs/STYLE_GUIDE.md)
 // ============================================================================
 
+const DISPATCH_SORT_OPTIONS: SortOption<SortField>[] = [
+  { field: 'dispDate', label: 'Date', a11y: 'date', icon: 'calendar-outline' },
+  { field: 'dispNo', label: 'Number', a11y: 'number', icon: 'pound' },
+];
+
 const makeStyles = (t: ThemeTokens) => ({
   container: {
     flex: 1,
@@ -902,8 +852,8 @@ const makeStyles = (t: ThemeTokens) => ({
     borderBottomColor: t.border.divider,
   },
   headerTitle: {
-    ...typography.title3,
-    fontWeight: fontWeight.bold,
+    // Top-level tab title (guide §13.8): large title on every tab.
+    ...typography.largeTitle,
     color: t.text.primary,
     flexShrink: 1,
   },
@@ -943,67 +893,6 @@ const makeStyles = (t: ThemeTokens) => ({
     justifyContent: 'center' as const,
   },
   // Sort toolbar with a hairline separator
-  sortBar: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    paddingHorizontal: layout.marginCompact,
-    paddingVertical: space.sm,
-    gap: space.sm,
-    backgroundColor: t.surface.header,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: t.border.separator,
-  },
-  sortLabel: {
-    ...typography.footnote,
-    color: t.text.secondary,
-  },
-  // Segmented control (§13.4): border.button container, selected brand.fill
-  segmented: {
-    flexDirection: 'row' as const,
-    borderWidth: 1,
-    borderColor: t.border.button,
-    borderRadius: radius.button,
-    overflow: 'hidden' as const,
-  },
-  segment: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    minHeight: space.xxxl,
-    paddingHorizontal: space.md,
-    gap: space.xs,
-  },
-  segmentSelected: {
-    backgroundColor: t.brand.fill,
-  },
-  segmentText: {
-    ...typography.footnote,
-    fontWeight: fontWeight.medium,
-    color: t.text.primary,
-  },
-  segmentTextSelected: {
-    fontWeight: fontWeight.semibold,
-    color: t.brand.onFill,
-  },
-  sortOrderBtn: {
-    width: touchTarget,
-    height: touchTarget,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    borderRadius: radius.button,
-  },
-  toolPressed: {
-    backgroundColor: t.brand.subtle,
-  },
-  // Expand all: tertiary action
-  // Icon-only so the sort controls keep one row on phones.
-  expandAllBtn: {
-    width: touchTarget,
-    height: touchTarget,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    borderRadius: radius.pill,
-    marginLeft: 'auto' as const,
-  },
   // Applied filters bar (§13.5)
   filterChipsContainer: {
     paddingHorizontal: layout.marginCompact,

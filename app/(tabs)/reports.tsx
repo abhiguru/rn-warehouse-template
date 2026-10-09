@@ -127,7 +127,8 @@ const makeStyles = (t: ThemeTokens) =>
       flex: 1,
     },
     headerTitle: {
-      ...typography.title2,
+      // Top-level tab title (guide §13.8): large title on every tab.
+      ...typography.largeTitle,
       color: t.text.primary,
     },
     headerSubtitle: {

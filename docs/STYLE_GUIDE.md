@@ -577,7 +577,7 @@ Standard glyphs:
 - Use ease-out for things entering and ease-in for things leaving.
 - Use the native stack transitions. Do not build custom screen transitions.
 - Respect Reduce Motion. When `AccessibilityInfo.isReduceMotionEnabled()` is true, replace slides and springs with fades and stop skeleton shimmer.
-- Haptics: light impact on a successful save or a switch toggle, notification error on a failed save. Never on scroll, tab changes, filter edits or ordinary button presses.
+- Haptics: light impact on a successful save or a switch toggle, notification error on a failed save. Never on scroll, tab changes, filter edits, selections, expanding rows or ordinary button presses. The one exception is the A–Z index rail, which ticks as the finger crosses a letter, as the platforms do.
 - Nothing animates for longer than 300 ms, and nothing loops except loading indicators.
 
 ---
@@ -986,7 +986,7 @@ Customer, item, pricing, user and profile forms.
 ### 14.5 Filter and sort
 
 - Filters open in a full-height sheet (pattern [13.9](#139-dialogs-sheets-and-messages)).
-- Sort is a radio list in the same sheet or a header menu.
+- Lists that sort in place use the shared `list/SortBar` under the header: "Sort by", a segmented control of fields, a direction button and an optional expand-all button. Lists that sort on the server put sort in the filter sheet as a radio list.
 - Filters persist per list during the session and show as chips.
 
 ### 14.6 Search

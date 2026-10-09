@@ -796,8 +796,8 @@ const makeStyles = (t: ThemeTokens) => ({
     borderBottomColor: t.border.divider,
   },
   headerTitle: {
-    ...typography.title3,
-    fontWeight: fontWeight.bold,
+    // Top-level tab title (guide §13.8): large title on every tab.
+    ...typography.largeTitle,
     color: t.text.primary,
     flexShrink: 1,
   },

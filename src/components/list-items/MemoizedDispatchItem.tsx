@@ -11,7 +11,7 @@
  */
 
 import React, { useState, useCallback, useEffect } from 'react';
-import { View, Text, StyleSheet, Pressable, LayoutAnimation, Vibration } from 'react-native';
+import { View, Text, StyleSheet, Pressable, LayoutAnimation } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { formatDate, formatCount, formatWeight } from '@/utils/formatters';
@@ -302,7 +302,6 @@ const DispatchItemContent: React.FC<MemoizedDispatchItemProps> = ({
   const dateLabel = formatDate(dispatch.disp_date, 'short');
 
   const handleToggleExpand = useCallback(() => {
-    Vibration.vibrate(5);
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setIsExpanded(prev => !prev);
   }, []);

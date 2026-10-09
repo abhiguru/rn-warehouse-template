@@ -43,7 +43,8 @@ export const makeGRNListStyles = (t: ThemeTokens) => ({
   },
 
   headerTitle: {
-    ...typography.title2,
+    // Top-level tab title (guide §13.8): large title on every tab.
+    ...typography.largeTitle,
     color: t.text.primary,
   },
 

@@ -19,7 +19,6 @@ import {
   Text,
   StyleSheet,
   Pressable,
-  Vibration,
   Platform,
   ActivityIndicator,
   BackHandler,
@@ -102,7 +101,6 @@ export const CustomerSearchBottomSheet = forwardRef<CustomerSearchBottomSheetRef
         // Expose open/close methods to parent
         useImperativeHandle(ref, () => ({
             open: () => {
-                Vibration.vibrate(10);
                 setSearchQuery('');
                 setSearchResults([]);
                 loadRecentCustomers();
@@ -152,7 +150,6 @@ export const CustomerSearchBottomSheet = forwardRef<CustomerSearchBottomSheetRef
 
         // Handle customer selection (user-scoped)
         const handleSelect = useCallback(async (customer: CustomerSearchResult | { value: string; label: string; detail?: string; city?: string; mobile?: string }) => {
-            Vibration.vibrate(10);
             // Pass detail (address/city) to recent customers for display
             const detail = 'detail' in customer ? customer.detail : undefined;
             const city = 'city' in customer ? customer.city : undefined;

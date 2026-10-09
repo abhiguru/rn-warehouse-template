@@ -16,7 +16,6 @@ import {
   Pressable,
   ScrollView,
   LayoutAnimation,
-  Vibration,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
@@ -415,7 +414,6 @@ const InvoiceLineItemGroupComponent: React.FC<InvoiceLineItemGroupProps> = ({
                     ]}
                     onPress={() => {
                       if (item.dispatch_id && item.on_view_dispatch) {
-                        Vibration.vibrate(10);
                         item.on_view_dispatch(item.dispatch_id);
                       }
                     }}

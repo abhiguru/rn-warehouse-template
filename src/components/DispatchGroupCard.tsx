@@ -5,7 +5,6 @@ import {
   Pressable,
   StyleSheet,
   LayoutAnimation,
-  Vibration,
 } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -321,7 +320,6 @@ const DispatchGroupCardComponent: React.FC<DispatchGroupCardProps> = ({
         <Pressable
           onPress={(e) => {
             e.stopPropagation();
-            Vibration.vibrate(5);
             LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
             setIsExpanded(prev => !prev);
           }}
