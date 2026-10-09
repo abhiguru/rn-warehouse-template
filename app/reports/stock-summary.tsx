@@ -762,23 +762,23 @@ export default function StockSummaryScreen() {
             <View style={styles.section}>
               <SectionHeader title="Customers with stock" styles={styles} />
               <View style={styles.card}>
-              <View style={styles.cardClip}>
-                {filteredCustomers.map((customer, index) => (
-                  <React.Fragment key={customer.customer_id}>
-                    <ReportCustomerCard
-                      title={customer.customer_name}
-                      subtitle={`${plural(customer.item_count, 'item', 'items')} · ${plural(customer.grn_count, 'GRN', 'GRNs')}`}
-                      value={customer.total_stock}
-                      valueLabel="units"
-                      onPress={() => handleCustomerSelect(customer)}
-                      onShare={() => handleShareCustomerStock(customer.customer_id, customer.customer_name)}
-                      isSharing={sharingCustomerId === customer.customer_id}
-                      accessibilityHint="Opens this customer's stock"
-                    />
-                    {index < filteredCustomers.length - 1 && <View style={styles.divider} />}
-                  </React.Fragment>
-                ))}
-              </View>
+                <View style={styles.cardClip}>
+                  {filteredCustomers.map((customer, index) => (
+                    <React.Fragment key={customer.customer_id}>
+                      <ReportCustomerCard
+                        title={customer.customer_name}
+                        subtitle={`${plural(customer.item_count, 'item', 'items')} · ${plural(customer.grn_count, 'GRN', 'GRNs')}`}
+                        value={customer.total_stock}
+                        valueLabel="units"
+                        onPress={() => handleCustomerSelect(customer)}
+                        onShare={() => handleShareCustomerStock(customer.customer_id, customer.customer_name)}
+                        isSharing={sharingCustomerId === customer.customer_id}
+                        accessibilityHint="Opens this customer's stock"
+                      />
+                      {index < filteredCustomers.length - 1 && <View style={styles.divider} />}
+                    </React.Fragment>
+                  ))}
+                </View>
               </View>
             </View>
           ) : (

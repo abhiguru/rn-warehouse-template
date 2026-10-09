@@ -803,20 +803,20 @@ export default function StockAgingScreen() {
               <SectionHeader title="Customers by stock age" styles={styles} />
               <View style={styles.card}>
                 <View style={styles.cardClip}>
-                {filteredCustomers.map((customer, index) => (
-                  <React.Fragment key={customer.customer_id}>
-                    <ReportCustomerCard
-                      title={customer.customer_name}
-                      subtitle={`Average age ${days(customer.average_age_days)} · ${customer.items_over_365_days} over 1 year`}
-                      value={customer.total_stock}
-                      valueLabel="units"
-                      onPress={() => handleCustomerSelect(customer)}
-                      avatarColor={getAgingAvatarColors(customer.average_age_days, t)}
-                      accessibilityHint="Opens this customer's stock aging"
-                    />
-                    {index < filteredCustomers.length - 1 && <View style={styles.divider} />}
-                  </React.Fragment>
-                ))}
+                  {filteredCustomers.map((customer, index) => (
+                    <React.Fragment key={customer.customer_id}>
+                      <ReportCustomerCard
+                        title={customer.customer_name}
+                        subtitle={`Average age ${days(customer.average_age_days)} · ${customer.items_over_365_days} over 1 year`}
+                        value={customer.total_stock}
+                        valueLabel="units"
+                        onPress={() => handleCustomerSelect(customer)}
+                        avatarColor={getAgingAvatarColors(customer.average_age_days, t)}
+                        accessibilityHint="Opens this customer's stock aging"
+                      />
+                      {index < filteredCustomers.length - 1 && <View style={styles.divider} />}
+                    </React.Fragment>
+                  ))}
                 </View>
               </View>
             </View>
