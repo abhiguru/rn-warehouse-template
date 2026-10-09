@@ -17,6 +17,11 @@ jest.mock('@/hooks/useListColors', () => ({
     statusNegative: '#bb0000',
   }),
 }));
+jest.mock('@/store/hooks', () => ({
+  useAppDispatch: () => jest.fn(),
+  useAppSelector: (sel: (s: unknown) => unknown) =>
+    sel({ theme: { preference: 'dark', brand: 'orange' } }),
+}));
 
 jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('@/components/grn-details/GRNItemDispatchTable', () => ({
