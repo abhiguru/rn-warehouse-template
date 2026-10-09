@@ -26,19 +26,23 @@ import {
   View,
   Text,
   TextInput,
-  StyleSheet,
   Platform,
   StyleProp,
   ViewStyle,
+  useWindowDimensions,
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import { BottomSheetTextInput } from '@gorhom/bottom-sheet';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import theme from '@/theme';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { iconSize, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
+
+/** Above this system font scale the floor and chamber pickers stack vertically. */
+const STACK_FONT_SCALE = 1.3;
 
 // Floor options for cold storage
 const FLOOR_OPTIONS = [
-  { label: 'Select Floor', value: '' },
+  { label: 'Select floor', value: '' },
   { label: 'BASE', value: 'BASE' },
   { label: 'F1', value: 'F1' },
   { label: 'F2', value: 'F2' },
@@ -48,7 +52,7 @@ const FLOOR_OPTIONS = [
 
 // Chamber options for cold storage
 const CHAMBER_OPTIONS = [
-  { label: 'Select Chamber', value: '' },
+  { label: 'Select chamber', value: '' },
   { label: 'C4', value: 'C4' },
   { label: 'C7', value: 'C7' },
   { label: 'C2', value: 'C2' },
@@ -172,6 +176,10 @@ export const CompoundRackInput: React.FC<CompoundRackInputProps> = ({
   // Parse incoming value into component state
   const [state, setState] = useState<RackState>(() => parseRackValue(value));
   const [hasBeenTouched, setHasBeenTouched] = useState(false);
+  const t = useTokens();
+  const styles = useThemedStyles(makeStyles);
+  const { fontScale } = useWindowDimensions();
+  const stackPickers = fontScale > STACK_FONT_SCALE;
 
   // Re-parse when value prop changes (e.g., when editing different items)
   useEffect(() => {
@@ -247,12 +255,12 @@ export const CompoundRackInput: React.FC<CompoundRackInputProps> = ({
       {/* Label */}
       <Text style={styles.label}>Rack</Text>
 
-      {/* Legacy Format Warning */}
+      {/* Legacy format warning (critical message strip) */}
       {state.isLegacy && (
-        <View style={styles.warningBanner}>
-          <Icon name="alert-circle" size={16} color={theme.colors.semantic.warning} />
+        <View style={styles.warningBanner} accessibilityRole="alert">
+          <Icon name="alert" size={iconSize.sm} color={t.status.critical.text} />
           <Text style={styles.warningText}>
-            Legacy format - Please select Floor and Chamber
+            This rack uses an old format. Select a floor and chamber.
           </Text>
         </View>
       )}
@@ -269,8 +277,9 @@ export const CompoundRackInput: React.FC<CompoundRackInputProps> = ({
             value={state.userInput}
             onChangeText={handleUserInputChange}
             placeholder="e.g., 20B-20C"
-            placeholderTextColor={theme.colors.gray[400]}
+            placeholderTextColor={t.text.placeholder}
             editable={editable}
+            accessibilityLabel="Rack"
             maxLength={20} // Reserve space for /FLOOR/CHAMBER
           />
         ) : (
@@ -283,32 +292,34 @@ export const CompoundRackInput: React.FC<CompoundRackInputProps> = ({
             value={state.userInput}
             onChangeText={handleUserInputChange}
             placeholder="e.g., 20B-20C"
-            placeholderTextColor={theme.colors.gray[400]}
+            placeholderTextColor={t.text.placeholder}
             editable={editable}
+            accessibilityLabel="Rack"
             maxLength={20} // Reserve space for /FLOOR/CHAMBER
           />
         )}
       </View>
 
       {/* Floor and Chamber Pickers */}
-      <View style={styles.pickersRow}>
+      <View style={[styles.pickersRow, stackPickers && styles.pickersStacked]}>
         {/* Floor Picker */}
         <View style={[styles.pickerContainer, fieldErrors.floor && styles.pickerContainerError]}>
           <Text style={styles.pickerLabel}>Floor</Text>
-          <View style={styles.pickerWrapper}>
+          <View style={[styles.pickerWrapper, fieldErrors.floor && styles.pickerWrapperError]}>
             <Picker
               selectedValue={state.floor}
               onValueChange={handleFloorChange}
               style={styles.picker}
               enabled={editable}
-              dropdownIconColor={theme.colors.gray[600]}
+              dropdownIconColor={t.icon.secondary}
+              accessibilityLabel="Floor"
             >
               {FLOOR_OPTIONS.map((option) => (
                 <Picker.Item
                   key={option.value}
                   label={option.label}
                   value={option.value}
-                  color={option.value === '' ? theme.colors.gray[400] : theme.colors.gray[900]}
+                  color={option.value === '' ? t.text.placeholder : t.text.primary}
                 />
               ))}
             </Picker>
@@ -318,20 +329,21 @@ export const CompoundRackInput: React.FC<CompoundRackInputProps> = ({
         {/* Chamber Picker */}
         <View style={[styles.pickerContainer, fieldErrors.chamber && styles.pickerContainerError]}>
           <Text style={styles.pickerLabel}>Chamber</Text>
-          <View style={styles.pickerWrapper}>
+          <View style={[styles.pickerWrapper, fieldErrors.chamber && styles.pickerWrapperError]}>
             <Picker
               selectedValue={state.chamber}
               onValueChange={handleChamberChange}
               style={styles.picker}
               enabled={editable}
-              dropdownIconColor={theme.colors.gray[600]}
+              dropdownIconColor={t.icon.secondary}
+              accessibilityLabel="Chamber"
             >
               {CHAMBER_OPTIONS.map((option) => (
                 <Picker.Item
                   key={option.value}
                   label={option.label}
                   value={option.value}
-                  color={option.value === '' ? theme.colors.gray[400] : theme.colors.gray[900]}
+                  color={option.value === '' ? t.text.placeholder : t.text.primary}
                 />
               ))}
             </Picker>
@@ -342,9 +354,9 @@ export const CompoundRackInput: React.FC<CompoundRackInputProps> = ({
       {/* Validation Messages */}
       {showValidation && (
         <View style={styles.validationContainer}>
-          <Icon name="alert-circle-outline" size={14} color={theme.colors.semantic.error} />
+          <Icon name="alert-circle" size={iconSize.sm} color={t.status.negative.text} />
           <Text style={styles.validationText}>
-            All rack fields (Input, Floor, Chamber) are required
+            Enter a rack, floor and chamber.
           </Text>
         </View>
       )}
@@ -352,9 +364,9 @@ export const CompoundRackInput: React.FC<CompoundRackInputProps> = ({
       {/* Max Length Warning */}
       {exceedsMaxLength && (
         <View style={styles.validationContainer}>
-          <Icon name="alert-circle-outline" size={14} color={theme.colors.semantic.error} />
+          <Icon name="alert-circle" size={iconSize.sm} color={t.status.negative.text} />
           <Text style={styles.validationText}>
-            Rack exceeds 30 characters ({combinedLength}/30)
+            Use 30 characters or fewer for the full rack ({combinedLength}/30).
           </Text>
         </View>
       )}
@@ -362,7 +374,7 @@ export const CompoundRackInput: React.FC<CompoundRackInputProps> = ({
       {/* External Error */}
       {error && !showValidation && !exceedsMaxLength && (
         <View style={styles.validationContainer}>
-          <Icon name="alert-circle-outline" size={14} color={theme.colors.semantic.error} />
+          <Icon name="alert-circle" size={iconSize.sm} color={t.status.negative.text} />
           <Text style={styles.validationText}>{error}</Text>
         </View>
       )}
@@ -370,89 +382,98 @@ export const CompoundRackInput: React.FC<CompoundRackInputProps> = ({
   );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (t: ThemeTokens) => ({
   container: {
-    marginBottom: theme.spacing.md,
+    marginBottom: space.lg,
   },
   label: {
-    fontSize: theme.fontSize.sm,
-    fontWeight: theme.fontWeight.medium,
-    color: theme.colors.gray[700],
-    marginBottom: theme.spacing.xs,
+    ...typography.footnote,
+    color: t.text.secondary,
+    marginBottom: space.xs,
   },
   warningBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: theme.colors.semantic.warningLight,
-    paddingHorizontal: theme.spacing.sm,
-    paddingVertical: theme.spacing.xs,
-    borderRadius: theme.borderRadius.sm,
-    marginBottom: theme.spacing.sm,
-    gap: theme.spacing.xs,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    backgroundColor: t.status.critical.background,
+    borderWidth: 1,
+    borderColor: t.status.critical.border,
+    paddingHorizontal: space.sm,
+    paddingVertical: space.xs,
+    borderRadius: radius.button,
+    marginBottom: space.sm,
+    gap: space.xs,
   },
   warningText: {
-    fontSize: theme.fontSize.xs,
-    color: theme.colors.yellow[800],
+    ...typography.footnote,
+    color: t.status.critical.text,
     flex: 1,
   },
   inputContainer: {
-    marginBottom: theme.spacing.sm,
+    marginBottom: space.sm,
   },
   textInput: {
-    backgroundColor: theme.colors.white,
+    ...typography.body,
+    backgroundColor: t.surface.field,
     borderWidth: 1,
-    borderColor: theme.colors.gray[300],
-    borderRadius: theme.borderRadius.md,
-    paddingHorizontal: theme.spacing.md,
-    paddingVertical: Platform.OS === 'ios' ? theme.spacing.md : theme.spacing.sm,
-    fontSize: theme.fontSize.base,
-    color: theme.colors.gray[900],
-    minHeight: 48,
+    borderColor: t.border.field,
+    borderRadius: radius.field,
+    paddingHorizontal: space.md,
+    paddingVertical: Platform.OS === 'ios' ? space.md : space.sm,
+    color: t.text.primary,
+    minHeight: touchTarget,
   },
   textInputDisabled: {
-    backgroundColor: theme.colors.gray[100],
-    color: theme.colors.gray[500],
+    backgroundColor: t.surface.fieldReadOnly,
+    borderWidth: 0,
+    color: t.text.primary,
   },
   textInputError: {
-    borderColor: theme.colors.semantic.error,
+    borderColor: t.status.negative.border,
     borderWidth: 2,
   },
   pickersRow: {
-    flexDirection: 'row',
-    gap: theme.spacing.md,
+    flexDirection: 'row' as const,
+    gap: space.md,
+  },
+  pickersStacked: {
+    flexDirection: 'column' as const,
   },
   pickerContainer: {
     flex: 1,
   },
   pickerContainerError: {
-    borderRadius: theme.borderRadius.md,
+    borderRadius: radius.field,
   },
   pickerLabel: {
-    fontSize: theme.fontSize.xs,
-    fontWeight: theme.fontWeight.medium,
-    color: theme.colors.gray[600],
-    marginBottom: 4,
+    ...typography.footnote,
+    color: t.text.secondary,
+    marginBottom: space.xs,
   },
   pickerWrapper: {
-    backgroundColor: theme.colors.white,
+    backgroundColor: t.surface.field,
     borderWidth: 1,
-    borderColor: theme.colors.gray[300],
-    borderRadius: theme.borderRadius.md,
-    overflow: 'hidden',
+    borderColor: t.border.field,
+    borderRadius: radius.field,
+    overflow: 'hidden' as const,
+  },
+  pickerWrapperError: {
+    borderWidth: 2,
+    borderColor: t.status.negative.border,
   },
   picker: {
     height: Platform.OS === 'ios' ? 150 : 50,
-    width: '100%',
+    width: '100%' as const,
+    color: t.text.primary,
   },
   validationContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: theme.spacing.xs,
-    gap: theme.spacing.xs,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    marginTop: space.xs,
+    gap: space.xs,
   },
   validationText: {
-    fontSize: theme.fontSize.xs,
-    color: theme.colors.semantic.error,
+    ...typography.footnote,
+    color: t.status.negative.text,
     flex: 1,
   },
 });

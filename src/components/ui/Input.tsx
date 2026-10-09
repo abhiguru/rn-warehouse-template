@@ -2,7 +2,7 @@
  * SAP Fiori Form Cell implementation
  *
  * Features:
- * - Label above field (Capital Case)
+ * - Label above field (sentence case)
  * - Required asterisk indicator
  * - Helper text / Error message (mutually exclusive)
  * - Character counter support
@@ -16,7 +16,6 @@ import {
   View,
   TextInput,
   Text,
-  StyleSheet,
   ViewStyle,
   TextStyle,
   TextInputProps,
@@ -24,56 +23,12 @@ import {
   Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import theme, { Colors } from '@/theme';
-import { useTheme } from '@/hooks/useTheme';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { iconSize, radius, space, touchTarget, typography } from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
 
-// ============================================================================
-// FIORI FORM CELL CONSTANTS
-// ============================================================================
-
-const FIORI_DIMENSIONS = {
-  // Typography
-  labelFontSize: 13,
-  labelLineHeight: 18,
-  inputFontSize: Platform.OS === 'ios' ? 17 : 16,
-  inputLineHeight: 22,
-  helperFontSize: 13,
-  helperLineHeight: 18,
-
-  // Dimensions
-  minHeight: 44,
-  inputPaddingHorizontal: 12,
-  inputPaddingVertical: 8,
-  iconSize: 20,
-  clearButtonSize: 18,
-
-  // Border widths
-  borderWidthDefault: 1,
-  borderWidthActive: 2,
-};
-
-/**
- * Generate theme-aware FIORI colors for Input
- */
-function getFioriColors(colors: Colors) {
-  return {
-    // Colors
-    labelColor: colors.fiori.text.primary,
-    inputTextColor: colors.fiori.text.primary,
-    placeholderColor: colors.fiori.text.secondary,
-    helperColor: colors.fiori.text.secondary,
-    iconColor: colors.gray[500],
-
-    // Border colors
-    borderDefault: colors.fiori.objectCell.divider,
-    borderActive: colors.fiori.semantic.neutral,
-    borderError: colors.fiori.semantic.negative,
-
-    // Background colors
-    backgroundDefault: colors.fiori.objectCell.background,
-    backgroundReadOnly: colors.gray[100],
-  };
-}
+/** Touch area padding that brings the 20 pt clear glyph up to the minimum target. */
+const CLEAR_HIT_SLOP = (touchTarget - iconSize.md) / 2;
 
 // ============================================================================
 // TYPES
@@ -131,8 +86,8 @@ export function Input({
   const [isFocused, setIsFocused] = useState(false);
   const [internalValue, setInternalValue] = useState(value || '');
   const inputRef = useRef<TextInput>(null);
-  const { colors: themeColors } = useTheme();
-  const FIORI = getFioriColors(themeColors);
+  const t = useTokens();
+  const styles = useThemedStyles(makeStyles);
 
   const hasError = Boolean(error);
   const isDisabled = editable === false && !readOnly;
@@ -140,6 +95,7 @@ export function Input({
   const currentValue = value !== undefined ? String(value) : internalValue;
   const hasValue = currentValue.length > 0;
   const isOverLimit = maxLength ? currentValue.length > maxLength : false;
+  const isInvalid = hasError || isOverLimit;
 
   // Handle text change
   const handleChangeText = (text: string) => {
@@ -153,66 +109,28 @@ export function Input({
     inputRef.current?.focus();
   };
 
-  // Determine border color based on state (Fiori spec)
-  const getBorderColor = () => {
-    if (hasError || isOverLimit) return FIORI.borderError;
-    if (isFocused) return FIORI.borderActive;
-    if (isReadOnly) return 'transparent';
-    return FIORI.borderDefault;
-  };
+  // Field outline per state (style guide §13.2)
+  const fieldStateStyle = isInvalid
+    ? styles.fieldError
+    : isFocused
+      ? styles.fieldFocused
+      : isReadOnly
+        ? styles.fieldReadOnly
+        : null;
 
-  // Determine border width based on state
-  const getBorderWidth = () => {
-    if (hasError || isOverLimit || isFocused) return FIORI_DIMENSIONS.borderWidthActive;
-    if (isReadOnly) return 0;
-    return FIORI_DIMENSIONS.borderWidthDefault;
-  };
+  // Error overrides helper text
+  const message: { text: string; isError: boolean } | null = error
+    ? { text: error, isError: true }
+    : isOverLimit
+      ? { text: `Use ${maxLength} characters or fewer.`, isError: true }
+      : helperText
+        ? { text: helperText, isError: false }
+        : null;
 
-  // Determine background color based on state
-  const getBackgroundColor = () => {
-    if (isReadOnly) return FIORI.backgroundReadOnly;
-    return FIORI.backgroundDefault;
-  };
-
-  // Get message text and color (error overrides helper per Fiori spec)
-  const getMessage = () => {
-    // Error state
-    if (error) {
-      return { text: error, color: FIORI.borderError, isError: true };
-    }
-    // Over character limit
-    if (isOverLimit) {
-      return {
-        text: 'Reduce the number of characters',
-        color: FIORI.borderError,
-        isError: true,
-      };
-    }
-    // Read-only state
-    if (isReadOnly) {
-      return { text: 'Read-only field', color: FIORI.helperColor, isError: false };
-    }
-    // Helper text
-    if (helperText) {
-      return { text: helperText, color: FIORI.helperColor, isError: false };
-    }
-    return null;
-  };
-
-  const message = getMessage();
-
-  // Character counter display
-  const getCharacterCount = () => {
-    if (!showCharacterCount || !maxLength) return null;
-    const count = currentValue.length;
-    const isOver = count > maxLength;
-    return {
-      text: `${count}/${maxLength}`,
-      color: isOver ? FIORI.borderError : FIORI.helperColor,
-    };
-  };
-
-  const characterCount = getCharacterCount();
+  const characterCount =
+    showCharacterCount && maxLength
+      ? { text: `${currentValue.length}/${maxLength}`, isOver: currentValue.length > maxLength }
+      : null;
 
   // Show clear button when typing and has value
   const shouldShowClear = showClearButton && isFocused && hasValue && !isReadOnly && !isDisabled;
@@ -230,27 +148,17 @@ export function Input({
         <Text
           style={[
             styles.label,
-            { color: FIORI.labelColor },
-            isDisabled && styles.labelDisabled,
-            isDisabled && { color: FIORI.helperColor },
+            isInvalid && styles.labelError,
+            isDisabled && styles.textDisabled,
           ]}
         >
           {label}
-          {required && <Text style={[styles.required, { color: FIORI.borderError }]}> *</Text>}
+          {required && <Text style={styles.required}> *</Text>}
         </Text>
       )}
 
-      {/* Input Container */}
-      <View
-        style={[
-          styles.inputContainer,
-          {
-            borderColor: getBorderColor(),
-            borderWidth: getBorderWidth(),
-            backgroundColor: getBackgroundColor(),
-          },
-        ]}
-      >
+      {/* Field */}
+      <View style={[styles.inputContainer, fieldStateStyle]}>
         {leftIcon && <View style={styles.leftIcon}>{leftIcon}</View>}
 
         <TextInput
@@ -262,20 +170,18 @@ export function Input({
           selectTextOnFocus={isReadOnly}
           style={[
             styles.input,
-            { color: FIORI.inputTextColor },
-            isDisabled && styles.inputDisabled,
-            isDisabled && { color: FIORI.helperColor },
+            isDisabled && styles.textDisabled,
             inputStyle,
           ]}
-          placeholderTextColor={FIORI.placeholderColor}
+          placeholderTextColor={t.text.placeholder}
           accessibilityLabel={
             label
-              ? `${label}${required ? ', required' : ', optional'}`
-              : textInputProps.placeholder
+              ? `${label}${required ? ', required' : ''}`
+              : textInputProps.accessibilityLabel ?? textInputProps.placeholder
           }
           accessibilityHint={
-            textInputProps.accessibilityHint ||
-            (label ? `Enter ${label.toLowerCase()}` : undefined)
+            textInputProps.accessibilityHint ??
+            (isReadOnly ? 'Read only' : isInvalid && message ? message.text : undefined)
           }
           accessibilityState={{
             disabled: isDisabled,
@@ -290,69 +196,53 @@ export function Input({
           }}
         />
 
-        {/* Clear button (Fiori: appears during active typing) */}
+        {/* Clear button (appears while typing) */}
         {shouldShowClear && (
           <Pressable
             onPress={handleClear}
             style={styles.clearButton}
-            accessibilityLabel={`Clear ${label || 'input'}`}
+            accessibilityLabel={`Clear ${label ? label.toLowerCase() : 'text'}`}
             accessibilityRole="button"
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            hitSlop={CLEAR_HIT_SLOP}
           >
-            <View style={[styles.clearButtonInner, { backgroundColor: FIORI.iconColor }]}>
-              <Ionicons
-                name="close"
-                size={14}
-                color={FIORI.backgroundDefault}
-              />
-            </View>
+            <Ionicons name="close-circle" size={iconSize.md} color={t.icon.secondary} />
           </Pressable>
-        )}
-
-        {/* Error icon (Fiori: red ! icon when error) */}
-        {(hasError || isOverLimit) && !shouldShowClear && (
-          <View style={styles.errorIcon}>
-            <Ionicons
-              name="alert-circle"
-              size={FIORI_DIMENSIONS.iconSize}
-              color={FIORI.borderError}
-            />
-          </View>
         )}
 
         {rightIcon && <View style={styles.rightIcon}>{rightIcon}</View>}
       </View>
 
-      {/* Footer Row: Helper/Error Text + Character Counter */}
-      <View style={styles.footerRow}>
-        {/* Helper Text / Error Message (mutually exclusive per Fiori spec) */}
-        {message && (
-          <Text
-            style={[
-              styles.helperText,
-              { color: message.color },
-              message.isError && styles.errorText,
-            ]}
-          >
-            {message.text}
-          </Text>
-        )}
+      {/* Footer row: helper or error text, and the character counter */}
+      {(message || characterCount) && (
+        <View style={styles.footerRow}>
+          {message ? (
+            <View style={styles.messageRow}>
+              {message.isError && (
+                <Ionicons
+                  name="alert-circle"
+                  size={iconSize.sm}
+                  color={t.status.negative.text}
+                  style={styles.messageIcon}
+                />
+              )}
+              <Text
+                style={[styles.helperText, message.isError && styles.errorText]}
+                accessibilityLiveRegion={message.isError ? 'polite' : 'none'}
+              >
+                {message.text}
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.footerSpacer} />
+          )}
 
-        {/* Spacer */}
-        <View style={styles.footerSpacer} />
-
-        {/* Character Counter */}
-        {characterCount && (
-          <Text
-            style={[
-              styles.characterCount,
-              { color: characterCount.color },
-            ]}
-          >
-            {characterCount.text}
-          </Text>
-        )}
-      </View>
+          {characterCount && (
+            <Text style={[styles.characterCount, characterCount.isOver && styles.errorText]}>
+              {characterCount.text}
+            </Text>
+          )}
+        </View>
+      )}
     </View>
   );
 }
@@ -412,120 +302,114 @@ export function SearchInput(props: InputProps) {
 }
 
 // ============================================================================
-// STYLES (SAP Fiori Form Cell)
+// STYLES (SAP Fiori form cell, style guide §13.2)
 // ============================================================================
 
-const styles = StyleSheet.create({
-  // Container
+const makeStyles = (t: ThemeTokens) => ({
   container: {
-    marginBottom: theme.spacing.md,
+    marginBottom: space.lg,
   },
   containerDisabled: {
-    opacity: 0.5, // Fiori: 50% opacity for disabled state
+    opacity: t.interaction.disabledOpacity,
   },
 
-  // Label (Fiori: 13pt, Capital Case)
   label: {
-    fontSize: FIORI_DIMENSIONS.labelFontSize,
-    lineHeight: FIORI_DIMENSIONS.labelLineHeight,
-    fontWeight: theme.fontWeight.medium,
-    color: theme.colors.fiori.text.primary,
-    marginBottom: 4,
+    ...typography.footnote,
+    color: t.text.secondary,
+    marginBottom: space.xs,
   },
-  labelDisabled: {
-    color: theme.colors.fiori.text.secondary,
+  labelError: {
+    color: t.status.negative.text,
   },
   required: {
-    color: theme.colors.fiori.semantic.negative,
+    color: t.text.required,
+  },
+  textDisabled: {
+    color: t.text.disabled,
   },
 
-  // Input Container (Fiori: 44pt min height, rounded corners)
   inputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 8, // Fiori uses 8pt radius
-    minHeight: FIORI_DIMENSIONS.minHeight,
-    paddingHorizontal: FIORI_DIMENSIONS.inputPaddingHorizontal,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    borderRadius: radius.field,
+    minHeight: touchTarget,
+    paddingHorizontal: space.md,
+    backgroundColor: t.surface.field,
+    borderWidth: 1,
+    borderColor: t.border.field,
+  },
+  fieldFocused: {
+    borderWidth: 2,
+    borderColor: t.border.fieldFocus,
+    paddingHorizontal: space.md - 1,
+  },
+  fieldError: {
+    borderWidth: 2,
+    borderColor: t.status.negative.border,
+    paddingHorizontal: space.md - 1,
+  },
+  fieldReadOnly: {
+    borderWidth: 0,
+    backgroundColor: t.surface.fieldReadOnly,
+    paddingHorizontal: space.md + 1,
   },
 
-  // Input Field (Fiori: 17pt iOS, 16pt Android)
   input: {
+    ...typography.body,
     flex: 1,
-    fontSize: FIORI_DIMENSIONS.inputFontSize,
-    color: theme.colors.fiori.text.primary,
-    paddingVertical: FIORI_DIMENSIONS.inputPaddingVertical,
-    paddingHorizontal: 0, // Remove default padding
+    color: t.text.primary,
+    paddingVertical: space.sm,
+    paddingHorizontal: 0,
     ...Platform.select({
-      ios: {
-        lineHeight: FIORI_DIMENSIONS.inputLineHeight,
-      },
       android: {
-        textAlignVertical: 'center',
+        textAlignVertical: 'center' as const,
         includeFontPadding: false,
       },
+      default: {},
     }),
   },
-  inputDisabled: {
-    color: theme.colors.fiori.text.secondary,
-  },
 
-  // Icons
   leftIcon: {
-    marginRight: theme.spacing.sm,
+    marginRight: space.sm,
   },
   rightIcon: {
-    marginLeft: theme.spacing.sm,
+    marginLeft: space.sm,
   },
-
-  // Clear button (Fiori: circular gray background with × icon)
   clearButton: {
-    marginLeft: theme.spacing.sm,
-    padding: 2,
-  },
-  clearButtonInner: {
-    width: FIORI_DIMENSIONS.clearButtonSize,
-    height: FIORI_DIMENSIONS.clearButtonSize,
-    borderRadius: FIORI_DIMENSIONS.clearButtonSize / 2,
-    backgroundColor: theme.colors.gray[500],
-    alignItems: 'center',
-    justifyContent: 'center',
+    marginLeft: space.sm,
   },
 
-  // Error icon
-  errorIcon: {
-    marginLeft: theme.spacing.sm,
-  },
-
-  // Footer Row (Helper/Error + Character Counter)
   footerRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginTop: 4,
-    minHeight: FIORI_DIMENSIONS.helperLineHeight,
+    flexDirection: 'row' as const,
+    alignItems: 'flex-start' as const,
+    marginTop: space.xs,
+    gap: space.sm,
   },
-
-  // Helper Text (Fiori: 13pt, sentence case)
+  messageRow: {
+    flex: 1,
+    flexDirection: 'row' as const,
+    alignItems: 'flex-start' as const,
+  },
+  messageIcon: {
+    marginTop: 1,
+    marginRight: space.xs,
+  },
   helperText: {
-    fontSize: FIORI_DIMENSIONS.helperFontSize,
-    lineHeight: FIORI_DIMENSIONS.helperLineHeight,
-    color: theme.colors.fiori.text.secondary,
+    ...typography.footnote,
+    color: t.text.secondary,
     flex: 1,
   },
   errorText: {
-    color: theme.colors.fiori.semantic.negative,
+    color: t.status.negative.text,
   },
-
-  // Spacer (only used to push character count to the right)
   footerSpacer: {
-    width: 8,
+    flex: 1,
   },
-
-  // Character Counter (Fiori: right-aligned)
   characterCount: {
-    fontSize: FIORI_DIMENSIONS.helperFontSize,
-    lineHeight: FIORI_DIMENSIONS.helperLineHeight,
-    color: theme.colors.fiori.text.secondary,
-    textAlign: 'right',
+    ...typography.caption1,
+    color: t.text.secondary,
+    textAlign: 'right' as const,
+    fontVariant: ['tabular-nums' as const],
   },
 });
 

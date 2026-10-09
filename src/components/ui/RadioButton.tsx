@@ -1,99 +1,33 @@
+/**
+ * Selection controls (docs/STYLE_GUIDE.md §13.4): SegmentedControl, ButtonGroup,
+ * RadioButton and RadioGroup.
+ */
 import React, { useCallback, useState } from 'react';
 import {
   View,
   Text,
-  StyleSheet,
   ViewStyle,
   TextStyle,
   StyleProp,
   Pressable,
-  Platform,
-  Vibration,
   LayoutAnimation,
+  Insets,
 } from 'react-native';
-import theme, { Colors } from '@/theme';
-import { useTheme } from '@/hooks/useTheme';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { triggerSelection } from '@/hooks/useHaptics';
+import { fontWeight, iconSize, layout, radius, space, touchTarget, typography } from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
 
-// ============================================================================
-// FIORI DESIGN TOKENS - Segmented Control / Button Group
-// ============================================================================
-
-const FIORI_DIMENSIONS = {
-  // Cell Heights
-  cellHeightSingleLine: 44,
-  cellHeightStacked: 72,
-
-  // Typography
-  labelFontSize: 13,
-  labelFontWeight: '400' as const,
-  buttonFontSize: 14,
-  buttonFontWeight: '500' as const,
-
-  // Button/Segment Dimensions
-  buttonHeight: 32,
-  buttonMinWidth: 64,
-  buttonHorizontalPadding: 12,
-  buttonSpacing: 8,
-  labelControlGap: 12,
-
-  // Border Radius
-  segmentedBorderRadius: 8,
-  buttonBorderRadius: 8,
-
-  // Touch Targets
-  minTouchTarget: 44,
-
-  // Opacity
-  buttonDisabledBorderOpacity: 0.5,
-  buttonDisabledTextOpacity: 0.5,
-} as const;
-
-/**
- * Generate theme-aware FIORI colors for RadioButton/SegmentedControl
- */
-function getFioriColors(colors: Colors, isDarkMode: boolean) {
-  return {
-    // Label
-    labelText: colors.fiori.text.primary,
-
-    // Buttons (Single/Multi Selection)
-    buttonUnselectedBg: 'transparent',
-    buttonUnselectedBorder: colors.gray[200],
-    buttonUnselectedText: colors.fiori.text.primary,
-    buttonSelectedBg: colors.primary,
-    buttonSelectedText: isDarkMode ? colors.gray[900] : '#FFFFFF',
-    buttonPressedUnselectedBg: colors.gray[100],
-    buttonPressedUnselectedBorder: colors.gray[300],
-    buttonPressedSelectedBg: colors.orange[600],
-
-    // Segmented Control
-    segmentContainerBg: colors.gray[100],
-    segmentContainerBorder: colors.gray[200],
-    segmentUnselectedBg: 'transparent',
-    segmentUnselectedText: colors.fiori.text.primary,
-    segmentSelectedBg: colors.fiori.objectCell.background,
-    segmentSelectedText: colors.primary,
-    segmentPressedBg: colors.gray[200],
-
-    // Traditional Radio
-    radioUnselectedBorder: colors.gray[300],
-    radioSelectedBorder: colors.primary,
-    radioDotColor: colors.primary,
-  };
-}
-
-// Platform-specific shadow for selected segment
-const SEGMENT_SHADOW = Platform.select({
-  ios: {
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.15,
-    shadowRadius: 2,
-  },
-  android: {
-    elevation: 2,
-  },
-}) as ViewStyle;
+/** Visual height of a segment or group button; the touch area is padded to touchTarget. */
+const CONTROL_HEIGHT = 32;
+const CONTROL_MIN_WIDTH = 64;
+const RADIO_SIZE = 20;
+const RADIO_DOT = 10;
+const CONTROL_HIT_SLOP: Insets = {
+  top: (touchTarget - CONTROL_HEIGHT) / 2,
+  bottom: (touchTarget - CONTROL_HEIGHT) / 2,
+};
 
 // ============================================================================
 // SEGMENTED CONTROL - iOS Style (Single Selection, Mutually Exclusive)
@@ -135,15 +69,14 @@ export const SegmentedControl: React.FC<SegmentedControlProps> = ({
   style,
 }) => {
   const [pressedIndex, setPressedIndex] = useState<number | null>(null);
-  const { colors: themeColors, isDarkMode } = useTheme();
-  const FIORI = getFioriColors(themeColors, isDarkMode);
+  const styles = useThemedStyles(makeStyles);
 
   const handlePress = useCallback(
     (optionValue: string, optionDisabled?: boolean) => {
       if (disabled || optionDisabled || value === optionValue) return;
 
       if (hapticFeedback) {
-        Vibration.vibrate(10);
+        triggerSelection();
       }
 
       LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -166,7 +99,6 @@ export const SegmentedControl: React.FC<SegmentedControlProps> = ({
         <Text
           style={[
             styles.label,
-            { color: FIORI.labelText },
             stacked && styles.labelStacked,
             disabled && styles.labelDisabled,
           ]}
@@ -177,7 +109,6 @@ export const SegmentedControl: React.FC<SegmentedControlProps> = ({
       <View
         style={[
           styles.segmentedControlWrapper,
-          { backgroundColor: FIORI.segmentContainerBg, borderColor: FIORI.segmentContainerBorder },
           disabled && styles.segmentedControlWrapperDisabled,
         ]}
       >
@@ -191,13 +122,12 @@ export const SegmentedControl: React.FC<SegmentedControlProps> = ({
               key={option.value}
               style={[
                 styles.segment,
-                { backgroundColor: FIORI.segmentUnselectedBg },
-                isSelected && [styles.segmentSelected, { backgroundColor: FIORI.segmentSelectedBg }],
-                isPressed && !isSelected && { backgroundColor: FIORI.segmentPressedBg },
-                index === 0 && styles.segmentFirst,
-                index === options.length - 1 && styles.segmentLast,
+                isSelected && styles.segmentSelected,
+                isPressed && !isSelected && styles.segmentPressed,
+                isPressed && isSelected && styles.segmentSelectedPressed,
                 isOptionDisabled && styles.segmentDisabled,
               ]}
+              hitSlop={CONTROL_HIT_SLOP}
               onPress={() => handlePress(option.value, option.disabled)}
               onPressIn={() => setPressedIndex(index)}
               onPressOut={() => setPressedIndex(null)}
@@ -212,9 +142,7 @@ export const SegmentedControl: React.FC<SegmentedControlProps> = ({
               <Text
                 style={[
                   styles.segmentText,
-                  { color: FIORI.segmentUnselectedText },
-                  isSelected && { color: FIORI.segmentSelectedText },
-                  isOptionDisabled && styles.segmentTextDisabled,
+                  isSelected && styles.segmentTextSelected,
                 ]}
                 numberOfLines={1}
               >
@@ -271,15 +199,15 @@ export const ButtonGroup: React.FC<ButtonGroupProps> = ({
   style,
 }) => {
   const [pressedIndex, setPressedIndex] = useState<number | null>(null);
-  const { colors: themeColors, isDarkMode } = useTheme();
-  const FIORI = getFioriColors(themeColors, isDarkMode);
+  const t = useTokens();
+  const styles = useThemedStyles(makeStyles);
 
   const handlePress = useCallback(
     (optionValue: string, optionDisabled?: boolean) => {
       if (disabled || optionDisabled) return;
 
       if (hapticFeedback) {
-        Vibration.vibrate(10);
+        triggerSelection();
       }
 
       if (multiSelect) {
@@ -311,7 +239,6 @@ export const ButtonGroup: React.FC<ButtonGroupProps> = ({
         <Text
           style={[
             styles.label,
-            { color: FIORI.labelText },
             stacked && styles.labelStacked,
             disabled && styles.labelDisabled,
           ]}
@@ -330,12 +257,12 @@ export const ButtonGroup: React.FC<ButtonGroupProps> = ({
               key={option.value}
               style={[
                 styles.button,
-                { borderColor: FIORI.buttonUnselectedBorder, backgroundColor: FIORI.buttonUnselectedBg },
-                isSelected && [styles.buttonSelected, { backgroundColor: FIORI.buttonSelectedBg }],
-                !isSelected && isPressed && { backgroundColor: FIORI.buttonPressedUnselectedBg, borderColor: FIORI.buttonPressedUnselectedBorder },
-                isSelected && isPressed && { backgroundColor: FIORI.buttonPressedSelectedBg },
+                isSelected && styles.buttonSelected,
+                !isSelected && isPressed && styles.buttonPressedUnselected,
+                isSelected && isPressed && styles.buttonPressedSelected,
                 isOptionDisabled && styles.buttonDisabled,
               ]}
+              hitSlop={CONTROL_HIT_SLOP}
               onPress={() => handlePress(option.value, option.disabled)}
               onPressIn={() => setPressedIndex(index)}
               onPressOut={() => setPressedIndex(null)}
@@ -348,12 +275,18 @@ export const ButtonGroup: React.FC<ButtonGroupProps> = ({
               }}
               accessibilityLabel={option.label}
             >
+              {isSelected && (
+                <MaterialCommunityIcons
+                  name="check"
+                  size={iconSize.sm}
+                  color={t.brand.onFill}
+                  style={styles.buttonCheck}
+                />
+              )}
               <Text
                 style={[
                   styles.buttonText,
-                  { color: FIORI.buttonUnselectedText },
-                  isSelected && { color: FIORI.buttonSelectedText },
-                  isOptionDisabled && styles.buttonTextDisabled,
+                  isSelected && styles.buttonTextSelected,
                 ]}
                 numberOfLines={1}
               >
@@ -394,26 +327,23 @@ export const RadioButton: React.FC<RadioButtonProps> = ({
   style,
   labelStyle,
 }) => {
-  const [isPressed, setIsPressed] = useState(false);
-  const { colors: themeColors, isDarkMode } = useTheme();
-  const FIORI = getFioriColors(themeColors, isDarkMode);
+  const styles = useThemedStyles(makeStyles);
 
   const handlePress = useCallback(() => {
     if (disabled || selected) return;
-    Vibration.vibrate(10);
+    triggerSelection();
     onPress();
   }, [disabled, selected, onPress]);
 
   return (
     <Pressable
-      style={[
+      style={({ pressed }) => [
         styles.radioContainer,
+        pressed && !disabled && styles.radioContainerPressed,
         disabled && styles.radioContainerDisabled,
         style,
       ]}
       onPress={handlePress}
-      onPressIn={() => setIsPressed(true)}
-      onPressOut={() => setIsPressed(false)}
       disabled={disabled}
       accessibilityRole="radio"
       accessibilityLabel={label}
@@ -422,19 +352,14 @@ export const RadioButton: React.FC<RadioButtonProps> = ({
       <View
         style={[
           styles.radioOuter,
-          { borderColor: FIORI.radioUnselectedBorder },
-          selected && [styles.radioOuterSelected, { borderColor: FIORI.radioSelectedBorder }],
-          isPressed && !disabled && styles.radioOuterPressed,
-          disabled && styles.radioOuterDisabled,
+          selected && styles.radioOuterSelected,
         ]}
       >
-        {selected && <View style={[styles.radioInner, { backgroundColor: FIORI.radioDotColor }]} />}
+        {selected && <View style={styles.radioInner} />}
       </View>
       <Text
         style={[
           styles.radioLabel,
-          { color: FIORI.labelText },
-          disabled && styles.radioLabelDisabled,
           labelStyle,
         ]}
       >
@@ -471,13 +396,12 @@ export const RadioGroup: React.FC<RadioGroupProps> = ({
   disabled = false,
   style,
 }) => {
-  const { colors: themeColors, isDarkMode } = useTheme();
-  const FIORI = getFioriColors(themeColors, isDarkMode);
+  const styles = useThemedStyles(makeStyles);
 
   return (
     <View style={[styles.radioGroupContainer, style]}>
       {label && (
-        <Text style={[styles.label, { color: FIORI.labelText }, styles.labelStacked, disabled && styles.labelDisabled]}>
+        <Text style={[styles.label, styles.labelStacked, disabled && styles.labelDisabled]}>
           {label}
         </Text>
       )}
@@ -500,216 +424,179 @@ export const RadioGroup: React.FC<RadioGroupProps> = ({
 // STYLES
 // ============================================================================
 
-const styles = StyleSheet.create({
-  // ============================================================================
-  // LABELS (Shared)
-  // ============================================================================
+const makeStyles = (t: ThemeTokens) => ({
+  // Labels (shared): form-cell label, footnote in text.secondary
   label: {
-    fontSize: FIORI_DIMENSIONS.labelFontSize,
-    fontWeight: FIORI_DIMENSIONS.labelFontWeight,
-    color: theme.colors.fiori.text.primary,
-    marginRight: FIORI_DIMENSIONS.labelControlGap,
+    ...typography.footnote,
+    color: t.text.secondary,
+    marginRight: space.md,
   },
   labelStacked: {
     marginRight: 0,
-    marginBottom: FIORI_DIMENSIONS.buttonSpacing,
+    marginBottom: space.sm,
   },
   labelDisabled: {
-    opacity: FIORI_DIMENSIONS.buttonDisabledTextOpacity,
+    opacity: t.interaction.disabledOpacity,
   },
 
-  // ============================================================================
-  // SEGMENTED CONTROL
-  // ============================================================================
+  // Segmented control
   segmentedContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: theme.spacing.md,
-    paddingVertical: theme.spacing.sm,
-    minHeight: FIORI_DIMENSIONS.cellHeightSingleLine,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    paddingHorizontal: space.md,
+    paddingVertical: space.sm,
+    minHeight: layout.rowMinHeight,
   },
   segmentedContainerStacked: {
-    flexDirection: 'column',
-    alignItems: 'stretch',
-    minHeight: FIORI_DIMENSIONS.cellHeightStacked,
+    flexDirection: 'column' as const,
+    alignItems: 'stretch' as const,
+    minHeight: layout.objectCellMinHeight,
   },
   segmentedControlWrapper: {
-    flexDirection: 'row',
-    backgroundColor: theme.colors.gray[100],
-    borderRadius: FIORI_DIMENSIONS.segmentedBorderRadius,
+    flexDirection: 'row' as const,
+    backgroundColor: t.surface.card,
+    borderRadius: radius.button,
     borderWidth: 1,
-    borderColor: theme.colors.gray[200],
-    padding: 2,
-    overflow: 'hidden',
+    borderColor: t.border.button,
+    padding: space.xxs,
+    overflow: 'hidden' as const,
   },
   segmentedControlWrapperDisabled: {
-    opacity: FIORI_DIMENSIONS.buttonDisabledTextOpacity,
+    opacity: t.interaction.disabledOpacity,
   },
   segment: {
     flex: 1,
-    minWidth: FIORI_DIMENSIONS.buttonMinWidth,
-    height: FIORI_DIMENSIONS.buttonHeight - 4, // Account for container padding
-    paddingHorizontal: FIORI_DIMENSIONS.buttonHorizontalPadding,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: FIORI_DIMENSIONS.segmentedBorderRadius - 2,
+    minWidth: CONTROL_MIN_WIDTH,
+    minHeight: CONTROL_HEIGHT - 2 * space.xxs,
+    paddingHorizontal: space.md,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    borderRadius: radius.button - space.xxs,
     backgroundColor: 'transparent',
   },
-  segmentFirst: {
-    marginLeft: 0,
-  },
-  segmentLast: {
-    marginRight: 0,
-  },
   segmentSelected: {
-    backgroundColor: theme.colors.fiori.objectCell.background,
-    ...SEGMENT_SHADOW,
+    backgroundColor: t.brand.fill,
+  },
+  segmentSelectedPressed: {
+    backgroundColor: t.brand.fillPressed,
   },
   segmentPressed: {
-    backgroundColor: theme.colors.gray[200],
+    backgroundColor: t.surface.cardPressed,
   },
   segmentDisabled: {
-    opacity: FIORI_DIMENSIONS.buttonDisabledTextOpacity,
+    opacity: t.interaction.disabledOpacity,
   },
   segmentText: {
-    fontSize: FIORI_DIMENSIONS.buttonFontSize,
-    fontWeight: FIORI_DIMENSIONS.buttonFontWeight,
-    color: theme.colors.fiori.text.primary,
+    ...typography.subhead,
+    color: t.text.primary,
   },
   segmentTextSelected: {
-    color: theme.colors.primary,
-  },
-  segmentTextDisabled: {
-    opacity: FIORI_DIMENSIONS.buttonDisabledTextOpacity,
+    color: t.brand.onFill,
+    fontWeight: fontWeight.semibold,
   },
 
-  // ============================================================================
-  // BUTTON GROUP
-  // ============================================================================
+  // Button group
   buttonGroupContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: theme.spacing.md,
-    paddingVertical: theme.spacing.sm,
-    minHeight: FIORI_DIMENSIONS.cellHeightSingleLine,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    paddingHorizontal: space.md,
+    paddingVertical: space.sm,
+    minHeight: layout.rowMinHeight,
   },
   buttonGroupContainerStacked: {
-    flexDirection: 'column',
-    alignItems: 'stretch',
-    minHeight: FIORI_DIMENSIONS.cellHeightStacked,
+    flexDirection: 'column' as const,
+    alignItems: 'stretch' as const,
+    minHeight: layout.objectCellMinHeight,
   },
   buttonGroupWrapper: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: FIORI_DIMENSIONS.buttonSpacing,
+    flexDirection: 'row' as const,
+    flexWrap: 'wrap' as const,
+    gap: space.sm,
   },
   button: {
-    minWidth: FIORI_DIMENSIONS.buttonMinWidth,
-    height: FIORI_DIMENSIONS.buttonHeight,
-    paddingHorizontal: FIORI_DIMENSIONS.buttonHorizontalPadding,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: FIORI_DIMENSIONS.buttonBorderRadius,
+    flexDirection: 'row' as const,
+    minWidth: CONTROL_MIN_WIDTH,
+    minHeight: CONTROL_HEIGHT,
+    paddingHorizontal: space.md,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    borderRadius: radius.button,
     borderWidth: 1,
-    borderColor: theme.colors.gray[200],
+    borderColor: t.border.button,
     backgroundColor: 'transparent',
   },
   buttonSelected: {
-    borderWidth: 0,
-    backgroundColor: theme.colors.primary,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.2,
-        shadowRadius: 2,
-      },
-      android: {
-        elevation: 2,
-      },
-    }),
+    borderColor: t.brand.fill,
+    backgroundColor: t.brand.fill,
   },
   buttonPressedUnselected: {
-    backgroundColor: theme.colors.gray[100],
-    borderColor: theme.colors.gray[300],
+    backgroundColor: t.surface.cardPressed,
   },
   buttonPressedSelected: {
-    backgroundColor: theme.colors.orange[600],
+    borderColor: t.brand.fillPressed,
+    backgroundColor: t.brand.fillPressed,
   },
   buttonDisabled: {
-    opacity: FIORI_DIMENSIONS.buttonDisabledTextOpacity,
+    opacity: t.interaction.disabledOpacity,
+  },
+  buttonCheck: {
+    marginRight: space.xs,
   },
   buttonText: {
-    fontSize: FIORI_DIMENSIONS.buttonFontSize,
-    fontWeight: FIORI_DIMENSIONS.buttonFontWeight,
-    color: theme.colors.fiori.text.primary,
+    ...typography.subhead,
+    color: t.text.primary,
   },
   buttonTextSelected: {
-    color: '#FFFFFF',
-  },
-  buttonTextDisabled: {
-    opacity: FIORI_DIMENSIONS.buttonDisabledTextOpacity,
+    color: t.brand.onFill,
+    fontWeight: fontWeight.semibold,
   },
 
-  // ============================================================================
-  // TRADITIONAL RADIO BUTTON
-  // ============================================================================
+  // Radio button: the whole row is the target
   radioContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: theme.spacing.sm,
-    minHeight: FIORI_DIMENSIONS.minTouchTarget,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    paddingVertical: space.sm,
+    minHeight: touchTarget,
+  },
+  radioContainerPressed: {
+    backgroundColor: t.surface.cardPressed,
   },
   radioContainerDisabled: {
-    opacity: FIORI_DIMENSIONS.buttonDisabledTextOpacity,
+    opacity: t.interaction.disabledOpacity,
   },
   radioOuter: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
+    width: RADIO_SIZE,
+    height: RADIO_SIZE,
+    borderRadius: radius.pill,
     borderWidth: 2,
-    borderColor: theme.colors.gray[300],
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: theme.spacing.md,
-    backgroundColor: theme.colors.white,
+    borderColor: t.border.field,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    marginRight: space.md,
+    backgroundColor: t.surface.field,
   },
   radioOuterSelected: {
-    borderColor: theme.colors.primary,
-  },
-  radioOuterPressed: {
-    borderColor: theme.colors.orange[400],
-    backgroundColor: theme.colors.orange[50],
-  },
-  radioOuterDisabled: {
-    borderColor: theme.colors.gray[300],
-    backgroundColor: theme.colors.gray[50],
+    borderColor: t.brand.tint,
   },
   radioInner: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: theme.colors.primary,
+    width: RADIO_DOT,
+    height: RADIO_DOT,
+    borderRadius: radius.pill,
+    backgroundColor: t.brand.tint,
   },
   radioLabel: {
-    fontSize: FIORI_DIMENSIONS.buttonFontSize,
-    fontWeight: FIORI_DIMENSIONS.buttonFontWeight,
-    color: theme.colors.fiori.text.primary,
+    ...typography.body,
+    color: t.text.primary,
     flex: 1,
   },
-  radioLabelDisabled: {
-    color: theme.colors.gray[400],
-  },
 
-  // ============================================================================
-  // RADIO GROUP
-  // ============================================================================
+  // Radio group
   radioGroupContainer: {
-    paddingHorizontal: theme.spacing.md,
-    paddingVertical: theme.spacing.sm,
+    paddingHorizontal: space.md,
+    paddingVertical: space.sm,
   },
   radioGroup: {
-    gap: theme.spacing.xs,
+    gap: space.xs,
   },
 });
 

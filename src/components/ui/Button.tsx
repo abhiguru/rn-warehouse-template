@@ -1,15 +1,15 @@
 /**
- * SAP Fiori Button implementation
+ * SAP Fiori button (docs/STYLE_GUIDE.md §13.1).
  *
- * Button Types:
- * - Primary: Most important action (filled, one per view)
- * - Secondary: Optional/lower priority actions (outlined)
- * - Tertiary: Lowest priority (text only)
+ * Types:
+ * - primary: the one main action of a screen or dialog (filled)
+ * - secondary: other actions (outlined)
+ * - tertiary: low-emphasis actions (text only)
  *
- * Button Styles:
- * - Tint: Primary color (default for Primary, optional for Secondary/Tertiary)
- * - Normal: Neutral color (for Secondary/Tertiary)
- * - Negative: Destructive actions (red, for Secondary/Tertiary)
+ * Styles:
+ * - tint: brand colour (default)
+ * - normal: neutral, e.g. Cancel
+ * - negative: destructive. A primary negative button uses the destructive.* fill.
  */
 
 import React from 'react';
@@ -17,92 +17,17 @@ import {
   TouchableOpacity,
   Text,
   ActivityIndicator,
-  StyleSheet,
   ViewStyle,
   TextStyle,
   TouchableOpacityProps,
   View,
-  Platform,
+  Insets,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useTheme } from '@/hooks/useTheme';
-import { Colors } from '@/theme';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { fontWeight, iconSize, radius, space, touchTarget, typography } from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
 import { triggerLightTap } from '@/hooks/useHaptics';
-
-// ============================================================================
-// FIORI BUTTON CONSTANTS
-// ============================================================================
-
-const FIORI_DIMENSIONS = {
-  // Typography
-  fontSize: 17,
-  fontWeightSemibold: '600' as const,
-  fontWeightRegular: '400' as const,
-  letterSpacing: -0.41,
-
-  // Dimensions
-  heightStandard: 44,
-  heightCompact: 38,
-  minWidth: 64,
-  standaloneWidth: 201,
-  horizontalPadding: 16,
-  verticalPadding: 11,
-  iconTextGap: 8,
-  borderRadius: 8,
-  borderWidth: 1,
-
-  // Disabled opacity
-  disabledOpacity: 0.3,
-};
-
-/**
- * Generate theme-aware FIORI colors
- */
-function getFioriColors(colors: Colors, isDarkMode: boolean) {
-  return {
-    // Colors - Primary Tint
-    primaryBackground: colors.primary,
-    primaryBackgroundPressed: colors.orange[600],
-    primaryText: isDarkMode ? colors.gray[900] : '#FFFFFF',
-
-    // Colors - Secondary Tint (outlined)
-    secondaryTintBackground: 'transparent',
-    secondaryTintBackgroundPressed: colors.orange[50],
-    secondaryTintText: colors.primary,
-    secondaryTintTextPressed: colors.orange[600],
-    secondaryTintBorder: colors.primary,
-    secondaryTintBorderPressed: colors.orange[600],
-
-    // Colors - Secondary Normal (neutral outlined)
-    secondaryNormalBackground: 'transparent',
-    secondaryNormalBackgroundPressed: colors.gray[100],
-    secondaryNormalText: colors.fiori.text.primary,
-    secondaryNormalBorder: colors.gray[200],
-    secondaryNormalBorderPressed: colors.gray[300],
-
-    // Colors - Secondary Negative (destructive)
-    secondaryNegativeBackground: 'transparent',
-    secondaryNegativeBackgroundPressed: colors.red[50],
-    secondaryNegativeText: colors.fiori.semantic.negative,
-    secondaryNegativeTextPressed: colors.fiori.semantic.negativeDark,
-    secondaryNegativeBorder: colors.fiori.semantic.negative,
-    secondaryNegativeBorderPressed: colors.fiori.semantic.negativeDark,
-
-    // Colors - Tertiary Tint
-    tertiaryTintText: colors.primary,
-    tertiaryTintTextPressed: colors.orange[600],
-    tertiaryTintBackgroundPressed: colors.orange[50],
-
-    // Colors - Tertiary Normal
-    tertiaryNormalText: colors.gray[700],
-    tertiaryNormalBackgroundPressed: colors.gray[100],
-
-    // Colors - Tertiary Negative
-    tertiaryNegativeText: colors.fiori.semantic.negative,
-    tertiaryNegativeTextPressed: colors.fiori.semantic.negativeDark,
-    tertiaryNegativeBackgroundPressed: colors.red[50],
-  };
-}
 
 // ============================================================================
 // TYPES
@@ -131,7 +56,7 @@ export interface ButtonProps extends Omit<TouchableOpacityProps, 'style'> {
   leftIcon?: keyof typeof Ionicons.glyphMap;
   /** Right icon name (Ionicons) */
   rightIcon?: keyof typeof Ionicons.glyphMap;
-  /** Icon-only button (no text) */
+  /** Icon-only button (no text); children becomes the accessibility label */
   iconOnly?: boolean;
   /** Custom container style */
   style?: ViewStyle;
@@ -148,6 +73,104 @@ export interface BaseButtonProps extends Omit<ButtonProps, 'size'> {
   size?: LegacyButtonSize;
   /** Full width button */
   fullWidth?: boolean;
+}
+
+// ============================================================================
+// SIZES AND COLOURS
+// ============================================================================
+
+const HEIGHT_COMPACT = 32;
+const HEIGHT_STANDALONE = 48;
+const STANDALONE_MIN_WIDTH = 120;
+const MIN_WIDTH = 64;
+
+/** Pads a compact button's touch area up to the platform minimum. */
+const COMPACT_HIT_SLOP: Insets = {
+  top: (touchTarget - HEIGHT_COMPACT) / 2,
+  bottom: (touchTarget - HEIGHT_COMPACT) / 2,
+  left: 0,
+  right: 0,
+};
+
+export interface ButtonColors {
+  background: string;
+  text: string;
+  border: string;
+  borderWidth: number;
+}
+
+/** Container, label and border colours for a type, style and pressed state. */
+export function getButtonColors(
+  t: ThemeTokens,
+  type: ButtonType,
+  variant: ButtonStyle,
+  pressed: boolean
+): ButtonColors {
+  if (type === 'primary') {
+    if (variant === 'negative') {
+      return {
+        background: pressed ? t.destructive.fillPressed : t.destructive.fill,
+        text: t.destructive.onFill,
+        border: 'transparent',
+        borderWidth: 0,
+      };
+    }
+    return {
+      background: pressed ? t.brand.fillPressed : t.brand.fill,
+      text: t.brand.onFill,
+      border: 'transparent',
+      borderWidth: 0,
+    };
+  }
+
+  if (type === 'secondary') {
+    if (variant === 'negative') {
+      return {
+        background: pressed ? t.status.negative.background : 'transparent',
+        text: t.status.negative.text,
+        border: t.status.negative.border,
+        borderWidth: 1,
+      };
+    }
+    if (variant === 'normal') {
+      return {
+        background: pressed ? t.surface.cardPressed : 'transparent',
+        text: t.text.primary,
+        border: t.border.button,
+        borderWidth: 1,
+      };
+    }
+    return {
+      background: pressed ? t.brand.subtle : 'transparent',
+      text: t.brand.tint,
+      border: t.border.button,
+      borderWidth: 1,
+    };
+  }
+
+  // tertiary
+  if (variant === 'negative') {
+    return {
+      background: pressed ? t.status.negative.background : 'transparent',
+      text: t.status.negative.text,
+      border: 'transparent',
+      borderWidth: 0,
+    };
+  }
+  if (variant === 'normal') {
+    return {
+      background: pressed ? t.surface.cardPressed : 'transparent',
+      text: t.text.primary,
+      border: 'transparent',
+      borderWidth: 0,
+    };
+  }
+  return {
+    background: pressed ? t.brand.subtle : 'transparent',
+    text: t.brand.tint,
+    border: 'transparent',
+    borderWidth: 0,
+  };
 }
 
 // ============================================================================
@@ -170,121 +193,33 @@ export function Button({
   ...props
 }: ButtonProps) {
   const [isPressed, setIsPressed] = React.useState(false);
-  const { colors: themeColors, isDarkMode } = useTheme();
-  const FIORI = getFioriColors(themeColors, isDarkMode);
+  const t = useTokens();
+  const styles = useThemedStyles(makeStyles);
 
   const isDisabled = disabled || loading;
+  const colors = getButtonColors(t, type, variant, isPressed && !isDisabled);
 
-  // Get colors based on type, variant, and state
-  const getColors = () => {
-    const pressed = isPressed && !isDisabled;
+  const sizeStyle =
+    size === 'compact'
+      ? styles.sizeCompact
+      : size === 'standalone'
+        ? styles.sizeStandalone
+        : size === 'fullWidth'
+          ? styles.sizeFullWidth
+          : styles.sizeAuto;
 
-    // Primary button (always tint style)
-    if (type === 'primary') {
-      return {
-        background: pressed ? FIORI.primaryBackgroundPressed : FIORI.primaryBackground,
-        text: FIORI.primaryText,
-        border: 'transparent',
-        borderWidth: 0,
-      };
-    }
-
-    // Secondary button
-    if (type === 'secondary') {
-      if (variant === 'tint') {
-        return {
-          background: pressed ? FIORI.secondaryTintBackgroundPressed : FIORI.secondaryTintBackground,
-          text: pressed ? FIORI.secondaryTintTextPressed : FIORI.secondaryTintText,
-          border: pressed ? FIORI.secondaryTintBorderPressed : FIORI.secondaryTintBorder,
-          borderWidth: FIORI_DIMENSIONS.borderWidth,
-        };
-      }
-      if (variant === 'negative') {
-        return {
-          background: pressed ? FIORI.secondaryNegativeBackgroundPressed : FIORI.secondaryNegativeBackground,
-          text: pressed ? FIORI.secondaryNegativeTextPressed : FIORI.secondaryNegativeText,
-          border: pressed ? FIORI.secondaryNegativeBorderPressed : FIORI.secondaryNegativeBorder,
-          borderWidth: FIORI_DIMENSIONS.borderWidth,
-        };
-      }
-      // normal
-      return {
-        background: pressed ? FIORI.secondaryNormalBackgroundPressed : FIORI.secondaryNormalBackground,
-        text: FIORI.secondaryNormalText,
-        border: pressed ? FIORI.secondaryNormalBorderPressed : FIORI.secondaryNormalBorder,
-        borderWidth: FIORI_DIMENSIONS.borderWidth,
-      };
-    }
-
-    // Tertiary button
-    if (variant === 'tint') {
-      return {
-        background: pressed ? FIORI.tertiaryTintBackgroundPressed : 'transparent',
-        text: pressed ? FIORI.tertiaryTintTextPressed : FIORI.tertiaryTintText,
-        border: 'transparent',
-        borderWidth: 0,
-      };
-    }
-    if (variant === 'negative') {
-      return {
-        background: pressed ? FIORI.tertiaryNegativeBackgroundPressed : 'transparent',
-        text: pressed ? FIORI.tertiaryNegativeTextPressed : FIORI.tertiaryNegativeText,
-        border: 'transparent',
-        borderWidth: 0,
-      };
-    }
-    // normal
-    return {
-      background: pressed ? FIORI.tertiaryNormalBackgroundPressed : 'transparent',
-      text: FIORI.tertiaryNormalText,
-      border: 'transparent',
-      borderWidth: 0,
-    };
-  };
-
-  const colors = getColors();
-
-  // Get container size styles
-  const getSizeStyles = (): ViewStyle => {
-    const baseHeight = size === 'compact' ? FIORI_DIMENSIONS.heightCompact : FIORI_DIMENSIONS.heightStandard;
-
-    switch (size) {
-      case 'standalone':
-        return {
-          width: FIORI_DIMENSIONS.standaloneWidth,
-          height: baseHeight,
-        };
-      case 'fullWidth':
-        return {
-          width: '100%',
-          height: baseHeight,
-        };
-      case 'compact':
-        return {
-          height: FIORI_DIMENSIONS.heightCompact,
-          minWidth: FIORI_DIMENSIONS.minWidth,
-        };
-      case 'auto':
-      default:
-        return {
-          height: baseHeight,
-          minWidth: FIORI_DIMENSIONS.minWidth,
-        };
-    }
-  };
-
-  // Font weight based on type
-  const getFontWeight = () => {
-    return type === 'tertiary' ? FIORI_DIMENSIONS.fontWeightRegular : FIORI_DIMENSIONS.fontWeightSemibold;
-  };
-
-  // Icon size based on button type
-  const getIconSize = () => {
-    return iconOnly ? 24 : 20;
-  };
+  const labelStyle = [
+    styles.text,
+    type === 'tertiary' ? styles.textTertiary : styles.textEmphasized,
+    { color: colors.text },
+    textStyle,
+  ];
+  const glyphSize = iconOnly ? iconSize.lg : iconSize.md;
+  const label = loading && loadingText ? loadingText : children;
 
   return (
     <TouchableOpacity
+      hitSlop={size === 'compact' ? COMPACT_HIT_SLOP : undefined}
       {...props}
       disabled={isDisabled}
       activeOpacity={1}
@@ -299,8 +234,8 @@ export function Button({
       }}
       style={[
         styles.container,
-        type !== 'tertiary' && styles.containerWithShadow,
-        getSizeStyles(),
+        sizeStyle,
+        iconOnly && styles.iconOnly,
         {
           backgroundColor: colors.background,
           borderColor: colors.border,
@@ -314,70 +249,41 @@ export function Button({
         disabled: isDisabled,
         busy: loading,
       }}
-      accessibilityLabel={props.accessibilityLabel || children}
-      accessibilityHint={
-        props.accessibilityHint ||
-        (type === 'primary' ? 'Primary action' : undefined)
-      }
+      accessibilityLabel={props.accessibilityLabel || label}
     >
-      {/* Content */}
       <View style={styles.content}>
-        {/* Loading state */}
+        {/* Loading replaces the left icon with a spinner */}
         {loading ? (
-          <>
-            <ActivityIndicator
-              color={colors.text}
-              size="small"
-              style={loadingText ? styles.loadingIcon : undefined}
-            />
-            {loadingText && (
-              <Text
-                style={[
-                  styles.text,
-                  { color: colors.text, fontWeight: getFontWeight() },
-                  textStyle,
-                ]}
-              >
-                {loadingText}
-              </Text>
-            )}
-          </>
+          <ActivityIndicator
+            color={colors.text}
+            size="small"
+            style={!iconOnly ? styles.leftIcon : undefined}
+          />
         ) : (
-          <>
-            {/* Left icon */}
-            {leftIcon && (
-              <Ionicons
-                name={leftIcon}
-                size={getIconSize()}
-                color={colors.text}
-                style={!iconOnly ? styles.leftIcon : undefined}
-              />
-            )}
+          leftIcon && (
+            <Ionicons
+              name={leftIcon}
+              size={glyphSize}
+              color={colors.text}
+              style={!iconOnly ? styles.leftIcon : undefined}
+            />
+          )
+        )}
 
-            {/* Text (hidden for icon-only buttons) */}
-            {!iconOnly && (
-              <Text
-                style={[
-                  styles.text,
-                  { color: colors.text, fontWeight: getFontWeight() },
-                  textStyle,
-                ]}
-                numberOfLines={1}
-              >
-                {children}
-              </Text>
-            )}
+        {/* Label (hidden for icon-only buttons) */}
+        {!iconOnly && (
+          <Text style={labelStyle} numberOfLines={2}>
+            {label}
+          </Text>
+        )}
 
-            {/* Right icon */}
-            {rightIcon && (
-              <Ionicons
-                name={rightIcon}
-                size={getIconSize()}
-                color={colors.text}
-                style={!iconOnly ? styles.rightIcon : undefined}
-              />
-            )}
-          </>
+        {rightIcon && !loading && (
+          <Ionicons
+            name={rightIcon}
+            size={glyphSize}
+            color={colors.text}
+            style={!iconOnly ? styles.rightIcon : undefined}
+          />
         )}
       </View>
     </TouchableOpacity>
@@ -482,58 +388,58 @@ export function GhostButton({
 // STYLES (SAP Fiori Button)
 // ============================================================================
 
-const styles = StyleSheet.create({
-  // Container
+const makeStyles = (t: ThemeTokens) => ({
   container: {
-    borderRadius: FIORI_DIMENSIONS.borderRadius,
-    paddingHorizontal: FIORI_DIMENSIONS.horizontalPadding,
-    alignItems: 'center',
-    justifyContent: 'center',
+    borderRadius: radius.button,
+    paddingHorizontal: space.lg,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
   },
-
-  // Container with shadow (for primary/secondary only)
-  containerWithShadow: {
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.05,
-        shadowRadius: 2,
-      },
-      android: {
-        elevation: 1,
-      },
-    }),
+  sizeAuto: {
+    minHeight: touchTarget,
+    minWidth: MIN_WIDTH,
   },
-
-  // Disabled state
+  sizeCompact: {
+    minHeight: HEIGHT_COMPACT,
+    minWidth: MIN_WIDTH,
+    paddingHorizontal: space.md,
+  },
+  sizeStandalone: {
+    minHeight: HEIGHT_STANDALONE,
+    minWidth: STANDALONE_MIN_WIDTH,
+  },
+  sizeFullWidth: {
+    minHeight: HEIGHT_STANDALONE,
+    width: '100%' as const,
+  },
+  iconOnly: {
+    minWidth: touchTarget,
+    paddingHorizontal: space.sm,
+  },
   disabled: {
-    opacity: FIORI_DIMENSIONS.disabledOpacity,
+    opacity: t.interaction.disabledOpacity,
   },
-
-  // Content container
   content: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
   },
-
-  // Text
   text: {
-    fontSize: FIORI_DIMENSIONS.fontSize,
-    letterSpacing: FIORI_DIMENSIONS.letterSpacing,
-    textAlign: 'center',
+    ...typography.callout,
+    textAlign: 'center' as const,
+    flexShrink: 1,
   },
-
-  // Icons
+  textEmphasized: {
+    fontWeight: fontWeight.semibold,
+  },
+  textTertiary: {
+    fontWeight: fontWeight.medium,
+  },
   leftIcon: {
-    marginRight: FIORI_DIMENSIONS.iconTextGap,
+    marginRight: space.sm,
   },
   rightIcon: {
-    marginLeft: FIORI_DIMENSIONS.iconTextGap,
-  },
-  loadingIcon: {
-    marginRight: FIORI_DIMENSIONS.iconTextGap,
+    marginLeft: space.sm,
   },
 });
 

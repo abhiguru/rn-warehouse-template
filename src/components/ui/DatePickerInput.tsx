@@ -1,13 +1,14 @@
 /**
- * SAP Fiori Form Cell implementation for date/time selection
+ * SAP Fiori form cell for date/time selection (docs/STYLE_GUIDE.md §13.3).
  *
  * Features:
- * - Label above field (Capital Case) with required asterisk
- * - Helper text / Error message (mutually exclusive)
- * - Read-only and disabled states with Fiori styling
+ * - Looks like a text field: label above (sentence case) with required asterisk
+ * - Helper text / error message (mutually exclusive)
+ * - Read-only and disabled states
  * - 44pt minimum touch target
- * - Calendar/clock icon on right
- * - Platform-specific date picker (spinner on iOS, default on Android)
+ * - Calendar/clock icon on the right
+ * - Platform date picker (dialog on Android, spinner in a sheet on iOS)
+ * - Dates shown as "9 Oct 2026", times as "4:05 pm"
  */
 
 import React, { useState } from 'react';
@@ -23,62 +24,25 @@ import {
 } from 'react-native';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { Ionicons } from '@expo/vector-icons';
-import theme, { Colors } from '@/theme';
-import { useTheme } from '@/hooks/useTheme';
+import { useTheme, useThemedStyles } from '@/hooks/useTheme';
+import {
+  fontWeight,
+  iconSize,
+  radius,
+  space,
+  touchTarget,
+  typography,
+  type ThemeTokens,
+} from '@/theme/tokens';
 
-// ============================================================================
-// FIORI FORM CELL CONSTANTS (matching Input.tsx)
-// ============================================================================
-
-const FIORI_DIMENSIONS = {
-  // Typography
-  labelFontSize: 13,
-  labelLineHeight: 18,
-  inputFontSize: Platform.OS === 'ios' ? 17 : 16,
-  inputLineHeight: 22,
-  helperFontSize: 13,
-  helperLineHeight: 18,
-
-  // Dimensions
-  minHeight: 44,
-  inputPaddingHorizontal: 12,
-  inputPaddingVertical: 8,
-  iconSize: 20,
-
-  // Border widths
-  borderWidthDefault: 1,
-  borderWidthActive: 2,
-};
-
-/**
- * Generate theme-aware FIORI colors for DatePickerInput
- */
-function getFioriColors(colors: Colors) {
-  return {
-    // Colors
-    labelColor: colors.fiori.text.primary,
-    inputTextColor: colors.fiori.text.primary,
-    placeholderColor: colors.fiori.text.secondary,
-    helperColor: colors.fiori.text.secondary,
-    iconColor: colors.gray[500],
-
-    // Border colors
-    borderDefault: colors.fiori.objectCell.divider,
-    borderActive: colors.fiori.semantic.neutral,
-    borderError: colors.fiori.semantic.negative,
-
-    // Background colors
-    backgroundDefault: colors.fiori.objectCell.background,
-    backgroundReadOnly: colors.gray[100],
-  };
-}
+const IOS_PICKER_HEIGHT = 216;
 
 // ============================================================================
 // TYPES
 // ============================================================================
 
 export interface DatePickerInputProps {
-  /** Input label (displayed in Capital Case) */
+  /** Input label (sentence case) */
   label?: string;
   /** Current date value */
   value: Date;
@@ -107,6 +71,22 @@ export interface DatePickerInputProps {
 }
 
 // ============================================================================
+// FORMATTING (style guide §12.3)
+// ============================================================================
+
+const DATE_FORMAT: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'short', year: 'numeric' };
+const TIME_FORMAT: Intl.DateTimeFormatOptions = { hour: 'numeric', minute: '2-digit', hour12: true };
+
+/** "9 Oct 2026", "4:05 pm" or "9 Oct 2026, 4:05 pm". */
+export function formatPickerValue(date: Date, mode: 'date' | 'time' | 'datetime'): string {
+  const time = date.toLocaleTimeString('en-IN', TIME_FORMAT).toLowerCase();
+  const day = date.toLocaleDateString('en-IN', DATE_FORMAT);
+  if (mode === 'time') return time;
+  if (mode === 'datetime') return `${day}, ${time}`;
+  return day;
+}
+
+// ============================================================================
 // COMPONENT
 // ============================================================================
 
@@ -127,8 +107,8 @@ export const DatePickerInput: React.FC<DatePickerInputProps> = ({
 }) => {
   const [showPicker, setShowPicker] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
-  const { colors: themeColors, isDarkMode } = useTheme();
-  const FIORI = getFioriColors(themeColors);
+  const { tokens: t, resolvedMode } = useTheme();
+  const styles = useThemedStyles(makeStyles);
 
   const hasError = Boolean(error);
   const isDisabled = disabled;
@@ -151,86 +131,30 @@ export const DatePickerInput: React.FC<DatePickerInputProps> = ({
     }
   };
 
-  // Handle iOS picker confirm
-  const handleIOSConfirm = () => {
+  const closeIOSPicker = () => {
     setShowPicker(false);
     setIsFocused(false);
   };
 
-  // Handle iOS picker cancel
-  const handleIOSCancel = () => {
-    setShowPicker(false);
-    setIsFocused(false);
-  };
+  const displayValue = value ? formatPickerValue(value, mode) : undefined;
+  const fieldName = mode === 'time' ? 'time' : 'date';
 
-  // Format date for display
-  const formatDate = (date: Date): string => {
-    if (mode === 'time') {
-      return date.toLocaleTimeString('en-US', {
-        hour: '2-digit',
-        minute: '2-digit',
-      });
-    }
-    if (mode === 'datetime') {
-      return date.toLocaleString('en-US', {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-      });
-    }
-    return date.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    });
-  };
+  // Field outline per state (style guide §13.2)
+  const fieldStateStyle = hasError
+    ? styles.fieldError
+    : isFocused
+      ? styles.fieldFocused
+      : isReadOnly
+        ? styles.fieldReadOnly
+        : null;
 
-  // Get appropriate icon based on mode
-  const getIcon = (): 'calendar-outline' | 'time-outline' => {
-    if (mode === 'time') return 'time-outline';
-    return 'calendar-outline';
-  };
+  // Error overrides helper text
+  const message = error
+    ? { text: error, isError: true }
+    : helperText
+      ? { text: helperText, isError: false }
+      : null;
 
-  // Determine border color based on state (Fiori spec)
-  const getBorderColor = () => {
-    if (hasError) return FIORI.borderError;
-    if (isFocused) return FIORI.borderActive;
-    if (isReadOnly) return 'transparent';
-    return FIORI.borderDefault;
-  };
-
-  // Determine border width based on state
-  const getBorderWidth = () => {
-    if (hasError || isFocused) return FIORI_DIMENSIONS.borderWidthActive;
-    if (isReadOnly) return 0;
-    return FIORI_DIMENSIONS.borderWidthDefault;
-  };
-
-  // Determine background color based on state
-  const getBackgroundColor = () => {
-    if (isReadOnly) return FIORI.backgroundReadOnly;
-    return FIORI.backgroundDefault;
-  };
-
-  // Get message text and color (error overrides helper per Fiori spec)
-  const getMessage = () => {
-    if (error) {
-      return { text: error, color: FIORI.borderError, isError: true };
-    }
-    if (isReadOnly) {
-      return { text: 'Read-only field', color: FIORI.helperColor, isError: false };
-    }
-    if (helperText) {
-      return { text: helperText, color: FIORI.helperColor, isError: false };
-    }
-    return null;
-  };
-
-  const message = getMessage();
-
-  // Handle press on input
   const handlePress = () => {
     if (!isDisabled && !isReadOnly) {
       setShowPicker(true);
@@ -246,74 +170,46 @@ export const DatePickerInput: React.FC<DatePickerInputProps> = ({
         style,
       ]}
     >
-      {/* Label (Fiori: 13pt, Capital Case) */}
       {label && (
-        <Text style={[styles.label, { color: FIORI.labelColor }, isDisabled && styles.labelDisabled, isDisabled && { color: FIORI.helperColor }]}>
+        <Text style={[styles.label, hasError && styles.labelError, isDisabled && styles.textDisabled]}>
           {label}
-          {required && <Text style={[styles.required, { color: FIORI.borderError }]}> *</Text>}
+          {required && <Text style={styles.required}> *</Text>}
         </Text>
       )}
 
-      {/* Input Container */}
+      {/* Field */}
       <Pressable
-        style={[
-          styles.inputContainer,
-          {
-            borderColor: getBorderColor(),
-            borderWidth: getBorderWidth(),
-            backgroundColor: getBackgroundColor(),
-          },
-        ]}
+        style={[styles.inputContainer, fieldStateStyle]}
         onPress={handlePress}
         disabled={isDisabled || isReadOnly}
-        accessibilityLabel={
-          label
-            ? `${label}${required ? ', required' : ', optional'}`
-            : 'Date picker'
-        }
-        accessibilityHint={`Current value: ${formatDate(value)}. Tap to change.`}
+        accessibilityLabel={`${label ?? (mode === 'time' ? 'Time' : 'Date')}${required ? ', required' : ''}, ${
+          displayValue ?? 'not set'
+        }`}
+        accessibilityHint={isReadOnly ? 'Read only' : `Opens the ${fieldName} picker`}
         accessibilityRole="button"
         accessibilityState={{
-          disabled: isDisabled,
+          disabled: isDisabled || isReadOnly,
+          expanded: showPicker,
         }}
       >
         <Text
           style={[
             styles.inputText,
-            { color: FIORI.inputTextColor },
-            isDisabled && styles.inputTextDisabled,
-            isDisabled && { color: FIORI.helperColor },
-            !value && placeholder && { color: FIORI.placeholderColor },
+            !displayValue && styles.placeholderText,
+            isDisabled && styles.textDisabled,
           ]}
         >
-          {value ? formatDate(value) : placeholder || 'Select date'}
+          {displayValue ?? placeholder ?? `Select ${fieldName}`}
         </Text>
 
-        {/* Calendar/Clock Icon */}
         <Ionicons
-          name={getIcon()}
-          size={FIORI_DIMENSIONS.iconSize}
-          color={
-            isDisabled
-              ? FIORI.placeholderColor
-              : hasError
-                ? FIORI.borderError
-                : FIORI.iconColor
-          }
+          name={mode === 'time' ? 'time-outline' : 'calendar-outline'}
+          size={iconSize.md}
+          color={t.icon.secondary}
         />
-
-        {/* Error Icon (Fiori: appears on error state) */}
-        {hasError && (
-          <Ionicons
-            name="alert-circle"
-            size={FIORI_DIMENSIONS.iconSize}
-            color={FIORI.borderError}
-            style={styles.errorIcon}
-          />
-        )}
       </Pressable>
 
-      {/* Date Picker - Android (inline) */}
+      {/* Date picker - Android (system dialog) */}
       {showPicker && Platform.OS === 'android' && (
         <DateTimePicker
           value={value}
@@ -322,40 +218,47 @@ export const DatePickerInput: React.FC<DatePickerInputProps> = ({
           onChange={handleDateChange}
           minimumDate={minimumDate}
           maximumDate={maximumDate}
-          themeVariant={isDarkMode ? 'dark' : 'light'}
+          themeVariant={resolvedMode}
         />
       )}
 
-      {/* Date Picker - iOS (Modal with spinner) */}
+      {/* Date picker - iOS (spinner in a bottom sheet) */}
       {showPicker && Platform.OS === 'ios' && (
         <Modal
           transparent
           animationType="slide"
           visible={showPicker}
-          onRequestClose={handleIOSCancel}
+          onRequestClose={closeIOSPicker}
         >
-          <Pressable style={styles.modalOverlay} onPress={handleIOSCancel}>
-            <View style={[styles.modalContent, { backgroundColor: FIORI.backgroundDefault }]}>
-              {/* Header */}
-              <View style={[styles.modalHeader, { borderBottomColor: FIORI.borderDefault }]}>
+          <Pressable
+            style={styles.modalOverlay}
+            onPress={closeIOSPicker}
+            accessibilityRole="button"
+            accessibilityLabel="Close"
+          >
+            <Pressable style={styles.modalContent} onPress={() => undefined} accessible={false}>
+              <View style={styles.modalHeader}>
                 <Pressable
-                  onPress={handleIOSCancel}
-                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  onPress={closeIOSPicker}
+                  style={styles.modalAction}
+                  accessibilityRole="button"
+                  accessibilityLabel="Cancel"
                 >
-                  <Text style={[styles.modalCancelText, { color: themeColors.primary }]}>Cancel</Text>
+                  <Text style={styles.modalCancelText}>Cancel</Text>
                 </Pressable>
-                <Text style={[styles.modalTitle, { color: FIORI.labelColor }]}>
-                  {mode === 'time' ? 'Select Time' : 'Select Date'}
+                <Text style={styles.modalTitle} accessibilityRole="header">
+                  {mode === 'time' ? 'Select time' : 'Select date'}
                 </Text>
                 <Pressable
-                  onPress={handleIOSConfirm}
-                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  onPress={closeIOSPicker}
+                  style={styles.modalAction}
+                  accessibilityRole="button"
+                  accessibilityLabel="Done"
                 >
-                  <Text style={[styles.modalDoneText, { color: themeColors.primary }]}>Done</Text>
+                  <Text style={styles.modalDoneText}>Done</Text>
                 </Pressable>
               </View>
 
-              {/* Picker */}
               <DateTimePicker
                 value={value}
                 mode={mode === 'datetime' ? 'date' : mode}
@@ -363,25 +266,28 @@ export const DatePickerInput: React.FC<DatePickerInputProps> = ({
                 onChange={handleDateChange}
                 minimumDate={minimumDate}
                 maximumDate={maximumDate}
-                accentColor={themeColors.primary}
-                themeVariant={isDarkMode ? 'dark' : 'light'}
+                accentColor={t.brand.tint}
+                textColor={t.text.primary}
+                themeVariant={resolvedMode}
                 style={styles.iosPicker}
               />
-            </View>
+            </Pressable>
           </Pressable>
         </Modal>
       )}
 
-      {/* Footer: Helper/Error Text */}
+      {/* Footer: helper or error text */}
       {message && (
         <View style={styles.footerRow}>
-          <Text
-            style={[
-              styles.helperText,
-              { color: message.color },
-              message.isError && styles.errorText,
-            ]}
-          >
+          {message.isError && (
+            <Ionicons
+              name="alert-circle"
+              size={iconSize.sm}
+              color={t.status.negative.text}
+              style={styles.messageIcon}
+            />
+          )}
+          <Text style={[styles.helperText, message.isError && styles.errorText]}>
             {message.text}
           </Text>
         </View>
@@ -391,118 +297,130 @@ export const DatePickerInput: React.FC<DatePickerInputProps> = ({
 };
 
 // ============================================================================
-// STYLES (SAP Fiori Form Cell - matching Input.tsx)
+// STYLES (SAP Fiori form cell, matching Input.tsx)
 // ============================================================================
 
-const styles = StyleSheet.create({
-  // Container
+const makeStyles = (t: ThemeTokens) => ({
   container: {
-    marginBottom: theme.spacing.md,
+    marginBottom: space.lg,
   },
   containerDisabled: {
-    opacity: 0.5, // Fiori: 50% opacity for disabled state
+    opacity: t.interaction.disabledOpacity,
   },
 
-  // Label (Fiori: 13pt, Capital Case)
   label: {
-    fontSize: FIORI_DIMENSIONS.labelFontSize,
-    lineHeight: FIORI_DIMENSIONS.labelLineHeight,
-    fontWeight: theme.fontWeight.medium,
-    color: theme.colors.fiori.text.primary,
-    marginBottom: 4,
+    ...typography.footnote,
+    color: t.text.secondary,
+    marginBottom: space.xs,
   },
-  labelDisabled: {
-    color: theme.colors.fiori.text.secondary,
+  labelError: {
+    color: t.status.negative.text,
   },
   required: {
-    color: theme.colors.fiori.semantic.negative,
+    color: t.text.required,
+  },
+  textDisabled: {
+    color: t.text.disabled,
   },
 
-  // Input Container (Fiori: 44pt min height, rounded corners)
   inputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 8, // Fiori uses 8pt radius
-    minHeight: FIORI_DIMENSIONS.minHeight,
-    paddingHorizontal: FIORI_DIMENSIONS.inputPaddingHorizontal,
-    gap: 8,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    borderRadius: radius.field,
+    minHeight: touchTarget,
+    paddingHorizontal: space.md,
+    gap: space.sm,
+    backgroundColor: t.surface.field,
+    borderWidth: 1,
+    borderColor: t.border.field,
+  },
+  fieldFocused: {
+    borderWidth: 2,
+    borderColor: t.border.fieldFocus,
+    paddingHorizontal: space.md - 1,
+  },
+  fieldError: {
+    borderWidth: 2,
+    borderColor: t.status.negative.border,
+    paddingHorizontal: space.md - 1,
+  },
+  fieldReadOnly: {
+    borderWidth: 0,
+    backgroundColor: t.surface.fieldReadOnly,
+    paddingHorizontal: space.md + 1,
   },
 
-  // Input Text (Fiori: 17pt iOS, 16pt Android)
   inputText: {
+    ...typography.body,
     flex: 1,
-    fontSize: FIORI_DIMENSIONS.inputFontSize,
-    lineHeight: FIORI_DIMENSIONS.inputLineHeight,
-    color: theme.colors.fiori.text.primary,
-  },
-  inputTextDisabled: {
-    color: theme.colors.fiori.text.secondary,
+    color: t.text.primary,
   },
   placeholderText: {
-    color: theme.colors.fiori.text.secondary,
+    color: t.text.placeholder,
   },
 
-  // Error Icon
-  errorIcon: {
-    marginLeft: 4,
-  },
-
-  // Footer Row
   footerRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginTop: 4,
-    minHeight: FIORI_DIMENSIONS.helperLineHeight,
+    flexDirection: 'row' as const,
+    alignItems: 'flex-start' as const,
+    marginTop: space.xs,
   },
-
-  // Helper Text (Fiori: 13pt, sentence case)
+  messageIcon: {
+    marginTop: 1,
+    marginRight: space.xs,
+  },
   helperText: {
-    fontSize: FIORI_DIMENSIONS.helperFontSize,
-    lineHeight: FIORI_DIMENSIONS.helperLineHeight,
-    color: theme.colors.fiori.text.secondary,
+    ...typography.footnote,
+    color: t.text.secondary,
     flex: 1,
   },
   errorText: {
-    color: theme.colors.fiori.semantic.negative,
+    color: t.status.negative.text,
   },
 
-  // iOS Modal
+  // iOS bottom sheet
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-end',
+    backgroundColor: t.overlay.scrim,
+    justifyContent: 'flex-end' as const,
   },
   modalContent: {
-    backgroundColor: theme.colors.fiori.objectCell.background,
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-    paddingBottom: 34, // Safe area for home indicator
+    backgroundColor: t.surface.sheet,
+    borderTopLeftRadius: radius.sheet,
+    borderTopRightRadius: radius.sheet,
+    paddingBottom: space.xxxl, // home indicator
+    ...t.shadow[4],
   },
   modalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.fiori.objectCell.divider,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
+    paddingHorizontal: space.sm,
+    paddingVertical: space.xs,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.divider,
+  },
+  modalAction: {
+    minHeight: touchTarget,
+    minWidth: touchTarget,
+    paddingHorizontal: space.sm,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
   },
   modalTitle: {
-    fontSize: 17,
-    fontWeight: '600',
-    color: theme.colors.fiori.text.primary,
+    ...typography.headline,
+    color: t.text.primary,
   },
   modalCancelText: {
-    fontSize: 17,
-    color: theme.colors.primary,
+    ...typography.body,
+    color: t.brand.tint,
   },
   modalDoneText: {
-    fontSize: 17,
-    fontWeight: '600',
-    color: theme.colors.primary,
+    ...typography.body,
+    fontWeight: fontWeight.semibold,
+    color: t.brand.tint,
   },
   iosPicker: {
-    height: 216,
+    height: IOS_PICKER_HEIGHT,
   },
 });
 
