@@ -13,7 +13,7 @@ import {
     Text,
     StyleSheet,
     TextInput,
-    TouchableOpacity,
+    Pressable,
     Alert,
     Platform,
     Vibration,
@@ -26,8 +26,18 @@ import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { DispatchStepIndicator } from '@/components/DispatchStepIndicator';
 import SwipeableFormStep from '@/components/SwipeableFormStep';
-import theme from '@/theme';
-import { useListColors } from '@/hooks/useListColors';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import {
+    fontWeight,
+    iconSize,
+    layout,
+    radius,
+    space,
+    touchTarget,
+    typography,
+} from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
 import { useDispatchForm } from '@/hooks/useDispatchForm';
 import {
     GRNAutocompleteBottomSheet,
@@ -48,8 +58,9 @@ type DispatchItemsStepProps = {
 };
 
 export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
-    // Theme colors for dark mode support
-    const colors = useListColors();
+    const styles = useThemedStyles(makeStyles);
+    const t = useTokens();
+    const insets = useSafeAreaInsets();
 
     const { id } = useLocalSearchParams<{ id: string }>();
 
@@ -181,7 +192,7 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
                 const result = await getGRNDetailByNumber(grn.gr_no, true);
 
                 if (!result.success || !result.data) {
-                    Alert.alert('Error', result.error || 'Failed to load GRN details');
+                    Alert.alert("Couldn't load the GRN", 'Check your connection and try again.');
                     return;
                 }
 
@@ -259,7 +270,7 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
                 });
             } catch (error) {
                 console.error('[DispatchItemsStep] Error loading GRN:', error);
-                Alert.alert('Error', getUserFriendlyError('grn', 'load'));
+                Alert.alert("Couldn't load the GRN", getUserFriendlyError('grn', 'load'));
             } finally {
                 setIsLoadingGRN(false);
             }
@@ -400,7 +411,7 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
 
             if (!validation.isValid) {
                 setValidationErrors(validation.errors);
-                Alert.alert('Validation Error', 'Please fill in all required fields correctly');
+                Alert.alert('Check the item', 'Fix the fields marked in red, then try again.');
                 return;
             }
 
@@ -413,8 +424,8 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
 
             if (duplicateCheck.hasDuplicates) {
                 Alert.alert(
-                    'Duplicate Lot',
-                    'This lot has already been added. Each lot can only be dispatched once.'
+                    'Lot already added',
+                    'This lot is already in the dispatch. Each lot can be dispatched once.'
                 );
                 return;
             }
@@ -541,7 +552,7 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
         const validation = await validateSingleItem(currentItem);
         if (!validation.isValid) {
             setShowUnsavedEditDialog(false);
-            Alert.alert('Validation Error', 'Please fix errors before saving');
+            Alert.alert('Check the item', 'Fix the fields marked in red before you save.');
             return;
         }
         setShowUnsavedEditDialog(false);
@@ -622,7 +633,7 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
         const isEditing = editingItemId !== null;
 
         if (savedItems.length === 0 && !isCurrentItemValid) {
-            Alert.alert('No Items', 'Please add at least one item before proceeding.', [{ text: 'OK' }]);
+            Alert.alert('Add an item first', 'Add at least one item before you continue.');
             return;
         }
 
@@ -631,7 +642,7 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
 
             if (!validation.isValid) {
                 setValidationErrors(validation.errors);
-                Alert.alert('Validation Error', 'Please fill in all required fields correctly');
+                Alert.alert('Check the item', 'Fix the fields marked in red, then try again.');
                 return;
             }
 
@@ -643,8 +654,8 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
 
             if (duplicateCheck.hasDuplicates) {
                 Alert.alert(
-                    'Duplicate Lot',
-                    'This lot has already been added. Each lot can only be dispatched once.'
+                    'Lot already added',
+                    'This lot is already in the dispatch. Each lot can be dispatched once.'
                 );
                 return;
             }
@@ -685,8 +696,41 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
         }
     };
 
+    const exceedsMax = (currentItem.disp_quantity ?? 0) > maxAllowedQty;
+    const quantityHasError = !!validationErrors.disp_quantity || exceedsMax;
+    const canSaveItem = !!isCurrentItemValid && !isAddingItem;
+    const itemTitle = isEditingItem
+        ? `Editing item ${editingItemNumber}`
+        : `Adding item ${savedItems.length + 1}`;
+
+    const renderError = (message?: string) =>
+        message ? (
+            <View style={styles.errorRow} accessibilityRole="alert">
+                <Icon name="alert-circle" size={iconSize.sm} color={t.status.negative.text} />
+                <Text style={styles.errorText}>{message}</Text>
+            </View>
+        ) : null;
+
+    const quickButton = (delta: number) => (
+        <Pressable
+            key={delta}
+            style={({ pressed }) => [
+                styles.quickButton,
+                pressed && !!currentItem.grnItems_id && styles.quickButtonPressed,
+                !currentItem.grnItems_id && styles.disabled,
+            ]}
+            onPress={() => handleQuickQuantityChange(delta)}
+            disabled={!currentItem.grnItems_id}
+            accessibilityRole="button"
+            accessibilityLabel={delta > 0 ? `Add ${delta} bags` : `Remove ${-delta} bags`}
+            accessibilityState={{ disabled: !currentItem.grnItems_id }}
+        >
+            <Text style={styles.quickButtonText}>{delta > 0 ? `+${delta}` : `−${-delta}`}</Text>
+        </Pressable>
+    );
+
     return (
-        <View style={[styles.container, { backgroundColor: colors.gray50 }]}>
+        <View style={styles.container}>
             <DispatchStepIndicator
                 steps={DISPATCH_STEPS}
                 currentStep={DISPATCH_STEP_NUMBERS.ITEMS}
@@ -694,72 +738,81 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
                 onCancel={handleCancel}
                 cancelMessage={
                     isCreateMode
-                        ? 'Are you sure you want to cancel? All entered data will be lost.'
-                        : 'Are you sure you want to cancel editing? All unsaved changes will be lost.'
+                        ? 'Cancel this dispatch? Everything you entered will be lost.'
+                        : 'Cancel editing? Your unsaved changes will be lost.'
                 }
                 dispNo={header.disp_no}
                 onStepPress={handleStepIndicatorPress}
                 isEditMode={!isCreateMode}
             />
 
-            {/* Hero Banner */}
+            {/* Item header (surface.header, no brand fill) */}
             <View style={[styles.heroBanner, isEditingItem && styles.heroBannerEditing]}>
-                <TouchableOpacity
-                    style={styles.heroTitleContainer}
+                <Pressable
+                    style={({ pressed }) => [
+                        styles.heroTitleContainer,
+                        pressed && savedItems.length > 0 && styles.heroTitlePressed,
+                    ]}
                     onPress={() => {
                         if (savedItems.length > 0) {
                             Keyboard.dismiss();
                             setTimeout(() => setShowSummaryBottomSheet(true), 100);
                         }
                     }}
-                    activeOpacity={savedItems.length > 0 ? 0.7 : 1}
+                    disabled={savedItems.length === 0}
+                    accessibilityRole={savedItems.length > 0 ? 'button' : 'header'}
+                    accessibilityLabel={
+                        savedItems.length > 0
+                            ? `${itemTitle}. View all ${savedItems.length} ${savedItems.length === 1 ? 'item' : 'items'}`
+                            : itemTitle
+                    }
                 >
                     <View style={[styles.heroItemBadge, isEditingItem && styles.heroItemBadgeEditing]}>
-                        <Text style={styles.heroItemBadgeText}>
+                        <Text style={[styles.heroItemBadgeText, isEditingItem && styles.heroItemBadgeTextEditing]}>
                             {isEditingItem ? editingItemNumber : savedItems.length + 1}
                         </Text>
                     </View>
                     <View style={styles.heroTextContainer}>
-                        <Text style={styles.heroTitle}>
-                            {isEditingItem
-                                ? `Editing Item ${editingItemNumber}`
-                                : savedItems.length === 0
-                                    ? 'Adding Item 1'
-                                    : `Adding Item ${savedItems.length + 1}`}
-                        </Text>
+                        <Text style={styles.heroTitle}>{itemTitle}</Text>
                         {savedItems.length > 0 && (
                             <View style={styles.heroSubtitleContainer}>
-                                <Icon name="eye" size={14} color="rgba(255,255,255,0.8)" />
+                                <Icon name="format-list-bulleted" size={iconSize.sm} color={t.brand.tint} />
                                 <Text style={styles.heroSubtitle}>
-                                    View All {savedItems.length} {savedItems.length === 1 ? 'item' : 'items'}
+                                    View all {savedItems.length} {savedItems.length === 1 ? 'item' : 'items'}
                                 </Text>
                             </View>
                         )}
                     </View>
-                </TouchableOpacity>
+                </Pressable>
                 {/* Clear button - only show when form has data and not in edit mode */}
                 {!isEditingItem && hasAnyData() && (
-                    <TouchableOpacity
-                        style={styles.clearPillButton}
+                    <Pressable
+                        style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
                         onPress={handleClearCurrentItem}
-                        activeOpacity={0.8}
+                        accessibilityRole="button"
+                        accessibilityLabel="Clear this item"
                     >
-                        <Icon name="close" size={20} color={theme.colors.white} />
-                    </TouchableOpacity>
+                        <Icon name="close" size={iconSize.lg} color={t.icon.primary} />
+                    </Pressable>
                 )}
-                <TouchableOpacity
-                    style={[styles.addPillButton, (!isCurrentItemValid || isAddingItem) && styles.addPillButtonDisabled]}
-                    accessibilityLabel="Save dispatch item"
+                <Pressable
+                    style={({ pressed }) => [
+                        styles.addPillButton,
+                        pressed && styles.addPillButtonPressed,
+                        !canSaveItem && styles.disabled,
+                    ]}
+                    accessibilityRole="button"
+                    accessibilityLabel={isEditingItem ? 'Save item changes' : 'Save item'}
+                    accessibilityState={{ disabled: !canSaveItem, busy: isAddingItem }}
                     onPress={handleAddItem}
-                    activeOpacity={0.8}
-                    disabled={!isCurrentItemValid || isAddingItem}
+                    disabled={!canSaveItem}
                 >
                     {isAddingItem ? (
-                        <ActivityIndicator size="small" color={theme.colors.white} />
+                        <ActivityIndicator size="small" color={t.brand.onFill} />
                     ) : (
-                        <Icon name="check" size={24} color={theme.colors.white} />
+                        <Icon name="check" size={iconSize.lg} color={t.brand.onFill} />
                     )}
-                </TouchableOpacity>
+                </Pressable>
             </View>
 
             <SwipeableFormStep
@@ -780,121 +833,121 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
                     keyboardOpeningTime={0}
                     extraHeight={300}
                 >
-                    {/* Edit Mode Banner (edit mode only) */}
+                    {/* Edit Mode message strip (edit mode only) */}
                     {!isCreateMode && isEditingItem && (
                         <View style={styles.editModeBanner}>
-                            <Icon name="pencil" size={20} color={theme.colors.white} />
+                            <Icon name="pencil-outline" size={iconSize.md} color={t.status.informative.text} />
                             <View style={styles.editModeBannerText}>
-                                <Text style={styles.editModeBannerTitle}>Editing Item</Text>
+                                <Text style={styles.editModeBannerTitle}>Editing item</Text>
                                 <Text style={styles.editModeBannerSubtitle}>
-                                    {currentItem.grnItems_item_name} ({currentItem.grns_gr_no})
+                                    {currentItem.grnItems_item_name} (GRN {currentItem.grns_gr_no})
                                 </Text>
                             </View>
-                            <TouchableOpacity
+                            <Pressable
                                 onPress={handleCancelEdit}
-                                style={styles.editModeCancelButton}
-                                activeOpacity={0.7}
+                                style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
+                                accessibilityRole="button"
+                                accessibilityLabel="Stop editing this item"
                             >
-                                <Icon name="close" size={20} color={theme.colors.white} />
-                            </TouchableOpacity>
+                                <Icon name="close" size={iconSize.md} color={t.status.informative.text} />
+                            </Pressable>
                         </View>
                     )}
 
-                    {/* GR No Selector */}
+                    {/* GRN Selector */}
                     <View style={styles.formGroup}>
-                        <Text style={[styles.label, { color: colors.gray600 }]}>
-                            GR NO<Text style={[styles.required, { color: colors.error }]}> *</Text>
+                        <Text style={[styles.label, validationErrors.grns_gr_no && styles.labelError]}>
+                            GRN<Text style={styles.required}> *</Text>
                         </Text>
-                        <TouchableOpacity
-                            style={[
+                        <Pressable
+                            style={({ pressed }) => [
                                 styles.inputContainer,
-                                { backgroundColor: colors.cellBackground, borderColor: colors.cellDivider },
-                                validationErrors.grns_gr_no && { borderColor: colors.error, borderWidth: 2 },
+                                pressed && styles.inputPressed,
+                                validationErrors.grns_gr_no && styles.inputError,
                             ]}
                             onPress={() => setShowGRNBottomSheet(true)}
-                            activeOpacity={0.7}
+                            accessibilityRole="button"
+                            accessibilityLabel={`GRN, required, ${currentItem.grns_gr_no || 'not chosen'}`}
+                            accessibilityHint="Opens the GRN list"
+                            accessibilityState={{ busy: isLoadingGRN }}
                         >
                             <Icon
-                                name="clipboard-text"
-                                size={20}
-                                color={colors.gray400}
+                                name="package-down"
+                                size={iconSize.md}
+                                color={t.icon.secondary}
                                 style={styles.inputIcon}
                             />
                             <Text
-                                style={[styles.selectorText, { color: colors.gray900 }, !currentItem.grns_gr_no && { color: colors.gray400 }]}
+                                style={[styles.selectorText, !currentItem.grns_gr_no && styles.placeholderText]}
                                 numberOfLines={1}
                             >
-                                {currentItem.grns_gr_no || 'Select GR No'}
+                                {currentItem.grns_gr_no || 'Choose GRN'}
                             </Text>
-                            <Icon name="chevron-down" size={20} color={colors.gray400} />
-                        </TouchableOpacity>
-                        {validationErrors.grns_gr_no && (
-                            <Text style={[styles.errorText, { color: colors.error }]}>{validationErrors.grns_gr_no}</Text>
-                        )}
+                            {isLoadingGRN ? (
+                                <ActivityIndicator size="small" color={t.brand.tint} />
+                            ) : (
+                                <Icon name="chevron-down" size={iconSize.md} color={t.icon.secondary} />
+                            )}
+                        </Pressable>
+                        {renderError(validationErrors.grns_gr_no)}
                     </View>
 
                     {/* Item Selector */}
                     <View style={styles.formGroup}>
-                        <Text style={[styles.label, { color: colors.gray600 }]}>
-                            ITEM<Text style={[styles.required, { color: colors.error }]}> *</Text>
+                        <Text style={[styles.label, validationErrors.grnItems_item_id && styles.labelError]}>
+                            Item<Text style={styles.required}> *</Text>
                         </Text>
-                        <TouchableOpacity
-                            style={[
+                        <Pressable
+                            style={({ pressed }) => [
                                 styles.inputContainer,
-                                { backgroundColor: colors.cellBackground, borderColor: colors.cellDivider },
-                                (!selectedGRN || allAvailableLotsAlreadyAdded) && { backgroundColor: colors.gray50, opacity: 0.6 },
-                                validationErrors.grnItems_item_id && { borderColor: colors.error, borderWidth: 2 },
+                                pressed && !!selectedGRN && !allAvailableLotsAlreadyAdded && styles.inputPressed,
+                                (!selectedGRN || allAvailableLotsAlreadyAdded) && styles.disabled,
+                                validationErrors.grnItems_item_id && styles.inputError,
                             ]}
                             onPress={() => selectedGRN && setShowItemBottomSheet(true)}
                             disabled={!selectedGRN || allAvailableLotsAlreadyAdded}
-                            activeOpacity={0.7}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Item, required, ${currentItem.grnItems_item_name || 'not chosen'}`}
+                            accessibilityHint={selectedGRN ? 'Opens the item list' : 'Choose a GRN first'}
+                            accessibilityState={{ disabled: !selectedGRN || allAvailableLotsAlreadyAdded }}
                         >
                             <Icon
-                                name="package-variant"
-                                size={20}
-                                color={colors.gray400}
+                                name="cube-outline"
+                                size={iconSize.md}
+                                color={t.icon.secondary}
                                 style={styles.inputIcon}
                             />
                             <Text
                                 style={[
                                     styles.selectorText,
-                                    { color: colors.gray900 },
-                                    !currentItem.grnItems_item_name && { color: colors.gray400 },
+                                    !currentItem.grnItems_item_name && styles.placeholderText,
                                 ]}
                                 numberOfLines={1}
                             >
-                                {currentItem.grnItems_item_name || 'Select item'}
+                                {currentItem.grnItems_item_name || 'Choose item'}
                             </Text>
-                            <Icon name="chevron-down" size={20} color={colors.gray400} />
-                        </TouchableOpacity>
-                        {validationErrors.grnItems_item_id && (
-                            <Text style={[styles.errorText, { color: colors.error }]}>{validationErrors.grnItems_item_id}</Text>
-                        )}
+                            <Icon name="chevron-down" size={iconSize.md} color={t.icon.secondary} />
+                        </Pressable>
+                        {renderError(validationErrors.grnItems_item_id)}
                         {allAvailableLotsAlreadyAdded && selectedGRN && (
-                            <View
-                                style={[
-                                    styles.allLotsAddedNotice,
-                                    { backgroundColor: colors.infoLight, borderColor: colors.info },
-                                ]}
-                            >
-                                <Icon name="information-outline" size={20} color={colors.info} />
+                            <View style={styles.allLotsAddedNotice}>
+                                <Icon name="information" size={iconSize.md} color={t.status.informative.text} />
                                 <View style={styles.allLotsAddedContent}>
-                                    <Text style={[styles.allLotsAddedText, { color: colors.gray900 }]}>
-                                        All available items from {selectedGRN.gr_no} are already in this dispatch.
+                                    <Text style={styles.allLotsAddedText}>
+                                        Every item from GRN {selectedGRN.gr_no} with stock is already in this dispatch.
                                     </Text>
-                                    <TouchableOpacity
-                                        style={styles.viewAllItemsButton}
+                                    <Pressable
+                                        style={({ pressed }) => [styles.viewAllItemsButton, pressed && styles.linkPressed]}
                                         onPress={() => {
                                             Keyboard.dismiss();
                                             setShowSummaryBottomSheet(true);
                                         }}
                                         accessibilityRole="button"
                                         accessibilityLabel={`View all ${savedItems.length} dispatch items`}
-                                        activeOpacity={0.7}
                                     >
-                                        <Text style={[styles.viewAllItemsText, { color: colors.info }]}>View All</Text>
-                                        <Icon name="arrow-right" size={16} color={colors.info} />
-                                    </TouchableOpacity>
+                                        <Text style={styles.viewAllItemsText}>View all items</Text>
+                                        <Icon name="chevron-right" size={iconSize.sm} color={t.brand.tint} />
+                                    </Pressable>
                                 </View>
                             </View>
                         )}
@@ -902,98 +955,99 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
 
                     {/* Lot Selector */}
                     <View style={styles.formGroup}>
-                        <Text style={[styles.label, { color: colors.gray600 }]}>
-                            LOT<Text style={[styles.required, { color: colors.error }]}> *</Text>
+                        <Text style={[styles.label, validationErrors.grnItems_id && styles.labelError]}>
+                            Lot<Text style={styles.required}> *</Text>
                         </Text>
-                        <TouchableOpacity
-                            style={[
+                        <Pressable
+                            style={({ pressed }) => [
                                 styles.inputContainer,
-                                { backgroundColor: colors.cellBackground, borderColor: colors.cellDivider },
-                                !currentItem.grnItems_item_id && { backgroundColor: colors.gray50, opacity: 0.6 },
-                                validationErrors.grnItems_id && { borderColor: colors.error, borderWidth: 2 },
+                                pressed && !!currentItem.grnItems_item_id && styles.inputPressed,
+                                !currentItem.grnItems_item_id && styles.disabled,
+                                validationErrors.grnItems_id && styles.inputError,
                             ]}
                             onPress={() => currentItem.grnItems_item_id && setShowLotBottomSheet(true)}
                             disabled={!currentItem.grnItems_item_id}
-                            activeOpacity={0.7}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Lot, required, ${currentItem.grnItems_id
+                                ? `GRN quantity ${currentItem.grnItems_quantity ?? 0}, ${currentItem.grnItems_stock ?? 0} in stock`
+                                : 'not chosen'}`}
+                            accessibilityHint={currentItem.grnItems_item_id ? 'Opens the lot list' : 'Choose an item first'}
+                            accessibilityState={{ disabled: !currentItem.grnItems_item_id }}
                         >
-                            <Icon name="layers" size={20} color={colors.gray400} style={styles.inputIcon} />
+                            <Icon name="layers-outline" size={iconSize.md} color={t.icon.secondary} style={styles.inputIcon} />
                             <Text
-                                style={[styles.selectorText, { color: colors.gray900 }, !currentItem.grnItems_id && { color: colors.gray400 }]}
+                                style={[styles.selectorText, !currentItem.grnItems_id && styles.placeholderText]}
                                 numberOfLines={1}
                             >
                                 {currentItem.grnItems_id
-                                    ? `Qty: ${currentItem.grnItems_quantity ?? 0} · Stock: ${currentItem.grnItems_stock ?? 0}`
-                                    : 'Select lot'}
+                                    ? `GRN qty ${currentItem.grnItems_quantity ?? 0} · ${currentItem.grnItems_stock ?? 0} in stock`
+                                    : 'Choose lot'}
                             </Text>
-                            <Icon name="chevron-down" size={20} color={colors.gray400} />
-                        </TouchableOpacity>
-                        {validationErrors.grnItems_id && (
-                            <Text style={[styles.errorText, { color: colors.error }]}>{validationErrors.grnItems_id}</Text>
-                        )}
+                            <Icon name="chevron-down" size={iconSize.md} color={t.icon.secondary} />
+                        </Pressable>
+                        {renderError(validationErrors.grnItems_id)}
                     </View>
 
-                    {/* Quantity Input - Now after Lot selector */}
+                    {/* Quantity Input - after Lot selector */}
                     <View style={styles.formGroup}>
-                        <Text style={[styles.label, { color: colors.gray600 }]}>
-                            DISPATCH QUANTITY<Text style={[styles.required, { color: colors.error }]}> *</Text>
+                        <Text style={[styles.label, quantityHasError && styles.labelError]}>
+                            Bags to dispatch<Text style={styles.required}> *</Text>
                         </Text>
 
                         {currentItem.grnItems_id && (
-                            <View style={[styles.stockDisplayCard, { backgroundColor: colors.tealLight }]}>
-                                {/* Show "Dispatching From" when GRN customer differs from dispatch customer */}
+                            <View style={styles.stockDisplayCard}>
+                                {/* Show "Dispatching from" when GRN customer differs from dispatch customer */}
                                 {currentItem.grns_customer_name &&
                                  header.customer_name &&
                                  currentItem.grns_customer_name !== header.customer_name && (
-                                    <View style={[styles.dispatchingFromRow, { borderBottomColor: colors.warningLight }]}>
-                                        <Icon name="swap-horizontal" size={16} color={colors.warning} />
-                                        <Text style={[styles.dispatchingFromText, { color: colors.warning }]}>
-                                            Dispatching From:{' '}
-                                            <Text style={[styles.dispatchingFromValue, { color: colors.warning }]}>{currentItem.grns_customer_name}</Text>
+                                    <View style={styles.dispatchingFromRow}>
+                                        <Icon name="alert" size={iconSize.sm} color={t.status.critical.text} />
+                                        <Text style={styles.dispatchingFromText}>
+                                            Dispatching from another customer:{' '}
+                                            <Text style={styles.dispatchingFromValue}>{currentItem.grns_customer_name}</Text>
                                         </Text>
                                     </View>
                                 )}
                                 <View style={styles.stockInfoRow}>
-                                    <Icon name="database" size={18} color={colors.teal} />
-                                    <Text style={[styles.stockDisplayText, { color: colors.teal }]}>
-                                        In Stock:{' '}
-                                        <Text style={[styles.stockDisplayValue, { color: colors.teal }]}>{currentItem.grnItems_stock ?? 0}</Text>
+                                    <Icon name="information" size={iconSize.sm} color={t.status.informative.text} />
+                                    <Text style={styles.stockDisplayText}>
+                                        In stock{' '}
+                                        <Text style={styles.stockDisplayValue}>{currentItem.grnItems_stock ?? 0}</Text>
                                     </Text>
                                     {(currentItem.disp_quantity ?? 0) > 0 && (
-                                        <>
-                                            <Text style={[styles.stockDisplaySeparator, { color: colors.teal }]}>•</Text>
-                                            <Text style={[styles.stockDisplayText, { color: colors.teal }]}>
-                                                Remaining: <Text style={[styles.stockDisplayValue, { color: colors.teal }]}>{displayStock}</Text>
-                                            </Text>
-                                        </>
+                                        <Text style={styles.stockDisplayText}>
+                                            · Left after dispatch <Text style={styles.stockDisplayValue}>{displayStock}</Text>
+                                        </Text>
                                     )}
                                 </View>
                             </View>
                         )}
 
                         <View style={styles.quantityRow}>
-                            <View style={[styles.inputContainer, styles.quantityInputContainer, { backgroundColor: colors.cellBackground, borderColor: colors.cellDivider }]}>
+                            <View
+                                style={[
+                                    styles.inputContainer,
+                                    styles.quantityInputContainer,
+                                    !currentItem.grnItems_id && styles.disabled,
+                                    quantityHasError && styles.inputError,
+                                ]}
+                            >
                                 <Icon
                                     name="counter"
-                                    size={20}
-                                    color={colors.gray400}
+                                    size={iconSize.md}
+                                    color={t.icon.secondary}
                                     style={styles.inputIcon}
                                 />
                                 <TextInput
                                     ref={quantityInputRef}
-                                    accessibilityLabel="Dispatch quantity"
-                                    style={[
-                                        styles.input,
-                                        { color: colors.gray900 },
-                                        !currentItem.grnItems_id && { backgroundColor: colors.gray50, opacity: 0.6 },
-                                        validationErrors.disp_quantity && { borderColor: colors.error, borderWidth: 2 },
-                                        (currentItem.disp_quantity ?? 0) > maxAllowedQty && { borderColor: colors.error, borderWidth: 2 },
-                                    ]}
+                                    accessibilityLabel="Bags to dispatch"
+                                    style={styles.input}
                                     value={
                                         (currentItem.disp_quantity ?? 0) > 0 ? (currentItem.disp_quantity ?? 0).toString() : ''
                                     }
                                     onChangeText={handleQuantityChange}
-                                    placeholder="Qty"
-                                    placeholderTextColor={colors.gray400}
+                                    placeholder="Bags"
+                                    placeholderTextColor={t.text.placeholder}
                                     keyboardType="numeric"
                                     editable={!!currentItem.grnItems_id}
                                     onFocus={() => {
@@ -1004,86 +1058,74 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
                                 />
                             </View>
                             <View style={styles.quickButtons}>
-                                <TouchableOpacity
-                                    style={[styles.quickButton, styles.quickButtonMinus, { backgroundColor: colors.gray100 }]}
-                                    onPress={() => handleQuickQuantityChange(-10)}
-                                    disabled={!currentItem.grnItems_id}
-                                    activeOpacity={0.7}
-                                >
-                                    <Text style={[styles.quickButtonText, { color: colors.error }]}>-10</Text>
-                                </TouchableOpacity>
-                                <TouchableOpacity
-                                    style={[styles.quickButton, styles.quickButtonMinus, { backgroundColor: colors.gray100 }]}
-                                    onPress={() => handleQuickQuantityChange(-5)}
-                                    disabled={!currentItem.grnItems_id}
-                                    activeOpacity={0.7}
-                                >
-                                    <Text style={[styles.quickButtonText, { color: colors.error }]}>-5</Text>
-                                </TouchableOpacity>
-                                <TouchableOpacity
-                                    style={[styles.quickButton, styles.quickButtonPlus, { backgroundColor: colors.primaryLight }]}
-                                    onPress={() => handleQuickQuantityChange(5)}
-                                    disabled={!currentItem.grnItems_id}
-                                    activeOpacity={0.7}
-                                >
-                                    <Text style={[styles.quickButtonText, { color: colors.primary }]}>+5</Text>
-                                </TouchableOpacity>
-                                <TouchableOpacity
-                                    style={[styles.quickButton, styles.quickButtonPlus, { backgroundColor: colors.primaryLight }]}
-                                    onPress={() => handleQuickQuantityChange(10)}
-                                    disabled={!currentItem.grnItems_id}
-                                    activeOpacity={0.7}
-                                >
-                                    <Text style={[styles.quickButtonText, { color: colors.primary }]}>+10</Text>
-                                </TouchableOpacity>
+                                {[-10, -5, 5, 10].map(quickButton)}
                             </View>
                         </View>
-                        {(currentItem.disp_quantity ?? 0) > maxAllowedQty && (
-                            <Text style={[styles.errorText, { color: colors.error }]}>
-                                Quantity exceeds {isEditingItem ? 'original' : 'available'} stock ({maxAllowedQty})
-                            </Text>
-                        )}
-                        {validationErrors.disp_quantity && (
-                            <Text style={[styles.errorText, { color: colors.error }]}>{validationErrors.disp_quantity}</Text>
-                        )}
+                        {exceedsMax &&
+                            renderError(
+                                `Enter ${maxAllowedQty} bags or fewer. That is the ${isEditingItem ? 'original' : 'available'} stock.`
+                            )}
+                        {renderError(validationErrors.disp_quantity)}
                     </View>
 
-                    {/* Lot Details - In Stock moved to first */}
+                    {/* Lot Details */}
                     {currentItem.grnItems_id && (
-                        <View style={[styles.lotDetailsCard, { backgroundColor: colors.cellBackground, borderColor: colors.cellDivider }]}>
-                            <Text style={[styles.lotDetailsTitle, { color: colors.gray900 }]}>Lot Details</Text>
+                        <View style={styles.lotDetailsCard}>
+                            <Text style={styles.lotDetailsTitle} accessibilityRole="header">Lot details</Text>
                             <View style={styles.lotDetailsGrid}>
                                 <View style={styles.detailItem}>
-                                    <Icon name="package" size={16} color={colors.gray500} />
-                                    <Text style={[styles.detailLabel, { color: colors.gray600 }]}>In Stock:</Text>
-                                    <Text style={[styles.detailValue, { color: colors.success }]}>
-                                        {currentItem.grnItems_stock}
+                                    <Icon name="warehouse" size={iconSize.sm} color={t.icon.secondary} />
+                                    <Text style={styles.detailLabel}>In stock</Text>
+                                    <Text style={styles.detailValue}>
+                                        {currentItem.grnItems_stock} {currentItem.grnItems_stock === 1 ? 'bag' : 'bags'}
                                     </Text>
                                 </View>
                                 {currentItem.grnItems_package_mark && (
                                     <View style={styles.detailItem}>
-                                        <Icon name="label" size={16} color={colors.gray500} />
-                                        <Text style={[styles.detailLabel, { color: colors.gray600 }]}>Package Mark:</Text>
-                                        <Text style={[styles.detailValue, { color: colors.gray900 }]}>{currentItem.grnItems_package_mark}</Text>
+                                        <Icon name="label-outline" size={iconSize.sm} color={t.icon.secondary} />
+                                        <Text style={styles.detailLabel}>Package mark</Text>
+                                        <Text style={styles.detailValue}>{currentItem.grnItems_package_mark}</Text>
                                     </View>
                                 )}
                                 {currentItem.grnItems_rack && (
                                     <View style={styles.detailItem}>
-                                        <Icon name="warehouse" size={16} color={colors.gray500} />
-                                        <Text style={[styles.detailLabel, { color: colors.gray600 }]}>Rack:</Text>
-                                        <Text style={[styles.detailValue, { color: colors.gray900 }]}>{currentItem.grnItems_rack}</Text>
+                                        <Icon name="view-grid-outline" size={iconSize.sm} color={t.icon.secondary} />
+                                        <Text style={styles.detailLabel}>Rack</Text>
+                                        <Text style={styles.detailValue}>{currentItem.grnItems_rack}</Text>
                                     </View>
                                 )}
                                 <View style={styles.detailItem}>
-                                    <Icon name="weight" size={16} color={colors.gray500} />
-                                    <Text style={[styles.detailLabel, { color: colors.gray600 }]}>Weight:</Text>
-                                    <Text style={[styles.detailValue, { color: colors.gray900 }]}>{currentItem.grnItems_weight} kg</Text>
+                                    <Icon name="weight" size={iconSize.sm} color={t.icon.secondary} />
+                                    <Text style={styles.detailLabel}>Weight</Text>
+                                    <Text style={styles.detailValue}>{currentItem.grnItems_weight} kg</Text>
                                 </View>
                             </View>
                         </View>
                     )}
                 </KeyboardAwareScrollView>
             </SwipeableFormStep>
+
+            {/* Bottom bar (guide §13.8 form chrome): Back secondary, Next primary */}
+            <View style={[styles.bottomBar, { paddingBottom: space.md + insets.bottom }]}>
+                <Pressable
+                    style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryButtonPressed]}
+                    onPress={handleBack}
+                    accessibilityRole="button"
+                    accessibilityLabel="Back to dispatch details"
+                >
+                    <Icon name="chevron-left" size={iconSize.md} color={t.text.primary} />
+                    <Text style={styles.secondaryButtonText}>Back</Text>
+                </Pressable>
+                <Pressable
+                    style={({ pressed }) => [styles.primaryButton, pressed && styles.primaryButtonPressed]}
+                    onPress={handleNext}
+                    accessibilityRole="button"
+                    accessibilityLabel="Next, review dispatch"
+                >
+                    <Text style={styles.primaryButtonText}>Next</Text>
+                    <Icon name="chevron-right" size={iconSize.md} color={t.brand.onFill} />
+                </Pressable>
+            </View>
 
             {/* Bottom Sheets */}
             <GRNAutocompleteBottomSheet
@@ -1129,13 +1171,13 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
                 editingItemId={editingItemId ?? undefined}
             />
 
-            {/* Dark mode compliant confirmation dialogs */}
+            {/* Confirmation dialogs */}
             <ConfirmDialog
                 visible={showDiscardDialog}
-                title="Discard Changes?"
-                message={`You have ${savedItems.length} item(s) that will be lost. Are you sure you want to leave?`}
-                confirmText="Discard"
-                cancelText="Stay"
+                title="Discard this dispatch?"
+                message={`The ${savedItems.length} ${savedItems.length === 1 ? 'item' : 'items'} you added will be lost.`}
+                confirmText="Discard dispatch"
+                cancelText="Keep editing"
                 onConfirm={handleDiscardConfirm}
                 onCancel={() => setShowDiscardDialog(false)}
                 variant="danger"
@@ -1144,10 +1186,10 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
 
             <ConfirmDialog
                 visible={showClearItemDialog}
-                title="Clear Current Item?"
-                message="This will discard all entered data for this item."
-                confirmText="Clear"
-                cancelText="Cancel"
+                title="Clear this item?"
+                message="The GRN, lot and bags you entered for this item will be cleared."
+                confirmText="Clear item"
+                cancelText="Keep item"
                 onConfirm={handleClearItemConfirm}
                 onCancel={() => setShowClearItemDialog(false)}
                 variant="warning"
@@ -1156,9 +1198,9 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
 
             <ConfirmDialog
                 visible={showUnsavedBackDialog}
-                title="Unsaved Changes"
-                message="You have unsaved items. Go back anyway?"
-                confirmText="Go Back"
+                title="Go back to details?"
+                message="You have items that are not saved yet. Go back anyway?"
+                confirmText="Go back"
                 cancelText="Stay"
                 onConfirm={handleUnsavedBackConfirm}
                 onCancel={() => setShowUnsavedBackDialog(false)}
@@ -1168,309 +1210,398 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
 
             <ConfirmDialog
                 visible={showUnsavedEditDialog}
-                title="Unsaved Changes"
-                message="You have unsaved changes to this item. Discard them?"
-                confirmText="Discard"
-                cancelText="Keep Editing"
+                title="Discard changes to this item?"
+                message="Your changes to this item will be lost."
+                confirmText="Discard changes"
+                cancelText="Keep editing"
                 onConfirm={handleUnsavedEditDiscard}
                 onCancel={() => setShowUnsavedEditDialog(false)}
                 variant="warning"
                 icon="alert-circle-outline"
             />
-        </View >
+        </View>
     );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (t: ThemeTokens) => ({
     container: {
         flex: 1,
+        backgroundColor: t.background.base,
     },
     scrollView: {
         flex: 1,
     },
     scrollContent: {
-        padding: theme.spacing.lg,
+        padding: layout.marginCompact,
         paddingBottom: 150,
     },
-    formSection: {
-        borderRadius: theme.borderRadius.xl,
-        padding: theme.spacing.lg,
-        marginBottom: theme.spacing.lg,
-    },
     formGroup: {
-        marginBottom: theme.spacing.xl,
+        marginBottom: space.lg,
     },
     label: {
-        fontSize: theme.fontSize.sm,
-        fontWeight: theme.fontWeight.semibold,
-        marginBottom: theme.spacing.sm,
+        ...typography.footnote,
+        color: t.text.secondary,
+        marginBottom: space.xs,
+    },
+    labelError: {
+        color: t.status.negative.text,
     },
     required: {
+        color: t.text.required,
     },
     inputContainer: {
-        flexDirection: 'row',
-        alignItems: 'center',
+        flexDirection: 'row' as const,
+        alignItems: 'center' as const,
         borderWidth: 1,
-        borderRadius: theme.borderRadius.lg,
-        minHeight: theme.touchTarget.minimum,
-        paddingHorizontal: theme.spacing.md,
+        borderColor: t.border.field,
+        backgroundColor: t.surface.field,
+        borderRadius: radius.field,
+        minHeight: touchTarget,
+        paddingHorizontal: space.md,
+    },
+    inputPressed: {
+        backgroundColor: t.surface.cardPressed,
+    },
+    inputError: {
+        borderWidth: 2,
+        borderColor: t.status.negative.border,
+        paddingHorizontal: space.md - 1,
     },
     inputIcon: {
-        marginRight: theme.spacing.sm,
+        marginRight: space.sm,
     },
     input: {
+        ...typography.body,
         flex: 1,
-        fontSize: theme.fontSize.base,
+        color: t.text.primary,
         padding: 0,
+        fontVariant: ['tabular-nums' as const],
         ...Platform.select({
             android: {
-                textAlignVertical: 'center',
+                textAlignVertical: 'center' as const,
                 includeFontPadding: false,
             },
         }),
     },
     selectorText: {
+        ...typography.body,
         flex: 1,
-        fontSize: theme.fontSize.base,
+        color: t.text.primary,
+    },
+    placeholderText: {
+        color: t.text.placeholder,
+    },
+    disabled: {
+        opacity: t.interaction.disabledOpacity,
+    },
+    errorRow: {
+        flexDirection: 'row' as const,
+        alignItems: 'center' as const,
+        gap: space.xs,
+        marginTop: space.xs,
+    },
+    errorText: {
+        ...typography.footnote,
+        flex: 1,
+        color: t.status.negative.text,
     },
     allLotsAddedNotice: {
-        flexDirection: 'row',
-        alignItems: 'flex-start',
-        gap: theme.spacing.sm,
+        flexDirection: 'row' as const,
+        alignItems: 'flex-start' as const,
+        gap: space.sm,
         borderWidth: 1,
-        borderRadius: theme.borderRadius.lg,
-        padding: theme.spacing.md,
-        marginTop: theme.spacing.sm,
+        borderColor: t.status.informative.border,
+        backgroundColor: t.status.informative.background,
+        borderRadius: radius.button,
+        padding: space.md,
+        marginTop: space.sm,
     },
     allLotsAddedContent: {
         flex: 1,
-        gap: theme.spacing.xs,
+        gap: space.xs,
     },
     allLotsAddedText: {
-        fontSize: theme.fontSize.sm,
-        lineHeight: 20,
+        ...typography.footnote,
+        color: t.status.informative.text,
     },
     viewAllItemsButton: {
-        alignSelf: 'flex-start',
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 2,
-        minHeight: 28,
+        alignSelf: 'flex-start' as const,
+        flexDirection: 'row' as const,
+        alignItems: 'center' as const,
+        gap: space.xxs,
+        minHeight: touchTarget,
+        borderRadius: radius.button,
+    },
+    linkPressed: {
+        backgroundColor: t.brand.subtle,
     },
     viewAllItemsText: {
-        fontSize: theme.fontSize.sm,
-        fontWeight: theme.fontWeight.semibold,
+        ...typography.subhead,
+        fontWeight: fontWeight.semibold,
+        color: t.brand.tint,
     },
     quantityRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: theme.spacing.sm,
+        flexDirection: 'row' as const,
+        alignItems: 'center' as const,
+        flexWrap: 'wrap' as const,
+        gap: space.sm,
     },
     quantityInputContainer: {
         flex: 1,
+        minWidth: 96,
     },
     quickButtons: {
-        flexDirection: 'row',
-        gap: 4,
+        flexDirection: 'row' as const,
+        gap: space.xs,
     },
     quickButton: {
-        paddingHorizontal: 8,
-        paddingVertical: 10,
-        borderRadius: theme.borderRadius.md,
-        minWidth: 40,
-        alignItems: 'center',
-        justifyContent: 'center',
+        paddingHorizontal: space.sm,
+        minHeight: touchTarget,
+        minWidth: touchTarget,
+        borderRadius: radius.button,
+        borderWidth: 1,
+        borderColor: t.border.button,
+        backgroundColor: t.surface.card,
+        alignItems: 'center' as const,
+        justifyContent: 'center' as const,
     },
-    quickButtonMinus: {
-    },
-    quickButtonPlus: {
+    quickButtonPressed: {
+        backgroundColor: t.brand.subtle,
     },
     quickButtonText: {
-        fontSize: 13,
-        fontWeight: '700',
-    },
-    errorText: {
-        fontSize: theme.fontSize.xs,
-        marginTop: theme.spacing.xs,
+        ...typography.subhead,
+        fontWeight: fontWeight.semibold,
+        color: t.brand.tint,
+        fontVariant: ['tabular-nums' as const],
     },
     heroBanner: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        backgroundColor: theme.colors.primary,
-        paddingHorizontal: theme.spacing.lg,
-        paddingVertical: theme.spacing.md,
+        flexDirection: 'row' as const,
+        alignItems: 'center' as const,
+        justifyContent: 'space-between' as const,
+        gap: space.sm,
+        backgroundColor: t.surface.header,
+        paddingHorizontal: layout.marginCompact,
+        paddingVertical: space.sm,
+        borderBottomWidth: StyleSheet.hairlineWidth,
+        borderBottomColor: t.border.divider,
     },
     heroBannerEditing: {
-        backgroundColor: theme.colors.blue[500],
+        backgroundColor: t.brand.subtle,
     },
     heroTitleContainer: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: theme.spacing.md,
+        flexDirection: 'row' as const,
+        alignItems: 'center' as const,
+        gap: space.md,
         flex: 1,
+        minHeight: touchTarget,
+        borderRadius: radius.button,
+    },
+    heroTitlePressed: {
+        backgroundColor: t.surface.cardPressed,
     },
     heroItemBadge: {
         width: 36,
         height: 36,
-        borderRadius: 18,
-        backgroundColor: 'rgba(255,255,255,0.2)',
-        alignItems: 'center',
-        justifyContent: 'center',
+        borderRadius: radius.pill,
+        backgroundColor: t.brand.subtle,
+        alignItems: 'center' as const,
+        justifyContent: 'center' as const,
     },
     heroItemBadgeEditing: {
-        backgroundColor: 'rgba(255,255,255,0.25)',
+        backgroundColor: t.brand.fill,
     },
     heroItemBadgeText: {
-        fontSize: theme.fontSize.base,
-        fontWeight: theme.fontWeight.bold,
-        color: theme.colors.white,
+        ...typography.headline,
+        color: t.brand.tint,
+        fontVariant: ['tabular-nums' as const],
+    },
+    heroItemBadgeTextEditing: {
+        color: t.brand.onFill,
     },
     heroTextContainer: {
         flex: 1,
     },
     heroTitle: {
-        fontSize: theme.fontSize.lg,
-        fontWeight: theme.fontWeight.bold,
-        color: theme.colors.white,
+        ...typography.headline,
+        color: t.text.primary,
     },
     heroSubtitleContainer: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: theme.spacing.xs,
-        marginTop: 2,
+        flexDirection: 'row' as const,
+        alignItems: 'center' as const,
+        gap: space.xs,
+        marginTop: space.xxs,
     },
     heroSubtitle: {
-        fontSize: theme.fontSize.xs,
-        color: 'rgba(255,255,255,0.8)',
-        fontWeight: theme.fontWeight.medium,
+        ...typography.footnote,
+        fontWeight: fontWeight.semibold,
+        color: t.brand.tint,
+    },
+    iconButton: {
+        width: touchTarget,
+        height: touchTarget,
+        borderRadius: radius.pill,
+        alignItems: 'center' as const,
+        justifyContent: 'center' as const,
+    },
+    iconButtonPressed: {
+        backgroundColor: t.surface.cardPressed,
     },
     addPillButton: {
-        width: 44,
-        height: 44,
-        borderRadius: 22,
-        backgroundColor: 'rgba(255,255,255,0.2)',
-        alignItems: 'center',
-        justifyContent: 'center',
+        width: touchTarget,
+        height: touchTarget,
+        borderRadius: radius.pill,
+        backgroundColor: t.brand.fill,
+        alignItems: 'center' as const,
+        justifyContent: 'center' as const,
     },
-    addPillButtonDisabled: {
-        opacity: 0.4,
-    },
-    clearPillButton: {
-        width: 44,
-        height: 44,
-        borderRadius: 22,
-        backgroundColor: 'rgba(255,255,255,0.15)',
-        alignItems: 'center',
-        justifyContent: 'center',
-        marginRight: theme.spacing.sm,
+    addPillButtonPressed: {
+        backgroundColor: t.brand.fillPressed,
     },
     editModeBanner: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: theme.colors.blue[600],
-        paddingHorizontal: theme.spacing.lg,
-        paddingVertical: theme.spacing.md,
-        borderRadius: theme.borderRadius.lg,
-        marginBottom: theme.spacing.lg,
-        gap: theme.spacing.md,
+        flexDirection: 'row' as const,
+        alignItems: 'center' as const,
+        backgroundColor: t.status.informative.background,
+        borderWidth: 1,
+        borderColor: t.status.informative.border,
+        paddingLeft: space.md,
+        paddingVertical: space.xs,
+        borderRadius: radius.button,
+        marginBottom: space.lg,
+        gap: space.sm,
     },
     editModeBannerText: {
         flex: 1,
     },
     editModeBannerTitle: {
-        fontSize: theme.fontSize.sm,
-        fontWeight: theme.fontWeight.semibold,
-        color: theme.colors.white,
+        ...typography.subhead,
+        fontWeight: fontWeight.semibold,
+        color: t.status.informative.text,
     },
     editModeBannerSubtitle: {
-        fontSize: theme.fontSize.xs,
-        color: theme.colors.blue[100],
-        marginTop: 2,
-    },
-    editModeCancelButton: {
-        padding: theme.spacing.xs,
+        ...typography.footnote,
+        color: t.text.primary,
+        marginTop: space.xxs,
     },
     lotDetailsCard: {
-        backgroundColor: theme.colors.white,
-        borderRadius: theme.borderRadius.xl,
-        padding: theme.spacing.lg,
-        marginBottom: theme.spacing.lg,
-        borderWidth: 1,
-        borderColor: theme.colors.gray[200],
+        backgroundColor: t.surface.card,
+        borderRadius: radius.card,
+        padding: space.lg,
+        marginBottom: space.lg,
+        ...t.shadow[2],
     },
     lotDetailsTitle: {
-        fontSize: theme.fontSize.sm,
-        fontWeight: theme.fontWeight.semibold,
-        color: theme.colors.gray[900],
-        marginBottom: theme.spacing.md,
+        ...typography.footnote,
+        fontWeight: fontWeight.semibold,
+        textTransform: 'uppercase' as const,
+        letterSpacing: 0.5,
+        color: t.text.secondary,
+        marginBottom: space.md,
     },
     lotDetailsGrid: {
-        gap: theme.spacing.sm,
+        gap: space.sm,
     },
     detailItem: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: theme.spacing.sm,
+        flexDirection: 'row' as const,
+        alignItems: 'center' as const,
+        gap: space.sm,
     },
     detailLabel: {
-        fontSize: theme.fontSize.sm,
-        fontWeight: theme.fontWeight.medium,
-        color: theme.colors.gray[600],
+        ...typography.subhead,
+        color: t.text.secondary,
         minWidth: 100,
     },
     detailValue: {
-        fontSize: theme.fontSize.sm,
-        fontWeight: theme.fontWeight.semibold,
-        color: theme.colors.gray[900],
+        ...typography.subhead,
+        fontWeight: fontWeight.semibold,
+        color: t.text.primary,
         flex: 1,
-    },
-    stockValue: {
-        color: theme.colors.semantic.success,
+        fontVariant: ['tabular-nums' as const],
     },
     stockDisplayCard: {
-        flexDirection: 'column',
-        backgroundColor: theme.colors.blue[50],
-        borderRadius: theme.borderRadius.lg,
-        padding: theme.spacing.md,
-        gap: theme.spacing.sm,
-        marginBottom: theme.spacing.md,
+        flexDirection: 'column' as const,
+        backgroundColor: t.status.informative.background,
+        borderWidth: 1,
+        borderColor: t.status.informative.border,
+        borderRadius: radius.button,
+        padding: space.md,
+        gap: space.sm,
+        marginBottom: space.md,
     },
     dispatchingFromRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: theme.spacing.sm,
-        paddingBottom: theme.spacing.sm,
-        borderBottomWidth: 1,
-        borderBottomColor: theme.colors.orange[200],
-        marginBottom: theme.spacing.xs,
+        flexDirection: 'row' as const,
+        alignItems: 'center' as const,
+        gap: space.sm,
+        paddingBottom: space.sm,
+        borderBottomWidth: StyleSheet.hairlineWidth,
+        borderBottomColor: t.status.informative.border,
     },
     dispatchingFromText: {
-        fontSize: theme.fontSize.sm,
-        color: theme.colors.orange[700],
+        ...typography.footnote,
+        flex: 1,
+        color: t.status.critical.text,
     },
     dispatchingFromValue: {
-        fontWeight: theme.fontWeight.bold,
-        color: theme.colors.orange[800],
+        fontWeight: fontWeight.semibold,
     },
     stockInfoRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        flexWrap: 'wrap',
-        gap: theme.spacing.sm,
+        flexDirection: 'row' as const,
+        alignItems: 'center' as const,
+        flexWrap: 'wrap' as const,
+        gap: space.sm,
     },
     stockDisplayText: {
-        fontSize: theme.fontSize.sm,
-        color: theme.colors.blue[800],
+        ...typography.subhead,
+        color: t.status.informative.text,
     },
     stockDisplayValue: {
-        fontWeight: theme.fontWeight.bold,
-        color: theme.colors.blue[900],
+        fontWeight: fontWeight.semibold,
+        fontVariant: ['tabular-nums' as const],
     },
-    stockDisplaySeparator: {
-        fontSize: theme.fontSize.sm,
-        color: theme.colors.blue[600],
-        marginHorizontal: theme.spacing.xs,
+    bottomBar: {
+        flexDirection: 'row' as const,
+        gap: space.sm,
+        paddingHorizontal: layout.marginCompact,
+        paddingTop: space.md,
+        backgroundColor: t.surface.card,
+        borderTopWidth: StyleSheet.hairlineWidth,
+        borderTopColor: t.border.separator,
+        ...t.shadow[3],
+    },
+    secondaryButton: {
+        flex: 1,
+        flexDirection: 'row' as const,
+        alignItems: 'center' as const,
+        justifyContent: 'center' as const,
+        gap: space.xs,
+        minHeight: touchTarget,
+        borderRadius: radius.button,
+        borderWidth: 1,
+        borderColor: t.border.button,
+    },
+    secondaryButtonPressed: {
+        backgroundColor: t.brand.subtle,
+    },
+    secondaryButtonText: {
+        ...typography.callout,
+        color: t.text.primary,
+    },
+    primaryButton: {
+        flex: 1,
+        flexDirection: 'row' as const,
+        alignItems: 'center' as const,
+        justifyContent: 'center' as const,
+        gap: space.xs,
+        minHeight: touchTarget,
+        borderRadius: radius.button,
+        backgroundColor: t.brand.fill,
+    },
+    primaryButtonPressed: {
+        backgroundColor: t.brand.fillPressed,
+    },
+    primaryButtonText: {
+        ...typography.callout,
+        fontWeight: fontWeight.semibold,
+        color: t.brand.onFill,
     },
 });
 

@@ -3,7 +3,8 @@
  * Searchable bottom sheet for selecting GRN numbers
  * Used in dispatch form Step 2
  *
- * Styled to match ItemsSummaryBottomSheet:
+ * Bottom sheet per docs/STYLE_GUIDE.md §13.9 (searchable sheet: search field
+ * stays visible, scrim behind, Android back closes):
  * - Tap to select GRN
  * - Swipe left to view GRN details
  *
@@ -17,7 +18,6 @@ import React, { useCallback, useMemo, useRef, useState, useEffect, memo } from '
 import {
   View,
   Text,
-  TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
   Modal,
@@ -29,12 +29,24 @@ import { GestureHandlerRootView, Swipeable } from 'react-native-gesture-handler'
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, Href } from 'expo-router';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import theme from '@/theme';
-import { useListColors, ListColors } from '@/hooks/useListColors';
-import { searchGRNNumbers, getGRNPrefixesWithStock, getCustomerGRNsWithStock, type GRNPrefixWithStock, type CustomerGRNWithStock } from '../services/grnDetailService';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import {
+  fontWeight,
+  iconSize,
+  layout,
+  radius,
+  space,
+  touchTarget,
+  typography,
+} from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
+import { searchGRNNumbers, getGRNPrefixesWithStock, getCustomerGRNsWithStock, type GRNPrefixWithStock } from '../services/grnDetailService';
 import type { GRNAutocompleteItem } from '@/types/dispatch.types';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
+
+/** Fixed row height, used by getItemLayout. */
+const GRN_ROW_HEIGHT = 100;
 
 interface GRNAutocompleteBottomSheetProps {
   isVisible: boolean;
@@ -46,6 +58,274 @@ interface GRNAutocompleteBottomSheetProps {
   };
   customerId?: string; // Optional filter by customer
 }
+
+const makeStyles = (t: ThemeTokens) => ({
+  // Sheet
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end' as const,
+  },
+  backdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: t.overlay.scrim,
+  },
+  sheetContainer: {
+    backgroundColor: t.surface.sheet,
+    borderTopLeftRadius: radius.sheet,
+    borderTopRightRadius: radius.sheet,
+    maxHeight: SCREEN_HEIGHT,
+    flex: 1,
+    ...t.shadow[4],
+  },
+  header: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    paddingLeft: layout.marginCompact,
+    paddingRight: space.xs,
+    paddingBottom: space.xs,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.divider,
+    gap: space.sm,
+  },
+  headerTitle: {
+    ...typography.headline,
+    flex: 1,
+    color: t.text.primary,
+  },
+  closeButton: {
+    width: touchTarget,
+    height: touchTarget,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    borderRadius: radius.pill,
+  },
+  closeButtonPressed: {
+    backgroundColor: t.surface.cardPressed,
+  },
+  hintContainer: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.s6,
+    paddingHorizontal: layout.marginCompact,
+    paddingVertical: space.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: t.border.divider,
+  },
+  hintText: {
+    ...typography.footnote,
+    flex: 1,
+    color: t.text.secondary,
+  },
+  resultsCountContainer: {
+    paddingHorizontal: layout.marginCompact,
+    paddingVertical: space.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.divider,
+  },
+  resultsCount: {
+    ...typography.footnote,
+    fontWeight: fontWeight.semibold,
+    textTransform: 'uppercase' as const,
+    letterSpacing: 0.5,
+    color: t.text.secondary,
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    paddingVertical: space.max,
+    paddingHorizontal: space.huge,
+  },
+  emptyText: {
+    ...typography.title3,
+    color: t.text.primary,
+    marginTop: space.lg,
+    textAlign: 'center' as const,
+  },
+  emptySubtext: {
+    ...typography.subhead,
+    color: t.text.secondary,
+    marginTop: space.sm,
+    textAlign: 'center' as const,
+  },
+  scrollView: {
+    flex: 1,
+  },
+  listContent: {
+    flexGrow: 1,
+    paddingBottom: space.xl,
+  },
+
+  // CustomKeyboard
+  searchContainer: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    marginHorizontal: layout.marginCompact,
+    marginVertical: space.md,
+    paddingLeft: space.md,
+    minHeight: touchTarget,
+    backgroundColor: t.surface.field,
+    borderRadius: radius.field,
+    borderWidth: 1,
+    borderColor: t.border.field,
+  },
+  searchIcon: {
+    marginRight: space.sm,
+  },
+  searchInputText: {
+    ...typography.body,
+    color: t.text.primary,
+    fontWeight: fontWeight.semibold,
+    flex: 1,
+    fontVariant: ['tabular-nums' as const],
+  },
+  searchPlaceholder: {
+    color: t.text.placeholder,
+    fontWeight: fontWeight.regular,
+  },
+  clearButton: {
+    width: touchTarget,
+    height: touchTarget,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+  },
+  quickInputContainer: {
+    flexDirection: 'row' as const,
+    flexWrap: 'wrap' as const,
+    paddingHorizontal: layout.marginCompact,
+    paddingBottom: space.md,
+    gap: space.sm,
+    justifyContent: 'center' as const,
+  },
+  quickInputButton: {
+    minWidth: touchTarget,
+    height: touchTarget,
+    paddingHorizontal: space.xs,
+    borderRadius: radius.button,
+    borderWidth: 1,
+    borderColor: t.border.button,
+    backgroundColor: t.surface.card,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+  },
+  quickInputButtonPressed: {
+    backgroundColor: t.brand.subtle,
+  },
+  prefixButton: {
+    backgroundColor: t.brand.subtle,
+    borderColor: t.brand.subtle,
+  },
+  prefixButtonPressed: {
+    backgroundColor: t.brand.subtleStrong,
+  },
+  quickInputText: {
+    ...typography.callout,
+    fontWeight: fontWeight.semibold,
+    color: t.text.primary,
+  },
+  prefixText: {
+    color: t.brand.tint,
+  },
+  prefixCount: {
+    ...typography.caption2,
+    color: t.brand.tint,
+    fontVariant: ['tabular-nums' as const],
+  },
+  prefixLoadingContainer: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    gap: space.sm,
+    paddingVertical: space.sm,
+    width: '100%' as const,
+  },
+  noPrefixContainer: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    gap: space.s6,
+    paddingVertical: space.sm,
+    width: '100%' as const,
+  },
+  keyboardMessage: {
+    ...typography.footnote,
+    color: t.text.secondary,
+  },
+
+  // GRNListItem
+  grnCard: {
+    height: GRN_ROW_HEIGHT,
+    justifyContent: 'center' as const,
+    paddingHorizontal: layout.marginCompact,
+    backgroundColor: t.surface.sheet,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.divider,
+  },
+  grnCardLast: {
+    borderBottomWidth: 0,
+  },
+  grnCardPressed: {
+    backgroundColor: t.surface.cardPressed,
+  },
+  grnCardSelected: {
+    backgroundColor: t.surface.selected,
+    borderLeftWidth: 4,
+    borderLeftColor: t.brand.tint,
+  },
+  grnHeader: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
+    marginBottom: space.sm,
+  },
+  grnTitleRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.sm,
+  },
+  grnNumber: {
+    ...typography.headline,
+    color: t.text.primary,
+    fontVariant: ['tabular-nums' as const],
+  },
+  grnMeta: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.sm,
+  },
+  metaBadge: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.xs,
+    paddingHorizontal: space.sm,
+    paddingVertical: space.xxs,
+    backgroundColor: t.status.neutral.background,
+    borderRadius: radius.field,
+    flexShrink: 1,
+  },
+  metaText: {
+    ...typography.caption1,
+    fontWeight: fontWeight.semibold,
+    color: t.status.neutral.text,
+    flexShrink: 1,
+  },
+  viewAction: {
+    backgroundColor: t.brand.fill,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    width: 80,
+    height: '100%' as const,
+    gap: space.xs,
+  },
+  viewActionPressed: {
+    backgroundColor: t.brand.fillPressed,
+  },
+  viewText: {
+    ...typography.caption1,
+    fontWeight: fontWeight.semibold,
+    color: t.brand.onFill,
+  },
+});
 
 // ============================================================================
 // MEMOIZED SUB-COMPONENTS (Performance optimization)
@@ -60,16 +340,6 @@ interface CustomKeyboardProps {
   isPrefixesLoading: boolean;
   onSearch: (query: string) => void;
   onClear: () => void;
-  colorValues: {
-    primary: string;
-    textSecondary: string;
-    textTertiary: string;
-    gray50: string;
-    gray100: string;
-    gray200: string;
-    orangeLight: string;
-    blueLight: string;
-  };
 }
 
 const CustomKeyboard = memo<CustomKeyboardProps>(({
@@ -77,8 +347,9 @@ const CustomKeyboard = memo<CustomKeyboardProps>(({
   isPrefixesLoading,
   onSearch,
   onClear,
-  colorValues,
 }) => {
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
   // Local state for instant display - no parent re-render on keystroke
   const [localQuery, setLocalQuery] = useState('');
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -143,84 +414,39 @@ const CustomKeyboard = memo<CustomKeyboardProps>(({
     setLocalQuery('');
   }, []);
 
-  // Stable styles
-  const keyboardStyles = useMemo(() => ({
-    quickInputButton: {
-      width: 40,
-      height: 40,
-      borderRadius: 8,
-      backgroundColor: colorValues.gray100,
-      justifyContent: 'center' as const,
-      alignItems: 'center' as const,
-    },
-    backspaceButton: {
-      backgroundColor: colorValues.orangeLight,
-    },
-    numericButton: {
-      backgroundColor: colorValues.blueLight,
-    },
-    quickInputText: {
-      fontSize: 16,
-      fontWeight: '600' as const,
-      color: colorValues.textSecondary,
-    },
-    prefixCount: {
-      fontSize: 8,
-      fontWeight: '600' as const,
-      color: colorValues.primary,
-      position: 'absolute' as const,
-      top: 2,
-      right: 4,
-    },
-    searchContainer: {
-      flexDirection: 'row' as const,
-      alignItems: 'center' as const,
-      marginHorizontal: 20,
-      marginVertical: 12,
-      paddingHorizontal: 12,
-      paddingVertical: 12,
-      backgroundColor: colorValues.gray50,
-      borderRadius: 12,
-      borderWidth: 1,
-      borderColor: colorValues.gray200,
-    },
-    searchInputText: {
-      fontSize: 16,
-      color: colorValues.textSecondary,
-      fontWeight: '600' as const,
-      flex: 1,
-    },
-    searchPlaceholder: {
-      color: colorValues.textTertiary,
-      fontWeight: '400' as const,
-    },
-  }), [colorValues]);
 
   return (
     <>
       {/* Search Input Display */}
-      <View style={keyboardStyles.searchContainer}>
+      <View
+        style={styles.searchContainer}
+        accessible
+        accessibilityRole="search"
+        accessibilityLabel={localQuery.length > 0 ? `Search GRN number, ${localQuery}` : 'Search GRN number, empty'}
+      >
         <Icon
           name="magnify"
-          size={20}
-          color={colorValues.textTertiary}
+          size={iconSize.md}
+          color={t.icon.secondary}
           style={styles.searchIcon}
         />
         <Text
           style={[
-            keyboardStyles.searchInputText,
-            localQuery.length === 0 && keyboardStyles.searchPlaceholder,
+            styles.searchInputText,
+            localQuery.length === 0 && styles.searchPlaceholder,
           ]}
         >
-          {localQuery.length > 0 ? localQuery : 'Search GR No...'}
+          {localQuery.length > 0 ? localQuery : 'Search GRN number'}
         </Text>
         {localQuery.length > 0 && (
-          <TouchableOpacity
+          <Pressable
             onPress={handleClear}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            style={styles.clearButton}
+            accessibilityRole="button"
+            accessibilityLabel="Clear search"
           >
-            <Icon name="close-circle" size={20} color={colorValues.textTertiary} />
-          </TouchableOpacity>
+            <Icon name="close-circle" size={iconSize.md} color={t.icon.secondary} />
+          </Pressable>
         )}
       </View>
 
@@ -228,50 +454,53 @@ const CustomKeyboard = memo<CustomKeyboardProps>(({
       <View style={styles.quickInputContainer}>
         {isPrefixesLoading ? (
           <View style={styles.prefixLoadingContainer}>
-            <ActivityIndicator size="small" color={colorValues.primary} />
-            <Text style={{ fontSize: 13, color: colorValues.textSecondary }}>Loading prefixes...</Text>
+            <ActivityIndicator size="small" color={t.brand.tint} />
+            <Text style={styles.keyboardMessage}>Loading GRN prefixes…</Text>
           </View>
         ) : prefixes.length > 0 ? (
           <>
             {prefixes.map((prefixItem) => (
-              <TouchableOpacity
+              <Pressable
                 key={prefixItem.prefix}
                 accessibilityRole="button"
-                accessibilityLabel={`Use GRN prefix ${prefixItem.prefix}`}
-                style={keyboardStyles.quickInputButton}
+                accessibilityLabel={`Use GRN prefix ${prefixItem.prefix}, ${prefixItem.grnCount} GRNs`}
+                style={({ pressed }) => [
+                  styles.quickInputButton,
+                  styles.prefixButton,
+                  pressed && styles.prefixButtonPressed,
+                ]}
                 onPress={() => handlePrefixTap(prefixItem.prefix)}
-                activeOpacity={0.7}
               >
-                <Text style={keyboardStyles.quickInputText}>{prefixItem.prefix}</Text>
-                <Text style={keyboardStyles.prefixCount}>{prefixItem.grnCount}</Text>
-              </TouchableOpacity>
+                <Text style={[styles.quickInputText, styles.prefixText]}>{prefixItem.prefix}</Text>
+                <Text style={styles.prefixCount} maxFontSizeMultiplier={1.6}>{prefixItem.grnCount}</Text>
+              </Pressable>
             ))}
             {['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'].map((char) => (
-              <TouchableOpacity
+              <Pressable
                 key={char}
                 accessibilityRole="button"
                 accessibilityLabel={`Enter GRN digit ${char}`}
-                style={[keyboardStyles.quickInputButton, keyboardStyles.numericButton]}
+                style={({ pressed }) => [styles.quickInputButton, pressed && styles.quickInputButtonPressed]}
                 onPress={() => handleKeyPress(char)}
-                activeOpacity={0.7}
               >
-                <Text style={keyboardStyles.quickInputText}>{char}</Text>
-              </TouchableOpacity>
+                <Text style={styles.quickInputText}>{char}</Text>
+              </Pressable>
             ))}
           </>
         ) : (
           <View style={styles.noPrefixContainer}>
-            <Icon name="alert-circle-outline" size={16} color={colorValues.textTertiary} />
-            <Text style={{ fontSize: 13, color: colorValues.textSecondary }}>No GRNs with stock available</Text>
+            <Icon name="information" size={iconSize.sm} color={t.icon.secondary} />
+            <Text style={styles.keyboardMessage}>No GRNs have stock left.</Text>
           </View>
         )}
-        <TouchableOpacity
-          style={[keyboardStyles.quickInputButton, keyboardStyles.backspaceButton]}
+        <Pressable
+          style={({ pressed }) => [styles.quickInputButton, pressed && styles.quickInputButtonPressed]}
           onPress={handleBackspace}
-          activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel="Delete last character"
         >
-          <Icon name="backspace" size={18} color={colorValues.textSecondary} />
-        </TouchableOpacity>
+          <Icon name="backspace-outline" size={iconSize.md} color={t.icon.primary} />
+        </Pressable>
       </View>
     </>
   );
@@ -288,17 +517,6 @@ interface GRNListItemProps {
   isLast: boolean;
   onSelect: (grn: GRNAutocompleteItem) => void;
   onViewDetails: (grn: GRNAutocompleteItem) => void;
-  colorValues: {
-    primary: string;
-    primaryLight: string;
-    blue: string;
-    white: string;
-    success: string;
-    textSecondary: string;
-    cellBackground: string;
-    cellDivider: string;
-    gray100: string;
-  };
 }
 
 const GRNListItem = memo<GRNListItemProps>(({
@@ -307,86 +525,31 @@ const GRNListItem = memo<GRNListItemProps>(({
   isLast,
   onSelect,
   onViewDetails,
-  colorValues,
 }) => {
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
+
   const grnDate = useMemo(() =>
-    new Date(item.date).toLocaleDateString('en-US', {
-      month: 'short',
+    new Date(item.date).toLocaleDateString('en-GB', {
       day: 'numeric',
+      month: 'short',
       year: 'numeric',
     }), [item.date]);
-
-  const itemStyles = useMemo(() => ({
-    grnCard: {
-      paddingHorizontal: 20,
-      paddingVertical: 16,
-      backgroundColor: colorValues.cellBackground,
-      borderBottomWidth: isLast ? 0 : 1,
-      borderBottomColor: colorValues.cellDivider,
-      ...(isSelected && {
-        backgroundColor: colorValues.primaryLight,
-        borderLeftWidth: 4,
-        borderLeftColor: colorValues.primary,
-      }),
-    },
-    grnNumberBadge: {
-      backgroundColor: isSelected ? colorValues.blue : colorValues.primary,
-      paddingHorizontal: 14,
-      paddingVertical: 8,
-      borderRadius: 8,
-    },
-    grnNumber: {
-      fontSize: 16,
-      fontWeight: '700' as const,
-      color: colorValues.white,
-      letterSpacing: 0.5,
-    },
-    metaBadge: {
-      flexDirection: 'row' as const,
-      alignItems: 'center' as const,
-      gap: 4,
-      paddingHorizontal: 8,
-      paddingVertical: 4,
-      backgroundColor: colorValues.gray100,
-      borderRadius: 6,
-    },
-    metaText: {
-      fontSize: 11,
-      fontWeight: '500' as const,
-      color: colorValues.textSecondary,
-    },
-    detailText: {
-      fontSize: 13,
-      color: colorValues.textSecondary,
-    },
-    viewAction: {
-      backgroundColor: colorValues.blue,
-      justifyContent: 'center' as const,
-      alignItems: 'center' as const,
-      width: 80,
-      height: '100%' as const,
-      gap: 4,
-    },
-    viewText: {
-      fontSize: 12,
-      fontWeight: '600' as const,
-      color: colorValues.white,
-    },
-  }), [colorValues, isSelected, isLast]);
 
   const handlePress = useCallback(() => onSelect(item), [item, onSelect]);
   const handleViewDetails = useCallback(() => onViewDetails(item), [item, onViewDetails]);
 
   const renderRightActions = useCallback(() => (
-    <TouchableOpacity
-      style={itemStyles.viewAction}
+    <Pressable
+      style={({ pressed }) => [styles.viewAction, pressed && styles.viewActionPressed]}
       onPress={handleViewDetails}
-      activeOpacity={0.7}
+      accessibilityRole="button"
+      accessibilityLabel={`View GRN ${item.gr_no}`}
     >
-      <Icon name="eye" size={24} color={colorValues.white} />
-      <Text style={itemStyles.viewText}>View</Text>
-    </TouchableOpacity>
-  ), [itemStyles, handleViewDetails, colorValues.white]);
+      <Icon name="eye-outline" size={iconSize.lg} color={t.brand.onFill} />
+      <Text style={styles.viewText}>View</Text>
+    </Pressable>
+  ), [styles, t, handleViewDetails, item.gr_no]);
 
   return (
     <Swipeable
@@ -395,38 +558,45 @@ const GRNListItem = memo<GRNListItemProps>(({
       friction={2}
       rightThreshold={40}
     >
-      <TouchableOpacity onPress={handlePress} activeOpacity={0.7}>
-        <View style={itemStyles.grnCard}>
-          <View style={styles.grnHeader}>
-            <View style={itemStyles.grnNumberBadge}>
-              <Text style={itemStyles.grnNumber}>{item.gr_no}</Text>
-            </View>
-            {isSelected && (
-              <Icon name="check-circle" size={22} color={colorValues.primary} />
-            )}
+      <Pressable
+        onPress={handlePress}
+        style={({ pressed }) => [
+          styles.grnCard,
+          isLast && styles.grnCardLast,
+          pressed && styles.grnCardPressed,
+          isSelected && styles.grnCardSelected,
+        ]}
+        accessibilityRole="button"
+        accessibilityLabel={`GRN ${item.gr_no}, ${grnDate}, ${item.customer_name}`}
+        accessibilityState={{ selected: isSelected }}
+        accessibilityActions={[{ name: 'viewGRN', label: 'View GRN' }]}
+        onAccessibilityAction={(e) => {
+          if (e.nativeEvent.actionName === 'viewGRN') handleViewDetails();
+        }}
+      >
+        <View style={styles.grnHeader}>
+          <View style={styles.grnTitleRow}>
+            <Icon name="package-down" size={iconSize.md} color={t.brand.tint} />
+            <Text style={styles.grnNumber}>GRN {item.gr_no}</Text>
           </View>
+          {isSelected && (
+            <Icon name="check-circle" size={iconSize.lg} color={t.brand.tint} />
+          )}
+        </View>
 
-          <View style={styles.grnMeta}>
-            <View style={itemStyles.metaBadge}>
-              <Icon name="calendar" size={12} color={colorValues.blue} />
-              <Text style={itemStyles.metaText}>{grnDate}</Text>
-            </View>
-            <View style={itemStyles.metaBadge}>
-              <Icon name="account" size={12} color={colorValues.success} />
-              <Text style={itemStyles.metaText} numberOfLines={1}>
-                {item.customer_name}
-              </Text>
-            </View>
+        <View style={styles.grnMeta}>
+          <View style={styles.metaBadge}>
+            <Icon name="calendar-outline" size={iconSize.sm} color={t.status.neutral.text} />
+            <Text style={styles.metaText} maxFontSizeMultiplier={1.6}>{grnDate}</Text>
           </View>
-
-          <View style={styles.grnDetails}>
-            <View style={styles.detailRow}>
-              <Icon name="arrow-right-bold" size={14} color={colorValues.textSecondary} />
-              <Text style={itemStyles.detailText}>Tap to select</Text>
-            </View>
+          <View style={styles.metaBadge}>
+            <Icon name="account-outline" size={iconSize.sm} color={t.status.neutral.text} />
+            <Text style={styles.metaText} numberOfLines={1} maxFontSizeMultiplier={1.6}>
+              {item.customer_name}
+            </Text>
           </View>
         </View>
-      </TouchableOpacity>
+      </Pressable>
     </Swipeable>
   );
 }, (prevProps, nextProps) => {
@@ -453,6 +623,8 @@ export const GRNAutocompleteBottomSheet: React.FC<GRNAutocompleteBottomSheetProp
 }) => {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
 
   // State - NO searchQuery state here! CustomKeyboard manages its own display state
   const [grnList, setGrnList] = useState<GRNAutocompleteItem[]>([]);
@@ -462,142 +634,6 @@ export const GRNAutocompleteBottomSheet: React.FC<GRNAutocompleteBottomSheetProp
   const [prefixes, setPrefixes] = useState<GRNPrefixWithStock[]>([]);
   const [isPrefixesLoading, setIsPrefixesLoading] = useState(false);
   const [hasSearchQuery, setHasSearchQuery] = useState(false); // Track if there's a search query
-
-  // Theme colors for dark mode support
-  const colors = useListColors();
-
-  // Extract primitive color values for stable memoization
-  // This prevents dynamicStyles from being recreated on every render
-  const colorValues = useMemo(() => ({
-    cellBackground: colors.cellBackground,
-    cellDivider: colors.cellDivider,
-    textPrimary: colors.textPrimary,
-    textSecondary: colors.textSecondary,
-    textTertiary: colors.textTertiary,
-    gray50: colors.gray50,
-    gray100: colors.gray100,
-    gray200: colors.gray200,
-    gray300: colors.gray300,
-    orangeLight: colors.orangeLight,
-    blueLight: colors.blueLight,
-    primary: colors.primary,
-    primaryLight: colors.primaryLight,
-    blue: colors.blue,
-    white: colors.white,
-    success: colors.success,
-  }), [
-    colors.cellBackground,
-    colors.cellDivider,
-    colors.textPrimary,
-    colors.textSecondary,
-    colors.textTertiary,
-    colors.gray50,
-    colors.gray100,
-    colors.gray200,
-    colors.gray300,
-    colors.orangeLight,
-    colors.blueLight,
-    colors.primary,
-    colors.primaryLight,
-    colors.blue,
-    colors.white,
-    colors.success,
-  ]);
-
-  // Keyboard color values - subset for CustomKeyboard
-  const keyboardColorValues = useMemo(() => ({
-    primary: colorValues.primary,
-    textSecondary: colorValues.textSecondary,
-    textTertiary: colorValues.textTertiary,
-    gray50: colorValues.gray50,
-    gray100: colorValues.gray100,
-    gray200: colorValues.gray200,
-    orangeLight: colorValues.orangeLight,
-    blueLight: colorValues.blueLight,
-  }), [colorValues]);
-
-  // List item color values - subset for GRNListItem
-  const listItemColorValues = useMemo(() => ({
-    primary: colorValues.primary,
-    primaryLight: colorValues.primaryLight,
-    blue: colorValues.blue,
-    white: colorValues.white,
-    success: colorValues.success,
-    textSecondary: colorValues.textSecondary,
-    cellBackground: colorValues.cellBackground,
-    cellDivider: colorValues.cellDivider,
-    gray100: colorValues.gray100,
-  }), [colorValues]);
-
-  // Dynamic styles - only for main component elements (header, container, hints, etc.)
-  const dynamicStyles = useMemo(() => ({
-    sheetContainer: {
-      backgroundColor: colorValues.cellBackground,
-      borderTopLeftRadius: 20,
-      borderTopRightRadius: 20,
-      maxHeight: SCREEN_HEIGHT,
-      flex: 1,
-    },
-    header: {
-      flexDirection: 'row' as const,
-      alignItems: 'center' as const,
-      paddingHorizontal: 20,
-      paddingVertical: 16,
-      borderBottomWidth: 1,
-      borderBottomColor: colorValues.cellDivider,
-      gap: 12,
-    },
-    headerTitle: {
-      flex: 1,
-      fontSize: 18,
-      fontWeight: '600' as const,
-      color: colorValues.textPrimary,
-    },
-    hintContainer: {
-      flexDirection: 'row' as const,
-      alignItems: 'center' as const,
-      gap: 6,
-      paddingHorizontal: 20,
-      paddingVertical: 8,
-      backgroundColor: colorValues.blueLight,
-    },
-    hintText: {
-      fontSize: 12,
-      color: colorValues.textSecondary,
-    },
-    resultsCountContainer: {
-      paddingHorizontal: 20,
-      paddingVertical: 8,
-      backgroundColor: colorValues.gray50,
-      borderBottomWidth: 1,
-      borderBottomColor: colorValues.cellDivider,
-    },
-    resultsCount: {
-      fontSize: 13,
-      fontWeight: '500' as const,
-      color: colorValues.textSecondary,
-    },
-    emptyContainer: {
-      flex: 1,
-      justifyContent: 'center' as const,
-      alignItems: 'center' as const,
-      paddingVertical: 60,
-      paddingHorizontal: 40,
-    },
-    emptyText: {
-      fontSize: 16,
-      fontWeight: '600' as const,
-      color: colorValues.textSecondary,
-      marginTop: 16,
-      textAlign: 'center' as const,
-    },
-    emptySubtext: {
-      fontSize: 14,
-      color: colorValues.textTertiary,
-      marginTop: 8,
-      textAlign: 'center' as const,
-    },
-  }), [colorValues]);
 
   // Fetch prefixes and default GRNs when modal opens
   useEffect(() => {
@@ -708,9 +744,8 @@ export const GRNAutocompleteBottomSheet: React.FC<GRNAutocompleteBottomSheetProp
       isLast={index === displayList.length - 1}
       onSelect={handleGRNSelect}
       onViewDetails={handleViewGRNDetails}
-      colorValues={listItemColorValues}
     />
-  ), [currentValue?.id, displayList.length, handleGRNSelect, handleViewGRNDetails, listItemColorValues]);
+  ), [currentValue?.id, displayList.length, handleGRNSelect, handleViewGRNDetails]);
 
   // FlatList keyExtractor
   const keyExtractor = useCallback((item: GRNAutocompleteItem) => item.id, []);
@@ -719,10 +754,10 @@ export const GRNAutocompleteBottomSheet: React.FC<GRNAutocompleteBottomSheetProp
   const ListEmptyComponent = useMemo(() => {
     if (isLoading || isLoadingDefaults) {
       return (
-        <View style={dynamicStyles.emptyContainer}>
-          <ActivityIndicator size="large" color={colorValues.primary} />
-          <Text style={dynamicStyles.emptyText}>
-            {isLoading ? 'Searching GRNs...' : 'Loading GRNs...'}
+        <View style={styles.emptyContainer}>
+          <ActivityIndicator size="large" color={t.brand.tint} />
+          <Text style={styles.emptySubtext}>
+            {isLoading ? 'Searching GRNs…' : 'Loading GRNs…'}
           </Text>
         </View>
       );
@@ -730,32 +765,34 @@ export const GRNAutocompleteBottomSheet: React.FC<GRNAutocompleteBottomSheetProp
 
     if (hasSearchQuery && grnList.length === 0) {
       return (
-        <View style={dynamicStyles.emptyContainer}>
-          <Icon name="package-variant-closed" size={48} color={colorValues.gray300} />
-          <Text style={dynamicStyles.emptyText}>No GRNs found</Text>
-          <Text style={dynamicStyles.emptySubtext}>Try a different search term</Text>
+        <View style={styles.emptyContainer}>
+          <Icon name="magnify" size={iconSize.hero} color={t.icon.secondary} />
+          <Text style={styles.emptyText}>No GRNs match</Text>
+          <Text style={styles.emptySubtext}>Try fewer digits or another prefix.</Text>
         </View>
       );
     }
 
     if (defaultGrnList.length === 0 && !customerId) {
       return (
-        <View style={dynamicStyles.emptyContainer}>
-          <Icon name="account-alert" size={48} color={colorValues.gray300} />
-          <Text style={dynamicStyles.emptyText}>No customer selected</Text>
-          <Text style={dynamicStyles.emptySubtext}>Select a customer in the Info step first</Text>
+        <View style={styles.emptyContainer}>
+          <Icon name="account-outline" size={iconSize.hero} color={t.icon.secondary} />
+          <Text style={styles.emptyText}>No customer chosen</Text>
+          <Text style={styles.emptySubtext}>
+            Search by GRN number, or choose a customer in the first step.
+          </Text>
         </View>
       );
     }
 
     return (
-      <View style={dynamicStyles.emptyContainer}>
-        <Icon name="package-variant-closed" size={48} color={colorValues.gray300} />
-        <Text style={dynamicStyles.emptyText}>No GRNs with stock</Text>
-        <Text style={dynamicStyles.emptySubtext}>This customer has no GRNs with available stock</Text>
+      <View style={styles.emptyContainer}>
+        <Icon name="package-variant-closed" size={iconSize.hero} color={t.icon.secondary} />
+        <Text style={styles.emptyText}>No GRNs with stock</Text>
+        <Text style={styles.emptySubtext}>This customer has no GRNs with stock left to dispatch.</Text>
       </View>
     );
-  }, [isLoading, isLoadingDefaults, hasSearchQuery, grnList.length, defaultGrnList.length, customerId, dynamicStyles, colorValues]);
+  }, [isLoading, isLoadingDefaults, hasSearchQuery, grnList.length, defaultGrnList.length, customerId, styles, t]);
 
   return (
     <Modal
@@ -768,148 +805,80 @@ export const GRNAutocompleteBottomSheet: React.FC<GRNAutocompleteBottomSheetProp
       <GestureHandlerRootView style={{ flex: 1 }}>
         <View style={styles.modalOverlay}>
           {/* Backdrop */}
-          <Pressable style={styles.backdrop} onPress={handleClose} />
+          <Pressable
+            style={styles.backdrop}
+            onPress={handleClose}
+            accessibilityRole="button"
+            accessibilityLabel="Close GRN list"
+          />
 
-        {/* Bottom Sheet Content */}
-        <View style={[dynamicStyles.sheetContainer, { paddingBottom: insets.bottom }]}>
-          {/* Header with safe area padding */}
-          <View style={[dynamicStyles.header, { paddingTop: insets.top + 16 }]}>
-            <Icon name="clipboard-text" size={24} color={colorValues.primary} />
-            <Text style={dynamicStyles.headerTitle}>Select GRN</Text>
-            <TouchableOpacity
-              onPress={handleClose}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            >
-              <Icon name="close" size={24} color={colorValues.textSecondary} />
-            </TouchableOpacity>
+          {/* Bottom Sheet Content */}
+          <View style={[styles.sheetContainer, { paddingBottom: insets.bottom }]} accessibilityViewIsModal>
+            {/* Header with safe area padding */}
+            <View style={[styles.header, { paddingTop: insets.top + space.sm }]}>
+              <Text style={styles.headerTitle} accessibilityRole="header">Choose GRN</Text>
+              <Pressable
+                onPress={handleClose}
+                style={({ pressed }) => [styles.closeButton, pressed && styles.closeButtonPressed]}
+                accessibilityRole="button"
+                accessibilityLabel="Close GRN list"
+              >
+                <Icon name="close" size={iconSize.lg} color={t.icon.primary} />
+              </Pressable>
+            </View>
+
+            {/* Results Count */}
+            {displayList.length > 0 && (
+              <View style={styles.resultsCountContainer}>
+                <Text style={styles.resultsCount} accessibilityRole="header">
+                  {hasSearchQuery
+                    ? `${displayList.length} ${displayList.length === 1 ? 'GRN' : 'GRNs'} found`
+                    : `${displayList.length} ${displayList.length === 1 ? 'GRN' : 'GRNs'} with stock`
+                  }
+                </Text>
+              </View>
+            )}
+
+            {/* Results List - Virtualized FlatList */}
+            <FlatList
+              data={displayList}
+              renderItem={renderItem}
+              keyExtractor={keyExtractor}
+              ListEmptyComponent={ListEmptyComponent}
+              contentContainerStyle={styles.listContent}
+              showsVerticalScrollIndicator={true}
+              style={styles.scrollView}
+              keyboardShouldPersistTaps="handled"
+              // Performance optimizations
+              removeClippedSubviews={true}
+              maxToRenderPerBatch={10}
+              windowSize={5}
+              initialNumToRender={8}
+              getItemLayout={(_, index) => ({
+                length: GRN_ROW_HEIGHT,
+                offset: GRN_ROW_HEIGHT * index,
+                index,
+              })}
+            />
+
+            {/* Hints */}
+            {displayList.length > 0 && (
+              <View style={styles.hintContainer}>
+                <Icon name="gesture-swipe-left" size={iconSize.sm} color={t.icon.secondary} />
+                <Text style={styles.hintText}>Tap a GRN to choose it. Swipe left to view it.</Text>
+              </View>
+            )}
+
+            {/* Search field and keypad - always visible, within thumb reach */}
+            <CustomKeyboard
+              prefixes={prefixes}
+              isPrefixesLoading={isPrefixesLoading}
+              onSearch={handleSearch}
+              onClear={handleClear}
+            />
           </View>
-
-          {/* Results Count */}
-          {displayList.length > 0 && (
-            <View style={dynamicStyles.resultsCountContainer}>
-              <Text style={dynamicStyles.resultsCount}>
-                {hasSearchQuery
-                  ? `${displayList.length} GRN${displayList.length !== 1 ? 's' : ''} found`
-                  : `${displayList.length} GRN${displayList.length !== 1 ? 's' : ''} available`
-                }
-              </Text>
-            </View>
-          )}
-
-          {/* Results List - Virtualized FlatList */}
-          <FlatList
-            data={displayList}
-            renderItem={renderItem}
-            keyExtractor={keyExtractor}
-            ListEmptyComponent={ListEmptyComponent}
-            contentContainerStyle={styles.listContent}
-            showsVerticalScrollIndicator={true}
-            style={styles.scrollView}
-            keyboardShouldPersistTaps="handled"
-            // Performance optimizations
-            removeClippedSubviews={true}
-            maxToRenderPerBatch={10}
-            windowSize={5}
-            initialNumToRender={8}
-            getItemLayout={(_, index) => ({
-              length: 100, // Approximate item height
-              offset: 100 * index,
-              index,
-            })}
-          />
-
-          {/* Hints */}
-          {displayList.length > 0 && (
-            <View style={dynamicStyles.hintContainer}>
-              <Icon name="hand-pointing-up" size={16} color={colorValues.primary} />
-              <Text style={dynamicStyles.hintText}>Tap to select • </Text>
-              <Icon name="gesture-swipe-left" size={16} color={colorValues.textSecondary} />
-              <Text style={dynamicStyles.hintText}>Swipe left for details</Text>
-            </View>
-          )}
-
-          {/* Custom Keyboard - manages its own state for instant response */}
-          <CustomKeyboard
-            prefixes={prefixes}
-            isPrefixesLoading={isPrefixesLoading}
-            onSearch={handleSearch}
-            onClear={handleClear}
-            colorValues={keyboardColorValues}
-          />
-        </View>
         </View>
       </GestureHandlerRootView>
     </Modal>
   );
 };
-
-// Static styles (layout only - colors are in dynamicStyles or sub-components)
-const styles = StyleSheet.create({
-  modalOverlay: {
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
-  backdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-  },
-  scrollView: {
-    flex: 1,
-  },
-  // Used by CustomKeyboard
-  searchIcon: {
-    marginRight: 8,
-  },
-  quickInputContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    paddingHorizontal: 16,
-    paddingBottom: 12,
-    gap: 8,
-    justifyContent: 'center',
-  },
-  prefixLoadingContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 8,
-    width: '100%',
-  },
-  noPrefixContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 8,
-    width: '100%',
-  },
-  listContent: {
-    flexGrow: 1,
-    paddingBottom: 20,
-  },
-  // Used by GRNListItem
-  grnHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-  },
-  grnMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 8,
-  },
-  grnDetails: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-    marginLeft: 0,
-  },
-  detailRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-});

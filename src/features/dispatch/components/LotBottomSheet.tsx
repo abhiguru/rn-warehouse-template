@@ -3,6 +3,9 @@
  * Shows lots (GRN line items) for a selected item from a GRN
  * Used in dispatch form Step 2 after item is selected
  *
+ * Bottom sheet per docs/STYLE_GUIDE.md §13.9; lot availability is shown as a
+ * status tag with an icon and a word (§3.5).
+ *
  * Features:
  * - Tap to select lot
  * - Swipe left to view GRN details
@@ -12,9 +15,10 @@ import React, { useCallback, useMemo, useRef, useEffect } from 'react';
 import {
   View,
   Text,
-  TouchableOpacity,
+  Pressable,
   StyleSheet,
   Keyboard,
+  BackHandler,
 } from 'react-native';
 import {
   BottomSheetModal,
@@ -25,8 +29,18 @@ import {
 import { Swipeable } from 'react-native-gesture-handler';
 import { useRouter, Href } from 'expo-router';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import theme from '@/theme';
-import { useListColors } from '@/hooks/useListColors';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import {
+  fontWeight,
+  iconSize,
+  layout,
+  radius,
+  space,
+  touchTarget,
+  typography,
+} from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
 import type { GRNDetailItem } from '@/types/dispatch.types';
 
 interface LotBottomSheetProps {
@@ -46,6 +60,204 @@ interface LotBottomSheetProps {
   addedLotIds?: string[];
 }
 
+const makeStyles = (t: ThemeTokens) => ({
+  sheetBackground: {
+    backgroundColor: t.surface.sheet,
+    borderTopLeftRadius: radius.sheet,
+    borderTopRightRadius: radius.sheet,
+    ...t.shadow[4],
+  },
+  handleIndicator: {
+    backgroundColor: t.border.separator,
+    width: 36,
+    height: 4,
+  },
+  header: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    paddingLeft: layout.marginCompact,
+    paddingRight: space.xs,
+    minHeight: touchTarget + space.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.divider,
+    gap: space.sm,
+  },
+  headerTitle: {
+    ...typography.headline,
+    flex: 1,
+    color: t.text.primary,
+  },
+  closeButton: {
+    width: touchTarget,
+    height: touchTarget,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    borderRadius: radius.pill,
+  },
+  closeButtonPressed: {
+    backgroundColor: t.surface.cardPressed,
+  },
+  countContainer: {
+    paddingHorizontal: layout.marginCompact,
+    paddingVertical: space.md,
+    gap: space.xs,
+  },
+  countText: {
+    ...typography.subhead,
+    fontWeight: fontWeight.semibold,
+    color: t.text.primary,
+  },
+  countSubtext: {
+    ...typography.footnote,
+    color: t.text.secondary,
+  },
+  lotCard: {
+    marginHorizontal: layout.marginCompact,
+    marginVertical: space.xs,
+    padding: space.lg,
+    backgroundColor: t.surface.card,
+    borderRadius: radius.card,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: t.border.divider,
+  },
+  lotCardPressed: {
+    backgroundColor: t.surface.cardPressed,
+  },
+  lotCardSelected: {
+    borderColor: t.brand.tint,
+    borderWidth: 2,
+    backgroundColor: t.surface.selected,
+  },
+  lotCardDisabled: {
+    opacity: t.interaction.disabledOpacity,
+    borderStyle: 'dashed' as const,
+    borderWidth: 1,
+    borderColor: t.border.button,
+  },
+  lotContent: {
+    gap: space.md,
+  },
+  lotHeader: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
+    gap: space.sm,
+  },
+  headerBadges: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.sm,
+  },
+  lotTitle: {
+    ...typography.headline,
+    color: t.text.primary,
+    flex: 1,
+  },
+  statusTag: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.xs,
+    paddingHorizontal: space.sm,
+    paddingVertical: space.xxs,
+    borderRadius: radius.field,
+  },
+  statusTagText: {
+    ...typography.caption1,
+    fontWeight: fontWeight.semibold,
+  },
+  lotDetails: {
+    gap: space.sm,
+  },
+  detailRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.sm,
+  },
+  detailLabel: {
+    ...typography.subhead,
+    color: t.text.secondary,
+    minWidth: 100,
+  },
+  detailValue: {
+    ...typography.subhead,
+    fontWeight: fontWeight.semibold,
+    color: t.text.primary,
+    flex: 1,
+    fontVariant: ['tabular-nums' as const],
+  },
+  hintContainer: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    flexWrap: 'wrap' as const,
+    gap: space.s6,
+    marginHorizontal: layout.marginCompact,
+    marginBottom: space.sm,
+    padding: space.md,
+    borderRadius: radius.button,
+    borderWidth: 1,
+    borderColor: t.status.informative.border,
+    backgroundColor: t.status.informative.background,
+  },
+  hintText: {
+    ...typography.footnote,
+    color: t.status.informative.text,
+  },
+  viewAction: {
+    backgroundColor: t.brand.fill,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    width: 90,
+    marginVertical: space.xs,
+    marginRight: layout.marginCompact,
+    borderRadius: radius.card,
+    gap: space.xs,
+  },
+  viewActionPressed: {
+    backgroundColor: t.brand.fillPressed,
+  },
+  viewActionText: {
+    ...typography.caption1,
+    fontWeight: fontWeight.semibold,
+    color: t.brand.onFill,
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    paddingVertical: space.max,
+    paddingHorizontal: space.huge,
+  },
+  emptyText: {
+    ...typography.title3,
+    color: t.text.primary,
+    marginTop: space.lg,
+    textAlign: 'center' as const,
+  },
+  emptySubtext: {
+    ...typography.subhead,
+    color: t.text.secondary,
+    marginTop: space.sm,
+    textAlign: 'center' as const,
+  },
+  allAddedBanner: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.sm,
+    marginHorizontal: layout.marginCompact,
+    marginVertical: space.md,
+    padding: space.md,
+    backgroundColor: t.status.critical.background,
+    borderRadius: radius.button,
+    borderWidth: 1,
+    borderColor: t.status.critical.border,
+  },
+  allAddedBannerText: {
+    ...typography.footnote,
+    flex: 1,
+    color: t.status.critical.text,
+  },
+});
+
 export const LotBottomSheet: React.FC<LotBottomSheetProps> = ({
   isVisible,
   onClose,
@@ -57,183 +269,9 @@ export const LotBottomSheet: React.FC<LotBottomSheetProps> = ({
 }) => {
   const bottomSheetRef = useRef<BottomSheetModal>(null);
   const router = useRouter();
-
-  // Theme colors for dark mode support
-  const colors = useListColors();
-
-  // Dynamic styles based on theme
-  const dynamicStyles = useMemo(() => StyleSheet.create({
-    header: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      paddingHorizontal: 20,
-      paddingVertical: 16,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.cellDivider,
-      gap: 12,
-    },
-    headerTitle: {
-      flex: 1,
-      fontSize: 18,
-      fontWeight: '600',
-      color: colors.textPrimary,
-    },
-    countContainer: {
-      paddingHorizontal: 20,
-      paddingVertical: 12,
-      backgroundColor: colors.gray50,
-      gap: 4,
-    },
-    countText: {
-      fontSize: 14,
-      fontWeight: '600',
-      color: colors.textPrimary,
-    },
-    countSubtext: {
-      fontSize: 12,
-      color: colors.textSecondary,
-    },
-    lotCard: {
-      marginHorizontal: 20,
-      marginVertical: 6,
-      padding: 16,
-      backgroundColor: colors.cellBackground,
-      borderRadius: 12,
-      borderWidth: 1,
-      borderColor: colors.gray200,
-    },
-    lotCardSelected: {
-      borderColor: colors.primary,
-      borderWidth: 2,
-      backgroundColor: colors.primaryLight,
-    },
-    lotCardDisabled: {
-      opacity: 0.5,
-      borderColor: colors.gray300,
-      borderStyle: 'dashed' as const,
-    },
-    alreadyAddedBadge: {
-      backgroundColor: colors.warning,
-      paddingHorizontal: 8,
-      paddingVertical: 2,
-      borderRadius: 4,
-      marginLeft: 8,
-    },
-    alreadyAddedText: {
-      fontSize: 11,
-      fontWeight: '600',
-      color: colors.white,
-    },
-    lotTitle: {
-      fontSize: 16,
-      fontWeight: '600',
-      color: colors.textPrimary,
-      flex: 1,
-    },
-    lotTitleSelected: {
-      color: colors.primary,
-      fontWeight: '700',
-    },
-    stockValueBadge: {
-      backgroundColor: colors.success,
-      paddingHorizontal: 8,
-      paddingVertical: 2,
-      borderRadius: 4,
-    },
-    stockValueText: {
-      fontSize: 14,
-      fontWeight: '700',
-      color: colors.white,
-    },
-    outOfStockBadge: {
-      backgroundColor: colors.gray400,
-      paddingHorizontal: 8,
-      paddingVertical: 2,
-      borderRadius: 4,
-    },
-    outOfStockText: {
-      fontSize: 11,
-      fontWeight: '600',
-      color: colors.white,
-    },
-    detailLabel: {
-      fontSize: 14,
-      fontWeight: '500',
-      color: colors.textSecondary,
-      minWidth: 100,
-    },
-    detailValue: {
-      fontSize: 14,
-      fontWeight: '600',
-      color: colors.textPrimary,
-      flex: 1,
-    },
-    hintContainer: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 6,
-      paddingHorizontal: 20,
-      paddingVertical: 8,
-      backgroundColor: colors.blueLight,
-    },
-    hintText: {
-      fontSize: 12,
-      color: colors.textSecondary,
-    },
-    viewAction: {
-      backgroundColor: colors.blue,
-      justifyContent: 'center',
-      alignItems: 'center',
-      width: 90,
-      marginVertical: 6,
-      marginRight: 20,
-      borderRadius: 12,
-      gap: 4,
-    },
-    viewActionText: {
-      fontSize: 12,
-      fontWeight: '600',
-      color: colors.white,
-    },
-    emptyContainer: {
-      flex: 1,
-      justifyContent: 'center',
-      alignItems: 'center',
-      paddingVertical: 60,
-      paddingHorizontal: 40,
-    },
-    emptyText: {
-      fontSize: 16,
-      fontWeight: '600',
-      color: colors.textSecondary,
-      marginTop: 16,
-      textAlign: 'center',
-    },
-    emptySubtext: {
-      fontSize: 14,
-      color: colors.textTertiary,
-      marginTop: 8,
-      textAlign: 'center',
-    },
-    allAddedBanner: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 8,
-      marginHorizontal: 20,
-      marginVertical: 12,
-      padding: 12,
-      backgroundColor: colors.warningLight,
-      borderRadius: 8,
-      borderWidth: 1,
-      borderColor: colors.warning,
-    },
-    allAddedBannerText: {
-      flex: 1,
-      fontSize: 13,
-      fontWeight: '500',
-      color: colors.textPrimary,
-    },
-  }), [colors]);
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
+  const insets = useSafeAreaInsets();
 
   // Snap points for the bottom sheet - full screen
   const snapPoints = useMemo(() => ['100%'], []);
@@ -258,7 +296,6 @@ export const LotBottomSheet: React.FC<LotBottomSheetProps> = ({
   // Handle sheet changes
   const handleSheetChanges = useCallback(
     (index: number) => {
-      console.log('[LotBottomSheet] Sheet index changed to:', index);
       if (index === -1) {
         onClose();
       }
@@ -273,16 +310,16 @@ export const LotBottomSheet: React.FC<LotBottomSheetProps> = ({
         {...props}
         disappearsOnIndex={-1}
         appearsOnIndex={0}
-        opacity={0.5}
+        opacity={1}
+        style={[props.style, { backgroundColor: t.overlay.scrim }]}
       />
     ),
-    []
+    [t]
   );
 
   // Handle lot selection
   const handleLotSelect = useCallback(
     (lot: GRNDetailItem) => {
-      console.log('[LotBottomSheet] Lot selected:', lot.id);
       onSelect(lot);
       bottomSheetRef.current?.dismiss();
     },
@@ -292,10 +329,8 @@ export const LotBottomSheet: React.FC<LotBottomSheetProps> = ({
   // Handle view GRN details (swipe action)
   const handleViewGRNDetails = useCallback(() => {
     if (!grnInfo?.id) {
-      console.warn('[LotBottomSheet] No GRN info available for navigation');
       return;
     }
-    console.log('[LotBottomSheet] Viewing GRN details:', grnInfo.gr_no);
     onClose();
     // Navigate to GRN details screen
     router.push(`/grn-details/${grnInfo.id}` as Href);
@@ -306,16 +341,32 @@ export const LotBottomSheet: React.FC<LotBottomSheetProps> = ({
     if (!grnInfo) return null;
 
     return (
-      <TouchableOpacity
-        style={dynamicStyles.viewAction}
+      <Pressable
+        style={({ pressed }) => [styles.viewAction, pressed && styles.viewActionPressed]}
         onPress={handleViewGRNDetails}
-        activeOpacity={0.7}
+        accessibilityRole="button"
+        accessibilityLabel={`View GRN ${grnInfo.gr_no}`}
       >
-        <Icon name="eye" size={24} color={colors.white} />
-        <Text style={dynamicStyles.viewActionText}>View GRN</Text>
-      </TouchableOpacity>
+        <Icon name="eye-outline" size={iconSize.lg} color={t.brand.onFill} />
+        <Text style={styles.viewActionText}>View GRN</Text>
+      </Pressable>
     );
-  }, [grnInfo, handleViewGRNDetails, dynamicStyles, colors]);
+  }, [grnInfo, handleViewGRNDetails, styles, t]);
+
+  const renderStatusTag = useCallback(
+    (kind: 'negative' | 'informative', icon: string, label: string) => (
+      <View style={[styles.statusTag, { backgroundColor: t.status[kind].background }]}>
+        <Icon name={icon} size={iconSize.sm} color={t.status[kind].text} />
+        <Text
+          style={[styles.statusTagText, { color: t.status[kind].text }]}
+          maxFontSizeMultiplier={1.6}
+        >
+          {label}
+        </Text>
+      </View>
+    ),
+    [styles, t]
+  );
 
   // Render lot item
   const renderLotItem = useCallback(
@@ -330,41 +381,46 @@ export const LotBottomSheet: React.FC<LotBottomSheetProps> = ({
       // Lot is disabled if already added OR out of stock
       const isDisabled = isAlreadyAdded || isOutOfStock;
 
-      // Primary display: "GRN Qty: [Qty] - [Package Mark]" or just "GRN Qty: [Qty]" if no package mark
+      // Primary display: "GRN qty [Qty] · [Package Mark]" or just "GRN qty [Qty]"
       const lotDisplayText = item.package_mark
-        ? `GRN Qty: ${item.quantity} - ${item.package_mark}`
-        : `GRN Qty: ${item.quantity}`;
+        ? `GRN qty ${item.quantity} · ${item.package_mark}`
+        : `GRN qty ${item.quantity}`;
+      const stateLabel = isOutOfStock
+        ? 'out of stock'
+        : isAlreadyAdded
+          ? 'already added'
+          : `${item.stock} in stock`;
+
+      const canViewGRN = !!grnInfo && !isDisabled;
 
       const lotContent = (
-        <TouchableOpacity
-          style={[
-            dynamicStyles.lotCard,
-            isSelected && !isDisabled && dynamicStyles.lotCardSelected,
-            isDisabled && dynamicStyles.lotCardDisabled,
+        <Pressable
+          style={({ pressed }) => [
+            styles.lotCard,
+            pressed && !isDisabled && styles.lotCardPressed,
+            isSelected && !isDisabled && styles.lotCardSelected,
+            isDisabled && styles.lotCardDisabled,
           ]}
           onPress={() => !isDisabled && handleLotSelect(item)}
-          activeOpacity={isDisabled ? 1 : 0.7}
           disabled={isDisabled}
+          accessibilityRole="button"
+          accessibilityLabel={`${lotDisplayText}${item.rack ? `, rack ${item.rack}` : ''}, ${stateLabel}`}
+          accessibilityState={{ selected: isSelected && !isDisabled, disabled: isDisabled }}
+          accessibilityActions={canViewGRN ? [{ name: 'viewGRN', label: 'View GRN' }] : undefined}
+          onAccessibilityAction={(e) => {
+            if (e.nativeEvent.actionName === 'viewGRN') handleViewGRNDetails();
+          }}
         >
           <View style={styles.lotContent}>
             {/* Lot Header - Primary identifier */}
             <View style={styles.lotHeader}>
-              <Text style={[dynamicStyles.lotTitle, isSelected && !isDisabled && dynamicStyles.lotTitleSelected]}>
-                {lotDisplayText}
-              </Text>
+              <Text style={styles.lotTitle}>{lotDisplayText}</Text>
               <View style={styles.headerBadges}>
-                {isOutOfStock && (
-                  <View style={dynamicStyles.outOfStockBadge}>
-                    <Text style={dynamicStyles.outOfStockText}>Out of Stock</Text>
-                  </View>
-                )}
-                {isAlreadyAdded && !isOutOfStock && (
-                  <View style={dynamicStyles.alreadyAddedBadge}>
-                    <Text style={dynamicStyles.alreadyAddedText}>Already in order</Text>
-                  </View>
-                )}
+                {isOutOfStock && renderStatusTag('negative', 'alert-circle', 'Out of stock')}
+                {isAlreadyAdded && !isOutOfStock &&
+                  renderStatusTag('informative', 'information', 'Already added')}
                 {isSelected && !isDisabled && (
-                  <Icon name="check-circle" size={24} color={colors.primary} />
+                  <Icon name="check-circle" size={iconSize.lg} color={t.brand.tint} />
                 )}
               </View>
             </View>
@@ -372,39 +428,35 @@ export const LotBottomSheet: React.FC<LotBottomSheetProps> = ({
             {/* Lot Details */}
             <View style={styles.lotDetails}>
               <View style={styles.detailRow}>
-                <Icon name="package" size={16} color={colors.textSecondary} />
-                <Text style={dynamicStyles.detailLabel}>In Stock:</Text>
-                {isOutOfStock ? (
-                  <Text style={[dynamicStyles.detailValue, { color: colors.gray400 }]}>0</Text>
-                ) : (
-                  <View style={dynamicStyles.stockValueBadge}>
-                    <Text style={dynamicStyles.stockValueText}>{item.stock}</Text>
-                  </View>
-                )}
+                <Icon name="warehouse" size={iconSize.sm} color={t.icon.secondary} />
+                <Text style={styles.detailLabel}>In stock</Text>
+                <Text style={styles.detailValue}>
+                  {isOutOfStock ? 0 : item.stock} {item.stock === 1 ? 'bag' : 'bags'}
+                </Text>
               </View>
 
               {item.rack && (
                 <View style={styles.detailRow}>
-                  <Icon name="warehouse" size={16} color={colors.textSecondary} />
-                  <Text style={dynamicStyles.detailLabel}>Rack:</Text>
-                  <Text style={dynamicStyles.detailValue}>{item.rack}</Text>
+                  <Icon name="view-grid-outline" size={iconSize.sm} color={t.icon.secondary} />
+                  <Text style={styles.detailLabel}>Rack</Text>
+                  <Text style={styles.detailValue}>{item.rack}</Text>
                 </View>
               )}
 
               {item.weight > 0 && (
                 <View style={styles.detailRow}>
-                  <Icon name="weight" size={16} color={colors.textSecondary} />
-                  <Text style={dynamicStyles.detailLabel}>Weight:</Text>
-                  <Text style={dynamicStyles.detailValue}>{item.weight} kg</Text>
+                  <Icon name="weight" size={iconSize.sm} color={t.icon.secondary} />
+                  <Text style={styles.detailLabel}>Weight</Text>
+                  <Text style={styles.detailValue}>{item.weight} kg</Text>
                 </View>
               )}
             </View>
           </View>
-        </TouchableOpacity>
+        </Pressable>
       );
 
       // Wrap with Swipeable if GRN info is available AND lot is not disabled
-      if (grnInfo && !isDisabled) {
+      if (canViewGRN) {
         return (
           <Swipeable
             renderRightActions={renderRightActions}
@@ -419,21 +471,21 @@ export const LotBottomSheet: React.FC<LotBottomSheetProps> = ({
 
       return lotContent;
     },
-    [currentValue, handleLotSelect, grnInfo, renderRightActions, dynamicStyles, colors, addedLotIds]
+    [currentValue, handleLotSelect, handleViewGRNDetails, grnInfo, renderRightActions, renderStatusTag, styles, t, addedLotIds]
   );
 
   // Empty state - only shown when there are no lots at all for this item
   const renderEmptyState = useCallback(() => {
     return (
-      <View style={dynamicStyles.emptyContainer}>
-        <Icon name="package-variant-closed" size={48} color={colors.gray300} />
-        <Text style={dynamicStyles.emptyText}>No lots found</Text>
-        <Text style={dynamicStyles.emptySubtext}>
-          This item has no lots in this GRN
+      <View style={styles.emptyContainer}>
+        <Icon name="package-variant-closed" size={iconSize.hero} color={t.icon.secondary} />
+        <Text style={styles.emptyText}>No lots found</Text>
+        <Text style={styles.emptySubtext}>
+          This item has no lots in this GRN. Choose another item.
         </Text>
       </View>
     );
-  }, [dynamicStyles, colors]);
+  }, [styles, t]);
 
   // Handle visibility changes
   useEffect(() => {
@@ -446,6 +498,16 @@ export const LotBottomSheet: React.FC<LotBottomSheetProps> = ({
     }
   }, [isVisible]);
 
+  // Android back closes the sheet first
+  useEffect(() => {
+    if (!isVisible) return undefined;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      bottomSheetRef.current?.dismiss();
+      return true;
+    });
+    return () => sub.remove();
+  }, [isVisible]);
+
   return (
     <BottomSheetModal
       ref={bottomSheetRef}
@@ -456,54 +518,53 @@ export const LotBottomSheet: React.FC<LotBottomSheetProps> = ({
       backdropComponent={renderBackdrop}
       enablePanDownToClose
       enableContentPanningGesture={false}
-      backgroundStyle={{ backgroundColor: colors.cellBackground }}
-      handleIndicatorStyle={{ backgroundColor: colors.gray300 }}
+      backgroundStyle={styles.sheetBackground}
+      handleIndicatorStyle={styles.handleIndicator}
     >
       {/* Header */}
-      <View style={dynamicStyles.header}>
-        <Icon name="layers" size={24} color={colors.primary} />
-        <Text style={dynamicStyles.headerTitle}>Select Lot</Text>
-        <TouchableOpacity
+      <View style={styles.header}>
+        <Text style={styles.headerTitle} accessibilityRole="header">Choose lot</Text>
+        <Pressable
           onPress={() => bottomSheetRef.current?.dismiss()}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          style={({ pressed }) => [styles.closeButton, pressed && styles.closeButtonPressed]}
+          accessibilityRole="button"
+          accessibilityLabel="Close lot list"
         >
-          <Icon name="close" size={24} color={colors.textSecondary} />
-        </TouchableOpacity>
+          <Icon name="close" size={iconSize.lg} color={t.icon.primary} />
+        </Pressable>
       </View>
 
       {/* Lot count */}
       {lots.length > 0 && (
-        <View style={dynamicStyles.countContainer}>
-          <Text style={dynamicStyles.countText}>
+        <View style={styles.countContainer}>
+          <Text style={styles.countText}>
             {availableLotsCount > 0
-              ? `${availableLotsCount} ${availableLotsCount === 1 ? 'lot' : 'lots'} available`
-              : 'No lots available'}
+              ? `${availableLotsCount} ${availableLotsCount === 1 ? 'lot' : 'lots'} in stock`
+              : 'No lots in stock'}
             {outOfStockLotsCount > 0 && ` (${outOfStockLotsCount} out of stock)`}
           </Text>
-          <Text style={dynamicStyles.countSubtext}>
+          <Text style={styles.countSubtext}>
             {availableLotsCount > 0
-              ? 'Select a lot to dispatch from'
-              : 'All lots have been fully dispatched'}
+              ? 'Choose the lot to dispatch from.'
+              : 'Every lot of this item has been dispatched.'}
           </Text>
         </View>
       )}
 
       {/* Hints */}
       {availableLotsCount > 0 && grnInfo && !allLotsAlreadyAdded && (
-        <View style={dynamicStyles.hintContainer}>
-          <Icon name="hand-pointing-up" size={16} color={colors.primary} />
-          <Text style={dynamicStyles.hintText}>Tap to select • </Text>
-          <Icon name="gesture-swipe-left" size={16} color={colors.textSecondary} />
-          <Text style={dynamicStyles.hintText}>Swipe left for GRN details</Text>
+        <View style={styles.hintContainer}>
+          <Icon name="information" size={iconSize.sm} color={t.status.informative.text} />
+          <Text style={styles.hintText}>Tap a lot to choose it. Swipe left to view the GRN.</Text>
         </View>
       )}
 
       {/* All lots already added banner */}
       {allLotsAlreadyAdded && (
-        <View style={dynamicStyles.allAddedBanner}>
-          <Icon name="alert-circle" size={20} color={colors.warning} />
-          <Text style={dynamicStyles.allAddedBannerText}>
-            All lots from this item have already been added to the order
+        <View style={styles.allAddedBanner} accessibilityRole="alert">
+          <Icon name="alert" size={iconSize.md} color={t.status.critical.text} />
+          <Text style={styles.allAddedBannerText}>
+            Every lot of this item is already in this dispatch.
           </Text>
         </View>
       )}
@@ -512,40 +573,11 @@ export const LotBottomSheet: React.FC<LotBottomSheetProps> = ({
       <BottomSheetFlatList
         data={lots}
         renderItem={renderLotItem}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.listContent}
+        keyExtractor={(item: GRNDetailItem) => item.id}
+        contentContainerStyle={{ paddingBottom: space.xl + insets.bottom }}
         ListEmptyComponent={renderEmptyState}
         showsVerticalScrollIndicator={true}
       />
     </BottomSheetModal>
   );
 };
-
-// Static styles (layout only - colors are in dynamicStyles)
-const styles = StyleSheet.create({
-  listContent: {
-    paddingHorizontal: 0,
-    paddingBottom: 20,
-  },
-  lotContent: {
-    gap: 12,
-  },
-  lotHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  headerBadges: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  lotDetails: {
-    gap: 8,
-  },
-  detailRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-});
