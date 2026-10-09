@@ -14,16 +14,6 @@ jest.mock('@/store/hooks', () => ({
     sel({ theme: { preference: 'dark', brand: 'orange' } }),
 }));
 
-// GRNItemsTab still reads the legacy list palette; serve it from the semantic tokens.
-jest.mock('@/hooks/useListColors', () => {
-  const { getTokens } = jest.requireActual('@/theme/tokens');
-  const t = getTokens('orange', 'dark');
-  return {
-    useListColors: () =>
-      new Proxy({}, { get: (_target, key) => (key === 'primary' ? t.brand.tint : t.text.primary) }),
-  };
-});
-
 jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('@/components/grn-details/GRNItemDispatchTable', () => ({
   GRNItemDispatchTable: () => {
