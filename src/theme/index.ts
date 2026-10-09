@@ -7,6 +7,8 @@
  */
 
 import { Platform, TextStyle, ViewStyle } from 'react-native';
+import { getTokens, type Brand } from './tokens/semantic';
+import { gcsaNavy as gcsaNavyRef } from './tokens/reference';
 
 // ============================================================================
 // TYPE DEFINITIONS
@@ -864,17 +866,61 @@ export const darkColors: Colors = {
  * @param mode - 'light' or 'dark'
  * @returns Colors object for the specified mode
  */
-export function getThemeColors(mode: ThemeMode): Colors {
-  return mode === 'dark' ? darkColors : colors;
+export function getThemeColors(mode: ThemeMode, brand: Brand = 'orange'): Colors {
+  const base = mode === 'dark' ? darkColors : colors;
+  if (brand === 'orange') return base;
+  const key = mode;
+  const cached = gcsaLegacyCache[key];
+  if (cached) return cached;
+  // Legacy adapter: screens not yet migrated to tokens read `primary`,
+  // `primarySecondary` and the `orange` scale as "the brand". For the GCSA
+  // brand those become navy and grey; everything else stays as it is.
+  const t = getTokens('gcsa', mode);
+  const scale: ColorScale =
+    mode === 'dark'
+      ? {
+          50: gcsaNavyRef.darkSubtle,
+          100: gcsaNavyRef.darkSubtleStrong,
+          200: '#383B7D',
+          300: '#44489A',
+          400: '#5A5EC4',
+          500: gcsaNavyRef[300],
+          600: '#AEB0F3',
+          700: '#BFC1F6',
+          800: '#D0D1F8',
+          900: '#E1E2FB',
+        }
+      : {
+          50: gcsaNavyRef[50],
+          100: gcsaNavyRef[100],
+          200: gcsaNavyRef[200],
+          300: gcsaNavyRef[300],
+          400: gcsaNavyRef[400],
+          500: gcsaNavyRef[500],
+          600: gcsaNavyRef[600],
+          700: gcsaNavyRef[700],
+          800: gcsaNavyRef[800],
+          900: gcsaNavyRef[900],
+        };
+  const adapted: Colors = {
+    ...base,
+    primary: t.brand.fill,
+    primarySecondary: t.brand.secondary,
+    orange: scale,
+  };
+  gcsaLegacyCache[key] = adapted;
+  return adapted;
 }
+
+const gcsaLegacyCache: Partial<Record<ThemeMode, Colors>> = {};
 
 /**
  * Get the full theme object for a specific mode
  * @param mode - 'light' or 'dark'
  * @returns Complete theme object with colors for the specified mode
  */
-export function getTheme(mode: ThemeMode) {
-  const themeColors = getThemeColors(mode);
+export function getTheme(mode: ThemeMode, brand: Brand = 'orange') {
+  const themeColors = getThemeColors(mode, brand);
   return {
     colors: themeColors,
     spacing,

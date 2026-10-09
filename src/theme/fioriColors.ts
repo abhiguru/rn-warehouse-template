@@ -106,7 +106,7 @@ export function getFioriColors(themeColors: Colors, isDarkMode: boolean) {
 
       // Brand/Accent colors
       tint: themeColors.primary,
-      tintLight: isDarkMode ? themeColors.orange[50] : '#FFF4E6',
+      tintLight: themeColors.orange[50],
 
       // Dividers and borders (use medium gray values for dark mode)
       divider: isDarkMode ? themeColors.gray[200] : '#E5E5E5',

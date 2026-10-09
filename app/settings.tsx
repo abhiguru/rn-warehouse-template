@@ -24,6 +24,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAppSelector, useAppDispatch } from '@/store/hooks';
 import { logout, deleteAccount } from '@/store/slices/authSlice';
 import { useTheme } from '@/hooks/useTheme';
+import { BRANDS, BRAND_LABELS, getTokens } from '@/theme/tokens';
 import { useFioriColors } from '@/theme/fioriColors';
 import { ThemePreference } from '@/store/slices/themeSlice';
 import { triggerMediumTap } from '@/hooks/useHaptics';
@@ -109,6 +110,10 @@ const SettingsScreen: React.FC = () => {
     preference: themePreference,
     setPreference: setThemePreference,
     isDarkMode,
+    brand,
+    setBrand,
+    resolvedMode,
+    tokens,
   } = useTheme();
   const FIORI = useFioriColors();
 
@@ -478,7 +483,7 @@ const SettingsScreen: React.FC = () => {
                       style={[
                         styles.themeIconContainer,
                         { backgroundColor: FIORI.colors.background },
-                        isSelected && { backgroundColor: FIORI.colors.tint },
+                        isSelected && { backgroundColor: tokens.brand.fill },
                       ]}
                     >
                       <Ionicons
@@ -486,7 +491,7 @@ const SettingsScreen: React.FC = () => {
                         size={24}
                         color={
                           isSelected
-                            ? FIORI.colors.iconOnPrimary
+                            ? tokens.brand.onFill
                             : FIORI.colors.textPrimary
                         }
                       />
@@ -495,7 +500,7 @@ const SettingsScreen: React.FC = () => {
                       style={[
                         styles.themeLabel,
                         { color: FIORI.colors.textPrimary },
-                        isSelected && { color: FIORI.colors.tint },
+                        isSelected && { color: tokens.brand.tint },
                       ]}
                     >
                       {option.label}
@@ -513,6 +518,58 @@ const SettingsScreen: React.FC = () => {
             </Text>
           </View>
         </View>
+
+        {/* Brand Section: colour palette for the whole app (docs/STYLE_GUIDE.md) */}
+        <View style={styles.section}>
+          <Text style={[styles.sectionHeader, { color: tokens.text.secondary }]}>BRAND</Text>
+          <View style={[styles.sectionContent, { backgroundColor: tokens.surface.card }]}>
+            <View style={styles.themeSelector}>
+              {BRANDS.map(option => {
+                const isSelected = brand === option;
+                const swatch = getTokens(option, resolvedMode);
+                return (
+                  <Pressable
+                    key={option}
+                    style={[
+                      styles.themeOption,
+                      { backgroundColor: tokens.background.grouped },
+                      isSelected && { backgroundColor: tokens.brand.subtle, borderColor: tokens.brand.tint, borderWidth: 2 },
+                    ]}
+                    onPress={() => setBrand(option)}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: isSelected }}
+                    accessibilityLabel={`${BRAND_LABELS[option]} brand`}
+                  >
+                    <View style={styles.brandSwatches} accessible={false}>
+                      <View style={[styles.brandSwatch, { backgroundColor: swatch.brand.fill }]} />
+                      <View style={[styles.brandSwatch, { backgroundColor: swatch.brand.secondary }]} />
+                    </View>
+                    <Text style={[styles.themeLabel, { color: isSelected ? tokens.brand.tint : tokens.text.primary }]}>
+                      {BRAND_LABELS[option]}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+            <Text style={[styles.themeHint, { color: tokens.text.secondary }]}>
+              Colours for the whole app. Works with light and dark mode.
+            </Text>
+          </View>
+        </View>
+
+        {__DEV__ && (
+          <View style={styles.section}>
+            <Text style={[styles.sectionHeader, { color: tokens.text.secondary }]}>DEVELOPMENT</Text>
+            <View style={[styles.sectionContent, { backgroundColor: tokens.surface.card }]}>
+              <ObjectCellRow
+                icon="color-palette-outline"
+                label="Style guide"
+                subtitle="Tokens and components in the current brand and mode"
+                onPress={() => router.push('/style-guide')}
+              />
+            </View>
+          </View>
+        )}
 
         {/* Legal Section */}
         <View style={styles.section}>
@@ -913,6 +970,16 @@ const SettingsScreen: React.FC = () => {
 // ============================================================================
 
 const styles = StyleSheet.create({
+  brandSwatches: {
+    flexDirection: 'row',
+    gap: 4,
+    marginBottom: 8,
+  },
+  brandSwatch: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+  },
   // Container (color applied inline)
   container: {
     flex: 1,
