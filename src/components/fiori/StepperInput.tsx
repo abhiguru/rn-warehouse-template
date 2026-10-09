@@ -1,17 +1,29 @@
 /**
- * SAP Fiori Stepper Form Cell
+ * SAP Fiori stepper form cell (docs/STYLE_GUIDE.md §13.3).
+ *
+ * Minus and plus buttons outlined in border.button with brand.tint icons; the
+ * value in body with tabular numbers; the buttons disable at min and max.
  */
 import React, { useState, useRef } from 'react';
 import {
   View,
   Text,
   TextInput,
-  TouchableOpacity,
-  StyleSheet,
+  Pressable,
   Keyboard,
+  Insets,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import theme from '@/theme';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { iconSize, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
+
+/** Visual size of the minus/plus buttons; the touch area is padded to touchTarget. */
+const BUTTON_SIZE = 36;
+const VALUE_MIN_WIDTH = 80;
+const BUTTON_HIT_SLOP: Insets = {
+  top: (touchTarget - BUTTON_SIZE) / 2,
+  bottom: (touchTarget - BUTTON_SIZE) / 2,
+};
 
 interface StepperInputProps {
   label?: string;
@@ -49,6 +61,8 @@ export const StepperInput: React.FC<StepperInputProps> = ({
   const [isEditing, setIsEditing] = useState(false);
   const [inputValue, setInputValue] = useState(value.toFixed(decimalPlaces));
   const inputRef = useRef<TextInput>(null);
+  const t = useTokens();
+  const styles = useThemedStyles(makeStyles);
 
   const canDecrement = value > min && !disabled;
   const canIncrement = value < max && !disabled;
@@ -104,20 +118,26 @@ export const StepperInput: React.FC<StepperInputProps> = ({
       <View style={[styles.compactContainer, disabled && styles.disabled]}>
         <View style={[styles.stepper, hasError && styles.stepperError]}>
           {showButtons && (
-            <TouchableOpacity
-              style={[styles.button, styles.buttonLeft, !canDecrement && styles.buttonDisabled]}
+            <Pressable
+              style={({ pressed }) => [styles.button, styles.buttonLeft, pressed && styles.buttonPressed, !canDecrement && styles.buttonDisabled]}
               onPress={handleDecrement}
               disabled={!canDecrement}
-              activeOpacity={0.7}
+              hitSlop={BUTTON_HIT_SLOP}
+              accessibilityRole="button"
+              accessibilityLabel={label ? `Decrease ${label.toLowerCase()}` : 'Decrease'}
+              accessibilityState={{ disabled: !canDecrement }}
             >
-              <Icon name="minus" size={18} color={canDecrement ? '#1D2D3E' : '#1D2D3E4D'} />
-            </TouchableOpacity>
+              <Icon name="minus" size={iconSize.md} color={t.brand.tint} />
+            </Pressable>
           )}
-          <TouchableOpacity
+          <Pressable
             style={styles.valueContainer}
             onPress={handleValuePress}
             disabled={disabled}
-            activeOpacity={0.9}
+            hitSlop={BUTTON_HIT_SLOP}
+            accessibilityRole="button"
+            accessibilityLabel={`${label ?? 'Value'}, ${prefix ?? ''}${value > 0 ? value.toFixed(decimalPlaces) : '0'}${suffix ?? ''}`}
+            accessibilityHint="Opens the keyboard to type a value"
           >
             {isEditing ? (
               <TextInput
@@ -130,22 +150,26 @@ export const StepperInput: React.FC<StepperInputProps> = ({
                 selectTextOnFocus
                 returnKeyType="done"
                 onSubmitEditing={handleInputBlur}
+                accessibilityLabel={label}
               />
             ) : (
               <Text style={[styles.valueText, disabled && styles.valueTextDisabled]}>
                 {prefix}{value > 0 ? value.toFixed(decimalPlaces) : '0'}{suffix}
               </Text>
             )}
-          </TouchableOpacity>
+          </Pressable>
           {showButtons && (
-            <TouchableOpacity
-              style={[styles.button, styles.buttonRight, !canIncrement && styles.buttonDisabled]}
+            <Pressable
+              style={({ pressed }) => [styles.button, styles.buttonRight, pressed && styles.buttonPressed, !canIncrement && styles.buttonDisabled]}
               onPress={handleIncrement}
               disabled={!canIncrement}
-              activeOpacity={0.7}
+              hitSlop={BUTTON_HIT_SLOP}
+              accessibilityRole="button"
+              accessibilityLabel={label ? `Increase ${label.toLowerCase()}` : 'Increase'}
+              accessibilityState={{ disabled: !canIncrement }}
             >
-              <Icon name="plus" size={18} color={canIncrement ? '#1D2D3E' : '#1D2D3E4D'} />
-            </TouchableOpacity>
+              <Icon name="plus" size={iconSize.md} color={t.brand.tint} />
+            </Pressable>
           )}
         </View>
       </View>
@@ -164,7 +188,7 @@ export const StepperInput: React.FC<StepperInputProps> = ({
           )}
           {errorText && !isInline && (
             <View style={styles.errorContainer}>
-              <Icon name="alert-circle" size={14} color="#D32030" style={styles.errorIcon} />
+              <Icon name="alert-circle" size={iconSize.sm} color={t.status.negative.text} style={styles.errorIcon} />
               <Text style={styles.errorText}>{errorText}</Text>
             </View>
           )}
@@ -181,7 +205,7 @@ export const StepperInput: React.FC<StepperInputProps> = ({
       )}
       {errorText && isInline && (
         <View style={styles.errorContainer}>
-          <Icon name="alert-circle" size={14} color="#D32030" style={styles.errorIcon} />
+          <Icon name="alert-circle" size={iconSize.sm} color={t.status.negative.text} style={styles.errorIcon} />
           <Text style={styles.errorText}>{errorText}</Text>
         </View>
       )}
@@ -192,20 +216,26 @@ export const StepperInput: React.FC<StepperInputProps> = ({
     return (
       <View style={[styles.stepper, isEditing && styles.stepperFocused, hasError && styles.stepperError]}>
         {showButtons && (
-          <TouchableOpacity
-            style={[styles.button, styles.buttonLeft, !canDecrement && styles.buttonDisabled]}
+          <Pressable
+            style={({ pressed }) => [styles.button, styles.buttonLeft, pressed && styles.buttonPressed, !canDecrement && styles.buttonDisabled]}
             onPress={handleDecrement}
             disabled={!canDecrement}
-            activeOpacity={0.7}
+            hitSlop={BUTTON_HIT_SLOP}
+            accessibilityRole="button"
+            accessibilityLabel={label ? `Decrease ${label.toLowerCase()}` : 'Decrease'}
+            accessibilityState={{ disabled: !canDecrement }}
           >
-            <Icon name="minus" size={20} color={canDecrement ? '#1D2D3E' : '#1D2D3E4D'} />
-          </TouchableOpacity>
+            <Icon name="minus" size={iconSize.md} color={t.brand.tint} />
+          </Pressable>
         )}
-        <TouchableOpacity
+        <Pressable
           style={styles.valueContainer}
           onPress={handleValuePress}
           disabled={disabled}
-          activeOpacity={0.9}
+          hitSlop={BUTTON_HIT_SLOP}
+          accessibilityRole="button"
+          accessibilityLabel={`${label ?? 'Value'}, ${prefix ?? ''}${value > 0 ? value.toFixed(decimalPlaces) : '0'}${suffix ?? ''}`}
+          accessibilityHint="Opens the keyboard to type a value"
         >
           {isEditing ? (
             <TextInput
@@ -218,155 +248,147 @@ export const StepperInput: React.FC<StepperInputProps> = ({
               selectTextOnFocus
               returnKeyType="done"
               onSubmitEditing={handleInputBlur}
+              accessibilityLabel={label}
             />
           ) : (
             <Text style={[styles.valueText, disabled && styles.valueTextDisabled]}>
               {prefix}{value > 0 ? value.toFixed(decimalPlaces) : '0'}{suffix}
             </Text>
           )}
-        </TouchableOpacity>
+        </Pressable>
         {showButtons && (
-          <TouchableOpacity
-            style={[styles.button, styles.buttonRight, !canIncrement && styles.buttonDisabled]}
+          <Pressable
+            style={({ pressed }) => [styles.button, styles.buttonRight, pressed && styles.buttonPressed, !canIncrement && styles.buttonDisabled]}
             onPress={handleIncrement}
             disabled={!canIncrement}
-            activeOpacity={0.7}
+            hitSlop={BUTTON_HIT_SLOP}
+            accessibilityRole="button"
+            accessibilityLabel={label ? `Increase ${label.toLowerCase()}` : 'Increase'}
+            accessibilityState={{ disabled: !canIncrement }}
           >
-            <Icon name="plus" size={20} color={canIncrement ? '#1D2D3E' : '#1D2D3E4D'} />
-          </TouchableOpacity>
+            <Icon name="plus" size={iconSize.md} color={t.brand.tint} />
+          </Pressable>
         )}
       </View>
     );
   }
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (t: ThemeTokens) => ({
   container: {
-    marginBottom: 16,
+    marginBottom: space.lg,
   },
   compactContainer: {
     // No margin for compact
   },
   disabled: {
-    opacity: 0.5,
+    opacity: t.interaction.disabledOpacity,
   },
   labelRow: {
-    marginBottom: 8,
+    marginBottom: space.sm,
   },
   labelRowInline: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'center' as const,
     marginBottom: 0,
   },
   labelContainer: {
     flex: 1,
   },
-  // Fiori: Label - 13pt, primary text
+  // Form-cell label
   label: {
-    fontSize: 13,
-    fontWeight: '400',
-    color: '#1D2D3E',
-    lineHeight: 18,
+    ...typography.footnote,
+    color: t.text.secondary,
   },
   labelDisabled: {
-    color: '#556B82',
+    color: t.text.disabled,
   },
-  // Fiori: Helper text - 13pt, secondary color
   helperText: {
-    fontSize: 13,
-    fontWeight: '400',
-    color: '#556B82',
-    lineHeight: 18,
-    marginTop: 4,
+    ...typography.footnote,
+    color: t.text.secondary,
+    marginTop: space.xs,
   },
   errorContainer: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginTop: 4,
+    flexDirection: 'row' as const,
+    alignItems: 'flex-start' as const,
+    marginTop: space.xs,
   },
   errorIcon: {
-    marginRight: 4,
+    marginRight: space.xs,
     marginTop: 1,
   },
-  // Fiori: Error text - 13pt, negative color
   errorText: {
-    fontSize: 13,
-    fontWeight: '400',
-    color: '#D32030',
-    lineHeight: 18,
+    ...typography.footnote,
+    color: t.status.negative.text,
     flex: 1,
   },
   stepperInline: {
-    marginLeft: 12,
+    marginLeft: space.md,
   },
-  // Fiori: Stepper container - border, rounded
+  // Stepper container: outlined, rounded
   stepper: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
     borderWidth: 1,
-    borderColor: '#E5E5E5',
-    borderRadius: 8,
-    backgroundColor: theme.colors.white,
-    overflow: 'hidden',
-    alignSelf: 'flex-start',
+    borderColor: t.border.button,
+    borderRadius: radius.button,
+    backgroundColor: t.surface.field,
+    overflow: 'hidden' as const,
+    alignSelf: 'flex-start' as const,
   },
-  // Fiori: Focus state - blue border
   stepperFocused: {
-    borderColor: '#0057D2',
+    borderColor: t.border.fieldFocus,
     borderWidth: 2,
   },
-  // Fiori: Error state - red border
   stepperError: {
-    borderColor: '#D32030',
+    borderColor: t.status.negative.border,
     borderWidth: 2,
   },
-  // Fiori: Button - 36pt square, gray background
   button: {
-    width: 36,
-    height: 36,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#F5F6F7',
+    width: BUTTON_SIZE,
+    height: BUTTON_SIZE,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    backgroundColor: 'transparent',
+  },
+  buttonPressed: {
+    backgroundColor: t.brand.subtle,
   },
   buttonLeft: {
     borderRightWidth: 1,
-    borderRightColor: '#E5E5E5',
+    borderRightColor: t.border.button,
   },
   buttonRight: {
     borderLeftWidth: 1,
-    borderLeftColor: '#E5E5E5',
+    borderLeftColor: t.border.button,
   },
   buttonDisabled: {
-    backgroundColor: '#F5F6F7',
+    opacity: t.interaction.disabledOpacity,
   },
-  // Fiori: Value container - 80pt min width
   valueContainer: {
-    minWidth: 80,
-    height: 36,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    backgroundColor: theme.colors.white,
+    minWidth: VALUE_MIN_WIDTH,
+    height: BUTTON_SIZE,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    paddingHorizontal: space.md,
   },
-  // Fiori: Value text - 17pt, primary color
   valueText: {
-    fontSize: theme.fontSize.base,
-    fontWeight: '400',
-    color: '#1D2D3E',
-    lineHeight: 22,
-    textAlign: 'center',
+    ...typography.body,
+    color: t.text.primary,
+    textAlign: 'center' as const,
+    fontVariant: ['tabular-nums' as const],
   },
   valueTextDisabled: {
-    color: '#556B82',
+    color: t.text.disabled,
   },
   valueInput: {
-    fontSize: theme.fontSize.base,
-    fontWeight: '400',
-    color: '#1D2D3E',
-    textAlign: 'center',
+    ...typography.body,
+    color: t.text.primary,
+    textAlign: 'center' as const,
     minWidth: 60,
     padding: 0,
+    fontVariant: ['tabular-nums' as const],
   },
 });
 

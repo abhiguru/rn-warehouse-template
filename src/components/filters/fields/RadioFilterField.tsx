@@ -1,16 +1,28 @@
 /**
  * Radio Filter Field Component
  *
- * Single-select radio button group for filter modal.
- * Mobile-First Design with Material Design 3 and react-native-paper.
+ * Single-select radio list for the filter sheet (style guide §13.4): 20 px ring
+ * in border.field, selected ring and dot in brand.tint, the whole row is the target.
  */
 
 import React from 'react';
-import { View, StyleSheet, useColorScheme } from 'react-native';
-import { Text, RadioButton, Surface } from 'react-native-paper';
+import { View, Text, Pressable } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { colors, darkColors } from '@/theme';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import {
+  fontWeight,
+  iconSize,
+  radius,
+  space,
+  touchTarget,
+  typography,
+  type ThemeTokens,
+} from '@/theme/tokens';
+import { triggerSelection } from '@/hooks/useHaptics';
 import type { RadioFilterFieldProps } from '@/types/filter.types';
+
+const RADIO_SIZE = 20;
+const RADIO_DOT = 10;
 
 export const RadioFilterField: React.FC<RadioFilterFieldProps> = ({
   label,
@@ -19,108 +31,125 @@ export const RadioFilterField: React.FC<RadioFilterFieldProps> = ({
   value,
   onChange,
 }) => {
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
-  const themeColors = isDark ? darkColors : colors;
+  const t = useTokens();
+  const styles = useThemedStyles(makeStyles);
 
   return (
     <View style={styles.container}>
       {/* Label */}
       <View style={styles.labelContainer}>
-        {icon && <Icon name={icon} size={18} color={isDark ? themeColors.gray[400] : colors.gray[600]} />}
-        <Text variant="labelLarge" style={[styles.label, { color: isDark ? themeColors.gray[100] : colors.gray[700] }]}>
-          {label}
-        </Text>
+        {icon && <Icon name={icon} size={iconSize.sm} color={t.icon.secondary} />}
+        <Text style={styles.label}>{label}</Text>
       </View>
 
-      {/* Radio Group */}
-      <RadioButton.Group onValueChange={onChange} value={value}>
-        <View style={styles.optionsContainer}>
-          {options.map((option) => {
-            const isSelected = value === option.value;
-            return (
-              <Surface
-                key={option.value}
-                style={[
-                  styles.option,
-                  {
-                    backgroundColor: isSelected ? themeColors.white : (isDark ? themeColors.gray[800] : colors.white),
-                    borderColor: isSelected ? themeColors.primary : (isDark ? themeColors.gray[700] : colors.gray[200]),
-                  },
-                  isSelected && styles.optionSelected,
-                ]}
-                elevation={isSelected ? 2 : 0}
-              >
-                <RadioButton.Item
-                  label={option.label}
-                  value={option.value}
-                  status={isSelected ? 'checked' : 'unchecked'}
-                  color={themeColors.primary}
-                  uncheckedColor={isDark ? themeColors.gray[500] : colors.gray[400]}
-                  labelStyle={[
-                    styles.optionLabel,
-                    { color: isDark ? (isSelected ? themeColors.gray[900] : themeColors.gray[200]) : (isSelected ? colors.gray[900] : colors.gray[700]) },
-                    isSelected && styles.optionLabelSelected,
-                  ]}
-                  style={styles.radioItem}
-                  mode="android"
-                />
+      {/* Radio group */}
+      <View style={styles.optionsContainer} accessibilityRole="radiogroup" accessibilityLabel={label}>
+        {options.map((option) => {
+          const isSelected = value === option.value;
+          return (
+            <Pressable
+              key={option.value}
+              onPress={() => {
+                if (!isSelected) {
+                  triggerSelection();
+                  onChange(option.value);
+                }
+              }}
+              style={({ pressed }) => [
+                styles.option,
+                isSelected && styles.optionSelected,
+                pressed && styles.optionPressed,
+              ]}
+              accessibilityRole="radio"
+              accessibilityState={{ checked: isSelected }}
+              accessibilityLabel={option.description ? `${option.label}, ${option.description}` : option.label}
+            >
+              <View style={[styles.radioOuter, isSelected && styles.radioOuterSelected]}>
+                {isSelected && <View style={styles.radioInner} />}
+              </View>
+              <View style={styles.optionText}>
+                <Text style={[styles.optionLabel, isSelected && styles.optionLabelSelected]}>
+                  {option.label}
+                </Text>
                 {option.description && (
-                  <Text variant="bodySmall" style={[styles.optionDescription, { color: isDark ? themeColors.gray[400] : colors.gray[500] }]}>
-                    {option.description}
-                  </Text>
+                  <Text style={styles.optionDescription}>{option.description}</Text>
                 )}
-              </Surface>
-            );
-          })}
-        </View>
-      </RadioButton.Group>
+              </View>
+            </Pressable>
+          );
+        })}
+      </View>
     </View>
   );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (t: ThemeTokens) => ({
   container: {
-    marginBottom: 8,
+    marginBottom: space.sm,
   },
   labelContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 12,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.xs,
+    marginBottom: space.sm,
   },
   label: {
-    // Color applied dynamically
-    fontWeight: '600',
+    ...typography.footnote,
+    color: t.text.secondary,
   },
   optionsContainer: {
-    gap: 8,
+    gap: space.sm,
   },
   option: {
-    // backgroundColor and borderColor applied dynamically
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    minHeight: touchTarget,
+    paddingVertical: space.sm,
+    paddingHorizontal: space.md,
+    gap: space.md,
     borderWidth: 1,
-    borderRadius: 12,
-    overflow: 'hidden',
+    borderColor: t.border.divider,
+    borderRadius: radius.button,
+    backgroundColor: t.surface.card,
   },
   optionSelected: {
-    // backgroundColor and borderColor applied dynamically
-    borderWidth: 2,
+    borderColor: t.brand.tint,
+    backgroundColor: t.brand.subtle,
   },
-  radioItem: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
+  optionPressed: {
+    backgroundColor: t.surface.cardPressed,
+  },
+  radioOuter: {
+    width: RADIO_SIZE,
+    height: RADIO_SIZE,
+    borderRadius: radius.pill,
+    borderWidth: 2,
+    borderColor: t.border.field,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+  },
+  radioOuterSelected: {
+    borderColor: t.brand.tint,
+  },
+  radioInner: {
+    width: RADIO_DOT,
+    height: RADIO_DOT,
+    borderRadius: radius.pill,
+    backgroundColor: t.brand.tint,
+  },
+  optionText: {
+    flex: 1,
   },
   optionLabel: {
-    // Color applied dynamically
+    ...typography.body,
+    color: t.text.primary,
   },
   optionLabelSelected: {
-    // Color applied dynamically
-    fontWeight: '600',
+    fontWeight: fontWeight.semibold,
   },
   optionDescription: {
-    // Color applied dynamically
-    paddingHorizontal: 16,
-    paddingBottom: 12,
-    marginTop: -8,
+    ...typography.footnote,
+    color: t.text.secondary,
+    marginTop: space.xxs,
   },
 });

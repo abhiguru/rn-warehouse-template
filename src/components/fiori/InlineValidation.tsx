@@ -1,9 +1,15 @@
 /**
- * SAP Fiori Inline Validation
+ * SAP Fiori inline validation / message strip (docs/STYLE_GUIDE.md §13.9).
+ *
+ * `helper` is plain secondary text. `success`, `warning` and `error` are message
+ * strips: status background, 1 px status border, icon plus text in the status
+ * text colour.
  */
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { iconSize, radius, space, typography, type ThemeTokens } from '@/theme/tokens';
 
 type ValidationVariant = 'helper' | 'success' | 'warning' | 'error';
 
@@ -13,23 +19,14 @@ interface InlineValidationProps {
   visible?: boolean;
 }
 
-const VARIANT_CONFIG: Record<ValidationVariant, { icon: string | null; color: string }> = {
-  helper: {
-    icon: null,
-    color: '#556B82', // Fiori secondary text
-  },
-  success: {
-    icon: 'check-circle',
-    color: '#36A41D', // Fiori positive
-  },
-  warning: {
-    icon: 'alert',
-    color: '#E9730C', // Fiori critical
-  },
-  error: {
-    icon: 'alert-circle',
-    color: '#D32030', // Fiori negative
-  },
+const VARIANT_CONFIG: Record<
+  ValidationVariant,
+  { icon: string | null; status: 'positive' | 'critical' | 'negative' | null; word: string | null }
+> = {
+  helper: { icon: null, status: null, word: null },
+  success: { icon: 'check-circle', status: 'positive', word: 'Success' },
+  warning: { icon: 'alert', status: 'critical', word: 'Warning' },
+  error: { icon: 'alert-circle', status: 'negative', word: 'Error' },
 };
 
 export const InlineValidation: React.FC<InlineValidationProps> = ({
@@ -37,25 +34,34 @@ export const InlineValidation: React.FC<InlineValidationProps> = ({
   variant = 'helper',
   visible = true,
 }) => {
+  const t = useTokens();
+  const styles = useThemedStyles(makeStyles);
   if (!visible || !message) return null;
 
   const config = VARIANT_CONFIG[variant];
+  const status = config.status ? t.status[config.status] : null;
 
   return (
     <View
-      style={styles.container}
+      style={[
+        styles.container,
+        status && styles.strip,
+        status && { backgroundColor: status.background, borderColor: status.border },
+      ]}
+      accessible
       accessibilityRole={variant === 'error' ? 'alert' : undefined}
-      accessibilityLabel={`${variant}: ${message}`}
+      accessibilityLiveRegion={variant === 'error' ? 'polite' : 'none'}
+      accessibilityLabel={config.word ? `${config.word}: ${message}` : message}
     >
-      {config.icon && (
+      {config.icon && status && (
         <Icon
           name={config.icon}
-          size={16}
-          color={config.color}
+          size={iconSize.sm}
+          color={status.text}
           style={styles.icon}
         />
       )}
-      <Text style={[styles.text, { color: config.color }]} numberOfLines={3}>
+      <Text style={[styles.text, { color: status ? status.text : t.text.secondary }]}>
         {message}
       </Text>
     </View>
@@ -76,23 +82,25 @@ export const getValidationState = (
   return null;
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (_t: ThemeTokens) => ({
   container: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginTop: 4,
-    paddingHorizontal: 0,
+    flexDirection: 'row' as const,
+    alignItems: 'flex-start' as const,
+    marginTop: space.xs,
+  },
+  strip: {
+    borderWidth: 1,
+    borderRadius: radius.button,
+    paddingHorizontal: space.md,
+    paddingVertical: space.sm,
   },
   icon: {
-    marginRight: 4,
+    marginRight: space.s6,
     marginTop: 1, // Align with first line of text
   },
-  // Fiori: Validation text - 13pt, single line recommended
   text: {
+    ...typography.footnote,
     flex: 1,
-    fontSize: 13,
-    lineHeight: 18,
-    fontWeight: '400',
   },
 });
 
