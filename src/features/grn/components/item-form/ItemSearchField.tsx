@@ -8,11 +8,13 @@
  */
 
 import React, { useCallback } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { RemoteAutocompleteInput } from '@/components/RemoteAutocompleteInput';
 import { searchItems } from '@/services/item-search-service';
-import theme from '@/theme';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { iconSize, space, typography } from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
 
 // ============================================================================
 // TYPES
@@ -41,34 +43,35 @@ export const ItemSearchField: React.FC<ItemSearchFieldProps> = ({
   error,
   zIndex = 3000,
 }) => {
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
+
   // Render dropdown item
   const renderItem = useCallback(
     (item: ItemSearchResult) => (
       <View>
         <Text style={styles.dropdownText}>{item.name}</Text>
-        {item.packaging && (
-          <Text style={styles.dropdownSubtext}>{item.packaging}</Text>
-        )}
+        {!!item.packaging && <Text style={styles.dropdownSubtext}>{item.packaging}</Text>}
       </View>
     ),
-    []
+    [styles]
   );
 
   // Key extractor
   const keyExtractor = useCallback((item: ItemSearchResult) => item.id, []);
 
   return (
-    <View style={styles.container}>
+    <View>
       <View style={styles.labelRow}>
-        <Icon name="package-variant" size={16} color={theme.colors.primary} />
+        <Icon name="cube-outline" size={iconSize.sm} color={t.icon.secondary} />
         <Text style={styles.label}>
-          ITEM<Text style={styles.required}> *</Text>
+          Item<Text style={styles.required}> *</Text>
         </Text>
       </View>
 
       <RemoteAutocompleteInput<ItemSearchResult>
         value={value}
-        placeholder="Type to search..."
+        placeholder="Search items"
         fetchData={searchItems}
         onSelect={onSelect}
         renderItem={renderItem}
@@ -77,7 +80,12 @@ export const ItemSearchField: React.FC<ItemSearchFieldProps> = ({
         zIndex={zIndex}
       />
 
-      {error && <Text style={styles.errorText}>{error}</Text>}
+      {!!error && (
+        <View style={styles.errorRow} accessibilityLiveRegion="polite">
+          <Icon name="alert-circle" size={iconSize.sm} color={t.status.negative.text} />
+          <Text style={styles.errorText}>{error}</Text>
+        </View>
+      )}
     </View>
   );
 };
@@ -86,37 +94,38 @@ export const ItemSearchField: React.FC<ItemSearchFieldProps> = ({
 // STYLES
 // ============================================================================
 
-const styles = StyleSheet.create({
-  container: {},
+const makeStyles = (t: ThemeTokens) => ({
   labelRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 6,
-    gap: 4,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    marginBottom: space.xs,
+    gap: space.xs,
   },
   label: {
-    fontSize: 13,
-    fontWeight: '400',
-    color: theme.colors.fiori.text.secondary,
-    letterSpacing: 0.5,
-    lineHeight: 18,
+    ...typography.footnote,
+    color: t.text.secondary,
   },
   required: {
-    color: theme.colors.fiori.semantic.negative,
+    color: t.text.required,
   },
   dropdownText: {
-    fontSize: theme.fontSize.sm,
-    color: theme.colors.gray[900],
+    ...typography.body,
+    color: t.text.primary,
   },
   dropdownSubtext: {
-    fontSize: 12,
-    color: theme.colors.gray[500],
+    ...typography.footnote,
+    color: t.text.secondary,
+  },
+  errorRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'flex-start' as const,
+    gap: space.xs,
+    marginTop: space.xs,
   },
   errorText: {
-    fontSize: 13,
-    color: theme.colors.fiori.semantic.negative,
-    marginTop: 4,
-    lineHeight: 18,
+    ...typography.footnote,
+    color: t.status.negative.text,
+    flexShrink: 1,
   },
 });
 

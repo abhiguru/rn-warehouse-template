@@ -2,14 +2,18 @@
  * QuantityWeightFields - Qty and Weight input fields
  *
  * Extracted from HorizontalItemForm.tsx for better maintainability.
+ * Numeric keypad, tabular numbers and the weight unit as a suffix
+ * (docs/STYLE_GUIDE.md 13.3).
  *
  * @module features/grn/components/item-form/QuantityWeightFields
  */
 
 import React, { forwardRef, useImperativeHandle, useRef, useState, useCallback } from 'react';
-import { View, Text, TextInput, StyleSheet, Keyboard } from 'react-native';
+import { View, Text, TextInput, Keyboard, Platform } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import theme from '@/theme';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { iconSize, radius, space, typography } from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
 
 // ============================================================================
 // TYPES
@@ -55,6 +59,8 @@ export const QuantityWeightFields = forwardRef<QuantityWeightFieldsRef, Quantity
     },
     ref
   ) {
+    const styles = useThemedStyles(makeStyles);
+    const t = useTokens();
     const qtyInputRef = useRef<TextInput>(null);
     const weightInputRef = useRef<TextInput>(null);
     const [focusedField, setFocusedField] = useState<'qty' | 'weight' | null>(null);
@@ -95,37 +101,45 @@ export const QuantityWeightFields = forwardRef<QuantityWeightFieldsRef, Quantity
       weightInputRef.current?.focus();
     }, []);
 
+    const renderError = (message?: string) =>
+      message ? (
+        <View style={styles.errorRow} accessibilityLiveRegion="polite">
+          <Icon name="alert-circle" size={iconSize.sm} color={t.status.negative.text} />
+          <Text style={styles.errorText}>{message}</Text>
+        </View>
+      ) : null;
+
     return (
       <>
         {/* Quantity Field */}
         <View style={styles.fieldContainer}>
           <View style={styles.labelRow}>
-            <Icon name="counter" size={16} color={theme.colors.primary} />
             <Text style={styles.label}>
-              QTY<Text style={styles.required}> *</Text>
+              Quantity<Text style={styles.required}> *</Text>
             </Text>
             {isQtyLocked && (
               <Icon
-                name="lock"
-                size={14}
-                color={theme.colors.semantic.warning}
-                style={styles.lockIcon}
+                name="lock-outline"
+                size={iconSize.sm}
+                color={t.icon.secondary}
+                accessibilityLabel="Quantity locked"
               />
             )}
           </View>
           <TextInput
             ref={qtyInputRef}
             accessibilityLabel="Receipt item quantity"
+            accessibilityHint={isQtyLocked ? 'Locked because this item has dispatches' : undefined}
             style={[
               styles.input,
-              qtyError && styles.inputError,
-              isQtyLocked && styles.inputDisabled,
+              !!qtyError && styles.inputError,
+              isQtyLocked && styles.inputReadOnly,
               focusedField === 'qty' && !isQtyLocked && styles.inputFocused,
             ]}
             value={qty}
             onChangeText={handleQtyChange}
             placeholder="0"
-            placeholderTextColor={theme.colors.gray[400]}
+            placeholderTextColor={t.text.placeholder}
             keyboardType="numeric"
             returnKeyType="next"
             onSubmitEditing={handleQtySubmit}
@@ -135,36 +149,43 @@ export const QuantityWeightFields = forwardRef<QuantityWeightFieldsRef, Quantity
             selectTextOnFocus={!isQtyLocked}
             editable={!isQtyLocked}
           />
-          {qtyError && <Text style={styles.errorText}>{qtyError}</Text>}
+          {renderError(qtyError)}
         </View>
 
         {/* Weight Field */}
         <View style={styles.fieldContainer}>
           <View style={styles.labelRow}>
-            <Icon name="scale" size={16} color={theme.colors.gray[500]} />
-            <Text style={styles.label}>WEIGHT (KG)</Text>
+            <Text style={styles.label}>Weight</Text>
           </View>
-          <TextInput
-            ref={weightInputRef}
-            accessibilityLabel="Receipt item weight"
+          <View
             style={[
               styles.input,
-              weightError && styles.inputError,
+              styles.suffixField,
+              !!weightError && styles.inputError,
               focusedField === 'weight' && styles.inputFocused,
             ]}
-            value={weight}
-            onChangeText={onWeightChange}
-            placeholder="0"
-            placeholderTextColor={theme.colors.gray[400]}
-            keyboardType="numeric"
-            returnKeyType="next"
-            onSubmitEditing={onWeightSubmit}
-            blurOnSubmit={false}
-            onFocus={handleWeightFocus}
-            onBlur={() => setFocusedField(null)}
-            selectTextOnFocus
-          />
-          {weightError && <Text style={styles.errorText}>{weightError}</Text>}
+          >
+            <TextInput
+              ref={weightInputRef}
+              accessibilityLabel="Receipt item weight in kilograms"
+              style={styles.suffixInput}
+              value={weight}
+              onChangeText={onWeightChange}
+              placeholder="0"
+              placeholderTextColor={t.text.placeholder}
+              keyboardType="numeric"
+              returnKeyType="next"
+              onSubmitEditing={onWeightSubmit}
+              blurOnSubmit={false}
+              onFocus={handleWeightFocus}
+              onBlur={() => setFocusedField(null)}
+              selectTextOnFocus
+            />
+            <Text style={styles.suffix} importantForAccessibility="no">
+              kg
+            </Text>
+          </View>
+          {renderError(weightError)}
         </View>
       </>
     );
@@ -177,58 +198,84 @@ export const QuantityWeightFields = forwardRef<QuantityWeightFieldsRef, Quantity
 
 const FIELD_WIDTH_QTY_WEIGHT = 117;
 
-const styles = StyleSheet.create({
+const androidText = Platform.select({
+  android: { textAlignVertical: 'center' as const, includeFontPadding: false },
+  default: {},
+});
+
+const makeStyles = (t: ThemeTokens) => ({
   fieldContainer: {
     width: FIELD_WIDTH_QTY_WEIGHT,
-    marginRight: theme.spacing.md,
+    marginRight: space.md,
   },
   labelRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 6,
-    gap: 4,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    marginBottom: space.xs,
+    gap: space.xs,
   },
   label: {
-    fontSize: 13,
-    fontWeight: '400',
-    color: theme.colors.fiori.text.secondary,
-    letterSpacing: 0.5,
-    lineHeight: 18,
+    ...typography.footnote,
+    color: t.text.secondary,
   },
   required: {
-    color: theme.colors.fiori.semantic.negative,
-  },
-  lockIcon: {
-    marginLeft: 4,
+    color: t.text.required,
   },
   input: {
-    backgroundColor: theme.colors.white,
+    ...typography.body,
+    fontVariant: ['tabular-nums' as const],
+    backgroundColor: t.surface.field,
     borderWidth: 1,
-    borderColor: theme.colors.fiori.objectCell.divider,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    height: 44,
-    fontSize: theme.fontSize.base,
-    color: theme.colors.fiori.text.primary,
+    borderColor: t.border.field,
+    borderRadius: radius.field,
+    paddingHorizontal: space.md,
+    minHeight: 44,
+    color: t.text.primary,
+    ...androidText,
   },
   inputError: {
-    borderColor: theme.colors.fiori.semantic.negative,
+    borderColor: t.status.negative.border,
     borderWidth: 2,
+    paddingHorizontal: space.md - 1,
   },
   inputFocused: {
-    borderColor: '#0057D2',
+    borderColor: t.border.fieldFocus,
     borderWidth: 2,
+    paddingHorizontal: space.md - 1,
   },
-  inputDisabled: {
-    backgroundColor: '#F2F2F7',
-    borderColor: theme.colors.fiori.objectCell.divider,
-    color: theme.colors.fiori.text.secondary,
+  inputReadOnly: {
+    backgroundColor: t.surface.fieldReadOnly,
+    borderWidth: 0,
+    paddingHorizontal: space.md + 1,
+  },
+  suffixField: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+  },
+  suffixInput: {
+    ...typography.body,
+    fontVariant: ['tabular-nums' as const],
+    flex: 1,
+    minHeight: 40,
+    padding: 0,
+    color: t.text.primary,
+    ...androidText,
+  },
+  suffix: {
+    ...typography.body,
+    color: t.text.secondary,
+    marginLeft: space.xs,
+  },
+  errorRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'flex-start' as const,
+    gap: space.xs,
+    marginTop: space.xs,
   },
   errorText: {
-    fontSize: 13,
-    color: theme.colors.fiori.semantic.negative,
-    marginTop: 4,
-    lineHeight: 18,
+    ...typography.footnote,
+    color: t.status.negative.text,
+    flexShrink: 1,
   },
 });
 

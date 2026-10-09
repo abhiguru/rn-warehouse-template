@@ -1,10 +1,11 @@
 import React from 'react';
 import { View, Text, StyleSheet, ViewStyle } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import theme from '@/theme';
 import { GRNImageData } from '@/store/slices/grnFormSlice';
 import { parseReceiptQuantity, parseReceiptWeight } from '@/features/grn/schemas/grnValidation';
-import { useListColors } from '@/hooks/useListColors';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { fontWeight, iconSize, layout, radius, space, typography } from '@/theme/tokens';
+import type { ThemeTokens } from '@/theme/tokens';
 
 export interface SavedItemCardData {
   name: string;
@@ -26,9 +27,13 @@ interface SavedItemCardProps {
   style?: ViewStyle;
 }
 
+const quantityFormat = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 });
+const weightFormat = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 });
+
 /**
- * SavedItemCard - Compact mobile-first item card
- * Matches the UI patterns from GRNListMobile and GRNItemCard
+ * SavedItemCard - object cell for an item already added to the GRN
+ * (docs/STYLE_GUIDE.md 13.6): number badge, title, packaging, quantity on the
+ * right with its state tag, and neutral tags for weight, rack, mark and photos.
  */
 export const SavedItemCard: React.FC<SavedItemCardProps> = ({
   index,
@@ -38,178 +43,225 @@ export const SavedItemCard: React.FC<SavedItemCardProps> = ({
   isProtected = false,
   style,
 }) => {
-  const colors = useListColors();
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
   const qty = typeof item.quantity === 'string' ? parseReceiptQuantity(item.quantity) ?? 0 : item.quantity || 0;
   const weightValue = typeof item.weight === 'string' ? parseReceiptWeight(item.weight) : item.weight;
   const hasWeight = !!weightValue && weightValue > 0;
   const rack = item.rack?.trim();
   const packageMark = item.packageMark?.trim();
   const imageCount = item.images?.length || 0;
+  const qtyText = quantityFormat.format(qty);
+  const weightText = hasWeight ? `${weightFormat.format(weightValue as number)} kg` : '';
+  const photosText = `${imageCount} ${imageCount === 1 ? 'photo' : 'photos'}`;
+
+  const a11yLabel = [
+    `Item ${index + 1}, ${item.name}`,
+    item.packaging,
+    `quantity ${qtyText}`,
+    weightText,
+    rack ? `rack ${rack}` : '',
+    packageMark ? `mark ${packageMark}` : '',
+    imageCount > 0 ? photosText : '',
+    isEditing ? 'editing' : '',
+    isProtected ? 'quantity locked' : '',
+  ]
+    .filter(Boolean)
+    .join(', ');
 
   return (
     <View
-      style={[
-        styles.card,
-        { backgroundColor: colors.cellBackground, borderBottomColor: colors.cellDivider },
-        isLast && styles.cardLast,
-        isEditing && [styles.cardEditing, { backgroundColor: colors.primaryLight }],
-        isProtected && [styles.cardProtected, { backgroundColor: colors.warningLight }],
-        style,
-      ]}
+      style={[styles.card, isLast && styles.cardLast, isEditing && styles.cardEditing, style]}
+      accessible
+      accessibilityLabel={a11yLabel}
     >
-      {/* Row 1: Index + Name + Qty Badge */}
+      {/* Row 1: Index + Name + Qty */}
       <View style={styles.header}>
-        <View style={[styles.indexBadge, { backgroundColor: colors.primary }, isEditing && styles.indexBadgeEditing]}>
+        <View style={styles.indexBadge}>
           <Text style={styles.indexText}>{index + 1}</Text>
         </View>
 
         <View style={styles.nameContainer}>
-          <Text style={[styles.itemName, { color: colors.textPrimary }]} numberOfLines={1}>
+          <Text style={styles.itemName} numberOfLines={2}>
             {item.name}
           </Text>
-          {item.packaging && (
-            <Text style={[styles.packagingText, { color: colors.textSecondary }]}>{item.packaging}</Text>
-          )}
+          {!!item.packaging && <Text style={styles.packagingText}>{item.packaging}</Text>}
         </View>
 
-        <View style={[styles.qtyBadge, { backgroundColor: colors.successLight }, isProtected && { backgroundColor: colors.warningLight }]}>
-          <Text style={[styles.qtyValue, { color: colors.success }]}>{qty}</Text>
-          <Text style={[styles.qtyLabel, { color: colors.textSecondary }]}>qty</Text>
+        <View style={styles.qtyColumn}>
+          <Text style={styles.qtyValue}>{qtyText}</Text>
+          <Text style={styles.qtyLabel}>Qty</Text>
+        </View>
+      </View>
+
+      {/* State tags */}
+      {(isEditing || isProtected) && (
+        <View style={styles.tagRow}>
+          {isEditing && (
+            <View style={[styles.statusTag, styles.tagInformative]}>
+              <Icon name="pencil-outline" size={iconSize.sm} color={t.status.informative.text} />
+              <Text style={[styles.statusTagText, styles.tagInformativeText]} maxFontSizeMultiplier={1.6}>
+                Editing
+              </Text>
+            </View>
+          )}
           {isProtected && (
-            <Icon name="lock" size={10} color={colors.warning} style={{ marginLeft: 2 }} />
+            <View style={[styles.statusTag, styles.tagCritical]}>
+              <Icon name="lock-outline" size={iconSize.sm} color={t.status.critical.text} />
+              <Text style={[styles.statusTagText, styles.tagCriticalText]} maxFontSizeMultiplier={1.6}>
+                Quantity locked
+              </Text>
+            </View>
           )}
         </View>
-      </View>
+      )}
 
-      {/* Row 2: Metrics + Details (inline) */}
-      <View style={styles.detailsRow}>
-        {hasWeight && (
-          <View style={[styles.chip, { backgroundColor: colors.gray100 }]}>
-            <Icon name="weight-kilogram" size={12} color={colors.textSecondary} />
-            <Text style={[styles.chipText, { color: colors.textSecondary }]}>{weightValue} kg</Text>
-          </View>
-        )}
-        {rack && (
-          <View style={[styles.chip, { backgroundColor: colors.gray100 }]}>
-            <Icon name="view-grid" size={12} color={colors.textSecondary} />
-            <Text style={[styles.chipText, { color: colors.textSecondary }]}>{rack}</Text>
-          </View>
-        )}
-        {packageMark && (
-          <View style={[styles.chip, { backgroundColor: colors.gray100 }]}>
-            <Icon name="label" size={12} color={colors.textSecondary} />
-            <Text style={[styles.chipText, { color: colors.textSecondary }]} numberOfLines={1}>{packageMark}</Text>
-          </View>
-        )}
-        {imageCount > 0 && (
-          <View style={[styles.chip, { backgroundColor: colors.successLight }]}>
-            <Icon name="camera" size={12} color={colors.success} />
-            <Text style={[styles.chipText, { color: colors.success }]}>
-              {imageCount}
-            </Text>
-          </View>
-        )}
-      </View>
+      {/* Row 2: details */}
+      {(hasWeight || !!rack || !!packageMark || imageCount > 0) && (
+        <View style={styles.detailsRow}>
+          {hasWeight && (
+            <View style={styles.chip}>
+              <Icon name="weight-kilogram" size={iconSize.sm} color={t.status.neutral.text} />
+              <Text style={[styles.chipText, styles.tabular]} maxFontSizeMultiplier={1.6}>{weightText}</Text>
+            </View>
+          )}
+          {!!rack && (
+            <View style={styles.chip}>
+              <Icon name="view-grid-outline" size={iconSize.sm} color={t.status.neutral.text} />
+              <Text style={styles.chipText} maxFontSizeMultiplier={1.6}>{rack}</Text>
+            </View>
+          )}
+          {!!packageMark && (
+            <View style={styles.chip}>
+              <Icon name="tag-outline" size={iconSize.sm} color={t.status.neutral.text} />
+              <Text style={styles.chipText} numberOfLines={1} maxFontSizeMultiplier={1.6}>{packageMark}</Text>
+            </View>
+          )}
+          {imageCount > 0 && (
+            <View style={styles.chip}>
+              <Icon name="camera-outline" size={iconSize.sm} color={t.status.neutral.text} />
+              <Text style={styles.chipText} maxFontSizeMultiplier={1.6}>{photosText}</Text>
+            </View>
+          )}
+        </View>
+      )}
     </View>
   );
 };
 
-const styles = StyleSheet.create({
+const BADGE = 28;
+
+const makeStyles = (t: ThemeTokens) => ({
   card: {
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    // backgroundColor and borderBottomColor applied dynamically
+    minHeight: layout.objectCellMinHeight,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.md,
+    backgroundColor: t.surface.card,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border.divider,
   },
   cardLast: {
     borderBottomWidth: 0,
   },
   cardEditing: {
-    borderLeftWidth: 3,
-    borderLeftColor: theme.colors.primary,
-    // backgroundColor applied dynamically
+    backgroundColor: t.surface.selected,
   },
-  cardProtected: {
-    borderLeftWidth: 3,
-    borderLeftColor: theme.colors.orange[400],
-    // backgroundColor applied dynamically
-  },
-
-  // Header row
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.md,
   },
   indexBadge: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    justifyContent: 'center',
-    alignItems: 'center',
-    // backgroundColor applied dynamically
-  },
-  indexBadgeEditing: {
-    backgroundColor: theme.colors.orange[500],
+    width: BADGE,
+    height: BADGE,
+    borderRadius: radius.pill,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    backgroundColor: t.brand.subtle,
   },
   indexText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#ffffff',
+    ...typography.caption1,
+    fontWeight: fontWeight.semibold,
+    fontVariant: ['tabular-nums' as const],
+    color: t.brand.tint,
   },
   nameContainer: {
     flex: 1,
-    gap: 1,
   },
   itemName: {
-    fontSize: 14,
-    fontWeight: '600',
-    // color applied dynamically
+    ...typography.headline,
+    color: t.text.primary,
   },
   packagingText: {
-    fontSize: 11,
-    // color applied dynamically
+    ...typography.subhead,
+    color: t.text.secondary,
   },
-  qtyBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    gap: 3,
-    // backgroundColor applied dynamically
+  qtyColumn: {
+    alignItems: 'flex-end' as const,
   },
   qtyValue: {
-    fontSize: 14,
-    fontWeight: '700',
-    // color applied dynamically
+    ...typography.headline,
+    fontVariant: ['tabular-nums' as const],
+    color: t.text.primary,
   },
   qtyLabel: {
-    fontSize: 10,
-    fontWeight: '500',
-    // color applied dynamically
+    ...typography.caption1,
+    color: t.text.secondary,
   },
-
-  // Details row
+  tagRow: {
+    flexDirection: 'row' as const,
+    flexWrap: 'wrap' as const,
+    gap: space.s6,
+    marginTop: space.sm,
+    marginLeft: BADGE + space.md,
+  },
+  statusTag: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: space.xs,
+    paddingHorizontal: space.sm,
+    paddingVertical: space.xxs,
+    borderRadius: radius.field,
+  },
+  statusTagText: {
+    ...typography.caption1,
+    fontWeight: fontWeight.semibold,
+  },
+  tagInformative: {
+    backgroundColor: t.status.informative.background,
+  },
+  tagInformativeText: {
+    color: t.status.informative.text,
+  },
+  tagCritical: {
+    backgroundColor: t.status.critical.background,
+  },
+  tagCriticalText: {
+    color: t.status.critical.text,
+  },
   detailsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-    marginTop: 8,
-    marginLeft: 36,
+    flexDirection: 'row' as const,
+    flexWrap: 'wrap' as const,
+    gap: space.s6,
+    marginTop: space.sm,
+    marginLeft: BADGE + space.md,
   },
   chip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 10,
-    gap: 4,
-    // backgroundColor applied dynamically
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    paddingHorizontal: space.sm,
+    paddingVertical: space.xxs,
+    borderRadius: radius.pill,
+    gap: space.xs,
+    backgroundColor: t.status.neutral.background,
+    maxWidth: '100%' as const,
   },
   chipText: {
-    fontSize: 11,
-    fontWeight: '500',
-    // color applied dynamically
+    ...typography.caption1,
+    color: t.status.neutral.text,
+    flexShrink: 1,
+  },
+  tabular: {
+    fontVariant: ['tabular-nums' as const],
   },
 });
