@@ -9,7 +9,7 @@ export { KPICard, type KPIVariant } from './KPICard';
 export { KPIGrid, type KPIItem } from './KPIGrid';
 
 // Layout & Navigation
-export { ReportHeader } from './ReportHeader';
+export { ReportHeader, type ReportHeaderAction } from './ReportHeader';
 export { PeriodSelector, getDateRangeForPeriod } from './PeriodSelector';
 
 // States

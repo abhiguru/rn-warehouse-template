@@ -1,43 +1,25 @@
 /**
- * KPIGrid Component - SAP Fiori Compliant
+ * KPIGrid: a grid of KPI tiles for report screens.
  *
- * A card container for displaying multiple KPI metrics in a 2-column grid.
- * Follows SAP Fiori Card spec with collapsible header.
- * Uses theme.colors.fiori for consistency with GRN/Dispatch/Invoice lists.
- *
- * @see src/theme/index.ts - FioriColors interface
+ * Per docs/STYLE_GUIDE.md §5.2 and §13.11, KPI tiles are cards (`shadow[2]`) laid
+ * out two per row on phones and four per row on tablets. Compact mode shows three
+ * per row on phones and no section header. The grid itself is not a card, so
+ * cards never sit on cards.
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
   Pressable,
   StyleSheet,
   LayoutAnimation,
+  useWindowDimensions,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { KPICard, KPIVariant } from './KPICard';
-import { useListColors } from '@/hooks/useListColors';
-import theme from '@/theme';
-
-// ============================================================================
-// SAP Fiori Design Tokens (Static values only - colors are dynamic)
-// ============================================================================
-const FIORI_STATIC = {
-  dimensions: {
-    cardCornerRadius: 12,
-    cardPadding: 16,
-    headerIconSize: 32,
-    headerIconRadius: 8,
-  },
-  typography: {
-    headerTitle: {
-      fontSize: 16,
-      fontWeight: '600' as const,
-    },
-  },
-};
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { fontWeight, iconSize, layout, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 
 export interface KPIItem {
   icon: string;
@@ -47,6 +29,8 @@ export interface KPIItem {
   unit?: string;
   trend?: -1 | 0 | 1;
   trendValue?: string;
+  /** Whether a rising value is good for this KPI (colours the trend). */
+  upIsGood?: boolean;
 }
 
 interface KPIGridProps {
@@ -64,6 +48,50 @@ interface KPIGridProps {
   compact?: boolean;
 }
 
+/** Width from which the grid uses the tablet layout (four tiles per row). */
+const TABLET_MIN_WIDTH = 600;
+
+const makeStyles = (t: ThemeTokens) =>
+  StyleSheet.create({
+    container: {
+      marginHorizontal: layout.marginCompact,
+      marginTop: space.lg,
+      marginBottom: space.sm,
+    },
+    containerCompact: {
+      marginTop: space.md,
+      marginBottom: space.xs,
+    },
+    header: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      minHeight: touchTarget,
+      marginBottom: space.xs,
+    },
+    headerTitle: {
+      ...typography.footnote,
+      fontWeight: fontWeight.semibold,
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+      color: t.text.secondary,
+      flex: 1,
+    },
+    headerPressed: {
+      opacity: 0.6,
+    },
+    grid: {
+      gap: space.sm,
+    },
+    row: {
+      flexDirection: 'row',
+      gap: space.sm,
+    },
+    emptyCell: {
+      flex: 1,
+    },
+  });
+
 export const KPIGrid: React.FC<KPIGridProps> = ({
   title = 'Summary',
   items,
@@ -72,183 +100,86 @@ export const KPIGrid: React.FC<KPIGridProps> = ({
   initialExpanded = true,
   compact = false,
 }) => {
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
+  const { width } = useWindowDimensions();
   const [isExpanded, setIsExpanded] = useState(initialExpanded);
-
-  // Theme colors for dark mode support
-  const colors = useListColors();
-
-  // Dynamic styles based on theme
-  const dynamicStyles = useMemo(() => StyleSheet.create({
-    container: {
-      backgroundColor: colors.cellBackground,
-      marginHorizontal: FIORI_STATIC.dimensions.cardPadding,
-      marginTop: 16,
-      marginBottom: 8,
-      borderRadius: FIORI_STATIC.dimensions.cardCornerRadius,
-      borderWidth: 1,
-      borderColor: colors.cellDivider,
-      ...theme.shadows.sm,
-      overflow: 'hidden',
-    },
-    containerCompact: {
-      marginTop: 12,
-      marginBottom: 4,
-    },
-    header: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      paddingVertical: 14,
-      paddingHorizontal: FIORI_STATIC.dimensions.cardPadding,
-      backgroundColor: colors.cellBackground,
-      borderBottomWidth: StyleSheet.hairlineWidth,
-      borderBottomColor: colors.cellDivider,
-    },
-    headerPressed: {
-      backgroundColor: colors.cellBackgroundPressed,
-    },
-    headerIconContainer: {
-      width: FIORI_STATIC.dimensions.headerIconSize,
-      height: FIORI_STATIC.dimensions.headerIconSize,
-      borderRadius: FIORI_STATIC.dimensions.headerIconRadius,
-      backgroundColor: colors.primaryLight,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    headerTitle: {
-      fontSize: FIORI_STATIC.typography.headerTitle.fontSize,
-      fontWeight: FIORI_STATIC.typography.headerTitle.fontWeight,
-      color: colors.textPrimary,
-    },
-  }), [colors]);
 
   const toggleExpand = () => {
     if (!collapsible || compact) return;
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setIsExpanded(!isExpanded);
+    setIsExpanded(prev => !prev);
   };
 
-  // Create rows: 3 items per row in compact mode, 2 items otherwise
-  const itemsPerRow = compact ? 3 : 2;
+  const itemsPerRow = width >= TABLET_MIN_WIDTH ? 4 : compact ? 3 : 2;
   const rows: KPIItem[][] = [];
   for (let i = 0; i < items.length; i += itemsPerRow) {
     rows.push(items.slice(i, i + itemsPerRow));
   }
 
-  // Compact mode: no header, just the grid
-  if (compact) {
-    return (
-      <View style={[dynamicStyles.container, dynamicStyles.containerCompact]}>
-        <View style={styles.contentCompact}>
-          <View style={styles.grid}>
-            {rows.map((row, rowIndex) => (
-              <View key={rowIndex} style={styles.row}>
-                {row.map((item, itemIndex) => (
-                  <KPICard
-                    key={`${rowIndex}-${itemIndex}`}
-                    icon={item.icon}
-                    value={item.value}
-                    label={item.label}
-                    variant={item.variant}
-                    unit={item.unit}
-                    trend={item.trend}
-                    trendValue={item.trendValue}
-                    isLoading={isLoading}
-                    compact
-                  />
-                ))}
-              </View>
+  const grid = (
+    <View style={styles.grid}>
+      {rows.map((row, rowIndex) => (
+        <View key={rowIndex} style={styles.row}>
+          {row.map((item, itemIndex) => (
+            <KPICard
+              key={`${rowIndex}-${itemIndex}`}
+              icon={item.icon}
+              value={item.value}
+              label={item.label}
+              variant={item.variant}
+              unit={item.unit}
+              trend={item.trend}
+              trendValue={item.trendValue}
+              upIsGood={item.upIsGood}
+              isLoading={isLoading}
+              compact={compact}
+            />
+          ))}
+          {/* Keep tiles the same width when the last row is short */}
+          {rows.length > 1 &&
+            Array.from({ length: itemsPerRow - row.length }, (_, i) => (
+              <View key={`empty-${i}`} style={styles.emptyCell} />
             ))}
-          </View>
         </View>
-      </View>
-    );
+      ))}
+    </View>
+  );
+
+  if (compact) {
+    return <View style={[styles.container, styles.containerCompact]}>{grid}</View>;
   }
 
   return (
-    <View style={dynamicStyles.container}>
-      {/* Fiori Card Header - Using Pressable for better feedback */}
-      <Pressable
-        style={({ pressed }) => [
-          dynamicStyles.header,
-          pressed && collapsible && dynamicStyles.headerPressed,
-        ]}
-        onPress={toggleExpand}
-        accessibilityLabel={`${title}, ${isExpanded ? 'collapse' : 'expand'}`}
-        accessibilityRole="button"
-        accessibilityHint={collapsible ? 'Tap to toggle visibility' : undefined}
-        disabled={!collapsible}
-      >
-        <View style={styles.headerLeft}>
-          <View style={dynamicStyles.headerIconContainer}>
-            <Icon name="chart-box-outline" size={18} color={colors.primary} />
-          </View>
-          <Text style={dynamicStyles.headerTitle}>{title}</Text>
-        </View>
-        {collapsible && (
+    <View style={styles.container}>
+      {collapsible ? (
+        <Pressable
+          style={({ pressed }) => [styles.header, pressed && styles.headerPressed]}
+          onPress={toggleExpand}
+          accessibilityRole="button"
+          accessibilityLabel={title}
+          accessibilityState={{ expanded: isExpanded }}
+        >
+          <Text style={styles.headerTitle} accessibilityRole="header">
+            {title}
+          </Text>
           <Icon
             name={isExpanded ? 'chevron-up' : 'chevron-down'}
-            size={20}
-            color={colors.textSecondary}
+            size={iconSize.md}
+            color={t.icon.secondary}
           />
-        )}
-      </Pressable>
-
-      {/* Card Body with KPI Grid */}
-      {isExpanded && (
-        <View style={styles.content}>
-          <View style={styles.grid}>
-            {rows.map((row, rowIndex) => (
-              <View key={rowIndex} style={styles.row}>
-                {row.map((item, itemIndex) => (
-                  <KPICard
-                    key={`${rowIndex}-${itemIndex}`}
-                    icon={item.icon}
-                    value={item.value}
-                    label={item.label}
-                    variant={item.variant}
-                    unit={item.unit}
-                    trend={item.trend}
-                    trendValue={item.trendValue}
-                    isLoading={isLoading}
-                  />
-                ))}
-                {/* Fill empty space if odd number of items in last row */}
-                {row.length === 1 && <View style={styles.emptyCell} />}
-              </View>
-            ))}
-          </View>
+        </Pressable>
+      ) : (
+        <View style={styles.header}>
+          <Text style={styles.headerTitle} accessibilityRole="header">
+            {title}
+          </Text>
         </View>
       )}
+
+      {isExpanded && grid}
     </View>
   );
 };
-
-// ============================================================================
-// SAP Fiori Compliant Styles (Static layout only - colors are in dynamicStyles)
-// ============================================================================
-const styles = StyleSheet.create({
-  headerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  content: {
-    padding: 12,
-  },
-  contentCompact: {
-    padding: 8,
-  },
-  grid: {
-    gap: 10,
-  },
-  row: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  emptyCell: {
-    flex: 1,
-  },
-});
 
 export default KPIGrid;

@@ -4,6 +4,10 @@
  * Inline search input for report screens that both filters visible customer
  * cards (client-side, via parent) and shows an autocomplete dropdown for
  * customers not already in the current list (via backend search).
+ *
+ * Styling follows docs/STYLE_GUIDE.md §13.2 (field) and §14.6 (search): the
+ * field uses `surface.field` with a `border.field` outline, suggestions sit in a
+ * menu card under the field and the matched text is bold.
  */
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
@@ -18,7 +22,17 @@ import {
   Keyboard,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { useFioriColors } from '@/theme/fioriColors';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import {
+  fontWeight,
+  iconSize,
+  layout,
+  radius,
+  space,
+  touchTarget,
+  typography,
+  type ThemeTokens,
+} from '@/theme/tokens';
 import { searchService } from '@/services/search-service';
 
 // ---------------------------------------------------------------------------
@@ -38,20 +52,120 @@ export interface ReportCustomerSearchProps {
 }
 
 // ---------------------------------------------------------------------------
-// Constants (Fiori-aligned)
+// Constants
 // ---------------------------------------------------------------------------
 const SEARCH = {
-  height: 40,
-  borderRadius: 10,
-  padding: 12,
-  iconSize: 20,
-  iconMargin: 8,
-  clearIconSize: 14,
-  fontSize: 15,
-  touchTarget: 44,
   debounceMs: 300,
   minQueryLength: 2,
 } as const;
+
+// ---------------------------------------------------------------------------
+// Styles
+// ---------------------------------------------------------------------------
+const makeStyles = (t: ThemeTokens) =>
+  StyleSheet.create({
+    container: {
+      marginBottom: space.xs,
+      zIndex: 10,
+    },
+    searchBar: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      borderRadius: radius.field,
+      borderWidth: 1,
+      borderColor: t.border.field,
+      backgroundColor: t.surface.field,
+      paddingLeft: space.md,
+      minHeight: layout.rowMinHeight,
+    },
+    searchIcon: {
+      marginRight: space.sm,
+    },
+    searchInput: {
+      ...typography.body,
+      flex: 1,
+      color: t.text.primary,
+      paddingVertical: 0,
+      ...Platform.select({
+        android: { paddingVertical: space.sm },
+      }),
+    },
+    trailing: {
+      width: touchTarget,
+      height: layout.rowMinHeight,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    dropdown: {
+      marginTop: space.xs,
+      borderRadius: radius.button,
+      backgroundColor: t.surface.card,
+      overflow: 'hidden',
+      ...t.shadow[3],
+    },
+    dropdownLabel: {
+      ...typography.footnote,
+      fontWeight: fontWeight.semibold,
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+      color: t.text.secondary,
+      paddingHorizontal: space.md,
+      paddingTop: space.md,
+      paddingBottom: space.s6,
+    },
+    dropdownItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: space.md,
+      paddingVertical: space.sm,
+      minHeight: layout.rowMinHeight,
+      gap: space.md,
+    },
+    dropdownItemDivider: {
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: t.border.divider,
+    },
+    dropdownItemPressed: {
+      backgroundColor: t.surface.cardPressed,
+    },
+    dropdownItemContent: {
+      flex: 1,
+    },
+    dropdownItemName: {
+      ...typography.body,
+      color: t.text.primary,
+    },
+    match: {
+      fontWeight: fontWeight.bold,
+    },
+    dropdownItemDetail: {
+      ...typography.caption1,
+      color: t.text.secondary,
+      marginTop: space.xxs,
+    },
+  });
+
+type Styles = ReturnType<typeof makeStyles>;
+
+/** Renders `text` with the first case-insensitive match of `query` in bold. */
+function HighlightedName({ text, query, styles }: { text: string; query: string; styles: Styles }) {
+  const q = query.trim();
+  const at = q ? text.toLowerCase().indexOf(q.toLowerCase()) : -1;
+  if (at < 0) {
+    return (
+      <Text style={styles.dropdownItemName} numberOfLines={1}>
+        {text}
+      </Text>
+    );
+  }
+  return (
+    <Text style={styles.dropdownItemName} numberOfLines={1}>
+      {text.slice(0, at)}
+      <Text style={styles.match}>{text.slice(at, at + q.length)}</Text>
+      {text.slice(at + q.length)}
+    </Text>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Component
@@ -61,9 +175,10 @@ export const ReportCustomerSearch: React.FC<ReportCustomerSearchProps> = ({
   onSearchChange,
   onCustomerSelect,
   visibleCustomerIds,
-  placeholder = 'Search customers...',
+  placeholder = 'Search customers',
 }) => {
-  const fiori = useFioriColors();
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
   const [isSearching, setIsSearching] = useState(false);
   const [dropdownResults, setDropdownResults] = useState<
     { id: string; name: string; detail?: string }[]
@@ -127,114 +242,74 @@ export const ReportCustomerSearch: React.FC<ReportCustomerSearchProps> = ({
 
   return (
     <View style={styles.container}>
-      {/* Search Bar */}
-      <View style={[styles.searchBar, { backgroundColor: fiori.colors.backgroundSecondary }]}>
+      {/* Search field */}
+      <View style={styles.searchBar}>
         <Icon
           name="magnify"
-          size={SEARCH.iconSize}
-          color={fiori.colors.textSecondary}
+          size={iconSize.md}
+          color={t.icon.secondary}
           style={styles.searchIcon}
         />
         <TextInput
           placeholder={placeholder}
           value={searchQuery}
           onChangeText={onSearchChange}
-          style={[styles.searchInput, { color: fiori.colors.textPrimary }]}
-          placeholderTextColor={fiori.colors.textTertiary}
+          style={styles.searchInput}
+          placeholderTextColor={t.text.placeholder}
           autoCapitalize="none"
           autoCorrect={false}
           returnKeyType="search"
+          accessibilityLabel={placeholder}
         />
         {isSearching && (
-          <ActivityIndicator
-            size="small"
-            color={fiori.colors.tint}
-            style={styles.loader}
-          />
+          <View style={styles.trailing}>
+            <ActivityIndicator
+              size="small"
+              color={t.brand.tint}
+              accessibilityLabel="Searching"
+            />
+          </View>
         )}
         {searchQuery.length > 0 && !isSearching && (
           <Pressable
             onPress={handleClear}
-            style={styles.clearButton}
-            hitSlop={8}
+            style={styles.trailing}
             accessibilityRole="button"
             accessibilityLabel="Clear search"
           >
-            <View
-              style={[
-                styles.clearIconContainer,
-                { backgroundColor: fiori.colors.textSecondary },
-              ]}
-            >
-              <Icon name="close" size={SEARCH.clearIconSize} color="#FFFFFF" />
-            </View>
+            <Icon name="close-circle" size={iconSize.md} color={t.icon.secondary} />
           </Pressable>
         )}
       </View>
 
       {/* Autocomplete Dropdown */}
       {showDropdown && dropdownResults.length > 0 && (
-        <View
-          style={[
-            styles.dropdown,
-            {
-              backgroundColor: fiori.colors.cardBackground,
-              borderColor: fiori.colors.divider,
-            },
-          ]}
-        >
-          <Text
-            style={[styles.dropdownLabel, { color: fiori.colors.textSecondary }]}
-          >
-            OTHER CUSTOMERS
+        <View style={styles.dropdown}>
+          <Text style={styles.dropdownLabel} accessibilityRole="header">
+            Other customers
           </Text>
           {dropdownResults.map((customer, index) => (
             <Pressable
               key={customer.id}
               style={({ pressed }) => [
                 styles.dropdownItem,
-                pressed && { backgroundColor: fiori.colors.backgroundSecondary },
-                index < dropdownResults.length - 1 && {
-                  borderBottomWidth: StyleSheet.hairlineWidth,
-                  borderBottomColor: fiori.colors.divider,
-                },
+                pressed && styles.dropdownItemPressed,
+                index < dropdownResults.length - 1 && styles.dropdownItemDivider,
               ]}
               onPress={() => handleSelect(customer)}
               accessibilityRole="button"
-              accessibilityLabel={customer.name}
+              accessibilityLabel={customer.detail ? `${customer.name}, ${customer.detail}` : customer.name}
             >
-              <Icon
-                name="account-outline"
-                size={20}
-                color={fiori.colors.tint}
-              />
+              <Icon name="account-outline" size={iconSize.md} color={t.icon.secondary} />
               <View style={styles.dropdownItemContent}>
-                <Text
-                  style={[
-                    styles.dropdownItemName,
-                    { color: fiori.colors.textPrimary },
-                  ]}
-                  numberOfLines={1}
-                >
-                  {customer.name}
-                </Text>
+                <HighlightedName text={customer.name} query={searchQuery} styles={styles} />
                 {customer.detail && (
-                  <Text
-                    style={[
-                      styles.dropdownItemDetail,
-                      { color: fiori.colors.textSecondary },
-                    ]}
-                    numberOfLines={1}
-                  >
+                  <Text style={styles.dropdownItemDetail} numberOfLines={1}>
                     {customer.detail}
                   </Text>
                 )}
               </View>
-              <Icon
-                name="chevron-right"
-                size={16}
-                color={fiori.colors.textSecondary}
-              />
+              <Icon name="chevron-right" size={iconSize.sm} color={t.icon.secondary} />
             </Pressable>
           ))}
         </View>
@@ -242,78 +317,3 @@ export const ReportCustomerSearch: React.FC<ReportCustomerSearchProps> = ({
     </View>
   );
 };
-
-// ---------------------------------------------------------------------------
-// Styles (layout only — colors applied inline for dark mode support)
-// ---------------------------------------------------------------------------
-const styles = StyleSheet.create({
-  container: {
-    marginBottom: 4,
-    zIndex: 10,
-  },
-  searchBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: SEARCH.borderRadius,
-    paddingHorizontal: SEARCH.padding,
-    height: SEARCH.height,
-    minHeight: SEARCH.touchTarget,
-  },
-  searchIcon: {
-    marginRight: SEARCH.iconMargin,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: SEARCH.fontSize,
-    paddingVertical: 0,
-    ...Platform.select({
-      android: { paddingVertical: 8 },
-    }),
-  },
-  loader: {
-    marginLeft: SEARCH.iconMargin,
-  },
-  clearButton: {
-    marginLeft: SEARCH.iconMargin,
-    padding: 2,
-  },
-  clearIconContainer: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  dropdown: {
-    marginTop: 4,
-    borderRadius: 10,
-    borderWidth: 1,
-    overflow: 'hidden',
-  },
-  dropdownLabel: {
-    fontSize: 11,
-    fontWeight: '600',
-    letterSpacing: 0.5,
-    paddingHorizontal: 12,
-    paddingTop: 10,
-    paddingBottom: 6,
-  },
-  dropdownItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    gap: 10,
-  },
-  dropdownItemContent: {
-    flex: 1,
-  },
-  dropdownItemName: {
-    fontSize: 15,
-    fontWeight: '500',
-  },
-  dropdownItemDetail: {
-    fontSize: 12,
-    marginTop: 1,
-  },
-});

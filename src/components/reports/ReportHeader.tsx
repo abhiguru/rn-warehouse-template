@@ -1,40 +1,30 @@
 /**
- * ReportHeader Component - SAP Fiori Compliant
+ * ReportHeader: the navigation bar of report and sensor screens.
  *
- * A reusable header for report screens with back button, title, and optional actions.
- * Follows SAP Fiori Navigation Bar spec.
- *
- * @see src/theme/index.ts - FioriColors interface
+ * Follows the stack header spec in docs/STYLE_GUIDE.md §13.8: `surface.header`,
+ * title in `headline`, back and actions in `brand.tint`, no shadow and a hairline
+ * `border.divider` at the bottom. It also sets the status bar style from tokens.
+ * Export, print and other actions go on the right (§14.10).
  */
 
 import React from 'react';
-import { View, Text, Pressable, StyleSheet, Platform } from 'react-native';
+import { View, Text, Pressable, StyleSheet, Platform, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { useListColors, type ListColors } from '@/hooks/useListColors';
+import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
+import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { iconSize, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 
-// ============================================================================
-// SAP Fiori Design Tokens - Dimensions only (colors applied dynamically)
-// ============================================================================
-const FIORI = {
-  dimensions: {
-    headerHeight: 56,
-    buttonSize: 44,      // Fiori touch target
-    buttonRadius: 22,
-    iconSize: 24,
-  },
-  typography: {
-    title: {
-      fontSize: 17,
-      fontWeight: '600' as const,
-    },
-    subtitle: {
-      fontSize: 12,
-      fontWeight: '400' as const,
-    },
-  },
-};
+export interface ReportHeaderAction {
+  /** MaterialCommunityIcons glyph */
+  icon: string;
+  /** Accessible name of the action, e.g. "Share PDF" */
+  label: string;
+  onPress: () => void;
+  /** Shows a spinner instead of the icon and ignores presses */
+  busy?: boolean;
+}
 
 interface ReportHeaderProps {
   /** Report title */
@@ -51,7 +41,60 @@ interface ReportHeaderProps {
   onAction?: () => void;
   /** Right-side action accessibility label */
   actionLabel?: string;
+  /** Further right-side actions, shown after `actionIcon` */
+  actions?: ReportHeaderAction[];
 }
+
+const BACK_ICON = Platform.OS === 'ios' ? 'chevron-left' : 'arrow-left';
+
+const makeStyles = (t: ThemeTokens) =>
+  StyleSheet.create({
+    container: {
+      backgroundColor: t.surface.header,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: t.border.divider,
+    },
+    content: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      minHeight: 56,
+      paddingHorizontal: space.xs,
+      paddingVertical: space.xs,
+    },
+    side: {
+      minWidth: touchTarget,
+      flexDirection: 'row',
+      alignItems: 'center',
+    },
+    sideRight: {
+      justifyContent: 'flex-end',
+    },
+    center: {
+      flex: 1,
+      alignItems: 'center',
+      paddingHorizontal: space.sm,
+    },
+    navButton: {
+      width: touchTarget,
+      height: touchTarget,
+      justifyContent: 'center',
+      alignItems: 'center',
+      borderRadius: radius.pill,
+    },
+    navButtonPressed: {
+      backgroundColor: t.brand.subtle,
+    },
+    title: {
+      ...typography.headline,
+      color: t.text.primary,
+      textAlign: 'center',
+    },
+    subtitle: {
+      ...typography.footnote,
+      color: t.text.secondary,
+      textAlign: 'center',
+    },
+  });
 
 export const ReportHeader: React.FC<ReportHeaderProps> = ({
   title,
@@ -61,10 +104,12 @@ export const ReportHeader: React.FC<ReportHeaderProps> = ({
   actionIcon,
   onAction,
   actionLabel,
+  actions = [],
 }) => {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const colors = useListColors();
+  const styles = useThemedStyles(makeStyles);
+  const t = useTokens();
 
   const handleBack = () => {
     if (onBack) {
@@ -74,129 +119,63 @@ export const ReportHeader: React.FC<ReportHeaderProps> = ({
     }
   };
 
+  const allActions: ReportHeaderAction[] = [
+    ...(actionIcon && onAction ? [{ icon: actionIcon, label: actionLabel || title, onPress: onAction }] : []),
+    ...actions,
+  ];
+  // Both sides share one width so the title stays centred.
+  const sideWidth = { width: Math.max(1, allActions.length) * touchTarget };
+
   return (
-    <View
-      style={[
-        styles.container,
-        {
-          paddingTop: insets.top,
-          backgroundColor: colors.cellBackground,
-          borderBottomColor: colors.cellDivider,
-        },
-      ]}
-    >
+    <View style={[styles.container, { paddingTop: insets.top }]}>
+      <EdgeToEdgeStatusBar barStyle={t.statusBarStyle} />
       <View style={styles.content}>
-        {/* Left side - Back button */}
-        <View style={styles.leftSection}>
+        <View style={[styles.side, sideWidth]}>
           {showBack && (
             <Pressable
-              style={({ pressed }) => [
-                styles.navButton,
-                pressed && { backgroundColor: colors.cellBackgroundPressed },
-              ]}
+              style={({ pressed }) => [styles.navButton, pressed && styles.navButtonPressed]}
               onPress={handleBack}
-              accessibilityLabel="Go back"
+              accessibilityLabel="Back"
               accessibilityRole="button"
-              accessibilityHint="Navigate to previous screen"
             >
-              <Icon name="arrow-left" size={FIORI.dimensions.iconSize} color={colors.textPrimary} />
+              <Icon name={BACK_ICON} size={iconSize.lg} color={t.brand.tint} />
             </Pressable>
           )}
         </View>
 
-        {/* Center - Title and subtitle */}
-        <View style={styles.centerSection}>
-          <Text style={[styles.title, { color: colors.textPrimary }]} numberOfLines={1}>
+        <View style={styles.center}>
+          <Text style={styles.title} numberOfLines={2} accessibilityRole="header">
             {title}
           </Text>
-          {subtitle && (
-            <Text style={[styles.subtitle, { color: colors.textSecondary }]} numberOfLines={1}>
+          {subtitle ? (
+            <Text style={styles.subtitle} numberOfLines={1}>
               {subtitle}
             </Text>
-          )}
+          ) : null}
         </View>
 
-        {/* Right side - Action button */}
-        <View style={styles.rightSection}>
-          {actionIcon && onAction && (
+        <View style={[styles.side, styles.sideRight, sideWidth]}>
+          {allActions.map(action => (
             <Pressable
-              style={({ pressed }) => [
-                styles.navButton,
-                pressed && { backgroundColor: colors.cellBackgroundPressed },
-              ]}
-              onPress={onAction}
-              accessibilityLabel={actionLabel || 'Action'}
+              key={action.label}
+              style={({ pressed }) => [styles.navButton, pressed && styles.navButtonPressed]}
+              onPress={action.onPress}
+              disabled={action.busy}
+              accessibilityLabel={action.label}
               accessibilityRole="button"
+              accessibilityState={{ busy: !!action.busy, disabled: !!action.busy }}
             >
-              <Icon name={actionIcon} size={FIORI.dimensions.iconSize} color={colors.textPrimary} />
+              {action.busy ? (
+                <ActivityIndicator size="small" color={t.brand.tint} />
+              ) : (
+                <Icon name={action.icon} size={iconSize.lg} color={t.brand.tint} />
+              )}
             </Pressable>
-          )}
+          ))}
         </View>
       </View>
     </View>
   );
 };
-
-// ============================================================================
-// SAP Fiori Compliant Styles
-// Colors applied inline for dark mode support
-// ============================================================================
-const styles = StyleSheet.create({
-  container: {
-    // backgroundColor: applied inline for dark mode
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    // borderBottomColor: applied inline for dark mode
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.05,
-        shadowRadius: 2,
-      },
-      android: {
-        elevation: 2,
-      },
-    }),
-  },
-  content: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    height: FIORI.dimensions.headerHeight,
-    paddingHorizontal: 4,
-  },
-  leftSection: {
-    width: 48,
-    alignItems: 'flex-start',
-  },
-  centerSection: {
-    flex: 1,
-    alignItems: 'center',
-    paddingHorizontal: 8,
-  },
-  rightSection: {
-    width: 48,
-    alignItems: 'flex-end',
-  },
-  navButton: {
-    width: FIORI.dimensions.buttonSize,
-    height: FIORI.dimensions.buttonSize,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderRadius: FIORI.dimensions.buttonRadius,
-  },
-  title: {
-    fontSize: FIORI.typography.title.fontSize,
-    fontWeight: FIORI.typography.title.fontWeight,
-    // color: applied inline for dark mode
-    textAlign: 'center',
-  },
-  subtitle: {
-    fontSize: FIORI.typography.subtitle.fontSize,
-    fontWeight: FIORI.typography.subtitle.fontWeight,
-    // color: applied inline for dark mode
-    textAlign: 'center',
-    marginTop: 2,
-  },
-});
 
 export default ReportHeader;
