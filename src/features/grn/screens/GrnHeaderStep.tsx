@@ -22,7 +22,7 @@ import { useGRNForm } from '@/hooks';
 import { CustomerSearchBottomSheet, CustomerSearchBottomSheetRef } from '@/components/CustomerSearchBottomSheet';
 import { SupervisorBottomSheet } from '@/features/grn/components/SupervisorBottomSheet';
 import { GRNStepIndicator } from '@/components/GRNStepIndicator';
-import GRNFormBottomNav from '@/components/GRNFormBottomNav';
+import WizardBottomBar from '@/components/WizardBottomBar';
 import { formatDate } from '@/utils/formatters';
 import { GRN_STEPS, STEP_NUMBERS, getCompletedSteps } from '@/constants/grnSteps';
 import { GhostTextInput, GhostTextInputRef } from '@/components/GhostTextInput';
@@ -468,7 +468,7 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
         )}
       </KeyboardAwareScrollView>
 
-      <GRNFormBottomNav
+      <WizardBottomBar
         currentStep={STEP_NUMBERS.HEADER}
         totalSteps={GRN_STEPS.length}
         onNext={handleNext}

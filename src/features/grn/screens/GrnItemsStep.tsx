@@ -30,7 +30,7 @@ import { useGRNForm } from '@/hooks';
 import * as ImagePicker from 'expo-image-picker';
 import { withNativeHandoff } from '@/config/nativeHandoff';
 import { GRNStepIndicator } from '@/components/GRNStepIndicator';
-import GRNFormBottomNav from '@/components/GRNFormBottomNav';
+import WizardBottomBar from '@/components/WizardBottomBar';
 import { GRN_STEPS, STEP_NUMBERS, getCompletedSteps } from '@/constants/grnSteps';
 import { deleteGRNImage, uploadGRNItemImage, validateImageFile } from '@/features/grn/services/imageUploadService';
 import { isTemporaryGRNImageId } from '@/features/grn/services/imageId';
@@ -712,7 +712,7 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
       </View>
 
       {/* Back and Next run the same checks as the swipe (unsaved item, validation) */}
-      <GRNFormBottomNav
+      <WizardBottomBar
         currentStep={STEP_NUMBERS.ITEMS}
         totalSteps={GRN_STEPS.length}
         onPrevious={handleSwipeRight}

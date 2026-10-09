@@ -6,7 +6,7 @@ import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, layout, radius, space, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 
-export interface GRNFormBottomNavProps {
+export interface WizardBottomBarProps {
   currentStep: number;
   totalSteps: number;
   /** Back to the previous step; the Back button shows from step 2 on. */
@@ -77,7 +77,7 @@ const makeStyles = (t: ThemeTokens) => ({
  * the review step (primary). Sits on surface.card with shadow[3] and adds the
  * bottom inset. Render it below the step content, not over it.
  */
-export default function GRNFormBottomNav({
+export default function WizardBottomBar({
   currentStep,
   totalSteps,
   onPrevious,
@@ -87,7 +87,7 @@ export default function GRNFormBottomNav({
   nextDisabled = false,
   isLoading = false,
   showPrevious = true,
-}: GRNFormBottomNavProps) {
+}: WizardBottomBarProps) {
   const insets = useSafeAreaInsets();
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();

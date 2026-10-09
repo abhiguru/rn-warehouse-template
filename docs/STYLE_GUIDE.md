@@ -868,7 +868,7 @@ The three `FioriDataTable` copies follow one spec and are merged during migratio
 | `FioriTabBar.tsx` | `surface.tabBar`, top hairline `border.divider`, height 49 plus the bottom inset. Selected: filled icon and label in `brand.tint`. Unselected: outline icon and label in `icon.secondary` and `text.secondary`. Labels `caption2`, always visible. Badges per [13.5](#135-chips-badges-and-indicators). At most five tabs. |
 | Detail tabs (`common/GenericDetailTabNavigator.tsx`, `*-details/*TabNavigator.tsx`) | Top tabs on `surface.header`; selected label `brand.tint` with a 2 px `brand.tint` underline; unselected `text.secondary`; label `subhead` weight 600; scrollable when more than four. |
 | Step indicators (`StepIndicator.tsx`, `GenericStepIndicatorHeader.tsx`, `GRNStepIndicator`, `DispatchStepIndicator`, `InvoiceStepIndicator`) | Circles 28 px. Current: `brand.fill` with `brand.onFill` number. Completed: `brand.tint` outline with a check. Upcoming: `border.field` outline with `text.secondary` number. Connector 2 px, completed `brand.tint`, else `border.divider`. Step names under the circles in `caption1`; on phones show only the current step name. |
-| Form chrome (`GRNFormHeader.tsx`, `GRNFormBottomNav.tsx`, `dispatch/components/DispatchFormHeader.tsx`, `form/FormStepWrapper.tsx`, `SwipeableFormStep.tsx`) | Header shows the step title and progress. The bottom bar sits on `surface.card` with `shadow[3]`, holds Back (secondary) and Next or Save (primary), and adds the bottom inset. |
+| Form chrome (`GRNFormHeader.tsx`, `WizardBottomBar.tsx` (the bottom bar for every wizard), `dispatch/components/DispatchFormHeader.tsx`, `form/FormStepWrapper.tsx`, `SwipeableFormStep.tsx`) | Header shows the step title and progress. The bottom bar sits on `surface.card` with `shadow[3]`, holds Back (secondary) and Next or Save (primary), and adds the bottom inset. |
 
 More header rules:
 
@@ -1081,7 +1081,7 @@ The contrast test (`src/theme/tokens/__tests__/contrast.test.ts`) checks every t
 
 1. Write styles as a module-level `const makeStyles = (t: ThemeTokens) => ({ ... })` and call `useThemedStyles(makeStyles)` in the component. Colours passed as props come from `useTokens()`.
 2. Spread `typography.*` for text; use `space`, `radius`, `iconSize`, `touchTarget` and `layout` from `@/theme/tokens`; spread `t.shadow[n]` for elevation.
-3. Build from the shared parts before writing new ones: `ui/Button`, `ui/Input`, `ui/Card`, `ui/StatusTag`, `ui/Avatar`, `ui/SectionHeader`, `fiori/KeyValueCell`, `list/ListEmptyState`, `ConfirmDialog`, the bottom sheets in `common/`, `FioriDataTable`.
+3. Build from the shared parts before writing new ones: `ui/Button`, `ui/Input`, `ui/Card`, `ui/StatusTag`, `ui/Avatar`, `ui/Fab`, `ui/HeaderBackButton`, `ui/SectionHeader`, `fiori/KeyValueCell`, `list/ListEmptyState`, `list/SortBar`, `WizardBottomBar`, `ConfirmDialog`, `showAlert`, the bottom sheets in `common/`, `FioriDataTable`.
 4. Format every date, time, number, weight, phone number and count with `src/utils/formatters.ts`; ask with `showAlert`.
 5. Pick the pattern in section 14 and follow it, including loading, empty, error and offline states.
 6. Add a render test that draws it in all four themes (`BRANDS × ['light','dark']`, mocking `@/store/hooks` as in `src/components/__tests__/StyleGuideScreen.test.tsx`).

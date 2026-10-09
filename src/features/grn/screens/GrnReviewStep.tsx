@@ -40,7 +40,7 @@ import { generateGRNPDF } from '@/services/pdf-service';
 import { downloadAndSharePDF } from '@/utils/shareDocument';
 
 import { showAlert } from '@/utils/alert';
-import GRNFormBottomNav from '@/components/GRNFormBottomNav';
+import WizardBottomBar from '@/components/WizardBottomBar';
 import { formatCount, formatDate, formatNumber, formatWeight } from '@/utils/formatters';
 import { StatusTag } from '@/components/ui';
 
@@ -626,7 +626,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
         </ScrollView>
 
         {/* Bottom action bar */}
-        <GRNFormBottomNav
+        <WizardBottomBar
           currentStep={STEP_NUMBERS.REVIEW}
           totalSteps={GRN_STEPS.length}
           onPrevious={handlePrevious}

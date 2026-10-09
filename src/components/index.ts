@@ -63,7 +63,7 @@ export type { FormStepWrapperProps, StepConfig } from './form';
 export { default as SwipeableFormStep } from './SwipeableFormStep';
 export { default as FormFieldWrapper } from './FormFieldWrapper';
 export { default as GRNFormHeader } from './GRNFormHeader';
-export { default as GRNFormBottomNav } from './GRNFormBottomNav';
+export { default as WizardBottomBar } from './WizardBottomBar';
 export { default as DateRangePicker } from './DateRangePicker';
 
 // ============================================================================

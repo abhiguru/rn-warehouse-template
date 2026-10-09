@@ -36,6 +36,7 @@ import { CustomerSearchBottomSheet, CustomerSearchBottomSheetRef } from '@/compo
 import { SupervisorBottomSheet } from '@/features/grn/components/SupervisorBottomSheet';
 import { DispatchStepIndicator } from '@/components/DispatchStepIndicator';
 import SwipeableFormStep from '@/components/SwipeableFormStep';
+import WizardBottomBar from '@/components/WizardBottomBar';
 import { DISPATCH_STEPS, DISPATCH_STEP_NUMBERS, getDispatchCompletedSteps } from '@/constants/dispatchSteps';
 import { toLocalISODate, formatDate, toDate } from '@/utils/formatters';
 import { GhostTextInput } from '@/components/GhostTextInput';
@@ -563,6 +564,13 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
                     )}
                 </KeyboardAwareScrollView>
             </SwipeableFormStep>
+
+            {/* Same bottom bar as every wizard step (guide §14.3); Next validates like the swipe */}
+            <WizardBottomBar
+                currentStep={1}
+                totalSteps={DISPATCH_STEPS.length}
+                onNext={() => { void navigateToStep(2); }}
+            />
 
             {/* Bottom Sheets */}
             <CustomerSearchBottomSheet
