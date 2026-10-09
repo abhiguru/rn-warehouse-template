@@ -67,11 +67,16 @@ export interface DispatchImageData {
 interface DispatchImagesTabProps {
   images: DispatchImageData[];
   onImagePress?: (images: DispatchImageData[], index: number) => void;
+  /** Adds a photo to the submitted dispatch; omit to show the tab read-only. */
+  onUpload?: () => void;
+  isUploading?: boolean;
 }
 
 export const DispatchImagesTab: React.FC<DispatchImagesTabProps> = ({
   images,
   onImagePress,
+  onUpload,
+  isUploading = false,
 }) => {
   // Theme colors for dark mode support
   const colors = useListColors();
@@ -132,6 +137,19 @@ export const DispatchImagesTab: React.FC<DispatchImagesTabProps> = ({
         <Icon name="image-off-outline" size={48} color={colors.gray500} />
         <Text style={dynamicStyles.emptyTitle}>No Images</Text>
         <Text style={dynamicStyles.emptySubtitle}>No images uploaded for this dispatch</Text>
+        {onUpload && (
+          <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel="Add dispatch photo"
+            accessibilityState={{ disabled: isUploading }}
+            style={[styles.uploadButton, { backgroundColor: colors.primary }]}
+            onPress={onUpload}
+            disabled={isUploading}
+          >
+            <Icon name="image-plus" size={18} color="#fff" />
+            <Text style={styles.uploadButtonText}>{isUploading ? 'Uploading…' : 'Add Photo'}</Text>
+          </TouchableOpacity>
+        )}
       </View>
     );
   }
@@ -164,6 +182,18 @@ export const DispatchImagesTab: React.FC<DispatchImagesTabProps> = ({
       <View style={dynamicStyles.headerRow}>
         <Icon name="image-multiple" size={18} color={colors.gray600} />
         <Text style={dynamicStyles.headerText}>{images.length} image{images.length !== 1 ? 's' : ''}</Text>
+        {onUpload && (
+          <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel="Add dispatch photo"
+            accessibilityState={{ disabled: isUploading }}
+            style={[styles.compactUploadButton, { backgroundColor: colors.primary }]}
+            onPress={onUpload}
+            disabled={isUploading}
+          >
+            <Icon name={isUploading ? 'progress-upload' : 'image-plus'} size={16} color="#fff" />
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Image Grid */}
@@ -197,5 +227,24 @@ const styles = StyleSheet.create({
   image: {
     width: '100%',
     height: '100%',
+  },
+  uploadButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  uploadButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  compactUploadButton: {
+    marginLeft: 'auto',
+    padding: 7,
+    borderRadius: 14,
   },
 });

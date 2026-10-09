@@ -45,6 +45,9 @@ import {
 } from '@/components/dispatch-details';
 import { ImageOverlay, ImageData } from '@/components/ImageOverlay';
 import { useFioriColors } from '@/theme/fioriColors';
+import * as ImagePicker from 'expo-image-picker';
+import { withNativeHandoff } from '@/config/nativeHandoff';
+import { uploadDispatchImage } from '@/features/dispatch/services/dispatchImageService';
 
 // ============================================================================
 // FIORI DESIGN TOKENS - Static values (typography, spacing, dimensions)
@@ -122,6 +125,8 @@ function DispatchDetailScreen() {
   const [showPrintDialog, setShowPrintDialog] = useState(false);
   const [snackbarVisible, setSnackbarVisible] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const imageUploadRef = useRef(false);
 
   // Image overlay state
   const [overlayVisible, setOverlayVisible] = useState(false);
@@ -545,6 +550,51 @@ function DispatchDetailScreen() {
     invoice_numbers: [],
   };
 
+  // A photo can be added after submit (testvm2 issue 4): the create flow's photo
+  // section sits below the item list and is easy to miss.
+  const handleAddImage = async () => {
+    if (!id || !canUpdate || imageUploadRef.current) return;
+    imageUploadRef.current = true;
+    try {
+      // Android's system picker grants access to the selected asset; broad
+      // library permissions are deliberately blocked by our native manifest.
+      if (Platform.OS !== 'android') {
+        const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (!permission.granted) {
+          setSnackbarMessage('Photo library permission is required to add a photo');
+          setSnackbarVisible(true);
+          return;
+        }
+      }
+      const picked = await withNativeHandoff(() =>
+        ImagePicker.launchImageLibraryAsync({
+          mediaTypes: 'images' as const,
+          allowsEditing: false,
+          quality: 0.8,
+          allowsMultipleSelection: false,
+        })
+      );
+      if (picked.canceled || !picked.assets?.[0]) return;
+
+      setIsUploadingImage(true);
+      const result = await uploadDispatchImage(picked.assets[0], id);
+      if (!result.success) {
+        setSnackbarMessage(result.error || 'Photo upload failed');
+        setSnackbarVisible(true);
+        return;
+      }
+      await fetchDispatchDetails();
+      setSnackbarMessage('Photo added');
+      setSnackbarVisible(true);
+    } catch {
+      setSnackbarMessage('Photo upload failed');
+      setSnackbarVisible(true);
+    } finally {
+      setIsUploadingImage(false);
+      imageUploadRef.current = false;
+    }
+  };
+
   // Prepare images for DispatchImagesTab (use processed_images with signed URLs)
   const dispatchImages: DispatchImageData[] = (dispatch.processed_images || []).map((img: any) => ({
     id: img.id,
@@ -659,6 +709,8 @@ function DispatchDetailScreen() {
             <DispatchImagesTab
               images={dispatchImages}
               onImagePress={handleImagePress}
+              onUpload={canUpdate ? handleAddImage : undefined}
+              isUploading={isUploadingImage}
             />
           )}
 
