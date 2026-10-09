@@ -522,7 +522,7 @@ Rules:
 
 ## 8. Iconography
 
-- **One set.** Use `MaterialCommunityIcons` from `@expo/vector-icons`. About 40 files still use `Ionicons`, including `Button`'s `leftIcon` and `rightIcon`. They move to MaterialCommunityIcons during migration.
+- **One set.** Use MaterialCommunityIcons: `import Icon from 'react-native-vector-icons/MaterialCommunityIcons'`. `Button`, `ConfirmDialog` and `ListEmptyState` take MaterialCommunityIcons names.
 - **Sizes.** `iconSize.sm` 16 inline with caption text, `md` 20 in rows and inputs, `lg` 24 in toolbars, tabs and buttons, `xl` 32 in empty states and KPI tiles, `hero` 48 in full-screen states.
 - **Colour.** `icon.primary` when the icon is the action or carries meaning, `icon.secondary` when it decorates, `brand.tint` for brand actions, `status.*.text` for status, `brand.onFill` on fills.
 - **Touch area.** An icon button is at least `touchTarget` square (44 iOS, 48 Android), even if the glyph is 24. Use `hitSlop` when space is tight.
@@ -576,7 +576,7 @@ Standard glyphs:
 - Use ease-out for things entering and ease-in for things leaving.
 - Use the native stack transitions. Do not build custom screen transitions.
 - Respect Reduce Motion. When `AccessibilityInfo.isReduceMotionEnabled()` is true, replace slides and springs with fades and stop skeleton shimmer.
-- Haptics: light impact on a successful save or a switch toggle, notification error on a failed save. Never on scroll or on every tap.
+- Haptics: light impact on a successful save or a switch toggle, notification error on a failed save. Never on scroll, tab changes, filter edits or ordinary button presses.
 - Nothing animates for longer than 300 ms, and nothing loops except loading indicators.
 
 ---
