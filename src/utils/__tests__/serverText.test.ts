@@ -17,6 +17,22 @@ describe('server text in English', () => {
   });
 });
 
+describe('invoice refusals', () => {
+  it('are not mistaken for a duplicate entry', () => {
+    for (const text of ['GRN is already invoiced', 'A dispatch line is already on another invoice']) {
+      expect(serverReason(text)).toBeDefined();
+      expect(serverReason(text)).not.toBe(t('errors.parsed.duplicate'));
+    }
+  });
+
+  it('are shown in English without the database wrapper', () => {
+    expect(serverText('Database error: GRN is already invoiced (SQLState: WH409)', 'x')).toBe('GRN is already invoiced');
+    expect(serverText('Database error: Invoice line charge must be between 0 and 999999 (SQLState: 22023)', 'x')).toBe(
+      'Invoice line charge must be between 0 and 999999'
+    );
+  });
+});
+
 describe('server text in Gujarati', () => {
   beforeEach(() => setLanguage('gu'));
 
@@ -47,6 +63,19 @@ describe('server text in Gujarati', () => {
     ['Lot A0010 belongs to another customer', 'errors.parsed.otherCustomer'],
     ['Dispatch items must come from GRNs of the dispatch customer; GRN B0007 belongs to a different customer', 'errors.parsed.otherCustomer'],
     ['Item belongs to another customer', 'errors.parsed.otherCustomer'],
+    ['Item belongs to another customer: Example Potatoes (A0010)', 'errors.parsed.otherCustomer'],
+    ['Cannot change the dispatch customer: items belong to another customer: Example Potatoes (A0010)', 'errors.parsed.otherCustomer'],
+    ['Cannot change the customer of a GRN that has dispatches, invoices or order items', 'errors.parsed.grnCustomerLocked'],
+    ['Invoice line charge must be between 0 and 999999', 'errors.parsed.invoiceChargeRange'],
+    ['Invoice line labour rate must be between 0 and 999999', 'errors.parsed.invoiceLabourRange'],
+    ['Invoice line tax must be between 0 and 100', 'errors.parsed.invoiceTaxRange'],
+    ['GRN is already invoiced', 'errors.parsed.grnAlreadyInvoiced'],
+    ['A dispatch line is already on another invoice', 'errors.parsed.lineOnOtherInvoice'],
+    ['Cannot delete an invoice that has payments', 'errors.parsed.invoiceHasPayments'],
+    // save_invoice(jsonb) wraps the text of every refusal.
+    ['Database error: GRN is already invoiced (SQLState: WH409)', 'errors.parsed.grnAlreadyInvoiced'],
+    ['Database error: A dispatch line is already on another invoice (SQLState: WH409)', 'errors.parsed.lineOnOtherInvoice'],
+    ['Database error: Invoice line tax must be between 0 and 100 (SQLState: 22023)', 'errors.parsed.invoiceTaxRange'],
     ['Transaction conflict: too many retries. Please try again.', 'errors.parsed.busy'],
     ['TypeError: Network request failed', 'errors.parsed.network'],
   ] as const)('gives the reason for "%s"', (text, key) => {

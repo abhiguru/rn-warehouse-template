@@ -23,6 +23,14 @@ const REASONS: [RegExp, TranslationKey][] = [
   ],
   // Stock, a lot or an item that is not the document's customer's.
   [/(another|different|other) customer/, 'errors.parsed.otherCustomer'],
+  [/cannot change the customer of a grn/, 'errors.parsed.grnCustomerLocked'],
+  // Invoice rules (server migration 41). "Already invoiced" is not a duplicate number.
+  [/line charge must be between/, 'errors.parsed.invoiceChargeRange'],
+  [/line labour rate must be between/, 'errors.parsed.invoiceLabourRange'],
+  [/line tax must be between/, 'errors.parsed.invoiceTaxRange'],
+  [/grn is already invoiced/, 'errors.parsed.grnAlreadyInvoiced'],
+  [/already on another invoice/, 'errors.parsed.lineOnOtherInvoice'],
+  [/invoice that has payments/, 'errors.parsed.invoiceHasPayments'],
   [/insufficient stock/, 'errors.code.insufficientStock'],
   [/delete invoices first|cannot delete item|cannot modify invoiced|is pending tally sync/, 'errors.parsed.inUse'],
   [/already exists|duplicate|overlapping/, 'errors.parsed.duplicate'],
@@ -30,6 +38,15 @@ const REASONS: [RegExp, TranslationKey][] = [
   [/transaction conflict|too many retries|deadlock|could not serialize/, 'errors.parsed.busy'],
   [/network request failed|failed to fetch|fetch failed/, 'errors.parsed.network'],
 ];
+
+/**
+ * save_invoice(jsonb) reports a refusal as "Database error: <text> (SQLState: <code>)".
+ * The wrapper says nothing to the reader, so only the text inside is kept.
+ */
+function unwrapDatabaseError(text: string): string {
+  const wrapped = /^Database error:\s*([\s\S]*?)\s*\(SQLState:\s*[^)]*\)\s*$/.exec(text);
+  return wrapped ? wrapped[1] : text;
+}
 
 /** The reason a server text names, in the app's language; undefined when it names none the app knows. */
 export function serverReason(text: string): string | undefined {
@@ -47,6 +64,7 @@ export function serverReason(text: string): string | undefined {
 export function serverText(text: unknown, fallback: string): string {
   if (typeof text !== 'string' || text.trim() === '') return fallback;
   // English keeps the server's wording; text the app wrote in Gujarati is already right.
-  if (getLanguage() === 'en' || GUJARATI_SCRIPT.test(text)) return text;
+  if (GUJARATI_SCRIPT.test(text)) return text;
+  if (getLanguage() === 'en') return unwrapDatabaseError(text) || fallback;
   return serverReason(text) ?? fallback;
 }

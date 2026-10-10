@@ -57,6 +57,7 @@ import {
   loadInvoiceData as loadInvoiceDataService,
   createInvoice,
   updateInvoice,
+  checkGrnStillInvoiceable,
 } from '@/features/invoice/services/invoiceFormService';
 
 import { showAlert } from '@/utils/alert';
@@ -428,6 +429,17 @@ export function useInvoiceForm({
     dispatch(setIsSaving(true));
 
     try {
+      // A new invoice: ask the server once more whether the GRN can still be
+      // invoiced and has the same dispatch lines. An existing invoice holds
+      // its GRN already, so the same question would always be refused.
+      if (isCreateMode) {
+        const check = await checkGrnStillInvoiceable(header.gr_id, items);
+        if (!check.ok) {
+          showAlert(t('invoice.form.saveFailedTitle'), check.message);
+          return { success: false, error: check.message };
+        }
+      }
+
       // Transform header to match CreateInvoicePayload format
       // The service internally converts inv_fin_year from string to number
       const payload = {

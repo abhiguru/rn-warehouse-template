@@ -243,6 +243,10 @@ export const invoice = {
     discountReasonCreateMessage: 'Enter the reason for this discount before submitting the invoice.',
     discountReasonUpdateMessage: 'Enter the reason for this discount change before updating the invoice.',
     updateFailedTitle: "Couldn't update the invoice",
+    grnNotInvoiceable:
+      'This GRN can no longer be invoiced. It may already have an invoice, or it is no longer fully dispatched. Check the invoice list.',
+    grnChanged:
+      'The dispatches of this GRN changed after you selected it. Go back to the details step and select the GRN again.',
     pdfCreateFailed: "Couldn't create the PDF. Try again.",
     pdfShareFailed: "Couldn't share the PDF. Try again.",
   },

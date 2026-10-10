@@ -142,6 +142,13 @@ export const errors = {
     serverError: 'A server error occurred. Please try again later.',
     inUse: 'Other records depend on this one, so it cannot be changed.',
     otherCustomer: 'This stock belongs to another customer.',
+    grnCustomerLocked: 'The customer of this GRN cannot be changed because it already has dispatches, invoices or order items.',
+    invoiceChargeRange: 'The storage rate on every line must be between ₹0 and ₹9,99,999.',
+    invoiceLabourRange: 'The labour rate on every line must be between ₹0 and ₹9,99,999.',
+    invoiceTaxRange: 'The tax on every line must be between 0% and 100%.',
+    grnAlreadyInvoiced: 'This GRN already has an invoice. Someone may have saved it while you were working. Check the invoice list.',
+    lineOnOtherInvoice: 'A dispatch on this invoice is already on another invoice, so it cannot be invoiced again.',
+    invoiceHasPayments: 'This invoice has payments recorded against it, so it cannot be deleted.',
     busy: 'The server is busy. Please try again in a moment.',
   },
   auth: {

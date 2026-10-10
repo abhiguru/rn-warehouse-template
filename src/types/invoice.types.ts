@@ -194,6 +194,8 @@ export interface InvoiceFormDataResponse {
     items: InvoiceItemData[];
   };
   message?: string;
+  /** Set when the server refused the GRN itself: not fully dispatched, or already invoiced. */
+  code?: 'not_invoiceable';
 }
 
 export interface CreateInvoiceResponse {

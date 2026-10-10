@@ -12,7 +12,27 @@ import {
 import { t } from '@/i18n';
 
 import { toLocalISODate } from '@/utils/formatters';
-import { serverText } from '@/utils/serverText';
+import { serverReason, serverText } from '@/utils/serverText';
+
+/** The server's words for a GRN that the preview refuses: not fully dispatched, or already invoiced. */
+const NOT_INVOICEABLE = /not (be )?ready for invoicing/i;
+
+/** Thrown inside loadInvoiceFormData so the caller can tell this refusal from a failed request. */
+class GrnNotInvoiceableError extends Error {}
+
+/**
+ * Refusals of a save that the person can act on (the GRN was invoiced by
+ * someone else meanwhile, a rate is out of range). They are shown in the app's
+ * own words in every language; other server text goes through serverText.
+ */
+const INVOICE_REFUSAL = /already invoiced|already on another invoice|must be between/i;
+
+function invoiceSaveMessage(text: unknown, fallback: string): string {
+  if (typeof text === 'string' && INVOICE_REFUSAL.test(text)) {
+    return serverReason(text) ?? serverText(text, fallback);
+  }
+  return serverText(text, fallback);
+}
 /**
  * Get the next available invoice number
  * Uses optimized get_next_invoice_number RPC that returns formatted string (e.g., "I0000554")
@@ -194,8 +214,8 @@ export const loadInvoiceFormData = async (
       // Provide user-friendly error messages for common issues
       if (errorMsg.includes('column') && errorMsg.includes('does not exist')) {
         throw new Error(t('invoice.service.schemaError'));
-      } else if (errorMsg.includes('not be ready for invoicing')) {
-        throw new Error(t('invoice.service.noDispatchedItems'));
+      } else if (NOT_INVOICEABLE.test(errorMsg)) {
+        throw new GrnNotInvoiceableError(t('invoice.review.grnNotInvoiceable'));
       } else {
         throw new Error(errorMsg);
       }
@@ -342,6 +362,7 @@ export const loadInvoiceFormData = async (
     console.error('[InvoiceFormService] Error in loadInvoiceFormData:', error);
     return {
       success: false,
+      code: error instanceof GrnNotInvoiceableError ? 'not_invoiceable' : undefined,
       data: {
         header: {
           customer_id: '',
@@ -354,6 +375,37 @@ export const loadInvoiceFormData = async (
       message: serverText(error.message, t('invoice.service.formDataFailed')),
     };
   }
+};
+
+/**
+ * Ask the server again, just before a new invoice is saved, whether the GRN
+ * can still be invoiced and still has the dispatch lines the form holds. The
+ * form may have been open for a while: another user can have invoiced the GRN,
+ * or a dispatch can have been changed. The server refuses a second invoice by
+ * itself (migration 41); this check gives the reason before anything is sent
+ * and catches lines that changed.
+ */
+export const checkGrnStillInvoiceable = async (
+  grId: string,
+  formItems: Pick<InvoiceItemData, 'disp_trl_id' | 'qty'>[]
+): Promise<{ ok: true } | { ok: false; message: string }> => {
+  const fresh = await loadInvoiceFormData(grId);
+  if (!fresh.success) {
+    return {
+      ok: false,
+      message:
+        fresh.code === 'not_invoiceable'
+          ? t('invoice.review.grnNotInvoiceable')
+          : serverText(fresh.message, t('invoice.service.formDataFailed')),
+    };
+  }
+
+  const lines = (items: Pick<InvoiceItemData, 'disp_trl_id' | 'qty'>[]) =>
+    items.map((item) => `${item.disp_trl_id}:${Number(item.qty)}`).sort().join('|');
+  if (lines(fresh.data.items) !== lines(formItems)) {
+    return { ok: false, message: t('invoice.review.grnChanged') };
+  }
+  return { ok: true };
 };
 
 /**
@@ -445,11 +497,11 @@ export const createInvoice = async (
 
     if (error) {
       console.error('[InvoiceFormService] RPC error:', error);
-      throw new Error(serverText(error.message, t('invoice.service.createFailed')));
+      throw new Error(invoiceSaveMessage(error.message, t('invoice.service.createFailed')));
     }
 
     if (!data || !data.success) {
-      const errorMsg = serverText(data?.error || data?.message, t('invoice.service.createFailed'));
+      const errorMsg = invoiceSaveMessage(data?.error || data?.message, t('invoice.service.createFailed'));
       throw new Error(errorMsg);
     }
 
@@ -717,14 +769,14 @@ export const updateInvoice = async (
 
     if (error) {
       console.error('[InvoiceFormService] RPC error:', error);
-      throw new Error(serverText(error.message, t('invoice.service.updateFailed')));
+      throw new Error(invoiceSaveMessage(error.message, t('invoice.service.updateFailed')));
     }
 
     // RPC returns an object directly
     const result = data;
 
     if (!result || !result.success) {
-      const errorMsg = serverText(result?.error, t('invoice.service.unknownRpcError'));
+      const errorMsg = invoiceSaveMessage(result?.error, t('invoice.service.updateFailed'));
       return {
         success: false,
         data: { invoice_id: '', invoice_no: 0 },
