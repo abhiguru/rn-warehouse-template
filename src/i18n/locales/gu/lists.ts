@@ -146,6 +146,8 @@ export const lists: Translation<typeof source> = {
     itemRowLow: '{{item}}, સ્ટોક {{stock}}, નંગ {{quantity}}, ઓછો સ્ટોક',
     moreItems: { one: 'બીજી {{count}} આઇટમ', other: 'બીજી {{count}} આઇટમ' },
     noItems: 'આ ઑર્ડરમાં કોઈ આઇટમ નથી.',
+    loadFailed: 'આ ઑર્ડરની આઇટમ લોડ કરી શકાઈ નથી. તમારું કનેક્શન તપાસો અને ફરી પ્રયાસ કરો.',
+    retryLabel: 'આ ઑર્ડરની આઇટમ ફરી લોડ કરો',
     lastUpdated: 'છેલ્લો ફેરફાર',
     updatedBy: '{{time}}, {{name}} દ્વારા',
     editLabel: '{{customer}}ના ઑર્ડરમાં ફેરફાર કરો',

@@ -147,6 +147,8 @@ export const lists = {
     itemRowLow: '{{item}}, stock {{stock}}, quantity {{quantity}}, low stock',
     moreItems: { one: '{{count}} more item', other: '{{count}} more items' },
     noItems: 'No items in this order.',
+    loadFailed: "Couldn't load this order's items. Check your connection and try again.",
+    retryLabel: "Try loading this order's items again",
     lastUpdated: 'Last updated',
     updatedBy: '{{time}} by {{name}}',
     editLabel: 'Edit order for {{customer}}',
