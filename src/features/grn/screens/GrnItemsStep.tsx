@@ -39,6 +39,7 @@ import { HorizontalItemForm, ItemFormData, HorizontalItemFormRef } from '@/featu
 import {
   validateStep2,
   isValidReceiptQuantity,
+  isValidRackFormat,
   parseReceiptQuantity,
   parseReceiptWeight,
 } from '@/features/grn/schemas/grnValidation';
@@ -105,22 +106,12 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
   }, [savedItems]);
 
   const isCurrentItemValid = useMemo(() => {
-    const isRackValid = (rack: string) => {
-      if (!rack || rack.trim() === '') return true;
-      // Allow two formats:
-      // 1. floor/chamber only: e.g., "F1/C4", "BASE/Anti-Ch"
-      // 2. rack/floor/chamber: e.g., "20B/F1/C4", "20B-20C/BASE/C7"
-      const floorChamberOnlyPattern = /^(BASE|F1|F2|F3|F4)\/(C4|C7|C2|Anti-Ch)$/;
-      const fullPattern = /^.+\/(BASE|F1|F2|F3|F4)\/(C4|C7|C2|Anti-Ch)$/;
-      return floorChamberOnlyPattern.test(rack) || fullPattern.test(rack);
-    };
-
     return !!(
       currentItem.item_table_id &&
       currentItem.item_name &&
       currentItem.qty &&
       isValidReceiptQuantity(currentItem.qty) &&
-      isRackValid(currentItem.rack)
+      isValidRackFormat(currentItem.rack)
     );
   }, [currentItem.item_table_id, currentItem.item_name, currentItem.qty, currentItem.rack]);
 

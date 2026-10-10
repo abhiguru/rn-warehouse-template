@@ -327,8 +327,6 @@ export const grn: Translation<typeof source> = {
     packagingMax: 'પેકિંગ વધુમાં વધુ ૨૦ અક્ષરનું હોઈ શકે',
     rackMax: 'રેક વધુમાં વધુ ૩૦ અક્ષરની હોઈ શકે',
     rackFormat: 'રેક આ રીતે લખો: માળ/ચેમ્બર અથવા રેક/માળ/ચેમ્બર',
-    rackFormatDetailed:
-      'રેક આ રીતે લખો: માળ/ચેમ્બર અથવા રેક/માળ/ચેમ્બર. માળ આમાંથી: {{floors}}. ચેમ્બર આમાંથી: {{chambers}}',
     packageMarkMax: 'માર્કો વધુમાં વધુ ૬૦ અક્ષરનો હોઈ શકે',
     itemsMin: 'ઓછામાં ઓછી એક આઇટમ જરૂરી છે',
     itemsRequired: 'આઇટમ જરૂરી છે',

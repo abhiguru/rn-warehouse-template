@@ -167,6 +167,18 @@ export const isValidReceiptQuantity = (value: string): boolean =>
   parseReceiptQuantity(value) !== null;
 
 // Step 2: Items Schema
+/**
+ * A rack is optional. When given it is `Floor/Chamber` or `Rack/Floor/Chamber`:
+ * two or more parts separated by "/", none of them empty. The parts are not
+ * checked against a list, because every facility has its own floors and
+ * chambers and there is no server setting for them yet.
+ */
+export const isValidRackFormat = (rack: string | null | undefined): boolean => {
+  if (!rack || rack.trim() === '') return true;
+  const parts = rack.split('/');
+  return parts.length >= 2 && parts.every((part) => part.trim() !== '');
+};
+
 export const itemSchema = yup.object().shape({
   item_table_id: yup
     .string()
@@ -194,24 +206,7 @@ export const itemSchema = yup.object().shape({
     .test(
       'valid-rack-format',
       msg('grn.validation.rackFormat'),
-      function (value) {
-        // Empty rack is valid (optional field)
-        if (!value || value.trim() === '') return true;
-
-        // Allow two formats:
-        // 1. floor/chamber only: e.g., "F1/C4", "BASE/Anti-Ch"
-        // 2. rack/floor/chamber: e.g., "20B/F1/C4", "20B-20C/BASE/C7"
-        const floorChamberOnlyPattern = /^(BASE|F1|F2|F3|F4)\/(C4|C7|C2|Anti-Ch)$/;
-        const fullPattern = /^.+\/(BASE|F1|F2|F3|F4)\/(C4|C7|C2|Anti-Ch)$/;
-
-        if (!floorChamberOnlyPattern.test(value) && !fullPattern.test(value)) {
-          return this.createError({
-            message: t('grn.validation.rackFormatDetailed', { floors: 'BASE, F1-F4', chambers: 'C4, C7, C2, Anti-Ch' }),
-          });
-        }
-
-        return true;
-      }
+      (value) => isValidRackFormat(value)
     ),
 
   package_mark: yup

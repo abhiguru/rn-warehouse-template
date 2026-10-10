@@ -328,8 +328,6 @@ export const grn = {
     packagingMax: 'Packaging must be at most 20 characters',
     rackMax: 'Rack must be at most 30 characters',
     rackFormat: 'Rack must be in format: Floor/Chamber or Rack/Floor/Chamber',
-    rackFormatDetailed:
-      'Rack must be in format: Floor/Chamber or Rack/Floor/Chamber with valid Floor ({{floors}}) and Chamber ({{chambers}})',
     packageMarkMax: 'Package mark must be at most 60 characters',
     itemsMin: 'At least one item is required',
     itemsRequired: 'Items are required',
