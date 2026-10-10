@@ -7,7 +7,7 @@ jest.mock('@/config/supabaseConfig', () => ({
   beginOperatorMutation: () => jest.fn(),
   getAuthenticatedClient: async () => ({ rpc: mockRpc }),
 }));
-jest.mock('@/features/grn/services/imageUploadService', () => ({ savePendingImageMetadata: jest.fn(), collectDeferredGRNPhotos: () => [], uploadGRNPhotos: jest.fn() }));
+jest.mock('@/features/grn/services/imageUploadService', () => ({ collectDeferredGRNPhotos: () => [], uploadGRNPhotos: jest.fn() }));
 jest.mock('@/features/dispatch/services/dispatchImageService', () => ({ uploadDeferredDispatchImages: jest.fn() }));
 jest.mock('expo-crypto', () => {
   const { createHash } = jest.requireActual('node:crypto');

@@ -2,7 +2,6 @@ import { submissionIdempotencyKey } from '@/utils/submissionIdempotency';
 import { beginOperatorMutation, getAuthenticatedClient, getCurrentConfig } from '@/config/supabaseConfig';
 import { GRNHeaderData, GRNItemData, GRNImageData, RemovedGRNImage } from '@/store/slices/grnFormSlice';
 import {
-  savePendingImageMetadata,
   collectDeferredGRNPhotos,
   deleteGRNImage,
   uploadGRNPhotos,
@@ -252,42 +251,10 @@ export const createGRN = async (payload: CreateGRNPayload) => {
       pricing_mode: payload.header.pricing_mode || 'MONTHLY'
     }));
 
-    // Prepare images for RPC using enhanced array index mapping
-    const rpcImages: any[] = [];
-
-    // Add header images
-    if (payload.header.gr_images) {
-      payload.header.gr_images
-        .filter(img => img.storagePath) // Only include images that have been uploaded
-        .forEach(img => {
-          rpcImages.push({
-            image_type: 'header',
-            storage_path: img.storagePath,
-            original_filename: img.fileName,
-            file_size: img.fileSize || 0,
-            mime_type: img.mimeType || 'image/jpeg'
-          });
-        });
-    }
-
-    // Add item images using enhanced array index mapping (supports multiple images per item)
-    payload.items.forEach((item, index) => {
-      if (item.trl_images && item.trl_images.length > 0) {
-        item.trl_images.forEach((img, imgIndex) => {
-          if (img.storagePath) {
-            rpcImages.push({
-              image_type: 'item',
-              item_index: index, // Enhanced: Use array index to map image to item
-              storage_path: img.storagePath,
-              original_filename: img.fileName,
-              file_size: img.fileSize || 0,
-              mime_type: img.mimeType || 'image/jpeg'
-            });
-          }
-        });
-      }
-    });
-
+    // No p_images on create. A photo can be stored only under the receipt's own
+    // folder (headers/<grn id>/..., items/<grn id>/...), which does not exist
+    // before the receipt does, and the server refuses any other path
+    // (migration 43). Photos are uploaded after the save, below.
     console.log('[GRNFormService] Calling enhanced save_grn RPC with:', {
       p_gr_no: grNumber,
       p_date: payload.header.date,
@@ -301,11 +268,7 @@ export const createGRN = async (payload: CreateGRNPayload) => {
       p_note: payload.header.note,
       p_leon: payload.header.leon || false,
       p_pricing_mode: payload.header.pricing_mode || 'MONTHLY',
-      p_items: rpcItems,
-      p_images: rpcImages,
-      imageCount: rpcImages.length,
-      itemImageCount: rpcImages.filter(img => img.image_type === 'item').length,
-      headerImageCount: rpcImages.filter(img => img.image_type === 'header').length
+      p_items: rpcItems
     });
 
     // Call the enhanced save_grn RPC function using authenticated client
@@ -324,7 +287,6 @@ export const createGRN = async (payload: CreateGRNPayload) => {
       p_leon: payload.header.leon || false,
       p_pricing_mode: payload.header.pricing_mode || 'MONTHLY',
       p_items: rpcItems,
-      p_images: rpcImages,
     };
     const { data, error } = await authenticatedClient.rpc('save_grn', {
       ...rpcPayload,

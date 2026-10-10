@@ -196,6 +196,22 @@ describe('creating a GRN', () => {
     ]);
   });
 
+  // Server migration 43 refuses a path outside the receipt's own folder, and a
+  // receipt has no folder before it exists.
+  it('sends no image list with save_grn, also for a photo that carries a storage path', async () => {
+    createBackend();
+
+    const result = await createGRN({
+      header: header([picked('book'), saved('temp_elsewhere', 'elsewhere')]),
+      items: [line('item-1', 'Example Potatoes', [picked('mark')])],
+    });
+
+    expect(result.success).toBe(true);
+    expect(callsTo('save_grn')).toHaveLength(1);
+    expect(callsTo('save_grn')[0].args).not.toHaveProperty('p_images');
+    expect(callsTo('upload_grn_image')).toHaveLength(0);
+  });
+
   it('says which photo did not upload instead of reporting a clean save', async () => {
     createBackend();
     mockRpcHandlers.register_grn_image_upload = (args) =>

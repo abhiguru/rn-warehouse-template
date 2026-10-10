@@ -31,6 +31,13 @@ const REASONS: [RegExp, TranslationKey][] = [
   [/grn is already invoiced/, 'errors.parsed.grnAlreadyInvoiced'],
   [/already on another invoice/, 'errors.parsed.lineOnOtherInvoice'],
   [/invoice that has payments/, 'errors.parsed.invoiceHasPayments'],
+  // Photo rules (server migration 43): a photo is confirmed only for a file in
+  // its own document's folder. save_grn wraps these as "Error creating GRN: <text>".
+  [/image path does not belong to this (grn|dispatch)/, 'errors.parsed.imageWrongDocument'],
+  [/image file is not in storage/, 'errors.parsed.imageNotStored'],
+  [/image path is attached to a different image record/, 'errors.parsed.imageAlreadyAttached'],
+  [/image line does not belong to this grn/, 'errors.parsed.imageWrongLine'],
+  [/image path is required/, 'errors.parsed.imagePathRequired'],
   [/insufficient stock/, 'errors.code.insufficientStock'],
   [/delete invoices first|cannot delete item|cannot modify invoiced|is pending tally sync/, 'errors.parsed.inUse'],
   [/already exists|duplicate|overlapping/, 'errors.parsed.duplicate'],

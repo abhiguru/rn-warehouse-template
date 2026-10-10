@@ -76,6 +76,15 @@ describe('server text in Gujarati', () => {
     ['Database error: GRN is already invoiced (SQLState: WH409)', 'errors.parsed.grnAlreadyInvoiced'],
     ['Database error: A dispatch line is already on another invoice (SQLState: WH409)', 'errors.parsed.lineOnOtherInvoice'],
     ['Database error: Invoice line tax must be between 0 and 100 (SQLState: 22023)', 'errors.parsed.invoiceTaxRange'],
+    // Photo refusals of server migration 43; save_grn wraps them.
+    ['Image path does not belong to this GRN', 'errors.parsed.imageWrongDocument'],
+    ['Image path does not belong to this dispatch', 'errors.parsed.imageWrongDocument'],
+    ['Image file is not in storage', 'errors.parsed.imageNotStored'],
+    ['Image path is attached to a different image record', 'errors.parsed.imageAlreadyAttached'],
+    ['Image line does not belong to this GRN', 'errors.parsed.imageWrongLine'],
+    ['Image path is required', 'errors.parsed.imagePathRequired'],
+    ['Error creating GRN: Image path does not belong to this GRN', 'errors.parsed.imageWrongDocument'],
+    ['Error creating GRN: Image file is not in storage', 'errors.parsed.imageNotStored'],
     ['Transaction conflict: too many retries. Please try again.', 'errors.parsed.busy'],
     ['TypeError: Network request failed', 'errors.parsed.network'],
   ] as const)('gives the reason for "%s"', (text, key) => {
