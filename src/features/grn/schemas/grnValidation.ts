@@ -20,10 +20,18 @@ export const step1Schema = yup.object().shape({
     .string()
     .max(12, msg('grn.validation.registrationMax')),
 
+  // "Today" is worked out when the form is checked. A limit fixed when this
+  // file is loaded would reject today's receipts once the app has been open
+  // past midnight.
   date: yup
     .date()
     .required(msg('grn.validation.dateRequired'))
-    .max(new Date(), msg('grn.validation.dateFuture')),
+    .test('not-future', msg('grn.validation.dateFuture'), (value) => {
+      if (!value) return true;
+      const endOfToday = new Date();
+      endOfToday.setHours(23, 59, 59, 999);
+      return value <= endOfToday;
+    }),
 
   sender_name: yup
     .string()

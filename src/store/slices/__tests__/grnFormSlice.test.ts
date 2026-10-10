@@ -51,3 +51,24 @@ describe('grnForm item image uploads', () => {
     ]);
   });
 });
+
+describe('grnForm default date', () => {
+  afterEach(() => jest.useRealTimers());
+
+  it('is the day the form is reset, not the day the app was started', () => {
+    // The app was started on 9 October and left open overnight.
+    jest.useFakeTimers({ now: new Date(2026, 9, 9, 18, 0, 0) });
+    let slice!: typeof import('../grnFormSlice');
+    jest.isolateModules(() => {
+      slice = require('../grnFormSlice');
+    });
+    expect(slice.default(undefined, { type: '@@init' }).header.date).toBe('2026-10-09');
+
+    jest.setSystemTime(new Date(2026, 9, 10, 8, 30, 0));
+    const state = slice.default(undefined, slice.resetForm());
+
+    expect(state.header.date).toBe('2026-10-10');
+    expect(state.header.gr_no).toBe('');
+    expect(state.items).toEqual([]);
+  });
+});

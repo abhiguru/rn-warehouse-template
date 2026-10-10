@@ -80,8 +80,9 @@ interface GRNFormState {
   snapshot: GRNFormSnapshot | null;
 }
 
-// Initial state
-const initialState: GRNFormState = {
+// Initial state. Built when it is needed, not once when this file is loaded:
+// the default date is "today", and the app can stay open past midnight.
+const createInitialState = (): GRNFormState => ({
   grnId: null,
   tempGrnId: null,
   header: {
@@ -106,11 +107,11 @@ const initialState: GRNFormState = {
   error: null,
   validationErrors: {},
   snapshot: null,
-};
+});
 
 const grnFormSlice = createSlice({
   name: 'grnForm',
-  initialState,
+  initialState: createInitialState,
   reducers: {
     // ID management
     setGrnId: (state, action: PayloadAction<string | null>) => {
@@ -297,7 +298,7 @@ const grnFormSlice = createSlice({
       state.grnId = action.payload.grnId;
     },
     resetForm: () => {
-      return initialState;
+      return createInitialState();
     },
 
     // #18 Fix: Snapshot actions for optimistic update rollback

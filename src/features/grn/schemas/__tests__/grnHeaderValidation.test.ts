@@ -35,3 +35,37 @@ describe('GRN number rule', () => {
     expect(result.errors.gr_no).toBeTruthy();
   });
 });
+
+describe('GRN date limit', () => {
+  afterEach(() => jest.useRealTimers());
+
+  it('is today when the form is checked, not the day the app was started', async () => {
+    // The app was started on 9 October and left open overnight.
+    jest.useFakeTimers({ now: new Date(2026, 9, 9, 18, 0, 0) });
+    let validate!: typeof validateStep1;
+    jest.isolateModules(() => {
+      validate = require('../grnValidation').validateStep1;
+    });
+
+    jest.setSystemTime(new Date(2026, 9, 10, 8, 30, 0));
+
+    expect((await validate(header({ date: '2026-10-10' }))).isValid).toBe(true);
+    // A date picked in the date picker is stored as an ISO time.
+    expect((await validate(header({ date: new Date(2026, 9, 10).toISOString() }))).isValid).toBe(true);
+  });
+
+  it('still rejects tomorrow', async () => {
+    jest.useFakeTimers({ now: new Date(2026, 9, 10, 8, 30, 0) });
+
+    const result = await validateStep1(header({ date: '2026-10-11' }));
+
+    expect(result.isValid).toBe(false);
+    expect(result.errors.date).toBeTruthy();
+  });
+
+  it('accepts any time today, also late in the evening', async () => {
+    jest.useFakeTimers({ now: new Date(2026, 9, 10, 8, 30, 0) });
+
+    expect((await validateStep1(header({ date: new Date(2026, 9, 10, 23, 0, 0).toISOString() }))).isValid).toBe(true);
+  });
+});
