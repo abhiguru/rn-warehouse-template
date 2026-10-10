@@ -192,7 +192,7 @@ export const dispatch: Translation<typeof source> = {
     editing: 'ફેરફાર ચાલુ છે',
     grns: 'આવક પાવતી',
     emptyTitle: 'હજુ કોઈ આઇટમ ઉમેરી નથી',
-    emptySubtitle: 'ફોર્મ ભરો અને આ જાવકમાં આઇટમ ઉમેરવા "ઉમેરો" પર ટૅપ કરો.',
+    emptySubtitle: 'ફોર્મ ભરો અને ખરાની નિશાની પર ટૅપ કરો, એટલે આઇટમ આ જાવકમાં ઉમેરાશે.',
   },
   // Step 3: review, save, and what follows
   review: {

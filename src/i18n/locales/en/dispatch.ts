@@ -189,7 +189,7 @@ export const dispatch = {
     editing: 'Editing',
     grns: 'GRNs',
     emptyTitle: 'No items added yet',
-    emptySubtitle: 'Fill in the form and tap Add to add items to this dispatch.',
+    emptySubtitle: 'Fill in the form and tap the tick to add the item to this dispatch.',
   },
   // Step 3: review, save, and what follows
   review: {

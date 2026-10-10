@@ -226,7 +226,7 @@ export const InvoiceSuccessDialog: React.FC<InvoiceSuccessDialogProps> = ({
               accessible
               accessibilityLabel={tr('invoice.success.detailsA11y', {
                 number: formatIdentifier(invoiceData.invoice_no),
-                year: invoiceData.fin_year,
+                year: formatFinancialYear(invoiceData.fin_year),
                 customer: invoiceData.customer_name,
                 total,
               })}
