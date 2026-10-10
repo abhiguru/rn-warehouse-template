@@ -15,7 +15,11 @@ is archived (see [HISTORY.md](HISTORY.md)).
 - `npm run audit:artifact -- PATH` currently accepts an Android **APK** or an
   exported bundle **directory**. For an APK, it checks archive paths and selected
   text, Android manifest permissions, known public certificates, font notices,
-  and SHA-256. It does not accept an AAB or iOS archive. A release owner must
+  and SHA-256. Permissions are checked against the list of permissions the app
+  is expected to request (`EXPECTED_ANDROID_PERMISSIONS` in
+  `scripts/artifact-audit.mjs`): any other permission in the merged manifest
+  fails the audit, so a dependency or SDK upgrade cannot add one unreviewed.
+  The blocked list in `app.json` is checked as well. It does not accept an AAB or iOS archive. A release owner must
   inspect those final files with suitable platform tooling and record the
   results before distribution; the debug APK audit cannot substitute for this.
 - `.env.example` leaves the optional Sentry/GlitchTip DSN commented out.
