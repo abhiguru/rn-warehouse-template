@@ -21,16 +21,15 @@ import { OrderRefreshAction } from '@/components/OrderRefreshAction';
  */
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { View, Text, StyleSheet, RefreshControl, Pressable } from 'react-native';
+import { View, Text, StyleSheet, RefreshControl } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
-import { ActivityIndicator, IconButton, Snackbar } from 'react-native-paper';
+import { ActivityIndicator, Snackbar } from 'react-native-paper';
 import { router } from 'expo-router';
 import { useFocusEffect } from 'expo-router';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { ListSkeleton } from '@/components/skeletons';
 import { ListEmptyState } from '@/components/list/ListEmptyState';
 import { ErrorStateView } from '@/components/ErrorBoundary';
-import { Avatar } from '@/components/ui/Avatar';
 import { formatCount } from '@/utils/formatters';
 import { CustomerSearchBottomSheet, CustomerSearchBottomSheetRef } from '@/components/CustomerSearchBottomSheet';
 
@@ -48,6 +47,12 @@ import { resolveCustomerOrderTarget } from './orderCustomerTarget';
 import { OrderService } from '@/services/order-service';
 import { PAGINATION } from '@/config/cacheConfig';
 import type { Order, OrderFilters } from '@/types/order.types';
+
+// Search and filters
+import { ORDER_FILTERS } from '@/features/filters/configs';
+import { useListFilters } from '@/features/filters/useListFilters';
+import { FilteredListHeader, filteredEmptyProps } from '@/features/filters/components/FilteredListHeader';
+import { searchWords } from '@/features/filters/components/HighlightedText';
 
 // Components
 import { MemoizedOrderItem } from '@/components/list-items';
@@ -106,40 +111,12 @@ const SectionHeader = React.memo<SectionHeaderProps>(({ title, count }) => {
 SectionHeader.displayName = 'SectionHeader';
 
 // ============================================================================
-// EMPTY STATE COMPONENT
-// ============================================================================
-
-interface EmptyStateProps {
-  isFiltered: boolean;
-  onClearFilters: () => void;
-}
-
-// Empty state: the shared ListEmptyState with the order wording (style guide §13.6)
-const EmptyState = React.memo<EmptyStateProps>(({
-  isFiltered,
-  onClearFilters,
-}) => (
-  <ListEmptyState
-    activeFilterCount={isFiltered ? 1 : 0}
-    emptyIcon="clipboard-list-outline"
-    emptyTitle="No orders yet"
-    emptySubtitle="Orders appear here when customers add items."
-    filteredTitle="No orders with items"
-    filteredSubtitle="Clear the filter to see empty orders too."
-    onClearFilters={onClearFilters}
-  />
-));
-
-EmptyState.displayName = 'EmptyState';
-
-// ============================================================================
 // MAIN COMPONENT
 // ============================================================================
 
 const OrderFlashList: React.FC<OrderFlashListProps> = ({
   customerId,
   onItemPress,
-  hasItemsOnly = false,
   subHeader,
 }) => {
   const fetchInProgressRef = useRef(false);
@@ -173,8 +150,13 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
   // Rows received from the server so far; the next page starts here.
   const loadedCountRef = useRef(0);
 
-  // Filter state
-  const [showWithItemsOnly, setShowWithItemsOnly] = useState(hasItemsOnly);
+  // Search and the "With items" filter
+  const filters = useListFilters(ORDER_FILTERS);
+  const showWithItemsOnly = filters.request.has_items === true;
+  const searchText = filters.request.search;
+  const words = useMemo(() => searchWords(searchText), [searchText]);
+  // The first answer has arrived: later loads keep the rows on screen.
+  const [hasLoaded, setHasLoaded] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
   const [snackbarVisible, setSnackbarVisible] = useState(false);
 
@@ -183,17 +165,20 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
   // ============================================================================
 
   const buildFilters = useCallback((): OrderFilters => {
-    const filters: OrderFilters = {};
-    if (customerId) filters.customer_id = customerId;
-    if (showWithItemsOnly) filters.has_items = true;
-    return filters;
-  }, [customerId, showWithItemsOnly]);
+    const params: OrderFilters = {};
+    if (customerId) params.customer_id = customerId;
+    if (showWithItemsOnly) params.has_items = true;
+    if (searchText) params.search = searchText;
+    return params;
+  }, [customerId, showWithItemsOnly, searchText]);
 
   // isSilent = true → fetch data without showing RefreshControl spinner.
   // Used by useFocusEffect to avoid contentOffset.y = -60 gap from RefreshControl.
   const fetchOrders = useCallback(async (isRefresh = false, isSilent = false) => {
     if (fetchInProgressRef.current) {
-      if (isSilent) liveRefreshPendingRef.current = true;
+      // Run again when the request in flight ends, with the filters in effect then:
+      // a live update, or a search or filter the user changed meanwhile.
+      liveRefreshPendingRef.current = true;
       return;
     }
     fetchInProgressRef.current = true;
@@ -264,16 +249,20 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
       fetchInProgressRef.current = false;
       if (liveRefreshPendingRef.current && isMountedRef.current && sessionGeneration === getSessionGeneration()) {
         liveRefreshPendingRef.current = false;
-        void fetchOrders(true, true);
+        void fetchOrdersRef.current(true, true);
       }
       // E3 Fix: Only update state if still mounted
       if (isMountedRef.current) {
+        setHasLoaded(true);
         setIsLoading(false);
         setIsRefreshing(false);
         setIsLoadingMore(false);
       }
     }
   }, [buildFilters, showWithItemsOnly]);
+  // The newest fetch, for a rerun queued while an older one was in flight.
+  const fetchOrdersRef = useRef(fetchOrders);
+  fetchOrdersRef.current = fetchOrders;
 
   // Next page, appended. Shares the in-flight guard and request id with refreshes,
   // so a refresh that starts later wins and a stale page is discarded.
@@ -318,10 +307,10 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
       if (isMountedRef.current) setIsLoadingMore(false);
       if (liveRefreshPendingRef.current && isMountedRef.current && sessionGeneration === getSessionGeneration()) {
         liveRefreshPendingRef.current = false;
-        void fetchOrders(true, true);
+        void fetchOrdersRef.current(true, true);
       }
     }
-  }, [hasMore, isLoading, isLoadingMore, buildFilters, showWithItemsOnly, fetchOrders]);
+  }, [hasMore, isLoading, isLoadingMore, buildFilters, showWithItemsOnly]);
 
   // E3 Fix: Cleanup on unmount to prevent state updates after unmount
   useEffect(() => {
@@ -333,10 +322,12 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
 
   useOrderLiveUpdates(() => fetchOrders(true, true));
 
-  // Initial load
+  // First load, and a new first page whenever the search or filter changes.
   useEffect(() => {
+    loadedCountRef.current = 0;
     fetchOrders();
-  }, [showWithItemsOnly]);
+     
+  }, [showWithItemsOnly, searchText]);
 
   // Refresh when screen comes into focus (after editing an order)
   // Silent refresh (isSilent=true) — avoids RefreshControl pushing content down by ~60px
@@ -364,20 +355,8 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
     }
   }, [onItemPress]);
 
-  const handleClearFilters = useCallback(() => {
-    setShowWithItemsOnly(false);
-  }, []);
-
-  const toggleItemsFilter = useCallback(() => {
-    setShowWithItemsOnly(prev => !prev);
-  }, []);
-
   const dismissSnackbar = useCallback(() => {
     setSnackbarVisible(false);
-  }, []);
-
-  const navigateToSettings = useCallback(() => {
-    router.push('/settings');
   }, []);
 
   // Handle add order button press
@@ -472,9 +451,10 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
       <MemoizedOrderItem
         order={item.data}
         onPress={handleOrderPress}
+        words={words}
       />
     );
-  }, [handleOrderPress]);
+  }, [handleOrderPress, words]);
 
   // ============================================================================
   // LIST FOOTER
@@ -497,154 +477,92 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
   // RENDER
   // ============================================================================
 
-  const userName = userProfile?.name || 'U';
-
-  const headerActions = (withAvatar: boolean) => (
-    <View style={styles.headerActions}>
-      <OrderRefreshAction onRefresh={handleRefresh} refreshing={isRefreshing} label="Refresh orders" />
-      <IconButton
-        icon={showWithItemsOnly ? 'filter-check' : 'filter-variant'}
-        size={iconSize.lg}
-        iconColor={showWithItemsOnly ? t.brand.tint : t.icon.primary}
-        style={styles.iconButton}
-        onPress={toggleItemsFilter}
-        accessibilityLabel={showWithItemsOnly ? 'Show all orders' : 'Show only orders with items'}
-        accessibilityState={{ selected: showWithItemsOnly }}
-      />
-      {withAvatar && (
-        <Pressable
-          onPress={navigateToSettings}
-          style={styles.avatarButton}
-          accessibilityRole="button"
-          accessibilityLabel="Open settings"
-        >
-          <Avatar name={userName} id={userProfile?.id} size="sm" />
-        </Pressable>
-      )}
-    </View>
+  // The header, search field and filter chip are shown in every state, so the
+  // search or filter can always be changed or cleared.
+  const header = (
+    <FilteredListHeader
+      title="Orders"
+      config={ORDER_FILTERS}
+      filters={filters}
+      loading={isLoading}
+      actions={<OrderRefreshAction onRefresh={handleRefresh} refreshing={isRefreshing} label="Refresh orders" />}
+    >
+      {subHeader}
+    </FilteredListHeader>
   );
 
-  // Loading state
-  if (isLoading && !isRefreshing) {
-    return (
-      <View style={styles.container}>
-        <View style={styles.header}>
-          <Text style={styles.headerTitle} accessibilityRole="header">Orders</Text>
+  let content: React.ReactNode;
+  if (!hasLoaded && isLoading) {
+    // First load: skeleton. Later loads keep the rows on screen while the new ones arrive.
+    content = <ListSkeleton count={5} metricsCount={3} />;
+  } else if (orders.length > 0) {
+    content = (
+      <>
+        {/* Stale data warning: critical message strip */}
+        {error && (
+          <View accessibilityRole="alert" style={styles.messageStrip}>
+            <Icon name="alert" size={iconSize.md} color={t.status.critical.text} style={styles.messageStripIcon} />
+            <View style={styles.messageStripBody}>
+              <Text style={styles.messageStripTitle}>Couldn't refresh orders.</Text>
+              <Text style={styles.messageStripText}>
+                Showing previously loaded orders. Refresh to get current data.
+              </Text>
+            </View>
+          </View>
+        )}
+
+        {/* FlashList - The key to performance */}
+        <View style={styles.listWrapper}>
+          <FlashList
+            data={flattenedData}
+            renderItem={renderItem}
+            keyExtractor={keyExtractor}
+            getItemType={getItemType}
+            extraData={{ handleOrderPress, words }}
+            contentContainerStyle={styles.listContent}
+            contentInsetAdjustmentBehavior="never"
+            automaticallyAdjustContentInsets={false}
+            refreshControl={
+              <RefreshControl
+                refreshing={isRefreshing}
+                onRefresh={handleRefresh}
+                colors={[t.brand.tint]}
+                tintColor={t.brand.tint}
+                progressBackgroundColor={t.surface.card}
+              />
+            }
+            ListFooterComponent={ListFooter}
+            onEndReached={handleLoadMore}
+            onEndReachedThreshold={DEFAULT_LIST_CONFIG.onEndReachedThreshold}
+            showsVerticalScrollIndicator={false}
+          />
         </View>
-        {subHeader}
-        <ListSkeleton count={5} metricsCount={3} />
-      </View>
+      </>
     );
-  }
-
-  // E1 Fix: Error state with retry button
-  if (error && orders.length === 0) {
-    return (
-      <View style={styles.container}>
-        <View style={styles.header}>
-          <Text style={styles.headerTitle} accessibilityRole="header">Orders</Text>
-        </View>
-        {subHeader}
-        <ErrorStateView
-          presentation="inline"
-          title="Couldn't load orders"
-          message="Check your connection and try again."
-          onRetry={handleRefresh}
-        />
-      </View>
+  } else if (error) {
+    content = (
+      <ErrorStateView
+        presentation="inline"
+        title="Couldn't load orders"
+        message="Check your connection and try again."
+        onRetry={handleRefresh}
+      />
     );
-  }
-
-  // Empty state
-  if (!isLoading && orders.length === 0 && !error) {
-    return (
-      <View style={styles.container}>
-        <View style={styles.header}>
-          <Text style={styles.headerTitle} accessibilityRole="header">Orders</Text>
-          {headerActions(false)}
-        </View>
-        {subHeader}
-        <EmptyState
-          isFiltered={showWithItemsOnly}
-          onClearFilters={handleClearFilters}
-        />
-
-        <Fab label="Create order" onPress={handleAddOrder} />
-
-        {/* Customer Search Bottom Sheet */}
-        <CustomerSearchBottomSheet
-          ref={customerSearchRef}
-          onSelect={handleCustomerSelect}
-          title="Select customer"
-        />
-      </View>
+  } else {
+    content = (
+      <ListEmptyState
+        {...filteredEmptyProps(filters, 'orders')}
+        emptyIcon="clipboard-list-outline"
+        emptyTitle="No orders yet"
+        emptySubtitle="Orders appear here when customers add items."
+      />
     );
   }
 
   return (
     <View style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.headerTitle} accessibilityRole="header">Orders</Text>
-        {headerActions(true)}
-      </View>
-      {subHeader}
-
-      {/* Stale data warning: critical message strip */}
-      {error && (
-        <View accessibilityRole="alert" style={styles.messageStrip}>
-          <Icon name="alert" size={iconSize.md} color={t.status.critical.text} style={styles.messageStripIcon} />
-          <View style={styles.messageStripBody}>
-            <Text style={styles.messageStripTitle}>Couldn't refresh orders.</Text>
-            <Text style={styles.messageStripText}>
-              Showing previously loaded orders. Refresh to get current data.
-            </Text>
-          </View>
-        </View>
-      )}
-
-      {showWithItemsOnly && (
-        <View style={styles.filterChipContainer}>
-          <Pressable
-            style={({ pressed }) => [styles.filterChip, pressed && styles.filterChipPressed]}
-            onPress={toggleItemsFilter}
-            hitSlop={space.sm}
-            accessibilityRole="button"
-            accessibilityLabel="Remove filter: with items only"
-          >
-            <Icon name="cart-check" size={iconSize.sm} color={t.brand.tint} />
-            <Text style={styles.filterChipText} maxFontSizeMultiplier={1.6}>With items only</Text>
-            <Icon name="close" size={iconSize.sm} color={t.brand.tint} />
-          </Pressable>
-        </View>
-      )}
-
-      {/* FlashList - The key to performance */}
-      <View style={styles.listWrapper}>
-        <FlashList
-          data={flattenedData}
-          renderItem={renderItem}
-          keyExtractor={keyExtractor}
-          getItemType={getItemType}
-          extraData={handleOrderPress}
-          contentContainerStyle={styles.listContent}
-          contentInsetAdjustmentBehavior="never"
-          automaticallyAdjustContentInsets={false}
-          refreshControl={
-            <RefreshControl
-              refreshing={isRefreshing}
-              onRefresh={handleRefresh}
-              colors={[t.brand.tint]}
-              tintColor={t.brand.tint}
-              progressBackgroundColor={t.surface.card}
-            />
-          }
-          ListFooterComponent={ListFooter}
-          onEndReached={handleLoadMore}
-          onEndReachedThreshold={DEFAULT_LIST_CONFIG.onEndReachedThreshold}
-          showsVerticalScrollIndicator={false}
-        />
-      </View>
+      {header}
+      {content}
 
       <Fab label="Create order" onPress={handleAddOrder} />
 

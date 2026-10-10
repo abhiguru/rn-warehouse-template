@@ -490,6 +490,7 @@ export class OrderService {
         p_user_id: null, // Use current session user
         p_limit: limit,
         p_offset: offset,
+        p_search: filters?.search?.trim() || null,
       });
 
       const { data, error } = await rpcCall;

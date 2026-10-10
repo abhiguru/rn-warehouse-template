@@ -2,6 +2,7 @@ import type { FilterContext, FilterListDefinition, FilterValues, SortState } fro
 import { DISPATCH_FILTERS } from './dispatch';
 import { GRN_FILTERS } from './grn';
 import { INVOICE_FILTERS } from './invoice';
+import { ORDER_FILTERS, ORDER_QUEUE_FILTERS } from './order';
 
 /** A configuration with its request type hidden: the request is built and counted in one step. */
 export interface CountableFilterList extends FilterListDefinition {
@@ -21,6 +22,8 @@ export const FILTER_CONFIGS: Record<string, CountableFilterList> = {
   [GRN_FILTERS.listKey]: countable(GRN_FILTERS),
   [DISPATCH_FILTERS.listKey]: countable(DISPATCH_FILTERS),
   [INVOICE_FILTERS.listKey]: countable(INVOICE_FILTERS),
+  [ORDER_FILTERS.listKey]: countable(ORDER_FILTERS),
+  [ORDER_QUEUE_FILTERS.listKey]: countable(ORDER_QUEUE_FILTERS),
 };
 
-export { DISPATCH_FILTERS, GRN_FILTERS, INVOICE_FILTERS };
+export { DISPATCH_FILTERS, GRN_FILTERS, INVOICE_FILTERS, ORDER_FILTERS, ORDER_QUEUE_FILTERS };

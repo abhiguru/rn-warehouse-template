@@ -12,9 +12,18 @@ jest.mock('react-native-paper', () => Object.fromEntries(
 jest.mock('expo-router', () => ({ router: { push: jest.fn() }, useFocusEffect: jest.fn() }));
 jest.mock('@/hooks/useOrderLiveUpdates', () => ({ useOrderLiveUpdates: jest.fn() }));
 jest.mock('@/config/sessionLifecycle', () => ({ getSessionGeneration: () => 1 }));
+// The list's search and filters read the session-only filter store and the list configurations.
+jest.mock('@/store/slices/authSlice', () => ({
+  forceLogoutOnInvalidToken: jest.fn(),
+  logout: { fulfilled: { type: 'auth/logout/fulfilled', match: () => false } },
+}));
+jest.mock('@/config/supabaseConfig', () => ({ getAuthenticatedClient: jest.fn(), getSupabaseClient: jest.fn() }));
+jest.mock('@/store', () => ({ store: { dispatch: jest.fn() } }));
+jest.mock('@/features/filters/configs', () => ({ ...jest.requireActual('@/features/filters/configs/order'), FILTER_CONFIGS: {} }));
 let mockState = {
   theme: { preference: 'light', brand: 'orange' },
   auth: { userProfile: { role: 'admin', name: 'Fictional Administrator' } },
+  listFilters: { lists: {} },
 };
 jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),

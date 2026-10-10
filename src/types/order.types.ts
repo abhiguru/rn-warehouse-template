@@ -128,6 +128,8 @@ export interface OrderFilters {
   customer_id?: string;
   customer_name?: string;
   has_items?: boolean;
+  /** Quick search: every word must match the customer name or city, or the item, package or GRN number of a pending line. */
+  search?: string;
   date_from?: Date;
   date_to?: Date;
   /** Page size; the service caps it at PAGINATION.MAX_LIMIT */

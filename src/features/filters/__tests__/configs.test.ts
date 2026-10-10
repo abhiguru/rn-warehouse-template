@@ -1,4 +1,4 @@
-import { DISPATCH_FILTERS, FILTER_CONFIGS, GRN_FILTERS, INVOICE_FILTERS } from '../configs';
+import { DISPATCH_FILTERS, FILTER_CONFIGS, GRN_FILTERS, INVOICE_FILTERS, ORDER_FILTERS, ORDER_QUEUE_FILTERS } from '../configs';
 import { isFieldActive, visibleFields } from '../filterModel';
 import type { FilterContext, FilterFieldDef, FilterListConfig, FilterValue } from '../types';
 
@@ -37,7 +37,10 @@ function sample(field: FilterFieldDef): FilterValue {
   }
 }
 
-const configs: FilterListConfig<unknown>[] = [GRN_FILTERS as FilterListConfig<unknown>, DISPATCH_FILTERS as FilterListConfig<unknown>, INVOICE_FILTERS as FilterListConfig<unknown>];
+const configs: FilterListConfig<unknown>[] = [GRN_FILTERS as FilterListConfig<unknown>, DISPATCH_FILTERS as FilterListConfig<unknown>, INVOICE_FILTERS as FilterListConfig<unknown>,
+  ORDER_FILTERS as FilterListConfig<unknown>,
+  ORDER_QUEUE_FILTERS as FilterListConfig<unknown>,
+];
 
 describe.each(configs.map(config => [config.listKey, config] as const))('filter config %s', (_key, config) => {
   it('is registered for the Sort and filter page', () => {
@@ -55,7 +58,9 @@ describe.each(configs.map(config => [config.listKey, config] as const))('filter 
   // The guard against "shown but never sent": a field the account can see must change the request.
   describe.each(Object.entries(contexts))('for a %s', (_name, ctx) => {
     const empty = JSON.stringify(config.toRequest({}, undefined, ctx, today));
-    it.each(visibleFields(config, ctx).map(field => [field.key, field] as const))('sends the "%s" filter', (_fieldKey, field) => {
+    const shown = visibleFields(config, ctx).map(field => [field.key, field] as const);
+    // A list with a search and no filters (the Queue) has nothing to check here.
+    (shown.length > 0 ? it.each(shown) : it.skip.each([['none', undefined as never]]))('sends the "%s" filter', (_fieldKey, field) => {
       const value = sample(field);
       expect(isFieldActive(field, value)).toBe(true);
       expect(JSON.stringify(config.toRequest({ [field.key]: value }, undefined, ctx, today))).not.toBe(empty);
@@ -243,5 +248,23 @@ describe('invoice request', () => {
     const request = INVOICE_FILTERS.toRequest({ search: 'fy 2025', year: '2026' }, undefined, staff, today);
     expect(request.p_financial_year).toBe(2026);
     expect(request.p_search).toBe('fy 2025');
+  });
+});
+
+describe('order requests', () => {
+  const staff = contexts.staff;
+  it('sends nothing by default, then the toggle and the search', () => {
+    expect(ORDER_FILTERS.toRequest({}, undefined, staff, today)).toEqual({});
+    expect(ORDER_FILTERS.toRequest({ withItems: true, search: '  lakeview   garlic ' }, undefined, staff, today)).toEqual({
+      has_items: true,
+      search: 'lakeview garlic',
+    });
+  });
+  it('never reads a date or a range from an order search', () => {
+    expect(ORDER_FILTERS.toRequest({ search: 'today 7 oct A0010-A0020' }, undefined, staff, today)).toEqual({ search: 'today 7 oct A0010-A0020' });
+  });
+  it('always asks the queue for orders with items', () => {
+    expect(ORDER_QUEUE_FILTERS.toRequest({}, undefined, staff, today)).toEqual({ has_items: true });
+    expect(ORDER_QUEUE_FILTERS.toRequest({ search: 'rajkot' }, undefined, staff, today)).toEqual({ has_items: true, search: 'rajkot' });
   });
 });

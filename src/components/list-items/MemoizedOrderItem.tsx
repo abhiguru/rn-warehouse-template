@@ -16,6 +16,7 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { formatCount, formatRelativeTime } from '@/utils/formatters';
 import { StatusTag, type StatusKind, Avatar } from '@/components/ui';
 import type { Order } from '@/types/order.types';
+import { HighlightedText, matchesAnyWord } from '@/features/filters/components/HighlightedText';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import {
   iconSize,
@@ -39,15 +40,34 @@ export interface MemoizedOrderItemProps {
   onViewDetails?: (order: Order) => void;
   /** Callback for convert to dispatch action */
   onConvertToDispatch?: (order: Order) => void;
+  /** Lower-cased search words to show in bold (see `searchWords`). */
+  words?: string[];
 }
 
 // ============================================================================
 // COMPONENT
 // ============================================================================
 
+/** Where a search matched inside the order: city, or the item, package or GRN number of a line. */
+function hiddenMatches(order: Order, words: string[] | undefined): string[] {
+  if (!words || words.length === 0) return [];
+  const found = new Set<string>();
+  const lines = (order.items ?? []) as unknown as Record<string, string | null | undefined>[];
+  for (const text of [order.customer?.city]) {
+    if (text && matchesAnyWord(text, words)) found.add(text);
+  }
+  for (const line of lines) {
+    for (const text of [line.grn_items_item_name, line.grn_items_package_mark, line.grns_gr_no ? `GRN ${line.grns_gr_no}` : null]) {
+      if (text && matchesAnyWord(text, words)) found.add(text);
+    }
+  }
+  return [...found].slice(0, 3);
+}
+
 const OrderItemContent: React.FC<MemoizedOrderItemProps> = ({
   order,
   onPress,
+  words,
 }) => {
   const t = useTokens();
   const styles = useThemedStyles(makeStyles);
@@ -57,6 +77,7 @@ const OrderItemContent: React.FC<MemoizedOrderItemProps> = ({
   const hasItems = itemCount > 0;
 
   const customerName = order.customer?.name || 'Unknown';
+  const matched = hiddenMatches(order, words);
 
   // Check if order is dispatched
   const isDispatched = (order.status || '').toUpperCase() === 'DISPATCHED';
@@ -103,9 +124,7 @@ const OrderItemContent: React.FC<MemoizedOrderItemProps> = ({
         {/* Main Content: Title + Subtitle + Footnote */}
         <View style={styles.mainContent}>
           {/* Title - headline, two lines max */}
-          <Text style={styles.title} numberOfLines={2}>
-            {customerName}
-          </Text>
+          <HighlightedText style={styles.title} numberOfLines={2} text={customerName} words={words} />
 
           {/* Subtitle - subhead */}
           <Text style={styles.subtitle}>
@@ -116,6 +135,11 @@ const OrderItemContent: React.FC<MemoizedOrderItemProps> = ({
           <Text style={styles.footnote} numberOfLines={1}>
             {footnote}
           </Text>
+
+          {/* Why this order matched, when the match is not in the customer's name */}
+          {matched.length > 0 ? (
+            <HighlightedText style={styles.footnote} numberOfLines={2} text={matched.join(' · ')} words={words} />
+          ) : null}
         </View>
 
         {/* Attribute: Status Badge + Chevron */}
@@ -158,7 +182,8 @@ const areEqual = (
     prevOrder.updated_at === nextOrder.updated_at &&
     prevOrder.updated_by_display_name === nextOrder.updated_by_display_name &&
     prevOrder.note === nextOrder.note &&
-    prevProps.onPress === nextProps.onPress
+    prevProps.onPress === nextProps.onPress &&
+    prevProps.words === nextProps.words
   );
 
   if (__DEV__ && !result) {
