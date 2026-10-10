@@ -25,6 +25,11 @@ import { executeRPC, createErrorResponse, handleGlobalAuthError } from '@/utils/
 import { t } from '@/i18n';
 import { containsPattern, orContains } from '@/utils/postgrestFilter';
 import { serverText } from '@/utils/serverText';
+import { createLogger, loggableError } from '@/utils/logger';
+
+// Identifiers, counts and error codes only: search text, customer records and
+// the server's wording are never logged.
+const log = createLogger('customers');
 
 // =============================================================================
 // SERVICE CLASS
@@ -44,35 +49,20 @@ class CustomerService {
     limit: number = 20
   ): Promise<CustomerListItem[]> {
     try {
-      console.log('[CustomerService] searchCustomers called:', {
-        queryLength: query?.length ?? 0,
-        limit,
-      });
-
       if (!query || query.length < 1) {
-        console.log('[CustomerService] Query too short, returning empty');
         return [];
       }
 
       const client = await getAuthenticatedClient();
-      console.log('[CustomerService] Calling search_customers RPC...');
 
       const { data, error } = await client.rpc('search_customers', {
         p_search_query: query,
         p_limit: limit,
       });
 
-      console.log('[CustomerService] RPC response:', {
-        hasData: !!data,
-        dataType: typeof data,
-        isArray: Array.isArray(data),
-        hasNestedData: !!(data as Record<string, unknown>)?.data,
-        error: error?.message,
-      });
-
       if (error) {
         handleGlobalAuthError(error);
-        console.error('[CustomerService] Search error:', error);
+        log.error('searchCustomers error', loggableError(error));
         return [];
       }
 
@@ -87,20 +77,11 @@ class CustomerService {
         'data' in data &&
         Array.isArray((data as Record<string, unknown>).data)
       ) {
-        console.log('[CustomerService] Unwrapping nested data array');
         customerArray = (data as Record<string, unknown>).data as unknown[];
       } else {
-        console.log(
-          '[CustomerService] No valid customer data found, raw data:',
-          JSON.stringify(data, null, 2)
-        );
+        log.warn('searchCustomers: answer is not a customer list', { type: typeof data });
         return [];
       }
-
-      console.log(
-        '[CustomerService] Customer array length:',
-        customerArray.length
-      );
 
       // Map RPC response to CustomerListItem
       interface RpcCustomer {
@@ -125,11 +106,11 @@ class CustomerService {
         };
       });
 
-      console.log('[CustomerService] Mapped results:', results.length);
+      log.debug('searchCustomers', { results: results.length });
 
       return results;
     } catch (error) {
-      console.error('[CustomerService] Exception in searchCustomers:', error);
+      log.error('Exception in searchCustomers', loggableError(error));
       return [];
     }
   }
@@ -144,7 +125,7 @@ class CustomerService {
     offset: number = 0
   ): Promise<CustomerListResponse> {
     try {
-      console.log('[CustomerService] getCustomerList:', {
+      log.debug('getCustomerList', {
         hasSearch: Boolean(filters.search),
         hasCity: Boolean(filters.city),
         active: filters.active,
@@ -190,7 +171,7 @@ class CustomerService {
 
       if (error) {
         handleGlobalAuthError(error);
-        console.error('[CustomerService] List error:', error);
+        log.error('getCustomerList error', loggableError(error));
         return {
           success: false,
           message: serverText(error.message, t('errors.customer.fetchListFailed')),
@@ -232,7 +213,7 @@ class CustomerService {
         },
       };
     } catch (error) {
-      console.error('[CustomerService] Exception in getCustomerList:', error);
+      log.error('Exception in getCustomerList', loggableError(error));
       return {
         success: false,
         message: t('errors.customer.fetchListFailed'),
@@ -251,7 +232,7 @@ class CustomerService {
    */
   async getCustomerById(customerId: string): Promise<CustomerServiceResponse> {
     try {
-      console.log('[CustomerService] getCustomerById:', customerId);
+      log.debug('getCustomerById', { customerId });
 
       if (!customerId) {
         return {
@@ -270,7 +251,7 @@ class CustomerService {
 
       if (error) {
         handleGlobalAuthError(error);
-        console.error('[CustomerService] Get by ID error:', error);
+        log.error('getCustomerById error', loggableError(error));
         return {
           success: false,
           message: serverText(error.message, t('errors.customer.notFound')),
@@ -313,7 +294,7 @@ class CustomerService {
         data: customer,
       };
     } catch (error) {
-      console.error('[CustomerService] Exception in getCustomerById:', error);
+      log.error('Exception in getCustomerById', loggableError(error));
       return {
         success: false,
         message: t('errors.customer.fetchFailed'),
@@ -341,7 +322,7 @@ class CustomerService {
   async createCustomer(
     params: CreateCustomerParams
   ): Promise<CustomerServiceResponse> {
-    console.log('[CustomerService] createCustomer:', {
+    log.debug('createCustomer', {
       image_count: params.p_image_urls?.length || 0,
     });
 
@@ -383,7 +364,7 @@ class CustomerService {
 
     const rpcData = result.data;
     if (!rpcData.success) {
-      console.error('[CustomerService] RPC returned success=false:', rpcData);
+      log.error('createCustomer refused', loggableError(rpcData));
       return {
         success: false,
         message: serverText(rpcData.message, t('errors.customer.createFailed')),
@@ -391,10 +372,7 @@ class CustomerService {
       };
     }
 
-    console.log(
-      '[CustomerService] Customer created via RPC:',
-      rpcData.customer_id
-    );
+    log.debug('createCustomer done', { customerId: rpcData.customer_id });
     return {
       success: true,
       message: serverText(rpcData.message, t('errors.customer.created')),
@@ -443,7 +421,7 @@ class CustomerService {
   async updateCustomer(
     params: UpdateCustomerParams
   ): Promise<CustomerServiceResponse> {
-    console.log('[CustomerService] updateCustomer:', {
+    log.debug('updateCustomer', {
       customer_id: params.p_customer_id,
       has_images: !!params.p_image_urls,
       image_count: params.p_image_urls?.length || 0,
@@ -501,7 +479,7 @@ class CustomerService {
 
     const rpcData = result.data;
     if (!rpcData.success) {
-      console.error('[CustomerService] RPC returned success=false:', rpcData);
+      log.error('updateCustomer refused', loggableError(rpcData));
       return {
         success: false,
         message: serverText(rpcData.message, t('errors.customer.updateFailed')),
@@ -509,7 +487,6 @@ class CustomerService {
       };
     }
 
-    console.log('[CustomerService] Customer updated via RPC');
     return {
       success: true,
       message: serverText(rpcData.message, t('errors.customer.updated')),
@@ -528,7 +505,7 @@ class CustomerService {
     customerId: string
   ): Promise<CustomerServiceResponse> {
     try {
-      console.log('[CustomerService] inactivateCustomer:', customerId);
+      log.debug('inactivateCustomer', { customerId });
 
       if (!customerId) {
         return {
@@ -546,7 +523,7 @@ class CustomerService {
 
       if (error) {
         handleGlobalAuthError(error);
-        console.error('[CustomerService] Inactivate error:', error);
+        log.error('inactivateCustomer error', loggableError(error));
 
         // The server owns the rules for this (a customer that still holds stock
         // cannot be deactivated), so a failed call is reported, never replaced
@@ -573,10 +550,7 @@ class CustomerService {
         data: data,
       };
     } catch (error) {
-      console.error(
-        '[CustomerService] Exception in inactivateCustomer:',
-        error
-      );
+      log.error('Exception in inactivateCustomer', loggableError(error));
       return {
         success: false,
         message: t('errors.customer.inactivateFailed'),
@@ -591,7 +565,7 @@ class CustomerService {
    */
   async restoreCustomer(customerId: string): Promise<CustomerServiceResponse> {
     try {
-      console.log('[CustomerService] restoreCustomer:', customerId);
+      log.debug('restoreCustomer', { customerId });
 
       if (!customerId) {
         return {
@@ -608,7 +582,7 @@ class CustomerService {
 
       if (error) {
         handleGlobalAuthError(error);
-        console.error('[CustomerService] Restore error:', error);
+        log.error('restoreCustomer error', loggableError(error));
 
         // As for deactivation: a failed call is reported, never replaced by a
         // direct write to the customers table.
@@ -634,7 +608,7 @@ class CustomerService {
         data: data,
       };
     } catch (error) {
-      console.error('[CustomerService] Exception in restoreCustomer:', error);
+      log.error('Exception in restoreCustomer', loggableError(error));
       return {
         success: false,
         message: t('errors.customer.restoreFailed'),

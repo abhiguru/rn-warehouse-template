@@ -9,6 +9,10 @@ import {
 import { executeRPC, createErrorResponse, handleGlobalAuthError } from '@/utils/serviceErrorHandler';
 import { t } from '@/i18n';
 import { serverText } from '@/utils/serverText';
+import { createLogger, loggableError } from '@/utils/logger';
+
+// Identifiers and error codes only; never a profile, a customer or the server's wording.
+const log = createLogger('user');
 
 export class UserService {
   
@@ -56,7 +60,7 @@ export class UserService {
 
       if (userError) {
         handleGlobalAuthError(userError);
-        console.error('[UserService] User profile fetch error:', userError);
+        log.error('User profile fetch error', loggableError(userError));
         return {
           success: false,
           message: t('errors.user.fetchProfileFailed'),
@@ -118,7 +122,7 @@ export class UserService {
         data: mappedUser
       };
     } catch (error) {
-      console.error('[UserService] Exception:', error);
+      log.error('Exception', loggableError(error));
       return {
         success: false,
         message: t('errors.general.unexpected'),
@@ -171,7 +175,7 @@ export class UserService {
 
       if (updateError) {
         handleGlobalAuthError(updateError);
-        console.error('[UserService] User update error:', updateError.code, updateError.message);
+        log.error('User update error', loggableError(updateError));
         return {
           success: false,
           message: t('errors.user.updateProfileFailed'),
@@ -199,7 +203,7 @@ export class UserService {
         data: updatedUserResult.data
       };
     } catch (error) {
-      console.error('[UserService] Exception:', error);
+      log.error('Exception', loggableError(error));
       return {
         success: false,
         message: t('errors.general.unexpected'),
@@ -228,7 +232,7 @@ export class UserService {
 
       if (error) {
         handleGlobalAuthError(error);
-        console.error('[UserService] Account deletion RPC error:', error);
+        log.error('Account deletion RPC error', loggableError(error));
         return {
           success: false,
           message: t('errors.user.deleteAccountFailed'),
@@ -250,7 +254,7 @@ export class UserService {
       }
 
       if (!rpcResponse?.success) {
-        console.error('[UserService] Account deletion failed:', rpcResponse?.error);
+        log.error('Account deletion failed', loggableError(rpcResponse));
         return {
           success: false,
           message: serverText(rpcResponse?.error, t('errors.user.deleteAccountFailed')),
@@ -264,7 +268,7 @@ export class UserService {
         data: undefined
       };
     } catch (error) {
-      console.error('[UserService] Account deletion exception:', error);
+      log.error('Account deletion exception', loggableError(error));
       return {
         success: false,
         message: t('errors.user.deleteAccountUnexpected'),
@@ -285,7 +289,7 @@ export class UserService {
 
       if (error) {
         handleGlobalAuthError(error);
-        console.error('[UserService] Customer fetch error:', error);
+        log.error('Customer fetch error', loggableError(error));
         return {
           success: false,
           message: t('errors.customer.fetchFailed'),
@@ -313,7 +317,7 @@ export class UserService {
         }
       };
     } catch (error) {
-      console.error('[UserService] Exception:', error);
+      log.error('Exception', loggableError(error));
       return {
         success: false,
         message: t('errors.general.unexpected'),
