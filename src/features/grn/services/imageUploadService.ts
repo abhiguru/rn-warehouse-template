@@ -1,5 +1,6 @@
 import { deleteWarehouseImage } from '@/services/imageDeletion';
 import * as ImageManipulator from 'expo-image-manipulator';
+import { compressPhoto, PHOTO_PROCESSING_FAILED } from '@/utils/photoCompression';
 import { File } from 'expo-file-system';
 import {
   getSupabaseWithJWT,
@@ -58,8 +59,9 @@ export interface ImageMetadata {
 const IMAGE_COMPRESSION_SETTINGS = {
   compress: 0.6,
   format: ImageManipulator.SaveFormat.WEBP,
-  maxWidth: 1280,
-  maxHeight: 1280,
+  maxEdge: 1280,
+  // Some devices cannot write WebP; the photo is then written as JPEG.
+  fallbackFormat: ImageManipulator.SaveFormat.JPEG,
 };
 
 // Maximum file size (10MB)
@@ -117,50 +119,6 @@ const imageToArrayBuffer = async (
 };
 
 /**
- * Compress image before upload to reduce file size
- */
-const compressImage = async (
-  uri: string
-): Promise<{ uri: string; fileSize: number }> => {
-  try {
-    const manipulatedImage = await ImageManipulator.manipulateAsync(
-      uri,
-      [
-        {
-          resize: {
-            width: IMAGE_COMPRESSION_SETTINGS.maxWidth,
-            height: IMAGE_COMPRESSION_SETTINGS.maxHeight,
-          },
-        },
-      ],
-      {
-        compress: IMAGE_COMPRESSION_SETTINGS.compress,
-        format: IMAGE_COMPRESSION_SETTINGS.format,
-      }
-    );
-
-    // Get file size (approximate)
-    const response = await fetch(manipulatedImage.uri);
-    const blob = await response.blob();
-    const fileSize = blob.size;
-
-    return {
-      uri: manipulatedImage.uri,
-      fileSize: fileSize,
-    };
-  } catch (error) {
-    console.error('[ImageService] Error compressing image:', error);
-    // Fallback to original image
-    const response = await fetch(uri);
-    const blob = await response.blob();
-    return {
-      uri: uri,
-      fileSize: blob.size,
-    };
-  }
-};
-
-/**
  * Generate file path for storage based on image type
  */
 const generateFilePath = (
@@ -211,7 +169,12 @@ export const uploadGRNImage = async (
     }
 
     // Compress image
-    const { uri: compressedUri, fileSize } = await compressImage(asset.uri);
+    const {
+      uri: compressedUri,
+      fileSize,
+      mimeType: contentType,
+      extension,
+    } = await compressPhoto(asset, IMAGE_COMPRESSION_SETTINGS);
 
     // Check compressed file size
     if (fileSize > MAX_FILE_SIZE) {
@@ -221,10 +184,9 @@ export const uploadGRNImage = async (
       };
     }
 
-    // Determine content type (always WebP after compression for better compression)
-    const contentType = 'image/webp';
+    // The name follows the format that was really written.
     const fileName =
-      asset.fileName?.replace(/\.[^/.]+$/, '.webp') || 'image.webp';
+      asset.fileName?.replace(/\.[^/.]+$/, extension) || `image${extension}`;
 
     // Check for temporary GRN ID BEFORE making RPC call - skip RPC entirely for temp IDs
     if (grnId.startsWith('temp_grn_')) {
@@ -422,7 +384,10 @@ export const uploadGRNImage = async (
       if (error.message.includes('Network request failed')) {
         errorMessage =
           t('grn.upload.networkFailed');
-      } else if (error.message.includes('Failed to read image')) {
+      } else if (
+        error.message.includes('Failed to read image') ||
+        error.message === PHOTO_PROCESSING_FAILED
+      ) {
         errorMessage =
           t('grn.upload.processFailed');
       } else {

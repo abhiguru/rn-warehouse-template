@@ -6,6 +6,7 @@ import { deleteWarehouseImage } from '@/services/imageDeletion';
  */
 
 import * as ImageManipulator from 'expo-image-manipulator';
+import { compressPhoto, PHOTO_PROCESSING_FAILED } from '@/utils/photoCompression';
 import * as ImagePicker from 'expo-image-picker';
 import {
   getAuthenticatedClient,
@@ -49,8 +50,7 @@ export interface ImageUploadResult {
 const IMAGE_COMPRESSION_SETTINGS = {
   compress: 0.6,
   format: ImageManipulator.SaveFormat.JPEG,
-  maxWidth: 1280,
-  maxHeight: 1280,
+  maxEdge: 1280,
 };
 
 // Maximum file size (10MB)
@@ -93,49 +93,6 @@ const imageToArrayBuffer = async (
       error
     );
     throw new Error('Failed to read image file');
-  }
-};
-
-/**
- * Compress image before upload to reduce file size
- */
-const compressImage = async (
-  uri: string
-): Promise<{ uri: string; fileSize: number }> => {
-  try {
-    const manipulatedImage = await ImageManipulator.manipulateAsync(
-      uri,
-      [
-        {
-          resize: {
-            width: IMAGE_COMPRESSION_SETTINGS.maxWidth,
-            height: IMAGE_COMPRESSION_SETTINGS.maxHeight,
-          },
-        },
-      ],
-      {
-        compress: IMAGE_COMPRESSION_SETTINGS.compress,
-        format: IMAGE_COMPRESSION_SETTINGS.format,
-      }
-    );
-
-    const response = await fetch(manipulatedImage.uri);
-    const blob = await response.blob();
-    const fileSize = blob.size;
-
-    return {
-      uri: manipulatedImage.uri,
-      fileSize: fileSize,
-    };
-  } catch (error) {
-    console.error('[DispatchImageService] Error compressing image:', error);
-    // Fallback to original image
-    const response = await fetch(uri);
-    const blob = await response.blob();
-    return {
-      uri: uri,
-      fileSize: blob.size,
-    };
   }
 };
 
@@ -212,7 +169,12 @@ export const uploadDispatchImage = async (
     }
 
     // Compress image
-    const { uri: compressedUri, fileSize } = await compressImage(asset.uri);
+    const {
+      uri: compressedUri,
+      fileSize,
+      mimeType: contentType,
+      extension,
+    } = await compressPhoto(asset, IMAGE_COMPRESSION_SETTINGS);
 
     // Check compressed file size
     if (fileSize > MAX_FILE_SIZE) {
@@ -222,10 +184,9 @@ export const uploadDispatchImage = async (
       };
     }
 
-    // Determine content type (always JPEG after compression)
-    const contentType = 'image/jpeg';
+    // The name follows the format that was really written.
     const fileName =
-      asset.fileName?.replace(/\.[^/.]+$/, '.jpg') || 'image.jpg';
+      asset.fileName?.replace(/\.[^/.]+$/, extension) || `image${extension}`;
 
     // Check for temporary dispatch ID - skip RPC and defer upload
     if (dispatchId.startsWith('temp_dispatch_')) {
@@ -430,7 +391,10 @@ export const uploadDispatchImage = async (
     if (error instanceof Error) {
       if (error.message.includes('Network request failed')) {
         errorMessage = t('dispatch.photos.networkFailed');
-      } else if (error.message.includes('Failed to read image')) {
+      } else if (
+        error.message.includes('Failed to read image') ||
+        error.message === PHOTO_PROCESSING_FAILED
+      ) {
         errorMessage = t('dispatch.photos.processFailed');
       } else {
         errorMessage = error.message;
