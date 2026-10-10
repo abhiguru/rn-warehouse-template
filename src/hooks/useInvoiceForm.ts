@@ -433,7 +433,7 @@ export function useInvoiceForm({
       const payload = {
         header: {
           ...header,
-          inv_fin_year: parseInt(String(header.inv_fin_year).split('-')[0]) || 2025,
+          inv_fin_year: parseInt(String(header.inv_fin_year).split('-')[0], 10),
         },
         items,
       };

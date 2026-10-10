@@ -39,9 +39,12 @@ export function roundMoney(value: number): number {
  * calculateFinancialYear('2024-04-01') // Returns "2024-25"
  */
 export function calculateFinancialYear(dateString: string): string {
+  // A plain calendar date is read as written. `new Date('2026-04-01')` is
+  // midnight UTC, which is still 31 March in a time zone behind UTC.
+  const plainDate = /^(\d{4})-(\d{2})-\d{2}$/.exec(dateString);
   const date = new Date(dateString);
-  const month = date.getMonth(); // 0-11
-  const year = date.getFullYear();
+  const month = plainDate ? Number(plainDate[2]) - 1 : date.getMonth(); // 0-11
+  const year = plainDate ? Number(plainDate[1]) : date.getFullYear();
 
   // April (3) to March (2)
   // If month is Jan (0), Feb (1), Mar (2), FY is (year-1)-year

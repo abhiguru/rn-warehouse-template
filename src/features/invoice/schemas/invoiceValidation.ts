@@ -20,10 +20,18 @@ const moneyField = (messages: { negative: TranslationKey; tooLarge: TranslationK
 
 // Step 1: Invoice Header Schema
 export const step1Schema = yup.object().shape({
+  // "Today" is worked out when the form is checked. A limit fixed when this
+  // file is loaded would reject today's invoices once the app has been open
+  // past midnight.
   inv_date: yup
     .date()
     .required(msg('invoice.validation.invoiceDateRequired'))
-    .max(new Date(), msg('invoice.validation.futureDate')),
+    .test('not-future', msg('invoice.validation.futureDate'), (value) => {
+      if (!value) return true;
+      const endOfToday = new Date();
+      endOfToday.setHours(23, 59, 59, 999);
+      return value <= endOfToday;
+    }),
 
   inv_fin_year: yup
     .string()

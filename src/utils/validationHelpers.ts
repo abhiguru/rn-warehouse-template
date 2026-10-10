@@ -72,15 +72,6 @@ export const optionalStringField = (maxLength: number, fieldName?: FieldName) =>
     );
 
 /**
- * Date field that cannot be in the future
- */
-export const pastDateField = (fieldName: FieldName = () => t('validation.fieldName.date')) =>
-  yup
-    .date()
-    .required(() => t('validation.field.required', { field: nameOf(fieldName) }))
-    .max(new Date(), () => t('validation.field.futureDate'));
-
-/**
  * Date string field that cannot be in the future
  */
 export const pastDateStringField = (fieldName: FieldName = () => t('validation.fieldName.date')) =>

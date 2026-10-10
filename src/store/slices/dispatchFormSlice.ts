@@ -12,7 +12,7 @@ import type {
   DispatchImageData,
   ItemFormData,
 } from '@/types/dispatch.types';
-import { EMPTY_DISPATCH_HEADER } from '@/types/dispatch.types';
+import { createEmptyDispatchHeader } from '@/types/dispatch.types';
 
 // ============================================================================
 // SNAPSHOT TYPE FOR ROLLBACK
@@ -29,12 +29,14 @@ interface DispatchFormSnapshot {
 // INITIAL STATE
 // ============================================================================
 
-const initialState: DispatchFormState & { snapshot: DispatchFormSnapshot | null } = {
+// Built when it is needed: the default dispatch date is "now", and the app can
+// stay open past midnight.
+const createInitialState = (): DispatchFormState & { snapshot: DispatchFormSnapshot | null } => ({
   // IDs
   dispatch_id: null,
 
   // Form data
-  header: EMPTY_DISPATCH_HEADER,
+  header: createEmptyDispatchHeader(),
   items: [],
   images: [],
 
@@ -51,7 +53,7 @@ const initialState: DispatchFormState & { snapshot: DispatchFormSnapshot | null 
 
   // #18 Fix: Snapshot for optimistic update rollback
   snapshot: null,
-};
+});
 
 // ============================================================================
 // SLICE
@@ -59,7 +61,7 @@ const initialState: DispatchFormState & { snapshot: DispatchFormSnapshot | null 
 
 const dispatchFormSlice = createSlice({
   name: 'dispatchForm',
-  initialState,
+  initialState: createInitialState,
   reducers: {
     // ========================================================================
     // HEADER ACTIONS
@@ -344,14 +346,14 @@ const dispatchFormSlice = createSlice({
      * Called on mount, unmount, and after successful submission
      */
     // A full reset also drops rollback data and errors from the old warehouse.
-    resetForm: () => initialState,
+    resetForm: () => createInitialState(),
 
     /**
      * Reset only form data, keep UI state
      */
     resetFormData: (state) => {
       state.dispatch_id = null;
-      state.header = EMPTY_DISPATCH_HEADER;
+      state.header = createEmptyDispatchHeader();
       state.items = [];
       state.images = [];
       state.validationErrors = {};
@@ -372,7 +374,7 @@ const dispatchFormSlice = createSlice({
       const { header, items, source_order_id } = action.payload;
       state.dispatch_id = null; // New dispatch, not editing
       state.header = {
-        ...EMPTY_DISPATCH_HEADER,
+        ...createEmptyDispatchHeader(),
         ...header,
         source_order_id,
       };

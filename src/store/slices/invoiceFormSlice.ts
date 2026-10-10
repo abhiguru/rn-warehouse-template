@@ -16,20 +16,25 @@ import {
 } from '@/utils/invoiceCalculations';
 
 import { toLocalISODate } from '@/utils/formatters';
-// Initial header state
-const initialHeader: InvoiceHeaderData = {
-  inv_date: toLocalISODate(new Date()),
-  inv_fin_year: calculateFinancialYear(new Date().toISOString()),
-  inv_no: 0,
-  customer_id: '',
-  customer_name: '',
-  gr_id: '',
-  gr_no: '',
-  one_time_charge: false,
-  discount: 0,
-  labour: 0,
-  tax_amount: 0,
-  total: 0,
+// Initial header state. Built when it is needed, not once when this file is
+// loaded: the default date and financial year are "today", and the app can stay
+// open past midnight and past 1 April.
+const createInitialHeader = (): InvoiceHeaderData => {
+  const today = toLocalISODate(new Date());
+  return {
+    inv_date: today,
+    inv_fin_year: calculateFinancialYear(today),
+    inv_no: 0,
+    customer_id: '',
+    customer_name: '',
+    gr_id: '',
+    gr_no: '',
+    one_time_charge: false,
+    discount: 0,
+    labour: 0,
+    tax_amount: 0,
+    total: 0,
+  };
 };
 
 // #18 Fix: Snapshot type for rollback
@@ -44,10 +49,10 @@ interface InvoiceFormSnapshot {
 }
 
 // Initial state
-const initialState: InvoiceFormState & { snapshot: InvoiceFormSnapshot | null } = {
+const createInitialState = (): InvoiceFormState & { snapshot: InvoiceFormSnapshot | null } => ({
   invoice_id: null,
   selected_gr_id: null,
-  header: initialHeader,
+  header: createInitialHeader(),
   items: [],
   editedItems: {},
   itemOverrides: {},
@@ -61,11 +66,11 @@ const initialState: InvoiceFormState & { snapshot: InvoiceFormSnapshot | null } 
   validationErrors: {},
   // #18 Fix: Snapshot for optimistic update rollback
   snapshot: null,
-};
+});
 
 const invoiceFormSlice = createSlice({
   name: 'invoiceForm',
-  initialState,
+  initialState: createInitialState,
   reducers: {
     // ID management
     setInvoiceId: (state, action: PayloadAction<string | null>) => {
@@ -297,7 +302,7 @@ const invoiceFormSlice = createSlice({
 
       // Reset header completely to avoid stale data from previous GRN selection
       state.header = {
-        ...initialHeader,
+        ...createInitialHeader(),
         ...action.payload.header,
         // Preserve these fields that were already set by the user
         inv_no: preservedInvNo,
@@ -479,7 +484,7 @@ const invoiceFormSlice = createSlice({
     },
 
     resetForm: () => {
-      return initialState;
+      return createInitialState();
     },
 
     // #18 Fix: Snapshot actions for optimistic update rollback

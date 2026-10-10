@@ -359,7 +359,12 @@ export interface DispatchItemEntity {
 // CONSTANTS
 // ============================================================================
 
-export const EMPTY_DISPATCH_HEADER: DispatchHeaderData = {
+/**
+ * An empty dispatch header dated now. A function, not a constant: a constant
+ * would keep the moment the app was started as the default date for every
+ * later dispatch.
+ */
+export const createEmptyDispatchHeader = (): DispatchHeaderData => ({
   disp_no: '',
   disp_date: new Date().toISOString(),
   registration: '',
@@ -371,7 +376,7 @@ export const EMPTY_DISPATCH_HEADER: DispatchHeaderData = {
   supervisor_id: '',
   supervisor_name: '',
   note: '',
-};
+});
 
 export const EMPTY_DISPATCH_ITEM: ItemFormData = {
   unique_id: '',
