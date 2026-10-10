@@ -293,6 +293,20 @@ describe('the stored custom session', () => {
     expect(ensureValidTokens).not.toHaveBeenCalled();
   });
 
+  // RM-8: with a fixed five minutes, a token of a facility whose access_seconds
+  // is 300 was renewed on every check, from the moment it was issued.
+  it('leaves a 300 second token alone until its last 30 seconds', async () => {
+    const store = makeStore();
+    const issued = Math.floor(Date.now() / 1000);
+    const shortLived = `${btoa('{}')}.${btoa(JSON.stringify({ iat: issued, exp: issued + 300 }))}.signature`;
+    jest.mocked(getStoredToken).mockResolvedValueOnce({ ...stored(Date.now() + 290 * 1000), authToken: shortLived });
+    expect((await store.dispatch(checkTokenExpiry()).unwrap()).refreshAttempted).toBe(false);
+    expect(ensureValidTokens).not.toHaveBeenCalled();
+    jest.mocked(getStoredToken).mockResolvedValueOnce({ ...stored(Date.now() + 20 * 1000), authToken: shortLived });
+    expect((await store.dispatch(checkTokenExpiry()).unwrap()).refreshAttempted).toBe(true);
+    expect(ensureValidTokens).toHaveBeenCalledTimes(1);
+  });
+
   const cached = { id: 'user-1', auth_user_id: 'auth-1', name: 'Asha Example', role: 'supervisor', assignedCustomerIds: ['c1'] };
   const start = async (fresh: unknown) => {
     jest.mocked(getSupabaseClient).mockReturnValue({

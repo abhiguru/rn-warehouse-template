@@ -79,12 +79,11 @@ export * from './invoiceCalculations';
 // Network
 // ============================================================================
 export {
-  callRPC,
   extractPagination,
   validateUUIDParam,
   cleanRPCParams,
 } from './rpcClient';
-export type { RPCResponse, RPCOptions } from './rpcClient';
+export type { RPCResponse } from './rpcClient';
 export { parseRpcResponse } from './responseUtils';
 export type { StandardRpcResponse } from './responseUtils';
 

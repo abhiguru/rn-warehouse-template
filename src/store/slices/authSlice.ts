@@ -22,7 +22,7 @@ import { extendSessionMarker } from '@/utils/secureSessionMarker';
 import ConfigService from '@/services/configService';
 import { getUserByIdDirect } from '@/services/user-core-service';
 import { fetchFullConfig, clearFullConfig } from './configSlice';
-import { getSessionGeneration } from '@/config/sessionLifecycle';
+import { getSessionGeneration, renewAheadMs } from '@/config/sessionLifecycle';
 import { setSentryUser, clearSentryUser } from '@/config/sentryConfig';
 import { CACHE_PREFIXES } from '@/config/cacheConfig';
 // Privacy cleanup services - clear user-specific data on logout
@@ -607,9 +607,9 @@ export const checkTokenExpiry = createAsyncThunk(
     const none = { warning: false, expired: false, refreshAttempted: false };
     const stored = await getStoredToken();
     if (stored.type !== 'jwt' || !stored.expiresAt) return none;
-    // ensureValidTokens renews inside the same five minutes; asking earlier
-    // would only read the secure store.
-    if (stored.expiresAt - Date.now() > 5 * 60 * 1000) return none;
+    // ensureValidTokens renews inside the same margin; asking earlier would
+    // only read the secure store.
+    if (stored.expiresAt - Date.now() > renewAheadMs(stored.authToken)) return none;
     await ensureValidTokens();
     return { ...none, refreshAttempted: true };
   }

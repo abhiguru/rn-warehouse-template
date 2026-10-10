@@ -1,16 +1,13 @@
 /**
- * Shared RPC Client Utility
+ * Shared RPC helpers: the response shape, pagination and parameter cleaning.
  *
- * Provides standardized RPC calling patterns with consistent error handling,
- * response validation, and logging across all service files.
+ * The time limit of a request is not here: every request is limited where it
+ * is sent (`gatedFetch` in `@/config/supabaseConfig`). The `callRPC` wrapper
+ * that used to carry a limit was called by no screen or service and is gone.
  */
 
-import { getAuthenticatedClient } from '@/config/supabaseConfig';
-import type { ServiceResponse } from './errorHandler';
-import { handleError, handleSuccess } from './errorHandler';
 import { createLogger } from './logger';
 import { localizeDigits, t } from '@/i18n';
-import { serverText } from '@/utils/serverText';
 
 const rpcLogger = createLogger('RPCClient');
 
@@ -36,29 +33,6 @@ export interface RPCResponse<T = unknown> {
 }
 
 /**
- * Options for RPC calls
- */
-export interface RPCOptions {
-  /** Context name for logging (e.g., 'GRN Service') */
-  context: string;
-  /** Custom error message for user-facing errors */
-  errorMessage?: string;
-  /** Enable performance timing logs */
-  enableTiming?: boolean;
-  /** Enable detailed logging */
-  verbose?: boolean;
-  /** Timeout in milliseconds (default: 30000 for list fetches) */
-  timeout?: number;
-}
-
-// E4 Fix: Default timeouts for different operation types
-export const RPC_TIMEOUTS = {
-  LIST_FETCH: 30000,    // 30 seconds for list fetches
-  MUTATION: 60000,      // 60 seconds for create/update/delete
-  QUICK_CHECK: 10000,   // 10 seconds for simple checks
-} as const;
-
-/**
  * E4 Fix: Wrap a promise with a timeout
  * Rejects with TimeoutError if promise doesn't resolve within specified time
  */
@@ -74,8 +48,8 @@ export class TimeoutError extends Error {
 
 /**
  * The timer is cleared as soon as the promise settles. `onTimeout` runs when
- * the time is up, before the rejection: callRPC uses it to abort the request,
- * so a request the app has stopped waiting for does not stay on the wire.
+ * the time is up, before the rejection, so the caller can abort what it has
+ * stopped waiting for.
  */
 export function withTimeout<T>(
   promise: Promise<T>,
@@ -99,123 +73,6 @@ export function withTimeout<T>(
       }, timeoutMs);
     }),
   ]).finally(() => clearTimeout(timer));
-}
-
-/**
- * Execute an RPC function call with standardized error handling
- *
- * @example
- * const result = await callRPC<GRNListResponse>(
- *   'get_all_grn_items',
- *   { p_limit: 20, p_offset: 0 },
- *   { context: 'GRN Service', enableTiming: true }
- * );
- */
-export async function callRPC<TData = unknown>(
-  functionName: string,
-  params: Record<string, unknown> = {},
-  options: RPCOptions
-): Promise<ServiceResponse<TData>> {
-  const {
-    context,
-    errorMessage,
-    enableTiming = false,
-    verbose = false,
-    timeout = RPC_TIMEOUTS.LIST_FETCH  // E4 Fix: Default 30s timeout
-  } = options;
-
-  try {
-    // Get authenticated client
-    const authenticatedClient = await getAuthenticatedClient();
-
-    // Log RPC call if verbose
-    if (verbose) {
-      rpcLogger.info(`[${context}] Calling RPC: ${functionName}`, { params });
-    }
-
-    // Start timing if enabled
-    const startTime = enableTiming ? Date.now() : 0;
-
-    // E4 Fix: Execute RPC call with timeout wrapper
-    // Wrap PostgrestFilterBuilder in Promise.resolve() for timeout wrapper compatibility
-    const controller = new AbortController();
-    const request = authenticatedClient.rpc(functionName, params);
-    const rpcPromise = Promise.resolve(
-      typeof request.abortSignal === 'function' ? request.abortSignal(controller.signal) : request
-    );
-    const { data, error } = await withTimeout<{ data: unknown; error: { message: string } | null }>(
-      rpcPromise,
-      timeout,
-      `RPC ${functionName}`,
-      () => controller.abort()
-    );
-
-    // Log timing if enabled
-    if (enableTiming) {
-      const duration = Date.now() - startTime;
-      rpcLogger.info(`[${context}] RPC ${functionName} completed in ${duration}ms`);
-    }
-
-    // Log data size if verbose and data exists
-    if (verbose && data) {
-      const dataSize = JSON.stringify(data).length;
-      rpcLogger.info(`[${context}] Response size: ${(dataSize / 1024).toFixed(2)} KB`);
-    }
-
-    // Handle RPC errors
-    if (error) {
-      rpcLogger.error(`[${context}] RPC error in ${functionName}:`, error.message);
-      return handleError(
-        error,
-        context,
-        { defaultMessage: errorMessage || t('errors.general.executeFailed', { name: functionName }) }
-      );
-    }
-
-    // Handle missing data
-    if (!data) {
-      return handleError(
-        new Error(t('errors.general.noDataFromRpc')),
-        context,
-        { defaultMessage: errorMessage || t('errors.general.noDataAvailable') }
-      );
-    }
-
-    // Handle backend-level errors (when RPC succeeds but backend returns error)
-    const rpcResponse = Array.isArray(data) ? data[0] : data;
-    if (rpcResponse && typeof rpcResponse === 'object' && 'success' in rpcResponse) {
-      if (rpcResponse.success === false) {
-        return {
-          success: false,
-          message: serverText(rpcResponse.message || errorMessage, t('errors.general.operationFailed')),
-          error: serverText(rpcResponse.error, t('errors.general.backendReturnedError')),
-        };
-      }
-    }
-
-    // Success - return data
-    return handleSuccess(
-      rpcResponse as TData,
-      rpcResponse && typeof rpcResponse === 'object' && 'message' in rpcResponse
-        ? (rpcResponse.message as string)
-        : t('errors.general.operationCompleted')
-    );
-  } catch (error) {
-    // E4 Fix: Handle timeout errors with specific message
-    if (error instanceof TimeoutError) {
-      rpcLogger.error(`[${context}] Request timeout in ${functionName}:`, error.message);
-      return {
-        success: false,
-        message: t('errors.network.requestTimedOut'),
-        error: error.message,
-      };
-    }
-    return handleError(
-      error,
-      context,
-      { defaultMessage: errorMessage || t('errors.general.unexpected') }
-    );
-  }
 }
 
 /**

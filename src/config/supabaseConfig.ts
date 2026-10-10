@@ -15,6 +15,7 @@ import { getActiveOperatorServer } from '@/config/operatorServer';
 import {
   advanceSessionGeneration,
   getSessionGeneration,
+  renewAheadMs,
   serializeCredentials,
 } from './sessionLifecycle';
 import { AppError, getAppErrorCode } from '@/utils/appError';
@@ -121,6 +122,40 @@ function noteUnauthorized(response: Response, generation: number): void {
     .catch(() => {});
 }
 
+/**
+ * How long a request may wait for the server's answer before it is aborted.
+ * Without a limit a request on a connection that never answers stays in
+ * flight until the app is killed, and a write in flight holds a server switch
+ * back. Uploads and the document and print functions get longer.
+ */
+export const REQUEST_TIME_LIMIT_MS = { read: 30000, write: 60000, transfer: 120000 } as const;
+
+function requestTimeLimit(input: RequestInfo | URL, mutation: boolean): number {
+  if (!mutation) return REQUEST_TIME_LIMIT_MS.read;
+  const url = typeof input === 'object' && input !== null && 'url' in input ? input.url : String(input);
+  return /\/(storage\/v1\/object|functions\/v1)\//.test(url.split(/[?#]/)[0])
+    ? REQUEST_TIME_LIMIT_MS.transfer
+    : REQUEST_TIME_LIMIT_MS.write;
+}
+
+/**
+ * A request the gated fetch gave up waiting for and aborted. Like 'Session
+ * changed' it is a signal: the PostgREST client turns it into the text
+ * "TimeoutError: Request timeout", which the error tables class as a timeout,
+ * so the message stays English. `code` is what postgrest-js reads to leave an
+ * aborted request alone; without it a GET would be sent three more times.
+ * A write that timed out may still have been applied by the server.
+ */
+export class RequestTimeoutError extends Error {
+  readonly appErrorCode = 'TIMEOUT' as const;
+  readonly code = 'ABORT_ERR';
+
+  constructor() {
+    super('Request timeout');
+    this.name = 'TimeoutError';
+  }
+}
+
 async function gatedFetch(
   input: RequestInfo | URL,
   init: RequestInit | undefined,
@@ -137,8 +172,21 @@ async function gatedFetch(
   if (init?.signal?.aborted) controller.abort();
   else init?.signal?.addEventListener('abort', abort, { once: true });
   activeRequests.add(request);
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    const response = await fetch(input, { ...init, signal: controller.signal });
+    // The race ends the wait even when the platform's fetch does not settle on abort.
+    const response = await Promise.race([
+      fetch(input, { ...init, signal: controller.signal }),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+          // Rejected first, so the caller hears "timeout" and not the abort it causes.
+          reject(new RequestTimeoutError());
+          controller.abort();
+        }, requestTimeLimit(input, mutation));
+        // Under Node (tests) a waiting request must not keep the process alive.
+        (timer as { unref?: () => void }).unref?.();
+      }),
+    ]);
     noteUnauthorized(response, generation);
     if (!honorSwitch) return response;
     if (invalidated()) throw new Error('Session changed');
@@ -159,6 +207,7 @@ async function gatedFetch(
       },
     });
   } finally {
+    clearTimeout(timer);
     activeRequests.delete(request);
     init?.signal?.removeEventListener('abort', abort);
   }
@@ -256,16 +305,23 @@ async function sessionFetch(
   return gatedFetch(input, withBearer(init, renewed), { generation, mutation, honorSwitch: true });
 }
 
+// The document, print and download services call these directly and show the
+// error's message, so a timeout reaches them in the app's own words.
+const inOwnWords = (error: unknown): never => {
+  if (error instanceof RequestTimeoutError) throw new AppError('TIMEOUT', t('errors.network.requestTimedOut'));
+  throw error;
+};
+
 export function createAuthenticatedFetch() {
   const generation = getSessionGeneration();
   return (input: RequestInfo | URL, init?: RequestInit) =>
-    sessionFetch(input, init, generation, true);
+    sessionFetch(input, init, generation, true).catch(inOwnWords);
 }
 
 export function createSessionReadFetch() {
   const generation = getSessionGeneration();
   return (input: RequestInfo | URL, init?: RequestInit) =>
-    sessionFetch(input, init, generation, false);
+    sessionFetch(input, init, generation, false).catch(inOwnWords);
 }
 
 export function beginOperatorSwitch(): boolean {
@@ -377,10 +433,13 @@ export const getAuthenticatedClient = async (): Promise<SupabaseClient> => {
 
 export const getSupabaseWithJWT = getAuthenticatedClient;
 
+const AUTH_RPC_TIMEOUT_MS = 15000;
+
 async function boundedAuthRPC(
   name: string,
   args: Record<string, unknown>,
-  generation = getSessionGeneration()
+  generation = getSessionGeneration(),
+  timeoutMs = AUTH_RPC_TIMEOUT_MS
 ) {
   // The anonymous client's fetch is gated as well; waiting here first keeps the
   // refresh credential out of the request until identity verification passes.
@@ -401,7 +460,7 @@ async function boundedAuthRPC(
         timer = setTimeout(() => {
           controller.abort();
           reject(new AppError('TIMEOUT', t('errors.network.authTimedOut')));
-        }, 15000);
+        }, timeoutMs);
       }),
     ]);
   } finally {
@@ -932,6 +991,7 @@ let rejectedGeneration = -1;
 async function rejectSession(generation: number, reason: string, refusedRefreshToken?: string): Promise<void> {
   if (generation !== getSessionGeneration() || rejectedGeneration === generation) return;
   rejectedGeneration = generation;
+  clearRefreshRetry();
   await clearStoredTokens();
   dispatchForcedLogout(reason);
   if (refusedRefreshToken) void revokeSession(refusedRefreshToken);
@@ -952,6 +1012,61 @@ let refreshInFlight: {
   generation: number;
   promise: Promise<RefreshedSession | null>;
 } | null = null;
+
+// A refresh whose answer is lost (the app gave up waiting, or the connection
+// dropped) may have rotated the token on the server. The server answers a
+// repeat of the same token with the same successor only inside its grace
+// period (refresh_grace_seconds, 60 by default); after that the stored token is
+// refused and the person is signed out. So the same token is sent again at
+// once, and if that fails too, a few more times in the background while the
+// grace period can still be running. The stored session is never touched by a
+// connectivity failure, and no caller waits for the background attempts.
+const REFRESH_REPEAT_TIMEOUT_MS = 5000;
+export const REFRESH_RETRY_DELAYS_MS = [2000, 5000, 10000, 20000] as const;
+export const REFRESH_RETRY_WINDOW_MS = 50 * 1000;
+let refreshRetry: {
+  generation: number;
+  token: string;
+  /** When the first unanswered refresh of this token was sent. */
+  since: number;
+  attempt: number;
+  timer?: ReturnType<typeof setTimeout>;
+} | null = null;
+
+function clearRefreshRetry(): void {
+  if (refreshRetry?.timer) clearTimeout(refreshRetry.timer);
+  refreshRetry = null;
+}
+
+function scheduleRefreshRetry(generation: number, token: string, sentAt: number): void {
+  if (refreshRetry && (refreshRetry.generation !== generation || refreshRetry.token !== token)) clearRefreshRetry();
+  const state = refreshRetry ?? (refreshRetry = { generation, token, since: sentAt, attempt: 0 });
+  if (state.timer) return;
+  const delay = REFRESH_RETRY_DELAYS_MS[state.attempt];
+  if (delay === undefined || Date.now() + delay - state.since > REFRESH_RETRY_WINDOW_MS) {
+    clearRefreshRetry();
+    return;
+  }
+  state.attempt += 1;
+  state.timer = setTimeout(() => {
+    state.timer = undefined;
+    void (async () => {
+      if (refreshRetry !== state || generation !== getSessionGeneration()) return;
+      // Another request may have renewed the session meanwhile.
+      const stored = await getStoredToken();
+      if (refreshRetry !== state) return;
+      if (stored.refreshToken !== token) return clearRefreshRetry();
+      await refreshCustomJWT();
+    })();
+  }, delay);
+  // Under Node (tests) a waiting attempt must not keep the process alive.
+  (state.timer as { unref?: () => void }).unref?.();
+}
+
+// Raised inside the gated fetch and turned into text by the PostgREST client:
+// not connectivity, so not a reason to send the refresh token again.
+const isGateSignal = (error: unknown): boolean =>
+  /session changed|identity verification/i.test(String((error as { message?: unknown } | null)?.message ?? ''));
 export const refreshCustomJWT = (): Promise<RefreshedSession | null> => {
   const generation = getSessionGeneration();
   if (refreshInFlight?.generation === generation)
@@ -973,7 +1088,9 @@ const refreshSession = async (
       return null;
     }
 
-    let timeoutRetried = false;
+    const sentAt = Date.now();
+    // One immediate repeat per token: a background attempt is itself a repeat.
+    let repeated = refreshRetry?.generation === generation && refreshRetry.token === refreshToken;
     let successorTried = false;
     for (;;) {
       // Call backend RPC to refresh tokens
@@ -982,22 +1099,21 @@ const refreshSession = async (
         answer = await boundedAuthRPC(
           'refresh_jwt_token',
           { p_refresh_token: refreshToken },
-          generation
+          generation,
+          // The repeat gets a short limit: the server answers it from what it
+          // stored, and a start of the app must not wait twice as long.
+          repeated ? REFRESH_REPEAT_TIMEOUT_MS : AUTH_RPC_TIMEOUT_MS
         );
       } catch (error) {
-        // A refresh the app gave up waiting for may have rotated the token on
-        // the server. The same token is sent once more: the backend answers a
-        // repeat within its grace period with the same successor. Without this
-        // the app would keep a consumed token and be signed out next time.
-        if (
-          getAppErrorCode(error) === 'TIMEOUT' &&
-          !timeoutRetried &&
-          generation === getSessionGeneration()
-        ) {
-          timeoutRetried = true;
+        if (getAppErrorCode(error) !== 'TIMEOUT' || generation !== getSessionGeneration()) throw error;
+        // A refresh the app gave up waiting for: the same token is sent once
+        // more, then left to the background attempts.
+        if (!repeated) {
+          repeated = true;
           continue;
         }
-        throw error;
+        scheduleRefreshRetry(generation, refreshToken, sentAt);
+        return null;
       }
       const { data, error } = answer;
       // Handle array response from RPC
@@ -1048,6 +1164,14 @@ const refreshSession = async (
       }
       if (error) {
         console.error('[Auth] Token refresh RPC error:');
+        if (isGateSignal(error)) return null;
+        // No answer, or one that is not the server's decision: the token is
+        // kept and sent again, like after a timeout.
+        if (!repeated) {
+          repeated = true;
+          continue;
+        }
+        scheduleRefreshRetry(generation, refreshToken, sentAt);
         return null;
       }
 
@@ -1074,6 +1198,7 @@ const refreshSession = async (
       // Store the new tokens
       await storeTokens(newAccessToken, newRefreshToken, expiresAt, generation);
       lastIssued = { token: newAccessToken, at: Date.now() };
+      clearRefreshRetry();
 
       // Clear cached authenticated client so it picks up new token
       clearAuthenticatedClientCache();
@@ -1103,10 +1228,21 @@ export const ensureValidTokens = async (): Promise<boolean> => {
     if (tokenData.type === 'jwt') {
       const expiresAt = tokenData.expiresAt || 0;
       const now = Date.now();
-      const bufferMs = 5 * 60 * 1000; // 5 minute buffer
 
-      // Token still valid with buffer
-      if (expiresAt > now + bufferMs) {
+      // Token still valid with its renew-ahead margin
+      if (expiresAt > now + renewAheadMs(tokenData.authToken)) {
+        return true;
+      }
+      // A token issued within the last minute is used, not renewed again: with
+      // a lifetime the margin cannot be read from, every request would
+      // otherwise rotate the session.
+      const issued = lastIssued;
+      if (
+        tokenData.isValid &&
+        issued !== undefined &&
+        issued.token === tokenData.authToken &&
+        Math.abs(now - issued.at) < JUST_ISSUED_MS
+      ) {
         return true;
       }
 
