@@ -55,6 +55,7 @@ import { deleteGRNImage, uploadGRNImage } from '@/features/grn/services/imageUpl
 
 import { showAlert } from '@/utils/alert';
 import { formatCount } from '@/utils/formatters';
+import { t as tr } from '@/i18n';
 const makeStyles = (t: ThemeTokens) => ({
   container: {
     flex: 1,
@@ -194,7 +195,7 @@ function GRNDetailScreen() {
       if (Platform.OS !== 'android') {
         const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
         if (!permission.granted) {
-          setSnackbarMessage('Allow photo access in Settings to add an image.');
+          setSnackbarMessage(tr('grn.details.photoAccessNeeded'));
           setSnackbarVisible(true);
           return;
         }
@@ -212,15 +213,15 @@ function GRNDetailScreen() {
       setIsUploadingImage(true);
       const result = await uploadGRNImage(picked.assets[0], id, 'header');
       if (!result.success) {
-        setSnackbarMessage(result.error || "Couldn't upload the image. Try again.");
+        setSnackbarMessage(result.error || tr('grn.details.imageUploadFailed'));
         setSnackbarVisible(true);
         return;
       }
       await fetchGRNDetails();
-      setSnackbarMessage('Image added.');
+      setSnackbarMessage(tr('grn.details.imageAdded'));
       setSnackbarVisible(true);
     } catch {
-      setSnackbarMessage("Couldn't upload the image. Try again.");
+      setSnackbarMessage(tr('grn.details.imageUploadFailed'));
       setSnackbarVisible(true);
     } finally {
       setIsUploadingImage(false);
@@ -231,10 +232,10 @@ function GRNDetailScreen() {
   const handleDeleteImage = (image: GRNImageData) => {
     if (imageMutationRef.current) return;
     imageMutationRef.current = true;
-    showAlert('Delete this image?', 'The image is removed from the GRN permanently.', [
-      { text: 'Cancel', style: 'cancel', onPress: () => { imageMutationRef.current = false; } },
+    showAlert(tr('grn.details.deleteImageTitle'), tr('grn.details.deleteImageMessage'), [
+      { text: tr('common.cancel'), style: 'cancel', onPress: () => { imageMutationRef.current = false; } },
       {
-        text: 'Delete image',
+        text: tr('grn.details.deleteImage'),
         style: 'destructive',
         onPress: async () => {
           try {
@@ -242,12 +243,12 @@ function GRNDetailScreen() {
             const result = await deleteGRNImage(image.id, image.image_url);
             if (result.success) {
               await fetchGRNDetails();
-              setSnackbarMessage(result.partial ? result.error || 'Image removed.' : 'Image deleted.');
+              setSnackbarMessage(result.partial ? result.error || tr('grn.details.imageRemoved') : tr('grn.details.imageDeleted'));
             } else {
-              setSnackbarMessage(result.error || "Couldn't delete the image. Try again.");
+              setSnackbarMessage(result.error || tr('grn.details.imageDeleteFailed'));
             }
           } catch {
-            setSnackbarMessage("Couldn't delete the image. Try again.");
+            setSnackbarMessage(tr('grn.details.imageDeleteFailed'));
           } finally {
             setIsDeletingImage(false);
             imageMutationRef.current = false;
@@ -286,7 +287,7 @@ function GRNDetailScreen() {
       } else {
         setData(null);
         setError(
-          result.error || result.message || "Couldn't load the GRN. Try again."
+          result.error || result.message || tr('grn.details.loadFailed')
         );
       }
     } catch (err) {
@@ -297,7 +298,7 @@ function GRNDetailScreen() {
       console.error('[GRNDetailScreen] Exception:', err);
       setData(null);
       setError(
-        "Couldn't load the GRN. Check your connection and try again."
+        tr('grn.details.loadFailedConnection')
       );
     } finally {
       if (!controller.signal.aborted) {
@@ -351,7 +352,7 @@ function GRNDetailScreen() {
           }
         } else if (!firstError) {
           firstError =
-            result.error || result.message || "Couldn't load the dispatch history. Try again.";
+            result.error || result.message || tr('grn.details.dispatchHistoryFailed');
         }
       });
 
@@ -367,7 +368,7 @@ function GRNDetailScreen() {
     } catch (error) {
       console.error('[GRNDetailScreen] Error loading dispatches:', error);
       setDispatchError(
-        "Couldn't load the dispatch history. Check your connection and try again."
+        tr('grn.details.dispatchHistoryFailedConnection')
       );
     } finally {
       setLoadingDispatches(false);
@@ -415,14 +416,15 @@ function GRNDetailScreen() {
 
   // Handle delete GRN
   const handleDeleteGRN = () => {
-    const grnLabel = data?.grn?.gr_no ? `GRN ${data.grn.gr_no}` : 'this GRN';
     showAlert(
-      `Delete ${grnLabel}?`,
-      "Its items are removed from stock. This can't be undone.\n\nA GRN with dispatches or invoices can't be deleted.",
+      data?.grn?.gr_no
+        ? tr('grn.details.deleteTitle', { number: String(data.grn.gr_no) })
+        : tr('grn.details.deleteTitleNoNumber'),
+      tr('grn.details.deleteMessage'),
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: tr('common.cancel'), style: 'cancel' },
         {
-          text: 'Delete GRN',
+          text: tr('grn.details.deleteGrn'),
           style: 'destructive',
           onPress: async () => {
             if (!id) return;
@@ -431,23 +433,28 @@ function GRNDetailScreen() {
               const result = await deleteGRN(id);
 
               if (result.success) {
-                const message = result.message || (data?.grn?.gr_no ? `GRN ${data.grn.gr_no} deleted.` : 'GRN deleted.');
+                const message = result.message || (data?.grn?.gr_no ? tr('grn.details.deletedWithNumber', { number: String(data.grn.gr_no) }) : tr('grn.details.deleted'));
                 const details = result.deleted_counts
-                  ? `\n\nRemoved:\n• ${formatCount(result.deleted_counts.grn_items, 'item')}\n• ${formatCount(result.deleted_counts.order_items, 'order item')}\n• ${formatCount(result.deleted_counts.stock_movements, 'stock movement')}\n• ${formatCount(result.deleted_counts.images, 'image')}`
+                  ? tr('grn.details.removedCounts', {
+                      items: formatCount(result.deleted_counts.grn_items, 'item'),
+                      orderItems: tr('grn.details.orderItemCount', { count: result.deleted_counts.order_items ?? 0 }),
+                      stockMovements: tr('grn.details.stockMovementCount', { count: result.deleted_counts.stock_movements ?? 0 }),
+                      images: formatCount(result.deleted_counts.images, 'image'),
+                    })
                   : '';
 
-                showAlert('GRN deleted', message + details, [
-                  { text: 'Done', onPress: () => router.back() },
+                showAlert(tr('grn.details.deletedTitle'), message + details, [
+                  { text: tr('common.done'), onPress: () => router.back() },
                 ]);
               } else {
-                let errorMessage = result.error || "Couldn't delete the GRN. Try again.";
+                let errorMessage = result.error || tr('grn.details.deleteFailed');
 
                 if (result.blocking_dependencies) {
                   const deps = result.blocking_dependencies;
                   if (deps.invoiced_dispatches) {
-                    errorMessage += `\n\n${formatCount(deps.invoiced_dispatches, 'dispatch item')} invoiced.`;
+                    errorMessage += `\n\n${tr('grn.details.dispatchItemsInvoiced', { count: deps.invoiced_dispatches })}`;
                   } else if (deps.dispatches) {
-                    errorMessage += `\n\n${formatCount(deps.dispatches, 'dispatch item')} recorded.`;
+                    errorMessage += `\n\n${tr('grn.details.dispatchItemsRecorded', { count: deps.dispatches })}`;
                   }
 
                   if (result.instructions) {
@@ -455,13 +462,13 @@ function GRNDetailScreen() {
                   }
                 }
 
-                showAlert("Couldn't delete the GRN", errorMessage);
+                showAlert(tr('grn.details.deleteFailedTitle'), errorMessage);
               }
             } catch (error) {
               console.error('[GRNDetailScreen] Delete error:', error);
               showAlert(
-                "Couldn't delete the GRN",
-                'Check your connection and try again.'
+                tr('grn.details.deleteFailedTitle'),
+                tr('common.checkConnection')
               );
             }
           },
@@ -481,7 +488,7 @@ function GRNDetailScreen() {
       const pdfResult = await generateGRNPDF(data.grn.gr_no);
 
       if (!pdfResult.success || !pdfResult.pdfUrl) {
-        showAlert("Couldn't create the PDF", pdfResult.error || 'Try again in a moment.');
+        showAlert(tr('grn.details.pdfCreateFailedTitle'), pdfResult.error || tr('grn.details.tryAgainInMoment'));
         return;
       }
 
@@ -493,11 +500,11 @@ function GRNDetailScreen() {
       );
 
       if (!shareResult.success) {
-        showAlert("Couldn't share the PDF", shareResult.error || 'Try again in a moment.');
+        showAlert(tr('grn.details.pdfShareFailedTitle'), shareResult.error || tr('grn.details.tryAgainInMoment'));
       }
     } catch (error) {
       console.error('[GRNDetailScreen] Share PDF error:', error);
-      showAlert("Couldn't share the PDF", 'Check your connection and try again.');
+      showAlert(tr('grn.details.pdfShareFailedTitle'), tr('common.checkConnection'));
     } finally {
       setIsShareLoading(false);
     }
@@ -514,14 +521,14 @@ function GRNDetailScreen() {
   // Check both data and data.grn to prevent crash when grn is undefined
   if (!data || !data.grn) {
     // Determine display state - show meaningful error when grn is undefined
-    const displayError = error || (!loading && !data?.grn ? "This GRN's details aren't available right now." : null);
+    const displayError = error || (!loading && !data?.grn ? tr('grn.details.unavailable') : null);
 
     return (
       <>
         <Stack.Screen
           options={{
-            title: !loading && !displayError ? 'GRN not found' : 'GRN',
-            headerBackTitle: 'Back',
+            title: !loading && !displayError ? tr('grn.details.notFoundTitle') : tr('common.grn'),
+            headerBackTitle: tr('common.back'),
             headerShown: true,
             headerStyle: { backgroundColor: t.surface.header },
             headerTintColor: t.brand.tint,
@@ -536,7 +543,7 @@ function GRNDetailScreen() {
             <View style={styles.stateContainer} accessibilityLiveRegion="polite">
               <Icon name="alert-circle-outline" size={iconSize.hero} color={t.status.negative.text} />
               <Text style={styles.stateTitle} accessibilityRole="header">
-                Couldn't load the GRN
+                {tr('grn.details.loadFailedTitle')}
               </Text>
               <Text style={styles.stateMessage}>{displayError}</Text>
               <View style={styles.stateActions}>
@@ -549,10 +556,10 @@ function GRNDetailScreen() {
                     fetchGRNDetails();
                   }}
                 >
-                  Try again
+                  {tr('common.retry')}
                 </Button>
                 <Button type="tertiary" variant="tint" size="fullWidth" onPress={() => router.back()}>
-                  Go back
+                  {tr('common.goBack')}
                 </Button>
               </View>
             </View>
@@ -560,14 +567,14 @@ function GRNDetailScreen() {
             <View style={styles.stateContainer}>
               <Icon name="package-down" size={iconSize.hero} color={t.icon.secondary} />
               <Text style={styles.stateTitle} accessibilityRole="header">
-                GRN not found
+                {tr('grn.details.notFoundTitle')}
               </Text>
               <Text style={styles.stateMessage}>
-                It may have been deleted, or you may not have access to it.
+                {tr('grn.details.notFoundMessage')}
               </Text>
               <View style={styles.stateActions}>
                 <Button type="secondary" variant="tint" size="fullWidth" onPress={() => router.back()}>
-                  Go back
+                  {tr('common.goBack')}
                 </Button>
               </View>
             </View>
@@ -641,7 +648,7 @@ function GRNDetailScreen() {
           headerTitleStyle: styles.headerTitle,
           headerShadowVisible: false,
           headerTitleAlign: 'center',
-          title: `GRN ${grn.gr_no}`,
+          title: tr('grn.details.titleWithNumber', { number: String(grn.gr_no) }),
           // Custom back button so Back always returns, even after a deep link
           headerLeft: () => (
             <HeaderBackButton />
@@ -742,18 +749,20 @@ function GRNDetailScreen() {
           const result = await printGRNRange(start, end);
           if (result.success) {
             setSnackbarMessage(
-              `Print job sent${result.print_job?.cups_job_id ? ` (job ${result.print_job.cups_job_id})` : ''}.`
+              result.print_job?.cups_job_id
+                ? tr('grn.details.printJobSentWithId', { jobId: String(result.print_job.cups_job_id) })
+                : tr('grn.details.printJobSent')
             );
           } else {
-            setSnackbarMessage(result.error || "Couldn't send the print job. Try again.");
+            setSnackbarMessage(result.error || tr('grn.details.printFailed'));
           }
           setSnackbarVisible(true);
           setShowPrintDialog(false);
         }}
-        title="Print GRN"
+        title={tr('grn.details.printTitle')}
         defaultNumber={grn.gr_no || ''}
-        label="GRN number"
-        placeholder="e.g., Z0797"
+        label={tr('common.grnNumber')}
+        placeholder={tr('grn.details.printPlaceholder', { example: 'Z0797' })}
       />
 
       {/* Snackbar for print feedback */}

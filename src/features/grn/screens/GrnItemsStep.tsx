@@ -44,7 +44,7 @@ import {
 } from '@/features/grn/schemas/grnValidation';
 
 import { showAlert } from '@/utils/alert';
-import { formatCount } from '@/utils/formatters';
+import { t as tr } from '@/i18n';
 const EMPTY_GRN_ITEM = (): ItemFormData => ({
   grn_trl_id: `item-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
   item_table_id: '',
@@ -134,8 +134,8 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
 
   const handleQtyLockedPress = useCallback(() => {
     showAlert(
-      "Quantity can't be changed",
-      'This item has already been dispatched, so its quantity is locked to keep stock correct.'
+      tr('grn.itemsStep.qtyLockedTitle'),
+      tr('grn.itemsStep.qtyLockedMessage')
     );
   }, []);
 
@@ -150,15 +150,12 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
 
     if (hasUnsavedData()) {
       showAlert(
-        isCreateMode ? 'Discard this GRN?' : 'Discard changes to this GRN?',
-        (() => {
-          const count = savedItems.length || items.length;
-          return `${formatCount(count, 'item')} will be lost.`;
-        })(),
+        isCreateMode ? tr('grn.form.discardTitle') : tr('grn.form.discardChangesTitle'),
+        tr('grn.itemsStep.itemsWillBeLost', { count: savedItems.length || items.length }),
         [
-          { text: 'Keep editing', style: 'cancel' },
+          { text: tr('common.keepEditing'), style: 'cancel' },
           {
-            text: isCreateMode ? 'Discard GRN' : 'Discard changes',
+            text: isCreateMode ? tr('grn.form.discardGrn') : tr('grn.form.discardChanges'),
             style: 'destructive',
             onPress: confirmDiscard,
           },
@@ -291,14 +288,14 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
 
     const isValid = await validateCurrentItem();
     if (!isValid) {
-      showAlert('Check the item details', 'Fill in every required field, then save the item.');
+      showAlert(tr('grn.itemsStep.checkItemTitle'), tr('grn.itemsStep.fillRequired'));
       return;
     }
 
     const hasDispatches = !isCreateMode && currentItem.grn_trl_id && itemsWithDispatchesOnLoad.has(currentItem.grn_trl_id);
     const parsedQty = parseReceiptQuantity(currentItem.qty);
     if (parsedQty === null) {
-      showAlert('Check the item details', 'Enter a whole number of 1 or more for the quantity.');
+      showAlert(tr('grn.itemsStep.checkItemTitle'), tr('grn.itemsStep.quantityWhole'));
       return;
     }
     // Use the original stock value from the Map (preserved from initial load)
@@ -390,11 +387,11 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
     if (image && !isTemporaryGRNImageId(image.id)) {
       const result = await deleteGRNImage(image.id, image.imageUrl);
       if (!result.success) {
-        showAlert("Couldn't remove the photo", 'Check your connection and try again.');
+        showAlert(tr('grn.photos.removeFailedTitle'), tr('common.checkConnection'));
         return;
       }
       if (result.partial) {
-        showAlert('Photo removed', "The photo is removed from this item, but we couldn't confirm the stored copy was deleted.");
+        showAlert(tr('grn.itemsStep.photoRemovedTitle'), tr('grn.itemsStep.photoRemovedPartial'));
       }
     }
 
@@ -411,7 +408,7 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
 
       const validation = validateImageFile(asset);
       if (!validation.valid) {
-        showAlert("Couldn't add the photo", validation.error || 'Choose a JPEG or PNG photo.');
+        showAlert(tr('grn.itemsStep.addPhotoFailedTitle'), validation.error || tr('grn.itemsStep.chooseJpegPng'));
         return;
       }
 
@@ -452,17 +449,17 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
 
   const handleCameraIconPress = () => {
     if ((currentItem.trl_images?.length || 0) >= 2) {
-      showAlert('Photo limit reached', 'You can add up to 2 photos to each item.');
+      showAlert(tr('grn.photos.limitTitle'), tr('grn.photos.limitEachItem', { count: 2 }));
       return;
     }
 
-    showAlert('Add photo', undefined, [
+    showAlert(tr('grn.photos.addPhotoTitle'), undefined, [
       {
-        text: 'Take photo',
+        text: tr('grn.photos.takePhoto'),
         onPress: async () => {
           const { status } = await withNativeHandoff(() => ImagePicker.requestCameraPermissionsAsync());
           if (status !== 'granted') {
-            showAlert('Allow camera access', 'To take a photo, allow camera access for this app in Settings.');
+            showAlert(tr('grn.photos.cameraAccessTitle'), tr('grn.photos.cameraAccessMessage'));
             return;
           }
           try {
@@ -480,7 +477,7 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
         },
       },
       {
-        text: 'Choose from gallery',
+        text: tr('grn.photos.chooseFromGallery'),
         onPress: async () => {
           // Note: No permissions needed - Android 13+ Photo Picker handles access
           try {
@@ -498,7 +495,7 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
           }
         },
       },
-      { text: 'Cancel', style: 'cancel' },
+      { text: tr('common.cancel'), style: 'cancel' },
     ]);
   };
 
@@ -519,7 +516,7 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
       if (!alreadySaved) {
         const isValid = await validateCurrentItem();
         if (!isValid) {
-          showAlert('Check the item details', 'Fix the highlighted fields in the item you are adding.');
+          showAlert(tr('grn.itemsStep.checkItemTitle'), tr('grn.itemsStep.fixHighlightedAdding'));
           return;
         }
         allItemsToSave.push(currentItem);
@@ -528,7 +525,7 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
     }
 
     if (allItemsToSave.length === 0) {
-      showAlert('Add an item', 'Add at least one item to this GRN.');
+      showAlert(tr('grn.itemsStep.addItemTitle'), tr('grn.itemsStep.addItemMessage'));
       return;
     }
 
@@ -541,8 +538,10 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
     const unparsable = parsedItems.find(({ parsedQty }) => parsedQty === null);
     if (unparsable) {
       showAlert(
-        'Check the item details',
-        `Enter a whole number of 1 or more for the quantity of ${unparsable.itemToSave.item_name || 'each item'}.`
+        tr('grn.itemsStep.checkItemTitle'),
+        unparsable.itemToSave.item_name
+          ? tr('grn.itemsStep.quantityWholeForItem', { item: unparsable.itemToSave.item_name })
+          : tr('grn.itemsStep.quantityWholeEachItem')
       );
       return;
     }
@@ -592,7 +591,7 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
       }
     } else {
       if (!grnId) {
-        showAlert("Couldn't open the review", 'Go back to the GRN list and open this GRN again.');
+        showAlert(tr('grn.itemsStep.reviewFailedTitle'), tr('grn.form.reopenMessage'));
         setIsNavigating(false);
         return;
       }
@@ -611,22 +610,22 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
     if (currentItem.item_table_id && currentItem.qty) {
       const alreadySaved = savedItems.some((saved) => saved.grn_trl_id === currentItem.grn_trl_id);
       if (!alreadySaved && !editingItemId) {
-        showAlert('Save this item?', "The item you're adding hasn't been saved yet.", [
-          { text: 'Keep editing', style: 'cancel' },
+        showAlert(tr('grn.itemsStep.saveItemTitle'), tr('grn.itemsStep.saveItemMessage'), [
+          { text: tr('common.keepEditing'), style: 'cancel' },
           {
-            text: 'Discard item',
+            text: tr('grn.itemsStep.discardItem'),
             style: 'destructive',
             onPress: () => {
               setCurrentItem(getNewItemWithRack());
               if (savedItems.length === 0) {
-                showAlert('Add an item', 'Add at least one item to this GRN.');
+                showAlert(tr('grn.itemsStep.addItemTitle'), tr('grn.itemsStep.addItemMessage'));
               } else {
                 handleNext();
               }
             },
           },
           {
-            text: 'Save item',
+            text: tr('grn.itemsStep.saveItem'),
             onPress: handleNext,
           },
         ]);
@@ -640,10 +639,10 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
     if (currentItem.item_table_id && currentItem.qty) {
       const alreadySaved = savedItems.some((saved) => saved.grn_trl_id === currentItem.grn_trl_id);
       if (!alreadySaved && !editingItemId) {
-        showAlert('Save this item?', "The item you're adding hasn't been saved yet.", [
-          { text: 'Keep editing', style: 'cancel' },
+        showAlert(tr('grn.itemsStep.saveItemTitle'), tr('grn.itemsStep.saveItemMessage'), [
+          { text: tr('common.keepEditing'), style: 'cancel' },
           {
-            text: 'Discard item',
+            text: tr('grn.itemsStep.discardItem'),
             style: 'destructive',
             onPress: () => {
               setCurrentItem(getNewItemWithRack());
@@ -651,14 +650,14 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
             },
           },
           {
-            text: 'Save item',
+            text: tr('grn.itemsStep.saveItem'),
             onPress: async () => {
               const isValid = await validateCurrentItem();
               if (isValid) {
                 await handleAddItem();
                 handlePrevious();
               } else {
-                showAlert('Check the item details', 'Fix the highlighted fields, then save the item.');
+                showAlert(tr('grn.itemsStep.checkItemTitle'), tr('grn.itemsStep.fixHighlightedSave'));
               }
             },
           },
@@ -718,7 +717,7 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
         onPrevious={handleSwipeRight}
         onNext={handleSwipeLeft}
         isLoading={isNavigating}
-        loadingLabel="Opening review…"
+        loadingLabel={tr('grn.itemsStep.openingReview')}
       />
 
       <ItemsSummaryBottomSheet

@@ -7,6 +7,12 @@
 
 import * as yup from 'yup';
 import { CustomerFormData, CustomerValidationErrors } from '@/types/customer.types';
+import { normalizeDigits, t } from '@/i18n';
+
+// Messages are functions so that each one is read in the language of the moment it is shown.
+const maxLength = (max: number) => () => t('customers.validation.maxLength', { max });
+const mobileInvalid = () => t('customers.validation.mobileInvalid', { length: 10 });
+const emailInvalid = () => t('customers.validation.emailInvalid', { example: 'name@example.com' });
 
 // =============================================================================
 // REGEX PATTERNS
@@ -46,18 +52,18 @@ const PINCODE_REGEX = /^[1-9][0-9]{5}$/;
 export const basicInfoSchema = yup.object().shape({
   name: yup
     .string()
-    .required('Enter the customer name.')
-    .min(2, 'Enter at least 2 characters.')
-    .max(200, 'Use 200 characters or fewer.')
+    .required(() => t('customers.validation.nameRequired'))
+    .min(2, () => t('customers.validation.minLength', { min: 2 }))
+    .max(200, maxLength(200))
     .trim(),
 
   mobile: yup
     .string()
-    .required('Enter a mobile number.')
-    .test('valid-mobile', 'Enter a 10-digit mobile number.', (value) => {
+    .required(() => t('customers.validation.mobileRequired'))
+    .test('valid-mobile', mobileInvalid, (value) => {
       if (!value) return false;
       // Remove country code if present
-      const cleaned = value.replace(/^91/, '').replace(/\D/g, '');
+      const cleaned = normalizeDigits(value).replace(/^91/, '').replace(/\D/g, '');
       return cleaned.length === 10 && /^[6-9]\d{9}$/.test(cleaned);
     }),
 
@@ -65,11 +71,11 @@ export const basicInfoSchema = yup.object().shape({
     .string()
     .nullable()
     .transform((value) => (value === '' ? null : value))
-    .test('valid-email', 'Enter an email address like name@example.com.', (value) => {
+    .test('valid-email', emailInvalid, (value) => {
       if (!value || value === '') return true; // Optional field
       return EMAIL_REGEX.test(value);
     })
-    .max(100, 'Use 100 characters or fewer.'),
+    .max(100, maxLength(100)),
 });
 
 // =============================================================================
@@ -82,35 +88,35 @@ export const detailsSchema = yup.object().shape({
     .string()
     .nullable()
     .transform((value) => (value === '' ? null : value))
-    .max(50, 'Use 50 characters or fewer.'),
+    .max(50, maxLength(50)),
 
   state: yup
     .string()
     .nullable()
     .transform((value) => (value === '' ? null : value))
-    .max(50, 'Use 50 characters or fewer.'),
+    .max(50, maxLength(50)),
 
   pincode: yup
     .string()
     .nullable()
     .transform((value) => (value === '' ? null : value))
-    .test('valid-pincode', 'Enter a 6-digit pincode.', (value) => {
+    .test('valid-pincode', () => t('customers.validation.pincodeInvalid', { length: 6 }), (value) => {
       if (!value || value === '') return true;
-      return PINCODE_REGEX.test(value);
+      return PINCODE_REGEX.test(normalizeDigits(value));
     }),
 
   address: yup
     .string()
     .nullable()
     .transform((value) => (value === '' ? null : value))
-    .max(500, 'Use 500 characters or fewer.'),
+    .max(500, maxLength(500)),
 
   // Tax fields (optional with format validation)
   gst: yup
     .string()
     .nullable()
     .transform((value) => (value === '' ? null : value?.toUpperCase()))
-    .test('valid-gst', 'Enter a 15-character GST number, like 22AAAAA0000A1Z5.', (value) => {
+    .test('valid-gst', () => t('customers.validation.gstInvalid', { length: 15, example: '22AAAAA0000A1Z5' }), (value) => {
       if (!value || value === '') return true;
       return GST_REGEX.test(value);
     }),
@@ -119,7 +125,7 @@ export const detailsSchema = yup.object().shape({
     .string()
     .nullable()
     .transform((value) => (value === '' ? null : value?.toUpperCase()))
-    .test('valid-pan', 'Enter a 10-character PAN, like AAAAA0000A.', (value) => {
+    .test('valid-pan', () => t('customers.validation.panInvalid', { length: 10, example: 'AAAAA0000A' }), (value) => {
       if (!value || value === '') return true;
       return PAN_REGEX.test(value);
     }),
@@ -129,15 +135,15 @@ export const detailsSchema = yup.object().shape({
     .string()
     .nullable()
     .transform((value) => (value === '' ? null : value))
-    .max(100, 'Use 100 characters or fewer.'),
+    .max(100, maxLength(100)),
 
   contact_mobile: yup
     .string()
     .nullable()
     .transform((value) => (value === '' ? null : value))
-    .test('valid-contact-mobile', 'Enter a 10-digit mobile number.', (value) => {
+    .test('valid-contact-mobile', mobileInvalid, (value) => {
       if (!value || value === '') return true;
-      const cleaned = value.replace(/^91/, '').replace(/\D/g, '');
+      const cleaned = normalizeDigits(value).replace(/^91/, '').replace(/\D/g, '');
       return cleaned.length === 10 && /^[6-9]\d{9}$/.test(cleaned);
     }),
 
@@ -145,11 +151,11 @@ export const detailsSchema = yup.object().shape({
     .string()
     .nullable()
     .transform((value) => (value === '' ? null : value))
-    .test('valid-contact-email', 'Enter an email address like name@example.com.', (value) => {
+    .test('valid-contact-email', emailInvalid, (value) => {
       if (!value || value === '') return true;
       return EMAIL_REGEX.test(value);
     })
-    .max(100, 'Use 100 characters or fewer.'),
+    .max(100, maxLength(100)),
 });
 
 // =============================================================================
@@ -160,32 +166,32 @@ export const documentsSchema = yup.object().shape({
   document_urls: yup
     .array()
     .of(
-      yup.string().test('valid-url', 'This document link is not valid.', (value) => {
+      yup.string().test('valid-url', () => t('customers.validation.documentLinkInvalid'), (value) => {
         if (!value) return true;
         // Allow http/https URLs and local file URIs
         return /^(https?:\/\/|file:\/\/\/)/.test(value);
       })
     )
-    .max(10, 'Add up to 10 documents.'),
+    .max(10, () => t('customers.validation.maxDocuments', { max: 10 })),
 
   document_images: yup
     .array()
-    .max(10, 'Add up to 10 documents.'),
+    .max(10, () => t('customers.validation.maxDocuments', { max: 10 })),
 
   image_urls: yup
     .array()
     .of(
-      yup.string().test('valid-url', 'This image link is not valid.', (value) => {
+      yup.string().test('valid-url', () => t('customers.validation.imageLinkInvalid'), (value) => {
         if (!value) return true;
         // Allow http/https URLs and local file URIs
         return /^(https?:\/\/|file:\/\/\/)/.test(value);
       })
     )
-    .max(10, 'Add up to 10 images.'),
+    .max(10, () => t('customers.validation.maxImages', { max: 10 })),
 
   customer_images: yup
     .array()
-    .max(10, 'Add up to 10 images.'),
+    .max(10, () => t('customers.validation.maxImages', { max: 10 })),
 });
 
 // =============================================================================
@@ -375,7 +381,7 @@ export async function validateField(
 export function formatMobile(mobile: string): string {
   if (!mobile) return '';
   // Remove all non-digits
-  const digits = mobile.replace(/\D/g, '');
+  const digits = normalizeDigits(mobile).replace(/\D/g, '');
   // Remove leading 91 if present
   const cleaned = digits.replace(/^91/, '');
   // Return with 91 prefix
@@ -386,19 +392,19 @@ export function formatMobile(mobile: string): string {
  * Format GST to uppercase
  */
 export function formatGST(gst: string): string {
-  return gst ? gst.toUpperCase().replace(/\s/g, '') : '';
+  return gst ? normalizeDigits(gst).toUpperCase().replace(/\s/g, '') : '';
 }
 
 /**
  * Format PAN to uppercase
  */
 export function formatPAN(pan: string): string {
-  return pan ? pan.toUpperCase().replace(/\s/g, '') : '';
+  return pan ? normalizeDigits(pan).toUpperCase().replace(/\s/g, '') : '';
 }
 
 /**
  * Format pincode (remove non-digits)
  */
 export function formatPincode(pincode: string): string {
-  return pincode ? pincode.replace(/\D/g, '').slice(0, 6) : '';
+  return pincode ? normalizeDigits(pincode).replace(/\D/g, '').slice(0, 6) : '';
 }

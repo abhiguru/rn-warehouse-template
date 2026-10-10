@@ -5,6 +5,14 @@
 
 import * as yup from 'yup';
 import { formatDate } from '@/utils/formatters';
+import { t, type TranslationKey } from '@/i18n';
+
+/**
+ * A yup message read when the error is raised, not when this file is loaded, so
+ * the schemas below can stay module-level constants and still follow the app's
+ * language (docs/I18N.md rule 2).
+ */
+const m = (key: TranslationKey) => () => t(key);
 
 // ============================================================================
 // STEP 1: HEADER SCHEMA
@@ -13,20 +21,20 @@ import { formatDate } from '@/utils/formatters';
 export const step1Schema = yup.object().shape({
   disp_no: yup
     .string()
-    .required('Dispatch number is required')
-    .min(5, 'Dispatch number must be at least 5 characters')
-    .max(8, 'Dispatch number must be at most 8 characters')
-    .matches(/^[A-Z0-9]+$/, 'Dispatch number must be alphanumeric (uppercase)'),
+    .required(m('dispatch.validation.dispNoRequired'))
+    .min(5, m('dispatch.validation.dispNoMin'))
+    .max(8, m('dispatch.validation.dispNoMax'))
+    .matches(/^[A-Z0-9]+$/, m('dispatch.validation.dispNoFormat')),
 
   disp_date: yup
     .string()
-    .required('Dispatch date is required')
-    .test('valid-date', 'Invalid date format', (value) => {
+    .required(m('dispatch.validation.dateRequired'))
+    .test('valid-date', m('dispatch.validation.dateInvalid'), (value) => {
       if (!value) return false;
       const date = new Date(value);
       return !isNaN(date.getTime());
     })
-    .test('not-future', 'Cannot select a future date', (value) => {
+    .test('not-future', m('dispatch.validation.dateFuture'), (value) => {
       if (!value) return true;
       const date = new Date(value);
       const today = new Date();
@@ -36,33 +44,33 @@ export const step1Schema = yup.object().shape({
 
   registration: yup
     .string()
-    .required('Vehicle registration is required')
-    .max(30, 'Registration must be at most 30 characters')
-    .matches(/^[A-Z0-9 ]+$/, 'Registration must contain only uppercase letters, numbers, and spaces'),
+    .required(m('dispatch.validation.registrationRequired'))
+    .max(30, m('dispatch.validation.registrationMax'))
+    .matches(/^[A-Z0-9 ]+$/, m('dispatch.validation.registrationFormat')),
 
   customer_id: yup
     .string()
-    .uuid('Invalid customer selection')
-    .required('Customer is required'),
+    .uuid(m('dispatch.validation.customerInvalid'))
+    .required(m('dispatch.validation.customerRequired')),
 
   customer_name: yup
     .string()
-    .required('Customer name is required')
-    .max(100, 'Customer name must be at most 100 characters'),
+    .required(m('dispatch.validation.customerNameRequired'))
+    .max(100, m('dispatch.validation.customerNameMax')),
 
   supervisor_id: yup
     .string()
-    .uuid('Invalid supervisor selection')
-    .required('Supervisor is required'),
+    .uuid(m('dispatch.validation.supervisorInvalid'))
+    .required(m('dispatch.validation.supervisorRequired')),
 
   supervisor_name: yup
     .string()
-    .required('Supervisor name is required')
-    .max(100, 'Supervisor name must be at most 100 characters'),
+    .required(m('dispatch.validation.supervisorNameRequired'))
+    .max(100, m('dispatch.validation.supervisorNameMax')),
 
   note: yup
     .string()
-    .max(250, 'Note must be at most 250 characters'),
+    .max(250, m('dispatch.validation.noteMax')),
 });
 
 // ============================================================================
@@ -73,49 +81,49 @@ export const dispatchItemSchema = yup.object().shape({
   // GRN Header reference
   grns_gr_no: yup
     .string()
-    .required('GRN number is required'),
+    .required(m('dispatch.validation.grnNumberRequired')),
 
   grns_id: yup
     .string()
-    .uuid('Invalid GRN selection')
-    .required('GRN ID is required'),
+    .uuid(m('dispatch.validation.grnInvalid'))
+    .required(m('dispatch.validation.grnIdRequired')),
 
   grns_date: yup
     .string()
-    .required('GRN date is required'),
+    .required(m('dispatch.validation.grnDateRequired')),
 
   // GRN Item (lot) reference
   grnItems_id: yup
     .string()
-    .uuid('Invalid lot selection')
-    .required('Please select a lot'),
+    .uuid(m('dispatch.validation.lotInvalid'))
+    .required(m('dispatch.validation.lotRequired')),
 
   grnItems_item_id: yup
     .string()
-    .uuid('Invalid item selection')
-    .required('Please select an item'),
+    .uuid(m('dispatch.validation.itemInvalid'))
+    .required(m('dispatch.validation.itemRequired')),
 
   grnItems_item_name: yup
     .string()
-    .required('Item name is required')
-    .max(100, 'Item name must be at most 100 characters'),
+    .required(m('dispatch.validation.itemNameRequired'))
+    .max(100, m('dispatch.validation.itemNameMax')),
 
   grnItems_stock: yup
     .number()
-    .required('Stock information is required')
-    .min(0, 'Stock cannot be negative')
-    .integer('Stock must be a whole number'),
+    .required(m('dispatch.validation.stockRequired'))
+    .min(0, m('dispatch.validation.stockNegative'))
+    .integer(m('dispatch.validation.stockWhole')),
 
   // Dispatch quantity validation
   disp_quantity: yup
     .number()
-    .required('Dispatch quantity is required')
-    .positive('Quantity must be positive')
-    .integer('Quantity must be a whole number')
-    .min(1, 'Quantity must be at least 1')
+    .required(m('dispatch.validation.quantityRequired'))
+    .positive(m('dispatch.validation.quantityPositive'))
+    .integer(m('dispatch.validation.quantityWhole'))
+    .min(1, m('dispatch.validation.quantityMin'))
     .test(
       'max-stock',
-      'Quantity cannot exceed available stock',
+      m('dispatch.validation.quantityMaxStock'),
       function (value) {
         const { grnItems_stock, original_disp_quantity } = this.parent;
         // In edit mode (original_disp_quantity exists), effective stock = available + what we already hold
@@ -137,11 +145,11 @@ export const step2Schema = yup.object().shape({
   items: yup
     .array()
     .of(dispatchItemSchema)
-    .min(1, 'At least one dispatch item is required')
-    .required('Items are required')
+    .min(1, m('dispatch.validation.itemsMin'))
+    .required(m('dispatch.validation.itemsRequired'))
     .test(
       'unique-lots',
-      'Duplicate lots detected. Each lot can only be dispatched once per dispatch.',
+      m('dispatch.validation.duplicateLots'),
       function (items) {
         if (!items || items.length === 0) return true;
 
@@ -206,10 +214,14 @@ export const validateDispatchDateVsGRNDates = (
     let errorMessage: string;
     if (invalidItems.length === 1) {
       const item = invalidItems[0];
-      errorMessage = `GRN ${item.grNo} was received on ${formatDate(item.grnDate)}, which is after the dispatch date (${dispDateFormatted}). Items cannot be dispatched before they are received.`;
+      errorMessage = t('dispatch.validation.dateBeforeGrn', {
+        grn: item.grNo,
+        grnDate: formatDate(item.grnDate),
+        dispatchDate: dispDateFormatted,
+      });
     } else {
       const grnList = invalidItems.map(i => `${i.grNo} (${formatDate(i.grnDate)})`).join(', ');
-      errorMessage = `The following GRNs have dates after the dispatch date (${dispDateFormatted}): ${grnList}. Items cannot be dispatched before they are received.`;
+      errorMessage = t('dispatch.validation.dateBeforeGrns', { dispatchDate: dispDateFormatted, grns: grnList });
     }
 
     return {
@@ -246,7 +258,7 @@ export const validateStep1 = async (
       });
       return { isValid: false, errors };
     }
-    return { isValid: false, errors: { _error: 'Validation failed' } };
+    return { isValid: false, errors: { _error: t('dispatch.validation.failed') } };
   }
 };
 
@@ -280,7 +292,7 @@ export const validateStep2 = async (
       return { isValid: false, errors };
     }
     console.log('[dispatchValidation] Non-Yup error:', error);
-    return { isValid: false, errors: { _error: 'Validation failed' } };
+    return { isValid: false, errors: { _error: t('dispatch.validation.failed') } };
   }
 };
 
@@ -313,7 +325,7 @@ export const validateStep3 = async (data: {
       return {
         isValid: false,
         errors: {
-          disp_date: dateValidation.error || 'Invalid dispatch date',
+          disp_date: dateValidation.error || t('dispatch.validation.dispatchDateInvalid'),
         },
       };
     }
@@ -334,7 +346,7 @@ export const validateStep3 = async (data: {
       return { isValid: false, errors };
     }
     console.log('[validateStep3] ❌ Non-Yup error:', error);
-    return { isValid: false, errors: { _error: 'Validation failed' } };
+    return { isValid: false, errors: { _error: t('dispatch.validation.failed') } };
   }
 };
 
@@ -358,7 +370,7 @@ export const validateSingleItem = async (
       });
       return { isValid: false, errors };
     }
-    return { isValid: false, errors: { _error: 'Validation failed' } };
+    return { isValid: false, errors: { _error: t('dispatch.validation.failed') } };
   }
 };
 

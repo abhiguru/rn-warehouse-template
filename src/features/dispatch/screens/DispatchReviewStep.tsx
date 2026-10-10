@@ -32,7 +32,8 @@ import {
 } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { formatCount, formatDate, toDate, formatWeight, formatNumber } from '@/utils/formatters';
-import { DispatchStepIndicator } from '@/components/DispatchStepIndicator';
+import { DispatchStepIndicator, dispatchSteps } from '@/components/DispatchStepIndicator';
+import { t as tr } from '@/i18n';
 import SwipeableFormStep from '@/components/SwipeableFormStep';
 import { PrintRangeDialog } from '@/components/PrintRangeDialog';
 import { printDispatchRange } from '@/services/print-service';
@@ -52,7 +53,7 @@ import {
     generateTempDispatchId,
     type ImageUploadProgress,
 } from '@/features/dispatch/services/dispatchImageService';
-import { DISPATCH_STEPS, DISPATCH_STEP_NUMBERS, getDispatchCompletedSteps } from '@/constants/dispatchSteps';
+import { DISPATCH_STEP_NUMBERS, getDispatchCompletedSteps } from '@/constants/dispatchSteps';
 
 type DispatchReviewStepProps = {
     mode: 'create' | 'edit';
@@ -304,7 +305,7 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
             setCreatedDispatchNumber(header.disp_no);
             setSuccessDialogData({
                 documentNo: header.disp_no,
-                customerName: header.customer_name || 'No customer',
+                customerName: header.customer_name || tr('dispatch.review.noCustomer'),
                 date: formatDisplayDate(header.disp_date),
                 itemCount: items.length,
             });
@@ -312,7 +313,7 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
 
             // Show snackbar if order was cleared
             if (result.sourceOrderCleared) {
-                setSnackbarMessage('Order fulfilled and removed from the queue.');
+                setSnackbarMessage(tr('dispatch.review.orderFulfilled'));
                 setSnackbarVisible(true);
             }
         } else {
@@ -334,7 +335,7 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
         try {
             const pdfResult = await generateDispatchPDF(createdDispatchNumber);
             if (!pdfResult.success || !pdfResult.pdfUrl) {
-                setSnackbarMessage("Couldn't create the PDF. Check your connection and try again.");
+                setSnackbarMessage(tr('dispatch.review.pdfFailed'));
                 setSnackbarVisible(true);
                 return;
             }
@@ -344,11 +345,11 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
                 `Dispatch_${createdDispatchNumber}.pdf`
             );
             if (!shareResult.success) {
-                setSnackbarMessage("Couldn't share the PDF. Try again.");
+                setSnackbarMessage(tr('dispatch.review.shareFailed'));
                 setSnackbarVisible(true);
             }
         } catch (error) {
-            setSnackbarMessage("Couldn't share the PDF. Try again.");
+            setSnackbarMessage(tr('dispatch.review.shareFailed'));
             setSnackbarVisible(true);
         } finally {
             setIsShareLoading(false);
@@ -382,15 +383,15 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
             <View
                 style={styles.customerCard}
                 accessible
-                accessibilityLabel={`Customer, ${header.customer_name || 'none chosen'}`}
+                accessibilityLabel={tr('dispatch.form.customerLabel', { name: header.customer_name || tr('dispatch.review.noneChosen') })}
             >
                 <View style={styles.customerIconContainer}>
                     <Icon name="account-outline" size={iconSize.md} color={t.brand.tint} />
                 </View>
                 <View style={styles.customerTextContainer}>
-                    <Text style={styles.customerLabel}>Customer</Text>
+                    <Text style={styles.customerLabel}>{tr('common.customer')}</Text>
                     <Text style={styles.customerName} numberOfLines={2}>
-                        {header.customer_name || 'No customer'}
+                        {header.customer_name || tr('dispatch.review.noCustomer')}
                     </Text>
                     {(header.customer_address || header.customer_city) && (
                         <Text style={styles.customerMeta} numberOfLines={1}>
@@ -416,18 +417,18 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
                         <Icon name="cube-outline" size={iconSize.md} color={t.brand.tint} />
                     </View>
                     <View style={styles.metricContent}>
-                        <Text style={styles.metricValue}>{items.length}</Text>
-                        <Text style={styles.metricLabel}>{items.length === 1 ? 'Item' : 'Items'}</Text>
+                        <Text style={styles.metricValue}>{formatNumber(items.length)}</Text>
+                        <Text style={styles.metricLabel}>{tr('dispatch.count.itemsLabel', { count: items.length })}</Text>
                     </View>
                 </View>
 
-                <View style={styles.metricCard} accessible accessibilityLabel={`Total quantity ${formatCount(totals.grandTotalQuantity, 'bag')}`}>
+                <View style={styles.metricCard} accessible accessibilityLabel={tr('dispatch.review.totalQuantityLabel', { bags: formatCount(totals.grandTotalQuantity, 'bag') })}>
                     <View style={styles.metricIconContainer}>
                         <Icon name="counter" size={iconSize.md} color={t.brand.tint} />
                     </View>
                     <View style={styles.metricContent}>
                         <Text style={styles.metricValue}>{formatNumber(totals.grandTotalQuantity)}</Text>
-                        <Text style={styles.metricLabel}>Total quantity</Text>
+                        <Text style={styles.metricLabel}>{tr('dispatch.review.totalQuantity')}</Text>
                     </View>
                 </View>
             </View>
@@ -447,7 +448,7 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
                     hitSlop={space.sm}
                 >
                     <Icon name="pencil-outline" size={iconSize.sm} color={t.brand.tint} />
-                    <Text style={styles.editLinkText}>Edit</Text>
+                    <Text style={styles.editLinkText}>{tr('common.edit')}</Text>
                 </Pressable>
             )}
         </View>
@@ -456,7 +457,7 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
     // Render header summary (compact version - customer shown in hero)
     const renderHeaderSummary = () => (
         <View style={styles.section}>
-            {renderSectionHeader('Dispatch details', DISPATCH_STEP_NUMBERS.INFO, 'Edit dispatch details')}
+            {renderSectionHeader(tr('dispatch.steps.details'), DISPATCH_STEP_NUMBERS.INFO, tr('dispatch.review.editDetails'))}
 
             <View style={styles.card}>
                 {/* Row 1: Dispatch No + Date */}
@@ -464,14 +465,14 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
                     <View style={styles.compactItem}>
                         <Icon name="truck-delivery-outline" size={iconSize.sm} color={t.icon.secondary} />
                         <View style={styles.compactItemContent}>
-                            <Text style={styles.compactLabel}>Dispatch number</Text>
+                            <Text style={styles.compactLabel}>{tr('common.dispatchNumber')}</Text>
                             <Text style={styles.compactValue}>{header.disp_no}</Text>
                         </View>
                     </View>
                     <View style={styles.compactItem}>
                         <Icon name="calendar-outline" size={iconSize.sm} color={t.icon.secondary} />
                         <View style={styles.compactItemContent}>
-                            <Text style={styles.compactLabel}>Date</Text>
+                            <Text style={styles.compactLabel}>{tr('common.date')}</Text>
                             <Text style={styles.compactValue}>{formatDisplayDate(header.disp_date)}</Text>
                         </View>
                     </View>
@@ -482,14 +483,14 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
                     <View style={styles.compactItem}>
                         <Icon name="truck-outline" size={iconSize.sm} color={t.icon.secondary} />
                         <View style={styles.compactItemContent}>
-                            <Text style={styles.compactLabel}>Vehicle</Text>
+                            <Text style={styles.compactLabel}>{tr('dispatch.review.vehicle')}</Text>
                             <Text style={styles.compactValue} numberOfLines={1}>{header.registration || '-'}</Text>
                         </View>
                     </View>
                     <View style={styles.compactItem}>
                         <Icon name="account-outline" size={iconSize.sm} color={t.icon.secondary} />
                         <View style={styles.compactItemContent}>
-                            <Text style={styles.compactLabel}>Supervisor</Text>
+                            <Text style={styles.compactLabel}>{tr('dispatch.form.supervisor')}</Text>
                             <Text style={styles.compactValue} numberOfLines={1}>{header.supervisor_name || '-'}</Text>
                         </View>
                     </View>
@@ -500,7 +501,7 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
                     <View style={[styles.compactItem, styles.fullWidth]}>
                         <Icon name="weight" size={iconSize.sm} color={t.icon.secondary} />
                         <View style={styles.compactItemContent}>
-                            <Text style={styles.compactLabel}>Total weight</Text>
+                            <Text style={styles.compactLabel}>{tr('dispatch.review.totalWeight')}</Text>
                             <Text style={styles.compactValue}>{formatWeight(totals.grandTotalWeight, 0)}</Text>
                         </View>
                     </View>
@@ -531,12 +532,21 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
                     style={({ pressed }) => [styles.itemHeader, pressed && styles.itemHeaderPressed]}
                     onPress={() => toggleItemExpansion(item.unique_id)}
                     accessibilityRole="button"
-                    accessibilityLabel={`Item ${index + 1}, ${item.grnItems_item_name}${item.grnItems_package_mark ? `, mark ${item.grnItems_package_mark}` : ''}, GRN ${item.grns_gr_no}, quantity ${item.disp_quantity}`}
-                    accessibilityHint={isExpanded ? 'Hides item details' : 'Shows item details'}
+                    accessibilityLabel={tr(
+                        item.grnItems_package_mark ? 'dispatch.review.itemRowLabelWithMark' : 'dispatch.review.itemRowLabel',
+                        {
+                            index: index + 1,
+                            item: item.grnItems_item_name,
+                            mark: item.grnItems_package_mark,
+                            grn: item.grns_gr_no,
+                            quantity: item.disp_quantity,
+                        }
+                    )}
+                    accessibilityHint={isExpanded ? tr('dispatch.review.hidesDetails') : tr('dispatch.review.showsDetails')}
                     accessibilityState={{ expanded: isExpanded }}
                 >
                     <View style={styles.itemNumberBadge}>
-                        <Text style={styles.itemNumber}>{index + 1}</Text>
+                        <Text style={styles.itemNumber}>{formatNumber(index + 1)}</Text>
                     </View>
 
                     <View style={styles.itemMainInfo}>
@@ -562,12 +572,12 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
                             <View style={styles.metaBadge}>
                                 <Icon name="package-down" size={iconSize.sm} color={t.icon.secondary} />
                                 <Text style={styles.metaText} maxFontSizeMultiplier={1.6}>
-                                    GRN {item.grns_gr_no}/{item.grnItems_quantity}
+                                    {tr('dispatch.review.grnBadge', { number: item.grns_gr_no, quantity: item.grnItems_quantity })}
                                 </Text>
                             </View>
                             <View style={styles.metaBadge}>
                                 <Icon name="cube-outline" size={iconSize.sm} color={t.icon.secondary} />
-                                <Text style={styles.metaText} maxFontSizeMultiplier={1.6}>Qty {item.disp_quantity}</Text>
+                                <Text style={styles.metaText} maxFontSizeMultiplier={1.6}>{tr('dispatch.review.qty', { quantity: item.disp_quantity })}</Text>
                             </View>
                         </View>
                     </View>
@@ -577,20 +587,20 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
                     <View style={styles.itemDetails}>
                         <View style={styles.detailRow}>
                             <Icon name="calendar-outline" size={iconSize.sm} color={t.icon.secondary} />
-                            <Text style={styles.detailLabel}>GRN date</Text>
+                            <Text style={styles.detailLabel}>{tr('dispatch.review.grnDate')}</Text>
                             <Text style={styles.detailValue}>{formatDisplayDate(item.grns_date)}</Text>
                         </View>
 
                         <View style={styles.detailRow}>
                             <Icon name="account-outline" size={iconSize.sm} color={t.icon.secondary} />
-                            <Text style={styles.detailLabel}>Customer</Text>
+                            <Text style={styles.detailLabel}>{tr('common.customer')}</Text>
                             <Text style={styles.detailValue}>{item.grns_customer_name}</Text>
                         </View>
 
                         {item.grnItems_package_mark && (
                             <View style={styles.detailRow}>
                                 <Icon name="tag-outline" size={iconSize.sm} color={t.icon.secondary} />
-                                <Text style={styles.detailLabel}>Package mark</Text>
+                                <Text style={styles.detailLabel}>{tr('common.packageMark')}</Text>
                                 <Text style={styles.detailValue}>{item.grnItems_package_mark}</Text>
                             </View>
                         )}
@@ -598,43 +608,43 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
                         {item.grnItems_rack && (
                             <View style={styles.detailRow}>
                                 <Icon name="view-grid-outline" size={iconSize.sm} color={t.icon.secondary} />
-                                <Text style={styles.detailLabel}>Rack</Text>
+                                <Text style={styles.detailLabel}>{tr('common.rack')}</Text>
                                 <Text style={styles.detailValue}>{item.grnItems_rack}</Text>
                             </View>
                         )}
 
                         <View style={styles.detailRow}>
                             <Icon name="scale" size={iconSize.sm} color={t.icon.secondary} />
-                            <Text style={styles.detailLabel}>Unit weight</Text>
+                            <Text style={styles.detailLabel}>{tr('dispatch.review.unitWeight')}</Text>
                             <Text style={styles.detailValue}>{formatWeight(item.grnItems_weight)}</Text>
                         </View>
 
                         <View style={styles.detailRow}>
                             <Icon name="weight" size={iconSize.sm} color={t.icon.secondary} />
-                            <Text style={styles.detailLabel}>Total weight</Text>
+                            <Text style={styles.detailLabel}>{tr('dispatch.review.totalWeight')}</Text>
                             <Text style={styles.detailValue}>{formatWeight(itemTotalWeight, 0)}</Text>
                         </View>
 
                         <View style={styles.detailRow}>
                             <Icon name="package-variant" size={iconSize.sm} color={t.icon.secondary} />
-                            <Text style={styles.detailLabel}>Original GRN quantity</Text>
-                            <Text style={styles.detailValue}>{item.grnItems_quantity}</Text>
+                            <Text style={styles.detailLabel}>{tr('dispatch.review.originalQuantity')}</Text>
+                            <Text style={styles.detailValue}>{formatNumber(item.grnItems_quantity)}</Text>
                         </View>
 
                         <View style={styles.detailRow}>
                             <Icon name="warehouse" size={iconSize.sm} color={t.icon.secondary} />
-                            <Text style={styles.detailLabel}>In stock</Text>
+                            <Text style={styles.detailLabel}>{tr('common.inStock')}</Text>
                             <Text style={[styles.detailValue, !isCreateMode && loadingStock && styles.detailValueLoading]}>
-                                {!isCreateMode && loadingStock ? '-' : stockValue}
+                                {!isCreateMode && loadingStock ? '-' : formatNumber(stockValue)}
                             </Text>
                         </View>
 
                         {isCreateMode && (
                             <View style={styles.detailRow}>
                                 <Icon name="database-check-outline" size={iconSize.sm} color={t.icon.secondary} />
-                                <Text style={styles.detailLabel}>Stock after dispatch</Text>
+                                <Text style={styles.detailLabel}>{tr('dispatch.review.stockAfter')}</Text>
                                 <Text style={[styles.detailValue, styles.detailValueEmphasized]}>
-                                    {item.grnItems_stock - item.disp_quantity}
+                                    {formatNumber(item.grnItems_stock - item.disp_quantity)}
                                 </Text>
                             </View>
                         )}
@@ -647,7 +657,7 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
     // Render items section
     const renderItemsSection = () => (
         <View style={styles.section}>
-            {renderSectionHeader(`Items (${items.length})`, DISPATCH_STEP_NUMBERS.ITEMS, 'Edit items')}
+            {renderSectionHeader(tr('dispatch.review.itemsTitle', { count: items.length }), DISPATCH_STEP_NUMBERS.ITEMS, tr('dispatch.review.editItems'))}
 
             <View style={styles.itemsContainer}>
                 {items.map((item: DispatchItemData, index: number) => renderItem(item, index))}
@@ -672,7 +682,7 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
 
         return (
             <View style={styles.section}>
-                {renderSectionHeader('Photos (optional)')}
+                {renderSectionHeader(tr('dispatch.review.photosTitle'))}
 
                 <View style={[styles.card, styles.imagesCard]}>
                     {images.length > 0 && (
@@ -699,13 +709,13 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
                         imageType="header"
                         currentImages={images.map((img) => img.image_url)}
                         maxImages={10}
-                        buttonText={images.length > 0 ? 'Add more photos' : 'Add photos'}
+                        buttonText={images.length > 0 ? tr('dispatch.review.addMorePhotos') : tr('dispatch.review.addPhotos')}
                         customUploadFunction={dispatchUploadFunction}
                     />
 
                     {images.length === 0 && (
                         <Text style={styles.imagesHint}>
-                            You can add photos of the goods or the vehicle.
+                            {tr('dispatch.review.photosHint')}
                         </Text>
                     )}
                 </View>
@@ -716,7 +726,7 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
     // Render totals section
     const renderTotalsSection = () => (
         <View style={styles.section}>
-            {renderSectionHeader('Summary')}
+            {renderSectionHeader(tr('dispatch.review.summary'))}
 
             <View style={styles.card}>
                 {isCreateMode &&
@@ -724,26 +734,26 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
                         <View key={itemName} style={styles.subtotalRow}>
                             <Icon name="cube-outline" size={iconSize.sm} color={t.icon.secondary} />
                             <Text style={styles.subtotalLabel}>{itemName}</Text>
-                            <Text style={styles.subtotalValue}>{itemTotals.quantity}</Text>
+                            <Text style={styles.subtotalValue}>{formatNumber(itemTotals.quantity)}</Text>
                         </View>
                     ))}
 
                 {isCreateMode && <View style={styles.totalsDivider} />}
 
                 <View style={styles.totalRow}>
-                    <Text style={styles.totalLabel}>Total quantity</Text>
+                    <Text style={styles.totalLabel}>{tr('dispatch.review.totalQuantity')}</Text>
                     <Text style={styles.totalValue}>{formatNumber(totals.grandTotalQuantity)}</Text>
                 </View>
 
                 <View style={styles.totalRow}>
-                    <Text style={styles.totalLabel}>Total weight</Text>
+                    <Text style={styles.totalLabel}>{tr('dispatch.review.totalWeight')}</Text>
                     <Text style={styles.totalValue}>{formatWeight(totals.grandTotalWeight, 0)}</Text>
                 </View>
 
                 {!isCreateMode && (
                     <View style={styles.totalRow}>
-                        <Text style={styles.totalLabel}>GRNs</Text>
-                        <Text style={styles.totalValue}>{totals.uniqueGRNs}</Text>
+                        <Text style={styles.totalLabel}>{tr('dispatch.summarySheet.grns')}</Text>
+                        <Text style={styles.totalValue}>{formatNumber(totals.uniqueGRNs)}</Text>
                     </View>
                 )}
             </View>
@@ -756,20 +766,20 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
         await navigateToStep(stepNumber);
     };
 
-    const submitLabel = isCreateMode ? 'Create dispatch' : 'Save changes';
-    const submitBusyLabel = isCreateMode ? 'Creating dispatch…' : 'Saving changes…';
+    const submitLabel = isCreateMode ? tr('dispatch.review.createDispatch') : tr('dispatch.review.saveChanges');
+    const submitBusyLabel = isCreateMode ? tr('dispatch.review.creating') : tr('dispatch.review.savingChanges');
 
     return (
         <View style={styles.container}>
             <DispatchStepIndicator
-                steps={DISPATCH_STEPS}
+                steps={dispatchSteps()}
                 currentStep={DISPATCH_STEP_NUMBERS.REVIEW}
                 completedSteps={getDispatchCompletedSteps(DISPATCH_STEP_NUMBERS.REVIEW)}
                 onCancel={handleCancel}
                 cancelMessage={
                     isCreateMode
-                        ? 'Discard this dispatch? The details you entered will be lost.'
-                        : 'Discard your changes to this dispatch? Unsaved changes will be lost.'
+                        ? tr('dispatch.wizard.discardCreateMessage')
+                        : tr('dispatch.wizard.discardEditMessage')
                 }
                 dispNo={header.disp_no}
                 onStepPress={handleStepIndicatorPress}
@@ -796,7 +806,7 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
                             <View style={styles.hintContainer}>
                                 <Icon name="information" size={iconSize.md} color={t.status.informative.text} />
                                 <Text style={styles.hintText}>
-                                    Check the details before you save. Saving updates stock levels.
+                                    {tr('dispatch.review.editHint')}
                                 </Text>
                             </View>
                         )}
@@ -809,10 +819,10 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
                             onPress={handleBack}
                             disabled={isBusy}
                             accessibilityRole="button"
-                            accessibilityLabel="Back to items"
+                            accessibilityLabel={tr('dispatch.review.backToItems')}
                             accessibilityState={{ disabled: isBusy }}
                         >
-                            <Text style={styles.secondaryButtonText}>Back</Text>
+                            <Text style={styles.secondaryButtonText}>{tr('common.back')}</Text>
                         </Pressable>
                         <Pressable
                             style={({ pressed }) => [
@@ -840,10 +850,14 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
             {/* Confirm Submit Dialog */}
             <ConfirmDialog
                 visible={showConfirmDialog}
-                title={isCreateMode ? `Create dispatch ${header.disp_no}?` : `Save changes to dispatch ${header.disp_no}?`}
-                message={`${formatCount(items.length, 'item')} will be ${isCreateMode ? 'dispatched' : 'saved'} and stock levels updated.`}
+                title={tr(isCreateMode ? 'dispatch.review.confirmCreateTitle' : 'dispatch.review.confirmSaveTitle', {
+                    number: header.disp_no,
+                })}
+                message={tr(isCreateMode ? 'dispatch.review.confirmCreateMessage' : 'dispatch.review.confirmSaveMessage', {
+                    count: items.length,
+                })}
                 confirmText={submitLabel}
-                cancelText="Cancel"
+                cancelText={tr('common.cancel')}
                 onConfirm={handleConfirmSubmit}
                 onCancel={() => setShowConfirmDialog(false)}
                 variant="default"
@@ -877,20 +891,22 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
                         const result = await printDispatchRange(start, end);
                         if (result.success) {
                             setSnackbarMessage(
-                                `Sent to the printer${result.print_job?.cups_job_id ? ` (job ${result.print_job.cups_job_id})` : ''}.`
+                                result.print_job?.cups_job_id
+                                    ? tr('dispatch.review.printSentWithJob', { job: String(result.print_job.cups_job_id) })
+                                    : tr('dispatch.review.printSent')
                             );
                         } else {
-                            setSnackbarMessage("Couldn't send to the printer. Check the printer and try again.");
+                            setSnackbarMessage(tr('dispatch.review.printFailed'));
                         }
                         setSnackbarVisible(true);
                         setShowPrintDialog(false);
                         resetFormState();
                         router.replace('/dispatch');
                     }}
-                    title="Print dispatch"
+                    title={tr('dispatch.review.printTitle')}
                     defaultNumber={createdDispatchNumber}
-                    label="Dispatch number"
-                    placeholder="For example, D001"
+                    label={tr('common.dispatchNumber')}
+                    placeholder={tr('dispatch.review.printPlaceholder', { example: 'D001' })}
                 />
             )}
 
@@ -924,10 +940,10 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
             {/* Discard Changes Dialog (create mode) */}
             <ConfirmDialog
                 visible={showDiscardDialog}
-                title="Discard this dispatch?"
-                message={`The ${formatCount(items.length, 'item')} you added will be lost.`}
-                confirmText="Discard dispatch"
-                cancelText="Keep editing"
+                title={tr('dispatch.wizard.discardTitle')}
+                message={tr('dispatch.wizard.discardItemsMessage', { count: items.length })}
+                confirmText={tr('dispatch.wizard.discardDispatch')}
+                cancelText={tr('common.keepEditing')}
                 onConfirm={handleDiscardConfirm}
                 onCancel={() => setShowDiscardDialog(false)}
                 variant="danger"
@@ -937,9 +953,9 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
             {/* Edit Success Dialog (edit mode) */}
             <ConfirmDialog
                 visible={showEditSuccessDialog}
-                title={`Dispatch ${header.disp_no} saved`}
-                message="Your changes are saved and stock levels are updated."
-                confirmText="View dispatch"
+                title={tr('dispatch.review.savedTitle', { number: header.disp_no })}
+                message={tr('dispatch.review.savedMessage')}
+                confirmText={tr('dispatch.review.viewDispatch')}
                 cancelText=""
                 onConfirm={handleEditSuccessConfirm}
                 onCancel={handleEditSuccessConfirm}

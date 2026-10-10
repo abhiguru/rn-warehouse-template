@@ -6,6 +6,7 @@
  * field changes the request, so a field cannot be shown and then ignored.
  */
 import { getAllGRNItems, getAssignedCustomerGRNItems, type GRNFilters, type GRNListParams } from '@/services/grn-service';
+import { t } from '@/i18n';
 import { resolveDateRange } from '../datePresets';
 import { currentSort, readSearch } from '../filterModel';
 import { customerSource, itemSource } from '../pickerSources';
@@ -21,14 +22,15 @@ export type GrnListRequest = Pick<GRNListParams, 'p_date_from' | 'p_date_to' | '
 
 export const GRN_FILTERS: FilterListConfig<GrnListRequest> = {
   listKey: 'grn-list',
-  title: 'Filter GRNs',
+  // Labels are getters so they follow the app's language (see FieldBase in ../types).
+  get title() { return t('filters.list.grn.title'); },
   // The backend counts receipt lines, not receipts.
   noun: ['item', 'items'],
-  search: { placeholder: 'Search GRNs', dates: true, range: 'document', dateField: 'date', rangeField: 'numberRange' },
+  search: { get placeholder() { return t('filters.list.grn.search'); }, dates: true, range: 'document', dateField: 'date', rangeField: 'numberRange' },
   sort: {
     options: [
-      { field: 'gr_no', label: 'GRN number', chipLabel: 'GRN no.', kind: 'number' },
-      { field: 'date', label: 'Date', kind: 'date' },
+      { field: 'gr_no', get label() { return t('common.grnNumber'); }, get chipLabel() { return t('filters.sort.grnNumberChip'); }, kind: 'number' },
+      { field: 'date', get label() { return t('common.date'); }, kind: 'date' },
     ],
     default: { field: 'gr_no', order: 'desc' },
   },
@@ -36,31 +38,31 @@ export const GRN_FILTERS: FilterListConfig<GrnListRequest> = {
     {
       kind: 'choice',
       key: 'stock',
-      label: 'Stock',
+      get label() { return t('common.stock'); },
       icon: 'chart-bar',
       defaultValue: 'all',
       options: [
-        { value: 'all', label: 'All' },
-        { value: 'in_stock', label: 'In stock' },
-        { value: 'out_of_stock', label: 'Out of stock' },
+        { value: 'all', get label() { return t('common.all'); } },
+        { value: 'in_stock', get label() { return t('common.inStock'); } },
+        { value: 'out_of_stock', get label() { return t('common.outOfStock'); } },
       ],
     },
-    { kind: 'dateRange', key: 'date', label: 'Date', icon: 'calendar-range' },
+    { kind: 'dateRange', key: 'date', get label() { return t('common.date'); }, icon: 'calendar-range' },
     {
       kind: 'picker',
       key: 'customers',
-      label: 'Customer',
+      get label() { return t('common.customer'); },
       icon: 'account',
       noun: ['customer', 'customers'],
       source: customerSource,
       // A customer account with one customer has nothing to choose between.
       visibleTo: customerFilterVisible,
     },
-    { kind: 'picker', key: 'items', label: 'Item', icon: 'package-variant', noun: ['item', 'items'], source: itemSource },
-    { kind: 'textRange', key: 'numberRange', label: 'GRN number', icon: 'file-document-outline', placeholder: ['From', 'To'] },
+    { kind: 'picker', key: 'items', get label() { return t('common.item'); }, icon: 'package-variant', noun: ['item', 'items'], source: itemSource },
+    { kind: 'textRange', key: 'numberRange', get label() { return t('common.grnNumber'); }, icon: 'file-document-outline', get placeholder(): [string, string] { return [t('filters.range.from'), t('filters.range.to')]; } },
     // Whole kilograms: the backend column is an integer.
-    { kind: 'numberRange', key: 'weight', label: 'Weight', icon: 'weight-kilogram', unit: 'kg', integer: true },
-    { kind: 'text', key: 'package', label: 'Package', icon: 'tag-outline', placeholder: 'Package name' },
+    { kind: 'numberRange', key: 'weight', get label() { return t('common.weight'); }, icon: 'weight-kilogram', get unit() { return t('filters.unit.kg'); }, integer: true },
+    { kind: 'text', key: 'package', get label() { return t('filters.field.package'); }, icon: 'tag-outline', get placeholder() { return t('filters.placeholder.packageName'); } },
   ],
   fastFilters: ['stock', 'date', 'customers'],
 

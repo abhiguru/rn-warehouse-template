@@ -88,6 +88,7 @@ import {
 } from '@/features/dispatch/services/dispatchFormService';
 
 import { showAlert } from '@/utils/alert';
+import { t } from '@/i18n';
 /**
  * Module-level session ID that persists across all hook instances.
  * This allows cancellation to work when navigating between create/edit routes.
@@ -240,7 +241,7 @@ export function useDispatchForm({
       } catch (error) {
         console.error('[useDispatchForm] Failed to generate dispatch number:', error);
         if (globalSessionId === currentSessionId) {
-          showAlert('Error', 'Failed to generate dispatch number');
+          showAlert(t('dispatch.wizard.errorTitle'), t('dispatch.wizard.numberFailed'));
         }
       } finally {
         setIsGeneratingNumber(false);
@@ -299,13 +300,13 @@ export function useDispatchForm({
         }));
       } else {
         if (globalSessionId === currentSessionId) {
-          showAlert('Error', result.error || 'Failed to load dispatch data');
+          showAlert(t('dispatch.wizard.errorTitle'), result.error || t('dispatch.wizard.loadFailed'));
         }
       }
     } catch (error) {
       console.error('[useDispatchForm] Failed to load dispatch:', error);
       if (globalSessionId === currentSessionId) {
-        showAlert('Error', 'Failed to load dispatch data');
+        showAlert(t('dispatch.wizard.errorTitle'), t('dispatch.wizard.loadFailed'));
       }
     } finally {
       dispatch(setIsLoading(false));
@@ -507,7 +508,7 @@ export function useDispatchForm({
           if (!dateValidation.isValid) {
             result = {
               isValid: false,
-              errors: { disp_date: dateValidation.error || 'Invalid dispatch date' },
+              errors: { disp_date: dateValidation.error || t('dispatch.validation.dispatchDateInvalid') },
             };
           }
         }
@@ -562,10 +563,10 @@ export function useDispatchForm({
       if (!validation.isValid) {
         const errorFields = Object.keys(validation.errors);
         const errorMessage = errorFields.length > 0
-          ? `Please check: ${errorFields.join(', ')}`
-          : 'Please fill all required fields';
+          ? t('dispatch.validation.checkFields', { fields: errorFields.join(', ') })
+          : t('dispatch.validation.fillRequired');
         console.log(`[useDispatchForm] Navigation blocked - step ${step} validation failed:`, errorFields);
-        showAlert('Validation Error', errorMessage);
+        showAlert(t('dispatch.validation.title'), errorMessage);
         return false;
       }
     }
@@ -618,8 +619,8 @@ export function useDispatchForm({
     const validation = await validateCurrentStep(3);
     if (!validation.isValid) {
       const errorFields = Object.keys(validation.errors);
-      showAlert('Validation Error', `Please check: ${errorFields.join(', ')}`);
-      return { success: false, error: 'Validation failed' };
+      showAlert(t('dispatch.validation.title'), t('dispatch.validation.checkFields', { fields: errorFields.join(', ') }));
+      return { success: false, error: t('dispatch.validation.failed') };
     }
 
     dispatch(setIsSaving(true));
@@ -643,13 +644,13 @@ export function useDispatchForm({
           sourceOrderCleared: result.source_order_cleared,
         };
       } else {
-        showAlert('Error', result.error || 'Failed to save dispatch');
+        showAlert(t('dispatch.wizard.errorTitle'), result.error || t('dispatch.wizard.saveFailed'));
         return { success: false, error: result.error };
       }
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      const errorMessage = error instanceof Error ? error.message : t('dispatch.wizard.unknownError');
       console.error('[useDispatchForm] Submit error:', error);
-      showAlert('Error', errorMessage);
+      showAlert(t('dispatch.wizard.errorTitle'), errorMessage);
       return { success: false, error: errorMessage };
     } finally {
       dispatch(setIsSaving(false));

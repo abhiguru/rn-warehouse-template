@@ -12,6 +12,7 @@ import { useAppDispatch } from '@/store/hooks';
 import { setMode, setCustomerId, setIsLoading } from '@/store/slices/customerFormSlice';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { space, typography, type ThemeTokens } from '@/theme/tokens';
+import { t as tr } from '@/i18n';
 
 const makeStyles = (t: ThemeTokens) => ({
   loadingContainer: {
@@ -54,9 +55,9 @@ export default function CustomerEditLayout() {
   // Show loading while initializing
   if (!isReady) {
     return (
-      <View style={styles.loadingContainer} accessibilityRole="progressbar" accessibilityLabel="Loading customer">
+      <View style={styles.loadingContainer} accessibilityRole="progressbar" accessibilityLabel={tr('customers.form.loadingLabel')}>
         <ActivityIndicator size="large" color={t.brand.tint} />
-        <Text style={styles.loadingText}>Loading customer…</Text>
+        <Text style={styles.loadingText}>{tr('customers.form.loading')}</Text>
       </View>
     );
   }

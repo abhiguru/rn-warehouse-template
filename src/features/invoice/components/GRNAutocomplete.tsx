@@ -36,6 +36,7 @@ import {
 import { InvoiceableGrn } from '@/types/invoice.types';
 import { getInvoiceableGrns } from '@/features/invoice/services/invoiceFormService';
 import { formatCount, formatDate, toDate } from '@/utils/formatters';
+import { normalizeDigits, t as tr } from '@/i18n';
 
 interface GRNAutocompleteProps {
   isVisible: boolean;
@@ -217,7 +218,8 @@ function HighlightedText({ text, query, style, boldStyle }: {
   style: StyleProp<TextStyle>;
   boldStyle: StyleProp<TextStyle>;
 }) {
-  const q = query.trim();
+  // Digits typed as ૦-૯ match numbers shown in 0-9.
+  const q = normalizeDigits(query.trim());
   const index = q ? text.toLowerCase().indexOf(q.toLowerCase()) : -1;
   if (index < 0) {
     return <Text style={style} numberOfLines={2}>{text}</Text>;
@@ -252,7 +254,7 @@ export const GRNAutocomplete: React.FC<GRNAutocompleteProps> = ({
     setIsLoading(true);
     setHasError(false);
     try {
-      const response = await getInvoiceableGrns(query.trim() || undefined);
+      const response = await getInvoiceableGrns(normalizeDigits(query.trim()) || undefined);
 
       if (response.success && response.data) {
         setGrns(response.data);
@@ -346,13 +348,13 @@ export const GRNAutocomplete: React.FC<GRNAutocompleteProps> = ({
           ]}
           onPress={() => handleGRNSelect(item)}
           accessibilityRole="button"
-          accessibilityLabel={`GRN ${item.gr_no}, ${item.customer_name}${date ? `, ${date}` : ''}`}
+          accessibilityLabel={`${tr('invoice.label.grnNumber', { number: String(item.gr_no) })}, ${item.customer_name}${date ? `, ${date}` : ''}`}
           accessibilityState={{ selected: isSelected }}
         >
           <Icon name="package-down" size={iconSize.lg} color={t.icon.secondary} />
           <View style={styles.grnContent}>
             <HighlightedText
-              text={`GRN ${item.gr_no}`}
+              text={tr('invoice.label.grnNumber', { number: String(item.gr_no) })}
               query={searchQuery}
               style={styles.grnNumber}
               boldStyle={styles.bold}
@@ -380,9 +382,9 @@ export const GRNAutocomplete: React.FC<GRNAutocompleteProps> = ({
   const renderEmptyState = useCallback(() => {
     if (isLoading) {
       return (
-        <View style={styles.emptyState} accessibilityRole="progressbar" accessibilityLabel="Loading GRNs">
+        <View style={styles.emptyState} accessibilityRole="progressbar" accessibilityLabel={tr('invoice.grnPicker.loadingA11y')}>
           <ActivityIndicator size="large" color={t.brand.tint} />
-          <Text style={styles.emptyDescription}>Loading GRNs that can be invoiced…</Text>
+          <Text style={styles.emptyDescription}>{tr('invoice.grnPicker.loading')}</Text>
         </View>
       );
     }
@@ -391,14 +393,14 @@ export const GRNAutocomplete: React.FC<GRNAutocompleteProps> = ({
       return (
         <View style={styles.emptyState}>
           <Icon name="alert-circle-outline" size={iconSize.hero} color={t.status.negative.text} />
-          <Text style={styles.emptyTitle}>Couldn&apos;t load GRNs</Text>
-          <Text style={styles.emptyDescription}>Check your connection and try again.</Text>
+          <Text style={styles.emptyTitle}>{tr('invoice.grnPicker.loadFailedTitle')}</Text>
+          <Text style={styles.emptyDescription}>{tr('common.checkConnection')}</Text>
           <Pressable
             style={({ pressed }) => [styles.retryButton, pressed && styles.retryButtonPressed]}
             onPress={() => performSearch(searchQuery)}
             accessibilityRole="button"
           >
-            <Text style={styles.retryText}>Try again</Text>
+            <Text style={styles.retryText}>{tr('common.retry')}</Text>
           </Pressable>
         </View>
       );
@@ -409,12 +411,12 @@ export const GRNAutocomplete: React.FC<GRNAutocompleteProps> = ({
       <View style={styles.emptyState}>
         <Icon name="package-down" size={iconSize.hero} color={t.icon.secondary} />
         <Text style={styles.emptyTitle}>
-          {query ? 'No matches' : 'No GRNs to invoice'}
+          {query ? tr('invoice.grnPicker.noMatchesTitle') : tr('invoice.grnPicker.emptyTitle')}
         </Text>
         <Text style={styles.emptyDescription}>
           {query
-            ? `No GRNs match "${query}". Try fewer letters.`
-            : 'GRNs with dispatched items that are not yet invoiced appear here.'}
+            ? tr('invoice.grnPicker.noMatch', { search: query })
+            : tr('invoice.grnPicker.emptyText')}
         </Text>
       </View>
     );
@@ -434,7 +436,7 @@ export const GRNAutocomplete: React.FC<GRNAutocompleteProps> = ({
           style={styles.backdrop}
           onPress={handleClose}
           accessibilityRole="button"
-          accessibilityLabel="Close GRN list"
+          accessibilityLabel={tr('invoice.grnPicker.closeListA11y')}
         />
 
         {/* Bottom Sheet Content */}
@@ -449,12 +451,12 @@ export const GRNAutocomplete: React.FC<GRNAutocompleteProps> = ({
 
           {/* Header */}
           <View style={styles.header}>
-            <Text style={styles.headerTitle} accessibilityRole="header">Select GRN</Text>
+            <Text style={styles.headerTitle} accessibilityRole="header">{tr('invoice.form.selectGrn')}</Text>
             <Pressable
               onPress={handleClose}
               style={styles.closeButton}
               accessibilityRole="button"
-              accessibilityLabel="Close"
+              accessibilityLabel={tr('common.close')}
             >
               <Icon name="close" size={iconSize.lg} color={t.icon.primary} />
             </Pressable>
@@ -466,14 +468,14 @@ export const GRNAutocomplete: React.FC<GRNAutocompleteProps> = ({
             <TextInput
               ref={inputRef}
               style={styles.searchInput}
-              placeholder="Search GRN number or customer"
+              placeholder={tr('invoice.grnPicker.searchPlaceholder')}
               placeholderTextColor={t.text.placeholder}
               value={searchQuery}
               onChangeText={handleSearchChange}
               autoCapitalize="none"
               autoCorrect={false}
               returnKeyType="search"
-              accessibilityLabel="Search GRN number or customer"
+              accessibilityLabel={tr('invoice.grnPicker.searchPlaceholder')}
             />
             {searchQuery.length > 0 && (
               <Pressable
@@ -483,7 +485,7 @@ export const GRNAutocomplete: React.FC<GRNAutocompleteProps> = ({
                 }}
                 style={styles.clearButton}
                 accessibilityRole="button"
-                accessibilityLabel="Clear search"
+                accessibilityLabel={tr('common.clearSearch')}
               >
                 <Icon name="close-circle" size={iconSize.md} color={t.icon.secondary} />
               </Pressable>

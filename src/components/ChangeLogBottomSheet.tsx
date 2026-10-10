@@ -29,7 +29,8 @@ import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, radius, space, touchTarget, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { ChangeLogEntry, CustomerSummary, ChangeLogAnalytics } from '@/types/order.types';
-import { formatCount, formatRelativeTime, formatWeight } from '@/utils/formatters';
+import { formatRelativeTime, formatWeight } from '@/utils/formatters';
+import { localizeDigits, t as tr } from '@/i18n';
 
 interface ChangeLogBottomSheetProps {
   isVisible: boolean;
@@ -134,19 +135,19 @@ const ChangeLogBottomSheet = forwardRef<ChangeLogBottomSheetRef, ChangeLogBottom
 
     switch (action) {
       case 'quantity_updated':
-        return `Item quantity updated: ${itemName}`;
+        return tr('components.changeLog.quantityUpdated', { item: itemName });
       case 'item_added':
-        return `Item added: ${itemName}`;
+        return tr('components.changeLog.itemAdded', { item: itemName });
       case 'item_removed':
-        return `Item removed: ${itemName}`;
+        return tr('components.changeLog.itemRemoved', { item: itemName });
       case 'order_created':
-        return 'Order created';
+        return tr('components.changeLog.orderCreated');
       case 'order_updated':
-        return 'Order updated';
+        return tr('components.changeLog.orderUpdated');
       case 'status_changed':
-        return 'Order status changed';
+        return tr('components.changeLog.statusChanged');
       case 'dispatch_created':
-        return itemName || `Dispatch created: ${entry.change_details.dispatch_no || 'Unknown'}`;
+        return itemName || tr('components.changeLog.dispatchCreated', { number: entry.change_details.dispatch_no || tr('common.unknown') });
       default:
         return itemName || `${action.replace('_', ' ')}`;
     }
@@ -218,7 +219,7 @@ const ChangeLogBottomSheet = forwardRef<ChangeLogBottomSheetRef, ChangeLogBottom
           {hasQuantityChange && (
             <View style={styles.quantityChangeContainer}>
               <Text style={dynamicStyles.quantityChange}>
-                {hasQuantityChange.previous_quantity} → {hasQuantityChange.new_quantity}
+                {localizeDigits(String(hasQuantityChange.previous_quantity))} → {localizeDigits(String(hasQuantityChange.new_quantity))}
                 {itemDetails?.packaging && ` ${itemDetails.packaging}`}
               </Text>
               {hasQuantityChange.change_amount !== undefined && hasQuantityChange.change_amount !== 0 && (
@@ -226,7 +227,7 @@ const ChangeLogBottomSheet = forwardRef<ChangeLogBottomSheetRef, ChangeLogBottom
                   dynamicStyles.changeAmount,
                   { color: hasQuantityChange.change_amount > 0 ? t.status.positive.text : t.status.negative.text }
                 ]}>
-                  {hasQuantityChange.change_amount > 0 ? '+' : ''}{hasQuantityChange.change_amount}
+                  {hasQuantityChange.change_amount > 0 ? '+' : ''}{localizeDigits(String(hasQuantityChange.change_amount))}
                 </Text>
               )}
             </View>
@@ -267,18 +268,20 @@ const ChangeLogBottomSheet = forwardRef<ChangeLogBottomSheetRef, ChangeLogBottom
             <View style={dynamicStyles.stockInfoRow}>
               <MaterialCommunityIcons name="warehouse" size={iconSize.sm} color={t.icon.secondary} />
               <Text style={dynamicStyles.stockInfo} numberOfLines={1}>
-                Available stock: {hasStockInfo.available_stock}
-                {hasStockInfo.stock_at_time !== hasStockInfo.available_stock &&
-                  ` (was ${hasStockInfo.stock_at_time})`
-                }
+                {hasStockInfo.stock_at_time !== hasStockInfo.available_stock
+                  ? tr('components.changeLog.availableStockWas', {
+                      stock: localizeDigits(String(hasStockInfo.available_stock)),
+                      previous: localizeDigits(String(hasStockInfo.stock_at_time)),
+                    })
+                  : tr('components.changeLog.availableStock', { stock: localizeDigits(String(hasStockInfo.available_stock)) })}
               </Text>
             </View>
           )}
 
           <Text style={dynamicStyles.attribution} numberOfLines={2}>
-            by {entry.changed_by_display_name || entry.changed_by_name}
+            {tr('components.changeLog.by', { name: entry.changed_by_display_name || entry.changed_by_name })}
             {entry.change_details?.reason && ` • ${entry.change_details.reason}`}
-            {entry.is_recent && <Text style={dynamicStyles.recentBadge}> • Recent</Text>}
+            {entry.is_recent && <Text style={dynamicStyles.recentBadge}> • {tr('components.changeLog.recent')}</Text>}
           </Text>
         </View>
 
@@ -292,9 +295,9 @@ const ChangeLogBottomSheet = forwardRef<ChangeLogBottomSheetRef, ChangeLogBottom
       return (
         <View style={styles.emptyContainer} accessibilityRole="alert">
           <MaterialCommunityIcons name="alert-circle-outline" size={iconSize.hero} color={t.status.negative.text} />
-          <Text style={dynamicStyles.errorText}>Couldn&apos;t load the change history</Text>
+          <Text style={dynamicStyles.errorText}>{tr('components.changeLog.loadFailed')}</Text>
           <Text style={dynamicStyles.emptySubtext}>
-            Check your connection and try again.
+            {tr('common.checkConnection')}
           </Text>
         </View>
       );
@@ -303,9 +306,9 @@ const ChangeLogBottomSheet = forwardRef<ChangeLogBottomSheetRef, ChangeLogBottom
     return (
       <View style={styles.emptyContainer}>
         <MaterialCommunityIcons name="history" size={iconSize.hero} color={t.icon.secondary} />
-        <Text style={dynamicStyles.emptyText}>No changes yet</Text>
+        <Text style={dynamicStyles.emptyText}>{tr('components.changeLog.emptyTitle')}</Text>
         <Text style={dynamicStyles.emptySubtext}>
-          Changes to this customer&apos;s orders appear here.
+          {tr('components.changeLog.emptySubtitle')}
         </Text>
       </View>
     );
@@ -324,16 +327,16 @@ const ChangeLogBottomSheet = forwardRef<ChangeLogBottomSheetRef, ChangeLogBottom
         onPress={onLoadMore}
         disabled={loading}
         accessibilityRole="button"
-        accessibilityLabel="Load more changes"
+        accessibilityLabel={tr('components.changeLog.loadMore')}
         accessibilityState={{ busy: loading && entries.length > 0, disabled: loading }}
       >
         {loading && entries.length > 0 ? (
           <View style={styles.loadMoreLoading}>
             <ActivityIndicator size="small" color={t.brand.tint} />
-            <Text style={dynamicStyles.loadMoreText}>Loading…</Text>
+            <Text style={dynamicStyles.loadMoreText}>{tr('common.loading')}</Text>
           </View>
         ) : (
-          <Text style={dynamicStyles.loadMoreText}>Load more changes</Text>
+          <Text style={dynamicStyles.loadMoreText}>{tr('components.changeLog.loadMore')}</Text>
         )}
       </Pressable>
     );
@@ -344,23 +347,23 @@ const ChangeLogBottomSheet = forwardRef<ChangeLogBottomSheetRef, ChangeLogBottom
 
     return (
       <View style={dynamicStyles.analyticsContainer}>
-        <Text style={dynamicStyles.analyticsTitle} accessibilityRole="header">Activity summary</Text>
+        <Text style={dynamicStyles.analyticsTitle} accessibilityRole="header">{tr('components.changeLog.activitySummary')}</Text>
         <View style={styles.analyticsGrid}>
           <View style={styles.analyticsStat}>
-            <Text style={dynamicStyles.analyticsNumber}>{analytics.breakdown.item_changes}</Text>
-            <Text style={dynamicStyles.analyticsLabel}>Item changes</Text>
+            <Text style={dynamicStyles.analyticsNumber}>{localizeDigits(String(analytics.breakdown.item_changes))}</Text>
+            <Text style={dynamicStyles.analyticsLabel}>{tr('components.changeLog.itemChanges')}</Text>
           </View>
           <View style={styles.analyticsStat}>
-            <Text style={dynamicStyles.analyticsNumber}>{analytics.breakdown.order_changes}</Text>
-            <Text style={dynamicStyles.analyticsLabel}>Order changes</Text>
+            <Text style={dynamicStyles.analyticsNumber}>{localizeDigits(String(analytics.breakdown.order_changes))}</Text>
+            <Text style={dynamicStyles.analyticsLabel}>{tr('components.changeLog.orderChanges')}</Text>
           </View>
           <View style={styles.analyticsStat}>
-            <Text style={dynamicStyles.analyticsNumber}>{analytics.breakdown.dispatch_changes}</Text>
-            <Text style={dynamicStyles.analyticsLabel}>Dispatches</Text>
+            <Text style={dynamicStyles.analyticsNumber}>{localizeDigits(String(analytics.breakdown.dispatch_changes))}</Text>
+            <Text style={dynamicStyles.analyticsLabel}>{tr('components.changeLog.dispatches')}</Text>
           </View>
           <View style={styles.analyticsStat}>
-            <Text style={dynamicStyles.analyticsNumber}>{analytics.activity_summary.recent_changes_24h}</Text>
-            <Text style={dynamicStyles.analyticsLabel}>Last 24 h</Text>
+            <Text style={dynamicStyles.analyticsNumber}>{localizeDigits(String(analytics.activity_summary.recent_changes_24h))}</Text>
+            <Text style={dynamicStyles.analyticsLabel}>{tr('components.changeLog.last24Hours')}</Text>
           </View>
         </View>
       </View>
@@ -374,12 +377,12 @@ const ChangeLogBottomSheet = forwardRef<ChangeLogBottomSheetRef, ChangeLogBottom
           {customer?.name}
         </Text>
         <Text style={dynamicStyles.headerTitle} accessibilityRole="header">
-          Change history
+          {tr('components.changeLog.title')}
         </Text>
         <Text style={dynamicStyles.headerSubtitle}>
-          {formatCount(analytics?.total_changes || entries.length, 'change')}
+          {tr('components.changeLog.changeCount', { count: analytics?.total_changes || entries.length })}
           {analytics?.activity_summary?.unique_editors
-            ? ` • ${formatCount(analytics.activity_summary.unique_editors, 'editor')}`
+            ? ` • ${tr('components.changeLog.editorCount', { count: analytics.activity_summary.unique_editors })}`
             : null}
         </Text>
       </View>
@@ -389,7 +392,7 @@ const ChangeLogBottomSheet = forwardRef<ChangeLogBottomSheetRef, ChangeLogBottom
           pressed && dynamicStyles.closeButtonPressed,
         ]}
         onPress={onClose}
-        accessibilityLabel="Close change history"
+        accessibilityLabel={tr('components.changeLog.close')}
         accessibilityRole="button"
       >
         <MaterialCommunityIcons name="close" size={iconSize.lg} color={t.icon.primary} />
@@ -414,7 +417,7 @@ const ChangeLogBottomSheet = forwardRef<ChangeLogBottomSheetRef, ChangeLogBottom
       {loading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={t.brand.tint} />
-          <Text style={dynamicStyles.loadingText}>Loading change history…</Text>
+          <Text style={dynamicStyles.loadingText}>{tr('components.changeLog.loading')}</Text>
         </View>
       ) : (
         <BottomSheetFlatList

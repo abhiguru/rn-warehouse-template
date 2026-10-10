@@ -20,6 +20,7 @@ import {
 import { hasMoreItems } from '@/utils/paginationUtils';
 import { executeRPC, createErrorResponse, handleGlobalAuthError } from '@/utils/serviceErrorHandler';
 import { deduplicatedRequest, generateRequestKey } from '@/utils/requestDedup';
+import { localizeDigits, t } from '@/i18n';
 
 // M3 Fix: Removed duplicate categorizeError function - now using centralized version from serviceErrorHandler.ts
 
@@ -68,7 +69,7 @@ export class StockService {
         console.error('[StockService] Invalid customer ID:', customerId);
         return {
           success: false,
-          message: 'Invalid customer ID',
+          message: t('errors.customer.invalidId'),
           error: 'INVALID_CUSTOMER_ID',
         };
       }
@@ -111,7 +112,7 @@ export class StockService {
         handleGlobalAuthError(error);
         return {
           success: false,
-          message: error.message || 'Failed to fetch stock analysis',
+          message: error.message || t('errors.stock.analysisFailed'),
           error: error.code,
         };
       }
@@ -120,14 +121,14 @@ export class StockService {
         handleGlobalAuthError(data);
         return {
           success: false,
-          message: data?.message || 'Failed to fetch stock analysis',
+          message: data?.message || t('errors.stock.analysisFailed'),
           error: 'API_ERROR',
         };
       }
 
       return {
         success: true,
-        message: data.message || 'Stock analysis retrieved successfully',
+        message: data.message || t('errors.stock.analysisRetrieved'),
         data: data.data,
       };
     } catch (error) {
@@ -137,7 +138,7 @@ export class StockService {
       );
       return createErrorResponse(
         error,
-        'Failed to fetch stock analysis',
+        t('errors.stock.analysisFailed'),
         'StockService.getCustomerStockAnalysis'
       );
     }
@@ -198,7 +199,7 @@ export class StockService {
         console.error('[StockService] RPC error:', error);
         return {
           success: false,
-          message: error.message || 'Failed to fetch GRN items',
+          message: error.message || t('errors.grn.fetchItemsFailed'),
           error: error.code,
         };
       }
@@ -206,21 +207,21 @@ export class StockService {
       if (!data?.success) {
         return {
           success: false,
-          message: data?.message || 'Failed to fetch GRN items',
+          message: data?.message || t('errors.grn.fetchItemsFailed'),
           error: 'API_ERROR',
         };
       }
 
       return {
         success: true,
-        message: data.message || 'GRN items retrieved successfully',
+        message: data.message || t('errors.grn.itemsRetrieved'),
         data: data.data,
       };
     } catch (error) {
       console.error('[StockService] Exception in getCustomerGRNItems:', error);
       return createErrorResponse(
         error,
-        'Failed to fetch GRN items',
+        t('errors.grn.fetchItemsFailed'),
         'StockService.getCustomerGRNItems'
       );
     }
@@ -272,7 +273,7 @@ export class StockService {
         );
         return {
           success: false,
-          message: 'Failed to fetch customers',
+          message: t('errors.customer.fetchListFailed'),
           error: customersError.message,
         };
       }
@@ -280,7 +281,7 @@ export class StockService {
       if (!customersData || !Array.isArray(customersData)) {
         return {
           success: false,
-          message: 'No customer data returned',
+          message: t('errors.customer.noDataReturned'),
           error: 'EMPTY_RESPONSE',
         };
       }
@@ -312,7 +313,7 @@ export class StockService {
 
       return {
         success: true,
-        message: `Found ${total} customers`,
+        message: t('errors.customer.foundCount', { count: total, total: localizeDigits(String(total)) }),
         data: {
           data: paginatedCustomers,
           pagination: {
@@ -325,7 +326,7 @@ export class StockService {
       console.error('[StockService] Exception in getCustomerList:', error);
       return createErrorResponse(
         error,
-        'Failed to fetch customer list',
+        t('errors.customer.fetchCustomerListFailed'),
         'StockService.getCustomerList'
       );
     }
@@ -378,7 +379,7 @@ export class StockService {
         );
         return {
           success: false,
-          message: customersError.message || 'Failed to fetch customers',
+          message: customersError.message || t('errors.customer.fetchListFailed'),
           error: customersError.code,
         };
       }
@@ -463,7 +464,7 @@ export class StockService {
 
         const response = {
           success: true,
-          message: 'Customers retrieved successfully',
+          message: t('errors.customer.listRetrieved'),
           data: {
             data: customersWithStock,
             pagination: {
@@ -621,7 +622,7 @@ export class StockService {
 
       const response = {
         success: true,
-        message: 'Customers retrieved successfully',
+        message: t('errors.customer.listRetrieved'),
         data: {
           data: paginatedResults,
           pagination: {
@@ -639,7 +640,7 @@ export class StockService {
       );
       return createErrorResponse(
         error,
-        'Failed to fetch customers with stock',
+        t('errors.customer.fetchWithStockFailed'),
         'StockService.getCustomersWithStock'
       );
     }
@@ -664,7 +665,7 @@ export class StockService {
       );
       return createErrorResponse(
         error,
-        'Failed to search customers',
+        t('errors.customer.searchFailed'),
         'StockService.searchCustomersWithStock'
       );
     }
@@ -723,7 +724,7 @@ export class StockService {
       },
       {
         context: 'StockService.getItemWiseStockList',
-        errorMessage: 'Failed to fetch item-wise stock list',
+        errorMessage: t('errors.stock.itemWiseFailed'),
       }
     );
 
@@ -752,7 +753,7 @@ export class StockService {
 
     return {
       success: true,
-      message: 'Item-wise stock list retrieved',
+      message: t('errors.stock.itemWiseRetrieved'),
       data: {
         items,
         pagination: {

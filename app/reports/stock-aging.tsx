@@ -43,11 +43,13 @@ import type {
 import { formatCount, formatDate, formatNumber } from '@/utils/formatters';
 import { StatusTag, type StatusKind } from '@/components/ui';
 import { createLogger } from '@/utils/logger';
+import { t as tr, localizeDigits, type TranslationKey } from '@/i18n';
 
 const logger = createLogger('StockAging');
 
-const LOAD_ERROR = "Couldn't load stock aging. Check your connection and try again.";
-const NO_CUSTOMER = 'No customer is linked to your account. Ask your facility to link one.';
+// Functions, not constants: the text follows the app language (docs/I18N.md rule 2).
+const loadError = () => tr('reports.stockAging.loadError');
+const noCustomer = () => tr('reports.shared.noCustomer');
 
 // ============================================================================
 // Age buckets (status per guide §3.5)
@@ -55,14 +57,21 @@ const NO_CUSTOMER = 'No customer is linked to your account. Ask your facility to
 
 const BUCKET_ORDER = ['0-120', '121-240', '241-364', '364+'];
 
-const AGING_BUCKETS: Record<string, { kind: StatusKind; label: string }> = {
-  '0-120': { kind: 'positive', label: '0–120 days' },
-  '121-240': { kind: 'informative', label: '121–240 days' },
-  '241-364': { kind: 'critical', label: '241–364 days' },
-  '364+': { kind: 'negative', label: 'Over 364 days' },
+// Holds keys, not text: the label is looked up when drawn (docs/I18N.md rule 2).
+const AGING_BUCKETS: Record<string, { kind: StatusKind; labelKey: TranslationKey }> = {
+  '0-120': { kind: 'positive', labelKey: 'reports.stockAging.bucket0to120' },
+  '121-240': { kind: 'informative', labelKey: 'reports.stockAging.bucket121to240' },
+  '241-364': { kind: 'critical', labelKey: 'reports.stockAging.bucket241to364' },
+  '364+': { kind: 'negative', labelKey: 'reports.stockAging.bucketOver364' },
 };
 
-const bucketInfo = (bucket: string) => AGING_BUCKETS[bucket] || AGING_BUCKETS['0-120'];
+const bucketInfo = (bucket: string): { kind: StatusKind; label: string } => {
+  const info = AGING_BUCKETS[bucket] || AGING_BUCKETS['0-120'];
+  return { kind: info.kind, label: tr(info.labelKey) };
+};
+
+/** A percentage with one decimal, in the digits of the app language. */
+const onePlace = (value: number): string => localizeDigits(value.toFixed(1));
 
 const bucketForAge = (days: number): string =>
   days <= 120 ? '0-120' : days <= 240 ? '121-240' : days <= 364 ? '241-364' : '364+';
@@ -210,7 +219,7 @@ const SectionHeader: React.FC<{ title: string; styles: Styles }> = ({ title, sty
 /** Status tag showing the age of a stock entry in its bucket's colour, icon and words. */
 const AgeTag: React.FC<{ bucket: string; ageDays: number }> = ({ bucket, ageDays }) => {
   const info = bucketInfo(bucket);
-  return <StatusTag status={info.kind} label={`${days(ageDays)} old`} />;
+  return <StatusTag status={info.kind} label={tr('reports.stockAging.ageOld', { age: days(ageDays) })} />;
 };
 
 // Aging Bucket Bar Component
@@ -231,13 +240,17 @@ const AgingBucketBar: React.FC<AgingBucketBarProps> = ({ bucket, data, maxPercen
     <View
       style={styles.bucketRow}
       accessible
-      accessibilityLabel={`${info.label}: ${data.percentage.toFixed(1)}%, ${formatNumber(data.total_quantity)} units`}
+      accessibilityLabel={tr('reports.stockAging.bucketA11y', {
+        label: info.label,
+        percent: onePlace(data.percentage),
+        units: formatNumber(data.total_quantity),
+      })}
     >
       <View style={styles.bucketTop}>
         <View style={styles.bucketLabel}>
           <StatusTag status={info.kind} label={info.label} />
         </View>
-        <Text style={styles.bucketValue}>{`${data.percentage.toFixed(1)}%`}</Text>
+        <Text style={styles.bucketValue}>{`${onePlace(data.percentage)}%`}</Text>
         <Text style={styles.bucketCount}>{formatNumber(data.total_quantity)}</Text>
       </View>
       <View style={styles.bucketTrack}>
@@ -319,7 +332,12 @@ const ItemGroupCard: React.FC<ItemGroupCardProps> = ({
           style={({ pressed }) => [styles.groupHeader, pressed && styles.rowPressed]}
           onPress={onToggleGroup}
           accessibilityRole="button"
-          accessibilityLabel={`${group.item_name}, ${entryCount}, ${formatNumber(group.total_stock)} units, oldest ${days(group.oldest_days)}`}
+          accessibilityLabel={tr('reports.stockAging.groupA11y', {
+            name: group.item_name,
+            grns: entryCount,
+            units: formatNumber(group.total_stock),
+            age: days(group.oldest_days),
+          })}
           accessibilityState={{ expanded: isGroupExpanded }}
         >
           <View style={styles.groupIconContainer}>
@@ -334,7 +352,7 @@ const ItemGroupCard: React.FC<ItemGroupCardProps> = ({
           </View>
           <View style={styles.stockInfo}>
             <Text style={styles.stockValue}>{formatNumber(group.total_stock)}</Text>
-            <Text style={styles.stockLabel}>units</Text>
+            <Text style={styles.stockLabel}>{tr('reports.shared.units')}</Text>
           </View>
           <Icon name={isGroupExpanded ? 'chevron-up' : 'chevron-down'} size={iconSize.md} color={t.icon.secondary} />
         </Pressable>
@@ -371,14 +389,17 @@ interface StockEntryRowProps {
 }
 
 const DetailRow: React.FC<{ label: string; value: string; styles: Styles }> = ({ label, value, styles }) => (
-  <View style={styles.detailRow} accessible accessibilityLabel={`${label}: ${value}`}>
+  <View style={styles.detailRow} accessible accessibilityLabel={tr('reports.shared.labelValue', { label, value })}>
     <Text style={styles.detailLabel}>{label}</Text>
     <Text style={styles.detailValue}>{value}</Text>
   </View>
 );
 
 const StockEntryRow: React.FC<StockEntryRowProps> = ({ item, isExpanded, onToggle, isLast = false, styles, t }) => {
-  const title = [`GRN ${item.gr_no}`, item.rack ? `Rack ${item.rack}` : null].filter(Boolean).join(' · ');
+  const title = [
+    tr('reports.shared.grnNumber', { number: String(item.gr_no) }),
+    item.rack ? tr('reports.shared.rack', { rack: String(item.rack) }) : null,
+  ].filter(Boolean).join(' · ');
   const dispatch = item.dispatch_info;
 
   return (
@@ -387,14 +408,19 @@ const StockEntryRow: React.FC<StockEntryRowProps> = ({ item, isExpanded, onToggl
         style={({ pressed }) => [styles.entryRow, pressed && styles.rowPressed]}
         onPress={onToggle}
         accessibilityRole="button"
-        accessibilityLabel={`${title}, received ${formatDate(item.grn_date, 'short')}, ${days(item.aging_days)} in storage, ${formatNumber(item.current_stock)} units`}
+        accessibilityLabel={tr('reports.stockAging.entryA11y', {
+          title,
+          date: formatDate(item.grn_date, 'short'),
+          age: days(item.aging_days),
+          units: formatNumber(item.current_stock),
+        })}
         accessibilityState={{ expanded: isExpanded }}
       >
         <View style={styles.entryContent}>
           <Text style={styles.entryTitle} numberOfLines={2}>
             {title}
           </Text>
-          <Text style={styles.entrySubtitle}>{`Received ${formatDate(item.grn_date, 'short')}`}</Text>
+          <Text style={styles.entrySubtitle}>{tr('reports.shared.receivedOn', { date: formatDate(item.grn_date, 'short') })}</Text>
           <AgeTag bucket={item.aging_bucket} ageDays={item.aging_days} />
         </View>
         <Text style={styles.entryStockValue}>{formatNumber(item.current_stock)}</Text>
@@ -404,22 +430,25 @@ const StockEntryRow: React.FC<StockEntryRowProps> = ({ item, isExpanded, onToggl
       {/* Expanded Details */}
       {isExpanded && (
         <View style={styles.entryExpanded}>
-          <DetailRow label="Received quantity" value={formatNumber(item.original_qty)} styles={styles} />
-          <DetailRow label="Package mark" value={item.package_mark || '–'} styles={styles} />
+          <DetailRow label={tr('reports.stockAging.receivedQuantity')} value={formatNumber(item.original_qty)} styles={styles} />
+          <DetailRow label={tr('common.packageMark')} value={item.package_mark || '–'} styles={styles} />
           {dispatch && (
             <>
               <View style={styles.detailDivider} />
               <DetailRow
-                label="Dispatched"
-                value={`${formatNumber(dispatch.total_dispatched)} in ${formatCount(dispatch.dispatch_count, 'dispatch', 'dispatches')}`}
+                label={tr('reports.stockAging.dispatched')}
+                value={tr('reports.stockAging.dispatchedIn', {
+                  quantity: formatNumber(dispatch.total_dispatched),
+                  dispatches: formatCount(dispatch.dispatch_count, 'dispatch', 'dispatches'),
+                })}
                 styles={styles}
               />
               {dispatch.last_dispatch_date && (
-                <DetailRow label="Last dispatch" value={formatDate(dispatch.last_dispatch_date)} styles={styles} />
+                <DetailRow label={tr('reports.stockAging.lastDispatch')} value={formatDate(dispatch.last_dispatch_date)} styles={styles} />
               )}
               {dispatch.avg_days_between_dispatches ? (
                 <DetailRow
-                  label="Average time between dispatches"
+                  label={tr('reports.stockAging.averageBetweenDispatches')}
                   value={days(Math.round(dispatch.avg_days_between_dispatches))}
                   styles={styles}
                 />
@@ -428,7 +457,7 @@ const StockEntryRow: React.FC<StockEntryRowProps> = ({ item, isExpanded, onToggl
           )}
           <View style={styles.viewGrnButton}>
             <Button type="secondary" size="fullWidth" onPress={() => router.push(`/grn-details/${item.grn_id}`)}>
-              {`View GRN ${item.gr_no}`}
+              {tr('reports.stockAging.viewGrn', { number: String(item.gr_no) })}
             </Button>
           </View>
         </View>
@@ -486,11 +515,11 @@ export default function StockAgingScreen() {
         setAllCustomersData(response.data);
       } else {
         logger.warn('All-customer load failed', { error: response.error });
-        setError(LOAD_ERROR);
+        setError(loadError());
       }
     } catch (err) {
       logger.error('All-customer load exception', err);
-      setError(LOAD_ERROR);
+      setError(loadError());
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
@@ -509,11 +538,11 @@ export default function StockAgingScreen() {
         setData(response.data);
       } else {
         logger.warn('Customer load failed', { error: response.error });
-        setError(LOAD_ERROR);
+        setError(loadError());
       }
     } catch (err) {
       logger.error('Customer load exception', err);
-      setError(LOAD_ERROR);
+      setError(loadError());
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
@@ -540,7 +569,7 @@ export default function StockAgingScreen() {
     } else if (singleAssignedCustomerId) {
       fetchSingleCustomerData(singleAssignedCustomerId);
     } else {
-      setError(NO_CUSTOMER);
+      setError(noCustomer());
       setIsLoading(false);
     }
   }, []);
@@ -640,9 +669,9 @@ export default function StockAgingScreen() {
     if (!allCustomersData?.summary) return [];
     const s = allCustomersData.summary;
     return [
-      { icon: 'cube-outline', value: s.total_items, label: 'Items', variant: 'primary' },
-      { icon: 'calendar-clock', value: s.average_age_days, label: 'Average age', unit: 'days', variant: 'neutral' },
-      { icon: 'alert', value: s.items_over_365_days, label: 'Over 1 year', variant: 'warning' },
+      { icon: 'cube-outline', value: s.total_items, label: tr('common.items'), variant: 'primary' },
+      { icon: 'calendar-clock', value: s.average_age_days, label: tr('reports.stockAging.averageAge'), unit: tr('reports.stockAging.daysUnit'), variant: 'neutral' },
+      { icon: 'alert', value: s.items_over_365_days, label: tr('reports.stockAging.overOneYear'), variant: 'warning' },
     ];
   }, [allCustomersData?.summary]);
 
@@ -651,9 +680,9 @@ export default function StockAgingScreen() {
     if (!data?.summary) return [];
     const s = data.summary;
     return [
-      { icon: 'cube-outline', value: s.total_items, label: 'Items', variant: 'primary' },
-      { icon: 'calendar-clock', value: s.average_age_days, label: 'Average age', unit: 'days', variant: 'neutral' },
-      { icon: 'alert', value: s.items_over_365_days, label: 'Over 1 year', variant: 'warning' },
+      { icon: 'cube-outline', value: s.total_items, label: tr('common.items'), variant: 'primary' },
+      { icon: 'calendar-clock', value: s.average_age_days, label: tr('reports.stockAging.averageAge'), unit: tr('reports.stockAging.daysUnit'), variant: 'neutral' },
+      { icon: 'alert', value: s.items_over_365_days, label: tr('reports.stockAging.overOneYear'), variant: 'warning' },
     ];
   }, [data?.summary]);
 
@@ -687,12 +716,12 @@ export default function StockAgingScreen() {
   if (isLoading && !hasData) {
     return (
       <View style={styles.container}>
-        <ReportHeader title="Stock aging" />
+        <ReportHeader title={tr('reports.titles.stockAging')} />
         <View style={styles.loadingContainer}>
           <KPIGrid
             items={[
-              { icon: 'cube-outline', value: '-', label: 'Items', variant: 'primary' },
-              { icon: 'calendar-clock', value: '-', label: 'Average age', variant: 'neutral' },
+              { icon: 'cube-outline', value: '-', label: tr('common.items'), variant: 'primary' },
+              { icon: 'calendar-clock', value: '-', label: tr('reports.stockAging.averageAge'), variant: 'neutral' },
             ]}
             isLoading={true}
             compact
@@ -706,16 +735,16 @@ export default function StockAgingScreen() {
   if (error && !hasData) {
     return (
       <View style={styles.container}>
-        <ReportHeader title="Stock aging" />
-        {error === NO_CUSTOMER ? (
-          <ReportEmptyState icon="account-off-outline" message="No customer linked" description={error} />
+        <ReportHeader title={tr('reports.titles.stockAging')} />
+        {error === noCustomer() ? (
+          <ReportEmptyState icon="account-off-outline" message={tr('reports.shared.noCustomerLinked')} description={error} />
         ) : (
           <ReportEmptyState
             icon="alert-circle-outline"
             tone="error"
-            message="Something went wrong"
+            message={tr('reports.shared.errorTitle')}
             description={error}
-            actionLabel="Try again"
+            actionLabel={tr('common.retry')}
             onAction={retry}
           />
         )}
@@ -730,7 +759,7 @@ export default function StockAgingScreen() {
 
     return (
       <View style={styles.container}>
-        <ReportHeader title="Stock aging" subtitle={isStaff ? 'All customers' : 'My customers'} />
+        <ReportHeader title={tr('reports.titles.stockAging')} subtitle={isStaff ? tr('reports.shared.allCustomers') : tr('reports.shared.myCustomers')} />
         <ScrollView
           style={styles.scrollView}
           contentContainerStyle={styles.scrollContent}
@@ -742,7 +771,7 @@ export default function StockAgingScreen() {
           {/* Aging Distribution */}
           {Object.keys(allCustomersData.by_bucket).length > 0 && (
             <View style={styles.section}>
-              <SectionHeader title="Stock age" styles={styles} />
+              <SectionHeader title={tr('reports.stockAging.stockAge')} styles={styles} />
               <View style={[styles.card, styles.bucketsCard]}>
                 {bucketOrder.map((key) => {
                   const bucket = allCustomersData.by_bucket[key];
@@ -768,20 +797,23 @@ export default function StockAgingScreen() {
           {/* Customers List */}
           {filteredCustomers.length > 0 ? (
             <View style={styles.section}>
-              <SectionHeader title="Customers by stock age" styles={styles} />
+              <SectionHeader title={tr('reports.stockAging.customersByStockAge')} styles={styles} />
               <View style={styles.card}>
                 <View style={styles.cardClip}>
                   {filteredCustomers.map((customer, index) => (
                     <React.Fragment key={customer.customer_id}>
                       <ReportCustomerCard
                         title={customer.customer_name}
-                        subtitle={`Average age ${days(customer.average_age_days)} · ${formatNumber(customer.items_over_365_days)} over 1 year`}
+                        subtitle={tr('reports.stockAging.customerSubtitle', {
+                          age: days(customer.average_age_days),
+                          over: formatNumber(customer.items_over_365_days),
+                        })}
                         value={customer.total_stock}
-                        valueLabel="units"
+                        valueLabel={tr('reports.shared.units')}
                         onPress={() => handleCustomerSelect(customer)}
                         customerId={customer.customer_id}
                         status={averageAgeStatus(customer.average_age_days)}
-                        accessibilityHint="Opens this customer's stock aging"
+                        accessibilityHint={tr('reports.stockAging.opensCustomerHint')}
                       />
                       {index < filteredCustomers.length - 1 && <View style={styles.divider} />}
                     </React.Fragment>
@@ -793,16 +825,16 @@ export default function StockAgingScreen() {
             customerSearchQuery.trim() ? (
               <ReportEmptyState
                 icon="magnify-close"
-                message="No matching customers"
-                description={`No customers match "${customerSearchQuery.trim()}". Try fewer letters.`}
-                actionLabel="Clear search"
+                message={tr('reports.shared.noMatchingCustomers')}
+                description={tr('reports.shared.noCustomersMatch', { search: customerSearchQuery.trim() })}
+                actionLabel={tr('common.clearSearch')}
                 onAction={() => setCustomerSearchQuery('')}
               />
             ) : (
               <ReportEmptyState
                 icon="package-variant-closed"
-                message="No stock yet"
-                description="Stock appears here once goods are received."
+                message={tr('reports.shared.noStockYet')}
+                description={tr('reports.shared.noStockYetDescription')}
               />
             )
           )}
@@ -816,14 +848,14 @@ export default function StockAgingScreen() {
     return (
       <View style={styles.container}>
         <ReportHeader
-          title="Stock aging"
+          title={tr('reports.titles.stockAging')}
           subtitle={selectedCustomer?.customer_name}
           onBack={shouldShowListView || cameFromRouteParams.current ? handleBackToAll : undefined}
         />
         <ReportEmptyState
           icon="package-variant-closed"
-          message="No stock for this customer"
-          description="Stock appears here once goods are received for this customer."
+          message={tr('reports.shared.noStockForCustomer')}
+          description={tr('reports.shared.noStockForCustomerDescription')}
         />
       </View>
     );
@@ -834,7 +866,7 @@ export default function StockAgingScreen() {
   return (
     <View style={styles.container}>
       <ReportHeader
-        title="Stock aging"
+        title={tr('reports.titles.stockAging')}
         subtitle={selectedCustomer?.customer_name}
         onBack={shouldShowListView ? handleBackToAll : undefined}
       />
@@ -849,7 +881,7 @@ export default function StockAgingScreen() {
         {/* Aging Distribution */}
         {Object.keys(data.by_bucket).length > 0 && (
           <View style={styles.section}>
-            <SectionHeader title="Stock age" styles={styles} />
+            <SectionHeader title={tr('reports.stockAging.stockAge')} styles={styles} />
             <View style={[styles.card, styles.bucketsCard]}>
               {bucketOrder.map((key) => {
                 const bucket = data.by_bucket[key];
@@ -862,7 +894,7 @@ export default function StockAgingScreen() {
 
         {/* Items List - Grouped by Item Name (sorted by highest stock) */}
         <View style={styles.section}>
-          <SectionHeader title="Items, highest stock first" styles={styles} />
+          <SectionHeader title={tr('reports.stockAging.itemsHighestFirst')} styles={styles} />
           <View style={styles.itemsList}>
             {groupedItems.map((group) => (
               <ItemGroupCard

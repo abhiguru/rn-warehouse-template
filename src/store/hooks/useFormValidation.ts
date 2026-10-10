@@ -39,6 +39,7 @@ import {
 } from '@/features/invoice/schemas/invoiceValidation';
 
 import * as yup from 'yup';
+import { t } from '@/i18n';
 
 // ============================================================================
 // TYPES
@@ -82,7 +83,7 @@ async function validateByType(
           });
           return { isValid: false, errors };
         }
-        return { isValid: false, errors: { _error: 'Validation failed' } };
+        return { isValid: false, errors: { _error: t('errors.general.validationFailed') } };
       }
 
     case 'grnStep2':
@@ -109,7 +110,7 @@ async function validateByType(
           });
           return { isValid: false, errors };
         }
-        return { isValid: false, errors: { _error: 'Validation failed' } };
+        return { isValid: false, errors: { _error: t('errors.general.validationFailed') } };
       }
 
     default:
@@ -158,7 +159,7 @@ export function useFormValidation() {
         return true;
       } catch (error) {
         console.error('[useFormValidation] Validation error:', error);
-        setValidationErrors({ _error: 'Validation failed unexpectedly' });
+        setValidationErrors({ _error: t('errors.general.validationFailedUnexpectedly') });
         return false;
       } finally {
         setIsValidating(false);

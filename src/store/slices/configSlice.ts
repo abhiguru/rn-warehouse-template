@@ -5,6 +5,7 @@
 
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { t } from '@/i18n';
 import ConfigService, {
   PublicConfig,
   FullConfig,
@@ -47,7 +48,7 @@ export const fetchPublicConfig = createAsyncThunk(
       const message =
         error instanceof Error
           ? error.message
-          : 'Failed to fetch public config';
+          : t('errors.server.publicConfigFetchFailed');
       return rejectWithValue(message);
     }
   }
@@ -69,11 +70,11 @@ export const fetchFullConfig = createAsyncThunk(
       // If config service returns null, it's not a fatal error
       // The app can continue without full config
       console.warn('[ConfigSlice] Full config not available, using defaults');
-      return rejectWithValue('Full config not available (optional)');
+      return rejectWithValue(t('errors.server.fullConfigOptional'));
     } catch (error: unknown) {
       console.error('[ConfigSlice] Full config fetch error:', error);
       const message =
-        error instanceof Error ? error.message : 'Failed to fetch full config';
+        error instanceof Error ? error.message : t('errors.server.fullConfigFetchFailed');
       return rejectWithValue(message);
     }
   }
@@ -93,7 +94,7 @@ export const refreshPublicConfig = createAsyncThunk(
       const message =
         error instanceof Error
           ? error.message
-          : 'Failed to refresh public config';
+          : t('errors.server.publicConfigRefreshFailed');
       return rejectWithValue(message);
     }
   }
@@ -109,14 +110,14 @@ export const refreshFullConfig = createAsyncThunk(
     try {
       const config = await ConfigService.refreshFullConfig(supabase);
       if (!config) {
-        return rejectWithValue('Full config not available');
+        return rejectWithValue(t('errors.server.fullConfigUnavailable'));
       }
       return config;
     } catch (error: unknown) {
       const message =
         error instanceof Error
           ? error.message
-          : 'Failed to refresh full config';
+          : t('errors.server.fullConfigRefreshFailed');
       return rejectWithValue(message);
     }
   }

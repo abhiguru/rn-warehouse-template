@@ -9,7 +9,7 @@ import { forceLogoutOnInvalidToken } from '@/store/slices/authSlice';
 function handleAuthError(error: unknown): void {
   if (isJWTSignatureError(error)) {
     console.warn('[DispatchDetailService] Auth error detected - forcing logout');
-    store.dispatch(forceLogoutOnInvalidToken('Authentication failed. Please sign in again.'));
+    store.dispatch(forceLogoutOnInvalidToken(t('errors.auth.authenticationFailed')));
   }
 }
 // Import canonical types (snake_case) - fully migrated
@@ -23,6 +23,7 @@ import type {
   RpcCustomerDetails,
   RpcSupervisorDetails,
 } from '@/types/rpc-canonical.types';
+import { t } from '@/i18n';
 
 // Re-export canonical types for consumers
 export type {
@@ -127,8 +128,8 @@ export const getDispatchDetails = async (dispatchId: string): Promise<DispatchDe
     if (!dispatchId) {
       return {
         success: false,
-        message: 'Dispatch ID is required',
-        error: 'Missing parameter'
+        message: t('errors.dispatch.idRequired'),
+        error: t('errors.general.missingParameter')
       };
     }
 
@@ -147,7 +148,7 @@ export const getDispatchDetails = async (dispatchId: string): Promise<DispatchDe
       handleAuthError(error);
       return {
         success: false,
-        message: 'Failed to fetch dispatch details',
+        message: t('errors.dispatch.fetchDetailsFailed'),
         error: error.message
       };
     }
@@ -166,8 +167,8 @@ export const getDispatchDetails = async (dispatchId: string): Promise<DispatchDe
       console.log('[DispatchDetailService] No dispatch found in response');
       return {
         success: false,
-        message: 'No dispatch found',
-        error: 'Dispatch not found or access denied'
+        message: t('errors.dispatch.noneFound'),
+        error: t('errors.dispatch.notFoundOrDenied')
       };
     }
 
@@ -180,14 +181,14 @@ export const getDispatchDetails = async (dispatchId: string): Promise<DispatchDe
     return {
       success: true,
       data: responseData,
-      message: 'Dispatch details fetched successfully'
+      message: t('errors.dispatch.detailsFetched')
     };
   } catch (error) {
     console.error('[DispatchDetailService] Exception:', error);
     return {
       success: false,
-      message: 'An unexpected error occurred',
-      error: error instanceof Error ? error.message : 'Unknown error'
+      message: t('errors.general.unexpected'),
+      error: error instanceof Error ? error.message : t('errors.general.unknown')
     };
   }
 };

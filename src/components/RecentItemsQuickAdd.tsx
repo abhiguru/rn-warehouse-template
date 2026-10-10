@@ -19,6 +19,7 @@ import {
   type ThemeTokens,
 } from '@/theme/tokens';
 import { RecentItemsService, RecentItem } from '@/services/recent-items-service';
+import { t as tr } from '@/i18n';
 
 /**
  * Minimal item interface for quick add display
@@ -149,7 +150,7 @@ const RecentItemsQuickAdd: React.FC<RecentItemsQuickAddProps> = ({
         ]}
         onPress={() => handleItemPress(item)}
         hitSlop={CHIP_HIT_SLOP}
-        accessibilityLabel={`Select ${item.name}`}
+        accessibilityLabel={tr('orders.quickAdd.select', { name: item.name })}
         accessibilityRole="button"
         accessibilityState={{ selected: isSelected }}
       >
@@ -169,7 +170,7 @@ const RecentItemsQuickAdd: React.FC<RecentItemsQuickAddProps> = ({
   if (loading || externalIsLoading) {
     return (
       <View style={styles.container}>
-        <ActivityIndicator size="small" color={t.brand.tint} accessibilityLabel="Loading recent items" />
+        <ActivityIndicator size="small" color={t.brand.tint} accessibilityLabel={tr('orders.quickAdd.loadingRecent')} />
       </View>
     );
   }

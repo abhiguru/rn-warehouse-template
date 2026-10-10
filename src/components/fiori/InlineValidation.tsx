@@ -10,6 +10,7 @@ import { View, Text } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { iconSize, radius, space, typography, type ThemeTokens } from '@/theme/tokens';
+import { t as tr, type TranslationKey } from '@/i18n';
 
 type ValidationVariant = 'helper' | 'success' | 'warning' | 'error';
 
@@ -21,12 +22,12 @@ interface InlineValidationProps {
 
 const VARIANT_CONFIG: Record<
   ValidationVariant,
-  { icon: string | null; status: 'positive' | 'critical' | 'negative' | null; word: string | null }
+  { icon: string | null; status: 'positive' | 'critical' | 'negative' | null; labelKey: TranslationKey | null }
 > = {
-  helper: { icon: null, status: null, word: null },
-  success: { icon: 'check-circle', status: 'positive', word: 'Success' },
-  warning: { icon: 'alert', status: 'critical', word: 'Warning' },
-  error: { icon: 'alert-circle', status: 'negative', word: 'Error' },
+  helper: { icon: null, status: null, labelKey: null },
+  success: { icon: 'check-circle', status: 'positive', labelKey: 'components.validation.successLabel' },
+  warning: { icon: 'alert', status: 'critical', labelKey: 'components.validation.warningLabel' },
+  error: { icon: 'alert-circle', status: 'negative', labelKey: 'components.validation.errorLabel' },
 };
 
 export const InlineValidation: React.FC<InlineValidationProps> = ({
@@ -51,7 +52,7 @@ export const InlineValidation: React.FC<InlineValidationProps> = ({
       accessible
       accessibilityRole={variant === 'error' ? 'alert' : undefined}
       accessibilityLiveRegion={variant === 'error' ? 'polite' : 'none'}
-      accessibilityLabel={config.word ? `${config.word}: ${message}` : message}
+      accessibilityLabel={config.labelKey ? tr(config.labelKey, { message }) : message}
     >
       {config.icon && status && (
         <Icon

@@ -5,6 +5,7 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, layout, radius, space, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
+import { t as tr } from '@/i18n';
 
 export interface WizardBottomBarProps {
   currentStep: number;
@@ -83,7 +84,7 @@ export default function WizardBottomBar({
   onPrevious,
   onNext,
   nextLabel,
-  loadingLabel = 'Saving…',
+  loadingLabel: loadingLabelProp,
   nextDisabled = false,
   isLoading = false,
   showPrevious = true,
@@ -93,7 +94,8 @@ export default function WizardBottomBar({
   const t = useTokens();
 
   const isLastStep = currentStep >= totalSteps;
-  const label = nextLabel ?? (isLastStep ? 'Create GRN' : 'Next');
+  const label = nextLabel ?? (isLastStep ? tr('components.wizard.createGrn') : tr('common.next'));
+  const loadingLabel = loadingLabelProp ?? tr('common.saving');
 
   const handlePrevious = () => {
     if (onPrevious && !isLoading) {
@@ -122,11 +124,11 @@ export default function WizardBottomBar({
           onPress={handlePrevious}
           disabled={isLoading}
           accessibilityRole="button"
-          accessibilityLabel="Back"
+          accessibilityLabel={tr('common.back')}
           accessibilityState={{ disabled: isLoading }}
         >
           <Icon name="chevron-left" size={iconSize.md} color={t.brand.tint} />
-          <Text style={styles.backButtonText}>Back</Text>
+          <Text style={styles.backButtonText}>{tr('common.back')}</Text>
         </Pressable>
       )}
 

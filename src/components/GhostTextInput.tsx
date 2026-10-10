@@ -26,6 +26,7 @@ import {
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { iconSize, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
+import { t as tr } from '@/i18n';
 
 export interface GhostTextInputProps
   extends Omit<TextInputProps, 'value' | 'onChangeText' | 'style'> {
@@ -240,7 +241,7 @@ export const GhostTextInput = forwardRef<GhostTextInputRef, GhostTextInputProps>
               style={({ pressed }) => [styles.ghostContainer, pressed && styles.ghostPressed]}
               onPress={handleAcceptSuggestion}
               accessibilityRole="button"
-              accessibilityLabel={`Use suggestion ${suggestion}`}
+              accessibilityLabel={tr('components.input.useSuggestion', { suggestion })}
             >
               {/* Invisible spacer matching user input */}
               <Text style={[styles.input, styles.invisibleText, inputStyle]}>

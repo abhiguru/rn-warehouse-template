@@ -201,7 +201,7 @@ export const formatMobile = (mobile: string | null | undefined): string => {
 export const formatTemperature = (celsius: number | null | undefined): string => {
   if (celsius === null || celsius === undefined || isNaN(celsius)) return '—';
   const fixed = Math.abs(celsius).toFixed(1);
-  return `${celsius < 0 && fixed !== '0.0' ? '\u2212' : ''}${fixed}°C`;
+  return localizeDigits(`${celsius < 0 && fixed !== '0.0' ? '\u2212' : ''}${fixed}°C`);
 };
 
 /**
@@ -216,10 +216,10 @@ export const formatPercentage = (
   isDecimal: boolean = false
 ): string => {
   if (value === null || value === undefined || isNaN(value)) {
-    return '0%';
+    return localizeDigits('0%');
   }
   const percentage = isDecimal ? value * 100 : value;
-  return `${percentage.toFixed(1)}%`;
+  return localizeDigits(`${percentage.toFixed(1)}%`);
 };
 
 /**

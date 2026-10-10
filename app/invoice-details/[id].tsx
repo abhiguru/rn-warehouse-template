@@ -44,6 +44,7 @@ import type { ThemeTokens } from '@/theme/tokens';
 
 import { showAlert } from '@/utils/alert';
 import { formatDate } from '@/utils/formatters';
+import { t as tr } from '@/i18n';
 // ============================================================================
 // STYLES
 // ============================================================================
@@ -130,7 +131,7 @@ function InvoiceDetailScreen() {
       if (result.success && result.data) {
         setData(result.data);
       } else {
-        showAlert("Couldn't load invoice", parseErrorToFriendly(result.error || result.message, 'Invoice'));
+        showAlert(tr('invoice.details.loadFailedTitle'), parseErrorToFriendly(result.error || result.message, 'Invoice'));
         return;
       }
 
@@ -148,7 +149,7 @@ function InvoiceDetailScreen() {
       }
     } catch (error) {
       console.error('[InvoiceDetailScreen] Exception:', error);
-      showAlert("Couldn't load invoice", getUserFriendlyError('invoice', 'load'));
+      showAlert(tr('invoice.details.loadFailedTitle'), getUserFriendlyError('invoice', 'load'));
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -190,12 +191,14 @@ function InvoiceDetailScreen() {
     const customerName = data.header.customer?.name || data.header.invoice_customer_name;
 
     showAlert(
-      `Delete invoice ${invoiceNumber}?`,
-      `Invoice ${invoiceNumber}${customerName ? ` for ${customerName}` : ''} will be deleted. This can't be undone.`,
+      tr('invoice.details.deleteTitle', { number: String(invoiceNumber) }),
+      customerName
+        ? tr('invoice.details.deleteMessageFor', { number: String(invoiceNumber), customer: customerName })
+        : tr('invoice.details.deleteMessage', { number: String(invoiceNumber) }),
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: tr('common.cancel'), style: 'cancel' },
         {
-          text: 'Delete invoice',
+          text: tr('invoice.details.deleteConfirm'),
           style: 'destructive',
           onPress: async () => {
             setIsDeleting(true);
@@ -204,11 +207,11 @@ function InvoiceDetailScreen() {
 
               if (result.success) {
                 showAlert(
-                  `Invoice ${invoiceNumber} deleted.`,
+                  tr('invoice.details.deletedTitle', { number: String(invoiceNumber) }),
                   undefined,
                   [
                     {
-                      text: 'Done',
+                      text: tr('common.done'),
                       onPress: () => {
                         router.back();
                       },
@@ -216,11 +219,11 @@ function InvoiceDetailScreen() {
                   ]
                 );
               } else {
-                showAlert("Couldn't delete invoice", parseErrorToFriendly(result.error, 'Invoice'));
+                showAlert(tr('invoice.details.deleteFailedTitle'), parseErrorToFriendly(result.error, 'Invoice'));
               }
             } catch (error) {
               console.error('[InvoiceDetailScreen] Delete error:', error);
-              showAlert("Couldn't delete invoice", getUserFriendlyError('invoice', 'delete'));
+              showAlert(tr('invoice.details.deleteFailedTitle'), getUserFriendlyError('invoice', 'delete'));
             } finally {
               setIsDeleting(false);
             }
@@ -236,10 +239,10 @@ function InvoiceDetailScreen() {
 
     const invoiceNo = data.header.invoice_number;
     const finYear = data.header.financial_year;
-    const shareError = "Couldn't share the invoice PDF. Check your connection and try again.";
+    const shareError = tr('invoice.details.shareFailedMessage');
 
     if (!invoiceNo || !finYear) {
-      showAlert("Couldn't share invoice", 'This invoice is missing its number or financial year. Reload it and try again.');
+      showAlert(tr('invoice.details.shareFailedTitle'), tr('invoice.details.shareMissingData'));
       return;
     }
 
@@ -256,7 +259,7 @@ function InvoiceDetailScreen() {
       const pdfResult = await generateInvoicePDF(invoiceNo, finYearNum);
 
       if (!pdfResult.success || !pdfResult.pdfUrl) {
-        showAlert("Couldn't share invoice", shareError);
+        showAlert(tr('invoice.details.shareFailedTitle'), shareError);
         return;
       }
 
@@ -269,11 +272,11 @@ function InvoiceDetailScreen() {
       );
 
       if (!shareResult.success) {
-        showAlert("Couldn't share invoice", shareError);
+        showAlert(tr('invoice.details.shareFailedTitle'), shareError);
       }
     } catch (error) {
       console.error('[InvoiceDetailScreen] Share PDF error:', error);
-      showAlert("Couldn't share invoice", shareError);
+      showAlert(tr('invoice.details.shareFailedTitle'), shareError);
     } finally {
       setIsShareLoading(false);
     }
@@ -292,8 +295,8 @@ function InvoiceDetailScreen() {
       <>
         <Stack.Screen
           options={{
-            title: loading ? 'Invoice' : 'Invoice not found',
-            headerBackTitle: 'Back',
+            title: loading ? tr('common.invoice') : tr('invoice.details.notFoundTitle'),
+            headerBackTitle: tr('common.back'),
             headerShown: true,
             headerStyle: styles.navBar,
             headerTintColor: t.brand.tint,
@@ -309,9 +312,9 @@ function InvoiceDetailScreen() {
                 size={iconSize.hero}
                 color={t.icon.secondary}
               />
-              <Text style={styles.errorTitle} accessibilityRole="header">Invoice not found</Text>
+              <Text style={styles.errorTitle} accessibilityRole="header">{tr('invoice.details.notFoundTitle')}</Text>
               <Text style={styles.errorMessage}>
-                This invoice may have been deleted, or you may not have access to it.
+                {tr('invoice.details.notFoundMessage')}
               </Text>
               <Pressable
                 style={({ pressed }) => [
@@ -320,9 +323,9 @@ function InvoiceDetailScreen() {
                 ]}
                 onPress={() => router.back()}
                 accessibilityRole="button"
-                accessibilityLabel="Go back"
+                accessibilityLabel={tr('common.goBack')}
               >
-                <Text style={styles.secondaryButtonText}>Go back</Text>
+                <Text style={styles.secondaryButtonText}>{tr('common.goBack')}</Text>
               </Pressable>
             </View>
           )}
@@ -345,7 +348,7 @@ function InvoiceDetailScreen() {
 
         return {
           id: item.item_id,
-          item_name: catalog.name || grnItem.name || 'Unknown Item',
+          item_name: catalog.name || grnItem.name || tr('invoice.details.unknownItem'),
           duration: (item.duration || 1).toString(),
           no_of_days: item.no_of_days || 0,
           charge: item.charge || 0,
@@ -375,7 +378,7 @@ function InvoiceDetailScreen() {
       })
     : detailedItems.map((item) => ({
         id: item.id,
-        item_name: item.itemName || 'Unknown Item',
+        item_name: item.itemName || tr('invoice.details.unknownItem'),
         duration: item.duration,
         no_of_days: item.noOfDays,
         charge: item.charge || 0,
@@ -472,13 +475,13 @@ function InvoiceDetailScreen() {
               style={styles.headerTitleContainer}
               accessible
               accessibilityRole="header"
-              accessibilityLabel={`Invoice ${invoice.invoice_number}`}
+              accessibilityLabel={tr('invoice.details.titleNumber', { number: String(invoice.invoice_number) })}
             >
               <Text style={styles.headerTitle} numberOfLines={1}>
-                {`Invoice ${invoice.invoice_number}`}
+                {tr('invoice.details.titleNumber', { number: String(invoice.invoice_number) })}
               </Text>
               <Text style={styles.headerSubtitle} numberOfLines={1}>
-                {grnNumber ? `${formattedDate} · GRN ${grnNumber}` : formattedDate}
+                {grnNumber ? tr('invoice.details.subtitleWithGrn', { date: formattedDate, number: String(grnNumber) }) : formattedDate}
               </Text>
             </View>
           ),
@@ -566,18 +569,20 @@ function InvoiceDetailScreen() {
           const result = await printInvoiceRange(start, end, finYearNum);
           if (result.success) {
             setSnackbarMessage(
-              `Sent to the printer${result.print_job?.cups_job_id ? ` (job ${result.print_job.cups_job_id})` : ''}.`
+              result.print_job?.cups_job_id
+                ? tr('invoice.print.sentWithJob', { job: String(result.print_job.cups_job_id) })
+                : tr('invoice.print.sent')
             );
           } else {
-            setSnackbarMessage("Couldn't print the invoice. Check the printer and try again.");
+            setSnackbarMessage(tr('invoice.print.failed'));
           }
           setSnackbarVisible(true);
           setShowPrintDialog(false);
         }}
-        title="Print invoices"
+        title={tr('invoice.print.titleRange')}
         defaultNumber={String(invoice.invoice_number) || ''}
-        label="Invoice number"
-        placeholder="e.g. 2555"
+        label={tr('common.invoiceNumber')}
+        placeholder={tr('invoice.print.exampleShort', { example: '2555' })}
       />
 
       {/* Snackbar for print feedback */}

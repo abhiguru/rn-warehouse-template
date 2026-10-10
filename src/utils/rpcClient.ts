@@ -9,6 +9,7 @@ import { getAuthenticatedClient } from '@/config/supabaseConfig';
 import type { ServiceResponse } from './errorHandler';
 import { handleError, handleSuccess } from './errorHandler';
 import { createLogger } from './logger';
+import { localizeDigits, t } from '@/i18n';
 
 const rpcLogger = createLogger('RPCClient');
 
@@ -61,6 +62,9 @@ export const RPC_TIMEOUTS = {
  * Rejects with TimeoutError if promise doesn't resolve within specified time
  */
 export class TimeoutError extends Error {
+  /** Read by error handling instead of the message, which is translated. */
+  readonly appErrorCode = 'TIMEOUT' as const;
+
   constructor(message: string, public readonly timeoutMs: number) {
     super(message);
     this.name = 'TimeoutError';
@@ -77,7 +81,7 @@ export function withTimeout<T>(
     new Promise<T>((_, reject) => {
       setTimeout(() => {
         reject(new TimeoutError(
-          `${context} timed out after ${timeoutMs / 1000} seconds`,
+          t('errors.network.timedOutAfter', { context, seconds: localizeDigits(String(timeoutMs / 1000)) }),
           timeoutMs
         ));
       }, timeoutMs);
@@ -147,16 +151,16 @@ export async function callRPC<TData = unknown>(
       return handleError(
         error,
         context,
-        { defaultMessage: errorMessage || `Failed to execute ${functionName}` }
+        { defaultMessage: errorMessage || t('errors.general.executeFailed', { name: functionName }) }
       );
     }
 
     // Handle missing data
     if (!data) {
       return handleError(
-        new Error('No data returned from RPC'),
+        new Error(t('errors.general.noDataFromRpc')),
         context,
-        { defaultMessage: errorMessage || 'No data available' }
+        { defaultMessage: errorMessage || t('errors.general.noDataAvailable') }
       );
     }
 
@@ -166,8 +170,8 @@ export async function callRPC<TData = unknown>(
       if (rpcResponse.success === false) {
         return {
           success: false,
-          message: rpcResponse.message || errorMessage || 'Operation failed',
-          error: rpcResponse.error || 'Backend returned error',
+          message: rpcResponse.message || errorMessage || t('errors.general.operationFailed'),
+          error: rpcResponse.error || t('errors.general.backendReturnedError'),
         };
       }
     }
@@ -177,7 +181,7 @@ export async function callRPC<TData = unknown>(
       rpcResponse as TData,
       rpcResponse && typeof rpcResponse === 'object' && 'message' in rpcResponse
         ? (rpcResponse.message as string)
-        : 'Operation completed successfully'
+        : t('errors.general.operationCompleted')
     );
   } catch (error) {
     // E4 Fix: Handle timeout errors with specific message
@@ -185,14 +189,14 @@ export async function callRPC<TData = unknown>(
       rpcLogger.error(`[${context}] Request timeout in ${functionName}:`, error.message);
       return {
         success: false,
-        message: 'Request timed out. Please check your connection and try again.',
+        message: t('errors.network.requestTimedOut'),
         error: error.message,
       };
     }
     return handleError(
       error,
       context,
-      { defaultMessage: errorMessage || 'An unexpected error occurred' }
+      { defaultMessage: errorMessage || t('errors.general.unexpected') }
     );
   }
 }

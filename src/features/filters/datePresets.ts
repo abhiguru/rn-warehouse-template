@@ -2,15 +2,17 @@
  * Quick date ranges (docs/STYLE_GUIDE.md §13.3: "quick ranges are chips").
  * All dates are local calendar days as YYYY-MM-DD.
  */
+import { t } from '@/i18n';
 import { toLocalISODate } from '@/utils/formatters';
 import type { DatePresetId, DateRangeValue } from './types';
 
-export const DATE_PRESETS: { id: DatePresetId; label: string }[] = [
-  { id: 'today', label: 'Today' },
-  { id: 'yesterday', label: 'Yesterday' },
-  { id: 'last7', label: 'Last 7 days' },
-  { id: 'thisMonth', label: 'This month' },
-  { id: 'lastMonth', label: 'Last month' },
+/** The labels are getters, so they follow the app's language (docs/I18N.md rule 2). */
+export const DATE_PRESETS: { id: DatePresetId; readonly label: string }[] = [
+  { id: 'today', get label() { return t('filters.preset.today'); } },
+  { id: 'yesterday', get label() { return t('filters.preset.yesterday'); } },
+  { id: 'last7', get label() { return t('filters.preset.last7'); } },
+  { id: 'thisMonth', get label() { return t('filters.preset.thisMonth'); } },
+  { id: 'lastMonth', get label() { return t('filters.preset.lastMonth'); } },
 ];
 
 const day = (base: Date, offset: number) =>

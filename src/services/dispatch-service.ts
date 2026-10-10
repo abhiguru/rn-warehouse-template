@@ -16,6 +16,7 @@ import { CACHE_DURATION_DEFAULT_MS, CACHE_PREFIXES, PAGINATION } from '@/config/
 import { matchesSearch, searchTerms } from '@/features/filters/searchMatch';
 // Import canonical types for migration
 import type { RpcPagination, RpcDispatchListItem } from '@/types/rpc-canonical.types';
+import { t } from '@/i18n';
 
 // Cache configuration for dispatch data (DRY-7: Using shared cacheManager)
 const DISPATCH_CACHE_PREFIX = CACHE_PREFIXES.DISPATCH_LIST;
@@ -331,16 +332,16 @@ export const getAllDispatchItems = async (
       handleGlobalAuthError(error);
       return {
         success: false,
-        message: 'Failed to fetch dispatch items',
-        error: error.message || error.details || 'Unknown database error'
+        message: t('errors.dispatch.fetchItemsFailed'),
+        error: error.message || error.details || t('errors.general.unknownDatabase')
       };
     }
 
     if (!data) {
       return {
         success: false,
-        message: 'No data returned from server',
-        error: 'Empty response'
+        message: t('errors.general.noDataFromServer'),
+        error: t('errors.general.emptyResponse')
       };
     }
 
@@ -358,7 +359,7 @@ export const getAllDispatchItems = async (
 
     return {
       success: true,
-      message: 'Dispatch items fetched successfully',
+      message: t('errors.dispatch.itemsFetched'),
       data: {
         items: responseData.items || [],
         pagination: {
@@ -382,7 +383,7 @@ export const getAllDispatchItems = async (
     };
 
   } catch (error) {
-    return createErrorResponse(error, 'An unexpected error occurred', 'DispatchService.getAllDispatchItems');
+    return createErrorResponse(error, t('errors.general.unexpected'), 'DispatchService.getAllDispatchItems');
   }
 };
 
@@ -426,7 +427,7 @@ export const getDispatchList = async (
       handleGlobalAuthError(error);
       return {
         success: false,
-        message: 'Failed to fetch dispatch list',
+        message: t('errors.dispatch.fetchListFailed'),
         data: {
           dispatches: [],
           pagination: { total_count: 0, limit: p_limit, offset: p_offset, has_more: false },
@@ -440,7 +441,7 @@ export const getDispatchList = async (
     if (!data || !data.success) {
       return {
         success: false,
-        message: data?.message || 'No data returned from server',
+        message: data?.message || t('errors.general.noDataFromServer'),
         data: {
           dispatches: [],
           pagination: { total_count: 0, limit: p_limit, offset: p_offset, has_more: false },
@@ -453,13 +454,13 @@ export const getDispatchList = async (
 
     return {
       success: true,
-      message: data.message || 'Dispatch list retrieved successfully',
+      message: data.message || t('errors.dispatch.listRetrieved'),
       data: data.data
     };
 
   } catch (error) {
     return {
-      ...createErrorResponse(error, 'An unexpected error occurred', 'DispatchService.getDispatchList'),
+      ...createErrorResponse(error, t('errors.general.unexpected'), 'DispatchService.getDispatchList'),
       data: {
         dispatches: [],
         pagination: { total_count: 0, limit: params.p_limit || PAGINATION.DEFAULT_LIMIT, offset: params.p_offset || 0, has_more: false },
@@ -501,7 +502,7 @@ export const getDispatchListWithItems = async (
     console.log('[DispatchService] Network error, returning cached dispatch data as fallback');
     return {
       success: true,
-      message: 'Dispatch list retrieved from cache (network error fallback)',
+      message: t('errors.dispatch.listFromCache'),
       data: cachedData,
     };
   };
@@ -566,7 +567,7 @@ export const getDispatchListWithItems = async (
       if (cached) return cached;
       return {
         success: false,
-        message: error.message || 'Failed to fetch dispatch list',
+        message: error.message || t('errors.dispatch.fetchListFailed'),
         data: {
           dispatches: [],
           pagination: { total_count: 0, limit: p_limit, offset: offset, has_more: false },
@@ -581,7 +582,7 @@ export const getDispatchListWithItems = async (
       console.error('[getDispatchListWithItems] Invalid response', { success: data?.success === true });
       return {
         success: false,
-        message: data?.message || 'No data returned from server',
+        message: data?.message || t('errors.general.noDataFromServer'),
         data: {
           dispatches: [],
           pagination: { total_count: 0, limit: p_limit, offset: offset, has_more: false },
@@ -656,7 +657,7 @@ export const getDispatchListWithItems = async (
 
     return {
       success: true,
-      message: data.message || 'Dispatch list retrieved successfully',
+      message: data.message || t('errors.dispatch.listRetrieved'),
       data: responsePayload
     };
 
@@ -667,7 +668,7 @@ export const getDispatchListWithItems = async (
     if (cached) return cached;
 
     return {
-      ...createErrorResponse(error, 'An unexpected error occurred', 'DispatchService.getDispatchListWithItems'),
+      ...createErrorResponse(error, t('errors.general.unexpected'), 'DispatchService.getDispatchListWithItems'),
       data: {
         dispatches: [],
         pagination: { total_count: 0, limit: params.p_limit || PAGINATION.DEFAULT_LIMIT, offset: params.offset || 0, has_more: false },
@@ -713,7 +714,7 @@ export const getCustomerDispatchList = async (
   if (!params.p_customer_id) {
     return {
       success: false,
-      message: 'Customer ID is required',
+      message: t('errors.customer.idRequired'),
       data: emptyData,
     };
   }
@@ -734,7 +735,7 @@ export const getCustomerDispatchList = async (
       return {
         ...createErrorResponse(
           error,
-          'Failed to fetch customer dispatches',
+          t('errors.dispatch.fetchCustomerFailed'),
           'DispatchService.getCustomerDispatchList'
         ),
         data: emptyData,
@@ -744,7 +745,7 @@ export const getCustomerDispatchList = async (
     if (!data?.success || !data.data) {
       return {
         success: false,
-        message: data?.message || 'Failed to fetch customer dispatches',
+        message: data?.message || t('errors.dispatch.fetchCustomerFailed'),
         data: emptyData,
       };
     }
@@ -757,7 +758,7 @@ export const getCustomerDispatchList = async (
 
     return {
       success: true,
-      message: data.message || 'Customer dispatches retrieved successfully',
+      message: data.message || t('errors.dispatch.customerRetrieved'),
       data: {
         ...emptyData,
         dispatches,
@@ -792,7 +793,7 @@ export const getCustomerDispatchList = async (
     return {
       ...createErrorResponse(
         error,
-        'Failed to fetch customer dispatches',
+        t('errors.dispatch.fetchCustomerFailed'),
         'DispatchService.getCustomerDispatchList'
       ),
       data: emptyData,
@@ -903,10 +904,10 @@ export const getAssignedCustomerDispatchList = async (
 
   const assigned = [...new Set(assignedCustomerIds.filter(Boolean))];
   const requested = Array.isArray(filters.customer_ids) ? (filters.customer_ids as string[]) : [];
-  if (requested.some(id => !assigned.includes(id))) return empty('Customer access denied', false);
+  if (requested.some(id => !assigned.includes(id))) return empty(t('errors.customer.accessDenied'), false);
   const targetIds = requested.length > 0 ? requested : assigned;
   if (targetIds.length === 0) {
-    return empty('No customer assignment is available for this account', false);
+    return empty(t('errors.customer.noAssignment'), false);
   }
 
   const perCustomer = await Promise.all(
@@ -934,7 +935,7 @@ export const getAssignedCustomerDispatchList = async (
   const matching = selectCustomerDispatches((perCustomer as Dispatch[][]).flat(), filters, sortBy, sortOrder);
 
   const dispatches = matching.slice(offset, offset + limit);
-  const result = empty('Customer dispatches retrieved successfully', true);
+  const result = empty(t('errors.dispatch.customerRetrieved'), true);
   result.data.dispatches = dispatches;
   result.data.pagination = {
     total_count: matching.length,
@@ -980,7 +981,7 @@ export const deleteDispatch = async (
       handleGlobalAuthError(error);
       return {
         success: false,
-        message: 'Failed to delete dispatch',
+        message: t('errors.dispatch.deleteFailed'),
         error: error.message,
       };
     }
@@ -992,7 +993,7 @@ export const deleteDispatch = async (
       console.error('[DispatchService] Dispatch deletion refused', { blocked: Boolean(result.blocking_reason) });
       return {
         success: false,
-        message: result.message || 'Failed to delete dispatch',
+        message: result.message || t('errors.dispatch.deleteFailed'),
         error: result.error,
         invoiceItemsCount: result.invoice_items_count,
         blockingReason: result.blocking_reason,
@@ -1019,14 +1020,14 @@ export const deleteDispatch = async (
 
     return {
       success: true,
-      message: result.message || 'Dispatch deleted successfully with order and stock restoration.',
+      message: result.message || t('errors.dispatch.deletedWithRestore'),
       cacheInvalidated, // E10: Inform UI if cache invalidation failed
       orderRestored: result.order_restored || result.orderRestored || false,
       restoredOrderId: result.restored_order_id || result.restoredOrderId,
     };
   } catch (error) {
     console.error('[DispatchService] ❌ Exception deleting dispatch:', error);
-    return createErrorResponse(error, 'An unexpected error occurred', 'DispatchService.deleteDispatch');
+    return createErrorResponse(error, t('errors.general.unexpected'), 'DispatchService.deleteDispatch');
   }
 };
 
@@ -1056,14 +1057,14 @@ export const getRecentDispatchedOrders = async (
       handleGlobalAuthError(error);
       return {
         success: false,
-        error: error.message || 'Failed to fetch recent dispatched orders',
+        error: error.message || t('errors.dispatch.fetchRecentOrdersFailed'),
       };
     }
 
     if (!data) {
       return {
         success: false,
-        error: 'No data returned from server',
+        error: t('errors.general.noDataFromServer'),
       };
     }
 
@@ -1071,7 +1072,7 @@ export const getRecentDispatchedOrders = async (
     if (!data.success) {
       return {
         success: false,
-        error: data.error || 'Access denied',
+        error: data.error || t('errors.general.accessDenied'),
       };
     }
 
@@ -1090,7 +1091,7 @@ export const getRecentDispatchedOrders = async (
     console.error('[DispatchService] Exception in getRecentDispatchedOrders:', error);
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'An unexpected error occurred',
+      error: error instanceof Error ? error.message : t('errors.general.unexpected'),
     };
   }
 };

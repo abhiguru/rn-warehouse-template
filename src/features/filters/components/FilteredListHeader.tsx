@@ -15,6 +15,7 @@ import { router } from 'expo-router';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { Avatar } from '@/components/ui/Avatar';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { t as translate } from '@/i18n';
 import { useAppSelector } from '@/store/hooks';
 import { iconSize, layout, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 import { FILTER_CONFIGS } from '../configs';
@@ -23,6 +24,14 @@ import type { useListFilters } from '../useListFilters';
 import { FilterBar } from './FilterBar';
 import { ListSearchField } from './ListSearchField';
 
+/**
+ * The lists that have "nothing matches" and "expand all" texts, by the English
+ * plural the callers already use. It is a key, not a text: each has its own
+ * whole sentences in `filters.empty` and `filters.header`.
+ */
+const LIST_NOUNS = { GRNs: 'grn', dispatches: 'dispatch', invoices: 'invoice', orders: 'order' } as const;
+export type ListNounPlural = keyof typeof LIST_NOUNS;
+
 export interface FilteredListHeaderProps {
   title: string;
   config: FilterListDefinition;
@@ -30,7 +39,7 @@ export interface FilteredListHeaderProps {
   /** The list is loading results for the current search or filters. */
   loading?: boolean;
   /** Expand or collapse every card. Omit for lists whose rows do not expand. */
-  expand?: { expanded: boolean; onToggle: () => void; nounPlural: string; disabled?: boolean };
+  expand?: { expanded: boolean; onToggle: () => void; nounPlural: ListNounPlural; disabled?: boolean };
   /** Extra buttons in the title row, before the profile. */
   actions?: React.ReactNode;
   /** Shown between the title row and the search field. */
@@ -83,7 +92,7 @@ export function FilteredListHeader({ title, config, filters, loading, expand, ac
               onPress={expand.onToggle}
               disabled={expand.disabled}
               accessibilityRole="button"
-              accessibilityLabel={expand.expanded ? `Collapse all ${expand.nounPlural}` : `Expand all ${expand.nounPlural}`}
+              accessibilityLabel={translate(`filters.header.${expand.expanded ? 'collapseAll' : 'expandAll'}.${LIST_NOUNS[expand.nounPlural]}`)}
               accessibilityState={{ disabled: Boolean(expand.disabled), expanded: expand.expanded }}
             >
               <Icon
@@ -98,7 +107,7 @@ export function FilteredListHeader({ title, config, filters, loading, expand, ac
             style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
             onPress={() => router.push('/settings')}
             accessibilityRole="button"
-            accessibilityLabel="Open settings"
+            accessibilityLabel={translate('common.openSettings')}
           >
             <Avatar name={userProfile?.name || 'User'} id={userProfile?.id} size="sm" />
           </Pressable>
@@ -122,15 +131,14 @@ export function FilteredListHeader({ title, config, filters, loading, expand, ac
 }
 
 /** Wording of a list's "nothing matches" state for `ListEmptyState`. */
-export function filteredEmptyProps(filters: ReturnType<typeof useListFilters>, nounPlural: string) {
+export function filteredEmptyProps(filters: ReturnType<typeof useListFilters>, nounPlural: ListNounPlural) {
   const search = filters.search.trim();
+  const noun = LIST_NOUNS[nounPlural];
   return {
     activeFilterCount: filters.hasAny ? 1 : 0,
-    filteredTitle: search ? `No ${nounPlural} match "${search}"` : `No ${nounPlural} match your filters`,
-    filteredSubtitle: search
-      ? 'Check the spelling, try fewer words, or remove a filter.'
-      : 'Try removing a filter or clearing them all.',
-    clearFiltersLabel: search ? 'Clear search and filters' : 'Clear filters',
+    filteredTitle: search ? translate(`filters.empty.noMatchSearch.${noun}`, { search }) : translate(`filters.empty.noMatchFilters.${noun}`),
+    filteredSubtitle: search ? translate('filters.empty.searchHint') : translate('filters.empty.filterHint'),
+    clearFiltersLabel: search ? translate('filters.empty.clearSearchAndFilters') : translate('filters.empty.clearFilters'),
     onClearFilters: filters.clear,
   };
 }

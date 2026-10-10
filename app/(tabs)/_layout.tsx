@@ -18,6 +18,7 @@ import FioriTabBar from '@/components/FioriTabBar';
 import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
 import { useTheme } from '@/hooks/useTheme';
 import { useSessionGenerationGuard } from '@/hooks/useSessionGenerationGuard';
+import { t as translate } from '@/i18n';
 
 export default function TabsLayout() {
   const router = useRouter();
@@ -78,7 +79,7 @@ export default function TabsLayout() {
         <ActivityIndicator
           size="large"
           color={t.brand.tint}
-          accessibilityLabel="Loading"
+          accessibilityLabel={translate('nav.loading')}
         />
       </View>
     );
@@ -108,31 +109,31 @@ export default function TabsLayout() {
             <Tabs.Screen
               name="index"
               options={{
-                title: 'Orders',
+                title: translate('nav.tabs.orders'),
               }}
             />
             <Tabs.Screen
               name="grn"
               options={{
-                title: 'GRN',
+                title: translate('nav.tabs.grn'),
               }}
             />
             <Tabs.Screen
               name="dispatch"
               options={{
-                title: 'Dispatch',
+                title: translate('nav.tabs.dispatch'),
               }}
             />
             <Tabs.Screen
               name="invoices"
               options={{
-                title: 'Invoices',
+                title: translate('nav.tabs.invoices'),
               }}
             />
             <Tabs.Screen
               name="reports"
               options={{
-                title: 'Reports',
+                title: translate('nav.tabs.reports'),
               }}
             />
           </Tabs>

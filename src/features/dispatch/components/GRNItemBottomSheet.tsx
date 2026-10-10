@@ -35,6 +35,7 @@ import {
 import type { ThemeTokens } from '@/theme/tokens';
 import type { GRNDetailItem } from '@/types/dispatch.types';
 import { formatCount } from '@/utils/formatters';
+import { t as tr } from '@/i18n';
 
 interface GRNItemBottomSheetProps {
   isVisible: boolean;
@@ -257,8 +258,8 @@ export const GRNItemBottomSheet: React.FC<GRNItemBottomSheetProps> = ({
   const renderItem = useCallback(
     ({ item }: { item: UniqueItem }) => {
       const isSelected = currentValue?.item_id === item.item_id;
-      const lots = formatCount(item.lotCount, 'lot');
-      const available = `${formatCount(item.totalStock, 'bag')} available`;
+      const lots = tr('dispatch.count.lots', { count: item.lotCount });
+      const available = tr('dispatch.itemSheet.available', { bags: formatCount(item.totalStock, 'bag') });
 
       return (
         <Pressable
@@ -269,7 +270,7 @@ export const GRNItemBottomSheet: React.FC<GRNItemBottomSheetProps> = ({
           ]}
           onPress={() => handleItemSelect({ item_id: item.item_id, item_name: item.item_name })}
           accessibilityRole="button"
-          accessibilityLabel={`${item.item_name}, ${lots}, ${available}`}
+          accessibilityLabel={tr('dispatch.itemSheet.rowLabel', { item: item.item_name, lots, available })}
           accessibilityState={{ selected: isSelected }}
         >
           <View style={styles.itemHeader}>
@@ -304,9 +305,9 @@ export const GRNItemBottomSheet: React.FC<GRNItemBottomSheetProps> = ({
     return (
       <View style={styles.emptyContainer}>
         <Icon name="package-variant-closed" size={iconSize.hero} color={t.icon.secondary} />
-        <Text style={styles.emptyText}>No items in stock</Text>
+        <Text style={styles.emptyText}>{tr('dispatch.itemSheet.emptyTitle')}</Text>
         <Text style={styles.emptySubtext}>
-          This GRN has no items with stock left to dispatch. Choose another GRN.
+          {tr('dispatch.itemSheet.emptyMessage')}
         </Text>
       </View>
     );
@@ -346,12 +347,12 @@ export const GRNItemBottomSheet: React.FC<GRNItemBottomSheetProps> = ({
       <View style={styles.container}>
         {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.headerTitle} accessibilityRole="header">Choose item</Text>
+          <Text style={styles.headerTitle} accessibilityRole="header">{tr('dispatch.items.chooseItem')}</Text>
           <Pressable
             onPress={() => bottomSheetRef.current?.dismiss()}
             style={({ pressed }) => [styles.closeButton, pressed && styles.closeButtonPressed]}
             accessibilityRole="button"
-            accessibilityLabel="Close item list"
+            accessibilityLabel={tr('dispatch.itemSheet.close')}
           >
             <Icon name="close" size={iconSize.lg} color={t.icon.primary} />
           </Pressable>
@@ -361,7 +362,7 @@ export const GRNItemBottomSheet: React.FC<GRNItemBottomSheetProps> = ({
         {uniqueItems.length > 0 && (
           <View style={styles.countContainer}>
             <Text style={styles.countText} accessibilityRole="header">
-              {formatCount(uniqueItems.length, 'item')} in stock
+              {tr('dispatch.itemSheet.countInStock', { items: formatCount(uniqueItems.length, 'item') })}
             </Text>
           </View>
         )}

@@ -23,6 +23,7 @@ import {
 } from 'react-native';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, motion, radius, space, typography, type ThemeTokens } from '@/theme/tokens';
+import { localizeDigits, t as tr } from '@/i18n';
 
 // ============================================================================
 // SIZES (style guide §13.5: 4 default, 8 prominent, pill radius)
@@ -188,7 +189,7 @@ export const FioriLinearProgress: React.FC<LinearProgressProps> = ({
     : '0%';
 
   // Accessibility
-  const a11yLabel = accessibilityLabel || label || (indeterminate ? 'Loading' : `Progress, ${percentage}%`);
+  const a11yLabel = accessibilityLabel || label || (indeterminate ? tr('components.loading') : tr('components.progress.label', { percent: percentage }));
 
   return (
     <View
@@ -204,7 +205,7 @@ export const FioriLinearProgress: React.FC<LinearProgressProps> = ({
         <View style={styles.labelRow}>
           {label && <Text style={styles.label}>{label}</Text>}
           {showPercentage && !indeterminate && (
-            <Text style={styles.percentage}>{percentage}%</Text>
+            <Text style={styles.percentage}>{localizeDigits(`${percentage}%`)}</Text>
           )}
         </View>
       )}
@@ -262,7 +263,7 @@ export const FioriSegmentedProgress: React.FC<SegmentedProgressProps> = ({
 
   const a11yLabel = segmentPercentages
     .filter(seg => seg.label)
-    .map(seg => `${seg.label}: ${seg.percentage}%`)
+    .map(seg => `${seg.label}: ${localizeDigits(`${seg.percentage}%`)}`)
     .join(', ');
 
   // Render labels
@@ -273,7 +274,7 @@ export const FioriSegmentedProgress: React.FC<SegmentedProgressProps> = ({
           <View key={index} style={styles.segmentLabelItem}>
             <View style={[styles.segmentLabelDot, { backgroundColor: segment.color }]} />
             <Text style={styles.label}>
-              {segment.label}: <Text style={styles.percentage}>{segment.percentage}%</Text>
+              {segment.label}: <Text style={styles.percentage}>{localizeDigits(`${segment.percentage}%`)}</Text>
             </Text>
           </View>
         )
@@ -286,7 +287,7 @@ export const FioriSegmentedProgress: React.FC<SegmentedProgressProps> = ({
       style={[styles.container, style]}
       accessible={true}
       accessibilityRole="progressbar"
-      accessibilityLabel={a11yLabel || 'Segmented progress'}
+      accessibilityLabel={a11yLabel || tr('components.progress.segmented')}
     >
       {/* Labels (top) */}
       {showLabels && labelsPosition === 'top' && renderLabels()}

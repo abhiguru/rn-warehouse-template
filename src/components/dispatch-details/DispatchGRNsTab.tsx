@@ -22,6 +22,7 @@ import {
 } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { formatCount, formatDate, toDate, formatWeight } from '@/utils/formatters';
+import { t as tr } from '@/i18n';
 
 // Using snake_case to match backend RPC types
 interface GRNItemSummary {
@@ -208,9 +209,9 @@ export const DispatchGRNsTab: React.FC<DispatchGRNsTabProps> = ({
     return (
       <View style={styles.emptyContainer}>
         <Icon name="package-down" size={iconSize.hero} color={t.icon.secondary} style={styles.emptyIcon} />
-        <Text style={styles.emptyTitle}>No GRNs for this dispatch</Text>
+        <Text style={styles.emptyTitle}>{tr('grn.sourceGrns.emptyTitle')}</Text>
         <Text style={styles.emptySubtitle}>
-          GRNs whose items are in this dispatch appear here.
+          {tr('grn.sourceGrns.emptySubtitle')}
         </Text>
       </View>
     );
@@ -222,19 +223,23 @@ export const DispatchGRNsTab: React.FC<DispatchGRNsTabProps> = ({
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
     >
-      <Text style={styles.sectionHeaderText} accessibilityRole="header">Source GRNs</Text>
+      <Text style={styles.sectionHeaderText} accessibilityRole="header">{tr('grn.sourceGrns.heading')}</Text>
 
       {grns.map((grn) => {
         const dateLabel = toDate(grn.grn_date) ? formatDate(grn.grn_date, 'short') : '';
-        const itemCount = `${formatCount(grn.items.length, 'item')} dispatched`;
+        const itemCount = tr('grn.sourceGrns.itemsDispatched', { count: grn.items.length });
         return (
           <Pressable
             key={grn.grn_id}
             onPress={() => handleGRNPress(grn.grn_id)}
             disabled={!onViewGRN}
             accessibilityRole={onViewGRN ? 'button' : undefined}
-            accessibilityLabel={`GRN ${grn.grn_no}${dateLabel ? `, ${dateLabel}` : ''}, ${itemCount}`}
-            accessibilityHint={onViewGRN ? 'Opens the GRN' : undefined}
+            accessibilityLabel={
+              dateLabel
+                ? tr('grn.sourceGrns.cardLabelWithDate', { number: String(grn.grn_no), date: dateLabel, items: itemCount })
+                : tr('grn.sourceGrns.cardLabel', { number: String(grn.grn_no), items: itemCount })
+            }
+            accessibilityHint={onViewGRN ? tr('grn.sourceGrns.openHint') : undefined}
             style={({ pressed }) => [
               styles.card,
               pressed && onViewGRN && styles.cardPressed,
@@ -247,7 +252,7 @@ export const DispatchGRNsTab: React.FC<DispatchGRNsTabProps> = ({
                   <Icon name="package-down" size={iconSize.md} color={t.brand.tint} />
                 </View>
                 <View style={styles.grnInfo}>
-                  <Text style={styles.grnNo}>GRN {grn.grn_no}</Text>
+                  <Text style={styles.grnNo}>{tr('grn.details.titleWithNumber', { number: String(grn.grn_no) })}</Text>
                   {!!dateLabel && <Text style={styles.grnDate}>{dateLabel}</Text>}
                 </View>
               </View>
@@ -276,7 +281,7 @@ export const DispatchGRNsTab: React.FC<DispatchGRNsTabProps> = ({
                           <View style={styles.detailPill}>
                             <Icon name="package-variant-closed" size={iconSize.sm} color={t.status.neutral.text} />
                             <Text style={styles.detailPillText} maxFontSizeMultiplier={1.6}>
-                              Received {bags(item.original_quantity)}
+                              {tr('grn.sourceGrns.receivedBags', { bags: bags(item.original_quantity) })}
                             </Text>
                           </View>
                         )}

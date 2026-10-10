@@ -40,7 +40,8 @@ import { createLogger } from '@/utils/logger';
 
 import { showAlert } from '@/utils/alert';
 import { Avatar } from '@/components/ui';
-import { formatCount, formatDate } from '@/utils/formatters';
+import { formatCount, formatDate, formatNumber } from '@/utils/formatters';
+import { t as tr } from '@/i18n';
 const itemPricingScreenLogger = createLogger('ItemPricingScreen');
 
 // Section type for grouped pricing data
@@ -169,13 +170,13 @@ const ItemPricingScreen: React.FC = () => {
             offset: offset,
           });
         } else {
-          const errorMsg = result.message || result.error || 'Check your connection and try again.';
+          const errorMsg = result.message || result.error || tr('common.checkConnection');
           const totalDuration = Date.now() - startTime;
           itemPricingScreenLogger.warn(`[${fetchId}] Fetch failed after ${totalDuration}ms`, {
             success: result.success,
             message: errorMsg
           });
-          showAlert("Couldn't load prices", errorMsg);
+          showAlert(tr('pricing.list.loadErrorTitle'), errorMsg);
         }
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : String(err);
@@ -184,7 +185,7 @@ const ItemPricingScreen: React.FC = () => {
           error: errorMessage,
           type: typeof err
         });
-        showAlert("Couldn't load prices", 'Check your connection and try again.');
+        showAlert(tr('pricing.list.loadErrorTitle'), tr('common.checkConnection'));
       } finally {
         const totalDuration = Date.now() - startTime;
         itemPricingScreenLogger.info(`[${fetchId}] === TOTAL LOAD TIME: ${totalDuration}ms ===`);
@@ -216,12 +217,12 @@ const ItemPricingScreen: React.FC = () => {
         setDeleteDialogVisible(false);
         setPriceToDelete(null);
       } else {
-        showAlert("Couldn't delete the price", result.message || 'Try again in a moment.');
+        showAlert(tr('pricing.list.couldNotDeleteTitle'), result.message || tr('pricing.list.tryAgainInAMoment'));
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);
       itemPricingScreenLogger.error('Delete error:', { error: errorMessage, type: typeof err });
-      showAlert("Couldn't delete the price", 'Check your connection and try again.');
+      showAlert(tr('pricing.list.couldNotDeleteTitle'), tr('common.checkConnection'));
     } finally {
       setDeleting(false);
     }
@@ -399,7 +400,7 @@ const ItemPricingScreen: React.FC = () => {
             pressed && styles.sectionHeaderPressed,
           ]}
           accessibilityRole="button"
-          accessibilityLabel={`${info.section.title}, ${formatCount(count, 'price')}`}
+          accessibilityLabel={tr('pricing.list.sectionLabel', { title: info.section.title, count: formatCount(count, 'price') })}
           accessibilityState={{ expanded: isExpanded }}
         >
           <View style={styles.sectionHeaderIcon}>
@@ -410,7 +411,7 @@ const ItemPricingScreen: React.FC = () => {
           </Text>
           <View style={styles.sectionHeaderBadge}>
             <Text style={styles.sectionHeaderBadgeText} maxFontSizeMultiplier={1.6}>
-              {count}
+              {formatNumber(count)}
             </Text>
           </View>
           <Icon
@@ -427,9 +428,9 @@ const ItemPricingScreen: React.FC = () => {
   const renderFooter = () => {
     if (!loadingMore) return null;
     return (
-      <View style={styles.footerLoader} accessibilityRole="progressbar" accessibilityLabel="Loading more prices">
+      <View style={styles.footerLoader} accessibilityRole="progressbar" accessibilityLabel={tr('pricing.list.loadingMoreLabel')}>
         <ActivityIndicator size="small" color={t.brand.tint} />
-        <Text style={styles.footerLoaderText}>Loading more…</Text>
+        <Text style={styles.footerLoaderText}>{tr('common.loadingMore')}</Text>
       </View>
     );
   };
@@ -440,7 +441,7 @@ const ItemPricingScreen: React.FC = () => {
         <View style={styles.titleRow}>
           <HeaderBackButton />
           <Text style={styles.title} accessibilityRole="header" numberOfLines={1}>
-            Item pricing
+            {tr('pricing.list.title')}
           </Text>
         </View>
         <View style={styles.headerActions}>
@@ -449,7 +450,7 @@ const ItemPricingScreen: React.FC = () => {
               style={styles.iconButton}
               onPress={handleCreatePrice}
               accessibilityRole="button"
-              accessibilityLabel="Add price"
+              accessibilityLabel={tr('pricing.list.addPrice')}
             >
               <Icon name="plus" size={iconSize.lg} color={t.brand.tint} />
             </Pressable>
@@ -459,7 +460,7 @@ const ItemPricingScreen: React.FC = () => {
               style={styles.iconButton}
               onPress={() => router.push('/settings')}
               accessibilityRole="button"
-              accessibilityLabel="Settings"
+              accessibilityLabel={tr('pricing.list.settings')}
             >
               <Avatar name={userProfile.name} id={userProfile.id} size="sm" />
             </Pressable>
@@ -479,7 +480,7 @@ const ItemPricingScreen: React.FC = () => {
           renderItem={() => <ListSkeletonCard metricsCount={3} showFooter={true} />}
           keyExtractor={(item: number) => item.toString()}
           contentContainerStyle={styles.listContent}
-          accessibilityLabel="Loading prices"
+          accessibilityLabel={tr('pricing.card.loadingLabel')}
         />
       </View>
     );
@@ -524,13 +525,13 @@ const ItemPricingScreen: React.FC = () => {
           activeFilterCount={activeFilterCount}
           emptyIcon="cash"
           filteredIcon="filter-variant"
-          emptyTitle="No prices yet"
-          filteredTitle="No prices match these filters"
-          emptySubtitle={canManagePrices() ? 'Prices you add appear here.' : 'No prices have been set up yet.'}
-          filteredSubtitle="Try removing a filter or clearing them all."
+          emptyTitle={tr('pricing.list.emptyTitle')}
+          filteredTitle={tr('pricing.list.filteredTitle')}
+          emptySubtitle={canManagePrices() ? tr('pricing.list.emptySubtitleManage') : tr('pricing.list.emptySubtitleView')}
+          filteredSubtitle={tr('pricing.list.filteredSubtitle')}
           onClearFilters={filters.clear}
           showCreateButton={canManagePrices() && activeFilterCount === 0}
-          createButtonLabel="Add price"
+          createButtonLabel={tr('pricing.list.addPrice')}
           createButtonIcon="plus"
           onCreatePress={handleCreatePrice}
         />
@@ -548,7 +549,7 @@ const ItemPricingScreen: React.FC = () => {
           style={styles.modalOverlay}
           onPress={() => !deleting && setDeleteDialogVisible(false)}
           accessibilityRole="button"
-          accessibilityLabel="Cancel"
+          accessibilityLabel={tr('common.cancel')}
         >
           <Pressable
             style={styles.modalDialog}
@@ -559,14 +560,14 @@ const ItemPricingScreen: React.FC = () => {
             <View style={styles.modalHeader}>
               <Icon name="alert-circle-outline" size={iconSize.lg} color={t.status.negative.text} />
               <Text style={styles.modalTitle} accessibilityRole="header">
-                Delete this price?
+                {tr('pricing.list.deleteTitle')}
               </Text>
             </View>
 
             <Text style={styles.modalText}>
-              The price for {priceToDelete?.item_name}
-              {priceToDelete?.customer_name ? ` (${priceToDelete.customer_name})` : ' (default)'} will be
-              removed. You can't undo this.
+              {priceToDelete?.customer_name
+                ? tr('pricing.list.deleteMessageCustomer', { item: priceToDelete?.item_name, customer: priceToDelete.customer_name })
+                : tr('pricing.list.deleteMessageDefault', { item: priceToDelete?.item_name })}
             </Text>
 
             <View style={styles.modalActions}>
@@ -577,20 +578,20 @@ const ItemPricingScreen: React.FC = () => {
                 accessibilityRole="button"
                 accessibilityState={{ disabled: deleting }}
               >
-                <Text style={styles.modalButtonTextSecondary}>Cancel</Text>
+                <Text style={styles.modalButtonTextSecondary}>{tr('common.cancel')}</Text>
               </Pressable>
               <Pressable
                 style={({ pressed }) => [styles.modalButton, styles.modalButtonDestructive, pressed && styles.modalButtonDestructivePressed]}
                 onPress={handleDeleteConfirm}
                 disabled={deleting}
                 accessibilityRole="button"
-                accessibilityLabel="Delete price"
+                accessibilityLabel={tr('pricing.list.deletePrice')}
                 accessibilityState={{ busy: deleting }}
               >
                 {deleting ? (
                   <ActivityIndicator size="small" color={t.destructive.onFill} />
                 ) : (
-                  <Text style={styles.modalButtonTextDestructive}>Delete price</Text>
+                  <Text style={styles.modalButtonTextDestructive}>{tr('pricing.list.deletePrice')}</Text>
                 )}
               </Pressable>
             </View>

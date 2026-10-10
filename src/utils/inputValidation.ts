@@ -6,8 +6,12 @@
  */
 
 import { createLogger } from './logger';
+import { localizeDigits, normalizeDigits, t } from '@/i18n';
 
 const validationLogger = createLogger('InputValidation');
+
+/** A limit inside a message: the number as written in code, in the language's digits (no grouping). */
+const asLimit = (value: number | undefined): string => (value === undefined ? '' : localizeDigits(String(value)));
 
 /**
  * Validation error class
@@ -51,7 +55,7 @@ const PATTERNS = {
  */
 export const sanitizeString = (input: string): string => {
   if (typeof input !== 'string') {
-    throw new ValidationError('Input must be a string');
+    throw new ValidationError(t('validation.input.mustBeString'));
   }
 
   // Remove null bytes, control characters
@@ -66,16 +70,16 @@ export const sanitizeString = (input: string): string => {
 /**
  * Validate UUID format
  */
-export const validateUUID = (id: unknown, fieldName: string = 'ID'): string => {
+export const validateUUID = (id: unknown, fieldName: string = t('validation.fieldName.id')): string => {
   if (typeof id !== 'string') {
-    throw new ValidationError(`${fieldName} must be a string`, fieldName);
+    throw new ValidationError(t('validation.input.fieldMustBeString', { field: fieldName }), fieldName);
   }
 
   const sanitized = sanitizeString(id);
 
   if (!PATTERNS.UUID.test(sanitized)) {
     validationLogger.warn(`Invalid UUID format for ${fieldName}: ${sanitized.substring(0, 8)}...`);
-    throw new ValidationError(`${fieldName} must be a valid UUID`, fieldName);
+    throw new ValidationError(t('validation.input.uuid', { field: fieldName }), fieldName);
   }
 
   return sanitized;
@@ -84,19 +88,20 @@ export const validateUUID = (id: unknown, fieldName: string = 'ID'): string => {
 /**
  * Validate phone number (Indian format)
  */
-export const validatePhone = (phone: unknown, fieldName: string = 'Phone'): string => {
+export const validatePhone = (phone: unknown, fieldName: string = t('validation.fieldName.phone')): string => {
   if (typeof phone !== 'string' && typeof phone !== 'number') {
-    throw new ValidationError(`${fieldName} must be a string or number`, fieldName);
+    throw new ValidationError(t('validation.input.stringOrNumber', { field: fieldName }), fieldName);
   }
 
-  const sanitized = sanitizeString(String(phone));
+  // ૦-૯ typed on a Gujarati keyboard mean the same as 0-9.
+  const sanitized = normalizeDigits(sanitizeString(String(phone)));
 
   // Remove country code if present
   const phoneNumber = sanitized.replace(/^91/, '');
 
   if (!PATTERNS.PHONE.test(phoneNumber)) {
     validationLogger.warn(`Invalid phone format for ${fieldName}`);
-    throw new ValidationError(`${fieldName} must be a valid 10-digit Indian phone number`, fieldName);
+    throw new ValidationError(t('validation.input.phone', { field: fieldName }), fieldName);
   }
 
   return phoneNumber;
@@ -105,16 +110,16 @@ export const validatePhone = (phone: unknown, fieldName: string = 'Phone'): stri
 /**
  * Validate email address
  */
-export const validateEmail = (email: unknown, fieldName: string = 'Email'): string => {
+export const validateEmail = (email: unknown, fieldName: string = t('validation.fieldName.email')): string => {
   if (typeof email !== 'string') {
-    throw new ValidationError(`${fieldName} must be a string`, fieldName);
+    throw new ValidationError(t('validation.input.fieldMustBeString', { field: fieldName }), fieldName);
   }
 
   const sanitized = sanitizeString(email).toLowerCase();
 
   if (!PATTERNS.EMAIL.test(sanitized)) {
     validationLogger.warn(`Invalid email format for ${fieldName}`);
-    throw new ValidationError(`${fieldName} must be a valid email address`, fieldName);
+    throw new ValidationError(t('validation.input.email', { field: fieldName }), fieldName);
   }
 
   return sanitized;
@@ -125,21 +130,21 @@ export const validateEmail = (email: unknown, fieldName: string = 'Email'): stri
  */
 export const validatePositiveInt = (
   value: unknown,
-  fieldName: string = 'Value',
+  fieldName: string = t('validation.fieldName.value'),
   options: { min?: number; max?: number } = {}
 ): number => {
-  const num = typeof value === 'string' ? parseInt(value, 10) : Number(value);
+  const num = typeof value === 'string' ? parseInt(normalizeDigits(value), 10) : Number(value);
 
   if (isNaN(num) || !Number.isInteger(num) || num < 0) {
-    throw new ValidationError(`${fieldName} must be a positive integer`, fieldName);
+    throw new ValidationError(t('validation.input.positiveInteger', { field: fieldName }), fieldName);
   }
 
   if (options.min !== undefined && num < options.min) {
-    throw new ValidationError(`${fieldName} must be at least ${options.min}`, fieldName);
+    throw new ValidationError(t('validation.field.min', { field: fieldName, min: asLimit(options.min) }), fieldName);
   }
 
   if (options.max !== undefined && num > options.max) {
-    throw new ValidationError(`${fieldName} must be at most ${options.max}`, fieldName);
+    throw new ValidationError(t('validation.field.max', { field: fieldName, max: asLimit(options.max) }), fieldName);
   }
 
   return num;
@@ -150,28 +155,28 @@ export const validatePositiveInt = (
  */
 export const validatePositiveDecimal = (
   value: unknown,
-  fieldName: string = 'Value',
+  fieldName: string = t('validation.fieldName.value'),
   options: { min?: number; max?: number; maxDecimals?: number } = {}
 ): number => {
-  const num = typeof value === 'string' ? parseFloat(value) : Number(value);
+  const num = typeof value === 'string' ? parseFloat(normalizeDigits(value)) : Number(value);
 
   if (isNaN(num) || num < 0) {
-    throw new ValidationError(`${fieldName} must be a positive number`, fieldName);
+    throw new ValidationError(t('validation.input.positiveNumber', { field: fieldName }), fieldName);
   }
 
   if (options.min !== undefined && num < options.min) {
-    throw new ValidationError(`${fieldName} must be at least ${options.min}`, fieldName);
+    throw new ValidationError(t('validation.field.min', { field: fieldName, min: asLimit(options.min) }), fieldName);
   }
 
   if (options.max !== undefined && num > options.max) {
-    throw new ValidationError(`${fieldName} must be at most ${options.max}`, fieldName);
+    throw new ValidationError(t('validation.field.max', { field: fieldName, max: asLimit(options.max) }), fieldName);
   }
 
   if (options.maxDecimals !== undefined) {
     const decimals = (num.toString().split('.')[1] || '').length;
     if (decimals > options.maxDecimals) {
       throw new ValidationError(
-        `${fieldName} must have at most ${options.maxDecimals} decimal places`,
+        t('validation.input.maxDecimals', { field: fieldName, max: asLimit(options.maxDecimals) }),
         fieldName
       );
     }
@@ -183,21 +188,21 @@ export const validatePositiveDecimal = (
 /**
  * Validate date string (ISO format)
  */
-export const validateDate = (date: unknown, fieldName: string = 'Date'): string => {
+export const validateDate = (date: unknown, fieldName: string = t('validation.fieldName.date')): string => {
   if (typeof date !== 'string') {
-    throw new ValidationError(`${fieldName} must be a string`, fieldName);
+    throw new ValidationError(t('validation.input.fieldMustBeString', { field: fieldName }), fieldName);
   }
 
   const sanitized = sanitizeString(date);
 
   if (!PATTERNS.ISO_DATE.test(sanitized)) {
-    throw new ValidationError(`${fieldName} must be a valid ISO date string`, fieldName);
+    throw new ValidationError(t('validation.input.isoDate', { field: fieldName }), fieldName);
   }
 
   // Verify it's a valid date
   const dateObj = new Date(sanitized);
   if (isNaN(dateObj.getTime())) {
-    throw new ValidationError(`${fieldName} must be a valid date`, fieldName);
+    throw new ValidationError(t('validation.input.validDate', { field: fieldName }), fieldName);
   }
 
   return sanitized;
@@ -208,12 +213,12 @@ export const validateDate = (date: unknown, fieldName: string = 'Date'): string 
  */
 export const validateSafeText = (
   text: unknown,
-  fieldName: string = 'Text',
+  fieldName: string = t('validation.fieldName.text'),
   options: { minLength?: number; maxLength?: number; required?: boolean } = {}
 ): string => {
   if (typeof text !== 'string') {
     if (options.required) {
-      throw new ValidationError(`${fieldName} is required`, fieldName);
+      throw new ValidationError(t('validation.field.required', { field: fieldName }), fieldName);
     }
     return '';
   }
@@ -221,19 +226,19 @@ export const validateSafeText = (
   const sanitized = sanitizeString(text);
 
   if (options.required && sanitized.length === 0) {
-    throw new ValidationError(`${fieldName} is required`, fieldName);
+    throw new ValidationError(t('validation.field.required', { field: fieldName }), fieldName);
   }
 
   if (options.minLength !== undefined && sanitized.length < options.minLength) {
     throw new ValidationError(
-      `${fieldName} must be at least ${options.minLength} characters`,
+      t('validation.field.minChars', { field: fieldName, min: asLimit(options.minLength) }),
       fieldName
     );
   }
 
   if (options.maxLength !== undefined && sanitized.length > options.maxLength) {
     throw new ValidationError(
-      `${fieldName} must be at most ${options.maxLength} characters`,
+      t('validation.field.maxChars', { field: fieldName, max: asLimit(options.maxLength) }),
       fieldName
     );
   }
@@ -242,7 +247,7 @@ export const validateSafeText = (
   if (sanitized && !PATTERNS.SAFE_TEXT.test(sanitized)) {
     validationLogger.warn(`Unsafe characters detected in ${fieldName}`);
     throw new ValidationError(
-      `${fieldName} contains invalid characters. Only letters, numbers, spaces, and basic punctuation are allowed.`,
+      t('validation.input.unsafeCharacters', { field: fieldName }),
       fieldName
     );
   }
@@ -258,11 +263,11 @@ export const validatePagination = (params: {
   offset?: unknown;
 }): { limit: number; offset: number } => {
   const limit = params.limit !== undefined
-    ? validatePositiveInt(params.limit, 'Limit', { min: 1, max: 1000 })
+    ? validatePositiveInt(params.limit, t('validation.fieldName.limit'), { min: 1, max: 1000 })
     : 50; // Default limit
 
   const offset = params.offset !== undefined
-    ? validatePositiveInt(params.offset, 'Offset', { min: 0 })
+    ? validatePositiveInt(params.offset, t('validation.fieldName.offset'), { min: 0 })
     : 0; // Default offset
 
   return { limit, offset };
@@ -273,23 +278,23 @@ export const validatePagination = (params: {
  */
 export const validateUUIDArray = (
   ids: unknown,
-  fieldName: string = 'IDs',
+  fieldName: string = t('validation.fieldName.ids'),
   options: { minLength?: number; maxLength?: number } = {}
 ): string[] => {
   if (!Array.isArray(ids)) {
-    throw new ValidationError(`${fieldName} must be an array`, fieldName);
+    throw new ValidationError(t('validation.input.mustBeArray', { field: fieldName }), fieldName);
   }
 
   if (options.minLength !== undefined && ids.length < options.minLength) {
     throw new ValidationError(
-      `${fieldName} must contain at least ${options.minLength} items`,
+      t('validation.input.minArray', { field: fieldName, min: asLimit(options.minLength) }),
       fieldName
     );
   }
 
   if (options.maxLength !== undefined && ids.length > options.maxLength) {
     throw new ValidationError(
-      `${fieldName} must contain at most ${options.maxLength} items`,
+      t('validation.input.maxArray', { field: fieldName, max: asLimit(options.maxLength) }),
       fieldName
     );
   }
@@ -313,7 +318,7 @@ export const validateFields = (
       if (error instanceof ValidationError) {
         errors.push(error);
       } else {
-        errors.push(new ValidationError('Unexpected validation error'));
+        errors.push(new ValidationError(t('validation.input.unexpected')));
       }
     }
   }

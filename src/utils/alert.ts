@@ -7,6 +7,7 @@
  * host is mounted, for example in unit tests, it falls back to Alert.alert.
  */
 import { Alert, type AlertButton, type AlertOptions } from 'react-native';
+import { t } from '@/i18n';
 
 export interface AlertRequest {
   id: number;
@@ -46,7 +47,7 @@ export function showAlert(
     id: nextId++,
     title,
     message,
-    buttons: buttons && buttons.length > 0 ? buttons : [{ text: 'OK' }],
+    buttons: buttons && buttons.length > 0 ? buttons : [{ text: t('common.ok') }],
     options,
   });
 }

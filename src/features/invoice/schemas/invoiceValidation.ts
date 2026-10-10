@@ -1,62 +1,96 @@
 import * as yup from 'yup';
-import {
-  pastDateField,
-  requiredUuidField,
-  requiredStringField,
-  quantityField,
-  percentageField,
-  requiredMoneyField,
-  createStepValidator,
-  type ValidationResult,
-} from '@/utils/validationHelpers';
+import { createStepValidator, type ValidationResult } from '@/utils/validationHelpers';
+import { t, type TranslationKey, type TranslationParams } from '@/i18n';
+
+/**
+ * A message that is read when validation fails, not when this file is loaded,
+ * so it follows the app's language (docs/I18N.md rule 2). Each message is a
+ * whole sentence of its own; the shared field helpers in validationHelpers
+ * build theirs from an English field name, so they are not used here.
+ */
+const msg = (key: TranslationKey, params?: TranslationParams) => () => t(key, params);
+
+/** A required amount of money from 0 to 999999.99. */
+const moneyField = (messages: { negative: TranslationKey; tooLarge: TranslationKey; required: TranslationKey }) =>
+  yup
+    .number()
+    .min(0, msg(messages.negative))
+    .max(999999.99, msg(messages.tooLarge))
+    .required(msg(messages.required));
 
 // Step 1: Invoice Header Schema
 export const step1Schema = yup.object().shape({
-  inv_date: pastDateField('Invoice date'),
+  inv_date: yup
+    .date()
+    .required(msg('invoice.validation.invoiceDateRequired'))
+    .max(new Date(), msg('invoice.validation.futureDate')),
 
   inv_fin_year: yup
     .string()
-    .required('Financial year is required')
-    .matches(/^\d{4}-\d{2}$/, 'Enter the financial year as YYYY-YY, for example 2025-26.'),
+    .required(msg('invoice.validation.financialYearRequired'))
+    .matches(/^\d{4}-\d{2}$/, msg('invoice.validation.financialYearFormat', { example: '2025-26' })),
 
-  inv_no: quantityField('Invoice number'),
+  inv_no: yup
+    .number()
+    .required(msg('invoice.validation.invoiceNumberRequired'))
+    .positive(msg('invoice.validation.invoiceNumberPositive'))
+    .integer(msg('invoice.validation.invoiceNumberWhole'))
+    .min(1, msg('invoice.validation.invoiceNumberMin')),
 
-  gr_id: requiredUuidField('GRN'),
+  gr_id: yup.string().uuid(msg('invoice.validation.grnInvalid')).required(msg('invoice.validation.grnRequired')),
 
-  gr_no: yup.string().required('GRN number is required'),
+  gr_no: yup.string().required(msg('invoice.validation.grnNumberRequired')),
 
-  customer_id: requiredUuidField('Customer'),
+  customer_id: yup
+    .string()
+    .uuid(msg('invoice.validation.customerInvalid'))
+    .required(msg('invoice.validation.customerRequired')),
 
-  customer_name: requiredStringField('Customer name', 200),
+  customer_name: yup
+    .string()
+    .required(msg('invoice.validation.customerNameRequired'))
+    .max(200, msg('invoice.validation.customerNameTooLong')),
 
-  one_time_charge: yup.boolean().required('One-time charge flag is required'),
+  one_time_charge: yup.boolean().required(msg('invoice.validation.oneTimeChargeRequired')),
 
   // Discount can be negative (acts as a surcharge when negative)
   discount: yup
     .number()
-    .max(999999.99, 'Discount is too large')
-    .min(-999999.99, 'Discount is too small'),
+    .max(999999.99, msg('invoice.validation.discountTooLarge'))
+    .min(-999999.99, msg('invoice.validation.discountTooSmall')),
 });
 
 // Step 2: Invoice Items Schema
 export const itemPricingSchema = yup.object().shape({
   duration: yup
     .number()
-    .required('Duration is required')
-    .positive('Duration must be positive')
-    .min(0.5, 'Duration must be at least 0.5 months'),
+    .required(msg('invoice.validation.durationRequired'))
+    .positive(msg('invoice.validation.durationPositive'))
+    .min(0.5, msg('invoice.validation.durationMin')),
 
   no_of_days: yup
     .number()
-    .required('Number of days is required')
-    .integer('Days must be a whole number')
-    .min(0, 'Days cannot be negative'),
+    .required(msg('invoice.validation.daysRequired'))
+    .integer(msg('invoice.validation.daysWhole'))
+    .min(0, msg('invoice.validation.daysNegative')),
 
-  charge: requiredMoneyField('Charge'),
+  charge: moneyField({
+    negative: 'invoice.validation.chargeNegative',
+    tooLarge: 'invoice.validation.chargeTooLarge',
+    required: 'invoice.validation.chargeRequired',
+  }),
 
-  labour_rate: requiredMoneyField('Labour rate'),
+  labour_rate: moneyField({
+    negative: 'invoice.validation.labourRateNegative',
+    tooLarge: 'invoice.validation.labourRateTooLarge',
+    required: 'invoice.validation.labourRateRequired',
+  }),
 
-  tax: percentageField('Tax'),
+  tax: yup
+    .number()
+    .required(msg('invoice.validation.taxRequired'))
+    .min(0, msg('invoice.validation.taxNegative'))
+    .max(100, msg('invoice.validation.taxTooHigh')),
 });
 
 export const step2Schema = yup.object().shape({
@@ -74,8 +108,8 @@ export const step2Schema = yup.object().shape({
         tax: itemPricingSchema.fields.tax,
       })
     )
-    .min(1, 'Add at least one item.')
-    .required('Items are required'),
+    .min(1, msg('invoice.validation.itemsMin'))
+    .required(msg('invoice.validation.itemsRequired')),
 });
 
 // Step 3: Full Invoice Schema (for final validation)
@@ -84,16 +118,16 @@ export const fullInvoiceSchema = yup.object().shape({
     yup.object().shape({
       labour: yup
         .number()
-        .required('Labour total is required')
-        .min(0, 'Labour cannot be negative'),
+        .required(msg('invoice.validation.labourTotalRequired'))
+        .min(0, msg('invoice.validation.labourNegative')),
       tax_amount: yup
         .number()
-        .required('Tax amount is required')
-        .min(0, 'Tax amount cannot be negative'),
+        .required(msg('invoice.validation.taxAmountRequired'))
+        .min(0, msg('invoice.validation.taxAmountNegative')),
       total: yup
         .number()
-        .required('Total is required')
-        .positive('Total must be positive'),
+        .required(msg('invoice.validation.totalRequired'))
+        .positive(msg('invoice.validation.totalPositive')),
     })
   ),
   items: step2Schema.fields.items,

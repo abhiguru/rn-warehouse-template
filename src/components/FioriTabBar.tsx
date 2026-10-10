@@ -37,6 +37,7 @@ import {
   typography,
   type ThemeTokens,
 } from '@/theme/tokens';
+import { localizeDigits, t as tr } from '@/i18n';
 
 const BADGE_SIZE = 18;
 
@@ -75,7 +76,7 @@ export default function FioriTabBar({
   const renderBadge = (count: number) => {
     if (count <= 0) return null;
 
-    const displayCount = count > 99 ? '99+' : count.toString();
+    const displayCount = localizeDigits(count > 99 ? '99+' : count.toString());
 
     return (
       <View style={styles.badge} importantForAccessibility="no-hide-descendants">
@@ -135,9 +136,16 @@ export default function FioriTabBar({
               onPress={onPress}
               onLongPress={onLongPress}
               accessibilityRole="tab"
-              accessibilityLabel={`${typeof label === 'string' ? label : route.name}${
-                badgeCount > 0 ? `, ${badgeCount} need action` : ''
-              }`}
+              accessibilityLabel={
+                badgeCount > 0
+                  ? tr('components.tabBar.tabWithBadge', {
+                      label: typeof label === 'string' ? label : route.name,
+                      count: localizeDigits(String(badgeCount)),
+                    })
+                  : typeof label === 'string'
+                    ? label
+                    : route.name
+              }
               accessibilityState={{ selected: isFocused }}
             >
               <View style={styles.iconContainer}>

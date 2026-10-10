@@ -23,6 +23,7 @@ import type { ThemeTokens } from '@/theme/tokens';
 import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
 import { createLogger } from '@/utils/logger';
 import { captureException } from '@/config/sentryConfig';
+import { t as tr } from '@/i18n';
 
 /** A MaterialCommunityIcons glyph name (style guide §8). */
 type IconName = string;
@@ -186,13 +187,13 @@ const makeStateStyles = (t: ThemeTokens) => ({
 });
 
 export function ErrorStateView({
-  title = 'Something went wrong',
+  title: titleProp,
   message,
   icon = 'alert-circle-outline',
   error,
   componentStack,
   onRetry,
-  retryLabel = 'Try again',
+  retryLabel: retryLabelProp,
   retryAccessibilityLabel,
   retryAccessibilityHint,
   secondaryActionLabel,
@@ -203,6 +204,8 @@ export function ErrorStateView({
   const styles = useThemedStyles(makeStateStyles);
   const t = useTokens();
   const isScreen = presentation === 'screen';
+  const title = titleProp ?? tr('components.errorBoundary.title');
+  const retryLabel = retryLabelProp ?? tr('common.retry');
 
   const body = (
     <ScrollView contentContainerStyle={styles.scrollContent}>
@@ -222,7 +225,7 @@ export function ErrorStateView({
 
         {__DEV__ && error ? (
           <View style={styles.devDetails}>
-            <Text style={styles.devTitle}>Details (development builds only)</Text>
+            <Text style={styles.devTitle}>{tr('components.devDetails')}</Text>
             <Text style={styles.devText} selectable>
               {error.toString()}
             </Text>
@@ -332,11 +335,11 @@ export class ErrorBoundary extends Component<Props, State> {
 
       return (
         <ErrorStateView
-          message="The app ran into a problem and couldn't show this screen. Try again. If it keeps happening, restart the app."
+          message={tr('components.errorBoundary.message')}
           error={this.state.error}
           componentStack={this.state.errorInfo?.componentStack}
           onRetry={this.handleReset}
-          retryAccessibilityHint="Reloads the screen"
+          retryAccessibilityHint={tr('components.errorBoundary.retryHint')}
         />
       );
     }

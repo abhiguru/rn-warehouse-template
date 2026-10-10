@@ -42,6 +42,7 @@ import type {
 import { formatDate, formatCount, formatCurrency, formatMonth } from '@/utils/formatters';
 import { formatInvoiceAmount } from '@/utils/invoiceCalculations';
 import { StatusTag } from '@/components/ui/StatusTag';
+import { localizeDigits, t as tr, type TranslationKey } from '@/i18n';
 
 // ============================================================================
 // Formatting
@@ -54,7 +55,12 @@ const formatSummaryAmount = (amount: number): string =>
 /** Month row title (2025-12 -> "Dec 2025"). */
 const formatMonthRow = (monthStr: string): string => formatMonth(`${monthStr.slice(0, 7)}-01`, 'short');
 
-const LOAD_ERROR = "Couldn't load the invoice history. Check your connection and try again.";
+// Keys, not text: the text is looked up when it is drawn (docs/I18N.md rule 2).
+const LOAD_ERROR: TranslationKey = 'reports.invoiceHistory.loadError';
+const NO_CUSTOMER_ERROR: TranslationKey = 'reports.invoiceHistory.noCustomer';
+
+/** An invoice amount with the language's digits ("₹1,250.00"). */
+const formatAmount = (amount: number | null | undefined): string => localizeDigits(formatInvoiceAmount(amount));
 
 // ============================================================================
 // Styles
@@ -214,12 +220,12 @@ const MonthlyBreakdownCard: React.FC<MonthlyBreakdownCardProps> = ({ months, isE
         style={({ pressed }) => [styles.monthlyHeader, pressed && styles.monthlyHeaderPressed]}
         onPress={onToggle}
         accessibilityRole="button"
-        accessibilityLabel="Monthly breakdown"
+        accessibilityLabel={tr('reports.invoiceHistory.monthlyBreakdown')}
         accessibilityState={{ expanded: isExpanded }}
       >
         <View style={styles.monthlyHeaderLeft}>
           <Icon name="calendar-month-outline" size={iconSize.md} color={t.brand.tint} />
-          <Text style={styles.monthlyHeaderTitle}>Monthly breakdown</Text>
+          <Text style={styles.monthlyHeaderTitle}>{tr('reports.invoiceHistory.monthlyBreakdown')}</Text>
         </View>
         <Icon
           name={isExpanded ? 'chevron-up' : 'chevron-down'}
@@ -261,9 +267,9 @@ const InvoiceCard: React.FC<InvoiceCardProps> = ({ invoice }) => {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
   const isPaid = invoice.payment_status?.status === 'paid';
-  const statusLabel = isPaid ? 'Paid' : 'Pending';
+  const statusLabel = tr(isPaid ? 'reports.customerActivity.paid' : 'common.pending');
   const itemsLabel = formatCount(invoice.item_count, 'item');
-  const subtitle = [formatDate(invoice.invoice_date, 'short'), invoice.grn_ref ? `GRN ${invoice.grn_ref}` : null]
+  const subtitle = [formatDate(invoice.invoice_date, 'short'), invoice.grn_ref ? tr('reports.customerActivity.grnNumber', { number: invoice.grn_ref }) : null]
     .filter(Boolean)
     .join(' · ');
 
@@ -276,8 +282,14 @@ const InvoiceCard: React.FC<InvoiceCardProps> = ({ invoice }) => {
       style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
       onPress={handlePress}
       accessibilityRole="button"
-      accessibilityLabel={`Invoice ${invoice.invoice_number}, ${subtitle}, ${formatInvoiceAmount(invoice.net_total)}, ${itemsLabel}, ${statusLabel}`}
-      accessibilityHint="Opens the invoice"
+      accessibilityLabel={tr('reports.invoiceHistory.cardLabel', {
+        number: invoice.invoice_number,
+        subtitle,
+        amount: formatAmount(invoice.net_total),
+        items: itemsLabel,
+        status: statusLabel,
+      })}
+      accessibilityHint={tr('reports.invoiceHistory.openHint')}
     >
       <View style={styles.objectCell}>
         <View style={styles.cellIcon}>
@@ -286,7 +298,7 @@ const InvoiceCard: React.FC<InvoiceCardProps> = ({ invoice }) => {
 
         <View style={styles.cellContent}>
           <Text style={styles.cellTitle} numberOfLines={2}>
-            Invoice {invoice.invoice_number}
+            {tr('reports.customerActivity.invoiceNumber', { number: invoice.invoice_number })}
           </Text>
           <Text style={styles.cellSubtitle} numberOfLines={2}>
             {subtitle}
@@ -294,7 +306,7 @@ const InvoiceCard: React.FC<InvoiceCardProps> = ({ invoice }) => {
         </View>
 
         <View style={styles.amountInfo}>
-          <Text style={styles.amountValue}>{formatInvoiceAmount(invoice.net_total)}</Text>
+          <Text style={styles.amountValue}>{formatAmount(invoice.net_total)}</Text>
           <Text style={styles.amountLabel}>{itemsLabel}</Text>
           <StatusTag status={isPaid ? 'positive' : 'critical'} label={statusLabel} />
         </View>
@@ -322,8 +334,8 @@ const CustomerCard: React.FC<CustomerCardProps> = ({ customer, onPress }) => {
       style={({ pressed }) => [pressed && styles.cardPressed]}
       onPress={onPress}
       accessibilityRole="button"
-      accessibilityLabel={[customer.customer_name, countLabel, latest ? `latest ${latest}` : null].filter(Boolean).join(', ')}
-      accessibilityHint="Shows this customer's invoices"
+      accessibilityLabel={[customer.customer_name, countLabel, latest ? tr('reports.invoiceHistory.latestDate', { date: latest }) : null].filter(Boolean).join(', ')}
+      accessibilityHint={tr('reports.invoiceHistory.customerHint')}
     >
       <View style={styles.objectCell}>
         <View style={[styles.cellIcon, styles.cellIconBrand]}>
@@ -332,7 +344,7 @@ const CustomerCard: React.FC<CustomerCardProps> = ({ customer, onPress }) => {
         <View style={styles.cellContent}>
           <Text style={styles.cellTitle} numberOfLines={2}>{customer.customer_name}</Text>
           <Text style={styles.cellSubtitle}>
-            {countLabel}{latest ? ` · Latest ${latest}` : ''}
+            {latest ? tr('reports.invoiceHistory.customerSubtitle', { invoices: countLabel, date: latest }) : countLabel}
           </Text>
         </View>
         <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />
@@ -368,7 +380,7 @@ export default function InvoiceHistoryScreen() {
   const [allCustomersData, setAllCustomersData] = useState<AllInvoiceHistoryData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<TranslationKey | null>(null);
   const [selectedPeriod, setSelectedPeriod] = useState<ReportPeriod>('last120days');
   const [monthlyExpanded, setMonthlyExpanded] = useState(false);
   const [viewMode, setViewMode] = useState<'all' | 'single'>('all');
@@ -447,7 +459,7 @@ export default function InvoiceHistoryScreen() {
     } else if (singleAssignedCustomerId) {
       fetchSingleCustomerData(singleAssignedCustomerId, selectedPeriod);
     } else {
-      setError('Your account has no customer assigned yet. Ask your facility to assign one.');
+      setError(NO_CUSTOMER_ERROR);
       setIsLoading(false);
     }
   }, []);
@@ -531,8 +543,8 @@ export default function InvoiceHistoryScreen() {
     if (!allCustomersData?.summary) return [];
     const s = allCustomersData.summary;
     return [
-      { icon: 'file-document-outline', value: s.total_invoices, label: 'Invoices', variant: 'primary' },
-      { icon: 'currency-inr', value: formatSummaryAmount(s.net_amount), label: 'Net amount', variant: 'secondary' },
+      { icon: 'file-document-outline', value: s.total_invoices, label: tr('reports.invoiceHistory.invoices'), variant: 'primary' },
+      { icon: 'currency-inr', value: formatSummaryAmount(s.net_amount), label: tr('reports.invoiceHistory.netAmount'), variant: 'secondary' },
     ];
   }, [allCustomersData?.summary]);
 
@@ -541,14 +553,14 @@ export default function InvoiceHistoryScreen() {
     if (!data?.summary) return [];
     const s = data.summary;
     return [
-      { icon: 'file-document-outline', value: s.total_invoices, label: 'Invoices', variant: 'primary' },
-      { icon: 'check-circle', value: formatSummaryAmount(s.paid_amount), label: `Paid (${s.paid_count})`, variant: 'success' },
-      { icon: 'alert', value: formatSummaryAmount(s.pending_amount), label: `Pending (${s.pending_count})`, variant: 'warning' },
+      { icon: 'file-document-outline', value: s.total_invoices, label: tr('reports.invoiceHistory.invoices'), variant: 'primary' },
+      { icon: 'check-circle', value: formatSummaryAmount(s.paid_amount), label: tr('reports.invoiceHistory.paidCount', { count: s.paid_count }), variant: 'success' },
+      { icon: 'alert', value: formatSummaryAmount(s.pending_amount), label: tr('reports.invoiceHistory.pendingCount', { count: s.pending_count }), variant: 'warning' },
     ];
   }, [data?.summary]);
 
   const { from, to } = getDateRangeForPeriod(selectedPeriod);
-  const dateRangeText = `${formatDate(from, 'medium')} – ${formatDate(to, 'medium')}`;
+  const dateRangeText = tr('reports.invoiceHistory.dateRange', { from: formatDate(from, 'medium'), to: formatDate(to, 'medium') });
 
   const isListView = shouldShowListView && viewMode === 'all';
   const hasData = isListView ? allCustomersData : data;
@@ -557,13 +569,13 @@ export default function InvoiceHistoryScreen() {
   if (isLoading && !hasData) {
     return (
       <View style={styles.container}>
-        <ReportHeader title="Invoice history" />
+        <ReportHeader title={tr('reports.titles.invoiceHistory')} />
         <PeriodSelector selectedPeriod={selectedPeriod} onPeriodChange={handlePeriodChange} />
         <View style={styles.loadingContainer}>
           <KPIGrid
             items={[
-              { icon: 'file-document-outline', value: '-', label: 'Invoices', variant: 'primary' },
-              { icon: 'currency-inr', value: '-', label: 'Amount', variant: 'secondary' },
+              { icon: 'file-document-outline', value: '-', label: tr('reports.invoiceHistory.invoices'), variant: 'primary' },
+              { icon: 'currency-inr', value: '-', label: tr('common.amount'), variant: 'secondary' },
             ]}
             isLoading={true}
             compact
@@ -577,12 +589,12 @@ export default function InvoiceHistoryScreen() {
   if (error && !hasData) {
     return (
       <View style={styles.container}>
-        <ReportHeader title="Invoice history" />
+        <ReportHeader title={tr('reports.titles.invoiceHistory')} />
         <PeriodSelector selectedPeriod={selectedPeriod} onPeriodChange={handlePeriodChange} />
-        <ReportEmptyState icon="alert-circle-outline" message="Something went wrong" description={error} />
+        <ReportEmptyState icon="alert-circle-outline" message={tr('reports.customerActivity.errorTitle')} description={tr(error)} />
         {(shouldShowListView || singleAssignedCustomerId || selectedCustomer) && (
           <View style={styles.retry}>
-            <Button type="secondary" onPress={() => handlePeriodChange(selectedPeriod)}>Try again</Button>
+            <Button type="secondary" onPress={() => handlePeriodChange(selectedPeriod)}>{tr('common.retry')}</Button>
           </View>
         )}
       </View>
@@ -595,7 +607,10 @@ export default function InvoiceHistoryScreen() {
 
     return (
       <View style={styles.container}>
-        <ReportHeader title="Invoice history" subtitle={isStaff ? 'All customers' : 'My customers'} />
+        <ReportHeader
+          title={tr('reports.titles.invoiceHistory')}
+          subtitle={tr(isStaff ? 'reports.customerActivity.allCustomers' : 'reports.customerActivity.myCustomers')}
+        />
         <PeriodSelector selectedPeriod={selectedPeriod} onPeriodChange={handlePeriodChange} />
         <Text style={styles.dateRangeText}>{dateRangeText}</Text>
 
@@ -624,7 +639,7 @@ export default function InvoiceHistoryScreen() {
 
           {filteredCustomers.length > 0 ? (
             <View style={styles.section}>
-              <SectionHeader title="Customers" styles={styles} />
+              <SectionHeader title={tr('common.customers')} styles={styles} />
               <View style={styles.customersCard}>
                 {filteredCustomers.map((customer, index) => (
                   <React.Fragment key={customer.customer_id}>
@@ -637,8 +652,8 @@ export default function InvoiceHistoryScreen() {
           ) : (
             <ReportEmptyState
               icon="file-document-outline"
-              message={customerSearchQuery.trim() ? 'No customers match' : 'No invoices in this period'}
-              description={customerSearchQuery.trim() ? 'Try fewer letters or another name.' : 'Choose a longer period to see older invoices.'}
+              message={tr(customerSearchQuery.trim() ? 'reports.invoiceHistory.noMatch' : 'reports.invoiceHistory.emptyTitle')}
+              description={tr(customerSearchQuery.trim() ? 'reports.invoiceHistory.noMatchDescription' : 'reports.invoiceHistory.emptyDescription')}
             />
           )}
         </ScrollView>
@@ -651,7 +666,7 @@ export default function InvoiceHistoryScreen() {
     return (
       <View style={styles.container}>
         <ReportHeader
-          title="Invoice history"
+          title={tr('reports.titles.invoiceHistory')}
           subtitle={selectedCustomer?.customer_name}
           onBack={shouldShowListView || cameFromRouteParams.current ? handleBackToAll : undefined}
         />
@@ -659,8 +674,8 @@ export default function InvoiceHistoryScreen() {
         <Text style={styles.dateRangeText}>{dateRangeText}</Text>
         <ReportEmptyState
           icon="file-document-outline"
-          message="No invoices in this period"
-          description="Choose a longer period to see older invoices."
+          message={tr('reports.invoiceHistory.emptyTitle')}
+          description={tr('reports.invoiceHistory.emptyDescription')}
         />
       </View>
     );
@@ -669,7 +684,7 @@ export default function InvoiceHistoryScreen() {
   return (
     <View style={styles.container}>
       <ReportHeader
-        title="Invoice history"
+        title={tr('reports.titles.invoiceHistory')}
         subtitle={selectedCustomer?.customer_name}
         onBack={shouldShowListView || cameFromRouteParams.current ? handleBackToAll : undefined}
       />
@@ -705,7 +720,7 @@ export default function InvoiceHistoryScreen() {
 
         {/* Invoices List */}
         <View style={styles.section}>
-          <SectionHeader title="Invoices" styles={styles} />
+          <SectionHeader title={tr('reports.invoiceHistory.invoices')} styles={styles} />
           <View style={styles.invoicesList}>
             {data.invoices.map((invoice) => (
               <InvoiceCard key={invoice.invoice_id} invoice={invoice} />

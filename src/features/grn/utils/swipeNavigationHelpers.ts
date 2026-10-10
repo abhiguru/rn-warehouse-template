@@ -2,6 +2,7 @@
 import { validateStep1 } from '../schemas/grnValidation';
 
 import { showAlert } from '@/utils/alert';
+import { t } from '@/i18n';
 /**
  * Check if navigation from Step 1 is allowed
  * Validates all Step 1 fields
@@ -14,9 +15,9 @@ export const canNavigateFromStep1 = async (header: any): Promise<boolean> => {
     const messages = Array.from(new Set(Object.values(validation.errors).filter(Boolean)));
     const errorMessage = messages.length > 0
       ? messages.map(message => `• ${message}`).join('\n')
-      : 'Fill in the required fields.';
+      : t('grn.form.fillRequiredFields');
 
-    showAlert('Check the GRN details', errorMessage);
+    showAlert(t('grn.form.checkDetailsTitle'), errorMessage);
     return false;
   }
 
@@ -93,21 +94,21 @@ export const showUnsavedDataAlert = (
   onCancel: () => void
 ): void => {
   showAlert(
-    'Save this item?',
-    "The item you're adding hasn't been saved yet.",
+    t('grn.itemsStep.saveItemTitle'),
+    t('grn.itemsStep.saveItemMessage'),
     [
       {
-        text: 'Keep editing',
+        text: t('common.keepEditing'),
         style: 'cancel',
         onPress: onCancel,
       },
       {
-        text: 'Discard item',
+        text: t('grn.itemsStep.discardItem'),
         style: 'destructive',
         onPress: onDiscard,
       },
       {
-        text: 'Save item',
+        text: t('grn.itemsStep.saveItem'),
         onPress: onSave,
       },
     ],

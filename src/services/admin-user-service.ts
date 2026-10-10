@@ -24,6 +24,7 @@ import {
   UserDetailsCustomer,
 } from '@/types/user.types';
 import { executeRPC } from '@/utils/serviceErrorHandler';
+import { t } from '@/i18n';
 
 // =============================================================================
 // RAW RPC RESPONSE TYPES
@@ -87,7 +88,7 @@ class AdminUserService {
         console.error('[AdminUserService] getUsersList error:', error);
         return {
           success: false,
-          error: error.message || 'Failed to fetch users',
+          error: error.message || t('errors.user.fetchListFailed'),
         };
       }
 
@@ -118,7 +119,7 @@ class AdminUserService {
         console.error('[AdminUserService] RPC returned error:', responseData.error, responseData.message);
         return {
           success: false,
-          error: responseData.message || responseData.error || 'Failed to fetch users',
+          error: responseData.message || responseData.error || t('errors.user.fetchListFailed'),
         };
       }
 
@@ -154,7 +155,7 @@ class AdminUserService {
       console.error('[AdminUserService] Exception in getUsersList:', error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: error instanceof Error ? error.message : t('errors.general.unknown'),
       };
     }
   }
@@ -181,7 +182,7 @@ class AdminUserService {
         console.error('[AdminUserService] getUserDetails error:', error);
         return {
           success: false,
-          error: error.message || 'Failed to fetch user details',
+          error: error.message || t('errors.user.fetchDetailsFailed'),
         };
       }
 
@@ -191,7 +192,7 @@ class AdminUserService {
       if (!responseData || !responseData.user) {
         return {
           success: false,
-          error: 'User not found',
+          error: t('errors.user.notFound'),
         };
       }
 
@@ -227,7 +228,7 @@ class AdminUserService {
       console.error('[AdminUserService] Exception in getUserDetails:', error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: error instanceof Error ? error.message : t('errors.general.unknown'),
       };
     }
   }
@@ -257,7 +258,7 @@ class AdminUserService {
         console.error('[AdminUserService] updateUserRole error:', error);
         return {
           success: false,
-          error: error.message || 'Failed to update user role',
+          error: error.message || t('errors.user.updateUserRoleFailed'),
         };
       }
 
@@ -267,7 +268,7 @@ class AdminUserService {
       if (!responseData || !responseData.success) {
         return {
           success: false,
-          error: responseData?.error || 'Failed to update role',
+          error: responseData?.error || t('errors.user.updateRoleFailed'),
         };
       }
 
@@ -284,7 +285,7 @@ class AdminUserService {
       console.error('[AdminUserService] Exception in updateUserRole:', error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: error instanceof Error ? error.message : t('errors.general.unknown'),
       };
     }
   }
@@ -315,7 +316,7 @@ class AdminUserService {
         console.error('[AdminUserService] updateUserStatus error:', error);
         return {
           success: false,
-          error: error.message || 'Failed to update user status',
+          error: error.message || t('errors.user.updateUserStatusFailed'),
         };
       }
 
@@ -325,7 +326,7 @@ class AdminUserService {
       if (!responseData || !responseData.success) {
         return {
           success: false,
-          error: responseData?.error || 'Failed to update status',
+          error: responseData?.error || t('errors.user.updateStatusFailed'),
         };
       }
 
@@ -341,7 +342,7 @@ class AdminUserService {
       console.error('[AdminUserService] Exception in updateUserStatus:', error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: error instanceof Error ? error.message : t('errors.general.unknown'),
       };
     }
   }
@@ -372,7 +373,7 @@ class AdminUserService {
       },
       {
         context: 'AdminUserService.assignCustomerToUser',
-        errorMessage: 'Failed to assign customer',
+        errorMessage: t('errors.user.assignCustomerFailed'),
         unwrapNested: false,
         validateSuccess: false,
       }
@@ -404,7 +405,7 @@ class AdminUserService {
       },
       {
         context: 'AdminUserService.removeCustomerAssignment',
-        errorMessage: 'Failed to remove customer assignment',
+        errorMessage: t('errors.user.removeAssignmentFailed'),
         unwrapNested: false,
         validateSuccess: false,
       }

@@ -19,6 +19,7 @@ import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize as iconSizes, radius, space, touchTarget, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { formatCount } from '@/utils/formatters';
+import { localizeDigits } from '@/i18n';
 
 /** Default tab glyph size. */
 const DEFAULT_TAB_ICON_SIZE = iconSizes.md;
@@ -96,7 +97,7 @@ export function GenericDetailTabNavigator<T extends string>({
   };
 
   const formatBadge = (count: number): string => {
-    return count > 99 ? '99+' : count.toString();
+    return localizeDigits(count > 99 ? '99+' : count.toString());
   };
 
   return (

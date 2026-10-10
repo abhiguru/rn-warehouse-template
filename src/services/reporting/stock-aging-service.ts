@@ -9,6 +9,7 @@ import {
   getAuthenticatedClient,
   getStoredToken,
 } from '@/config/supabaseConfig';
+import { t } from '@/i18n';
 import type {
   StockAgingResponse,
   StockAgingData,
@@ -76,7 +77,7 @@ export async function getCustomerStockAging(
     return {
       success: false,
       data: EMPTY_RESPONSE,
-      message: 'Customer ID is required',
+      message: t('reports.shared.customerIdRequired'),
       error: 'MISSING_CUSTOMER_ID',
     };
   }
@@ -124,7 +125,7 @@ export async function getCustomerStockAging(
       return {
         success: false,
         data: EMPTY_RESPONSE,
-        message: 'Failed to fetch stock aging report',
+        message: t('reports.stockAging.service.fetchFailed'),
         error: error.message,
       };
     }
@@ -134,7 +135,7 @@ export async function getCustomerStockAging(
       return {
         success: true,
         data: EMPTY_RESPONSE,
-        message: 'No stock aging data found',
+        message: t('reports.stockAging.service.noData'),
       };
     }
 
@@ -218,14 +219,14 @@ export async function getCustomerStockAging(
     return {
       success: true,
       data: { summary, by_bucket: byBucket, items },
-      message: 'Stock aging report retrieved successfully',
+      message: t('reports.stockAging.service.retrieved'),
     };
   } catch (error) {
     console.error('[StockAging] Unexpected error:', error);
     return {
       success: false,
       data: EMPTY_RESPONSE,
-      message: 'Failed to fetch stock aging report',
+      message: t('reports.stockAging.service.fetchFailed'),
       error: error instanceof Error ? error.message : 'Unknown error',
     };
   }
@@ -284,7 +285,7 @@ export async function getAllStockAging(
       return {
         success: false,
         data: EMPTY_ALL_RESPONSE,
-        message: 'Failed to fetch all-customers stock aging',
+        message: t('reports.stockAging.service.fetchAllFailed'),
         error: error.message,
       };
     }
@@ -294,7 +295,7 @@ export async function getAllStockAging(
       return {
         success: true,
         data: EMPTY_ALL_RESPONSE,
-        message: 'No stock aging data found',
+        message: t('reports.stockAging.service.noData'),
       };
     }
 
@@ -362,14 +363,14 @@ export async function getAllStockAging(
     return {
       success: true,
       data: { summary, by_bucket: byBucket, by_customer: byCustomer },
-      message: 'All-customers stock aging retrieved successfully',
+      message: t('reports.stockAging.service.retrievedAll'),
     };
   } catch (error) {
     console.error('[AllStockAging] Unexpected error:', error);
     return {
       success: false,
       data: EMPTY_ALL_RESPONSE,
-      message: 'Failed to fetch all-customers stock aging',
+      message: t('reports.stockAging.service.fetchAllFailed'),
       error: error instanceof Error ? error.message : 'Unknown error',
     };
   }

@@ -7,6 +7,7 @@ import { deduplicatedRequest, generateRequestKey } from '@/utils/requestDedup';
 import type { RpcGrnItemRow, RpcPagination } from '@/types/rpc-canonical.types';
 import { hasMoreItems } from '@/utils/paginationUtils';
 import { PAGINATION } from '@/config/cacheConfig';
+import { t } from '@/i18n';
 
 /**
  * GRN Item type - uses snake_case matching backend RPC response
@@ -218,7 +219,7 @@ export const getAllGRNItems = async (params: GRNListParams = {}): Promise<GRNLis
     if (error) {
       console.error('[GRN Service] Failed to fetch GRN items:', error.message);
       return {
-        ...createErrorResponse(error, 'Failed to fetch GRN items', 'GRNService.getAllGRNItems'),
+        ...createErrorResponse(error, t('errors.grn.fetchItemsFailed'), 'GRNService.getAllGRNItems'),
         data: EMPTY_GRN_RESPONSE_DATA
       };
     }
@@ -230,7 +231,7 @@ export const getAllGRNItems = async (params: GRNListParams = {}): Promise<GRNLis
       return {
         success: false,
         data: EMPTY_GRN_RESPONSE_DATA,
-        message: 'No data available'
+        message: t('errors.general.noDataAvailable')
       };
     }
 
@@ -265,12 +266,12 @@ export const getAllGRNItems = async (params: GRNListParams = {}): Promise<GRNLis
         },
         user_access: { role: '', is_admin: false, is_supervisor: false, accessible_customers: 0 }
       },
-      message: responseData.message || 'GRN items fetched successfully'
+      message: responseData.message || t('errors.grn.itemsFetched')
     };
     
   } catch (error) {
     return {
-      ...createErrorResponse(error, 'Failed to fetch GRN items', 'GRNService.getAllGRNItems'),
+      ...createErrorResponse(error, t('errors.grn.fetchItemsFailed'), 'GRNService.getAllGRNItems'),
       data: EMPTY_GRN_RESPONSE_DATA
     };
   }
@@ -309,7 +310,7 @@ export const getCustomerGRNItems = async (
   };
 
   if (!customerId) {
-    return { success: false, data: emptyData, message: 'Customer assignment is required' };
+    return { success: false, data: emptyData, message: t('errors.customer.assignmentRequired') };
   }
 
   try {
@@ -334,7 +335,7 @@ export const getCustomerGRNItems = async (
     );
     if (error) {
       return {
-        ...createErrorResponse(error, 'Failed to fetch customer GRN items', 'GRNService.getCustomerGRNItems'),
+        ...createErrorResponse(error, t('errors.grn.fetchCustomerItemsFailed'), 'GRNService.getCustomerGRNItems'),
         data: emptyData,
       };
     }
@@ -344,7 +345,7 @@ export const getCustomerGRNItems = async (
       return {
         success: false,
         data: emptyData,
-        message: response?.message || 'Failed to fetch customer GRN items',
+        message: response?.message || t('errors.grn.fetchCustomerItemsFailed'),
       };
     }
 
@@ -358,7 +359,7 @@ export const getCustomerGRNItems = async (
 
     return {
       success: true,
-      message: response.message || 'Customer GRN items retrieved successfully',
+      message: response.message || t('errors.grn.customerItemsRetrieved'),
       data: {
         items,
         pagination: {
@@ -389,7 +390,7 @@ export const getCustomerGRNItems = async (
     };
   } catch (error) {
     return {
-      ...createErrorResponse(error, 'Failed to fetch customer GRN items', 'GRNService.getCustomerGRNItems'),
+      ...createErrorResponse(error, t('errors.grn.fetchCustomerItemsFailed'), 'GRNService.getCustomerGRNItems'),
       data: emptyData,
     };
   }
@@ -431,7 +432,7 @@ export const getAssignedCustomerGRNItems = async (
     return {
       success: false,
       data: EMPTY_GRN_RESPONSE_DATA,
-      message: 'Customer access denied',
+      message: t('errors.customer.accessDenied'),
     };
   }
 
@@ -440,7 +441,7 @@ export const getAssignedCustomerGRNItems = async (
     return {
       success: false,
       data: EMPTY_GRN_RESPONSE_DATA,
-      message: 'No customer assignment is available for this account',
+      message: t('errors.customer.noAssignment'),
     };
   }
 
@@ -497,7 +498,7 @@ export const getAssignedCustomerGRNItems = async (
 
   return {
     success: true,
-    message: 'Assigned customer GRN items retrieved successfully',
+    message: t('errors.grn.assignedItemsRetrieved'),
     data: {
       items: allItems.slice(offset, offset + limit),
       pagination: {

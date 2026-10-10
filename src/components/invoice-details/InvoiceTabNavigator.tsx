@@ -10,6 +10,7 @@ import {
   type TabConfig,
 } from '@/components/common/GenericDetailTabNavigator';
 import { iconSize } from '@/theme/tokens';
+import { t } from '@/i18n';
 
 // ============================================================================
 // TYPES
@@ -35,18 +36,18 @@ export const InvoiceTabNavigator: React.FC<InvoiceTabNavigatorProps> = ({
   const tabs = useMemo<TabConfig<TabKey>[]>(() => [
     {
       key: 'overview',
-      label: 'Overview',
+      label: t('invoice.tabs.overview'),
       icon: TAB_ICONS.overview,
     },
     {
       key: 'items',
-      label: 'Line items',
+      label: t('invoice.details.lineItems'),
       icon: TAB_ICONS.lineItems,
       badgeCount: item_count > 0 ? item_count : undefined,
     },
     {
       key: 'breakdown',
-      label: 'Breakdown',
+      label: t('invoice.tabs.breakdown'),
       icon: TAB_ICONS.breakdown,
     },
   ], [item_count]);

@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { OrderService } from './order-service';
 import { GRNItem } from '@/types/order.types';
 import { CACHE_DURATION_MEDIUM_MS, CACHE_PREFIXES } from '@/config/cacheConfig';
+import { t } from '@/i18n';
 
 export interface RecentItem extends GRNItem {
   lastOrderedDate: string;
@@ -110,7 +111,7 @@ export const RecentItemsService = {
 
       result.data.items?.forEach((dispatch: RpcDispatchRecord) => {
         // Aggregate by item NAME (not ID), since same item can be in multiple GRNs
-        const itemName = dispatch.item_name || dispatch.grnItems_itemName || 'Unknown';
+        const itemName = dispatch.item_name || dispatch.grnItems_itemName || t('common.unknown');
         // Use the GRN item record ID for the first occurrence
         const grnItemId = dispatch.id || dispatch.grnItems_id;
 

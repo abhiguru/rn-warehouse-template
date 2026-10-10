@@ -15,6 +15,7 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { iconSize, space, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
+import { t as tr } from '@/i18n';
 
 // Using snake_case to match backend RPC types
 export interface DispatchItem {
@@ -120,9 +121,9 @@ export const DispatchItemsTab: React.FC<DispatchItemsTabProps> = ({
           color={t.icon.secondary}
           style={styles.emptyIcon}
         />
-        <Text style={styles.emptyTitle}>No items in this dispatch</Text>
+        <Text style={styles.emptyTitle}>{tr('dispatch.details.itemsEmptyTitle')}</Text>
         <Text style={styles.emptySubtitle}>
-          Items added to this dispatch appear here.
+          {tr('dispatch.details.itemsEmptyMessage')}
         </Text>
       </View>
     );
@@ -134,16 +135,16 @@ export const DispatchItemsTab: React.FC<DispatchItemsTabProps> = ({
     return (
       <View style={styles.loadingFooter}>
         <ActivityIndicator size="small" color={t.brand.tint} />
-        <Text style={styles.loadingText}>Loading items…</Text>
+        <Text style={styles.loadingText}>{tr('dispatch.details.loadingItems')}</Text>
       </View>
     );
   };
 
   if (loading && items.length === 0) {
     return (
-      <View style={styles.loadingContainer} accessibilityLabel="Loading items">
+      <View style={styles.loadingContainer} accessibilityLabel={tr('dispatch.details.loadingItemsLabel')}>
         <ActivityIndicator size="large" color={t.brand.tint} />
-        <Text style={styles.loadingText}>Loading items…</Text>
+        <Text style={styles.loadingText}>{tr('dispatch.details.loadingItems')}</Text>
       </View>
     );
   }

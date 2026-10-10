@@ -54,6 +54,8 @@ import { createLogger } from '@/utils/logger';
 
 import { showAlert } from '@/utils/alert';
 import { formatDate, toLocalISODate } from '@/utils/formatters';
+import { normalizeDigits, t as tr } from '@/i18n';
+import { priceTypeLabel } from '@/features/item-pricing/utils/priceLabels';
 const itemPricingFormLogger = createLogger('ItemPricingForm');
 
 interface Item {
@@ -199,12 +201,12 @@ const ItemPricingFormScreen: React.FC = () => {
         itemPricingFormLogger.debug('State updated with price data');
       } else {
         itemPricingFormLogger.error('Price not found for ID:', priceId);
-        showAlert("Couldn't find this price", 'It may have been deleted.');
+        showAlert(tr('pricing.form.notFoundTitle'), tr('pricing.form.notFoundMessage'));
         router.back();
       }
     } catch (err) {
       itemPricingFormLogger.error('Load error:', err);
-      showAlert("Couldn't load the price", 'Check your connection and try again.');
+      showAlert(tr('pricing.form.couldNotLoadTitle'), tr('common.checkConnection'));
       router.back();
     } finally {
       setLoading(false);
@@ -312,27 +314,27 @@ const ItemPricingFormScreen: React.FC = () => {
   const validateForm = (): FieldErrors => {
     const errors: FieldErrors = {};
     if (!selectedItem) {
-      errors.item = 'Select an item.';
+      errors.item = tr('pricing.validation.itemRequired');
     }
     if (!unitPrice || parseFloat(unitPrice) < 0) {
-      errors.unitPrice = 'Enter a price of 0 or more.';
+      errors.unitPrice = tr('pricing.validation.unitPrice');
     }
     if (!weightMin || parseFloat(weightMin) < 0) {
-      errors.weightMin = 'Enter a minimum weight of 0 or more.';
+      errors.weightMin = tr('pricing.validation.weightMin');
     }
     if (!weightMax || parseFloat(weightMax) <= 0) {
-      errors.weightMax = 'Enter a maximum weight above 0.';
+      errors.weightMax = tr('pricing.validation.weightMax');
     } else if (parseFloat(weightMax) < parseFloat(weightMin)) {
-      errors.weightMax = 'The maximum must be at least the minimum.';
+      errors.weightMax = tr('pricing.validation.weightOrder');
     }
     if (!labourRate || parseFloat(labourRate) < 0) {
-      errors.labourRate = 'Enter a labour rate of 0 or more.';
+      errors.labourRate = tr('pricing.validation.labourRate');
     }
     if (!taxPercent || parseFloat(taxPercent) < 0 || parseFloat(taxPercent) > 100) {
-      errors.taxPercent = 'Enter a tax rate from 0 to 100.';
+      errors.taxPercent = tr('pricing.validation.taxPercent');
     }
     if (effectiveTo && effectiveTo < effectiveFrom) {
-      errors.effectiveTo = 'The end date must be on or after the start date.';
+      errors.effectiveTo = tr('pricing.validation.dateOrder');
     }
     return errors;
   };
@@ -343,9 +345,9 @@ const ItemPricingFormScreen: React.FC = () => {
     setFieldErrors(errors);
     const messages = Object.values(errors);
     if (messages.length > 0) {
-      const summary = messages.length === 1 ? 'Fix 1 field.' : `Fix ${messages.length} fields.`;
+      const summary = tr('pricing.form.fixFields', { count: messages.length });
       AccessibilityInfo.announceForAccessibility(`${summary} ${messages.join(' ')}`);
-      showAlert('Check the highlighted fields', messages.join('\n'));
+      showAlert(tr('pricing.form.checkFieldsTitle'), messages.join('\n'));
       return;
     }
 
@@ -367,11 +369,11 @@ const ItemPricingFormScreen: React.FC = () => {
 
         const result = await createItemStoragePrice(payload);
         if (result.success) {
-          showAlert('Price saved', `The price for ${selectedItem!.name} has been added.`, [
-            { text: 'OK', onPress: () => router.back() },
+          showAlert(tr('pricing.form.savedTitle'), tr('pricing.form.addedMessage', { item: selectedItem!.name }), [
+            { text: tr('common.ok'), onPress: () => router.back() },
           ]);
         } else {
-          showAlert("Couldn't save the price", result.message || 'Try again in a moment.');
+          showAlert(tr('pricing.form.couldNotSaveTitle'), result.message || tr('pricing.list.tryAgainInAMoment'));
         }
       } else if (formMode === 'edit' && priceId) {
         const payload: UpdateItemPricingPayload = {
@@ -387,16 +389,16 @@ const ItemPricingFormScreen: React.FC = () => {
 
         const result = await updateItemStoragePrice(priceId, payload);
         if (result.success) {
-          showAlert('Price saved', `The price for ${selectedItem?.name ?? 'this item'} has been updated.`, [
-            { text: 'OK', onPress: () => router.back() },
+          showAlert(tr('pricing.form.savedTitle'), selectedItem?.name ? tr('pricing.form.updatedMessage', { item: selectedItem.name }) : tr('pricing.form.updatedMessageNoItem'), [
+            { text: tr('common.ok'), onPress: () => router.back() },
           ]);
         } else {
-          showAlert("Couldn't save the price", result.message || 'Try again in a moment.');
+          showAlert(tr('pricing.form.couldNotSaveTitle'), result.message || tr('pricing.list.tryAgainInAMoment'));
         }
       }
     } catch (err) {
       itemPricingFormLogger.error('Save error:', err);
-      showAlert("Couldn't save the price", 'Check your connection and try again.');
+      showAlert(tr('pricing.form.couldNotSaveTitle'), tr('common.checkConnection'));
     } finally {
       setSaving(false);
     }
@@ -463,7 +465,7 @@ const ItemPricingFormScreen: React.FC = () => {
           itemSheetRef.current?.dismiss();
         }}
         accessibilityRole="button"
-        accessibilityLabel={item.packaging ? `${item.name}, ${item.packaging}` : item.name}
+        accessibilityLabel={item.packaging ? tr('pricing.form.nameWithDetail', { name: item.name, detail: item.packaging }) : item.name}
       >
         <Icon name="cube-outline" size={iconSize.md} color={t.icon.secondary} />
         <View style={styles.sheetItemContent}>
@@ -502,11 +504,11 @@ const ItemPricingFormScreen: React.FC = () => {
   const getTitle = () => {
     switch (formMode) {
       case 'create':
-        return 'Add price';
+        return tr('pricing.form.addTitle');
       case 'edit':
-        return 'Edit price';
+        return tr('pricing.form.editTitle');
       case 'view':
-        return 'Price';
+        return tr('pricing.form.viewTitle');
     }
   };
 
@@ -515,24 +517,24 @@ const ItemPricingFormScreen: React.FC = () => {
       <View
         style={[styles.container, styles.loadingContainer]}
         accessibilityRole="progressbar"
-        accessibilityLabel="Loading price"
+        accessibilityLabel={tr('pricing.form.loadingLabel')}
       >
         <ActivityIndicator size="large" color={t.brand.tint} />
-        <Text style={styles.loadingText}>Loading price…</Text>
+        <Text style={styles.loadingText}>{tr('pricing.form.loading')}</Text>
       </View>
     );
   }
 
   const lockedSelection = isReadOnly || formMode === 'edit';
 
-  const renderSheetEmpty = (searching: boolean, query: string, noun: string) => (
+  const renderSheetEmpty = (searching: boolean, query: string, noun: 'items' | 'customers') => (
     <View style={styles.sheetEmpty}>
       {searching ? (
-        <ActivityIndicator color={t.brand.tint} accessibilityLabel={`Searching ${noun}`} />
+        <ActivityIndicator color={t.brand.tint} accessibilityLabel={noun === 'items' ? tr('pricing.form.searchingItems') : tr('pricing.form.searchingCustomers')} />
       ) : query.length > 0 ? (
-        <Text style={styles.sheetEmptyText}>No {noun} match "{query}". Try fewer letters.</Text>
+        <Text style={styles.sheetEmptyText}>{tr(noun === 'items' ? 'pricing.form.noItemsMatch' : 'customers.search.noMatchTryFewer', { search: query })}</Text>
       ) : (
-        <Text style={styles.sheetEmptyText}>Type to search {noun}.</Text>
+        <Text style={styles.sheetEmptyText}>{noun === 'items' ? tr('pricing.form.typeToSearchItems') : tr('pricing.form.typeToSearchCustomers')}</Text>
       )}
     </View>
   );
@@ -552,16 +554,16 @@ const ItemPricingFormScreen: React.FC = () => {
               onPress={handleSave}
               disabled={saving}
               accessibilityRole="button"
-              accessibilityLabel="Save price"
+              accessibilityLabel={tr('pricing.form.savePrice')}
               accessibilityState={{ busy: saving }}
             >
               {saving ? (
                 <>
                   <ActivityIndicator size="small" color={t.brand.onFill} />
-                  <Text style={styles.saveButtonText}>Saving…</Text>
+                  <Text style={styles.saveButtonText}>{tr('common.saving')}</Text>
                 </>
               ) : (
-                <Text style={styles.saveButtonText}>Save</Text>
+                <Text style={styles.saveButtonText}>{tr('common.save')}</Text>
               )}
             </Pressable>
           )}
@@ -570,10 +572,10 @@ const ItemPricingFormScreen: React.FC = () => {
               style={({ pressed }) => [styles.editButton, pressed && styles.editButtonPressed]}
               onPress={() => router.replace(`/item-pricing-form?id=${priceId}&mode=edit`)}
               accessibilityRole="button"
-              accessibilityLabel="Edit price"
+              accessibilityLabel={tr('pricing.form.editTitle')}
             >
               <Icon name="pencil-outline" size={iconSize.md} color={t.brand.tint} />
-              <Text style={styles.editButtonText}>Edit</Text>
+              <Text style={styles.editButtonText}>{tr('common.edit')}</Text>
             </Pressable>
           )}
         </View>
@@ -590,7 +592,7 @@ const ItemPricingFormScreen: React.FC = () => {
           {/* Item Selection */}
           <View style={styles.formSection}>
             <Text style={[styles.label, fieldErrors.item && styles.labelError]}>
-              Item{!lockedSelection && <Text style={styles.required}> *</Text>}
+              {tr('common.item')}{!lockedSelection && <Text style={styles.required}> *</Text>}
             </Text>
             <Pressable
               style={({ pressed }) => [
@@ -606,8 +608,8 @@ const ItemPricingFormScreen: React.FC = () => {
               }}
               disabled={lockedSelection}
               accessibilityRole="button"
-              accessibilityLabel={`Item, ${selectedItem?.name || 'not selected'}`}
-              accessibilityHint={lockedSelection ? undefined : 'Opens item search'}
+              accessibilityLabel={selectedItem?.name ? tr('pricing.form.itemLabelSelected', { name: selectedItem.name }) : tr('pricing.form.itemLabelNone')}
+              accessibilityHint={lockedSelection ? undefined : tr('pricing.form.itemHint')}
               accessibilityState={{ disabled: lockedSelection }}
             >
               <Icon name="cube-outline" size={iconSize.md} color={t.icon.secondary} />
@@ -615,7 +617,7 @@ const ItemPricingFormScreen: React.FC = () => {
                 style={[styles.selectorText, !selectedItem && styles.selectorPlaceholder]}
                 numberOfLines={2}
               >
-                {selectedItem?.name || 'Select an item'}
+                {selectedItem?.name || tr('pricing.form.selectAnItem')}
               </Text>
               {!lockedSelection && (
                 <Icon name="chevron-down" size={iconSize.md} color={t.icon.secondary} />
@@ -623,13 +625,13 @@ const ItemPricingFormScreen: React.FC = () => {
             </Pressable>
             <FieldError message={fieldErrors.item} />
             {formMode === 'edit' && (
-              <Text style={styles.helperText}>The item can't be changed after the price is created.</Text>
+              <Text style={styles.helperText}>{tr('pricing.form.itemLocked')}</Text>
             )}
           </View>
 
           {/* Customer Selection (Optional) */}
           <View style={styles.formSection}>
-            <Text style={styles.label}>Customer</Text>
+            <Text style={styles.label}>{tr('common.customer')}</Text>
             <Pressable
               style={({ pressed }) => [
                 styles.selector,
@@ -643,8 +645,8 @@ const ItemPricingFormScreen: React.FC = () => {
               }}
               disabled={lockedSelection}
               accessibilityRole="button"
-              accessibilityLabel={`Customer, ${selectedCustomer?.name || 'default price for all customers'}`}
-              accessibilityHint={lockedSelection ? undefined : 'Opens customer search'}
+              accessibilityLabel={selectedCustomer?.name ? tr('pricing.form.customerLabelSelected', { name: selectedCustomer.name }) : tr('pricing.form.customerLabelDefault')}
+              accessibilityHint={lockedSelection ? undefined : tr('pricing.form.customerHint')}
               accessibilityState={{ disabled: lockedSelection }}
             >
               <Icon name="account-outline" size={iconSize.md} color={t.icon.secondary} />
@@ -652,17 +654,17 @@ const ItemPricingFormScreen: React.FC = () => {
                 style={[styles.selectorText, !selectedCustomer && styles.selectorPlaceholder]}
                 numberOfLines={2}
               >
-                {selectedCustomer?.name || 'Default price (all customers)'}
+                {selectedCustomer?.name || tr('pricing.form.defaultPrice')}
               </Text>
               {!lockedSelection && (
                 <Icon name="chevron-down" size={iconSize.md} color={t.icon.secondary} />
               )}
             </Pressable>
             {formMode !== 'create' && !selectedCustomer && (
-              <Text style={styles.helperText}>This is the default price for all customers.</Text>
+              <Text style={styles.helperText}>{tr('pricing.form.defaultPriceHelper')}</Text>
             )}
             {formMode === 'create' && (
-              <Text style={styles.helperText}>Optional. Leave empty to set the default price.</Text>
+              <Text style={styles.helperText}>{tr('pricing.form.customerOptional')}</Text>
             )}
             {selectedCustomer && !isReadOnly && formMode === 'create' && (
               <Pressable
@@ -670,47 +672,47 @@ const ItemPricingFormScreen: React.FC = () => {
                 onPress={() => setSelectedCustomer(null)}
                 accessibilityRole="button"
               >
-                <Text style={styles.clearButtonText}>Use the default price</Text>
+                <Text style={styles.clearButtonText}>{tr('pricing.form.useDefaultPrice')}</Text>
               </Pressable>
             )}
           </View>
 
           {/* Weight Range */}
-          <Text style={styles.sectionHeader} accessibilityRole="header">Weight range</Text>
+          <Text style={styles.sectionHeader} accessibilityRole="header">{tr('pricing.form.weightRange')}</Text>
           <View style={[styles.formSection, styles.row]}>
             <FormField
               containerStyle={styles.halfInput}
-              label="Minimum"
+              label={tr('pricing.form.minimum')}
               required
               readOnly={isReadOnly}
-              suffix="kg"
+              suffix={tr('pricing.kg')}
               error={fieldErrors.weightMin}
               value={weightMin}
-              onChangeText={setWeightMin}
+              onChangeText={(text) => setWeightMin(normalizeDigits(text))}
               keyboardType="decimal-pad"
             />
             <FormField
               containerStyle={styles.halfInput}
-              label="Maximum"
+              label={tr('pricing.form.maximum')}
               required
               readOnly={isReadOnly}
-              suffix="kg"
+              suffix={tr('pricing.kg')}
               error={fieldErrors.weightMax}
               value={weightMax}
-              onChangeText={setWeightMax}
+              onChangeText={(text) => setWeightMax(normalizeDigits(text))}
               keyboardType="decimal-pad"
             />
           </View>
 
           {/* Pricing */}
-          <Text style={styles.sectionHeader} accessibilityRole="header">Pricing</Text>
+          <Text style={styles.sectionHeader} accessibilityRole="header">{tr('pricing.form.pricing')}</Text>
           <View style={styles.formSection}>
-            <Text style={styles.label}>Price type</Text>
+            <Text style={styles.label}>{tr('pricing.form.priceType')}</Text>
             {/* Price Type segmented control - fixed after creation */}
             <View
               style={[styles.segment, lockedSelection && styles.segmentLocked]}
               accessibilityRole="radiogroup"
-              accessibilityLabel="Price type"
+              accessibilityLabel={tr('pricing.form.priceType')}
             >
               {(['one_time', 'monthly'] as const).map((value) => {
                 const selected = priceType === value;
@@ -725,65 +727,65 @@ const ItemPricingFormScreen: React.FC = () => {
                   >
                     {selected && <Icon name="check" size={iconSize.sm} color={t.brand.onFill} />}
                     <Text style={[styles.segmentText, selected && styles.segmentTextSelected]}>
-                      {value === 'one_time' ? 'One-time' : 'Monthly'}
+                      {priceTypeLabel(value)}
                     </Text>
                   </Pressable>
                 );
               })}
             </View>
             {formMode === 'edit' && (
-              <Text style={styles.helperText}>The price type can't be changed after the price is created.</Text>
+              <Text style={styles.helperText}>{tr('pricing.form.priceTypeLocked')}</Text>
             )}
           </View>
 
           <FormField
             containerStyle={styles.formSection}
-            label={priceType === 'one_time' ? 'One-time price' : 'Monthly price'}
+            label={priceType === 'one_time' ? tr('pricing.form.oneTimePrice') : tr('pricing.form.monthlyPrice')}
             required
             readOnly={isReadOnly}
             prefix="₹"
             error={fieldErrors.unitPrice}
             value={unitPrice}
-            onChangeText={setUnitPrice}
+            onChangeText={(text) => setUnitPrice(normalizeDigits(text))}
             keyboardType="decimal-pad"
           />
 
           <FormField
             containerStyle={styles.formSection}
-            label="Labour rate"
+            label={tr('pricing.form.labourRate')}
             required
             readOnly={isReadOnly}
             prefix="₹"
             error={fieldErrors.labourRate}
             value={labourRate}
-            onChangeText={setLabourRate}
+            onChangeText={(text) => setLabourRate(normalizeDigits(text))}
             keyboardType="decimal-pad"
           />
 
           <FormField
             containerStyle={styles.formSection}
-            label="Tax"
+            label={tr('pricing.form.tax')}
             required
             readOnly={isReadOnly}
             suffix="%"
             error={fieldErrors.taxPercent}
             value={taxPercent}
-            onChangeText={setTaxPercent}
+            onChangeText={(text) => setTaxPercent(normalizeDigits(text))}
             keyboardType="decimal-pad"
           />
 
           {/* Validity Period */}
-          <Text style={styles.sectionHeader} accessibilityRole="header">Validity</Text>
+          <Text style={styles.sectionHeader} accessibilityRole="header">{tr('pricing.form.validity')}</Text>
           <View style={styles.formSection}>
             <View style={styles.dateRow}>
               {(['from', 'to'] as const).map((field) => {
-                const label = field === 'from' ? 'From' : 'To';
+                const label = field === 'from' ? tr('pricing.form.from') : tr('pricing.form.to');
                 const value =
                   field === 'from'
                     ? formatDate(effectiveFrom)
                     : effectiveTo
                       ? formatDate(effectiveTo)
-                      : 'No end date';
+                      : tr('pricing.form.noEndDate');
                 const hasError = field === 'to' && !!fieldErrors.effectiveTo;
                 return (
                   <View key={field} style={styles.dateColumn}>
@@ -801,8 +803,8 @@ const ItemPricingFormScreen: React.FC = () => {
                       onPress={() => handleDatePress(field)}
                       disabled={isReadOnly}
                       accessibilityRole="button"
-                      accessibilityLabel={`${label}, ${value}`}
-                      accessibilityHint={isReadOnly ? undefined : 'Opens the date picker'}
+                      accessibilityLabel={tr('pricing.form.labelValue', { label, value })}
+                      accessibilityHint={isReadOnly ? undefined : tr('pricing.form.dateHint')}
                     >
                       <Text style={styles.dateValue}>{value}</Text>
                       <Icon name="calendar-outline" size={iconSize.md} color={t.icon.secondary} />
@@ -820,14 +822,14 @@ const ItemPricingFormScreen: React.FC = () => {
               {Platform.OS === 'ios' && (
                 <View style={styles.iosPickerHeader}>
                   <Text style={styles.iosPickerTitle}>
-                    {activeDateField === 'from' ? 'Start date' : 'End date'}
+                    {activeDateField === 'from' ? tr('pricing.form.startDate') : tr('pricing.form.endDate')}
                   </Text>
                   <Pressable
                     onPress={closeDatePicker}
                     style={styles.iosPickerDoneButton}
                     accessibilityRole="button"
                   >
-                    <Text style={styles.iosPickerDone}>Done</Text>
+                    <Text style={styles.iosPickerDone}>{tr('common.done')}</Text>
                   </Pressable>
                 </View>
               )}
@@ -858,12 +860,12 @@ const ItemPricingFormScreen: React.FC = () => {
           handleIndicatorStyle={styles.sheetHandle}
         >
           <View style={styles.sheetHeader}>
-            <Text style={styles.sheetTitle} accessibilityRole="header">Select item</Text>
+            <Text style={styles.sheetTitle} accessibilityRole="header">{tr('pricing.form.selectItem')}</Text>
             <Pressable
               style={styles.iconButton}
               onPress={() => itemSheetRef.current?.dismiss()}
               accessibilityRole="button"
-              accessibilityLabel="Close"
+              accessibilityLabel={tr('common.close')}
             >
               <Icon name="close" size={iconSize.lg} color={t.icon.primary} />
             </Pressable>
@@ -872,12 +874,12 @@ const ItemPricingFormScreen: React.FC = () => {
             <Icon name="magnify" size={iconSize.md} color={t.icon.secondary} style={styles.sheetSearchIcon} />
             <BottomSheetTextInput
               style={styles.sheetSearchInput}
-              placeholder="Search items"
+              placeholder={tr('pricing.form.searchItems')}
               placeholderTextColor={t.text.placeholder}
               value={itemSearchQuery}
               onChangeText={handleItemSearchChange}
               autoFocus
-              accessibilityLabel="Search items"
+              accessibilityLabel={tr('pricing.form.searchItems')}
               returnKeyType="search"
             />
           </View>
@@ -903,12 +905,12 @@ const ItemPricingFormScreen: React.FC = () => {
           handleIndicatorStyle={styles.sheetHandle}
         >
           <View style={styles.sheetHeader}>
-            <Text style={styles.sheetTitle} accessibilityRole="header">Select customer</Text>
+            <Text style={styles.sheetTitle} accessibilityRole="header">{tr('pricing.form.selectCustomer')}</Text>
             <Pressable
               style={styles.iconButton}
               onPress={() => customerSheetRef.current?.dismiss()}
               accessibilityRole="button"
-              accessibilityLabel="Close"
+              accessibilityLabel={tr('common.close')}
             >
               <Icon name="close" size={iconSize.lg} color={t.icon.primary} />
             </Pressable>
@@ -917,12 +919,12 @@ const ItemPricingFormScreen: React.FC = () => {
             <Icon name="magnify" size={iconSize.md} color={t.icon.secondary} style={styles.sheetSearchIcon} />
             <BottomSheetTextInput
               style={styles.sheetSearchInput}
-              placeholder="Search customers"
+              placeholder={tr('pricing.form.searchCustomers')}
               placeholderTextColor={t.text.placeholder}
               value={customerSearchQuery}
               onChangeText={handleCustomerSearchChange}
               autoFocus
-              accessibilityLabel="Search customers"
+              accessibilityLabel={tr('pricing.form.searchCustomers')}
               returnKeyType="search"
             />
           </View>
@@ -1002,7 +1004,7 @@ function FormField({
           editable={!readOnly}
           style={styles.input}
           placeholderTextColor={t.text.placeholder}
-          accessibilityLabel={[label, prefix === '₹' ? 'in rupees' : null, suffix === '%' ? 'percent' : suffix]
+          accessibilityLabel={[label, prefix === '₹' ? tr('pricing.form.inRupees') : null, suffix === '%' ? tr('pricing.form.percent') : suffix]
             .filter(Boolean)
             .join(', ')}
           accessibilityState={{ disabled: readOnly }}

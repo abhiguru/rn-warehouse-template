@@ -13,6 +13,7 @@ import React, { memo } from 'react';
 import { View, Text, Pressable } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { t as translate } from '@/i18n';
 import { fontWeight, iconSize, layout, radius, space, touchTarget, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 
@@ -111,16 +112,16 @@ export const ListEmptyState = memo<ListEmptyStateProps>(({
   activeFilterCount,
   emptyIcon = 'package-variant-closed',
   filteredIcon = 'filter-remove-outline',
-  emptyTitle = 'No items yet',
-  filteredTitle = 'No matching items',
-  emptySubtitle = 'Items you create appear here.',
-  filteredSubtitle = 'Nothing matches the filters. Try removing some filters.',
+  emptyTitle = translate('lists.empty.title'),
+  filteredTitle = translate('lists.empty.filteredTitle'),
+  emptySubtitle = translate('lists.empty.subtitle'),
+  filteredSubtitle = translate('lists.empty.filteredSubtitle'),
   showCreateButton = false,
-  createButtonLabel = 'Create',
+  createButtonLabel = translate('common.create'),
   createButtonIcon = 'plus',
   onCreatePress,
   onClearFilters,
-  clearFiltersLabel = 'Clear filters',
+  clearFiltersLabel = translate('filters.empty.clearFilters'),
 }) => {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();

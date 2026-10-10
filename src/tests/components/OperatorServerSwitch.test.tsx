@@ -47,6 +47,11 @@ jest.mock('@/components/ui/Button', () => {
   return { Button: ({ children, ...props }: Record<string, unknown>) => React.createElement('Button', props, children) };
 });
 jest.mock('@/store/hooks', () => ({ useAppDispatch: jest.fn() }));
+// The language switch has its own controls and store access; it is not under test here.
+jest.mock('@/components/LanguageSwitch', () => ({ LanguageSwitch: () => null }));
+jest.mock('@/i18n/useAppLanguage', () => ({
+  useAppLanguage: () => ({ language: 'en', preference: 'system', setPreference: jest.fn() }),
+}));
 jest.mock('@/store/slices/authSlice', () => ({ logout: jest.fn(() => ({ type: 'test/logout' })) }));
 jest.mock('@/services/configService', () => ({ __esModule: true, default: { clearCache: jest.fn() } }));
 jest.mock('@/services/autocomplete-service', () => ({ clearAutocompleteCache: jest.fn() }));

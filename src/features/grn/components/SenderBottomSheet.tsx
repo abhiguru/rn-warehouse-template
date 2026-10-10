@@ -15,6 +15,8 @@ import { iconSize, layout, space, typography, touchTarget } from '@/theme/tokens
 import type { ThemeTokens } from '@/theme/tokens';
 import { Avatar } from '@/components/ui';
 
+import { t as tr } from '@/i18n';
+
 const RECENT_SENDERS_KEY = 'recent_senders';
 
 interface Customer {
@@ -118,16 +120,16 @@ export const SenderBottomSheet: React.FC<SenderBottomSheetProps> = ({
       isVisible={isVisible}
       onClose={onClose}
       onSelect={onSelect}
-      title="Select sender"
-      placeholder="Search customers..."
+      title={tr('grn.pickers.senderTitle')}
+      placeholder={tr('grn.pickers.senderPlaceholder')}
       searchFn={searchCustomers}
       renderItem={renderCustomerItem}
       keyExtractor={keyExtractor}
       currentValue={currentValue}
       recentItemsKey={RECENT_SENDERS_KEY}
       maxRecentItems={5}
-      emptyInitialText="Search for a sender"
-      emptySubText="Type at least 2 characters to find customers"
+      emptyInitialText={tr('grn.pickers.senderEmptyInitial')}
+      emptySubText={tr('grn.pickers.typeToFindCustomers')}
     />
   );
 };

@@ -3,6 +3,7 @@ import { createErrorResponse, executeRPC } from '@/utils/serviceErrorHandler';
 import { PAGINATION } from '@/config/cacheConfig';
 import { toLocalISODate } from '@/utils/formatters';
 import { matchesSearch, searchTerms } from '@/features/filters/searchMatch';
+import { t } from '@/i18n';
 
 // M1 Fix: DRY empty pagination response
 const EMPTY_INVOICE_PAGINATION = { total_count: 0, limit: PAGINATION.DEFAULT_LIMIT, offset: 0, has_more: false };
@@ -144,7 +145,7 @@ export const getInvoicesList = async (
     if (error) {
       console.error('[InvoiceService] Failed to fetch invoice list:', error.message);
       return {
-        ...createErrorResponse(error, 'Failed to fetch invoice list', 'InvoiceService.getInvoicesList'),
+        ...createErrorResponse(error, t('errors.invoice.fetchListFailed'), 'InvoiceService.getInvoicesList'),
         data: { invoices: [], pagination: { ...EMPTY_INVOICE_PAGINATION, limit: p_limit, offset: p_offset } }
       };
     }
@@ -152,7 +153,7 @@ export const getInvoicesList = async (
     if (!data || !data.success) {
       return {
         success: false,
-        message: data?.message || 'No data returned from server',
+        message: data?.message || t('errors.general.noDataFromServer'),
         data: {
           invoices: [],
           pagination: { total_count: 0, limit: p_limit, offset: p_offset, has_more: false }
@@ -162,7 +163,7 @@ export const getInvoicesList = async (
 
     return {
       success: true,
-      message: data.message || 'Invoice list retrieved successfully',
+      message: data.message || t('errors.invoice.listRetrieved'),
       data: {
         invoices: data.data || [],
         pagination: data.pagination || { total_count: 0, limit: p_limit, offset: p_offset, has_more: false }
@@ -172,7 +173,7 @@ export const getInvoicesList = async (
   } catch (error) {
     console.error('[InvoiceService] Exception:', error);
     return {
-      ...createErrorResponse(error, 'An unexpected error occurred', 'InvoiceService.getInvoicesList'),
+      ...createErrorResponse(error, t('errors.general.unexpected'), 'InvoiceService.getInvoicesList'),
       data: { invoices: [], pagination: { ...EMPTY_INVOICE_PAGINATION, limit: params.p_limit || PAGINATION.DEFAULT_LIMIT, offset: params.p_offset || 0 } }
     };
   }
@@ -326,9 +327,9 @@ export const getAssignedCustomerInvoices = async (
 
   const assigned = [...new Set(assignedCustomerIds.filter(Boolean))];
   const requested = [...(params.p_customer_ids ?? []), ...(params.p_customer_id ? [params.p_customer_id] : [])];
-  if (requested.some(id => !assigned.includes(id))) return failure('Customer access denied');
+  if (requested.some(id => !assigned.includes(id))) return failure(t('errors.customer.accessDenied'));
   const targetIds = requested.length > 0 ? [...new Set(requested)] : assigned;
-  if (targetIds.length === 0) return failure('No customer assignment is available for this account');
+  if (targetIds.length === 0) return failure(t('errors.customer.noAssignment'));
 
   try {
     const authenticatedClient = await getAuthenticatedClient();
@@ -349,25 +350,25 @@ export const getAssignedCustomerInvoices = async (
           p_to_date: toLocalISODate(new Date()),
         });
         if (error) {
-          const failed = createErrorResponse(error, 'Failed to fetch invoice list', 'InvoiceService.getAssignedCustomerInvoices');
+          const failed = createErrorResponse(error, t('errors.invoice.fetchListFailed'), 'InvoiceService.getAssignedCustomerInvoices');
           return { success: false, message: failed.message, invoices: [] };
         }
         if (!data?.success) {
-          return { success: false, message: data?.error || data?.message || 'No data returned from server', invoices: [] };
+          return { success: false, message: data?.error || data?.message || t('errors.general.noDataFromServer'), invoices: [] };
         }
         const rows: CustomerInvoiceRow[] = data.data?.invoices || [];
         return { success: true, invoices: rows.map(row => mapCustomerInvoiceRow(row, customerId, names[customerId] || '')) };
       })
     );
     const failed = results.find(result => !result.success);
-    if (failed) return failure(failed.message || 'Failed to fetch invoice list');
+    if (failed) return failure(failed.message || t('errors.invoice.fetchListFailed'));
 
     const matching = selectCustomerInvoices(results.flatMap(result => result.invoices), params);
 
     const invoices = matching.slice(offset, offset + limit);
     return {
       success: true,
-      message: 'Invoice list retrieved successfully',
+      message: t('errors.invoice.listRetrieved'),
       data: {
         invoices,
         pagination: {
@@ -380,7 +381,7 @@ export const getAssignedCustomerInvoices = async (
     };
   } catch (error) {
     return {
-      ...createErrorResponse(error, 'An unexpected error occurred', 'InvoiceService.getAssignedCustomerInvoices'),
+      ...createErrorResponse(error, t('errors.general.unexpected'), 'InvoiceService.getAssignedCustomerInvoices'),
       data: { invoices: [], pagination: { ...EMPTY_INVOICE_PAGINATION, limit, offset } },
     };
   }
@@ -485,8 +486,8 @@ export const getInvoiceDetails = async (invoiceId: string): Promise<InvoiceDetai
     if (!invoiceId) {
       return {
         success: false,
-        message: 'Invoice ID is required',
-        error: 'Missing parameter'
+        message: t('errors.invoice.idRequired'),
+        error: t('errors.general.missingParameter')
       };
     }
 
@@ -513,33 +514,33 @@ export const getInvoiceDetails = async (invoiceId: string): Promise<InvoiceDetai
 
     if (error) {
       console.error('[InvoiceService] Failed to fetch invoice details:', error.message, error);
-      return createErrorResponse(error, 'Failed to fetch invoice details', 'InvoiceService.getInvoiceDetails');
+      return createErrorResponse(error, t('errors.invoice.fetchDetailsFailed'), 'InvoiceService.getInvoiceDetails');
     }
 
     if (!data) {
       return {
         success: false,
-        message: 'No data returned from server',
-        error: 'Empty response from server'
+        message: t('errors.general.noDataFromServer'),
+        error: t('errors.general.emptyResponseFromServer')
       };
     }
 
     if (!data.success) {
       return {
         success: false,
-        message: data.message || 'No invoice found',
-        error: data.error || 'Invoice not found or access denied'
+        message: data.message || t('errors.invoice.noneFound'),
+        error: data.error || t('errors.invoice.notFoundOrDenied')
       };
     }
 
     return {
       success: true,
       data: data.data,
-      message: 'Invoice details fetched successfully'
+      message: t('errors.invoice.detailsFetched')
     };
   } catch (error) {
     console.error('[InvoiceService] Exception:', error);
-    return createErrorResponse(error, 'An unexpected error occurred', 'InvoiceService.getInvoiceDetails');
+    return createErrorResponse(error, t('errors.general.unexpected'), 'InvoiceService.getInvoiceDetails');
   }
 };
 
@@ -591,8 +592,8 @@ export const getInvoiceItemsDetailed = async (invoiceId: string): Promise<Invoic
     if (!invoiceId) {
       return {
         success: false,
-        message: 'Invoice ID is required',
-        error: 'Missing parameter'
+        message: t('errors.invoice.idRequired'),
+        error: t('errors.general.missingParameter')
       };
     }
 
@@ -614,7 +615,7 @@ export const getInvoiceItemsDetailed = async (invoiceId: string): Promise<Invoic
 
     if (error) {
       console.error('[InvoiceService] Failed to fetch invoice items:', error.message);
-      return createErrorResponse(error, 'Failed to fetch invoice items', 'InvoiceService.getInvoiceItemsDetailed');
+      return createErrorResponse(error, t('errors.invoice.fetchItemsFailed'), 'InvoiceService.getInvoiceItemsDetailed');
     }
 
     // Handle array response format (RPC returns items directly as array)
@@ -705,7 +706,7 @@ export const getInvoiceItemsDetailed = async (invoiceId: string): Promise<Invoic
           dispatchQty: dispatch.quantity || item.dispatch_qty || item.dispatchQty || item.quantity || 0,
           grnQuantity: grnItem.original_quantity || item.grn_quantity || item.grnQuantity || item.original_quantity || 0,
           // Item name - check catalog first, then grn_item, then flat fields
-          itemName: catalog.name || grnItem.name || item.item_name || item.itemName || item.name || item.catalog_name || 'Unknown Item',
+          itemName: catalog.name || grnItem.name || item.item_name || item.itemName || item.name || item.catalog_name || t('errors.general.unknownItem'),
           // GRN number - check flat fields
           grNo: item.gr_no || item.grNo || '',
           // Dispatch details
@@ -735,7 +736,7 @@ export const getInvoiceItemsDetailed = async (invoiceId: string): Promise<Invoic
             }, 0)
           }
         },
-        message: 'Invoice items fetched successfully'
+        message: t('errors.invoice.itemsFetched')
       };
     }
 
@@ -744,8 +745,8 @@ export const getInvoiceItemsDetailed = async (invoiceId: string): Promise<Invoic
       console.warn('[InvoiceService] Invoice items not successful:', data?.error || data?.message);
       return {
         success: false,
-        message: data?.message || 'No invoice items found',
-        error: data?.error || 'Invoice items not found or access denied'
+        message: data?.message || t('errors.invoice.noItemsFound'),
+        error: data?.error || t('errors.invoice.itemsNotFoundOrDenied')
       };
     }
 
@@ -757,11 +758,11 @@ export const getInvoiceItemsDetailed = async (invoiceId: string): Promise<Invoic
     return {
       success: true,
       data: data.data,
-      message: 'Invoice items fetched successfully'
+      message: t('errors.invoice.itemsFetched')
     };
   } catch (error) {
     console.error('[InvoiceService] Invoice Items Exception:', error);
-    return createErrorResponse(error, 'An unexpected error occurred', 'InvoiceService.getInvoiceItemsDetailed');
+    return createErrorResponse(error, t('errors.general.unexpected'), 'InvoiceService.getInvoiceItemsDetailed');
   }
 };
 
@@ -803,7 +804,7 @@ export const deleteInvoice = async (invoiceId: string): Promise<DeleteInvoiceRes
     getAuthenticatedClient,
     'delete_invoice',
     { p_invoice_id: invoiceId },
-    { context: 'InvoiceService.deleteInvoice', errorMessage: 'Failed to delete invoice', unwrapNested: false, validateSuccess: true }
+    { context: 'InvoiceService.deleteInvoice', errorMessage: t('errors.invoice.deleteFailed'), unwrapNested: false, validateSuccess: true }
   );
 
   if (!result.success) {

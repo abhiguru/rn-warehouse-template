@@ -16,6 +16,7 @@ import type { ThemeTokens } from '@/theme/tokens';
 import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
 import { StateActionButton } from '@/components/ErrorBoundary';
 import { createLogger } from '@/utils/logger';
+import { t as tr } from '@/i18n';
 
 const logger = createLogger('ConfigErrorScreen');
 
@@ -108,19 +109,18 @@ const ConfigErrorScreen: React.FC<ConfigErrorScreenProps> = ({
           />
 
           <Text style={styles.title} accessibilityRole="header">
-            Couldn&apos;t load app settings
+            {tr('components.configError.title')}
           </Text>
 
           <Text style={styles.message}>
-            The app couldn&apos;t get its settings from the warehouse server, so your data stays hidden
-            for now. Check your connection and try again.
+            {tr('components.configError.message')}
           </Text>
 
           {__DEV__ && error ? (
             <View style={styles.devStrip}>
               <MaterialCommunityIcons name="alert-circle" size={iconSize.md} color={t.status.negative.text} />
               <View style={styles.devContent}>
-                <Text style={styles.devLabel}>Details (development builds only)</Text>
+                <Text style={styles.devLabel}>{tr('components.devDetails')}</Text>
                 <Text style={styles.devText} selectable>
                   {error}
                 </Text>
@@ -132,11 +132,11 @@ const ConfigErrorScreen: React.FC<ConfigErrorScreenProps> = ({
             <StateActionButton
               fullWidth
               icon="refresh"
-              label="Try again"
+              label={tr('common.retry')}
               loading={isRetrying}
-              loadingLabel="Trying again"
+              loadingLabel={tr('components.configError.tryingAgain')}
               onPress={handleRetry}
-              accessibilityLabel={isRetrying ? 'Retrying' : 'Retry loading configuration'}
+              accessibilityLabel={isRetrying ? tr('components.configError.retrying') : tr('components.configError.retryLabel')}
             />
 
             {/* Opens the selection screen only; nothing is signed out until the
@@ -146,10 +146,10 @@ const ConfigErrorScreen: React.FC<ConfigErrorScreenProps> = ({
                 fullWidth
                 variant="secondary"
                 icon="server"
-                label="Change server"
+                label={tr('components.configError.changeServer')}
                 onPress={onChangeServer}
                 disabled={isRetrying}
-                accessibilityLabel="Change warehouse server"
+                accessibilityLabel={tr('components.configError.changeServerLabel')}
               />
             )}
           </View>
@@ -157,7 +157,7 @@ const ConfigErrorScreen: React.FC<ConfigErrorScreenProps> = ({
       </ScrollView>
 
       <View style={styles.footer}>
-        <Text style={styles.footerText}>If this keeps happening, contact your facility.</Text>
+        <Text style={styles.footerText}>{tr('components.configError.footer')}</Text>
       </View>
     </SafeAreaView>
   );

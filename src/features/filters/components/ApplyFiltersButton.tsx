@@ -6,6 +6,7 @@
 import React, { useEffect } from 'react';
 import { AccessibilityInfo, Platform, View } from 'react-native';
 import { Button } from '@/components/ui/Button';
+import { t } from '@/i18n';
 import { resultsLabel, type FilterResultCount } from '../useFilterResultCount';
 
 export interface ApplyFiltersButtonProps {
@@ -26,7 +27,7 @@ export function ApplyFiltersButton({ result, noun, onPress, disabled }: ApplyFil
 
   return (
     <View accessibilityLiveRegion="polite">
-      <Button type="primary" size="fullWidth" onPress={onPress} disabled={disabled} loading={result.loading && result.count === null} loadingText="Show results">
+      <Button type="primary" size="fullWidth" onPress={onPress} disabled={disabled} loading={result.loading && result.count === null} loadingText={t('filters.results.showResults')}>
         {label}
       </Button>
     </View>

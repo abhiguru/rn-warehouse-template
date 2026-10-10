@@ -39,6 +39,7 @@ import RecentDispatchesSection from './RecentDispatchesSection';
 import { searchService, SearchResult } from '@/services/search-service';
 
 import { showAlert } from '@/utils/alert';
+import { normalizeDigits, t as tr } from '@/i18n';
 interface OrderManagementProps {
   customerId?: string;
   onOpenItemCatalog?: () => void;
@@ -85,7 +86,7 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
       const orderResult = await OrderService.getOrCreateOrder(custId);
       
       if (!orderResult.success) {
-        showAlert("Couldn't open the order", orderResult.message || 'Check your connection and try again.');
+        showAlert(tr('orders.manage.couldNotOpenTitle'), orderResult.message || tr('common.checkConnection'));
         return;
       }
 
@@ -122,11 +123,11 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
           error: orderDetailsResult.error,
           message: orderDetailsResult.message
         });
-        showAlert("Couldn't load the order", 'Check your connection and try again.');
+        showAlert(tr('orders.manage.couldNotLoadTitle'), tr('common.checkConnection'));
       }
     } catch (error) {
       console.error('[OrderManagement] Error initializing order:', error);
-      showAlert("Couldn't open the order", 'Check your connection and try again.');
+      showAlert(tr('orders.manage.couldNotOpenTitle'), tr('common.checkConnection'));
     } finally {
       setLoading(false);
     }
@@ -145,7 +146,7 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
   // Search customers
   const searchCustomers = useCallback(async (query: string) => {
     try {
-      const results = await searchService.searchCustomers(query);
+      const results = await searchService.searchCustomers(normalizeDigits(query));
       setCustomerSearchResults(results);
     } catch (error) {
       console.error('[OrderManagement] Customer search error:', error);
@@ -213,11 +214,11 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
         await onRefresh();
         return true;
       }
-      showAlert("Couldn't change the quantity", result.message || 'Check your connection and try again.');
+      showAlert(tr('orders.manage.couldNotChangeQuantityTitle'), result.message || tr('common.checkConnection'));
       return false;
     } catch (error) {
       console.error('[OrderManagement] Update quantity error:', error);
-      showAlert("Couldn't change the quantity", 'Check your connection and try again.');
+      showAlert(tr('orders.manage.couldNotChangeQuantityTitle'), tr('common.checkConnection'));
       return false;
     }
   }, [order, onRefresh]);
@@ -226,14 +227,14 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
   const handleRemoveItem = useCallback(async (item: OrderItem) => {
     if (!order) return;
 
-    const itemName = item.grn_item?.name || 'this item';
+    const itemName = item.grn_item?.name;
     showAlert(
-      `Remove ${itemName}?`,
-      `${itemName} will be taken off this order.`,
+      itemName ? tr('orders.manage.removeTitle', { name: itemName }) : tr('orders.manage.removeTitleNoName'),
+      itemName ? tr('orders.manage.removeMessage', { name: itemName }) : tr('orders.manage.removeMessageNoName'),
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: tr('common.cancel'), style: 'cancel' },
         {
-          text: 'Remove item',
+          text: tr('orders.manage.removeItem'),
           style: 'destructive',
           onPress: async () => {
             try {
@@ -241,11 +242,11 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
               if (result.success) {
                 await onRefresh();
               } else {
-                showAlert("Couldn't remove the item", result.message || 'Check your connection and try again.');
+                showAlert(tr('orders.manage.couldNotRemoveTitle'), result.message || tr('common.checkConnection'));
               }
             } catch (error) {
               console.error('[OrderManagement] Remove item error:', error);
-              showAlert("Couldn't remove the item", 'Check your connection and try again.');
+              showAlert(tr('orders.manage.couldNotRemoveTitle'), tr('common.checkConnection'));
             }
           }
         }
@@ -327,13 +328,13 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
 
       if (failureCount > 0) {
         showAlert(
-          "Some items weren't updated",
-          'Check the order and try again.'
+          tr('orders.manage.someNotUpdatedTitle'),
+          tr('orders.manage.someNotUpdatedMessage')
         );
       }
     } catch (error) {
       console.error('[OrderManagement] Update items error:', error);
-      showAlert("Couldn't update the order", 'Check your connection and try again.');
+      showAlert(tr('orders.manage.couldNotUpdateTitle'), tr('common.checkConnection'));
     }
   }, [order, onRefresh]);
 
@@ -341,8 +342,8 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
   if (loading && !order) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={t.brand.tint} accessibilityLabel="Loading order" />
-        <Text style={styles.loadingText}>Loading order…</Text>
+        <ActivityIndicator size="large" color={t.brand.tint} accessibilityLabel={tr('orders.manage.loadingLabel')} />
+        <Text style={styles.loadingText}>{tr('orders.manage.loading')}</Text>
       </View>
     );
   }
@@ -395,18 +396,18 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
         ) : (
           <View style={styles.emptyState}>
             <Icon name="clipboard-list-outline" size={iconSize.hero} color={t.icon.secondary} />
-            <Text style={styles.emptyText} accessibilityRole="header">No items in this order</Text>
+            <Text style={styles.emptyText} accessibilityRole="header">{tr('orders.manage.emptyTitle')}</Text>
             <Text style={styles.emptySubtext}>
-              Items you add from this customer's stock appear here.
+              {tr('orders.manage.emptyMessage')}
             </Text>
             <Button
               type="primary"
               size="standalone"
               leftIcon="plus"
               onPress={() => setShowItemCatalog(true)}
-              accessibilityLabel="Add items to order"
+              accessibilityLabel={tr('orders.screen.addItemsToOrder')}
             >
-              Add items
+              {tr('orders.catalog.addItems')}
             </Button>
           </View>
         )}
@@ -433,16 +434,16 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
             style={StyleSheet.absoluteFill}
             onPress={closeCustomerSearch}
             accessibilityRole="button"
-            accessibilityLabel="Close customer search"
+            accessibilityLabel={tr('customers.search.close')}
           />
           <View style={[styles.modalContent, { marginTop: insets.top + space.xxl }]}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle} accessibilityRole="header">Select customer</Text>
+              <Text style={styles.modalTitle} accessibilityRole="header">{tr('customers.search.title')}</Text>
               <Pressable
                 onPress={closeCustomerSearch}
                 style={({ pressed }) => [styles.modalCloseButton, pressed && styles.modalCloseButtonPressed]}
                 accessibilityRole="button"
-                accessibilityLabel="Close customer search"
+                accessibilityLabel={tr('customers.search.close')}
               >
                 <Icon name="close" size={iconSize.lg} color={t.icon.primary} />
               </Pressable>
@@ -452,11 +453,11 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
               <Icon name="magnify" size={iconSize.md} color={t.icon.secondary} />
               <TextInput
                 style={styles.searchInput}
-                placeholder="Search customers"
+                placeholder={tr('customers.search.placeholder')}
                 value={customerSearchQuery}
                 onChangeText={setCustomerSearchQuery}
                 placeholderTextColor={t.text.placeholder}
-                accessibilityLabel="Search customers"
+                accessibilityLabel={tr('customers.search.placeholder')}
                 autoCorrect={false}
                 returnKeyType="search"
                 autoFocus
@@ -470,7 +471,7 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
                   style={({ pressed }) => [styles.customerItem, pressed && styles.customerItemPressed]}
                   onPress={() => handleCustomerSelect(customer)}
                   accessibilityRole="button"
-                  accessibilityLabel={customer.detail ? `${customer.label}, ${customer.detail}` : customer.label}
+                  accessibilityLabel={customer.detail ? tr('orders.manage.labelDetail', { label: customer.label, detail: customer.detail }) : customer.label}
                 >
                   <Text style={styles.customerName}>{customer.label}</Text>
                   {customer.detail && (
@@ -481,7 +482,7 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
 
               {customerSearchQuery.length > 2 && customerSearchResults.length === 0 && (
                 <Text style={styles.noResults}>
-                  {`No customers match "${customerSearchQuery}". Try fewer letters.`}
+                  {tr('customers.search.noMatchTryFewer', { search: customerSearchQuery })}
                 </Text>
               )}
             </ScrollView>

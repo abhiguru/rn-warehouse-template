@@ -9,6 +9,7 @@ import {
   getAuthenticatedClient,
   getStoredToken,
 } from '@/config/supabaseConfig';
+import { t } from '@/i18n';
 import type {
   StockSummaryResponse,
   StockSummaryData,
@@ -63,7 +64,7 @@ export async function getCustomerStockSummary(
     return {
       success: false,
       data: EMPTY_RESPONSE,
-      message: 'Customer ID is required',
+      message: t('reports.shared.customerIdRequired'),
       error: 'MISSING_CUSTOMER_ID',
     };
   }
@@ -103,7 +104,7 @@ export async function getCustomerStockSummary(
       return {
         success: false,
         data: EMPTY_RESPONSE,
-        message: 'Failed to fetch stock summary',
+        message: t('reports.stockSummary.service.fetchFailed'),
         error: error.message,
       };
     }
@@ -113,7 +114,7 @@ export async function getCustomerStockSummary(
       return {
         success: true,
         data: EMPTY_RESPONSE,
-        message: 'No stock data available',
+        message: t('reports.stockSummary.service.noData'),
       };
     }
 
@@ -172,14 +173,14 @@ export async function getCustomerStockSummary(
     return {
       success: true,
       data: { summary, items, out_of_stock_items: outOfStockItems },
-      message: 'Stock summary retrieved successfully',
+      message: t('reports.stockSummary.service.retrieved'),
     };
   } catch (error) {
     console.error('[StockSummary] Unexpected error:', error);
     return {
       success: false,
       data: EMPTY_RESPONSE,
-      message: 'Failed to fetch stock summary',
+      message: t('reports.stockSummary.service.fetchFailed'),
       error: error instanceof Error ? error.message : 'Unknown error',
     };
   }
@@ -215,7 +216,7 @@ export async function getAllStockSummary(): Promise<AllStockSummaryResponse> {
       return {
         success: false,
         data: EMPTY_ALL_RESPONSE,
-        message: 'Failed to fetch all-customers stock summary',
+        message: t('reports.stockSummary.service.fetchAllFailed'),
         error: error.message,
       };
     }
@@ -225,7 +226,7 @@ export async function getAllStockSummary(): Promise<AllStockSummaryResponse> {
       return {
         success: true,
         data: EMPTY_ALL_RESPONSE,
-        message: 'No stock data available',
+        message: t('reports.stockSummary.service.noData'),
       };
     }
 
@@ -265,14 +266,14 @@ export async function getAllStockSummary(): Promise<AllStockSummaryResponse> {
     return {
       success: true,
       data: { summary, customers },
-      message: 'All-customers stock summary retrieved successfully',
+      message: t('reports.stockSummary.service.retrievedAll'),
     };
   } catch (error) {
     console.error('[AllStockSummary] Unexpected error:', error);
     return {
       success: false,
       data: EMPTY_ALL_RESPONSE,
-      message: 'Failed to fetch all-customers stock summary',
+      message: t('reports.stockSummary.service.fetchAllFailed'),
       error: error instanceof Error ? error.message : 'Unknown error',
     };
   }

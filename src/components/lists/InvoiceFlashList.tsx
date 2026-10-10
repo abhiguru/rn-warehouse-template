@@ -51,7 +51,8 @@ import { readSearch } from '@/features/filters/filterModel';
 import { useListFilters } from '@/features/filters/useListFilters';
 import { FilteredListHeader, filteredEmptyProps } from '@/features/filters/components/FilteredListHeader';
 import { searchWords } from '@/features/filters/components/HighlightedText';
-import { formatCount, formatSectionDate } from '@/utils/formatters';
+import { formatCount, formatNumber, formatSectionDate } from '@/utils/formatters';
+import { t as translate } from '@/i18n';
 import { ListEmptyState } from '@/components/list/ListEmptyState';
 import { ErrorStateView } from '@/components/ErrorBoundary';
 
@@ -88,11 +89,11 @@ const SectionHeader = React.memo<SectionHeaderProps>(({ title, count }) => {
       style={styles.sectionHeader}
       accessible
       accessibilityRole="header"
-      accessibilityLabel={`${title}, ${formatCount(count, 'invoice')}`}
+      accessibilityLabel={translate('lists.section.label', { title, countText: formatCount(count, 'invoice') })}
     >
       <Text style={styles.sectionTitle}>{title}</Text>
       <View style={styles.sectionBadge}>
-        <Text style={styles.sectionCount} maxFontSizeMultiplier={1.6}>{count}</Text>
+        <Text style={styles.sectionCount} maxFontSizeMultiplier={1.6}>{formatNumber(count)}</Text>
       </View>
     </View>
   );
@@ -190,8 +191,8 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
       console.error('[InvoiceFlashList] Error:', err);
       setError(err instanceof Error ? err.message : 'Failed to load invoices');
       setSnackbarMessage(append
-        ? "Couldn't load more invoices. Scroll down to try again."
-        : "Couldn't load invoices. Check your connection and try again.");
+        ? translate('lists.invoice.loadMoreFailed')
+        : translate('lists.invoice.loadFailed'));
       setSnackbarVisible(true);
     } finally {
       if (isMountedRef.current && requestId === latestRequest.current) {
@@ -306,7 +307,7 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
     return (
       <View style={styles.footerLoader} accessibilityLiveRegion="polite">
         <ActivityIndicator size="small" color={t.brand.tint} />
-        <Text style={styles.footerLoaderText}>Loading more invoices…</Text>
+        <Text style={styles.footerLoaderText}>{translate('lists.invoice.loadingMore')}</Text>
       </View>
     );
   }, [isLoadingMore, styles, t]);
@@ -350,8 +351,8 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
     content = (
       <ErrorStateView
         presentation="inline"
-        title="Couldn't load invoices"
-        message="Check your connection and try again."
+        title={translate('lists.invoice.loadFailedTitle')}
+        message={translate('common.checkConnection')}
         onRetry={handleRefresh}
       />
     );
@@ -360,10 +361,10 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
       <ListEmptyState
         {...filteredEmptyProps(filters, 'invoices')}
         emptyIcon="file-document-outline"
-        emptyTitle="No invoices yet"
-        emptySubtitle={canCreateInvoice ? 'Invoices you create appear here.' : 'Invoices appear here once they are created.'}
+        emptyTitle={translate('lists.invoice.emptyTitle')}
+        emptySubtitle={canCreateInvoice ? translate('lists.invoice.emptyCreator') : translate('lists.invoice.emptyViewer')}
         showCreateButton={canCreateInvoice}
-        createButtonLabel="Create invoice"
+        createButtonLabel={translate('lists.invoice.create')}
         onCreatePress={handleCreateInvoice}
       />
     );
@@ -372,7 +373,7 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
   return (
     <View style={styles.container}>
       {/* The header, search field and filter bar are shown in every state. */}
-      <FilteredListHeader title="Invoices" config={INVOICE_FILTERS} filters={filters} loading={isLoading} />
+      <FilteredListHeader title={translate('lists.invoice.title')} config={INVOICE_FILTERS} filters={filters} loading={isLoading} />
       {content}
       <Snackbar
         visible={snackbarVisible}

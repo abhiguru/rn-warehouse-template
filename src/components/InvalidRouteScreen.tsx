@@ -14,6 +14,7 @@ import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, layout, radius, space, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { StateActionButton } from '@/components/ErrorBoundary';
+import { t as tr } from '@/i18n';
 
 export interface InvalidRouteScreenProps {
   /** Technical cause. Shown in development builds only. */
@@ -56,13 +57,15 @@ const makeStyles = (t: ThemeTokens) => ({
 
 export function InvalidRouteScreen({
   error,
-  title = 'Page not found',
-  message = "This page doesn't exist or its link is incomplete. Go back and try again.",
+  title: titleProp,
+  message: messageProp,
   showBackButton = true,
   onBack,
 }: InvalidRouteScreenProps) {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
+  const title = titleProp ?? tr('components.invalidRoute.title');
+  const message = messageProp ?? tr('components.invalidRoute.message');
 
   const handleBack = () => {
     if (onBack) {
@@ -77,7 +80,7 @@ export function InvalidRouteScreen({
       <Stack.Screen
         options={{
           title,
-          headerBackTitle: 'Back',
+          headerBackTitle: tr('common.back'),
           headerShown: true,
         }}
       />
@@ -101,7 +104,7 @@ export function InvalidRouteScreen({
 
             {__DEV__ && error ? (
               <View style={styles.devStrip}>
-                <Text style={styles.devLabel}>Details (development builds only)</Text>
+                <Text style={styles.devLabel}>{tr('components.devDetails')}</Text>
                 <Text style={styles.devText} selectable>
                   {error}
                 </Text>
@@ -111,9 +114,9 @@ export function InvalidRouteScreen({
             {showBackButton && (
               <StateActionButton
                 icon="arrow-left"
-                label="Go back"
+                label={tr('common.goBack')}
                 onPress={handleBack}
-                accessibilityLabel="Go back"
+                accessibilityLabel={tr('common.goBack')}
               />
             )}
           </View>

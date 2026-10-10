@@ -18,6 +18,7 @@ import { deleteGRNImage } from '../services/imageUploadService';
 import { getSupabaseClient } from '@/config/supabaseConfig';
 
 import { showAlert } from '@/utils/alert';
+import { t as tr } from '@/i18n';
 interface ImagePreviewGridProps {
   // Legacy support for string URLs
   images?: string[];
@@ -109,12 +110,12 @@ export const ImagePreviewGrid: React.FC<ImagePreviewGridProps> = ({
     if (!editable || !onRemove) return;
 
     showAlert(
-      'Remove photo?',
-      'You can add it again later.',
+      tr('grn.photos.removeTitle'),
+      tr('grn.photos.removeMessage'),
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: tr('common.cancel'), style: 'cancel' },
         {
-          text: 'Remove photo',
+          text: tr('grn.photos.removeConfirm'),
           style: 'destructive',
           onPress: () => onRemove(index),
         },
@@ -137,12 +138,12 @@ export const ImagePreviewGrid: React.FC<ImagePreviewGridProps> = ({
     });
 
     showAlert(
-      'Remove photo?',
-      'You can add it again later.',
+      tr('grn.photos.removeTitle'),
+      tr('grn.photos.removeMessage'),
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: tr('common.cancel'), style: 'cancel' },
         {
-          text: 'Remove photo',
+          text: tr('grn.photos.removeConfirm'),
           style: 'destructive',
           onPress: async () => {
             if (!imageId) return;
@@ -183,8 +184,8 @@ export const ImagePreviewGrid: React.FC<ImagePreviewGridProps> = ({
             } catch (error) {
               console.error('[ImagePreviewGrid] Delete error:', error);
               showAlert(
-                "Couldn't remove the photo",
-                'Check your connection and try again.'
+                tr('grn.photos.removeFailedTitle'),
+                tr('common.checkConnection')
               );
             } finally {
               setDeletingImages(prev => {
@@ -219,8 +220,16 @@ export const ImagePreviewGrid: React.FC<ImagePreviewGridProps> = ({
           const isDeleting = deletingImages.has(imageId);
           const isUploading = imageData.uploadStatus === 'uploading';
           const hasFailed = imageData.uploadStatus === 'failed';
-          const photoLabel = `Photo ${index + 1}${imageData.fileName ? `, ${imageData.fileName}` : ''}`;
-          const stateLabel = hasFailed ? ', upload failed' : isUploading ? ', uploading' : isDeleting ? ', removing' : '';
+          const stateLabel = hasFailed
+            ? tr('grn.photos.stateUploadFailed')
+            : isUploading
+              ? tr('grn.photos.stateUploading')
+              : isDeleting
+                ? tr('grn.photos.stateRemoving')
+                : '';
+          const photoLabel = [tr('grn.photos.photoNumber', { position: index + 1 }), imageData.fileName, stateLabel]
+            .filter(Boolean)
+            .join(', ');
 
           return (
             <View
@@ -240,8 +249,8 @@ export const ImagePreviewGrid: React.FC<ImagePreviewGridProps> = ({
                 onPress={() => onImagePress?.(imageData)}
                 disabled={!onImagePress || isDeleting || isUploading}
                 accessibilityRole={onImagePress ? 'imagebutton' : 'image'}
-                accessibilityLabel={`${photoLabel}${stateLabel}`}
-                accessibilityHint={onImagePress ? 'Opens the photo full screen' : undefined}
+                accessibilityLabel={photoLabel}
+                accessibilityHint={onImagePress ? tr('grn.images.openHint') : undefined}
                 accessibilityState={{ busy: isUploading || isDeleting, disabled: !onImagePress || isDeleting || isUploading }}
               >
                 <Image
@@ -287,7 +296,7 @@ export const ImagePreviewGrid: React.FC<ImagePreviewGridProps> = ({
                 {hasFailed && (
                   <View style={styles.errorOverlay}>
                     <Icon name="alert-circle" size={iconSize.lg} color={t.overlay.onImage} />
-                    <Text style={styles.errorText}>Upload failed</Text>
+                    <Text style={styles.errorText}>{tr('grn.photos.uploadFailed')}</Text>
                   </View>
                 )}
               </Pressable>
@@ -298,8 +307,8 @@ export const ImagePreviewGrid: React.FC<ImagePreviewGridProps> = ({
                   style={styles.removeButton}
                   accessible
                   accessibilityRole="button"
-                  accessibilityLabel={`Remove photo ${index + 1}`}
-                  accessibilityHint="Removes this photo"
+                  accessibilityLabel={tr('grn.photos.removeLabel', { position: index + 1 })}
+                  accessibilityHint={tr('grn.photos.removeHint')}
                   testID={`remove-image-${index}`}
                   onPress={() => {
                     if (onRemoveImage || imageData.id) {

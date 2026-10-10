@@ -19,6 +19,7 @@ import { clearTokenExpiryStates, clearAuthError, logout, setConfigFetchFailed } 
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, layout, radius, space, touchTarget, typography } from '@/theme/tokens';
 import type { StatusTokens, ThemeTokens } from '@/theme/tokens';
+import { t } from '@/i18n';
 
 type BannerTone = 'critical' | 'negative';
 
@@ -90,8 +91,8 @@ interface BannerProps {
 
 function Banner({ tone, icon, message, actions }: BannerProps) {
   const styles = useThemedStyles(makeStyles);
-  const t = useTokens();
-  const status: StatusTokens = t.status[tone];
+  const tokens = useTokens();
+  const status: StatusTokens = tokens.status[tone];
 
   return (
     <View style={[styles.banner, styles[tone]]} accessibilityRole="alert" accessibilityLiveRegion="polite">
@@ -153,8 +154,8 @@ export const TokenExpiryBanner: React.FC = () => {
         icon="alert-circle"
         message={authError}
         actions={[
-          { label: 'Dismiss', accessibilityLabel: 'Dismiss error', onPress: handleDismissAuthError },
-          { label: 'Sign in again', onPress: handleLogout },
+          { label: t('common.dismiss'), accessibilityLabel: t('components.session.dismissError'), onPress: handleDismissAuthError },
+          { label: t('components.session.signInAgain'), onPress: handleLogout },
         ]}
       />
     );
@@ -166,8 +167,8 @@ export const TokenExpiryBanner: React.FC = () => {
       <Banner
         tone="critical"
         icon="alert"
-        message="Couldn't load the app settings, so some features may not work. Check your connection and open the app again."
-        actions={[{ label: 'Dismiss', accessibilityLabel: 'Dismiss warning', onPress: handleDismissConfigError }]}
+        message={t('components.session.configFailed')}
+        actions={[{ label: t('common.dismiss'), accessibilityLabel: t('components.session.dismissWarning'), onPress: handleDismissConfigError }]}
       />
     );
   }
@@ -178,8 +179,8 @@ export const TokenExpiryBanner: React.FC = () => {
       <Banner
         tone="negative"
         icon="alert-circle"
-        message="Your session has ended. Sign in again to continue."
-        actions={[{ label: 'Sign in again', onPress: handleLogout }]}
+        message={t('components.session.expired')}
+        actions={[{ label: t('components.session.signInAgain'), onPress: handleLogout }]}
       />
     );
   }
@@ -190,10 +191,10 @@ export const TokenExpiryBanner: React.FC = () => {
       <Banner
         tone="critical"
         icon="alert"
-        message="Your session ends soon. Sign in again to stay signed in."
+        message={t('components.session.expiring')}
         actions={[
-          { label: 'Dismiss', accessibilityLabel: 'Dismiss warning', onPress: handleDismissTokenExpiry },
-          { label: 'Sign in again', onPress: handleRefresh },
+          { label: t('common.dismiss'), accessibilityLabel: t('components.session.dismissWarning'), onPress: handleDismissTokenExpiry },
+          { label: t('components.session.signInAgain'), onPress: handleRefresh },
         ]}
       />
     );

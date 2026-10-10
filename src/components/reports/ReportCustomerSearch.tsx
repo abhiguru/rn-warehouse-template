@@ -23,6 +23,7 @@ import {
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { t as tr } from '@/i18n';
 import {
   fontWeight,
   iconSize,
@@ -175,7 +176,7 @@ export const ReportCustomerSearch: React.FC<ReportCustomerSearchProps> = ({
   onSearchChange,
   onCustomerSelect,
   visibleCustomerIds,
-  placeholder = 'Search customers',
+  placeholder = tr('reports.components.searchCustomers'),
 }) => {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
@@ -266,7 +267,7 @@ export const ReportCustomerSearch: React.FC<ReportCustomerSearchProps> = ({
             <ActivityIndicator
               size="small"
               color={t.brand.tint}
-              accessibilityLabel="Searching"
+              accessibilityLabel={tr('reports.components.searching')}
             />
           </View>
         )}
@@ -275,7 +276,7 @@ export const ReportCustomerSearch: React.FC<ReportCustomerSearchProps> = ({
             onPress={handleClear}
             style={styles.trailing}
             accessibilityRole="button"
-            accessibilityLabel="Clear search"
+            accessibilityLabel={tr('common.clearSearch')}
           >
             <Icon name="close-circle" size={iconSize.md} color={t.icon.secondary} />
           </Pressable>
@@ -286,7 +287,7 @@ export const ReportCustomerSearch: React.FC<ReportCustomerSearchProps> = ({
       {showDropdown && dropdownResults.length > 0 && (
         <View style={styles.dropdown}>
           <Text style={styles.dropdownLabel} accessibilityRole="header">
-            Other customers
+            {tr('reports.components.otherCustomers')}
           </Text>
           {dropdownResults.map((customer, index) => (
             <Pressable

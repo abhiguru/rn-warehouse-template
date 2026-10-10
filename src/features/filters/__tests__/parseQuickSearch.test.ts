@@ -1,4 +1,7 @@
+import { setLanguage } from '@/i18n';
 import { parseQuickSearch } from '../parseQuickSearch';
+
+afterEach(() => setLanguage('en'));
 
 // Saturday 10 October 2026, 02:00 local time: before 05:30, when the UTC date is still the 9th.
 const today = new Date(2026, 9, 10, 2, 0, 0);
@@ -77,5 +80,65 @@ describe('parseQuickSearch', () => {
 
   it('recognises nothing when the list turns recognition off', () => {
     expect(parseQuickSearch('today A0010-A0020', { today })).toEqual({ text: 'today A0010-A0020' });
+  });
+
+  describe('typed in Gujarati', () => {
+    it('reads Gujarati digits as the same numbers', () => {
+      expect(parseQuickSearch('૭/૧૦', grn)).toEqual({ text: '', date: day('2026-10-07') });
+      expect(parseQuickSearch('૦૭/૧૦/૨૦૨૫', grn)).toEqual({ text: '', date: day('2025-10-07') });
+      expect(parseQuickSearch('૭ oct ૨૦૨૬', grn)).toEqual({ text: '', date: day('2026-10-07') });
+      expect(parseQuickSearch('૧૦-૨૦', invoice)).toEqual({ text: '', range: { from: '10', to: '20' } });
+      expect(parseQuickSearch('FY ૨૦૨૬ sunrise', invoice)).toEqual({ text: 'sunrise', financialYear: 2026 });
+      // Digits inside ordinary text are normalised too, so ૧૨ finds what 12 finds.
+      expect(parseQuickSearch('rack ૧૨', grn)).toEqual({ text: 'rack 12' });
+    });
+
+    it('reads Gujarati month names, short and full', () => {
+      const cases: [string, string][] = [
+        ['૭ ઑક્ટો', '2026-10-07'],
+        ['૭ ઑક્ટોબર', '2026-10-07'],
+        ['7 ઑક્ટોબર 2025', '2025-10-07'],
+        ['૧ જાન્યુ', '2026-01-01'],
+        ['૧૫ ઑગસ્ટ ૨૦૨૫', '2025-08-15'],
+        ['૩ મે', '2026-05-03'],
+        ['૯ સપ્ટે ૨૫', '2025-09-09'],
+        // ઑ typed as ઓ, as many keyboards give it
+        ['૭ ઓક્ટોબર', '2026-10-07'],
+      ];
+      for (const [typed, iso] of cases) {
+        expect(parseQuickSearch(typed, grn)).toEqual({ text: '', date: day(iso) });
+      }
+      expect(parseQuickSearch('ડિસેમ્બર ૨૦૨૬', grn)).toEqual({ text: '', date: { from: '2026-12-01', to: '2026-12-31' } });
+      expect(parseQuickSearch('ફેબ્રુ 2024', grn)).toEqual({ text: '', date: { from: '2024-02-01', to: '2024-02-29' } });
+      // A month name alone is still never guessed at.
+      expect(parseQuickSearch('ઑક્ટોબર', grn)).toEqual({ text: 'ઑક્ટોબર' });
+      expect(parseQuickSearch('૩૧ ફેબ્રુઆરી', grn)).toEqual({ text: '૩૧ ફેબ્રુઆરી'.replace('૩૧', '31') });
+    });
+
+    it('reads આજે and ગઈકાલે as today and yesterday', () => {
+      expect(parseQuickSearch('આજે', grn)).toEqual({ text: '', date: day('2026-10-10') });
+      expect(parseQuickSearch('ગઈકાલે', grn)).toEqual({ text: '', date: day('2026-10-09') });
+      expect(parseQuickSearch('ગઇકાલે બટાકા', grn)).toEqual({ text: 'બટાકા', date: day('2026-10-09') });
+      expect(parseQuickSearch('આજે', { today })).toEqual({ text: 'આજે' });
+    });
+
+    it('reads થી as the word between the two ends of a range', () => {
+      expect(parseQuickSearch('DD0010 થી DD0020', grn)).toEqual({ text: '', range: { from: 'DD0010', to: 'DD0020' } });
+      expect(parseQuickSearch('DD0010થી DD0020', grn)).toEqual({ text: '', range: { from: 'DD0010', to: 'DD0020' } });
+      expect(parseQuickSearch('DD0010થી DD0020 સુધી garlic', grn)).toEqual({ text: 'garlic', range: { from: 'DD0010', to: 'DD0020' } });
+      expect(parseQuickSearch('૧૦ થી ૨૦', invoice)).toEqual({ text: '', range: { from: '10', to: '20' } });
+      expect(parseQuickSearch('૧૦થી ૨૦ સુધી', invoice)).toEqual({ text: '', range: { from: '10', to: '20' } });
+      // Not a range: the words stay text, including "થી" and "સુધી".
+      expect(parseQuickSearch('DD0010 થી DC0020', grn)).toEqual({ text: 'DD0010 થી DC0020' });
+      expect(parseQuickSearch('20 થી 10', invoice)).toEqual({ text: '20 થી 10' });
+      expect(parseQuickSearch('સુધી', grn)).toEqual({ text: 'સુધી' });
+    });
+
+    it('reads the same whatever the app language is', () => {
+      setLanguage('gu');
+      expect(parseQuickSearch('7 Oct', grn)).toEqual({ text: '', date: day('2026-10-07') });
+      expect(parseQuickSearch('A0010 to A0020', grn)).toEqual({ text: '', range: { from: 'A0010', to: 'A0020' } });
+      expect(parseQuickSearch('૭ ઑક્ટો', grn)).toEqual({ text: '', date: day('2026-10-07') });
+    });
   });
 });

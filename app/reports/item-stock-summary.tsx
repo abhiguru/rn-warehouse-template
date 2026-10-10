@@ -39,11 +39,13 @@ import {
 import { formatCount, formatDate, formatNumber, formatWeight } from '@/utils/formatters';
 import { StatusTag } from '@/components/ui';
 import { createLogger } from '@/utils/logger';
+import { t as tr } from '@/i18n';
 import type { ItemWiseStockItem } from '@/types/stock.types';
 
 const logger = createLogger('ItemStockSummary');
 
-const LOAD_ERROR = "Couldn't load items. Check your connection and try again.";
+// A function, not a constant: the text follows the app language (docs/I18N.md rule 2).
+const loadError = () => tr('reports.itemStockSummary.loadError');
 
 /** Below this share of the received quantity still in stock, an item is low on stock. */
 const LOW_STOCK_PERCENT = 20;
@@ -197,16 +199,16 @@ const GRNRow: React.FC<GRNRowProps> = ({ grn, isLast = false, styles, t }) => {
   const isNavigable = !!(grn.grn_id || grn.id);
   const details = [
     grn.date ? { icon: 'calendar-outline', text: formatDate(grn.date, 'short') } : null,
-    grn.rack ? { icon: 'view-grid-outline', text: `Rack ${grn.rack}` } : null,
+    grn.rack ? { icon: 'view-grid-outline', text: tr('reports.shared.rack', { rack: String(grn.rack) }) } : null,
     grn.weight && grn.weight > 0 ? { icon: 'weight-kilogram', text: formatWeight(grn.weight) } : null,
   ].filter((d): d is { icon: string; text: string } => d !== null);
 
   const a11yLabel = [
-    `GRN ${grn.gr_no}`,
-    grn.package_mark ? `mark ${grn.package_mark}` : null,
+    tr('reports.shared.grnNumber', { number: String(grn.gr_no) }),
+    grn.package_mark ? tr('reports.shared.markA11y', { mark: grn.package_mark }) : null,
     grn.customer_name,
     ...details.map(d => d.text),
-    `${formatNumber(grn.stock)} of ${formatNumber(grn.qty)} in stock`,
+    tr('reports.itemStockSummary.stockOfInStock', { stock: formatNumber(grn.stock), total: formatNumber(grn.qty) }),
   ]
     .filter(Boolean)
     .join(', ');
@@ -217,7 +219,7 @@ const GRNRow: React.FC<GRNRowProps> = ({ grn, isLast = false, styles, t }) => {
         {/* Line 1: GRN number + package mark */}
         <View style={styles.grnRowTitleRow}>
           <Text style={styles.grnRowTitle} numberOfLines={1}>
-            {`GRN ${grn.gr_no}`}
+            {tr('reports.shared.grnNumber', { number: String(grn.gr_no) })}
           </Text>
           {grn.package_mark && (
             <StatusTag status="neutral" label={grn.package_mark} icon={null} />
@@ -249,7 +251,7 @@ const GRNRow: React.FC<GRNRowProps> = ({ grn, isLast = false, styles, t }) => {
       {/* Stock of received quantity */}
       <View style={styles.grnRowAttributes}>
         <Text style={styles.grnRowStock}>{formatNumber(grn.stock)}</Text>
-        <Text style={styles.grnRowOrigQty}>{`of ${formatNumber(grn.qty)}`}</Text>
+        <Text style={styles.grnRowOrigQty}>{tr('reports.itemStockSummary.ofTotal', { total: formatNumber(grn.qty) })}</Text>
       </View>
 
       {isNavigable && <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />}
@@ -263,7 +265,7 @@ const GRNRow: React.FC<GRNRowProps> = ({ grn, isLast = false, styles, t }) => {
         onPress={handlePress}
         accessibilityRole="button"
         accessibilityLabel={a11yLabel}
-        accessibilityHint="Opens the GRN"
+        accessibilityHint={tr('reports.shared.opensGrnHint')}
       >
         {content}
       </Pressable>
@@ -316,14 +318,14 @@ const ItemCard: React.FC<ItemCardProps> = ({
           accessibilityLabel={[
             item.item_name,
             item.packaging,
-            `${formatNumber(item.total_stock)} of ${formatNumber(item.total_qty)} in stock`,
+            tr('reports.itemStockSummary.stockOfInStock', { stock: formatNumber(item.total_stock), total: formatNumber(item.total_qty) }),
             grnCount,
-            isLowStock ? 'Low stock' : null,
+            isLowStock ? tr('common.lowStock') : null,
           ]
             .filter(Boolean)
             .join(', ')}
           accessibilityState={{ expanded: isExpanded }}
-          accessibilityHint={isExpanded ? 'Hides the GRNs' : 'Shows the GRNs holding this item'}
+          accessibilityHint={isExpanded ? tr('reports.shared.hidesGrnsHint') : tr('reports.itemStockSummary.showsGrnsHint')}
         >
           <View style={styles.objectCellImage}>
             <Icon name="cube-outline" size={iconSize.lg} color={t.brand.tint} />
@@ -340,13 +342,13 @@ const ItemCard: React.FC<ItemCardProps> = ({
             ) : null}
             <View style={styles.tagRow}>
               <StatusTag status="neutral" label={grnCount} icon={null} />
-              {isLowStock && <StatusTag status="critical" label="Low stock" />}
+              {isLowStock && <StatusTag status="critical" label={tr('common.lowStock')} />}
             </View>
           </View>
 
           <View style={styles.stockInfo}>
             <Text style={styles.stockValue}>{formatNumber(item.total_stock)}</Text>
-            <Text style={styles.stockLabel}>{`of ${formatNumber(item.total_qty)}`}</Text>
+            <Text style={styles.stockLabel}>{tr('reports.itemStockSummary.ofTotal', { total: formatNumber(item.total_qty) })}</Text>
           </View>
 
           <Icon name={isExpanded ? 'chevron-up' : 'chevron-down'} size={iconSize.md} color={t.icon.secondary} />
@@ -358,7 +360,7 @@ const ItemCard: React.FC<ItemCardProps> = ({
             {isLoadingGRNs ? (
               <View style={styles.grnLoadingContainer} accessibilityLiveRegion="polite">
                 <ActivityIndicator size="small" color={t.brand.tint} />
-                <Text style={styles.grnLoadingText}>Loading GRNs</Text>
+                <Text style={styles.grnLoadingText}>{tr('reports.itemStockSummary.loadingGrns')}</Text>
               </View>
             ) : grnDetails && grnDetails.length > 0 ? (
               grnDetails.map((grn, index) => (
@@ -371,7 +373,7 @@ const ItemCard: React.FC<ItemCardProps> = ({
                 />
               ))
             ) : (
-              <Text style={styles.grnEmptyText}>No GRNs with this item in stock.</Text>
+              <Text style={styles.grnEmptyText}>{tr('reports.itemStockSummary.noGrnsInStock')}</Text>
             )}
           </View>
         )}
@@ -396,26 +398,27 @@ const SearchInput: React.FC<SearchInputProps> = ({ value, onChangeText, onClear,
     <Icon name="magnify" size={iconSize.md} color={t.icon.secondary} style={styles.searchIcon} />
     <TextInput
       style={styles.searchInput}
-      placeholder="Search items"
+      placeholder={tr('reports.itemStockSummary.searchItems')}
       placeholderTextColor={t.text.placeholder}
       value={value}
       onChangeText={onChangeText}
       autoCapitalize="none"
       autoCorrect={false}
       returnKeyType="search"
-      accessibilityLabel="Search items"
+      accessibilityLabel={tr('reports.itemStockSummary.searchItems')}
     />
     {value.length > 0 && (
-      <Pressable onPress={onClear} style={styles.clearButton} accessibilityRole="button" accessibilityLabel="Clear search">
+      <Pressable onPress={onClear} style={styles.clearButton} accessibilityRole="button" accessibilityLabel={tr('common.clearSearch')}>
         <Icon name="close-circle" size={iconSize.md} color={t.icon.secondary} />
       </Pressable>
     )}
   </View>
 );
 
-const PLACEHOLDER_KPIS: KPIItem[] = [
-  { icon: 'cube-outline', value: '-', label: 'Items', variant: 'primary' },
-  { icon: 'warehouse', value: '-', label: 'Stock', variant: 'primary' },
+// Built when drawn, so the labels follow the app language (docs/I18N.md rule 2).
+const placeholderKpis = (): KPIItem[] => [
+  { icon: 'cube-outline', value: '-', label: tr('common.items'), variant: 'primary' },
+  { icon: 'warehouse', value: '-', label: tr('common.stock'), variant: 'primary' },
 ];
 
 // ============================================================================
@@ -518,12 +521,12 @@ export default function ItemStockSummaryScreen() {
         });
       } else {
         logger.warn('Fetch error', { message: response.message });
-        setError(LOAD_ERROR);
+        setError(loadError());
       }
     } catch (err) {
       if (!isMountedRef.current) return;
       logger.error('Exception', err);
-      setError(LOAD_ERROR);
+      setError(loadError());
     } finally {
       fetchInProgressRef.current = false;
       if (isMountedRef.current) {
@@ -631,13 +634,13 @@ export default function ItemStockSummaryScreen() {
       {
         icon: 'cube-outline',
         value: pagination.totalCount,
-        label: 'Items',
+        label: tr('common.items'),
         variant: 'primary',
       },
       {
         icon: 'warehouse',
         value: totalStock,
-        label: 'Stock',
+        label: tr('common.stock'),
         variant: 'primary',
       },
     ];
@@ -665,7 +668,7 @@ export default function ItemStockSummaryScreen() {
       return (
         <View style={styles.loadingMore}>
           <ActivityIndicator size="small" color={t.brand.tint} />
-          <Text style={styles.loadingMoreText}>Loading more items</Text>
+          <Text style={styles.loadingMoreText}>{tr('reports.itemStockSummary.loadingMore')}</Text>
         </View>
       );
     }
@@ -676,15 +679,15 @@ export default function ItemStockSummaryScreen() {
   if (isLoading && items.length === 0) {
     return (
       <View style={styles.container}>
-        <ReportHeader title="Item stock summary" />
+        <ReportHeader title={tr('reports.titles.itemStockSummary')} />
         <View style={styles.loadingContainer}>
           <KPIGrid
-            items={PLACEHOLDER_KPIS}
+            items={placeholderKpis()}
             isLoading={true}
             compact
           />
           <SearchInput value={searchQuery} onChangeText={setSearchQuery} onClear={handleClearSearch} styles={styles} t={t} />
-          <ActivityIndicator size="large" color={t.brand.tint} style={styles.spinner} accessibilityLabel="Loading items" />
+          <ActivityIndicator size="large" color={t.brand.tint} style={styles.spinner} accessibilityLabel={tr('reports.itemStockSummary.loadingItems')} />
         </View>
       </View>
     );
@@ -694,9 +697,9 @@ export default function ItemStockSummaryScreen() {
   if (error && items.length === 0) {
     return (
       <View style={styles.container}>
-        <ReportHeader title="Item stock summary" />
+        <ReportHeader title={tr('reports.titles.itemStockSummary')} />
         <KPIGrid
-          items={PLACEHOLDER_KPIS}
+          items={placeholderKpis()}
           isLoading={false}
           compact
         />
@@ -704,9 +707,9 @@ export default function ItemStockSummaryScreen() {
         <ReportEmptyState
           icon="alert-circle-outline"
           tone="error"
-          message="Something went wrong"
+          message={tr('reports.shared.errorTitle')}
           description={error}
-          actionLabel="Try again"
+          actionLabel={tr('common.retry')}
           onAction={() => fetchItems(debouncedQuery, 0)}
         />
       </View>
@@ -717,22 +720,22 @@ export default function ItemStockSummaryScreen() {
   if (items.length === 0 && !isLoading) {
     return (
       <View style={styles.container}>
-        <ReportHeader title="Item stock summary" />
+        <ReportHeader title={tr('reports.titles.itemStockSummary')} />
         <KPIGrid
-          items={PLACEHOLDER_KPIS}
+          items={placeholderKpis()}
           isLoading={false}
           compact
         />
         <SearchInput value={searchQuery} onChangeText={setSearchQuery} onClear={handleClearSearch} styles={styles} t={t} />
         <ReportEmptyState
           icon={debouncedQuery ? 'magnify-close' : 'cube-outline'}
-          message={debouncedQuery ? 'No matching items' : 'No stock yet'}
+          message={debouncedQuery ? tr('reports.itemStockSummary.noMatchingItems') : tr('reports.shared.noStockYet')}
           description={
             debouncedQuery
-              ? `No items match "${debouncedQuery}". Try fewer letters.`
-              : 'Items appear here once goods are received.'
+              ? tr('reports.itemStockSummary.noItemsMatch', { search: debouncedQuery })
+              : tr('reports.itemStockSummary.itemsAppear')
           }
-          actionLabel={debouncedQuery ? 'Clear search' : undefined}
+          actionLabel={debouncedQuery ? tr('common.clearSearch') : undefined}
           onAction={debouncedQuery ? handleClearSearch : undefined}
         />
       </View>
@@ -741,7 +744,7 @@ export default function ItemStockSummaryScreen() {
 
   return (
     <View style={styles.container}>
-      <ReportHeader title="Item stock summary" />
+      <ReportHeader title={tr('reports.titles.itemStockSummary')} />
 
       <FlatList
         data={items}

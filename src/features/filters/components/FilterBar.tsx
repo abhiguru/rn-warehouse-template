@@ -10,6 +10,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ScrollView, View } from 'react-native';
 import { useThemedStyles } from '@/hooks/useTheme';
+import { t as translate } from '@/i18n';
 import { layout, space, type ThemeTokens } from '@/theme/tokens';
 import type { CountableFilterList } from '../configs';
 import { describeDateRange, describeSort, describeValue, financialYearLabel, isFieldActive, readSearch } from '../filterModel';
@@ -75,10 +76,10 @@ export function FilterBar({ config, filters, onOpenAll }: FilterBarProps) {
             <FilterBarChip
               variant="action"
               icon="tune-variant"
-              label="Filters"
+              label={translate('filters.bar.filters')}
               count={activeCount}
               onPress={onOpenAll}
-              accessibilityLabel={activeCount > 0 ? `Filters, ${activeCount} applied. Open sort and filter` : 'Filters. Open sort and filter'}
+              accessibilityLabel={activeCount > 0 ? translate('filters.bar.openAllApplied', { count: activeCount }) : translate('filters.bar.openAll')}
             />
           ) : null}
           {config.sort && sort ? (
@@ -88,23 +89,32 @@ export function FilterBar({ config, filters, onOpenAll }: FilterBarProps) {
               label={sortText.label}
               chevron
               onPress={() => setOpen({ type: 'sort' })}
-              accessibilityLabel={`Sorted by ${sortText.label}, ${sortText.spoken}. Change sort`}
+              accessibilityLabel={translate('filters.bar.sortedBy', { label: sortText.label, direction: sortText.spoken })}
             />
           ) : null}
-          {active.map(field => (
-            <FilterBarChip
-              key={field.key}
-              variant="active"
-              label={describeValue(field, values[field.key])}
-              onPress={() => press(field)}
-              onRemove={() => filters.setField(field.key, undefined)}
-              // A switch has no value to name: "With items, on", not "With items: With items".
-              accessibilityLabel={
-                opensSheet(field) ? `${field.label}: ${describeValue(field, values[field.key])}. Change` : `${field.label}, on. Turn off`
-              }
-              removeLabel={opensSheet(field) ? `${field.label} ${describeValue(field, values[field.key])}` : field.label}
-            />
-          ))}
+          {active.map(field => {
+            const value = describeValue(field, values[field.key]);
+            return (
+              <FilterBarChip
+                key={field.key}
+                variant="active"
+                label={value}
+                onPress={() => press(field)}
+                onRemove={() => filters.setField(field.key, undefined)}
+                // A switch has no value to name: "With items, on", not "With items: With items".
+                accessibilityLabel={
+                  opensSheet(field)
+                    ? translate('filters.bar.activeChip', { label: field.label, value })
+                    : translate('filters.bar.toggleOn', { label: field.label })
+                }
+                removeAccessibilityLabel={
+                  opensSheet(field)
+                    ? translate('filters.bar.removeFilterValue', { label: field.label, value })
+                    : translate('filters.bar.removeFilter', { name: field.label })
+                }
+              />
+            );
+          })}
           {recognised.date ? (
             <FilterBarChip
               variant="active"
@@ -112,19 +122,19 @@ export function FilterBar({ config, filters, onOpenAll }: FilterBarProps) {
               label={describeDateRange(recognised.date)}
               onPress={filters.searchAsText}
               onRemove={filters.searchAsText}
-              accessibilityLabel={`Date ${describeDateRange(recognised.date)}, read from your search. Search for these words as text instead`}
-              removeLabel={`date ${describeDateRange(recognised.date)} from your search`}
+              accessibilityLabel={translate('filters.bar.searchDate', { date: describeDateRange(recognised.date) })}
+              removeAccessibilityLabel={translate('filters.bar.removeSearchDate', { date: describeDateRange(recognised.date) })}
             />
           ) : null}
           {recognised.range ? (
             <FilterBarChip
               variant="active"
               icon="magnify"
-              label={`${recognised.range.from} – ${recognised.range.to}`}
+              label={translate('filters.chip.textBetween', { from: recognised.range.from, to: recognised.range.to })}
               onPress={filters.searchAsText}
               onRemove={filters.searchAsText}
-              accessibilityLabel={`Numbers ${recognised.range.from} to ${recognised.range.to}, read from your search. Search for these words as text instead`}
-              removeLabel={`number range ${recognised.range.from} to ${recognised.range.to} from your search`}
+              accessibilityLabel={translate('filters.bar.searchRange', { from: recognised.range.from, to: recognised.range.to })}
+              removeAccessibilityLabel={translate('filters.bar.removeSearchRange', { from: recognised.range.from, to: recognised.range.to })}
             />
           ) : null}
           {recognised.financialYear !== undefined ? (
@@ -134,8 +144,8 @@ export function FilterBar({ config, filters, onOpenAll }: FilterBarProps) {
               label={financialYearLabel(recognised.financialYear)}
               onPress={filters.searchAsText}
               onRemove={filters.searchAsText}
-              accessibilityLabel={`Financial year ${financialYearLabel(recognised.financialYear)}, read from your search. Search for these words as text instead`}
-              removeLabel={`financial year ${financialYearLabel(recognised.financialYear)} from your search`}
+              accessibilityLabel={translate('filters.bar.searchYear', { year: financialYearLabel(recognised.financialYear) })}
+              removeAccessibilityLabel={translate('filters.bar.removeSearchYear', { year: financialYearLabel(recognised.financialYear) })}
             />
           ) : null}
           {idleFast.map(field => (
@@ -144,12 +154,12 @@ export function FilterBar({ config, filters, onOpenAll }: FilterBarProps) {
               label={field.label}
               chevron={opensSheet(field)}
               onPress={() => press(field)}
-              accessibilityLabel={opensSheet(field) ? `Filter by ${field.label.toLowerCase()}` : field.label}
+              accessibilityLabel={opensSheet(field) ? translate('filters.bar.filterBy', { label: field.label.toLowerCase() }) : field.label}
               selected={opensSheet(field) ? undefined : false}
             />
           ))}
           {filters.hasAny ? (
-            <FilterBarChip variant="text" label="Clear all" onPress={filters.clear} accessibilityLabel="Clear all filters and the search" />
+            <FilterBarChip variant="text" label={translate('common.clearAll')} onPress={filters.clear} accessibilityLabel={translate('filters.bar.clearAllLabel')} />
           ) : null}
         </View>
       </ScrollView>

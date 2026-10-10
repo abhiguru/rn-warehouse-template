@@ -7,6 +7,7 @@
 import React from 'react';
 import { View, ScrollView } from 'react-native';
 import { useTokens } from '@/hooks/useTheme';
+import { t as tr } from '@/i18n';
 import {
   overviewStyles,
   useOverviewColors,
@@ -76,11 +77,11 @@ export const DispatchOverviewTab: React.FC<DispatchOverviewTabProps> = ({
       {/* SECTION: PARTICIPANTS */}
       {(customer_details || supervisor_details) && (
         <>
-          <SectionHeader title="Participants" />
+          <SectionHeader title={tr('dispatch.details.participants')} />
 
           {customer_details && (
             <ContactCard
-              type="Customer"
+              type={tr('common.customer')}
               name={customer_details.name}
               phone={customer_details.mobile || undefined}
               email={customer_details.email || undefined}
@@ -92,7 +93,7 @@ export const DispatchOverviewTab: React.FC<DispatchOverviewTabProps> = ({
 
           {supervisor_details && (
             <ContactCard
-              type="Supervisor"
+              type={tr('dispatch.form.supervisor')}
               name={supervisor_details.name}
               phone={supervisor_details.mobile || undefined}
               iconName="account-tie"
@@ -106,7 +107,7 @@ export const DispatchOverviewTab: React.FC<DispatchOverviewTabProps> = ({
       {/* SECTION: ADDITIONAL INFORMATION */}
       {(registration || source_order_no) && (
         <>
-          <SectionHeader title="Additional information" />
+          <SectionHeader title={tr('dispatch.details.additionalInfo')} />
           <View style={overviewStyles.chipsCard}>
             {registration && (
               <InfoChip
@@ -131,7 +132,7 @@ export const DispatchOverviewTab: React.FC<DispatchOverviewTabProps> = ({
 
       {/* SECTION: ACTIONS */}
       <ActionsSection
-        entityType="Dispatch"
+        entityType={tr('common.dispatch')}
         entityNumber={disp_no}
         entityId={dispatch_id}
         onSharePDF={onSharePDF}

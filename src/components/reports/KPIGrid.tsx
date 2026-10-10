@@ -19,6 +19,7 @@ import {
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { KPICard, KPIVariant } from './KPICard';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { t as tr } from '@/i18n';
 import { fontWeight, iconSize, layout, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 
 export interface KPIItem {
@@ -93,7 +94,7 @@ const makeStyles = (t: ThemeTokens) =>
   });
 
 export const KPIGrid: React.FC<KPIGridProps> = ({
-  title = 'Summary',
+  title = tr('reports.components.summary'),
   items,
   isLoading = false,
   collapsible = true,

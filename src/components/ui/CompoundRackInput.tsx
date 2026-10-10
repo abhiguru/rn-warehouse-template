@@ -36,13 +36,14 @@ import { BottomSheetTextInput } from '@gorhom/bottom-sheet';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { iconSize, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
+import { t as tr } from '@/i18n';
 
 /** Above this system font scale the floor and chamber pickers stack vertically. */
 const STACK_FONT_SCALE = 1.3;
 
 // Floor options for cold storage
 const FLOOR_OPTIONS = [
-  { label: 'Select floor', value: '' },
+  { label: '', value: '' }, // shown as "Select floor" in the app language
   { label: 'BASE', value: 'BASE' },
   { label: 'F1', value: 'F1' },
   { label: 'F2', value: 'F2' },
@@ -52,7 +53,7 @@ const FLOOR_OPTIONS = [
 
 // Chamber options for cold storage
 const CHAMBER_OPTIONS = [
-  { label: 'Select chamber', value: '' },
+  { label: '', value: '' }, // shown as "Select chamber" in the app language
   { label: 'C4', value: 'C4' },
   { label: 'C7', value: 'C7' },
   { label: 'C2', value: 'C2' },
@@ -253,14 +254,14 @@ export const CompoundRackInput: React.FC<CompoundRackInputProps> = ({
   return (
     <View style={[styles.container, style]}>
       {/* Label */}
-      <Text style={styles.label}>Rack</Text>
+      <Text style={styles.label}>{tr('common.rack')}</Text>
 
       {/* Legacy format warning (critical message strip) */}
       {state.isLegacy && (
         <View style={styles.warningBanner} accessibilityRole="alert">
           <Icon name="alert" size={iconSize.sm} color={t.status.critical.text} />
           <Text style={styles.warningText}>
-            This rack uses an old format. Select a floor and chamber.
+            {tr('components.rack.legacyWarning')}
           </Text>
         </View>
       )}
@@ -276,10 +277,10 @@ export const CompoundRackInput: React.FC<CompoundRackInputProps> = ({
             ]}
             value={state.userInput}
             onChangeText={handleUserInputChange}
-            placeholder="e.g., 20B-20C"
+            placeholder={tr('components.rack.placeholder', { example: '20B-20C' })}
             placeholderTextColor={t.text.placeholder}
             editable={editable}
-            accessibilityLabel="Rack"
+            accessibilityLabel={tr('common.rack')}
             maxLength={20} // Reserve space for /FLOOR/CHAMBER
           />
         ) : (
@@ -291,10 +292,10 @@ export const CompoundRackInput: React.FC<CompoundRackInputProps> = ({
             ]}
             value={state.userInput}
             onChangeText={handleUserInputChange}
-            placeholder="e.g., 20B-20C"
+            placeholder={tr('components.rack.placeholder', { example: '20B-20C' })}
             placeholderTextColor={t.text.placeholder}
             editable={editable}
-            accessibilityLabel="Rack"
+            accessibilityLabel={tr('common.rack')}
             maxLength={20} // Reserve space for /FLOOR/CHAMBER
           />
         )}
@@ -304,7 +305,7 @@ export const CompoundRackInput: React.FC<CompoundRackInputProps> = ({
       <View style={[styles.pickersRow, stackPickers && styles.pickersStacked]}>
         {/* Floor Picker */}
         <View style={[styles.pickerContainer, fieldErrors.floor && styles.pickerContainerError]}>
-          <Text style={styles.pickerLabel}>Floor</Text>
+          <Text style={styles.pickerLabel}>{tr('components.rack.floor')}</Text>
           <View style={[styles.pickerWrapper, fieldErrors.floor && styles.pickerWrapperError]}>
             <Picker
               selectedValue={state.floor}
@@ -312,12 +313,12 @@ export const CompoundRackInput: React.FC<CompoundRackInputProps> = ({
               style={styles.picker}
               enabled={editable}
               dropdownIconColor={t.icon.secondary}
-              accessibilityLabel="Floor"
+              accessibilityLabel={tr('components.rack.floor')}
             >
               {FLOOR_OPTIONS.map((option) => (
                 <Picker.Item
                   key={option.value}
-                  label={option.label}
+                  label={option.value === '' ? tr('components.rack.selectFloor') : option.label}
                   value={option.value}
                   color={option.value === '' ? t.text.placeholder : t.text.primary}
                 />
@@ -328,7 +329,7 @@ export const CompoundRackInput: React.FC<CompoundRackInputProps> = ({
 
         {/* Chamber Picker */}
         <View style={[styles.pickerContainer, fieldErrors.chamber && styles.pickerContainerError]}>
-          <Text style={styles.pickerLabel}>Chamber</Text>
+          <Text style={styles.pickerLabel}>{tr('common.chamber')}</Text>
           <View style={[styles.pickerWrapper, fieldErrors.chamber && styles.pickerWrapperError]}>
             <Picker
               selectedValue={state.chamber}
@@ -336,12 +337,12 @@ export const CompoundRackInput: React.FC<CompoundRackInputProps> = ({
               style={styles.picker}
               enabled={editable}
               dropdownIconColor={t.icon.secondary}
-              accessibilityLabel="Chamber"
+              accessibilityLabel={tr('common.chamber')}
             >
               {CHAMBER_OPTIONS.map((option) => (
                 <Picker.Item
                   key={option.value}
-                  label={option.label}
+                  label={option.value === '' ? tr('components.rack.selectChamber') : option.label}
                   value={option.value}
                   color={option.value === '' ? t.text.placeholder : t.text.primary}
                 />
@@ -356,7 +357,7 @@ export const CompoundRackInput: React.FC<CompoundRackInputProps> = ({
         <View style={styles.validationContainer}>
           <Icon name="alert-circle" size={iconSize.sm} color={t.status.negative.text} />
           <Text style={styles.validationText}>
-            Enter a rack, floor and chamber.
+            {tr('components.rack.incomplete')}
           </Text>
         </View>
       )}
@@ -366,7 +367,7 @@ export const CompoundRackInput: React.FC<CompoundRackInputProps> = ({
         <View style={styles.validationContainer}>
           <Icon name="alert-circle" size={iconSize.sm} color={t.status.negative.text} />
           <Text style={styles.validationText}>
-            Use 30 characters or fewer for the full rack ({combinedLength}/30).
+            {tr('components.rack.tooLong', { max: 30, count: combinedLength })}
           </Text>
         </View>
       )}

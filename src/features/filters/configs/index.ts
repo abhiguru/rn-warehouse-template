@@ -13,10 +13,13 @@ export interface CountableFilterList extends FilterListDefinition {
 const countable = <TRequest,>(config: FilterListDefinition & {
   toRequest: (values: FilterValues, sort: SortState | undefined, ctx: FilterContext) => TRequest;
   fetchCount: (request: TRequest, ctx: FilterContext) => Promise<number>;
-}): CountableFilterList => ({
-  ...config,
-  countResults: (values, sort, ctx) => config.fetchCount(config.toRequest(values, sort, ctx), ctx),
-});
+}): CountableFilterList =>
+  // Copy the property descriptors, not the values: a spread would read the label
+  // getters once and keep the language the app started in (docs/I18N.md rule 2).
+  Object.defineProperties(
+    { countResults: (values: FilterValues, sort: SortState | undefined, ctx: FilterContext) => config.fetchCount(config.toRequest(values, sort, ctx), ctx) },
+    Object.getOwnPropertyDescriptors(config)
+  ) as CountableFilterList;
 
 /** Every list's filter configuration, by `listKey`. The full "Sort and filter" page looks its list up here. */
 export const FILTER_CONFIGS: Record<string, CountableFilterList> = {

@@ -14,6 +14,7 @@ import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, layout, radius, space, touchTarget, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { savedInvoiceAmounts, formatInvoiceAmount, formatInvoiceDeduction } from '@/utils/invoiceCalculations';
+import { t as tr } from '@/i18n';
 
 // ============================================================================
 // TYPES
@@ -171,11 +172,11 @@ const BreakdownRow = ({
   <View
     style={styles.breakdownRow}
     accessible
-    accessibilityLabel={`${label}, ${value}${percent !== undefined ? `, ${percent}% of total` : ''}`}
+    accessibilityLabel={`${label}, ${value}${percent !== undefined ? `, ${tr('invoice.breakdown.percentOfTotalA11y', { percent })}` : ''}`}
   >
     <Text style={styles.breakdownLabel}>{label}</Text>
     <View style={styles.breakdownRight}>
-      {percent !== undefined && <Text style={styles.breakdownPercent}>{`${percent}%`}</Text>}
+      {percent !== undefined && <Text style={styles.breakdownPercent}>{tr('invoice.label.percent', { value: percent })}</Text>}
       <Text style={[styles.breakdownValue, isDiscount && styles.discountValue]}>{value}</Text>
     </View>
   </View>
@@ -221,7 +222,6 @@ export const InvoiceBreakdownTab: React.FC<InvoiceBreakdownTabProps> = ({
   const renderDocumentButton = (
     doc: RelatedDocument,
     iconName: string,
-    label: string,
     hasNavigation: boolean,
   ) => (
     <Pressable
@@ -230,11 +230,11 @@ export const InvoiceBreakdownTab: React.FC<InvoiceBreakdownTabProps> = ({
       onPress={() => handleDocumentPress(doc)}
       disabled={!hasNavigation}
       accessibilityRole="button"
-      accessibilityLabel={`View ${label} ${doc.number}`}
+      accessibilityLabel={tr(doc.type === 'grn' ? 'invoice.label.viewGrnNumber' : 'invoice.breakdown.viewDispatchA11y', { number: doc.number })}
       accessibilityState={{ disabled: !hasNavigation }}
     >
       <Icon name={iconName} size={iconSize.md} color={t.icon.secondary} />
-      <Text style={styles.docNumber}>{`${label} ${doc.number}`}</Text>
+      <Text style={styles.docNumber}>{tr(doc.type === 'grn' ? 'invoice.label.grnNumber' : 'invoice.label.dispatchNumber', { number: doc.number })}</Text>
       {hasNavigation && (
         <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />
       )}
@@ -248,18 +248,18 @@ export const InvoiceBreakdownTab: React.FC<InvoiceBreakdownTabProps> = ({
       showsVerticalScrollIndicator={false}
     >
       {/* SECTION: CHARGES BREAKDOWN */}
-      <SectionHeader title="Charges breakdown" styles={styles} />
+      <SectionHeader title={tr('invoice.breakdown.chargesBreakdown')} styles={styles} />
       <View style={styles.card}>
         <View style={styles.cardHeader}>
           <View style={styles.avatar}>
             <Icon name="chart-pie" size={iconSize.lg} color={t.brand.tint} />
           </View>
-          <Text style={styles.cardTitle}>Saved invoice amounts</Text>
+          <Text style={styles.cardTitle}>{tr('invoice.breakdown.savedAmounts')}</Text>
         </View>
 
         <View style={styles.breakdownContainer}>
           <BreakdownRow
-            label="Net before tax"
+            label={tr('invoice.label.netBeforeTax')}
             percent={subtotalPercent}
             value={formatInvoiceAmount(saved.netBeforeTax)}
             styles={styles}
@@ -267,7 +267,7 @@ export const InvoiceBreakdownTab: React.FC<InvoiceBreakdownTabProps> = ({
 
           {saved.hasAdjustment && (
             <BreakdownRow
-              label={`${saved.adjustmentLabel} (included)`}
+              label={tr(saved.isSurcharge ? 'invoice.label.surchargeIncluded' : 'invoice.label.discountIncluded')}
               value={adjustmentValue}
               isDiscount={isDiscount}
               styles={styles}
@@ -276,14 +276,14 @@ export const InvoiceBreakdownTab: React.FC<InvoiceBreakdownTabProps> = ({
 
           {breakdown.labour > 0 && (
             <BreakdownRow
-              label="Labour (included)"
+              label={tr('invoice.label.labourIncluded')}
               value={formatInvoiceAmount(breakdown.labour)}
               styles={styles}
             />
           )}
 
           <BreakdownRow
-            label="Tax"
+            label={tr('invoice.label.tax')}
             percent={taxPercent}
             value={formatInvoiceAmount(breakdown.tax_amount)}
             styles={styles}
@@ -292,9 +292,9 @@ export const InvoiceBreakdownTab: React.FC<InvoiceBreakdownTabProps> = ({
           <View
             style={[styles.breakdownRow, styles.breakdownRowTotal]}
             accessible
-            accessibilityLabel={`Total amount, ${formatInvoiceAmount(breakdown.total)}`}
+            accessibilityLabel={`${tr('invoice.label.totalAmount')}, ${formatInvoiceAmount(breakdown.total)}`}
           >
-            <Text style={styles.breakdownLabelTotal}>Total amount</Text>
+            <Text style={styles.breakdownLabelTotal}>{tr('invoice.label.totalAmount')}</Text>
             <Text style={styles.breakdownValueTotal}>{formatInvoiceAmount(breakdown.total)}</Text>
           </View>
         </View>
@@ -303,21 +303,21 @@ export const InvoiceBreakdownTab: React.FC<InvoiceBreakdownTabProps> = ({
       {/* SECTION: RELATED DOCUMENTS */}
       {related_documents.length > 0 && (
         <>
-          <SectionHeader title="Related documents" styles={styles} />
+          <SectionHeader title={tr('invoice.breakdown.relatedDocuments')} styles={styles} />
           <View style={styles.card}>
             <View style={styles.documentsContainer}>
               {grnDocs.length > 0 && (
                 <View style={styles.docSection}>
-                  <Text style={styles.docSectionTitle} accessibilityRole="header">GRNs</Text>
-                  {grnDocs.map(doc => renderDocumentButton(doc, 'package-down', 'GRN', !!on_view_grn))}
+                  <Text style={styles.docSectionTitle} accessibilityRole="header">{tr('invoice.breakdown.grns')}</Text>
+                  {grnDocs.map(doc => renderDocumentButton(doc, 'package-down', !!on_view_grn))}
                 </View>
               )}
 
               {dispatchDocs.length > 0 && (
                 <View style={[styles.docSection, grnDocs.length > 0 && styles.docSectionBorder]}>
-                  <Text style={styles.docSectionTitle} accessibilityRole="header">Dispatches</Text>
+                  <Text style={styles.docSectionTitle} accessibilityRole="header">{tr('invoice.breakdown.dispatches')}</Text>
                   {dispatchDocs.map(doc =>
-                    renderDocumentButton(doc, 'truck-delivery-outline', 'Dispatch', !!on_view_dispatch)
+                    renderDocumentButton(doc, 'truck-delivery-outline', !!on_view_dispatch)
                   )}
                 </View>
               )}

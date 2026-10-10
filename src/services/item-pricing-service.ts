@@ -21,6 +21,7 @@ import { unwrapArrayResponse } from '@/utils/responseUtils';
 import { hasMoreItems } from '@/utils/paginationUtils';
 import { PAGINATION } from '@/config/cacheConfig';
 import { executeRPC, createErrorResponse } from '@/utils/serviceErrorHandler';
+import { t } from '@/i18n';
 
 const itemPricingLogger = createLogger('ItemPricingService');
 
@@ -89,7 +90,7 @@ export const getItemStoragePrices = async (
 
     // Set a timeout for RPC calls (30 seconds)
     const timeoutPromise = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error('RPC request timed out after 30 seconds')), 30000)
+      setTimeout(() => reject(new Error(t('errors.network.rpcTimedOut30'))), 30000)
     );
 
     const rpcPromise = authenticatedClient.rpc('get_item_storage_prices', rpcParams);
@@ -104,7 +105,7 @@ export const getItemStoragePrices = async (
         success: false,
         data: [],
         pagination: { total_count: 0, limit: 20, offset: 0, has_more: false },
-        message: 'Failed to fetch item prices',
+        message: t('errors.price.fetchFailed'),
         error: error.message,
       };
     }
@@ -129,7 +130,7 @@ export const getItemStoragePrices = async (
         success: false,
         data: [],
         pagination: { total_count: 0, limit: 20, offset: 0, has_more: false },
-        message: responseData?.message || 'No data available',
+        message: responseData?.message || t('errors.general.noDataAvailable'),
         error: responseData?.error,
       };
     }
@@ -151,7 +152,7 @@ export const getItemStoragePrices = async (
       success: true,
       data: items,
       pagination,
-      message: 'Item prices fetched successfully',
+      message: t('errors.price.fetched'),
     };
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err);
@@ -160,7 +161,7 @@ export const getItemStoragePrices = async (
       success: false,
       data: [],
       pagination: { total_count: 0, limit: 20, offset: 0, has_more: false },
-      message: 'Failed to fetch item prices',
+      message: t('errors.price.fetchFailed'),
       error: errorMessage,
     };
   }
@@ -192,7 +193,7 @@ export const createItemStoragePrice = async (
     },
     {
       context: 'ItemPricingService.createItemStoragePrice',
-      errorMessage: 'Failed to create item price',
+      errorMessage: t('errors.price.createFailed'),
     }
   );
 
@@ -207,7 +208,7 @@ export const createItemStoragePrice = async (
   return {
     success: true,
     data: result.data,
-    message: result.message || 'Price created successfully',
+    message: result.message || t('errors.price.created'),
   };
 };
 
@@ -237,7 +238,7 @@ export const updateItemStoragePrice = async (
     },
     {
       context: 'ItemPricingService.updateItemStoragePrice',
-      errorMessage: 'Failed to update item price',
+      errorMessage: t('errors.price.updateFailed'),
     }
   );
 
@@ -252,7 +253,7 @@ export const updateItemStoragePrice = async (
   return {
     success: true,
     data: result.data,
-    message: result.message || 'Price updated successfully',
+    message: result.message || t('errors.price.updated'),
   };
 };
 
@@ -271,7 +272,7 @@ export const deleteItemStoragePrice = async (
     { p_id: id },
     {
       context: 'ItemPricingService.deleteItemStoragePrice',
-      errorMessage: 'Failed to delete item price',
+      errorMessage: t('errors.price.deleteFailed'),
     }
   );
 
@@ -285,7 +286,7 @@ export const deleteItemStoragePrice = async (
 
   return {
     success: true,
-    message: result.message || 'Price deleted successfully',
+    message: result.message || t('errors.price.deleted'),
   };
 };
 
@@ -314,7 +315,7 @@ export const findOrCreateItemStoragePrice = async (
     },
     {
       context: 'ItemPricingService.findOrCreateItemStoragePrice',
-      errorMessage: 'Failed to find or create item price',
+      errorMessage: t('errors.price.findOrCreateFailed'),
     }
   );
 
@@ -330,7 +331,7 @@ export const findOrCreateItemStoragePrice = async (
     success: true,
     data: result.data,
     message: result.data?.was_created
-      ? 'Price created successfully'
-      : 'Existing price found',
+      ? t('errors.price.created')
+      : t('errors.price.existingFound'),
   };
 };

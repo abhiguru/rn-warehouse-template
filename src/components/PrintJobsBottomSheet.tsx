@@ -52,38 +52,40 @@ import {
 import type { ThemeTokens } from '@/theme/tokens';
 import { getPrintJobs, cancelPrintJob, PrintJob, PrinterStatus } from '@/services/print-service';
 import { usePrintJobPolling } from '@/hooks/usePrintJobPolling';
-import { formatCount, formatRelativeTime } from '@/utils/formatters';
+import { formatRelativeTime } from '@/utils/formatters';
 import { StatusTag, type StatusKind } from '@/components/ui/StatusTag';
+import { localizeDigits, t as tr, type TranslationKey } from '@/i18n';
 
-const LOAD_ERROR_MESSAGE = "Couldn't load print jobs. Pull down to try again.";
+/** Key of the message shown when the list cannot be loaded. */
+const LOAD_ERROR_KEY: TranslationKey = 'components.printJobs.loadFailed';
 /** Snackbars hide after 4 seconds (guide §13.9). */
 const SNACKBAR_DURATION_MS = 4000;
 
 
 /** Print job status → Fiori status (guide §3.5). */
-const JOB_STATUS: Record<PrintJob['status'], { kind: StatusKind; icon: string; label: string }> = {
-  pending: { kind: 'neutral', icon: 'circle-outline', label: 'Pending' },
-  printing: { kind: 'informative', icon: 'information', label: 'Printing' },
-  completed: { kind: 'positive', icon: 'check-circle', label: 'Completed' },
-  failed: { kind: 'negative', icon: 'alert-circle', label: 'Failed' },
-  cancelled: { kind: 'neutral', icon: 'circle-outline', label: 'Cancelled' },
+const JOB_STATUS: Record<PrintJob['status'], { kind: StatusKind; icon: string; labelKey: TranslationKey }> = {
+  pending: { kind: 'neutral', icon: 'circle-outline', labelKey: 'common.pending' },
+  printing: { kind: 'informative', icon: 'information', labelKey: 'components.printJobs.status.printing' },
+  completed: { kind: 'positive', icon: 'check-circle', labelKey: 'components.printJobs.status.completed' },
+  failed: { kind: 'negative', icon: 'alert-circle', labelKey: 'components.printJobs.status.failed' },
+  cancelled: { kind: 'neutral', icon: 'circle-outline', labelKey: 'components.printJobs.status.cancelled' },
 };
 
-const PRINTER_STATUS: Record<PrinterStatus, { kind: StatusKind; icon: string; label: string }> = {
-  online: { kind: 'positive', icon: 'check-circle', label: 'Online' },
-  offline: { kind: 'negative', icon: 'alert-circle', label: 'Offline' },
-  error: { kind: 'negative', icon: 'alert-circle', label: 'Error' },
-  busy: { kind: 'informative', icon: 'information', label: 'Busy' },
+const PRINTER_STATUS: Record<PrinterStatus, { kind: StatusKind; icon: string; labelKey: TranslationKey }> = {
+  online: { kind: 'positive', icon: 'check-circle', labelKey: 'components.printJobs.printer.online' },
+  offline: { kind: 'negative', icon: 'alert-circle', labelKey: 'components.printJobs.printer.offline' },
+  error: { kind: 'negative', icon: 'alert-circle', labelKey: 'components.printJobs.printer.error' },
+  busy: { kind: 'informative', icon: 'information', labelKey: 'components.printJobs.printer.busy' },
 };
 
-const JOB_TYPE: Record<string, { icon: string; label: string }> = {
-  grn: { icon: 'package-down', label: 'GRN' },
-  dispatch: { icon: 'truck-delivery-outline', label: 'Dispatch' },
-  invoice: { icon: 'file-document-outline', label: 'Invoice' },
+const JOB_TYPE: Record<string, { icon: string; labelKey: TranslationKey }> = {
+  grn: { icon: 'package-down', labelKey: 'common.grn' },
+  dispatch: { icon: 'truck-delivery-outline', labelKey: 'common.dispatch' },
+  invoice: { icon: 'file-document-outline', labelKey: 'common.invoice' },
 };
 
-const getJobType = (jobType: string) =>
-  JOB_TYPE[jobType.toLowerCase()] ?? { icon: 'file-outline', label: 'Document' };
+const getJobType = (jobType: string): { icon: string; labelKey: TranslationKey } =>
+  JOB_TYPE[jobType.toLowerCase()] ?? { icon: 'file-outline', labelKey: 'components.printJobs.typeDocument' };
 
 export interface PrintJobsBottomSheetRef {
   open: () => void;
@@ -110,7 +112,7 @@ const PrintJobsBottomSheet: React.ForwardRefRenderFunction<
 
     // Printer status state
     const [printerStatus, setPrinterStatus] = useState<PrinterStatus | null>(null);
-    const [printerMessage, setPrinterMessage] = useState<string>('Checking…');
+    const [printerMessage, setPrinterMessage] = useState<string>(() => tr('components.printJobs.checking'));
 
     const styles = useThemedStyles(makeStyles);
     const t = useTokens();
@@ -140,7 +142,7 @@ const PrintJobsBottomSheet: React.ForwardRefRenderFunction<
         if (!result.success || !result.data || result.data.length === 0) {
           if (__DEV__) console.log('[PrintJobsBottomSheet] No recent print jobs found');
           setPrinterStatus('offline');
-          setPrinterMessage('No recent print activity');
+          setPrinterMessage(tr('components.printJobs.message.noActivity'));
           return;
         }
 
@@ -158,7 +160,7 @@ const PrintJobsBottomSheet: React.ForwardRefRenderFunction<
         if (recentJob.printer_name !== 'LQ1310_RAW') {
           if (__DEV__) console.log('[PrintJobsBottomSheet] Most recent job is not for LQ1310_RAW');
           setPrinterStatus('offline');
-          setPrinterMessage('No recent print activity');
+          setPrinterMessage(tr('components.printJobs.message.noActivity'));
           return;
         }
 
@@ -166,32 +168,32 @@ const PrintJobsBottomSheet: React.ForwardRefRenderFunction<
         if (recentJob.status === 'completed') {
           // ✅ Printer online (last job succeeded)
           setPrinterStatus('online');
-          setPrinterMessage('Printer ready');
+          setPrinterMessage(tr('components.printJobs.message.ready'));
         } else if (recentJob.status === 'failed') {
           // ❌ Printer offline (last job failed)
           setPrinterStatus('offline');
-          setPrinterMessage(recentJob.error_message || 'The last print job failed');
+          setPrinterMessage(recentJob.error_message || tr('components.printJobs.message.lastFailed'));
         } else if (recentJob.status === 'printing') {
           // 🔄 Currently printing
           setPrinterStatus('busy');
-          setPrinterMessage('Printing in progress');
+          setPrinterMessage(tr('components.printJobs.message.printing'));
         } else if (recentJob.status === 'pending') {
           // ⏳ Job queued
           setPrinterStatus('busy');
-          setPrinterMessage('Print job queued');
+          setPrinterMessage(tr('components.printJobs.message.queued'));
         } else if (recentJob.status === 'cancelled') {
           // Last job was cancelled, assume printer is online
           setPrinterStatus('online');
-          setPrinterMessage('Printer ready');
+          setPrinterMessage(tr('components.printJobs.message.ready'));
         } else {
           // Unknown status, assume online
           setPrinterStatus('online');
-          setPrinterMessage('Printer ready');
+          setPrinterMessage(tr('components.printJobs.message.ready'));
         }
       } catch (error) {
         console.error('[PrintJobsBottomSheet] Error fetching printer status:', error);
         setPrinterStatus(null);
-        setPrinterMessage('Status unavailable');
+        setPrinterMessage(tr('components.printJobs.message.unavailable'));
       }
     }, []);
 
@@ -249,7 +251,7 @@ const PrintJobsBottomSheet: React.ForwardRefRenderFunction<
             const error = pendingResult.error || printingResult.error;
             console.error('[PrintJobsBottomSheet] Failed to fetch in-progress jobs:', error);
             if (!isRefreshing) {
-              setSnackbarMessage(LOAD_ERROR_MESSAGE);
+              setSnackbarMessage(tr(LOAD_ERROR_KEY));
               setSnackbarVisible(true);
             }
           }
@@ -288,7 +290,7 @@ const PrintJobsBottomSheet: React.ForwardRefRenderFunction<
             const error = completedResult.error || failedResult.error || cancelledResult.error;
             console.error('[PrintJobsBottomSheet] Failed to fetch completed jobs:', error);
             if (!isRefreshing) {
-              setSnackbarMessage(LOAD_ERROR_MESSAGE);
+              setSnackbarMessage(tr(LOAD_ERROR_KEY));
               setSnackbarVisible(true);
             }
           }
@@ -308,7 +310,7 @@ const PrintJobsBottomSheet: React.ForwardRefRenderFunction<
       } catch (error) {
         console.error('[PrintJobsBottomSheet] Error fetching jobs:', error);
         if (!isRefreshing) {
-          setSnackbarMessage(LOAD_ERROR_MESSAGE);
+          setSnackbarMessage(tr(LOAD_ERROR_KEY));
           setSnackbarVisible(true);
         }
       } finally {
@@ -329,17 +331,17 @@ const PrintJobsBottomSheet: React.ForwardRefRenderFunction<
         const result = await cancelPrintJob(jobId);
 
         if (result.success) {
-          setSnackbarMessage('Print job cancelled.');
+          setSnackbarMessage(tr('components.printJobs.cancelled'));
           setSnackbarVisible(true);
           // Refresh the list immediately
           fetchPrintJobs();
         } else {
-          setSnackbarMessage("Couldn't cancel the print job. Try again.");
+          setSnackbarMessage(tr('components.printJobs.cancelFailed'));
           setSnackbarVisible(true);
         }
       } catch (error) {
         console.error('[PrintJobsBottomSheet] Error cancelling job:', error);
-        setSnackbarMessage("Couldn't cancel the print job. Try again.");
+        setSnackbarMessage(tr('components.printJobs.cancelFailed'));
         setSnackbarVisible(true);
       }
     }, [fetchPrintJobs]);
@@ -408,25 +410,33 @@ const PrintJobsBottomSheet: React.ForwardRefRenderFunction<
     const renderJobCard = ({ item: job }: { item: PrintJob }) => {
       const status = JOB_STATUS[job.status] ?? JOB_STATUS.pending;
       const type = getJobType(job.job_type);
-      const docCount = formatCount(job.document_count, 'document');
+      const docCount = tr('components.printJobs.documentCount', { count: job.document_count ?? 0 });
+      const typeLabel = tr(type.labelKey);
+      const statusLabel = tr(status.labelKey);
 
       return (
         <Pressable
           onPress={() => handleJobCardPress(job)}
           style={({ pressed }) => [styles.jobCard, pressed && styles.jobCardPressed]}
           accessibilityRole="button"
-          accessibilityLabel={`${type.label} print job, ${job.document_range_start} to ${job.document_range_end}, ${docCount}, ${status.label}`}
-          accessibilityHint="Opens the printed documents"
+          accessibilityLabel={tr('components.printJobs.jobLabel', {
+            type: typeLabel,
+            start: job.document_range_start,
+            end: job.document_range_end,
+            count: docCount,
+            status: statusLabel,
+          })}
+          accessibilityHint={tr('components.printJobs.jobHint')}
         >
           {/* Header Row: Job Type + Status */}
           <View style={styles.jobHeader}>
             <View style={styles.typeTag}>
               <Icon name={type.icon} size={iconSize.sm} color={t.status.neutral.text} />
               <Text style={styles.typeTagText} maxFontSizeMultiplier={1.6}>
-                {type.label}
+                {typeLabel}
               </Text>
             </View>
-            {renderStatusTag(status.kind, status.icon, status.label)}
+            {renderStatusTag(status.kind, status.icon, statusLabel)}
           </View>
 
           {/* Range */}
@@ -454,9 +464,9 @@ const PrintJobsBottomSheet: React.ForwardRefRenderFunction<
                   pressed && styles.cancelButtonPressed,
                 ]}
                 accessibilityRole="button"
-                accessibilityLabel={`Cancel print job ${job.document_range_start} to ${job.document_range_end}`}
+                accessibilityLabel={tr('components.printJobs.cancelJobLabel', { start: job.document_range_start, end: job.document_range_end })}
               >
-                <Text style={styles.cancelButtonText}>Cancel job</Text>
+                <Text style={styles.cancelButtonText}>{tr('components.printJobs.cancelJob')}</Text>
               </Pressable>
             )}
           </View>
@@ -466,7 +476,7 @@ const PrintJobsBottomSheet: React.ForwardRefRenderFunction<
             <View style={[styles.messageStrip, styles.messageStripPositive]}>
               <Icon name="check-circle" size={iconSize.sm} color={t.status.positive.text} />
               <Text style={[styles.messageText, { color: t.status.positive.text }]}>
-                Printed
+                {tr('components.printJobs.printed')}
               </Text>
             </View>
           )}
@@ -489,21 +499,21 @@ const PrintJobsBottomSheet: React.ForwardRefRenderFunction<
       <View style={styles.emptyContainer}>
         <Icon name="printer-outline" size={iconSize.hero} color={t.icon.secondary} />
         <Text style={styles.emptyTitle}>
-          {activeTab === 'inProgress' ? 'No print jobs in progress' : 'No finished print jobs'}
+          {activeTab === 'inProgress' ? tr('components.printJobs.emptyInProgressTitle') : tr('components.printJobs.emptyFinishedTitle')}
         </Text>
         <Text style={styles.emptySubtext}>
           {activeTab === 'inProgress'
-            ? 'Print jobs you send appear here until they finish.'
-            : 'Completed, failed and cancelled print jobs appear here.'}
+            ? tr('components.printJobs.emptyInProgressSubtitle')
+            : tr('components.printJobs.emptyFinishedSubtitle')}
         </Text>
       </View>
     );
 
     // Loading state
     const renderLoading = () => (
-      <View style={styles.loadingContainer} accessibilityRole="progressbar" accessibilityLabel="Loading print jobs">
+      <View style={styles.loadingContainer} accessibilityRole="progressbar" accessibilityLabel={tr('components.printJobs.loadingLabel')}>
         <ActivityIndicator size="large" color={t.brand.tint} />
-        <Text style={styles.loadingText}>Loading print jobs…</Text>
+        <Text style={styles.loadingText}>{tr('components.printJobs.loading')}</Text>
       </View>
     );
 
@@ -522,14 +532,14 @@ const PrintJobsBottomSheet: React.ForwardRefRenderFunction<
 
     const printer = printerStatus ? PRINTER_STATUS[printerStatus] : null;
 
-    const renderTab = (key: 'inProgress' | 'completed', label: string) => {
+    const renderTab = (key: 'inProgress' | 'completed', label: string, accessibilityLabel: string) => {
       const selected = activeTab === key;
       return (
         <Pressable
           style={({ pressed }) => [styles.tab, pressed && styles.tabPressed]}
           onPress={() => setActiveTab(key)}
           accessibilityRole="tab"
-          accessibilityLabel={`${label} print jobs`}
+          accessibilityLabel={accessibilityLabel}
           accessibilityState={{ selected }}
         >
           <Text style={[styles.tabText, selected && styles.tabTextSelected]}>{label}</Text>
@@ -555,15 +565,15 @@ const PrintJobsBottomSheet: React.ForwardRefRenderFunction<
             <View style={styles.header}>
               <View style={styles.headerLeft}>
                 <Text style={styles.title} accessibilityRole="header">
-                  Print jobs
+                  {tr('components.printJobs.title')}
                 </Text>
                 <View
                   style={styles.jobCountBadge}
                   accessible
-                  accessibilityLabel={formatCount(printJobs.length, 'job')}
+                  accessibilityLabel={tr('components.printJobs.jobCount', { count: printJobs.length })}
                 >
                   <Text style={styles.jobCountText} maxFontSizeMultiplier={1.6}>
-                    {printJobs.length}
+                    {localizeDigits(String(printJobs.length))}
                   </Text>
                 </View>
               </View>
@@ -571,7 +581,7 @@ const PrintJobsBottomSheet: React.ForwardRefRenderFunction<
                 onPress={() => bottomSheetRef.current?.close()}
                 style={({ pressed }) => [styles.closeButton, pressed && styles.closeButtonPressed]}
                 accessibilityRole="button"
-                accessibilityLabel="Close print jobs"
+                accessibilityLabel={tr('components.printJobs.close')}
               >
                 <Icon name="close" size={iconSize.lg} color={t.icon.primary} />
               </Pressable>
@@ -581,12 +591,12 @@ const PrintJobsBottomSheet: React.ForwardRefRenderFunction<
             <View
               style={styles.printerStatusContainer}
               accessible
-              accessibilityLabel={`Printer ${printer ? printer.label : 'status checking'}. ${printerMessage}`}
+              accessibilityLabel={tr('components.printJobs.printerLabel', { status: printer ? tr(printer.labelKey) : tr('components.printJobs.statusChecking'), message: printerMessage })}
             >
-              <Text style={styles.printerStatusLabel}>Printer</Text>
+              <Text style={styles.printerStatusLabel}>{tr('components.printJobs.printerTitle')}</Text>
               {printer
-                ? renderStatusTag(printer.kind, printer.icon, printer.label)
-                : renderStatusTag('neutral', 'circle-outline', 'Checking…')}
+                ? renderStatusTag(printer.kind, printer.icon, tr(printer.labelKey))
+                : renderStatusTag('neutral', 'circle-outline', tr('components.printJobs.checking'))}
               {!!printerMessage && (
                 <Text style={styles.printerStatusMessage}>{printerMessage}</Text>
               )}
@@ -594,8 +604,8 @@ const PrintJobsBottomSheet: React.ForwardRefRenderFunction<
 
             {/* Tabs */}
             <View style={styles.tabContainer} accessibilityRole="tablist">
-              {renderTab('inProgress', 'In progress')}
-              {renderTab('completed', 'Finished')}
+              {renderTab('inProgress', tr('components.printJobs.tabInProgress'), tr('components.printJobs.tabInProgressLabel'))}
+              {renderTab('completed', tr('components.printJobs.tabFinished'), tr('components.printJobs.tabFinishedLabel'))}
             </View>
 
             {/* Job List */}
@@ -635,7 +645,7 @@ const PrintJobsBottomSheet: React.ForwardRefRenderFunction<
                 onPress={() => setSnackbarVisible(false)}
                 style={styles.snackbarDismiss}
                 accessibilityRole="button"
-                accessibilityLabel="Dismiss message"
+                accessibilityLabel={tr('components.printJobs.dismissMessage')}
               >
                 <Icon name="close" size={iconSize.md} color={t.text.inverse} />
               </Pressable>

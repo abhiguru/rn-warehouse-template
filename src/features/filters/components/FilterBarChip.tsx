@@ -10,7 +10,9 @@ import React from 'react';
 import { Pressable, Text, View, type Insets } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { t as translate } from '@/i18n';
 import { fontWeight, iconSize, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
+import { formatNumber } from '@/utils/formatters';
 
 export const CHIP_HEIGHT = 36;
 const HIT_SLOP: Insets = { top: (touchTarget - CHIP_HEIGHT) / 2, bottom: (touchTarget - CHIP_HEIGHT) / 2 };
@@ -29,8 +31,10 @@ export interface FilterBarChipProps {
   /** Active chips: remove the filter. */
   onRemove?: () => void;
   accessibilityLabel: string;
-  /** Spoken name used in the remove button's label. */
+  /** Spoken name used in the remove button's label ("Remove filter …"). Defaults to the label. */
   removeLabel?: string;
+  /** The remove button's whole spoken label, when "Remove filter …" does not fit the sentence. */
+  removeAccessibilityLabel?: string;
   selected?: boolean;
 }
 
@@ -93,6 +97,7 @@ export function FilterBarChip({
   onRemove,
   accessibilityLabel,
   removeLabel,
+  removeAccessibilityLabel,
   selected,
 }: FilterBarChipProps) {
   const t = useTokens();
@@ -120,7 +125,7 @@ export function FilterBarChip({
         </Text>
         {typeof count === 'number' && count > 0 ? (
           <View style={styles.badge}>
-            <Text style={styles.badgeText} maxFontSizeMultiplier={1.6}>{count}</Text>
+            <Text style={styles.badgeText} maxFontSizeMultiplier={1.6}>{formatNumber(count)}</Text>
           </View>
         ) : null}
         {chevron ? <Icon name="chevron-down" size={iconSize.sm} color={tint} /> : null}
@@ -131,7 +136,7 @@ export function FilterBarChip({
           onPress={onRemove}
           hitSlop={HIT_SLOP}
           accessibilityRole="button"
-          accessibilityLabel={`Remove filter ${removeLabel ?? label}`}
+          accessibilityLabel={removeAccessibilityLabel ?? translate('filters.bar.removeFilter', { name: removeLabel ?? label })}
         >
           <Icon name="close" size={iconSize.sm} color={t.brand.tint} />
         </Pressable>

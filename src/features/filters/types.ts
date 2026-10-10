@@ -57,6 +57,13 @@ export interface FilterContext {
   assignedCustomers: PickedOption[];
 }
 
+/**
+ * Labels in a configuration follow the app's language: they are written as
+ * getters (`get label() { return t('filters.field.date'); }`), so the text is
+ * read when it is drawn and never stored (docs/I18N.md rule 2). Do not copy a
+ * configuration with a spread: that would read the getters once and keep the
+ * language of that moment.
+ */
 interface FieldBase {
   key: string;
   label: string;
@@ -99,7 +106,10 @@ export interface PickerSource {
 }
 export interface PickerField extends FieldBase {
   kind: 'picker';
-  /** Noun for the search field and summaries: "customer", "item". */
+  /**
+   * English noun of what is picked: ["customer", "customers"]. It is a key, not
+   * a text: the singular selects the picker's texts (`filters.picker.<noun>`).
+   */
   noun: [string, string];
   source: PickerSource;
 }
@@ -141,7 +151,10 @@ export interface FilterListDefinition {
   listKey: string;
   /** Page title, e.g. "Filter GRNs". */
   title: string;
-  /** What the count counts: ["item", "items"]. */
+  /**
+   * What the count counts, in English: ["item", "items"]. It is a key, not a
+   * text: the singular selects the button texts (`filters.results.<noun>`).
+   */
   noun: [string, string];
   search?: SearchConfig;
   sort?: { options: SortFieldOption[]; default: SortState };

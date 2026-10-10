@@ -35,6 +35,7 @@ import {
   typography,
   type ThemeTokens,
 } from '@/theme/tokens';
+import { localizeDigits, t as tr, type TranslationKey } from '@/i18n';
 
 /** Circle diameter (style guide §13.8). */
 const STEP_SIZE = 28;
@@ -132,10 +133,10 @@ export default function StepIndicator({
     return 'upcoming';
   };
 
-  const stateWord: Record<StepState, string> = {
-    completed: 'completed',
-    current: 'current',
-    upcoming: 'not started',
+  const stepLabelKey: Record<StepState, TranslationKey> = {
+    completed: 'components.steps.stepCompleted',
+    current: 'components.steps.stepCurrent',
+    upcoming: 'components.steps.stepUpcoming',
   };
 
   const renderStep = (step: StepConfig, stepIndex: number, state: StepState) => {
@@ -161,13 +162,13 @@ export default function StepIndicator({
           <Icon name={step.icon} size={iconSize.sm} color={glyphColor} />
         ) : (
           <Text style={[styles.stepNumber, { color: glyphColor }]} maxFontSizeMultiplier={1.6}>
-            {step.number ?? stepNumber}
+            {localizeDigits(String(step.number ?? stepNumber))}
           </Text>
         )}
       </Animated.View>
     );
 
-    const a11yLabel = `Step ${stepNumber} of ${steps.length}, ${step.label}, ${stateWord[state]}`;
+    const a11yLabel = tr(stepLabelKey[state], { step: stepNumber, total: steps.length, name: step.label });
 
     const content = (
       <View style={styles.stepContainer}>
@@ -201,7 +202,7 @@ export default function StepIndicator({
         style={({ pressed }) => [pressed && styles.stepPressed]}
         accessibilityRole="button"
         accessibilityLabel={a11yLabel}
-        accessibilityHint={isCurrent ? undefined : `Goes to ${step.label}`}
+        accessibilityHint={isCurrent ? undefined : tr('components.steps.goesTo', { name: step.label })}
         accessibilityState={{ selected: isCurrent }}
       >
         {content}

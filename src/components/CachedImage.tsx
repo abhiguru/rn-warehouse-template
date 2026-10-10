@@ -23,6 +23,7 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { iconSize, motion, radius, space } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
+import { t as tr } from '@/i18n';
 
 // Placeholder image as base64 (gray background with image icon)
 const PLACEHOLDER_BLURHASH = '|rF?hV%2WCj[ayj[a|j[az_NaeWBj@ayfRayfQfQM{M|azj[azf6fQfQfQIpWXofj[ayj[j[fQayWCoeoeaya}j[ayfQa{oLj?j[WVj[ayayj[fQoff7teleayj[ayj[j[ayofayayayj[fQj[ayayj[ayfjj[j[ayjuayj[';
@@ -126,7 +127,7 @@ export function CachedImage({
         <View
           style={styles.placeholder}
           accessible
-          accessibilityLabel="Loading image"
+          accessibilityLabel={tr('components.image.loading')}
           accessibilityState={{ busy: true }}
         >
           <Icon name="image-outline" size={iconSize.lg} color={t.icon.secondary} />
@@ -139,7 +140,7 @@ export function CachedImage({
           style={({ pressed }) => [styles.placeholder, pressed && styles.placeholderPressed]}
           onPress={handleRetry}
           accessibilityRole="button"
-          accessibilityLabel="Couldn't load image. Try again"
+          accessibilityLabel={tr('components.image.loadFailedRetry')}
         >
           <Icon name="image-off-outline" size={iconSize.lg} color={t.icon.secondary} />
           <View style={styles.retryBadge}>

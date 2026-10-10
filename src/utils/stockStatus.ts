@@ -10,6 +10,7 @@
  */
 
 import { getTokens, type ThemeTokens } from '@/theme/tokens';
+import { t, type TranslationKey } from '@/i18n';
 
 /** Below this share of the original quantity, stock is low (critical). */
 export const LOW_STOCK_RATIO = 0.2;
@@ -39,12 +40,21 @@ export interface StockStatusColors {
   border: string;
 }
 
-/** The status word for each level. */
+/** The English status word for each level. Shown text comes from `getStockLabel`, which follows the app's language. */
 export const STOCK_LABELS: Record<StockLevel, string> = {
   positive: 'In stock',
   critical: 'Low stock',
   negative: 'Out of stock',
 };
+
+const STOCK_LABEL_KEYS: Record<StockLevel, TranslationKey> = {
+  positive: 'common.inStock',
+  critical: 'common.lowStock',
+  negative: 'common.outOfStock',
+};
+
+/** The status word for a level in the app's language. */
+export const getStockLabel = (level: StockLevel): string => t(STOCK_LABEL_KEYS[level]);
 
 /** The standard §3.5 icon for each level (the same as StatusTag's STATUS_ICONS). */
 export const STOCK_ICONS: Record<StockLevel, string> = {
@@ -88,7 +98,7 @@ export function getStockStatus(stock: number, qty: number): StockStatusResult {
   const status = getStockLevel(safeStock, safeQty);
   const percentage =
     safeQty > 0 ? Math.max(0, Math.min(100, Math.round((safeStock / safeQty) * 100))) : 0;
-  return { status, label: STOCK_LABELS[status], icon: STOCK_ICONS[status], percentage };
+  return { status, label: getStockLabel(status), icon: STOCK_ICONS[status], percentage };
 }
 
 /** Fallback when no tokens are passed: the template's default (Orange light) theme. */

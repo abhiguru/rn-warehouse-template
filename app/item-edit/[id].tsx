@@ -41,6 +41,7 @@ import { itemService } from '@/services/item-service';
 import type { ItemFormData, ItemValidationErrors, Item } from '@/types/item.types';
 
 import { showAlert } from '@/utils/alert';
+import { t as tr } from '@/i18n';
 const ItemEditScreen: React.FC = () => {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
@@ -101,14 +102,14 @@ const ItemEditScreen: React.FC = () => {
         });
       } else {
         console.error('[ItemEdit] Failed to load item:', result.message);
-        showAlert("Couldn't find this item", 'It may have been deleted.', [
-          { text: 'OK', onPress: () => router.back() },
+        showAlert(tr('items.form.notFoundTitle'), tr('items.form.notFoundMessage'), [
+          { text: tr('common.ok'), onPress: () => router.back() },
         ]);
       }
     } catch (err) {
       console.error('[ItemEdit] Load error:', err);
-      showAlert("Couldn't load the item", 'Check your connection and try again.', [
-        { text: 'OK', onPress: () => router.back() },
+      showAlert(tr('items.form.couldNotLoadTitle'), tr('common.checkConnection'), [
+        { text: tr('common.ok'), onPress: () => router.back() },
       ]);
     } finally {
       setLoading(false);
@@ -133,19 +134,19 @@ const ItemEditScreen: React.FC = () => {
 
     // Name validation
     if (!formData.name.trim()) {
-      newErrors.name = 'Enter the item name.';
+      newErrors.name = tr('items.form.nameRequired');
     } else if (formData.name.length > 80) {
-      newErrors.name = 'Use 80 characters or fewer.';
+      newErrors.name = tr('items.form.maxLength', { max: 80 });
     }
 
     // Packaging validation
     if (formData.packaging && formData.packaging.length > 40) {
-      newErrors.packaging = 'Use 40 characters or fewer.';
+      newErrors.packaging = tr('items.form.maxLength', { max: 40 });
     }
 
     // Description validation
     if (formData.description && formData.description.length > 40) {
-      newErrors.description = 'Use 40 characters or fewer.';
+      newErrors.description = tr('items.form.maxLength', { max: 40 });
     }
 
     setErrors(newErrors);
@@ -171,7 +172,7 @@ const ItemEditScreen: React.FC = () => {
     }
 
     if (!hasChanges()) {
-      showAlert('Nothing to save', "You haven't changed anything.");
+      showAlert(tr('items.form.nothingToSaveTitle'), tr('items.form.nothingToSaveMessage'));
       return;
     }
 
@@ -186,8 +187,8 @@ const ItemEditScreen: React.FC = () => {
       });
 
       if (result.success) {
-        showAlert('Item saved', `${formData.name.trim()} has been updated.`, [
-          { text: 'OK', onPress: () => router.back() },
+        showAlert(tr('items.form.savedTitle'), tr('items.form.savedMessage', { name: formData.name.trim() }), [
+          { text: tr('common.ok'), onPress: () => router.back() },
         ]);
       } else {
         // Check for duplicate name error
@@ -196,14 +197,14 @@ const ItemEditScreen: React.FC = () => {
           result.message?.toLowerCase().includes('unique') ||
           result.message?.toLowerCase().includes('already exists')
         ) {
-          setErrors({ name: 'An item with this name already exists. Use a different name.' });
+          setErrors({ name: tr('items.form.duplicateName') });
         } else {
-          showAlert("Couldn't save the item", result.message || 'Try again in a moment.');
+          showAlert(tr('items.form.couldNotSaveTitle'), result.message || tr('items.list.tryAgainInAMoment'));
         }
       }
     } catch (err) {
       console.error('[ItemEdit] Save error:', err);
-      showAlert("Couldn't save the item", 'Check your connection and try again.');
+      showAlert(tr('items.form.couldNotSaveTitle'), tr('common.checkConnection'));
     } finally {
       setSaving(false);
     }
@@ -213,11 +214,11 @@ const ItemEditScreen: React.FC = () => {
   const handleBack = () => {
     if (hasChanges()) {
       showAlert(
-        'Discard your changes?',
-        'Your unsaved changes to this item will be lost.',
+        tr('items.form.discardTitle'),
+        tr('items.form.discardMessage'),
         [
-          { text: 'Keep editing', style: 'cancel' },
-          { text: 'Discard', style: 'destructive', onPress: () => router.back() },
+          { text: tr('common.keepEditing'), style: 'cancel' },
+          { text: tr('common.discard'), style: 'destructive', onPress: () => router.back() },
         ]
       );
     } else {
@@ -230,10 +231,10 @@ const ItemEditScreen: React.FC = () => {
       <View
         style={[styles.container, styles.loadingContainer, { paddingTop: insets.top }]}
         accessibilityRole="progressbar"
-        accessibilityLabel="Loading item"
+        accessibilityLabel={tr('items.form.loadingLabel')}
       >
         <ActivityIndicator size="large" color={t.brand.tint} />
-        <Text style={styles.loadingText}>Loading item…</Text>
+        <Text style={styles.loadingText}>{tr('items.form.loading')}</Text>
       </View>
     );
   }
@@ -244,23 +245,23 @@ const ItemEditScreen: React.FC = () => {
       <View style={[styles.header, { paddingTop: insets.top + space.xs }]}>
         <HeaderBackButton onPress={handleBack} />
         <Text style={styles.headerTitle} accessibilityRole="header" numberOfLines={1}>
-          Edit item
+          {tr('items.form.editTitle')}
         </Text>
         <Pressable
           style={({ pressed }) => [styles.saveButton, pressed && styles.saveButtonPressed]}
           onPress={handleSave}
           disabled={saving}
           accessibilityRole="button"
-          accessibilityLabel="Save item"
+          accessibilityLabel={tr('items.form.saveItem')}
           accessibilityState={{ busy: saving }}
         >
           {saving ? (
             <>
               <ActivityIndicator size="small" color={t.brand.onFill} />
-              <Text style={styles.saveButtonText}>Saving…</Text>
+              <Text style={styles.saveButtonText}>{tr('common.saving')}</Text>
             </>
           ) : (
-            <Text style={styles.saveButtonText}>Save</Text>
+            <Text style={styles.saveButtonText}>{tr('common.save')}</Text>
           )}
         </Pressable>
       </View>
@@ -278,28 +279,28 @@ const ItemEditScreen: React.FC = () => {
         >
           <View style={styles.card}>
             <ItemTextField
-              label="Item name"
+              label={tr('items.form.itemName')}
               required
               value={formData.name}
               onChangeText={(text) => handleFieldChange('name', text)}
-              placeholder="Enter item name"
+              placeholder={tr('items.form.itemNamePlaceholder')}
               maxLength={80}
               error={errors.name}
               autoCapitalize="words"
             />
             <ItemTextField
-              label="Packaging"
+              label={tr('common.packaging')}
               value={formData.packaging}
               onChangeText={(text) => handleFieldChange('packaging', text)}
-              placeholder="For example box, bag or carton"
+              placeholder={tr('items.form.packagingPlaceholder')}
               maxLength={40}
               error={errors.packaging}
             />
             <ItemTextField
-              label="Description"
+              label={tr('items.form.description')}
               value={formData.description}
               onChangeText={(text) => handleFieldChange('description', text)}
-              placeholder="Brief description"
+              placeholder={tr('items.form.descriptionPlaceholder')}
               maxLength={40}
               error={errors.description}
             />
@@ -310,13 +311,13 @@ const ItemEditScreen: React.FC = () => {
             style={styles.switchRow}
             onPress={() => handleFieldChange('active', !formData.active)}
             accessibilityRole="switch"
-            accessibilityLabel="Active"
-            accessibilityHint="Inactive items don't appear in searches"
+            accessibilityLabel={tr('common.active')}
+            accessibilityHint={tr('items.form.activeHint')}
             accessibilityState={{ checked: formData.active }}
           >
             <View style={styles.switchLabel}>
-              <Text style={styles.switchTitle}>Active</Text>
-              <Text style={styles.switchDescription}>Inactive items don't appear in searches.</Text>
+              <Text style={styles.switchTitle}>{tr('common.active')}</Text>
+              <Text style={styles.switchDescription}>{tr('items.form.activeDescription')}</Text>
             </View>
             <Switch
               value={formData.active}
@@ -358,7 +359,7 @@ function ItemTextField({ label, required, error, maxLength, value, onFocus, onBl
         value={value}
         maxLength={maxLength}
         placeholderTextColor={t.text.placeholder}
-        accessibilityLabel={required ? `${label}, required` : label}
+        accessibilityLabel={required ? tr('items.form.requiredLabel', { label }) : label}
         onFocus={(e) => {
           setFocused(true);
           onFocus?.(e);
@@ -380,9 +381,9 @@ function ItemTextField({ label, required, error, maxLength, value, onFocus, onBl
         )}
         <Text
           style={styles.charCount}
-          accessibilityLabel={`${value.length} of ${maxLength} characters`}
+          accessibilityLabel={tr('items.form.charCountLabel', { count: value.length, max: maxLength })}
         >
-          {value.length}/{maxLength}
+          {tr('items.form.charCount', { count: value.length, max: maxLength })}
         </Text>
       </View>
     </View>

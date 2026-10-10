@@ -7,6 +7,7 @@
  * (`selectCustomerInvoices`), because their list is assembled there.
  */
 import { getAssignedCustomerInvoices, getInvoicesList } from '@/services/invoice-service';
+import { t } from '@/i18n';
 import { resolveDateRange } from '../datePresets';
 import { currentSort, financialYearLabel, financialYearOf, readSearch } from '../filterModel';
 import { customerSource } from '../pickerSources';
@@ -31,15 +32,16 @@ const YEARS_OFFERED = 5;
 const yearOptions = (today: Date) =>
   Array.from({ length: YEARS_OFFERED }, (_, index) => financialYearOf(today) - index).map(year => ({
     value: String(year),
-    label: financialYearLabel(year),
+    get label() { return financialYearLabel(year); },
   }));
 
 export const INVOICE_FILTERS: FilterListConfig<InvoiceListRequest> = {
   listKey: 'invoice-list',
-  title: 'Filter invoices',
+  // Labels are getters so they follow the app's language (see FieldBase in ../types).
+  get title() { return t('filters.list.invoice.title'); },
   noun: ['invoice', 'invoices'],
   search: {
-    placeholder: 'Search invoices',
+    get placeholder() { return t('filters.list.invoice.search'); },
     dates: true,
     range: 'integer',
     financialYear: true,
@@ -49,19 +51,19 @@ export const INVOICE_FILTERS: FilterListConfig<InvoiceListRequest> = {
   },
   sort: {
     options: [
-      { field: 'inv_date', label: 'Date', kind: 'date' },
-      { field: 'inv_no', label: 'Invoice number', chipLabel: 'Number', kind: 'number' },
-      { field: 'customer_name', label: 'Customer', kind: 'text' },
-      { field: 'total', label: 'Total', kind: 'amount' },
+      { field: 'inv_date', get label() { return t('common.date'); }, kind: 'date' },
+      { field: 'inv_no', get label() { return t('common.invoiceNumber'); }, get chipLabel() { return t('filters.sort.numberChip'); }, kind: 'number' },
+      { field: 'customer_name', get label() { return t('common.customer'); }, kind: 'text' },
+      { field: 'total', get label() { return t('common.total'); }, kind: 'amount' },
     ],
     default: { field: 'inv_date', order: 'desc' },
   },
   fields: [
-    { kind: 'dateRange', key: 'date', label: 'Date', icon: 'calendar-range' },
+    { kind: 'dateRange', key: 'date', get label() { return t('common.date'); }, icon: 'calendar-range' },
     {
       kind: 'picker',
       key: 'customers',
-      label: 'Customer',
+      get label() { return t('common.customer'); },
       icon: 'account',
       noun: ['customer', 'customers'],
       source: customerSource,
@@ -70,13 +72,13 @@ export const INVOICE_FILTERS: FilterListConfig<InvoiceListRequest> = {
     {
       kind: 'choice',
       key: 'year',
-      label: 'Financial year',
+      get label() { return t('filters.field.financialYear'); },
       icon: 'calendar-blank-outline',
       defaultValue: 'all',
-      options: [{ value: 'all', label: 'All years' }, ...yearOptions(new Date())],
+      options: [{ value: 'all', get label() { return t('filters.option.allYears'); } }, ...yearOptions(new Date())],
     },
-    { kind: 'numberRange', key: 'numberRange', label: 'Invoice number', icon: 'file-document-outline', integer: true },
-    { kind: 'text', key: 'grn', label: 'GRN number', icon: 'package-down', placeholder: 'GRN number' },
+    { kind: 'numberRange', key: 'numberRange', get label() { return t('common.invoiceNumber'); }, icon: 'file-document-outline', integer: true },
+    { kind: 'text', key: 'grn', get label() { return t('common.grnNumber'); }, icon: 'package-down', get placeholder() { return t('common.grnNumber'); } },
   ],
   fastFilters: ['date', 'customers', 'year'],
 

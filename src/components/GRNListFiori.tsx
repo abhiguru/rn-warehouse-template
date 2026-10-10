@@ -69,17 +69,18 @@ import { makeGRNListStyles, type GRNListStyles } from './GRNListFiori.styles';
 import { formatSectionDate, formatNumber, formatCount, formatDate, formatWeight } from '@/utils/formatters';
 
 import { Fab } from '@/components/ui/Fab';
+import { t as translate } from '@/i18n';
 const logger = createLogger('GRNListFiori');
 
 /** Row title. A receipt saved without a number says so instead of showing a bare "GRN". */
-const grnTitle = (grNo: string) => (grNo.trim() ? `GRN ${grNo}` : 'GRN with no number');
+const grnTitle = (grNo: string) => (grNo.trim() ? translate('lists.grn.cardTitle', { number: grNo }) : translate('lists.grn.noNumber'));
 
-/** Status when nothing was received (no quantity to judge stock against). */
-const NO_QUANTITY_STATUS: GRNStockStatus = { status: 'neutral', label: 'No quantity', icon: 'circle-outline' };
+/** Status when nothing was received (no quantity to judge stock against). Built when drawn, so it follows the language. */
+const noQuantityStatus = (): GRNStockStatus => ({ status: 'neutral', label: translate('lists.grn.noQuantity'), icon: 'circle-outline' });
 
 /** Stock status of a GRN or item: fully dispatched is neutral, then the app low-stock rule. */
 const stockStatusFor = (stock: number, qty: number): GRNStockStatus =>
-  getGRNStockStatus(stock, qty) ?? NO_QUANTITY_STATUS;
+  getGRNStockStatus(stock, qty) ?? noQuantityStatus();
 
 // Type for grouped GRN data
 interface GRNGroupData {
@@ -218,29 +219,29 @@ const GRNCardFiori = memo<GRNCardProps>(({
           style={({ pressed }) => [styles.swipeButton, styles.swipeSecondary, pressed && styles.swipeSecondaryPressed]}
           onPress={() => handleSwipeAction('print')}
           accessibilityRole="button"
-          accessibilityLabel={`Print ${grnTitle(group.grNo)}`}
+          accessibilityLabel={translate('lists.grn.printLabel', { title: grnTitle(group.grNo) })}
         >
           <Icon name="printer-outline" size={iconSize.lg} color={t.icon.primary} />
-          <Text style={styles.swipeText} maxFontSizeMultiplier={1.6}>Print</Text>
+          <Text style={styles.swipeText} maxFontSizeMultiplier={1.6}>{translate('common.print')}</Text>
         </Pressable>
       )}
       <Pressable
         style={({ pressed }) => [styles.swipeButton, styles.swipeSecondary, pressed && styles.swipeSecondaryPressed]}
         onPress={() => handleSwipeAction('view')}
         accessibilityRole="button"
-        accessibilityLabel={`View ${grnTitle(group.grNo)}`}
+        accessibilityLabel={translate('lists.grn.viewLabel', { title: grnTitle(group.grNo) })}
       >
         <Icon name="eye-outline" size={iconSize.lg} color={t.icon.primary} />
-        <Text style={styles.swipeText} maxFontSizeMultiplier={1.6}>View</Text>
+        <Text style={styles.swipeText} maxFontSizeMultiplier={1.6}>{translate('common.view')}</Text>
       </Pressable>
       <Pressable
         style={({ pressed }) => [styles.swipeButton, styles.swipePrimary, pressed && styles.swipePrimaryPressed]}
         onPress={() => handleSwipeAction('edit')}
         accessibilityRole="button"
-        accessibilityLabel={`Edit ${grnTitle(group.grNo)}`}
+        accessibilityLabel={translate('lists.grn.editLabel', { title: grnTitle(group.grNo) })}
       >
         <Icon name="pencil-outline" size={iconSize.lg} color={t.brand.onFill} />
-        <Text style={[styles.swipeText, styles.swipeTextOnFill]} maxFontSizeMultiplier={1.6}>Edit</Text>
+        <Text style={[styles.swipeText, styles.swipeTextOnFill]} maxFontSizeMultiplier={1.6}>{translate('common.edit')}</Text>
       </Pressable>
     </View>
   );
@@ -266,12 +267,12 @@ const GRNCardFiori = memo<GRNCardProps>(({
               displayDate,
               group.registration,
               itemCountLabel,
-              `${formatNumber(totalStock)} in stock`,
+              translate('lists.grn.stockCount', { stock: formatNumber(totalStock) }),
               weightLabel,
               stockStatus.label,
-              matched.length > 0 ? `Matched ${matched.join(', ')}` : null,
+              matched.length > 0 ? translate('lists.card.matched', { matches: matched.join(', ') }) : null,
             ].filter(Boolean).join(', ')}
-            accessibilityHint="Opens the GRN. Swipe left for more actions."
+            accessibilityHint={translate('lists.grn.openHint')}
           >
             {/* Object icon (§13.6): the GRN glyph; stock status is the tag on the right */}
             <View style={styles.statusIconContainer}>
@@ -314,7 +315,7 @@ const GRNCardFiori = memo<GRNCardProps>(({
             {/* Attribute stack */}
             <View style={styles.attributeStack}>
               <Text style={styles.stockValueText}>{formatNumber(totalStock)}</Text>
-              <Text style={styles.stockLabel}>in stock</Text>
+              <Text style={styles.stockLabel}>{translate('lists.grn.stockLabel')}</Text>
               <StatusTag status={stockStatus.status} label={stockStatus.label} icon={stockStatus.icon} />
               <Text style={styles.weightText}>{weightLabel}</Text>
             </View>
@@ -324,10 +325,10 @@ const GRNCardFiori = memo<GRNCardProps>(({
           {isExpanded && group.items.length > 0 && (
             <Animated.View entering={FadeIn.duration(200)} style={styles.expandedSection}>
               <View style={styles.tableHeader} accessibilityRole="header">
-                <Text style={[styles.tableHeaderCell, styles.colItem]}>Item</Text>
-                <Text style={[styles.tableHeaderCell, styles.colQty]}>Bags</Text>
-                <Text style={[styles.tableHeaderCell, styles.colWeight]}>Kg</Text>
-                <Text style={[styles.tableHeaderCell, styles.colStock]}>Stock</Text>
+                <Text style={[styles.tableHeaderCell, styles.colItem]}>{translate('common.item')}</Text>
+                <Text style={[styles.tableHeaderCell, styles.colQty]}>{translate('common.bags')}</Text>
+                <Text style={[styles.tableHeaderCell, styles.colWeight]}>{translate('lists.card.colKg')}</Text>
+                <Text style={[styles.tableHeaderCell, styles.colStock]}>{translate('common.stock')}</Text>
               </View>
 
               {group.items.map((item, idx) => {
@@ -342,7 +343,7 @@ const GRNCardFiori = memo<GRNCardProps>(({
                       item.package_mark,
                       formatCount(item.qty || 0, 'bag'),
                       formatWeight(Math.round(item.weight || 0)),
-                      `${formatNumber(item.stock || 0)} in stock, ${itemStatus.label}`,
+                      translate('lists.grn.itemStock', { stock: formatNumber(item.stock || 0), status: itemStatus.label }),
                     ].filter(Boolean).join(', ')}
                   >
                     <View style={[styles.tableCell, styles.colItem]}>
@@ -374,11 +375,11 @@ const GRNCardFiori = memo<GRNCardProps>(({
               }}
               style={({ pressed }) => [styles.expandButton, pressed && styles.expandButtonPressed]}
               accessibilityRole="button"
-              accessibilityLabel={isExpanded ? `Hide item details of ${grnTitle(group.grNo)}` : `${itemCountLabel} in this GRN. Show item details`}
+              accessibilityLabel={isExpanded ? translate('lists.grn.hideDetailsOf', { title: grnTitle(group.grNo) }) : translate('lists.grn.showDetailsOf', { items: itemCountLabel })}
               accessibilityState={{ expanded: isExpanded }}
             >
               <Text style={styles.expandButtonText}>
-                {isExpanded ? 'Hide item details' : 'Tap for item details'}
+                {isExpanded ? translate('lists.card.hideDetails') : translate('lists.card.showDetails')}
               </Text>
               <Icon
                 name={isExpanded ? 'chevron-up' : 'chevron-down'}
@@ -419,24 +420,24 @@ const EmptyState: React.FC<EmptyStateProps> = memo(({ filtered, search, onCreate
         color={t.icon.secondary}
       />
       <Text style={styles.emptyTitle} accessibilityRole="header">
-        {filtered ? (search ? `No GRNs match "${search}"` : 'No GRNs match your filters') : 'No GRNs yet'}
+        {filtered ? (search ? translate('filters.empty.noMatchSearch.grn', { search }) : translate('filters.empty.noMatchFilters.grn')) : translate('lists.grn.emptyTitle')}
       </Text>
       <Text style={styles.emptySubtitle}>
         {filtered
           ? search
-            ? 'Check the spelling, try fewer words, or remove a filter.'
-            : 'Try removing a filter or clearing them all.'
+            ? translate('filters.empty.searchHint')
+            : translate('filters.empty.filterHint')
           : canCreate
-            ? 'GRNs you create appear here.'
-            : 'GRNs for your goods appear here once they are received.'}
+            ? translate('lists.grn.emptyCreator')
+            : translate('lists.grn.emptyViewer')}
       </Text>
       {filtered ? (
         <Button type="secondary" variant="tint" onPress={onClearFilters}>
-          {search ? 'Clear search and filters' : 'Clear filters'}
+          {search ? translate('filters.empty.clearSearchAndFilters') : translate('filters.empty.clearFilters')}
         </Button>
       ) : canCreate ? (
         <Button type="primary" variant="tint" leftIcon="plus" onPress={onCreateGRN}>
-          Create GRN
+          {translate('lists.grn.create')}
         </Button>
       ) : null}
     </View>
@@ -450,10 +451,10 @@ const ErrorState: React.FC<{ onRetry: () => void; styles: GRNListStyles }> = mem
   return (
     <View style={styles.emptyContainer}>
       <Icon name="alert-circle-outline" size={iconSize.hero} color={t.status.negative.text} />
-      <Text style={styles.emptyTitle} accessibilityRole="header">Couldn't load GRNs</Text>
-      <Text style={styles.emptySubtitle}>Check your connection and try again.</Text>
+      <Text style={styles.emptyTitle} accessibilityRole="header">{translate('lists.grn.loadFailedTitle')}</Text>
+      <Text style={styles.emptySubtitle}>{translate('common.checkConnection')}</Text>
       <Button type="secondary" variant="tint" onPress={onRetry}>
-        Try again
+        {translate('common.retry')}
       </Button>
     </View>
   );
@@ -534,10 +535,10 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({
   // refresh with data on screen shows a snackbar and keeps the list.
   const showLoadFailure = useCallback((append: boolean) => {
     if (append) {
-      setSnackbarMessage("Couldn't load more GRNs. Scroll down to try again.");
+      setSnackbarMessage(translate('lists.grn.loadMoreFailed'));
       setSnackbarVisible(true);
     } else if (hasDataRef.current) {
-      setSnackbarMessage("Couldn't refresh GRNs. Check your connection and try again.");
+      setSnackbarMessage(translate('lists.grn.refreshFailed'));
       setSnackbarVisible(true);
     } else {
       setLoadError(true);
@@ -627,17 +628,17 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({
       if (result.success) {
         setSnackbarMessage(
           result.print_job?.cups_job_id
-            ? `Print job ${result.print_job.cups_job_id} sent.`
-            : 'Print job sent.'
+            ? translate('lists.grn.printSentNumbered', { job: String(result.print_job.cups_job_id) })
+            : translate('lists.grn.printSent')
         );
       } else {
         logger.warn('Print failed:', result.error);
-        setSnackbarMessage("Couldn't send the print job. Check the printer and try again.");
+        setSnackbarMessage(translate('lists.grn.printFailedPrinter'));
       }
       setSnackbarVisible(true);
     } catch (error) {
       logger.error('Print exception:', error);
-      setSnackbarMessage("Couldn't send the print job. Check your connection and try again.");
+      setSnackbarMessage(translate('lists.grn.printFailedConnection'));
       setSnackbarVisible(true);
     }
   }, []);
@@ -739,11 +740,11 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({
           style={styles.sectionHeader}
           accessible
           accessibilityRole="header"
-          accessibilityLabel={`${item.title}, ${formatCount(item.count, 'GRN')}`}
+          accessibilityLabel={translate('lists.section.label', { title: item.title, countText: formatCount(item.count, 'GRN') })}
         >
           <Text style={styles.sectionTitle}>{item.title}</Text>
           <View style={styles.sectionBadge}>
-            <Text style={styles.sectionCount} maxFontSizeMultiplier={1.6}>{item.count}</Text>
+            <Text style={styles.sectionCount} maxFontSizeMultiplier={1.6}>{formatNumber(item.count)}</Text>
           </View>
         </View>
       );
@@ -770,7 +771,7 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({
     return (
       <View style={styles.footerLoader} accessibilityLiveRegion="polite">
         <ActivityIndicator size="small" color={t.brand.tint} />
-        <Text style={styles.footerLoaderText}>Loading more GRNs…</Text>
+        <Text style={styles.footerLoaderText}>{translate('lists.grn.loadingMore')}</Text>
       </View>
     );
   }, [loadingMore, styles, t]);
@@ -779,14 +780,14 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({
 
   const renderHeader = (interactive: boolean) => (
     <View style={styles.header}>
-      <Text style={styles.headerTitle} accessibilityRole="header">GRNs</Text>
+      <Text style={styles.headerTitle} accessibilityRole="header">{translate('lists.grn.title')}</Text>
       <View style={styles.headerActions}>
         <Pressable
           style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
           onPress={handleToggleAllExpanded}
           disabled={!interactive}
           accessibilityRole="button"
-          accessibilityLabel={allExpanded ? 'Collapse all GRNs' : 'Expand all GRNs'}
+          accessibilityLabel={allExpanded ? translate('filters.header.collapseAll.grn') : translate('filters.header.expandAll.grn')}
           accessibilityState={{ disabled: !interactive, expanded: allExpanded }}
         >
           <Icon
@@ -799,7 +800,7 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({
           style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
           onPress={() => router.push('/settings')}
           accessibilityRole="button"
-          accessibilityLabel="Open settings"
+          accessibilityLabel={translate('common.openSettings')}
         >
           <Avatar name={userName} id={userProfile?.id} size="sm" />
         </Pressable>
@@ -816,7 +817,7 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({
         listKey={GRN_FILTERS.listKey}
         value={search}
         onSearch={filters.setSearch}
-        placeholder={GRN_FILTERS.search?.placeholder ?? 'Search'}
+        placeholder={GRN_FILTERS.search?.placeholder ?? translate('common.search')}
         loading={loading}
       />
       <FilterBar config={FILTER_CONFIGS[GRN_FILTERS.listKey]} filters={filters} onOpenAll={openAllFilters} />
@@ -829,7 +830,7 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({
       <View style={styles.container}>
         {renderHeader(false)}
         {renderSearchAndFilters()}
-        <View accessible accessibilityLabel="Loading GRNs" accessibilityState={{ busy: true }} style={{ flex: 1 }}>
+        <View accessible accessibilityLabel={translate('lists.grn.loading')} accessibilityState={{ busy: true }} style={{ flex: 1 }}>
           <FlatList
             data={[1, 2, 3, 4, 5]}
             renderItem={() => <SkeletonCard styles={styles} />}
@@ -889,7 +890,7 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({
 
       {/* Create GRN (floating action button, guide 14.1) */}
       {canCreateGRN && (
-        <Fab label="Create GRN" onPress={handleCreateGRN} />
+        <Fab label={translate('lists.grn.create')} onPress={handleCreateGRN} />
       )}
 
       {/* Print dialog */}
@@ -897,10 +898,10 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({
         visible={showPrintDialog}
         onDismiss={() => setShowPrintDialog(false)}
         onConfirm={handlePrintConfirm}
-        title="Print GRN range"
+        title={translate('lists.grn.printRangeTitle')}
         defaultNumber={selectedGRNForPrint}
-        label="GRN number"
-        placeholder="For example, Z0797"
+        label={translate('common.grnNumber')}
+        placeholder={translate('lists.grn.printRangePlaceholder', { example: 'Z0797' })}
         onViewJobs={() => {
           setShowPrintDialog(false);
           printJobsBottomSheetRef.current?.open();

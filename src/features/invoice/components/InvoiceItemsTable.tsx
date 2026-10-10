@@ -16,6 +16,7 @@ import { useAppSelector } from '@/store/hooks';
 import { selectInvoiceFormBulkPricing } from '@/store/slices/invoiceFormSlice';
 import { formatInvoiceAmount } from '@/utils/invoiceCalculations';
 import { formatCount, formatDate, formatWeight } from '@/utils/formatters';
+import { localizeDigits, normalizeDigits, t as tr } from '@/i18n';
 
 /** Table rows with editable cells keep the full 44 minimum (§13.7). */
 const ROW_MIN_HEIGHT = 44;
@@ -32,8 +33,8 @@ const COLUMN_WIDTH = {
 
 // Format number with Indian grouping - show decimals only if needed
 const formatNumber = (value: number, maxDecimals: number = 2): string => {
-  if (!value) return '0';
-  return new Intl.NumberFormat('en-IN', { maximumFractionDigits: maxDecimals }).format(value);
+  if (!value) return localizeDigits('0');
+  return localizeDigits(new Intl.NumberFormat('en-IN', { maximumFractionDigits: maxDecimals }).format(value));
 };
 
 
@@ -538,7 +539,8 @@ export const InvoiceItemsTable: React.FC<InvoiceItemsTableProps> = ({
     (groupKey: string, field: 'charge' | 'labour_rate' | 'tax', text: string) => {
       const newInputs = {
         ...(bulkPricingInputs[groupKey] || { charge: '', labour_rate: '', tax: '' }),
-        [field]: text,
+        // Digits typed as ૦-૯ are kept as 0-9.
+        [field]: normalizeDigits(text),
       };
 
       setBulkPricingInputs((prev) => ({ ...prev, [groupKey]: newInputs }));
@@ -586,7 +588,7 @@ export const InvoiceItemsTable: React.FC<InvoiceItemsTableProps> = ({
   // Handle cell edit
   const handleCellValueChange = useCallback(
     (tempId: string, field: string, text: string) => {
-      const value = parseFloat(text) || 0;
+      const value = parseFloat(normalizeDigits(text)) || 0;
       onItemUpdate(tempId, field, value);
     },
     [onItemUpdate]
@@ -597,8 +599,8 @@ export const InvoiceItemsTable: React.FC<InvoiceItemsTableProps> = ({
     return (
       <View style={styles.emptyContainer}>
         <Icon name="table-off" size={iconSize.hero} color={t.icon.secondary} />
-        <Text style={styles.emptyTitle}>No items to invoice</Text>
-        <Text style={styles.emptyText}>Items from the selected dispatches appear here.</Text>
+        <Text style={styles.emptyTitle}>{tr('invoice.form.noItemsTitle')}</Text>
+        <Text style={styles.emptyText}>{tr('invoice.table.emptyText')}</Text>
       </View>
     );
   }
@@ -636,13 +638,13 @@ export const InvoiceItemsTable: React.FC<InvoiceItemsTableProps> = ({
               ]}
               onPress={() => setEditingCell({ tempId: item.temp_id, field })}
               accessibilityRole="button"
-              accessibilityLabel={`${label}, dispatch ${item.dispatch_no}, ${display}`}
-              accessibilityHint="Edits the value"
+              accessibilityLabel={tr('invoice.table.cellA11y', { label, number: String(item.dispatch_no), value: display })}
+              accessibilityHint={tr('invoice.table.editsValueHint')}
             >
               {isEditing ? (
                 <TextInput
                   style={styles.cellInput}
-                  accessibilityLabel={`${label}, dispatch ${item.dispatch_no}`}
+                  accessibilityLabel={tr('invoice.table.cellInputA11y', { label, number: String(item.dispatch_no) })}
                   value={rawValue > 0 ? rawValue.toString() : ''}
                   onChangeText={(text) => handleCellValueChange(item.temp_id, field, text)}
                   keyboardType="decimal-pad"
@@ -665,7 +667,14 @@ export const InvoiceItemsTable: React.FC<InvoiceItemsTableProps> = ({
               onPress={() => toggleItemGroup(groupKey)}
               accessibilityRole="button"
               accessibilityState={{ expanded: isExpanded }}
-              accessibilityLabel={`${itemGroup.item_name}, mark ${itemGroup.package_mark}, ${formatWeight(itemGroup.total_weight)}, GRN quantity ${formatNumber(itemGroup.gr_quantity)}, dispatched ${formatNumber(itemGroup.total_dispatched)}, total ${groupTotalText}`}
+              accessibilityLabel={tr('invoice.table.groupA11y', {
+                item: itemGroup.item_name,
+                mark: itemGroup.package_mark,
+                weight: formatWeight(itemGroup.total_weight),
+                grnQty: formatNumber(itemGroup.gr_quantity),
+                dispatched: formatNumber(itemGroup.total_dispatched),
+                total: groupTotalText,
+              })}
             >
               <Icon
                 name={isExpanded ? 'chevron-down' : 'chevron-right'}
@@ -686,15 +695,15 @@ export const InvoiceItemsTable: React.FC<InvoiceItemsTableProps> = ({
                     <Text style={styles.metaText}>{formatWeight(itemGroup.total_weight)}</Text>
                   </View>
                   <View style={styles.metaBadge}>
-                    <Text style={styles.metaText}>GRN qty {formatNumber(itemGroup.gr_quantity)}</Text>
+                    <Text style={styles.metaText}>{tr('invoice.table.grnQty', { qty: formatNumber(itemGroup.gr_quantity) })}</Text>
                   </View>
                   <View style={styles.metaBadge}>
-                    <Text style={styles.metaText}>Dispatched {formatNumber(itemGroup.total_dispatched)}</Text>
+                    <Text style={styles.metaText}>{tr('invoice.table.dispatchedQty', { qty: formatNumber(itemGroup.total_dispatched) })}</Text>
                   </View>
                 </View>
               </View>
               <View style={styles.groupTotal}>
-                <Text style={styles.groupTotalLabel}>Total</Text>
+                <Text style={styles.groupTotalLabel}>{tr('common.total')}</Text>
                 <Text style={styles.groupTotalValue}>{groupTotalText}</Text>
               </View>
             </Pressable>
@@ -702,31 +711,31 @@ export const InvoiceItemsTable: React.FC<InvoiceItemsTableProps> = ({
             {/* Group pricing section */}
             <View style={styles.bulkPricingSection}>
               <View style={styles.bulkPricingHeader}>
-                <Text style={styles.bulkPricingLabel} accessibilityRole="header">Group pricing</Text>
+                <Text style={styles.bulkPricingLabel} accessibilityRole="header">{tr('invoice.table.groupPricing')}</Text>
                 {onEditPricing && (
                   <Pressable
                     style={({ pressed }) => [styles.editPricingButton, pressed && styles.editPricingButtonPressed]}
                     onPress={() => handleEditPricingPress(itemGroup)}
                     accessibilityRole="button"
-                    accessibilityLabel={`Edit pricing for ${itemGroup.item_name}`}
+                    accessibilityLabel={tr('invoice.table.editPricingA11y', { item: itemGroup.item_name })}
                   >
                     <Icon name="pencil-outline" size={iconSize.md} color={t.brand.tint} />
                   </Pressable>
                 )}
-                <Text style={styles.bulkPricingHint}>Applies to all {formatCount(allItems.length, 'line')}</Text>
+                <Text style={styles.bulkPricingHint}>{tr('invoice.table.appliesToAll', { count: allItems.length })}</Text>
               </View>
               <View style={styles.bulkPricingInputs}>
                 {/* Charge */}
                 <View style={styles.bulkInputWrapper}>
-                  <Text style={styles.inputLabel}>Charge</Text>
+                  <Text style={styles.inputLabel}>{tr('invoice.label.charge')}</Text>
                   <View style={styles.field}>
                     <Text style={styles.affix}>₹</Text>
                     <TextInput
                       style={styles.bulkInput}
-                      accessibilityLabel={`Storage charge for ${itemGroup.item_name}`}
+                      accessibilityLabel={tr('invoice.table.chargeForA11y', { item: itemGroup.item_name })}
                       value={currentInputs.charge}
                       onChangeText={(text) => handleBulkPricingChange(groupKey, 'charge', text)}
-                      placeholder="0"
+                      placeholder={localizeDigits('0')}
                       placeholderTextColor={t.text.placeholder}
                       keyboardType="decimal-pad"
                     />
@@ -734,15 +743,15 @@ export const InvoiceItemsTable: React.FC<InvoiceItemsTableProps> = ({
                 </View>
                 {/* Labour */}
                 <View style={styles.bulkInputWrapper}>
-                  <Text style={styles.inputLabel}>Labour</Text>
+                  <Text style={styles.inputLabel}>{tr('invoice.label.labour')}</Text>
                   <View style={styles.field}>
                     <Text style={styles.affix}>₹</Text>
                     <TextInput
                       style={styles.bulkInput}
-                      accessibilityLabel={`Labour rate for ${itemGroup.item_name}`}
+                      accessibilityLabel={tr('invoice.table.labourRateForA11y', { item: itemGroup.item_name })}
                       value={currentInputs.labour_rate}
                       onChangeText={(text) => handleBulkPricingChange(groupKey, 'labour_rate', text)}
-                      placeholder="0"
+                      placeholder={localizeDigits('0')}
                       placeholderTextColor={t.text.placeholder}
                       keyboardType="decimal-pad"
                     />
@@ -750,14 +759,14 @@ export const InvoiceItemsTable: React.FC<InvoiceItemsTableProps> = ({
                 </View>
                 {/* Tax */}
                 <View style={styles.bulkInputWrapper}>
-                  <Text style={styles.inputLabel}>Tax</Text>
+                  <Text style={styles.inputLabel}>{tr('invoice.label.tax')}</Text>
                   <View style={styles.field}>
                     <TextInput
                       style={styles.bulkInput}
-                      accessibilityLabel={`Tax percent for ${itemGroup.item_name}`}
+                      accessibilityLabel={tr('invoice.table.taxPercentForA11y', { item: itemGroup.item_name })}
                       value={currentInputs.tax}
                       onChangeText={(text) => handleBulkPricingChange(groupKey, 'tax', text)}
-                      placeholder="0"
+                      placeholder={localizeDigits('0')}
                       placeholderTextColor={t.text.placeholder}
                       keyboardType="decimal-pad"
                     />
@@ -775,25 +784,25 @@ export const InvoiceItemsTable: React.FC<InvoiceItemsTableProps> = ({
                     {/* Header row */}
                     <View style={styles.tableHeaderRow}>
                       <View style={[styles.tableHeaderCell, styles.colDispatch]}>
-                        <Text style={styles.tableHeaderText}>Dispatch</Text>
+                        <Text style={styles.tableHeaderText}>{tr('common.dispatch')}</Text>
                       </View>
                       <View style={[styles.tableHeaderCell, styles.colQty]}>
-                        <Text style={[styles.tableHeaderText, styles.tableHeaderTextNumeric]}>Qty</Text>
+                        <Text style={[styles.tableHeaderText, styles.tableHeaderTextNumeric]}>{tr('invoice.lineItem.colQty')}</Text>
                       </View>
                       <View style={[styles.tableHeaderCell, styles.colDuration]}>
-                        <Text style={[styles.tableHeaderText, styles.tableHeaderTextNumeric]}>Duration</Text>
+                        <Text style={[styles.tableHeaderText, styles.tableHeaderTextNumeric]}>{tr('invoice.label.duration')}</Text>
                       </View>
                       <View style={[styles.tableHeaderCell, styles.colCharge]}>
-                        <Text style={[styles.tableHeaderText, styles.tableHeaderTextNumeric]}>Charge (₹)</Text>
+                        <Text style={[styles.tableHeaderText, styles.tableHeaderTextNumeric]}>{tr('invoice.table.colCharge')}</Text>
                       </View>
                       <View style={[styles.tableHeaderCell, styles.colLabour]}>
-                        <Text style={[styles.tableHeaderText, styles.tableHeaderTextNumeric]}>Labour (₹)</Text>
+                        <Text style={[styles.tableHeaderText, styles.tableHeaderTextNumeric]}>{tr('invoice.table.colLabour')}</Text>
                       </View>
                       <View style={[styles.tableHeaderCell, styles.colTax]}>
-                        <Text style={[styles.tableHeaderText, styles.tableHeaderTextNumeric]}>Tax (%)</Text>
+                        <Text style={[styles.tableHeaderText, styles.tableHeaderTextNumeric]}>{tr('invoice.itemCard.taxLabel')}</Text>
                       </View>
                       <View style={[styles.tableHeaderCell, styles.colTotal]}>
-                        <Text style={[styles.tableHeaderText, styles.tableHeaderTextNumeric]}>Total</Text>
+                        <Text style={[styles.tableHeaderText, styles.tableHeaderTextNumeric]}>{tr('common.total')}</Text>
                       </View>
                     </View>
 
@@ -817,7 +826,7 @@ export const InvoiceItemsTable: React.FC<InvoiceItemsTableProps> = ({
                           accessible
                           accessibilityLabel={`${formatCount(Math.round(item.duration * 10) / 10, 'month')}, ${formatCount(item.no_of_days, 'day')}`}
                         >
-                          <Text style={styles.tableDataText}>{formatNumber(item.duration, 1)} mo</Text>
+                          <Text style={styles.tableDataText}>{tr('invoice.table.monthsShort', { months: formatNumber(item.duration, 1) })}</Text>
                           <Text style={styles.secondaryText}>{formatCount(item.no_of_days, 'day')}</Text>
                         </View>
 
@@ -825,21 +834,21 @@ export const InvoiceItemsTable: React.FC<InvoiceItemsTableProps> = ({
                           item,
                           'charge',
                           styles.colCharge,
-                          'Charge',
+                          tr('invoice.label.charge'),
                           item.charge > 0 ? formatNumber(item.charge) : '—'
                         )}
                         {renderEditableCell(
                           item,
                           'labour_rate',
                           styles.colLabour,
-                          'Labour rate',
+                          tr('invoice.label.labourRate'),
                           item.labour_rate > 0 ? formatNumber(item.labour_rate) : '—'
                         )}
                         {renderEditableCell(
                           item,
                           'tax',
                           styles.colTax,
-                          'Tax percent',
+                          tr('invoice.itemCard.taxA11y'),
                           item.tax > 0 ? formatNumber(item.tax, 1) : '—'
                         )}
 
@@ -858,9 +867,9 @@ export const InvoiceItemsTable: React.FC<InvoiceItemsTableProps> = ({
                 <View
                   style={styles.tableFooter}
                   accessible
-                  accessibilityLabel={`Group total for ${dispatchCount}, ${groupTotalText}`}
+                  accessibilityLabel={tr('invoice.table.groupTotalA11y', { dispatches: dispatchCount, total: groupTotalText })}
                 >
-                  <Text style={styles.tableFooterLabel}>Group total · {dispatchCount}</Text>
+                  <Text style={styles.tableFooterLabel}>{tr('invoice.table.groupTotal', { dispatches: dispatchCount })}</Text>
                   <Text style={styles.tableFooterTotal}>{groupTotalText}</Text>
                 </View>
               </View>
@@ -875,7 +884,7 @@ export const InvoiceItemsTable: React.FC<InvoiceItemsTableProps> = ({
                 accessibilityState={{ expanded: false }}
               >
                 <Icon name="table" size={iconSize.sm} color={t.brand.tint} />
-                <Text style={styles.collapsedText}>Show {dispatchCount}</Text>
+                <Text style={styles.collapsedText}>{tr('invoice.table.showDispatches', { count: allItems.length })}</Text>
               </Pressable>
             )}
           </View>

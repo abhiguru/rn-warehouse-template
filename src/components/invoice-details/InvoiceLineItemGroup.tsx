@@ -23,6 +23,7 @@ import { fontWeight, iconSize, layout, radius, space, touchTarget, typography } 
 import type { ThemeTokens } from '@/theme/tokens';
 import { formatNumber, formatDate, formatCount, formatWeight } from '@/utils/formatters';
 import { formatInvoiceAmount } from '@/utils/invoiceCalculations';
+import { t as tr } from '@/i18n';
 
 // Read-only compact table metrics (§5.2 density, §13.7)
 const TABLE = {
@@ -308,8 +309,12 @@ const InvoiceLineItemGroupComponent: React.FC<InvoiceLineItemGroupProps> = ({
         style={({ pressed }) => [styles.headerPressable, pressed && styles.headerPressed]}
         accessibilityRole="button"
         accessibilityState={{ expanded }}
-        accessibilityLabel={`${group.item_name}, ${dispatchCountText}, total ${formatInvoiceAmount(group.total_amount)}`}
-        accessibilityHint={expanded ? 'Hides the dispatches' : 'Shows the dispatches'}
+        accessibilityLabel={tr('invoice.lineItem.groupA11y', {
+          item: group.item_name,
+          dispatches: dispatchCountText,
+          total: formatInvoiceAmount(group.total_amount),
+        })}
+        accessibilityHint={expanded ? tr('invoice.lineItem.hidesDispatchesHint') : tr('invoice.lineItem.showsDispatchesHint')}
       >
         <View style={styles.headerSection}>
           <View style={styles.headerTop}>
@@ -340,11 +345,11 @@ const InvoiceLineItemGroupComponent: React.FC<InvoiceLineItemGroupProps> = ({
               </View>
             )}
             <View style={styles.metricItem}>
-              <Text style={styles.metricLabel}>Received</Text>
+              <Text style={styles.metricLabel}>{tr('invoice.lineItem.received')}</Text>
               <Text style={styles.metricValue}>{formatNumber(group.grn_quantity)}</Text>
             </View>
             <View style={styles.metricItem}>
-              <Text style={styles.metricLabel}>Dispatched</Text>
+              <Text style={styles.metricLabel}>{tr('invoice.lineItem.dispatched')}</Text>
               <Text style={styles.metricValue}>{formatNumber(group.total_dispatch_qty)}</Text>
             </View>
           </View>
@@ -352,19 +357,19 @@ const InvoiceLineItemGroupComponent: React.FC<InvoiceLineItemGroupProps> = ({
           {/* Rates */}
           <View style={styles.summaryRow}>
             <View style={styles.metricItem}>
-              <Text style={styles.metricLabel}>Charge per unit</Text>
+              <Text style={styles.metricLabel}>{tr('invoice.lineItem.chargePerUnit')}</Text>
               <Text style={styles.metricValue}>{formatInvoiceAmount(group.charge_per_unit)}</Text>
             </View>
             {group.labour_rate > 0 && (
               <View style={styles.metricItem}>
-                <Text style={styles.metricLabel}>Labour</Text>
+                <Text style={styles.metricLabel}>{tr('invoice.label.labour')}</Text>
                 <Text style={styles.metricValue}>{formatInvoiceAmount(group.labour_rate)}</Text>
               </View>
             )}
             {group.tax_rate !== undefined && group.tax_rate > 0 && (
               <View style={styles.metricItem}>
-                <Text style={styles.metricLabel}>Tax</Text>
-                <Text style={styles.metricValue}>{`${group.tax_rate}%`}</Text>
+                <Text style={styles.metricLabel}>{tr('invoice.label.tax')}</Text>
+                <Text style={styles.metricValue}>{tr('invoice.label.percent', { value: group.tax_rate })}</Text>
               </View>
             )}
           </View>
@@ -372,15 +377,15 @@ const InvoiceLineItemGroupComponent: React.FC<InvoiceLineItemGroupProps> = ({
           {/* Amounts */}
           <View style={styles.financialRow}>
             <View style={styles.financialItem}>
-              <Text style={styles.financialLabel}>Base</Text>
+              <Text style={styles.financialLabel}>{tr('invoice.lineItem.base')}</Text>
               <Text style={styles.amount}>{formatInvoiceAmount(group.total_base_amount)}</Text>
             </View>
             <View style={styles.financialItem}>
-              <Text style={styles.financialLabel}>Tax</Text>
+              <Text style={styles.financialLabel}>{tr('invoice.label.tax')}</Text>
               <Text style={styles.amount}>{formatInvoiceAmount(group.total_tax_amount)}</Text>
             </View>
             <View style={styles.financialItem}>
-              <Text style={styles.financialLabel}>Total</Text>
+              <Text style={styles.financialLabel}>{tr('common.total')}</Text>
               <Text style={styles.totalAmount}>{formatInvoiceAmount(group.total_amount)}</Text>
             </View>
           </View>
@@ -400,7 +405,7 @@ const InvoiceLineItemGroupComponent: React.FC<InvoiceLineItemGroupProps> = ({
             {/* Pinned first column */}
             <View style={styles.stickyColumn}>
               <View style={styles.stickyHeaderCell}>
-                <Text style={styles.headerCellText}>Dispatch</Text>
+                <Text style={styles.headerCellText}>{tr('common.dispatch')}</Text>
               </View>
               {dispatchItems.map((item, index) => {
                 const canOpen = !!(item.dispatch_id && item.on_view_dispatch);
@@ -419,8 +424,11 @@ const InvoiceLineItemGroupComponent: React.FC<InvoiceLineItemGroupProps> = ({
                     }}
                     disabled={!canOpen}
                     accessibilityRole={canOpen ? 'link' : undefined}
-                    accessibilityLabel={`Dispatch ${item.dispatch_no || ''}, ${formatDate(item.dispatch_date, 'short')}`}
-                    accessibilityHint={canOpen ? 'Opens the dispatch' : undefined}
+                    accessibilityLabel={tr('invoice.lineItem.dispatchRowA11y', {
+                      number: item.dispatch_no || '',
+                      date: formatDate(item.dispatch_date, 'short'),
+                    })}
+                    accessibilityHint={canOpen ? tr('invoice.lineItem.opensDispatchHint') : undefined}
                   >
                     <Text style={[styles.dispatchNoText, !canOpen && styles.dispatchNoTextPlain]}>
                       {item.dispatch_no || '—'}
@@ -444,19 +452,19 @@ const InvoiceLineItemGroupComponent: React.FC<InvoiceLineItemGroupProps> = ({
               <View>
                 <View style={styles.headerRow}>
                   <View style={[styles.headerCell, styles.colQty]}>
-                    <Text style={[styles.headerCellText, styles.headerCellTextRight]}>Qty</Text>
+                    <Text style={[styles.headerCellText, styles.headerCellTextRight]}>{tr('invoice.lineItem.colQty')}</Text>
                   </View>
                   <View style={[styles.headerCell, styles.colDays]}>
-                    <Text style={[styles.headerCellText, styles.headerCellTextRight]}>Days</Text>
+                    <Text style={[styles.headerCellText, styles.headerCellTextRight]}>{tr('invoice.lineItem.colDays')}</Text>
                   </View>
                   <View style={[styles.headerCell, styles.colDuration]}>
-                    <Text style={[styles.headerCellText, styles.headerCellTextRight]}>Months</Text>
+                    <Text style={[styles.headerCellText, styles.headerCellTextRight]}>{tr('invoice.lineItem.colMonths')}</Text>
                   </View>
                   <View style={[styles.headerCell, styles.colRate]}>
-                    <Text style={[styles.headerCellText, styles.headerCellTextRight]}>Rate</Text>
+                    <Text style={[styles.headerCellText, styles.headerCellTextRight]}>{tr('invoice.lineItem.colRate')}</Text>
                   </View>
                   <View style={[styles.headerCell, styles.colAmount]}>
-                    <Text style={[styles.headerCellText, styles.headerCellTextRight]}>Amount</Text>
+                    <Text style={[styles.headerCellText, styles.headerCellTextRight]}>{tr('common.amount')}</Text>
                   </View>
                 </View>
 
@@ -474,22 +482,22 @@ const InvoiceLineItemGroupComponent: React.FC<InvoiceLineItemGroupProps> = ({
 
           {/* Totals row */}
           <View style={styles.tableFooter}>
-            <Text style={styles.footerLabel} accessibilityRole="header">Totals</Text>
+            <Text style={styles.footerLabel} accessibilityRole="header">{tr('invoice.lineItem.totals')}</Text>
             <View style={styles.footerValues}>
               <View style={styles.footerValueItem}>
-                <Text style={styles.footerValueLabel}>Qty</Text>
+                <Text style={styles.footerValueLabel}>{tr('invoice.lineItem.colQty')}</Text>
                 <Text style={styles.footerValueText}>{formatNumber(group.total_dispatch_qty)}</Text>
               </View>
               <View style={styles.footerValueItem}>
-                <Text style={styles.footerValueLabel}>Base</Text>
+                <Text style={styles.footerValueLabel}>{tr('invoice.lineItem.base')}</Text>
                 <Text style={styles.footerValueText}>{formatInvoiceAmount(group.total_base_amount)}</Text>
               </View>
               <View style={styles.footerValueItem}>
-                <Text style={styles.footerValueLabel}>Tax</Text>
+                <Text style={styles.footerValueLabel}>{tr('invoice.label.tax')}</Text>
                 <Text style={styles.footerValueText}>{formatInvoiceAmount(group.total_tax_amount)}</Text>
               </View>
               <View style={styles.footerValueItem}>
-                <Text style={styles.footerValueLabel}>Total</Text>
+                <Text style={styles.footerValueLabel}>{tr('common.total')}</Text>
                 <Text style={styles.footerValueText}>{formatInvoiceAmount(group.total_amount)}</Text>
               </View>
             </View>
@@ -501,10 +509,10 @@ const InvoiceLineItemGroupComponent: React.FC<InvoiceLineItemGroupProps> = ({
               style={({ pressed }) => [styles.grnReferenceButton, pressed && styles.grnReferenceButtonPressed]}
               onPress={handleViewGRN}
               accessibilityRole="link"
-              accessibilityLabel={`View GRN ${group.gr_no}`}
+              accessibilityLabel={tr('invoice.label.viewGrnNumber', { number: String(group.gr_no) })}
             >
               <Icon name="package-down" size={iconSize.md} color={t.brand.tint} />
-              <Text style={styles.grnLabel}>{`View GRN ${group.gr_no}`}</Text>
+              <Text style={styles.grnLabel}>{tr('invoice.label.viewGrnNumber', { number: String(group.gr_no) })}</Text>
               <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />
             </Pressable>
           )}
@@ -531,13 +539,20 @@ const DispatchDataTableRow = React.memo<DispatchDataTableRowProps>(({
   <View
     style={[styles.dataRow, isLast && styles.lastRow]}
     accessible
-    accessibilityLabel={`Qty ${formatNumber(item.dispatch_qty)}, ${item.no_of_days} days, ${formatNumber(item.duration, 1)} months, rate ${formatInvoiceAmount(item.charge_per_unit)}, amount ${formatInvoiceAmount(item.line_item_amount)}${item.tax > 0 ? `, tax ${formatInvoiceAmount(item.tax)}` : ''}`}
+    accessibilityLabel={tr(item.tax > 0 ? 'invoice.lineItem.rowWithTaxA11y' : 'invoice.lineItem.rowA11y', {
+      qty: formatNumber(item.dispatch_qty),
+      days: formatNumber(item.no_of_days),
+      months: formatNumber(item.duration, 1),
+      rate: formatInvoiceAmount(item.charge_per_unit),
+      amount: formatInvoiceAmount(item.line_item_amount),
+      tax: formatInvoiceAmount(item.tax),
+    })}
   >
     <View style={[styles.dataCell, styles.colQty]}>
       <Text style={styles.dataCellText}>{formatNumber(item.dispatch_qty)}</Text>
     </View>
     <View style={[styles.dataCell, styles.colDays]}>
-      <Text style={styles.dataCellText}>{item.no_of_days}</Text>
+      <Text style={styles.dataCellText}>{formatNumber(item.no_of_days)}</Text>
     </View>
     <View style={[styles.dataCell, styles.colDuration]}>
       <Text style={styles.dataCellText}>{formatNumber(item.duration, 1)}</Text>
@@ -548,7 +563,7 @@ const DispatchDataTableRow = React.memo<DispatchDataTableRowProps>(({
     <View style={[styles.dataCell, styles.colAmount]}>
       <Text style={styles.dataCellText}>{formatInvoiceAmount(item.line_item_amount)}</Text>
       {item.tax > 0 && (
-        <Text style={styles.taxSubtext}>{`+${formatInvoiceAmount(item.tax)} tax`}</Text>
+        <Text style={styles.taxSubtext}>{tr('invoice.lineItem.plusTax', { amount: formatInvoiceAmount(item.tax) })}</Text>
       )}
     </View>
   </View>

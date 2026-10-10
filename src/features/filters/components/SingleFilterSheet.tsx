@@ -5,6 +5,7 @@
  * applied by the one button, which shows how many results it will give.
  */
 import React, { useEffect, useState } from 'react';
+import { t } from '@/i18n';
 import type { CountableFilterList } from '../configs';
 import { isFieldActive } from '../filterModel';
 import type { FilterValue, SortState } from '../types';
@@ -55,7 +56,7 @@ export function SingleFilterSheet({ config, filters, open, onClose }: SingleFilt
 
   if (open?.type === 'sort' && config.sort && filters.sort) {
     return (
-      <SheetFrame visible title="Sort by" onClose={onClose} closeLabel="Done">
+      <SheetFrame visible title={t('filters.sheet.sortBy')} onClose={onClose} closeLabel={t('common.done')}>
         <SortEditor options={config.sort.options} value={filters.sort} onChange={(sort: SortState) => filters.setSort(sort)} />
       </SheetFrame>
     );
@@ -84,7 +85,7 @@ export function SingleFilterSheet({ config, filters, open, onClose }: SingleFilt
       title={field.label}
       onClose={onClose}
       tall={field.kind === 'picker'}
-      action={{ label: 'Reset', onPress: () => { setDraft(undefined); setInvalid(false); setResets(count => count + 1); }, disabled: !isFieldActive(field, draft) }}
+      action={{ label: t('common.reset'), onPress: () => { setDraft(undefined); setInvalid(false); setResets(count => count + 1); }, disabled: !isFieldActive(field, draft) }}
       footer={
         <ApplyFiltersButton
           result={result}

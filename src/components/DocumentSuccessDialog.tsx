@@ -30,6 +30,7 @@ import {
 } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { formatCurrency } from '@/utils/formatters';
+import { localizeDigits, t as tr } from '@/i18n';
 
 export type DocumentType = 'GRN' | 'Dispatch' | 'Invoice';
 
@@ -54,38 +55,26 @@ interface DocumentSuccessDialogProps {
   isEditMode?: boolean;
 }
 
+const DOCUMENT_GROUPS = { GRN: 'grn', Dispatch: 'dispatch', Invoice: 'invoice' } as const;
+const DOCUMENT_NOUN_KEYS = { GRN: 'common.grn', Dispatch: 'common.dispatch', Invoice: 'common.invoice' } as const;
+const DOCUMENT_NUMBER_KEYS = {
+  GRN: 'common.grnNumber',
+  Dispatch: 'common.dispatchNumber',
+  Invoice: 'common.invoiceNumber',
+} as const;
+
+/** The texts for one kind of document. Called while rendering, so they follow the language. */
 const getDocumentConfig = (type: DocumentType, isEditMode: boolean) => {
-  const configs = {
-    GRN: {
-      noun: 'GRN',
-      title: isEditMode ? 'GRN updated' : 'GRN created',
-      message: isEditMode ? 'Your changes to the GRN are saved.' : 'The GRN is saved.',
-      listLabel: 'View GRNs',
-      createText: isEditMode ? 'Edit another GRN' : 'Create another GRN',
-      numberLabel: 'GRN number',
-    },
-    Dispatch: {
-      noun: 'Dispatch',
-      title: isEditMode ? 'Dispatch updated' : 'Dispatch created',
-      message: isEditMode
-        ? 'Your changes to the dispatch are saved.'
-        : 'The dispatch is saved.',
-      listLabel: 'View dispatches',
-      createText: isEditMode ? 'Edit another dispatch' : 'Create another dispatch',
-      numberLabel: 'Dispatch number',
-    },
-    Invoice: {
-      noun: 'Invoice',
-      title: isEditMode ? 'Invoice updated' : 'Invoice created',
-      message: isEditMode
-        ? 'Your changes to the invoice are saved.'
-        : 'The invoice is saved.',
-      listLabel: 'View invoices',
-      createText: isEditMode ? 'Edit another invoice' : 'Create another invoice',
-      numberLabel: 'Invoice number',
-    },
+  const group = DOCUMENT_GROUPS[type];
+  return {
+    noun: tr(DOCUMENT_NOUN_KEYS[type]),
+    title: tr(isEditMode ? `components.documentSuccess.${group}.updatedTitle` : `components.documentSuccess.${group}.createdTitle`),
+    message: tr(isEditMode ? `components.documentSuccess.${group}.updatedMessage` : `components.documentSuccess.${group}.createdMessage`),
+    listLabel: tr(`components.documentSuccess.${group}.listLabel`),
+    createText: tr(isEditMode ? `components.documentSuccess.${group}.editAnother` : `components.documentSuccess.${group}.createAnother`),
+    numberLabel: tr(DOCUMENT_NUMBER_KEYS[type]),
+    printLabel: tr(`components.documentSuccess.${group}.printLabel`),
   };
-  return configs[type];
 };
 
 const makeStyles = (t: ThemeTokens) => ({
@@ -241,7 +230,7 @@ export const DocumentSuccessDialog: React.FC<DocumentSuccessDialogProps> = ({
         <View
           style={styles.dialog}
           accessibilityViewIsModal
-          accessibilityLabel={`${config.title}, ${config.noun} ${documentData.documentNo}`}
+          accessibilityLabel={tr('components.documentSuccess.dialogLabel', { title: config.title, noun: config.noun, number: documentData.documentNo })}
         >
           <ScrollView contentContainerStyle={styles.scrollContent} bounces={false}>
             {/* Success icon */}
@@ -264,13 +253,13 @@ export const DocumentSuccessDialog: React.FC<DocumentSuccessDialogProps> = ({
 
               {documentData.finYear && (
                 <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>Financial year</Text>
+                  <Text style={styles.detailLabel}>{tr('components.documentSuccess.financialYear')}</Text>
                   <Text style={styles.detailValue}>{documentData.finYear}</Text>
                 </View>
               )}
 
               <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>Customer</Text>
+                <Text style={styles.detailLabel}>{tr('common.customer')}</Text>
                 <Text style={styles.detailValue} numberOfLines={2}>
                   {documentData.customerName}
                 </Text>
@@ -278,21 +267,21 @@ export const DocumentSuccessDialog: React.FC<DocumentSuccessDialogProps> = ({
 
               {documentData.date && (
                 <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>Date</Text>
+                  <Text style={styles.detailLabel}>{tr('common.date')}</Text>
                   <Text style={styles.detailValue}>{documentData.date}</Text>
                 </View>
               )}
 
               {documentData.itemCount !== undefined && (
                 <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>Items</Text>
-                  <Text style={styles.detailValue}>{documentData.itemCount}</Text>
+                  <Text style={styles.detailLabel}>{tr('common.items')}</Text>
+                  <Text style={styles.detailValue}>{localizeDigits(String(documentData.itemCount))}</Text>
                 </View>
               )}
 
               {documentData.totalAmount !== undefined && (
                 <View style={[styles.detailRow, styles.totalRow]}>
-                  <Text style={styles.totalLabel}>Total amount</Text>
+                  <Text style={styles.totalLabel}>{tr('components.documentSuccess.totalAmount')}</Text>
                   <Text style={styles.totalValue}>
                     {formatCurrency(documentData.totalAmount, {
                       minimumFractionDigits: 2,
@@ -314,10 +303,10 @@ export const DocumentSuccessDialog: React.FC<DocumentSuccessDialogProps> = ({
                   ]}
                   onPress={onPrint}
                   accessibilityRole="button"
-                  accessibilityLabel={`Print ${config.noun === 'GRN' ? 'GRN' : config.noun.toLowerCase()}`}
+                  accessibilityLabel={config.printLabel}
                 >
                   <Icon name="printer-outline" size={iconSize.md} color={t.brand.tint} />
-                  <Text style={styles.secondaryButtonText}>Print</Text>
+                  <Text style={styles.secondaryButtonText}>{tr('common.print')}</Text>
                 </Pressable>
               )}
 
@@ -331,7 +320,7 @@ export const DocumentSuccessDialog: React.FC<DocumentSuccessDialogProps> = ({
                 onPress={onSharePDF}
                 disabled={isShareLoading}
                 accessibilityRole="button"
-                accessibilityLabel="Share PDF"
+                accessibilityLabel={tr('components.sharePdf')}
                 accessibilityState={{ busy: isShareLoading, disabled: isShareLoading }}
               >
                 {isShareLoading ? (
@@ -340,7 +329,7 @@ export const DocumentSuccessDialog: React.FC<DocumentSuccessDialogProps> = ({
                   <Icon name="share-variant-outline" size={iconSize.md} color={t.brand.tint} />
                 )}
                 <Text style={styles.secondaryButtonText}>
-                  {isShareLoading ? 'Preparing PDF…' : 'Share PDF'}
+                  {isShareLoading ? tr('components.preparingPdf') : tr('components.sharePdf')}
                 </Text>
               </Pressable>
 

@@ -1,4 +1,5 @@
 import * as Crypto from 'expo-crypto';
+import { t } from '@/i18n';
 
 // Document numbers identify a create operation within one warehouse database.
 // Reuse the same key for the same complete RPC body after a lost response, even
@@ -15,7 +16,7 @@ function canonical(value: unknown): unknown {
 
 export async function submissionIdempotencyKey(operation: 'grn' | 'dispatch', body: Record<string, unknown>): Promise<string> {
   const document = operation === 'grn' ? body.p_gr_no : (body.p_dispatch_data as { disp_no?: string } | undefined)?.disp_no;
-  if (typeof document !== 'string' || !document.trim()) throw new Error('A document number is required before submitting.');
+  if (typeof document !== 'string' || !document.trim()) throw new Error(t('errors.document.numberRequired'));
   const digest = await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, JSON.stringify(canonical(body)));
   return `warehouse-${operation}-${digest}`;
 }

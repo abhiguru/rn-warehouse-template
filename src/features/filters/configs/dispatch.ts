@@ -11,6 +11,7 @@ import {
   getDispatchListWithItems,
   type GetDispatchListWithItemsParams,
 } from '@/services/dispatch-service';
+import { t } from '@/i18n';
 import { resolveDateRange } from '../datePresets';
 import { currentSort, readSearch } from '../filterModel';
 import { customerSource, itemSource } from '../pickerSources';
@@ -25,32 +26,33 @@ export interface DispatchListRequest {
 
 export const DISPATCH_FILTERS: FilterListConfig<DispatchListRequest> = {
   listKey: 'dispatch-list',
-  title: 'Filter dispatches',
+  // Labels are getters so they follow the app's language (see FieldBase in ../types).
+  get title() { return t('filters.list.dispatch.title'); },
   noun: ['dispatch', 'dispatches'],
-  search: { placeholder: 'Search dispatches', dates: true, range: 'document', dateField: 'date', rangeField: 'numberRange' },
+  search: { get placeholder() { return t('filters.list.dispatch.search'); }, dates: true, range: 'document', dateField: 'date', rangeField: 'numberRange' },
   sort: {
     options: [
-      { field: 'dispatch_date', label: 'Date', kind: 'date' },
-      { field: 'disp_no', label: 'Dispatch number', chipLabel: 'Number', kind: 'number' },
+      { field: 'dispatch_date', get label() { return t('common.date'); }, kind: 'date' },
+      { field: 'disp_no', get label() { return t('common.dispatchNumber'); }, get chipLabel() { return t('filters.sort.numberChip'); }, kind: 'number' },
     ],
     default: { field: 'dispatch_date', order: 'desc' },
   },
   fields: [
-    { kind: 'dateRange', key: 'date', label: 'Date', icon: 'calendar-range' },
+    { kind: 'dateRange', key: 'date', get label() { return t('common.date'); }, icon: 'calendar-range' },
     {
       kind: 'picker',
       key: 'customers',
-      label: 'Customer',
+      get label() { return t('common.customer'); },
       icon: 'account',
       noun: ['customer', 'customers'],
       source: customerSource,
       visibleTo: customerFilterVisible,
     },
-    { kind: 'picker', key: 'items', label: 'Item', icon: 'package-variant', noun: ['item', 'items'], source: itemSource },
-    { kind: 'textRange', key: 'numberRange', label: 'Dispatch number', icon: 'file-document-outline', placeholder: ['From', 'To'] },
+    { kind: 'picker', key: 'items', get label() { return t('common.item'); }, icon: 'package-variant', noun: ['item', 'items'], source: itemSource },
+    { kind: 'textRange', key: 'numberRange', get label() { return t('common.dispatchNumber'); }, icon: 'file-document-outline', get placeholder(): [string, string] { return [t('filters.range.from'), t('filters.range.to')]; } },
     // Bags on one line of the dispatch, as the backend compares them.
-    { kind: 'numberRange', key: 'bags', label: 'Bags on a line', icon: 'sack', unit: 'bags', integer: true },
-    { kind: 'text', key: 'package', label: 'Package', icon: 'tag-outline', placeholder: 'Package name' },
+    { kind: 'numberRange', key: 'bags', get label() { return t('filters.field.bagsOnLine'); }, icon: 'sack', get unit() { return t('filters.unit.bags'); }, integer: true },
+    { kind: 'text', key: 'package', get label() { return t('filters.field.package'); }, icon: 'tag-outline', get placeholder() { return t('filters.placeholder.packageName'); } },
   ],
   fastFilters: ['date', 'customers', 'items'],
 

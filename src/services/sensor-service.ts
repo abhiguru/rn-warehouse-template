@@ -8,6 +8,7 @@ import {
 } from '@/types/sensor.types';
 import { createLogger } from '@/utils/logger';
 import { executeRPC, createErrorResponse } from '@/utils/serviceErrorHandler';
+import { t } from '@/i18n';
 
 const sensorLogger = createLogger('SensorService');
 
@@ -29,7 +30,7 @@ export class SensorService {
 
       // Set a timeout for RPC calls (30 seconds)
       const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('RPC request timed out after 30 seconds')), 30000)
+        setTimeout(() => reject(new Error(t('errors.network.rpcTimedOut30'))), 30000)
       );
 
       const rpcPromise = authenticatedClient.rpc('get_sensor_polling_data', {
@@ -44,7 +45,7 @@ export class SensorService {
         sensorLogger.error('RPC error:', error);
         return {
           success: false,
-          message: error.message || 'Failed to fetch sensor data',
+          message: error.message || t('errors.sensor.fetchFailed'),
           error: error.message,
         };
       }
@@ -53,7 +54,7 @@ export class SensorService {
         sensorLogger.warn('RPC returned unsuccessful response');
         return {
           success: false,
-          message: 'No data returned from sensor polling',
+          message: t('errors.sensor.noData'),
         };
       }
 
@@ -65,15 +66,15 @@ export class SensorService {
 
       return {
         success: true,
-        message: 'Sensor data fetched successfully',
+        message: t('errors.sensor.fetched'),
         data: data as SensorPollingResponse,
       };
     } catch (error) {
       sensorLogger.error('Exception:', error);
       return {
         success: false,
-        message: 'Failed to fetch sensor data',
-        error: error instanceof Error ? error.message : 'Unknown error',
+        message: t('errors.sensor.fetchFailed'),
+        error: error instanceof Error ? error.message : t('errors.general.unknown'),
       };
     }
   }

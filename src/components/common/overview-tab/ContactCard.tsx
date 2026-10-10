@@ -10,6 +10,7 @@ import { View, Text, Pressable, Linking } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { iconSize } from '@/theme/tokens';
 import { overviewStyles, useOverviewColors } from './FioriStyles';
+import { t } from '@/i18n';
 
 export interface ContactDetails {
   name: string;
@@ -89,7 +90,7 @@ export const ContactCard: React.FC<ContactCardProps> = ({
                 ]}
                 onPress={() => handlePhonePress(phone)}
                 accessibilityRole="button"
-                accessibilityLabel={`Call ${name}, ${displayPhone}`}
+                accessibilityLabel={t('components.contact.call', { name, phone: displayPhone })}
               >
                 <View style={[overviewStyles.contactActionIcon, colorStyles.contactActionIcon]}>
                   <Icon name="phone-outline" size={iconSize.md} color={colorStyles.iconBrand} />
@@ -111,7 +112,7 @@ export const ContactCard: React.FC<ContactCardProps> = ({
                 ]}
                 onPress={() => handleEmailPress(email)}
                 accessibilityRole="button"
-                accessibilityLabel={`Email ${name}, ${email}`}
+                accessibilityLabel={t('components.contact.email', { name, email })}
               >
                 <View style={[overviewStyles.contactActionIcon, colorStyles.contactActionIcon]}>
                   <Icon name="email-outline" size={iconSize.md} color={colorStyles.iconBrand} />

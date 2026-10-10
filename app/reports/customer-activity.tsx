@@ -60,12 +60,14 @@ import type {
 import { formatCount, formatCurrency, formatDate, formatMonth, formatNumber, toDate } from '@/utils/formatters';
 import { Avatar, StatusTag, type StatusKind } from '@/components/ui';
 import { createLogger } from '@/utils/logger';
+import { localizeDigits, t as tr, type TranslationKey } from '@/i18n';
 
 const logger = createLogger('CustomerActivity');
 
-const LIST_ERROR = "Couldn't load customer activity. Check your connection and try again.";
-const DETAIL_ERROR = "Couldn't load this customer's activity. Check your connection and try again.";
-const NO_CUSTOMER = 'No customer is linked to your account. Ask your facility to link one.';
+// Keys, not text: the text is looked up when it is drawn (docs/I18N.md rule 2).
+const LIST_ERROR: TranslationKey = 'reports.customerActivity.listError';
+const DETAIL_ERROR: TranslationKey = 'reports.customerActivity.detailError';
+const NO_CUSTOMER: TranslationKey = 'reports.customerActivity.noCustomer';
 
 // ============================================================================
 // Status (guide §3.5)
@@ -84,18 +86,19 @@ const AGING_STATUS: Record<string, StatusKind> = {
   '364+': 'negative',
 };
 
-const AGING_LABEL: Record<string, string> = {
-  '0-120': '0–120 days',
-  '121-240': '121–240 days',
-  '241-364': '241–364 days',
-  '364+': 'Over 364 days',
+const AGING_LABEL: Record<string, TranslationKey> = {
+  '0-120': 'reports.customerActivity.aging.days0to120',
+  '121-240': 'reports.customerActivity.aging.days121to240',
+  '241-364': 'reports.customerActivity.aging.days241to364',
+  '364+': 'reports.customerActivity.aging.over364',
 };
 
 /** Invoice status: pending → critical, paid → positive. */
 function invoiceStatus(status: string): StatusInfo {
-  if (status === 'paid') return { kind: 'positive', label: 'Paid' };
-  if (status === 'pending') return { kind: 'critical', label: 'Pending' };
-  return { kind: 'neutral', label: status ? status.charAt(0).toUpperCase() + status.slice(1) : 'Unknown' };
+  if (status === 'paid') return { kind: 'positive', label: tr('reports.customerActivity.paid') };
+  if (status === 'pending') return { kind: 'critical', label: tr('common.pending') };
+  // The backend sends only paid or pending; anything else is not a label (docs/I18N.md rule 9).
+  return { kind: 'neutral', label: tr('common.unknown') };
 }
 
 // Period options - standardized across all reports
@@ -114,8 +117,8 @@ const PERIOD_OPTIONS: { id: CustomerActivityPeriod; days: number }[] = [
 function formatLastActivity(value: string): string {
   const date = toDate(value);
   if (!date) return '';
-  if (date.toDateString() === new Date().toDateString()) return 'Active today';
-  return `Last active ${formatDate(date, 'short')}`;
+  if (date.toDateString() === new Date().toDateString()) return tr('reports.customerActivity.activeToday');
+  return tr('reports.customerActivity.lastActive', { date: formatDate(date, 'short') });
 }
 
 /** "Oct 2026" for a "2026-10" trend month (guide §12.3). */
@@ -416,7 +419,9 @@ const CustomerCard: React.FC<CustomerCardProps> = ({ customer, onPress, styles, 
     .join(' · ');
   const grns = formatCount(customer.total_grns, 'GRN');
   const dispatches = formatCount(customer.total_dispatches, 'dispatch', 'dispatches');
-  const invoiced = `${formatCurrency(customer.total_invoice_amount, { maximumFractionDigits: 0 })} invoiced`;
+  const invoiced = tr('reports.customerActivity.invoicedAmount', {
+    amount: formatCurrency(customer.total_invoice_amount, { maximumFractionDigits: 0 }),
+  });
   const stock = formatNumber(customer.current_stock);
 
   return (
@@ -424,8 +429,15 @@ const CustomerCard: React.FC<CustomerCardProps> = ({ customer, onPress, styles, 
       style={({ pressed }) => [styles.customerCard, pressed && styles.customerCardPressed]}
       onPress={onPress}
       accessibilityRole="button"
-      accessibilityLabel={`${customer.customer_name}, ${subtitle}, ${stock} in stock, ${grns}, ${dispatches}, ${invoiced}`}
-      accessibilityHint="Opens this customer's activity"
+      accessibilityLabel={tr('reports.customerActivity.customerLabel', {
+        name: customer.customer_name,
+        subtitle,
+        stock,
+        grns,
+        dispatches,
+        invoiced,
+      })}
+      accessibilityHint={tr('reports.customerActivity.customerHint')}
     >
       <Avatar name={customer.customer_name} id={customer.customer_id} />
       <View style={styles.customerContent}>
@@ -454,7 +466,7 @@ const CustomerCard: React.FC<CustomerCardProps> = ({ customer, onPress, styles, 
       </View>
       <View style={styles.customerStock}>
         <Text style={styles.customerStockValue}>{stock}</Text>
-        <Text style={styles.customerStockLabel}>in stock</Text>
+        <Text style={styles.customerStockLabel}>{tr('reports.customerActivity.inStock')}</Text>
       </View>
       <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />
     </Pressable>
@@ -522,8 +534,14 @@ const StockTrendChart: React.FC<StockTrendChartProps> = ({ trends, styles, t }) 
   const lastMonth = formatMonthYear(chartTrends[chartTrends.length - 1].month);
   const summary =
     chartTrends.length === 1
-      ? `Stock at the end of ${lastMonth}: ${formatNumber(latest)}.`
-      : `Stock went from ${formatNumber(first)} in ${firstMonth} to ${formatNumber(latest)} in ${lastMonth}. Highest ${formatNumber(maxValue)}.`;
+      ? tr('reports.customerActivity.trend.summaryOne', { month: lastMonth, stock: formatNumber(latest) })
+      : tr('reports.customerActivity.trend.summaryRange', {
+          first: formatNumber(first),
+          firstMonth,
+          latest: formatNumber(latest),
+          lastMonth,
+          highest: formatNumber(maxValue),
+        });
 
   // Calculate available width: screen - section padding (32) - card padding (32) - safety buffer (20)
   const chartWidth = screenWidth - 32 - 32 - 20;
@@ -543,6 +561,8 @@ const StockTrendChart: React.FC<StockTrendChartProps> = ({ trends, styles, t }) 
     yAxisTextStyle: styles.chartAxisLabel,
     maxValue: roundedMax,
     yAxisOffset: 0,
+    // Axis numbers follow the language's digits.
+    formatYLabel: (label: string) => localizeDigits(label),
   };
 
   const close = () => {
@@ -559,16 +579,16 @@ const StockTrendChart: React.FC<StockTrendChartProps> = ({ trends, styles, t }) 
         style={({ pressed }) => [styles.chartPressable, pressed && styles.chartPressed]}
         onPress={() => setIsFullscreen(true)}
         accessibilityRole="button"
-        accessibilityLabel={`Stock level trend. ${summary}`}
-        accessibilityHint="Opens the full-screen chart and a table of values"
+        accessibilityLabel={tr('reports.customerActivity.trend.label', { summary })}
+        accessibilityHint={tr('reports.customerActivity.trend.hint')}
       >
         <View style={styles.chartHeader}>
           <Text style={styles.chartTitle} accessibilityRole="header">
-            Stock level trend
+            {tr('reports.customerActivity.trend.title')}
           </Text>
           <View style={styles.expandHint}>
             <Icon name="arrow-expand" size={iconSize.sm} color={t.brand.tint} />
-            <Text style={styles.expandHintText}>Expand</Text>
+            <Text style={styles.expandHintText}>{tr('reports.customerActivity.trend.expand')}</Text>
           </View>
         </View>
         <View importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
@@ -602,18 +622,18 @@ const StockTrendChart: React.FC<StockTrendChartProps> = ({ trends, styles, t }) 
               style={({ pressed }) => [styles.closeButton, pressed && styles.closeButtonPressed]}
               onPress={close}
               accessibilityRole="button"
-              accessibilityLabel="Close stock level trend"
+              accessibilityLabel={tr('reports.customerActivity.trend.close')}
             >
               <Icon name="close" size={iconSize.lg} color={t.brand.tint} />
             </Pressable>
             <Text style={styles.fullscreenTitle} accessibilityRole="header">
-              Stock level trend
+              {tr('reports.customerActivity.trend.title')}
             </Text>
             <View style={styles.closeButton} />
           </View>
 
           <View style={styles.toolbar}>
-            <View style={styles.segmented} accessibilityRole="radiogroup" accessibilityLabel="Show as">
+            <View style={styles.segmented} accessibilityRole="radiogroup" accessibilityLabel={tr('reports.customerActivity.trend.showAs')}>
               {(['chart', 'table'] as const).map((option, index) => {
                 const selected = view === option;
                 return (
@@ -629,7 +649,7 @@ const StockTrendChart: React.FC<StockTrendChartProps> = ({ trends, styles, t }) 
                     onPress={() => setView(option)}
                     accessibilityRole="radio"
                     accessibilityState={{ selected, checked: selected }}
-                    accessibilityLabel={option === 'chart' ? 'Chart' : 'Table of values'}
+                    accessibilityLabel={tr(option === 'chart' ? 'reports.customerActivity.trend.chart' : 'reports.customerActivity.trend.tableOfValues')}
                   >
                     <Icon
                       name={option === 'chart' ? 'chart-line' : 'table'}
@@ -637,7 +657,7 @@ const StockTrendChart: React.FC<StockTrendChartProps> = ({ trends, styles, t }) 
                       color={selected ? t.brand.onFill : t.icon.primary}
                     />
                     <Text style={[styles.segmentText, selected && styles.segmentTextSelected]}>
-                      {option === 'chart' ? 'Chart' : 'Table'}
+                      {tr(option === 'chart' ? 'reports.customerActivity.trend.chart' : 'reports.customerActivity.trend.table')}
                     </Text>
                   </Pressable>
                 );
@@ -646,7 +666,7 @@ const StockTrendChart: React.FC<StockTrendChartProps> = ({ trends, styles, t }) 
             {view === 'chart' && (
               <View style={styles.instructions}>
                 <Icon name="gesture-swipe-horizontal" size={iconSize.sm} color={t.icon.secondary} />
-                <Text style={styles.instructionText}>Swipe to scroll. Tap a point to see its value.</Text>
+                <Text style={styles.instructionText}>{tr('reports.customerActivity.trend.instructions')}</Text>
               </View>
             )}
           </View>
@@ -692,8 +712,8 @@ const StockTrendChart: React.FC<StockTrendChartProps> = ({ trends, styles, t }) 
             ) : (
               <>
                 <View style={styles.tableHeader} accessibilityRole="header">
-                  <Text style={[styles.tableHeaderText, styles.colLabel]}>Month</Text>
-                  <Text style={[styles.tableHeaderText, styles.colNumber]}>Stock at month end</Text>
+                  <Text style={[styles.tableHeaderText, styles.colLabel]}>{tr('reports.customerActivity.trend.month')}</Text>
+                  <Text style={[styles.tableHeaderText, styles.colNumber]}>{tr('reports.customerActivity.trend.stockAtMonthEnd')}</Text>
                 </View>
                 <FlatList
                   data={chartTrends}
@@ -715,16 +735,16 @@ const StockTrendChart: React.FC<StockTrendChartProps> = ({ trends, styles, t }) 
 
           {/* Summary */}
           <View style={[styles.fullscreenSummary, { paddingBottom: insets.bottom + space.lg }]}>
-            <View style={styles.summaryItem} accessible accessibilityLabel={`Latest ${formatNumber(latest)}`}>
-              <Text style={styles.summaryLabel}>Latest</Text>
+            <View style={styles.summaryItem} accessible accessibilityLabel={tr('reports.customerActivity.trend.latestLabel', { value: formatNumber(latest) })}>
+              <Text style={styles.summaryLabel}>{tr('reports.customerActivity.trend.latest')}</Text>
               <Text style={styles.summaryValue}>{formatNumber(latest)}</Text>
             </View>
-            <View style={styles.summaryItem} accessible accessibilityLabel={`Highest ${formatNumber(maxValue)}`}>
-              <Text style={styles.summaryLabel}>Highest</Text>
+            <View style={styles.summaryItem} accessible accessibilityLabel={tr('reports.customerActivity.trend.highestLabel', { value: formatNumber(maxValue) })}>
+              <Text style={styles.summaryLabel}>{tr('reports.customerActivity.trend.highest')}</Text>
               <Text style={styles.summaryValue}>{formatNumber(maxValue)}</Text>
             </View>
-            <View style={styles.summaryItem} accessible accessibilityLabel={`Period ${formatCount(fullscreenLineData.length, 'month')}`}>
-              <Text style={styles.summaryLabel}>Period</Text>
+            <View style={styles.summaryItem} accessible accessibilityLabel={tr('reports.customerActivity.trend.periodLabel', { value: formatCount(fullscreenLineData.length, 'month') })}>
+              <Text style={styles.summaryLabel}>{tr('reports.customerActivity.trend.period')}</Text>
               <Text style={styles.summaryValue}>{formatCount(fullscreenLineData.length, 'month')}</Text>
             </View>
           </View>
@@ -749,19 +769,22 @@ const AgingBucketBar: React.FC<AgingBucketBarProps> = ({ bucket, data, maxPercen
   const percentage = data.percentage ?? 0;
   const quantity = data.total_quantity ?? 0;
   const barWidth = maxPercentage > 0 ? (percentage / maxPercentage) * 100 : 0;
-  const label = AGING_LABEL[bucket] ?? `${bucket} days`;
+  const label = AGING_LABEL[bucket]
+    ? tr(AGING_LABEL[bucket])
+    : tr('reports.customerActivity.aging.other', { bucket: localizeDigits(bucket) });
+  const percent = localizeDigits(percentage.toFixed(1));
 
   return (
     <View
       style={styles.bucketRow}
       accessible
-      accessibilityLabel={`${label}: ${percentage.toFixed(1)}%, ${formatNumber(quantity)} units`}
+      accessibilityLabel={tr('reports.customerActivity.aging.label', { label, percent, quantity: formatNumber(quantity) })}
     >
       <View style={styles.bucketTop}>
         <View style={styles.bucketLabel}>
           <StatusTag status={kind} label={label} />
         </View>
-        <Text style={styles.bucketValue}>{`${percentage.toFixed(1)}%`}</Text>
+        <Text style={styles.bucketValue}>{tr('reports.customerActivity.aging.percent', { percent })}</Text>
         <Text style={styles.bucketCount}>{formatNumber(quantity)}</Text>
       </View>
       <View style={styles.bucketTrack}>
@@ -797,7 +820,7 @@ const QuickAccessCard: React.FC<QuickAccessCardProps> = ({
         style={({ pressed }) => [styles.quickAccessHeader, pressed && styles.quickAccessHeaderPressed]}
         onPress={onPress}
         accessibilityRole="button"
-        accessibilityLabel={`${title}, ${countLabel}. View all`}
+        accessibilityLabel={tr('reports.customerActivity.quickAccessLabel', { title, count: countLabel })}
       >
         <View style={styles.quickAccessIcon}>
           <Icon name={icon} size={iconSize.md} color={t.brand.tint} />
@@ -807,7 +830,7 @@ const QuickAccessCard: React.FC<QuickAccessCardProps> = ({
           <Text style={styles.quickAccessCount}>{countLabel}</Text>
         </View>
         <View style={styles.quickAccessAction}>
-          <Text style={styles.quickAccessActionText}>View all</Text>
+          <Text style={styles.quickAccessActionText}>{tr('reports.customerActivity.viewAll')}</Text>
           <Icon name="chevron-right" size={iconSize.sm} color={t.brand.tint} />
         </View>
       </Pressable>
@@ -866,7 +889,7 @@ export default function CustomerActivityScreen() {
   const [detailData, setDetailData] = useState<CustomerActivityDetailData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<TranslationKey | null>(null);
   const [viewMode, setViewMode] = useState<'all' | 'single'>('all');
   const [selectedCustomer, setSelectedCustomer] = useState<CustomerActivityRow | null>(null);
   const [selectedPeriod, setSelectedPeriod] = useState<CustomerActivityPeriod>('last120days');
@@ -1023,8 +1046,8 @@ export default function CustomerActivityScreen() {
     if (!allData?.summary) return [];
     const s = allData.summary;
     return [
-      { icon: 'account-group-outline', value: s.total_customers, label: 'Customers', variant: 'primary' },
-      { icon: 'warehouse', value: formatNumber(s.total_current_stock), label: 'Stock', variant: 'primary' },
+      { icon: 'account-group-outline', value: s.total_customers, label: tr('common.customers'), variant: 'primary' },
+      { icon: 'warehouse', value: formatNumber(s.total_current_stock), label: tr('common.stock'), variant: 'primary' },
     ];
   }, [allData?.summary]);
 
@@ -1033,9 +1056,9 @@ export default function CustomerActivityScreen() {
     if (!detailData?.summary) return [];
     const s = detailData.summary;
     return [
-      { icon: 'warehouse', value: formatNumber(s.current_stock), label: 'Stock', variant: 'primary' },
-      { icon: 'package-down', value: s.total_grns, label: 'GRNs', variant: 'primary' },
-      { icon: 'truck-delivery-outline', value: s.total_dispatches, label: 'Dispatches', variant: 'primary' },
+      { icon: 'warehouse', value: formatNumber(s.current_stock), label: tr('common.stock'), variant: 'primary' },
+      { icon: 'package-down', value: s.total_grns, label: tr('reports.customerActivity.grns'), variant: 'primary' },
+      { icon: 'truck-delivery-outline', value: s.total_dispatches, label: tr('reports.customerActivity.dispatches'), variant: 'primary' },
     ];
   }, [detailData?.summary]);
 
@@ -1059,13 +1082,13 @@ export default function CustomerActivityScreen() {
   if (isLoading && !hasData) {
     return (
       <View style={styles.container}>
-        <ReportHeader title="Customer activity" />
+        <ReportHeader title={tr('reports.titles.customerActivity')} />
         {periodSelector}
         <View style={styles.loadingContainer}>
           <KPIGrid
             items={[
-              { icon: 'account-group-outline', value: '-', label: 'Customers', variant: 'primary' },
-              { icon: 'warehouse', value: '-', label: 'Stock', variant: 'primary' },
+              { icon: 'account-group-outline', value: '-', label: tr('common.customers'), variant: 'primary' },
+              { icon: 'warehouse', value: '-', label: tr('common.stock'), variant: 'primary' },
             ]}
             isLoading={true}
             compact
@@ -1080,14 +1103,14 @@ export default function CustomerActivityScreen() {
     const noCustomer = error === NO_CUSTOMER;
     return (
       <View style={styles.container}>
-        <ReportHeader title="Customer activity" />
+        <ReportHeader title={tr('reports.titles.customerActivity')} />
         {periodSelector}
         <ReportEmptyState
           icon={noCustomer ? 'account-off-outline' : 'alert-circle-outline'}
           tone={noCustomer ? 'default' : 'error'}
-          message={noCustomer ? 'No customer linked' : 'Something went wrong'}
-          description={error}
-          actionLabel={noCustomer ? undefined : 'Try again'}
+          message={tr(noCustomer ? 'reports.customerActivity.noCustomerTitle' : 'reports.customerActivity.errorTitle')}
+          description={tr(error)}
+          actionLabel={noCustomer ? undefined : tr('common.retry')}
           onAction={noCustomer ? undefined : handleRefresh}
         />
       </View>
@@ -1100,7 +1123,10 @@ export default function CustomerActivityScreen() {
 
     return (
       <View style={styles.container}>
-        <ReportHeader title="Customer activity" subtitle={isStaff ? 'All customers' : 'My customers'} />
+        <ReportHeader
+          title={tr('reports.titles.customerActivity')}
+          subtitle={tr(isStaff ? 'reports.customerActivity.allCustomers' : 'reports.customerActivity.myCustomers')}
+        />
         {periodSelector}
         <ScrollView
           style={styles.scrollView}
@@ -1112,7 +1138,7 @@ export default function CustomerActivityScreen() {
 
           {hasCustomers ? (
             <View style={styles.section}>
-              <SectionHeader title="Customers" styles={styles} t={t} />
+              <SectionHeader title={tr('common.customers')} styles={styles} t={t} />
               <View style={styles.card}>
                 <View style={styles.cardClip}>
                   {allData.customers.map((customer, index) => (
@@ -1132,8 +1158,8 @@ export default function CustomerActivityScreen() {
           ) : (
             <ReportEmptyState
               icon="account-off-outline"
-              message="No customer activity"
-              description="No GRNs, dispatches or invoices in this period. Try a longer period."
+              message={tr('reports.customerActivity.emptyTitle')}
+              description={tr('reports.customerActivity.emptyDescription')}
             />
           )}
         </ScrollView>
@@ -1152,7 +1178,7 @@ export default function CustomerActivityScreen() {
     return (
       <View style={styles.container}>
         <ReportHeader
-          title="Customer activity"
+          title={tr('reports.titles.customerActivity')}
           subtitle={detailData.customer_name}
           onBack={shouldShowListView ? handleBackToAll : undefined}
         />
@@ -1169,7 +1195,7 @@ export default function CustomerActivityScreen() {
           {hasChartData && (
             <View style={styles.section}>
               <SectionHeader
-                title="Charts"
+                title={tr('reports.customerActivity.charts')}
                 onToggle={toggleCharts}
                 isExpanded={chartsExpanded}
                 styles={styles}
@@ -1188,7 +1214,7 @@ export default function CustomerActivityScreen() {
           {/* Stock Aging Distribution */}
           {Object.keys(detailData.by_bucket).length > 0 && (
             <View style={styles.section}>
-              <SectionHeader title="Stock age" styles={styles} t={t} />
+              <SectionHeader title={tr('reports.customerActivity.stockAge')} styles={styles} t={t} />
               <View style={[styles.card, styles.cardPadded]}>
                 {(() => {
                   const maxPercentage = Math.max(
@@ -1216,12 +1242,12 @@ export default function CustomerActivityScreen() {
 
           {/* Quick Access Section */}
           <View style={styles.section}>
-            <SectionHeader title="Quick access" styles={styles} t={t} />
+            <SectionHeader title={tr('reports.customerActivity.quickAccess')} styles={styles} t={t} />
             <View style={styles.quickAccessGrid}>
               {/* Recent GRNs */}
               <QuickAccessCard
                 icon="package-down"
-                title="Recent GRNs"
+                title={tr('reports.customerActivity.recentGrns')}
                 countLabel={formatCount(grnCount, 'GRN')}
                 onPress={() => navigateToReport('grn-activity')}
                 styles={styles}
@@ -1230,9 +1256,12 @@ export default function CustomerActivityScreen() {
                 {detailData.recent_grns.slice(0, 3).map((grn) => (
                   <PreviewItem
                     key={grn.grn_id}
-                    label={`GRN ${grn.gr_no}`}
+                    label={tr('reports.customerActivity.grnNumber', { number: grn.gr_no })}
                     sublabel={formatDate(grn.grn_date, 'short')}
-                    value={`${formatNumber(grn.current_stock)} of ${formatNumber(grn.total_qty)} in stock`}
+                    value={tr('reports.customerActivity.stockOfTotal', {
+                      stock: formatNumber(grn.current_stock),
+                      total: formatNumber(grn.total_qty),
+                    })}
                     styles={styles}
                     t={t}
                   />
@@ -1242,7 +1271,7 @@ export default function CustomerActivityScreen() {
               {/* Recent Dispatches */}
               <QuickAccessCard
                 icon="truck-delivery-outline"
-                title="Recent dispatches"
+                title={tr('reports.customerActivity.recentDispatches')}
                 countLabel={formatCount(dispatchCount, 'dispatch', 'dispatches')}
                 onPress={() => navigateToReport('dispatch-activity')}
                 styles={styles}
@@ -1251,7 +1280,7 @@ export default function CustomerActivityScreen() {
                 {detailData.recent_dispatches.slice(0, 3).map((disp) => (
                   <PreviewItem
                     key={disp.dispatch_id}
-                    label={`Dispatch ${disp.dispatch_no}`}
+                    label={tr('reports.customerActivity.dispatchNumber', { number: disp.dispatch_no })}
                     sublabel={formatDate(disp.dispatch_date, 'short')}
                     value={formatNumber(disp.total_qty)}
                     styles={styles}
@@ -1263,7 +1292,7 @@ export default function CustomerActivityScreen() {
               {/* Top Stock Items */}
               <QuickAccessCard
                 icon="cube-outline"
-                title="Top stock items"
+                title={tr('reports.customerActivity.topStockItems')}
                 countLabel={formatCount(itemCount, 'item')}
                 onPress={() => navigateToReport('stock-aging')}
                 styles={styles}
@@ -1284,7 +1313,7 @@ export default function CustomerActivityScreen() {
               {/* Recent Invoices */}
               <QuickAccessCard
                 icon="file-document-outline"
-                title="Recent invoices"
+                title={tr('reports.customerActivity.recentInvoices')}
                 countLabel={formatCount(invoiceCount, 'invoice')}
                 onPress={() => navigateToReport('invoice-history')}
                 styles={styles}
@@ -1293,7 +1322,7 @@ export default function CustomerActivityScreen() {
                 {detailData.recent_invoices.slice(0, 3).map((inv) => (
                   <PreviewItem
                     key={inv.invoice_id}
-                    label={`Invoice ${inv.invoice_number}`}
+                    label={tr('reports.customerActivity.invoiceNumber', { number: inv.invoice_number })}
                     sublabel={formatDate(inv.invoice_date, 'short')}
                     value={formatCurrency(inv.net_total, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     status={invoiceStatus(inv.status)}
@@ -1312,12 +1341,12 @@ export default function CustomerActivityScreen() {
   // Fallback empty state
   return (
     <View style={styles.container}>
-      <ReportHeader title="Customer activity" />
+      <ReportHeader title={tr('reports.titles.customerActivity')} />
       {periodSelector}
       <ReportEmptyState
         icon="account-off-outline"
-        message="No customer activity"
-        description="No GRNs, dispatches or invoices in this period. Try a longer period."
+        message={tr('reports.customerActivity.emptyTitle')}
+        description={tr('reports.customerActivity.emptyDescription')}
       />
     </View>
   );

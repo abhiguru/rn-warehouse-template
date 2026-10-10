@@ -8,6 +8,7 @@ import React from 'react';
 import { KeyboardAvoidingView, Modal, Pressable, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useThemedStyles } from '@/hooks/useTheme';
+import { t } from '@/i18n';
 import { fontWeight, layout, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 
 export interface SheetFrameProps {
@@ -67,13 +68,13 @@ const makeStyles = (t: ThemeTokens) => ({
   bold: { fontWeight: fontWeight.semibold },
 });
 
-export function SheetFrame({ visible, title, onClose, closeLabel = 'Cancel', action, tall = false, footer, children }: SheetFrameProps) {
+export function SheetFrame({ visible, title, onClose, closeLabel = t('common.cancel'), action, tall = false, footer, children }: SheetFrameProps) {
   const styles = useThemedStyles(makeStyles);
   const insets = useSafeAreaInsets();
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent navigationBarTranslucent>
       <KeyboardAvoidingView style={styles.root} behavior="padding">
-        <Pressable style={styles.scrim} onPress={onClose} accessibilityRole="button" accessibilityLabel={`${closeLabel} ${title}`} />
+        <Pressable style={styles.scrim} onPress={onClose} accessibilityRole="button" accessibilityLabel={t('filters.sheet.closeScrim', { action: closeLabel, title })} />
         <View style={[styles.sheet, tall && styles.sheetTall]} accessibilityViewIsModal>
           <View style={styles.handle} />
           <View style={styles.header}>

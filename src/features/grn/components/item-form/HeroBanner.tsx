@@ -15,7 +15,7 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { iconSize, radius, space, touchTarget, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
-import { formatCount } from '@/utils/formatters';
+import { t as tr } from '@/i18n';
 
 // ============================================================================
 // TYPES
@@ -49,7 +49,7 @@ export const HeroBanner: React.FC<HeroBannerProps> = React.memo(
     const t = useTokens();
 
     const itemNumber = isEditing ? editingItemNumber : savedItemsCount + 1;
-    const overline = isEditing ? 'Editing item' : 'New item';
+    const overline = isEditing ? tr('grn.item.editingItem') : tr('grn.item.newItem');
     const canViewAll = savedItemsCount > 0 && !!onViewAll;
 
     return (
@@ -61,16 +61,16 @@ export const HeroBanner: React.FC<HeroBannerProps> = React.memo(
           accessibilityRole={canViewAll ? 'button' : 'header'}
           accessibilityLabel={
             canViewAll
-              ? `${overline} ${itemNumber}. View ${formatCount(savedItemsCount, 'saved item')}`
-              : `${overline} ${itemNumber}`
+              ? tr(isEditing ? 'grn.item.a11yEditingItemViewSaved' : 'grn.item.a11yNewItemViewSaved', { number: itemNumber, count: savedItemsCount })
+              : tr(isEditing ? 'grn.item.a11yEditingItem' : 'grn.item.a11yNewItem', { number: itemNumber })
           }
         >
           <Text style={styles.overline}>{overline}</Text>
           <View style={styles.titleRow}>
-            <Text style={styles.title}>Item {itemNumber}</Text>
+            <Text style={styles.title}>{tr('grn.item.itemNumber', { number: itemNumber })}</Text>
             {canViewAll && (
               <View style={styles.viewAll}>
-                <Text style={styles.viewAllText}>{savedItemsCount} saved</Text>
+                <Text style={styles.viewAllText}>{tr('grn.item.savedCount', { count: savedItemsCount })}</Text>
                 <Icon name="chevron-right" size={iconSize.sm} color={t.brand.tint} />
               </View>
             )}
@@ -92,7 +92,7 @@ export const HeroBanner: React.FC<HeroBannerProps> = React.memo(
           onPress={onSave}
           disabled={!isValid}
           accessibilityRole="button"
-          accessibilityLabel="Save receipt item"
+          accessibilityLabel={tr('grn.item.saveLabel')}
           accessibilityState={{ disabled: !isValid }}
         >
           <Icon name="check" size={iconSize.lg} color={t.brand.onFill} />

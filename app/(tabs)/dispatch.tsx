@@ -19,6 +19,7 @@ import { ListErrorBoundary } from '@/components/list/ListErrorBoundary';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useThemedStyles } from '@/hooks/useTheme';
 import { Fab } from '@/components/ui/Fab';
+import { t } from '@/i18n';
 import type { ThemeTokens } from '@/theme/tokens';
 
 const makeStyles = (t: ThemeTokens) => ({
@@ -42,7 +43,7 @@ export default function DispatchTab() {
         <DispatchFlashList />
       </ListErrorBoundary>
       {canCreate && (
-        <Fab label="Create dispatch" onPress={handleCreateDispatch} testID="create-dispatch-fab" />
+        <Fab label={t('lists.dispatch.create')} onPress={handleCreateDispatch} testID="create-dispatch-fab" />
       )}
     </View>
   );

@@ -30,6 +30,7 @@ import {
   typography,
   type ThemeTokens,
 } from '@/theme/tokens';
+import { localizeDigits, t as tr } from '@/i18n';
 
 /** Visual height of a text action; the touch area is padded to touchTarget. */
 const TEXT_BUTTON_HEIGHT = 28;
@@ -105,7 +106,7 @@ export const SectionHeader: React.FC<SectionHeaderProps> = ({
         {count !== undefined && (
           <View style={styles.countBadge}>
             <Text style={styles.countText} maxFontSizeMultiplier={1.6}>
-              {count}
+              {localizeDigits(String(count))}
             </Text>
           </View>
         )}
@@ -121,7 +122,7 @@ export const SectionHeader: React.FC<SectionHeaderProps> = ({
               pressed && styles.buttonPressed,
             ]}
             accessibilityRole="button"
-            accessibilityLabel={action.accessibilityLabel || `Add ${title.toLowerCase()}`}
+            accessibilityLabel={action.accessibilityLabel || tr('components.sectionHeader.add', { title: title.toLowerCase() })}
           >
             <Icon
               name={action.icon}

@@ -31,6 +31,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, layout, space, touchTarget, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
+import { t as tr } from '@/i18n';
 
 // Add logging for debugging image load issues
 const LOG_PREFIX = '[ImageOverlay]';
@@ -117,16 +118,16 @@ export const ImageOverlay: React.FC<ImageOverlayProps> = ({
         onPress={onClose}
         style={({ pressed }) => [styles.closeButton, pressed && styles.closeButtonPressed]}
         accessibilityRole="button"
-        accessibilityLabel="Close photo"
+        accessibilityLabel={tr('components.imageOverlay.close')}
         hitSlop={space.xs}
       >
         <Icon name="close" size={iconSize.lg} color={t.overlay.onImage} />
       </Pressable>
       <Text
         style={styles.headerText}
-        accessibilityLabel={`Photo ${imageIndex + 1} of ${images.length}`}
+        accessibilityLabel={tr('components.imageOverlay.positionLabel', { current: imageIndex + 1, total: images.length })}
       >
-        {imageIndex + 1} of {images.length}
+        {tr('components.imageOverlay.position', { current: imageIndex + 1, total: images.length })}
       </Text>
       <View style={styles.headerSide} />
     </View>
@@ -136,7 +137,7 @@ export const ImageOverlay: React.FC<ImageOverlayProps> = ({
   const renderFooter = (imageIndex: number) => (
     <View style={[styles.footer, { paddingBottom: insets.bottom + space.lg }]}>
       <Text style={styles.footerText} numberOfLines={1}>
-        {images[imageIndex]?.fileName || 'Photo'}
+        {images[imageIndex]?.fileName || tr('common.photo')}
       </Text>
     </View>
   );

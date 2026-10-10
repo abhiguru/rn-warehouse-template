@@ -14,6 +14,7 @@ import { getAuthenticatedClient } from '@/config/supabaseConfig';
 import { useThemedStyles } from '@/hooks/useTheme';
 import { space, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
+import { t as tr } from '@/i18n';
 
 // ============================================================================
 // TYPES
@@ -44,7 +45,7 @@ interface CustomerAutocompleteProps {
 export const CustomerAutocomplete: React.FC<CustomerAutocompleteProps> = ({
   value,
   onChange,
-  placeholder = 'Search customers',
+  placeholder = tr('grn.pickers.searchCustomers'),
   error,
   disabled = false,
   required = false,
@@ -128,7 +129,7 @@ export const CustomerAutocomplete: React.FC<CustomerAutocompleteProps> = ({
       editable={!disabled}
       minChars={2}
       debounceMs={300}
-      emptyText="No matches"
+      emptyText={tr('grn.pickers.noMatches')}
     />
   );
 };

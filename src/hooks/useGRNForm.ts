@@ -72,10 +72,11 @@ import { getNextGRNNumber, createGRN, updateGRN, loadGRNData as loadGRNDataServi
 import { generateTempGRNId } from '@/features/grn/services/imageUploadService';
 
 import { showAlert } from '@/utils/alert';
+import { t } from '@/i18n';
 /** Plain-language list of validation messages for an alert (never raw field keys). */
 function describeValidationErrors(errors: Record<string, string>): string {
   const messages = Array.from(new Set(Object.values(errors).filter(Boolean)));
-  if (messages.length === 0) return 'Fill in the required fields.';
+  if (messages.length === 0) return t('errors.grn.form.fillRequired');
   return messages.map(message => `• ${message}`).join('\n');
 }
 
@@ -226,7 +227,7 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
       } catch (error) {
         console.error('[useGRNForm] Failed to generate GRN number:', error);
         if (globalSessionId === currentSessionId) {
-          showAlert("Couldn't get a GRN number", 'Check your connection and try again.');
+          showAlert(t('errors.grn.form.numberFailedTitle'), t('common.checkConnection'));
         }
       } finally {
         setIsGeneratingNumber(false);
@@ -293,13 +294,13 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
         }));
       } else {
         if (globalSessionId === currentSessionId) {
-          showAlert("Couldn't load the GRN", result.error || 'Check your connection and try again.');
+          showAlert(t('errors.grn.form.loadFailedTitle'), result.error || t('common.checkConnection'));
         }
       }
     } catch (error) {
       console.error('[useGRNForm] Failed to load GRN:', error);
       if (globalSessionId === currentSessionId) {
-        showAlert("Couldn't load the GRN", 'Check your connection and try again.');
+        showAlert(t('errors.grn.form.loadFailedTitle'), t('common.checkConnection'));
       }
     } finally {
       dispatch(setIsLoading(false));
@@ -482,7 +483,7 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
     for (let step = currentStep; step < targetStep; step++) {
       const validation = await validateCurrentStep(step);
       if (!validation.isValid) {
-        showAlert('Check the GRN details', describeValidationErrors(validation.errors));
+        showAlert(t('errors.grn.form.checkDetailsTitle'), describeValidationErrors(validation.errors));
         return false;
       }
     }
@@ -526,8 +527,8 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
     // Validate step 3
     const validation = await validateCurrentStep(3);
     if (!validation.isValid) {
-      showAlert('Check the GRN details', describeValidationErrors(validation.errors));
-      return { success: false, error: 'Validation failed' };
+      showAlert(t('errors.grn.form.checkDetailsTitle'), describeValidationErrors(validation.errors));
+      return { success: false, error: t('errors.general.validationFailed') };
     }
 
     dispatch(setIsSaving(true));
@@ -545,13 +546,13 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
       if (result.success) {
         return { success: true, grnId: result.data?.id };
       } else {
-        showAlert("Couldn't save the GRN", result.error || 'Check your connection and try again.');
+        showAlert(t('errors.grn.form.saveFailedTitle'), result.error || t('common.checkConnection'));
         return { success: false, error: result.error };
       }
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      const errorMessage = error instanceof Error ? error.message : t('errors.general.unknown');
       console.error('[useGRNForm] Submit error:', error);
-      showAlert("Couldn't save the GRN", 'Check your connection and try again.');
+      showAlert(t('errors.grn.form.saveFailedTitle'), t('common.checkConnection'));
       return { success: false, error: errorMessage };
     } finally {
       dispatch(setIsSaving(false));

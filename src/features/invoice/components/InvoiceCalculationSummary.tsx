@@ -12,6 +12,7 @@ import {
   formatInvoiceDeduction,
 } from '@/utils/invoiceCalculations';
 import { InlineValidation } from '@/components/fiori';
+import { localizeDigits, normalizeDigits, t as tr } from '@/i18n';
 
 interface InvoiceCalculationSummaryProps {
   header: InvoiceHeaderData;
@@ -315,13 +316,15 @@ export const InvoiceCalculationSummary: React.FC<InvoiceCalculationSummaryProps>
   // Sync local text when header.discount changes externally
   useEffect(() => {
     // Only update if the numeric values are different (avoid overwriting during typing)
-    const currentValue = parseFloat(discountText) || 0;
+    const currentValue = parseFloat(normalizeDigits(discountText)) || 0;
     if (currentValue !== header.discount) {
       setDiscountText(header.discount !== 0 ? header.discount.toString() : '');
     }
   }, [header.discount]);
 
-  const handleDiscountChange = (text: string) => {
+  const handleDiscountChange = (typed: string) => {
+    // Digits typed as ૦-૯ are read as 0-9.
+    const text = normalizeDigits(typed);
     // Always update local text state to preserve typing (including trailing dots and minus)
     setDiscountText(text);
 
@@ -339,14 +342,14 @@ export const InvoiceCalculationSummary: React.FC<InvoiceCalculationSummaryProps>
     } else if (isNaN(value)) {
       // Allow partial input like "235." or "-235." - don't show error, just don't update parent
       if (!text.endsWith('.') && text !== '-') {
-        setDiscountError('Enter the discount as a number, for example 250.50.');
+        setDiscountError(tr('invoice.summary.discountNotNumber'));
       }
     } else if (value > maxDiscount) {
-      setDiscountError(`The discount can't be more than ${formatInvoiceAmount(maxDiscount)}.`);
+      setDiscountError(tr('invoice.summary.discountTooLarge', { amount: formatInvoiceAmount(maxDiscount) }));
       setErrorDialog({
         visible: true,
-        title: 'Discount too large',
-        message: `The discount can't be more than the invoice amount (${formatInvoiceAmount(maxDiscount)}). Enter a smaller discount.`,
+        title: tr('invoice.summary.discountTooLargeTitle'),
+        message: tr('invoice.summary.discountTooLargeMessage', { amount: formatInvoiceAmount(maxDiscount) }),
       });
     } else {
       // Valid number (positive or negative)
@@ -384,12 +387,12 @@ export const InvoiceCalculationSummary: React.FC<InvoiceCalculationSummaryProps>
   };
 
   const applyFinalAmount = () => {
-    const finalAmount = parseFloat(finalAmountText);
+    const finalAmount = parseFloat(normalizeDigits(finalAmountText));
     if (isNaN(finalAmount) || finalAmount <= 0) {
       setErrorDialog({
         visible: true,
-        title: 'Amount not valid',
-        message: 'Enter a final amount greater than zero.',
+        title: tr('invoice.summary.amountNotValidTitle'),
+        message: tr('invoice.summary.amountNotValidMessage'),
       });
       return;
     }
@@ -412,28 +415,28 @@ export const InvoiceCalculationSummary: React.FC<InvoiceCalculationSummaryProps>
   // A negative discount is a surcharge: it adds to the total.
   const discountPart =
     header.discount < 0
-      ? `+ ${formatInvoiceAmount(-header.discount)} (surcharge)`
-      : `${formatInvoiceDeduction(header.discount)} (discount)`;
+      ? tr('invoice.summary.formulaSurcharge', { amount: formatInvoiceAmount(-header.discount) })
+      : tr('invoice.summary.formulaDiscount', { amount: formatInvoiceDeduction(header.discount) });
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title} accessibilityRole="header">Invoice summary</Text>
+      <Text style={styles.title} accessibilityRole="header">{tr('invoice.label.invoiceSummary')}</Text>
 
-      <SummaryRow styles={styles} label="Subtotal (storage)" value={formatInvoiceAmount(subtotal)} />
-      <SummaryRow styles={styles} label="Labour charges" value={formatInvoiceAmount(header.labour)} />
-      <SummaryRow styles={styles} label="Tax" value={formatInvoiceAmount(header.tax_amount)} />
+      <SummaryRow styles={styles} label={tr('invoice.summary.subtotalStorage')} value={formatInvoiceAmount(subtotal)} />
+      <SummaryRow styles={styles} label={tr('invoice.summary.labourCharges')} value={formatInvoiceAmount(header.labour)} />
+      <SummaryRow styles={styles} label={tr('invoice.label.tax')} value={formatInvoiceAmount(header.tax_amount)} />
 
       {/* Discount (editable) with round down / round up buttons */}
       <View style={styles.discountRow}>
         <View style={styles.discountLabelContainer}>
-          <Text style={styles.rowLabel}>Discount</Text>
+          <Text style={styles.rowLabel}>{tr('invoice.label.discount')}</Text>
           <View style={styles.roundButtonsContainer}>
             <Pressable
               style={({ pressed }) => [styles.roundButton, pressed && styles.roundButtonPressed]}
               onPress={handleRoundDown}
               hitSlop={ROUND_BUTTON_SLOP}
               accessibilityRole="button"
-              accessibilityLabel="Round total down to whole rupees"
+              accessibilityLabel={tr('invoice.summary.roundDownA11y')}
             >
               <Icon name="arrow-down" size={iconSize.sm} color={t.brand.tint} />
             </Pressable>
@@ -442,7 +445,7 @@ export const InvoiceCalculationSummary: React.FC<InvoiceCalculationSummaryProps>
               onPress={handleRoundUp}
               hitSlop={ROUND_BUTTON_SLOP}
               accessibilityRole="button"
-              accessibilityLabel="Round total up to whole rupees"
+              accessibilityLabel={tr('invoice.summary.roundUpA11y')}
             >
               <Icon name="arrow-up" size={iconSize.sm} color={t.brand.tint} />
             </Pressable>
@@ -452,10 +455,10 @@ export const InvoiceCalculationSummary: React.FC<InvoiceCalculationSummaryProps>
           <Text style={styles.currencySymbol}>₹</Text>
           <TextInput
             style={styles.discountInput}
-            accessibilityLabel="Invoice discount"
+            accessibilityLabel={tr('invoice.summary.discountA11y')}
             value={discountText}
             onChangeText={handleDiscountChange}
-            placeholder="0.00"
+            placeholder={localizeDigits('0.00')}
             keyboardType={Platform.OS === 'ios' ? 'numbers-and-punctuation' : 'default'}
             placeholderTextColor={t.text.placeholder}
           />
@@ -469,14 +472,14 @@ export const InvoiceCalculationSummary: React.FC<InvoiceCalculationSummaryProps>
       {onDiscountReasonChange && header.discount !== 0 && (
         <View style={styles.reasonContainer}>
           <Text style={styles.fieldLabel}>
-            Discount reason{reasonRequired ? ' (required)' : ''}
+            {reasonRequired ? tr('invoice.summary.discountReasonRequired') : tr('invoice.label.discountReason')}
           </Text>
           <TextInput
             style={[styles.reasonInput, reasonRequired && styles.fieldError]}
-            accessibilityLabel="Discount reason"
+            accessibilityLabel={tr('invoice.label.discountReason')}
             value={header.discount_reason || ''}
             onChangeText={onDiscountReasonChange}
-            placeholder="Why is this discount given?"
+            placeholder={tr('invoice.summary.discountReasonPlaceholder')}
             placeholderTextColor={t.text.placeholder}
             maxLength={500}
             multiline
@@ -484,7 +487,7 @@ export const InvoiceCalculationSummary: React.FC<InvoiceCalculationSummaryProps>
         </View>
       )}
 
-      <SummaryRow styles={styles} label="Rounding adjustment" value={formatInvoiceAmount(rounding)} />
+      <SummaryRow styles={styles} label={tr('invoice.summary.roundingAdjustment')} value={formatInvoiceAmount(rounding)} />
 
       {/* Collapsible discount calculator */}
       <Pressable
@@ -492,11 +495,11 @@ export const InvoiceCalculationSummary: React.FC<InvoiceCalculationSummaryProps>
         onPress={() => setIsCalculatorExpanded(!isCalculatorExpanded)}
         accessibilityRole="button"
         accessibilityState={{ expanded: isCalculatorExpanded }}
-        accessibilityLabel="Calculate discount from final amount"
+        accessibilityLabel={tr('invoice.summary.calculatorA11y')}
       >
         <View style={styles.calculatorHeaderContent}>
           <Icon name="calculator" size={iconSize.md} color={t.brand.tint} />
-          <Text style={styles.calculatorHeaderText}>Calculate from final amount</Text>
+          <Text style={styles.calculatorHeaderText}>{tr('invoice.summary.calculatorTitle')}</Text>
         </View>
         <Icon
           name={isCalculatorExpanded ? 'chevron-up' : 'chevron-down'}
@@ -507,16 +510,16 @@ export const InvoiceCalculationSummary: React.FC<InvoiceCalculationSummaryProps>
 
       {isCalculatorExpanded && (
         <View style={styles.calculatorContent}>
-          <Text style={styles.calculatorLabel}>Enter an amount before whole-rupee rounding.</Text>
+          <Text style={styles.calculatorLabel}>{tr('invoice.summary.calculatorHelp')}</Text>
           <View style={styles.calculatorInputRow}>
             <View style={[styles.field, styles.calculatorField]}>
               <Text style={styles.currencySymbol}>₹</Text>
               <TextInput
                 style={styles.calculatorInput}
-                accessibilityLabel="Final amount"
+                accessibilityLabel={tr('invoice.summary.finalAmountA11y')}
                 value={finalAmountText}
                 onChangeText={handleFinalAmountChange}
-                placeholder={Math.round(base).toString()}
+                placeholder={localizeDigits(Math.round(base).toString())}
                 keyboardType="numeric"
                 placeholderTextColor={t.text.placeholder}
               />
@@ -525,13 +528,13 @@ export const InvoiceCalculationSummary: React.FC<InvoiceCalculationSummaryProps>
               style={({ pressed }) => [styles.applyButton, pressed && styles.applyButtonPressed]}
               onPress={applyFinalAmount}
               accessibilityRole="button"
-              accessibilityLabel="Apply final amount"
+              accessibilityLabel={tr('invoice.summary.applyFinalAmountA11y')}
             >
               <Icon name="check" size={iconSize.md} color={t.brand.onFill} />
-              <Text style={styles.applyButtonText}>Apply</Text>
+              <Text style={styles.applyButtonText}>{tr('common.apply')}</Text>
             </Pressable>
           </View>
-          <Text style={styles.calculatorHint}>Current base: {formatInvoiceAmount(base)}</Text>
+          <Text style={styles.calculatorHint}>{tr('invoice.summary.currentBase', { amount: formatInvoiceAmount(base) })}</Text>
         </View>
       )}
 
@@ -539,25 +542,30 @@ export const InvoiceCalculationSummary: React.FC<InvoiceCalculationSummaryProps>
       <View
         style={styles.totalRow}
         accessible
-        accessibilityLabel={`Grand total, ${formatInvoiceAmount(header.total)}`}
+        accessibilityLabel={`${tr('invoice.summary.grandTotal')}, ${formatInvoiceAmount(header.total)}`}
       >
-        <Text style={styles.totalLabel}>Grand total</Text>
+        <Text style={styles.totalLabel}>{tr('invoice.summary.grandTotal')}</Text>
         <Text style={styles.totalValue}>{formatInvoiceAmount(header.total)}</Text>
       </View>
 
       <Text style={styles.note}>
-        Header tax and the final amount round up to whole rupees. Discount is preserved.
+        {tr('invoice.summary.roundingNote')}
       </Text>
 
       {/* How the total is made up */}
       <View style={styles.breakdownContainer}>
         <View style={styles.breakdownHeader}>
           <Icon name="information-outline" size={iconSize.sm} color={t.icon.secondary} />
-          <Text style={styles.breakdownTitle}>How the total is calculated</Text>
+          <Text style={styles.breakdownTitle}>{tr('invoice.summary.howCalculated')}</Text>
         </View>
         <Text style={styles.breakdownText}>
-          {formatInvoiceAmount(subtotal)} (storage) + {formatInvoiceAmount(header.labour)} (labour) + {formatInvoiceAmount(header.tax_amount)} (tax){' '}
-          <Text style={header.discount > 0 ? styles.discountText : undefined}>{discountPart}</Text> +{formatInvoiceAmount(rounding)} (rounding) = {formatInvoiceAmount(header.total)}
+          {tr('invoice.summary.formulaStart', {
+            storage: formatInvoiceAmount(subtotal),
+            labour: formatInvoiceAmount(header.labour),
+            tax: formatInvoiceAmount(header.tax_amount),
+          })}{' '}
+          <Text style={header.discount > 0 ? styles.discountText : undefined}>{discountPart}</Text>{' '}
+          {tr('invoice.summary.formulaEnd', { rounding: formatInvoiceAmount(rounding), total: formatInvoiceAmount(header.total) })}
         </Text>
       </View>
 
@@ -565,7 +573,7 @@ export const InvoiceCalculationSummary: React.FC<InvoiceCalculationSummaryProps>
         visible={errorDialog.visible}
         title={errorDialog.title}
         message={errorDialog.message}
-        confirmText="Close"
+        confirmText={tr('common.close')}
         cancelText=""
         onConfirm={closeDialog}
         onCancel={closeDialog}

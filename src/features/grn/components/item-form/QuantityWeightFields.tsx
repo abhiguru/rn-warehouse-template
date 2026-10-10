@@ -14,6 +14,8 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { iconSize, radius, space, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
+import { formatNumber } from '@/utils/formatters';
+import { normalizeDigits, t as tr } from '@/i18n';
 
 // ============================================================================
 // TYPES
@@ -77,7 +79,7 @@ export const QuantityWeightFields = forwardRef<QuantityWeightFieldsRef, Quantity
           onQtyLockedPress?.();
           return;
         }
-        onQtyChange(text);
+        onQtyChange(normalizeDigits(text));
       },
       [isQtyLocked, onQtyLockedPress, onQtyChange]
     );
@@ -115,21 +117,21 @@ export const QuantityWeightFields = forwardRef<QuantityWeightFieldsRef, Quantity
         <View style={styles.fieldContainer}>
           <View style={styles.labelRow}>
             <Text style={styles.label}>
-              Quantity<Text style={styles.required}> *</Text>
+              {tr('grn.item.quantity')}<Text style={styles.required}> *</Text>
             </Text>
             {isQtyLocked && (
               <Icon
                 name="lock-outline"
                 size={iconSize.sm}
                 color={t.icon.secondary}
-                accessibilityLabel="Quantity locked"
+                accessibilityLabel={tr('grn.item.quantityLocked')}
               />
             )}
           </View>
           <TextInput
             ref={qtyInputRef}
-            accessibilityLabel="Receipt item quantity"
-            accessibilityHint={isQtyLocked ? 'Locked because this item has dispatches' : undefined}
+            accessibilityLabel={tr('grn.item.quantityInputLabel')}
+            accessibilityHint={isQtyLocked ? tr('grn.item.quantityLockedHint') : undefined}
             style={[
               styles.input,
               !!qtyError && styles.inputError,
@@ -138,7 +140,7 @@ export const QuantityWeightFields = forwardRef<QuantityWeightFieldsRef, Quantity
             ]}
             value={qty}
             onChangeText={handleQtyChange}
-            placeholder="0"
+            placeholder={formatNumber(0)}
             placeholderTextColor={t.text.placeholder}
             keyboardType="numeric"
             returnKeyType="next"
@@ -155,7 +157,7 @@ export const QuantityWeightFields = forwardRef<QuantityWeightFieldsRef, Quantity
         {/* Weight Field */}
         <View style={styles.fieldContainer}>
           <View style={styles.labelRow}>
-            <Text style={styles.label}>Weight</Text>
+            <Text style={styles.label}>{tr('common.weight')}</Text>
           </View>
           <View
             style={[
@@ -167,11 +169,11 @@ export const QuantityWeightFields = forwardRef<QuantityWeightFieldsRef, Quantity
           >
             <TextInput
               ref={weightInputRef}
-              accessibilityLabel="Receipt item weight in kilograms"
+              accessibilityLabel={tr('grn.item.weightInputLabel')}
               style={styles.suffixInput}
               value={weight}
-              onChangeText={onWeightChange}
-              placeholder="0"
+              onChangeText={(text) => onWeightChange(normalizeDigits(text))}
+              placeholder={formatNumber(0)}
               placeholderTextColor={t.text.placeholder}
               keyboardType="numeric"
               returnKeyType="next"
@@ -182,7 +184,7 @@ export const QuantityWeightFields = forwardRef<QuantityWeightFieldsRef, Quantity
               selectTextOnFocus
             />
             <Text style={styles.suffix} importantForAccessibility="no">
-              kg
+              {tr('grn.item.weightUnit')}
             </Text>
           </View>
           {renderError(weightError)}

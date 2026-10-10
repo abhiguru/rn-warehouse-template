@@ -1,7 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import { httpOrigin, validatePublicConfig } from './bootstrapValidation';
+import { withLocalizedBootstrapErrors } from './bootstrapErrors';
 import type { PublicConfig } from '@/services/configService';
+import { t } from '@/i18n';
 
 const STORAGE_KEY = 'operator_server_v1';
 const STAGED_KEY = 'operator_server_staged_v1';
@@ -22,8 +24,8 @@ export function onOperatorServerChange(listener: () => void) {
 }
 
 export function parseOperatorOrigin(input: string): string {
-  const origin = httpOrigin(input.trim());
-  if (!origin.startsWith('https://')) throw new Error('Enter an HTTPS server origin.');
+  const origin = withLocalizedBootstrapErrors(() => httpOrigin(input.trim()));
+  if (!origin.startsWith('https://')) throw new Error(t('errors.server.httpsRequired'));
   return origin;
 }
 
@@ -31,13 +33,13 @@ export function compareVersions(current: string, minimum: string): number {
   const a = current.split('.').map(Number);
   const b = minimum.split('.').map(Number);
   if (a.length !== 3 || b.length !== 3 || [...a, ...b].some(n => !Number.isInteger(n) || n < 0))
-    throw new Error('Invalid client version requirement.');
+    throw new Error(t('errors.server.invalidVersionRequirement'));
   for (let i = 0; i < 3; i++) if (a[i] !== b[i]) return a[i] < b[i] ? -1 : 1;
   return 0;
 }
 
 export function validateOperatorDiscovery(json: unknown, origin: string): PublicConfig {
-  const config = validatePublicConfig(json, origin);
+  const config = withLocalizedBootstrapErrors(() => validatePublicConfig(json, origin));
   if (
     typeof config.instanceId !== 'string' || !/^[a-zA-Z0-9_-]{8,128}$/.test(config.instanceId) ||
     typeof config.displayName !== 'string' || !config.displayName.trim() ||
@@ -47,10 +49,10 @@ export function validateOperatorDiscovery(json: unknown, origin: string): Public
     !config.supportedApiVersions.includes(CLIENT_API_VERSION) ||
     typeof config.minimumClientVersion !== 'string' ||
     !config.capabilities || typeof config.capabilities !== 'object' || Array.isArray(config.capabilities)
-  ) throw new Error('Server discovery is incomplete or incompatible.');
+  ) throw new Error(t('errors.server.discoveryIncompatible'));
   const currentVersion = Constants.expoConfig?.version || '0.1.0';
   if (compareVersions(currentVersion, config.minimumClientVersion) < 0)
-    throw new Error(`This server requires app version ${config.minimumClientVersion} or newer.`);
+    throw new Error(t('errors.server.requiresAppVersion', { version: config.minimumClientVersion }));
   return config;
 }
 
@@ -64,13 +66,13 @@ export async function discoverOperator(input: string): Promise<{ server: Operato
         signal: controller.signal,
         redirect: 'error',
       });
-      if (!response.ok) throw new Error(`Server discovery failed (HTTP ${response.status}).`);
+      if (!response.ok) throw new Error(t('errors.server.discoveryFailedHttp', { status: String(response.status) }));
       return validateOperatorDiscovery(await response.json(), origin);
     })(),
     new Promise<never>((_, reject) => {
       timeout = setTimeout(() => {
         controller.abort();
-        reject(new Error('Server discovery timed out.'));
+        reject(new Error(t('errors.server.discoveryTimedOut')));
       }, 15000);
     }),
   ]).finally(() => clearTimeout(timeout));
@@ -98,7 +100,7 @@ export async function loadOperatorServer(): Promise<OperatorServer | null> {
 
 export function getActiveOperatorServer(): OperatorServer | null { return activeServer; }
 export function getActiveOperatorOrigin(): string {
-  if (!activeServer) throw new Error('Select an operator server first.');
+  if (!activeServer) throw new Error(t('errors.server.selectFirst'));
   return activeServer.origin;
 }
 

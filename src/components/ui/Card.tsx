@@ -35,6 +35,7 @@ import {
 } from '@/theme/tokens';
 import { getButtonColors } from './Button';
 import { StatusTag } from './StatusTag';
+import { t as tr } from '@/i18n';
 
 const CARD_MAX_HEIGHT = 520;
 const HEADER_ICON_SIZE = 40;
@@ -291,7 +292,7 @@ function CardSkeleton({ styles }: { styles: Styles }) {
     <View
       style={styles.skeleton}
       accessible
-      accessibilityLabel="Loading"
+      accessibilityLabel={tr('components.loading')}
       accessibilityState={{ busy: true }}
     >
       <View style={styles.skeletonHeader}>
@@ -318,7 +319,7 @@ function CardError({ message, styles }: { message?: string; styles: Styles }) {
       <View style={styles.errorStrip} accessibilityRole="alert">
         <Icon name="alert-circle" size={iconSize.md} color={t.status.negative.text} />
         <Text style={styles.errorText}>
-          {typeof message === 'string' ? message : "Couldn't load this content. Try again."}
+          {typeof message === 'string' ? message : tr('components.card.loadFailed')}
         </Text>
       </View>
     </View>

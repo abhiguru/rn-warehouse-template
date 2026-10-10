@@ -17,6 +17,7 @@ import {
   typography,
   type ThemeTokens,
 } from '@/theme/tokens';
+import { t as tr } from '@/i18n';
 
 interface CustomerOrderSummaryProps {
   order: Order;
@@ -63,7 +64,9 @@ const CustomerOrderSummary: React.FC<CustomerOrderSummaryProps> = ({ order }) =>
   const relative = formatRelativeTime(order.updated_at || order.created_at);
   const timeAgo = relative === 'Just now' ? 'just now' : relative;
   const updatedBy = order.updated_by_display_name || order.updated_by_name;
-  const savedText = `Saved ${timeAgo}${updatedBy ? ` · ${updatedBy}` : ''}`;
+  const savedText = updatedBy
+    ? tr('components.orderSummary.savedBy', { time: timeAgo, name: updatedBy })
+    : tr('components.orderSummary.saved', { time: timeAgo });
   const itemsText = formatCount(activeItemCount, 'item');
   // Units differ per item, so the total stays in plain "units"
   const quantityText = formatCount(activeQuantity, 'unit');

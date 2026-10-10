@@ -1,5 +1,6 @@
 import { createAuthenticatedFetch, getCurrentConfig } from '../config/supabaseConfig';
 import { getAuthTokenString } from '@/utils/authTokenUtils';
+import { t } from '@/i18n';
 
 /**
  * Fix private development origins returned by backend Edge Functions. Docker
@@ -28,8 +29,7 @@ function fixInternalUrl(url: string): string {
   return url;
 }
 
-const INSECURE_DOWNLOAD_ERROR =
-  'The server returned a download link that is not secure. Contact your operator.';
+const insecureDownloadError = () => t('errors.pdf.insecureLink');
 
 /**
  * Accept a signed download URL only when it is HTTPS or sits on the origin the
@@ -82,7 +82,7 @@ export async function generateGRNPDF(grNo: string): Promise<PDFResponse> {
     if (!authToken) {
       return {
         success: false,
-        error: 'Authentication required. Please log in again.',
+        error: t('errors.auth.loginAgain'),
       };
     }
 
@@ -103,7 +103,7 @@ export async function generateGRNPDF(grNo: string): Promise<PDFResponse> {
     if (!contentType || !contentType.includes('application/json')) {
       return {
         success: false,
-        error: `Server error (${response.status}): PDF generation service unavailable.`,
+        error: t('errors.pdf.serviceUnavailable', { status: String(response.status) }),
       };
     }
 
@@ -112,13 +112,13 @@ export async function generateGRNPDF(grNo: string): Promise<PDFResponse> {
     if (!response.ok || !data.success) {
       return {
         success: false,
-        error: data.error || `Failed to generate PDF (${response.status})`,
+        error: data.error || t('errors.pdf.generateFailedStatus', { status: String(response.status) }),
       };
     }
 
     const pdfUrl = acceptSignedUrl(fixInternalUrl(data.pdf_url));
     if (!pdfUrl) {
-      return { success: false, error: INSECURE_DOWNLOAD_ERROR };
+      return { success: false, error: insecureDownloadError() };
     }
 
     return {
@@ -130,7 +130,7 @@ export async function generateGRNPDF(grNo: string): Promise<PDFResponse> {
   } catch (error) {
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to generate PDF',
+      error: error instanceof Error ? error.message : t('errors.pdf.generateFailed'),
     };
   }
 }
@@ -149,7 +149,7 @@ export async function generateDispatchPDF(
     if (!authToken) {
       return {
         success: false,
-        error: 'Authentication required. Please log in again.',
+        error: t('errors.auth.loginAgain'),
       };
     }
 
@@ -170,7 +170,7 @@ export async function generateDispatchPDF(
     if (!contentType || !contentType.includes('application/json')) {
       return {
         success: false,
-        error: `Server error (${response.status}): PDF generation service unavailable.`,
+        error: t('errors.pdf.serviceUnavailable', { status: String(response.status) }),
       };
     }
 
@@ -179,13 +179,13 @@ export async function generateDispatchPDF(
     if (!response.ok || !data.success) {
       return {
         success: false,
-        error: data.error || `Failed to generate PDF (${response.status})`,
+        error: data.error || t('errors.pdf.generateFailedStatus', { status: String(response.status) }),
       };
     }
 
     const pdfUrl = acceptSignedUrl(fixInternalUrl(data.pdf_url));
     if (!pdfUrl) {
-      return { success: false, error: INSECURE_DOWNLOAD_ERROR };
+      return { success: false, error: insecureDownloadError() };
     }
 
     return {
@@ -197,7 +197,7 @@ export async function generateDispatchPDF(
   } catch (error) {
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to generate PDF',
+      error: error instanceof Error ? error.message : t('errors.pdf.generateFailed'),
     };
   }
 }
@@ -218,7 +218,7 @@ export async function generateInvoicePDF(
     if (!authToken) {
       return {
         success: false,
-        error: 'Authentication required. Please log in again.',
+        error: t('errors.auth.loginAgain'),
       };
     }
 
@@ -239,7 +239,7 @@ export async function generateInvoicePDF(
     if (!contentType || !contentType.includes('application/json')) {
       return {
         success: false,
-        error: `Server error (${response.status}): PDF generation service unavailable.`,
+        error: t('errors.pdf.serviceUnavailable', { status: String(response.status) }),
       };
     }
 
@@ -248,13 +248,13 @@ export async function generateInvoicePDF(
     if (!response.ok || !data.success) {
       return {
         success: false,
-        error: data.error || `Failed to generate PDF (${response.status})`,
+        error: data.error || t('errors.pdf.generateFailedStatus', { status: String(response.status) }),
       };
     }
 
     const pdfUrl = acceptSignedUrl(fixInternalUrl(data.pdf_url));
     if (!pdfUrl) {
-      return { success: false, error: INSECURE_DOWNLOAD_ERROR };
+      return { success: false, error: insecureDownloadError() };
     }
 
     return {
@@ -266,7 +266,7 @@ export async function generateInvoicePDF(
   } catch (error) {
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to generate PDF',
+      error: error instanceof Error ? error.message : t('errors.pdf.generateFailed'),
     };
   }
 }
@@ -285,7 +285,7 @@ export async function generateCustomerStockPDF(
     if (!authToken) {
       return {
         success: false,
-        error: 'Authentication required. Please log in again.',
+        error: t('errors.auth.loginAgain'),
       };
     }
 
@@ -306,7 +306,7 @@ export async function generateCustomerStockPDF(
     if (!contentType || !contentType.includes('application/json')) {
       return {
         success: false,
-        error: `Server error (${response.status}): PDF generation service unavailable.`,
+        error: t('errors.pdf.serviceUnavailable', { status: String(response.status) }),
       };
     }
 
@@ -315,13 +315,13 @@ export async function generateCustomerStockPDF(
     if (!response.ok || !data.success) {
       return {
         success: false,
-        error: data.error || `Failed to generate PDF (${response.status})`,
+        error: data.error || t('errors.pdf.generateFailedStatus', { status: String(response.status) }),
       };
     }
 
     const pdfUrl = acceptSignedUrl(fixInternalUrl(data.pdf_url));
     if (!pdfUrl) {
-      return { success: false, error: INSECURE_DOWNLOAD_ERROR };
+      return { success: false, error: insecureDownloadError() };
     }
 
     return {
@@ -333,7 +333,7 @@ export async function generateCustomerStockPDF(
   } catch (error) {
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to generate PDF',
+      error: error instanceof Error ? error.message : t('errors.pdf.generateFailed'),
     };
   }
 }

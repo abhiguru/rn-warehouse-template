@@ -6,6 +6,7 @@
 import React, { useState } from 'react';
 import { Text, TextInput, View } from 'react-native';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { normalizeDigits, t as translate } from '@/i18n';
 import { radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 import type { NumberRangeValue, TextRangeValue } from '../../types';
 
@@ -31,7 +32,8 @@ const makeStyles = (t: ThemeTokens) => ({
 });
 
 const toNumber = (text: string, integer: boolean): number | undefined => {
-  const trimmed = text.trim();
+  // ૦-૯ and 0-9 mean the same (docs/I18N.md rule 6).
+  const trimmed = normalizeDigits(text).trim();
   if (trimmed === '' || !(integer ? /^\d+$/ : /^\d*\.?\d+$/).test(trimmed)) return undefined;
   return Number(trimmed);
 };
@@ -73,9 +75,13 @@ export function NumberRangeEditor({ label, value, onChange, unit, integer = fals
           value={text}
           onChangeText={onText}
           keyboardType={integer ? 'number-pad' : 'decimal-pad'}
-          placeholder="Any"
+          placeholder={translate('common.any')}
           placeholderTextColor={t.text.placeholder}
-          accessibilityLabel={`${label}, ${name.toLowerCase()}${unit ? `, in ${unit}` : ''}`}
+          accessibilityLabel={
+            unit
+              ? translate('filters.range.cellLabelUnit', { label, name: name.toLowerCase(), unit })
+              : translate('filters.range.cellLabel', { label, name: name.toLowerCase() })
+          }
           returnKeyType="done"
         />
         {unit ? <Text style={styles.unit}>{unit}</Text> : null}
@@ -86,17 +92,17 @@ export function NumberRangeEditor({ label, value, onChange, unit, integer = fals
   return (
     <View style={styles.wrap}>
       <View style={styles.row}>
-        {cell('Minimum', minText, text => {
+        {cell(translate('filters.range.minimum'), minText, text => {
           setMinText(text);
           update(text, maxText);
         })}
-        {cell('Maximum', maxText, text => {
+        {cell(translate('filters.range.maximum'), maxText, text => {
           setMaxText(text);
           update(minText, text);
         })}
       </View>
       {invalid ? (
-        <Text style={styles.error} accessibilityLiveRegion="polite">The minimum is larger than the maximum.</Text>
+        <Text style={styles.error} accessibilityLiveRegion="polite">{translate('filters.range.minAboveMax')}</Text>
       ) : null}
     </View>
   );
@@ -109,7 +115,7 @@ export interface TextRangeEditorProps {
   placeholder?: [string, string];
 }
 
-export function TextRangeEditor({ label, value, onChange, placeholder = ['From', 'To'] }: TextRangeEditorProps) {
+export function TextRangeEditor({ label, value, onChange, placeholder = [translate('filters.range.from'), translate('filters.range.to')] }: TextRangeEditorProps) {
   const t = useTokens();
   const styles = useThemedStyles(makeStyles);
   const set = (end: 'from' | 'to', text: string) => {
@@ -126,9 +132,9 @@ export function TextRangeEditor({ label, value, onChange, placeholder = ['From',
           onChangeText={text => set(end, text)}
           autoCapitalize="characters"
           autoCorrect={false}
-          placeholder="Any"
+          placeholder={translate('common.any')}
           placeholderTextColor={t.text.placeholder}
-          accessibilityLabel={`${label}, ${name.toLowerCase()}`}
+          accessibilityLabel={translate('filters.range.cellLabel', { label, name: name.toLowerCase() })}
           returnKeyType="done"
         />
       </View>
@@ -160,7 +166,7 @@ export function TextEditor({ label, value, onChange, placeholder }: TextEditorPr
         onChangeText={text => onChange(text === '' ? undefined : text)}
         autoCapitalize="none"
         autoCorrect={false}
-        placeholder={placeholder ?? 'Any'}
+        placeholder={placeholder ?? translate('common.any')}
         placeholderTextColor={t.text.placeholder}
         accessibilityLabel={label}
         returnKeyType="done"

@@ -6,7 +6,13 @@
  * financial year ("FY 2026") is recognised and returned separately so the list
  * can show it as a chip. At most one of each is taken; the rest stays text.
  * A bare number or a month name alone is never guessed at.
+ *
+ * English and Gujarati are both read, whatever the app's language: Gujarati
+ * digits ("૭/૧૦"), month names ("૭ ઑક્ટો", "ઑક્ટોબર ૨૦૨૬"), "આજે" and "ગઈકાલે",
+ * and "થી" between the two ends of a range ("A0010 થી A0020", "A0010થી A0020 સુધી").
  */
+import { normalizeDigits } from '@/i18n/language';
+import { commonWords } from '@/i18n/locales/common';
 import { toLocalISODate } from '@/utils/formatters';
 
 export interface QuickSearchOptions {
@@ -31,6 +37,24 @@ const MONTHS: Record<string, number> = {
   oct: 9, october: 9, nov: 10, november: 10, dec: 11, december: 11,
 };
 
+/** ઑ is often typed as ઓ, and ઈ as ઇ ("ઓક્ટોબર", "ગઇકાલે"): read both spellings the same. */
+const plainSpelling = (word: string) => word.replace(/ઑ/g, 'ઓ').replace(/ઈ/g, 'ઇ');
+
+// Gujarati month names, short and full, from the same table the dates are written with.
+const GUJARATI = commonWords('gu');
+[...GUJARATI.monthsShort, ...GUJARATI.monthsLong].forEach((name, index) => {
+  MONTHS[plainSpelling(name)] = index % 12;
+});
+const TODAY_WORDS = new Set(['today', plainSpelling(GUJARATI.today)]);
+const YESTERDAY_WORDS = new Set(['yesterday', plainSpelling(GUJARATI.yesterday)]);
+
+/** The word between the two ends of a range: "10 to 20", "10 થી 20". */
+const RANGE_WORDS = new Set(['to', 'થી']);
+/** "થી" is usually written joined to the first number: "10થી 20". */
+const RANGE_SUFFIX = 'થી';
+/** "સુધી" may close a Gujarati range: "10 થી 20 સુધી". It is part of the range, not text to search for. */
+const RANGE_END_WORD = 'સુધી';
+
 const fullYear = (text: string): number | null => {
   if (/^\d{4}$/.test(text)) return Number(text);
   if (/^\d{2}$/.test(text)) return 2000 + Number(text);
@@ -48,11 +72,11 @@ const single = (iso: string | null) => (iso ? { from: iso, to: iso } : null);
 
 /** Try to read `words` (one to three of them) as one date or one month. */
 function readDate(words: string[], today: Date): { from: string; to: string } | null {
-  const lower = words.map(word => word.toLowerCase());
+  const lower = words.map(word => plainSpelling(word.toLowerCase()));
   if (lower.length === 1) {
     const [word] = lower;
-    if (word === 'today') return single(toLocalISODate(today));
-    if (word === 'yesterday') {
+    if (TODAY_WORDS.has(word)) return single(toLocalISODate(today));
+    if (YESTERDAY_WORDS.has(word)) {
       return single(toLocalISODate(new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1)));
     }
     // 7/10, 7/10/2026, 07/10/26 with a slash; with dashes or dots only when the year is given.
@@ -107,7 +131,8 @@ function readRange(from: string, to: string, kind: 'document' | 'integer'): { fr
 
 export function parseQuickSearch(input: string, options: QuickSearchOptions = {}): QuickSearchResult {
   const today = options.today ?? new Date();
-  const words = input.trim().split(/\s+/).filter(Boolean);
+  // ૦-૯ and 0-9 mean the same (docs/I18N.md rule 6).
+  const words = normalizeDigits(input).trim().split(/\s+/).filter(Boolean);
   const result: QuickSearchResult = { text: '' };
   const text: string[] = [];
 
@@ -133,11 +158,21 @@ export function parseQuickSearch(input: string, options: QuickSearchOptions = {}
 
     if (options.range && !result.range) {
       // "A0010 to A0020" before "A0010-A0020", so "to" is not left behind as text.
-      if ((words[index + 1] ?? '').toLowerCase() === 'to' && words[index + 2]) {
+      // In Gujarati: "A0010 થી A0020", "A0010થી A0020", either with "સુધી" after it.
+      const closing = (after: number) => (words[after] === RANGE_END_WORD ? 1 : 0);
+      if (RANGE_WORDS.has((words[index + 1] ?? '').toLowerCase()) && words[index + 2]) {
         const range = readRange(word, words[index + 2], options.range);
         if (range) {
           result.range = range;
-          index += 3;
+          index += 3 + closing(index + 3);
+          continue;
+        }
+      }
+      if (word.length > RANGE_SUFFIX.length && word.endsWith(RANGE_SUFFIX) && words[index + 1]) {
+        const range = readRange(word.slice(0, -RANGE_SUFFIX.length), words[index + 1], options.range);
+        if (range) {
+          result.range = range;
+          index += 2 + closing(index + 2);
           continue;
         }
       }

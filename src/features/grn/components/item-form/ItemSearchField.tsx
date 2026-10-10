@@ -14,6 +14,7 @@ import { RemoteAutocompleteInput } from '@/components/RemoteAutocompleteInput';
 import { searchItems } from '@/services/item-search-service';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { iconSize, space, typography } from '@/theme/tokens';
+import { t as tr } from '@/i18n';
 import type { ThemeTokens } from '@/theme/tokens';
 
 // ============================================================================
@@ -65,17 +66,17 @@ export const ItemSearchField: React.FC<ItemSearchFieldProps> = ({
       <View style={styles.labelRow}>
         <Icon name="cube-outline" size={iconSize.sm} color={t.icon.secondary} />
         <Text style={styles.label}>
-          Item<Text style={styles.required}> *</Text>
+          {tr('common.item')}<Text style={styles.required}> *</Text>
         </Text>
       </View>
 
       <RemoteAutocompleteInput<ItemSearchResult>
         value={value}
-        placeholder="Search items"
+        placeholder={tr('grn.item.searchPlaceholder')}
         fetchData={searchItems}
         onSelect={onSelect}
         renderItem={renderItem}
-        getItemAccessibilityLabel={(item) => `Select receipt item ${item.name}`}
+        getItemAccessibilityLabel={(item) => tr('grn.item.selectItemLabel', { name: item.name })}
         keyExtractor={keyExtractor}
         zIndex={zIndex}
       />

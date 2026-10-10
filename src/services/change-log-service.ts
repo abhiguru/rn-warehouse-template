@@ -7,6 +7,7 @@ import { ChangeLogResponse, ChangeLogEntry } from '@/types/order.types';
 // debug logging and custom response structures (EnhancedChangeLogResponse) that require
 // the manual RPC pattern. Imports retained for consistency and future use.
 import { executeRPC, createErrorResponse } from '@/utils/serviceErrorHandler';
+import { t } from '@/i18n';
 
 interface ServiceError {
   message: string;
@@ -238,7 +239,7 @@ export class ChangeLogService {
       if (filters?.date_to) rpcCall.p_date_to = filters.date_to;
       if (filters?.changed_by) rpcCall.p_user_id = filters.changed_by;
       if (filters?.change_type) rpcCall.p_change_type = filters.change_type;
-      if (filters?.change_category) throw new Error('Change category filtering is unavailable in the local demo.');
+      if (filters?.change_category) throw new Error(t('errors.general.localDemoCategoryFilter'));
 
       // Always include limit and offset
       rpcCall.p_limit = limit;
@@ -269,7 +270,7 @@ export class ChangeLogService {
             },
           },
           error: {
-            message: error.message || 'Failed to fetch customer change log',
+            message: error.message || t('errors.customer.changeLogFailed'),
             code: error.code || 'RPC_ERROR',
           },
         };
@@ -313,7 +314,7 @@ export class ChangeLogService {
         },
         error: {
           message:
-            error instanceof Error ? error.message : 'Unknown error occurred',
+            error instanceof Error ? error.message : t('errors.general.unknownOccurred'),
           code: 'EXCEPTION_ERROR',
         },
       };
@@ -355,7 +356,7 @@ export class ChangeLogService {
             },
           },
           error: {
-            message: error.message || 'Failed to fetch order change log',
+            message: error.message || t('errors.order.changeLogFailed'),
             code: error.code || 'RPC_ERROR',
           },
         };
@@ -385,7 +386,7 @@ export class ChangeLogService {
         },
         error: {
           message:
-            error instanceof Error ? error.message : 'Unknown error occurred',
+            error instanceof Error ? error.message : t('errors.general.unknownOccurred'),
           code: 'EXCEPTION_ERROR',
         },
       };
@@ -437,7 +438,7 @@ export class ChangeLogService {
             },
           },
           error: {
-            message: error.message || 'Failed to fetch recent changes',
+            message: error.message || t('errors.order.recentChangesFailed'),
             code: error.code || 'RPC_ERROR',
           },
         };
@@ -464,7 +465,7 @@ export class ChangeLogService {
         },
         error: {
           message:
-            error instanceof Error ? error.message : 'Unknown error occurred',
+            error instanceof Error ? error.message : t('errors.general.unknownOccurred'),
           code: 'EXCEPTION_ERROR',
         },
       };

@@ -21,6 +21,10 @@ import {
   type ThemeTokens,
 } from '@/theme/tokens';
 import StockIndicator from './StockIndicator';
+import { localizeDigits, t as tr } from '@/i18n';
+
+/** A count as it is stored (no grouping), in the digits of the language. */
+const digits = (n: number) => localizeDigits(String(n));
 
 interface OrderItemCardProps {
   item: OrderItem;
@@ -204,7 +208,7 @@ const OrderItemCardComponent: React.FC<OrderItemCardProps> = ({
   }
 
   const itemName = item.grn_item.name;
-  const quantityStatus = isPending ? 'Saving…' : showSaved ? 'Saved' : 'Qty';
+  const quantityStatus = isPending ? tr('common.saving') : showSaved ? tr('orders.item.saved') : tr('orders.item.qty');
 
   return (
     <View style={styles.container}>
@@ -226,7 +230,7 @@ const OrderItemCardComponent: React.FC<OrderItemCardProps> = ({
           <View style={styles.packageMarkRow}>
             <Icon name="package-variant" size={iconSize.sm} color={t.icon.secondary} />
             <Text style={styles.itemDetails}>
-              {item.grn_item.package_mark || 'No mark'}
+              {item.grn_item.package_mark || tr('orders.item.noMark')}
             </Text>
           </View>
           {item.grn_item.weight && item.grn_item.weight > 0 && (
@@ -256,9 +260,9 @@ const OrderItemCardComponent: React.FC<OrderItemCardProps> = ({
           style={({ pressed }) => [styles.quickButton, pressed && styles.stepPressed]}
           onPress={() => handleQuantityDecrease(10)}
           accessibilityRole="button"
-          accessibilityLabel={`Remove 10 from ${itemName}`}
+          accessibilityLabel={tr('orders.item.removeAmount', { amount: 10, name: itemName })}
         >
-          <Text style={styles.quickButtonText} maxFontSizeMultiplier={1.6}>−10</Text>
+          <Text style={styles.quickButtonText} maxFontSizeMultiplier={1.6}>{localizeDigits('−10')}</Text>
         </Pressable>
 
         <View style={styles.quantityContainer}>
@@ -266,7 +270,7 @@ const OrderItemCardComponent: React.FC<OrderItemCardProps> = ({
             style={({ pressed }) => [styles.quantityButton, pressed && styles.stepPressed]}
             onPress={() => handleQuantityDecrease(1)}
             accessibilityRole="button"
-            accessibilityLabel={localQuantity <= 1 ? `Remove ${itemName} from order` : `Decrease ${itemName} by 1`}
+            accessibilityLabel={localQuantity <= 1 ? tr('orders.item.removeFromOrder', { name: itemName }) : tr('orders.item.decrease', { name: itemName, amount: 1 })}
           >
             <Icon name="minus" size={iconSize.md} color={t.brand.tint} />
           </Pressable>
@@ -274,7 +278,7 @@ const OrderItemCardComponent: React.FC<OrderItemCardProps> = ({
           <View
             style={styles.quantityWrapper}
             accessible
-            accessibilityLabel={`Quantity ${localQuantity}${isPending ? ', saving' : showSaved ? ', saved' : ''}`}
+            accessibilityLabel={tr(isPending ? 'orders.item.quantitySaving' : showSaved ? 'orders.item.quantitySaved' : 'orders.item.quantity', { quantity: digits(localQuantity) })}
             accessibilityLiveRegion="polite"
           >
             <View style={styles.quantityLabelRow}>
@@ -294,7 +298,7 @@ const OrderItemCardComponent: React.FC<OrderItemCardProps> = ({
             </View>
             <View style={styles.quantityValueContainer}>
               <Text style={styles.quantity}>
-                {localQuantity}
+                {digits(localQuantity)}
               </Text>
               {isPending && (
                 <ActivityIndicator
@@ -310,7 +314,7 @@ const OrderItemCardComponent: React.FC<OrderItemCardProps> = ({
             style={({ pressed }) => [styles.quantityButton, pressed && styles.stepPressed]}
             onPress={() => handleQuantityIncrease(1)}
             accessibilityRole="button"
-            accessibilityLabel={`Increase ${itemName} by 1`}
+            accessibilityLabel={tr('orders.item.increase', { name: itemName, amount: 1 })}
           >
             <Icon name="plus" size={iconSize.md} color={t.brand.tint} />
           </Pressable>
@@ -321,9 +325,9 @@ const OrderItemCardComponent: React.FC<OrderItemCardProps> = ({
           style={({ pressed }) => [styles.quickButton, pressed && styles.stepPressed]}
           onPress={() => handleQuantityIncrease(10)}
           accessibilityRole="button"
-          accessibilityLabel={`Add 10 to ${itemName}`}
+          accessibilityLabel={tr('orders.item.addAmount', { amount: 10, name: itemName })}
         >
-          <Text style={styles.quickButtonText} maxFontSizeMultiplier={1.6}>+10</Text>
+          <Text style={styles.quickButtonText} maxFontSizeMultiplier={1.6}>{localizeDigits('+10')}</Text>
         </Pressable>
 
         {/* Remove Button: secondary negative, last in the row */}
@@ -331,7 +335,7 @@ const OrderItemCardComponent: React.FC<OrderItemCardProps> = ({
           onPress={onRemove}
           style={({ pressed }) => [styles.removeButton, pressed && styles.removeButtonPressed]}
           accessibilityRole="button"
-          accessibilityLabel={`Remove ${itemName} from order`}
+          accessibilityLabel={tr('orders.item.removeFromOrder', { name: itemName })}
         >
           <Icon name="trash-can-outline" size={iconSize.md} color={t.status.negative.text} />
         </Pressable>

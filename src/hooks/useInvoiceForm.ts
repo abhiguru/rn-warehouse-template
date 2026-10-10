@@ -60,10 +60,11 @@ import {
 } from '@/features/invoice/services/invoiceFormService';
 
 import { showAlert } from '@/utils/alert';
+import { t } from '@/i18n';
 /** Field errors as plain sentences for an alert (style guide §12.2), never raw field keys. */
 function describeValidationErrors(errors: Record<string, string>): string {
   const messages = Array.from(new Set(Object.values(errors).filter(Boolean)));
-  if (messages.length === 0) return 'Fill in the required fields, then try again.';
+  if (messages.length === 0) return t('invoice.form.fillRequired');
   return messages.slice(0, 5).join('\n');
 }
 
@@ -183,7 +184,7 @@ export function useInvoiceForm({
         }
       } catch (error) {
         console.error('[useInvoiceForm] Failed to generate invoice number:', error);
-        showAlert("Couldn't get an invoice number", 'Check your connection and try again.');
+        showAlert(t('invoice.form.numberFailedTitle'), t('common.checkConnection'));
       }
     }
   }, [isCreateMode, header.inv_no, header.inv_fin_year, dispatch]);
@@ -208,11 +209,11 @@ export function useInvoiceForm({
           grId: loadedHeader.gr_id || '',
         }));
       } else {
-        showAlert("Couldn't load the invoice", result.message || 'Check your connection and try again.');
+        showAlert(t('invoice.edit.loadFailedTitle'), result.message || t('common.checkConnection'));
       }
     } catch (error) {
       console.error('[useInvoiceForm] Failed to load invoice:', error);
-      showAlert("Couldn't load the invoice", 'Check your connection and try again.');
+      showAlert(t('invoice.edit.loadFailedTitle'), t('common.checkConnection'));
     } finally {
       dispatch(setIsLoading(false));
       isLoadingData.current = false;
@@ -233,11 +234,11 @@ export function useInvoiceForm({
           grId,
         }));
       } else {
-        showAlert("Couldn't load the GRN", result.message || 'Check your connection and try again.');
+        showAlert(t('invoice.form.grnLoadFailedTitle'), result.message || t('common.checkConnection'));
       }
     } catch (error) {
       console.error('[useInvoiceForm] Failed to load GRN data:', error);
-      showAlert("Couldn't load the GRN", 'Check your connection and try again.');
+      showAlert(t('invoice.form.grnLoadFailedTitle'), t('common.checkConnection'));
     } finally {
       dispatch(setIsLoadingItems(false));
     }
@@ -355,7 +356,7 @@ export function useInvoiceForm({
     for (let step = currentStep; step < targetStep; step++) {
       const validation = await validateCurrentStep(step);
       if (!validation.isValid) {
-        showAlert('Check the invoice', describeValidationErrors(validation.errors));
+        showAlert(t('invoice.form.checkInvoiceTitle'), describeValidationErrors(validation.errors));
         return false;
       }
     }
@@ -402,7 +403,7 @@ export function useInvoiceForm({
     // Validate full invoice
     const validation = await validateFullInvoice({ header, items });
     if (!validation.isValid) {
-      showAlert('Check the invoice', describeValidationErrors(validation.errors));
+      showAlert(t('invoice.form.checkInvoiceTitle'), describeValidationErrors(validation.errors));
       return { success: false, error: 'Validation failed' };
     }
 
@@ -430,13 +431,13 @@ export function useInvoiceForm({
           invoiceNo: result.data?.invoice_no,
         };
       } else {
-        showAlert("Couldn't save the invoice", result.message || 'Check your connection and try again.');
+        showAlert(t('invoice.form.saveFailedTitle'), result.message || t('common.checkConnection'));
         return { success: false, error: result.message };
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       console.error('[useInvoiceForm] Submit error:', error);
-      showAlert("Couldn't save the invoice", 'Check your connection and try again.');
+      showAlert(t('invoice.form.saveFailedTitle'), t('common.checkConnection'));
       return { success: false, error: errorMessage };
     } finally {
       dispatch(setIsSaving(false));

@@ -22,7 +22,8 @@ import { useFocusEffect } from 'expo-router';
 import { ListSkeleton } from '@/components/skeletons';
 import { ListEmptyState } from '@/components/list/ListEmptyState';
 import { ErrorStateView } from '@/components/ErrorBoundary';
-import { formatCount } from '@/utils/formatters';
+import { formatCount, formatNumber } from '@/utils/formatters';
+import { t as translate } from '@/i18n';
 
 // Services
 import { OrderService } from '@/services/order-service';
@@ -164,7 +165,7 @@ const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = ({
         setHasMore(result.metadata?.has_more ?? false);
       } else {
         setError(result.message || 'Failed to load orders');
-        setSnackbarMessage("Couldn't load the order queue. Check your connection and try again.");
+        setSnackbarMessage(translate('lists.queue.loadFailed'));
         setSnackbarVisible(true);
       }
     } catch (err: unknown) {
@@ -174,7 +175,7 @@ const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = ({
       console.error('[SupervisorOrderQueueList] Error:', err);
       const errorMessage = err instanceof Error ? err.message : 'Failed to load orders';
       setError(errorMessage);
-      setSnackbarMessage("Couldn't load the order queue. Check your connection and try again.");
+      setSnackbarMessage(translate('lists.queue.loadFailed'));
       setSnackbarVisible(true);
     } finally {
       fetchInProgressRef.current = false;
@@ -222,13 +223,13 @@ const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = ({
         });
         setHasMore(result.metadata?.has_more ?? false);
       } else {
-        setSnackbarMessage("Couldn't load more orders. Scroll down to try again.");
+        setSnackbarMessage(translate('lists.order.loadMoreFailed'));
         setSnackbarVisible(true);
       }
     } catch (err: unknown) {
       if (!isMountedRef.current) return;
       console.error('[SupervisorOrderQueueList] Load more error:', err);
-      setSnackbarMessage("Couldn't load more orders. Scroll down to try again.");
+      setSnackbarMessage(translate('lists.order.loadMoreFailed'));
       setSnackbarVisible(true);
     } finally {
       fetchInProgressRef.current = false;
@@ -245,7 +246,7 @@ const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = ({
     return (
       <View style={styles.footerLoader} accessibilityLiveRegion="polite">
         <ActivityIndicator size="small" color={t.brand.tint} />
-        <Text style={styles.footerLoaderText}>Loading more orders…</Text>
+        <Text style={styles.footerLoaderText}>{translate('lists.order.loadingMore')}</Text>
       </View>
     );
   }, [isLoadingMore, styles, t]);
@@ -344,20 +345,20 @@ const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = ({
   // always be changed or cleared.
   const header = (
     <FilteredListHeader
-      title="Order queue"
+      title={translate('lists.queue.title')}
       config={ORDER_QUEUE_FILTERS}
       filters={filters}
       loading={isLoading}
       actions={
         <>
-          <OrderRefreshAction onRefresh={handleRefresh} refreshing={isRefreshing} label="Refresh order queue" />
+          <OrderRefreshAction onRefresh={handleRefresh} refreshing={isRefreshing} label={translate('lists.queue.refresh')} />
           {/* Order count badge: plain count (§13.5) */}
           <View
             style={styles.countBadge}
             accessible
-            accessibilityLabel={`${formatCount(queueCount, 'order')} in the queue`}
+            accessibilityLabel={translate('lists.queue.countLabel', { orders: formatCount(queueCount, 'order') })}
           >
-            <Text style={styles.countText} maxFontSizeMultiplier={1.6}>{queueCount}</Text>
+            <Text style={styles.countText} maxFontSizeMultiplier={1.6}>{formatNumber(queueCount)}</Text>
           </View>
         </>
       }
@@ -400,8 +401,8 @@ const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = ({
     content = (
       <ErrorStateView
         presentation="inline"
-        title="Couldn't load the order queue"
-        message="Check your connection and try again."
+        title={translate('lists.queue.loadFailedTitle')}
+        message={translate('common.checkConnection')}
         onRetry={() => fetchOrders()}
       />
     );
@@ -414,8 +415,8 @@ const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = ({
           {...filteredEmptyProps(filters, 'orders')}
           emptyIcon="clipboard-check-outline"
           filteredIcon="magnify"
-          emptyTitle="No orders in the queue"
-          emptySubtitle="Customer orders with items appear here."
+          emptyTitle={translate('lists.queue.emptyTitle')}
+          emptySubtitle={translate('lists.queue.emptySubtitle')}
         />
       </>
     );
@@ -433,7 +434,7 @@ const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = ({
           onDismiss={dismissSnackbar}
           duration={4000}
           style={styles.snackbar}
-          action={{ label: 'Dismiss', onPress: dismissSnackbar, textColor: t.text.inverse }}
+          action={{ label: translate('common.dismiss'), onPress: dismissSnackbar, textColor: t.text.inverse }}
         >
           {snackbarMessage}
         </Snackbar>

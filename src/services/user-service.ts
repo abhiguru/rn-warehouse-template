@@ -8,6 +8,7 @@ import {
 } from '@/types/user.types';
 // M3 Fix: Import executeRPC utilities (kept for future use - current methods have extensive debug logging)
 import { executeRPC, createErrorResponse } from '@/utils/serviceErrorHandler';
+import { t } from '@/i18n';
 
 export class UserService {
   
@@ -19,8 +20,8 @@ export class UserService {
       if (!userId) {
         return {
           success: false,
-          message: 'User ID is required',
-          error: 'Missing parameter'
+          message: t('errors.user.idRequired'),
+          error: t('errors.general.missingParameter')
         };
       }
 
@@ -68,7 +69,7 @@ export class UserService {
         console.error('[UserService] User profile fetch error:', userError);
         return {
           success: false,
-          message: 'Failed to fetch user profile',
+          message: t('errors.user.fetchProfileFailed'),
           error: userError.message
         };
       }
@@ -76,8 +77,8 @@ export class UserService {
       if (!userProfile) {
         return {
           success: false,
-          message: 'User not found',
-          error: 'User profile not found'
+          message: t('errors.user.notFound'),
+          error: t('errors.user.profileNotFound')
         };
       }
 
@@ -129,15 +130,15 @@ export class UserService {
 
       return {
         success: true,
-        message: 'User retrieved successfully',
+        message: t('errors.user.retrieved'),
         data: mappedUser
       };
     } catch (error) {
       console.error('[UserService] Exception:', error);
       return {
         success: false,
-        message: 'An unexpected error occurred',
-        error: error instanceof Error ? error.message : 'Unknown error'
+        message: t('errors.general.unexpected'),
+        error: error instanceof Error ? error.message : t('errors.general.unknown')
       };
     }
   }
@@ -150,8 +151,8 @@ export class UserService {
       if (!userId) {
         return {
           success: false,
-          message: 'User ID is required',
-          error: 'Missing parameter'
+          message: t('errors.user.idRequired'),
+          error: t('errors.general.missingParameter')
         };
       }
 
@@ -195,7 +196,7 @@ export class UserService {
         console.error('[UserService] User update error:', updateError);
         return {
           success: false,
-          message: 'Failed to update user profile',
+          message: t('errors.user.updateProfileFailed'),
           error: updateError.message
         };
       }
@@ -209,15 +210,15 @@ export class UserService {
 
       return {
         success: true,
-        message: 'User updated successfully',
+        message: t('errors.user.updated'),
         data: updatedUserResult.data
       };
     } catch (error) {
       console.error('[UserService] Exception:', error);
       return {
         success: false,
-        message: 'An unexpected error occurred',
-        error: error instanceof Error ? error.message : 'Unknown error'
+        message: t('errors.general.unexpected'),
+        error: error instanceof Error ? error.message : t('errors.general.unknown')
       };
     }
   }
@@ -231,7 +232,7 @@ export class UserService {
         console.log('[UserService] Query too short, returning empty');
         return {
           success: true,
-          message: 'Query too short',
+          message: t('errors.general.queryTooShort'),
           data: []
         };
       }
@@ -260,7 +261,7 @@ export class UserService {
         console.error('[UserService] Customer search error:', error);
         return {
           success: false,
-          message: 'Failed to search customers',
+          message: t('errors.customer.searchFailed'),
           error: error.message
         };
       }
@@ -277,15 +278,15 @@ export class UserService {
 
       return {
         success: true,
-        message: 'Customers found',
+        message: t('errors.customer.listFound'),
         data: searchResults
       };
     } catch (error) {
       console.error('[UserService] Exception:', error);
       return {
         success: false,
-        message: 'An unexpected error occurred',
-        error: error instanceof Error ? error.message : 'Unknown error'
+        message: t('errors.general.unexpected'),
+        error: error instanceof Error ? error.message : t('errors.general.unknown')
       };
     }
   }
@@ -313,7 +314,7 @@ export class UserService {
         console.error('[UserService] Account deletion RPC error:', error);
         return {
           success: false,
-          message: 'Failed to delete account',
+          message: t('errors.user.deleteAccountFailed'),
           error: error.message
         };
       }
@@ -327,22 +328,22 @@ export class UserService {
         console.error('[UserService] Account deletion failed:', rpcResponse?.error);
         return {
           success: false,
-          message: rpcResponse?.error || 'Failed to delete account',
-          error: rpcResponse?.error || 'Unknown error'
+          message: rpcResponse?.error || t('errors.user.deleteAccountFailed'),
+          error: rpcResponse?.error || t('errors.general.unknown')
         };
       }
 
       return {
         success: true,
-        message: rpcResponse.message || 'Account deleted successfully',
+        message: rpcResponse.message || t('errors.user.accountDeleted'),
         data: undefined
       };
     } catch (error) {
       console.error('[UserService] Account deletion exception:', error);
       return {
         success: false,
-        message: 'An unexpected error occurred while deleting account',
-        error: error instanceof Error ? error.message : 'Unknown error'
+        message: t('errors.user.deleteAccountUnexpected'),
+        error: error instanceof Error ? error.message : t('errors.general.unknown')
       };
     }
   }
@@ -361,7 +362,7 @@ export class UserService {
         console.error('[UserService] Customer fetch error:', error);
         return {
           success: false,
-          message: 'Failed to fetch customer',
+          message: t('errors.customer.fetchFailed'),
           error: error.message
         };
       }
@@ -369,14 +370,14 @@ export class UserService {
       if (!customer) {
         return {
           success: false,
-          message: 'Customer not found',
-          error: 'Customer not found'
+          message: t('errors.customer.notFound'),
+          error: t('errors.customer.notFound')
         };
       }
 
       return {
         success: true,
-        message: 'Customer retrieved successfully',
+        message: t('errors.customer.retrieved'),
         data: {
           id: customer.id,
           name: customer.name,
@@ -389,8 +390,8 @@ export class UserService {
       console.error('[UserService] Exception:', error);
       return {
         success: false,
-        message: 'An unexpected error occurred',
-        error: error instanceof Error ? error.message : 'Unknown error'
+        message: t('errors.general.unexpected'),
+        error: error instanceof Error ? error.message : t('errors.general.unknown')
       };
     }
   }

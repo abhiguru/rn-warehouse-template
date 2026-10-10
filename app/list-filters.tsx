@@ -12,6 +12,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { ApplyFiltersButton } from '@/features/filters/components/ApplyFiltersButton';
+import { pickerText } from '@/features/filters/components/editors/OptionPicker';
 import { SortEditor } from '@/features/filters/components/editors/SortEditor';
 import { FieldEditor } from '@/features/filters/components/FieldEditor';
 import { FILTER_CONFIGS, type CountableFilterList } from '@/features/filters/configs';
@@ -20,6 +21,7 @@ import type { FilterValue, FilterValues, PickerField, SortState } from '@/featur
 import { useFilterResultCount } from '@/features/filters/useFilterResultCount';
 import { useListFilters } from '@/features/filters/useListFilters';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { t as translate } from '@/i18n';
 import { fontWeight, iconSize, layout, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 import { showAlert } from '@/utils/alert';
 
@@ -102,9 +104,9 @@ function SortAndFilterPage({ config }: { config: CountableFilterList }) {
       router.back();
       return;
     }
-    showAlert('Discard changes?', 'The filters you changed on this page have not been applied.', [
-      { text: 'Keep editing', style: 'cancel' },
-      { text: 'Discard', style: 'destructive', onPress: () => router.back() },
+    showAlert(translate('common.discardChangesTitle'), translate('filters.page.discardMessage'), [
+      { text: translate('common.keepEditing'), style: 'cancel' },
+      { text: translate('common.discard'), style: 'destructive', onPress: () => router.back() },
     ]);
   }, [dirty]);
 
@@ -137,7 +139,7 @@ function SortAndFilterPage({ config }: { config: CountableFilterList }) {
           style={({ pressed }) => [styles.headerSide, pressed && styles.pressed]}
           onPress={() => setPicker(null)}
           accessibilityRole="button"
-          accessibilityLabel="Back to sort and filter"
+          accessibilityLabel={translate('filters.page.back')}
         >
           <Icon name="arrow-left" size={iconSize.lg} color={t.brand.tint} />
         </Pressable>
@@ -146,13 +148,13 @@ function SortAndFilterPage({ config }: { config: CountableFilterList }) {
           style={({ pressed }) => [styles.headerSide, pressed && styles.pressed]}
           onPress={close}
           accessibilityRole="button"
-          accessibilityLabel="Close without applying"
+          accessibilityLabel={translate('filters.page.close')}
         >
           <Icon name="close" size={iconSize.lg} color={t.icon.primary} />
         </Pressable>
       )}
       <Text style={styles.headerTitle} accessibilityRole="header" numberOfLines={1} maxFontSizeMultiplier={1.6}>
-        {picker ? picker.label : 'Sort and filter'}
+        {picker ? picker.label : translate('filters.page.title')}
       </Text>
       <View style={[styles.headerSide, styles.headerEnd]}>
         {picker ? (
@@ -161,9 +163,9 @@ function SortAndFilterPage({ config }: { config: CountableFilterList }) {
             onPress={() => setPicker(null)}
             hitSlop={space.md}
             accessibilityRole="button"
-            accessibilityLabel={`Done choosing ${picker.noun[1]}`}
+            accessibilityLabel={pickerText(picker.noun, 'done')}
           >
-            <Text style={styles.headerAction} maxFontSizeMultiplier={1.6}>Done</Text>
+            <Text style={styles.headerAction} maxFontSizeMultiplier={1.6}>{translate('common.done')}</Text>
           </Pressable>
         ) : (
           <Pressable
@@ -172,10 +174,10 @@ function SortAndFilterPage({ config }: { config: CountableFilterList }) {
             disabled={!hasDraftFilters}
             hitSlop={space.md}
             accessibilityRole="button"
-            accessibilityLabel="Reset all filters and the sort on this page"
+            accessibilityLabel={translate('filters.page.resetLabel')}
             accessibilityState={{ disabled: !hasDraftFilters }}
           >
-            <Text style={[styles.headerAction, !hasDraftFilters && styles.headerActionDisabled]} maxFontSizeMultiplier={1.6}>Reset</Text>
+            <Text style={[styles.headerAction, !hasDraftFilters && styles.headerActionDisabled]} maxFontSizeMultiplier={1.6}>{translate('common.reset')}</Text>
           </Pressable>
         )}
       </View>
@@ -202,7 +204,7 @@ function SortAndFilterPage({ config }: { config: CountableFilterList }) {
         <ScrollView style={styles.body} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           {config.sort && sort ? (
             <View style={styles.section}>
-              <Text style={styles.sectionTitle} accessibilityRole="header">SORT BY</Text>
+              <Text style={styles.sectionTitle} accessibilityRole="header">{translate('filters.page.sortByHeading')}</Text>
               <SortEditor options={config.sort.options} value={sort} onChange={setSort} />
             </View>
           ) : null}
@@ -213,7 +215,11 @@ function SortAndFilterPage({ config }: { config: CountableFilterList }) {
                 style={({ pressed }) => [styles.section, pressed && styles.pressed]}
                 onPress={() => setPicker(field)}
                 accessibilityRole="button"
-                accessibilityLabel={`${field.label}: ${isFieldActive(field, values[field.key]) ? describeValue(field, values[field.key]) : 'any'}. Choose`}
+                accessibilityLabel={
+                  isFieldActive(field, values[field.key])
+                    ? translate('filters.page.pickerRowSet', { label: field.label, value: describeValue(field, values[field.key]) })
+                    : translate('filters.page.pickerRowAny', { label: field.label })
+                }
               >
                 <View style={styles.pickerRow}>
                   <View style={styles.pickerText}>
@@ -222,7 +228,7 @@ function SortAndFilterPage({ config }: { config: CountableFilterList }) {
                       style={[styles.pickerValue, !isFieldActive(field, values[field.key]) && styles.pickerValueEmpty]}
                       numberOfLines={2}
                     >
-                      {isFieldActive(field, values[field.key]) ? describeValue(field, values[field.key]) : 'Any'}
+                      {isFieldActive(field, values[field.key]) ? describeValue(field, values[field.key]) : translate('common.any')}
                     </Text>
                   </View>
                   <Icon name="chevron-right" size={iconSize.lg} color={t.icon.secondary} />
@@ -231,8 +237,9 @@ function SortAndFilterPage({ config }: { config: CountableFilterList }) {
             ) : (
               <View key={field.key} style={styles.section}>
                 <Text style={styles.sectionTitle} accessibilityRole="header">
-                  {field.label.toUpperCase()}
-                  {field.kind === 'numberRange' && field.unit ? ` (${field.unit.toUpperCase()})` : ''}
+                  {field.kind === 'numberRange' && field.unit
+                    ? translate('filters.page.sectionWithUnit', { label: field.label.toUpperCase(), unit: field.unit.toUpperCase() })
+                    : field.label.toUpperCase()}
                 </Text>
                 <FieldEditor
                   // Remount after Reset so fields that keep typed text start empty. Never while
@@ -263,7 +270,7 @@ export default function ListFiltersScreen() {
   if (!config) {
     return (
       <View style={styles.screen}>
-        <Text style={styles.missing}>This list has no filters.</Text>
+        <Text style={styles.missing}>{translate('filters.page.noFilters')}</Text>
       </View>
     );
   }

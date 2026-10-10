@@ -14,7 +14,8 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { View, Text, StyleSheet, Pressable, LayoutAnimation } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { formatDate, formatCount, formatWeight } from '@/utils/formatters';
+import { formatDate, formatCount, formatNumber, formatWeight } from '@/utils/formatters';
+import { t as translate } from '@/i18n';
 import type { Dispatch } from '@/services/dispatch-service';
 import { HighlightedText, matchesAnyWord } from '@/features/filters/components/HighlightedText';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
@@ -70,9 +71,9 @@ interface StatusConfig {
 const getDispatchStatus = (dispatch: Dispatch): StatusConfig => {
   // Determine status based on total_qty
   if (dispatch.total_qty && dispatch.total_qty > 0) {
-    return { kind: 'positive', label: 'Complete', icon: 'check-circle' };
+    return { kind: 'positive', label: translate('lists.dispatch.statusComplete'), icon: 'check-circle' };
   }
-  return { kind: 'critical', label: 'Pending', icon: 'alert' };
+  return { kind: 'critical', label: translate('common.pending'), icon: 'alert' };
 };
 
 // ============================================================================
@@ -291,7 +292,7 @@ function hiddenMatches(dispatch: Dispatch, words: string[]): string[] {
   if (words.length === 0) return [];
   const found = new Set<string>();
   for (const item of dispatch.items ?? []) {
-    for (const text of [item.item_name, item.package_mark, item.rack, item.gr_no ? `GRN ${item.gr_no}` : null]) {
+    for (const text of [item.item_name, item.package_mark, item.rack, item.gr_no ? translate('lists.card.grnRef', { number: item.gr_no }) : null]) {
       if (text && matchesAnyWord(text, words)) found.add(text);
     }
   }
@@ -339,15 +340,15 @@ const DispatchItemContent: React.FC<MemoizedDispatchItemProps> = ({
 
   // One combined label for the row (guide §11.3)
   const accessibilityDescription = [
-    `Dispatch ${dispatch.disp_no}`,
+    translate('lists.dispatch.cardTitle', { number: dispatch.disp_no }),
     dispatch.customer_name,
     itemsLabel,
     bagsLabel,
     formatWeight(totalWeight, 0),
-    dispatch.registration ? `Vehicle ${dispatch.registration}` : null,
+    dispatch.registration ? translate('lists.card.vehicle', { number: dispatch.registration }) : null,
     dateLabel,
     statusConfig.label,
-    matched.length > 0 ? `Matched ${matched.join(', ')}` : null,
+    matched.length > 0 ? translate('lists.card.matched', { matches: matched.join(', ') }) : null,
   ].filter(Boolean).join(', ');
 
   return (
@@ -357,7 +358,7 @@ const DispatchItemContent: React.FC<MemoizedDispatchItemProps> = ({
         style={({ pressed }) => [styles.cardContent, pressed && styles.cardContentPressed]}
         accessibilityRole="button"
         accessibilityLabel={accessibilityDescription}
-        accessibilityHint="Opens the dispatch"
+        accessibilityHint={translate('lists.dispatch.openHint')}
       >
         <View style={styles.objectCellRow}>
           {/* Object icon (left) */}
@@ -367,7 +368,7 @@ const DispatchItemContent: React.FC<MemoizedDispatchItemProps> = ({
 
           {/* Main content */}
           <View style={styles.mainContent}>
-            <HighlightedText style={styles.titleText} numberOfLines={2} text={`Dispatch ${dispatch.disp_no}`} words={words} />
+            <HighlightedText style={styles.titleText} numberOfLines={2} text={translate('lists.dispatch.cardTitle', { number: dispatch.disp_no })} words={words} />
             <HighlightedText style={styles.subtitleText} numberOfLines={1} text={dispatch.customer_name ?? ''} words={words} />
 
             {/* Footnote: date, vehicle, item count */}
@@ -414,10 +415,10 @@ const DispatchItemContent: React.FC<MemoizedDispatchItemProps> = ({
       {isExpanded && hasItems && (
         <Animated.View entering={FadeIn.duration(motion.standard)} style={styles.expandedSection}>
           <View style={styles.tableHeader}>
-            <Text style={[styles.tableHeaderCell, styles.colItem]}>Item</Text>
-            <Text style={[styles.tableHeaderCell, styles.colWeight]}>Kg</Text>
-            <Text style={[styles.tableHeaderCell, styles.colGrn]}>GRN</Text>
-            <Text style={[styles.tableHeaderCell, styles.colQty]}>Qty</Text>
+            <Text style={[styles.tableHeaderCell, styles.colItem]}>{translate('common.item')}</Text>
+            <Text style={[styles.tableHeaderCell, styles.colWeight]}>{translate('lists.card.colKg')}</Text>
+            <Text style={[styles.tableHeaderCell, styles.colGrn]}>{translate('lists.card.colGrn')}</Text>
+            <Text style={[styles.tableHeaderCell, styles.colQty]}>{translate('lists.card.colQty')}</Text>
           </View>
 
           {dispatch.items!.map((item, idx) => (
@@ -425,7 +426,13 @@ const DispatchItemContent: React.FC<MemoizedDispatchItemProps> = ({
               key={`${dispatch.dispatch_id}-item-${item.grn_item_id}-${idx}`}
               style={[styles.tableRow, idx > 0 && styles.tableRowDivider]}
               accessible
-              accessibilityLabel={`${item.item_name}${item.rack ? `, rack ${item.rack}` : ''}, ${formatWeight(item.weight, 0)}, GRN ${item.gr_no}, ${item.disp_qty} dispatched`}
+              accessibilityLabel={translate(item.rack ? 'lists.dispatch.itemRowRack' : 'lists.dispatch.itemRow', {
+                item: item.item_name,
+                rack: item.rack,
+                weight: formatWeight(item.weight, 0),
+                grn: item.gr_no,
+                quantity: item.disp_qty,
+              })}
             >
               <View style={[styles.tableCell, styles.colItem]}>
                 <View style={styles.itemNameRow}>
@@ -439,13 +446,13 @@ const DispatchItemContent: React.FC<MemoizedDispatchItemProps> = ({
                 )}
               </View>
               <Text style={[styles.tableCell, styles.colWeight, styles.tableCellValue]}>
-                {Math.round(item.weight || 0)}
+                {formatNumber(Math.round(item.weight || 0))}
               </Text>
               <Text style={[styles.tableCell, styles.colGrn, styles.tableCellValue]}>
-                {item.gr_no}/{item.grn_qty}
+                {item.gr_no}/{formatNumber(item.grn_qty)}
               </Text>
               <Text style={[styles.tableCell, styles.colQty, styles.tableCellQty]}>
-                {item.disp_qty}
+                {formatNumber(item.disp_qty)}
               </Text>
             </View>
           ))}
@@ -458,11 +465,11 @@ const DispatchItemContent: React.FC<MemoizedDispatchItemProps> = ({
           onPress={handleToggleExpand}
           style={({ pressed }) => [styles.expandButton, pressed && styles.expandButtonPressed]}
           accessibilityRole="button"
-          accessibilityLabel={isExpanded ? `Hide item details of dispatch ${dispatch.disp_no}` : `${itemsLabel} in this dispatch. Show item details`}
+          accessibilityLabel={isExpanded ? translate('lists.dispatch.hideDetailsOf', { number: dispatch.disp_no }) : translate('lists.dispatch.showDetailsOf', { items: itemsLabel })}
           accessibilityState={{ expanded: isExpanded }}
         >
           <Text style={styles.expandButtonText}>
-            {isExpanded ? 'Hide item details' : 'Tap for item details'}
+            {isExpanded ? translate('lists.card.hideDetails') : translate('lists.card.showDetails')}
           </Text>
           <Icon
             name={isExpanded ? 'chevron-up' : 'chevron-down'}

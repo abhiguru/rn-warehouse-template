@@ -15,6 +15,7 @@ import type { ThemeTokens } from '@/theme/tokens';
 import { formatDate, formatNumber } from '@/utils/formatters';
 import { StatusTag } from '@/components/ui';
 import { getGRNStockStatus } from '@/features/grn/utils/grnStockStatus';
+import { t as tr } from '@/i18n';
 
 // ============================================================================
 // TYPES
@@ -120,9 +121,9 @@ export const GRNHeroHeader: React.FC<GRNHeroHeaderProps> = ({
   const dispatchSegmentColor = t.chart[1];
 
   const facts = [
-    { key: 'qty', label: 'Received', value: safeQty },
-    { key: 'stock', label: 'In stock', value: safeStock },
-    { key: 'dispatched', label: 'Dispatched', value: safeDispatched },
+    { key: 'qty', label: tr('grn.stock.received'), value: safeQty },
+    { key: 'stock', label: tr('grn.stock.inStock'), value: safeStock },
+    { key: 'dispatched', label: tr('grn.stock.dispatched'), value: safeDispatched },
   ];
 
   return (
@@ -132,9 +133,9 @@ export const GRNHeroHeader: React.FC<GRNHeroHeaderProps> = ({
           style={styles.titleBlock}
           accessible
           accessibilityRole="header"
-          accessibilityLabel={[`GRN ${gr_no}`, customer_name, formattedDate].filter(Boolean).join(', ')}
+          accessibilityLabel={[tr('grn.details.titleWithNumber', { number: String(gr_no) }), customer_name, formattedDate].filter(Boolean).join(', ')}
         >
-          <Text style={styles.docType}>GRN</Text>
+          <Text style={styles.docType}>{tr('common.grn')}</Text>
           <Text style={styles.number}>{gr_no}</Text>
           {meta ? (
             <Text style={styles.meta} numberOfLines={2}>
@@ -175,19 +176,19 @@ export const GRNHeroHeader: React.FC<GRNHeroHeaderProps> = ({
         <View
           style={styles.progressSection}
           accessible
-          accessibilityLabel={`${stockPercentage}% in stock, ${dispatchPercentage}% dispatched`}
+          accessibilityLabel={tr('grn.stock.splitLabel', { stock: stockPercentage, dispatched: dispatchPercentage })}
         >
           <View style={styles.legendRow}>
             <View style={styles.legendItem}>
               <View style={[styles.legendDot, { backgroundColor: stockSegmentColor }]} />
               <Text style={styles.legendText}>
-                In stock <Text style={styles.legendValue}>{stockPercentage}%</Text>
+                {tr('grn.stock.inStock')}{' '}<Text style={styles.legendValue}>{formatNumber(stockPercentage)}%</Text>
               </Text>
             </View>
             <View style={styles.legendItem}>
               <View style={[styles.legendDot, { backgroundColor: dispatchSegmentColor }]} />
               <Text style={styles.legendText}>
-                Dispatched <Text style={styles.legendValue}>{dispatchPercentage}%</Text>
+                {tr('grn.stock.dispatched')}{' '}<Text style={styles.legendValue}>{formatNumber(dispatchPercentage)}%</Text>
               </Text>
             </View>
           </View>

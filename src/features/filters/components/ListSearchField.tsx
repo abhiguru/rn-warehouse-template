@@ -9,6 +9,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { t as translate } from '@/i18n';
 import { fontWeight, iconSize, layout, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 
 export const SEARCH_DEBOUNCE_MS = 300;
@@ -140,7 +141,7 @@ export function ListSearchField({ listKey, value, onSearch, placeholder, loading
           }}
         />
         {loading && text.trim().length >= SEARCH_MIN_LENGTH ? (
-          <View style={styles.trailing} accessibilityLabel="Searching" accessibilityLiveRegion="polite">
+          <View style={styles.trailing} accessibilityLabel={translate('filters.search.searching')} accessibilityLiveRegion="polite">
             <ActivityIndicator size="small" color={t.brand.tint} />
           </View>
         ) : text.length > 0 ? (
@@ -151,7 +152,7 @@ export function ListSearchField({ listKey, value, onSearch, placeholder, loading
               commit('');
             }}
             accessibilityRole="button"
-            accessibilityLabel="Clear search"
+            accessibilityLabel={translate('common.clearSearch')}
           >
             <Icon name="close-circle" size={iconSize.md} color={t.icon.secondary} />
           </Pressable>
@@ -160,7 +161,7 @@ export function ListSearchField({ listKey, value, onSearch, placeholder, loading
       {recent.length > 0 && (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled">
           <View style={styles.recentRow}>
-            <Text style={styles.recentLabel}>Recent</Text>
+            <Text style={styles.recentLabel}>{translate('filters.search.recent')}</Text>
             {recent.map(entry => (
               <Pressable
                 key={entry}
@@ -170,7 +171,7 @@ export function ListSearchField({ listKey, value, onSearch, placeholder, loading
                   commit(entry);
                 }}
                 accessibilityRole="button"
-                accessibilityLabel={`Search again for ${entry}`}
+                accessibilityLabel={translate('filters.search.searchAgain', { text: entry })}
               >
                 <Text style={styles.recentText} numberOfLines={1} maxFontSizeMultiplier={1.6}>{entry}</Text>
               </Pressable>

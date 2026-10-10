@@ -34,6 +34,8 @@ import { showAlert } from '@/utils/alert';
 import { avatarColors, avatarInitials } from '@/utils/avatar';
 import { formatMobile } from '@/utils/formatters';
 import { StatusTag } from '@/components/ui';
+import { t as tr } from '@/i18n';
+import { roleLabel as roleName } from '@/utils/roleLabel';
 
 /** Roles are categories, not statuses: staff roles informative, others neutral (as in the users list). */
 const ROLE_TONE: Record<string, 'informative' | 'neutral'> = {
@@ -62,7 +64,7 @@ const UserProfileScreen: React.FC = () => {
       await dispatch(logout()).unwrap();
       router.replace('/login');
     } catch {
-      showAlert("Couldn't sign out", 'Check your connection and try again.');
+      showAlert(tr('auth.signOut.couldNotTitle'), tr('common.checkConnection'));
       setShowLogoutModal(false);
     } finally {
       setLoggingOut(false);
@@ -96,9 +98,8 @@ const UserProfileScreen: React.FC = () => {
   // colours and initials on its own circle (same person, same colour everywhere).
   const avatarTone = avatarColors(userProfile?.id ?? userProfile?.name, t);
 
-  const roleLabel = userProfile?.role
-    ? userProfile.role.charAt(0).toUpperCase() + userProfile.role.slice(1)
-    : 'User';
+  const roleLabel = roleName(userProfile?.role);
+  const profileName = userProfile?.name || tr('users.fallbackName');
 
   // Profile data sections
   const profileSections: Array<{
@@ -106,20 +107,20 @@ const UserProfileScreen: React.FC = () => {
     items: Array<{ label: string; value: string; icon: string }>;
   }> = [
     {
-      title: 'Account information',
+      title: tr('users.profile.accountInformation'),
       items: [
         {
-          label: 'Name',
-          value: userProfile?.name || 'Not provided',
+          label: tr('users.fields.name'),
+          value: userProfile?.name || tr('users.profile.notProvided'),
           icon: 'account-outline',
         },
         {
-          label: 'Phone',
-          value: userProfile?.mobile ? formatMobile(userProfile.mobile) : 'Not provided',
+          label: tr('users.fields.phone'),
+          value: userProfile?.mobile ? formatMobile(userProfile.mobile) : tr('users.profile.notProvided'),
           icon: 'phone-outline',
         },
         {
-          label: 'Role',
+          label: tr('users.fields.role'),
           value: roleLabel,
           icon: 'shield-check-outline',
         },
@@ -135,15 +136,15 @@ const UserProfileScreen: React.FC = () => {
       <View style={styles.navigationBar}>
         <HeaderBackButton style={styles.navBackButton} />
         <Text style={styles.navTitle} accessibilityRole="header">
-          Profile
+          {tr('users.profile.title')}
         </Text>
         <Pressable
           style={styles.navEditButton}
           onPress={handleEditProfile}
           accessibilityRole="button"
-          accessibilityLabel="Edit profile"
+          accessibilityLabel={tr('users.profile.edit')}
         >
-          <Text style={styles.navEditText}>Edit</Text>
+          <Text style={styles.navEditText}>{tr('common.edit')}</Text>
         </Pressable>
       </View>
 
@@ -161,7 +162,7 @@ const UserProfileScreen: React.FC = () => {
               importantForAccessibility="no-hide-descendants"
             >
               <Text style={[styles.avatarText, { color: avatarTone.text }]} maxFontSizeMultiplier={1}>
-                {avatarInitials(userProfile?.name || 'User')}
+                {avatarInitials(profileName)}
               </Text>
             </View>
             <Pressable
@@ -169,14 +170,14 @@ const UserProfileScreen: React.FC = () => {
               onPress={handleEditProfile}
               hitSlop={space.sm}
               accessibilityRole="button"
-              accessibilityLabel="Edit profile"
+              accessibilityLabel={tr('users.profile.edit')}
             >
               <Icon name="pencil-outline" size={iconSize.sm} color={t.brand.onFill} />
             </Pressable>
           </View>
 
           <Text style={styles.profileName} accessibilityRole="header">
-            {userProfile?.name || 'User'}
+            {profileName}
           </Text>
 
           <StatusTag
@@ -218,7 +219,7 @@ const UserProfileScreen: React.FC = () => {
         {/* Actions Section */}
         <View style={styles.section}>
           <Text style={styles.sectionHeader} accessibilityRole="header">
-            Actions
+            {tr('users.profile.actions')}
           </Text>
           <View style={styles.sectionContent}>
             {/* Edit Profile */}
@@ -230,13 +231,13 @@ const UserProfileScreen: React.FC = () => {
               ]}
               onPress={handleEditProfile}
               accessibilityRole="button"
-              accessibilityLabel="Edit profile"
-              accessibilityHint="Update your name"
+              accessibilityLabel={tr('users.profile.edit')}
+              accessibilityHint={tr('users.profile.editHint')}
             >
               <Icon name="pencil-outline" size={iconSize.md} color={t.brand.tint} />
               <View style={styles.actionContent}>
-                <Text style={styles.actionLabel}>Edit profile</Text>
-                <Text style={styles.actionSubtitle}>Update your personal information.</Text>
+                <Text style={styles.actionLabel}>{tr('users.profile.edit')}</Text>
+                <Text style={styles.actionSubtitle}>{tr('users.profile.editSubtitle')}</Text>
               </View>
               <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />
             </Pressable>
@@ -246,12 +247,12 @@ const UserProfileScreen: React.FC = () => {
               style={({ pressed }) => [styles.actionRow, pressed && styles.actionRowPressed]}
               onPress={handleLogout}
               accessibilityRole="button"
-              accessibilityLabel="Sign out"
+              accessibilityLabel={tr('auth.signOut.action')}
             >
               <Icon name="logout" size={iconSize.md} color={t.status.negative.text} />
               <View style={styles.actionContent}>
-                <Text style={[styles.actionLabel, styles.actionLabelNegative]}>Sign out</Text>
-                <Text style={styles.actionSubtitle}>Sign out of this phone.</Text>
+                <Text style={[styles.actionLabel, styles.actionLabelNegative]}>{tr('auth.signOut.action')}</Text>
+                <Text style={styles.actionSubtitle}>{tr('users.profile.signOutSubtitle')}</Text>
               </View>
             </Pressable>
           </View>
@@ -261,7 +262,7 @@ const UserProfileScreen: React.FC = () => {
         <View style={styles.footer}>
           <Icon name="snowflake" size={iconSize.lg} color={t.icon.secondary} />
           <Text style={styles.footerTitle}>{process.env.EXPO_PUBLIC_APP_NAME || 'Warehouse Manager'}</Text>
-          <Text style={styles.footerSubtitle}>Management System v1.0</Text>
+          <Text style={styles.footerSubtitle}>{tr('settings.footer.version', { version: '1.0' })}</Text>
         </View>
       </ScrollView>
 
@@ -277,7 +278,7 @@ const UserProfileScreen: React.FC = () => {
           style={styles.modalOverlay}
           onPress={() => !loggingOut && setShowLogoutModal(false)}
           accessibilityRole="button"
-          accessibilityLabel="Cancel"
+          accessibilityLabel={tr('common.cancel')}
         >
           <Pressable
             style={styles.modalDialog}
@@ -287,10 +288,10 @@ const UserProfileScreen: React.FC = () => {
           >
             <Icon name="logout" size={iconSize.xl} color={t.status.negative.text} />
             <Text style={styles.modalTitle} accessibilityRole="header">
-              Sign out?
+              {tr('auth.signOut.confirmTitle')}
             </Text>
             <Text style={styles.modalMessage}>
-              You'll need your mobile number and a one-time code to sign in again.
+              {tr('auth.signOut.confirmMessage')}
             </Text>
 
             <View style={styles.modalActions}>
@@ -301,20 +302,20 @@ const UserProfileScreen: React.FC = () => {
                 accessibilityRole="button"
                 accessibilityState={{ disabled: loggingOut }}
               >
-                <Text style={styles.modalButtonTextSecondary}>Cancel</Text>
+                <Text style={styles.modalButtonTextSecondary}>{tr('common.cancel')}</Text>
               </Pressable>
               <Pressable
                 style={({ pressed }) => [styles.modalButton, styles.modalButtonDestructive, pressed && styles.modalButtonDestructivePressed]}
                 onPress={confirmLogout}
                 disabled={loggingOut}
                 accessibilityRole="button"
-                accessibilityLabel="Sign out"
+                accessibilityLabel={tr('auth.signOut.action')}
                 accessibilityState={{ busy: loggingOut }}
               >
                 {loggingOut ? (
                   <ActivityIndicator size="small" color={t.destructive.onFill} />
                 ) : (
-                  <Text style={styles.modalButtonTextDestructive}>Sign out</Text>
+                  <Text style={styles.modalButtonTextDestructive}>{tr('auth.signOut.action')}</Text>
                 )}
               </Pressable>
             </View>

@@ -5,6 +5,7 @@
  * no "Sort and filter" page: the search field and one chip are all there is.
  * Orders show no date or number, so nothing typed is read as a date or range.
  */
+import { normalizeDigits, t } from '@/i18n';
 import type { OrderFilters } from '@/types/order.types';
 import type { FilterListConfig } from '../types';
 
@@ -13,7 +14,7 @@ export type OrderListRequest = Pick<OrderFilters, 'has_items' | 'search'>;
 const toRequest = (withItemsAlways: boolean): FilterListConfig<OrderListRequest>['toRequest'] => values => {
   const request: OrderListRequest = {};
   if (withItemsAlways || values.withItems === true) request.has_items = true;
-  if (typeof values.search === 'string' && values.search.trim()) request.search = values.search.trim().split(/\s+/).join(' ');
+  if (typeof values.search === 'string' && values.search.trim()) request.search = normalizeDigits(values.search).trim().split(/\s+/).join(' ');
   return request;
 };
 
@@ -24,10 +25,11 @@ const noCount = async () => {
 
 export const ORDER_FILTERS: FilterListConfig<OrderListRequest> = {
   listKey: 'order-list',
-  title: 'Filter orders',
+  // Labels are getters so they follow the app's language (see FieldBase in ../types).
+  get title() { return t('filters.list.order.title'); },
   noun: ['order', 'orders'],
-  search: { placeholder: 'Search orders', dates: false, range: null },
-  fields: [{ kind: 'toggle', key: 'withItems', label: 'With items', icon: 'cart-check' }],
+  search: { get placeholder() { return t('filters.list.order.search'); }, dates: false, range: null },
+  fields: [{ kind: 'toggle', key: 'withItems', get label() { return t('filters.field.withItems'); }, icon: 'cart-check' }],
   fastFilters: ['withItems'],
   toRequest: toRequest(false),
   fetchCount: noCount,
@@ -36,9 +38,9 @@ export const ORDER_FILTERS: FilterListConfig<OrderListRequest> = {
 /** The Queue lists only orders that have items. */
 export const ORDER_QUEUE_FILTERS: FilterListConfig<OrderListRequest> = {
   listKey: 'order-queue-list',
-  title: 'Filter the queue',
+  get title() { return t('filters.list.queue.title'); },
   noun: ['order', 'orders'],
-  search: { placeholder: 'Search the queue', dates: false, range: null },
+  search: { get placeholder() { return t('filters.list.queue.search'); }, dates: false, range: null },
   fields: [],
   fastFilters: [],
   toRequest: toRequest(true),

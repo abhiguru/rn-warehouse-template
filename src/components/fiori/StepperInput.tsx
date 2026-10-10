@@ -16,6 +16,7 @@ import {
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { iconSize, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
+import { localizeDigits, normalizeDigits, t as tr } from '@/i18n';
 
 /** Visual size of the minus/plus buttons; the touch area is padded to touchTarget. */
 const BUTTON_SIZE = 36;
@@ -67,6 +68,8 @@ export const StepperInput: React.FC<StepperInputProps> = ({
   const canDecrement = value > min && !disabled;
   const canIncrement = value < max && !disabled;
   const hasError = !!errorText;
+  // ૦-૯ in Gujarati; the field being typed in keeps what the person typed
+  const displayValue = localizeDigits(value > 0 ? value.toFixed(decimalPlaces) : '0');
 
   const handleDecrement = () => {
     if (canDecrement) {
@@ -92,7 +95,7 @@ export const StepperInput: React.FC<StepperInputProps> = ({
 
   const handleInputChange = (text: string) => {
     // Allow empty, numbers, and decimal point
-    const sanitized = text.replace(/[^0-9.]/g, '');
+    const sanitized = normalizeDigits(text).replace(/[^0-9.]/g, '');
     setInputValue(sanitized);
   };
 
@@ -124,7 +127,7 @@ export const StepperInput: React.FC<StepperInputProps> = ({
               disabled={!canDecrement}
               hitSlop={BUTTON_HIT_SLOP}
               accessibilityRole="button"
-              accessibilityLabel={label ? `Decrease ${label.toLowerCase()}` : 'Decrease'}
+              accessibilityLabel={label ? tr('components.stepper.decreaseLabel', { label: label.toLowerCase() }) : tr('components.stepper.decrease')}
               accessibilityState={{ disabled: !canDecrement }}
             >
               <Icon name="minus" size={iconSize.md} color={t.brand.tint} />
@@ -136,8 +139,8 @@ export const StepperInput: React.FC<StepperInputProps> = ({
             disabled={disabled}
             hitSlop={BUTTON_HIT_SLOP}
             accessibilityRole="button"
-            accessibilityLabel={`${label ?? 'Value'}, ${prefix ?? ''}${value > 0 ? value.toFixed(decimalPlaces) : '0'}${suffix ?? ''}`}
-            accessibilityHint="Opens the keyboard to type a value"
+            accessibilityLabel={`${label ?? tr('components.stepper.value')}, ${prefix ?? ''}${displayValue}${suffix ?? ''}`}
+            accessibilityHint={tr('components.stepper.valueHint')}
           >
             {isEditing ? (
               <TextInput
@@ -154,7 +157,7 @@ export const StepperInput: React.FC<StepperInputProps> = ({
               />
             ) : (
               <Text style={[styles.valueText, disabled && styles.valueTextDisabled]}>
-                {prefix}{value > 0 ? value.toFixed(decimalPlaces) : '0'}{suffix}
+                {prefix}{displayValue}{suffix}
               </Text>
             )}
           </Pressable>
@@ -165,7 +168,7 @@ export const StepperInput: React.FC<StepperInputProps> = ({
               disabled={!canIncrement}
               hitSlop={BUTTON_HIT_SLOP}
               accessibilityRole="button"
-              accessibilityLabel={label ? `Increase ${label.toLowerCase()}` : 'Increase'}
+              accessibilityLabel={label ? tr('components.stepper.increaseLabel', { label: label.toLowerCase() }) : tr('components.stepper.increase')}
               accessibilityState={{ disabled: !canIncrement }}
             >
               <Icon name="plus" size={iconSize.md} color={t.brand.tint} />
@@ -222,7 +225,7 @@ export const StepperInput: React.FC<StepperInputProps> = ({
             disabled={!canDecrement}
             hitSlop={BUTTON_HIT_SLOP}
             accessibilityRole="button"
-            accessibilityLabel={label ? `Decrease ${label.toLowerCase()}` : 'Decrease'}
+            accessibilityLabel={label ? tr('components.stepper.decreaseLabel', { label: label.toLowerCase() }) : tr('components.stepper.decrease')}
             accessibilityState={{ disabled: !canDecrement }}
           >
             <Icon name="minus" size={iconSize.md} color={t.brand.tint} />
@@ -234,8 +237,8 @@ export const StepperInput: React.FC<StepperInputProps> = ({
           disabled={disabled}
           hitSlop={BUTTON_HIT_SLOP}
           accessibilityRole="button"
-          accessibilityLabel={`${label ?? 'Value'}, ${prefix ?? ''}${value > 0 ? value.toFixed(decimalPlaces) : '0'}${suffix ?? ''}`}
-          accessibilityHint="Opens the keyboard to type a value"
+          accessibilityLabel={`${label ?? tr('components.stepper.value')}, ${prefix ?? ''}${displayValue}${suffix ?? ''}`}
+          accessibilityHint={tr('components.stepper.valueHint')}
         >
           {isEditing ? (
             <TextInput
@@ -252,7 +255,7 @@ export const StepperInput: React.FC<StepperInputProps> = ({
             />
           ) : (
             <Text style={[styles.valueText, disabled && styles.valueTextDisabled]}>
-              {prefix}{value > 0 ? value.toFixed(decimalPlaces) : '0'}{suffix}
+              {prefix}{displayValue}{suffix}
             </Text>
           )}
         </Pressable>
@@ -263,7 +266,7 @@ export const StepperInput: React.FC<StepperInputProps> = ({
             disabled={!canIncrement}
             hitSlop={BUTTON_HIT_SLOP}
             accessibilityRole="button"
-            accessibilityLabel={label ? `Increase ${label.toLowerCase()}` : 'Increase'}
+            accessibilityLabel={label ? tr('components.stepper.increaseLabel', { label: label.toLowerCase() }) : tr('components.stepper.increase')}
             accessibilityState={{ disabled: !canIncrement }}
           >
             <Icon name="plus" size={iconSize.md} color={t.brand.tint} />

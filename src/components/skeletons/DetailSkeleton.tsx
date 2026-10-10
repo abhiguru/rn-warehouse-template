@@ -27,6 +27,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useThemedStyles } from '@/hooks/useTheme';
 import { layout, radius, space } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
+import { t as tr } from '@/i18n';
 
 export interface DetailSkeletonProps {
   /** Show hero header section (default: true) */
@@ -190,7 +191,7 @@ export const DetailSkeleton = memo<DetailSkeletonProps>(({
     <View
       style={styles.container}
       accessible
-      accessibilityLabel="Loading details"
+      accessibilityLabel={tr('components.skeleton.loadingDetails')}
       accessibilityState={{ busy: true }}
     >
       {/* Hero Header */}

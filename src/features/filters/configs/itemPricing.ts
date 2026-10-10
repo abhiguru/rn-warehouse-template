@@ -4,6 +4,7 @@
  */
 import { getItemStoragePrices } from '@/services/item-pricing-service';
 import type { ItemPricingFilters, ItemPricingListParams } from '@/types/item-pricing.types';
+import { t } from '@/i18n';
 import { resolveDateRange } from '../datePresets';
 import { customerSource, itemSource } from '../pickerSources';
 import type { DateRangeValue, FilterListConfig, NumberRangeValue } from '../types';
@@ -13,27 +14,28 @@ export type ItemPricingRequest = Pick<ItemPricingListParams, 'p_filters'>;
 
 export const ITEM_PRICING_FILTERS: FilterListConfig<ItemPricingRequest> = {
   listKey: 'item-pricing-list',
-  title: 'Filter prices',
+  // Labels are getters so they follow the app's language (see FieldBase in ../types).
+  get title() { return t('filters.list.price.title'); },
   noun: ['price', 'prices'],
   fields: [
-    { kind: 'picker', key: 'items', label: 'Item', icon: 'package-variant', noun: ['item', 'items'], source: itemSource },
-    { kind: 'picker', key: 'customers', label: 'Customer', icon: 'account', noun: ['customer', 'customers'], source: customerSource },
+    { kind: 'picker', key: 'items', get label() { return t('common.item'); }, icon: 'package-variant', noun: ['item', 'items'], source: itemSource },
+    { kind: 'picker', key: 'customers', get label() { return t('common.customer'); }, icon: 'account', noun: ['customer', 'customers'], source: customerSource },
     {
       kind: 'choice',
       key: 'priceType',
-      label: 'Price type',
+      get label() { return t('filters.field.priceType'); },
       icon: 'cash',
       defaultValue: 'all',
       options: [
-        { value: 'all', label: 'All' },
-        { value: 'one_time', label: 'One-time' },
-        { value: 'monthly', label: 'Monthly' },
+        { value: 'all', get label() { return t('common.all'); } },
+        { value: 'one_time', get label() { return t('filters.option.oneTime'); } },
+        { value: 'monthly', get label() { return t('filters.option.monthly'); } },
       ],
     },
-    { kind: 'numberRange', key: 'weight', label: 'Weight', icon: 'weight-kilogram', unit: 'kg' },
+    { kind: 'numberRange', key: 'weight', get label() { return t('common.weight'); }, icon: 'weight-kilogram', get unit() { return t('filters.unit.kg'); } },
     // The date a price takes effect: whole days, as the backend compares them.
-    { kind: 'dateRange', key: 'effective', label: 'Effective date', icon: 'calendar-range' },
-    { kind: 'toggle', key: 'expired', label: 'Include expired', icon: 'clock-alert-outline' },
+    { kind: 'dateRange', key: 'effective', get label() { return t('filters.field.effectiveDate'); }, icon: 'calendar-range' },
+    { kind: 'toggle', key: 'expired', get label() { return t('filters.field.includeExpired'); }, icon: 'clock-alert-outline' },
   ],
   fastFilters: ['items', 'customers', 'priceType', 'expired'],
 

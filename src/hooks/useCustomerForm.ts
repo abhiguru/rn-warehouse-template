@@ -69,10 +69,11 @@ import {
 import {
   CUSTOMER_STEP_NUMBERS,
   getStepRoutePath,
-  getNextStepLabel,
 } from '@/constants/customerSteps';
 
 import { showAlert } from '@/utils/alert';
+import { t } from '@/i18n';
+import { customerNextStepLabel } from '@/features/customer/customerStepLabels';
 // =============================================================================
 // TYPES
 // =============================================================================
@@ -248,7 +249,7 @@ export function useCustomerForm(
         const result = await getCustomerById(id);
 
         if (!result.success || !result.data) {
-          showAlert('Error', result.message || 'Failed to load customer');
+          showAlert(t('customers.save.errorTitle'), result.message || t('customers.save.loadFailed'));
           router.back();
           return;
         }
@@ -285,7 +286,7 @@ export function useCustomerForm(
         console.log('[useCustomerForm] Customer loaded successfully');
       } catch (error) {
         console.error('[useCustomerForm] Error loading customer:', error);
-        showAlert('Error', 'Failed to load customer');
+        showAlert(t('customers.save.errorTitle'), t('customers.save.loadFailed'));
         router.back();
       } finally {
         dispatch(setIsLoading(false));
@@ -575,8 +576,8 @@ export function useCustomerForm(
     if (!validation.isValid) {
       dispatch(setValidationErrors(validation.errors));
       showAlert(
-        'Validation Error',
-        'Please fix the errors before submitting.'
+        t('customers.save.validationTitle'),
+        t('customers.save.validationMessage')
       );
       return { success: false, error: 'Validation failed' };
     }
@@ -623,7 +624,7 @@ export function useCustomerForm(
       }
 
       if (!result.success) {
-        showAlert('Error', result.message || 'Failed to save customer');
+        showAlert(t('customers.save.errorTitle'), result.message || t('customers.save.saveFailed'));
         return { success: false, error: result.error };
       }
 
@@ -631,13 +632,13 @@ export function useCustomerForm(
       const newCustomerId = result.data?.id || customerId;
 
       showAlert(
-        'Success',
+        t('customers.save.successTitle'),
         isCreateMode
-          ? 'Customer created successfully'
-          : 'Customer updated successfully',
+          ? t('customers.save.created')
+          : t('customers.save.updated'),
         [
           {
-            text: 'OK',
+            text: t('common.ok'),
             onPress: () => {
               dispatch(resetForm());
               router.replace('/customers');
@@ -649,7 +650,7 @@ export function useCustomerForm(
       return { success: true, customerId: newCustomerId || undefined };
     } catch (error) {
       console.error('[useCustomerForm] Submit error:', error);
-      showAlert('Error', 'An unexpected error occurred');
+      showAlert(t('customers.save.errorTitle'), t('customers.save.unexpected'));
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error',
@@ -673,7 +674,7 @@ export function useCustomerForm(
   // ===========================================================================
 
   const getNextButtonLabel = useCallback((): string => {
-    return getNextStepLabel(currentStep, !isCreateMode);
+    return customerNextStepLabel(currentStep, !isCreateMode);
   }, [currentStep, isCreateMode]);
 
   // ===========================================================================

@@ -23,12 +23,11 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useAppSelector, useAppDispatch } from '@/store/hooks';
 import { logout, deleteAccount } from '@/store/slices/authSlice';
 import { useTheme, useThemedStyles, useTokens } from '@/hooks/useTheme';
-import { LANGUAGES, t, type LanguagePreference } from '@/i18n';
+import { LANGUAGES, getLanguage, normalizeDigits, t, type LanguagePreference, type TranslationKey } from '@/i18n';
 import { useAppLanguage } from '@/i18n/useAppLanguage';
 import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
 import {
   BRANDS,
-  BRAND_LABELS,
   fontWeight,
   getTokens,
   iconSize,
@@ -43,15 +42,22 @@ import { ThemePreference } from '@/store/slices/themeSlice';
 
 import { showAlert } from '@/utils/alert';
 import { Avatar } from '@/components/ui';
+import { roleLabel as roleName } from '@/utils/roleLabel';
 const THEME_OPTIONS: {
   value: ThemePreference;
-  label: string;
+  label: TranslationKey;
   icon: string;
 }[] = [
-  { value: 'system', label: 'System', icon: 'cellphone' },
-  { value: 'light', label: 'Light', icon: 'white-balance-sunny' },
-  { value: 'dark', label: 'Dark', icon: 'weather-night' },
+  { value: 'system', label: 'settings.appearance.system', icon: 'cellphone' },
+  { value: 'light', label: 'settings.appearance.light', icon: 'white-balance-sunny' },
+  { value: 'dark', label: 'settings.appearance.dark', icon: 'weather-night' },
 ];
+
+/** Brand names by their stored value. */
+const BRAND_NAME_KEYS: Record<(typeof BRANDS)[number], TranslationKey> = {
+  orange: 'settings.brand.orange',
+  gcsa: 'settings.brand.gcsa',
+};
 
 const SettingsScreen: React.FC = () => {
   const dispatch = useAppDispatch();
@@ -95,7 +101,7 @@ const SettingsScreen: React.FC = () => {
       await dispatch(logout()).unwrap();
       router.replace('/login');
     } catch {
-      showAlert("Couldn't sign out", 'Check your connection and try again.');
+      showAlert(t('auth.signOut.couldNotTitle'), t('common.checkConnection'));
       setShowLogoutModal(false);
     } finally {
       setLoggingOut(false);
@@ -126,12 +132,13 @@ const SettingsScreen: React.FC = () => {
     // Check all possible phone field names due to type inconsistencies
     const userPhone = userProfile?.mobile || userProfile?.phoneNumber || '';
     const normalizedUserPhone = userPhone.replace(/\D/g, '').slice(-10);
-    const normalizedInputPhone = deleteConfirmPhone
+    // ૦-૯ typed on a Gujarati keyboard count as 0-9.
+    const normalizedInputPhone = normalizeDigits(deleteConfirmPhone)
       .replace(/\D/g, '')
       .slice(-10);
 
     if (normalizedInputPhone !== normalizedUserPhone) {
-      setDeleteError("This number doesn't match your account. Check it and try again.");
+      setDeleteError(t('settings.deleteAccount.mismatch'));
       return;
     }
 
@@ -146,7 +153,7 @@ const SettingsScreen: React.FC = () => {
       setDeleteError(
         typeof error === 'string'
           ? error
-          : "Couldn't delete your account. Check your connection and try again."
+          : t('settings.deleteAccount.failed')
 
       );
     } finally {
@@ -190,9 +197,8 @@ const SettingsScreen: React.FC = () => {
     !!userProfile &&
     (userProfile.role === 'supervisor' || userProfile.role === 'admin');
 
-  const roleLabel = userProfile?.role
-    ? userProfile.role.charAt(0).toUpperCase() + userProfile.role.slice(1)
-    : 'User';
+  const roleLabel = roleName(userProfile?.role);
+  const profileName = userProfile?.name || t('users.fallbackName');
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -202,7 +208,7 @@ const SettingsScreen: React.FC = () => {
       <View style={styles.navigationBar}>
         <HeaderBackButton style={styles.navBackButton} />
         <Text style={styles.navTitle} accessibilityRole="header">
-          Settings
+          {t('settings.title')}
         </Text>
         <View style={styles.navPlaceholder} />
       </View>
@@ -217,63 +223,63 @@ const SettingsScreen: React.FC = () => {
           style={({ pressed }) => [styles.profileCard, pressed && styles.rowPressed]}
           onPress={handleProfile}
           accessibilityRole="button"
-          accessibilityLabel={`${userProfile?.name || 'User'}, ${roleLabel}`}
-          accessibilityHint="Opens your profile"
+          accessibilityLabel={`${profileName}, ${roleLabel}`}
+          accessibilityHint={t('settings.profileHint')}
         >
-          <Avatar name={userProfile?.name || 'User'} id={userProfile?.id} size="lg" />
+          <Avatar name={profileName} id={userProfile?.id} size="lg" />
           <View style={styles.profileInfo}>
-            <Text style={styles.profileName}>{userProfile?.name || 'User'}</Text>
+            <Text style={styles.profileName}>{profileName}</Text>
             <Text style={styles.profileRole}>{roleLabel}</Text>
           </View>
           <Icon name="chevron-right" size={iconSize.md} color={tokens.icon.secondary} />
         </Pressable>
 
         {/* App Features Section */}
-        <SettingsSection title="App features">
+        <SettingsSection title={t('settings.features.title')}>
           {canManageCustomers && (
             <SettingsRow
               icon="account-outline"
-              label="Customers"
-              subtitle="Manage customer accounts"
+              label={t('common.customers')}
+              subtitle={t('settings.features.customersSubtitle')}
               onPress={handleCustomers}
             />
           )}
           {userProfile?.role === 'admin' && (
             <SettingsRow
               icon="account-plus-outline"
-              label="Enrollment review"
-              subtitle="Approve verified customers and assign access"
+              label={t('auth.review.screenTitle')}
+              subtitle={t('settings.features.enrollmentReviewSubtitle')}
               onPress={() => router.push('/enrollment-review')}
             />
           )}
           {canManageItems && (
             <SettingsRow
               icon="cube-outline"
-              label="Items"
-              subtitle="Manage inventory items"
+              label={t('common.items')}
+              subtitle={t('settings.features.itemsSubtitle')}
               onPress={handleItems}
             />
           )}
           {canManageUsers && (
             <SettingsRow
               icon="account-circle-outline"
-              label="Users"
-              subtitle="Manage user accounts"
+              label={t('users.list.title')}
+              subtitle={t('settings.features.usersSubtitle')}
               onPress={handleUsers}
             />
           )}
           {canAccessItemPricing && (
             <SettingsRow
               icon="tag-outline"
-              label="Item pricing"
-              subtitle="View and manage prices"
+              label={t('settings.features.itemPricing')}
+              subtitle={t('settings.features.itemPricingSubtitle')}
               onPress={handleItemPricing}
             />
           )}
           <SettingsRow
             icon="thermometer"
-            label="Temperature and humidity"
-            subtitle="Unavailable in the local demo"
+            label={t('settings.features.sensors')}
+            subtitle={t('settings.features.sensorsSubtitle')}
             onPress={handleSensors}
             last
           />
@@ -281,16 +287,17 @@ const SettingsScreen: React.FC = () => {
 
         {/* Appearance Section */}
         <SettingsSection
-          title="Appearance"
+          title={t('settings.appearance.title')}
           footer={
             themePreference === 'system'
-              ? `Follows your phone's setting. ${isDarkMode ? 'Dark' : 'Light'} mode is on now.`
-              : `${themePreference === 'dark' ? 'Dark' : 'Light'} mode is always on.`
+              ? t(isDarkMode ? 'settings.appearance.footerSystemDark' : 'settings.appearance.footerSystemLight')
+              : t(themePreference === 'dark' ? 'settings.appearance.footerDark' : 'settings.appearance.footerLight')
           }
         >
-          <View style={styles.optionGroup} accessibilityRole="radiogroup" accessibilityLabel="Appearance">
+          <View style={styles.optionGroup} accessibilityRole="radiogroup" accessibilityLabel={t('settings.appearance.title')}>
             {THEME_OPTIONS.map(option => {
               const isSelected = themePreference === option.value;
+              const label = t(option.label);
               return (
                 <Pressable
                   key={option.value}
@@ -302,7 +309,7 @@ const SettingsScreen: React.FC = () => {
                   onPress={() => setThemePreference(option.value)}
                   accessibilityRole="radio"
                   accessibilityState={{ selected: isSelected, checked: isSelected }}
-                  accessibilityLabel={option.label}
+                  accessibilityLabel={label}
                 >
                   <View style={[styles.optionIcon, isSelected && styles.optionIconSelected]}>
                     <Icon
@@ -312,7 +319,7 @@ const SettingsScreen: React.FC = () => {
                     />
                   </View>
                   <Text style={[styles.optionLabel, isSelected && styles.optionLabelSelected]}>
-                    {option.label}
+                    {label}
                   </Text>
                 </Pressable>
               );
@@ -360,11 +367,12 @@ const SettingsScreen: React.FC = () => {
         </SettingsSection>
 
         {/* Brand Section: colour palette for the whole app (docs/STYLE_GUIDE.md) */}
-        <SettingsSection title="Brand" footer="Colours for the whole app. Works with light and dark mode.">
-          <View style={styles.optionGroup} accessibilityRole="radiogroup" accessibilityLabel="Brand">
+        <SettingsSection title={t('settings.brand.title')} footer={t('settings.brand.footer')}>
+          <View style={styles.optionGroup} accessibilityRole="radiogroup" accessibilityLabel={t('settings.brand.title')}>
             {BRANDS.map(option => {
               const isSelected = brand === option;
               const swatch = getTokens(option, resolvedMode);
+              const brandName = t(BRAND_NAME_KEYS[option]);
               return (
                 <Pressable
                   key={option}
@@ -376,7 +384,7 @@ const SettingsScreen: React.FC = () => {
                   onPress={() => setBrand(option)}
                   accessibilityRole="radio"
                   accessibilityState={{ selected: isSelected, checked: isSelected }}
-                  accessibilityLabel={`${BRAND_LABELS[option]} brand`}
+                  accessibilityLabel={t('settings.brand.optionLabel', { brand: brandName })}
                 >
                   <View style={styles.brandSwatches} accessible={false}>
                     <View style={[styles.brandSwatch, { backgroundColor: swatch.brand.fill }]} />
@@ -387,7 +395,7 @@ const SettingsScreen: React.FC = () => {
                       <Icon name="check" size={iconSize.sm} color={tokens.brand.tint} />
                     )}
                     <Text style={[styles.optionLabel, isSelected && styles.optionLabelSelected]}>
-                      {BRAND_LABELS[option]}
+                      {brandName}
                     </Text>
                   </View>
                 </Pressable>
@@ -397,23 +405,23 @@ const SettingsScreen: React.FC = () => {
         </SettingsSection>
 
         {/* Account Section */}
-        <SettingsSection title="Account">
+        <SettingsSection title={t('settings.account.title')}>
           <SettingsRow
             icon="server"
-            label="Change warehouse server"
+            label={t('auth.server.change')}
             onPress={() => router.push('/operator-server')}
           />
           <SettingsRow
             icon="logout"
-            label="Sign out"
+            label={t('auth.signOut.action')}
             onPress={handleLogout}
             showChevron={false}
             destructive
           />
           <SettingsRow
             icon="trash-can-outline"
-            label="Delete account"
-            subtitle="Permanently delete your account and data"
+            label={t('settings.account.deleteAccount')}
+            subtitle={t('settings.account.deleteAccountSubtitle')}
             onPress={handleDeleteAccount}
             showChevron={false}
             destructive
@@ -422,28 +430,32 @@ const SettingsScreen: React.FC = () => {
         </SettingsSection>
 
         {/* About Section */}
-        <SettingsSection title="About">
+        {/* The two pages are not translated: in Gujarati the footer says so. */}
+        <SettingsSection
+          title={t('settings.about.title')}
+          footer={getLanguage() === 'gu' ? t('auth.legal.englishOnly') : undefined}
+        >
           <SettingsRow
             icon="file-document-outline"
-            label="Terms of service"
-            subtitle="View terms and conditions"
+            label={t('settings.about.terms')}
+            subtitle={t('settings.about.termsSubtitle')}
             onPress={() => router.push('/terms-of-service')}
           />
           <SettingsRow
             icon="shield-check-outline"
-            label="Privacy policy"
-            subtitle="How we handle your data"
+            label={t('settings.about.privacy')}
+            subtitle={t('settings.about.privacySubtitle')}
             onPress={() => router.push('/privacy-policy')}
             last
           />
         </SettingsSection>
 
         {__DEV__ && (
-          <SettingsSection title="Development">
+          <SettingsSection title={t('settings.development.title')}>
             <SettingsRow
               icon="palette-outline"
-              label="Style guide"
-              subtitle="Tokens and components in the current brand and mode"
+              label={t('settings.development.styleGuide')}
+              subtitle={t('settings.development.styleGuideSubtitle')}
               onPress={() => router.push('/style-guide')}
               last
             />
@@ -455,7 +467,7 @@ const SettingsScreen: React.FC = () => {
           <Text style={styles.footerTitle}>
             {process.env.EXPO_PUBLIC_APP_NAME || 'Warehouse Manager'}
           </Text>
-          <Text style={styles.footerSubtitle}>Management System v1.0</Text>
+          <Text style={styles.footerSubtitle}>{t('settings.footer.version', { version: '1.0' })}</Text>
         </View>
       </ScrollView>
 
@@ -471,7 +483,7 @@ const SettingsScreen: React.FC = () => {
           style={styles.modalOverlay}
           onPress={() => !loggingOut && setShowLogoutModal(false)}
           accessibilityRole="button"
-          accessibilityLabel="Cancel"
+          accessibilityLabel={t('common.cancel')}
         >
           <Pressable
             style={styles.modalDialog}
@@ -481,20 +493,20 @@ const SettingsScreen: React.FC = () => {
           >
             <Icon name="logout" size={iconSize.xl} color={tokens.status.negative.text} />
             <Text style={styles.modalTitle} accessibilityRole="header">
-              Sign out?
+              {t('auth.signOut.confirmTitle')}
             </Text>
             <Text style={styles.modalMessage}>
-              You'll need your mobile number and a one-time code to sign in again.
+              {t('auth.signOut.confirmMessage')}
             </Text>
 
             <View style={styles.modalActions}>
               <DialogButton
-                label="Cancel"
+                label={t('common.cancel')}
                 onPress={() => setShowLogoutModal(false)}
                 disabled={loggingOut}
               />
               <DialogButton
-                label="Sign out"
+                label={t('auth.signOut.action')}
                 destructive
                 busy={loggingOut}
                 onPress={confirmLogout}
@@ -516,7 +528,7 @@ const SettingsScreen: React.FC = () => {
           style={styles.modalOverlay}
           onPress={() => !deletingAccount && handleDeleteCancel()}
           accessibilityRole="button"
-          accessibilityLabel="Cancel"
+          accessibilityLabel={t('common.cancel')}
         >
           <Pressable
             style={styles.modalDialog}
@@ -530,29 +542,25 @@ const SettingsScreen: React.FC = () => {
               <>
                 {/* Warning Step */}
                 <Text style={styles.modalTitle} accessibilityRole="header">
-                  Delete your account?
+                  {t('settings.deleteAccount.warningTitle')}
                 </Text>
                 <Text style={[styles.modalMessage, styles.modalMessageLeft]}>
-                  This can't be undone. These will be deleted:{'\n'}
-                  {'•'} Your profile information{'\n'}
-                  {'•'} Customer assignments{'\n'}
-                  {'•'} App preferences and cache{'\n\n'}
-                  Records such as GRNs and dispatches are kept for compliance.
+                  {t('settings.deleteAccount.warningMessage')}
                 </Text>
 
                 <View style={styles.modalActions}>
-                  <DialogButton label="Cancel" onPress={handleDeleteCancel} />
-                  <DialogButton label="Continue" destructive onPress={handleDeleteProceed} />
+                  <DialogButton label={t('common.cancel')} onPress={handleDeleteCancel} />
+                  <DialogButton label={t('common.continue')} destructive onPress={handleDeleteProceed} />
                 </View>
               </>
             ) : (
               <>
                 {/* Confirm Step */}
                 <Text style={styles.modalTitle} accessibilityRole="header">
-                  Confirm deletion
+                  {t('settings.deleteAccount.confirmTitle')}
                 </Text>
                 <Text style={styles.modalMessage}>
-                  Enter the mobile number on your account to delete it.
+                  {t('settings.deleteAccount.confirmMessage')}
                 </Text>
 
                 <TextInput
@@ -561,7 +569,7 @@ const SettingsScreen: React.FC = () => {
                     deleteFocused && styles.deleteConfirmInputFocused,
                     !!deleteError && styles.deleteConfirmInputError,
                   ]}
-                  placeholder="10-digit mobile number"
+                  placeholder={t('settings.deleteAccount.phonePlaceholder')}
                   placeholderTextColor={tokens.text.placeholder}
                   value={deleteConfirmPhone}
                   onChangeText={text => {
@@ -574,7 +582,7 @@ const SettingsScreen: React.FC = () => {
                   autoComplete="tel"
                   textContentType="telephoneNumber"
                   editable={!deletingAccount}
-                  accessibilityLabel="Mobile number"
+                  accessibilityLabel={t('common.mobileNumber')}
                 />
 
                 {deleteError && (
@@ -586,12 +594,12 @@ const SettingsScreen: React.FC = () => {
 
                 <View style={styles.modalActions}>
                   <DialogButton
-                    label="Cancel"
+                    label={t('common.cancel')}
                     onPress={handleDeleteCancel}
                     disabled={deletingAccount}
                   />
                   <DialogButton
-                    label="Delete account"
+                    label={t('settings.account.deleteAccount')}
                     destructive
                     busy={deletingAccount}
                     onPress={confirmDeleteAccount}

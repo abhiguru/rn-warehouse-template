@@ -14,6 +14,7 @@ import React from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { formatCount, formatRelativeTime } from '@/utils/formatters';
+import { t as translate } from '@/i18n';
 import { StatusTag, type StatusKind, Avatar } from '@/components/ui';
 import type { Order } from '@/types/order.types';
 import { HighlightedText, matchesAnyWord } from '@/features/filters/components/HighlightedText';
@@ -57,7 +58,7 @@ function hiddenMatches(order: Order, words: string[] | undefined): string[] {
     if (text && matchesAnyWord(text, words)) found.add(text);
   }
   for (const line of lines) {
-    for (const text of [line.grn_items_item_name, line.grn_items_package_mark, line.grns_gr_no ? `GRN ${line.grns_gr_no}` : null]) {
+    for (const text of [line.grn_items_item_name, line.grn_items_package_mark, line.grns_gr_no ? translate('lists.card.grnRef', { number: line.grns_gr_no }) : null]) {
       if (text && matchesAnyWord(text, words)) found.add(text);
     }
   }
@@ -76,7 +77,7 @@ const OrderItemContent: React.FC<MemoizedOrderItemProps> = ({
   const totalQty = order.quantity_sum ?? order.total_quantity ?? 0;
   const hasItems = itemCount > 0;
 
-  const customerName = order.customer?.name || 'Unknown';
+  const customerName = order.customer?.name || translate('common.unknown');
   const matched = hiddenMatches(order, words);
 
   // Check if order is dispatched
@@ -84,28 +85,28 @@ const OrderItemContent: React.FC<MemoizedOrderItemProps> = ({
 
   // Status per style guide §3.5: dispatched orders are positive, open ones neutral.
   const statusConfig: { kind: StatusKind; label: string } = isDispatched
-    ? { kind: 'positive', label: 'Dispatched' }
+    ? { kind: 'positive', label: translate('lists.order.statusDispatched') }
     : hasItems
-      ? { kind: 'neutral', label: 'Open' }
-      : { kind: 'neutral', label: 'Empty' };
+      ? { kind: 'neutral', label: translate('lists.order.statusOpen') }
+      : { kind: 'neutral', label: translate('lists.order.statusEmpty') };
 
   // Build subtitle: "3 items · 45 units" (the unit differs per item, so "units") or "No items yet"
   const subtitle = hasItems
-    ? `${formatCount(itemCount, 'item')} · ${formatCount(totalQty, 'unit')}`
-    : 'No items yet';
+    ? translate('lists.order.summary', { items: formatCount(itemCount, 'item'), units: formatCount(totalQty, 'unit') })
+    : translate('lists.order.noItemsYet');
 
   // Build footnote: "Mumbai · 2h ago" or just "2h ago"
-  const timeText = order.updated_at ? formatRelativeTime(order.updated_at) : 'Recently';
+  const timeText = order.updated_at ? formatRelativeTime(order.updated_at) : translate('lists.order.recently');
   const footnote = order.customer?.city
     ? `${order.customer.city} · ${timeText}`
     : timeText;
 
   // Accessibility
   const accessibilityDescription = [
-    `Order for ${customerName}`,
+    translate('lists.order.orderFor', { customer: customerName }),
     statusConfig.label,
     subtitle,
-    order.customer?.city ? `Location: ${order.customer.city}` : null,
+    order.customer?.city ? translate('lists.order.location', { city: order.customer.city }) : null,
   ].filter(Boolean).join(', ');
 
   return (
@@ -114,7 +115,7 @@ const OrderItemContent: React.FC<MemoizedOrderItemProps> = ({
       style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
       accessibilityRole="button"
       accessibilityLabel={accessibilityDescription}
-      accessibilityHint="Double tap to view order details"
+      accessibilityHint={translate('lists.order.openHint')}
     >
       {/* SAP Fiori Object Cell Layout */}
       <View style={styles.objectCellRow}>

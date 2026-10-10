@@ -20,6 +20,7 @@ import Animated, {
   Easing,
 } from 'react-native-reanimated';
 import { useThemedStyles } from '@/hooks/useTheme';
+import { t as translate } from '@/i18n';
 import { layout, radius, space } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 
@@ -134,7 +135,7 @@ export const ListSkeletonCard = memo<ListSkeletonCardProps>(({
     <Animated.View
       style={[styles.card, animatedStyle, height ? { height } : null]}
       accessible={true}
-      accessibilityLabel="Loading content"
+      accessibilityLabel={translate('lists.loadingContent')}
       accessibilityState={{ busy: true }}
     >
       {/* Header Row: Avatar + Content + Attribute */}

@@ -32,6 +32,7 @@ import type { RecentDispatchedOrder } from '@/types/dispatch.types';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { SectionHeader } from '@/components/ui/SectionHeader';
 import { formatCount } from '@/utils/formatters';
+import { t as translate } from '@/i18n';
 import {
   iconSize,
   layout,
@@ -100,7 +101,8 @@ const makeStyles = (t: ThemeTokens) => ({
   },
 });
 
-const LOAD_ERROR = "Couldn't load recent dispatches. Check your connection and try again.";
+/** Read when the load fails, so it is in the app's language (docs/I18N.md rule 2). */
+const loadError = () => translate('lists.recent.loadFailed');
 
 const RecentDispatchedOrdersSection: React.FC<RecentDispatchedOrdersSectionProps> = ({
   refreshTrigger = 0,
@@ -137,12 +139,12 @@ const RecentDispatchedOrdersSection: React.FC<RecentDispatchedOrdersSectionProps
         }
         setDispatches(result.data.dispatches || []);
       } else {
-        setError(LOAD_ERROR);
+        setError(loadError());
       }
     } catch (err) {
       if (!isMountedRef.current) return;
       console.error('[RecentDispatchedOrdersSection] Error:', err);
-      setError(LOAD_ERROR);
+      setError(loadError());
     } finally {
       if (isMountedRef.current) {
         setLoading(false);
@@ -187,21 +189,21 @@ const RecentDispatchedOrdersSection: React.FC<RecentDispatchedOrdersSectionProps
   return (
     <View style={styles.wrapper}>
       <SectionHeader
-        title="Recently dispatched orders"
+        title={translate('lists.recent.title')}
         count={loading ? undefined : dispatches.length}
         action={{
-          label: isExpanded ? 'Hide' : 'Show',
+          label: isExpanded ? translate('lists.recent.hide') : translate('lists.recent.show'),
           onPress: toggleExpand,
-          accessibilityLabel: `${isExpanded ? 'Hide' : 'Show'} recently dispatched orders, ${countLabel}`,
+          accessibilityLabel: translate(isExpanded ? 'lists.recent.hideLabel' : 'lists.recent.showLabel', { dispatches: countLabel }),
         }}
         testID="recent-dispatched-orders-header"
       />
 
       {isExpanded && loading && (
         <View style={styles.messageCard}>
-          <View style={styles.loadingContainer} accessibilityLabel="Loading recent dispatches">
+          <View style={styles.loadingContainer} accessibilityLabel={translate('lists.recent.loading')}>
             <ActivityIndicator size="small" color={t.brand.tint} />
-            <Text style={styles.loadingText}>Loading recent dispatches…</Text>
+            <Text style={styles.loadingText}>{translate('lists.recent.loadingText')}</Text>
           </View>
         </View>
       )}
@@ -215,9 +217,9 @@ const RecentDispatchedOrdersSection: React.FC<RecentDispatchedOrdersSectionProps
               onPress={fetchDispatches}
               style={({ pressed }) => [styles.retryButton, pressed && styles.retryButtonPressed]}
               accessibilityRole="button"
-              accessibilityLabel="Try loading recent dispatches again"
+              accessibilityLabel={translate('lists.recent.retryLabel')}
             >
-              <Text style={styles.retryText}>Try again</Text>
+              <Text style={styles.retryText}>{translate('common.retry')}</Text>
             </Pressable>
           </View>
         </View>
@@ -228,7 +230,7 @@ const RecentDispatchedOrdersSection: React.FC<RecentDispatchedOrdersSectionProps
           <View style={styles.errorContainer}>
             <Icon name="truck-delivery-outline" size={iconSize.xl} color={t.icon.secondary} />
             <Text style={styles.errorText}>
-              No orders dispatched yet. Dispatches created from orders appear here.
+              {translate('lists.recent.empty')}
             </Text>
           </View>
         </View>

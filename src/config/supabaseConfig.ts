@@ -17,6 +17,8 @@ import {
   getSessionGeneration,
   serializeCredentials,
 } from './sessionLifecycle';
+import { AppError } from '@/utils/appError';
+import { localizeDigits, t } from '@/i18n';
 
 // S2/S3 Fix: SecureStore keys for encrypted token storage
 const SECURE_KEYS = {
@@ -39,7 +41,7 @@ let activeMutationOperations = 0;
 // Hold the switch gate across a workflow with local work between several
 // requests, such as register -> image conversion -> Storage upload -> confirm.
 export function beginOperatorMutation(): () => void {
-  if (operatorSwitching) throw new Error('Server switch in progress');
+  if (operatorSwitching) throw new AppError('SERVER_SWITCH', t('errors.auth.serverSwitchInProgress'));
   activeMutationOperations += 1;
   let released = false;
   return () => {
@@ -71,6 +73,12 @@ type GatedFetchOptions = {
 
 // Every credentialed request waits for the foreground identity check, then
 // refuses to continue for a session generation replaced while it waited.
+//
+// The two errors below, and every 'Session changed' thrown from the gated fetch,
+// are signals rather than messages: the PostgREST client turns an error thrown
+// inside fetch into plain text ("Error: Session changed"), so a code would be
+// lost and isOfflineFailure has to recognize the text. They stay English.
+// Results that are returned to a screen use t('errors.auth.sessionChanged').
 export async function awaitIdentityGate(generation: number): Promise<void> {
   if (!operatorResumeGate.isVerified() && !(await operatorResumeGate.ensureVerified()))
     throw new Error('Warehouse identity verification required');
@@ -88,8 +96,7 @@ const GATEWAY_KEY_REJECTIONS = new Set([
   'Invalid authentication credentials',
   'No API key found in request',
 ]);
-const KEYS_CHANGED_MESSAGE =
-  "This server's sign-in keys were changed. Please sign in again.";
+const keysChangedMessage = () => t('errors.auth.keysChanged');
 
 export const isGatewayKeyRejection = (body: unknown): boolean =>
   typeof body === 'object' &&
@@ -108,7 +115,7 @@ function noteUnauthorized(response: Response, generation: number): void {
   void copy
     .json()
     .then(body => {
-      if (isGatewayKeyRejection(body)) return rejectSession(generation, KEYS_CHANGED_MESSAGE);
+      if (isGatewayKeyRejection(body)) return rejectSession(generation, keysChangedMessage());
     })
     .catch(() => {});
 }
@@ -219,19 +226,19 @@ export const initializeSupabase = (
 
 export const getSupabaseClient = (): SupabaseClient => {
   if (!__supabaseInstance)
-    throw new Error('Configuration must be loaded first.');
+    throw new Error(t('errors.server.configNotLoaded'));
   return __supabaseInstance;
 };
 
 export const getCurrentConfig = () => {
-  if (!__currentConfig) throw new Error('Configuration must be loaded first.');
+  if (!__currentConfig) throw new Error(t('errors.server.configNotLoaded'));
   return __currentConfig;
 };
 
 export const getSupabaseRPCClient = getSupabaseClient;
 
 export const getAuthenticatedClient = async (): Promise<SupabaseClient> => {
-  if (operatorSwitching) throw new Error('Server switch in progress');
+  if (operatorSwitching) throw new AppError('SERVER_SWITCH', t('errors.auth.serverSwitchInProgress'));
   const generation = getSessionGeneration();
   if (!(await ensureValidTokens())) {
     clearAuthenticatedClientCache();
@@ -240,9 +247,12 @@ export const getAuthenticatedClient = async (): Promise<SupabaseClient> => {
     // as connectivity so callers may serve their offline caches.
     const remaining = await getStoredToken();
     if (generation === getSessionGeneration() && remaining.refreshToken) {
-      throw new Error('Network request failed: session refresh unavailable');
+      // Kept in English on purpose: callers outside this module still look for
+      // the words "Network request failed" (the image upload services). The
+      // code says the same thing to everything that reads codes.
+      throw new AppError('NETWORK', 'Network request failed: session refresh unavailable');
     }
-    throw new Error('Sign in required');
+    throw new AppError('SIGN_IN_REQUIRED', t('errors.auth.signInRequired'));
   }
   const token = await getStoredToken();
   if (
@@ -251,7 +261,7 @@ export const getAuthenticatedClient = async (): Promise<SupabaseClient> => {
     !token.authToken ||
     !token.isValid
   )
-    throw new Error('Sign in required');
+    throw new AppError('SIGN_IN_REQUIRED', t('errors.auth.signInRequired'));
   if (!__authenticatedClientInstance || __cachedAuthToken !== token.authToken) {
     const config = getCurrentConfig();
     __authenticatedClientInstance = createClient(config.url, config.anonKey, {
@@ -281,7 +291,8 @@ async function boundedAuthRPC(
   // The anonymous client's fetch is gated as well; waiting here first keeps the
   // refresh credential out of the request until identity verification passes.
   if (!operatorResumeGate.isVerified()) await awaitIdentityGate(generation);
-  else if (generation !== getSessionGeneration()) throw new Error('Session changed');
+  else if (generation !== getSessionGeneration())
+    throw new AppError('SESSION_CHANGED', t('errors.auth.sessionChanged'));
   const controller = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
@@ -295,7 +306,7 @@ async function boundedAuthRPC(
       new Promise<never>((_, reject) => {
         timer = setTimeout(() => {
           controller.abort();
-          reject(new Error('Authentication request timed out'));
+          reject(new AppError('TIMEOUT', t('errors.network.authTimedOut')));
         }, 15000);
       }),
     ]);
@@ -339,7 +350,7 @@ async function operatorOtpRequest(
     });
     const result = (await response.json()) as OperatorEnvelope;
     if (!response.ok || result.success !== true) {
-      return { success: false, error: result.error || result.message || `Request failed (HTTP ${response.status})` };
+      return { success: false, error: result.error || result.message || t('errors.auth.requestFailedHttp', { status: String(response.status) }) };
     }
     return result;
   } finally {
@@ -355,16 +366,16 @@ export const clearPendingEnrollment = () =>
 
 export const getEnrollmentStatus = async () => {
   const enrollmentToken = await getPendingEnrollmentToken();
-  if (!enrollmentToken) return { success: false as const, error: 'Enrollment session unavailable' };
+  if (!enrollmentToken) return { success: false as const, error: t('errors.auth.enrollmentUnavailable') };
   try {
     const result = await operatorOtpRequest('status', { enrollment_token: enrollmentToken });
-    if (!result.success) return { success: false as const, error: result.error || 'Could not check enrollment' };
+    if (!result.success) return { success: false as const, error: result.error || t('errors.auth.enrollmentCheckFailed') };
     const status = result.data?.status;
     if (!['pending', 'approved', 'rejected', 'disabled'].includes(String(status)))
-      return { success: false as const, error: 'Invalid enrollment status' };
+      return { success: false as const, error: t('errors.auth.enrollmentInvalidStatus') };
     return { success: true as const, status: status as 'pending' | 'approved' | 'rejected' | 'disabled' };
   } catch {
-    return { success: false as const, error: 'Could not check enrollment' };
+    return { success: false as const, error: t('errors.auth.enrollmentCheckFailed') };
   }
 };
 
@@ -395,14 +406,21 @@ export const signInWithPhone = async (phone: string) => {
       const retryAfterSec = rateLimit.retryAfterSeconds || 60;
       const reason =
         rateLimit.reason === 'daily'
-          ? `Daily limit reached (20 requests). Try again tomorrow.`
-          : `Please wait ${retryAfterSec} seconds before requesting another code.`;
+          ? t('errors.auth.otpDailyLimit')
+          : t('errors.auth.otpWaitSeconds', { seconds: localizeDigits(String(retryAfterSec)) });
 
       console.warn('[Auth] OTP rate limit exceeded:');
 
+      // The wait is returned as a number so the sign-in screens can start their
+      // countdown from it (handleRateLimitError(result)) instead of reading it
+      // back out of the translated sentence. The daily limit has no countdown,
+      // as before: its message is shown as an ordinary error.
       return {
         success: false,
         error: reason,
+        rateLimited: true as const,
+        rateLimitReason: rateLimit.reason,
+        retryAfterSeconds: rateLimit.reason === 'daily' ? undefined : retryAfterSec,
       };
     }
 
@@ -413,17 +431,17 @@ export const signInWithPhone = async (phone: string) => {
       // Record successful OTP request for rate limiting
       await recordOTPRequest(formattedPhone);
       if (generation !== getSessionGeneration() || operatorSwitching)
-        return { success: false, error: 'Session changed' };
+        return { success: false, error: t('errors.auth.sessionChanged') };
 
       return { success: true, data: responseData };
     } else {
-      const errorMsg = responseData.error || responseData.message || 'Failed to send OTP';
+      const errorMsg = responseData.error || responseData.message || t('errors.auth.otpSendFailed');
       console.error('[Auth] Send OTP failed:');
       return { success: false, error: errorMsg };
     }
   } catch (error) {
     console.error('[Auth] Send OTP exception:');
-    return { success: false, error: 'Failed to send OTP' };
+    return { success: false, error: t('errors.auth.otpSendFailed') };
   }
 };
 
@@ -550,12 +568,12 @@ export const verifyOTP = async (
     if (generation !== getSessionGeneration()) {
       const refresh = (rpcResponse.data?.session as { refresh_token?: unknown } | undefined)?.refresh_token;
       if (typeof refresh === 'string') await revokeSession(refresh);
-      return { success: false, error: 'Session changed' };
+      return { success: false, error: t('errors.auth.sessionChanged') };
     }
     const isSuccess = rpcResponse?.success === true;
 
     if (!isSuccess || !rpcResponse?.data) {
-      const errorMsg = rpcResponse?.error || rpcResponse?.message || 'Verification failed';
+      const errorMsg = rpcResponse?.error || rpcResponse?.message || t('errors.auth.verificationFailed');
       console.error('[Auth] OTP verification failed:');
       return { success: false, error: errorMsg };
     }
@@ -563,12 +581,12 @@ export const verifyOTP = async (
     if (rpcResponse.data.action === 'pending') {
       const enrollmentToken = rpcResponse.data.enrollment_token;
       if (typeof enrollmentToken !== 'string' || !enrollmentToken)
-        return { success: false, error: 'Invalid enrollment response' };
+        return { success: false, error: t('errors.auth.enrollmentInvalidResponse') };
       await SecureStore.setItemAsync(SECURE_KEYS.ENROLLMENT_TOKEN, enrollmentToken);
       return { success: true, data: { action: 'pending', pendingEnrollment: true, userProfile: null } };
     }
     if (rpcResponse.data.action !== 'login')
-      return { success: false, error: 'Invalid authentication response' };
+      return { success: false, error: t('errors.auth.invalidResponse') };
 
     // Extract standardized response structure:
     // { success: true, message: "...", data: { user: {...}, session: {...}, action: "..." } }
@@ -591,7 +609,7 @@ export const verifyOTP = async (
 
     if (!session?.access_token || !session?.refresh_token) {
       console.error('[Auth] No JWT tokens in session object');
-      return { success: false, error: 'No authentication tokens received' };
+      return { success: false, error: t('errors.auth.noTokens') };
     }
 
     const accessTokenStr = String(session.access_token);
@@ -601,7 +619,7 @@ export const verifyOTP = async (
     const validation = validateJWTToken(accessTokenStr);
     if (!validation.valid) {
       console.error('[Auth] ❌ Invalid JWT token received from backend');
-      return { success: false, error: 'Invalid authentication token' };
+      return { success: false, error: t('errors.auth.invalidToken') };
     }
 
     // Calculate expiration time
@@ -638,7 +656,7 @@ export const verifyOTP = async (
     }
 
     if (generation !== getSessionGeneration())
-      return { success: false, error: 'Session changed' };
+      return { success: false, error: t('errors.auth.sessionChanged') };
     return {
       success: true,
       data: {
@@ -652,7 +670,7 @@ export const verifyOTP = async (
     };
   } catch (error) {
     console.error('[Auth] OTP verification exception:');
-    return { success: false, error: 'OTP verification failed' };
+    return { success: false, error: t('errors.auth.otpVerificationFailed') };
   }
 };
 
@@ -688,7 +706,7 @@ async function revokeSession(refreshToken: string) {
 // CUSTOM JWT TOKEN REFRESH
 // ============================================================================
 
-const SESSION_REJECTED_MESSAGE = 'Your session has ended. Please sign in again.';
+const sessionRejectedMessage = () => t('errors.auth.sessionEnded');
 
 // Backend contract: refresh_jwt_token answers every definitive rejection with
 // a data payload {success:false, message:'Invalid refresh token'}; the only
@@ -784,9 +802,9 @@ const refreshSession = async (
       // transport or serialization failure keeps the credential for retry.
       // A gateway key rejection is definitive too: the keys were rotated.
       if (isDefinitiveRefreshException(error))
-        await rejectSession(generation, SESSION_REJECTED_MESSAGE);
+        await rejectSession(generation, sessionRejectedMessage());
       else if (isGatewayKeyRejection(error))
-        await rejectSession(generation, KEYS_CHANGED_MESSAGE);
+        await rejectSession(generation, keysChangedMessage());
       return null;
     }
 
@@ -795,7 +813,7 @@ const refreshSession = async (
 
     if (!responseData?.success || !responseData?.access_token) {
       if (isDefinitiveRefreshRejection(responseData))
-        await rejectSession(generation, SESSION_REJECTED_MESSAGE);
+        await rejectSession(generation, sessionRejectedMessage());
       console.error('[Auth] Token refresh failed:');
       return null;
     }
@@ -980,7 +998,7 @@ const storeTokensRaw = async (
       !Number.isFinite(expiresAt) ||
       expiresAt <= 0
     ) {
-      throw new Error('Incomplete session');
+      throw new Error(t('errors.auth.incompleteSession'));
     }
     clearAuthenticatedClientCache();
     await SecureStore.deleteItemAsync(SECURE_KEYS.TOKEN_EXPIRES);
@@ -1001,7 +1019,7 @@ const storeTokensRaw = async (
     // Never downgrade to unencrypted storage or log native errors that may echo
     // the value being written. Login/refresh must fail when persistence fails.
     await clearStoredTokensRaw();
-    throw new Error('Unable to save session securely');
+    throw new Error(t('errors.auth.saveSessionFailed'));
   }
 };
 
@@ -1014,11 +1032,11 @@ export const storeTokens = (
   const generation = expectedGeneration ?? advanceSessionGeneration();
   return serializeCredentials(async () => {
     if (generation !== getSessionGeneration())
-      throw new Error('Session changed');
+      throw new AppError('SESSION_CHANGED', t('errors.auth.sessionChanged'));
     await storeTokensRaw(accessToken, refreshToken, expiresAt);
     if (generation !== getSessionGeneration()) {
       await clearStoredTokensRaw();
-      throw new Error('Session changed');
+      throw new AppError('SESSION_CHANGED', t('errors.auth.sessionChanged'));
     }
   });
 };

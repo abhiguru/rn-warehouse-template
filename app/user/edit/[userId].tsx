@@ -38,6 +38,7 @@ import {
 
 import { showAlert } from '@/utils/alert';
 import { formatMobile } from '@/utils/formatters';
+import { t as tr } from '@/i18n';
 const UserEditScreen: React.FC = () => {
   const { userId } = useLocalSearchParams<{ userId: string }>();
   const styles = useThemedStyles(makeStyles);
@@ -73,7 +74,7 @@ const UserEditScreen: React.FC = () => {
 
     if (!userId) {
       console.log('[UserEditScreen] No userId provided, going back');
-      showAlert("Couldn't open the profile", 'Go back and try again.');
+      showAlert(tr('users.selfEdit.couldNotOpenTitle'), tr('users.selfEdit.couldNotOpenMessage'));
       router.back();
       return;
     }
@@ -91,7 +92,7 @@ const UserEditScreen: React.FC = () => {
       });
       
       if (!result.success || !result.data) {
-        showAlert("Couldn't load the profile", result.message || 'Check your connection and try again.');
+        showAlert(tr('users.selfEdit.couldNotLoadTitle'), result.message || tr('common.checkConnection'));
         router.back();
         return;
       }
@@ -117,7 +118,7 @@ const UserEditScreen: React.FC = () => {
       });
     } catch (error) {
       console.error('[UserEditScreen] Load error:', error);
-      showAlert("Couldn't load the profile", 'Check your connection and try again.');
+      showAlert(tr('users.selfEdit.couldNotLoadTitle'), tr('common.checkConnection'));
       router.back();
     } finally {
       setLoading(false);
@@ -131,7 +132,7 @@ const UserEditScreen: React.FC = () => {
 
     // Basic validation
     if (!formData.name.trim()) {
-      setNameError('Enter your name.');
+      setNameError(tr('users.selfEdit.nameRequired'));
       return;
     }
 
@@ -153,21 +154,21 @@ const UserEditScreen: React.FC = () => {
         }
 
         showAlert(
-          'Profile saved',
-          'Your profile has been updated.',
+          tr('users.selfEdit.savedTitle'),
+          tr('users.selfEdit.savedMessage'),
           [
             {
-              text: 'OK',
+              text: tr('common.ok'),
               onPress: () => router.back()
             }
           ]
         );
       } else {
-        showAlert("Couldn't save your profile", result.message || 'Try again in a moment.');
+        showAlert(tr('users.selfEdit.couldNotSaveTitle'), result.message || tr('users.edit.tryAgainSoon'));
       }
     } catch (error) {
       console.error('[UserEditScreen] Save error:', error);
-      showAlert("Couldn't save your profile", 'Check your connection and try again.');
+      showAlert(tr('users.selfEdit.couldNotSaveTitle'), tr('common.checkConnection'));
     } finally {
       setSaving(false);
     }
@@ -182,11 +183,12 @@ const UserEditScreen: React.FC = () => {
   // Render assigned customer (read-only)
   const renderAssignedCustomerReadOnly = ({ item }: { item: CustomerAssignment }) => {
     const meta = [item.mobile && formatMobile(item.mobile), item.city].filter(Boolean).join(' · ');
+    const statusLabel = tr(item.active ? 'common.active' : 'common.inactive');
     return (
       <View
         style={styles.assignedCustomerItem}
         accessible
-        accessibilityLabel={[item.name, meta, item.active ? 'Active' : 'Inactive'].filter(Boolean).join(', ')}
+        accessibilityLabel={[item.name, meta, statusLabel].filter(Boolean).join(', ')}
       >
         <View style={styles.flex}>
           <Text style={styles.assignedCustomerName}>{item.name}</Text>
@@ -202,7 +204,7 @@ const UserEditScreen: React.FC = () => {
             style={[styles.statusTagText, item.active ? styles.statusTextPositive : styles.statusTextNeutral]}
             maxFontSizeMultiplier={1.6}
           >
-            {item.active ? 'Active' : 'Inactive'}
+            {statusLabel}
           </Text>
         </View>
       </View>
@@ -211,9 +213,9 @@ const UserEditScreen: React.FC = () => {
 
   if (loading) {
     return (
-      <View style={styles.centerContainer} accessibilityRole="progressbar" accessibilityLabel="Loading user">
+      <View style={styles.centerContainer} accessibilityRole="progressbar" accessibilityLabel={tr('users.edit.loading')}>
         <ActivityIndicator size="large" color={t.brand.tint} />
-        <Text style={styles.loadingText}>Loading user…</Text>
+        <Text style={styles.loadingText}>{tr('users.edit.loadingText')}</Text>
       </View>
     );
   }
@@ -222,17 +224,20 @@ const UserEditScreen: React.FC = () => {
     return (
       <View style={styles.centerContainer} accessibilityRole="alert">
         <Icon name="alert-circle-outline" size={iconSize.hero} color={t.status.negative.text} />
-        <Text style={styles.errorTitle}>Couldn't find this user</Text>
+        <Text style={styles.errorTitle}>{tr('users.selfEdit.notFound')}</Text>
         <Pressable
           style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryButtonPressed]}
           onPress={() => router.back()}
           accessibilityRole="button"
         >
-          <Text style={styles.secondaryButtonText}>Go back</Text>
+          <Text style={styles.secondaryButtonText}>{tr('common.goBack')}</Text>
         </Pressable>
       </View>
     );
   }
+
+  const ownRoleLabel = tr(formData.supervisor ? 'users.role.supervisor' : 'users.role.user');
+  const ownStatusLabel = tr(formData.active ? 'common.active' : 'common.inactive');
 
   return (
     <View style={styles.container}>
@@ -243,23 +248,23 @@ const UserEditScreen: React.FC = () => {
           style={({ pressed }) => [styles.cancelButton, pressed && styles.cancelButtonPressed]}
           accessibilityRole="button"
         >
-          <Text style={styles.cancelButtonText}>Cancel</Text>
+          <Text style={styles.cancelButtonText}>{tr('common.cancel')}</Text>
         </Pressable>
         <Text style={styles.title} accessibilityRole="header" numberOfLines={1}>
-          Edit profile
+          {tr('users.profile.edit')}
         </Text>
         <Pressable
           onPress={handleSave}
           style={({ pressed }) => [styles.saveButton, pressed && styles.saveButtonPressed]}
           disabled={saving}
           accessibilityRole="button"
-          accessibilityLabel="Save profile"
+          accessibilityLabel={tr('users.selfEdit.saveLabel')}
           accessibilityState={{ busy: saving }}
         >
           {saving ? (
             <ActivityIndicator size="small" color={t.brand.onFill} />
           ) : (
-            <Text style={styles.saveButtonText}>Save</Text>
+            <Text style={styles.saveButtonText}>{tr('common.save')}</Text>
           )}
         </Pressable>
       </View>
@@ -271,11 +276,11 @@ const UserEditScreen: React.FC = () => {
         keyboardShouldPersistTaps="handled"
       >
         {/* Basic Information */}
-        <Text style={styles.sectionTitle} accessibilityRole="header">Basic information</Text>
+        <Text style={styles.sectionTitle} accessibilityRole="header">{tr('users.selfEdit.basicInformation')}</Text>
         <View style={styles.section}>
           <View style={styles.inputGroup}>
             <Text style={[styles.inputLabel, !!nameError && styles.inputLabelError]}>
-              Name<Text style={styles.required}> *</Text>
+              {tr('users.fields.name')}<Text style={styles.required}> *</Text>
             </Text>
             <TextInput
               style={[styles.textInput, nameFocused && styles.textInputFocused, !!nameError && styles.textInputError]}
@@ -286,12 +291,12 @@ const UserEditScreen: React.FC = () => {
               }}
               onFocus={() => setNameFocused(true)}
               onBlur={() => setNameFocused(false)}
-              placeholder="Enter your name"
+              placeholder={tr('users.selfEdit.namePlaceholder')}
               placeholderTextColor={t.text.placeholder}
               autoCapitalize="words"
               autoComplete="name"
               textContentType="name"
-              accessibilityLabel="Name, required"
+              accessibilityLabel={tr('users.selfEdit.nameLabel')}
             />
             {!!nameError && (
               <View style={styles.errorRow} accessibilityLiveRegion="polite">
@@ -302,43 +307,43 @@ const UserEditScreen: React.FC = () => {
           </View>
 
           <View>
-            <Text style={styles.inputLabel}>Mobile number (used to sign in)</Text>
-            <View style={styles.readOnlyField} accessible accessibilityLabel={`Mobile number, ${formData.mobile ? formatMobile(formData.mobile) : 'not set'}, read only`}>
+            <Text style={styles.inputLabel}>{tr('users.selfEdit.mobileLabel')}</Text>
+            <View style={styles.readOnlyField} accessible accessibilityLabel={tr('users.selfEdit.mobileReadOnly', { mobile: formData.mobile ? formatMobile(formData.mobile) : tr('users.selfEdit.mobileNotSet') })}>
               <Text style={styles.readOnlyValue}>
                 {formData.mobile ? formatMobile(formData.mobile) : '—'}
               </Text>
             </View>
-            <Text style={styles.helperText}>Your sign-in number can't be changed.</Text>
+            <Text style={styles.helperText}>{tr('users.selfEdit.mobileHelp')}</Text>
           </View>
         </View>
 
         {/* Role & Status */}
-        <Text style={styles.sectionTitle} accessibilityRole="header">Role and status</Text>
+        <Text style={styles.sectionTitle} accessibilityRole="header">{tr('users.selfEdit.roleAndStatus')}</Text>
         <View style={styles.section}>
-          <View style={styles.infoRow} accessible accessibilityLabel={`Role, ${formData.supervisor ? 'Supervisor' : 'User'}`}>
+          <View style={styles.infoRow} accessible accessibilityLabel={`${tr('users.fields.role')}, ${ownRoleLabel}`}>
             <View style={styles.infoLeft}>
               <Icon name="shield-account-outline" size={iconSize.md} color={t.icon.secondary} />
-              <Text style={styles.infoLabel}>Role</Text>
+              <Text style={styles.infoLabel}>{tr('users.fields.role')}</Text>
             </View>
-            <Text style={styles.infoValue}>{formData.supervisor ? 'Supervisor' : 'User'}</Text>
+            <Text style={styles.infoValue}>{ownRoleLabel}</Text>
           </View>
 
-          <View style={[styles.infoRow, styles.infoRowLast]} accessible accessibilityLabel={`Status, ${formData.active ? 'Active' : 'Inactive'}`}>
+          <View style={[styles.infoRow, styles.infoRowLast]} accessible accessibilityLabel={`${tr('users.fields.status')}, ${ownStatusLabel}`}>
             <View style={styles.infoLeft}>
               <Icon
                 name={formData.active ? 'check-circle' : 'alert-circle'}
                 size={iconSize.md}
                 color={formData.active ? t.status.positive.text : t.status.negative.text}
               />
-              <Text style={styles.infoLabel}>Status</Text>
+              <Text style={styles.infoLabel}>{tr('users.fields.status')}</Text>
             </View>
-            <Text style={styles.infoValue}>{formData.active ? 'Active' : 'Inactive'}</Text>
+            <Text style={styles.infoValue}>{ownStatusLabel}</Text>
           </View>
         </View>
-        <Text style={styles.sectionFooter}>Administrators manage your role and status.</Text>
+        <Text style={styles.sectionFooter}>{tr('users.selfEdit.roleStatusFooter')}</Text>
 
         {/* Customer Assignments */}
-        <Text style={styles.sectionTitle} accessibilityRole="header">Customer assignments</Text>
+        <Text style={styles.sectionTitle} accessibilityRole="header">{tr('users.edit.assignments')}</Text>
         <View style={styles.section}>
           {assignedCustomers.length > 0 ? (
             <FlatList
@@ -351,12 +356,12 @@ const UserEditScreen: React.FC = () => {
           ) : (
             <View style={styles.emptyState}>
               <Icon name="account-multiple-outline" size={iconSize.xl} color={t.icon.secondary} />
-              <Text style={styles.emptyText}>No customers assigned yet.</Text>
-              <Text style={styles.emptySubtext}>Ask an administrator to assign customers to you.</Text>
+              <Text style={styles.emptyText}>{tr('users.edit.noAssignments')}</Text>
+              <Text style={styles.emptySubtext}>{tr('users.selfEdit.askAdmin')}</Text>
             </View>
           )}
         </View>
-        <Text style={styles.sectionFooter}>Administrators manage customer assignments.</Text>
+        <Text style={styles.sectionFooter}>{tr('users.selfEdit.assignmentsFooter')}</Text>
       </ScrollView>
     </View>
   );

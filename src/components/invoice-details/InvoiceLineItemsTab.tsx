@@ -15,6 +15,7 @@ import { iconSize, layout, radius, space, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { calculateItemAmounts, roundMoney, formatInvoiceAmount } from '@/utils/invoiceCalculations';
 import { formatNumber } from '@/utils/formatters';
+import { t as tr } from '@/i18n';
 
 // Legacy interface for backward compatibility
 export interface InvoiceLineItem {
@@ -266,9 +267,9 @@ export const InvoiceLineItemsTab: React.FC<InvoiceLineItemsTabProps> = ({
     return (
       <View style={styles.emptyContainer}>
         <Icon name="file-document-outline" size={iconSize.hero} color={t.icon.secondary} />
-        <Text style={styles.emptyTitle} accessibilityRole="header">No line items</Text>
+        <Text style={styles.emptyTitle} accessibilityRole="header">{tr('invoice.details.noLineItems')}</Text>
         <Text style={styles.emptySubtitle}>
-          This invoice has no line items. Items billed on it appear here.
+          {tr('invoice.details.noLineItemsLong')}
         </Text>
       </View>
     );
@@ -286,7 +287,7 @@ export const InvoiceLineItemsTab: React.FC<InvoiceLineItemsTabProps> = ({
       return (
         <View style={styles.loadingFooter} accessibilityRole="progressbar" accessibilityState={{ busy: true }}>
           <ActivityIndicator size="small" color={t.brand.tint} />
-          <Text style={styles.loadingText}>Loading items…</Text>
+          <Text style={styles.loadingText}>{tr('invoice.details.loadingItems')}</Text>
         </View>
       );
     }
@@ -299,22 +300,22 @@ export const InvoiceLineItemsTab: React.FC<InvoiceLineItemsTabProps> = ({
             <View style={styles.summaryAvatar}>
               <Icon name="sigma" size={iconSize.md} color={t.brand.tint} />
             </View>
-            <Text style={styles.summaryTitle} accessibilityRole="header">Invoice summary</Text>
+            <Text style={styles.summaryTitle} accessibilityRole="header">{tr('invoice.label.invoiceSummary')}</Text>
           </View>
 
           <View style={styles.summaryContent}>
-            {renderSummaryRow('Total items', formatNumber(total_items ?? groupedItems.length))}
-            {renderSummaryRow('GRN items', formatNumber(groupedItems.length))}
-            {renderSummaryRow('Dispatch entries', formatNumber(items.length))}
+            {renderSummaryRow(tr('invoice.details.totalItems'), formatNumber(total_items ?? groupedItems.length))}
+            {renderSummaryRow(tr('invoice.details.grnItems'), formatNumber(groupedItems.length))}
+            {renderSummaryRow(tr('invoice.details.dispatchEntries'), formatNumber(items.length))}
             {total_dispatch_qty !== undefined &&
-              renderSummaryRow('Total dispatch qty', formatNumber(total_dispatch_qty))}
+              renderSummaryRow(tr('invoice.details.totalDispatchQty'), formatNumber(total_dispatch_qty))}
             {total_amount !== undefined && (
               <View
                 style={[styles.summaryRow, styles.summaryRowTotal]}
                 accessible
-                accessibilityLabel={`Total amount, ${formatInvoiceAmount(total_amount)}`}
+                accessibilityLabel={`${tr('invoice.label.totalAmount')}, ${formatInvoiceAmount(total_amount)}`}
               >
-                <Text style={styles.summaryLabelTotal}>Total amount</Text>
+                <Text style={styles.summaryLabelTotal}>{tr('invoice.label.totalAmount')}</Text>
                 <Text style={styles.summaryValueTotal}>{formatInvoiceAmount(total_amount)}</Text>
               </View>
             )}
@@ -330,7 +331,7 @@ export const InvoiceLineItemsTab: React.FC<InvoiceLineItemsTabProps> = ({
     return (
       <View style={styles.loadingContainer} accessibilityRole="progressbar" accessibilityState={{ busy: true }}>
         <ActivityIndicator size="large" color={t.brand.tint} />
-        <Text style={styles.loadingText}>Loading items…</Text>
+        <Text style={styles.loadingText}>{tr('invoice.details.loadingItems')}</Text>
       </View>
     );
   }

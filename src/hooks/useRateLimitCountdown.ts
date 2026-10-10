@@ -5,6 +5,7 @@
  * Shows countdown timer when rate limited (client-side or 429 response).
  */
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { localizeDigits, t } from '@/i18n';
 
 interface RateLimitState {
   /** Whether currently rate limited */
@@ -22,13 +23,21 @@ interface UseRateLimitCountdownReturn extends RateLimitState {
   triggerRateLimit: (durationMs: number, customMessage?: string) => void;
   /** Clear rate limit manually */
   clearRateLimit: () => void;
-  /** Parse error message for rate limit info and trigger if found */
+  /**
+   * Start the countdown if the error is a rate limit. Pass the whole result of
+   * signInWithPhone (not only `result.error`): a limit applied by the app carries
+   * `retryAfterSeconds`, and server text is parsed for its wait time.
+   */
   handleRateLimitError: (error: string | Error | unknown) => boolean;
 }
 
 /**
  * Parse common rate limit error patterns from API responses
  * Returns duration in milliseconds if rate limit detected, null otherwise
+ *
+ * This reads English text from the server. A limit the app itself applies
+ * arrives as a number (`retryAfterSeconds`, see handleRateLimitError): its
+ * sentence is translated and is never parsed.
  */
 const parseRateLimitDuration = (error: string): { durationMs: number; message?: string } | null => {
   if (!error) return null;
@@ -63,7 +72,7 @@ const parseRateLimitDuration = (error: string): { durationMs: number; message?: 
   ) {
     return {
       durationMs: 60000,
-      message: 'Too many requests. Please wait before trying again.'
+      message: t('errors.parsed.rateLimit')
     };
   }
 
@@ -71,7 +80,7 @@ const parseRateLimitDuration = (error: string): { durationMs: number; message?: 
   if (errorLower.includes('429') || errorLower.includes('throttl')) {
     return {
       durationMs: 60000,
-      message: 'Too many requests. Please wait before trying again.'
+      message: t('errors.parsed.rateLimit')
     };
   }
 
@@ -79,12 +88,12 @@ const parseRateLimitDuration = (error: string): { durationMs: number; message?: 
 };
 
 /**
- * Format seconds into countdown string (M:SS format)
+ * Format seconds into countdown string (M:SS format), in the language's digits
  */
 const formatCountdown = (seconds: number): string => {
   const mins = Math.floor(seconds / 60);
   const secs = seconds % 60;
-  return `${mins}:${secs.toString().padStart(2, '0')}`;
+  return localizeDigits(`${mins}:${secs.toString().padStart(2, '0')}`);
 };
 
 /**
@@ -154,7 +163,7 @@ export const useRateLimitCountdown = (): UseRateLimitCountdownReturn => {
     // Set initial state
     const initialSeconds = Math.ceil(durationMs / 1000);
     setSecondsRemaining(initialSeconds);
-    setMessage(customMessage || `Too many requests. Please wait ${formatCountdown(initialSeconds)} before trying again.`);
+    setMessage(customMessage || t('errors.parsed.rateLimitCountdown', { time: formatCountdown(initialSeconds) }));
 
     // Start countdown timer
     timerRef.current = setInterval(() => {
@@ -176,8 +185,14 @@ export const useRateLimitCountdown = (): UseRateLimitCountdownReturn => {
       errorString = error.message;
     } else if (error && typeof error === 'object') {
       // Handle objects with message or error properties
-      const errObj = error as { message?: string; error?: string };
+      const errObj = error as { message?: string; error?: string; retryAfterSeconds?: unknown };
       errorString = errObj.message || errObj.error || '';
+      // A limit applied by the app says how long to wait as a number. Start the
+      // countdown from it and show the app's own (translated) sentence.
+      if (typeof errObj.retryAfterSeconds === 'number' && errObj.retryAfterSeconds > 0) {
+        triggerRateLimit(errObj.retryAfterSeconds * 1000, errorString || undefined);
+        return true;
+      }
     }
 
     const parsed = parseRateLimitDuration(errorString);

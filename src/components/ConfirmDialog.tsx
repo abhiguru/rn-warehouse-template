@@ -17,6 +17,7 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, layout, radius, space, touchTarget, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
+import { t as tr } from '@/i18n';
 
 
 
@@ -125,8 +126,8 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   visible,
   title,
   message,
-  confirmText = 'Confirm',
-  cancelText = 'Cancel',
+  confirmText: confirmTextProp,
+  cancelText: cancelTextProp,
   onConfirm,
   onCancel,
   variant = 'default',
@@ -135,6 +136,8 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
 }) => {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
+  const confirmText = confirmTextProp ?? tr('common.confirm');
+  const cancelText = cancelTextProp ?? tr('common.cancel');
 
   const destructive = variant === 'danger';
 

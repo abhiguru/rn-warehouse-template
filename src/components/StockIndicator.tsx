@@ -15,6 +15,7 @@ import { StatusTag } from '@/components/ui/StatusTag';
 import { getStockStatus } from '@/utils/stockStatus';
 import { formatCount, formatNumber } from '@/utils/formatters';
 import { fontWeight, motion, radius, space, typography, type ThemeTokens } from '@/theme/tokens';
+import { t as tr } from '@/i18n';
 
 interface StockIndicatorProps {
   currentStock: number;
@@ -79,7 +80,10 @@ const StockIndicator: React.FC<StockIndicatorProps> = ({
   const status = t.status[stock.status];
 
   const quantityText = hasTotal
-    ? `${formatNumber(validCurrentStock)} of ${formatCount(validOriginalStock, unit, unitPlural)}`
+    ? tr('components.stock.currentOfTotal', {
+        current: formatNumber(validCurrentStock),
+        total: formatCount(validOriginalStock, unit, unitPlural),
+      })
     : formatCount(validCurrentStock, unit, unitPlural);
 
   return (

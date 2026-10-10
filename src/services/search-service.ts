@@ -2,6 +2,7 @@ import { getAuthenticatedClient } from '@/config/supabaseConfig';
 import { executeRPC, createErrorResponse } from '@/utils/serviceErrorHandler';
 
 import { toLocalISODate } from '@/utils/formatters';
+import { t } from '@/i18n';
 export interface SearchResult {
   label: string;
   value: string;
@@ -218,7 +219,7 @@ class SearchService {
       },
       {
         context: 'SearchService.searchDispatches',
-        errorMessage: 'Failed to search dispatches',
+        errorMessage: t('errors.dispatch.searchFailed'),
         transform: (data) => {
           if (__DEV__) console.log('[SearchService] searchDispatches raw response:', JSON.stringify(data, null, 2).slice(0, 1000));
           const dispatches = Array.isArray(data?.dispatches) ? data.dispatches : [];
@@ -281,7 +282,7 @@ class SearchService {
       },
       {
         context: 'SearchService.searchGRNNumbers',
-        errorMessage: 'Failed to search GRN numbers',
+        errorMessage: t('errors.grn.searchNumbersFailed'),
         transform: (data) => {
           const grns = Array.isArray(data?.grns) ? data.grns : [];
           return grns.map((grn) => ({

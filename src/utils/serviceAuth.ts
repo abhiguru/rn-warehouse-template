@@ -11,6 +11,8 @@ import { getSupabaseClient, getAuthenticatedClient } from '../config/supabaseCon
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createLogger } from './logger';
 import type { ServiceResponse } from '../types/service.types';
+import { AppError, getAppErrorCode } from './appError';
+import { t } from '@/i18n';
 
 const logger = createLogger('ServiceAuth');
 
@@ -116,7 +118,7 @@ export async function requireAuth(context: string): Promise<SessionInfo> {
   const session = await checkAuthSession({ context });
 
   if (!session.isValid) {
-    throw new Error('Authentication required - no valid session');
+    throw new AppError('AUTH_REQUIRED', t('errors.auth.requiredNoSession'));
   }
 
   return session;
@@ -146,12 +148,12 @@ export async function getAuthenticatedClientWithCheck(
  * Create a response indicating authentication failure
  */
 export function createAuthFailureResponse<T = unknown>(
-  message: string = 'Authentication required'
+  message: string = t('errors.auth.required')
 ): ServiceResponse<T> {
   return {
     success: false,
     message,
-    error: 'No valid session',
+    error: t('errors.auth.noValidSession'),
     errorCode: 'AUTH_REQUIRED',
   };
 }
@@ -177,7 +179,13 @@ export function withAuth<TArgs extends unknown[], TResult>(
       const session = await requireAuth(context);
       return await fn(session, ...args);
     } catch (error) {
-      if (error instanceof Error && error.message.includes('Authentication required')) {
+      // requireAuth says so by its code: its message is translated and is not
+      // read. English text from the server is still matched as before.
+      const appCode = getAppErrorCode(error);
+      if (
+        appCode === 'AUTH_REQUIRED' ||
+        (!appCode && error instanceof Error && error.message.includes('Authentication required'))
+      ) {
         return createAuthFailureResponse();
       }
       throw error;

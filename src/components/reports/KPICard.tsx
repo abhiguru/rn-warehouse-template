@@ -22,6 +22,7 @@ import {
   type ThemeTokens,
 } from '@/theme/tokens';
 import { formatNumber } from '@/utils/formatters';
+import { t as tr } from '@/i18n';
 
 export type KPIVariant = 'primary' | 'secondary' | 'accent' | 'neutral' | 'success' | 'warning';
 
@@ -195,7 +196,7 @@ export const KPICard: React.FC<KPICardProps> = ({
       <View
         style={[styles.card, compact && styles.cardCompact]}
         accessible
-        accessibilityLabel={`${label}, loading`}
+        accessibilityLabel={tr('reports.components.kpiLoading', { label })}
         accessibilityState={{ busy: true }}
       >
         <View style={[styles.iconCircle, compact && styles.iconCircleCompact, circle]}>
@@ -215,11 +216,18 @@ export const KPICard: React.FC<KPICardProps> = ({
     trendGood === undefined ? styles.trendNeutral : trendGood ? styles.trendPositive : styles.trendNegative;
   const trendColour =
     trendGood === undefined ? t.text.secondary : trendGood ? t.status.positive.text : t.status.negative.text;
-  const trendWord = trend === 1 ? 'up' : trend === -1 ? 'down' : 'unchanged';
+  const trendKey =
+    trend === 1
+      ? 'reports.components.trendUp'
+      : trend === -1
+        ? 'reports.components.trendDown'
+        : 'reports.components.trendUnchanged';
 
   const a11yLabel = [
-    `${label}: ${shown}${unit ? ` ${unit}` : ''}`,
-    hasTrend ? `${trendWord} ${trendValue}` : null,
+    unit
+      ? tr('reports.components.kpiValueUnit', { label, value: shown, unit })
+      : tr('reports.components.kpiValue', { label, value: shown }),
+    hasTrend ? tr(trendKey, { value: trendValue }) : null,
   ]
     .filter(Boolean)
     .join(', ');

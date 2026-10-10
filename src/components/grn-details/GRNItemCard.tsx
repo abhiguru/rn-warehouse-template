@@ -14,6 +14,7 @@ import type { ThemeTokens } from '@/theme/tokens';
 import { StatusTag } from '@/components/ui';
 import { formatNumber, formatWeight } from '@/utils/formatters';
 import { getGRNStockStatus } from '@/features/grn/utils/grnStockStatus';
+import { t as tr } from '@/i18n';
 
 // ============================================================================
 // TYPES - Using snake_case to match backend RPC types
@@ -116,17 +117,17 @@ const GRNItemCardComponent: React.FC<GRNItemCardProps> = ({
   const showWeight = weight !== undefined && weight !== null;
 
   const details = [
-    package_mark ? { icon: 'label-outline', text: `Mark ${package_mark}` } : null,
+    package_mark ? { icon: 'label-outline', text: tr('grn.item.markWithValue', { mark: package_mark }) } : null,
     packaging ? { icon: 'package-variant-closed', text: packaging } : null,
-    rack ? { icon: 'view-grid-outline', text: `Rack ${rack}` } : null,
+    rack ? { icon: 'view-grid-outline', text: tr('grn.item.rackWithValue', { rack }) } : null,
   ].filter((d): d is { icon: string; text: string } => d !== null);
 
   const a11yLabel = [
     item_name,
-    `${formatNumber(qty)} received`,
+    tr('grn.stock.receivedCount', { quantity: formatNumber(qty) }),
     stockStatus?.label,
-    `${formatNumber(stock)} in stock`,
-    `${formatNumber(total_dispatched)} dispatched`,
+    tr('grn.stock.inStockCount', { quantity: formatNumber(stock) }),
+    tr('grn.stock.dispatchedCount', { quantity: formatNumber(total_dispatched) }),
     showWeight ? formatWeight(Number(weight)) : null,
     ...details.map(d => d.text),
   ]
@@ -151,22 +152,22 @@ const GRNItemCardComponent: React.FC<GRNItemCardProps> = ({
         </View>
         <View style={styles.qtyBlock}>
           <Text style={styles.qtyValue}>{formatNumber(qty)}</Text>
-          <Text style={styles.qtyLabel}>Received</Text>
+          <Text style={styles.qtyLabel}>{tr('grn.stock.received')}</Text>
         </View>
       </View>
 
       <View style={styles.metricsSection}>
         <View style={styles.metricItem}>
-          <Text style={styles.metricLabel}>In stock</Text>
+          <Text style={styles.metricLabel}>{tr('grn.stock.inStock')}</Text>
           <Text style={styles.metricValue}>{formatNumber(stock)}</Text>
         </View>
         <View style={styles.metricItem}>
-          <Text style={styles.metricLabel}>Dispatched</Text>
+          <Text style={styles.metricLabel}>{tr('grn.stock.dispatched')}</Text>
           <Text style={styles.metricValue}>{formatNumber(total_dispatched)}</Text>
         </View>
         {showWeight && (
           <View style={styles.metricItem}>
-            <Text style={styles.metricLabel}>Weight</Text>
+            <Text style={styles.metricLabel}>{tr('common.weight')}</Text>
             <Text style={styles.metricValue}>{formatWeight(Number(weight))}</Text>
           </View>
         )}

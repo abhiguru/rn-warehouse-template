@@ -25,6 +25,7 @@ import {
 import type { ThemeTokens } from '@/theme/tokens';
 
 import { showAlert } from '@/utils/alert';
+import { t as tr } from '@/i18n';
 
 export interface DispatchFormHeaderProps {
   title: string; // e.g., "Create dispatch"
@@ -104,7 +105,7 @@ export const DispatchFormHeader: React.FC<DispatchFormHeaderProps> = ({
   onCancel,
   showCancelButton = true,
   confirmCancel = true,
-  cancelMessage = 'Discard this dispatch? The details you entered will be lost.',
+  cancelMessage = tr('dispatch.wizard.discardCreateMessage'),
   rightAction,
 }) => {
   const insets = useSafeAreaInsets();
@@ -114,15 +115,15 @@ export const DispatchFormHeader: React.FC<DispatchFormHeaderProps> = ({
   const handleCancelPress = () => {
     if (confirmCancel) {
       showAlert(
-        'Discard this dispatch?',
+        tr('dispatch.wizard.discardTitle'),
         cancelMessage,
         [
           {
-            text: 'Keep editing',
+            text: tr('common.keepEditing'),
             style: 'cancel',
           },
           {
-            text: 'Discard dispatch',
+            text: tr('dispatch.wizard.discardDispatch'),
             style: 'destructive',
             onPress: onCancel,
           },
@@ -155,10 +156,10 @@ export const DispatchFormHeader: React.FC<DispatchFormHeaderProps> = ({
             onPress={handleCancelPress}
             hitSlop={8}
             accessibilityRole="button"
-            accessibilityLabel="Cancel dispatch"
+            accessibilityLabel={tr('dispatch.wizard.cancelDispatch')}
           >
             <Icon name="close" size={iconSize.lg} color={t.brand.tint} />
-            <Text style={styles.cancelText}>Cancel</Text>
+            <Text style={styles.cancelText}>{tr('common.cancel')}</Text>
           </Pressable>
         )}
 

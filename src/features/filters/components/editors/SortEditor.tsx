@@ -2,6 +2,7 @@
 import React from 'react';
 import { Text, View } from 'react-native';
 import { useThemedStyles } from '@/hooks/useTheme';
+import { t } from '@/i18n';
 import { space, typography, type ThemeTokens } from '@/theme/tokens';
 import { SORT_DIRECTIONS } from '../../filterModel';
 import type { SortFieldOption, SortOrder, SortState } from '../../types';
@@ -28,14 +29,14 @@ export function SortEditor({ options, value, onChange }: SortEditorProps) {
   return (
     <View style={styles.wrap}>
       <ChoiceChips
-        accessibilityLabel="Sort by"
+        accessibilityLabel={t('filters.sheet.sortBy')}
         options={options.map(option => ({ value: option.field, label: option.label }))}
         value={value.field}
         onChange={field => onChange({ field, order: value.order })}
       />
-      <Text style={styles.caption}>Order</Text>
+      <Text style={styles.caption}>{t('filters.sheet.order')}</Text>
       <ChoiceChips
-        accessibilityLabel="Sort order"
+        accessibilityLabel={t('filters.sheet.sortOrder')}
         options={directions}
         value={value.order}
         onChange={order => onChange({ field: value.field, order })}

@@ -15,7 +15,9 @@ import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, layout, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 import { useCustomerForm } from '@/hooks/useCustomerForm';
 import { GenericStepIndicatorHeader } from '@/components/GenericStepIndicatorHeader';
-import { CUSTOMER_STEPS, CUSTOMER_STEP_NUMBERS, getCompletedSteps } from '@/constants/customerSteps';
+import { CUSTOMER_STEP_NUMBERS, getCompletedSteps } from '@/constants/customerSteps';
+import { customerSteps } from '@/features/customer/customerStepLabels';
+import { normalizeDigits, t as tr } from '@/i18n';
 import { CustomerFormMode } from '@/types/customer.types';
 
 import { showAlert } from '@/utils/alert';
@@ -72,11 +74,11 @@ export function CustomerBasicInfoStep({ mode, customerId }: CustomerBasicInfoSte
 
     if (isDirty) {
       showAlert(
-        isCreateMode ? 'Discard this customer?' : 'Discard your changes?',
-        'Your unsaved changes will be lost.',
+        isCreateMode ? tr('customers.form.discardNewTitle') : tr('customers.form.discardChangesTitle'),
+        tr('customers.form.discardMessage'),
         [
-          { text: 'Keep editing', style: 'cancel' },
-          { text: 'Discard', style: 'destructive', onPress: confirmDiscard },
+          { text: tr('common.keepEditing'), style: 'cancel' },
+          { text: tr('common.discard'), style: 'destructive', onPress: confirmDiscard },
         ]
       );
     } else {
@@ -111,9 +113,9 @@ export function CustomerBasicInfoStep({ mode, customerId }: CustomerBasicInfoSte
 
   if (isLoading) {
     return (
-      <View style={styles.loadingContainer} accessibilityRole="progressbar" accessibilityLabel="Loading customer">
+      <View style={styles.loadingContainer} accessibilityRole="progressbar" accessibilityLabel={tr('customers.form.loadingLabel')}>
         <ActivityIndicator size="large" color={t.brand.tint} />
-        <Text style={styles.loadingText}>Loading customer…</Text>
+        <Text style={styles.loadingText}>{tr('customers.form.loading')}</Text>
       </View>
     );
   }
@@ -122,13 +124,14 @@ export function CustomerBasicInfoStep({ mode, customerId }: CustomerBasicInfoSte
     <View style={styles.container}>
       {/* Step Indicator */}
       <GenericStepIndicatorHeader
-        steps={CUSTOMER_STEPS}
+        steps={customerSteps()}
         currentStep={CUSTOMER_STEP_NUMBERS.BASIC}
         completedSteps={getCompletedSteps(CUSTOMER_STEP_NUMBERS.BASIC)}
         onCancel={handleCancel}
         onStepPress={handleStepIndicatorPress}
-        entityName="Customer"
-        entityId={isCreateMode ? undefined : formData.name || 'Editing'}
+        entityName={tr('common.customer')}
+        entityId={isCreateMode ? undefined : formData.name || tr('customers.form.editing')}
+        cancelTitle={tr('customers.form.discardHeaderTitle')}
       />
 
       <KeyboardAwareScrollView
@@ -142,8 +145,8 @@ export function CustomerBasicInfoStep({ mode, customerId }: CustomerBasicInfoSte
       >
         {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.title} accessibilityRole="header">Basic information</Text>
-          <Text style={styles.subtitle}>Enter the customer's main contact details.</Text>
+          <Text style={styles.title} accessibilityRole="header">{tr('customers.steps.basic.label')}</Text>
+          <Text style={styles.subtitle}>{tr('customers.form.basicSubtitle')}</Text>
         </View>
 
         {/* Form Fields */}
@@ -151,7 +154,7 @@ export function CustomerBasicInfoStep({ mode, customerId }: CustomerBasicInfoSte
           {/* Customer Name */}
           <View style={styles.formField}>
             <Text style={[styles.label, validationErrors.name && styles.labelError]}>
-              Customer name<Text style={styles.required}> *</Text>
+              {tr('customers.form.customerName')}<Text style={styles.required}> *</Text>
             </Text>
             <TextInput
               style={[
@@ -161,7 +164,7 @@ export function CustomerBasicInfoStep({ mode, customerId }: CustomerBasicInfoSte
               ]}
               value={formData.name}
               onChangeText={updateName}
-              placeholder="Enter customer name"
+              placeholder={tr('customers.form.customerNamePlaceholder')}
               placeholderTextColor={t.text.placeholder}
               maxLength={200}
               returnKeyType="next"
@@ -171,7 +174,7 @@ export function CustomerBasicInfoStep({ mode, customerId }: CustomerBasicInfoSte
               autoCapitalize="words"
               autoComplete="name"
               textContentType="name"
-              accessibilityLabel="Customer name, required"
+              accessibilityLabel={tr('customers.form.customerNameLabel')}
             />
             {validationErrors.name && <FieldError message={validationErrors.name} />}
           </View>
@@ -179,7 +182,7 @@ export function CustomerBasicInfoStep({ mode, customerId }: CustomerBasicInfoSte
           {/* Mobile Number */}
           <View style={styles.formField}>
             <Text style={[styles.label, validationErrors.mobile && styles.labelError]}>
-              Mobile number<Text style={styles.required}> *</Text>
+              {tr('common.mobileNumber')}<Text style={styles.required}> *</Text>
             </Text>
             <View style={styles.phoneInputContainer}>
               <View
@@ -200,10 +203,10 @@ export function CustomerBasicInfoStep({ mode, customerId }: CustomerBasicInfoSte
                 value={formData.mobile.replace(/^91/, '')}
                 onChangeText={(text) => {
                   // Remove non-digits and limit to 10 chars
-                  const cleaned = text.replace(/\D/g, '').slice(0, 10);
+                  const cleaned = normalizeDigits(text).replace(/\D/g, '').slice(0, 10);
                   updateMobile(cleaned);
                 }}
-                placeholder="10-digit mobile number"
+                placeholder={tr('customers.form.mobilePlaceholder')}
                 placeholderTextColor={t.text.placeholder}
                 keyboardType="phone-pad"
                 autoComplete="tel"
@@ -213,7 +216,7 @@ export function CustomerBasicInfoStep({ mode, customerId }: CustomerBasicInfoSte
                 onSubmitEditing={() => emailInputRef.current?.focus()}
                 onFocus={() => setFocusedField('mobile')}
                 onBlur={() => setFocusedField(null)}
-                accessibilityLabel="Mobile number after plus 91, required"
+                accessibilityLabel={tr('customers.form.mobileLabel')}
               />
             </View>
             {validationErrors.mobile && <FieldError message={validationErrors.mobile} />}
@@ -221,7 +224,7 @@ export function CustomerBasicInfoStep({ mode, customerId }: CustomerBasicInfoSte
 
           {/* Email */}
           <View style={styles.formField}>
-            <Text style={[styles.label, validationErrors.email && styles.labelError]}>Email</Text>
+            <Text style={[styles.label, validationErrors.email && styles.labelError]}>{tr('customers.form.email')}</Text>
             <TextInput
               ref={emailInputRef}
               style={[
@@ -242,11 +245,11 @@ export function CustomerBasicInfoStep({ mode, customerId }: CustomerBasicInfoSte
               returnKeyType="done"
               onFocus={() => setFocusedField('email')}
               onBlur={() => setFocusedField(null)}
-              accessibilityLabel="Email, optional"
-              accessibilityHint="Used for sending invoices"
+              accessibilityLabel={tr('customers.form.emailLabel')}
+              accessibilityHint={tr('customers.form.emailHint')}
             />
             {validationErrors.email && <FieldError message={validationErrors.email} />}
-            <Text style={styles.helperText}>Optional. Used for sending invoices.</Text>
+            <Text style={styles.helperText}>{tr('customers.form.emailHelper')}</Text>
           </View>
         </View>
 
@@ -260,9 +263,9 @@ export function CustomerBasicInfoStep({ mode, customerId }: CustomerBasicInfoSte
           style={({ pressed }) => [styles.nextButton, pressed && styles.nextButtonPressed]}
           onPress={handleNext}
           accessibilityRole="button"
-          accessibilityLabel="Next: details"
+          accessibilityLabel={tr('customers.form.nextDetails')}
         >
-          <Text style={styles.nextButtonText}>Next: details</Text>
+          <Text style={styles.nextButtonText}>{tr('customers.form.nextDetails')}</Text>
           <Icon name="chevron-right" size={iconSize.md} color={t.brand.onFill} />
         </Pressable>
       </View>

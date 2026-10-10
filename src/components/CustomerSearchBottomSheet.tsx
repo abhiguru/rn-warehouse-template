@@ -30,6 +30,7 @@ import { searchService } from '@/services/search-service';
 import { RecentCustomersService, RecentCustomer } from '@/services/recent-customers-service';
 import { useAppSelector } from '@/store/hooks';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { normalizeDigits, t as tr } from '@/i18n';
 import {
   fontWeight,
   iconSize,
@@ -80,7 +81,7 @@ export interface CustomerSearchBottomSheetRef {
 }
 
 export const CustomerSearchBottomSheet = forwardRef<CustomerSearchBottomSheetRef, CustomerSearchBottomSheetProps>(
-    ({ onSelect, title = 'Select customer' }, ref) => {
+    ({ onSelect, title = tr('customers.search.title') }, ref) => {
         const bottomSheetRef = useRef<BottomSheet>(null);
         const searchInputRef = useRef<any>(null);
         const insets = useSafeAreaInsets();
@@ -132,7 +133,7 @@ export const CustomerSearchBottomSheet = forwardRef<CustomerSearchBottomSheetRef
                 setIsSearching(true);
                 const timeoutId = setTimeout(async () => {
                     try {
-                        const results = await searchService.searchCustomers(searchQuery);
+                        const results = await searchService.searchCustomers(normalizeDigits(searchQuery));
                         setSearchResults(results || []);
                     } catch (error) {
                         console.error('[CustomerSearchBottomSheet] Search error:', error);
@@ -196,15 +197,15 @@ export const CustomerSearchBottomSheet = forwardRef<CustomerSearchBottomSheetRef
 
         const isSearchMode = searchQuery.length >= 1;
         const emptyTitle = isSearching
-            ? 'Searching…'
+            ? tr('customers.search.searching')
             : isSearchMode
-                ? `No customers match "${searchQuery}"`
-                : 'No recent customers';
+                ? tr('customers.search.noMatchTitle', { search: searchQuery })
+                : tr('customers.search.noRecentTitle');
         const emptyMessage = isSearching
             ? undefined
             : isSearchMode
-                ? 'Try fewer letters or another spelling.'
-                : 'Type a name to search. Customers you pick appear here.';
+                ? tr('customers.search.noMatchMessage')
+                : tr('customers.search.noRecentMessage');
 
         return (
             <BottomSheet
@@ -230,7 +231,7 @@ export const CustomerSearchBottomSheet = forwardRef<CustomerSearchBottomSheetRef
                                 pressed && styles.closeButtonPressed,
                             ]}
                             accessibilityRole="button"
-                            accessibilityLabel="Close customer search"
+                            accessibilityLabel={tr('customers.search.close')}
                         >
                             <Icon name="close" size={iconSize.lg} color={t.icon.primary} />
                         </Pressable>
@@ -247,7 +248,7 @@ export const CustomerSearchBottomSheet = forwardRef<CustomerSearchBottomSheetRef
                             />
                             <BottomSheetTextInput
                                 ref={searchInputRef}
-                                placeholder="Search customers"
+                                placeholder={tr('customers.search.placeholder')}
                                 value={searchQuery}
                                 onChangeText={setSearchQuery}
                                 style={styles.searchInput}
@@ -255,14 +256,14 @@ export const CustomerSearchBottomSheet = forwardRef<CustomerSearchBottomSheetRef
                                 autoCapitalize="none"
                                 autoCorrect={false}
                                 returnKeyType="search"
-                                accessibilityLabel="Search customers"
+                                accessibilityLabel={tr('customers.search.placeholder')}
                             />
                             {isSearching && (
                                 <ActivityIndicator
                                     size="small"
                                     color={t.brand.tint}
                                     style={styles.searchLoader}
-                                    accessibilityLabel="Searching"
+                                    accessibilityLabel={tr('customers.search.searchingLabel')}
                                 />
                             )}
                             {searchQuery.length > 0 && !isSearching && (
@@ -270,7 +271,7 @@ export const CustomerSearchBottomSheet = forwardRef<CustomerSearchBottomSheetRef
                                     onPress={() => setSearchQuery('')}
                                     style={styles.clearButton}
                                     accessibilityRole="button"
-                                    accessibilityLabel="Clear search"
+                                    accessibilityLabel={tr('common.clearSearch')}
                                 >
                                     <Icon name="close-circle" size={iconSize.md} color={t.icon.secondary} />
                                 </Pressable>
@@ -284,7 +285,7 @@ export const CustomerSearchBottomSheet = forwardRef<CustomerSearchBottomSheetRef
                         keyExtractor={(item: { value: string; label: string; detail?: string }) => item.value}
                         ListHeaderComponent={
                             !isSearchMode && displayData.length > 0 ? (
-                                <Text style={styles.sectionHeader} accessibilityRole="header">RECENT CUSTOMERS</Text>
+                                <Text style={styles.sectionHeader} accessibilityRole="header">{tr('customers.search.recentHeader')}</Text>
                             ) : null
                         }
                         renderItem={({ item }: { item: { value: string; label: string; detail?: string } }) => (
@@ -324,7 +325,7 @@ export const CustomerSearchBottomSheet = forwardRef<CustomerSearchBottomSheetRef
                         ListEmptyComponent={
                             <View style={styles.emptyContainer}>
                                 {isSearching ? (
-                                    <ActivityIndicator color={t.brand.tint} accessibilityLabel="Searching" />
+                                    <ActivityIndicator color={t.brand.tint} accessibilityLabel={tr('customers.search.searchingLabel')} />
                                 ) : (
                                     <Icon
                                         name={isSearchMode ? 'magnify' : 'history'}

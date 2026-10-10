@@ -5,6 +5,8 @@
  * Helps debug which source field is being used when multiple fallbacks exist.
  */
 
+import { t } from '@/i18n';
+
 type FieldValue = string | number | boolean | null | undefined;
 
 interface ExtractOptions {
@@ -137,7 +139,7 @@ export function normalizeInvoiceItem(
         ['name', item.name as string],
         ['catalog_name', item.catalog_name as string],
       ],
-      { context: 'InvoiceItem.itemName', defaultValue: 'Unknown Item', logFallbacks }
+      { context: 'InvoiceItem.itemName', defaultValue: t('errors.general.unknownItem'), logFallbacks }
     ),
 
     duration: extractString(

@@ -26,6 +26,7 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { iconSize, radius, space, touchTarget, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
+import { localizeDigits, t as tr } from '@/i18n';
 
 /** Touch area padding that brings the 20 pt clear glyph up to the minimum target. */
 const CLEAR_HIT_SLOP = (touchTarget - iconSize.md) / 2;
@@ -122,14 +123,14 @@ export function Input({
   const message: { text: string; isError: boolean } | null = error
     ? { text: error, isError: true }
     : isOverLimit
-      ? { text: `Use ${maxLength} characters or fewer.`, isError: true }
+      ? { text: tr('components.input.tooLong', { max: localizeDigits(String(maxLength)) }), isError: true }
       : helperText
         ? { text: helperText, isError: false }
         : null;
 
   const characterCount =
     showCharacterCount && maxLength
-      ? { text: `${currentValue.length}/${maxLength}`, isOver: currentValue.length > maxLength }
+      ? { text: localizeDigits(`${currentValue.length}/${maxLength}`), isOver: currentValue.length > maxLength }
       : null;
 
   // Show clear button when typing and has value
@@ -176,12 +177,12 @@ export function Input({
           placeholderTextColor={t.text.placeholder}
           accessibilityLabel={
             label
-              ? `${label}${required ? ', required' : ''}`
+              ? required ? tr('components.input.requiredLabel', { label }) : label
               : textInputProps.accessibilityLabel ?? textInputProps.placeholder
           }
           accessibilityHint={
             textInputProps.accessibilityHint ??
-            (isReadOnly ? 'Read only' : isInvalid && message ? message.text : undefined)
+            (isReadOnly ? tr('components.input.readOnly') : isInvalid && message ? message.text : undefined)
           }
           accessibilityState={{
             disabled: isDisabled,
@@ -201,7 +202,7 @@ export function Input({
           <Pressable
             onPress={handleClear}
             style={styles.clearButton}
-            accessibilityLabel={`Clear ${label ? label.toLowerCase() : 'text'}`}
+            accessibilityLabel={label ? tr('components.input.clearLabel', { label: label.toLowerCase() }) : tr('components.input.clearText')}
             accessibilityRole="button"
             hitSlop={CLEAR_HIT_SLOP}
           >
@@ -293,7 +294,7 @@ export function SearchInput(props: InputProps) {
   return (
     <Input
       {...props}
-      placeholder={props.placeholder || 'Search...'}
+      placeholder={props.placeholder || tr('components.input.searchPlaceholder')}
       autoCapitalize="none"
       autoCorrect={false}
       returnKeyType="search"

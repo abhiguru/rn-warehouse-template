@@ -21,6 +21,7 @@ import type {
 } from '@/types/report.types';
 
 import { toLocalISODate } from '@/utils/formatters';
+import { t } from '@/i18n';
 /**
  * Default empty response for error cases
  */
@@ -87,7 +88,7 @@ export async function getCustomerGRNActivity(
     return {
       success: false,
       data: EMPTY_RESPONSE,
-      message: 'Customer ID is required',
+      message: t('reports.customerActivity.errors.customerIdRequired'),
       error: 'MISSING_CUSTOMER_ID',
     };
   }
@@ -136,7 +137,7 @@ export async function getCustomerGRNActivity(
       return {
         success: false,
         data: EMPTY_RESPONSE,
-        message: 'Failed to fetch GRN activity',
+        message: t('reports.grnActivity.errors.fetchFailed'),
         error: error.message,
       };
     }
@@ -146,7 +147,7 @@ export async function getCustomerGRNActivity(
       return {
         success: true,
         data: EMPTY_RESPONSE,
-        message: 'No GRN activity found',
+        message: t('reports.grnActivity.errors.noData'),
       };
     }
 
@@ -222,14 +223,14 @@ export async function getCustomerGRNActivity(
     return {
       success: true,
       data: { summary, grns },
-      message: 'GRN activity retrieved successfully',
+      message: t('reports.grnActivity.retrieved'),
     };
   } catch (error) {
     console.error('[GRNActivity] Unexpected error:', error);
     return {
       success: false,
       data: EMPTY_RESPONSE,
-      message: 'Failed to fetch GRN activity',
+      message: t('reports.grnActivity.errors.fetchFailed'),
       error: error instanceof Error ? error.message : 'Unknown error',
     };
   }
@@ -281,7 +282,7 @@ export async function getAllGRNActivity(
       return {
         success: false,
         data: EMPTY_ALL_RESPONSE,
-        message: 'Failed to fetch all-customers GRN activity',
+        message: t('reports.grnActivity.errors.fetchAllFailed'),
         error: error.message,
       };
     }
@@ -291,7 +292,7 @@ export async function getAllGRNActivity(
       return {
         success: true,
         data: EMPTY_ALL_RESPONSE,
-        message: 'No GRN activity found',
+        message: t('reports.grnActivity.errors.noData'),
       };
     }
 
@@ -342,14 +343,14 @@ export async function getAllGRNActivity(
     return {
       success: true,
       data: { summary, by_customer: byCustomer },
-      message: 'All-customers GRN activity retrieved successfully',
+      message: t('reports.grnActivity.retrievedAll'),
     };
   } catch (error) {
     console.error('[AllGRNActivity] Unexpected error:', error);
     return {
       success: false,
       data: EMPTY_ALL_RESPONSE,
-      message: 'Failed to fetch all-customers GRN activity',
+      message: t('reports.grnActivity.errors.fetchAllFailed'),
       error: error instanceof Error ? error.message : 'Unknown error',
     };
   }

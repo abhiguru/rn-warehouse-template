@@ -46,6 +46,7 @@ import BaseStepIndicator from '../StepIndicator';
 import SwipeableFormStep from '../SwipeableFormStep';
 
 import { showAlert } from '@/utils/alert';
+import { t as tr } from '@/i18n';
 /**
  * Step indicator configuration
  */
@@ -214,10 +215,10 @@ export const FormStepWrapper = memo<FormStepWrapperProps>(({
   canGoBack = true,
   canGoNext = true,
   hasUnsavedChanges = false,
-  unsavedChangesMessage = 'Your changes will be lost.',
-  backLabel = 'Back',
-  nextLabel = 'Next',
-  submitLabel = 'Submit',
+  unsavedChangesMessage: unsavedChangesMessageProp,
+  backLabel: backLabelProp,
+  nextLabel: nextLabelProp,
+  submitLabel: submitLabelProp,
   isSubmitting = false,
   enableSwipe = true,
   StepIndicator,
@@ -229,6 +230,10 @@ export const FormStepWrapper = memo<FormStepWrapperProps>(({
   const insets = useSafeAreaInsets();
   const t = useTokens();
   const styles = useThemedStyles(makeStyles);
+  const unsavedChangesMessage = unsavedChangesMessageProp ?? tr('components.form.changesWillBeLost');
+  const backLabel = backLabelProp ?? tr('common.back');
+  const nextLabel = nextLabelProp ?? tr('common.next');
+  const submitLabel = submitLabelProp ?? tr('common.submit');
 
   // Build step configs from labels if not provided
   const steps: StepConfig[] = stepConfigs || stepLabels.map((label) => ({ label }));
@@ -237,12 +242,12 @@ export const FormStepWrapper = memo<FormStepWrapperProps>(({
   const handleCancel = useCallback(() => {
     if (hasUnsavedChanges) {
       showAlert(
-        'Discard changes?',
+        tr('common.discardChangesTitle'),
         unsavedChangesMessage,
         [
-          { text: 'Keep editing', style: 'cancel' },
+          { text: tr('common.keepEditing'), style: 'cancel' },
           {
-            text: 'Discard',
+            text: tr('common.discard'),
             style: 'destructive',
             onPress: onCancel,
           },
@@ -291,7 +296,7 @@ export const FormStepWrapper = memo<FormStepWrapperProps>(({
           onPress={handleCancel}
           style={({ pressed }) => [styles.cancelButton, pressed && styles.cancelButtonPressed]}
           accessibilityRole="button"
-          accessibilityLabel="Cancel"
+          accessibilityLabel={tr('common.cancel')}
         >
           <Icon name="close" size={iconSize.lg} color={t.icon.primary} />
         </Pressable>

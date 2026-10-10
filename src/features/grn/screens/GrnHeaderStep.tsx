@@ -23,13 +23,14 @@ import { CustomerSearchBottomSheet, CustomerSearchBottomSheetRef } from '@/compo
 import { SupervisorBottomSheet } from '@/features/grn/components/SupervisorBottomSheet';
 import { GRNStepIndicator } from '@/components/GRNStepIndicator';
 import WizardBottomBar from '@/components/WizardBottomBar';
-import { formatDate } from '@/utils/formatters';
+import { formatDate, formatNumber } from '@/utils/formatters';
 import { GRN_STEPS, STEP_NUMBERS, getCompletedSteps } from '@/constants/grnSteps';
 import { GhostTextInput, GhostTextInputRef } from '@/components/GhostTextInput';
 import { getTopVehicleSuggestion } from '@/services/vehicle-suggestion-service';
 
 import { showAlert } from '@/utils/alert';
 import { StatusTag } from '@/components/ui';
+import { normalizeDigits, t as tr } from '@/i18n';
 type GrnHeaderStepProps = {
   mode: 'create' | 'edit';
 };
@@ -97,14 +98,14 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
 
     if (hasUnsavedData()) {
       showAlert(
-        isCreateMode ? 'Discard this GRN?' : 'Discard changes to this GRN?',
+        isCreateMode ? tr('grn.form.discardTitle') : tr('grn.form.discardChangesTitle'),
         isCreateMode
-          ? 'The details you entered will be lost.'
-          : 'Your unsaved changes will be lost.',
+          ? tr('grn.form.discardMessage')
+          : tr('grn.form.unsavedChangesMessage'),
         [
-          { text: 'Keep editing', style: 'cancel' },
+          { text: tr('common.keepEditing'), style: 'cancel' },
           {
-            text: isCreateMode ? 'Discard GRN' : 'Discard changes',
+            text: isCreateMode ? tr('grn.form.discardGrn') : tr('grn.form.discardChanges'),
             style: 'destructive',
             onPress: confirmDiscard,
           },
@@ -182,7 +183,7 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
     return (
       <View style={styles.loadingContainer} accessibilityRole="progressbar" accessibilityState={{ busy: true }}>
         <ActivityIndicator size="large" color={t.brand.tint} />
-        <Text style={styles.loadingText}>Loading GRN details…</Text>
+        <Text style={styles.loadingText}>{tr('grn.header.loading')}</Text>
       </View>
     );
   }
@@ -207,7 +208,8 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
     value: string | undefined,
     placeholder: string,
     error: string | undefined,
-    onPress: () => void
+    onPress: () => void,
+    hint: string
   ) => (
     <View style={styles.formField}>
       {renderLabel(label, true)}
@@ -220,8 +222,8 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
         ]}
         onPress={onPress}
         accessibilityRole="button"
-        accessibilityLabel={`${label}, ${value || 'not selected'}`}
-        accessibilityHint={`Opens a list to choose the ${label.toLowerCase()}`}
+        accessibilityLabel={`${label}, ${value || tr('grn.header.notSelected')}`}
+        accessibilityHint={hint}
       >
         <Text style={value ? styles.valueText : styles.placeholderText} numberOfLines={2}>
           {value || placeholder}
@@ -233,8 +235,8 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
   );
 
   const pricingOptions = [
-    { value: 'ONE_TIME' as const, label: 'One time' },
-    { value: 'MONTHLY' as const, label: 'Monthly' },
+    { value: 'ONE_TIME' as const, label: tr('grn.header.oneTime') },
+    { value: 'MONTHLY' as const, label: tr('grn.header.monthly') },
   ];
 
   return (
@@ -262,26 +264,26 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
           <View style={styles.warningBanner} accessible accessibilityRole="alert">
             <Icon name="alert" size={iconSize.md} color={t.status.critical.text} />
             <View style={styles.warningTextContainer}>
-              <Text style={styles.warningTitle}>Some items are already dispatched</Text>
+              <Text style={styles.warningTitle}>{tr('grn.header.dispatchedWarningTitle')}</Text>
               <Text style={styles.warningText}>
-                You can't change the quantity or stock of items that were dispatched from this GRN.
+                {tr('grn.header.dispatchedWarningText')}
               </Text>
             </View>
           </View>
         )}
 
         <Text style={styles.sectionHeaderText} accessibilityRole="header">
-          BASIC INFORMATION
+          {tr('grn.header.basicInformation')}
         </Text>
 
         <View style={styles.formSection}>
           <View style={styles.compactRow}>
             <View style={[styles.formField, styles.grNumberField]}>
-              {renderLabel('GRN number', true)}
+              {renderLabel(tr('common.grnNumber'), true)}
               {isCreateMode && isGeneratingNumber ? (
                 <View
                   style={[styles.input, styles.loadingInputContainer]}
-                  accessibilityLabel="Getting the next GRN number"
+                  accessibilityLabel={tr('grn.header.gettingNumber')}
                   accessibilityState={{ busy: true }}
                 >
                   <ActivityIndicator size="small" color={t.brand.tint} />
@@ -298,10 +300,10 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
                   <Icon name="package-down" size={iconSize.md} color={t.icon.secondary} />
                   <TextInput
                     style={styles.grNoTextInput}
-                    accessibilityLabel="Receipt number"
+                    accessibilityLabel={tr('grn.header.receiptNumberLabel')}
                     value={header.gr_no}
-                    onChangeText={(text) => handleGrNoChange(text.toUpperCase())}
-                    placeholder="GRN####"
+                    onChangeText={(text) => handleGrNoChange(normalizeDigits(text).toUpperCase())}
+                    placeholder={tr('grn.header.numberPlaceholder')}
                     placeholderTextColor={t.text.placeholder}
                     autoCapitalize="characters"
                     returnKeyType="next"
@@ -314,7 +316,7 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
             </View>
 
             <View style={[styles.formField, styles.dateField]}>
-              {renderLabel('Date', true)}
+              {renderLabel(tr('common.date'), true)}
               <Pressable
                 style={({ pressed }) => [
                   styles.input,
@@ -324,8 +326,8 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
                 ]}
                 onPress={openDatePicker}
                 accessibilityRole="button"
-                accessibilityLabel={`Date, ${formatHeaderDate(header.date)}`}
-                accessibilityHint="Opens the date picker"
+                accessibilityLabel={tr('grn.header.dateLabel', { date: formatHeaderDate(header.date) })}
+                accessibilityHint={tr('grn.header.dateHint')}
               >
                 <Icon name="calendar-outline" size={iconSize.md} color={t.icon.secondary} />
                 <Text style={styles.valueText}>{formatHeaderDate(header.date)}</Text>
@@ -335,38 +337,41 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
           </View>
 
           {renderPickerField(
-            'Sender',
+            tr('grn.header.sender'),
             header.sender_name,
-            'Select sender',
+            tr('grn.pickers.senderTitle'),
             validationErrors.sender_name,
-            () => senderBottomSheetRef.current?.open()
+            () => senderBottomSheetRef.current?.open(),
+            tr('grn.header.senderHint')
           )}
 
           {renderPickerField(
-            'Customer',
+            tr('common.customer'),
             header.customer_name,
-            'Select customer',
+            tr('grn.pickers.customerTitle'),
             validationErrors.customer_id,
-            () => customerBottomSheetRef.current?.open()
+            () => customerBottomSheetRef.current?.open(),
+            tr('grn.header.customerHint')
           )}
 
           {renderPickerField(
-            'Supervisor',
+            tr('grn.header.supervisor'),
             header.supervisor_name,
-            'Select supervisor',
+            tr('grn.pickers.supervisorTitle'),
             validationErrors.supervisor_id,
-            () => setShowSupervisorBottomSheet(true)
+            () => setShowSupervisorBottomSheet(true),
+            tr('grn.header.supervisorHint')
           )}
 
           <View style={[styles.formField, styles.lastField]}>
-            {renderLabel('Vehicle registration')}
+            {renderLabel(tr('grn.header.vehicleRegistration'))}
             <GhostTextInput
               ref={registrationInputRef}
               value={header.registration}
-              onChangeText={(text) => updateHeaderField('registration', text)}
+              onChangeText={(text) => updateHeaderField('registration', normalizeDigits(text))}
               getSuggestion={getTopVehicleSuggestion}
               suggestionContext={header.customer_id}
-              placeholder="For example GJ01AB1234"
+              placeholder={tr('grn.form.forExample', { example: 'GJ01AB1234' })}
               maxLength={12}
               autoCapitalize="characters"
               icon="car"
@@ -382,7 +387,7 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
           onPress={toggleOptionalFields}
           accessibilityRole="button"
           accessibilityState={{ expanded: showOptionalFields }}
-          accessibilityLabel={showOptionalFields ? 'Hide optional fields' : 'Show optional fields'}
+          accessibilityLabel={showOptionalFields ? tr('grn.header.hideOptional') : tr('grn.header.showOptional')}
         >
           <View style={styles.optionalToggleLeft}>
             <Icon
@@ -391,18 +396,18 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
               color={t.brand.tint}
             />
             <Text style={styles.optionalToggleText}>
-              {showOptionalFields ? 'Hide optional fields' : 'Show optional fields'}
+              {showOptionalFields ? tr('grn.header.hideOptional') : tr('grn.header.showOptional')}
             </Text>
           </View>
           {(header.note || header.leon) && !showOptionalFields ? (
-            <StatusTag status="neutral" label="Has data" icon={null} />
+            <StatusTag status="neutral" label={tr('grn.header.hasData')} icon={null} />
           ) : null}
         </Pressable>
 
         {showOptionalFields && (
           <View style={styles.formSection}>
             <View style={styles.formField}>
-              {renderLabel('Pricing mode')}
+              {renderLabel(tr('grn.header.pricingMode'))}
               <View style={styles.radioGroup} accessibilityRole="radiogroup">
                 {pricingOptions.map((option) => {
                   const selected = header.pricing_mode === option.value;
@@ -435,26 +440,26 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
 
             <View style={styles.formField}>
               <View style={styles.switchRow}>
-                <Text style={styles.switchLabel}>Leon</Text>
+                <Text style={styles.switchLabel}>{tr('grn.header.leon')}</Text>
                 <Switch
                   value={header.leon}
                   onValueChange={(value) => updateHeaderField('leon', value)}
                   trackColor={{ false: t.control.trackOff, true: t.brand.fill }}
                   thumbColor={t.control.thumb}
                   ios_backgroundColor={t.control.trackOff}
-                  accessibilityLabel="Leon"
+                  accessibilityLabel={tr('grn.header.leon')}
                 />
               </View>
             </View>
 
             <View style={[styles.formField, styles.lastField]}>
-              {renderLabel('Notes')}
+              {renderLabel(tr('common.notes'))}
               <TextInput
                 style={[styles.input, styles.textArea, focusedField === 'notes' && styles.inputFocused]}
-                accessibilityLabel="Notes"
+                accessibilityLabel={tr('common.notes')}
                 value={header.note}
                 onChangeText={(text) => updateHeaderField('note', text)}
-                placeholder="Add a note for this GRN"
+                placeholder={tr('grn.header.notePlaceholder')}
                 placeholderTextColor={t.text.placeholder}
                 multiline
                 numberOfLines={2}
@@ -462,7 +467,7 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
                 onFocus={() => setFocusedField('notes')}
                 onBlur={() => setFocusedField(null)}
               />
-              {header.note.length > 0 && <Text style={styles.charCount}>{header.note.length}/280</Text>}
+              {header.note.length > 0 && <Text style={styles.charCount}>{formatNumber(header.note.length)}/{formatNumber(280)}</Text>}
             </View>
           </View>
         )}
@@ -483,19 +488,19 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
         onConfirm={handleDateConfirm}
         onChange={handleDateConfirm}
         validRange={{ endDate: new Date() }}
-        label="Select date"
+        label={tr('grn.header.selectDate')}
       />
 
       <CustomerSearchBottomSheet
         ref={senderBottomSheetRef}
         onSelect={handleSenderSelect}
-        title="Select sender"
+        title={tr('grn.pickers.senderTitle')}
       />
 
       <CustomerSearchBottomSheet
         ref={customerBottomSheetRef}
         onSelect={handleCustomerSelect}
-        title="Select customer"
+        title={tr('grn.pickers.customerTitle')}
       />
 
       <SupervisorBottomSheet

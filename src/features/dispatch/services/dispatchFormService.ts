@@ -11,6 +11,7 @@ import { submissionIdempotencyKey } from '@/utils/submissionIdempotency';
 import { beginOperatorMutation, getAuthenticatedClient } from '@/config/supabaseConfig';
 import { executeRPC, createErrorResponse } from '@/utils/serviceErrorHandler';
 import { createLogger } from '@/utils/logger';
+import { t } from '@/i18n';
 import type {
   DispatchHeaderData,
   DispatchItemData,
@@ -140,7 +141,7 @@ export const getNextDispatchNumber = async (): Promise<string> => {
 
     if (error) {
       log.error('get_next_dispatch_number failed', { code: errorCode(error) });
-      throw new Error(error.message || 'Failed to get next dispatch number');
+      throw new Error(error.message || t('dispatch.service.nextNumberFailed'));
     }
 
     if (!data) {
@@ -174,14 +175,14 @@ export const getAvailableStock = async (grTrlId: string): Promise<StockCheckResp
     { p_gr_trl_id: grTrlId },
     {
       context: 'DispatchFormService.getAvailableStock',
-      errorMessage: 'Failed to check available stock',
+      errorMessage: t('dispatch.service.stockCheckFailed'),
       unwrapNested: false,
       validateSuccess: false,
     }
   );
 
   if (!result.success || !result.data) {
-    throw new Error(result.error || 'Failed to check available stock');
+    throw new Error(result.error || t('dispatch.service.stockCheckFailed'));
   }
 
   log.debug('Available stock received', { grTrlId });
@@ -247,13 +248,13 @@ export const createDispatch = async (payload: {
 
     if (error) {
       log.error('create_dispatch_with_stock_check failed', { code: errorCode(error) });
-      throw new Error(error.message || 'Failed to create dispatch');
+      throw new Error(error.message || t('dispatch.service.createFailed'));
     }
 
     // Check if RPC returned success: false (business logic error, not Postgres error)
     if (data && data.success === false) {
       log.error('create_dispatch_with_stock_check returned failure');
-      throw new Error(data.error || data.message || 'Failed to create dispatch');
+      throw new Error(data.error || data.message || t('dispatch.service.createFailed'));
     }
 
     log.info('Dispatch created', { dispatchId: data?.dispatch_id });
@@ -281,7 +282,7 @@ export const createDispatch = async (payload: {
       success: true,
       dispatch_id: data.dispatch_id,
       dispatch_items: data.dispatch_items,
-      message: data.message || 'Dispatch created successfully',
+      message: data.message || t('dispatch.service.created'),
       invoice_data: data.invoice_data,
       source_order_cleared: data.source_order_cleared || false,
       source_order_id: data.source_order_id,
@@ -290,16 +291,16 @@ export const createDispatch = async (payload: {
     log.error('Dispatch creation failed');
 
     // Parse error message for user-friendly display
-    let errorMessage = 'Failed to create dispatch';
+    let errorMessage = t('dispatch.service.createFailed');
 
     if (error.message) {
       // Check for common error patterns
       if (error.message.includes('insufficient stock')) {
-        errorMessage = 'Insufficient stock for one or more items';
+        errorMessage = t('dispatch.service.insufficientStock');
       } else if (error.message.includes('back-dated')) {
-        errorMessage = 'Cannot create dispatch before GRN date';
+        errorMessage = t('dispatch.service.beforeGrnDate');
       } else if (error.message.includes('duplicate')) {
-        errorMessage = 'Duplicate dispatch detected';
+        errorMessage = t('dispatch.service.duplicate');
       } else {
         errorMessage = error.message;
       }
@@ -360,12 +361,12 @@ export const updateDispatch = async (
 
     if (error) {
       log.error('update_dispatch_smart failed', { dispatchId, code: errorCode(error) });
-      throw new Error(error.message || 'Failed to update dispatch');
+      throw new Error(error.message || t('dispatch.service.updateFailed'));
     }
 
     if (data && data.success === false) {
       log.error('update_dispatch_smart returned failure', { dispatchId });
-      throw new Error(data.error || data.message || 'Failed to update dispatch');
+      throw new Error(data.error || data.message || t('dispatch.service.updateFailed'));
     }
 
     log.info('Dispatch updated', { dispatchId });
@@ -373,14 +374,14 @@ export const updateDispatch = async (
     return {
       success: true,
       dispatch_id: data?.dispatch_id ?? dispatchId,
-      message: data?.message || 'Dispatch updated successfully',
+      message: data?.message || t('dispatch.service.updated'),
     };
   } catch (error: any) {
     log.error('Dispatch update failed', { dispatchId });
     return {
       success: false,
-      error: error.message || 'Failed to update dispatch',
-      message: error.message || 'Failed to update dispatch',
+      error: error.message || t('dispatch.service.updateFailed'),
+      message: error.message || t('dispatch.service.updateFailed'),
     };
   }
 };
@@ -418,12 +419,12 @@ export const loadDispatchData = async (
 
     if (rpcError) {
       log.error('get_dispatch_details failed', { dispatchId, code: errorCode(rpcError) });
-      throw new Error(rpcError.message || 'Failed to load dispatch data');
+      throw new Error(rpcError.message || t('dispatch.service.loadFailed'));
     }
 
     if (!rpcData || !rpcData.success || !rpcData.data) {
       log.warn('get_dispatch_details returned no dispatch', { dispatchId });
-      throw new Error(rpcData?.message || 'Dispatch not found or access denied');
+      throw new Error(rpcData?.message || t('dispatch.service.notFound'));
     }
 
     const dispatch = rpcData.data.dispatch;
@@ -485,7 +486,7 @@ export const loadDispatchData = async (
     log.error('Dispatch load failed', { dispatchId });
     return {
       success: false,
-      error: error.message || 'Failed to load dispatch data',
+      error: error.message || t('dispatch.service.loadFailed'),
     };
   }
 };
@@ -514,7 +515,7 @@ export const deleteDispatch = async (
     },
     {
       context: 'DispatchFormService.deleteDispatch',
-      errorMessage: 'Failed to delete dispatch',
+      errorMessage: t('dispatch.service.deleteFailed'),
       unwrapNested: false,
       validateSuccess: false,
     }
@@ -523,7 +524,7 @@ export const deleteDispatch = async (
   if (!result.success) {
     log.error('delete_dispatch_with_order_cleanup failed', { dispatchId });
     return {
-      ...createErrorResponse(result.error, 'Failed to delete dispatch'),
+      ...createErrorResponse(result.error, t('dispatch.service.deleteFailed')),
     };
   }
 
@@ -535,6 +536,6 @@ export const deleteDispatch = async (
 
   return {
     success: true,
-    message: result.data?.message || 'Dispatch deleted successfully',
+    message: result.data?.message || t('dispatch.service.deleted'),
   };
 };

@@ -1,5 +1,6 @@
 /** The editor for one filter field, whatever its kind. Used by the single-filter sheet and the full page. */
 import React from 'react';
+import { t } from '@/i18n';
 import type {
   DateRangeValue,
   FilterContext,
@@ -37,7 +38,7 @@ export function FieldEditor({ field, value, onChange, ctx, onInvalid }: FieldEdi
       return (
         <ChoiceChips
           accessibilityLabel={field.label}
-          options={[{ value: 'off', label: 'All' }, { value: 'on', label: field.label }]}
+          options={[{ value: 'off', label: t('common.all') }, { value: 'on', label: field.label }]}
           value={value === true ? 'on' : 'off'}
           onChange={next => onChange(next === 'on' ? true : undefined)}
         />

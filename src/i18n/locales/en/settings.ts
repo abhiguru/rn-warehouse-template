@@ -1,10 +1,70 @@
 /** English text: settings. English is the source; src/i18n/locales/gu/settings.ts must have the same keys. */
 export const settings = {
+  title: 'Settings',
+  profileHint: 'Opens your profile',
+  features: {
+    title: 'App features',
+    customersSubtitle: 'Manage customer accounts',
+    enrollmentReviewSubtitle: 'Approve verified customers and assign access',
+    itemsSubtitle: 'Manage inventory items',
+    usersSubtitle: 'Manage user accounts',
+    itemPricing: 'Item pricing',
+    itemPricingSubtitle: 'View and manage prices',
+    sensors: 'Temperature and humidity',
+    sensorsSubtitle: 'Unavailable in the local demo',
+  },
+  appearance: {
+    title: 'Appearance',
+    system: 'System',
+    light: 'Light',
+    dark: 'Dark',
+    footerSystemDark: "Follows your phone's setting. Dark mode is on now.",
+    footerSystemLight: "Follows your phone's setting. Light mode is on now.",
+    footerDark: 'Dark mode is always on.',
+    footerLight: 'Light mode is always on.',
+  },
   language: {
     title: 'Language',
     system: 'Phone language',
     footerSystem: "Follows your phone's language. The app is in English now.",
     footerChosen: 'The app is in English.',
     optionLabel: '{{language}} language',
+  },
+  brand: {
+    title: 'Brand',
+    footer: 'Colours for the whole app. Works with light and dark mode.',
+    optionLabel: '{{brand}} brand',
+    orange: 'Orange',
+    gcsa: 'GCSA navy',
+  },
+  account: {
+    title: 'Account',
+    deleteAccount: 'Delete account',
+    deleteAccountSubtitle: 'Permanently delete your account and data',
+  },
+  about: {
+    title: 'About',
+    terms: 'Terms of service',
+    termsSubtitle: 'View terms and conditions',
+    privacy: 'Privacy policy',
+    privacySubtitle: 'How we handle your data',
+  },
+  development: {
+    title: 'Development',
+    styleGuide: 'Style guide',
+    styleGuideSubtitle: 'Tokens and components in the current brand and mode',
+  },
+  footer: {
+    version: 'Management System v{{version}}',
+  },
+  deleteAccount: {
+    warningTitle: 'Delete your account?',
+    warningMessage:
+      "This can't be undone. These will be deleted:\n• Your profile information\n• Customer assignments\n• App preferences and cache\n\nRecords such as GRNs and dispatches are kept for compliance.",
+    confirmTitle: 'Confirm deletion',
+    confirmMessage: 'Enter the mobile number on your account to delete it.',
+    phonePlaceholder: '10-digit mobile number',
+    mismatch: "This number doesn't match your account. Check it and try again.",
+    failed: "Couldn't delete your account. Check your connection and try again.",
   },
 };

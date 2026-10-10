@@ -17,12 +17,14 @@ import { layout, space } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { OrderFlashList, SupervisorOrderQueueList } from '@/components/lists';
 import { SegmentedControl } from '@/components/ui/RadioButton';
+import { t } from '@/i18n';
 
 type OrdersView = 'orders' | 'queue';
 
-const VIEW_OPTIONS: { value: OrdersView; label: string }[] = [
-  { value: 'orders', label: 'Orders' },
-  { value: 'queue', label: 'Queue' },
+/** Built when drawn, so the labels follow the app's language (docs/I18N.md rule 2). */
+const viewOptions = (): { value: OrdersView; label: string }[] => [
+  { value: 'orders', label: t('nav.ordersView.orders') },
+  { value: 'queue', label: t('nav.ordersView.queue') },
 ];
 
 const makeStyles = (t: ThemeTokens) => ({
@@ -55,7 +57,7 @@ export default function OrdersTab() {
       <SegmentedControl
         value={view}
         onValueChange={(value) => setView(value as OrdersView)}
-        options={VIEW_OPTIONS}
+        options={viewOptions()}
         style={styles.viewSwitchControl}
       />
     </View>

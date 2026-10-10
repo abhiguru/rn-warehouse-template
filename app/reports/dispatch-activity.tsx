@@ -50,8 +50,11 @@ import type {
   CustomerDispatchRow,
 } from '@/types/report.types';
 import { formatNumber, formatWeight, formatDate, formatSectionDate, formatCount } from '@/utils/formatters';
+import { t as tr, type TranslationKey } from '@/i18n';
 
-const LOAD_ERROR = "Couldn't load dispatch activity. Check your connection and try again.";
+// Keys, not text: the text is looked up when it is drawn (docs/I18N.md rule 2).
+const LOAD_ERROR: TranslationKey = 'reports.dispatchActivity.loadError';
+const NO_CUSTOMER_ERROR: TranslationKey = 'reports.dispatchActivity.noCustomer';
 
 const bagsLabel = (qty: number) => formatCount(qty, 'bag');
 
@@ -373,8 +376,13 @@ const DispatchCard: React.FC<DispatchCardProps> = ({ dispatch, isExpanded, onTog
         style={({ pressed }) => [styles.objectCell, pressed && styles.objectCellPressed]}
         onPress={onToggle}
         accessibilityRole="button"
-        accessibilityLabel={`Dispatch ${dispatch.disp_no}, ${dateLabel}, ${dispatch.supervisor_name}, ${bagsLabel(dispatch.total_qty)}`}
-        accessibilityHint={isExpanded ? 'Hides the items' : 'Shows the items'}
+        accessibilityLabel={tr('reports.dispatchActivity.cardLabel', {
+          number: dispatch.disp_no,
+          date: dateLabel,
+          supervisor: dispatch.supervisor_name,
+          bags: bagsLabel(dispatch.total_qty),
+        })}
+        accessibilityHint={tr(isExpanded ? 'reports.dispatchActivity.hideItemsHint' : 'reports.dispatchActivity.showItemsHint')}
         accessibilityState={{ expanded: isExpanded }}
       >
         <View style={styles.objectCellImage}>
@@ -383,7 +391,7 @@ const DispatchCard: React.FC<DispatchCardProps> = ({ dispatch, isExpanded, onTog
 
         <View style={styles.objectCellContent}>
           <Text style={styles.objectCellTitle} numberOfLines={2}>
-            Dispatch {dispatch.disp_no}
+            {tr('reports.customerActivity.dispatchNumber', { number: dispatch.disp_no })}
           </Text>
           <Text style={styles.objectCellSubtitle} numberOfLines={1}>
             {dateLabel} · {dispatch.supervisor_name}
@@ -395,7 +403,7 @@ const DispatchCard: React.FC<DispatchCardProps> = ({ dispatch, isExpanded, onTog
             {formatNumber(dispatch.total_qty)}
           </Text>
           <Text style={styles.objectCellAttributeLabel}>
-            {dispatch.total_qty === 1 ? 'bag' : 'bags'}
+            {tr('reports.dispatchActivity.bagUnit', { count: dispatch.total_qty })}
           </Text>
         </View>
 
@@ -412,7 +420,7 @@ const DispatchCard: React.FC<DispatchCardProps> = ({ dispatch, isExpanded, onTog
             style={({ pressed }) => [styles.navButton, pressed && styles.navButtonPressed]}
             onPress={handleNavigateToDetails}
             accessibilityRole="button"
-            accessibilityLabel={`Open dispatch ${dispatch.disp_no}`}
+            accessibilityLabel={tr('reports.dispatchActivity.openDispatch', { number: dispatch.disp_no })}
           >
             <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />
           </Pressable>
@@ -469,7 +477,7 @@ const ItemRow: React.FC<ItemRowProps> = ({ item, isLast = false }) => {
           )}
         </View>
         <Text style={styles.itemRowFootnote} numberOfLines={1}>
-          {[`GRN ${item.source_grn}`, item.rack].filter(Boolean).join(' · ')}
+          {[tr('reports.customerActivity.grnNumber', { number: item.source_grn }), item.rack].filter(Boolean).join(' · ')}
         </Text>
       </View>
 
@@ -477,7 +485,7 @@ const ItemRow: React.FC<ItemRowProps> = ({ item, isLast = false }) => {
         <View style={styles.itemRowQtyRow}>
           <Text style={styles.itemRowQty}>{formatNumber(item.qty)}</Text>
           {item.orig_qty && item.orig_qty !== item.qty && (
-            <Text style={styles.itemRowOrigQty}>of {formatNumber(item.orig_qty)}</Text>
+            <Text style={styles.itemRowOrigQty}>{tr('reports.dispatchActivity.ofQuantity', { quantity: formatNumber(item.orig_qty) })}</Text>
           )}
         </View>
         {item.weight && (
@@ -501,8 +509,8 @@ const ItemRow: React.FC<ItemRowProps> = ({ item, isLast = false }) => {
         ]}
         onPress={handlePress}
         accessibilityRole="button"
-        accessibilityLabel={`${item.item_name}, ${bagsLabel(item.qty)}, GRN ${item.source_grn}`}
-        accessibilityHint="Opens the source GRN"
+        accessibilityLabel={tr('reports.dispatchActivity.itemLabel', { item: item.item_name, bags: bagsLabel(item.qty), grn: item.source_grn })}
+        accessibilityHint={tr('reports.dispatchActivity.sourceGrnHint')}
       >
         {content}
       </Pressable>
@@ -513,7 +521,7 @@ const ItemRow: React.FC<ItemRowProps> = ({ item, isLast = false }) => {
     <View
       style={[styles.itemRow, !isLast && styles.itemRowBorder]}
       accessible
-      accessibilityLabel={`${item.item_name}, ${bagsLabel(item.qty)}, GRN ${item.source_grn}`}
+      accessibilityLabel={tr('reports.dispatchActivity.itemLabel', { item: item.item_name, bags: bagsLabel(item.qty), grn: item.source_grn })}
     >
       {content}
     </View>
@@ -559,7 +567,7 @@ export default function DispatchActivityScreen() {
   const [data, setData] = useState<DispatchActivityData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<TranslationKey | null>(null);
   const [expandedDispatches, setExpandedDispatches] = useState<Set<string>>(new Set());
   const [selectedPeriod, setSelectedPeriod] = useState<ReportPeriod>('last120days');
   const [dateRange, setDateRange] = useState(() => getDateRangeForPeriod('last120days'));
@@ -655,7 +663,7 @@ export default function DispatchActivityScreen() {
       // Regular users with only one assigned customer go directly to that customer
       fetchSingleCustomerData(singleAssignedCustomerId);
     } else {
-      setError('No customer is linked to your account. Ask your facility to add one.');
+      setError(NO_CUSTOMER_ERROR);
       setIsLoading(false);
     }
   }, []);
@@ -767,13 +775,13 @@ export default function DispatchActivityScreen() {
       {
         icon: 'truck-delivery-outline',
         value: summary.total_dispatches,
-        label: 'Dispatches',
+        label: tr('reports.customerActivity.dispatches'),
         variant: 'primary',
       },
       {
         icon: 'package-variant',
         value: summary.total_quantity,
-        label: 'Bags dispatched',
+        label: tr('reports.dispatchActivity.bagsDispatched'),
         variant: 'secondary',
       },
     ];
@@ -788,13 +796,13 @@ export default function DispatchActivityScreen() {
       {
         icon: 'truck-delivery-outline',
         value: summary.total_dispatches,
-        label: 'Dispatches',
+        label: tr('reports.customerActivity.dispatches'),
         variant: 'secondary',
       },
       {
         icon: 'package-variant',
         value: summary.total_quantity,
-        label: 'Bags dispatched',
+        label: tr('reports.dispatchActivity.bagsDispatched'),
         variant: 'primary',
       },
     ];
@@ -807,7 +815,10 @@ export default function DispatchActivityScreen() {
   }, [data?.dispatches]);
 
   const getDateRangeSubtitle = (): string => {
-    return `${formatDate(dateRange.from, 'medium')} – ${formatDate(dateRange.to, 'medium')}`;
+    return tr('reports.dispatchActivity.dateRange', {
+      from: formatDate(dateRange.from, 'medium'),
+      to: formatDate(dateRange.to, 'medium'),
+    });
   };
 
   // Retry after a failed load (same fetch as the current view, with the full loading state)
@@ -826,7 +837,7 @@ export default function DispatchActivityScreen() {
   const hasData = isListView ? allCustomersData : data;
 
   // Subtitle for list view
-  const listViewSubtitle = isStaff ? 'All customers' : 'My customers';
+  const listViewSubtitle = tr(isStaff ? 'reports.customerActivity.allCustomers' : 'reports.customerActivity.myCustomers');
 
   const refreshControl = (
     <RefreshControl
@@ -842,7 +853,7 @@ export default function DispatchActivityScreen() {
   if (isLoading && !hasData) {
     return (
       <View style={styles.container}>
-        <ReportHeader title="Dispatch activity" />
+        <ReportHeader title={tr('reports.titles.dispatchActivity')} />
         <PeriodSelector
           selectedPeriod={selectedPeriod}
           onPeriodChange={handlePeriodChange}
@@ -850,8 +861,8 @@ export default function DispatchActivityScreen() {
         <View style={styles.loadingContainer}>
           <KPIGrid
             items={[
-              { icon: 'truck-delivery-outline', value: '-', label: 'Dispatches', variant: 'secondary' },
-              { icon: 'package-variant', value: '-', label: 'Bags dispatched', variant: 'primary' },
+              { icon: 'truck-delivery-outline', value: '-', label: tr('reports.customerActivity.dispatches'), variant: 'secondary' },
+              { icon: 'package-variant', value: '-', label: tr('reports.dispatchActivity.bagsDispatched'), variant: 'primary' },
             ]}
             isLoading={true}
             compact
@@ -868,15 +879,15 @@ export default function DispatchActivityScreen() {
     );
     return (
       <View style={styles.container}>
-        <ReportHeader title="Dispatch activity" />
+        <ReportHeader title={tr('reports.titles.dispatchActivity')} />
         <PeriodSelector
           selectedPeriod={selectedPeriod}
           onPeriodChange={handlePeriodChange}
         />
         <ReportEmptyState
           icon="alert-circle-outline"
-          message="Couldn't load dispatch activity"
-          description={error}
+          message={tr('reports.dispatchActivity.errorTitle')}
+          description={tr(error)}
         />
         {canRetry && (
           <View style={styles.retryRow}>
@@ -884,9 +895,9 @@ export default function DispatchActivityScreen() {
               onPress={handleRetry}
               style={({ pressed }) => [styles.retryButton, pressed && styles.retryButtonPressed]}
               accessibilityRole="button"
-              accessibilityLabel="Try loading dispatch activity again"
+              accessibilityLabel={tr('reports.dispatchActivity.retryLabel')}
             >
-              <Text style={styles.retryText}>Try again</Text>
+              <Text style={styles.retryText}>{tr('common.retry')}</Text>
             </Pressable>
           </View>
         )}
@@ -898,7 +909,7 @@ export default function DispatchActivityScreen() {
   if (isListView && allCustomersData) {
     return (
       <View style={styles.container}>
-        <ReportHeader title="Dispatch activity" subtitle={listViewSubtitle} />
+        <ReportHeader title={tr('reports.titles.dispatchActivity')} subtitle={listViewSubtitle} />
 
         <PeriodSelector
           selectedPeriod={selectedPeriod}
@@ -932,7 +943,7 @@ export default function DispatchActivityScreen() {
           {/* Customers List */}
           {filteredCustomers.length > 0 ? (
             <View style={styles.section}>
-              <FioriSectionHeader title="Customers with dispatches" />
+              <FioriSectionHeader title={tr('reports.dispatchActivity.customersWithDispatches')} />
               <View style={styles.listCard}>
                 {filteredCustomers.map((customer, index) => (
                   <React.Fragment key={customer.customer_id}>
@@ -941,9 +952,9 @@ export default function DispatchActivityScreen() {
                       title={customer.customer_name}
                       subtitle={formatCount(customer.dispatch_count, 'dispatch', 'dispatches')}
                       value={customer.total_quantity}
-                      valueLabel={customer.total_quantity === 1 ? 'bag' : 'bags'}
+                      valueLabel={tr('reports.dispatchActivity.bagUnit', { count: customer.total_quantity })}
                       onPress={() => handleCustomerSelect(customer)}
-                      accessibilityHint="Shows this customer's dispatches"
+                      accessibilityHint={tr('reports.dispatchActivity.customerHint')}
                     />
                     {index < filteredCustomers.length - 1 && (
                       <View style={styles.divider} />
@@ -955,14 +966,14 @@ export default function DispatchActivityScreen() {
           ) : customerSearchQuery.trim() && allCustomersData.by_customer.length > 0 ? (
             <ReportEmptyState
               icon="magnify"
-              message={`No customers match "${customerSearchQuery.trim()}"`}
-              description="Try fewer letters."
+              message={tr('reports.dispatchActivity.noMatch', { search: customerSearchQuery.trim() })}
+              description={tr('reports.dispatchActivity.tryFewerLetters')}
             />
           ) : (
             <ReportEmptyState
               icon="truck-delivery-outline"
-              message="No dispatches in this period"
-              description="Choose a longer period to see more dispatch activity."
+              message={tr('reports.dispatchActivity.emptyTitle')}
+              description={tr('reports.dispatchActivity.emptyDescription')}
             />
           )}
         </ScrollView>
@@ -976,7 +987,7 @@ export default function DispatchActivityScreen() {
     return (
       <View style={styles.container}>
         <ReportHeader
-          title="Dispatch activity"
+          title={tr('reports.titles.dispatchActivity')}
           subtitle={selectedCustomer?.customer_name}
           onBack={shouldShowListView || cameFromRouteParams.current ? handleBackToAll : undefined}
         />
@@ -986,8 +997,8 @@ export default function DispatchActivityScreen() {
         />
         <ReportEmptyState
           icon="truck-delivery-outline"
-          message="No dispatches in this period"
-          description="This customer has no dispatches in the selected period. Choose a longer period to see more."
+          message={tr('reports.dispatchActivity.emptyTitle')}
+          description={tr('reports.dispatchActivity.emptyCustomerDescription')}
         />
       </View>
     );
@@ -996,7 +1007,7 @@ export default function DispatchActivityScreen() {
   return (
     <View style={styles.container}>
       <ReportHeader
-        title="Dispatch activity"
+        title={tr('reports.titles.dispatchActivity')}
         subtitle={selectedCustomer?.customer_name || getDateRangeSubtitle()}
         onBack={shouldShowListView ? handleBackToAll : undefined}
       />

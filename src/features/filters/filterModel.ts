@@ -3,6 +3,7 @@
  * many filters are on, and what a chip says. Every list uses these, so counts
  * and wording cannot drift apart between screens.
  */
+import { localizeDigits, normalizeDigits, t } from '@/i18n';
 import { formatDate, formatNumber, parseLocalISODate } from '@/utils/formatters';
 import { DATE_PRESETS, resolveDateRange } from './datePresets';
 import { parseQuickSearch, type QuickSearchResult } from './parseQuickSearch';
@@ -79,7 +80,8 @@ export function normalizeValues(config: FilterListDefinition, values: FilterValu
 export function readSearch(config: FilterListDefinition, values: FilterValues, today: Date = new Date()): QuickSearchResult {
   const typed = values[SEARCH_KEY];
   if (!config.search || !hasText(typed)) return { text: '' };
-  if (values[SEARCH_LITERAL_KEY] === true) return { text: typed.trim().split(/\s+/).join(' ') };
+  // ૦-૯ and 0-9 mean the same to the search (docs/I18N.md rule 6); parseQuickSearch does the same below.
+  if (values[SEARCH_LITERAL_KEY] === true) return { text: normalizeDigits(typed).trim().split(/\s+/).join(' ') };
   const search = config.search;
   const fieldByKey = (key?: string) => config.fields.find(field => field.key === key);
   const dateField = fieldByKey(search.dateField);
@@ -105,8 +107,9 @@ export function hasAnyFilter(config: FilterListDefinition, values: FilterValues,
   return countActiveFilters(config, values, ctx) > 0 || hasText(values[SEARCH_KEY]);
 }
 
-/** "2026-27" for the financial year that starts in April 2026. */
-export const financialYearLabel = (startYear: number) => `${startYear}-${String((startYear + 1) % 100).padStart(2, '0')}`;
+/** "2026-27" for the financial year that starts in April 2026 ("૨૦૨૬-૨૭" in Gujarati). */
+export const financialYearLabel = (startYear: number) =>
+  localizeDigits(`${startYear}-${String((startYear + 1) % 100).padStart(2, '0')}`);
 
 /** The financial year (April to March) a date falls in, as its starting year. */
 export const financialYearOf = (date: Date) => (date.getMonth() >= 3 ? date.getFullYear() : date.getFullYear() - 1);
@@ -114,9 +117,13 @@ export const financialYearOf = (date: Date) => (date.getMonth() >= 3 ? date.getF
 const dateText = (iso?: string) => (iso ? formatDate(parseLocalISODate(iso), 'short') : '');
 
 export function describeDateRange(range: { from?: string; to?: string }): string {
-  if (range.from && range.to) return range.from === range.to ? dateText(range.from) : `${dateText(range.from)} – ${dateText(range.to)}`;
-  if (range.from) return `From ${dateText(range.from)}`;
-  if (range.to) return `Until ${dateText(range.to)}`;
+  if (range.from && range.to) {
+    return range.from === range.to
+      ? dateText(range.from)
+      : t('filters.chip.dateBetween', { from: dateText(range.from), to: dateText(range.to) });
+  }
+  if (range.from) return t('filters.chip.dateFrom', { date: dateText(range.from) });
+  if (range.to) return t('filters.chip.dateUntil', { date: dateText(range.to) });
   return '';
 }
 
@@ -129,10 +136,10 @@ export function describeValue(field: FilterFieldDef, value: FilterValue | undefi
     case 'toggle':
       return field.label;
     case 'text':
-      return `${field.label}: ${(value as string).trim()}`;
+      return t('filters.chip.text', { label: field.label, value: (value as string).trim() });
     case 'picker': {
       const picked = value as PickedOption[];
-      return picked.length === 1 ? picked[0].label : `${picked[0].label} +${picked.length - 1}`;
+      return picked.length === 1 ? picked[0].label : t('filters.chip.pickedMore', { first: picked[0].label, more: picked.length - 1 });
     }
     case 'dateRange': {
       const range = value as DateRangeValue;
@@ -141,26 +148,50 @@ export function describeValue(field: FilterFieldDef, value: FilterValue | undefi
     }
     case 'numberRange': {
       const { min, max } = value as NumberRangeValue;
-      const unit = field.unit ? ` ${field.unit}` : '';
-      if (typeof min === 'number' && typeof max === 'number') return `${formatNumber(min)} – ${formatNumber(max)}${unit}`;
-      if (typeof min === 'number') return `${formatNumber(min)}${unit} or more`;
-      return `Up to ${formatNumber(max as number)}${unit}`;
+      // Whole sentences, with and without a unit: the words around the numbers move in Gujarati.
+      const unit = field.unit;
+      if (typeof min === 'number' && typeof max === 'number') {
+        return unit
+          ? t('filters.chip.numberBetweenUnit', { min: formatNumber(min), max: formatNumber(max), unit })
+          : t('filters.chip.numberBetween', { min: formatNumber(min), max: formatNumber(max) });
+      }
+      if (typeof min === 'number') {
+        return unit ? t('filters.chip.atLeastUnit', { min: formatNumber(min), unit }) : t('filters.chip.atLeast', { min: formatNumber(min) });
+      }
+      return unit
+        ? t('filters.chip.upToUnit', { max: formatNumber(max as number), unit })
+        : t('filters.chip.upTo', { max: formatNumber(max as number) });
     }
     case 'textRange': {
       const { from, to } = value as TextRangeValue;
-      if (hasText(from) && hasText(to)) return `${from.trim()} – ${to.trim()}`;
-      if (hasText(from)) return `From ${from.trim()}`;
-      return `Up to ${(to as string).trim()}`;
+      // Document numbers are identifiers: shown as typed, never formatted.
+      if (hasText(from) && hasText(to)) return t('filters.chip.textBetween', { from: from.trim(), to: to.trim() });
+      if (hasText(from)) return t('filters.chip.textFrom', { from: from.trim() });
+      return t('filters.chip.textUpTo', { to: (to as string).trim() });
     }
   }
 }
 
-/** Spoken and visible name of a sort direction for a kind of field. */
-export const SORT_DIRECTIONS: Record<SortFieldOption['kind'], Record<'asc' | 'desc', string>> = {
-  date: { desc: 'Newest first', asc: 'Oldest first' },
-  number: { desc: 'Highest number first', asc: 'Lowest number first' },
-  amount: { desc: 'Highest first', asc: 'Lowest first' },
-  text: { desc: 'Z to A', asc: 'A to Z' },
+type SortKind = SortFieldOption['kind'];
+/** Both directions of one kind, read from the texts when asked for (docs/I18N.md rule 2). */
+const directions = (table: 'sortDirection' | 'sortDirectionSpoken', kind: SortKind): Record<'asc' | 'desc', string> => ({
+  get desc() { return t(`filters.${table}.${kind}.desc`); },
+  get asc() { return t(`filters.${table}.${kind}.asc`); },
+});
+
+/** Visible name of a sort direction for a kind of field, in the app's language. */
+export const SORT_DIRECTIONS: Record<SortKind, Record<'asc' | 'desc', string>> = {
+  date: directions('sortDirection', 'date'),
+  number: directions('sortDirection', 'number'),
+  amount: directions('sortDirection', 'amount'),
+  text: directions('sortDirection', 'text'),
+};
+/** The same inside a sentence: "newest first", but still "A to Z". */
+const SORT_DIRECTIONS_SPOKEN: Record<SortKind, Record<'asc' | 'desc', string>> = {
+  date: directions('sortDirectionSpoken', 'date'),
+  number: directions('sortDirectionSpoken', 'number'),
+  amount: directions('sortDirectionSpoken', 'amount'),
+  text: directions('sortDirectionSpoken', 'text'),
 };
 
 export function currentSort(config: FilterListDefinition, sort: SortState | undefined): SortState | undefined {
@@ -182,10 +213,10 @@ export function describeSort(
 ): { label: string; direction: string; spoken: string } {
   const active = currentSort(config, sort);
   const option = config.sort?.options.find(candidate => candidate.field === active?.field);
-  if (!active || !option) return { label: 'Sort', direction: '', spoken: '' };
+  if (!active || !option) return { label: t('filters.sort.fallback'), direction: '', spoken: '' };
   const direction = SORT_DIRECTIONS[option.kind][active.order];
   // Inside a sentence the direction starts in lower case, except "A to Z" and "Z to A".
-  const spoken = option.kind === 'text' ? direction : direction.toLowerCase();
+  const spoken = SORT_DIRECTIONS_SPOKEN[option.kind][active.order];
   return { label: option.chipLabel ?? option.label, direction, spoken };
 }
 

@@ -9,6 +9,8 @@ import {
   GenericStepIndicatorHeader,
   type GenericStepIndicatorHeaderProps,
 } from './GenericStepIndicatorHeader';
+import { localizeGRNSteps } from '@/features/grn/utils/grnStepLabels';
+import { t as tr } from '@/i18n';
 
 export interface GRNStepIndicatorProps {
   steps: StepConfig[];
@@ -33,18 +35,18 @@ export const GRNStepIndicator: React.FC<GRNStepIndicatorProps> = ({
 }) => {
   return (
     <GenericStepIndicatorHeader
-      steps={steps}
+      steps={localizeGRNSteps(steps)}
       currentStep={currentStep}
       completedSteps={completedSteps}
       onCancel={onCancel}
-      entityName={isEditMode ? 'Edit' : 'GRN'}
+      entityName={isEditMode ? tr('common.edit') : tr('common.grn')}
       entityId={grnNo}
-      cancelTitle={isEditMode ? 'Discard changes to this GRN?' : 'Discard this GRN?'}
+      cancelTitle={isEditMode ? tr('grn.form.discardChangesTitle') : tr('grn.form.discardTitle')}
       cancelMessage={
         cancelMessage ??
         (isEditMode
-          ? 'Your changes to this GRN will be lost.'
-          : 'The details you entered will be lost.')
+          ? tr('grn.form.discardChangesMessage')
+          : tr('grn.form.discardMessage'))
       }
       onStepPress={onStepPress}
     />

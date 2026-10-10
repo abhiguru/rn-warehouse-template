@@ -13,6 +13,7 @@ import React, { Component } from 'react';
 import { router, Href } from 'expo-router';
 import { ErrorStateView } from '@/components/ErrorBoundary';
 import { createLogger } from '@/utils/logger';
+import { t, type TranslationKey } from '@/i18n';
 
 // ============================================================================
 // TYPES
@@ -21,45 +22,45 @@ import { createLogger } from '@/utils/logger';
 export type FeatureType = 'grn' | 'dispatch' | 'invoice' | 'order' | 'stock';
 
 interface FeatureConfig {
-  /** Name used inside sentences. */
-  name: string;
-  /** Plain-language cause and what to do next. */
-  description: string;
+  /** Key of the plain-language cause and what to do next. */
+  description: TranslationKey;
   homeRoute: string;
-  /** Label of the action that returns to the feature's list. */
-  homeLabel: string;
+  /** Key of the label of the action that returns to the feature's list. */
+  homeLabel: TranslationKey;
+  /** Key of the spoken label of the retry button. */
+  retryLabel: TranslationKey;
 }
 
 const FEATURE_CONFIGS: Record<FeatureType, FeatureConfig> = {
   grn: {
-    name: 'GRN',
-    description: "Couldn't show this GRN. Try again, or go back to the GRN list.",
+    description: 'components.featureError.grn.description',
     homeRoute: '/grn',
-    homeLabel: 'Go to GRNs',
+    homeLabel: 'components.featureError.grn.homeLabel',
+    retryLabel: 'components.featureError.grn.retryLabel',
   },
   dispatch: {
-    name: 'dispatch',
-    description: "Couldn't show this dispatch. Try again, or go back to the dispatch list.",
+    description: 'components.featureError.dispatch.description',
     homeRoute: '/dispatch',
-    homeLabel: 'Go to dispatches',
+    homeLabel: 'components.featureError.dispatch.homeLabel',
+    retryLabel: 'components.featureError.dispatch.retryLabel',
   },
   invoice: {
-    name: 'invoice',
-    description: "Couldn't show this invoice. Try again, or go back to the invoice list.",
+    description: 'components.featureError.invoice.description',
     homeRoute: '/invoices',
-    homeLabel: 'Go to invoices',
+    homeLabel: 'components.featureError.invoice.homeLabel',
+    retryLabel: 'components.featureError.invoice.retryLabel',
   },
   order: {
-    name: 'order',
-    description: "Couldn't show this order. Try again, or go back to the order list.",
+    description: 'components.featureError.order.description',
     homeRoute: '/',
-    homeLabel: 'Go to orders',
+    homeLabel: 'components.featureError.order.homeLabel',
+    retryLabel: 'components.featureError.order.retryLabel',
   },
   stock: {
-    name: 'stock',
-    description: "Couldn't show stock. Try again, or go back to the stock overview.",
+    description: 'components.featureError.stock.description',
     homeRoute: '/stock',
-    homeLabel: 'Go to stock',
+    homeLabel: 'components.featureError.stock.homeLabel',
+    retryLabel: 'components.featureError.stock.retryLabel',
   },
 };
 
@@ -133,12 +134,12 @@ export class FeatureErrorBoundary extends Component<FeatureErrorBoundaryProps, S
 
       return (
         <ErrorStateView
-          message={config.description}
+          message={t(config.description)}
           error={this.state.error}
           componentStack={this.state.errorInfo?.componentStack}
           onRetry={this.handleRetry}
-          retryAccessibilityLabel={`Try loading the ${config.name} again`}
-          secondaryActionLabel={config.homeLabel}
+          retryAccessibilityLabel={t(config.retryLabel)}
+          secondaryActionLabel={t(config.homeLabel)}
           onSecondaryAction={this.handleGoBack}
         />
       );

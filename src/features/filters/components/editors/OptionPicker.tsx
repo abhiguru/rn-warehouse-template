@@ -10,12 +10,41 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, Text, TextInput, View } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { normalizeDigits, t as translate } from '@/i18n';
 import { fontWeight, iconSize, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 import type { FilterContext, PickedOption, PickerField } from '../../types';
 import { HighlightedText, searchWords } from '../HighlightedText';
 
 const SEARCH_DELAY_MS = 300;
 const SEARCH_MIN_LENGTH = 2;
+
+/** The things a picker can list. Each has its own whole sentences (`filters.picker.<noun>`). */
+const PICKER_NOUNS = ['customer', 'item'] as const;
+type PickerNoun = (typeof PICKER_NOUNS)[number];
+type PickerText = 'search' | 'loadFailed' | 'noMatch' | 'typeToSearch' | 'done';
+
+/**
+ * A sentence of the picker for what it lists: "Search customers", "No items match …".
+ * A noun without texts of its own (none in the app today) is worded in English, as before.
+ */
+export function pickerText(noun: [string, string], text: PickerText, search = ''): string {
+  const [singular, plural] = noun;
+  if ((PICKER_NOUNS as readonly string[]).includes(singular)) {
+    return translate(`filters.picker.${singular as PickerNoun}.${text}`, { search });
+  }
+  switch (text) {
+    case 'search':
+      return `Search ${plural}`;
+    case 'loadFailed':
+      return `Couldn't load ${plural}. Check your connection and try again.`;
+    case 'noMatch':
+      return `No ${plural} match "${search}".`;
+    case 'typeToSearch':
+      return `Type at least two letters to search ${plural}.`;
+    case 'done':
+      return `Done choosing ${plural}`;
+  }
+}
 
 export interface OptionPickerProps {
   field: PickerField;
@@ -66,7 +95,8 @@ export function OptionPicker({ field, value, onChange, ctx }: OptionPickerProps)
   const latest = useRef(0);
 
   useEffect(() => {
-    const trimmed = query.trim();
+    // ૦-૯ and 0-9 mean the same to the search (docs/I18N.md rule 6).
+    const trimmed = normalizeDigits(query).trim();
     const searching = trimmed.length >= SEARCH_MIN_LENGTH;
     const request = ++latest.current;
     setLoading(true);
@@ -96,12 +126,12 @@ export function OptionPicker({ field, value, onChange, ctx }: OptionPickerProps)
   const rows = useMemo(() => {
     const result: Row[] = [];
     if (value.length > 0) {
-      result.push({ type: 'heading', title: `Selected (${value.length})` });
+      result.push({ type: 'heading', title: translate('filters.picker.selected', { count: value.length }) });
       value.forEach(option => result.push({ type: 'option', option, selected: true }));
     }
     const rest = options.filter(option => !selectedIds.has(option.id));
     if (rest.length > 0) {
-      if (value.length > 0) result.push({ type: 'heading', title: query.trim().length >= SEARCH_MIN_LENGTH ? 'Matches' : 'All' });
+      if (value.length > 0) result.push({ type: 'heading', title: query.trim().length >= SEARCH_MIN_LENGTH ? translate('filters.picker.matches') : translate('common.all') });
       rest.forEach(option => result.push({ type: 'option', option, selected: false }));
     }
     return result;
@@ -110,7 +140,7 @@ export function OptionPicker({ field, value, onChange, ctx }: OptionPickerProps)
   const toggle = (option: PickedOption) =>
     onChange(selectedIds.has(option.id) ? value.filter(entry => entry.id !== option.id) : [...value, option]);
   const words = searchWords(query);
-  const placeholder = `Search ${field.noun[1]}`;
+  const placeholder = pickerText(field.noun, 'search');
 
   return (
     <View style={styles.wrap}>
@@ -132,7 +162,7 @@ export function OptionPicker({ field, value, onChange, ctx }: OptionPickerProps)
             <ActivityIndicator size="small" color={t.brand.tint} />
           </View>
         ) : query.length > 0 ? (
-          <Pressable style={styles.trailing} onPress={() => setQuery('')} accessibilityRole="button" accessibilityLabel="Clear search">
+          <Pressable style={styles.trailing} onPress={() => setQuery('')} accessibilityRole="button" accessibilityLabel={translate('common.clearSearch')}>
             <Icon name="close-circle" size={iconSize.md} color={t.icon.secondary} />
           </Pressable>
         ) : null}
@@ -169,10 +199,10 @@ export function OptionPicker({ field, value, onChange, ctx }: OptionPickerProps)
           loading ? null : (
             <Text style={styles.message}>
               {failed
-                ? `Couldn't load ${field.noun[1]}. Check your connection and try again.`
+                ? pickerText(field.noun, 'loadFailed')
                 : query.trim().length >= SEARCH_MIN_LENGTH
-                  ? `No ${field.noun[1]} match "${query.trim()}".`
-                  : `Type at least two letters to search ${field.noun[1]}.`}
+                  ? pickerText(field.noun, 'noMatch', query.trim())
+                  : pickerText(field.noun, 'typeToSearch')}
             </Text>
           )
         }

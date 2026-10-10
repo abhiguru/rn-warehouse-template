@@ -74,6 +74,7 @@ import { useIsOffline } from '@/hooks/useNetworkStatus';
 import { createLogger } from '@/utils/logger';
 import { useAppDispatch } from '@/store/hooks';
 import { useAppLanguage } from '@/i18n/useAppLanguage';
+import { t as translate } from '@/i18n';
 import { initializeAuth } from '@/store/slices/authSlice';
 import { logout } from '@/store/slices/authSlice';
 import { clearSessionScopedState } from '@/store/sessionScopedState';
@@ -255,7 +256,7 @@ const SplashScreen = () => (
       backgroundColor: buildSplashBackground,
     }}
     accessible
-    accessibilityLabel="Loading"
+    accessibilityLabel={translate('nav.loading')}
   >
     <Image
       source={splashImage}
@@ -318,11 +319,11 @@ function NavigationStack({ screenBackground }: { screenBackground: string }) {
       />
 
       {/* Auth screens */}
-      <Stack.Screen name="login" options={{ title: 'Sign in' }} />
-      <Stack.Screen name="otp" options={{ title: 'Enter code' }} />
-      <Stack.Screen name="pending-enrollment" options={{ title: 'Waiting for approval' }} />
-      <Stack.Screen name="operator-server" options={{ title: 'Facility' }} />
-      <Stack.Screen name="enrollment-review" options={{ title: 'Enrollment review' }} />
+      <Stack.Screen name="login" options={{ title: translate('nav.screens.signIn') }} />
+      <Stack.Screen name="otp" options={{ title: translate('nav.screens.enterCode') }} />
+      <Stack.Screen name="pending-enrollment" options={{ title: translate('nav.screens.waitingForApproval') }} />
+      <Stack.Screen name="operator-server" options={{ title: translate('nav.screens.facility') }} />
+      <Stack.Screen name="enrollment-review" options={{ title: translate('nav.screens.enrollmentReview') }} />
 
       {/* Detail screens */}
       {/* Sort and filter page of a list: slides up like a sheet, closes with its own button */}
@@ -338,7 +339,7 @@ function NavigationStack({ screenBackground }: { screenBackground: string }) {
       <Stack.Screen name="grn-form" options={{ headerShown: false }} />
       <Stack.Screen
         name="grn-edit"
-        options={{ title: 'Edit GRN', headerShown: false }}
+        options={{ title: translate('nav.screens.editGrn'), headerShown: false }}
       />
       <Stack.Screen name="dispatch-form" options={{ headerShown: false }} />
       <Stack.Screen name="dispatch-edit" options={{ headerShown: false }} />
@@ -440,7 +441,7 @@ function ThemedContent() {
         <ActivityIndicator
           size="large"
           color={tokens.brand.tint}
-          accessibilityLabel="Loading"
+          accessibilityLabel={translate('nav.loading')}
         />
       </View>
     );
@@ -557,7 +558,7 @@ function BootstrapApp() {
       } catch (error: any) {
         console.error('[Bootstrap] Config fetch failed:', error);
         setConfigError(
-          "Couldn't reach the facility server. Check your connection and try again."
+          translate('nav.bootstrap.unreachable')
         );
         setIsReady(true);
         return;
@@ -572,7 +573,7 @@ function BootstrapApp() {
         console.log('[Bootstrap] Supabase client initialized successfully');
       } catch (error: any) {
         console.error('[Bootstrap] Supabase initialization failed:', error);
-        setConfigError("Couldn't connect to the facility server. Try again, or choose another server.");
+        setConfigError(translate('nav.bootstrap.connectFailed'));
         setIsReady(true);
         return;
       }
@@ -590,7 +591,7 @@ function BootstrapApp() {
     } catch (error: any) {
       console.error('[Bootstrap] Unexpected bootstrap error:', error);
       if (run === bootstrapRun.current) {
-        setConfigError(error instanceof Error ? error.message : "Couldn't verify the selected server. Try again, or choose another server.");
+        setConfigError(error instanceof Error ? error.message : translate('nav.bootstrap.verifyFailed'));
         setIsReady(true);
       }
     }

@@ -30,7 +30,8 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { ListSkeleton } from '@/components/skeletons';
 import { ListEmptyState } from '@/components/list/ListEmptyState';
 import { ErrorStateView } from '@/components/ErrorBoundary';
-import { formatCount } from '@/utils/formatters';
+import { formatCount, formatNumber } from '@/utils/formatters';
+import { t as translate } from '@/i18n';
 import { CustomerSearchBottomSheet, CustomerSearchBottomSheetRef } from '@/components/CustomerSearchBottomSheet';
 
 // Types and utilities
@@ -98,11 +99,11 @@ const SectionHeader = React.memo<SectionHeaderProps>(({ title, count }) => {
       style={styles.sectionHeader}
       accessible
       accessibilityRole="header"
-      accessibilityLabel={`${title}, ${formatCount(count, 'order')}`}
+      accessibilityLabel={translate('lists.section.label', { title, countText: formatCount(count, 'order') })}
     >
       <Text style={styles.sectionTitle}>{title.toUpperCase()}</Text>
       <View style={styles.sectionBadge}>
-        <Text style={styles.sectionBadgeText} maxFontSizeMultiplier={1.6}>{count}</Text>
+        <Text style={styles.sectionBadgeText} maxFontSizeMultiplier={1.6}>{formatNumber(count)}</Text>
       </View>
     </View>
   );
@@ -232,7 +233,7 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
         setHasMore(result.metadata?.has_more ?? false);
       } else {
         setError(result.message || 'Failed to load orders');
-        setSnackbarMessage("Couldn't load orders. Check your connection and try again.");
+        setSnackbarMessage(translate('lists.order.loadFailed'));
         setSnackbarVisible(true);
       }
     } catch (err: unknown) {
@@ -243,7 +244,7 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
       console.error('[OrderFlashList] Error:', err);
       const errorMessage = err instanceof Error ? err.message : 'Failed to load orders';
       setError(errorMessage);
-      setSnackbarMessage("Couldn't load orders. Check your connection and try again.");
+      setSnackbarMessage(translate('lists.order.loadFailed'));
       setSnackbarVisible(true);
     } finally {
       fetchInProgressRef.current = false;
@@ -294,13 +295,13 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
         });
         setHasMore(result.metadata?.has_more ?? false);
       } else {
-        setSnackbarMessage("Couldn't load more orders. Scroll down to try again.");
+        setSnackbarMessage(translate('lists.order.loadMoreFailed'));
         setSnackbarVisible(true);
       }
     } catch (err: unknown) {
       if (!isMountedRef.current) return;
       console.error('[OrderFlashList] Load more error:', err);
-      setSnackbarMessage("Couldn't load more orders. Scroll down to try again.");
+      setSnackbarMessage(translate('lists.order.loadMoreFailed'));
       setSnackbarVisible(true);
     } finally {
       fetchInProgressRef.current = false;
@@ -373,8 +374,8 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
       }
       setSnackbarMessage(
         userProfile.assignedCustomerIds?.length
-          ? 'Select an existing assigned-customer order.'
-          : 'No assigned customer is available for this account.'
+          ? translate('lists.order.selectExisting')
+          : translate('lists.order.noAssignedCustomer')
       );
       setSnackbarVisible(true);
       return;
@@ -415,14 +416,14 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
 
     if (activeOrders.length > 0) {
       sections.push({
-        title: 'Active orders',
+        title: translate('lists.order.activeSection'),
         data: activeOrders,
       });
     }
 
     if (emptyOrders.length > 0 && !showWithItemsOnly) {
       sections.push({
-        title: 'Empty orders',
+        title: translate('lists.order.emptySection'),
         data: emptyOrders,
       });
     }
@@ -468,7 +469,7 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
     return (
       <View style={styles.footerLoader} accessibilityLiveRegion="polite">
         <ActivityIndicator size="small" color={t.brand.tint} />
-        <Text style={styles.footerLoaderText}>Loading more orders…</Text>
+        <Text style={styles.footerLoaderText}>{translate('lists.order.loadingMore')}</Text>
       </View>
     );
   }, [isLoadingMore, styles, t]);
@@ -481,11 +482,11 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
   // search or filter can always be changed or cleared.
   const header = (
     <FilteredListHeader
-      title="Orders"
+      title={translate('lists.order.title')}
       config={ORDER_FILTERS}
       filters={filters}
       loading={isLoading}
-      actions={<OrderRefreshAction onRefresh={handleRefresh} refreshing={isRefreshing} label="Refresh orders" />}
+      actions={<OrderRefreshAction onRefresh={handleRefresh} refreshing={isRefreshing} label={translate('lists.order.refresh')} />}
     >
       {subHeader}
     </FilteredListHeader>
@@ -503,9 +504,9 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
           <View accessibilityRole="alert" style={styles.messageStrip}>
             <Icon name="alert" size={iconSize.md} color={t.status.critical.text} style={styles.messageStripIcon} />
             <View style={styles.messageStripBody}>
-              <Text style={styles.messageStripTitle}>Couldn't refresh orders.</Text>
+              <Text style={styles.messageStripTitle}>{translate('lists.order.staleTitle')}</Text>
               <Text style={styles.messageStripText}>
-                Showing previously loaded orders. Refresh to get current data.
+                {translate('lists.order.staleText')}
               </Text>
             </View>
           </View>
@@ -543,8 +544,8 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
     content = (
       <ErrorStateView
         presentation="inline"
-        title="Couldn't load orders"
-        message="Check your connection and try again."
+        title={translate('lists.order.loadFailedTitle')}
+        message={translate('common.checkConnection')}
         onRetry={handleRefresh}
       />
     );
@@ -553,8 +554,8 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
       <ListEmptyState
         {...filteredEmptyProps(filters, 'orders')}
         emptyIcon="clipboard-list-outline"
-        emptyTitle="No orders yet"
-        emptySubtitle="Orders appear here when customers add items."
+        emptyTitle={translate('lists.order.emptyTitle')}
+        emptySubtitle={translate('lists.order.emptySubtitle')}
       />
     );
   }
@@ -564,7 +565,7 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
       {header}
       {content}
 
-      <Fab label="Create order" onPress={handleAddOrder} />
+      <Fab label={translate('lists.order.create')} onPress={handleAddOrder} />
 
       {/* Snackbar */}
       <Snackbar
@@ -580,7 +581,7 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
       <CustomerSearchBottomSheet
         ref={customerSearchRef}
         onSelect={handleCustomerSelect}
-        title="Select customer"
+        title={translate('lists.order.selectCustomer')}
       />
     </View>
   );

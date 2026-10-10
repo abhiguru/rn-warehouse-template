@@ -3,6 +3,7 @@ import * as Sharing from 'expo-sharing';
 import { createSessionReadFetch } from '@/config/supabaseConfig';
 import { withNativeHandoff } from '@/config/nativeHandoff';
 import { createLogger } from '@/utils/logger';
+import { t } from '@/i18n';
 
 const log = createLogger('share');
 
@@ -19,7 +20,7 @@ export const MAX_SHARED_DOCUMENT_BYTES = 25 * 1024 * 1024;
 
 const MAX_FILENAME_STEM_LENGTH = 100;
 const CLEANUP_DELAY_MS = 60_000;
-const TOO_LARGE_ERROR = 'This document is larger than 25 MB and cannot be shared from the app.';
+const tooLargeError = () => t('errors.pdf.tooLarge');
 
 /**
  * Reduce a server- or caller-supplied document name to a safe file name inside
@@ -119,20 +120,20 @@ async function downloadDocument(pdfUrl: string, filename: string): Promise<Downl
     log.error('Document download failed', { status: response.status });
     return {
       success: false,
-      error: `Failed to download PDF (status: ${response.status})`,
+      error: t('errors.pdf.downloadFailedStatus', { status: String(response.status) }),
     };
   }
 
   const declaredLength = Number(response.headers?.get?.('content-length'));
   if (Number.isFinite(declaredLength) && declaredLength > MAX_SHARED_DOCUMENT_BYTES) {
     log.warn('Document exceeds the share size cap', { declaredLength });
-    return { success: false, error: TOO_LARGE_ERROR };
+    return { success: false, error: tooLargeError() };
   }
 
   const bytes = await response.arrayBuffer();
   if (bytes.byteLength > MAX_SHARED_DOCUMENT_BYTES) {
     log.warn('Document exceeds the share size cap', { byteLength: bytes.byteLength });
-    return { success: false, error: TOO_LARGE_ERROR };
+    return { success: false, error: tooLargeError() };
   }
 
   const directory = ensureSharedDocumentsDirectory();
@@ -161,7 +162,7 @@ export async function downloadAndSharePDF(
       log.warn('Sharing not available on this device');
       return {
         success: false,
-        error: 'Sharing is not available on this device',
+        error: t('errors.pdf.sharingUnavailable'),
       };
     }
 
@@ -177,7 +178,7 @@ export async function downloadAndSharePDF(
     await withNativeHandoff(() =>
       Sharing.shareAsync(shared.uri, {
         mimeType: 'application/pdf',
-        dialogTitle: `Share ${downloaded.name}`,
+        dialogTitle: t('errors.pdf.shareDialogTitle', { name: downloaded.name }),
         UTI: 'com.adobe.pdf', // iOS specific
       })
     );
@@ -194,7 +195,7 @@ export async function downloadAndSharePDF(
     deleteQuietly(downloadedFile);
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to share PDF',
+      error: error instanceof Error ? error.message : t('errors.pdf.shareFailed'),
     };
   }
 }
@@ -225,7 +226,7 @@ export async function downloadPDF(
     log.error('Document download failed');
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to download PDF',
+      error: error instanceof Error ? error.message : t('errors.pdf.downloadFailed'),
     };
   }
 }

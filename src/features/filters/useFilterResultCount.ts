@@ -4,6 +4,7 @@
  * latest question wins; the previous number stays visible while loading.
  */
 import { useEffect, useRef, useState } from 'react';
+import { t } from '@/i18n';
 import type { CountableFilterList } from './configs';
 import type { FilterContext, FilterValues, SortState } from './types';
 
@@ -49,9 +50,19 @@ export function useFilterResultCount(
   return state;
 }
 
-/** Label of the apply button for a count. */
+/** The nouns a list can count. Each has its own whole sentences (`filters.results.<noun>`). */
+const RESULT_NOUNS = ['item', 'dispatch', 'invoice', 'order', 'price'] as const;
+type ResultNoun = (typeof RESULT_NOUNS)[number];
+const isResultNoun = (noun: string): noun is ResultNoun => (RESULT_NOUNS as readonly string[]).includes(noun);
+
+/** Label of the apply button for a count: "Show 24 items", "No items match", "Show results". */
 export function resultsLabel(result: FilterResultCount, noun: [string, string]): string {
-  if (result.count === null) return 'Show results';
-  if (result.count === 0) return `No ${noun[1]} match`;
-  return `Show ${new Intl.NumberFormat('en-IN').format(result.count)} ${result.count === 1 ? noun[0] : noun[1]}`;
+  if (result.count === null) return t('filters.results.showResults');
+  const [singular, plural] = noun;
+  if (isResultNoun(singular)) {
+    return result.count === 0 ? t(`filters.results.${singular}.none`) : t(`filters.results.${singular}.show`, { count: result.count });
+  }
+  // A noun without texts of its own (none in the app today): English, as before.
+  if (result.count === 0) return `No ${plural} match`;
+  return `Show ${new Intl.NumberFormat('en-IN').format(result.count)} ${result.count === 1 ? singular : plural}`;
 }

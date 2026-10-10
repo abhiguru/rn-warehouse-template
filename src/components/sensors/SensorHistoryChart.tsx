@@ -36,7 +36,14 @@ import {
   type ThemeTokens,
 } from '@/theme/tokens';
 import type { SensorHistoryReading, SensorChartDataPoint } from '@/types/sensor-history.types';
-import { formatCount, formatDate, formatDateTime, formatMonth, formatTemperature, toDate } from '@/utils/formatters';
+import {
+  formatDate,
+  formatDateTime,
+  formatMonth,
+  formatTemperature as formatTemperatureValue,
+  toDate,
+} from '@/utils/formatters';
+import { localizeDigits, t as tr, type TranslationKey } from '@/i18n';
 
 /** A limit drawn on the temperature scale as a dashed, labelled line. */
 export interface SensorChartThreshold {
@@ -60,12 +67,15 @@ interface SensorHistoryChartProps {
 // Formatting (guide §12.3)
 // ============================================================================
 
-export { formatTemperature };
+/** One decimal, true minus sign: "−18.5°C". Digits follow the app language; the unit stays °C. */
+export function formatTemperature(celsius: number | null | undefined): string {
+  return localizeDigits(formatTemperatureValue(celsius));
+}
 
 /** Humidity as a whole percentage: 85% */
 export function formatHumidity(value: number | null | undefined): string {
   if (value === null || value === undefined || isNaN(value)) return '—';
-  return `${Math.round(value)}%`;
+  return localizeDigits(`${Math.round(value)}%`);
 }
 
 /** "9 Oct 2026" or "9 Oct 2026, 4:05 pm" (guide §12.3) */
@@ -118,16 +128,26 @@ function formatAxisLabel(label: string): string {
   if (isNaN(n)) return label;
   const rounded = Math.round(n * 10) / 10;
   const text = String(Math.abs(rounded));
-  return rounded < 0 ? `\u2212${text}` : text;
+  return localizeDigits(rounded < 0 ? `\u2212${text}` : text);
 }
 
-const INTERVAL_LABELS: Record<string, string> = {
-  '1 hour': 'Hourly',
-  '2 hours': '2-hour',
-  '4 hours': '4-hour',
-  '1 day': 'Daily',
-  '1 week': 'Weekly',
+/** The server's aggregation interval, as the name of its texts in `sensors.chart`. */
+type IntervalName = 'hourly' | 'twoHour' | 'fourHour' | 'daily' | 'weekly';
+const INTERVAL_NAMES: Record<string, IntervalName> = {
+  '1 hour': 'hourly',
+  '2 hours': 'twoHour',
+  '4 hours': 'fourHour',
+  '1 day': 'daily',
+  '1 week': 'weekly',
 };
+
+/** "Daily averages". An interval the app does not know is shown as the server sent it. */
+function averagesLabel(aggregationInterval: string): string {
+  const name = INTERVAL_NAMES[aggregationInterval];
+  return name
+    ? tr(`sensors.chart.averages.${name}` as TranslationKey)
+    : tr('sensors.chart.averages.other', { interval: aggregationInterval });
+}
 
 interface SeriesStats {
   min: number;
@@ -142,23 +162,40 @@ function statsOf(values: Array<number | null>): SeriesStats | null {
   return { min: Math.min(...present), max: Math.max(...present), avg: sum / present.length };
 }
 
-/** Plain-language summary of the chart, shown under it and read by screen readers. */
-export function summariseReadings(readings: SensorHistoryReading[], intervalLabel: string): string {
+/**
+ * Plain-language summary of the chart, shown under it and read by screen readers.
+ * `interval` is the server's aggregation interval ("1 day"); any other text is
+ * used as it is, in lower case.
+ */
+export function summariseReadings(readings: SensorHistoryReading[], interval: string): string {
   const temp = statsOf(readings.map(r => r.temperature));
   const hum = statsOf(readings.map(r => r.humidity));
   const parts: string[] = [];
   if (temp) {
     parts.push(
-      `Temperature ${formatTemperature(temp.min)} to ${formatTemperature(temp.max)}, average ${formatTemperature(temp.avg)}.`
+      tr('sensors.chart.summaryTemperature', {
+        min: formatTemperature(temp.min),
+        max: formatTemperature(temp.max),
+        average: formatTemperature(temp.avg),
+      })
     );
   }
   if (hum) {
     parts.push(
-      `Humidity ${formatHumidity(hum.min)} to ${formatHumidity(hum.max)}, average ${formatHumidity(hum.avg)}.`
+      tr('sensors.chart.summaryHumidity', {
+        min: formatHumidity(hum.min),
+        max: formatHumidity(hum.max),
+        average: formatHumidity(hum.avg),
+      })
     );
   }
   const count = readings.length;
-  parts.push(`${formatCount(count, 'reading')}, ${intervalLabel.toLowerCase()} averages.`);
+  const name = INTERVAL_NAMES[interval];
+  parts.push(
+    name
+      ? tr(`sensors.chart.summaryCount.${name}` as TranslationKey, { count })
+      : tr('sensors.chart.summaryCount.other', { count, interval: interval.toLowerCase() })
+  );
   return parts.join(' ');
 }
 
@@ -416,15 +453,15 @@ function Legend({ styles, tempColour, humidityColour, withUnits }: {
   styles: Styles; tempColour: string; humidityColour: string; withUnits?: boolean;
 }) {
   return (
-    <View style={styles.legend} accessible accessibilityLabel="Legend: temperature line and humidity line">
+    <View style={styles.legend} accessible accessibilityLabel={tr('sensors.chart.legend')}>
       <View style={styles.legendItem}>
         <View style={[styles.legendSwatch, { backgroundColor: tempColour }]} />
-        <Text style={styles.legendText}>{withUnits ? 'Temperature (°C)' : 'Temperature'}</Text>
+        <Text style={styles.legendText}>{withUnits ? tr('sensors.chart.legendTemperatureUnit') : tr('sensors.temperature')}</Text>
       </View>
       <View style={styles.legendItem}>
         <View style={[styles.legendSwatch, { backgroundColor: humidityColour }]} />
         <Text style={styles.legendText}>
-          {withUnits ? 'Humidity (%, right axis)' : 'Humidity'}
+          {withUnits ? tr('sensors.chart.legendHumidityUnit') : tr('sensors.humidity')}
         </Text>
       </View>
     </View>
@@ -509,15 +546,14 @@ export const SensorHistoryChart: React.FC<SensorHistoryChartProps> = ({
   // Fullscreen data with more labels
   const fullscreenData = useMemo(() => buildSeries(10, false), [readings, periodDays, domain, maxHumidity]);
 
-  const intervalLabel = INTERVAL_LABELS[aggregationInterval] || aggregationInterval;
-  const summary = useMemo(() => summariseReadings(readings, intervalLabel), [readings, intervalLabel]);
+  const summary = summariseReadings(readings, aggregationInterval);
 
   if (readings.length === 0) {
     return (
       <View style={styles.emptyContainer}>
         <Icon name="chart-line" size={iconSize.hero} color={t.icon.secondary} />
-        <Text style={styles.emptyTitle}>No history for this period</Text>
-        <Text style={styles.emptyText}>Readings appear here once the sensor reports them.</Text>
+        <Text style={styles.emptyTitle}>{tr('sensors.chart.emptyTitle')}</Text>
+        <Text style={styles.emptyText}>{tr('sensors.chart.emptyText')}</Text>
       </View>
     );
   }
@@ -572,6 +608,7 @@ export const SensorHistoryChart: React.FC<SensorHistoryChartProps> = ({
       maxValue: maxHumidity,
       noOfSections: domain.sections,
       yAxisLabelSuffix: '%',
+      formatYLabel: (label: string) => localizeDigits(label),
       yAxisTextStyle: styles.axisLabel,
       yAxisColor: t.border.divider,
     },
@@ -597,7 +634,11 @@ export const SensorHistoryChart: React.FC<SensorHistoryChartProps> = ({
       <View
         style={styles.tableRow}
         accessible
-        accessibilityLabel={`${time}, temperature ${formatTemperature(item.temperature)}, humidity ${formatHumidity(item.humidity)}`}
+        accessibilityLabel={tr('sensors.chart.rowLabel', {
+          time,
+          temperature: formatTemperature(item.temperature),
+          humidity: formatHumidity(item.humidity),
+        })}
       >
         <Text style={[styles.tableCell, styles.colTime]}>{time}</Text>
         <Text style={[styles.tableCell, styles.colNumber]}>{formatTemperature(item.temperature)}</Text>
@@ -613,19 +654,19 @@ export const SensorHistoryChart: React.FC<SensorHistoryChartProps> = ({
         style={({ pressed }) => [styles.chartCard, pressed && styles.chartCardPressed]}
         onPress={() => setIsFullscreen(true)}
         accessibilityRole="button"
-        accessibilityLabel={`Historical trend. ${summary}`}
-        accessibilityHint="Opens the full-screen chart and a table of values"
+        accessibilityLabel={tr('sensors.chart.titleWithSummary', { summary })}
+        accessibilityHint={tr('sensors.chart.openHint')}
       >
         <View style={styles.chartHeader}>
           <View style={styles.chartHeaderText}>
             <Text style={styles.chartTitle} accessibilityRole="header">
-              Historical trend
+              {tr('sensors.chart.title')}
             </Text>
-            <Text style={styles.chartSubtitle}>{intervalLabel} averages</Text>
+            <Text style={styles.chartSubtitle}>{averagesLabel(aggregationInterval)}</Text>
           </View>
           <View style={styles.expandHint}>
             <Icon name="arrow-expand" size={iconSize.sm} color={t.brand.tint} />
-            <Text style={styles.expandText}>Expand</Text>
+            <Text style={styles.expandText}>{tr('sensors.chart.expand')}</Text>
           </View>
         </View>
 
@@ -668,19 +709,19 @@ export const SensorHistoryChart: React.FC<SensorHistoryChartProps> = ({
               style={({ pressed }) => [styles.closeButton, pressed && styles.closeButtonPressed]}
               onPress={closeFullscreen}
               accessibilityRole="button"
-              accessibilityLabel="Close sensor history"
+              accessibilityLabel={tr('sensors.chart.close')}
             >
               <Icon name="close" size={iconSize.lg} color={t.brand.tint} />
             </Pressable>
             <Text style={styles.fullscreenTitle} accessibilityRole="header">
-              Sensor history
+              {tr('sensors.chart.fullscreenTitle')}
             </Text>
             <View style={styles.closeButton} />
           </View>
 
           {/* Chart / table switch and legend */}
           <View style={styles.toolbar}>
-            <View style={styles.segmented} accessibilityRole="radiogroup" accessibilityLabel="Show as">
+            <View style={styles.segmented} accessibilityRole="radiogroup" accessibilityLabel={tr('sensors.chart.showAs')}>
               {(['chart', 'table'] as const).map((view, index) => {
                 const selected = fullscreenView === view;
                 return (
@@ -696,7 +737,7 @@ export const SensorHistoryChart: React.FC<SensorHistoryChartProps> = ({
                     onPress={() => setFullscreenView(view)}
                     accessibilityRole="radio"
                     accessibilityState={{ selected, checked: selected }}
-                    accessibilityLabel={view === 'chart' ? 'Chart' : 'Table of values'}
+                    accessibilityLabel={view === 'chart' ? tr('sensors.chart.chart') : tr('sensors.chart.tableOfValues')}
                   >
                     <Icon
                       name={view === 'chart' ? 'chart-line' : 'table'}
@@ -704,7 +745,7 @@ export const SensorHistoryChart: React.FC<SensorHistoryChartProps> = ({
                       color={selected ? t.brand.onFill : t.icon.primary}
                     />
                     <Text style={[styles.segmentText, selected && styles.segmentTextSelected]}>
-                      {view === 'chart' ? 'Chart' : 'Table'}
+                      {view === 'chart' ? tr('sensors.chart.chart') : tr('sensors.chart.table')}
                     </Text>
                   </Pressable>
                 );
@@ -715,7 +756,7 @@ export const SensorHistoryChart: React.FC<SensorHistoryChartProps> = ({
                 <Legend styles={styles} tempColour={tempColour} humidityColour={humidityColour} withUnits />
                 <View style={styles.instructions}>
                   <Icon name="gesture-swipe-horizontal" size={iconSize.sm} color={t.icon.secondary} />
-                  <Text style={styles.instructionText}>Swipe to scroll. Tap a point to see its value.</Text>
+                  <Text style={styles.instructionText}>{tr('sensors.chart.instructions')}</Text>
                 </View>
               </>
             )}
@@ -755,9 +796,9 @@ export const SensorHistoryChart: React.FC<SensorHistoryChartProps> = ({
           ) : (
             <View style={styles.fullscreenChartContainer}>
               <View style={styles.tableHeader} accessibilityRole="header">
-                <Text style={[styles.tableHeaderText, styles.colTime]}>{showTime ? 'Date and time' : 'Date'}</Text>
-                <Text style={[styles.tableHeaderText, styles.colNumber]}>Temperature</Text>
-                <Text style={[styles.tableHeaderText, styles.colNumber]}>Humidity</Text>
+                <Text style={[styles.tableHeaderText, styles.colTime]}>{showTime ? tr('sensors.chart.dateAndTime') : tr('common.date')}</Text>
+                <Text style={[styles.tableHeaderText, styles.colNumber]}>{tr('sensors.temperature')}</Text>
+                <Text style={[styles.tableHeaderText, styles.colNumber]}>{tr('sensors.humidity')}</Text>
               </View>
               <FlatList
                 data={readings}
@@ -772,7 +813,11 @@ export const SensorHistoryChart: React.FC<SensorHistoryChartProps> = ({
           <View style={[styles.footer, { paddingBottom: insets.bottom + space.md }]}>
             <Text style={styles.footerText}>{summary}</Text>
             <Text style={styles.footerText}>
-              {`Temperature axis ${formatTemperature(domain.min)} to ${formatTemperature(domain.max)}. Humidity 0 to ${maxHumidity}% on the right axis.`}
+              {tr('sensors.chart.axisNote', {
+                min: formatTemperature(domain.min),
+                max: formatTemperature(domain.max),
+                humidityMax: formatHumidity(maxHumidity),
+              })}
             </Text>
           </View>
         </View>

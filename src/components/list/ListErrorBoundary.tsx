@@ -9,9 +9,14 @@
 import type { ErrorInfo, ReactNode } from 'react';
 import React, { Component } from 'react';
 import { ErrorStateView } from '@/components/ErrorBoundary';
+import { t } from '@/i18n';
 import { createLogger } from '@/utils/logger';
 
 const logger = createLogger('ListErrorBoundary');
+
+/** The lists that have texts of their own, by the English name the callers pass. A key, not a text. */
+const LIST_NAMES = { items: 'items', invoices: 'invoices', dispatches: 'dispatches', 'GRN items': 'grnItems' } as const;
+const isListName = (name: string): name is keyof typeof LIST_NAMES => Object.prototype.hasOwnProperty.call(LIST_NAMES, name);
 
 interface ListErrorFallbackProps {
   error?: Error | null;
@@ -29,10 +34,11 @@ export const ListErrorFallback: React.FC<ListErrorFallbackProps> = ({
 }) => (
   <ErrorStateView
     presentation="inline"
-    message={`Couldn't show the ${listName}. Try again.`}
+    // A name without texts of its own (none in the app today) is worded in English, as before.
+    message={isListName(listName) ? t(`lists.errorBoundary.${LIST_NAMES[listName]}.message`) : `Couldn't show the ${listName}. Try again.`}
     error={error}
     onRetry={onRetry}
-    retryAccessibilityLabel={`Try loading the ${listName} again`}
+    retryAccessibilityLabel={isListName(listName) ? t(`lists.errorBoundary.${LIST_NAMES[listName]}.retry`) : `Try loading the ${listName} again`}
   />
 );
 

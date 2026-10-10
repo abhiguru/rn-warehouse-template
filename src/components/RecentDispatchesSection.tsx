@@ -31,6 +31,7 @@ import { useAppSelector } from '@/store/hooks';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { SectionHeader } from '@/components/ui/SectionHeader';
 import { formatCount } from '@/utils/formatters';
+import { t as tr } from '@/i18n';
 import {
   iconSize,
   layout,
@@ -100,7 +101,8 @@ const makeStyles = (t: ThemeTokens) => ({
 });
 
 
-const LOAD_ERROR = "Couldn't load dispatches. Check your connection and try again.";
+// Read when it is shown, so it follows the language (docs/I18N.md rule 2).
+const loadError = () => tr('dispatch.recent.loadFailed');
 
 const RecentDispatchesSection: React.FC<RecentDispatchesSectionProps> = ({
   customerId,
@@ -154,11 +156,11 @@ const RecentDispatchesSection: React.FC<RecentDispatchesSectionProps> = ({
       if (result.success && result.data) {
         setDispatches(result.data.dispatches || []);
       } else {
-        setError(LOAD_ERROR);
+        setError(loadError());
       }
     } catch (err) {
       console.error('[RecentDispatchesSection] Error fetching dispatches:', err);
-      setError(LOAD_ERROR);
+      setError(loadError());
     } finally {
       setLoading(false);
     }
@@ -194,15 +196,17 @@ const RecentDispatchesSection: React.FC<RecentDispatchesSectionProps> = ({
   return (
     <View style={styles.wrapper}>
       <SectionHeader
-        title="Recent dispatches"
+        title={tr('dispatch.recent.title')}
         count={loading ? undefined : dispatches.length}
         action={
           error
             ? undefined
             : {
-                label: isExpanded ? 'Hide' : 'Show',
+                label: isExpanded ? tr('dispatch.recent.hide') : tr('dispatch.recent.show'),
                 onPress: toggleExpand,
-                accessibilityLabel: `${isExpanded ? 'Hide' : 'Show'} recent dispatches, ${countLabel}`,
+                accessibilityLabel: tr(isExpanded ? 'dispatch.recent.hideLabel' : 'dispatch.recent.showLabel', {
+                  dispatches: countLabel,
+                }),
               }
         }
         testID="recent-dispatches-header"
@@ -210,9 +214,9 @@ const RecentDispatchesSection: React.FC<RecentDispatchesSectionProps> = ({
 
       {showContent && loading && (
         <View style={styles.messageCard}>
-          <View style={styles.loadingContainer} accessibilityLabel="Loading dispatches">
+          <View style={styles.loadingContainer} accessibilityLabel={tr('dispatch.recent.loadingLabel')}>
             <ActivityIndicator size="small" color={t.brand.tint} />
-            <Text style={styles.loadingText}>Loading dispatches…</Text>
+            <Text style={styles.loadingText}>{tr('dispatch.recent.loading')}</Text>
           </View>
         </View>
       )}
@@ -226,9 +230,9 @@ const RecentDispatchesSection: React.FC<RecentDispatchesSectionProps> = ({
               onPress={fetchDispatches}
               style={({ pressed }) => [styles.retryButton, pressed && styles.retryButtonPressed]}
               accessibilityRole="button"
-              accessibilityLabel="Try loading dispatches again"
+              accessibilityLabel={tr('dispatch.recent.retryLoad')}
             >
-              <Text style={styles.retryText}>Try again</Text>
+              <Text style={styles.retryText}>{tr('common.retry')}</Text>
             </Pressable>
           </View>
         </View>

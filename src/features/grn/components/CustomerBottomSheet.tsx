@@ -15,8 +15,9 @@ import { iconSize, layout, space, typography, touchTarget } from '@/theme/tokens
 import type { ThemeTokens } from '@/theme/tokens';
 import { Avatar } from '@/components/ui';
 
-const RECENT_CUSTOMERS_KEY = 'recent_customers';
+import { t as tr } from '@/i18n';
 
+const RECENT_CUSTOMERS_KEY = 'recent_customers';
 interface Customer {
   id: string;
   name: string;
@@ -118,16 +119,16 @@ export const CustomerBottomSheet: React.FC<CustomerBottomSheetProps> = ({
       isVisible={isVisible}
       onClose={onClose}
       onSelect={onSelect}
-      title="Select customer"
-      placeholder="Search by name or location"
+      title={tr('grn.pickers.customerTitle')}
+      placeholder={tr('grn.pickers.customerPlaceholder')}
       searchFn={searchCustomers}
       renderItem={renderCustomerItem}
       keyExtractor={keyExtractor}
       currentValue={currentValue}
       recentItemsKey={RECENT_CUSTOMERS_KEY}
       maxRecentItems={5}
-      emptyInitialText="Search for a customer"
-      emptySubText="Type at least 2 characters to find customers"
+      emptyInitialText={tr('grn.pickers.customerEmptyInitial')}
+      emptySubText={tr('grn.pickers.typeToFindCustomers')}
     />
   );
 };

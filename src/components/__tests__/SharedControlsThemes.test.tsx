@@ -194,7 +194,7 @@ describe.each(THEMES)('shared controls in %s %s', (brand, mode) => {
 
   it('fill plain counts with brand.fill and "needs action" counts with destructive.fill', () => {
     const header = render(brand, mode, <SectionHeader title="Items" count={3} />);
-    const count = header.root.findAllByType(Text).find(n => n.props.children === 3)!;
+    const count = header.root.findAllByType(Text).find(n => n.props.children === '3')!;
     expect(flat(count.props.style).color).toBe(t.brand.onFill);
     act(() => header.unmount());
 

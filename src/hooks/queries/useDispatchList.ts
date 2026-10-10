@@ -20,6 +20,7 @@ import {
   DispatchListResponseNew,
   Dispatch,
 } from '@/services/dispatch-service';
+import { t } from '@/i18n';
 
 // ============================================================================
 // TYPES
@@ -95,7 +96,7 @@ export function useDispatchList(options: UseDispatchListOptions = {}): UseDispat
       });
 
       if (!response.success) {
-        throw new Error(response.message || 'Failed to fetch dispatches');
+        throw new Error(response.message || t('errors.dispatch.fetchFailed'));
       }
 
       return response;
@@ -186,7 +187,7 @@ export function useInfiniteDispatchList(options: UseInfiniteDispatchListOptions 
       });
 
       if (!response.success) {
-        throw new Error(response.message || 'Failed to fetch dispatches');
+        throw new Error(response.message || t('errors.dispatch.fetchFailed'));
       }
 
       return response;
@@ -253,7 +254,7 @@ export function useDeleteDispatch() {
     mutationFn: async ({ dispatchId, userId }: { dispatchId: string; userId: string }) => {
       const result = await deleteDispatch(dispatchId, userId);
       if (!result.success) {
-        throw new Error(result.message || 'Failed to delete dispatch');
+        throw new Error(result.message || t('errors.dispatch.deleteFailed'));
       }
       return result;
     },
@@ -307,7 +308,7 @@ export function usePrefetchDispatchList() {
         });
 
         if (!response.success) {
-          throw new Error(response.message || 'Failed to fetch dispatches');
+          throw new Error(response.message || t('errors.dispatch.fetchFailed'));
         }
 
         return response;

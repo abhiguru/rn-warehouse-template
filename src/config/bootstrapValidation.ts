@@ -2,14 +2,50 @@
 // JWT decoding classifies a public key; it does not authenticate a user.
 import type { PublicConfig, FullConfig } from '../services/configService';
 
+/**
+ * What was wrong, as a code. The message is English for the CLI and the logs;
+ * the app shows `errors.server.<code>` in the person's language instead
+ * (localizeBootstrapError in operatorServer.ts). This file stays free of
+ * imports so Node can run it, which is why it does not translate anything.
+ */
+export type BootstrapErrorCode =
+  | 'originRequired'
+  | 'originBare'
+  | 'config.invalidShape'
+  | 'config.privateField'
+  | 'config.anonKey'
+  | 'config.endpointMismatch'
+  | 'config.publicIncomplete'
+  | 'config.publicUrlMismatch'
+  | 'config.publicShape'
+  | 'config.featureFlags'
+  | 'config.minimumVersion'
+  | 'config.storeUrl'
+  | 'config.authenticatedResponse'
+  | 'config.externalUnsupported'
+  | 'config.originMismatch'
+  | 'config.features'
+  | 'config.metadata'
+  | 'config.limits';
+
+export class BootstrapValidationError extends Error {
+  code: BootstrapErrorCode;
+
+  constructor(code: BootstrapErrorCode, message: string) {
+    super(message);
+    this.name = 'BootstrapValidationError';
+    this.code = code;
+  }
+}
+
 export function httpOrigin(value: unknown): string {
   if (typeof value !== 'string')
-    throw new Error('Configure an HTTP(S) origin.');
+    throw new BootstrapValidationError('originRequired', 'Configure an HTTP(S) origin.');
   let url: URL;
   try {
     url = new URL(value);
   } catch {
-    throw new Error('Configure an HTTP(S) origin.');
+    throw new BootstrapValidationError('originRequired', 'Configure an HTTP(S) origin.');
   }
   if (
     !['http:', 'https:'].includes(url.protocol) ||
@@ -19,16 +55,14 @@ export function httpOrigin(value: unknown): string {
     url.search ||
     url.hash
   ) {
-    throw new Error(
-      'Configure an HTTP(S) origin without credentials, a path, or query parameters.'
-    );
+    throw new BootstrapValidationError('originBare', 'Configure an HTTP(S) origin without credentials, a path, or query parameters.');
   }
   return url.origin;
 }
 
 function object(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value))
-    throw new Error('Invalid configuration shape.');
+    throw new BootstrapValidationError('config.invalidShape', 'Invalid configuration shape.');
   return value as Record<string, unknown>;
 }
 
@@ -40,7 +74,7 @@ function rejectPrivate(value: unknown): void {
         key.replace(/[^a-z]/gi, '')
       )
     ) {
-      throw new Error('Response contains a private configuration field.');
+      throw new BootstrapValidationError('config.privateField', 'Response contains a private configuration field.');
     }
     rejectPrivate(nested);
   }
@@ -63,15 +97,13 @@ export function classifyAnonKey(value: unknown): void {
     )
       throw new Error();
   } catch {
-    throw new Error(
-      'Expected a non-expired anon key, never a service-role key.'
-    );
+    throw new BootstrapValidationError('config.anonKey', 'Expected a non-expired anon key, never a service-role key.');
   }
 }
 
 function endpoint(value: unknown, origin: string, path: string): void {
   if (value !== `${origin}${path}`)
-    throw new Error('Configuration endpoints must match the backend origin.');
+    throw new BootstrapValidationError('config.endpointMismatch', 'Configuration endpoints must match the backend origin.');
 }
 
 export function validatePublicConfig(
@@ -81,22 +113,18 @@ export function validatePublicConfig(
   rejectPrivate(json);
   const envelope = object(json);
   if (envelope.success !== true)
-    throw new Error(
-      'Backend has not returned a complete public configuration.'
-    );
+    throw new BootstrapValidationError('config.publicIncomplete', 'Backend has not returned a complete public configuration.');
   const config = object(envelope.data);
   const origin = httpOrigin(expectedUrl);
   if (httpOrigin(config.supabaseUrl) !== origin)
-    throw new Error(
-      'Backend SUPABASE_PUBLIC_URL must match EXPO_PUBLIC_CONFIG_API_URL.'
-    );
+    throw new BootstrapValidationError('config.publicUrlMismatch', 'Backend SUPABASE_PUBLIC_URL must match EXPO_PUBLIC_CONFIG_API_URL.');
   classifyAnonKey(config.anonKey);
   if (
     typeof config.environment !== 'string' ||
     typeof config.version !== 'string' ||
     typeof config.maintenanceMode !== 'boolean'
   )
-    throw new Error('Invalid public configuration shape.');
+    throw new BootstrapValidationError('config.publicShape', 'Invalid public configuration shape.');
   const urls = object(config.urls);
   endpoint(urls.publicConfig, origin, '/functions/v1/get-public-config');
   endpoint(urls.fullConfig, origin, '/functions/v1/get-config');
@@ -104,19 +132,19 @@ export function validatePublicConfig(
     config.featureFlags !== undefined &&
     Object.values(object(config.featureFlags)).some(v => typeof v !== 'boolean')
   )
-    throw new Error('Invalid feature flags.');
+    throw new BootstrapValidationError('config.featureFlags', 'Invalid feature flags.');
   if (
     config.minimumVersion !== undefined &&
     (typeof config.minimumVersion !== 'string' ||
       !/^\d+\.\d+\.\d+$/.test(config.minimumVersion))
   )
-    throw new Error('Invalid minimum version.');
+    throw new BootstrapValidationError('config.minimumVersion', 'Invalid minimum version.');
   if (config.storeUrls !== undefined) {
     for (const value of Object.values(object(config.storeUrls))) {
-      if (typeof value !== 'string') throw new Error('Invalid store URL.');
+      if (typeof value !== 'string') throw new BootstrapValidationError('config.storeUrl', 'Invalid store URL.');
       const url = new URL(value);
       if (url.protocol !== 'https:' || url.username || url.password)
-        throw new Error('Invalid store URL.');
+        throw new BootstrapValidationError('config.storeUrl', 'Invalid store URL.');
     }
   }
   return config as unknown as PublicConfig;
@@ -129,15 +157,15 @@ export function validateFullConfig(
   rejectPrivate(json);
   const envelope = object(json);
   if (envelope.success !== true)
-    throw new Error('Invalid authenticated configuration response.');
+    throw new BootstrapValidationError('config.authenticatedResponse', 'Invalid authenticated configuration response.');
   const config = object(envelope.data);
   const keys = object(config.apiKeys);
   if (keys.external !== undefined)
-    throw new Error('External private configuration is unsupported.');
+    throw new BootstrapValidationError('config.externalUnsupported', 'External private configuration is unsupported.');
   const supabase = object(keys.supabase);
   const origin = httpOrigin(expectedUrl);
   if (httpOrigin(supabase.url) !== origin)
-    throw new Error('Backend origin mismatch.');
+    throw new BootstrapValidationError('config.originMismatch', 'Backend origin mismatch.');
   classifyAnonKey(supabase.anonKey);
   const features = object(config.features);
   if (
@@ -154,14 +182,14 @@ export function validateFullConfig(
         (features[k] as unknown[]).some(v => typeof v !== 'string')
     )
   )
-    throw new Error('Invalid feature configuration.');
+    throw new BootstrapValidationError('config.features', 'Invalid feature configuration.');
   for (const [group, names] of Object.entries({
     environment: ['name', 'version', 'buildDate', 'region'],
     support: ['email', 'phone', 'appName'],
   })) {
     const fields = object(config[group]);
     if (names.some(k => typeof fields[k] !== 'string'))
-      throw new Error('Invalid configuration metadata.');
+      throw new BootstrapValidationError('config.metadata', 'Invalid configuration metadata.');
   }
   const urls = object(config.urls);
   endpoint(urls.api, origin, '/rest/v1');
@@ -184,6 +212,6 @@ export function validateFullConfig(
         (limits[k] as number) <= 0
     )
   )
-    throw new Error('Invalid configuration limits.');
+    throw new BootstrapValidationError('config.limits', 'Invalid configuration limits.');
   return config as unknown as FullConfig;
 }

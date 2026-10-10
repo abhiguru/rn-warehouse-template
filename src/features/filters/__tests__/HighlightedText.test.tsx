@@ -2,7 +2,7 @@ import React from 'react';
 import { Text } from 'react-native';
 import TestRenderer, { act } from 'react-test-renderer';
 import { fontWeight } from '@/theme/tokens';
-import { HighlightedText, matchRanges, matchesAnyWord, searchWords } from '../components/HighlightedText';
+import { HighlightedText, matchRanges, matchesAnyWord, searchWords, wholeClusters } from '../components/HighlightedText';
 
 /** The pieces of the rendered text, with which of them are bold. */
 function pieces(text: string, words?: string[]): { text: string; bold: boolean }[] {
@@ -74,5 +74,49 @@ describe('HighlightedText', () => {
     expect(pieces('Garlic', ['onion'])).toEqual([{ text: 'Garlic', bold: false }]);
     expect(pieces('Garlic', [])).toEqual([{ text: 'Garlic', bold: false }]);
     expect(pieces('Garlic')).toEqual([{ text: 'Garlic', bold: false }]);
+  });
+});
+
+describe('Gujarati text', () => {
+  it('never cuts a letter from the vowel signs drawn on it', () => {
+    // બ ટ ા ક ા: "બટ" ends between ટ and its vowel sign, so the match grows to "બટા".
+    expect(matchRanges('બટાકા', ['બટ'])).toEqual([[0, 3]]);
+    expect(pieces('બટાકા', ['બટ'])).toEqual([
+      { text: 'બટા', bold: true },
+      { text: 'કા', bold: false },
+    ]);
+    // A whole match is left as it is.
+    expect(matchRanges('બટાકા', ['બટા'])).toEqual([[0, 3]]);
+    expect(matchRanges('લસણ', ['લસ'])).toEqual([[0, 2]]);
+  });
+
+  it('keeps a conjunct together', () => {
+    // ઑ ર ્ ડ ર: ર + virama + ડ is one shape, whichever half was typed.
+    expect(pieces('ઑર્ડર', ['ઑર'])).toEqual([
+      { text: 'ઑર્ડ', bold: true },
+      { text: 'ર', bold: false },
+    ]);
+    expect(pieces('ઑર્ડર', ['ડ'])).toEqual([
+      { text: 'ઑ', bold: false },
+      { text: 'ર્ડ', bold: true },
+      { text: 'ર', bold: false },
+    ]);
+    // ક ્ ષ with a zero-width joiner in between.
+    expect(wholeClusters('ક્\u200dષા', 0, 1)).toEqual([0, 5]);
+  });
+
+  it('takes nukta, anusvara, candrabindu and visarga with their letter', () => {
+    expect(matchRanges('ડુંગળી', ['ડ'])).toEqual([[0, 3]]);
+    expect(matchRanges('મરચાં લાલ', ['ચ'])).toEqual([[2, 5]]);
+    expect(matchRanges('દુઃખ', ['દ'])).toEqual([[0, 3]]);
+  });
+
+  it('grows a match that starts on a sign back to its letter', () => {
+    expect(matchRanges('બટાકા', ['ાક'])).toEqual([[1, 5]]);
+  });
+
+  it('leaves Latin text and mixed text exact', () => {
+    expect(matchRanges('Garlic લસણ', ['gar', 'લ'])).toEqual([[0, 3], [7, 8]]);
+    expect(wholeClusters('Garlic', 0, 3)).toEqual([0, 3]);
   });
 });

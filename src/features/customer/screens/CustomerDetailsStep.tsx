@@ -25,7 +25,9 @@ import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, layout, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 import { useCustomerForm } from '@/hooks/useCustomerForm';
 import { GenericStepIndicatorHeader } from '@/components/GenericStepIndicatorHeader';
-import { CUSTOMER_STEPS, CUSTOMER_STEP_NUMBERS, getCompletedSteps } from '@/constants/customerSteps';
+import { CUSTOMER_STEP_NUMBERS, getCompletedSteps } from '@/constants/customerSteps';
+import { customerSteps } from '@/features/customer/customerStepLabels';
+import { normalizeDigits, t as tr } from '@/i18n';
 import { CustomerFormMode } from '@/types/customer.types';
 
 import { showAlert } from '@/utils/alert';
@@ -105,11 +107,11 @@ export function CustomerDetailsStep({ mode, customerId }: CustomerDetailsStepPro
 
     if (isDirty) {
       showAlert(
-        isCreateMode ? 'Discard this customer?' : 'Discard your changes?',
-        'Your unsaved changes will be lost.',
+        isCreateMode ? tr('customers.form.discardNewTitle') : tr('customers.form.discardChangesTitle'),
+        tr('customers.form.discardMessage'),
         [
-          { text: 'Keep editing', style: 'cancel' },
-          { text: 'Discard', style: 'destructive', onPress: confirmDiscard },
+          { text: tr('common.keepEditing'), style: 'cancel' },
+          { text: tr('common.discard'), style: 'destructive', onPress: confirmDiscard },
         ]
       );
     } else {
@@ -152,25 +154,25 @@ export function CustomerDetailsStep({ mode, customerId }: CustomerDetailsStepPro
       // Show alert with validation errors (include Step 1 errors in case form was reset)
       const errorMessages: string[] = [];
       // Step 1 errors (in case form data was reset)
-      if (errors.name) errorMessages.push(`Name: ${errors.name}`);
-      if (errors.mobile) errorMessages.push(`Mobile: ${errors.mobile}`);
-      if (errors.email) errorMessages.push(`Email: ${errors.email}`);
+      if (errors.name) errorMessages.push(tr('customers.form.fieldError', { field: tr('customers.fields.name'), message: errors.name }));
+      if (errors.mobile) errorMessages.push(tr('customers.form.fieldError', { field: tr('customers.fields.mobile'), message: errors.mobile }));
+      if (errors.email) errorMessages.push(tr('customers.form.fieldError', { field: tr('customers.fields.email'), message: errors.email }));
       // Step 2 errors
-      if (errors.city) errorMessages.push(`City: ${errors.city}`);
-      if (errors.state) errorMessages.push(`State: ${errors.state}`);
-      if (errors.pincode) errorMessages.push(`Pincode: ${errors.pincode}`);
-      if (errors.address) errorMessages.push(`Address: ${errors.address}`);
-      if (errors.gst) errorMessages.push(`GST: ${errors.gst}`);
-      if (errors.pan) errorMessages.push(`PAN: ${errors.pan}`);
-      if (errors.contact_name) errorMessages.push(`Contact name: ${errors.contact_name}`);
-      if (errors.contact_mobile) errorMessages.push(`Contact mobile: ${errors.contact_mobile}`);
-      if (errors.contact_email) errorMessages.push(`Contact email: ${errors.contact_email}`);
+      if (errors.city) errorMessages.push(tr('customers.form.fieldError', { field: tr('customers.fields.city'), message: errors.city }));
+      if (errors.state) errorMessages.push(tr('customers.form.fieldError', { field: tr('customers.fields.state'), message: errors.state }));
+      if (errors.pincode) errorMessages.push(tr('customers.form.fieldError', { field: tr('customers.fields.pincode'), message: errors.pincode }));
+      if (errors.address) errorMessages.push(tr('customers.form.fieldError', { field: tr('customers.fields.address'), message: errors.address }));
+      if (errors.gst) errorMessages.push(tr('customers.form.fieldError', { field: tr('customers.fields.gst'), message: errors.gst }));
+      if (errors.pan) errorMessages.push(tr('customers.form.fieldError', { field: tr('customers.fields.pan'), message: errors.pan }));
+      if (errors.contact_name) errorMessages.push(tr('customers.form.fieldError', { field: tr('customers.fields.contactName'), message: errors.contact_name }));
+      if (errors.contact_mobile) errorMessages.push(tr('customers.form.fieldError', { field: tr('customers.fields.contactMobile'), message: errors.contact_mobile }));
+      if (errors.contact_email) errorMessages.push(tr('customers.form.fieldError', { field: tr('customers.fields.contactEmail'), message: errors.contact_email }));
 
       if (errorMessages.length > 0) {
-        showAlert('Check these fields', errorMessages.join('\n'));
+        showAlert(tr('customers.form.checkFieldsTitle'), errorMessages.join('\n'));
       } else {
         // No specific field errors but validation still failed
-        showAlert("Couldn't continue", 'Check that every required field is filled in correctly.');
+        showAlert(tr('customers.form.couldNotContinueTitle'), tr('customers.form.couldNotContinueMessage'));
       }
       return;
     }
@@ -191,13 +193,14 @@ export function CustomerDetailsStep({ mode, customerId }: CustomerDetailsStepPro
     <View style={styles.container}>
       {/* Step Indicator */}
       <GenericStepIndicatorHeader
-        steps={CUSTOMER_STEPS}
+        steps={customerSteps()}
         currentStep={CUSTOMER_STEP_NUMBERS.DETAILS}
         completedSteps={getCompletedSteps(CUSTOMER_STEP_NUMBERS.DETAILS)}
         onCancel={handleCancel}
         onStepPress={handleStepIndicatorPress}
-        entityName="Customer"
-        entityId={isCreateMode ? undefined : formData.name || 'Editing'}
+        entityName={tr('common.customer')}
+        entityId={isCreateMode ? undefined : formData.name || tr('customers.form.editing')}
+        cancelTitle={tr('customers.form.discardHeaderTitle')}
       />
 
       <KeyboardAwareScrollView
@@ -211,9 +214,9 @@ export function CustomerDetailsStep({ mode, customerId }: CustomerDetailsStepPro
       >
         {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.title} accessibilityRole="header">Address and tax details</Text>
+          <Text style={styles.title} accessibilityRole="header">{tr('customers.steps.details.label')}</Text>
           <Text style={styles.subtitle}>
-            Add the address, tax IDs and a contact person. All fields are optional.
+            {tr('customers.form.detailsSubtitle')}
           </Text>
         </View>
 
@@ -221,7 +224,7 @@ export function CustomerDetailsStep({ mode, customerId }: CustomerDetailsStepPro
         <View style={styles.section}>
           <View style={[styles.sectionHeader, styles.sectionHeaderStatic]}>
             <Icon name="map-marker-outline" size={iconSize.md} color={t.brand.tint} />
-            <Text style={styles.sectionTitle} accessibilityRole="header">Address</Text>
+            <Text style={styles.sectionTitle} accessibilityRole="header">{tr('customers.form.address')}</Text>
           </View>
 
           <View style={styles.sectionContent}>
@@ -229,11 +232,11 @@ export function CustomerDetailsStep({ mode, customerId }: CustomerDetailsStepPro
             <View style={styles.row}>
               <FormField
                 containerStyle={styles.halfField}
-                label="City"
+                label={tr('customers.form.city')}
                 error={validationErrors.city}
                 value={formData.city}
                 onChangeText={updateCity}
-                placeholder="City"
+                placeholder={tr('customers.form.city')}
                 maxLength={50}
                 returnKeyType="next"
                 onSubmitEditing={() => stateInputRef.current?.focus()}
@@ -244,11 +247,11 @@ export function CustomerDetailsStep({ mode, customerId }: CustomerDetailsStepPro
               <FormField
                 ref={stateInputRef}
                 containerStyle={styles.halfField}
-                label="State"
+                label={tr('customers.form.state')}
                 error={validationErrors.state}
                 value={formData.state}
                 onChangeText={updateState}
-                placeholder="State"
+                placeholder={tr('customers.form.state')}
                 maxLength={50}
                 returnKeyType="next"
                 onSubmitEditing={() => pincodeInputRef.current?.focus()}
@@ -261,15 +264,15 @@ export function CustomerDetailsStep({ mode, customerId }: CustomerDetailsStepPro
             {/* Pincode */}
             <FormField
               ref={pincodeInputRef}
-              label="Pincode"
+              label={tr('customers.form.pincode')}
               inputStyle={styles.pincodeInput}
               error={validationErrors.pincode}
               value={formData.pincode}
               onChangeText={(text) => {
-                const cleaned = text.replace(/\D/g, '').slice(0, 6);
+                const cleaned = normalizeDigits(text).replace(/\D/g, '').slice(0, 6);
                 updatePincode(cleaned);
               }}
-              placeholder="6-digit pincode"
+              placeholder={tr('customers.form.pincodePlaceholder')}
               keyboardType="number-pad"
               autoComplete="postal-code"
               textContentType="postalCode"
@@ -281,12 +284,12 @@ export function CustomerDetailsStep({ mode, customerId }: CustomerDetailsStepPro
             {/* Full Address */}
             <FormField
               ref={addressInputRef}
-              label="Full address"
+              label={tr('customers.form.fullAddress')}
               inputStyle={styles.textArea}
               error={validationErrors.address}
               value={formData.address}
               onChangeText={updateAddress}
-              placeholder="Street address, building name, etc."
+              placeholder={tr('customers.form.fullAddressPlaceholder')}
               autoComplete="street-address"
               textContentType="fullStreetAddress"
               maxLength={500}
@@ -304,12 +307,12 @@ export function CustomerDetailsStep({ mode, customerId }: CustomerDetailsStepPro
             style={({ pressed }) => [styles.collapsibleHeader, pressed && styles.collapsibleHeaderPressed]}
             onPress={() => toggleSection('tax')}
             accessibilityRole="button"
-            accessibilityLabel="Tax details"
+            accessibilityLabel={tr('customers.form.taxDetails')}
             accessibilityState={{ expanded: showTaxSection }}
           >
             <View style={styles.sectionHeader}>
               <Icon name="receipt" size={iconSize.md} color={t.brand.tint} />
-              <Text style={styles.sectionTitle}>Tax details</Text>
+              <Text style={styles.sectionTitle}>{tr('customers.form.taxDetails')}</Text>
             </View>
             <Icon
               name={showTaxSection ? 'chevron-up' : 'chevron-down'}
@@ -323,12 +326,12 @@ export function CustomerDetailsStep({ mode, customerId }: CustomerDetailsStepPro
               {/* GST */}
               <FormField
                 ref={gstInputRef}
-                label="GST number"
-                helper="Format: 22AAAAA0000A1Z5"
+                label={tr('customers.form.gstNumber')}
+                helper={tr('customers.form.formatHelper', { example: '22AAAAA0000A1Z5' })}
                 error={validationErrors.gst}
                 value={formData.gst}
                 onChangeText={updateGST}
-                placeholder="15-character GST number"
+                placeholder={tr('customers.form.gstPlaceholder')}
                 maxLength={15}
                 autoCapitalize="characters"
                 autoCorrect={false}
@@ -339,13 +342,13 @@ export function CustomerDetailsStep({ mode, customerId }: CustomerDetailsStepPro
               {/* PAN */}
               <FormField
                 ref={panInputRef}
-                label="PAN"
-                helper="Format: AAAAA0000A"
+                label={tr('customers.form.pan')}
+                helper={tr('customers.form.formatHelper', { example: 'AAAAA0000A' })}
                 inputStyle={styles.panInput}
                 error={validationErrors.pan}
                 value={formData.pan}
                 onChangeText={updatePAN}
-                placeholder="10-character PAN"
+                placeholder={tr('customers.form.panPlaceholder')}
                 maxLength={10}
                 autoCapitalize="characters"
                 autoCorrect={false}
@@ -361,12 +364,12 @@ export function CustomerDetailsStep({ mode, customerId }: CustomerDetailsStepPro
             style={({ pressed }) => [styles.collapsibleHeader, pressed && styles.collapsibleHeaderPressed]}
             onPress={() => toggleSection('contact')}
             accessibilityRole="button"
-            accessibilityLabel="Contact person"
+            accessibilityLabel={tr('customers.form.contactPerson')}
             accessibilityState={{ expanded: showContactSection }}
           >
             <View style={styles.sectionHeader}>
               <Icon name="account-box-outline" size={iconSize.md} color={t.brand.tint} />
-              <Text style={styles.sectionTitle}>Contact person</Text>
+              <Text style={styles.sectionTitle}>{tr('customers.form.contactPerson')}</Text>
             </View>
             <Icon
               name={showContactSection ? 'chevron-up' : 'chevron-down'}
@@ -380,11 +383,11 @@ export function CustomerDetailsStep({ mode, customerId }: CustomerDetailsStepPro
               {/* Contact Name */}
               <FormField
                 ref={contactNameInputRef}
-                label="Contact name"
+                label={tr('customers.form.contactName')}
                 error={validationErrors.contact_name}
                 value={formData.contact_name}
                 onChangeText={updateContactName}
-                placeholder="Contact person's name"
+                placeholder={tr('customers.form.contactNamePlaceholder')}
                 maxLength={100}
                 returnKeyType="next"
                 onSubmitEditing={() => contactMobileInputRef.current?.focus()}
@@ -396,15 +399,15 @@ export function CustomerDetailsStep({ mode, customerId }: CustomerDetailsStepPro
               {/* Contact Mobile */}
               <FormField
                 ref={contactMobileInputRef}
-                label="Contact mobile"
+                label={tr('customers.form.contactMobile')}
                 prefix="+91"
                 error={validationErrors.contact_mobile}
                 value={formData.contact_mobile.replace(/^91/, '')}
                 onChangeText={(text) => {
-                  const cleaned = text.replace(/\D/g, '').slice(0, 10);
+                  const cleaned = normalizeDigits(text).replace(/\D/g, '').slice(0, 10);
                   updateContactMobile(cleaned);
                 }}
-                placeholder="10-digit mobile number"
+                placeholder={tr('customers.form.mobilePlaceholder')}
                 keyboardType="phone-pad"
                 autoComplete="tel"
                 textContentType="telephoneNumber"
@@ -416,7 +419,7 @@ export function CustomerDetailsStep({ mode, customerId }: CustomerDetailsStepPro
               {/* Contact Email */}
               <FormField
                 ref={contactEmailInputRef}
-                label="Contact email"
+                label={tr('customers.form.contactEmail')}
                 error={validationErrors.contact_email}
                 value={formData.contact_email}
                 onChangeText={updateContactEmail}
@@ -443,19 +446,19 @@ export function CustomerDetailsStep({ mode, customerId }: CustomerDetailsStepPro
           style={({ pressed }) => [styles.backButton, pressed && styles.backButtonPressed]}
           onPress={handleBack}
           accessibilityRole="button"
-          accessibilityLabel="Back to basic information"
+          accessibilityLabel={tr('customers.form.backToBasic')}
         >
           <Icon name="chevron-left" size={iconSize.md} color={t.brand.tint} />
-          <Text style={styles.backButtonText}>Back</Text>
+          <Text style={styles.backButtonText}>{tr('common.back')}</Text>
         </Pressable>
 
         <Pressable
           style={({ pressed }) => [styles.nextButton, pressed && styles.nextButtonPressed]}
           onPress={handleNext}
           accessibilityRole="button"
-          accessibilityLabel="Next: review"
+          accessibilityLabel={tr('customers.form.nextReview')}
         >
-          <Text style={styles.nextButtonText}>Next: review</Text>
+          <Text style={styles.nextButtonText}>{tr('customers.form.nextReview')}</Text>
           <Icon name="chevron-right" size={iconSize.md} color={t.brand.onFill} />
         </Pressable>
       </View>
@@ -505,7 +508,7 @@ const FormField = React.forwardRef<TextInput, FormFieldProps>(function FormField
         setFocused(false);
         onBlur?.(e);
       }}
-      accessibilityLabel={prefix ? `${label}, after ${prefix}` : label}
+      accessibilityLabel={prefix ? tr('customers.form.labelAfterPrefix', { label, prefix }) : label}
       accessibilityHint={helper}
     />
   );

@@ -38,6 +38,8 @@ import {
 } from '@/theme/tokens';
 import { Avatar, StatusTag } from '@/components/ui';
 import { formatCount, formatMobile } from '@/utils/formatters';
+import { t as tr } from '@/i18n';
+import { roleLabel as roleName } from '@/utils/roleLabel';
 
 // =============================================================================
 // TYPES
@@ -189,9 +191,9 @@ export default function UsersScreen() {
   const renderEmpty = useCallback(() => {
     if (state.loading) {
       return (
-        <View style={styles.emptyContainer} accessibilityRole="progressbar" accessibilityLabel="Loading users">
+        <View style={styles.emptyContainer} accessibilityRole="progressbar" accessibilityLabel={tr('users.list.loading')}>
           <ActivityIndicator size="large" color={t.brand.tint} />
-          <Text style={styles.emptyText}>Loading users…</Text>
+          <Text style={styles.emptyText}>{tr('users.list.loadingText')}</Text>
         </View>
       );
     }
@@ -201,16 +203,16 @@ export default function UsersScreen() {
         <View style={styles.emptyContainer} accessibilityRole="alert">
           <Icon name="alert-circle-outline" size={iconSize.hero} color={t.status.negative.text} />
           <Text style={styles.emptyTitle} accessibilityRole="header">
-            Couldn't load users
+            {tr('users.list.errorTitle')}
           </Text>
-          <Text style={styles.emptyText}>Check your connection and try again.</Text>
+          <Text style={styles.emptyText}>{tr('common.checkConnection')}</Text>
           <Pressable
             style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryButtonPressed]}
             onPress={handleRefresh}
             accessibilityRole="button"
           >
             <Icon name="refresh" size={iconSize.md} color={t.brand.tint} />
-            <Text style={styles.secondaryButtonText}>Try again</Text>
+            <Text style={styles.secondaryButtonText}>{tr('common.retry')}</Text>
           </Pressable>
         </View>
       );
@@ -220,9 +222,9 @@ export default function UsersScreen() {
       <View style={styles.emptyContainer}>
         <Icon name="account-group-outline" size={iconSize.hero} color={t.icon.secondary} />
         <Text style={styles.emptyTitle} accessibilityRole="header">
-          No users yet
+          {tr('users.list.emptyTitle')}
         </Text>
-        <Text style={styles.emptyText}>People who join this facility appear here.</Text>
+        <Text style={styles.emptyText}>{tr('users.list.emptyMessage')}</Text>
       </View>
     );
   }, [state.loading, state.error, handleRefresh, styles, t]);
@@ -231,9 +233,9 @@ export default function UsersScreen() {
     if (!state.loadingMore) return null;
 
     return (
-      <View style={styles.footerContainer} accessibilityRole="progressbar" accessibilityLabel="Loading more users">
+      <View style={styles.footerContainer} accessibilityRole="progressbar" accessibilityLabel={tr('users.list.loadingMore')}>
         <ActivityIndicator size="small" color={t.brand.tint} />
-        <Text style={styles.footerText}>Loading more…</Text>
+        <Text style={styles.footerText}>{tr('common.loadingMore')}</Text>
       </View>
     );
   }, [state.loadingMore, styles, t]);
@@ -258,7 +260,7 @@ export default function UsersScreen() {
             ...headerOptions,
             headerTitle: () => (
               <View style={styles.titleContainer} accessible accessibilityRole="header">
-                <Text style={styles.title}>Users</Text>
+                <Text style={styles.title}>{tr('users.list.title')}</Text>
               </View>
             ),
           }}
@@ -266,10 +268,10 @@ export default function UsersScreen() {
         <View style={[styles.container, styles.emptyContainer]}>
           <Icon name="lock-outline" size={iconSize.hero} color={t.icon.secondary} />
           <Text style={styles.emptyTitle} accessibilityRole="header">
-            You can't manage users
+            {tr('users.list.noAccessTitle')}
           </Text>
           <Text style={styles.emptyText}>
-            Only administrators and supervisors can manage users.
+            {tr('users.list.noAccessMessage')}
           </Text>
         </View>
       </>
@@ -284,7 +286,7 @@ export default function UsersScreen() {
           ...headerOptions,
           headerTitle: () => (
             <View style={styles.titleContainer} accessible accessibilityRole="header">
-              <Text style={styles.title}>Users</Text>
+              <Text style={styles.title}>{tr('users.list.title')}</Text>
               {state.totalCount > 0 && (
                 <Text style={styles.subtitle}>{formatCount(state.totalCount, 'user')}</Text>
               )}
@@ -346,14 +348,14 @@ interface FioriUserCardProps {
 function FioriUserCard({ user, onPress }: FioriUserCardProps) {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
-  const roleLabel = user.role.charAt(0).toUpperCase() + user.role.slice(1);
-  const name = user.name || 'Unknown user';
+  const roleLabel = roleName(user.role);
+  const name = user.name || tr('users.unknownUser');
   const mobile = user.mobile ? formatMobile(user.mobile) : null;
   const assigned =
     user.assigned_customers_count > 0
-      ? `${formatCount(user.assigned_customers_count, 'customer')} assigned`
+      ? tr('users.list.customersAssigned', { count: user.assigned_customers_count })
       : null;
-  const rowLabel = [name, roleLabel, user.active ? null : 'Inactive', mobile, assigned]
+  const rowLabel = [name, roleLabel, user.active ? null : tr('common.inactive'), mobile, assigned]
     .filter(Boolean)
     .join(', ');
 
@@ -363,7 +365,7 @@ function FioriUserCard({ user, onPress }: FioriUserCardProps) {
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={rowLabel}
-      accessibilityHint="Opens the user for editing"
+      accessibilityHint={tr('users.list.openHint')}
     >
       {/* Fiori Object Cell: Leading Avatar */}
       <Avatar name={name} id={user.id} style={styles.avatar} />
@@ -375,7 +377,7 @@ function FioriUserCard({ user, onPress }: FioriUserCardProps) {
         </Text>
         <View style={styles.tagRow}>
           <StatusTag status={ROLE_TONE[user.role] ?? 'neutral'} label={roleLabel} icon={null} />
-          {!user.active && <StatusTag status="neutral" label="Inactive" />}
+          {!user.active && <StatusTag status="neutral" label={tr('common.inactive')} />}
         </View>
 
         {/* Subheadline - Contact Details */}

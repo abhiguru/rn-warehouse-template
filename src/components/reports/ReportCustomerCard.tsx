@@ -24,6 +24,7 @@ import {
 } from '@/theme/tokens';
 import { Avatar, StatusTag, type StatusKind } from '@/components/ui';
 import { formatNumber as formatShared } from '@/utils/formatters';
+import { t as tr } from '@/i18n';
 
 // ============================================================================
 // TYPES
@@ -147,7 +148,7 @@ export const ReportCustomerCard: React.FC<ReportCustomerCardProps> = ({
   // Auto-generate accessibility label if not provided
   const a11yLabel =
     accessibilityLabel ??
-    [title, subtitle, `${formatNumber(value)} ${valueLabel}`, status?.label].filter(Boolean).join(', ');
+    [title, subtitle, tr('reports.components.valueWithLabel', { value: formatNumber(value), label: valueLabel }), status?.label].filter(Boolean).join(', ');
 
   return (
     <Pressable
@@ -180,7 +181,7 @@ export const ReportCustomerCard: React.FC<ReportCustomerCardProps> = ({
           style={({ pressed }) => [styles.shareButton, pressed && styles.shareButtonPressed]}
           disabled={isSharing}
           accessibilityRole="button"
-          accessibilityLabel={`Share PDF for ${title}`}
+          accessibilityLabel={tr('reports.components.sharePdfFor', { name: title })}
           accessibilityState={{ busy: !!isSharing, disabled: !!isSharing }}
         >
           {isSharing ? (

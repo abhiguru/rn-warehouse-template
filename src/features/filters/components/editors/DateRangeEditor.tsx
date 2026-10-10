@@ -7,6 +7,7 @@ import { Platform, Pressable, Text, View } from 'react-native';
 import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { t as translate } from '@/i18n';
 import { iconSize, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 import { formatDate, parseLocalISODate, toLocalISODate } from '@/utils/formatters';
 import { DATE_PRESETS, resolveDateRange } from '../../datePresets';
@@ -73,18 +74,22 @@ export function DateRangeEditor({ value, onChange }: DateRangeEditorProps) {
     }
   };
 
-  const dayButton = (end: End, label: string) => (
+  const dayButton = (end: End) => (
     <View style={styles.cell}>
-      <Text style={styles.label}>{label}</Text>
+      <Text style={styles.label}>{translate(`filters.date.${end}`)}</Text>
       <Pressable
         style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
         onPress={() => open(end)}
         accessibilityRole="button"
-        accessibilityLabel={`${label} date, ${range[end] ? formatDate(parseLocalISODate(range[end] as string)) : 'not set'}`}
+        accessibilityLabel={
+          range[end]
+            ? translate(`filters.date.${end}Set`, { date: formatDate(parseLocalISODate(range[end] as string)) })
+            : translate(`filters.date.${end}NotSet`)
+        }
       >
         <Icon name="calendar-blank-outline" size={iconSize.md} color={t.icon.secondary} />
         <Text style={[styles.value, !range[end] && styles.placeholder]} numberOfLines={1} maxFontSizeMultiplier={1.6}>
-          {range[end] ? formatDate(parseLocalISODate(range[end] as string)) : 'Any'}
+          {range[end] ? formatDate(parseLocalISODate(range[end] as string)) : translate('common.any')}
         </Text>
       </Pressable>
     </View>
@@ -93,14 +98,14 @@ export function DateRangeEditor({ value, onChange }: DateRangeEditorProps) {
   return (
     <View style={styles.wrap}>
       <ChoiceChips<DatePresetId>
-        accessibilityLabel="Quick date ranges"
+        accessibilityLabel={translate('filters.date.quickRanges')}
         options={DATE_PRESETS.map(preset => ({ value: preset.id, label: preset.label }))}
         value={value?.preset}
         onChange={preset => onChange(value?.preset === preset ? undefined : { preset })}
       />
       <View style={styles.row}>
-        {dayButton('from', 'From')}
-        {dayButton('to', 'To')}
+        {dayButton('from')}
+        {dayButton('to')}
       </View>
       {Platform.OS === 'ios' && iosEnd ? (
         <DateTimePicker

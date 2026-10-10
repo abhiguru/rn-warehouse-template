@@ -35,12 +35,14 @@ import {
 import type { StepConfig } from '@/components/StepIndicator';
 
 import { showAlert } from '@/utils/alert';
+import { localizeDigits, t as tr, type TranslationKey } from '@/i18n';
 type StepState = 'completed' | 'current' | 'upcoming';
 
-const STATE_WORD: Record<StepState, string> = {
-  completed: 'completed',
-  current: 'current',
-  upcoming: 'not started',
+/** Key of the spoken label of a step circle, by its state. */
+const STEP_LABEL_KEY: Record<StepState, TranslationKey> = {
+  completed: 'components.steps.stepCompleted',
+  current: 'components.steps.stepCurrent',
+  upcoming: 'components.steps.stepUpcoming',
 };
 
 // ============================================================================
@@ -95,12 +97,13 @@ export const GenericStepIndicatorHeader: React.FC<GenericStepIndicatorHeaderProp
   entityName,
   entityId,
   cancelTitle,
-  cancelMessage = 'The details you entered will be lost.',
+  cancelMessage: cancelMessageProp,
   onStepPress,
 }) => {
   const insets = useSafeAreaInsets();
   const t = useTokens();
   const styles = useThemedStyles(makeStyles);
+  const cancelMessage = cancelMessageProp ?? tr('components.steps.cancelMessage');
 
   // Debounce state to prevent multiple rapid taps
   const [navigatingToStep, setNavigatingToStep] = useState<number | null>(null);
@@ -141,15 +144,15 @@ export const GenericStepIndicatorHeader: React.FC<GenericStepIndicatorHeaderProp
 
   const handleCancelPress = () => {
     showAlert(
-      cancelTitle || `Discard this ${entityName}?`,
+      cancelTitle || tr('components.steps.discardTitle', { entity: entityName }),
       cancelMessage,
       [
         {
-          text: 'Keep editing',
+          text: tr('common.keepEditing'),
           style: 'cancel',
         },
         {
-          text: 'Discard',
+          text: tr('common.discard'),
           style: 'destructive',
           onPress: onCancel,
         },
@@ -214,13 +217,13 @@ export const GenericStepIndicatorHeader: React.FC<GenericStepIndicatorHeaderProp
           <Icon name="check" size={iconSize.sm} color={glyphColor} />
         ) : (
           <Text style={[styles.stepNumber, { color: glyphColor }]} maxFontSizeMultiplier={1.6}>
-            {step.number ?? stepNumber}
+            {localizeDigits(String(step.number ?? stepNumber))}
           </Text>
         )}
       </Animated.View>
     );
 
-    const a11yLabel = `Step ${stepNumber} of ${steps.length}, ${step.label}, ${STATE_WORD[state]}`;
+    const a11yLabel = tr(STEP_LABEL_KEY[state], { step: stepNumber, total: steps.length, name: step.label });
 
     if (!isInteractive) {
       return (
@@ -236,7 +239,7 @@ export const GenericStepIndicatorHeader: React.FC<GenericStepIndicatorHeaderProp
         hitSlop={STEP_HIT_SLOP}
         accessibilityRole="button"
         accessibilityLabel={a11yLabel}
-        accessibilityHint={isCurrent ? undefined : `Goes to ${step.label}`}
+        accessibilityHint={isCurrent ? undefined : tr('components.steps.goesTo', { name: step.label })}
         accessibilityState={{ selected: isCurrent, disabled: isAnyNavigating, busy: isNavigatingToThis }}
         disabled={isAnyNavigating}
         style={({ pressed }) => [
@@ -263,8 +266,8 @@ export const GenericStepIndicatorHeader: React.FC<GenericStepIndicatorHeaderProp
             style={({ pressed }) => [styles.cancelButton, pressed && styles.cancelButtonPressed]}
             onPress={handleCancelPress}
             accessibilityRole="button"
-            accessibilityLabel={`Cancel ${entityName.toLowerCase() === 'edit' ? 'editing' : entityName}`}
-            accessibilityHint="Asks before discarding your changes"
+            accessibilityLabel={entityName.toLowerCase() === 'edit' || entityName === tr('common.edit') ? tr('components.steps.cancelEditing') : tr('components.steps.cancelEntity', { entity: entityName })}
+            accessibilityHint={tr('components.steps.cancelHint')}
           >
             <Icon name="close" size={iconSize.lg} color={t.icon.primary} />
           </Pressable>
@@ -300,7 +303,7 @@ export const GenericStepIndicatorHeader: React.FC<GenericStepIndicatorHeaderProp
         {/* Current step name (phones show only this one) */}
         {current && (
           <Text style={styles.currentStepText} numberOfLines={1}>
-            {`Step ${currentStep} of ${steps.length} · ${current.label}`}
+            {tr('components.steps.currentStep', { step: currentStep, total: steps.length, name: current.label })}
           </Text>
         )}
 
@@ -309,12 +312,12 @@ export const GenericStepIndicatorHeader: React.FC<GenericStepIndicatorHeaderProp
           style={styles.progressBarBackground}
           accessible={true}
           accessibilityRole="progressbar"
-          accessibilityLabel={`Form progress, step ${currentStep} of ${steps.length}`}
+          accessibilityLabel={tr('components.steps.progressLabel', { step: currentStep, total: steps.length })}
           accessibilityValue={{
             min: 0,
             max: 100,
             now: progressPercentage,
-            text: `${progressPercentage}% complete`,
+            text: tr('components.steps.percentComplete', { percent: progressPercentage }),
           }}
         >
           <View style={[styles.progressBarFill, { width: `${progressPercentage}%` }]} />

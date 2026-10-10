@@ -46,7 +46,8 @@ import {
 import { MemoizedDispatchItem } from '@/components/list-items';
 import { ListEmptyState } from '@/components/list/ListEmptyState';
 import { ErrorStateView } from '@/components/ErrorBoundary';
-import { formatCount } from '@/utils/formatters';
+import { formatCount, formatNumber } from '@/utils/formatters';
+import { t as translate } from '@/i18n';
 
 // State
 import { usePermissions } from '@/hooks/usePermissions';
@@ -92,11 +93,11 @@ const SectionHeader = React.memo<SectionHeaderProps>(({ title, count }) => {
       style={styles.sectionHeader}
       accessible
       accessibilityRole="header"
-      accessibilityLabel={`${title}, ${formatCount(count, 'dispatch', 'dispatches')}`}
+      accessibilityLabel={translate('lists.section.label', { title, countText: formatCount(count, 'dispatch', 'dispatches') })}
     >
       <Text style={styles.sectionTitle}>{title}</Text>
       <View style={styles.sectionBadge}>
-        <Text style={styles.sectionCount} maxFontSizeMultiplier={1.6}>{count}</Text>
+        <Text style={styles.sectionCount} maxFontSizeMultiplier={1.6}>{formatNumber(count)}</Text>
       </View>
     </View>
   );
@@ -197,8 +198,8 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
       console.error('[DispatchFlashList] Error:', err);
       setError(err instanceof Error ? err.message : 'Failed to load dispatches');
       setSnackbarMessage(append
-        ? "Couldn't load more dispatches. Scroll down to try again."
-        : "Couldn't load dispatches. Check your connection and try again.");
+        ? translate('lists.dispatch.loadMoreFailed')
+        : translate('lists.dispatch.loadFailed'));
       setSnackbarVisible(true);
     } finally {
       if (isMountedRef.current && requestId === latestRequest.current) {
@@ -322,7 +323,7 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
     return (
       <View style={styles.footerLoader} accessibilityLiveRegion="polite">
         <ActivityIndicator size="small" color={t.brand.tint} />
-        <Text style={styles.footerLoaderText}>Loading more dispatches…</Text>
+        <Text style={styles.footerLoaderText}>{translate('lists.dispatch.loadingMore')}</Text>
       </View>
     );
   }, [isLoadingMore, styles, t]);
@@ -335,7 +336,7 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
   // search or filter can always be changed or cleared.
   const header = (
     <FilteredListHeader
-      title="Dispatches"
+      title={translate('lists.dispatch.title')}
       config={DISPATCH_FILTERS}
       filters={filters}
       loading={isLoading}
@@ -383,8 +384,8 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
     content = (
       <ErrorStateView
         presentation="inline"
-        title="Couldn't load dispatches"
-        message="Check your connection and try again."
+        title={translate('lists.dispatch.loadFailedTitle')}
+        message={translate('common.checkConnection')}
         onRetry={handleRefresh}
       />
     );
@@ -393,10 +394,10 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
       <ListEmptyState
         {...filteredEmptyProps(filters, 'dispatches')}
         emptyIcon="truck-delivery-outline"
-        emptyTitle="No dispatches yet"
-        emptySubtitle={canCreateDispatch ? 'Dispatches you create appear here.' : 'Dispatches appear here once they are created.'}
+        emptyTitle={translate('lists.dispatch.emptyTitle')}
+        emptySubtitle={canCreateDispatch ? translate('lists.dispatch.emptyCreator') : translate('lists.dispatch.emptyViewer')}
         showCreateButton={canCreateDispatch}
-        createButtonLabel="Create dispatch"
+        createButtonLabel={translate('lists.dispatch.create')}
         onCreatePress={handleCreateDispatch}
       />
     );
