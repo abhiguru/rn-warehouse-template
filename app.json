@@ -9,6 +9,9 @@
     "backgroundColor": "#11222c",
     "scheme": "warehousemanager",
     "runtimeVersion": "0.1.0",
+    "updates": {
+      "enabled": false
+    },
     "ios": {
       "bundleIdentifier": "com.example.warehousemanager",
       "buildNumber": "1",
