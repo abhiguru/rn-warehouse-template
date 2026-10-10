@@ -6,29 +6,18 @@
  * field changes the request, so a field cannot be shown and then ignored.
  */
 import { getAllGRNItems, getAssignedCustomerGRNItems, type GRNFilters, type GRNListParams } from '@/services/grn-service';
-import { parseLocalISODate } from '@/utils/formatters';
 import { resolveDateRange } from '../datePresets';
 import { currentSort, readSearch } from '../filterModel';
 import { customerSource, itemSource } from '../pickerSources';
+import { customerFilterVisible, endOfDay, ids, startOfDay } from './shared';
 import type {
   DateRangeValue,
   FilterListConfig,
   NumberRangeValue,
-  PickedOption,
   TextRangeValue,
 } from '../types';
 
 export type GrnListRequest = Pick<GRNListParams, 'p_date_from' | 'p_date_to' | 'p_filters' | 'p_sort_by' | 'p_sort_order'>;
-
-/** Start and end of a local calendar day as timestamps, so the last day is included in full. */
-const startOfDay = (iso: string) => parseLocalISODate(iso).toISOString();
-const endOfDay = (iso: string) => {
-  const date = parseLocalISODate(iso);
-  date.setHours(23, 59, 59, 999);
-  return date.toISOString();
-};
-
-const ids = (value: unknown) => (Array.isArray(value) ? (value as PickedOption[]).map(option => option.id) : []);
 
 export const GRN_FILTERS: FilterListConfig<GrnListRequest> = {
   listKey: 'grn-list',
@@ -65,7 +54,7 @@ export const GRN_FILTERS: FilterListConfig<GrnListRequest> = {
       noun: ['customer', 'customers'],
       source: customerSource,
       // A customer account with one customer has nothing to choose between.
-      visibleTo: ctx => ctx.isWarehouseRole || ctx.assignedCustomers.length > 1,
+      visibleTo: customerFilterVisible,
     },
     { kind: 'picker', key: 'items', label: 'Item', icon: 'package-variant', noun: ['item', 'items'], source: itemSource },
     { kind: 'textRange', key: 'numberRange', label: 'GRN number', icon: 'file-document-outline', placeholder: ['From', 'To'] },

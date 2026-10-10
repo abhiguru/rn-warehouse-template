@@ -16,6 +16,7 @@ import Animated, { FadeIn } from 'react-native-reanimated';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { formatDate, formatCount, formatWeight } from '@/utils/formatters';
 import type { Dispatch } from '@/services/dispatch-service';
+import { HighlightedText, matchesAnyWord } from '@/features/filters/components/HighlightedText';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import {
   fontWeight,
@@ -50,6 +51,8 @@ export interface MemoizedDispatchItemProps {
   globalExpanded?: boolean;
   /** Key to trigger sync with global state (increments on toggle) */
   globalExpandedKey?: number;
+  /** Lower-cased search words to show in bold (see `searchWords`). */
+  words?: string[];
 }
 
 // ============================================================================
@@ -77,11 +80,14 @@ const getDispatchStatus = (dispatch: Dispatch): StatusConfig => {
 // ============================================================================
 
 const makeStyles = (t: ThemeTokens) => ({
+  // The outline keeps each card distinct in dark mode, where the shadow does not show.
   card: {
     backgroundColor: t.surface.card,
     borderRadius: radius.card,
     marginHorizontal: layout.marginCompact,
-    marginVertical: space.xs,
+    marginVertical: space.sm,
+    borderWidth: 1,
+    borderColor: t.border.separator,
     ...t.shadow[2],
     overflow: 'hidden' as const,
   },
@@ -249,16 +255,24 @@ const makeStyles = (t: ThemeTokens) => ({
     color: t.text.secondary,
     marginTop: space.xxs,
   },
+  // The card's own footer: tinted, with the text at the start, so it reads as
+  // part of this card and not as a control for the whole list.
   expandButton: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
-    justifyContent: 'center' as const,
+    justifyContent: 'space-between' as const,
     paddingVertical: space.md,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: t.border.divider,
-    gap: space.xs,
+    paddingHorizontal: space.lg,
+    borderTopWidth: 1,
+    borderTopColor: t.border.separator,
+    gap: space.sm,
     minHeight: touchTarget,
-    backgroundColor: t.surface.card,
+    backgroundColor: t.background.base,
+  },
+  matchedText: {
+    ...typography.footnote,
+    color: t.text.secondary,
+    marginTop: space.xs,
   },
   expandButtonPressed: {
     backgroundColor: t.surface.cardPressed,
@@ -266,8 +280,23 @@ const makeStyles = (t: ThemeTokens) => ({
   expandButtonText: {
     ...typography.callout,
     color: t.brand.tint,
+    flexShrink: 1,
   },
 });
+
+const NO_WORDS: string[] = [];
+
+/** Where a search matched inside a collapsed card: item, package, rack or GRN number of a line. */
+function hiddenMatches(dispatch: Dispatch, words: string[]): string[] {
+  if (words.length === 0) return [];
+  const found = new Set<string>();
+  for (const item of dispatch.items ?? []) {
+    for (const text of [item.item_name, item.package_mark, item.rack, item.gr_no ? `GRN ${item.gr_no}` : null]) {
+      if (text && matchesAnyWord(text, words)) found.add(text);
+    }
+  }
+  return [...found].slice(0, 3);
+}
 
 // ============================================================================
 // COMPONENT
@@ -278,6 +307,7 @@ const DispatchItemContent: React.FC<MemoizedDispatchItemProps> = ({
   onPress,
   globalExpanded,
   globalExpandedKey,
+  words = NO_WORDS,
 }) => {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
@@ -300,6 +330,7 @@ const DispatchItemContent: React.FC<MemoizedDispatchItemProps> = ({
   const itemsLabel = formatCount(totalItems, 'item');
   const bagsLabel = formatCount(totalQty, 'bag');
   const dateLabel = formatDate(dispatch.disp_date, 'short');
+  const matched = hiddenMatches(dispatch, words);
 
   const handleToggleExpand = useCallback(() => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -316,6 +347,7 @@ const DispatchItemContent: React.FC<MemoizedDispatchItemProps> = ({
     dispatch.registration ? `Vehicle ${dispatch.registration}` : null,
     dateLabel,
     statusConfig.label,
+    matched.length > 0 ? `Matched ${matched.join(', ')}` : null,
   ].filter(Boolean).join(', ');
 
   return (
@@ -335,12 +367,8 @@ const DispatchItemContent: React.FC<MemoizedDispatchItemProps> = ({
 
           {/* Main content */}
           <View style={styles.mainContent}>
-            <Text style={styles.titleText} numberOfLines={2}>
-              Dispatch {dispatch.disp_no}
-            </Text>
-            <Text style={styles.subtitleText} numberOfLines={1}>
-              {dispatch.customer_name}
-            </Text>
+            <HighlightedText style={styles.titleText} numberOfLines={2} text={`Dispatch ${dispatch.disp_no}`} words={words} />
+            <HighlightedText style={styles.subtitleText} numberOfLines={1} text={dispatch.customer_name ?? ''} words={words} />
 
             {/* Footnote: date, vehicle, item count */}
             <View style={styles.footerRow}>
@@ -351,11 +379,16 @@ const DispatchItemContent: React.FC<MemoizedDispatchItemProps> = ({
               {dispatch.registration && (
                 <View style={styles.footerItem}>
                   <Icon name="truck-outline" size={iconSize.sm} color={t.icon.secondary} />
-                  <Text style={styles.footerText}>{dispatch.registration}</Text>
+                  <HighlightedText style={styles.footerText} text={dispatch.registration} words={words} />
                 </View>
               )}
               <Text style={styles.footerText}>{itemsLabel}</Text>
             </View>
+
+            {/* Why this dispatch matched, when the match is inside the collapsed items */}
+            {matched.length > 0 && !isExpanded ? (
+              <HighlightedText style={styles.matchedText} numberOfLines={2} text={matched.join(' · ')} words={words} />
+            ) : null}
           </View>
 
           {/* Attribute stack (right): main value, weight, status tag */}
@@ -396,17 +429,13 @@ const DispatchItemContent: React.FC<MemoizedDispatchItemProps> = ({
             >
               <View style={[styles.tableCell, styles.colItem]}>
                 <View style={styles.itemNameRow}>
-                  <Text style={styles.tableCellItemName} numberOfLines={1}>
-                    {item.item_name}
-                  </Text>
+                  <HighlightedText style={styles.tableCellItemName} numberOfLines={1} text={item.item_name ?? ''} words={words} />
                   {item.rack && (
                     <Text style={styles.tableCellRack}>({item.rack})</Text>
                   )}
                 </View>
                 {item.package_mark && (
-                  <Text style={styles.tableCellItemMark} numberOfLines={1}>
-                    {item.package_mark}
-                  </Text>
+                  <HighlightedText style={styles.tableCellItemMark} numberOfLines={1} text={item.package_mark} words={words} />
                 )}
               </View>
               <Text style={[styles.tableCell, styles.colWeight, styles.tableCellValue]}>
@@ -429,11 +458,11 @@ const DispatchItemContent: React.FC<MemoizedDispatchItemProps> = ({
           onPress={handleToggleExpand}
           style={({ pressed }) => [styles.expandButton, pressed && styles.expandButtonPressed]}
           accessibilityRole="button"
-          accessibilityLabel={isExpanded ? 'Hide items' : `Show ${itemsLabel}`}
+          accessibilityLabel={isExpanded ? `Hide the items of dispatch ${dispatch.disp_no}` : `${itemsLabel} in this dispatch. Show`}
           accessibilityState={{ expanded: isExpanded }}
         >
           <Text style={styles.expandButtonText}>
-            {isExpanded ? 'Hide items' : `Show ${itemsLabel}`}
+            {isExpanded ? 'Hide items' : `${itemsLabel} in this dispatch`}
           </Text>
           <Icon
             name={isExpanded ? 'chevron-up' : 'chevron-down'}
@@ -470,7 +499,8 @@ const areEqual = (
 
     // Compare global expand state
     prevProps.globalExpanded === nextProps.globalExpanded &&
-    prevProps.globalExpandedKey === nextProps.globalExpandedKey
+    prevProps.globalExpandedKey === nextProps.globalExpandedKey &&
+    prevProps.words === nextProps.words
   );
 };
 

@@ -1,4 +1,4 @@
-import { FILTER_CONFIGS, GRN_FILTERS } from '../configs';
+import { DISPATCH_FILTERS, FILTER_CONFIGS, GRN_FILTERS } from '../configs';
 import { isFieldActive, visibleFields } from '../filterModel';
 import type { FilterContext, FilterFieldDef, FilterListConfig, FilterValue } from '../types';
 
@@ -37,7 +37,7 @@ function sample(field: FilterFieldDef): FilterValue {
   }
 }
 
-const configs: FilterListConfig<unknown>[] = [GRN_FILTERS as FilterListConfig<unknown>];
+const configs: FilterListConfig<unknown>[] = [GRN_FILTERS as FilterListConfig<unknown>, DISPATCH_FILTERS as FilterListConfig<unknown>];
 
 describe.each(configs.map(config => [config.listKey, config] as const))('filter config %s', (_key, config) => {
   it('is registered for the Sort and filter page', () => {

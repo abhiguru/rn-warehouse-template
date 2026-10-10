@@ -13,6 +13,7 @@ import { createErrorResponse, executeRPC, handleGlobalAuthError, isOfflineFailur
 import { deduplicatedRequest, generateRequestKey } from '@/utils/requestDedup';
 import { BackendDispatchData, RecentDispatchedOrdersResponse } from '@/types/dispatch.types';
 import { CACHE_DURATION_DEFAULT_MS, CACHE_PREFIXES, PAGINATION } from '@/config/cacheConfig';
+import { matchesSearch, searchTerms } from '@/features/filters/searchMatch';
 // Import canonical types for migration
 import type { RpcPagination, RpcDispatchListItem } from '@/types/rpc-canonical.types';
 
@@ -809,8 +810,69 @@ export interface AssignedCustomerDispatchParams {
   p_sort_order?: 'asc' | 'desc';
   p_limit?: number;
   offset?: number;
-  /** Same keys the staff list sends: customer_ids, item_ids, disp_no_from, disp_no_to. */
+  /** Same keys the staff list sends (see selectCustomerDispatches). */
   p_filters?: Record<string, unknown>;
+}
+
+/**
+ * The filters, search and order of the staff dispatch list (get_dispatch_list_with_items),
+ * applied to dispatches already collected for a customer account. Same filter
+ * keys, same meaning: a line filter matches when one line of the dispatch does.
+ */
+export function selectCustomerDispatches(
+  all: Dispatch[],
+  filters: Record<string, unknown>,
+  sortBy: 'disp_no' | 'dispatch_date' = 'dispatch_date',
+  sortOrder: 'asc' | 'desc' = 'desc'
+): Dispatch[] {
+  const text = (value: unknown) => (typeof value === 'string' ? value.trim() : '');
+  const number = (value: unknown) => (typeof value === 'number' && Number.isFinite(value) ? value : null);
+  const moment = (value: unknown) => {
+    const time = text(value) ? Date.parse(text(value)) : NaN;
+    return Number.isNaN(time) ? null : time;
+  };
+  const itemIds = Array.isArray(filters.item_ids) ? (filters.item_ids as string[]) : [];
+  const from = text(filters.disp_no_from);
+  const to = text(filters.disp_no_to);
+  const dateFrom = moment(filters.date_from);
+  const dateTo = moment(filters.date_to);
+  const qtyMin = number(filters.disp_qty_min);
+  const qtyMax = number(filters.disp_qty_max);
+  const packageTerms = searchTerms(text(filters.package_mark));
+  const terms = searchTerms(text(filters.search));
+  // The backend's order for document numbers, so customer accounts and warehouse roles agree.
+  const compareNo = compareDocumentNumbers;
+
+  const matching = all.filter(dispatch => {
+    const lines = dispatch.items ?? [];
+    if (itemIds.length > 0 && !lines.some(item => itemIds.includes(item.item_id))) return false;
+    if (from && compareNo(dispatch.disp_no, from) < 0) return false;
+    if (to && compareNo(dispatch.disp_no, to) > 0) return false;
+    if (dateFrom !== null || dateTo !== null) {
+      const time = Date.parse(String(dispatch.disp_date));
+      if (Number.isNaN(time)) return false;
+      if (dateFrom !== null && time < dateFrom) return false;
+      if (dateTo !== null && time > dateTo) return false;
+    }
+    if (qtyMin !== null || qtyMax !== null) {
+      const fits = (qty: number) => (qtyMin === null || qty >= qtyMin) && (qtyMax === null || qty <= qtyMax);
+      if (!lines.some(item => fits(item.disp_qty ?? 0))) return false;
+    }
+    if (packageTerms.length > 0 && !lines.some(item => matchesSearch(packageTerms, [item.package_mark]))) return false;
+    // Each word may match the dispatch itself or any one of its lines.
+    return terms.every(term =>
+      matchesSearch([term], [dispatch.disp_no, dispatch.customer_name, dispatch.registration]) ||
+      lines.some(item => matchesSearch([term], [item.item_name, item.package_mark, item.rack, item.gr_no]))
+    );
+  });
+  const direction = sortOrder === 'asc' ? 1 : -1;
+  return matching.sort((a, b) => {
+    const primary =
+      sortBy === 'disp_no'
+        ? compareNo(a.disp_no, b.disp_no)
+        : String(a.disp_date).localeCompare(String(b.disp_date));
+    return (primary || compareNo(a.disp_no, b.disp_no)) * direction;
+  });
 }
 
 /**
@@ -869,25 +931,7 @@ export const getAssignedCustomerDispatchList = async (
   const failed = perCustomer.find((result): result is DispatchListResponseNew => !Array.isArray(result));
   if (failed) return failed;
 
-  const itemIds = Array.isArray(filters.item_ids) ? (filters.item_ids as string[]) : [];
-  const from = filters.disp_no_from ? String(filters.disp_no_from) : '';
-  const to = filters.disp_no_to ? String(filters.disp_no_to) : '';
-  // The backend's order for document numbers, so customer accounts and warehouse roles agree.
-  const compareNo = compareDocumentNumbers;
-  const matching = (perCustomer as Dispatch[][]).flat().filter(dispatch => {
-    if (itemIds.length > 0 && !dispatch.items?.some(item => itemIds.includes(item.item_id))) return false;
-    if (from && compareNo(dispatch.disp_no, from) < 0) return false;
-    if (to && compareNo(dispatch.disp_no, to) > 0) return false;
-    return true;
-  });
-  const direction = sortOrder === 'asc' ? 1 : -1;
-  matching.sort((a, b) => {
-    const primary =
-      sortBy === 'disp_no'
-        ? compareNo(a.disp_no, b.disp_no)
-        : String(a.disp_date).localeCompare(String(b.disp_date));
-    return (primary || compareNo(a.disp_no, b.disp_no)) * direction;
-  });
+  const matching = selectCustomerDispatches((perCustomer as Dispatch[][]).flat(), filters, sortBy, sortOrder);
 
   const dispatches = matching.slice(offset, offset + limit);
   const result = empty('Customer dispatches retrieved successfully', true);
