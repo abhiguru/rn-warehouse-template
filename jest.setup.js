@@ -12,6 +12,11 @@ jest.mock('expo-secure-store', () => ({
 // published JS mock so Reanimated runs on the JS thread in tests.
 jest.mock('react-native-worklets', () => require('react-native-worklets/src/mock'));
 
+// Expo SDK 57 installs fetch as a lazy global. Resolve it now: otherwise Jest's
+// environment teardown is the first to read it, which loads Expo's fetch module
+// after the tests are done and fails the run with "Cannot log after tests are done".
+void globalThis.fetch;
+
 // Icons render as plain host elements in tests. Loading the real icon sets pulls in
 // expo-font, which needs native modules. Individual tests may still override these.
 jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
