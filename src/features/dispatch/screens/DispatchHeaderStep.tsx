@@ -225,7 +225,7 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
 
     const { id } = useLocalSearchParams<{ id: string }>();
 
-    // Use the consolidated dispatch form hook - all auto-navigation logic is now in the hook
+    // Use the consolidated dispatch form hook - the dispatch number check lives in the hook
     const {
         header,
         validationErrors,

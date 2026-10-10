@@ -43,7 +43,7 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
   // Extract ID from URL params for edit mode
   const { id } = useLocalSearchParams<{ id: string }>();
 
-  // Use consolidated form hook - all auto-navigation logic is now in the hook
+  // Use consolidated form hook - the GRN number check lives in the hook
   const {
     header,
     isLoading,

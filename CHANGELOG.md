@@ -1,5 +1,31 @@
 # Changelog
 
+## Unreleased — GRN and dispatch form fixes from the 2026-10-10 review
+
+- Dispatch: the GRN picker lists and searches only the GRNs of the dispatch's
+  customer, and a GRN of another customer can no longer be added (it was only
+  flagged with a warning). The server's refusal of such a lot is shown in the
+  app's language. The backend change that rejects another customer's lots when a
+  dispatch is saved belongs with this; until it is deployed the block is
+  client-side only.
+- GRN and dispatch number fields: a number that another document already holds
+  is reported under the field ("GRN A0010 already exists") and the form cannot
+  move on until it is changed. Typing a number no longer resets or reloads the
+  form; in edit mode the document's own number is not a duplicate. The GRN
+  number drops spaces and is limited to 8 characters.
+- GRN photos are changed on the server only when the GRN is saved. A photo added
+  or removed while editing is no longer applied at once, so "Discard changes"
+  leaves the saved photos as they were.
+- A photo on a line added while editing a GRN is uploaded with the saved line.
+  Adding a line in GRN edit also needs the backend fix for `update_grn` (the
+  `pricing_mode` insert); merge and deploy the backend first.
+- When a photo does not upload after a GRN is saved, the app names the photos
+  and offers "Try again" instead of reporting a clean save.
+- GRN default date and the "not in the future" limit follow the current day when
+  the app has been open past midnight.
+- Dispatch quantity: text that is not a whole number ("12.5", "-5") is kept as
+  typed with a message, not silently changed to another number.
+
 ## Unreleased — English and Gujarati (2026-10-10)
 
 - The app can be used in English or Gujarati (ગુજરાતી). The language is chosen in
