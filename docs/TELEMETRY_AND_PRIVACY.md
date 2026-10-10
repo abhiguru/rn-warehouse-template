@@ -64,3 +64,9 @@ For deployers hosting GlitchTip or utilizing Sentry Cloud:
 2. **Server-Side Data Scrubbers**: Enable GlitchTip/Sentry server-side data scrubbing rules as a secondary defense layer for IP masking and header scrubbing.
 3. **Restricted Access**: Access to the error tracking dashboard should be restricted to authorized operational staff via role-based access control and MFA.
 4. **No Marketing / Analytics Use**: Error telemetry events must never be exported, joined with customer analytics datasets, or used for behavioural profiling.
+
+---
+
+## 4. Android Backup
+
+The app is built with `android:allowBackup="false"` (`expo.android.allowBackup` in `app.json`). Nothing the app stores on the phone (the session marker, recent customers and items, cached settings, the chosen facility) is copied to the user's Google account or moved to another phone by Android's backup and device-transfer features. A facility that revokes a user or switches a phone therefore does not leave a restorable copy behind. `npm run audit:artifact` fails for a build whose manifest does not turn backup off.

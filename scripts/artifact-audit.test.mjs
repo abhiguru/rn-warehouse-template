@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { EXPECTED_ANDROID_PERMISSIONS, validateEntries, validatePermissions, validateText } from './artifact-audit.mjs';
+import { EXPECTED_ANDROID_PERMISSIONS, validateBackup, validateEntries, validatePermissions, validateText } from './artifact-audit.mjs';
 
 test('artifact paths reject credentials, databases, traversal and absolute paths', () => {
   assert.deepEqual(validateEntries(['assets/index.bundle', 'assets/expo-root.pem', 'res/font/MaterialIcons.ttf']), ['assets/index.bundle', 'assets/expo-root.pem', 'res/font/MaterialIcons.ttf']);
@@ -98,4 +98,31 @@ test('a caller can pass its own expected list', () => {
   const dump = "uses-permission: name='android.permission.CAMERA'\nuses-permission: name='android.permission.NFC'";
   assert.deepEqual(validatePermissions(dump, [], { allowed: ['android.permission.CAMERA', 'android.permission.NFC'] }), ['android.permission.CAMERA', 'android.permission.NFC']);
   assert.throws(() => validatePermissions(dump, [], { allowed: ['android.permission.CAMERA'] }), /android\.permission\.NFC/);
+});
+
+// `aapt2 dump xmltree --file AndroidManifest.xml` and `aapt dump xmltree` print the attribute differently.
+const manifestDump = (allowBackup) => [
+  'E: manifest (line=1)',
+  '    E: application (line=67)',
+  '        A: http://schemas.android.com/apk/res/android:label(0x01010001)=@0x7f0f0000',
+  ...(allowBackup === undefined ? [] : [`        A: ${allowBackup}`]),
+  '        E: activity (line=70)',
+].join('\n');
+
+test('app.json turns Android backup off', () => {
+  assert.equal(JSON.parse(readFileSync(new URL('../app.json', import.meta.url), 'utf8')).expo.android.allowBackup, false);
+});
+
+test('a build with Android backup off passes, in the output of aapt2 and of aapt', () => {
+  assert.equal(validateBackup(manifestDump('http://schemas.android.com/apk/res/android:allowBackup(0x01010280)=false')), false);
+  assert.equal(validateBackup(manifestDump('android:allowBackup(0x01010280)=(type 0x12)0x0')), false);
+});
+
+test('a build with Android backup on fails', () => {
+  assert.throws(() => validateBackup(manifestDump('http://schemas.android.com/apk/res/android:allowBackup(0x01010280)=true')), /allowBackup/);
+  assert.throws(() => validateBackup(manifestDump('android:allowBackup(0x01010280)=(type 0x12)0xffffffff')), /allowBackup/);
+});
+
+test('a build that does not say fails: Android then backs the app up', () => {
+  assert.throws(() => validateBackup(manifestDump(undefined)), /allowBackup/);
 });

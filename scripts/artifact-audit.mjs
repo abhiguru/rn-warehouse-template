@@ -83,6 +83,25 @@ export function validatePermissions(output, blocked, { requireCamera = true, all
   return [...permissions].sort();
 }
 
+/**
+ * The built app must say `android:allowBackup="false"`. Without the attribute
+ * Android backs the app's data up to the user's Google account and lets it be
+ * moved to another phone, outside the facility's control. Takes the output of
+ * `aapt2 dump xmltree --file AndroidManifest.xml` or `aapt dump xmltree`.
+ */
+export function validateBackup(output) {
+  const match = /android:allowBackup\(0x01010280\)=(\S+(?: \S+)?)/.exec(output);
+  const value = match?.[1];
+  const off = value === 'false' || /^\(type 0x12\)0x0+$/.test(value ?? '');
+  if (!off) {
+    throw new Error(
+      `Android backup is not turned off (android:allowBackup is ${value ?? 'not set'}). ` +
+      'Set "allowBackup": false under expo.android in app.json and rebuild.'
+    );
+  }
+  return false;
+}
+
 function filesUnder(directory, prefix = '') {
   return readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
     const relative = prefix ? `${prefix}/${entry.name}` : entry.name;
@@ -144,6 +163,10 @@ export function auditArtifact(input, root = resolve(new URL('..', import.meta.ur
     if (!aapt) throw new Error('Android build-tools aapt/aapt2 is required to verify manifest permissions.');
     const args = basename(aapt) === 'aapt2' ? ['dump', 'permissions', artifact] : ['dump', 'permissions', artifact];
     permissions = validatePermissions(run(aapt, args), blocked, { packageName: app.android.package });
+    const manifestArgs = basename(aapt) === 'aapt2'
+      ? ['dump', 'xmltree', '--file', 'AndroidManifest.xml', artifact]
+      : ['dump', 'xmltree', artifact, 'AndroidManifest.xml'];
+    validateBackup(run(aapt, manifestArgs));
     digest = createHash('sha256').update(readFileSync(artifact)).digest('hex');
   } else {
     throw new Error('Audit accepts an Android APK or an exported bundle directory.');
