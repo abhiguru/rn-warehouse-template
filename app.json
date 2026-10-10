@@ -4,7 +4,6 @@
     "slug": "rn-warehouse-template",
     "version": "0.1.0",
     "orientation": "portrait",
-    "newArchEnabled": true,
     "icon": "./assets/icon-1024.png",
     "userInterfaceStyle": "automatic",
     "backgroundColor": "#11222c",
