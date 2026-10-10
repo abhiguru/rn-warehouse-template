@@ -39,8 +39,10 @@ describe('dispatch list for a customer account', () => {
       data: {
         dispatches:
           args.p_customer_id === CUSTOMER_A
-            ? [dispatchRow('d1', 'DD0001', '2026-07-01', CUSTOMER_A, 'item-1'), dispatchRow('d3', 'DD0003', '2026-09-01', CUSTOMER_A, 'item-2')]
-            : [dispatchRow('d2', 'DD0002', '2026-08-10', CUSTOMER_B, 'item-1')],
+            ? // Dates deliberately do not follow the numbers, so a date sort and a
+              // number sort give different orders.
+              [dispatchRow('d1', 'DD0001', '2026-08-10', CUSTOMER_A, 'item-1'), dispatchRow('d3', 'DD0003', '2026-07-01', CUSTOMER_A, 'item-2')]
+            : [dispatchRow('d2', 'DD0002', '2026-09-01', CUSTOMER_B, 'item-1')],
         pagination: { has_more: false },
       },
     },
@@ -52,7 +54,7 @@ describe('dispatch list for a customer account', () => {
     const result = await getAssignedCustomerDispatchList([CUSTOMER_A, CUSTOMER_B]);
     expect(result.success).toBe(true);
     expect(rpc.mock.calls.map(call => call[0])).toEqual(['get_customer_dispatch_list', 'get_customer_dispatch_list']);
-    expect(result.data.dispatches.map(d => d.disp_no)).toEqual(['DD0003', 'DD0002', 'DD0001']);
+    expect(result.data.dispatches.map(d => d.disp_no)).toEqual(['DD0002', 'DD0001', 'DD0003']);
     expect(result.data.pagination).toMatchObject({ total_count: 3, has_more: false });
   });
 
@@ -65,6 +67,16 @@ describe('dispatch list for a customer account', () => {
     });
     expect(byNumber.data.dispatches.map(d => d.disp_no)).toEqual(['DD0001', 'DD0002']);
     expect(byNumber.data.pagination.has_more).toBe(true);
+    const byNumberDescending = await getAssignedCustomerDispatchList([CUSTOMER_A, CUSTOMER_B], {
+      p_sort_by: 'disp_no',
+      p_sort_order: 'desc',
+    });
+    expect(byNumberDescending.data.dispatches.map(d => d.disp_no)).toEqual(['DD0003', 'DD0002', 'DD0001']);
+    const byDateAscending = await getAssignedCustomerDispatchList([CUSTOMER_A, CUSTOMER_B], {
+      p_sort_by: 'dispatch_date',
+      p_sort_order: 'asc',
+    });
+    expect(byDateAscending.data.dispatches.map(d => d.disp_no)).toEqual(['DD0003', 'DD0001', 'DD0002']);
 
     const filtered = await getAssignedCustomerDispatchList([CUSTOMER_A, CUSTOMER_B], {
       p_filters: { item_ids: ['item-1'], disp_no_from: 'DD0002' },
