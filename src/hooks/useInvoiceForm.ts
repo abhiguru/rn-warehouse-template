@@ -194,6 +194,7 @@ export function useInvoiceForm({
   /**
    * Load existing invoice data for edit mode
    */
+  const loadExistingInvoiceRef = useRef<((id: string) => Promise<void>) | null>(null);
   const loadExistingInvoice = useCallback(async (id: string) => {
     if (isLoadingData.current) return;
     isLoadingData.current = true;
@@ -211,7 +212,10 @@ export function useInvoiceForm({
           grId: loadedHeader.gr_id || '',
         }));
       } else {
-        showAlert(t('invoice.edit.loadFailedTitle'), serverText(result.message, t('common.checkConnection')));
+        showAlert(t('invoice.edit.loadFailedTitle'), serverText(result.message, t('common.checkConnection')), [
+          { text: t('common.cancel'), style: 'cancel' },
+          { text: t('common.retry'), onPress: () => { void loadExistingInvoiceRef.current?.(id); } },
+        ]);
       }
     } catch (error) {
       console.error('[useInvoiceForm] Failed to load invoice:', error);
@@ -221,6 +225,8 @@ export function useInvoiceForm({
       isLoadingData.current = false;
     }
   }, [dispatch]);
+
+  loadExistingInvoiceRef.current = loadExistingInvoice;
 
   /**
    * Load GRN data for invoice creation

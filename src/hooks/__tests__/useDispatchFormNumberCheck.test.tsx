@@ -8,7 +8,7 @@ import { act, create } from 'react-test-renderer';
 import { configureStore } from '@reduxjs/toolkit';
 import { router } from 'expo-router';
 import dispatchFormReducer, { loadDispatchData, updateHeader } from '@/store/slices/dispatchFormSlice';
-import { EMPTY_DISPATCH_HEADER, type DispatchItemData } from '@/types/dispatch.types';
+import { createEmptyDispatchHeader, type DispatchItemData } from '@/types/dispatch.types';
 import { checkDispatchExists, loadDispatchData as loadDispatchDataService } from '@/features/dispatch/services/dispatchFormService';
 import { useDispatchForm, type UseDispatchFormReturn, type DispatchFormMode } from '../useDispatchForm';
 
@@ -37,7 +37,7 @@ const OWN_ID = '11111111-2222-4333-8444-555555555555';
 const OTHER_ID = '99999999-2222-4333-8444-555555555555';
 
 const header = {
-  ...EMPTY_DISPATCH_HEADER,
+  ...createEmptyDispatchHeader(),
   disp_no: 'DD0003',
   disp_date: '2026-10-02T00:00:00.000Z',
   registration: 'GJ01AB1234',
@@ -194,5 +194,16 @@ describe('dispatch number check', () => {
     expect(store.getState().dispatchForm.takenNumberError).toBeNull();
     expect(second.form().validationErrors.disp_no).toBeUndefined();
     await second.unmount();
+  });
+});
+
+// RF-7: three test files spread a constant that no longer exists (`...undefined`),
+// so their header had none of the form's defaults. The tests are not type-checked
+// by `npm run typecheck`, so nothing said so.
+describe('the header these tests start from', () => {
+  it('has the defaults of a new dispatch form', () => {
+    const defaults = createEmptyDispatchHeader();
+    expect(Object.keys(defaults).length).toBeGreaterThan(5);
+    for (const key of Object.keys(defaults)) expect(header).toHaveProperty(key);
   });
 });

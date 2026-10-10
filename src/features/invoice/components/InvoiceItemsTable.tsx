@@ -14,7 +14,7 @@ import type { ThemeTokens } from '@/theme/tokens';
 import { InvoiceItemData, GroupedInvoiceItems } from '@/types/invoice.types';
 import { useAppSelector } from '@/store/hooks';
 import { selectInvoiceFormBulkPricing } from '@/store/slices/invoiceFormSlice';
-import { formatInvoiceAmount } from '@/utils/invoiceCalculations';
+import { roundMoney, formatInvoiceAmount } from '@/utils/invoiceCalculations';
 import { formatCount, formatDate, formatWeight } from '@/utils/formatters';
 import { getLanguage, localizeDigits, t as tr, formatIdentifier } from '@/i18n';
 import { InlineValidation } from '@/components/fiori';
@@ -526,7 +526,9 @@ export const InvoiceItemsTable: React.FC<InvoiceItemsTableProps> = ({
       initialInputs[groupKey] = {
         charge: weightedCharge > 0 ? weightedCharge.toFixed(2) : '',
         labour_rate: weightedLabour > 0 ? weightedLabour.toFixed(2) : '',
-        tax: weightedTax > 0 ? weightedTax.toFixed(0) : '',
+        // Two decimals at most, as stored: "2.5" must not start as "3", which the
+        // next change of the group's charge or labour rate would give to every line.
+        tax: weightedTax > 0 ? String(roundMoney(weightedTax)) : '',
       };
     });
 

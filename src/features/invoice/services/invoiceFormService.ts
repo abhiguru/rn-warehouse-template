@@ -575,16 +575,20 @@ export const createInvoice = async (
 };
 
 /**
- * How the GRN of a saved invoice is priced ('ONE_TIME' or 'MONTHLY'); null
- * when it cannot be read, in which case the caller falls back.
+ * How the GRN of a saved invoice is priced ('ONE_TIME' or 'MONTHLY').
+ * `read: false` when the server could not be asked or refused; `mode: null`
+ * when it answered without a mode, in which case the caller falls back.
  */
-async function invoiceGrnPricingMode(client: RpcClient, invoiceId: string): Promise<string | null> {
+async function invoiceGrnPricingMode(
+  client: RpcClient,
+  invoiceId: string
+): Promise<{ read: true; mode: string | null } | { read: false }> {
   try {
     const { data, error } = await client.rpc('get_invoice_data', { p_invoice_id: invoiceId });
-    if (error || !data?.success) return null;
-    return data.data?.header?.grn?.pricing_mode || null;
+    if (error || !data?.success) return { read: false };
+    return { read: true, mode: data.data?.header?.grn?.pricing_mode || null };
   } catch {
-    return null;
+    return { read: false };
   }
 }
 
@@ -601,7 +605,7 @@ export const loadInvoiceData = async (
     // get_invoice_detail has the invoice and its lines. It does not say how the
     // GRN is priced, which decides how every line is charged, so the GRN's
     // pricing mode is read from get_invoice_data alongside it.
-    const [{ data, error }, grnPricingMode] = await Promise.all([
+    const [{ data, error }, grnPricing] = await Promise.all([
       authenticatedClient.rpc('get_invoice_detail', { p_invoice_id: invoiceId }),
       invoiceGrnPricingMode(authenticatedClient, invoiceId),
     ]);
@@ -659,9 +663,23 @@ export const loadInvoiceData = async (
       }
     }
 
-    // The invoice's own pricing_mode column is the fallback; without either the
-    // lines are shown as monthly and the total stays labelled an estimate.
-    const oneTime = isOneTime(grnPricingMode ?? header.pricing_mode);
+    // Without the GRN's pricing mode the form cannot say what a line costs: a
+    // one-time invoice priced as monthly shows, and after any change totals,
+    // amounts the server will not charge. The form is not opened on a guess.
+    if (!grnPricing.read) {
+      return {
+        success: false,
+        data: {
+          header: { customer_id: '', customer_name: '', gr_id: '', gr_no: '' },
+          items: [],
+        },
+        message: t('invoice.details.loadFailed'),
+      };
+    }
+
+    // A GRN without a mode of its own: the invoice's pricing_mode column is
+    // the fallback, and without either the lines are monthly.
+    const oneTime = isOneTime(grnPricing.mode ?? header.pricing_mode);
 
     // Convert header data - full InvoiceHeaderData format
     const formattedHeader: InvoiceHeaderData = {

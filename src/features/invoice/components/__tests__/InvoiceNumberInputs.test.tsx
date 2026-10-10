@@ -121,6 +121,31 @@ describe('a rate cell in the items table', () => {
     expect(onInputErrorChange).toHaveBeenLastCalledWith(false);
   });
 
+  // RF-6: the cell is replaced by text in the same commit, so its input gets no blur.
+  it('withdraws its error when another cell is opened while it still holds refused text', async () => {
+    const { tree, onInputErrorChange } = await openChargeCell();
+    await type(tree, CELL, '1,500');
+    expect(onInputErrorChange).toHaveBeenLastCalledWith(true);
+
+    const otherCell = pressables(tree).find((node) => {
+      const label = String(node.props.accessibilityLabel ?? '');
+      return label.includes('dispatch I0001') && !label.startsWith('Charge') && node.props.accessibilityHint === t('invoice.table.editsValueHint');
+    })!;
+    await act(async () => { otherCell.props.onPress(); });
+
+    // The charge cell is text again, shows the stored rate, and nothing is in error.
+    expect(tree.root.findAllByType(TextInput).filter((node) => node.props.accessibilityLabel === CELL)).toHaveLength(0);
+    expect(shownErrors(tree)).toEqual([]);
+    expect(onInputErrorChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it('withdraws its error when its group is collapsed', async () => {
+    const { tree, onInputErrorChange } = await openChargeCell();
+    await type(tree, CELL, '-5');
+    await act(async () => { pressables(tree).find((node) => node.props.accessibilityState?.expanded === true)!.props.onPress(); });
+    expect(onInputErrorChange).toHaveBeenLastCalledWith(false);
+  });
+
   it('reads Gujarati digits and shows them in Gujarati', async () => {
     setLanguage('gu');
     let tree!: ReactTestRenderer;
@@ -160,6 +185,28 @@ describe('the group rates in the items table', () => {
     });
 
     expect(inputLabelled(tree, GROUP_CHARGE).props.value).toBe('6.');
+  });
+
+  // RF-8: the group tax started as the weighted tax rounded to a whole number.
+  it('start with the tax as stored, so changing the charge does not round the tax of every line', async () => {
+    const onBulkEdit = jest.fn();
+    let tree!: ReactTestRenderer;
+    await act(async () => {
+      tree = create(<InvoiceItemsTable items={[{ ...item, tax: 2.5 }]} onItemUpdate={jest.fn()} onBulkEdit={onBulkEdit} />);
+    });
+    const groupTax = tree.root.findAllByType(TextInput).find((node) => node.props.value === '2.5');
+    expect(groupTax).toBeDefined();
+
+    await type(tree, GROUP_CHARGE, '6');
+    expect(onBulkEdit).toHaveBeenLastCalledWith(GROUP, { charge: 6, labour_rate: 2, tax: 2.5 });
+  });
+
+  it('show a whole-number tax without decimals, as before', async () => {
+    let tree!: ReactTestRenderer;
+    await act(async () => {
+      tree = create(<InvoiceItemsTable items={[{ ...item, tax: 18 }]} onItemUpdate={jest.fn()} onBulkEdit={jest.fn()} />);
+    });
+    expect(tree.root.findAllByType(TextInput).some((node) => node.props.value === '18')).toBe(true);
   });
 
   it.each(['1,500', '-5', '1000000'])('report "%s" and do not apply it', async (typed) => {

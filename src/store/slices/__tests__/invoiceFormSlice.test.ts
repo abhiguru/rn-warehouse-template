@@ -140,6 +140,44 @@ describe('editing a saved invoice', () => {
     expect(state.header.discount_reason).toBe('Late delivery');
   });
 
+  // RF-2: the amount field reports every keystroke, and an empty field reports 0.
+  it('never clears a reason written in this edit, also when the amount passes through the stored amount', () => {
+    // Saved without a discount: clearing the field is the stored amount.
+    let state = reducer(undefined, slice.loadInvoiceEditData({ invoiceId: 'inv-43', grId: 'gr1', header: { ...saved().header, discount: 0, discount_reason: '' }, items: [line()] }));
+    state = reducer(state, slice.updateDiscount(50));
+    state = reducer(state, slice.updateHeader({ discount_reason: 'Damaged bags' }));
+    state = reducer(state, slice.updateDiscount(0));
+    expect(state.header.discount_reason).toBe('Damaged bags');
+    state = reducer(state, slice.updateDiscount(75));
+    expect(state.header.discount_reason).toBe('Damaged bags');
+    expect(discountNeedsReason(state.header, 'staff')).toBe(false);
+
+    // Saved with 100 and a reason: a new reason is not swapped for the old one, nor cleared after it.
+    state = reducer(saved(), slice.updateDiscount(1000));
+    expect(state.header.discount_reason).toBe('');
+    state = reducer(state, slice.updateHeader({ discount_reason: 'Late delivery' }));
+    state = reducer(state, slice.updateDiscount(100));
+    expect(state.header.discount_reason).toBe('Late delivery');
+    state = reducer(state, slice.updateDiscount(10));
+    expect(state.header.discount_reason).toBe('Late delivery');
+  });
+
+  it('a reason the person erased stays erased', () => {
+    let state = reducer(saved(), slice.updateDiscount(50));
+    state = reducer(state, slice.updateHeader({ discount_reason: 'x' }));
+    state = reducer(state, slice.updateHeader({ discount_reason: '' }));
+    state = reducer(state, slice.updateDiscount(60));
+    expect(state.header.discount_reason).toBe('');
+    expect(discountNeedsReason(state.header, 'staff')).toBe(true);
+  });
+
+  it('a freshly loaded invoice starts with the stored reason as stored text again', () => {
+    let state = reducer(saved(), slice.updateHeader({ discount_reason: 'typed' }));
+    state = reducer(state, slice.loadInvoiceEditData({ invoiceId: 'inv-42', grId: 'gr1', header: saved().header, items: [line()] }));
+    state = reducer(state, slice.updateDiscount(5));
+    expect(state.header.discount_reason).toBe('');
+  });
+
   it('keeps the stored discount and its reason when another GRN is chosen', () => {
     const state = reducer(
       saved(),

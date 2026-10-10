@@ -199,8 +199,24 @@ describe('a saved invoice opened for editing', () => {
     expect(result.data.items[0]).toMatchObject({ one_time: false, amount: 750, labour_amount: 200, tax_amount: 47.5, item_total: 997.5 });
   });
 
-  it('still opens when the GRN pricing mode cannot be read', async () => {
-    mockRpcs({ get_invoice_detail: detail(false), get_invoice_data: { data: null, error: { message: 'Network request failed' } } });
+  // RF-12: this used to open the form with every line priced as monthly, so a
+  // one-time invoice of 525 showed lines of 997.50 without a word.
+  it.each([
+    ['the request fails', { data: null, error: { message: 'Network request failed' } }],
+    ['the server refuses', { data: { success: false, error: 'Access denied' }, error: null }],
+  ])('does not open on a guess when the GRN pricing mode cannot be read (%s)', async (_case, answer) => {
+    mockRpcs({ get_invoice_detail: detail(true), get_invoice_data: answer });
+
+    const result = await loadInvoiceData(INVOICE);
+
+    expect(result.success).toBe(false);
+    expect(result.data.items).toEqual([]);
+    expect(result.message).toBe("Couldn't load the invoice. Check your connection and try again.");
+  });
+
+  it('falls back to the invoice\'s own flag when the server answers without a GRN pricing mode', async () => {
+    const withoutMode = { data: { success: true, data: { header: { grn: { id: GRN } }, items: [] } }, error: null };
+    mockRpcs({ get_invoice_detail: detail(false), get_invoice_data: withoutMode });
 
     const result = await loadInvoiceData(INVOICE);
 

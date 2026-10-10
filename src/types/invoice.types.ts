@@ -31,6 +31,8 @@ export interface InvoiceHeaderData {
   saved_discount?: number;
   /** Reason stored with that discount (client only, never sent). Set only while an existing invoice is edited. */
   saved_discount_reason?: string;
+  /** The reason field was typed in during this edit (client only, never sent). Typed text is never cleared by the app. */
+  discount_reason_edited?: boolean;
   labour: number; // Calculated sum
   tax_amount: number; // Calculated sum
   total: number; // Calculated grand total

@@ -6,7 +6,7 @@ import React from 'react';
 import { act, create } from 'react-test-renderer';
 import { configureStore } from '@reduxjs/toolkit';
 import dispatchFormReducer, { loadDispatchData } from '@/store/slices/dispatchFormSlice';
-import { EMPTY_DISPATCH_HEADER, type DispatchItemData } from '@/types/dispatch.types';
+import { createEmptyDispatchHeader, type DispatchItemData } from '@/types/dispatch.types';
 import { useDispatchForm, type UseDispatchFormReturn } from '../useDispatchForm';
 
 // react-redux is not transformed for jest here, so the store is bound by hand.
@@ -35,7 +35,7 @@ const CUSTOMER_A = '33333333-2222-4333-8444-555555555555';
 const CUSTOMER_B = '88888888-2222-4333-8444-555555555555';
 
 const header = {
-  ...EMPTY_DISPATCH_HEADER,
+  ...createEmptyDispatchHeader(),
   disp_no: 'DD0003',
   disp_date: '2026-10-02T00:00:00.000Z',
   registration: 'GJ01AB1234',

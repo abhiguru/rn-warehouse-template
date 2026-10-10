@@ -83,6 +83,8 @@ const invoiceFormSlice = createSlice({
     // Header management
     updateHeader: (state, action: PayloadAction<Partial<InvoiceHeaderData>>) => {
       state.header = { ...state.header, ...action.payload };
+      // From here on the reason field holds what the person wrote, not what was stored.
+      if ('discount_reason' in action.payload) state.header.discount_reason_edited = true;
 
       // Auto-update financial year if date changes
       if (action.payload.inv_date) {
@@ -180,16 +182,17 @@ const invoiceFormSlice = createSlice({
     updateDiscount: (state, action: PayloadAction<number>) => {
       const discount = roundMoney(action.payload);
       // The reason recorded with a saved invoice belongs to the discount it
-      // was saved with. Once the amount differs, that text is taken out of the
-      // field so a new reason has to be written; typing the stored amount
-      // again puts it back. A reason written during this edit is left alone.
+      // was saved with. While the field still shows that stored text, it is
+      // shown with the stored amount only: once the amount differs it is
+      // taken out, so a new reason has to be written, and typing the stored
+      // amount again puts it back.
+      // A reason the person wrote during this edit is never touched here. The
+      // amount field reports every keystroke, and clearing it reports 0, so an
+      // amount on its way to another one passes through the stored amount.
       const savedReason = state.header.saved_discount_reason;
-      if (savedReason !== undefined) {
-        if (discount === roundMoney(state.header.saved_discount || 0)) {
-          state.header.discount_reason = savedReason;
-        } else if ((state.header.discount_reason || '') === savedReason) {
-          state.header.discount_reason = '';
-        }
+      if (savedReason !== undefined && !state.header.discount_reason_edited) {
+        state.header.discount_reason =
+          discount === roundMoney(state.header.saved_discount || 0) ? savedReason : '';
       }
       state.header.discount = discount;
       const headerTotals = calculateHeaderTotals(state.items, state.header.discount);
@@ -313,6 +316,7 @@ const invoiceFormSlice = createSlice({
         discount_reason: state.header.discount_reason,
         saved_discount: state.header.saved_discount,
         saved_discount_reason: state.header.saved_discount_reason,
+        discount_reason_edited: state.header.discount_reason_edited,
       };
 
       // The lines carry the GRN's pricing mode (`one_time`) and their amounts
@@ -366,6 +370,7 @@ const invoiceFormSlice = createSlice({
         discount_reason: action.payload.header.discount_reason || '',
         saved_discount: action.payload.header.discount || 0,
         saved_discount_reason: action.payload.header.discount_reason || '',
+        discount_reason_edited: false,
         // As in loadInvoiceFormData: the flag reports how the lines are priced.
         one_time_charge:
           action.payload.items.length > 0 && action.payload.items.every((item) => item.one_time === true),
