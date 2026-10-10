@@ -1,4 +1,5 @@
 import { getSupabaseClient, getAuthenticatedClient } from '../config/supabaseConfig';
+import { compareDocumentNumbers } from '@/utils/documentNumber';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { unwrapArrayResponse } from '@/utils/responseUtils';
 import { createErrorResponse } from '@/utils/serviceErrorHandler';
@@ -399,8 +400,15 @@ const compareGRNItems = (
 ) => {
   const direction = sortOrder === 'asc' ? 1 : -1;
   const field = sortBy || 'date';
-  const leftValue = field === 'gr_no' ? left.gr_no : field === 'date' ? left.date : left[field];
-  const rightValue = field === 'gr_no' ? right.gr_no : field === 'date' ? right.date : right[field];
+  // Receipt numbers follow the backend's order, with the line id as its tie-break.
+  if (field === 'gr_no') {
+    return (
+      compareDocumentNumbers(left.gr_no, right.gr_no) * direction ||
+      String(left.id).localeCompare(String(right.id))
+    );
+  }
+  const leftValue = left[field];
+  const rightValue = right[field];
   if (typeof leftValue === 'number' || typeof rightValue === 'number') {
     return (Number(leftValue) - Number(rightValue)) * direction;
   }

@@ -84,6 +84,27 @@ describe('dispatch list for a customer account', () => {
     expect(filtered.data.dispatches.map(d => d.disp_no)).toEqual(['DD0002']);
   });
 
+  it('orders unusual dispatch numbers the way the backend does', async () => {
+    const numbers = ['XYZ', 'I10', 'DD0003', 'I9', '77', 'Z0001', 'I2', 'I0001', 'D/2'];
+    const mixed = jest.fn(async () => ({
+      data: {
+        success: true,
+        data: {
+          dispatches: numbers.map((no, index) => dispatchRow(`m${index}`, no, '2026-08-01', CUSTOMER_A, 'item-1')),
+          pagination: { has_more: false },
+        },
+      },
+      error: null,
+    }));
+    mockClient(mixed);
+    const ascending = await getAssignedCustomerDispatchList([CUSTOMER_A], { p_sort_by: 'disp_no', p_sort_order: 'asc' });
+    // One-letter prefixes first (Z before I), numbers as numbers, then every other form.
+    expect(ascending.data.dispatches.map(d => d.disp_no)).toEqual(['Z0001', 'I0001', 'I2', 'I9', 'I10', '77', 'D/2', 'DD0003', 'XYZ']);
+    // All on one day: the date sort falls back to the number, in the requested direction.
+    const sameDayNewestFirst = await getAssignedCustomerDispatchList([CUSTOMER_A], { p_sort_by: 'dispatch_date', p_sort_order: 'desc' });
+    expect(sameDayNewestFirst.data.dispatches.map(d => d.disp_no)).toEqual(['XYZ', 'DD0003', 'D/2', '77', 'I10', 'I9', 'I2', 'I0001', 'Z0001']);
+  });
+
   it('refuses a customer the account is not assigned to, without calling the server', async () => {
     mockClient(rpc);
     const result = await getAssignedCustomerDispatchList([CUSTOMER_A], { p_filters: { customer_ids: ['someone-else'] } });

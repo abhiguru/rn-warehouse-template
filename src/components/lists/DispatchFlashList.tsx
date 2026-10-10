@@ -622,6 +622,16 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
   const flattenedData = useMemo((): FlattenedItem<Dispatch>[] => {
     if (dispatches.length === 0) return [];
 
+    // Sorted by number: a flat list in the order the rows arrived. Date sections
+    // would pull same-day dispatches together and break the number order.
+    if (sortField === 'dispNo') {
+      return dispatches.map(dispatch => ({
+        type: 'card' as const,
+        data: dispatch,
+        key: dispatch.dispatch_id || dispatch.id,
+      }));
+    }
+
     // Group by date for section headers
     const groups: Record<string, Dispatch[]> = {};
     dispatches.forEach(dispatch => {
@@ -638,7 +648,7 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
     }));
 
     return flattenSections(sections, (dispatch) => dispatch.dispatch_id || dispatch.id);
-  }, [dispatches]);
+  }, [dispatches, sortField]);
 
   // ============================================================================
   // FLASHLIST KEY EXTRACTOR (stable, not inline)

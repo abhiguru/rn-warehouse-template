@@ -82,6 +82,9 @@ const SORT_OPTIONS: SortOption<SortField>[] = [
   { field: 'date', label: 'Date', a11y: 'date', icon: 'calendar-outline', kind: 'date' },
 ];
 
+/** Row title. A receipt saved without a number says so instead of showing a bare "GRN". */
+const grnTitle = (grNo: string) => (grNo.trim() ? `GRN ${grNo}` : 'GRN with no number');
+
 /** Status when nothing was received (no quantity to judge stock against). */
 const NO_QUANTITY_STATUS: GRNStockStatus = { status: 'neutral', label: 'No quantity', icon: 'circle-outline' };
 
@@ -210,7 +213,7 @@ const GRNCardFiori = memo<GRNCardProps>(({
           style={({ pressed }) => [styles.swipeButton, styles.swipeSecondary, pressed && styles.swipeSecondaryPressed]}
           onPress={() => handleSwipeAction('print')}
           accessibilityRole="button"
-          accessibilityLabel={`Print GRN ${group.grNo}`}
+          accessibilityLabel={`Print ${grnTitle(group.grNo)}`}
         >
           <Icon name="printer-outline" size={iconSize.lg} color={t.icon.primary} />
           <Text style={styles.swipeText} maxFontSizeMultiplier={1.6}>Print</Text>
@@ -220,7 +223,7 @@ const GRNCardFiori = memo<GRNCardProps>(({
         style={({ pressed }) => [styles.swipeButton, styles.swipeSecondary, pressed && styles.swipeSecondaryPressed]}
         onPress={() => handleSwipeAction('view')}
         accessibilityRole="button"
-        accessibilityLabel={`View GRN ${group.grNo}`}
+        accessibilityLabel={`View ${grnTitle(group.grNo)}`}
       >
         <Icon name="eye-outline" size={iconSize.lg} color={t.icon.primary} />
         <Text style={styles.swipeText} maxFontSizeMultiplier={1.6}>View</Text>
@@ -229,7 +232,7 @@ const GRNCardFiori = memo<GRNCardProps>(({
         style={({ pressed }) => [styles.swipeButton, styles.swipePrimary, pressed && styles.swipePrimaryPressed]}
         onPress={() => handleSwipeAction('edit')}
         accessibilityRole="button"
-        accessibilityLabel={`Edit GRN ${group.grNo}`}
+        accessibilityLabel={`Edit ${grnTitle(group.grNo)}`}
       >
         <Icon name="pencil-outline" size={iconSize.lg} color={t.brand.onFill} />
         <Text style={[styles.swipeText, styles.swipeTextOnFill]} maxFontSizeMultiplier={1.6}>Edit</Text>
@@ -253,7 +256,7 @@ const GRNCardFiori = memo<GRNCardProps>(({
             style={({ pressed }) => [styles.objectCellRow, pressed && styles.cardPressed]}
             accessibilityRole="button"
             accessibilityLabel={[
-              `GRN ${group.grNo}`,
+              grnTitle(group.grNo),
               group.customerName,
               displayDate,
               group.registration,
@@ -271,7 +274,7 @@ const GRNCardFiori = memo<GRNCardProps>(({
 
             {/* Main content */}
             <View style={styles.mainContent}>
-              <Text style={styles.titleText} numberOfLines={2}>GRN {group.grNo}</Text>
+              <Text style={styles.titleText} numberOfLines={2}>{grnTitle(group.grNo)}</Text>
               <Text style={styles.subtitleText} numberOfLines={2}>
                 {group.customerName}
               </Text>
@@ -867,7 +870,9 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({
     // BACKEND ISSUE: get_all_grn_items RPC is returning camelCase (grNo, grnId, customerName)
     // instead of snake_case (gr_no, grn_id, customer_name). Backend team needs to fix this.
     const groups = data.items.reduce((acc, item) => {
-      if (!item.gr_no) {
+      // A missing field means a malformed row. An empty number is a real receipt
+      // (older data can hold one) and must stay visible so it can be opened and fixed.
+      if (item.gr_no == null) {
         if (__DEV__) {
           logger.warn('Item missing gr_no (backend returning camelCase?):', item);
         }
@@ -890,15 +895,10 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({
 
     const allGroups = Object.values(groups);
 
-    // When sorting by GRN No, return flat list
+    // When sorting by GRN No, return a flat list in the order the rows arrived.
+    // The server (or the customer merge in grn-service) already sorted them by
+    // receipt number; groups are built in first-seen order, so nothing is re-sorted here.
     if (sortBy === 'grNo') {
-      allGroups.sort((a, b) => {
-        const numA = parseInt(a.grNo.replace(/\D/g, ''), 10) || 0;
-        const numB = parseInt(b.grNo.replace(/\D/g, ''), 10) || 0;
-        const comparison = numB - numA;
-        return sortOrder === 'asc' ? -comparison : comparison;
-      });
-
       return allGroups.map(group => ({
         type: 'card' as const,
         data: group,
@@ -906,39 +906,25 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({
       }));
     }
 
-    // When sorting by date, group by date sections
-    const groupedByDate: Record<string, { title: string; data: GRNGroupData[] }> = allGroups.reduce((acc, group) => {
-      const dateKey = formatSectionDate(group.date);
-      if (!acc[dateKey]) acc[dateKey] = { title: dateKey, data: [] };
-      acc[dateKey].data.push(group);
-      return acc;
-    }, {} as Record<string, { title: string; data: GRNGroupData[] }>);
-
-    // Sort items within each date section
-    Object.values(groupedByDate).forEach(section => {
-      section.data.sort((a, b) => {
-        const comparison = new Date(b.date).getTime() - new Date(a.date).getTime();
-        return sortOrder === 'asc' ? -comparison : comparison;
-      });
+    // When sorting by date, group into date sections in the order the rows arrived.
+    // The rows are already in date order (oldest or newest first), so each day's
+    // receipts are together and nothing is re-sorted. "Today" and "Yesterday" are
+    // only section titles: they take their place by date like any other day.
+    const sections: { title: string; data: GRNGroupData[] }[] = [];
+    const sectionByTitle = new Map<string, { title: string; data: GRNGroupData[] }>();
+    allGroups.forEach(group => {
+      const title = formatSectionDate(group.date);
+      let section = sectionByTitle.get(title);
+      if (!section) {
+        section = { title, data: [] };
+        sectionByTitle.set(title, section);
+        sections.push(section);
+      }
+      section.data.push(group);
     });
 
-    // Sort sections by date
-    const sortedSections = Object.values(groupedByDate);
-    sortedSections.sort((a, b) => {
-      const order = ['Today', 'Yesterday'];
-      const aIdx = order.indexOf(a.title);
-      const bIdx = order.indexOf(b.title);
-      if (aIdx !== -1 && bIdx !== -1) return aIdx - bIdx;
-      if (aIdx !== -1) return -1;
-      if (bIdx !== -1) return 1;
-      const aData = a.data[0];
-      const bData = b.data[0];
-      const comparison = new Date(bData?.date || 0).getTime() - new Date(aData?.date || 0).getTime();
-      return sortOrder === 'asc' ? -comparison : comparison;
-    });
-
-    return flattenSections(sortedSections, (group) => `${group.grnId}_${group.grNo}`);
-  }, [data?.items, sortBy, sortOrder]);
+    return flattenSections(sections, (group) => `${group.grnId}_${group.grNo}`);
+  }, [data?.items, sortBy]);
 
 
   const handleRetry = useCallback(() => {

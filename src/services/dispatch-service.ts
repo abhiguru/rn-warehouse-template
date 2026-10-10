@@ -1,4 +1,5 @@
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
+import { compareDocumentNumbers } from '@/utils/documentNumber';
 import { offsetToPage, hasMoreItems } from '@/utils/paginationUtils';
 import {
   generateScopedCacheKey,
@@ -871,7 +872,8 @@ export const getAssignedCustomerDispatchList = async (
   const itemIds = Array.isArray(filters.item_ids) ? (filters.item_ids as string[]) : [];
   const from = filters.disp_no_from ? String(filters.disp_no_from) : '';
   const to = filters.disp_no_to ? String(filters.disp_no_to) : '';
-  const compareNo = (a: string, b: string) => a.localeCompare(b, undefined, { numeric: true });
+  // The backend's order for document numbers, so customer accounts and warehouse roles agree.
+  const compareNo = compareDocumentNumbers;
   const matching = (perCustomer as Dispatch[][]).flat().filter(dispatch => {
     if (itemIds.length > 0 && !dispatch.items?.some(item => itemIds.includes(item.item_id))) return false;
     if (from && compareNo(dispatch.disp_no, from) < 0) return false;
