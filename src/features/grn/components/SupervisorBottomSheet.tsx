@@ -18,8 +18,9 @@ import { createLogger, loggableError } from '@/utils/logger';
 
 const log = createLogger('grn');
 
-// A colleague is picked by name. The answer also carries each person's mobile
-// number; it is not kept and not shown, because it is not needed to pick one.
+// A colleague is picked by name. For an administrator or supervisor the answer
+// also carries each person's mobile number (staff get none, backend migration
+// 47); it is not kept and not shown, because it is not needed to pick one.
 interface Supervisor {
   id: string;
   name: string;

@@ -1,9 +1,61 @@
 # Changelog
 
+## Unreleased — follow-ups to backend migration 47 (GRN edit retry key, supervisors and access, supervisor picker)
+
+Needs backend migration `00000000000047_review_followups.sql`; merge and deploy
+the backend first. On a backend without it the app still saves an edited GRN
+(see the first point), and a supervisor is held to the same limits by the app
+alone.
+
+GRN
+- Saving an edited GRN sends an idempotency key (`update_grn`,
+  `p_idempotency_key`). A Save repeated after no answer came back carries the
+  same key, and the server answers with the result of the first one and applies
+  nothing a second time. The app takes that answer (`"idempotent": true`) as a
+  normal save, so the photos of a line added in the edit still go up under the
+  line's saved id. A key is used again only by a Save that repeats the request
+  sent last: a new one is made when the edit form loads the GRN, after every
+  save the server answered with success, and whenever the form differs from
+  what was sent last, also when it is changed back to an earlier state.
+- The check added before ("which lines does the server hold?") stays, before
+  every Save that follows one with no answer. It covers a form that was changed
+  in between, and a server without the parameter. The saved ids it finds go
+  into the request; the key is still the one of the Save that got no answer.
+- A server that has not applied migration 47 refuses the unknown parameter
+  (PostgREST `PGRST202`) before running anything. The app then sends the same
+  request once more without the key. This costs one extra request per save on
+  such a server.
+
+User management
+- A supervisor is no longer offered to activate a user, or to change anything
+  on a user who is not active: the role, the status switch and the customer
+  assignments are locked, with the note "This user has no access. Only an
+  administrator can give it back or change this user." The server now refuses
+  these (`ENROLLMENT_NOT_APPROVED`). The user list and details carry `active`
+  only, not the state of the access request, so "not active" is what the app
+  goes by. An administrator sees no change.
+- A supervisor who deactivates a user is told beforehand that only an
+  administrator can activate them again.
+- The two new refusals have their own sentences in English and Gujarati:
+  `ENROLLMENT_NOT_APPROVED`, and `ENROLLMENT_PENDING` (a role change on an
+  access request nobody has reviewed yet, refused for every caller).
+
+Supervisor picker
+- `get_supervisors` gives staff rows without a mobile number. No change was
+  needed: the picker is the only reader, and it has kept the id and name only
+  since the number was taken out of its rows. A test now reads rows of the new
+  shape.
+
+Not done here: an administrator who opens a pending access request in user
+management can still try to change its role and gets the new sentence; the
+screen cannot lock the role beforehand because `get_user_details` does not say
+that a request is pending (backend).
+
 ## Unreleased — second review of the 2026-10-10 fix branch (session, reports, GRN, invoice)
 
-No backend migration is needed for these changes. One follow-up is open on the
-backend: `update_grn` has no idempotency key (see "Not done here").
+No backend migration is needed for these changes. One follow-up was open on the
+backend: `update_grn` had no idempotency key (see "Not done here"; done in
+backend migration 47 and the entry above).
 
 Session and requests
 - Every request has a time limit, where requests are sent (`gatedFetch`): 30
