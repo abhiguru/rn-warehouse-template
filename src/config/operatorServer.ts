@@ -66,6 +66,10 @@ export async function discoverOperator(input: string): Promise<{ server: Operato
         signal: controller.signal,
         redirect: 'error',
       });
+      // React Native follows redirects whatever `redirect` says. Where the
+      // final address is known, an answer from another origin is named as such.
+      if (response.url && !response.url.startsWith(`${origin}/`))
+        throw new Error(t('errors.server.discoveryRedirected'));
       if (!response.ok) throw new Error(t('errors.server.discoveryFailedHttp', { status: String(response.status) }));
       return validateOperatorDiscovery(await response.json(), origin);
     })(),

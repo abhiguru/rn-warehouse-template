@@ -211,6 +211,7 @@ export const errors = {
     requiresAppVersion: 'This server requires app version {{version}} or newer.',
     discoveryFailedHttp: 'Server discovery failed (HTTP {{status}}).',
     discoveryTimedOut: 'Server discovery timed out.',
+    discoveryRedirected: 'This address forwards to another server. Enter the address of the server itself.',
     selectFirst: 'Select an operator server first.',
     configNotLoaded: 'Configuration must be loaded first.',
     configRequestFailedHttp: 'Configuration request failed (HTTP {{status}}).',

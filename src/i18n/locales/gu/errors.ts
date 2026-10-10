@@ -214,6 +214,7 @@ export const errors: Translation<typeof source> = {
     requiresAppVersion: 'આ સર્વર માટે ઍપનું વર્ઝન {{version}} અથવા તેનાથી નવું જોઈએ.',
     discoveryFailedHttp: 'સર્વરની માહિતી મેળવી શકાઈ નથી (HTTP {{status}}).',
     discoveryTimedOut: 'સર્વરનો જવાબ સમયસર મળ્યો નથી.',
+    discoveryRedirected: 'આ સરનામું બીજા સર્વર પર મોકલે છે. સર્વરનું પોતાનું સરનામું લખો.',
     selectFirst: 'પહેલાં કોલ્ડ સ્ટોરેજનું સર્વર પસંદ કરો.',
     configNotLoaded: 'પહેલાં સર્વરની ગોઠવણી લોડ થવી જોઈએ.',
     configRequestFailedHttp: 'સર્વરની ગોઠવણી મેળવી શકાઈ નથી (HTTP {{status}}).',

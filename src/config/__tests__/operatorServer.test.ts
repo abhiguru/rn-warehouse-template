@@ -70,3 +70,14 @@ it('bounds discovery even when a server stalls while sending its JSON body', asy
     jest.useRealTimers();
   }
 });
+
+it('names a discovery answer that came from another origin after a redirect (M1-12)', async () => {
+  jest.mocked(global.fetch).mockResolvedValueOnce({
+    ok: true, url: 'https://other.example.test/functions/v1/get-public-config', json: async () => config(),
+  } as Response);
+  await expect(discoverOperator(origin)).rejects.toThrow('This address forwards to another server.');
+  jest.mocked(global.fetch).mockResolvedValueOnce({
+    ok: true, url: `${origin}/functions/v1/get-public-config`, json: async () => config(),
+  } as Response);
+  expect((await discoverOperator(origin)).server.origin).toBe(origin);
+});
