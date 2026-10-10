@@ -73,6 +73,7 @@ import { AlertHost } from '@/components/AlertHost';
 import { useIsOffline } from '@/hooks/useNetworkStatus';
 import { createLogger } from '@/utils/logger';
 import { useAppDispatch } from '@/store/hooks';
+import { useAppLanguage } from '@/i18n/useAppLanguage';
 import { initializeAuth } from '@/store/slices/authSlice';
 import { logout } from '@/store/slices/authSlice';
 import { clearSessionScopedState } from '@/store/sessionScopedState';
@@ -378,6 +379,9 @@ function ThemedContent() {
   // Brand and mode from the Settings choice (falls back to the system mode).
   const { brand, resolvedMode, tokens } = useTheme();
   const isDarkMode = resolvedMode === 'dark';
+  // English or Gujarati. The key below rebuilds every screen when it changes, so
+  // text and number formats switch at once, with no restart.
+  const { language } = useAppLanguage();
 
   // Restore credentials before any route screen can redirect an initially
   // empty Redux auth state. Deep links can bypass the tab layout, so auth
@@ -456,7 +460,7 @@ function ThemedContent() {
               <UpdatePrompt />
               <BottomSheetModalProvider>
                 <BelowOfflineBanner>
-                  <NavigationStack screenBackground={screenBackground} />
+                  <NavigationStack key={language} screenBackground={screenBackground} />
                 </BelowOfflineBanner>
               </BottomSheetModalProvider>
               <AlertHost />

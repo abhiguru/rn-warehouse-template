@@ -1,3 +1,4 @@
+import { getLanguage } from '@/i18n/language';
 import { useMemo } from 'react';
 import { StyleSheet, useColorScheme } from 'react-native';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
@@ -75,7 +76,8 @@ export function useTokens(): ThemeTokens {
 // One stylesheet per (factory, theme), shared by every instance of a component,
 // so list rows do not each build their own. Token objects are memoised per
 // brand and mode, so the inner WeakMap holds at most four entries per factory.
-const styleCache = new WeakMap<object, WeakMap<ThemeTokens, unknown>>();
+// Text styles depend on the language too (line heights), so each language has its own sheet.
+const styleCache = new WeakMap<object, WeakMap<ThemeTokens, Map<string, unknown>>>();
 
 /** Build (or reuse) the stylesheet for a factory and a token set. */
 export function getThemedStyles<T extends StyleSheet.NamedStyles<T>>(
@@ -87,10 +89,16 @@ export function getThemedStyles<T extends StyleSheet.NamedStyles<T>>(
     byTheme = new WeakMap();
     styleCache.set(factory, byTheme);
   }
-  let styles = byTheme.get(tokens) as T | undefined;
+  let byLanguage = byTheme.get(tokens);
+  if (!byLanguage) {
+    byLanguage = new Map();
+    byTheme.set(tokens, byLanguage);
+  }
+  const language = getLanguage();
+  let styles = byLanguage.get(language) as T | undefined;
   if (!styles) {
     styles = StyleSheet.create(factory(tokens));
-    byTheme.set(tokens, styles);
+    byLanguage.set(language, styles);
   }
   return styles;
 }
@@ -100,7 +108,9 @@ export function useThemedStyles<T extends StyleSheet.NamedStyles<T>>(
 ): T {
   const tokens = useTokens();
   // Declare the factory at module level so the cache is shared across instances.
-  return useMemo(() => getThemedStyles(factory, tokens), [factory, tokens]);
+  const language = getLanguage();
+   
+  return useMemo(() => getThemedStyles(factory, tokens), [factory, tokens, language]);
 }
 
 export default useTheme;

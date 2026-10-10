@@ -23,6 +23,8 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useAppSelector, useAppDispatch } from '@/store/hooks';
 import { logout, deleteAccount } from '@/store/slices/authSlice';
 import { useTheme, useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { LANGUAGES, t, type LanguagePreference } from '@/i18n';
+import { useAppLanguage } from '@/i18n/useAppLanguage';
 import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
 import {
   BRANDS,
@@ -77,6 +79,11 @@ const SettingsScreen: React.FC = () => {
     tokens,
   } = useTheme();
   const styles = useThemedStyles(makeStyles);
+  const { preference: languagePreference, setPreference: setLanguagePreference } = useAppLanguage();
+  const languageOptions: { value: LanguagePreference; label: string; icon: string }[] = [
+    { value: 'system', label: t('settings.language.system'), icon: 'cellphone' },
+    ...LANGUAGES.map(language => ({ ...language, icon: 'translate' })),
+  ];
 
   const handleLogout = () => {
     setShowLogoutModal(true);
@@ -296,6 +303,45 @@ const SettingsScreen: React.FC = () => {
                   accessibilityRole="radio"
                   accessibilityState={{ selected: isSelected, checked: isSelected }}
                   accessibilityLabel={option.label}
+                >
+                  <View style={[styles.optionIcon, isSelected && styles.optionIconSelected]}>
+                    <Icon
+                      name={option.icon}
+                      size={iconSize.lg}
+                      color={isSelected ? tokens.brand.onFill : tokens.icon.primary}
+                    />
+                  </View>
+                  <Text style={[styles.optionLabel, isSelected && styles.optionLabelSelected]}>
+                    {option.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </SettingsSection>
+
+        {/* Language Section: English or Gujarati for the whole app (docs/I18N.md) */}
+        <SettingsSection
+          title={t('settings.language.title')}
+          footer={t(languagePreference === 'system' ? 'settings.language.footerSystem' : 'settings.language.footerChosen')}
+        >
+          <View style={styles.optionGroup} accessibilityRole="radiogroup" accessibilityLabel={t('settings.language.title')}>
+            {languageOptions.map(option => {
+              const isSelected = languagePreference === option.value;
+              return (
+                <Pressable
+                  key={option.value}
+                  style={({ pressed }) => [
+                    styles.option,
+                    isSelected && styles.optionSelected,
+                    pressed && !isSelected && styles.optionPressed,
+                  ]}
+                  onPress={() => setLanguagePreference(option.value)}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected: isSelected, checked: isSelected }}
+                  accessibilityLabel={
+                    option.value === 'system' ? option.label : t('settings.language.optionLabel', { language: option.label })
+                  }
                 >
                   <View style={[styles.optionIcon, isSelected && styles.optionIconSelected]}>
                     <Icon
