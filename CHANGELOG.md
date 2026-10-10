@@ -1,5 +1,79 @@
 # Changelog
 
+## Unreleased — roles, reports per account, the sign-in guard and photo removal from the 2026-10-10 review
+
+**Needs backend migration 45** (`00000000000045_role_allowlist_alignment.sql`,
+"the server admits what the app offers"). Deploy the backend first: without it
+staff are refused the reports, item pricing, sensors and photo removal that the
+app now offers them, and supervisors are refused every change in Users.
+
+- One meaning of "staff". The app had two flags called `isStaff` that meant
+  opposite things (administrator or supervisor in one place, the staff role in
+  another). They are replaced by `isWarehouseUser` (administrator, supervisor,
+  staff), `isManager` (administrator, supervisor) and `isCustomerAccount`, in
+  `src/config/roles.ts`, with one table of who is offered which screen.
+- Reports for staff: Stock summary, Stock aging, Customer activity, Dispatch
+  activity and Invoice history open with all customers for a staff account, as
+  GRN activity already did. Before, they showed "No customer linked". The
+  Operations dashboard stays with administrators and supervisors.
+- Reports for a customer account with more than one customer: every report
+  first asks which customer ("Choose a customer"), then shows that customer;
+  Back returns to the choice. Before, these accounts were sent to the
+  all-customers reports, which the server refuses, and saw an error on six
+  reports. An account with one customer opens it directly, as before.
+- Item-wise stock sends the customer for a customer account, on the list and
+  on the GRNs under an item (the per-customer request). Before, it asked for
+  every customer's stock and was refused.
+- Settings: Item pricing and Sensors are shown to administrators, supervisors
+  and staff. A customer account no longer sees them (both ended in a server
+  refusal) and has no Features section.
+- Item pricing: staff can add, change and delete prices, and get the price
+  pencil beside an item group in the invoice form (the server allows it from
+  migration 45). A customer account cannot open the price form.
+- Users: a supervisor can change the role, status and customer assignments of
+  users who are not administrators. For an administrator, and for the
+  supervisor's own profile, the role, the status switch and the Add and Remove
+  customer buttons are not offered; the role list never has Administrator for
+  a supervisor. An administrator still cannot change the own role or status.
+- Signed out: every screen except sign-in, the code step, facility choice,
+  waiting for approval, Terms and Privacy now goes to sign-in, also when it was
+  opened by a link (reports, Customers, Items, Users, Item pricing, Sensors,
+  Sort and filter and the rest showed an error with no way to sign in). The
+  check waits until the stored session has been read, so a signed-in person is
+  not sent to sign-in on start.
+- Signed in: opening the sign-in screen (for example with Back after signing
+  in) goes to the home tabs. A screen that the role is not offered (Customers,
+  Items, Users, Item pricing, Sensors, Operations dashboard, Enrollment review)
+  goes to the home tabs when opened by a link, instead of showing the list with
+  buttons the server refuses.
+- Links: a web address (`https://…`) is no longer read as a screen of the app,
+  and a link that arrives during sign-in does not replace the sign-in or code
+  screen.
+- Photos: removing an uploaded photo in the dispatch review step that the
+  server refuses, or that fails, now says why and keeps the photo. Before, the
+  photo disappeared from the form and was still on the dispatch. A refused
+  removal names the reason ("You do not have permission…") instead of "check
+  your connection".
+- GRN and dispatch details: a supervisor without a mobile number in the answer
+  (the server no longer sends it to customer accounts) is shown by name, with
+  no Call action.
+- Invoice details load again when the screen comes back into view, so Back
+  after an edit shows the new amounts.
+- Smaller: Edit and Delete in the detail screens are hidden unless the screen
+  says the role may; a detail tab's badge is read as "Images, 3" (it said
+  "3 items" for every tab); the photo filter chips of a GRN keep screen-reader
+  focus when tapped; GRN and dispatch photos are no longer written to the
+  device's image cache (their addresses change on every load, so the copies
+  were never reused); a failed dispatch-history load on a GRN shows the app's
+  words, not the database's; the profile, own-profile edit and item edit
+  screens no longer write names, ids and whole records to the device log.
+
+Not done here, each needs something outside this change: a signed-out or
+wrong-role redirect has unit tests but was not run on a phone; the price form
+still downloads up to 500 prices to show one (needs a server filter by price
+id); photos cached by earlier versions stay in the image cache until the
+system evicts them; the tabs still restore the session a second time on start.
+
 ## Unreleased — reports, dates, list filters, sign-in limits and the build audit from the 2026-10-10 review
 
 Works against the same backend migrations as the entries below (up to 44). No

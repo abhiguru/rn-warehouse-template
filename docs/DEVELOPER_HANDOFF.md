@@ -54,6 +54,29 @@ Install that backend with its [operator guide](https://github.com/abhiguru/supab
 - **Never put a number on the left of `&&` in JSX** (`{item.weight && <Text/>}`): 0 is rendered as
   a bare number and React Native throws. Compare it (`Number(x) > 0 ? ... : null`).
 
+## Roles and routes
+
+- **Who is offered what is one table: `src/config/roles.ts`.** `isWarehouseUser` is admin,
+  supervisor or staff; `isManager` is admin or supervisor; `isCustomerAccount` is a customer's
+  own login. `canOpenScreen`, `settingsFeatureRows`, `reportScopeFor` and `userManagementActions`
+  are built on them and mirror the backend's role table (its `docs/STAFF_GRN_POLICY.md`, "Roles
+  after migration 45"). Do not add a flag called `isStaff`: it used to mean two opposite things.
+  `useRoleBasedAccess()` gives the same for the signed-in profile; `usePermissions()` gives
+  create/update/delete and `isStaffRole` (the `staff` role only).
+- **A report screen gets its scope from `ReportCustomerScope`** (`src/components/reports`): the
+  all-customers list for warehouse users, the one customer of a customer account, or a picker for a
+  customer account with several. A customer account is refused every all-customers RPC, so its
+  requests always name one assigned customer (`get_customer_*`, `get_stock_aging_report(p_customer_uuid)`,
+  `get_item_wise_stock_list(p_customer_id)`, `get_customer_grn_items`).
+- **Every route is protected unless `src/navigation/routeAccess.ts` lists it as public.** The root
+  layout applies it to the whole stack: `useRootRouteGuard` replaces the focused route (sign-in when
+  signed out, home tabs for a role the route is not offered to, or for a signed-in person on the
+  sign-in screen), and `GuardedScreen` (the stack's `screenLayout`) keeps a refused screen from
+  mounting. Both run after `initializeAuth` has settled. A new role-only screen gets a row in
+  `ROLE_GATED_ROUTES`; a new public screen a row in `PUBLIC_ROUTES`. The sign-in screen stays
+  mounted under the code step, so a public screen is never hidden and only the focused route is
+  navigated.
+
 ## Session-scoped state
 
 `clearSessionScopedState` (`src/store/sessionScopedState.ts`) cancels and clears react-query, the
