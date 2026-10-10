@@ -16,6 +16,11 @@ import { executeRPC, createErrorResponse } from '@/utils/serviceErrorHandler';
 import { t } from '@/i18n';
 import { serverText } from '@/utils/serverText';
 import { toCalendarDay } from '@/utils/formatters';
+import { createLogger, loggableError } from '@/utils/logger';
+
+// Identifiers, counts and error codes only: a GRN's names, notes, photo
+// addresses and the server's messages never reach the device log.
+const log = createLogger('grn');
 
 // Helper function to construct full image URL
 // Note: This is a fallback for when signed URL generation fails
@@ -25,7 +30,7 @@ const getFullImageUrl = (storagePath: string): string => {
   if (!storagePath) return '';
 
   // Log warning since this fallback shouldn't normally be needed
-  console.warn('[grnFormService] getFullImageUrl called as fallback - signed URL generation may have failed for:', storagePath);
+  log.warn('getFullImageUrl called as fallback; signed URL generation may have failed');
 
   // Return empty string since public URLs don't work for private buckets
   // The UI should handle missing imageUrl gracefully
@@ -73,7 +78,7 @@ const uploadPhotosOfSavedGRN = async (
   try {
     return await uploadGRNPhotos(grnId, pending);
   } catch (uploadError) {
-    console.error('[GRNFormService] 📸 Photo upload failed:', uploadError);
+    log.error('Photo upload failed', loggableError(uploadError));
     return {
       uploadedCount: 0,
       failed: pending.map(photo => ({ ...photo, error: t('grn.photos.uploadFailed') })),
@@ -122,8 +127,6 @@ export const checkGrnExists = async (
       return { exists: false };
     }
 
-    console.log('[GRNFormService] Checking if GRN exists:', grNo);
-
     const authenticatedClient = await getAuthenticatedClient();
 
     const { data, error } = await authenticatedClient.rpc('check_grn_exists', {
@@ -131,23 +134,20 @@ export const checkGrnExists = async (
     });
 
     if (error) {
-      console.error('[GRNFormService] ❌ RPC Error:', error);
+      log.error('check_grn_exists failed', loggableError(error));
       // E5 Fix: Return distinct error response so caller can distinguish from "not found"
       return { exists: false, error: true, message: serverText(error.message, t('grn.form.checkNumberFailed')) };
     }
 
     if (!data || data.success !== true) {
-      console.error('[GRNFormService] check_grn_exists was refused');
+      log.error('check_grn_exists was refused');
       return { exists: false, error: true, message: serverText(data?.message, t('grn.form.checkNumberFailed')) };
     }
 
     const found = data.data;
     if (!found || found.exists !== true || !found.grn_id) {
-      console.log('[GRNFormService] GRN not found:', grNo);
       return { exists: false };
     }
-
-    console.log('[GRNFormService] ✅ GRN found:', grNo, 'ID:', found.grn_id);
 
     return {
       exists: true,
@@ -157,7 +157,7 @@ export const checkGrnExists = async (
       date: found.date,
     };
   } catch (error) {
-    console.error('[GRNFormService] Error checking GRN exists:', error);
+    log.error('Error checking GRN exists', loggableError(error));
     // E5 Fix: Return distinct error response so caller can distinguish from "not found"
     return {
       exists: false,
@@ -177,31 +177,23 @@ export const checkGrnExists = async (
 // different pattern from standard success/error response
 export const getNextGRNNumber = async (): Promise<string> => {
   try {
-    console.log('[GRNFormService] 🔄 Getting next GRN number using RPC');
 
     const authenticatedClient = await getAuthenticatedClient();
 
     const { data, error } = await authenticatedClient.rpc('get_next_grn_number');
 
     if (error) {
-      console.error('[GRNFormService] ❌ RPC Error:', {
-        message: error.message,
-        details: error.details,
-        hint: error.hint,
-        code: error.code,
-      });
+      log.error('get_next_grn_number failed', loggableError(error));
       throw new Error(serverText(error.message, t('grn.form.nextNumberFailed')));
     }
 
     if (!data) {
-      console.log('[GRNFormService] ⚠️ No data returned from RPC, using fallback G0001');
       return 'G0001';
     }
 
-    console.log('[GRNFormService] ✅ Next GRN number from RPC:', data);
     return data;
   } catch (error) {
-    console.error('[GRNFormService] Error getting next GRN number:', error);
+    log.error('Error getting next GRN number', loggableError(error));
     throw error;
   }
 };
@@ -213,29 +205,6 @@ export const createGRN = async (payload: CreateGRNPayload) => {
   let finishMutation: (() => void) | undefined;
   try {
     finishMutation = beginOperatorMutation();
-    if (__DEV__) console.log('[GRNFormService] DEBUG: Creating GRN with enhanced RPC payload:', {
-      header: {
-        ...payload.header,
-        gr_images: payload.header.gr_images?.map(img => ({
-          id: img.id,
-          fileName: img.fileName,
-          storagePath: img.storagePath,
-          hasStoragePath: !!img.storagePath,
-          hasId: !!img.id
-        }))
-      },
-      items: payload.items.map(item => ({
-        item_table_id: item.item_table_id,
-        item_name: item.item_name,
-        trl_images: item.trl_images?.map(img => ({
-          id: img.id,
-          fileName: img.fileName,
-          storagePath: img.storagePath,
-          hasStoragePath: !!img.storagePath,
-          hasId: !!img.id
-        })) || []
-      }))
-    });
 
     // Generate GRN number if not provided
     const grNumber = payload.header.gr_no || await getNextGRNNumber();
@@ -256,21 +225,6 @@ export const createGRN = async (payload: CreateGRNPayload) => {
     // folder (headers/<grn id>/..., items/<grn id>/...), which does not exist
     // before the receipt does, and the server refuses any other path
     // (migration 43). Photos are uploaded after the save, below.
-    console.log('[GRNFormService] Calling enhanced save_grn RPC with:', {
-      p_gr_no: grNumber,
-      p_date: toCalendarDay(payload.header.date),
-      p_customer_id: payload.header.customer_id,
-      p_customer_name: payload.header.customer_name,
-      p_sender_id: payload.header.sender_id,
-      p_sender_name: payload.header.sender_name,
-      p_supervisor_id: payload.header.supervisor_id,
-      p_supervisor_name: payload.header.supervisor_name,
-      p_registration: payload.header.registration,
-      p_note: payload.header.note,
-      p_leon: payload.header.leon || false,
-      p_pricing_mode: payload.header.pricing_mode || 'MONTHLY',
-      p_items: rpcItems
-    });
 
     // Call the enhanced save_grn RPC function using authenticated client
     const authenticatedClient = await getAuthenticatedClient();
@@ -294,35 +248,17 @@ export const createGRN = async (payload: CreateGRNPayload) => {
       p_idempotency_key: await submissionIdempotencyKey('grn', rpcPayload),
     });
 
-    console.log('[GRNFormService] Enhanced RPC Response:', { data, error });
-
     if (error) {
-      console.error('[GRNFormService] Enhanced RPC Error:', error);
+      log.error('save_grn failed', loggableError(error));
       throw new Error(serverText(error.message, t('grn.form.requestFailed')));
     }
 
     if (!data || !data.success) {
-      console.error('[GRNFormService] Enhanced RPC returned failure:', data);
+      log.error('save_grn returned failure');
       throw new Error(serverText(data?.message, t('grn.form.creationFailed')));
     }
 
     const rpcResult = data.data;
-    console.log('[GRNFormService] Enhanced RPC Success:', {
-      grn_id: rpcResult.grn_id,
-      gr_no: rpcResult.gr_no,
-      items_created: rpcResult.items_created,
-      images_saved: rpcResult.images_saved,
-      item_mapping: rpcResult.item_mapping,
-      image_ids: rpcResult.image_ids
-    });
-
-    // Log item mapping for debugging
-    if (rpcResult.item_mapping) {
-      console.log('[GRNFormService] Item mapping from RPC:');
-      rpcResult.item_mapping.forEach((mapping: any) => {
-        console.log(`  Index ${mapping.index}: "${mapping.item_name}" -> ID: ${mapping.item_id}`);
-      });
-    }
 
     // ✅ Upload the photos picked in the form now that we have a real GRN ID.
     // Each line's id comes from the mapping save_grn returns.
@@ -335,12 +271,11 @@ export const createGRN = async (payload: CreateGRNPayload) => {
         images: item.trl_images,
       }))
     );
-    console.log('[GRNFormService] 📸 Photos to upload with real GRN ID:', pendingPhotos.length);
 
     // The GRN is created whatever happens to its photos; the caller is told which ones failed.
     const photoUpload = await uploadPhotosOfSavedGRN(rpcResult.grn_id, pendingPhotos);
     if (photoUpload.failed.length > 0) {
-      console.warn('[GRNFormService] Photos not uploaded:', photoUpload.failed.length);
+      log.warn('Photos not uploaded', photoUpload.failed.length);
     }
     const photos: GRNPhotoSaveReport = { ...photoUpload, removalFailures: 0 };
 
@@ -358,7 +293,7 @@ export const createGRN = async (payload: CreateGRNPayload) => {
       },
     };
   } catch (error) {
-    console.error('[GRNFormService] Error creating GRN with enhanced RPC:', error);
+    log.error('Error creating GRN with enhanced RPC', loggableError(error));
     return {
       success: false,
       error: error instanceof Error ? error.message : t('grn.form.createFailed'),
@@ -384,9 +319,6 @@ export const updateGRN = async (
   let finishMutation: (() => void) | undefined;
   try {
     finishMutation = beginOperatorMutation();
-    console.log('[GRNFormService] 🚀 STARTING GRN UPDATE - Input Analysis:');
-    console.log('GRN ID:', grnId);
-    console.log('Items received from frontend:', payload.items.length);
 
     // ✅ CRITICAL: Normalize field names - support both legacy and new field names
     // Legacy: id, item_id | New: grn_trl_id, item_table_id
@@ -406,20 +338,6 @@ export const updateGRN = async (
       const normalizedGrnTrlId = isValidUUID(item.grn_trl_id) ? item.grn_trl_id : (isValidUUID(item.id) ? item.id : undefined);
       const normalizedItemTableId = item.item_table_id || item.item_id;
 
-      console.log(`[GRNFormService] 📋 Item ${index} normalization:`, {
-        original: {
-          grn_trl_id: item.grn_trl_id,
-          id: item.id,
-          item_table_id: item.item_table_id,
-          item_id: item.item_id,
-        },
-        normalized: {
-          grn_trl_id: normalizedGrnTrlId,
-          item_table_id: normalizedItemTableId,
-        },
-        item_name: item.item_name
-      });
-
       return {
         ...item,
         grn_trl_id: normalizedGrnTrlId,
@@ -427,53 +345,11 @@ export const updateGRN = async (
       };
     });
 
-    if (__DEV__) console.log('[GRNFormService] DEBUG: Normalized payload structure:', {
-      grnId,
-      headerFields: Object.keys(payload.header),
-      itemsCount: normalizedItems.length,
-      items: normalizedItems.map((item, index) => ({
-        index,
-        grn_trl_id: item.grn_trl_id,
-        item_table_id: item.item_table_id,
-        item_name: item.item_name,
-        qty: item.qty,
-        hasTrlImages: item.trl_images && item.trl_images.length > 0,
-        trlImagesCount: item.trl_images?.length || 0
-      }))
-    });
-
     // Prepare items for RPC (map frontend format to RPC format)
     const rpcItems = normalizedItems.map((item, index) => {
       // ✅ CRITICAL: Use the GRN item record ID (goodsreceived_trl.id), NOT the item master ID
       const grnItemId = item.grn_trl_id; // This is goodsreceived_trl.id - the GRN item record ID
       const itemMasterId = item.item_table_id; // This is items.id - the item master/catalog ID
-
-      console.log(`[GRNFormService] 🔍 DETAILED Item ${index} Analysis:`, {
-        rawItem: {
-          grn_trl_id: item.grn_trl_id,
-          item_table_id: item.item_table_id,
-          itemTableIdValue: item.item_table_id || 'NULL_VALUE',
-          hasItemTableId: !!item.item_table_id,
-          item_name: item.item_name
-        },
-        typeCheck: {
-          grnTrlIdType: typeof item.grn_trl_id,
-          itemTableIdType: typeof item.item_table_id,
-          itemTableIdLength: item.item_table_id?.length,
-          itemTableIdTruthy: !!item.item_table_id
-        },
-        decision: {
-          grnItemId: grnItemId,
-          itemMasterId: itemMasterId,
-          willUpdate: !!grnItemId,
-          willCreate: !grnItemId,
-          correctIdUsed: grnItemId ? 'GRN_ITEM_ID' : 'NEW_ITEM'
-        },
-        rpcPayload: {
-          willSendItemId: itemMasterId ? 'YES' : 'NO',
-          itemIdBeingSent: itemMasterId || 'NULL'
-        }
-      });
 
       // Build the RPC item with correct field names
       // NOTE: Backend validation uses camelCase, but RPC spec shows snake_case
@@ -503,49 +379,9 @@ export const updateGRN = async (
       // ✅ Only add ID if we have a valid UUID (not a temp ID like "item-xxx")
       if (isValidUUID(grnItemId)) {
         rpcItem.id = grnItemId;
-        console.log(`[GRNFormService] ✅ Item ${index} WILL UPDATE - ID: ${grnItemId}`);
-      } else {
-        console.log(`[GRNFormService] ⚠️  Item ${index} WILL CREATE NEW - No valid GRN item ID`);
-        console.log(`[GRNFormService] Debug: grnItemId="${grnItemId}", isValidUUID=${isValidUUID(grnItemId)}`);
       }
 
       return rpcItem;
-    });
-
-    console.log('[GRNFormService] 📤 FINAL RPC ITEMS PAYLOAD:', rpcItems.map((item, idx) => ({
-      index: idx,
-      id: item.id, // This should be goodsreceived_trl.id
-      item_id: item.item_id, // This should be the item master ID
-      item_name: item.item_name, // Item name
-      package_mark: item.package_mark,
-      hasGrnItemId: !!item.id,
-      hasItemId: !!item.item_id,
-      itemIdValue: item.item_id || 'NULL',
-      action: item.id ? 'UPDATE_EXISTING' : 'CREATE_NEW'
-    })));
-
-    console.log('[GRNFormService] 🔍 CRITICAL FIELD VERIFICATION:');
-    console.log('Items being sent to RPC:');
-    rpcItems.forEach((item, idx) => {
-      console.log(`  Item ${idx}: ${item.item_name}`);
-      console.log(`    - grn_item_id (id): ${item.id || 'NEW_ITEM'}`);
-      console.log(`    - item_master_id (item_id): ${item.item_id || 'NULL'}`);
-      console.log(`    - package_mark: ${item.package_mark || 'NULL'}`);
-      console.log(`    - Will ${item.id ? 'UPDATE' : 'CREATE'} in database`);
-    });
-
-    // ==========================================================================
-    // 🖼️ IMAGE DEBUG LOGGING - Track what images are being sent to backend
-    // ==========================================================================
-    console.log('[GRNFormService] 🖼️ IMAGE UPDATE ANALYSIS:');
-    console.log('[GRNFormService] 📥 Incoming header images from payload:', {
-      count: payload.header.gr_images?.length || 0,
-      images: payload.header.gr_images?.map(img => ({
-        id: img.id,
-        storagePath: img.storagePath?.substring(0, 50),
-        uploadStatus: img.uploadStatus,
-        hasStoragePath: !!img.storagePath,
-      })) || [],
     });
 
     // Prepare images for RPC using enhanced array index mapping
@@ -555,12 +391,6 @@ export const updateGRN = async (
     // NOTE: Backend validation requires storage_path and image_type (not image_url as per spec)
     if (payload.header.gr_images) {
       payload.header.gr_images.forEach((img, idx) => {
-        console.log(`[GRNFormService] 🖼️ Processing header image ${idx}:`, {
-          id: img.id,
-          hasStoragePath: !!img.storagePath,
-          storagePath: img.storagePath?.substring(0, 50),
-          willInclude: !!img.storagePath,
-        });
         if (img.storagePath) {
           rpcImages.push({
             ...(img.id && !isTemporaryGRNImageId(img.id) && { id: img.id }), // Include real IDs for existing images
@@ -571,12 +401,10 @@ export const updateGRN = async (
             mime_type: img.mimeType || 'image/jpeg'
           });
         } else {
-          console.warn(`[GRNFormService] ⚠️ Skipping header image ${idx} - no storagePath`);
+          log.warn(`Skipping header image ${idx} - no storagePath`);
         }
       });
     }
-
-    console.log('[GRNFormService] 🖼️ Header images to send:', rpcImages.length);
 
     // Add item images using enhanced array index mapping (supports multiple images per item)
     // NOTE: Backend validation requires storage_path and image_type (not image_url as per spec)
@@ -598,10 +426,8 @@ export const updateGRN = async (
             // Link image to GRN item for proper association (uses normalized grn_trl_id)
             if (item.grn_trl_id && typeof item.grn_trl_id === 'string' && item.grn_trl_id.length > 10) {
               imagePayload.grn_item_id = item.grn_trl_id; // Link to existing GRN item record
-              console.log(`[GRNFormService] Linking item image ${imgIndex} to existing GRN item ID: ${item.grn_trl_id}`);
             } else {
               imagePayload.item_index = index; // For new items, use array index
-              console.log(`[GRNFormService] Using item_index ${index} for new item image ${imgIndex}`);
             }
 
             rpcImages.push(imagePayload);
@@ -617,54 +443,10 @@ export const updateGRN = async (
     const headerImagesSending = rpcImages.filter(img => img.image_type === 'header').length;
     const itemImagesSending = rpcImages.filter(img => img.image_type === 'item').length;
 
-    console.log('[GRNFormService] 🖼️ IMAGE UPDATE SUMMARY:');
-    console.log(`  📥 Header images in payload: ${headerImagesInPayload}`);
-    console.log(`  📤 Header images to send: ${headerImagesSending}`);
-    console.log(`  📤 Item images to send: ${itemImagesSending}`);
-    console.log(`  📤 Total images to send: ${rpcImages.length}`);
-
     if (headerImagesInPayload !== headerImagesSending) {
-      console.warn(`[GRNFormService] ⚠️ IMAGE MISMATCH: ${headerImagesInPayload} in payload but only ${headerImagesSending} will be sent`);
-      console.warn('[GRNFormService] ⚠️ This usually means some images are missing storagePath');
+      log.warn(`IMAGE MISMATCH: ${headerImagesInPayload} in payload but only ${headerImagesSending} will be sent`);
+      log.warn('This usually means some images are missing storagePath');
     }
-
-    console.log('[GRNFormService] 🔍 IMAGE FORMAT VERIFICATION:');
-    rpcImages.forEach((img, index) => {
-      console.log(`[GRNFormService] Image ${index + 1}:`, {
-        hasId: !!img.id,
-        id: img.id,
-        hasStoragePath: !!img.storage_path,
-        storage_path: img.storage_path?.substring(0, 60),
-        image_type: img.image_type,
-        hasRequiredFields: !!(img.storage_path && img.image_type),
-        // Item linking fields
-        item_index: img.item_index,
-        grn_item_id: img.grn_item_id,
-        linkingMethod: img.grn_item_id ? 'GRN_ITEM_ID' : (img.item_index !== undefined ? 'ITEM_INDEX' : 'NONE')
-      });
-    });
-
-    console.log('[GRNFormService] Calling update_grn RPC with corrected parameters:', {
-      p_grn_id: grnId, // ✅ Corrected parameter name
-      p_gr_no: payload.header.gr_no,
-      p_date: payload.header.date,
-      p_customer_id: payload.header.customer_id,
-      p_customer_name: payload.header.customer_name,
-      p_sender_id: payload.header.sender_id, // ✅ Correct sender fields
-      p_sender_name: payload.header.sender_name,
-      p_supervisor_id: payload.header.supervisor_id, // ✅ Correct supervisor fields
-      p_supervisor_name: payload.header.supervisor_name,
-      p_registration: payload.header.registration,
-      p_note: payload.header.note, // ✅ Correct note field
-      p_leon: payload.header.leon, // ✅ Correct leon field
-      p_pricing_mode: payload.header.pricing_mode, // ✅ Correct pricing mode
-      p_items: rpcItems,
-      p_images: rpcImages,
-      itemsCount: rpcItems.length,
-      imagesCount: rpcImages.length,
-      headerImagesCount: rpcImages.filter(img => !Object.prototype.hasOwnProperty.call(img, 'item_index')).length,
-      itemImagesCount: rpcImages.filter(img => Object.prototype.hasOwnProperty.call(img, 'item_index')).length
-    });
 
     // Prepare the complete RPC request payload
     const rpcRequest = {
@@ -685,44 +467,12 @@ export const updateGRN = async (
       p_images: rpcImages
     };
 
-    console.log('[GRNFormService] 📤 COMPLETE RPC REQUEST PAYLOAD:');
-    console.log('='.repeat(80));
-    console.log('Function: update_grn');
-    console.log('Request:', JSON.stringify(rpcRequest, null, 2));
-    console.log('='.repeat(80));
-
     // Call the update_grn RPC function with correct parameters using authenticated client
     const authenticatedClient = await getAuthenticatedClient();
     const { data, error } = await authenticatedClient.rpc('update_grn', rpcRequest);
 
-    console.log('[GRNFormService] 📥 COMPLETE RPC RESPONSE:');
-    console.log('='.repeat(80));
-    console.log('Success:', !error);
-    console.log('Error:', error);
-    console.log('Data:', JSON.stringify(data, null, 2));
-    console.log('='.repeat(80));
-
-    // Quick summary for debugging
-    if (__DEV__) console.log('[GRNFormService] 🔍 QUICK DEBUG SUMMARY:');
-    console.log('RPC Function Called: update_grn');
-    console.log('GRN ID:', grnId);
-    console.log('Items sent:', rpcItems.length);
-    console.log('Items with IDs (will update):', rpcItems.filter(item => item.id).length);
-    console.log('Items without IDs (will create):', rpcItems.filter(item => !item.id).length);
-    console.log('Item IDs being sent:', rpcItems.map(item => ({ name: item.item_name, id: item.id || 'NEW', item_id: item.item_id, package_mark: item.package_mark })));
-    console.log('Images sent:', rpcImages.length);
-    console.log('RPC Success:', !error);
-    console.log('RPC Error Message:', error?.message || 'None');
-    if (data) {
-      const result = Array.isArray(data) && data.length > 0 ? data[0] : (Array.isArray(data) ? null : data);
-      console.log('RPC Result Success:', result?.success);
-      console.log('RPC Result Message:', result?.message);
-      console.log('RPC Error Code:', result?.error_code);
-    }
-    console.log('='.repeat(50));
-
     if (error) {
-      console.error('[GRNFormService] Update RPC Error:', error);
+      log.error('update_grn failed', loggableError(error));
 
       // Handle stock protection errors specifically
       if (error.message?.includes('dispatches exist') || error.message?.includes('STOCK_PROTECTED')) {
@@ -736,7 +486,7 @@ export const updateGRN = async (
     const rpcResult = Array.isArray(data) && data.length > 0 ? data[0] : (Array.isArray(data) ? null : data);
 
     if (!rpcResult || !rpcResult.success) {
-      console.error('[GRNFormService] Update RPC returned failure:', rpcResult);
+      log.error('update_grn returned failure', { errorCode: rpcResult?.error_code });
 
       // Handle stock protection from RPC response
       if (rpcResult?.error_code === 'STOCK_PROTECTED') {
@@ -744,24 +494,6 @@ export const updateGRN = async (
       }
 
       throw new Error(serverText(rpcResult?.message, t('grn.form.updateRejected')));
-    }
-
-    console.log('[GRNFormService] Update RPC Success:', {
-      gr_id: rpcResult.gr_id,
-      message: rpcResult.message,
-      stats: rpcResult.stats
-    });
-
-    // Log update statistics if available
-    if (rpcResult.stats) {
-      console.log('[GRNFormService] Update Statistics:', {
-        items_updated: rpcResult.stats.items_updated,
-        items_created: rpcResult.stats.items_created,
-        items_deleted: rpcResult.stats.items_deleted,
-        images_updated: rpcResult.stats.images_updated,
-        images_created: rpcResult.stats.images_created,
-        images_deleted: rpcResult.stats.images_deleted
-      });
     }
 
     // ✅ Photos removed in the form. update_grn deletes the rows it was not sent,
@@ -786,7 +518,7 @@ export const updateGRN = async (
       try {
         await authenticatedClient.storage.from('grn-images').remove(orphanedPaths);
       } catch (removeError) {
-        console.warn('[GRNFormService] Could not remove the files of deleted photos:', removeError);
+        log.warn('Could not remove the files of deleted photos', loggableError(removeError));
       }
     }
 
@@ -806,12 +538,11 @@ export const updateGRN = async (
         images: item.trl_images,
       }))
     );
-    console.log('[GRNFormService] 📸 Photos to upload for GRN update:', pendingPhotos.length);
 
     // The GRN is updated whatever happens to its photos; the caller is told which ones failed.
     const photoUpload = await uploadPhotosOfSavedGRN(grnId, pendingPhotos);
     if (photoUpload.failed.length > 0) {
-      console.warn('[GRNFormService] Photos not uploaded during update:', photoUpload.failed.length);
+      log.warn('Photos not uploaded during update', photoUpload.failed.length);
     }
     const photos: GRNPhotoSaveReport = { ...photoUpload, removalFailures };
 
@@ -825,7 +556,7 @@ export const updateGRN = async (
       },
     };
   } catch (error) {
-    console.error('[GRNFormService] Error updating GRN with RPC:', error);
+    log.error('Error updating GRN with RPC', loggableError(error));
 
     // Provide user-friendly error messages
     let errorMessage = t('grn.form.updateFailed');
@@ -851,7 +582,6 @@ export const updateGRN = async (
 // Load GRN data for editing
 export const loadGRNData = async (grnId: string) => {
   try {
-    console.log('[loadGRNData] 🔄 Loading fresh data from database (NO CACHE) for GRN:', grnId);
 
     // Use authenticated client to ensure RLS policies are satisfied
     const authenticatedClient = await getAuthenticatedClient();
@@ -885,16 +615,11 @@ export const loadGRNData = async (grnId: string) => {
 
     if (itemsError) throw itemsError;
 
-    // ✅ REDUCED LOGGING: Only essential info to prevent render loops
-    console.log(`[loadGRNData] Loading items for GRN: ${grnId}, found: ${itemsData?.length || 0} items`);
-
     // ✅ CRITICAL: Verify each item has required ID
     if (itemsData && itemsData.length > 0) {
       const missingIds = itemsData.filter(item => !item.id);
       if (missingIds.length > 0) {
-        console.error(`[loadGRNData] CRITICAL: ${missingIds.length} items missing ID field!`);
-      } else {
-        console.log(`[loadGRNData] ✅ All ${itemsData.length} items have valid IDs`);
+        log.error(`CRITICAL: ${missingIds.length} items missing ID field!`);
       }
     }
 
@@ -906,10 +631,9 @@ export const loadGRNData = async (grnId: string) => {
       .eq('image_type', 'header')
       .order('display_order', { ascending: true });
 
-    if (imagesError) console.warn('[loadGRNData] Failed to fetch images:', imagesError);
+    if (imagesError) log.warn('Failed to fetch images', loggableError(imagesError));
 
     // Get signed URLs for images
-    console.log('[loadGRNData] Generating signed URLs for', imagesData?.length || 0, 'header images');
     const imagesWithUrls = await Promise.all((imagesData || []).map(async (img) => {
       if (img.storage_path) {
         const { data: urlData, error: urlError } = await authenticatedClient.storage
@@ -917,9 +641,7 @@ export const loadGRNData = async (grnId: string) => {
           .createSignedUrl(img.storage_path, 3600); // 1 hour expiry
 
         if (urlError) {
-          console.error('[loadGRNData] Failed to create signed URL for image:', img.id, urlError);
-        } else {
-          console.log('[loadGRNData] Signed URL created for image:', img.id, urlData?.signedUrl ? 'SUCCESS' : 'EMPTY');
+          log.error('Failed to create signed URL for image', img.id, loggableError(urlError));
         }
 
         return {
@@ -927,15 +649,9 @@ export const loadGRNData = async (grnId: string) => {
           signedUrl: urlData?.signedUrl
         };
       }
-      console.warn('[loadGRNData] Image has no storage_path:', img.id);
+      log.warn('Image has no storage_path', img.id);
       return img;
     }));
-
-    console.log('[loadGRNData] Header images with URLs:', imagesWithUrls.map(img => ({
-      id: img.id,
-      hasSignedUrl: !!img.signedUrl,
-      storagePath: img.storage_path
-    })));
 
     // Transform to form data format
     const header: GRNHeaderData = {
@@ -964,13 +680,6 @@ export const loadGRNData = async (grnId: string) => {
       })) : [],
     };
 
-    console.log('[loadGRNData] Header gr_images constructed:', header.gr_images.map(img => ({
-      id: img.id,
-      hasImageUrl: !!img.imageUrl && img.imageUrl.length > 0,
-      imageUrlPreview: img.imageUrl?.substring(0, 80),
-      storagePath: img.storagePath
-    })));
-
     // Fetch item images
     const itemIds = itemsData.map((item: any) => item.id).filter(Boolean);
     let itemImagesData: any[] = [];
@@ -984,7 +693,7 @@ export const loadGRNData = async (grnId: string) => {
         .order('display_order', { ascending: true });
 
       if (itemImagesError) {
-        console.warn('[loadGRNData] Failed to fetch item images:', itemImagesError);
+        log.warn('Failed to fetch item images', loggableError(itemImagesError));
       } else {
         itemImagesData = itemImages || [];
       }
@@ -1017,19 +726,9 @@ export const loadGRNData = async (grnId: string) => {
     const items: GRNItemData[] = itemsData.map((item: any, index: number) => {
       // ✅ CRITICAL: Ensure we ALWAYS use the database ID, never fall back to generated ID
       if (!item.id) {
-        console.error(`[loadGRNData] ❌ CRITICAL ERROR: Database item ${index} missing ID field!`);
+        log.error(`CRITICAL ERROR: Database item ${index} missing ID field!`);
         throw new Error(`Database item at index ${index} is missing the required 'id' field. This indicates a database schema or query issue.`);
       }
-
-      // Log the raw data from database
-      console.log(`[loadGRNData] Item ${index} from DB:`, {
-        id: item.id,
-        item_id: item.item_id,
-        item_name: item.item_name,
-        hasItemId: !!item.item_id,
-        itemIdValue: item.item_id,
-        imagesCount: itemImagesByItemId[item.id]?.length || 0
-      });
 
       // Map all images for this item to GRNImageData array
       const itemImages = itemImagesByItemId[item.id] || [];
@@ -1059,14 +758,12 @@ export const loadGRNData = async (grnId: string) => {
       };
     });
 
-    console.log(`[loadGRNData] ✅ Successfully processed ${items.length} items with valid IDs`);
-
     return {
       success: true,
       data: { header, items },
     };
   } catch (error) {
-    console.error('[GRNFormService] Error loading GRN:', error);
+    log.error('Error loading GRN', loggableError(error));
     return {
       success: false,
       error: error instanceof Error ? error.message : t('grn.form.loadFailed'),

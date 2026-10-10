@@ -57,6 +57,9 @@ import { showAlert } from '@/utils/alert';
 import { formatCount } from '@/utils/formatters';
 import { t as tr, formatIdentifier } from '@/i18n';
 import { serverText, failureText } from '@/utils/serverText';
+import { createLogger, loggableError } from '@/utils/logger';
+
+const log = createLogger('grn');
 const makeStyles = (t: ThemeTokens) => ({
   container: {
     flex: 1,
@@ -278,7 +281,6 @@ function GRNDetailScreen() {
       const result = await getGRNDetails(id);
 
       if (controller.signal.aborted) {
-        if (__DEV__) console.log('[GRNDetailScreen] Request aborted, skipping state update');
         return;
       }
 
@@ -293,10 +295,9 @@ function GRNDetailScreen() {
       }
     } catch (err) {
       if (isAbortError(err)) {
-        if (__DEV__) console.log('[GRNDetailScreen] Request was aborted');
         return;
       }
-      console.error('[GRNDetailScreen] Exception:', err);
+      log.error('Exception', loggableError(err));
       setData(null);
       setError(
         tr('grn.details.loadFailedConnection')
@@ -369,7 +370,7 @@ function GRNDetailScreen() {
       setItemDispatchSummaries(summaries);
       setDispatchError(firstError);
     } catch (error) {
-      console.error('[GRNDetailScreen] Error loading dispatches:', error);
+      log.error('Error loading dispatches', loggableError(error));
       setDispatchError(
         tr('grn.details.dispatchHistoryFailedConnection')
       );
@@ -468,7 +469,7 @@ function GRNDetailScreen() {
                 showAlert(tr('grn.details.deleteFailedTitle'), errorMessage);
               }
             } catch (error) {
-              console.error('[GRNDetailScreen] Delete error:', error);
+              log.error('Delete error', loggableError(error));
               showAlert(
                 tr('grn.details.deleteFailedTitle'),
                 tr('common.checkConnection')
@@ -486,7 +487,6 @@ function GRNDetailScreen() {
 
     setIsShareLoading(true);
     try {
-      if (__DEV__) console.log('[GRNDetailScreen] Generating PDF for GRN:', data.grn.gr_no);
 
       const pdfResult = await generateGRNPDF(data.grn.gr_no);
 
@@ -494,8 +494,6 @@ function GRNDetailScreen() {
         showAlert(tr('grn.details.pdfCreateFailedTitle'), serverText(pdfResult.error, tr('grn.details.tryAgainInMoment')));
         return;
       }
-
-      if (__DEV__) console.log('[GRNDetailScreen] PDF generated, downloading and sharing...');
 
       const shareResult = await downloadAndSharePDF(
         pdfResult.pdfUrl,
@@ -506,7 +504,7 @@ function GRNDetailScreen() {
         showAlert(tr('grn.details.pdfShareFailedTitle'), serverText(shareResult.error, tr('grn.details.tryAgainInMoment')));
       }
     } catch (error) {
-      console.error('[GRNDetailScreen] Share PDF error:', error);
+      log.error('Share PDF error', loggableError(error));
       showAlert(tr('grn.details.pdfShareFailedTitle'), tr('common.checkConnection'));
     } finally {
       setIsShareLoading(false);

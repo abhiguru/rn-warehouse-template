@@ -70,7 +70,6 @@ export const SenderBottomSheet: React.FC<SenderBottomSheetProps> = ({
 
   // Search function
   const searchCustomers = useCallback(async (query: string): Promise<Customer[]> => {
-    console.log('[SenderBottomSheet] Searching customers with query:', query);
     const results = await searchService.searchCustomers(query);
 
     if (results && results.length > 0) {

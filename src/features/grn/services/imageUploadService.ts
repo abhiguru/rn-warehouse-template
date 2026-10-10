@@ -21,6 +21,9 @@ import { isTemporaryGRNImageId } from './imageId';
 import { formatNumber } from '@/utils/formatters';
 import { t } from '@/i18n';
 import { serverText } from '@/utils/serverText';
+import { createLogger, loggableError } from '@/utils/logger';
+
+const log = createLogger('grn-photos');
 
 export interface ImageUploadProgress {
   loaded: number;
@@ -77,7 +80,7 @@ const imageToBase64 = async (uri: string): Promise<string> => {
     const base64 = await file.base64();
     return base64;
   } catch (error) {
-    console.error('[ImageService] Error converting image to base64:', error);
+    log.error('Error converting image to base64', loggableError(error));
     throw new Error('Failed to read image file');
   }
 };
@@ -110,10 +113,7 @@ const imageToArrayBuffer = async (
 
     return { buffer: arrayBuffer, size: arrayBuffer.byteLength };
   } catch (error) {
-    console.error(
-      '[ImageService] Error converting image to ArrayBuffer:',
-      error
-    );
+    log.error('Error converting image to ArrayBuffer', loggableError(error));
     throw new Error('Failed to read image file');
   }
 };
@@ -233,7 +233,7 @@ export const uploadGRNImage = async (
     );
 
     if (regError) {
-      console.error('[ImageService] Registration failed:', regError);
+      log.error('Registration failed', loggableError(regError));
       return {
         success: false,
         error: serverText(regError.message, t('grn.upload.registerFailed')),
@@ -241,7 +241,7 @@ export const uploadGRNImage = async (
     }
 
     if (!regResult?.success) {
-      console.error('[ImageService] Registration rejected:', regResult?.error);
+      log.error('Registration rejected');
       return {
         success: false,
         error: serverText(regResult?.error, t('grn.upload.registrationRejected')),
@@ -278,7 +278,7 @@ export const uploadGRNImage = async (
       const uploadDuration = Date.now() - startTime;
 
       if (uploadError) {
-        console.error('[ImageService] Storage upload failed:', uploadError);
+        log.error('Storage upload failed', loggableError(uploadError));
         throw uploadError;
       }
 
@@ -298,15 +298,12 @@ export const uploadGRNImage = async (
       );
 
       if (confirmError) {
-        console.error('[ImageService] Confirmation failed:', confirmError);
+        log.error('Confirmation failed', loggableError(confirmError));
         throw confirmError;
       }
 
       if (!confirmResult?.success) {
-        console.error(
-          '[ImageService] Confirmation rejected:',
-          confirmResult?.error
-        );
+        log.error('Confirmation rejected');
         throw new Error(
           serverText(confirmResult?.error, t('grn.upload.confirmationFailed'))
         );
@@ -319,7 +316,7 @@ export const uploadGRNImage = async (
 
       let finalImageUrl: string;
       if (urlError || !urlData?.signedUrl) {
-        console.warn('[ImageService] Could not create signed URL:', urlError);
+        log.warn('Could not create signed URL', loggableError(urlError));
         // Use direct storage URL as fallback
         finalImageUrl = `${getCurrentConfig().url}/storage/v1/object/grn-images/${storagePath}`;
       } else {
@@ -345,27 +342,18 @@ export const uploadGRNImage = async (
       };
     } catch (uploadOrConfirmError) {
       // Rollback: Cancel the pending DB record and try to remove from storage
-      console.error(
-        '[ImageService] Upload/confirm failed, rolling back:',
-        uploadOrConfirmError
-      );
+      log.error('Upload/confirm failed, rolling back', loggableError(uploadOrConfirmError));
 
       try {
         await supabase.rpc('cancel_grn_image_upload', { p_image_id: imageId });
       } catch (cancelError) {
-        console.warn(
-          '[ImageService] Failed to cancel pending record:',
-          cancelError
-        );
+        log.warn('Failed to cancel pending record', loggableError(cancelError));
       }
 
       try {
         await supabase.storage.from('grn-images').remove([storagePath]);
       } catch (removeError) {
-        console.warn(
-          '[ImageService] Failed to remove partial upload:',
-          removeError
-        );
+        log.warn('Failed to remove partial upload', loggableError(removeError));
       }
 
       return {
@@ -377,7 +365,7 @@ export const uploadGRNImage = async (
       };
     }
   } catch (error) {
-    console.error('[ImageService] Upload exception:', error);
+    log.error('Upload exception', loggableError(error));
 
     let errorMessage = t('grn.photos.uploadFailed');
     if (error instanceof Error) {
@@ -476,16 +464,16 @@ export const getImageSignedUrl = async (
       if (attempt < 3) {
         await new Promise(resolve => setTimeout(resolve, attempt * 500));
       } else {
-        console.error('[ImageService] Final signed URL attempt failed:', error);
+        log.error('Final signed URL attempt failed', loggableError(error));
       }
     }
 
     // Fallback to direct storage URL
     const baseUrl = `${getCurrentConfig().url}/storage/v1/object/grn-images/${filePath}`;
-    console.warn('[ImageService] Using fallback direct storage URL:', baseUrl);
+    log.warn('Using fallback direct storage URL');
     return baseUrl;
   } catch (error) {
-    console.error('[ImageService] Error getting signed URL:', error);
+    log.error('Error getting signed URL', loggableError(error));
     return filePath; // Fallback to original path
   }
 };
@@ -500,7 +488,7 @@ export const getImagePublicUrl = (filePath: string): string => {
     // In the future, if we store only paths, we can generate URLs here
     return filePath;
   } catch (error) {
-    console.error('[ImageService] Error getting public URL:', error);
+    log.error('Error getting public URL', loggableError(error));
     return filePath; // Fallback to original path
   }
 };
@@ -569,7 +557,7 @@ const uploadSingleDeferredImage = async (
         fileBuffer = result.buffer;
         actualFileSize = result.size;
       } catch (sizeError) {
-        console.error(`[ImageService] Failed to get file size:`, sizeError);
+        log.error(`Failed to get file size`, loggableError(sizeError));
         return { success: false, error: t('grn.upload.readFailed') };
       }
     }
@@ -588,18 +576,12 @@ const uploadSingleDeferredImage = async (
     );
 
     if (regError) {
-      console.error(
-        `[ImageService] Registration failed for deferred ${imageType} image:`,
-        regError
-      );
+      log.error(`Registration failed for deferred ${imageType} image`, loggableError(regError));
       return { success: false, error: regError.message };
     }
 
     if (!regResult?.success) {
-      console.error(
-        `[ImageService] Registration rejected for deferred ${imageType} image:`,
-        regResult?.error
-      );
+      log.error(`Registration rejected for deferred ${imageType} image`);
       return {
         success: false,
         error: serverText(regResult?.error, t('grn.upload.registerFailed')),
@@ -631,10 +613,7 @@ const uploadSingleDeferredImage = async (
         });
 
       if (uploadError) {
-        console.error(
-          `[ImageService] Storage upload failed for deferred ${imageType} image:`,
-          uploadError
-        );
+        log.error(`Storage upload failed for deferred ${imageType} image`, loggableError(uploadError));
         throw uploadError;
       }
 
@@ -649,45 +628,30 @@ const uploadSingleDeferredImage = async (
       );
 
       if (confirmError) {
-        console.error(
-          `[ImageService] Confirmation failed for deferred ${imageType} image:`,
-          confirmError
-        );
+        log.error(`Confirmation failed for deferred ${imageType} image`, loggableError(confirmError));
         throw confirmError;
       }
 
       if (!confirmResult?.success) {
-        console.error(
-          `[ImageService] Confirmation rejected for deferred ${imageType} image:`,
-          confirmResult?.error
-        );
+        log.error(`Confirmation rejected for deferred ${imageType} image`);
         throw new Error(serverText(confirmResult?.error, t('grn.upload.confirmationFailed')));
       }
 
       return { success: true };
     } catch (uploadOrConfirmError) {
       // Rollback: Cancel the pending DB record and try to remove from storage
-      console.error(
-        `[ImageService] Upload/confirm failed for deferred ${imageType} image, rolling back:`,
-        uploadOrConfirmError
-      );
+      log.error(`Upload/confirm failed for deferred ${imageType} image, rolling back`, loggableError(uploadOrConfirmError));
 
       try {
         await supabase.rpc('cancel_grn_image_upload', { p_image_id: imageId });
       } catch (cancelError) {
-        console.warn(
-          `[ImageService] Failed to cancel pending record for deferred ${imageType} image:`,
-          cancelError
-        );
+        log.warn(`Failed to cancel pending record for deferred ${imageType} image`, loggableError(cancelError));
       }
 
       try {
         await supabase.storage.from('grn-images').remove([storagePath]);
       } catch (removeError) {
-        console.warn(
-          `[ImageService] Failed to remove partial upload for deferred ${imageType} image:`,
-          removeError
-        );
+        log.warn(`Failed to remove partial upload for deferred ${imageType} image`, loggableError(removeError));
       }
 
       return {
@@ -699,10 +663,7 @@ const uploadSingleDeferredImage = async (
       };
     }
   } catch (err) {
-    console.error(
-      `[ImageService] Error uploading deferred ${imageType} image:`,
-      err
-    );
+    log.error(`Error uploading deferred ${imageType} image`, loggableError(err));
     return {
       success: false,
       error: err instanceof Error ? err.message : t('grn.photos.uploadFailed'),
@@ -813,7 +774,7 @@ export const uploadGRNPhotos = async (
     supabase = await getAuthenticatedClient();
   } catch (error) {
     finishMutation?.();
-    console.error('[ImageService] uploadGRNPhotos could not start:', error);
+    log.error('uploadGRNPhotos could not start', loggableError(error));
     return {
       uploadedCount: 0,
       failed: photos.map(photo => ({ ...describe(photo), error: t('grn.photos.uploadFailed') })),
@@ -850,7 +811,7 @@ export const uploadGRNPhotos = async (
     } else if (result) {
       failed.push({ ...describe(photos[index]), error: result.error });
     } else {
-      console.warn('[ImageService] Photo upload still running when the wait ended');
+      log.warn('Photo upload still running when the wait ended');
       failed.push({ ...describe(photos[index]), error: t('grn.upload.stillUploading'), inFlight: attempts[index] });
     }
   });

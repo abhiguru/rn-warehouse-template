@@ -46,6 +46,9 @@ import {
 import { showAlert } from '@/utils/alert';
 import { t as tr } from '@/i18n';
 import { serverText } from '@/utils/serverText';
+import { createLogger, loggableError } from '@/utils/logger';
+
+const log = createLogger('grn');
 const EMPTY_GRN_ITEM = (): ItemFormData => ({
   grn_trl_id: `item-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
   item_table_id: '',
@@ -97,7 +100,6 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
     const newItem = EMPTY_GRN_ITEM();
     if (savedItems.length > 0 && savedItems[0].rack) {
       newItem.rack = savedItems[0].rack;
-      console.log('[GrnItemsStep] Auto-populating rack from first item:', savedItems[0].rack);
     }
     return newItem;
   }, [savedItems]);
@@ -180,7 +182,6 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
               // Only add new items with dispatches, preserve existing entries
               if (item.qty !== item.stock && !newMap.has(item.grn_trl_id)) {
                 newMap.set(item.grn_trl_id, item.stock);
-                console.log('[GrnItemsStep] Item has dispatches:', item.grn_trl_id, 'qty:', item.qty, 'original stock:', item.stock);
               }
             });
             return newMap;
@@ -442,7 +443,7 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
         };
         handleImageUploadComplete(uploadedImageData, tempImageData.id);
       } catch (error) {
-        console.error('[GrnItemsStep] Upload failed:', error);
+        log.error('Upload failed', loggableError(error));
       }
     }
   };
@@ -472,7 +473,7 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
             );
             await processPickedImage(result);
           } catch (error) {
-            console.error('[GrnItemsStep] Camera error:', error);
+            log.error('Camera error', loggableError(error));
           }
         },
       },
@@ -491,7 +492,7 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
             );
             await processPickedImage(result);
           } catch (error) {
-            console.error('[GrnItemsStep] Gallery error:', error);
+            log.error('Gallery error', loggableError(error));
           }
         },
       },
@@ -586,7 +587,7 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
           router.push('/grn-form/step3');
         });
       } catch (error) {
-        console.error('[GrnItemsStep] Navigation error:', error);
+        log.error('Navigation error', loggableError(error));
         setIsNavigating(false);
       }
     } else {
@@ -600,7 +601,7 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
           router.push(`/grn-edit/${grnId}/step3`);
         });
       } catch (error) {
-        console.error('[GrnItemsStep] Navigation error:', error);
+        log.error('Navigation error', loggableError(error));
         setIsNavigating(false);
       }
     }

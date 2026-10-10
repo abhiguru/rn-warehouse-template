@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -49,6 +49,9 @@ import { formatCount, formatDate, formatNumber, formatWeight } from '@/utils/for
 import { StatusTag } from '@/components/ui';
 import { t as tr, formatIdentifier } from '@/i18n';
 import { serverText } from '@/utils/serverText';
+import { createLogger, loggableError } from '@/utils/logger';
+
+const log = createLogger('grn');
 
 /** "9 Oct 2026" (§12.3); today when no date is set yet. */
 function formatReviewDate(value: string | undefined): string {
@@ -102,11 +105,6 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
   const [showImageOverlay, setShowImageOverlay] = useState(false);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
-
-  useEffect(() => {
-    console.log('[GrnReviewStep] Header data:', header);
-    console.log('[GrnReviewStep] Items count:', items.length);
-  }, [header, items]);
 
   const handleCancel = () => {
     showAlert(
@@ -300,7 +298,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
       }
     } catch (error) {
       triggerError();
-      console.error('[GrnReviewStep] Submission error:', error);
+      log.error('Submission error', loggableError(error));
       showAlert(saveFailedTitle(), connectionHint());
     } finally {
       setIsSubmitting(false);
@@ -378,7 +376,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
       }
     } catch (error) {
       triggerError();
-      console.error('[GrnReviewStep] Update error:', error);
+      log.error('Update error', loggableError(error));
       const errorMessage = error instanceof Error ? error.message : '';
       if (errorMessage.includes('Stock Protection') || errorMessage.includes('STOCK_PROTECTED') || errorMessage.includes('dispatches exist')) {
         showAlert(stockProtectedTitle(), stockProtectedMessage());
@@ -407,7 +405,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
         setSnackbarVisible(true);
       }
     } catch (error) {
-      console.error('[GrnReviewStep] Share PDF error:', error);
+      log.error('Share PDF error', loggableError(error));
       setSnackbarMessage(tr('grn.review.pdfShareFailed'));
       setSnackbarVisible(true);
     } finally {
@@ -865,7 +863,6 @@ const makeStyles = (t: ThemeTokens) => ({
   keyValueLabel: { ...typography.subhead, color: t.text.secondary },
   keyValueValue: { ...typography.body, color: t.text.primary, textAlign: 'right' as const, flexShrink: 1 },
   keyValueValueEmphasized: { fontWeight: fontWeight.semibold },
-
 
   notesSection: {
     marginTop: space.sm,

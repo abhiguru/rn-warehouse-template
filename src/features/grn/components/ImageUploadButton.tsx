@@ -26,6 +26,9 @@ import type { ThemeTokens } from '@/theme/tokens';
 import { showAlert } from '@/utils/alert';
 import { t as tr } from '@/i18n';
 import { serverText } from '@/utils/serverText';
+import { createLogger, loggableError } from '@/utils/logger';
+
+const log = createLogger('grn-photos');
 // Type for custom upload function metadata (supports both camelCase and snake_case)
 type CustomUploadMetadata = {
   // camelCase (GRN format)
@@ -206,18 +209,12 @@ export const ImageUploadButton: React.FC<ImageUploadButtonProps> = ({
           onImagesSelected(updatedUrls);
         }
 
-        console.log('[ImageUploadButton] Upload completed:', {
-          imageUrl: result.imageUrl,
-          tempId: tempImageId,
-          finalId: finalImageData.id,
-          hasStoragePath: !!storagePath
-        });
       } else {
         throw new Error(serverText(result.error, tr('grn.photos.uploadFailed')));
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : tr('grn.photos.uploadFailed');
-      console.error('[ImageUploadButton] Upload error:', errorMessage);
+      log.error('Upload error');
 
       // Notify parent component of upload error
       onImageUploadError?.(tempImageId, errorMessage);
@@ -281,7 +278,7 @@ export const ImageUploadButton: React.FC<ImageUploadButtonProps> = ({
         await uploadImages(result.assets);
       }
     } catch (error) {
-      console.error('[ImageUpload] Error picking images:', error);
+      log.error('Error picking images', loggableError(error));
       showAlert(tr('grn.photos.openLibraryFailedTitle'), tr('grn.photos.tryAgain'));
     }
   };
@@ -307,10 +304,8 @@ export const ImageUploadButton: React.FC<ImageUploadButtonProps> = ({
         const fileInfo = await file.info();
         fileSize = fileInfo?.size;
       } catch (infoError) {
-        console.warn('[ImageUpload] Could not get file size, proceeding anyway:', infoError);
+        log.warn('Could not get file size, proceeding anyway', loggableError(infoError));
       }
-
-      console.log('[ImageUpload] Camera capture file info:', { uri, fileSize });
 
       // Create asset object with actual file size
       const asset: ImagePicker.ImagePickerAsset = {
@@ -324,7 +319,7 @@ export const ImageUploadButton: React.FC<ImageUploadButtonProps> = ({
       };
       await uploadImage(asset);
     } catch (error) {
-      console.error('[ImageUpload] Error processing captured photo:', error);
+      log.error('Error processing captured photo', loggableError(error));
       showAlert(tr('grn.photos.captureFailedTitle'), tr('grn.photos.captureFailedMessage'));
     }
   };

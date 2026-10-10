@@ -159,6 +159,20 @@ class Logger {
 }
 
 /**
+ * What may be logged about a caught error or an RPC error: its code and its
+ * kind. Never its text, which can carry names, numbers and the server's
+ * wording.
+ */
+export const loggableError = (error: unknown): { code?: string; name?: string } => {
+  if (!error || typeof error !== 'object') return {};
+  const { code, name } = error as { code?: unknown; name?: unknown };
+  return {
+    ...(typeof code === 'string' && { code }),
+    ...(typeof name === 'string' && { name }),
+  };
+};
+
+/**
  * Create a logger instance for a specific category
  */
 export const createLogger = (category: string): Logger => {

@@ -16,6 +16,9 @@ import { fontWeight, radius, space, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { StatusTag } from '@/components/ui';
 import { t as tr } from '@/i18n';
+import { createLogger, loggableError } from '@/utils/logger';
+
+const log = createLogger('grn');
 
 // ============================================================================
 // TYPES
@@ -64,17 +67,11 @@ export const ItemAutocomplete: React.FC<ItemAutocompleteProps> = ({
     }
 
     try {
-      console.log('[ItemAutocomplete] Searching for:', query);
 
       // Use searchService RPC instead of direct table query
       const results = await searchService.searchGRNItems(query);
 
-      console.log('[ItemAutocomplete] Search result:', {
-        count: results?.length || 0,
-      });
-
       if (!results || results.length === 0) {
-        console.log('[ItemAutocomplete] No items found for query:', query);
         return [];
       }
 
@@ -86,10 +83,9 @@ export const ItemAutocomplete: React.FC<ItemAutocompleteProps> = ({
         description: '',
       }));
 
-      console.log('[ItemAutocomplete] Mapped items:', mappedItems.length);
       return mappedItems;
     } catch (err) {
-      console.error('[ItemAutocomplete] Search error:', err);
+      log.error('Search error', loggableError(err));
       return [];
     }
   }, []);

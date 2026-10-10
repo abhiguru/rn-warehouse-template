@@ -7,21 +7,42 @@
 
 import React, { useCallback } from 'react';
 import { View, Text, Pressable } from 'react-native';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
 import { SearchableBottomSheet } from '@/components/common';
-import { useThemedStyles, useTokens } from '@/hooks/useTheme';
-import { iconSize, layout, space, typography, touchTarget } from '@/theme/tokens';
+import { useThemedStyles } from '@/hooks/useTheme';
+import { layout, space, typography, touchTarget } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { Avatar } from '@/components/ui';
-import { formatMobile } from '@/utils/formatters';
 import { t as tr } from '@/i18n';
+import { createLogger, loggableError } from '@/utils/logger';
 
+const log = createLogger('grn');
+
+// A colleague is picked by name. The answer also carries each person's mobile
+// number; it is not kept and not shown, because it is not needed to pick one.
 interface Supervisor {
   id: string;
   name: string;
-  phone?: string;
 }
+
+/**
+ * The rows of a `get_supervisors` answer, as id and name only. The server may
+ * answer `[...]`, `{ data: [...] }` or `{ supervisors: [...] }`.
+ */
+export const toSupervisors = (data: any): Supervisor[] => {
+  let supervisorArray: any[] = [];
+  if (Array.isArray(data)) {
+    supervisorArray = data;
+  } else if (data?.data && Array.isArray(data.data)) {
+    supervisorArray = data.data;
+  } else if (data?.supervisors && Array.isArray(data.supervisors)) {
+    supervisorArray = data.supervisors;
+  }
+  return supervisorArray.map((user: any) => ({
+    id: user.id || user.user_id || '',
+    name: user.name || user.full_name || user.display_name || '',
+  }));
+};
 
 interface SupervisorBottomSheetProps {
   isVisible: boolean;
@@ -45,14 +66,7 @@ const makeStyles = (t: ThemeTokens) => ({
   },
   supervisorItemPressed: { backgroundColor: t.surface.cardPressed },
   supervisorContent: { flex: 1 },
-  supervisorMeta: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: space.xs,
-    marginTop: space.xs,
-  },
   supervisorName: { ...typography.headline, color: t.text.primary },
-  metaText: { ...typography.subhead, color: t.text.secondary, fontVariant: ['tabular-nums' as const] },
 });
 
 export const SupervisorBottomSheet: React.FC<SupervisorBottomSheetProps> = ({
@@ -62,15 +76,10 @@ export const SupervisorBottomSheet: React.FC<SupervisorBottomSheetProps> = ({
   currentValue,
 }) => {
   const styles = useThemedStyles(makeStyles);
-  const t = useTokens();
 
   // Search function for supervisors using RPC
   const searchSupervisors = useCallback(
     async (query: string): Promise<Supervisor[]> => {
-      console.log(
-        '[SupervisorBottomSheet] Searching supervisors with query:',
-        query
-      );
 
       const { data, error } = await (
         await getAuthenticatedClient()
@@ -79,38 +88,11 @@ export const SupervisorBottomSheet: React.FC<SupervisorBottomSheetProps> = ({
       });
 
       if (error) {
-        console.error('[SupervisorBottomSheet] RPC error:', error);
+        log.error('RPC error', loggableError(error));
         return [];
       }
 
-      // Debug: Log raw response
-      if (__DEV__) {
-        console.log(
-          '[SupervisorBottomSheet] Raw RPC response:',
-          JSON.stringify(data, null, 2)
-        );
-      }
-
-      // Handle both direct array and wrapped response formats
-      // Backend may return: [...] or { data: [...], success: true } or { supervisors: [...] }
-      let supervisorArray: any[] = [];
-      if (Array.isArray(data)) {
-        supervisorArray = data;
-      } else if (data?.data && Array.isArray(data.data)) {
-        supervisorArray = data.data;
-      } else if (data?.supervisors && Array.isArray(data.supervisors)) {
-        supervisorArray = data.supervisors;
-      }
-
-      if (supervisorArray.length > 0) {
-        // Map using snake_case field names from backend
-        return supervisorArray.map((user: any) => ({
-          id: user.id || user.user_id || '',
-          name: user.name || user.full_name || user.display_name || '',
-          phone: user.phone || user.phone_number || '',
-        }));
-      }
-      return [];
+      return toSupervisors(data);
     },
     []
   );
@@ -122,21 +104,15 @@ export const SupervisorBottomSheet: React.FC<SupervisorBottomSheetProps> = ({
         style={({ pressed }) => [styles.supervisorItem, pressed && styles.supervisorItemPressed]}
         onPress={() => onItemSelect(item)}
         accessibilityRole="button"
-        accessibilityLabel={item.phone ? `${item.name}, ${formatMobile(item.phone)}` : item.name}
+        accessibilityLabel={item.name}
       >
         <Avatar name={item.name} id={item.id || null} />
         <View style={styles.supervisorContent}>
           <Text style={styles.supervisorName} numberOfLines={2}>{item.name}</Text>
-          {item.phone ? (
-            <View style={styles.supervisorMeta}>
-              <Icon name="phone-outline" size={iconSize.sm} color={t.icon.secondary} />
-              <Text style={styles.metaText}>{formatMobile(item.phone)}</Text>
-            </View>
-          ) : null}
         </View>
       </Pressable>
     ),
-    [styles, t]
+    [styles]
   );
 
   // Key extractor
