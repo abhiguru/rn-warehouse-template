@@ -408,6 +408,7 @@ export const errors = {
     fetchDetailsFailed: 'Failed to fetch user details',
     fetchProfileFailed: 'Failed to fetch user profile',
     updateProfileFailed: 'Failed to update user profile',
+    profileNotChanged: 'No profile was changed. A person can change only their own profile here.',
     updateUserRoleFailed: 'Failed to update user role',
     updateRoleFailed: 'Failed to update role',
     updateUserStatusFailed: 'Failed to update user status',

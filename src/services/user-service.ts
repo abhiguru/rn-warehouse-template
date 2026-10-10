@@ -3,11 +3,10 @@ import {
   UserProfile,
   UserFormData,
   UserServiceResponse,
-  CustomerAssignment,
-  SearchCustomerResult
+  CustomerAssignment
 } from '@/types/user.types';
 // M3 Fix: Import executeRPC utilities (kept for future use - current methods have extensive debug logging)
-import { executeRPC, createErrorResponse } from '@/utils/serviceErrorHandler';
+import { executeRPC, createErrorResponse, handleGlobalAuthError } from '@/utils/serviceErrorHandler';
 import { t } from '@/i18n';
 import { serverText } from '@/utils/serverText';
 
@@ -67,6 +66,7 @@ export class UserService {
       }
 
       if (userError) {
+        handleGlobalAuthError(userError);
         console.error('[UserService] User profile fetch error:', userError);
         return {
           success: false,
@@ -124,7 +124,6 @@ export class UserService {
 
       console.log('[UserService] User fetched successfully:', {
         userId: mappedUser.id,
-        name: mappedUser.name,
         role: mappedUser.role,
         assignedCustomersCount: assignedCustomers.length
       });
@@ -147,8 +146,6 @@ export class UserService {
   // Update user profile
   static async updateUser(userId: string, userData: UserFormData): Promise<UserServiceResponse<UserProfile>> {
     try {
-      console.log('[UserService] Updating user:', { userId, userData });
-
       if (!userId) {
         return {
           success: false,
@@ -158,47 +155,51 @@ export class UserService {
       }
 
       // Get authenticated client (handles JWT auth properly)
-      console.log('[UserService] Getting authenticated client for update...');
       const client = await getAuthenticatedClient();
 
-      // Only update fields that users are allowed to modify
-      // Note: mobile, role, active, and email fields are managed by administrators
-      // The user_profiles table doesn't have an email column
-      const dataToUpdate: Record<string, string> = {
-        name: userData.name,
-        updated_at: new Date().toISOString()
-      };
+      // The name is the only column sent. The server grants UPDATE on
+      // user_profiles for (name, display_name) only, and any other column in
+      // the statement, updated_at included, makes it refuse the whole update;
+      // a trigger keeps updated_at. Mobile, role and active are changed by
+      // administrators through their own RPCs.
+      const dataToUpdate = { name: userData.name };
 
-      console.log('[UserService] Updating with data:', dataToUpdate);
-
-      // Update user profile - try by id first, then by auth_user_id
-      let updateError = null;
-
-      // First try updating by profile table's primary key (id)
-      const { error: errorById, count: countById } = await client
+      // Update by the profile's primary key first, then by auth_user_id. The
+      // updated rows are read back: an update that matches no row (the policy
+      // allows a person's own profile only) is a failure, not a success.
+      const byId = await client
         .from('user_profiles')
         .update(dataToUpdate)
         .eq('id', userId)
         .select('id');
+      let updateError = byId.error;
+      let updatedRows = byId.data?.length ?? 0;
 
-      if (countById === 0) {
-        // Fallback: try by auth_user_id
-        const { error: errorByAuthId } = await client
+      if (!updateError && updatedRows === 0) {
+        const byAuthId = await client
           .from('user_profiles')
           .update(dataToUpdate)
-          .eq('auth_user_id', userId);
-
-        updateError = errorByAuthId;
-      } else {
-        updateError = errorById;
+          .eq('auth_user_id', userId)
+          .select('id');
+        updateError = byAuthId.error;
+        updatedRows = byAuthId.data?.length ?? 0;
       }
 
       if (updateError) {
-        console.error('[UserService] User update error:', updateError);
+        handleGlobalAuthError(updateError);
+        console.error('[UserService] User update error:', updateError.code, updateError.message);
         return {
           success: false,
           message: t('errors.user.updateProfileFailed'),
           error: updateError.message
+        };
+      }
+
+      if (updatedRows === 0) {
+        return {
+          success: false,
+          message: t('errors.user.updateProfileFailed'),
+          error: t('errors.user.profileNotChanged')
         };
       }
 
@@ -213,74 +214,6 @@ export class UserService {
         success: true,
         message: t('errors.user.updated'),
         data: updatedUserResult.data
-      };
-    } catch (error) {
-      console.error('[UserService] Exception:', error);
-      return {
-        success: false,
-        message: t('errors.general.unexpected'),
-        error: error instanceof Error ? error.message : t('errors.general.unknown')
-      };
-    }
-  }
-
-  // Search customers for assignment
-  static async searchCustomers(query: string): Promise<UserServiceResponse<SearchCustomerResult[]>> {
-    try {
-      console.log('[UserService] searchCustomers called with query:', query);
-
-      if (!query || query.length < 2) {
-        console.log('[UserService] Query too short, returning empty');
-        return {
-          success: true,
-          message: t('errors.general.queryTooShort'),
-          data: []
-        };
-      }
-
-      console.log('[UserService] Getting authenticated client...');
-      const client = await getAuthenticatedClient();
-      console.log('[UserService] Got client, executing search query...');
-
-      const { data: customers, error } = await client
-        .from('customers')
-        .select('id, name, mobile, city')
-        .or(`name.ilike.%${query}%,mobile.ilike.%${query}%,city.ilike.%${query}%`)
-        .eq('active', true)
-        .order('name')
-        .limit(20);
-
-      console.log('[UserService] Customer search raw response:', {
-        hasData: !!customers,
-        dataLength: customers?.length,
-        error: error?.message,
-        errorCode: error?.code,
-        firstResult: customers?.[0],
-      });
-
-      if (error) {
-        console.error('[UserService] Customer search error:', error);
-        return {
-          success: false,
-          message: t('errors.customer.searchFailed'),
-          error: error.message
-        };
-      }
-
-      console.log('[UserService] Raw customers data:', JSON.stringify(customers, null, 2));
-
-      const searchResults: SearchCustomerResult[] = (customers || []).map(customer => ({
-        value: customer.id,
-        label: customer.name,
-        detail: [customer.mobile, customer.city].filter(Boolean).join(' • ')
-      }));
-
-      console.log('[UserService] Mapped search results:', searchResults.length, 'results');
-
-      return {
-        success: true,
-        message: t('errors.customer.listFound'),
-        data: searchResults
       };
     } catch (error) {
       console.error('[UserService] Exception:', error);
@@ -312,6 +245,7 @@ export class UserService {
       const { data, error } = await client.rpc('delete_user_account');
 
       if (error) {
+        handleGlobalAuthError(error);
         console.error('[UserService] Account deletion RPC error:', error);
         return {
           success: false,
@@ -360,6 +294,7 @@ export class UserService {
         .single();
 
       if (error) {
+        handleGlobalAuthError(error);
         console.error('[UserService] Customer fetch error:', error);
         return {
           success: false,

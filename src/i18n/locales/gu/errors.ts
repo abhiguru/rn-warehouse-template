@@ -411,6 +411,7 @@ export const errors: Translation<typeof source> = {
     fetchDetailsFailed: 'યુઝરની વિગતો લોડ કરી શકાઈ નથી',
     fetchProfileFailed: 'યુઝરની પ્રોફાઇલ લોડ કરી શકાઈ નથી',
     updateProfileFailed: 'પ્રોફાઇલ સાચવી શકાઈ નથી',
+    profileNotChanged: 'કોઈ પ્રોફાઇલ બદલાઈ નથી. અહીં ફક્ત પોતાની પ્રોફાઇલ બદલી શકાય છે.',
     updateUserRoleFailed: 'યુઝરનો હોદ્દો બદલી શકાયો નથી',
     updateRoleFailed: 'હોદ્દો બદલી શકાયો નથી',
     updateUserStatusFailed: 'યુઝરની સ્થિતિ બદલી શકાઈ નથી',
