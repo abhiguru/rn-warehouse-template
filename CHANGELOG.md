@@ -1,5 +1,71 @@
 # Changelog
 
+## Unreleased — second review of the 2026-10-10 fix branch (session, reports, GRN, invoice)
+
+No backend migration is needed for these changes. One follow-up is open on the
+backend: `update_grn` has no idempotency key (see "Not done here").
+
+Session and requests
+- Every request has a time limit, where requests are sent (`gatedFetch`): 30
+  seconds for a read, 60 for a write, 120 for an upload and for the document and
+  print functions. A request on a connection that never answers stayed in flight
+  until the app was closed, and a hung save kept "Change facility" answering
+  "busy". The earlier limit lived in `callRPC`, which no screen called; it is
+  removed.
+- A session renewal whose answer is lost to the network is sent again with the
+  same token: at once, then 2, 5, 10 and 20 seconds later in the background.
+  Only a renewal the app itself timed out was repeated, so a dropped connection
+  could still end in a forced sign-out. The repeat after a timeout waits 5
+  seconds (a start of the app waited 30 seconds on a server that hangs, now 20).
+- A token is renewed a tenth of its lifetime before it expires, five minutes at
+  most. With the fixed five minutes a facility with `access_seconds` of 300 or
+  less had its session renewed on every check and every request.
+- The start-up guard navigates only once the root navigator is ready.
+
+Reports and lists
+- Report customer picker (customer accounts with several customers): the rows
+  show the customers' names. They all read "Customer", because the profile a
+  sign-in stores carries ids only. If the names cannot be read the picker says
+  so, with Try again.
+- Dispatch list of a customer account: a long history is collected five pages at
+  a time instead of one after another.
+- Gujarati: the "history limited" notice says વેપારી like the rest of the app.
+
+GRN
+- Only the prepared copy of a photo is ever uploaded. A photo whose preparation
+  was still running or had failed was sent at Save as the original camera or
+  gallery file. Save is now held until every photo is ready, and a photo that
+  could not be prepared has to be removed or added again.
+- A photo from the in-app camera is limited by its longer side (its size was not
+  known, so only the width was limited).
+- Editing: when the photos of a GRN cannot be read, the form does not open
+  (Try again). It opened without them, and the next Save deleted them. Only
+  confirmed photos are loaded.
+- Editing: when a Save gets no answer, the form says the GRN may or may not be
+  saved. The next Save first asks the server which lines it holds, so a line
+  added in the edit is not added a second time; it is refused while the server
+  cannot be asked.
+- Creating: a form that created its GRN cannot create it again; closing the
+  print dialog returns to the success dialog.
+- A GRN or dispatch number that is taken still stops step 1 after the step was
+  left and reopened. The form hooks no longer log the typed number or the
+  user's name.
+
+Invoice
+- Editing: a discount reason you typed is never cleared or replaced by the app.
+  It was wiped whenever the amount passed through the saved amount, which for an
+  invoice saved without a discount was every time the field was cleared.
+- A rate cell that is closed while it holds a refused value no longer keeps Next
+  from working.
+- The group tax field starts with the tax as stored (2.5, not 3).
+- Editing: an invoice does not open when its GRN's pricing mode cannot be read
+  (Try again). It opened with every line priced as monthly.
+
+Not done here: `update_grn` should accept an idempotency key as `save_grn` does
+(backend); a group whose lines have different rates still gets the group's
+average on every line when one group rate is changed; whether a charge of 0 is
+allowed on an invoice line (both forms refuse it today) is the owner's decision.
+
 ## Unreleased — dependency gate, install check, workflow pins and search logs from the 2026-10-10 review
 
 No backend migration is needed. No dependency version changed. The details

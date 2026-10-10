@@ -25,8 +25,16 @@ Install that backend with its [operator guide](https://github.com/abhiguru/supab
   clears stored tokens and dispatches `forceLogoutOnInvalidToken` exactly once per generation;
   transport errors keep credentials. `useSessionGenerationGuard` moves the UI to the login screen when
   a profile is present but no tokens remain.
-- A refresh that times out (15 s) is sent once more with the same token: the backend (migration 44)
-  answers a repeat within its grace period with the same successor. A refused refresh re-reads the
+- A refresh that gets no answer (the 15 s limit, or a transport error) is sent once more with the same
+  token, the repeat with a 5 s limit; if that fails too it is tried again in the background 2, 5, 10 and
+  20 s later, inside 50 s of the first send. The backend (migration 44) answers a repeat within its
+  grace period (`refresh_grace_seconds`, 60 by default) with the same successor; a facility that sets a
+  shorter grace shortens what these attempts can save. A connectivity failure never clears the session.
+- An access token is renewed a tenth of its lifetime ahead of its expiry, five minutes at most
+  (`renewAheadMs` in `src/config/sessionLifecycle.ts`), and not again within a minute of being issued.
+- `gatedFetch` aborts a request that gets no answer: 30 s for a read, 60 s for a write, 120 s for a
+  Storage upload and the document and print functions (`REQUEST_TIME_LIMIT_MS`). The error is a
+  timeout to the error tables; a write that timed out may still have been applied. A refused refresh re-reads the
   secure store before the session ends, and a session that ends is also reported to `logout_session`.
 - Expiry is judged on the device clock but set from the server's: the stored expiry is `exp` moved by
   (time received - `iat`). When the server refuses a token as expired anyway (`JWT expired`,
