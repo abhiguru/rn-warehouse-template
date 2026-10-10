@@ -1,5 +1,35 @@
 # Dependency security review — 2026-09-14
 
+## Expo SDK 57 upgrade — 10 October 2026
+
+The app moves from Expo SDK 54 / React Native 0.81.5 to **Expo SDK 57 / React
+Native 0.86.3** (React 19.2.3, TypeScript 6.0). Every Expo-managed package is at
+the version `expo install --check` expects. SDK 58 was still a pre-release.
+Jest stays on 29 and Babel on 7 because SDK 57's `jest-expo` and
+`babel-preset-expo` still use them.
+
+- **Metro pin removed.** SDK 57 ships Metro 0.84.5, which is newer than the
+  0.83.8 pin and still has no `image-size` dependency. The dependency test now
+  checks for a Metro release at or above 0.83.8 without `image-size`.
+- **Watcher adapter removed.** `scripts/patch-expo-metro.mjs` only bridged SDK
+  54's watcher and the pinned Metro. It now applies just the USB loopback binding
+  to `@expo/cli` 57.0.28, hash-checked the same way as before.
+- **React Navigation lives inside Expo Router.** Expo Router 57 includes React
+  Navigation, so `@react-navigation/*` is no longer installed. The query-string
+  decoder adapter still applies, and its test drives Expo Router's copy of
+  `getStateFromPath`/`getPathFromState`.
+- **Splash screen through its plugin.** SDK 57 builds the native splash only
+  from the `expo-splash-screen` config plugin, so the `app.json` splash
+  settings moved there unchanged.
+- **Audit.** The raw npm report still names only the three locally backported
+  advisories (node-forge, braces, sprintf-js). There are more paths to them
+  (58 entries, 53 high), and `npm run audit:dependencies` reports no unresolved
+  findings.
+
+The remaining overrides (PostCSS, UUID under `xcode`, decode-uri-component,
+compression, source-map-js, shell-quote) are unchanged; each pins a version at
+or above what SDK 57 resolves.
+
 ## Verified security backports and extended campaign — 3 October 2026
 
 The user explicitly extended the campaign beyond its original 48-hour deadline
@@ -89,7 +119,7 @@ native SDKs. Expo SDK 54 / React Native 0.81.5 are preserved.
 
 | Dependency                              | Selected version | Reason and compatibility boundary                                                                                                                                                                                                                                                                                                   |
 | --------------------------------------- | ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Metro package family                    | 0.83.8           | Stay on the existing 0.83 line; upstream removed vulnerable `image-size`. Pin the family together to avoid mixed internals.                                                                                                                                                                                                         |
+| Metro package family                    | (no pin)         | Pin removed with SDK 57 (Metro 0.84.5). Was 0.83.8 under SDK 54: the first release without vulnerable `image-size`.                                                                                                                                                                                                                 |
 | PostCSS                                 | 8.5.28           | Patched 8.x release; replaces Expo's older 8.4 pin.                                                                                                                                                                                                                                                                                 |
 | UUID under `xcode` and `@expo/ngrok`    | 11.1.1           | Patched CommonJS-capable release. Both consumers use `uuid.v4()`; targeted tests exercise that API and Xcode project identifier generation. This is a scoped major transitive override, not an SDK upgrade.                                                                                                                         |
 | shell-quote under `react-devtools-core` | 1.11.0           | First patched release for [GHSA-pqg4-j6r4-53mv](https://github.com/advisories/GHSA-pqg4-j6r4-53mv) (critical, published 2026-10-06; `quote()` injection via a line terminator after a comment token, vulnerable >=1.8.4 <1.11.0). Same-major exact override of 1.10.0; only consumer is the development-only React DevTools bridge. |
@@ -108,10 +138,9 @@ preserving `query-string`'s existing parse/stringify interface. Installation
 checks dependency versions and source hashes before patching, is idempotent,
 and fails clearly for unexpected contents. No advisory is suppressed.
 
-Metro 0.83.8 changed its watcher event shape. The checked SDK 54 adapter in
-`scripts/patch-expo-metro.mjs` maps that shape for both Expo observers, including
-TypeScript file detection. Tests drive the real Metro aggregator and Expo
-observers. Both adapters run on postinstall; keep package.json CommonJS because
+Under SDK 54, `scripts/patch-expo-metro.mjs` also adapted Expo's watcher to the
+pinned Metro 0.83.8. SDK 57 ships a matching Metro, so the script now applies
+only the USB loopback binding. Both adapters run on postinstall; keep package.json CommonJS because
 Babel/Jest rely on it. ESLint's own configuration is `eslint.config.mjs`.
 
 ## Verification

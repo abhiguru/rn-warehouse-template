@@ -104,7 +104,7 @@ export const GenericStepIndicatorHeader: React.FC<GenericStepIndicatorHeaderProp
 
   // Debounce state to prevent multiple rapid taps
   const [navigatingToStep, setNavigatingToStep] = useState<number | null>(null);
-  const navigationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const navigationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Debounced step press handler
   const handleStepPressDebounced = useCallback((stepNumber: number) => {

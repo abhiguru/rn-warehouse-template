@@ -293,8 +293,8 @@ const SensorsScreen: React.FC = () => {
   const [errorVisible, setErrorVisible] = useState(false);
   const [nextPollIn, setNextPollIn] = useState<number>(POLL_INTERVAL);
 
-  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const countdownIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const countdownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const appState = useRef(AppState.currentState);
 
   // Fetch sensor data

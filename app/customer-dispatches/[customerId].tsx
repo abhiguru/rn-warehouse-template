@@ -109,7 +109,7 @@ const CustomerDispatches: React.FC = () => {
   const [customerName, setCustomerName] = useState('');
   const offsetRef = useRef(0);
   const isFetchingRef = useRef(false);
-  const loadMoreTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const loadMoreTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Filter states - using new generic filter system
   // Include customerId in persistKey so filters are customer-specific

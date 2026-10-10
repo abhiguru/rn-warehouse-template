@@ -24,8 +24,9 @@ test('query-string preserves parsing/stringifying, arrays, Unicode, plus and mal
 });
 
 test('actual React Navigation linking consumer decodes and round-trips queries', async () => {
-  const { getStateFromPath } = await import('../node_modules/@react-navigation/core/lib/module/getStateFromPath.js');
-  const { getPathFromState } = await import('../node_modules/@react-navigation/core/lib/module/getPathFromState.js');
+  // Expo Router 57 ships React Navigation's linking code inside expo-router.
+  const { getStateFromPath } = require('expo-router/build/react-navigation/core/getStateFromPath.js');
+  const { getPathFromState } = require('expo-router/build/react-navigation/core/getPathFromState.js');
   const config = { screens: { Stock: 'stock' } };
   const state = getStateFromPath('/stock?search=cold+store&mark=%E0%A4%86', config);
   assert.equal(state.routes[0].params.search, 'cold store');

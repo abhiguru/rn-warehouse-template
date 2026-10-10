@@ -132,7 +132,7 @@ export function useFilterState({
   const [isReady, setIsReady] = useState(false);
 
   // Debounce timer ref
-  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Track initial mount
   const isMountedRef = useRef(false);

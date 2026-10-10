@@ -23,7 +23,7 @@ import { View, Text, StyleSheet, RefreshControl, Pressable, LayoutAnimation } fr
 import { FlashList } from '@shopify/flash-list';
 import { ActivityIndicator, Badge, IconButton, Portal, Snackbar } from 'react-native-paper';
 import { router } from 'expo-router';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect } from 'expo-router';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { ListSkeleton } from '@/components/skeletons';

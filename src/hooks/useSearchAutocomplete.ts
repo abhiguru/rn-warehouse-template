@@ -56,7 +56,7 @@ export interface UseSearchAutocompleteReturn<T> {
   /** Perform search immediately (no debounce) */
   performSearchNow: (query: string) => Promise<void>;
   /** Ref to the search timeout (for manual cleanup if needed) */
-  searchTimeoutRef: React.MutableRefObject<NodeJS.Timeout | null>;
+  searchTimeoutRef: React.MutableRefObject<ReturnType<typeof setTimeout> | null>;
 }
 
 export function useSearchAutocomplete<T>({
@@ -71,7 +71,7 @@ export function useSearchAutocomplete<T>({
   const [searchQuery, setSearchQuery] = useState('');
   const [results, setResults] = useState<T[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Perform the actual search
   const performSearch = useCallback(

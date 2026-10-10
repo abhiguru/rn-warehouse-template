@@ -118,7 +118,7 @@ export function RemoteAutocompleteInput<T>({
   const [showList, setShowList] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
 
-  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Each keystroke, selection or clear takes a new id; a fetch whose id is no
   // longer current is discarded so an earlier, slower search cannot reopen
   // suggestions after the operator moved on.

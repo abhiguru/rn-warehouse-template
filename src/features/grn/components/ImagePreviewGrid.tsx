@@ -390,7 +390,7 @@ const makeStyles = (t: ThemeTokens) => ({
     opacity: 0.6,
   },
   progressOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: t.overlay.scrim,
     justifyContent: 'center' as const,
     alignItems: 'center' as const,
@@ -406,7 +406,7 @@ const makeStyles = (t: ThemeTokens) => ({
     color: t.overlay.onImage,
   },
   errorOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: t.overlay.scrim,
     justifyContent: 'center' as const,
     alignItems: 'center' as const,

@@ -48,8 +48,8 @@ export function usePrintJobPolling({
   jobPollInterval = 10000,
   statusPollInterval = 2000,
 }: UsePrintJobPollingOptions): UsePrintJobPollingReturn {
-  const jobIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const statusIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const jobIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const statusIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Clear job polling interval
   const clearJobInterval = useCallback(() => {

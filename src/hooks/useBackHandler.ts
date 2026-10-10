@@ -16,7 +16,7 @@
 import { useEffect, useCallback } from 'react';
 import { BackHandler, Platform } from 'react-native';
 import { useRouter, Href } from 'expo-router';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect } from 'expo-router';
 
 import { showAlert } from '@/utils/alert';
 export interface BackHandlerOptions {

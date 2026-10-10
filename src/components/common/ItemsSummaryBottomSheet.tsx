@@ -312,7 +312,7 @@ function ItemsSummaryBottomSheetInner<T>(
 
 const makeStyles = (t: ThemeTokens) => ({
   backdrop: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: t.overlay.scrim,
   },
   sheetContainer: {

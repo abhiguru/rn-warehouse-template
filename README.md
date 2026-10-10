@@ -1,7 +1,7 @@
 # rn-warehouse-template
 
-Open-source React Native warehouse client built with Expo SDK 54 / React Native
-0.81, Expo Router and Redux Toolkit. It connects to one installation of the
+Open-source React Native warehouse client built with Expo SDK 57 / React Native
+0.86, Expo Router and Redux Toolkit. It connects to one installation of the
 companion backend, [supabase-warehouse-template](https://github.com/abhiguru/supabase-warehouse-template),
 through that installation's canonical HTTPS origin. MIT licensed.
 

@@ -18,9 +18,9 @@ test('font autolinking selects the installed Expo SDK version, not an unrestrict
   );
 });
 
-test('Metro uses the patched 0.83 parser and still reads PNG dimensions', () => {
+test('Metro uses the patched parser without image-size and still reads PNG dimensions', () => {
   const pkg = require('metro/package.json');
-  assert.equal(pkg.version, '0.83.8');
+  assert.ok(require('semver').gte(pkg.version, '0.83.8'), `Metro ${pkg.version} predates the image-size removal`);
   assert.equal(pkg.dependencies['image-size'], undefined);
   const { getAssetSize } = require('metro/private/Assets');
   const png = Buffer.alloc(33);

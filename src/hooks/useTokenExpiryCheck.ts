@@ -16,7 +16,7 @@ import { checkTokenExpiry } from '@/store/slices/authSlice';
 export const useTokenExpiryCheck = (checkInterval: number = 60000) => {
   const dispatch = useAppDispatch();
   const { userProfile } = useAppSelector((state) => state.auth);
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     // Only run token expiry checks if user is authenticated

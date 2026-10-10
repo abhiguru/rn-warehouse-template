@@ -198,7 +198,7 @@ const makeStyles = (t: ThemeTokens) => ({
     backgroundColor: t.surface.cardActive,
   },
   placeholder: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     justifyContent: 'center' as const,
     alignItems: 'center' as const,
     backgroundColor: t.surface.cardActive,

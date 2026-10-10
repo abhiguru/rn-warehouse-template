@@ -23,7 +23,7 @@
 
 import React from 'react';
 import { View, Pressable, Text, StyleSheet, Platform } from 'react-native';
-import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
+import type { Tabs } from 'expo-router';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
@@ -53,6 +53,9 @@ const TAB_ICONS: Record<string, { outline: string; filled: string }> = {
 
 // Tabs that should only be visible to warehouse roles (admin/supervisor/staff)
 const STAFF_ONLY_TABS = ['order-queue'];
+
+/** Props Expo Router passes to a custom tabBar. */
+type BottomTabBarProps = Parameters<NonNullable<React.ComponentProps<typeof Tabs>['tabBar']>>[0];
 
 interface FioriTabBarProps extends BottomTabBarProps {
   /** Badge counts keyed by route name (e.g., { invoices: 3 }) */

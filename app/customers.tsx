@@ -17,7 +17,7 @@ import {
   ActivityIndicator,
   Vibration,
 } from 'react-native';
-import { useIsFocused } from '@react-navigation/native';
+import { useIsFocused } from 'expo-router';
 import { router, Stack } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -226,7 +226,7 @@ export default function CustomersScreen() {
   const availableLetters = useMemo(() => new Set(Object.keys(letterIndexMap)), [letterIndexMap]);
 
   // Track active letter timeout to clear properly
-  const activeLetterTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const activeLetterTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Scroll to a specific letter
   const scrollToLetter = useCallback((letter: string) => {

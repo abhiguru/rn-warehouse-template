@@ -21,10 +21,12 @@ export function useTheme() {
   const dispatch = useAppDispatch();
   const preference = useAppSelector(selectThemePreference);
   const brand = useAppSelector(selectBrand);
+  // 'unspecified' (no system preference) resolves like light.
   const systemColorScheme = useColorScheme();
+  const systemMode = systemColorScheme === 'dark' ? 'dark' : 'light';
 
   // Resolve the actual theme mode based on preference and system setting
-  const resolvedMode: ThemeMode = selectResolvedThemeMode(preference, systemColorScheme);
+  const resolvedMode: ThemeMode = selectResolvedThemeMode(preference, systemMode);
 
   // Semantic tokens for the chosen brand and mode (preferred by new code)
   const tokens = getTokens(brand, resolvedMode);

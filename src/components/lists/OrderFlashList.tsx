@@ -25,7 +25,7 @@ import { View, Text, StyleSheet, RefreshControl, Pressable } from 'react-native'
 import { FlashList } from '@shopify/flash-list';
 import { ActivityIndicator, IconButton, Snackbar } from 'react-native-paper';
 import { router } from 'expo-router';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect } from 'expo-router';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { ListSkeleton } from '@/components/skeletons';
 import { ListEmptyState } from '@/components/list/ListEmptyState';
