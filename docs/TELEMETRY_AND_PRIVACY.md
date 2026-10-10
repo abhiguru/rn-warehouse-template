@@ -40,6 +40,8 @@ When an unhandled exception or captured error occurs:
 - **Request Payloads**: Request URL, query strings, headers, and request body objects undergo deep recursive sanitization.
 - **Extra Context**: Context dictionaries passed to `captureException` are scanned; keys matching sensitive credential names and values matching regex patterns are sanitized.
 - **Tags & Metadata**: Custom tags matching sensitive identifiers are redacted.
+- **Message and Exception Text**: `event.message`, the log entry and the message of every exception in the chain are redacted with the pattern registry, plus the row values PostgreSQL quotes in a constraint error (`Key (mobile)=(...)`, `Failing row contains (...)`) and 64-character session tokens. `captureMessage` applies the same redaction before the SDK is called.
+- **Contexts**: Context objects undergo the same deep recursive sanitization; the trace context (generated ids only) is passed through.
 
 ### C. Redaction Pattern Registry
 
