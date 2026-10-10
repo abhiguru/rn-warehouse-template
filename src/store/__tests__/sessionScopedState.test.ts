@@ -22,6 +22,21 @@ const makeStore = () =>
     reducer: { grnForm: grnReducer, dispatchForm: dispatchReducer, invoiceForm: invoiceReducer, customerForm: customerReducer },
   });
 
+// A reset form is dated "now" (the default dispatch date), so the clock is held
+// still: only then is a reset store exactly equal to a fresh one. Timers are
+// left real; only Date is fixed.
+beforeAll(() => {
+  jest.useFakeTimers({
+    now: new Date('2026-10-10T06:00:00Z'),
+    doNotFake: [
+      'hrtime', 'nextTick', 'performance', 'queueMicrotask', 'requestAnimationFrame', 'cancelAnimationFrame',
+      'requestIdleCallback', 'cancelIdleCallback', 'setImmediate', 'clearImmediate', 'setInterval', 'clearInterval',
+      'setTimeout', 'clearTimeout',
+    ],
+  });
+});
+afterAll(() => jest.useRealTimers());
+
 beforeEach(async () => {
   jest.clearAllMocks();
   await AsyncStorage.clear();
