@@ -28,6 +28,8 @@ export function SingleFilterSheet({ config, filters, open, onClose }: SingleFilt
   const field = open?.type === 'field' ? filters.fields.find(candidate => candidate.key === open.key) : undefined;
   const [draft, setDraft] = useState<FilterValue | undefined>(undefined);
   const [invalid, setInvalid] = useState(false);
+  // Counts presses of Reset: editors that keep typed text remount then, and only then.
+  const [resets, setResets] = useState(0);
 
   // Start each visit from the value in effect.
   const fieldKey = field?.key;
@@ -35,9 +37,11 @@ export function SingleFilterSheet({ config, filters, open, onClose }: SingleFilt
     if (fieldKey) {
       setDraft(filters.values[fieldKey]);
       setInvalid(false);
+      // The editor was first drawn with the previous draft: rebuild it so typed-text fields show this value.
+      setResets(count => count + 1);
     }
     // Only when a sheet opens, not on every value change behind it.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [fieldKey]);
 
   const needsApply = Boolean(field && field.kind !== 'choice' && field.kind !== 'toggle');
@@ -80,7 +84,7 @@ export function SingleFilterSheet({ config, filters, open, onClose }: SingleFilt
       title={field.label}
       onClose={onClose}
       tall={field.kind === 'picker'}
-      action={{ label: 'Reset', onPress: () => setDraft(undefined), disabled: !isFieldActive(field, draft) }}
+      action={{ label: 'Reset', onPress: () => { setDraft(undefined); setInvalid(false); setResets(count => count + 1); }, disabled: !isFieldActive(field, draft) }}
       footer={
         <ApplyFiltersButton
           result={result}
@@ -93,8 +97,8 @@ export function SingleFilterSheet({ config, filters, open, onClose }: SingleFilt
         />
       }
     >
-      {/* Remount on Reset so editors that keep typed text start empty. */}
-      <FieldEditor key={draft === undefined ? 'empty' : 'set'} field={field} value={draft} onChange={setDraft} ctx={filters.ctx} onInvalid={setInvalid} />
+      {/* Remount on Reset so editors that keep typed text start empty; never while typing, which would drop the focus. */}
+      <FieldEditor key={resets} field={field} value={draft} onChange={setDraft} ctx={filters.ctx} onInvalid={setInvalid} />
     </SheetFrame>
   );
 }

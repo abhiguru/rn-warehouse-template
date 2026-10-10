@@ -7,7 +7,7 @@
  * unsaved changes asks first.
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { BackHandler, KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, View } from 'react-native';
+import { BackHandler, KeyboardAvoidingView, Pressable, ScrollView, Text, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -81,6 +81,8 @@ function SortAndFilterPage({ config }: { config: CountableFilterList }) {
   const [sort, setSort] = useState<SortState | undefined>(filters.sort);
   const [picker, setPicker] = useState<PickerField | null>(null);
   const [invalid, setInvalid] = useState<Record<string, boolean>>({});
+  // Counts presses of Reset: fields that keep typed text remount then, and only then.
+  const [resets, setResets] = useState(0);
 
   const normalised = useMemo(() => normalizeValues(config, values, filters.ctx), [config, values, filters.ctx]);
   const dirty =
@@ -121,6 +123,7 @@ function SortAndFilterPage({ config }: { config: CountableFilterList }) {
     setValues(previous => Object.fromEntries(Object.entries(previous).filter(([key]) => key.startsWith('search'))));
     setSort(config.sort?.default);
     setInvalid({});
+    setResets(count => count + 1);
   };
   const apply = () => {
     filters.apply(values, sort);
@@ -183,7 +186,7 @@ function SortAndFilterPage({ config }: { config: CountableFilterList }) {
     return (
       <View style={styles.screen}>
         {header}
-        <KeyboardAvoidingView style={styles.body} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <KeyboardAvoidingView style={styles.body} behavior="padding">
           <View style={[styles.pickerScreen, { paddingBottom: space.lg + insets.bottom }]}>
             <FieldEditor field={picker} value={values[picker.key]} onChange={value => setField(picker.key, value)} ctx={filters.ctx} />
           </View>
@@ -195,7 +198,7 @@ function SortAndFilterPage({ config }: { config: CountableFilterList }) {
   return (
     <View style={styles.screen}>
       {header}
-      <KeyboardAvoidingView style={styles.body} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <KeyboardAvoidingView style={styles.body} behavior="padding">
         <ScrollView style={styles.body} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           {config.sort && sort ? (
             <View style={styles.section}>
@@ -232,8 +235,9 @@ function SortAndFilterPage({ config }: { config: CountableFilterList }) {
                   {field.kind === 'numberRange' && field.unit ? ` (${field.unit.toUpperCase()})` : ''}
                 </Text>
                 <FieldEditor
-                  // Remount after Reset so fields that keep typed text start empty.
-                  key={isFieldActive(field, values[field.key]) ? 'set' : 'empty'}
+                  // Remount after Reset so fields that keep typed text start empty. Never while
+                  // typing: a remount there would drop the keyboard focus after one character.
+                  key={resets}
                   field={field}
                   value={values[field.key]}
                   onChange={value => setField(field.key, value)}

@@ -110,7 +110,7 @@ export function ListSearchField({ listKey, value, onSearch, placeholder, loading
     const timer = setTimeout(() => commit(text), SEARCH_DEBOUNCE_MS);
     return () => clearTimeout(timer);
     // `commit` reads refs and the latest onSearch only when the timer fires.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [text]);
 
   const recent = focused && text.trim() === '' ? recentSearches(listKey) : [];

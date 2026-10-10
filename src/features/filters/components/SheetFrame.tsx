@@ -5,7 +5,7 @@
  * Only one is ever open: it is a modal, and nothing opens another from inside it.
  */
 import React from 'react';
-import { KeyboardAvoidingView, Modal, Platform, Pressable, Text, View } from 'react-native';
+import { KeyboardAvoidingView, Modal, Pressable, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useThemedStyles } from '@/hooks/useTheme';
 import { fontWeight, layout, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
@@ -72,7 +72,7 @@ export function SheetFrame({ visible, title, onClose, closeLabel = 'Cancel', act
   const insets = useSafeAreaInsets();
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent navigationBarTranslucent>
-      <KeyboardAvoidingView style={styles.root} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      <KeyboardAvoidingView style={styles.root} behavior="padding">
         <Pressable style={styles.scrim} onPress={onClose} accessibilityRole="button" accessibilityLabel={`${closeLabel} ${title}`} />
         <View style={[styles.sheet, tall && styles.sheetTall]} accessibilityViewIsModal>
           <View style={styles.handle} />

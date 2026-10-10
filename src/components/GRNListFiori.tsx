@@ -269,6 +269,7 @@ const GRNCardFiori = memo<GRNCardProps>(({
               `${formatNumber(totalStock)} in stock`,
               weightLabel,
               stockStatus.label,
+              matched.length > 0 ? `Matched ${matched.join(', ')}` : null,
             ].filter(Boolean).join(', ')}
             accessibilityHint="Opens the GRN. Swipe left for more actions."
           >
@@ -306,7 +307,6 @@ const GRNCardFiori = memo<GRNCardProps>(({
                   numberOfLines={1}
                   text={matched.join(' · ')}
                   words={words}
-                  accessibilityLabel={`Matched ${matched.join(', ')}`}
                 />
               ) : null}
             </View>
@@ -527,7 +527,7 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({
   useEffect(() => {
     if (initialFrom || initialTo) filters.apply({ numberRange: { from: initialFrom, to: initialTo } });
     // Only when the link's range changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [initialFrom, initialTo]);
 
   // A failed first page shows the error state; a failed later page or

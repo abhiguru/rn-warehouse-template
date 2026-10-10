@@ -43,7 +43,7 @@ export function useFilterResultCount(
     }, COUNT_DEBOUNCE_MS);
     return () => clearTimeout(timer);
     // `values` and `sort` are covered by `signature`.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [config, ctx, enabled, signature]);
 
   return state;

@@ -7,7 +7,7 @@
  * It is both the quick way in and the display of what is applied, and its
  * height never changes, so the list below does not jump.
  */
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ScrollView, View } from 'react-native';
 import { useThemedStyles } from '@/hooks/useTheme';
 import { layout, space, type ThemeTokens } from '@/theme/tokens';
@@ -55,6 +55,13 @@ export function FilterBar({ config, filters, onOpenAll }: FilterBarProps) {
   const recognised = readSearch(config, values);
   const sortText = describeSort(config, sort);
 
+  // When filters come or go the chips reorder: show the row from its start, where Filters and Sort are.
+  const rowRef = useRef<ScrollView>(null);
+  const activeKeys = active.map(field => field.key).join(',') + (recognised.date ? ',date' : '') + (recognised.range ? ',range' : '') + (filters.hasAny ? ',any' : '');
+  useEffect(() => {
+    rowRef.current?.scrollTo({ x: 0, animated: false });
+  }, [activeKeys]);
+
   const press = (field: FilterFieldDef) => {
     if (opensSheet(field)) setOpen({ type: 'field', key: field.key });
     else filters.setField(field.key, isFieldActive(field, values[field.key]) ? undefined : true);
@@ -62,7 +69,7 @@ export function FilterBar({ config, filters, onOpenAll }: FilterBarProps) {
 
   return (
     <View style={styles.bar}>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+      <ScrollView ref={rowRef} horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         <View style={styles.row}>
           {onOpenAll ? (
             <FilterBarChip
