@@ -71,6 +71,8 @@ interface RolePickerBottomSheetProps {
   onSelect: (role: UserRole) => void;
   currentRole: UserRole;
   callerRole: 'admin' | 'supervisor';
+  /** Roles the caller may give this user (the server's rule). Defaults to the caller-role rule. */
+  assignableRoles?: readonly UserRole[];
 }
 
 export const RolePickerBottomSheet: React.FC<RolePickerBottomSheetProps> = ({
@@ -79,6 +81,7 @@ export const RolePickerBottomSheet: React.FC<RolePickerBottomSheetProps> = ({
   onSelect,
   currentRole,
   callerRole,
+  assignableRoles,
 }) => {
   const bottomSheetRef = React.useRef<BottomSheet>(null);
 
@@ -99,12 +102,15 @@ export const RolePickerBottomSheet: React.FC<RolePickerBottomSheetProps> = ({
 
   // Filter roles based on caller's role
   const availableRoles = useMemo(() => {
+    if (assignableRoles) {
+      return ALL_ROLES.filter((role) => assignableRoles.includes(role.value));
+    }
     if (callerRole === 'admin') {
       return ALL_ROLES;
     }
     // Supervisors cannot assign admin role
     return ALL_ROLES.filter((role) => role.value !== 'admin');
-  }, [callerRole]);
+  }, [callerRole, assignableRoles]);
 
   // Handle role selection
   const handleSelect = useCallback(

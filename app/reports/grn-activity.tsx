@@ -27,10 +27,11 @@ import {
   joinFacts,
   getDateRangeForPeriod,
   type KPIItem,
+  ReportCustomerScope,
+  type ReportScope,
 } from '@/components/reports';
 import { Button } from '@/components/ui/Button';
 import { getCustomerGRNActivity, getAllGRNActivity } from '@/services/reporting/grn-activity-service';
-import { useRoleBasedAccess } from '@/hooks/useRoleBasedAccess';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import {
   fontWeight,
@@ -319,16 +320,20 @@ const CustomerCard: React.FC<CustomerCardProps> = ({ customer, onPress, styles }
 // ============================================================================
 
 export default function GRNActivityScreen() {
+  return (
+    <ReportCustomerScope title={tr('reports.titles.grnActivity')}>
+      {(scope) => <GRNActivityReport scope={scope} />}
+    </ReportCustomerScope>
+  );
+}
+
+function GRNActivityReport({ scope }: { scope: ReportScope }) {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
   const params = useLocalSearchParams<{ customerId?: string; customerName?: string }>();
 
-  // Role-based access (J12 fix)
-  const access = useRoleBasedAccess();
-  // Staff have warehouse-wide GRN access; other reports keep their own policy.
-  const isStaff = access.isStaff || access.role === 'staff';
-  const singleAssignedCustomerId = isStaff ? null : access.singleAssignedCustomerId;
-  const shouldShowListView = isStaff || access.shouldShowListView;
+  // Whose data this view is for (role and assigned customers): see ReportCustomerScope
+  const { isWarehouseUser, singleAssignedCustomerId, shouldShowListView } = scope;
 
   const [data, setData] = useState<GRNActivityData | null>(null);
   const [allCustomersData, setAllCustomersData] = useState<AllGRNActivityData | null>(null);
@@ -546,7 +551,7 @@ export default function GRNActivityScreen() {
   if (isLoading && !hasData) {
     return (
       <View style={styles.container}>
-        <ReportHeader title={tr('reports.titles.grnActivity')} />
+        <ReportHeader title={tr('reports.titles.grnActivity')} onBack={scope.onChangeCustomer} />
         <PeriodSelector selectedPeriod={selectedPeriod} onPeriodChange={handlePeriodChange} />
         <View style={styles.loadingContainer} accessibilityLabel={tr('reports.grnActivity.loading')} accessibilityState={{ busy: true }}>
           <KPIGrid
@@ -567,7 +572,7 @@ export default function GRNActivityScreen() {
     const noCustomer = error === NO_CUSTOMER_ERROR;
     return (
       <View style={styles.container}>
-        <ReportHeader title={tr('reports.titles.grnActivity')} />
+        <ReportHeader title={tr('reports.titles.grnActivity')} onBack={scope.onChangeCustomer} />
         <PeriodSelector selectedPeriod={selectedPeriod} onPeriodChange={handlePeriodChange} />
         <ReportEmptyState
           icon="alert-circle-outline"
@@ -595,7 +600,7 @@ export default function GRNActivityScreen() {
       <View style={styles.container}>
         <ReportHeader
           title={tr('reports.titles.grnActivity')}
-          subtitle={tr(isStaff ? 'reports.customerActivity.allCustomers' : 'reports.customerActivity.myCustomers')}
+          subtitle={tr(isWarehouseUser ? 'reports.customerActivity.allCustomers' : 'reports.customerActivity.myCustomers')}
         />
         <PeriodSelector selectedPeriod={selectedPeriod} onPeriodChange={handlePeriodChange} />
         <Text style={styles.dateRangeText}>{dateRangeText}</Text>
@@ -655,8 +660,8 @@ export default function GRNActivityScreen() {
       <View style={styles.container}>
         <ReportHeader
           title={tr('reports.titles.grnActivity')}
-          subtitle={selectedCustomer?.customer_name}
-          onBack={shouldShowListView || routeCustomerId ? handleBackToAll : undefined}
+          subtitle={selectedCustomer?.customer_name || scope.customerName}
+          onBack={shouldShowListView || routeCustomerId ? handleBackToAll : scope.onChangeCustomer}
         />
         <PeriodSelector selectedPeriod={selectedPeriod} onPeriodChange={handlePeriodChange} />
         <Text style={styles.dateRangeText}>{dateRangeText}</Text>
@@ -673,8 +678,8 @@ export default function GRNActivityScreen() {
     <View style={styles.container}>
       <ReportHeader
         title={tr('reports.titles.grnActivity')}
-        subtitle={selectedCustomer?.customer_name}
-        onBack={shouldShowListView || routeCustomerId ? handleBackToAll : undefined}
+        subtitle={selectedCustomer?.customer_name || scope.customerName}
+        onBack={shouldShowListView || routeCustomerId ? handleBackToAll : scope.onChangeCustomer}
       />
       <PeriodSelector selectedPeriod={selectedPeriod} onPeriodChange={handlePeriodChange} />
       <Text style={styles.dateRangeText}>{dateRangeText}</Text>

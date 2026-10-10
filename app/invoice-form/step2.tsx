@@ -34,6 +34,7 @@ import { t as tr } from '@/i18n';
 import { getItemStoragePrices } from '@/services/item-pricing-service';
 import { findCustomerPrice } from '@/features/item-pricing/utils/findCustomerPrice';
 import { useRoleBasedAccess } from '@/hooks/useRoleBasedAccess';
+import { canOpenScreen } from '@/config/roles';
 import { formatNumber, toLocalISODate } from '@/utils/formatters';
 import { serverText } from '@/utils/serverText';
 
@@ -69,8 +70,10 @@ export default function InvoiceFormStep2() {
     setErrorDialog({ visible: true, title, message });
   };
 
-  // Prices are changed by administrators and supervisors only (as on the price list).
-  const { isStaff: canManagePrices } = useRoleBasedAccess();
+  // Prices are changed by administrators, supervisors and staff (as on the price list;
+  // server migration 45). Everyone who reaches this form is one of them.
+  const { role } = useRoleBasedAccess();
+  const canManagePrices = canOpenScreen(role, 'itemPricingWrite');
 
   // The customer's own price row for an item group, read from the price list. Nothing is written.
   const findPriceFor = useCallback(

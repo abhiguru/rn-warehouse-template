@@ -15,7 +15,10 @@ jest.mock('expo-router', () => ({
   useLocalSearchParams: () => ({ customerId: 'c1', customerName: 'Patel Traders' }),
 }));
 jest.mock('@/hooks/useRoleBasedAccess', () => ({
-  useRoleBasedAccess: () => ({ isStaff: true, role: 'staff', singleAssignedCustomerId: null, shouldShowListView: true }),
+  useRoleBasedAccess: () => ({
+    isWarehouseUser: true, isManager: false, role: 'staff', reportScope: 'all-customers',
+    singleAssignedCustomerId: null, shouldShowListView: true, assignedCustomers: [], assignedCustomerIds: [],
+  }),
 }));
 jest.mock('@/components/reports', () => ({
   ReportHeader: () => null,
@@ -23,6 +26,7 @@ jest.mock('@/components/reports', () => ({
   PeriodSelector: () => null,
   ReportEmptyState: () => null,
   ReportCustomerSearch: () => null,
+  ReportCustomerScope: jest.requireActual('@/components/reports/ReportCustomerScope').ReportCustomerScope,
   getDateRangeForPeriod: () => ({ from: '2026-06-01', to: '2026-10-09' }),
 }));
 jest.mock('@/services/reporting/grn-activity-service', () => ({

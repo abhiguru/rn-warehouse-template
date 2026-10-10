@@ -12,24 +12,24 @@
  * Staff users see all items; regular users see only their assigned customers.
  *
  * @param items - Array of items with customer_id field
- * @param isStaff - Whether the user is admin/supervisor
+ * @param isWarehouseUser - Whether the user is admin, supervisor or staff (sees every customer)
  * @param assignedCustomerIds - Customer IDs assigned to the user
  * @returns Filtered array (original if staff, filtered if regular user)
  *
  * @example
  * const filtered = filterByAssignedCustomers(
  *   response.data.by_customer,
- *   isStaff,
+ *   isWarehouseUser,
  *   assignedCustomerIds
  * );
  */
 export function filterByAssignedCustomers<T extends { customer_id: string }>(
   items: T[],
-  isStaff: boolean,
+  isWarehouseUser: boolean,
   assignedCustomerIds: string[]
 ): T[] {
   // Staff users see all data
-  if (isStaff || assignedCustomerIds.length === 0) {
+  if (isWarehouseUser || assignedCustomerIds.length === 0) {
     return items;
   }
 
@@ -42,12 +42,12 @@ export function filterByAssignedCustomers<T extends { customer_id: string }>(
  * Check if filtering is needed for the current user.
  * Returns true for non-staff users with assigned customers.
  *
- * @param isStaff - Whether the user is admin/supervisor
+ * @param isWarehouseUser - Whether the user is admin, supervisor or staff (sees every customer)
  * @param assignedCustomerIds - Customer IDs assigned to the user
  */
 export function shouldFilterByCustomer(
-  isStaff: boolean,
+  isWarehouseUser: boolean,
   assignedCustomerIds: string[]
 ): boolean {
-  return !isStaff && assignedCustomerIds.length > 0;
+  return !isWarehouseUser && assignedCustomerIds.length > 0;
 }

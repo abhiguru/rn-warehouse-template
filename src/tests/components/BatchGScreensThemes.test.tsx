@@ -229,3 +229,77 @@ describe.each(BRANDS.flatMap(brand => MODES.map(mode => [brand, mode] as [Brand,
     });
   });
 });
+
+// ---------------------------------------------------------------------------
+// What each role is offered on these screens (backend docs/STAFF_GRN_POLICY.md,
+// "Roles after migration 45"). The rows and controls are read from the rendered screen.
+// ---------------------------------------------------------------------------
+describe('what each role is offered', () => {
+  const { adminUserService } = jest.requireMock('@/services/admin-user-service') as {
+    adminUserService: { getUserDetails: jest.Mock };
+  };
+  const signedInAs = (role: string, id = 'u1') => {
+    mockState = {
+      theme: { preference: 'light', brand: 'orange' },
+      auth: { user: { id: 'a1' }, userProfile: { id, name: 'Asha', role, mobile: '9876543210' } },
+      listFilters: { lists: {} },
+    };
+  };
+  const renderScreen = async (element: React.ReactElement) => {
+    let tree!: ReactTestRenderer;
+    await act(async () => {
+      tree = create(element);
+    });
+    return tree;
+  };
+
+  it.each([
+    ['admin', ['customers', 'enrollmentReview', 'items', 'users', 'itemPricing', 'sensors']],
+    ['supervisor', ['customers', 'items', 'users', 'itemPricing', 'sensors']],
+    ['staff', ['itemPricing', 'sensors']],
+    ['customer', []],
+  ])('Settings feature rows for %s: %j', async (role, rows) => {
+    signedInAs(role);
+    const tree = await renderScreen(<SettingsScreen />);
+    const shown = tree.root
+      .findAll(node => typeof node.type !== 'string' && String(node.props.testID ?? '').startsWith('settings-feature-'))
+      .map(node => String(node.props.testID).replace('settings-feature-', ''));
+    expect([...new Set(shown)]).toEqual(rows);
+    await act(async () => { tree.unmount(); });
+  });
+
+  it.each([
+    // caller, caller id, target role, target id, role and status open, assignments open
+    ['admin', 'u1', 'staff', 'u3', true, true],
+    ['admin', 'u1', 'admin', 'u9', true, true],
+    ['admin', 'u1', 'admin', 'u1', false, true],
+    ['supervisor', 'u1', 'staff', 'u3', true, true],
+    ['supervisor', 'u1', 'customer', 'u3', true, true],
+    ['supervisor', 'u1', 'supervisor', 'u4', true, true],
+    // The server refuses a supervisor on an administrator and on the own profile.
+    ['supervisor', 'u1', 'admin', 'u9', false, false],
+    ['supervisor', 'u1', 'supervisor', 'u1', false, false],
+  ])('%s (%s) on a %s (%s): role and status %s, assignments %s', async (callerRole, callerId, targetRole, targetId, canEdit, canAssign) => {
+    signedInAs(callerRole, callerId);
+    // The route id in this file's router stand-in is 'i1'; the loaded user decides the target.
+    adminUserService.getUserDetails.mockResolvedValueOnce({
+      success: true,
+      data: {
+        id: targetId, name: 'Ravi', mobile: '9876543210', role: targetRole, active: true,
+        assigned_customers: [{ customer_id: 'c1', customer_name: 'Patel Traders', customer_mobile: '9812345678', customer_city: 'Rajkot' }],
+      },
+    });
+    const tree = await renderScreen(<UserEditScreen />);
+    const byLabel = (label: string) =>
+      tree.root.findAll(node => typeof node.type !== 'string' && node.props.accessibilityLabel === label);
+    const roleRow = tree.root.findAll(
+      node => typeof node.type !== 'string' && String(node.props.accessibilityLabel ?? '').startsWith('User role,') && node.props.accessibilityState
+    )[0];
+    expect(roleRow.props.accessibilityState.disabled).toBe(!canEdit);
+    const statusSwitch = byLabel('Account active')[0];
+    expect(statusSwitch.props.disabled).toBe(!canEdit);
+    expect(byLabel('Assign customer').length > 0).toBe(canAssign);
+    expect(byLabel('Remove Patel Traders').length > 0).toBe(canAssign);
+    await act(async () => { tree.unmount(); });
+  });
+});

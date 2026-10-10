@@ -27,9 +27,10 @@ import {
   ReportEmptyState,
   getDateRangeForPeriod,
   type KPIItem,
+  ReportCustomerScope,
+  type ReportScope,
 } from '@/components/reports';
 import { getCustomerDispatchActivity, getAllDispatchActivity } from '@/services/reporting';
-import { useRoleBasedAccess } from '@/hooks/useRoleBasedAccess';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import {
   fontWeight,
@@ -547,15 +548,19 @@ function groupDispatchesByDate(dispatches: DispatchActivityRecord[]): Map<string
 // CustomerCard moved to @/components/reports/ReportCustomerCard (J14 fix)
 
 export default function DispatchActivityScreen() {
+  return (
+    <ReportCustomerScope title={tr('reports.titles.dispatchActivity')}>
+      {(scope) => <DispatchActivityReport scope={scope} />}
+    </ReportCustomerScope>
+  );
+}
+
+function DispatchActivityReport({ scope }: { scope: ReportScope }) {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
 
-  // Role-based access (J12 fix)
-  const {
-    isStaff,
-    singleAssignedCustomerId,
-    shouldShowListView,
-  } = useRoleBasedAccess();
+  // Whose data this view is for (role and assigned customers): see ReportCustomerScope
+  const { isWarehouseUser, singleAssignedCustomerId, shouldShowListView } = scope;
 
   // Route params for direct navigation from customer activity
   const params = useLocalSearchParams<{ customerId?: string; customerName?: string }>();
@@ -619,7 +624,6 @@ export default function DispatchActivityScreen() {
 
   // Fetch single customer dispatch activity (for drill-down or regular users)
   const fetchSingleCustomerData = useCallback(async (customerId: string, showRefreshIndicator = false) => {
-    console.log('[DispatchActivity] fetchSingleCustomerData called, customerId:', customerId);
 
     if (showRefreshIndicator) {
       setIsRefreshing(true);
@@ -845,7 +849,7 @@ export default function DispatchActivityScreen() {
   const hasData = isListView ? allCustomersData : data;
 
   // Subtitle for list view
-  const listViewSubtitle = tr(isStaff ? 'reports.customerActivity.allCustomers' : 'reports.customerActivity.myCustomers');
+  const listViewSubtitle = tr(isWarehouseUser ? 'reports.customerActivity.allCustomers' : 'reports.customerActivity.myCustomers');
 
   const refreshControl = (
     <RefreshControl
@@ -861,7 +865,7 @@ export default function DispatchActivityScreen() {
   if (isLoading && !hasData) {
     return (
       <View style={styles.container}>
-        <ReportHeader title={tr('reports.titles.dispatchActivity')} />
+        <ReportHeader title={tr('reports.titles.dispatchActivity')} onBack={scope.onChangeCustomer} />
         <PeriodSelector
           selectedPeriod={selectedPeriod}
           onPeriodChange={handlePeriodChange}
@@ -887,7 +891,7 @@ export default function DispatchActivityScreen() {
     );
     return (
       <View style={styles.container}>
-        <ReportHeader title={tr('reports.titles.dispatchActivity')} />
+        <ReportHeader title={tr('reports.titles.dispatchActivity')} onBack={scope.onChangeCustomer} />
         <PeriodSelector
           selectedPeriod={selectedPeriod}
           onPeriodChange={handlePeriodChange}
@@ -996,8 +1000,8 @@ export default function DispatchActivityScreen() {
       <View style={styles.container}>
         <ReportHeader
           title={tr('reports.titles.dispatchActivity')}
-          subtitle={selectedCustomer?.customer_name}
-          onBack={shouldShowListView || cameFromRouteParams.current ? handleBackToAll : undefined}
+          subtitle={selectedCustomer?.customer_name || scope.customerName}
+          onBack={shouldShowListView || cameFromRouteParams.current ? handleBackToAll : scope.onChangeCustomer}
         />
         <PeriodSelector
           selectedPeriod={selectedPeriod}
@@ -1016,8 +1020,8 @@ export default function DispatchActivityScreen() {
     <View style={styles.container}>
       <ReportHeader
         title={tr('reports.titles.dispatchActivity')}
-        subtitle={selectedCustomer?.customer_name || getDateRangeSubtitle()}
-        onBack={shouldShowListView ? handleBackToAll : undefined}
+        subtitle={selectedCustomer?.customer_name || scope.customerName || getDateRangeSubtitle()}
+        onBack={shouldShowListView ? handleBackToAll : scope.onChangeCustomer}
       />
 
       <PeriodSelector

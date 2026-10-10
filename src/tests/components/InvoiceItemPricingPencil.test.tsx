@@ -139,10 +139,16 @@ it('leaves the invoice lines alone when the price form was left without saving',
   await act(async () => { tree.unmount(); });
 });
 
-it('does not offer the pencil to staff, who cannot change prices', async () => {
-  mockRole = 'staff';
+// The server lets staff change prices (migration 45); a customer account never may.
+it.each([
+  ['admin', true],
+  ['supervisor', true],
+  ['staff', true],
+  ['customer', false],
+])('pencil for %s: %s', async (role, offered) => {
+  mockRole = role;
   const tree = await render();
 
-  expect(table(tree).props.onEditPricing).toBeUndefined();
+  expect(typeof table(tree).props.onEditPricing === 'function').toBe(offered);
   await act(async () => { tree.unmount(); });
 });

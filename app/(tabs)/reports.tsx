@@ -5,7 +5,7 @@
  * Displays available reports based on user role.
  */
 
-import React, { useMemo } from 'react';
+import React from 'react';
 import { View, Text, ScrollView, StyleSheet, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -25,6 +25,7 @@ import {
 import type { ReportDefinition } from '@/types/report.types';
 import { Avatar } from '@/components/ui';
 import { t as translate } from '@/i18n';
+import { canOpenScreen, isWarehouseUser } from '@/config/roles';
 
 // Define all available reports. Titles and descriptions are getters, so they
 // follow the app's language (docs/I18N.md rule 2). The titles are the report
@@ -275,11 +276,12 @@ export default function ReportsScreen() {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
 
-  // Determine if user is staff (admin or supervisor)
-  const isStaff = useMemo(() => {
-    const role = userProfile?.role?.toLowerCase();
-    return role === 'admin' || role === 'supervisor';
-  }, [userProfile]);
+  // The operations dashboard is for administrators and supervisors (the server refuses it
+  // to staff); every other report is offered to all roles.
+  const role = userProfile?.role;
+  const showOperations = canOpenScreen(role, 'operationsDashboard');
+  // Staff see every customer's reports, like the managers.
+  const seesAllCustomers = isWarehouseUser(role);
 
   const handleReportPress = (report: ReportDefinition) => {
     router.push(report.route as any);
@@ -287,7 +289,7 @@ export default function ReportsScreen() {
 
   // Group reports by category
   const customerReports = CUSTOMER_REPORTS;
-  const staffReports = isStaff ? STAFF_REPORTS : [];
+  const staffReports = showOperations ? STAFF_REPORTS : [];
 
   return (
     <View style={styles.container}>
@@ -299,7 +301,7 @@ export default function ReportsScreen() {
               {translate('nav.reports.title')}
             </Text>
             <Text style={styles.headerSubtitle}>
-              {isStaff ? translate('nav.reports.subtitleStaff') : translate('nav.reports.subtitleCustomer')}
+              {seesAllCustomers ? translate('nav.reports.subtitleStaff') : translate('nav.reports.subtitleCustomer')}
             </Text>
           </View>
           <Pressable
@@ -327,7 +329,7 @@ export default function ReportsScreen() {
           t={t}
         />
 
-        {isStaff && (
+        {showOperations && (
           <ReportSection
             title={translate('nav.reports.operationsSection')}
             reports={staffReports}

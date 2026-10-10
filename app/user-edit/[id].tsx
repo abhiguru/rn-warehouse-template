@@ -52,6 +52,7 @@ import { showAlert } from '@/utils/alert';
 import { t as tr, type TranslationKey } from '@/i18n';
 import { roleLabel as roleName } from '@/utils/roleLabel';
 import { serverText } from '@/utils/serverText';
+import { userManagementActions } from '@/config/roles';
 
 /** "… is now an admin." is one sentence per role: the article and word order differ by language. */
 const ROLE_CHANGED_KEYS: Record<UserRole, TranslationKey> = {
@@ -107,12 +108,15 @@ export default function UserEditScreen() {
   const [showRolePicker, setShowRolePicker] = useState(false);
   const [showCustomerSearch, setShowCustomerSearch] = useState(false);
 
-  // Check if caller can edit this user
+  // What the caller may do to this user: the server's rules (src/config/roles.ts), so
+  // no control is shown that the server would refuse.
   const callerRole = (userProfile?.role || 'customer') as 'admin' | 'supervisor';
-  const canEdit =
-    callerRole === 'admin' ||
-    (callerRole === 'supervisor' && user?.role !== 'admin');
-  const isSelfEdit = userProfile?.id === userId;
+  const targetId = user?.id ?? userId ?? '';
+  const isSelfEdit = !!userProfile?.id && userProfile.id === targetId;
+  const { canEdit, canChangeAssignments, assignableRoles } = userManagementActions(
+    { id: userProfile?.id, role: userProfile?.role },
+    { id: targetId, role: user?.role }
+  );
 
   // ===========================================================================
   // LOAD USER DETAILS
@@ -425,7 +429,7 @@ export default function UserEditScreen() {
 
   const roleLabel = roleName(selectedRole);
   const displayName = user.name || tr('users.unknownUser');
-  const roleLocked = !canEdit || isSelfEdit;
+  const roleLocked = !canEdit;
 
   return (
     <GestureHandlerRootView style={styles.flex}>
@@ -524,7 +528,7 @@ export default function UserEditScreen() {
             <Text style={[styles.sectionTitle, styles.sectionTitleInline]} accessibilityRole="header">
               {tr('users.edit.assignments')}
             </Text>
-            {canEdit && (
+            {canChangeAssignments && (
               <Pressable
                 style={({ pressed }) => [styles.addButton, pressed && styles.addButtonPressed]}
                 onPress={() => setShowCustomerSearch(true)}
@@ -543,7 +547,7 @@ export default function UserEditScreen() {
             <View style={styles.emptyAssignments}>
               <Icon name="account-multiple-outline" size={iconSize.xl} color={t.icon.secondary} />
               <Text style={styles.emptyText}>{tr('users.edit.noAssignments')}</Text>
-              {canEdit && (
+              {canChangeAssignments && (
                 <Text style={styles.emptySubText}>{tr('users.edit.addHint')}</Text>
               )}
             </View>
@@ -568,7 +572,7 @@ export default function UserEditScreen() {
                       <Text style={styles.assignmentName}>{customer.customer_name}</Text>
                       {!!meta && <Text style={styles.assignmentMeta}>{meta}</Text>}
                     </View>
-                    {canEdit && (
+                    {canChangeAssignments && (
                       <Pressable
                         style={({ pressed }) => [styles.removeButton, pressed && styles.rowPressed]}
                         onPress={() =>
@@ -605,6 +609,7 @@ export default function UserEditScreen() {
         onSelect={handleRoleSelect}
         currentRole={selectedRole}
         callerRole={callerRole}
+        assignableRoles={assignableRoles}
       />
 
       {/* Customer Search Bottom Sheet */}

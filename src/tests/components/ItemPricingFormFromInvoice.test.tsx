@@ -116,8 +116,41 @@ describe('numbers that are not numbers', () => {
   });
 });
 
+// The server lets staff add and change prices (migration 45), so the form does too.
 describe('a staff account', () => {
   beforeEach(() => { mockRole = 'staff'; });
+
+  it('can add a price from an invoice line', async () => {
+    mockParams = { ...fromInvoiceLine };
+    const tree = await render();
+
+    expect(saveButton(tree)).toHaveLength(1);
+    expect(showAlert).not.toHaveBeenCalled();
+    expect(router.back).not.toHaveBeenCalled();
+    await act(async () => { tree.unmount(); });
+  });
+
+  it('can edit an existing price', async () => {
+    mockParams = { id: 'p1', mode: 'edit' };
+    jest.mocked(getItemStoragePrices).mockResolvedValue({
+      success: true,
+      data: [{
+        id: 'p1', item_id: ITEM, item_name: 'Example Potatoes', customer_id: CUSTOMER, customer_name: 'Example Traders',
+        price_type: 'monthly', unit_price: 5, weight_min: 0, weight_max: 50, labour_rate: 2, tax_percent: 5,
+        effective_from: '2026-04-01', effective_to: null, created_at: '', created_by: '',
+      }],
+      pagination: { total_count: 1, limit: 500, offset: 0, has_more: false },
+    });
+    const tree = await render();
+
+    expect(saveButton(tree)).toHaveLength(1);
+    await act(async () => { tree.unmount(); });
+  });
+});
+
+// A customer account is refused every pricing RPC; the route alone does not open the form.
+describe('a customer account', () => {
+  beforeEach(() => { mockRole = 'customer'; });
 
   it('cannot open the form to add a price', async () => {
     mockParams = { ...fromInvoiceLine };

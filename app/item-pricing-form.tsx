@@ -61,6 +61,7 @@ import { priceTypeLabel } from '@/features/item-pricing/utils/priceLabels';
 import { priceNumber } from '@/features/item-pricing/utils/priceNumbers';
 import { serverText } from '@/utils/serverText';
 import { useRoleBasedAccess } from '@/hooks/useRoleBasedAccess';
+import { canOpenScreen } from '@/config/roles';
 const itemPricingFormLogger = createLogger('ItemPricingForm');
 
 interface Item {
@@ -112,10 +113,11 @@ const ItemPricingFormScreen: React.FC = () => {
   const priceId = params.id;
   const mode = params.mode;
 
-  // Prices are added and changed by administrators and supervisors only, the
-  // same rule as on the price list. The route alone does not grant it: anyone
-  // else sees an existing price read-only and cannot open the form to add one.
-  const { isStaff: canManagePrices } = useRoleBasedAccess();
+  // Prices are added and changed by administrators, supervisors and staff (server
+  // migration 45), the same rule as on the price list. The route alone does not grant
+  // it: anyone else sees an existing price read-only and cannot open the form to add one.
+  const { role } = useRoleBasedAccess();
+  const canManagePrices = canOpenScreen(role, 'itemPricingWrite');
 
   // Determine mode
   const formMode: FormMode = priceId

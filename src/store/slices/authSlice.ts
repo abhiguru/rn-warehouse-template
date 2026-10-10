@@ -865,7 +865,8 @@ export const selectUserRole = createSelector([selectUserProfile], profile => ({
   role: profile?.role,
   isSupervisor: profile?.supervisor ?? false,
   isAdmin: profile?.role === 'admin',
-  isStaff: profile?.role === 'staff',
+  // The `staff` role only. For "works for the facility" use isWarehouseUser (@/config/roles).
+  isStaffRole: profile?.role === 'staff',
   isCustomer: profile?.role === 'customer',
 }));
 

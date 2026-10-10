@@ -36,12 +36,13 @@ import {
   joinFacts,
   stacksFacts,
   type KPIItem,
+  ReportCustomerScope,
+  type ReportScope,
 } from '@/components/reports';
 import {
   getAllCustomerActivity,
   getCustomerActivityDetail,
 } from '@/services/reporting/customer-activity-service';
-import { useRoleBasedAccess } from '@/hooks/useRoleBasedAccess';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import {
   fontWeight,
@@ -886,15 +887,19 @@ const PreviewItem: React.FC<PreviewItemProps> = ({ label, sublabel, value, statu
 // ============================================================================
 
 export default function CustomerActivityScreen() {
+  return (
+    <ReportCustomerScope title={tr('reports.titles.customerActivity')}>
+      {(scope) => <CustomerActivityReport scope={scope} />}
+    </ReportCustomerScope>
+  );
+}
+
+function CustomerActivityReport({ scope }: { scope: ReportScope }) {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
 
-  // Role-based access (J12 fix)
-  const {
-    isStaff,
-    singleAssignedCustomerId,
-    shouldShowListView,
-  } = useRoleBasedAccess();
+  // Whose data this view is for (role and assigned customers): see ReportCustomerScope
+  const { isWarehouseUser, singleAssignedCustomerId, shouldShowListView } = scope;
 
   const [allData, setAllData] = useState<AllCustomerActivityData | null>(null);
   const [detailData, setDetailData] = useState<CustomerActivityDetailData | null>(null);
@@ -1099,7 +1104,7 @@ export default function CustomerActivityScreen() {
   if (isLoading && !hasData) {
     return (
       <View style={styles.container}>
-        <ReportHeader title={tr('reports.titles.customerActivity')} />
+        <ReportHeader title={tr('reports.titles.customerActivity')} onBack={scope.onChangeCustomer} />
         {periodSelector}
         <View style={styles.loadingContainer}>
           <KPIGrid
@@ -1120,7 +1125,7 @@ export default function CustomerActivityScreen() {
     const noCustomer = error === NO_CUSTOMER;
     return (
       <View style={styles.container}>
-        <ReportHeader title={tr('reports.titles.customerActivity')} />
+        <ReportHeader title={tr('reports.titles.customerActivity')} onBack={scope.onChangeCustomer} />
         {periodSelector}
         <ReportEmptyState
           icon={noCustomer ? 'account-off-outline' : 'alert-circle-outline'}
@@ -1142,7 +1147,7 @@ export default function CustomerActivityScreen() {
       <View style={styles.container}>
         <ReportHeader
           title={tr('reports.titles.customerActivity')}
-          subtitle={tr(isStaff ? 'reports.customerActivity.allCustomers' : 'reports.customerActivity.myCustomers')}
+          subtitle={tr(isWarehouseUser ? 'reports.customerActivity.allCustomers' : 'reports.customerActivity.myCustomers')}
         />
         {periodSelector}
         <ScrollView
@@ -1197,7 +1202,7 @@ export default function CustomerActivityScreen() {
         <ReportHeader
           title={tr('reports.titles.customerActivity')}
           subtitle={detailData.customer_name}
-          onBack={shouldShowListView ? handleBackToAll : undefined}
+          onBack={shouldShowListView ? handleBackToAll : scope.onChangeCustomer}
         />
         {periodSelector}
         <ScrollView
@@ -1358,7 +1363,7 @@ export default function CustomerActivityScreen() {
   // Fallback empty state
   return (
     <View style={styles.container}>
-      <ReportHeader title={tr('reports.titles.customerActivity')} />
+      <ReportHeader title={tr('reports.titles.customerActivity')} onBack={scope.onChangeCustomer} />
       {periodSelector}
       <ReportEmptyState
         icon="account-off-outline"
