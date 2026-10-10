@@ -1,6 +1,7 @@
 import type { FilterContext, FilterListDefinition, FilterValues, SortState } from '../types';
 import { DISPATCH_FILTERS } from './dispatch';
 import { GRN_FILTERS } from './grn';
+import { INVOICE_FILTERS } from './invoice';
 
 /** A configuration with its request type hidden: the request is built and counted in one step. */
 export interface CountableFilterList extends FilterListDefinition {
@@ -19,6 +20,7 @@ const countable = <TRequest,>(config: FilterListDefinition & {
 export const FILTER_CONFIGS: Record<string, CountableFilterList> = {
   [GRN_FILTERS.listKey]: countable(GRN_FILTERS),
   [DISPATCH_FILTERS.listKey]: countable(DISPATCH_FILTERS),
+  [INVOICE_FILTERS.listKey]: countable(INVOICE_FILTERS),
 };
 
-export { DISPATCH_FILTERS, GRN_FILTERS };
+export { DISPATCH_FILTERS, GRN_FILTERS, INVOICE_FILTERS };

@@ -23,6 +23,7 @@ import {
 import { formatDate } from '@/utils/formatters';
 import type { Invoice } from '@/services/invoice-service';
 import { StatusTag } from '@/components/ui/StatusTag';
+import { HighlightedText } from '@/features/filters/components/HighlightedText';
 
 // ============================================================================
 // TYPES
@@ -41,6 +42,8 @@ export interface MemoizedInvoiceItemProps {
   onPrint?: (invoice: Invoice) => void;
   /** Whether print action is available */
   canPrint?: boolean;
+  /** Lower-cased search words to show in bold (see `searchWords`). */
+  words?: string[];
 }
 
 // ============================================================================
@@ -55,6 +58,9 @@ const makeStyles = (t: ThemeTokens) => ({
     marginVertical: space.xs,
     padding: space.lg,
     minHeight: layout.objectCellMinHeight,
+    // The outline keeps each card distinct in dark mode, where the shadow does not show.
+    borderWidth: 1,
+    borderColor: t.border.separator,
     ...t.shadow[2],
   },
   cardPressed: {
@@ -148,6 +154,7 @@ const makeStyles = (t: ThemeTokens) => ({
 const InvoiceItemContent: React.FC<MemoizedInvoiceItemProps> = ({
   invoice,
   onPress,
+  words,
 }) => {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
@@ -189,10 +196,8 @@ const InvoiceItemContent: React.FC<MemoizedInvoiceItemProps> = ({
           <Icon name="file-document-outline" size={iconSize.md} color={t.brand.tint} />
         </View>
         <View style={styles.cardInfo}>
-          <Text style={styles.customerName} numberOfLines={2}>
-            Invoice {invoice.invoice_number}
-          </Text>
-          <Text style={styles.invoiceNumber} numberOfLines={2}>{customerName}</Text>
+          <HighlightedText style={styles.customerName} numberOfLines={2} text={`Invoice ${invoice.invoice_number}`} words={words} />
+          <HighlightedText style={styles.invoiceNumber} numberOfLines={2} text={customerName ?? ''} words={words} />
           <View style={styles.metaRow}>
             <Icon name="calendar-outline" size={iconSize.sm} color={t.icon.secondary} />
             <Text style={styles.metaText}>{invoiceDate}</Text>
@@ -200,7 +205,7 @@ const InvoiceItemContent: React.FC<MemoizedInvoiceItemProps> = ({
               <>
                 <Text style={styles.metaText}>·</Text>
                 <Icon name="package-down" size={iconSize.sm} color={t.icon.secondary} />
-                <Text style={styles.metaText}>GRN {invoice.grn.gr_no}</Text>
+                <HighlightedText style={styles.metaText} text={`GRN ${invoice.grn.gr_no}`} words={words} />
               </>
             ) : null}
           </View>
@@ -274,7 +279,8 @@ export const invoiceItemPropsAreEqual = (
     prevInvoice.customer?.name === nextInvoice.customer?.name &&
     prevInvoice.grn?.gr_no === nextInvoice.grn?.gr_no &&
     prevProps.onPress === nextProps.onPress &&
-    prevProps.canPrint === nextProps.canPrint
+    prevProps.canPrint === nextProps.canPrint &&
+    prevProps.words === nextProps.words
   );
 };
 

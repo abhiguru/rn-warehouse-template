@@ -12,7 +12,7 @@ import { ScrollView, View } from 'react-native';
 import { useThemedStyles } from '@/hooks/useTheme';
 import { layout, space, type ThemeTokens } from '@/theme/tokens';
 import type { CountableFilterList } from '../configs';
-import { describeDateRange, describeSort, describeValue, isFieldActive, readSearch } from '../filterModel';
+import { describeDateRange, describeSort, describeValue, financialYearLabel, isFieldActive, readSearch } from '../filterModel';
 import type { FilterFieldDef } from '../types';
 import type { useListFilters } from '../useListFilters';
 import { CHIP_HEIGHT, FilterBarChip } from './FilterBarChip';
@@ -57,7 +57,7 @@ export function FilterBar({ config, filters, onOpenAll }: FilterBarProps) {
 
   // When filters come or go the chips reorder: show the row from its start, where Filters and Sort are.
   const rowRef = useRef<ScrollView>(null);
-  const activeKeys = active.map(field => field.key).join(',') + (recognised.date ? ',date' : '') + (recognised.range ? ',range' : '') + (filters.hasAny ? ',any' : '');
+  const activeKeys = active.map(field => field.key).join(',') + (recognised.date ? ',date' : '') + (recognised.range ? ',range' : '') + (recognised.financialYear !== undefined ? ',year' : '') + (filters.hasAny ? ',any' : '');
   useEffect(() => {
     rowRef.current?.scrollTo({ x: 0, animated: false });
   }, [activeKeys]);
@@ -122,6 +122,17 @@ export function FilterBar({ config, filters, onOpenAll }: FilterBarProps) {
               onRemove={filters.searchAsText}
               accessibilityLabel={`Numbers ${recognised.range.from} to ${recognised.range.to}, read from your search. Search for these words as text instead`}
               removeLabel={`number range ${recognised.range.from} to ${recognised.range.to} from your search`}
+            />
+          ) : null}
+          {recognised.financialYear !== undefined ? (
+            <FilterBarChip
+              variant="active"
+              icon="magnify"
+              label={financialYearLabel(recognised.financialYear)}
+              onPress={filters.searchAsText}
+              onRemove={filters.searchAsText}
+              accessibilityLabel={`Financial year ${financialYearLabel(recognised.financialYear)}, read from your search. Search for these words as text instead`}
+              removeLabel={`financial year ${financialYearLabel(recognised.financialYear)} from your search`}
             />
           ) : null}
           {idleFast.map(field => (

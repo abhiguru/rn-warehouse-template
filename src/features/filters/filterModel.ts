@@ -84,10 +84,12 @@ export function readSearch(config: FilterListDefinition, values: FilterValues, t
   const fieldByKey = (key?: string) => config.fields.find(field => field.key === key);
   const dateField = fieldByKey(search.dateField);
   const rangeField = fieldByKey(search.rangeField);
+  const yearField = fieldByKey(search.yearField);
   return parseQuickSearch(typed, {
     today,
     dates: search.dates && !(dateField && isFieldActive(dateField, values[dateField.key])),
     range: rangeField && isFieldActive(rangeField, values[rangeField.key]) ? null : search.range,
+    financialYear: Boolean(search.financialYear) && !(yearField && isFieldActive(yearField, values[yearField.key])),
   });
 }
 
@@ -95,13 +97,19 @@ export function readSearch(config: FilterListDefinition, values: FilterValues, t
 export function countActiveFilters(config: FilterListDefinition, values: FilterValues, ctx: FilterContext): number {
   const fields = visibleFields(config, ctx).filter(field => isFieldActive(field, values[field.key])).length;
   const search = readSearch(config, values);
-  return fields + (search.date ? 1 : 0) + (search.range ? 1 : 0);
+  return fields + (search.date ? 1 : 0) + (search.range ? 1 : 0) + (search.financialYear !== undefined ? 1 : 0);
 }
 
 /** Whether anything narrows the list: a filter or a search. */
 export function hasAnyFilter(config: FilterListDefinition, values: FilterValues, ctx: FilterContext): boolean {
   return countActiveFilters(config, values, ctx) > 0 || hasText(values[SEARCH_KEY]);
 }
+
+/** "2026-27" for the financial year that starts in April 2026. */
+export const financialYearLabel = (startYear: number) => `${startYear}-${String((startYear + 1) % 100).padStart(2, '0')}`;
+
+/** The financial year (April to March) a date falls in, as its starting year. */
+export const financialYearOf = (date: Date) => (date.getMonth() >= 3 ? date.getFullYear() : date.getFullYear() - 1);
 
 const dateText = (iso?: string) => (iso ? formatDate(parseLocalISODate(iso), 'short') : '');
 

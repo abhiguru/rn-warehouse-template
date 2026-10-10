@@ -127,9 +127,12 @@ export interface SearchConfig {
   dates: boolean;
   /** Recognise a number range: document numbers ("A0010-A0020") or whole numbers ("10-20"). */
   range: 'document' | 'integer' | null;
-  /** Field keys the recognised date and range are shown under. */
+  /** Recognise a financial year ("FY 2026"). */
+  financialYear?: boolean;
+  /** Field keys the recognised date, range and financial year are shown under. */
   dateField?: string;
   rangeField?: string;
+  yearField?: string;
 }
 
 /** The parts of a list's configuration that do not depend on its request type. */

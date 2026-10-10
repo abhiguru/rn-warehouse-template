@@ -2,6 +2,7 @@ import { getSupabaseClient, getAuthenticatedClient } from '@/config/supabaseConf
 import { createErrorResponse, executeRPC } from '@/utils/serviceErrorHandler';
 import { PAGINATION } from '@/config/cacheConfig';
 import { toLocalISODate } from '@/utils/formatters';
+import { matchesSearch, searchTerms } from '@/features/filters/searchMatch';
 
 // M1 Fix: DRY empty pagination response
 const EMPTY_INVOICE_PAGINATION = { total_count: 0, limit: PAGINATION.DEFAULT_LIMIT, offset: 0, has_more: false };
@@ -77,6 +78,13 @@ export interface GetInvoicesListParams {
   p_inv_no_to?: number;    // Invoice number range end
   p_sort_field?: string;   // Sort field (default: 'created_at')
   p_sort_direction?: 'asc' | 'desc';  // Sort direction (default: 'desc')
+  /** Quick search: every word must match the invoice number, customer or GRN number. */
+  p_search?: string;
+  /** Invoice date range, as moments in time. */
+  p_date_from?: string;
+  p_date_to?: string;
+  /** Several customers; an empty list is no filter. */
+  p_customer_ids?: string[];
 }
 
 export const getInvoicesList = async (
@@ -96,7 +104,11 @@ export const getInvoicesList = async (
       p_inv_no_from,
       p_inv_no_to,
       p_sort_field = 'created_at',
-      p_sort_direction = 'desc'
+      p_sort_direction = 'desc',
+      p_search,
+      p_date_from,
+      p_date_to,
+      p_customer_ids,
     } = params;
 
     console.log('[InvoiceService] Getting authenticated client...');
@@ -113,7 +125,11 @@ export const getInvoicesList = async (
       p_inv_no_from: p_inv_no_from || null,
       p_inv_no_to: p_inv_no_to || null,
       p_sort_field,
-      p_sort_direction
+      p_sort_direction,
+      p_search: p_search?.trim() || null,
+      p_date_from: p_date_from || null,
+      p_date_to: p_date_to || null,
+      p_customer_ids: p_customer_ids && p_customer_ids.length > 0 ? p_customer_ids : null,
     });
 
     const duration = Date.now() - startTime;
@@ -169,9 +185,16 @@ export interface AssignedCustomerInvoiceParams {
   p_customer_id?: string;
   p_inv_no_from?: number;
   p_inv_no_to?: number;
+  /** Invoice date range, as moments in time. */
   p_date_from?: string;
   p_date_to?: string;
   p_search_grn_no?: string;
+  p_search?: string;
+  p_financial_year?: number;
+  /** Limit to several of the account's customers; an empty list is no filter. */
+  p_customer_ids?: string[];
+  p_sort_field?: string;
+  p_sort_direction?: 'asc' | 'desc';
   /** Names for the list rows, keyed by customer id (the RPC rows carry no customer name). */
   customerNames?: Record<string, string>;
 }
@@ -227,6 +250,60 @@ const mapCustomerInvoiceRow = (row: CustomerInvoiceRow, customerId: string, cust
   };
 };
 
+/**
+ * The filters, search and order of the staff invoice list (get_invoices_list),
+ * applied to invoices already collected for a customer account. Same parameter
+ * names, same meaning.
+ */
+export function selectCustomerInvoices(all: Invoice[], params: AssignedCustomerInvoiceParams): Invoice[] {
+  const moment = (value?: string) => {
+    const time = value ? Date.parse(value) : NaN;
+    return Number.isNaN(time) ? null : time;
+  };
+  const dateFrom = moment(params.p_date_from);
+  const dateTo = moment(params.p_date_to);
+  const grnQuery = (params.p_search_grn_no || '').trim().toLowerCase();
+  const terms = searchTerms(params.p_search);
+  const customerIds = params.p_customer_ids ?? [];
+
+  const matching = all.filter(invoice => {
+    if (customerIds.length > 0 && !customerIds.includes(invoice.customer.id)) return false;
+    if (params.p_financial_year && invoice.inv_fin_year !== params.p_financial_year) return false;
+    if (params.p_inv_no_from && invoice.invoice_number < params.p_inv_no_from) return false;
+    if (params.p_inv_no_to && invoice.invoice_number > params.p_inv_no_to) return false;
+    if (grnQuery && !invoice.grn.gr_no.toLowerCase().includes(grnQuery)) return false;
+    if (dateFrom !== null || dateTo !== null) {
+      const time = Date.parse(String(invoice.invoice_date));
+      if (Number.isNaN(time)) return false;
+      if (dateFrom !== null && time < dateFrom) return false;
+      if (dateTo !== null && time > dateTo) return false;
+    }
+    return matchesSearch(terms, [
+      invoice.invoice_number,
+      invoice.customer.name,
+      invoice.grn.gr_no,
+      `${invoice.inv_fin_year}-${invoice.invoice_number}`,
+      `${invoice.inv_fin_year}-${String(invoice.invoice_number).padStart(4, '0')}`,
+    ]);
+  });
+
+  const direction = params.p_sort_direction === 'asc' ? 1 : -1;
+  const byDate = (a: Invoice, b: Invoice) => String(a.invoice_date).localeCompare(String(b.invoice_date));
+  const newestFirst = (a: Invoice, b: Invoice) => byDate(b, a) || b.invoice_number - a.invoice_number;
+  return matching.sort((a, b) => {
+    switch (params.p_sort_field) {
+      case 'inv_no':
+        return (a.invoice_number - b.invoice_number) * direction || newestFirst(a, b);
+      case 'customer_name':
+        return a.customer.name.localeCompare(b.customer.name) * direction || newestFirst(a, b);
+      case 'total':
+        return (a.total - b.total) * direction || newestFirst(a, b);
+      default:
+        return byDate(a, b) * direction || b.invoice_number - a.invoice_number;
+    }
+  });
+}
+
 /** The summary RPC defaults to the last 30 days, so the list always sends a range. */
 const CUSTOMER_INVOICE_EARLIEST = '2000-01-01';
 
@@ -248,10 +325,9 @@ export const getAssignedCustomerInvoices = async (
   });
 
   const assigned = [...new Set(assignedCustomerIds.filter(Boolean))];
-  if (params.p_customer_id && !assigned.includes(params.p_customer_id)) {
-    return failure('Customer access denied');
-  }
-  const targetIds = params.p_customer_id ? [params.p_customer_id] : assigned;
+  const requested = [...(params.p_customer_ids ?? []), ...(params.p_customer_id ? [params.p_customer_id] : [])];
+  if (requested.some(id => !assigned.includes(id))) return failure('Customer access denied');
+  const targetIds = requested.length > 0 ? [...new Set(requested)] : assigned;
   if (targetIds.length === 0) return failure('No customer assignment is available for this account');
 
   try {
@@ -268,8 +344,9 @@ export const getAssignedCustomerInvoices = async (
       targetIds.map(async (customerId): Promise<{ success: boolean; message?: string; invoices: Invoice[] }> => {
         const { data, error } = await authenticatedClient.rpc('get_customer_invoice_summary', {
           p_customer_uuid: customerId,
-          p_from_date: params.p_date_from || CUSTOMER_INVOICE_EARLIEST,
-          p_to_date: params.p_date_to || toLocalISODate(new Date()),
+          // The whole history; the date filter is applied here, to the moment.
+          p_from_date: CUSTOMER_INVOICE_EARLIEST,
+          p_to_date: toLocalISODate(new Date()),
         });
         if (error) {
           const failed = createErrorResponse(error, 'Failed to fetch invoice list', 'InvoiceService.getAssignedCustomerInvoices');
@@ -285,21 +362,7 @@ export const getAssignedCustomerInvoices = async (
     const failed = results.find(result => !result.success);
     if (failed) return failure(failed.message || 'Failed to fetch invoice list');
 
-    const grnQuery = (params.p_search_grn_no || '').toLowerCase();
-    const matching = results
-      .flatMap(result => result.invoices)
-      .filter(invoice => {
-        if (params.p_inv_no_from && invoice.invoice_number < params.p_inv_no_from) return false;
-        if (params.p_inv_no_to && invoice.invoice_number > params.p_inv_no_to) return false;
-        if (grnQuery && !invoice.grn.gr_no.toLowerCase().includes(grnQuery)) return false;
-        return true;
-      })
-      .sort(
-        (a, b) =>
-          String(b.invoice_date).localeCompare(String(a.invoice_date)) ||
-          b.inv_fin_year - a.inv_fin_year ||
-          b.invoice_number - a.invoice_number
-      );
+    const matching = selectCustomerInvoices(results.flatMap(result => result.invoices), params);
 
     const invoices = matching.slice(offset, offset + limit);
     return {

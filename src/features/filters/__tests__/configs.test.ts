@@ -1,4 +1,4 @@
-import { DISPATCH_FILTERS, FILTER_CONFIGS, GRN_FILTERS } from '../configs';
+import { DISPATCH_FILTERS, FILTER_CONFIGS, GRN_FILTERS, INVOICE_FILTERS } from '../configs';
 import { isFieldActive, visibleFields } from '../filterModel';
 import type { FilterContext, FilterFieldDef, FilterListConfig, FilterValue } from '../types';
 
@@ -37,7 +37,7 @@ function sample(field: FilterFieldDef): FilterValue {
   }
 }
 
-const configs: FilterListConfig<unknown>[] = [GRN_FILTERS as FilterListConfig<unknown>, DISPATCH_FILTERS as FilterListConfig<unknown>];
+const configs: FilterListConfig<unknown>[] = [GRN_FILTERS as FilterListConfig<unknown>, DISPATCH_FILTERS as FilterListConfig<unknown>, INVOICE_FILTERS as FilterListConfig<unknown>];
 
 describe.each(configs.map(config => [config.listKey, config] as const))('filter config %s', (_key, config) => {
   it('is registered for the Sort and filter page', () => {
@@ -135,5 +135,113 @@ describe('GRN request', () => {
     const request = GRN_FILTERS.toRequest({ search: 'today', date: { from: '2026-01-01', to: '2026-01-31' } }, undefined, staff, today);
     expect(new Date(request.p_date_from!)).toEqual(new Date(2026, 0, 1));
     expect(request.p_filters).toEqual({ search: 'today' });
+  });
+});
+
+describe('dispatch request', () => {
+  const staff = contexts.staff;
+  it('maps every filter to its backend key', () => {
+    const request = DISPATCH_FILTERS.toRequest(
+      {
+        customers: [{ id: 'c1', label: 'A' }],
+        items: [{ id: 'i1', label: 'Garlic' }],
+        numberRange: { from: ' DD0009 ', to: 'DD0010' },
+        bags: { min: 5.4, max: 40 },
+        package: ' red ',
+        date: { from: '2026-09-01', to: '2026-09-30' },
+        search: 'lakeview garlic',
+      },
+      { field: 'disp_no', order: 'asc' },
+      staff,
+      today
+    );
+    expect(request).toEqual({
+      p_sort_by: 'disp_no',
+      p_sort_order: 'asc',
+      p_filters: {
+        customer_ids: ['c1'],
+        item_ids: ['i1'],
+        disp_no_from: 'DD0009',
+        disp_no_to: 'DD0010',
+        disp_qty_min: 5,
+        disp_qty_max: 40,
+        package_mark: 'red',
+        search: 'lakeview garlic',
+        date_from: new Date(2026, 8, 1).toISOString(),
+        date_to: new Date(2026, 8, 30, 23, 59, 59, 999).toISOString(),
+      },
+    });
+  });
+
+  it('sorts by date, newest first, with no filters by default', () => {
+    expect(DISPATCH_FILTERS.toRequest({}, undefined, staff, today)).toEqual({ p_sort_by: 'dispatch_date', p_sort_order: 'desc', p_filters: {} });
+  });
+
+  it('turns a date and a range typed in the search into filters', () => {
+    const request = DISPATCH_FILTERS.toRequest({ search: 'garlic 7 oct DD0010-DD0012' }, undefined, staff, today);
+    expect(request.p_filters).toEqual({
+      disp_no_from: 'DD0010',
+      disp_no_to: 'DD0012',
+      search: 'garlic',
+      date_from: new Date(2026, 9, 7).toISOString(),
+      date_to: new Date(2026, 9, 7, 23, 59, 59, 999).toISOString(),
+    });
+  });
+});
+
+describe('invoice request', () => {
+  const staff = contexts.staff;
+  it('maps every filter to its backend parameter', () => {
+    const request = INVOICE_FILTERS.toRequest(
+      {
+        customers: [{ id: 'c1', label: 'A' }, { id: 'c2', label: 'B' }],
+        year: '2025',
+        numberRange: { min: 10, max: 20 },
+        grn: ' dv01 ',
+        date: { from: '2026-09-01', to: '2026-09-30' },
+        search: 'lakeview',
+      },
+      { field: 'total', order: 'asc' },
+      staff,
+      today
+    );
+    expect(request).toEqual({
+      p_sort_field: 'total',
+      p_sort_direction: 'asc',
+      p_customer_ids: ['c1', 'c2'],
+      p_financial_year: 2025,
+      p_inv_no_from: 10,
+      p_inv_no_to: 20,
+      p_search_grn_no: 'dv01',
+      p_search: 'lakeview',
+      p_date_from: new Date(2026, 8, 1).toISOString(),
+      p_date_to: new Date(2026, 8, 30, 23, 59, 59, 999).toISOString(),
+    });
+  });
+
+  it('sorts by date, newest first, and sends nothing else by default', () => {
+    expect(INVOICE_FILTERS.toRequest({ year: 'all' }, undefined, staff, today)).toEqual({ p_sort_field: 'inv_date', p_sort_direction: 'desc' });
+  });
+
+  it('reads a financial year and a number range from the search', () => {
+    expect(INVOICE_FILTERS.toRequest({ search: 'fy 2025 sunrise 10-20' }, undefined, staff, today)).toEqual({
+      p_sort_field: 'inv_date',
+      p_sort_direction: 'desc',
+      p_financial_year: 2025,
+      p_inv_no_from: 10,
+      p_inv_no_to: 20,
+      p_search: 'sunrise',
+    });
+  });
+
+  it('searches for "2026-12" as text: it is an invoice written with its year, not a range', () => {
+    expect(INVOICE_FILTERS.toRequest({ search: '2026-12' }, undefined, staff, today)).toMatchObject({ p_search: '2026-12' });
+    expect(INVOICE_FILTERS.toRequest({ search: '2026-12' }, undefined, staff, today).p_inv_no_from).toBeUndefined();
+  });
+
+  it('lets a year chosen by hand win over one typed in the search', () => {
+    const request = INVOICE_FILTERS.toRequest({ search: 'fy 2025', year: '2026' }, undefined, staff, today);
+    expect(request.p_financial_year).toBe(2026);
+    expect(request.p_search).toBe('fy 2025');
   });
 });
