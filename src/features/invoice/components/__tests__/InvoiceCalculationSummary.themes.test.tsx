@@ -76,3 +76,19 @@ describe('InvoiceCalculationSummary themes', () => {
     });
   });
 });
+
+describe('InvoiceCalculationSummary formula', () => {
+  it('keeps the minus before a zero discount, so the formula reads as a sum', () => {
+    mockState = { theme: { preference: MODES[0], brand: BRANDS[0] } };
+    let tree!: ReactTestRenderer;
+    act(() => {
+      tree = create(
+        <InvoiceCalculationSummary header={{ ...header, discount: 0, discount_reason: '' }} items={[]} onDiscountChange={jest.fn()} onDiscountReasonChange={jest.fn()} />
+      );
+    });
+    const texts = tree.root.findAllByType(Text).map(n => n.props.children);
+    expect(texts).toContain('−₹0.00 (discount)');
+    expect(texts).not.toContain('₹0.00 (discount)');
+    act(() => tree.unmount());
+  });
+});

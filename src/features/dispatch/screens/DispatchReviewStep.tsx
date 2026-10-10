@@ -492,7 +492,7 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
                         <Icon name="account-outline" size={iconSize.sm} color={t.icon.secondary} />
                         <View style={styles.compactItemContent}>
                             <Text style={styles.compactLabel}>{tr('dispatch.form.supervisor')}</Text>
-                            <Text style={styles.compactValue} numberOfLines={1}>{header.supervisor_name || '-'}</Text>
+                            <Text style={styles.compactValue} numberOfLines={2}>{header.supervisor_name || '-'}</Text>
                         </View>
                     </View>
                 </View>

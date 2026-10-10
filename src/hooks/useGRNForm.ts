@@ -309,18 +309,30 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
     }
   }, [dispatch]);
 
+  // The screens read the local copy of the errors, so a changed field has to be cleared there too.
+  const clearLocalErrors = useCallback((fields: string[]) => {
+    setLocalValidationErrors((prev) => {
+      if (!fields.some((field) => field in prev)) return prev;
+      const next = { ...prev };
+      fields.forEach((field) => { delete next[field]; });
+      return next;
+    });
+  }, []);
+
   // Header actions
   const updateHeaderField = useCallback((field: keyof GRNHeaderData, value: unknown) => {
     dispatch(updateHeader({ [field]: value }));
     dispatch(clearValidationError(field));
-  }, [dispatch]);
+    clearLocalErrors([field]);
+  }, [dispatch, clearLocalErrors]);
 
   const updateHeaderFields = useCallback((updates: Partial<GRNHeaderData>) => {
     dispatch(updateHeader(updates));
     Object.keys(updates).forEach((field) => {
       dispatch(clearValidationError(field));
     });
-  }, [dispatch]);
+    clearLocalErrors(Object.keys(updates));
+  }, [dispatch, clearLocalErrors]);
 
   /**
    * Handle GRN number change with auto-navigation

@@ -416,7 +416,10 @@ export const InvoiceCalculationSummary: React.FC<InvoiceCalculationSummaryProps>
   const discountPart =
     header.discount < 0
       ? tr('invoice.summary.formulaSurcharge', { amount: formatInvoiceAmount(-header.discount) })
-      : tr('invoice.summary.formulaDiscount', { amount: formatInvoiceDeduction(header.discount) });
+      : tr('invoice.summary.formulaDiscount', {
+          // The minus is the operator of the formula, so a zero discount keeps it too.
+          amount: header.discount === 0 ? `−${formatInvoiceAmount(0)}` : formatInvoiceDeduction(header.discount),
+        });
 
   return (
     <View style={styles.container}>

@@ -42,6 +42,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { router } from 'expo-router';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
+import { useStore } from 'react-redux';
+import type { RootState } from '@/store';
 import {
   updateHeader,
   setDispatchId,
@@ -179,6 +181,7 @@ export function useDispatchForm({
   const dispatch = useAppDispatch();
   const { userProfile } = useAppSelector((state) => state.auth);
   const dispatchFormState = useAppSelector((state) => state.dispatchForm);
+  const store = useStore<RootState>();
 
   // Selectors
   const header = dispatchFormState.header;
@@ -330,18 +333,30 @@ export function useDispatchForm({
     }));
   }, [dispatch]);
 
+  // The screens read the local copy of the errors, so a changed field has to be cleared there too.
+  const clearLocalErrors = useCallback((fields: string[]) => {
+    setLocalValidationErrors((prev) => {
+      if (!fields.some((field) => field in prev)) return prev;
+      const next = { ...prev };
+      fields.forEach((field) => { delete next[field]; });
+      return next;
+    });
+  }, []);
+
   // Header actions
   const updateHeaderField = useCallback((field: keyof DispatchHeaderData, value: unknown) => {
     dispatch(updateHeader({ [field]: value }));
     dispatch(clearFieldError(field));
-  }, [dispatch]);
+    clearLocalErrors([field]);
+  }, [dispatch, clearLocalErrors]);
 
   const updateHeaderFields = useCallback((updates: Partial<DispatchHeaderData>) => {
     dispatch(updateHeader(updates));
     Object.keys(updates).forEach((field) => {
       dispatch(clearFieldError(field));
     });
-  }, [dispatch]);
+    clearLocalErrors(Object.keys(updates));
+  }, [dispatch, clearLocalErrors]);
 
   /**
    * Handle dispatch number change with auto-navigation
@@ -475,6 +490,9 @@ export function useDispatchForm({
    * Validate a specific step
    */
   const validateCurrentStep = useCallback(async (step: number): Promise<{ isValid: boolean; errors: Record<string, string> }> => {
+    // Read the store, not the values from the last render: the items step saves the item being typed and
+    // asks for the next step in the same tap, and the saved item is not in this render yet.
+    const { header, items } = store.getState().dispatchForm;
     let result: { isValid: boolean; errors: Record<string, string> };
 
     console.log('[useDispatchForm] validateCurrentStep called for step:', step);
@@ -530,7 +548,7 @@ export function useDispatchForm({
     }
 
     return result;
-  }, [header, items, dispatch]);
+  }, [store, dispatch]);
 
   const clearFieldValidationError = useCallback((field: string) => {
     setLocalValidationErrors((prev) => {

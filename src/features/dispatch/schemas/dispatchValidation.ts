@@ -56,7 +56,7 @@ export const step1Schema = yup.object().shape({
 
   customer_name: yup
     .string()
-    .required(m('dispatch.validation.customerNameRequired'))
+    .required(m('dispatch.validation.customerRequired'))
     .max(100, m('dispatch.validation.customerNameMax')),
 
   supervisor_id: yup
@@ -66,7 +66,7 @@ export const step1Schema = yup.object().shape({
 
   supervisor_name: yup
     .string()
-    .required(m('dispatch.validation.supervisorNameRequired'))
+    .required(m('dispatch.validation.supervisorRequired'))
     .max(100, m('dispatch.validation.supervisorNameMax')),
 
   note: yup
@@ -253,7 +253,7 @@ export const validateStep1 = async (
     if (error instanceof yup.ValidationError) {
       const errors: Record<string, string> = {};
       error.inner.forEach((err) => {
-        if (err.path) {
+        if (err.path && (!(err.path in errors) || err.type === 'required')) {
           errors[err.path] = err.message;
         }
       });
@@ -286,7 +286,7 @@ export const validateStep2 = async (
       console.log('[dispatchValidation] Yup validation errors count:', error.inner.length);
       error.inner.forEach((err, index) => {
         console.log(`[dispatchValidation] Error ${index}: path="${err.path}", message="${err.message}"`);
-        if (err.path) {
+        if (err.path && (!(err.path in errors) || err.type === 'required')) {
           errors[err.path] = err.message;
         }
       });
@@ -340,7 +340,7 @@ export const validateStep3 = async (data: {
       console.log('[validateStep3] 🔍 Yup errors count:', error.inner.length);
       error.inner.forEach((err, index) => {
         console.log(`[validateStep3] 🔍 Error ${index}: path="${err.path}", message="${err.message}"`);
-        if (err.path) {
+        if (err.path && (!(err.path in errors) || err.type === 'required')) {
           errors[err.path] = err.message;
         }
       });
@@ -365,7 +365,7 @@ export const validateSingleItem = async (
     if (error instanceof yup.ValidationError) {
       const errors: Record<string, string> = {};
       error.inner.forEach((err) => {
-        if (err.path) {
+        if (err.path && (!(err.path in errors) || err.type === 'required')) {
           errors[err.path] = err.message;
         }
       });

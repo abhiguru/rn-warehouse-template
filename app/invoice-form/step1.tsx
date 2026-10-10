@@ -48,6 +48,7 @@ export default function InvoiceFormStep1() {
     items,
     isLoading,
     isLoadingItems,
+    nextNumberFailed,
     validationErrors,
     updateHeaderField,
     updateHeaderFields,
@@ -277,7 +278,11 @@ export default function InvoiceFormStep1() {
           </View>
           {renderError(invNoError)}
           <Text style={styles.helperText}>
-            {isLoading ? tr('invoice.form.gettingNumber') : tr('invoice.form.numberHelp')}
+            {isLoading
+              ? tr('invoice.form.gettingNumber')
+              : nextNumberFailed && !header.inv_no
+                ? tr('invoice.form.numberUnavailable')
+                : tr('invoice.form.numberHelp')}
           </Text>
         </View>
 

@@ -48,7 +48,7 @@ export const step1Schema = yup.object().shape({
 
   customer_name: yup
     .string()
-    .required(msg('invoice.validation.customerNameRequired'))
+    .required(msg('invoice.validation.customerRequired'))
     .max(200, msg('invoice.validation.customerNameTooLong')),
 
   one_time_charge: yup.boolean().required(msg('invoice.validation.oneTimeChargeRequired')),

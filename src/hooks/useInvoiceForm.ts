@@ -86,6 +86,7 @@ export interface UseInvoiceFormReturn {
   invoiceId: string | null;
   selectedGrId: string | null;
   isLoading: boolean;
+  nextNumberFailed: boolean;
   isSaving: boolean;
   isLoadingItems: boolean;
   validationErrors: Record<string, string>;
@@ -159,6 +160,8 @@ export function useInvoiceForm({
 
   // Local state
   const [validationErrors, setLocalValidationErrors] = useState<Record<string, string>>({});
+  // True when the server could not suggest the next invoice number, so the form asks for it to be typed.
+  const [nextNumberFailed, setNextNumberFailed] = useState(false);
 
   // Refs to prevent duplicate operations
   const hasInitialized = useRef(false);
@@ -182,6 +185,8 @@ export function useInvoiceForm({
             inv_no: result.data.next_invoice_number,
             inv_fin_year: result.data.financial_year,
           }));
+        } else {
+          setNextNumberFailed(true);
         }
       } catch (error) {
         console.error('[useInvoiceForm] Failed to generate invoice number:', error);
@@ -245,18 +250,30 @@ export function useInvoiceForm({
     }
   }, [dispatch]);
 
+  // The screens read the local copy of the errors, so a changed field has to be cleared there too.
+  const clearLocalErrors = useCallback((fields: string[]) => {
+    setLocalValidationErrors((prev) => {
+      if (!fields.some((field) => field in prev)) return prev;
+      const next = { ...prev };
+      fields.forEach((field) => { delete next[field]; });
+      return next;
+    });
+  }, []);
+
   // Header actions
   const updateHeaderField = useCallback((field: keyof InvoiceHeaderData, value: unknown) => {
     dispatch(updateHeader({ [field]: value }));
     dispatch(clearValidationError(field));
-  }, [dispatch]);
+    clearLocalErrors([field]);
+  }, [dispatch, clearLocalErrors]);
 
   const updateHeaderFields = useCallback((updates: Partial<InvoiceHeaderData>) => {
     dispatch(updateHeader(updates));
     Object.keys(updates).forEach((field) => {
       dispatch(clearValidationError(field));
     });
-  }, [dispatch]);
+    clearLocalErrors(Object.keys(updates));
+  }, [dispatch, clearLocalErrors]);
 
   const updateDiscountAmount = useCallback((discount: number) => {
     dispatch(updateDiscount(discount));
@@ -480,6 +497,7 @@ export function useInvoiceForm({
     invoiceId,
     selectedGrId,
     isLoading: invoiceFormState.is_loading,
+    nextNumberFailed,
     isSaving: invoiceFormState.is_saving,
     isLoadingItems: invoiceFormState.is_loading_items,
     validationErrors,

@@ -39,6 +39,7 @@ import {
   touchTarget,
   typography,
   trackedText,
+  singleLineText,
 } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { searchGRNNumbers, getGRNPrefixesWithStock, getCustomerGRNsWithStock, type GRNPrefixWithStock } from '../services/grnDetailService';
@@ -305,6 +306,10 @@ const makeStyles = (t: ThemeTokens) => ({
     backgroundColor: t.status.neutral.background,
     borderRadius: radius.field,
     flexShrink: 1,
+  },
+  // The date keeps its width; a long customer name beside it is the one that truncates.
+  metaBadgeFixed: {
+    flexShrink: 0,
   },
   metaText: {
     ...typography.caption1,
@@ -583,9 +588,9 @@ const GRNListItem = memo<GRNListItemProps>(({
         </View>
 
         <View style={styles.grnMeta}>
-          <View style={styles.metaBadge}>
+          <View style={[styles.metaBadge, styles.metaBadgeFixed]}>
             <Icon name="calendar-outline" size={iconSize.sm} color={t.status.neutral.text} />
-            <Text style={styles.metaText} maxFontSizeMultiplier={1.6}>{grnDate}</Text>
+            <Text style={styles.metaText} maxFontSizeMultiplier={1.6} {...singleLineText()}>{grnDate}</Text>
           </View>
           <View style={styles.metaBadge}>
             <Icon name="account-outline" size={iconSize.sm} color={t.status.neutral.text} />

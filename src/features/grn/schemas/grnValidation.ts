@@ -30,7 +30,7 @@ export const step1Schema = yup.object().shape({
 
   customer_name: yup
     .string()
-    .required(msg('grn.validation.customerNameRequired'))
+    .required(msg('grn.validation.customerRequired'))
     .max(200, msg('grn.validation.customerNameMax')),
 
   supervisor_id: yup
@@ -40,7 +40,7 @@ export const step1Schema = yup.object().shape({
 
   supervisor_name: yup
     .string()
-    .required(msg('grn.validation.supervisorNameRequired'))
+    .required(msg('grn.validation.supervisorRequired'))
     .max(30, msg('grn.validation.supervisorNameMax')),
 
   note: yup
@@ -235,7 +235,7 @@ export const validateStep1 = async (data: any): Promise<{ isValid: boolean; erro
     if (error instanceof yup.ValidationError) {
       const errors: Record<string, string> = {};
       error.inner.forEach((err) => {
-        if (err.path) {
+        if (err.path && (!(err.path in errors) || err.type === 'required')) {
           errors[err.path] = err.message;
         }
       });
@@ -253,7 +253,7 @@ export const validateStep2 = async (data: any): Promise<{ isValid: boolean; erro
     if (error instanceof yup.ValidationError) {
       const errors: Record<string, string> = {};
       error.inner.forEach((err) => {
-        if (err.path) {
+        if (err.path && (!(err.path in errors) || err.type === 'required')) {
           errors[err.path] = err.message;
         }
       });
@@ -271,7 +271,7 @@ export const validateStep3 = async (data: any): Promise<{ isValid: boolean; erro
     if (error instanceof yup.ValidationError) {
       const errors: Record<string, string> = {};
       error.inner.forEach((err) => {
-        if (err.path) {
+        if (err.path && (!(err.path in errors) || err.type === 'required')) {
           errors[err.path] = err.message;
         }
       });
@@ -289,7 +289,7 @@ export const validateFullGRN = async (data: any): Promise<{ isValid: boolean; er
     if (error instanceof yup.ValidationError) {
       const errors: Record<string, string> = {};
       error.inner.forEach((err) => {
-        if (err.path) {
+        if (err.path && (!(err.path in errors) || err.type === 'required')) {
           errors[err.path] = err.message;
         }
       });

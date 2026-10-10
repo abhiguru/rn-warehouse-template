@@ -27,7 +27,7 @@ export const getNextInvoiceNumber = async (
     const { data, error } = await authenticatedClient.rpc('get_next_invoice_number');
 
     if (error) {
-      console.error('[InvoiceFormService] RPC Error:', error.message);
+      console.error('[InvoiceFormService] RPC error:', error.message);
       throw new Error(serverText(error.message, t('invoice.service.nextNumberFailed')));
     }
 
@@ -54,7 +54,8 @@ export const getNextInvoiceNumber = async (
       },
     };
   } catch (error: any) {
-    console.error('[InvoiceFormService] Error in getNextInvoiceNumber:', error);
+    // Handled: the form then asks for the number to be typed.
+    console.warn('[InvoiceFormService] Error in getNextInvoiceNumber:', error);
     // Return 1 as default for first invoice of the year
     return {
       success: false,
