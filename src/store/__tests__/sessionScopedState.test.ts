@@ -85,3 +85,19 @@ it('completes the teardown even when the shared document sweep fails', async () 
   expect(store.getState()).toEqual(empty);
   expect(await AsyncStorage.getAllKeys()).toEqual([]);
 });
+
+// Review 2026-10-10, M2-11: these are keyed by user or customer id only, and a
+// forced logout or server switch does not run the logout button's own cleanup.
+it('removes the recent-customer, recent-sender and recent-item lists of the ended session', async () => {
+  const store = makeStore();
+  await AsyncStorage.multiSet([
+    ['recent_customers_user-a', '[{"id":"c1","name":"Fictional Traders"}]'],
+    ['recent_customers', '[]'],
+    ['recent_senders_user-a', '[{"name":"Fictional Sender"}]'],
+    ['session_recent_items_customer-1', '{"items":[{"gr_no":"A0010"}]}'],
+    ['operator_server_v1', '{"origin":"https://warehouse.example.test"}'],
+    ['app_language', 'gu'],
+  ]);
+  await clearSessionScopedState(store.dispatch);
+  expect((await AsyncStorage.getAllKeys()).sort()).toEqual(['app_language', 'operator_server_v1']);
+});

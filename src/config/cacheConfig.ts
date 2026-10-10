@@ -52,6 +52,13 @@ export const CACHE_PREFIXES = {
   ORDER_LIST: 'order_list_cache',
   INVOICE_LIST: 'invoice_list_cache',
   STOCK_LIST: 'stock_list_cache',
+  // Per-user and per-customer pick lists. They hold customer names and item
+  // details of one facility and are keyed without the server, so they are
+  // removed with the list caches whenever a session ends (logout, forced
+  // logout, server switch), not only by the logout button.
+  RECENT_CUSTOMERS: 'recent_customers',
+  RECENT_SENDERS: 'recent_senders_',
+  SESSION_RECENT_ITEMS: 'session_recent_items_',
 } as const;
 
 // =============================================================================
