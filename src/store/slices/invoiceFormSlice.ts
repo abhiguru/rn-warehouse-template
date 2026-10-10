@@ -178,7 +178,20 @@ const invoiceFormSlice = createSlice({
 
     // Update discount and recalculate total
     updateDiscount: (state, action: PayloadAction<number>) => {
-      state.header.discount = roundMoney(action.payload);
+      const discount = roundMoney(action.payload);
+      // The reason recorded with a saved invoice belongs to the discount it
+      // was saved with. Once the amount differs, that text is taken out of the
+      // field so a new reason has to be written; typing the stored amount
+      // again puts it back. A reason written during this edit is left alone.
+      const savedReason = state.header.saved_discount_reason;
+      if (savedReason !== undefined) {
+        if (discount === roundMoney(state.header.saved_discount || 0)) {
+          state.header.discount_reason = savedReason;
+        } else if ((state.header.discount_reason || '') === savedReason) {
+          state.header.discount_reason = '';
+        }
+      }
+      state.header.discount = discount;
       const headerTotals = calculateHeaderTotals(state.items, state.header.discount);
       Object.assign(state.header, headerTotals);
     },
@@ -293,6 +306,14 @@ const invoiceFormSlice = createSlice({
       const preservedInvDate = state.header.inv_date;
       const preservedInvFinYear = state.header.inv_fin_year;
       const preservedDiscount = state.header.discount;
+      // What goes with the discount stays with it. Without these an invoice
+      // being edited would forget the discount it was saved with, ask for a
+      // reason although nothing changed, and show an empty reason field.
+      const preservedDiscountRecord = {
+        discount_reason: state.header.discount_reason,
+        saved_discount: state.header.saved_discount,
+        saved_discount_reason: state.header.saved_discount_reason,
+      };
 
       // For one_time_charge: use the value from GRN's pricing_mode if provided,
       // otherwise preserve the current value (for backward compatibility)
@@ -310,6 +331,7 @@ const invoiceFormSlice = createSlice({
         inv_fin_year: preservedInvFinYear,
         one_time_charge: oneTimeCharge,
         discount: preservedDiscount,
+        ...preservedDiscountRecord,
       };
       state.items = action.payload.items;
       state.selected_gr_id = action.payload.grId;
@@ -369,6 +391,7 @@ const invoiceFormSlice = createSlice({
         ...action.payload.header,
         discount_reason: action.payload.header.discount_reason || '',
         saved_discount: action.payload.header.discount || 0,
+        saved_discount_reason: action.payload.header.discount_reason || '',
       };
 
       // Replace all items

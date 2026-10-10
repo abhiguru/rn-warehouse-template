@@ -10,6 +10,7 @@ import {
   calculateInvoiceBreakdown,
   formatInvoiceAmount,
   formatInvoiceDeduction,
+  roundMoney,
 } from '@/utils/invoiceCalculations';
 import { InlineValidation } from '@/components/fiori';
 import { localizeDigits, normalizeDigits, t as tr, numericInput } from '@/i18n';
@@ -412,6 +413,10 @@ export const InvoiceCalculationSummary: React.FC<InvoiceCalculationSummaryProps>
 
   const closeDialog = () => setErrorDialog({ visible: false, title: '', message: '' });
 
+  // Removing a saved discount is a change that needs a reason too, so the
+  // reason field stays when the discount of an invoice being edited is set to 0.
+  const discountChanged = roundMoney(header.discount || 0) !== roundMoney(header.saved_discount || 0);
+
   // A negative discount is a surcharge: it adds to the total.
   const discountPart =
     header.discount < 0
@@ -472,7 +477,7 @@ export const InvoiceCalculationSummary: React.FC<InvoiceCalculationSummaryProps>
       </View>
 
       {/* Reason for the discount: recorded with the invoice, required from staff */}
-      {onDiscountReasonChange && header.discount !== 0 && (
+      {onDiscountReasonChange && (header.discount !== 0 || discountChanged) && (
         <View style={styles.reasonContainer}>
           <Text style={styles.fieldLabel}>
             {reasonRequired ? tr('invoice.summary.discountReasonRequired') : tr('invoice.label.discountReason')}

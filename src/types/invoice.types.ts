@@ -28,6 +28,8 @@ export interface InvoiceHeaderData {
   discount_reason?: string;
   /** Discount stored on the server when an existing invoice was loaded (client only, never sent). */
   saved_discount?: number;
+  /** Reason stored with that discount (client only, never sent). Set only while an existing invoice is edited. */
+  saved_discount_reason?: string;
   labour: number; // Calculated sum
   tax_amount: number; // Calculated sum
   total: number; // Calculated grand total

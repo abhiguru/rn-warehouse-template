@@ -1,5 +1,4 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { useFocusEffect } from 'expo-router';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -66,9 +65,6 @@ export default function InvoiceEditStep1() {
   // Store original GRN ID to detect changes
   const [originalGrId] = useState(header.gr_id);
 
-  // Track focus count to skip initial mount for data reload
-  const focusCountRef = useRef(0);
-
   // Clear all local state on mount to prevent stale data
   useEffect(() => {
     setShowDatePicker(false);
@@ -90,42 +86,9 @@ export default function InvoiceEditStep1() {
     }
   }, [header.one_time_charge, dispatch, items.length]);
 
-  // Reload GRN data when returning from details/edit screen
-  useFocusEffect(
-    useCallback(() => {
-      focusCountRef.current += 1;
-
-      // Only reload on subsequent focuses (not initial mount)
-      if (focusCountRef.current > 1 && header.gr_id) {
-        // Reload GRN data using the existing loadNewGRNData logic
-        const reloadGRNData = async () => {
-          dispatch(setIsLoadingItems(true));
-          try {
-            const response = await loadFormData(header.gr_id);
-            if (response.success && response.data) {
-              dispatch(
-                loadInvoiceFormData({
-                  header: {
-                    customer_id: response.data.header.customer_id,
-                    customer_name: response.data.header.customer_name,
-                    gr_id: response.data.header.gr_id,
-                    gr_no: response.data.header.gr_no,
-                  },
-                  items: response.data.items,
-                  grId: header.gr_id,
-                })
-              );
-            }
-          } catch (error) {
-            console.error('[InvoiceEditStep1] Error reloading GRN data:', error);
-          } finally {
-            dispatch(setIsLoadingItems(false));
-          }
-        };
-        reloadGRNData();
-      }
-    }, [header.gr_id, dispatch])
-  );
+  // Nothing is reloaded when this screen comes back into focus (for example
+  // after the GRN was viewed). The lines, the discount and its reason are the
+  // saved invoice's; only choosing another GRN below replaces the lines.
 
   // Navigate to GRN details screen
   const handleViewGRNDetails = useCallback(() => {
