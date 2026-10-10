@@ -1,4 +1,4 @@
-import { submissionIdempotencyKey } from '@/utils/submissionIdempotency';
+import { beginGrnEditSession, grnUpdateIdempotencyKey, submissionIdempotencyKey } from '@/utils/submissionIdempotency';
 import { beginOperatorMutation, getAuthenticatedClient, getCurrentConfig } from '@/config/supabaseConfig';
 import { GRNHeaderData, GRNItemData, GRNImageData, RemovedGRNImage } from '@/store/slices/grnFormSlice';
 import {
@@ -303,6 +303,162 @@ export const createGRN = async (payload: CreateGRNPayload) => {
   }
 };
 
+/** PostgREST found no update_grn that takes the parameters sent (PGRST202). */
+const isUnknownFunctionSignature = (error: { code?: string; message?: string }): boolean =>
+  error.code === 'PGRST202' || /could not find the function/i.test(error.message ?? '');
+
+/** The update_grn body for a form, and the form's lines under the ids that body uses. */
+const buildUpdateGRNRequest = (grnId: string, payload: UpdateGRNPayload) => {
+  // ✅ CRITICAL: Normalize field names - support both legacy and new field names
+  // Legacy: id, item_id | New: grn_trl_id, item_table_id
+  // Helper to check if an ID is a valid UUID (not a temporary ID)
+  const isValidUUID = (id: string | undefined | null): boolean => {
+    if (!id || typeof id !== 'string') return false;
+    // Temp IDs start with "item-" or "temp_" - these are NOT valid UUIDs
+    if (id.startsWith('item-') || isTemporaryGRNImageId(id)) return false;
+    // Basic UUID format check (8-4-4-4-12 hex characters)
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    return uuidRegex.test(id);
+  };
+
+  const normalizedItems = payload.items.map((item, index) => {
+    // Use new field names if available, fall back to legacy names
+    // ✅ Only use IDs that are valid UUIDs (not temporary IDs)
+    const normalizedGrnTrlId = isValidUUID(item.grn_trl_id) ? item.grn_trl_id : (isValidUUID(item.id) ? item.id : undefined);
+    const normalizedItemTableId = item.item_table_id || item.item_id;
+
+    return {
+      ...item,
+      grn_trl_id: normalizedGrnTrlId,
+      item_table_id: normalizedItemTableId,
+    };
+  });
+
+  // Prepare items for RPC (map frontend format to RPC format)
+  const rpcItems = normalizedItems.map((item, index) => {
+    // ✅ CRITICAL: Use the GRN item record ID (goodsreceived_trl.id), NOT the item master ID
+    const grnItemId = item.grn_trl_id; // This is goodsreceived_trl.id - the GRN item record ID
+    const itemMasterId = item.item_table_id; // This is items.id - the item master/catalog ID
+
+    // Build the RPC item with correct field names
+    // NOTE: Backend validation uses camelCase, but RPC spec shows snake_case
+    // We send BOTH versions to ensure compatibility
+    const rpcItem: any = {
+      // Item identification (both formats)
+      item_name: item.item_name, // snake_case per spec
+      itemName: item.item_name, // camelCase per actual backend validation
+      item_id: itemMasterId, // snake_case per spec
+      itemId: itemMasterId, // camelCase per actual backend validation
+
+      // Quantities
+      qty: item.qty,
+      stock: item.stock || item.qty,
+      weight: item.weight || 0,
+
+      // Package information (both formats)
+      packaging: item.packaging || null,
+      package_mark: item.package_mark || null, // snake_case per spec
+      packageMark: item.package_mark || null, // camelCase per actual backend
+
+      // Location and notes
+      rack: item.rack || null,
+      note: item.note || null
+    };
+
+    // ✅ Only add ID if we have a valid UUID (not a temp ID like "item-xxx")
+    if (isValidUUID(grnItemId)) {
+      rpcItem.id = grnItemId;
+    }
+
+    return rpcItem;
+  });
+
+  // Prepare images for RPC using enhanced array index mapping
+  const rpcImages: any[] = [];
+
+  // Add header images with correct RPC format
+  // NOTE: Backend validation requires storage_path and image_type (not image_url as per spec)
+  if (payload.header.gr_images) {
+    payload.header.gr_images.forEach((img, idx) => {
+      if (img.storagePath) {
+        rpcImages.push({
+          ...(img.id && !isTemporaryGRNImageId(img.id) && { id: img.id }), // Include real IDs for existing images
+          storage_path: img.storagePath, // ✅ Required by actual backend
+          image_type: 'header', // ✅ Required by actual backend
+          original_filename: img.fileName || null,
+          file_size: img.fileSize || 0,
+          mime_type: img.mimeType || 'image/jpeg'
+        });
+      } else {
+        log.warn(`Skipping header image ${idx} - no storagePath`);
+      }
+    });
+  }
+
+  // Add item images using enhanced array index mapping (supports multiple images per item)
+  // NOTE: Backend validation requires storage_path and image_type (not image_url as per spec)
+  // Use normalizedItems to ensure consistent field names
+  normalizedItems.forEach((item, index) => {
+    if (item.trl_images && item.trl_images.length > 0) {
+      item.trl_images.forEach((img, imgIndex) => {
+        if (img.storagePath) {
+          // For item images, we need to link them to the GRN item ID
+          const imagePayload: any = {
+            ...(img.id && !isTemporaryGRNImageId(img.id) && { id: img.id }), // Include real IDs for existing images
+            storage_path: img.storagePath, // ✅ Required by actual backend
+            image_type: 'item', // ✅ Required by actual backend
+            original_filename: img.fileName || null,
+            file_size: img.fileSize || 0,
+            mime_type: img.mimeType || 'image/jpeg'
+          };
+
+          // Link image to GRN item for proper association (uses normalized grn_trl_id)
+          if (item.grn_trl_id && typeof item.grn_trl_id === 'string' && item.grn_trl_id.length > 10) {
+            imagePayload.grn_item_id = item.grn_trl_id; // Link to existing GRN item record
+          } else {
+            imagePayload.item_index = index; // For new items, use array index
+          }
+
+          rpcImages.push(imagePayload);
+        }
+      });
+    }
+  });
+
+  // ==========================================================================
+  // 🖼️ IMAGE SUMMARY - What's being sent to backend
+  // ==========================================================================
+  const headerImagesInPayload = payload.header.gr_images?.length || 0;
+  const headerImagesSending = rpcImages.filter(img => img.image_type === 'header').length;
+  const itemImagesSending = rpcImages.filter(img => img.image_type === 'item').length;
+
+  if (headerImagesInPayload !== headerImagesSending) {
+    log.warn(`IMAGE MISMATCH: ${headerImagesInPayload} in payload but only ${headerImagesSending} will be sent`);
+    log.warn('This usually means some images are missing storagePath');
+  }
+
+  // Prepare the complete RPC request payload
+  const rpcRequest = {
+    p_grn_id: grnId, // ✅ Corrected: was p_gr_id
+    p_gr_no: payload.header.gr_no || null,
+    p_date: payload.header.date ? toCalendarDay(payload.header.date) : null,
+    p_customer_id: payload.header.customer_id || null,
+    p_customer_name: payload.header.customer_name || null,
+    p_sender_id: payload.header.sender_id || null, // ✅ New: sender ID
+    p_sender_name: payload.header.sender_name || null, // ✅ New: sender name
+    p_supervisor_id: payload.header.supervisor_id || null, // ✅ New: supervisor ID
+    p_supervisor_name: payload.header.supervisor_name || null,
+    p_registration: payload.header.registration || null,
+    p_note: payload.header.note || null, // ✅ Corrected: note field
+    p_leon: payload.header.leon || null, // ✅ New: leon flag
+    p_pricing_mode: payload.header.pricing_mode || null, // ✅ New: pricing mode
+    p_items: rpcItems,
+    p_images: rpcImages
+  };
+
+  return { normalizedItems, rpcImages, rpcRequest };
+};
+
 // Update existing GRN using update_grn RPC
 // M3 Fix: Not migrated to executeRPC - extensive debug logging for troubleshooting
 // field normalization, ID validation, image updates; complex stock protection handling
@@ -314,167 +470,42 @@ export const createGRN = async (payload: CreateGRNPayload) => {
 export const updateGRN = async (
   grnId: string,
   payload: UpdateGRNPayload,
-  options: { removedImages?: RemovedGRNImage[] } = {}
+  options: { removedImages?: RemovedGRNImage[]; adoptedLineIds?: Record<string, string> } = {}
 ) => {
   let finishMutation: (() => void) | undefined;
   // True when update_grn was sent and no answer came back: the server may have
-  // applied it. update_grn has no idempotency key, so a line added in this edit
-  // must not be sent again as new until the server has been asked what it holds
+  // applied it. The same Save sent again carries the same idempotency key and
+  // gets the first answer. A changed form gets a new key, and so does a server
+  // without the parameter, so a line added in this edit must not be sent again
+  // as new until the server has been asked what it holds
   // (findLinesSavedByLostUpdate).
   let outcomeUnknown = false;
   try {
     finishMutation = beginOperatorMutation();
 
-    // ✅ CRITICAL: Normalize field names - support both legacy and new field names
-    // Legacy: id, item_id | New: grn_trl_id, item_table_id
-    // Helper to check if an ID is a valid UUID (not a temporary ID)
-    const isValidUUID = (id: string | undefined | null): boolean => {
-      if (!id || typeof id !== 'string') return false;
-      // Temp IDs start with "item-" or "temp_" - these are NOT valid UUIDs
-      if (id.startsWith('item-') || isTemporaryGRNImageId(id)) return false;
-      // Basic UUID format check (8-4-4-4-12 hex characters)
-      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-      return uuidRegex.test(id);
-    };
-
-    const normalizedItems = payload.items.map((item, index) => {
-      // Use new field names if available, fall back to legacy names
-      // ✅ Only use IDs that are valid UUIDs (not temporary IDs)
-      const normalizedGrnTrlId = isValidUUID(item.grn_trl_id) ? item.grn_trl_id : (isValidUUID(item.id) ? item.id : undefined);
-      const normalizedItemTableId = item.item_table_id || item.item_id;
-
-      return {
-        ...item,
-        grn_trl_id: normalizedGrnTrlId,
-        item_table_id: normalizedItemTableId,
-      };
+    // After a lost answer the form may hold as new a line the server saved
+    // (options.adoptedLineIds). The request carries its saved id; the key is
+    // taken from the request as the form first sent it, so this Save is still
+    // the retry of that one.
+    const adoptedLineIds = options.adoptedLineIds ?? {};
+    const { normalizedItems, rpcImages, rpcRequest } = buildUpdateGRNRequest(grnId, {
+      ...payload,
+      items: payload.items.map(item => ({ ...item, grn_trl_id: adoptedLineIds[item.grn_trl_id] ?? item.grn_trl_id })),
     });
-
-    // Prepare items for RPC (map frontend format to RPC format)
-    const rpcItems = normalizedItems.map((item, index) => {
-      // ✅ CRITICAL: Use the GRN item record ID (goodsreceived_trl.id), NOT the item master ID
-      const grnItemId = item.grn_trl_id; // This is goodsreceived_trl.id - the GRN item record ID
-      const itemMasterId = item.item_table_id; // This is items.id - the item master/catalog ID
-
-      // Build the RPC item with correct field names
-      // NOTE: Backend validation uses camelCase, but RPC spec shows snake_case
-      // We send BOTH versions to ensure compatibility
-      const rpcItem: any = {
-        // Item identification (both formats)
-        item_name: item.item_name, // snake_case per spec
-        itemName: item.item_name, // camelCase per actual backend validation
-        item_id: itemMasterId, // snake_case per spec
-        itemId: itemMasterId, // camelCase per actual backend validation
-
-        // Quantities
-        qty: item.qty,
-        stock: item.stock || item.qty,
-        weight: item.weight || 0,
-
-        // Package information (both formats)
-        packaging: item.packaging || null,
-        package_mark: item.package_mark || null, // snake_case per spec
-        packageMark: item.package_mark || null, // camelCase per actual backend
-
-        // Location and notes
-        rack: item.rack || null,
-        note: item.note || null
-      };
-
-      // ✅ Only add ID if we have a valid UUID (not a temp ID like "item-xxx")
-      if (isValidUUID(grnItemId)) {
-        rpcItem.id = grnItemId;
-      }
-
-      return rpcItem;
-    });
-
-    // Prepare images for RPC using enhanced array index mapping
-    const rpcImages: any[] = [];
-
-    // Add header images with correct RPC format
-    // NOTE: Backend validation requires storage_path and image_type (not image_url as per spec)
-    if (payload.header.gr_images) {
-      payload.header.gr_images.forEach((img, idx) => {
-        if (img.storagePath) {
-          rpcImages.push({
-            ...(img.id && !isTemporaryGRNImageId(img.id) && { id: img.id }), // Include real IDs for existing images
-            storage_path: img.storagePath, // ✅ Required by actual backend
-            image_type: 'header', // ✅ Required by actual backend
-            original_filename: img.fileName || null,
-            file_size: img.fileSize || 0,
-            mime_type: img.mimeType || 'image/jpeg'
-          });
-        } else {
-          log.warn(`Skipping header image ${idx} - no storagePath`);
-        }
-      });
-    }
-
-    // Add item images using enhanced array index mapping (supports multiple images per item)
-    // NOTE: Backend validation requires storage_path and image_type (not image_url as per spec)
-    // Use normalizedItems to ensure consistent field names
-    normalizedItems.forEach((item, index) => {
-      if (item.trl_images && item.trl_images.length > 0) {
-        item.trl_images.forEach((img, imgIndex) => {
-          if (img.storagePath) {
-            // For item images, we need to link them to the GRN item ID
-            const imagePayload: any = {
-              ...(img.id && !isTemporaryGRNImageId(img.id) && { id: img.id }), // Include real IDs for existing images
-              storage_path: img.storagePath, // ✅ Required by actual backend
-              image_type: 'item', // ✅ Required by actual backend
-              original_filename: img.fileName || null,
-              file_size: img.fileSize || 0,
-              mime_type: img.mimeType || 'image/jpeg'
-            };
-
-            // Link image to GRN item for proper association (uses normalized grn_trl_id)
-            if (item.grn_trl_id && typeof item.grn_trl_id === 'string' && item.grn_trl_id.length > 10) {
-              imagePayload.grn_item_id = item.grn_trl_id; // Link to existing GRN item record
-            } else {
-              imagePayload.item_index = index; // For new items, use array index
-            }
-
-            rpcImages.push(imagePayload);
-          }
-        });
-      }
-    });
-
-    // ==========================================================================
-    // 🖼️ IMAGE SUMMARY - What's being sent to backend
-    // ==========================================================================
-    const headerImagesInPayload = payload.header.gr_images?.length || 0;
-    const headerImagesSending = rpcImages.filter(img => img.image_type === 'header').length;
-    const itemImagesSending = rpcImages.filter(img => img.image_type === 'item').length;
-
-    if (headerImagesInPayload !== headerImagesSending) {
-      log.warn(`IMAGE MISMATCH: ${headerImagesInPayload} in payload but only ${headerImagesSending} will be sent`);
-      log.warn('This usually means some images are missing storagePath');
-    }
-
-    // Prepare the complete RPC request payload
-    const rpcRequest = {
-      p_grn_id: grnId, // ✅ Corrected: was p_gr_id
-      p_gr_no: payload.header.gr_no || null,
-      p_date: payload.header.date ? toCalendarDay(payload.header.date) : null,
-      p_customer_id: payload.header.customer_id || null,
-      p_customer_name: payload.header.customer_name || null,
-      p_sender_id: payload.header.sender_id || null, // ✅ New: sender ID
-      p_sender_name: payload.header.sender_name || null, // ✅ New: sender name
-      p_supervisor_id: payload.header.supervisor_id || null, // ✅ New: supervisor ID
-      p_supervisor_name: payload.header.supervisor_name || null,
-      p_registration: payload.header.registration || null,
-      p_note: payload.header.note || null, // ✅ Corrected: note field
-      p_leon: payload.header.leon || null, // ✅ New: leon flag
-      p_pricing_mode: payload.header.pricing_mode || null, // ✅ New: pricing mode
-      p_items: rpcItems,
-      p_images: rpcImages
-    };
+    const firstSentRequest = Object.keys(adoptedLineIds).length > 0
+      ? buildUpdateGRNRequest(grnId, payload).rpcRequest
+      : rpcRequest;
+    const idempotencyKey = await grnUpdateIdempotencyKey(grnId, firstSentRequest);
 
     // Call the update_grn RPC function with correct parameters using authenticated client
     const authenticatedClient = await getAuthenticatedClient();
-    const { data, error } = await authenticatedClient.rpc('update_grn', rpcRequest);
+    let { data, error } = await authenticatedClient.rpc('update_grn', { ...rpcRequest, p_idempotency_key: idempotencyKey });
+    if (error && isUnknownFunctionSignature(error)) {
+      // A server that has not applied migration 47 knows no p_idempotency_key and
+      // refused the call before running it. Sent once more as that server takes it.
+      log.warn('update_grn does not take an idempotency key on this server; sent without it');
+      ({ data, error } = await authenticatedClient.rpc('update_grn', rpcRequest));
+    }
 
     if (error) {
       log.error('update_grn failed', loggableError(error));
@@ -501,6 +532,10 @@ export const updateGRN = async (
 
       throw new Error(serverText(rpcResult?.message, t('grn.form.updateRejected')));
     }
+
+    // Saved (also when this is the stored answer of an earlier attempt,
+    // `idempotent: true`): whatever is saved next is a new save with a new key.
+    beginGrnEditSession(grnId);
 
     // ✅ Photos removed in the form. update_grn deletes the rows it was not sent,
     // but only when it was sent at least one image, so the answer's own image
@@ -827,6 +862,9 @@ export const loadGRNData = async (grnId: string) => {
         trl_images, // ✅ Now an array of images
       };
     });
+
+    // The form now shows what the server holds: saves from here on are new saves.
+    beginGrnEditSession(grnId);
 
     return {
       success: true,

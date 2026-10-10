@@ -20,3 +20,28 @@ export async function submissionIdempotencyKey(operation: 'grn' | 'dispatch', bo
   const digest = await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, JSON.stringify(canonical(body)));
   return `warehouse-${operation}-${digest}`;
 }
+
+// An edit has no document number of its own to key on: the same GRN is edited
+// many times, and the same body can be right twice (a note set, changed by a
+// colleague or by the next save, set again). So each edit session of a GRN has
+// a random part, and a key is reused only by a Save that repeats the body sent
+// last. The session is renewed when the edit form loads the GRN, after every
+// save the server answered with success, and when the body differs from the
+// one sent last.
+let grnEditSession: { grnId: string; session: string; lastBody?: string } | null = null;
+
+export function beginGrnEditSession(grnId: string): void {
+  grnEditSession = { grnId, session: Crypto.randomUUID() };
+}
+
+/** Key for `update_grn`: the edit session, the GRN and the complete RPC body. */
+export async function grnUpdateIdempotencyKey(grnId: string, body: Record<string, unknown>): Promise<string> {
+  const sha256 = (text: string) => Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, text);
+  const bodyDigest = await sha256(JSON.stringify(canonical(body)));
+  if (grnEditSession?.grnId !== grnId || (grnEditSession.lastBody && grnEditSession.lastBody !== bodyDigest)) {
+    beginGrnEditSession(grnId);
+  }
+  const current = grnEditSession!;
+  current.lastBody = bodyDigest;
+  return `warehouse-grn-update-${await sha256(`${current.session}:${grnId}:${bodyDigest}`)}`;
+}

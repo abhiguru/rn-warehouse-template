@@ -17,7 +17,11 @@ jest.mock('@/config/supabaseConfig', () => ({
     storage: { from: () => ({ remove: async () => ({ data: [], error: null }) }) },
   }),
 }));
-jest.mock('@/utils/submissionIdempotency', () => ({ submissionIdempotencyKey: async () => 'warehouse-grn-fictional-key' }));
+jest.mock('@/utils/submissionIdempotency', () => ({
+  submissionIdempotencyKey: async () => 'warehouse-grn-fictional-key',
+  grnUpdateIdempotencyKey: async () => 'warehouse-grn-update-fictional-key',
+  beginGrnEditSession: jest.fn(),
+}));
 jest.mock('expo-image-manipulator', () => ({ SaveFormat: { WEBP: 'webp', JPEG: 'jpeg' }, manipulateAsync: jest.fn() }));
 jest.mock('expo-file-system', () => ({ File: jest.fn() }));
 jest.mock('expo-image-picker', () => ({}));

@@ -49,6 +49,7 @@ jest.mock('expo-crypto', () => {
   return {
     CryptoDigestAlgorithm: { SHA256: 'SHA-256' },
     digestStringAsync: async (_algorithm: string, text: string) => createHash('sha256').update(text).digest('hex'),
+    randomUUID: () => jest.requireActual('node:crypto').randomUUID(),
   };
 });
 
@@ -469,8 +470,8 @@ describe('a photo whose preparation has not finished or has failed', () => {
   });
 });
 
-// RF-3: update_grn has no idempotency key. The service says when its answer
-// was lost, so the form asks the server what it holds before saving again.
+// RF-3: the service says when the answer to update_grn was lost, so the form
+// asks the server what it holds before saving again.
 describe('an update whose answer is lost', () => {
   const edit = () => updateGRN(GRN_ID, { header: header([saved(KEPT_PHOTO_ID, 'kept')]), items: [line('item-new', 'Example Onions')] });
 
@@ -489,6 +490,133 @@ describe('an update whose answer is lost', () => {
     expect((await edit()).outcomeUnknown).toBe(false);
     mockRpcHandlers.update_grn = () => ({ data: null, error: { message: 'new row violates check constraint', code: '23514' } });
     expect((await edit()).outcomeUnknown).toBe(false);
+  });
+});
+
+// RF-3: update_grn takes an idempotency key (backend migration 47). A Save that
+// is repeated with the same body carries the same key, so the server answers
+// with the first result and applies nothing; any other Save carries a new one.
+describe('the idempotency key of an update', () => {
+  const answer = (extra: Record<string, unknown> = {}) => ({
+    data: {
+      success: true,
+      message: 'GRN updated successfully',
+      grn: { id: GRN_ID, gr_no: 'A0010', items: [], images: [{ id: KEPT_PHOTO_ID }] },
+      stats: {},
+      item_mapping: [],
+      ...extra,
+    },
+    error: null,
+  });
+  const lost = () => ({ data: null, error: { message: 'TypeError: Network request failed', code: '', details: '', hint: '' } });
+  const edit = (note = '', options: Parameters<typeof updateGRN>[2] = {}) =>
+    updateGRN(
+      GRN_ID,
+      { header: { ...header([saved(KEPT_PHOTO_ID, 'kept')]), note }, items: [line(LINE_ID, 'Example Potatoes'), line('item-new', 'Example Onions')] },
+      options
+    );
+  const keys = () => callsTo('update_grn').map((call) => call.args.p_idempotency_key);
+
+  it('is sent, and is the same on every retry of a Save that got no answer', async () => {
+    mockRpcHandlers.update_grn = lost;
+    await edit();
+    await edit();
+    mockRpcHandlers.update_grn = () => answer();
+    expect((await edit()).success).toBe(true);
+
+    expect(keys()[0]).toMatch(/^warehouse-grn-update-[a-f0-9]{64}$/);
+    expect(keys()).toEqual([keys()[0], keys()[0], keys()[0]]);
+  });
+
+  // Also when the form is changed back: both earlier saves may have been applied, and the
+  // stored answer of the first would leave the GRN as the second made it.
+  it('is a new one whenever the form was changed after a Save that got no answer', async () => {
+    mockRpcHandlers.update_grn = lost;
+    await edit('first note');
+    await edit('second note');
+    await edit('first note');
+
+    expect(new Set(keys()).size).toBe(3);
+  });
+
+  it('is a new one after a save the server answered, also for the same body', async () => {
+    mockRpcHandlers.update_grn = () => answer();
+    await edit();
+    await edit();
+
+    expect(keys()[1]).not.toBe(keys()[0]);
+  });
+
+  it('stays the same after a refusal, which the server did not keep', async () => {
+    mockRpcHandlers.update_grn = () => ({ data: { success: false, message: 'GRN number already exists: A0010' }, error: null });
+    await edit();
+    await edit();
+
+    expect(keys()[1]).toBe(keys()[0]);
+  });
+
+  it('does not depend on the saved ids the form adopted after a lost answer', async () => {
+    mockRpcHandlers.update_grn = lost;
+    await edit();
+    mockRpcHandlers.update_grn = () => answer({ idempotent: true });
+    await edit('', { adoptedLineIds: { 'item-new': NEW_LINE_ID } });
+
+    expect(keys()[1]).toBe(keys()[0]);
+    // The body itself carries the adopted id, for a server that applies it.
+    expect(callsTo('update_grn')[1].args.p_items.map((item: { id?: string }) => item.id)).toEqual([LINE_ID, NEW_LINE_ID]);
+  });
+
+  it('takes the replayed answer of the first save as a save: the photo of the added line goes up', async () => {
+    mockRpcHandlers.update_grn = () =>
+      answer({ idempotent: true, item_mapping: [{ index: 1, grn_trl_item_id: NEW_LINE_ID, is_new: true }] });
+    const result = await updateGRN(GRN_ID, {
+      header: header([saved(KEPT_PHOTO_ID, 'kept')]),
+      items: [line(LINE_ID, 'Example Potatoes'), line('item-new', 'Example Onions', [picked('onions')])],
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.data?.photos).toEqual({ uploadedCount: 1, failed: [], removalFailures: 0 });
+    expect(callsTo('register_grn_image_upload')[0].args.p_grn_item_id).toBe(NEW_LINE_ID);
+  });
+
+  describe('on a server without the parameter (migration 47 not applied)', () => {
+    const unknownFunction = {
+      code: 'PGRST202',
+      message: 'Could not find the function public.update_grn(p_grn_id, p_idempotency_key, p_items) in the schema cache',
+      details: 'Searched for the function public.update_grn with parameters p_grn_id, p_idempotency_key, p_items',
+      hint: null,
+    };
+    const oldServer = (keyless: () => RpcAnswer) => {
+      mockRpcHandlers.update_grn = (args) => ('p_idempotency_key' in args ? { data: null, error: unknownFunction } : keyless());
+    };
+
+    it('sends the same body once more without the key', async () => {
+      oldServer(() => answer());
+      const result = await edit('', { adoptedLineIds: { 'item-new': NEW_LINE_ID } });
+
+      expect(result.success).toBe(true);
+      const [withKey, withoutKey] = callsTo('update_grn').map((call) => call.args);
+      expect(callsTo('update_grn')).toHaveLength(2);
+      expect(withoutKey).not.toHaveProperty('p_idempotency_key');
+      expect({ ...withKey, p_idempotency_key: undefined }).toEqual({ ...withoutKey, p_idempotency_key: undefined });
+      // The line the form adopted after a lost answer is updated, not added again.
+      expect(withoutKey.p_items.map((item: { id?: string }) => item.id)).toEqual([LINE_ID, NEW_LINE_ID]);
+    });
+
+    it('reports a lost answer of the second request as "outcome unknown"', async () => {
+      oldServer(lost);
+      const result = await edit();
+
+      expect(result.success).toBe(false);
+      expect(result.outcomeUnknown).toBe(true);
+      expect(callsTo('update_grn')).toHaveLength(2);
+    });
+
+    it('does not repeat any other failure', async () => {
+      mockRpcHandlers.update_grn = () => ({ data: null, error: { message: 'new row violates check constraint', code: '23514' } });
+      expect((await edit()).success).toBe(false);
+      expect(callsTo('update_grn')).toHaveLength(1);
+    });
   });
 });
 

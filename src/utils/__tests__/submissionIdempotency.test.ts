@@ -1,10 +1,11 @@
-import { submissionIdempotencyKey } from '../submissionIdempotency';
+import { beginGrnEditSession, grnUpdateIdempotencyKey, submissionIdempotencyKey } from '../submissionIdempotency';
 
 jest.mock('expo-crypto', () => {
   const { createHash } = jest.requireActual('node:crypto');
   return {
     CryptoDigestAlgorithm: { SHA256: 'SHA-256' },
     digestStringAsync: jest.fn(async (_algorithm: string, text: string) => createHash('sha256').update(text).digest('hex')),
+    randomUUID: jest.fn(() => jest.requireActual('node:crypto').randomUUID()),
   };
 });
 
@@ -36,5 +37,38 @@ describe('document submission retry keys', () => {
     expect(await submissionIdempotencyKey('grn', both)).not.toBe(await submissionIdempotencyKey('dispatch', both));
     await expect(submissionIdempotencyKey('grn', { p_items: [] })).rejects.toThrow('document number');
     await expect(submissionIdempotencyKey('dispatch', { p_dispatch_data: { disp_no: '' } })).rejects.toThrow('document number');
+  });
+});
+
+describe('GRN edit retry keys', () => {
+  const GRN = '11111111-2222-4333-8444-555555555555';
+  const OTHER_GRN = '22222222-2222-4333-8444-555555555555';
+  const edit = { p_grn_id: GRN, p_note: 'fictional note', p_items: [{ id: 'line-a', qty: 10 }] };
+
+  it('reuses the key for the same body in the same edit session, whatever the property order', async () => {
+    beginGrnEditSession(GRN);
+    const first = await grnUpdateIdempotencyKey(GRN, edit);
+    expect(first).toMatch(/^warehouse-grn-update-[a-f0-9]{64}$/);
+    expect(await grnUpdateIdempotencyKey(GRN, { p_items: [{ qty: 10, id: 'line-a' }], p_note: 'fictional note', p_grn_id: GRN })).toBe(first);
+  });
+  it('gives a changed body a new key, and does not return to the old key when it is changed back', async () => {
+    beginGrnEditSession(GRN);
+    const first = await grnUpdateIdempotencyKey(GRN, edit);
+    const changed = await grnUpdateIdempotencyKey(GRN, { ...edit, p_note: 'another note' });
+    const changedBack = await grnUpdateIdempotencyKey(GRN, edit);
+    expect(new Set([first, changed, changedBack]).size).toBe(3);
+  });
+  it('gives the same body a new key in a new edit session', async () => {
+    beginGrnEditSession(GRN);
+    const first = await grnUpdateIdempotencyKey(GRN, edit);
+    beginGrnEditSession(GRN);
+    expect(await grnUpdateIdempotencyKey(GRN, edit)).not.toBe(first);
+  });
+  it('includes the GRN: another GRN never shares a key', async () => {
+    beginGrnEditSession(GRN);
+    const first = await grnUpdateIdempotencyKey(GRN, edit);
+    expect(await grnUpdateIdempotencyKey(OTHER_GRN, edit)).not.toBe(first);
+    // Coming back to the first GRN is a new session as well.
+    expect(await grnUpdateIdempotencyKey(GRN, edit)).not.toBe(first);
   });
 });

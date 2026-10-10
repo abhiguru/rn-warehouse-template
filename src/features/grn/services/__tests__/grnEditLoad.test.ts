@@ -9,6 +9,7 @@
  * RF-3: lines the form holds as new may already be on the GRN.
  */
 import { findLinesSavedByLostUpdate, loadGRNData } from '../grnFormService';
+import { grnUpdateIdempotencyKey } from '@/utils/submissionIdempotency';
 
 type Row = Record<string, unknown>;
 type Query = { table: string; filters: Array<[string, string, unknown]> };
@@ -44,7 +45,14 @@ jest.mock('expo-image-manipulator', () => ({ SaveFormat: { WEBP: 'webp' }, manip
 jest.mock('expo-file-system', () => ({ File: jest.fn() }));
 jest.mock('expo-image-picker', () => ({}));
 jest.mock('@react-native-async-storage/async-storage', () => ({}));
-jest.mock('expo-crypto', () => ({ CryptoDigestAlgorithm: { SHA256: 'SHA-256' }, digestStringAsync: jest.fn() }));
+jest.mock('expo-crypto', () => {
+  const { createHash, randomUUID } = jest.requireActual('node:crypto');
+  return {
+    CryptoDigestAlgorithm: { SHA256: 'SHA-256' },
+    digestStringAsync: async (_algorithm: string, text: string) => createHash('sha256').update(text).digest('hex'),
+    randomUUID: () => randomUUID(),
+  };
+});
 
 const GRN_ID = '11111111-2222-4333-8444-555555555555';
 const LINE_ID = '55555555-2222-4333-8444-555555555555';
@@ -94,6 +102,19 @@ describe('opening a GRN for editing', () => {
     const result = await loadGRNData(GRN_ID);
     expect(result.success).toBe(false);
     expect(result.data).toBeUndefined();
+  });
+
+  // RF-3: the same body is a new save once the GRN was read again; the answer
+  // stored for the earlier edit must not be given in its place.
+  it('starts a new edit session, so the keys of an earlier edit are not reused', async () => {
+    const body = { p_grn_id: GRN_ID, p_note: 'same note' };
+    const before = await grnUpdateIdempotencyKey(GRN_ID, body);
+    expect(await grnUpdateIdempotencyKey(GRN_ID, body)).toBe(before);
+
+    mockAnswer = server();
+    expect((await loadGRNData(GRN_ID)).success).toBe(true);
+
+    expect(await grnUpdateIdempotencyKey(GRN_ID, body)).not.toBe(before);
   });
 
   it('asks for confirmed photos only', async () => {

@@ -338,9 +338,10 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
 
     dispatch(setIsSaving(true));
     try {
-      // update_grn has no idempotency key. After an update that got no answer, a line added
-      // in this edit may already be on the GRN: it gets its saved id first, so this Save
-      // updates it instead of adding it a second time.
+      // After an update that got no answer, a line added in this edit may already be on the
+      // GRN: it gets its saved id first, so this Save updates it instead of adding it a second
+      // time. The same Save repeated is also answered from the first by its idempotency key;
+      // the saved ids cover a form that was changed in between and a server without the key.
       let adopted: Record<string, string> = {};
       if (saveUnconfirmed) {
         const check = await findLinesSavedByLostUpdate(grnId, items);
@@ -370,7 +371,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
           gr_images: header.gr_images,
         },
         items: items.map((item) => ({
-          grn_trl_id: adopted[item.grn_trl_id] ?? item.grn_trl_id,
+          grn_trl_id: item.grn_trl_id,
           item_table_id: item.item_table_id,
           item_name: item.item_name,
           packaging: item.packaging,
@@ -381,7 +382,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
           package_mark: item.package_mark,
           trl_images: item.trl_images || [],
         })),
-      }, { removedImages });
+      }, { removedImages, adoptedLineIds: adopted });
 
       if (result.success) {
         const resultData = result.data as { data?: { items_skipped_stock?: Array<{ item_name: string; reason: string }> }; items_skipped_stock?: Array<{ item_name: string; reason: string }> } | undefined;

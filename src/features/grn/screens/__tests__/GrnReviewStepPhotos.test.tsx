@@ -144,7 +144,7 @@ describe('GRN review step photos', () => {
 
       await save(tree);
 
-      expect(updateGRN).toHaveBeenCalledWith(GRN_ID, expect.any(Object), { removedImages: mockRemovedImages });
+      expect(updateGRN).toHaveBeenCalledWith(GRN_ID, expect.any(Object), { removedImages: mockRemovedImages, adoptedLineIds: {} });
       expect(photoDialog(tree).props.visible).toBe(false);
       expect(one(tree, 'DocumentSuccessDialog').props.isVisible).toBe(true);
       await act(async () => { tree.unmount(); });
@@ -326,7 +326,10 @@ describe('GRN review step photos', () => {
       await save(tree);
 
       expect(findLinesSavedByLostUpdate).toHaveBeenCalledWith(GRN_ID, [mockItems[0], NEW_LINE]);
-      expect((updateGRN as jest.Mock).mock.calls[0][1].items.map((item: { grn_trl_id: string }) => item.grn_trl_id)).toEqual([mockItems[0].grn_trl_id, SAVED_ID]);
+      // The form's lines go as they are; the service puts the saved id in the request and
+      // keeps the idempotency key of the Save that got no answer.
+      expect((updateGRN as jest.Mock).mock.calls[0][1].items.map((item: { grn_trl_id: string }) => item.grn_trl_id)).toEqual([mockItems[0].grn_trl_id, NEW_LINE.grn_trl_id]);
+      expect((updateGRN as jest.Mock).mock.calls[0][2].adoptedLineIds).toEqual({ [NEW_LINE.grn_trl_id]: SAVED_ID });
       expect(mockDispatch).toHaveBeenCalledWith(adoptSavedLines({ [NEW_LINE.grn_trl_id]: SAVED_ID }));
       expect(mockDispatch).toHaveBeenCalledWith(setSaveUnconfirmed(false));
       await act(async () => { tree.unmount(); });
