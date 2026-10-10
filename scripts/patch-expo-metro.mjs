@@ -17,13 +17,19 @@ export function adaptBinding(source, version) {
   }
   return original.replace(oldBinding, usbBinding);
 }
-export function patchExpoMetro(root) {
+// verifyOnly changes nothing and fails when the adapter is not in place (an
+// install that skipped the postinstall script).
+export function patchExpoMetro(root, { verifyOnly = false } = {}) {
   const fromExpo = createRequire(resolve(root, 'node_modules/expo/package.json'));
   const cli = dirname(fromExpo.resolve('@expo/cli/package.json'));
   const version = JSON.parse(readFileSync(resolve(cli, 'package.json'), 'utf8')).version;
   const target = resolve(cli, 'build/src/start/server/metro/runServer-fork.js');
   const source = readFileSync(target, 'utf8');
   const patched = adaptBinding(source, version);
+  if (verifyOnly) {
+    if (source !== patched) throw new Error('Required Expo CLI USB loopback adapter absent');
+    return;
+  }
   if (source !== patched) writeFileSync(target, patched);
   console.log(`Verified Expo CLI ${version} USB loopback binding.`);
 }

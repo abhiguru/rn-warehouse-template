@@ -1,0 +1,27 @@
+import { fileURLToPath } from 'node:url';
+import { isMain } from './is-main.mjs';
+import { patchExpoMetro } from './patch-expo-metro.mjs';
+import { patch as patchNavigationDecoder } from './patch-navigation-decoder.mjs';
+import { securityBackports } from './patch-security-backports.mjs';
+
+// The two adapters and the security backports are applied by the npm
+// postinstall script only. An install with scripts turned off
+// (`npm ci --ignore-scripts`, or `ignore-scripts=true` in a user's .npmrc)
+// leaves node_modules as published and reports nothing. This check reads the
+// installed files, changes none of them, and runs before start, android, ios,
+// web and test.
+export function checkInstall(root) {
+  patchExpoMetro(root, { verifyOnly: true });
+  patchNavigationDecoder(root, { verifyOnly: true });
+  securityBackports(root, { verifyOnly: true });
+}
+
+if (isMain(import.meta.url)) {
+  try {
+    checkInstall(fileURLToPath(new URL('..', import.meta.url)));
+  } catch (error) {
+    console.error(`node_modules is not the patched tree this project needs: ${error instanceof Error ? error.message : 'unreadable install'}.`);
+    console.error('This happens when npm ran with scripts turned off. Run `npm run postinstall`, or `npm ci` without --ignore-scripts.');
+    process.exitCode = 1;
+  }
+}
