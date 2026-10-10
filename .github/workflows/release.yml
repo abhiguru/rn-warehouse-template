@@ -15,10 +15,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: '22'
           cache: npm
@@ -34,7 +34,7 @@ jobs:
         run: npm run audit:dependencies -- --report-dir "$RUNNER_TEMP/dependency-security-report"
       - name: Preserve raw audit and installed-source verification
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: dependency-security-report
           path: ${{ runner.temp }}/dependency-security-report
