@@ -11,9 +11,29 @@ const mockReplace = jest.fn();
 let mockSegments: string[] = [];
 let mockAuth: { userProfile: unknown; session: unknown; user: unknown } = { userProfile: null, session: null, user: null };
 
+// The root navigation container as expo-router hands it out. Like the real router, replace
+// throws when it is called before the container is ready.
+let mockNavigationReady = true;
+const mockReadyListeners = new Set<() => void>();
+const mockNavigationBecomesReady = () => {
+  mockNavigationReady = true;
+  for (const listener of [...mockReadyListeners]) listener();
+};
 jest.mock('expo-router', () => {
-  const router = { replace: (...args: unknown[]) => mockReplace(...args) };
-  return { useRouter: () => router, useSegments: () => mockSegments };
+  const router = {
+    replace: (...args: unknown[]) => {
+      if (!mockNavigationReady) throw new Error('Attempted to navigate before mounting the Root Layout component.');
+      mockReplace(...args);
+    },
+  };
+  const navigationRef = {
+    isReady: () => mockNavigationReady,
+    addListener: (_event: string, listener: () => void) => {
+      mockReadyListeners.add(listener);
+      return () => mockReadyListeners.delete(listener);
+    },
+  };
+  return { useRouter: () => router, useSegments: () => mockSegments, useNavigationContainerRef: () => navigationRef };
 });
 jest.mock('@/store/hooks', () => ({
   useAppSelector: (select: (state: unknown) => unknown) => select({ auth: mockAuth }),
@@ -59,6 +79,8 @@ const showsContent = () => renderer!.root.findAllByType(Text).length === 1;
 const showsSpinner = () => renderer!.root.findAllByProps({ testID: 'route-guard-pending' }).length > 0;
 
 beforeEach(() => {
+  mockNavigationReady = true;
+  mockReadyListeners.clear();
   mockReplace.mockReset();
   mockAuth = SIGNED_OUT;
   mountCount = 0;
@@ -109,6 +131,41 @@ describe('signed out', () => {
     await rerender('login', true);
     expect(mockReplace).toHaveBeenCalledTimes(1);
     expect(showsContent()).toBe(true);
+  });
+});
+
+// RM-4: the real router throws when asked to navigate before the root navigator is ready.
+describe('a root navigator that is not ready yet', () => {
+  it('signed out on a cold start: nothing is thrown, the spinner shows, and sign-in opens once it is ready', async () => {
+    mockNavigationReady = false;
+    await render('(tabs)', ['(tabs)']);
+    expect(mockReplace).not.toHaveBeenCalled();
+    expect(showsSpinner()).toBe(true);
+    expect(mountCount).toBe(0);
+
+    await act(async () => mockNavigationBecomesReady());
+    expect(mockReplace).toHaveBeenCalledTimes(1);
+    expect(mockReplace).toHaveBeenCalledWith('/login');
+    expect(mockReadyListeners.size).toBe(0);
+  });
+
+  it('a wrong-role link waits the same way and then goes home', async () => {
+    mockAuth = profile('customer');
+    mockNavigationReady = false;
+    await render('users', ['users']);
+    expect(mockReplace).not.toHaveBeenCalled();
+    await act(async () => mockNavigationBecomesReady());
+    expect(mockReplace).toHaveBeenCalledWith('/');
+  });
+
+  it('a navigator that became ready between render and effect is noticed without an event', async () => {
+    mockNavigationReady = false;
+    mockSegments = ['customers'];
+    await act(async () => {
+      renderer = create(<Root restored routeName="customers" />);
+      mockNavigationReady = true;
+    });
+    expect(mockReplace).toHaveBeenCalledWith('/login');
   });
 });
 

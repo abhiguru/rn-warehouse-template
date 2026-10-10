@@ -9,11 +9,14 @@
  *
  * Both run only after the stored session has been restored (the root layout renders the
  * stack after that), so a signed-in person is never sent to sign-in on a cold start.
+ * The navigation also waits for the root navigator: the router throws ("Attempted to
+ * navigate before mounting the Root Layout component") when asked earlier. Until then
+ * `GuardedScreen` keeps its spinner in place of the refused screen.
  */
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
-import { useRouter, useSegments } from 'expo-router';
+import { useNavigationContainerRef, useRouter, useSegments } from 'expo-router';
 import { useAppSelector } from '@/store/hooks';
 import { useTokens } from '@/hooks/useTheme';
 import { t as translate } from '@/i18n';
@@ -25,6 +28,27 @@ export function useRouteAuthState(): RouteAuthState {
   return { isSignedIn: Boolean(userProfile) || (Boolean(user) && Boolean(session)), role: userProfile?.role };
 }
 
+/** True once the root navigator can take a navigation; re-renders when that happens. */
+function useNavigationReady(): boolean {
+  const navigationRef = useNavigationContainerRef();
+  const [ready, setReady] = useState(() => navigationRef.isReady());
+  useEffect(() => {
+    if (ready) return undefined;
+    const check = () => {
+      if (navigationRef.isReady()) setReady(true);
+    };
+    // It may have become ready between the render and this effect.
+    check();
+    const stopReady = navigationRef.addListener('ready', check);
+    const stopState = navigationRef.addListener('state', check);
+    return () => {
+      stopReady();
+      stopState();
+    };
+  }, [navigationRef, ready]);
+  return ready;
+}
+
 /**
  * Sends the focused route to sign-in or home when it is not for this person.
  *
@@ -34,14 +58,16 @@ export function useRootRouteGuard(authRestored: boolean): RouteDecision {
   const router = useRouter();
   const segments = useSegments();
   const { isSignedIn, role } = useRouteAuthState();
+  const navigationReady = useNavigationReady();
   const path = segments.join('/');
   const decision: RouteDecision = authRestored ? decideRoute(segments, { isSignedIn, role }) : 'allow';
 
   useEffect(() => {
+    if (!navigationReady) return;
     if (decision === 'login') router.replace('/login');
     else if (decision === 'home') router.replace('/');
     // `path` is listed so a second refused route is replaced as well.
-  }, [decision, path, router]);
+  }, [decision, path, router, navigationReady]);
 
   return decision;
 }
