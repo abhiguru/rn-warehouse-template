@@ -15,6 +15,7 @@ import { toLocalISODate } from '@/utils/formatters';
 import { calculateItemAmounts } from '@/utils/invoiceCalculations';
 import { serverReason, serverText } from '@/utils/serverText';
 import { createLogger } from '@/utils/logger';
+import { escapeLike } from '@/utils/postgrestFilter';
 
 const invoiceFormLogger = createLogger('InvoiceFormService');
 
@@ -147,16 +148,13 @@ export const getInvoiceableGrns = async (
   searchTerm?: string
 ): Promise<InvoiceableGrnsResponse> => {
   try {
-    // Extract the actual search term if it includes a reset counter suffix
-    // Format: "searchTerm_resetCounter" -> extract just "searchTerm"
-    const actualSearchTerm =
-      searchTerm && searchTerm.includes('_') ? searchTerm.split('_')[0] : searchTerm;
-
     const authenticatedClient = await getAuthenticatedClient();
 
     // Use the same RPC as web app: get_invoiceable_grns
     const { data, error } = await authenticatedClient.rpc('get_invoiceable_grns', {
-      p_search_grn_no: actualSearchTerm || null,
+      // The server matches with ILIKE '%' || text || '%': the typed text is
+      // sent whole, with its wildcard characters escaped.
+      p_search_grn_no: searchTerm ? escapeLike(searchTerm) : null,
     });
 
     if (error) {
