@@ -1,5 +1,6 @@
 /** Pieces every list configuration uses to turn filter values into request parameters. */
 import { endOfDayIST, startOfDayIST } from '@/utils/formatters';
+import { orderedDocumentRange } from '../parseQuickSearch';
 import type { FilterContext, PickedOption } from '../types';
 
 /**
@@ -8,6 +9,17 @@ import type { FilterContext, PickedOption } from '../types';
  */
 export const startOfDay = startOfDayIST;
 export const endOfDay = endOfDayIST;
+
+/**
+ * The two ends of a document-number range as they are sent: trimmed, in capitals
+ * (numbers are stored in capitals and the server compares the prefix as written),
+ * and in order when both ends are given. An end left empty stays open.
+ */
+export function documentRange(range: { from?: string; to?: string } | undefined): { from?: string; to?: string } {
+  const from = range?.from?.trim().toUpperCase() || undefined;
+  const to = range?.to?.trim().toUpperCase() || undefined;
+  return from && to ? orderedDocumentRange(from, to) : { from, to };
+}
 
 /** The ids of a picker field's value. */
 export const ids = (value: unknown) => (Array.isArray(value) ? (value as PickedOption[]).map(option => option.id) : []);

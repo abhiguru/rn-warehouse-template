@@ -15,7 +15,7 @@ import { ApplyFiltersButton } from '@/features/filters/components/ApplyFiltersBu
 import { pickerText } from '@/features/filters/components/editors/OptionPicker';
 import { SortEditor } from '@/features/filters/components/editors/SortEditor';
 import { FieldEditor } from '@/features/filters/components/FieldEditor';
-import { FILTER_CONFIGS, type CountableFilterList } from '@/features/filters/configs';
+import { filterConfigFor, type CountableFilterList } from '@/features/filters/configs';
 import { describeValue, isFieldActive, normalizeValues, valuesEqual } from '@/features/filters/filterModel';
 import type { FilterValue, FilterValues, PickerField, SortState } from '@/features/filters/types';
 import { useFilterResultCount } from '@/features/filters/useFilterResultCount';
@@ -266,7 +266,7 @@ function SortAndFilterPage({ config }: { config: CountableFilterList }) {
 export default function ListFiltersScreen() {
   const styles = useThemedStyles(makeStyles);
   const { listKey } = useLocalSearchParams<{ listKey?: string }>();
-  const config = listKey ? FILTER_CONFIGS[listKey] : undefined;
+  const config = filterConfigFor(listKey);
   if (!config) {
     return (
       <View style={styles.screen}>

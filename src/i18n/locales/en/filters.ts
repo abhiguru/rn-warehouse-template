@@ -122,6 +122,7 @@ export const filters = {
     searching: 'Searching',
     recent: 'Recent',
     searchAgain: 'Search again for {{text}}',
+    minLength: 'Type at least two letters to search.',
   },
   sheet: {
     sortBy: 'Sort by',

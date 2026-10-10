@@ -10,7 +10,7 @@ import { t } from '@/i18n';
 import { resolveDateRange } from '../datePresets';
 import { currentSort, readSearch } from '../filterModel';
 import { customerSource, itemSource } from '../pickerSources';
-import { customerFilterVisible, endOfDay, ids, startOfDay } from './shared';
+import { customerFilterVisible, documentRange, endOfDay, ids, startOfDay } from './shared';
 import type {
   DateRangeValue,
   FilterListConfig,
@@ -78,9 +78,9 @@ export const GRN_FILTERS: FilterListConfig<GrnListRequest> = {
     const itemIds = ids(values.items);
     if (itemIds.length > 0) filters.item_ids = itemIds;
 
-    const numbers = (values.numberRange as TextRangeValue | undefined) ?? search.range;
-    if (numbers?.from?.trim()) filters.gr_no_from = numbers.from.trim();
-    if (numbers?.to?.trim()) filters.gr_no_to = numbers.to.trim();
+    const numbers = documentRange((values.numberRange as TextRangeValue | undefined) ?? search.range);
+    if (numbers.from) filters.gr_no_from = numbers.from;
+    if (numbers.to) filters.gr_no_to = numbers.to;
 
     const weight = values.weight as NumberRangeValue | undefined;
     if (typeof weight?.min === 'number') filters.weight_min = Math.round(weight.min);

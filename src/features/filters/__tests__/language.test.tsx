@@ -152,7 +152,8 @@ describe('a language switch at run time', () => {
     expect(describeValue(weight, { min: 10, max: 50 })).toBe('૧૦થી ૫૦ કિલો સુધી');
     expect(describeValue(weight, { min: 9000000 })).toBe('૯૦,૦૦,૦૦૦ કિલો કે વધુ');
     expect(describeValue(weight, { max: 5 })).toBe('૫ કિલો સુધી');
-    expect(describeValue(invoiceNumbers, { min: 5, max: 9 })).toBe('૫થી ૯ સુધી');
+    // Invoice numbers are identifiers: 0-9 in every language (docs/I18N.md rule 5).
+    expect(describeValue(invoiceNumbers, { min: 5, max: 9 })).toBe('5થી 9 સુધી');
     expect(describeValue(date, { from: `${thisYear}-10-01`, to: `${thisYear}-10-07` })).toBe('૧ ઑક્ટોથી ૭ ઑક્ટો સુધી');
     expect(describeValue(date, { from: `${thisYear}-10-01` })).toBe('૧ ઑક્ટોથી');
     expect(describeValue(date, { to: `${thisYear}-10-07` })).toBe('૭ ઑક્ટો સુધી');

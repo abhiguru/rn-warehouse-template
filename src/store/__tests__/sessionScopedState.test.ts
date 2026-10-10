@@ -9,6 +9,7 @@ import { queryClient } from '@/lib/queryClient';
 import { clearAutocompleteCache } from '@/services/autocomplete-service';
 import { sweepSharedDocuments } from '@/utils/shareDocument';
 import { clearSessionScopedState } from '../sessionScopedState';
+import { recentSearches, rememberSearch } from '@/features/filters/recentSearches';
 
 jest.mock('@/lib/queryClient', () => ({
   queryClient: { cancelQueries: jest.fn(async () => {}), clear: jest.fn() },
@@ -100,4 +101,16 @@ it('removes the recent-customer, recent-sender and recent-item lists of the ende
   ]);
   await clearSessionScopedState(store.dispatch);
   expect((await AsyncStorage.getAllKeys()).sort()).toEqual(['app_language', 'operator_server_v1']);
+});
+
+// M4-1: the "Recent" list under a search field is module state beside the filter slice.
+it('forgets the recent searches of every list', async () => {
+  rememberSearch('grn', 'Fictional Traders A0042');
+  rememberSearch('dispatch', 'DD0010');
+  expect(recentSearches('grn')).toEqual(['Fictional Traders A0042']);
+
+  await clearSessionScopedState(makeStore().dispatch);
+
+  expect(recentSearches('grn')).toEqual([]);
+  expect(recentSearches('dispatch')).toEqual([]);
 });

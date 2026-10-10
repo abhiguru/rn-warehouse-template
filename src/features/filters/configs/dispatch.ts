@@ -16,7 +16,7 @@ import { resolveDateRange } from '../datePresets';
 import { currentSort, readSearch } from '../filterModel';
 import { customerSource, itemSource } from '../pickerSources';
 import type { DateRangeValue, FilterListConfig, NumberRangeValue, TextRangeValue } from '../types';
-import { customerFilterVisible, endOfDay, ids, startOfDay } from './shared';
+import { customerFilterVisible, documentRange, endOfDay, ids, startOfDay } from './shared';
 
 export interface DispatchListRequest {
   p_sort_by: 'dispatch_date' | 'disp_no';
@@ -65,9 +65,9 @@ export const DISPATCH_FILTERS: FilterListConfig<DispatchListRequest> = {
     const itemIds = ids(values.items);
     if (itemIds.length > 0) filters.item_ids = itemIds;
 
-    const numbers = (values.numberRange as TextRangeValue | undefined) ?? search.range;
-    if (numbers?.from?.trim()) filters.disp_no_from = numbers.from.trim();
-    if (numbers?.to?.trim()) filters.disp_no_to = numbers.to.trim();
+    const numbers = documentRange((values.numberRange as TextRangeValue | undefined) ?? search.range);
+    if (numbers.from) filters.disp_no_from = numbers.from;
+    if (numbers.to) filters.disp_no_to = numbers.to;
 
     const bags = values.bags as NumberRangeValue | undefined;
     if (typeof bags?.min === 'number') filters.disp_qty_min = Math.round(bags.min);

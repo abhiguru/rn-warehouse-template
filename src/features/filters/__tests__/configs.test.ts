@@ -1,6 +1,7 @@
 import {
   DISPATCH_FILTERS,
   FILTER_CONFIGS,
+  filterConfigFor,
   GRN_FILTERS,
   INVOICE_FILTERS,
   ITEM_PRICING_FILTERS,
@@ -311,5 +312,39 @@ describe('item pricing request', () => {
         include_expired: true,
       },
     });
+  });
+});
+
+// M4-6, M4-7: the From/To boxes of a document-number range.
+describe('document-number range typed in the From and To boxes', () => {
+  it('is sent in capitals', () => {
+    const grn = GRN_FILTERS.toRequest({ numberRange: { from: 'a0010', to: 'a0020' } }, undefined, contexts.staff, today);
+    expect(grn.p_filters).toMatchObject({ gr_no_from: 'A0010', gr_no_to: 'A0020' });
+    const dispatch = DISPATCH_FILTERS.toRequest({ numberRange: { from: 'dd0009', to: 'dd0010' } }, undefined, contexts.staff, today);
+    expect(dispatch.p_filters).toMatchObject({ disp_no_from: 'DD0009', disp_no_to: 'DD0010' });
+  });
+
+  it('is sent in order when the ends were typed the wrong way round', () => {
+    const grn = GRN_FILTERS.toRequest({ numberRange: { from: 'A0020', to: 'A0010' } }, undefined, contexts.staff, today);
+    expect(grn.p_filters).toMatchObject({ gr_no_from: 'A0010', gr_no_to: 'A0020' });
+  });
+
+  it('keeps an open end open', () => {
+    const grn = GRN_FILTERS.toRequest({ numberRange: { from: 'a0010' } }, undefined, contexts.staff, today);
+    expect(grn.p_filters).toEqual({ gr_no_from: 'A0010' });
+  });
+});
+
+// M4-16: the route's listKey is text from a link.
+describe('filterConfigFor', () => {
+  it('finds a list by its key', () => {
+    expect(filterConfigFor(GRN_FILTERS.listKey)).toBe(FILTER_CONFIGS[GRN_FILTERS.listKey]);
+    expect(filterConfigFor(GRN_FILTERS.listKey)?.listKey).toBe('grn-list');
+  });
+
+  it('does not take a property of every object for a list', () => {
+    for (const key of ['__proto__', 'constructor', 'toString', 'hasOwnProperty', '', undefined]) {
+      expect(filterConfigFor(key)).toBeUndefined();
+    }
   });
 });

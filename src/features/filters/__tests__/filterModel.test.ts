@@ -1,4 +1,5 @@
-import { GRN_FILTERS } from '../configs';
+import { GRN_FILTERS, INVOICE_FILTERS } from '../configs';
+import { setLanguage } from '@/i18n/language';
 import { presetRange, resolveDateRange } from '../datePresets';
 import {
   countActiveFilters,
@@ -71,6 +72,20 @@ describe('what counts as an active filter', () => {
     // The customer field is hidden for a single-customer account, so its value is dropped.
     expect(stored).toEqual({ package: 'red', search: 'garlic' });
   });
+
+  // M4-19: a customer taken away from the account must not stay in the filter.
+  it('drops a picked customer the account is no longer assigned to', () => {
+    const two: FilterContext = {
+      role: 'customer',
+      isWarehouseRole: false,
+      assignedCustomers: [{ id: 'c1', label: 'A' }, { id: 'c2', label: 'B' }],
+    };
+    const picked = [{ id: 'c2', label: 'B' }, { id: 'c9', label: 'Revoked' }];
+    expect(normalizeValues(GRN_FILTERS, { customers: picked }, two)).toEqual({ customers: [{ id: 'c2', label: 'B' }] });
+    expect(normalizeValues(GRN_FILTERS, { customers: [{ id: 'c9', label: 'Revoked' }] }, two)).toEqual({});
+    // A warehouse role picks from every customer.
+    expect(normalizeValues(GRN_FILTERS, { customers: picked }, staff)).toEqual({ customers: picked });
+  });
 });
 
 describe('role visibility', () => {
@@ -132,5 +147,21 @@ describe('valuesEqual', () => {
     expect(valuesEqual({ a: 'x', date: { from: '1', to: '2' } }, { date: { to: '2', from: '1' }, a: 'x', b: undefined })).toBe(true);
     expect(valuesEqual({ a: 'x' }, { a: 'y' })).toBe(false);
     expect(valuesEqual({ items: [{ id: '1', label: 'a' }] }, { items: [] })).toBe(false);
+  });
+});
+
+// M4-9: an invoice number is an identifier (docs/I18N.md rule 5), not a quantity.
+describe('invoice number range chip', () => {
+  const field = INVOICE_FILTERS.fields.find(candidate => candidate.key === 'numberRange')!;
+  afterEach(() => setLanguage('en'));
+
+  it('shows the numbers as written: no thousands separator', () => {
+    expect(describeValue(field, { min: 1200, max: 1300 })).toBe('1200 – 1300');
+  });
+
+  it('keeps 0-9 in Gujarati', () => {
+    setLanguage('gu');
+    expect(describeValue(field, { min: 1200, max: 1300 })).toContain('1200');
+    expect(describeValue(field, { min: 1200, max: 1300 })).not.toMatch(/[૦-૯,]/);
   });
 });

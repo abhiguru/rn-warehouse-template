@@ -89,6 +89,11 @@ export interface NumberRangeField extends FieldBase {
   unit?: string;
   /** Whole numbers only (the backend column is an integer). */
   integer?: boolean;
+  /**
+   * The numbers are identifiers (invoice numbers), not quantities: shown as
+   * written, in 0-9 and without a thousands separator (docs/I18N.md rule 5).
+   */
+  identifier?: boolean;
 }
 export interface TextRangeField extends FieldBase {
   kind: 'textRange';

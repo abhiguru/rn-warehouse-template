@@ -75,9 +75,11 @@ export const INVOICE_FILTERS: FilterListConfig<InvoiceListRequest> = {
       get label() { return t('filters.field.financialYear'); },
       icon: 'calendar-blank-outline',
       defaultValue: 'all',
-      options: [{ value: 'all', get label() { return t('filters.option.allYears'); } }, ...yearOptions(new Date())],
+      // Read when the filter is opened, not once when the app starts: after 1 April
+      // the new financial year has to be there without a restart.
+      get options() { return [{ value: 'all', get label() { return t('filters.option.allYears'); } }, ...yearOptions(new Date())]; },
     },
-    { kind: 'numberRange', key: 'numberRange', get label() { return t('common.invoiceNumber'); }, icon: 'file-document-outline', integer: true },
+    { kind: 'numberRange', key: 'numberRange', get label() { return t('common.invoiceNumber'); }, icon: 'file-document-outline', integer: true, identifier: true },
     { kind: 'text', key: 'grn', get label() { return t('common.grnNumber'); }, icon: 'package-down', get placeholder() { return t('common.grnNumber'); } },
   ],
   fastFilters: ['date', 'customers', 'year'],

@@ -6,7 +6,7 @@
 import React, { useState } from 'react';
 import { Text, TextInput, View } from 'react-native';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
-import { normalizeDigits, t as translate, numericInput } from '@/i18n';
+import { identifierInput, normalizeDigits, t as translate, numericInput } from '@/i18n';
 import { radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 import type { NumberRangeValue, TextRangeValue } from '../../types';
 
@@ -44,11 +44,13 @@ export interface NumberRangeEditorProps {
   onChange: (value: NumberRangeValue | undefined) => void;
   unit?: string;
   integer?: boolean;
+  /** The numbers are identifiers: shown in 0-9 whatever the language. */
+  identifier?: boolean;
   /** Called with true while the range is the wrong way round. */
   onInvalid?: (invalid: boolean) => void;
 }
 
-export function NumberRangeEditor({ label, value, onChange, unit, integer = false, onInvalid }: NumberRangeEditorProps) {
+export function NumberRangeEditor({ label, value, onChange, unit, integer = false, identifier = false, onInvalid }: NumberRangeEditorProps) {
   const t = useTokens();
   const styles = useThemedStyles(makeStyles);
   // Typed text is kept as text, so "12." or an unfinished number is not rewritten under the cursor.
@@ -72,7 +74,7 @@ export function NumberRangeEditor({ label, value, onChange, unit, integer = fals
       <View style={[styles.field, invalid && styles.fieldError]}>
         <TextInput
           style={styles.input}
-          {...numericInput(text, onText)}
+          {...(identifier ? identifierInput(text, onText) : numericInput(text, onText))}
           keyboardType={integer ? 'number-pad' : 'decimal-pad'}
           placeholder={translate('common.any')}
           placeholderTextColor={t.text.placeholder}
@@ -128,7 +130,8 @@ export function TextRangeEditor({ label, value, onChange, placeholder = [transla
         <TextInput
           style={styles.input}
           value={value?.[end] ?? ''}
-          onChangeText={text => set(end, normalizeDigits(text))}
+          // Document numbers are stored in capitals; autoCapitalize is only a hint to the keyboard.
+          onChangeText={text => set(end, normalizeDigits(text).toUpperCase())}
           autoCapitalize="characters"
           autoCorrect={false}
           placeholder={translate('common.any')}
@@ -162,7 +165,8 @@ export function TextEditor({ label, value, onChange, placeholder }: TextEditorPr
       <TextInput
         style={styles.input}
         value={value ?? ''}
-        onChangeText={text => onChange(text === '' ? undefined : text)}
+        // ૦-૯ and 0-9 mean the same in anything typed (docs/I18N.md rule 6).
+        onChangeText={text => onChange(text === '' ? undefined : normalizeDigits(text))}
         autoCapitalize="none"
         autoCorrect={false}
         placeholder={placeholder ?? translate('common.any')}
