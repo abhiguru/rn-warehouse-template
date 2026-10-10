@@ -595,39 +595,6 @@ const makeStyles = (t: ThemeTokens) => ({
     flex: 1,
     backgroundColor: t.background.base,
   },
-  // App bar on surface.header with a hairline divider (§13.8)
-  header: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    justifyContent: 'space-between' as const,
-    paddingHorizontal: layout.marginCompact,
-    minHeight: layout.rowMinHeight,
-    paddingVertical: space.md,
-    backgroundColor: t.surface.header,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: t.border.divider,
-  },
-  // Large title for a top-level tab screen
-  headerTitle: {
-    ...typography.largeTitle,
-    color: t.text.primary,
-    flexShrink: 1,
-  },
-  headerActions: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-  },
-  iconButton: {
-    width: touchTarget,
-    height: touchTarget,
-    margin: 0,
-  },
-  avatarButton: {
-    width: touchTarget,
-    height: touchTarget,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-  },
   // Critical message strip (§13.9)
   messageStrip: {
     flexDirection: 'row' as const,
@@ -654,30 +621,6 @@ const makeStyles = (t: ThemeTokens) => ({
   messageStripText: {
     ...typography.footnote,
     color: t.status.critical.text,
-  },
-  // Applied filter chip (§13.5 FilterChip)
-  filterChipContainer: {
-    paddingHorizontal: layout.marginCompact,
-    paddingVertical: space.sm,
-  },
-  filterChip: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    alignSelf: 'flex-start' as const,
-    minHeight: space.xxxl,
-    borderRadius: radius.pill,
-    paddingHorizontal: space.md,
-    paddingVertical: space.s6,
-    gap: space.s6,
-    backgroundColor: t.brand.subtle,
-  },
-  filterChipPressed: {
-    backgroundColor: t.brand.subtleStrong,
-  },
-  filterChipText: {
-    ...typography.caption1,
-    fontWeight: fontWeight.semibold,
-    color: t.brand.tint,
   },
   listWrapper: {
     flex: 1,

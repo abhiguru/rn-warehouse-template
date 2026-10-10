@@ -639,23 +639,6 @@ const makeStyles = (t: ThemeTokens) => ({
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
   },
-  filterBadge: {
-    position: 'absolute' as const,
-    top: space.xs,
-    right: space.xxs,
-    minWidth: 18,
-    height: 18,
-    paddingHorizontal: space.xs,
-    borderRadius: radius.pill,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    backgroundColor: t.brand.fill,
-  },
-  filterBadgeText: {
-    ...typography.caption2,
-    fontWeight: fontWeight.bold,
-    color: t.brand.onFill,
-  },
 
   // List
   listContent: {
@@ -728,58 +711,6 @@ const makeStyles = (t: ThemeTokens) => ({
     fontWeight: fontWeight.semibold,
     color: t.status.neutral.text,
     fontVariant: ['tabular-nums' as const],
-  },
-
-  // Applied filters
-  appliedFiltersContainer: {
-    paddingHorizontal: layout.marginCompact,
-    paddingVertical: space.sm,
-    backgroundColor: t.surface.header,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: t.border.separator,
-  },
-  appliedFiltersHeader: {
-    flexDirection: 'row' as const,
-    justifyContent: 'space-between' as const,
-    alignItems: 'center' as const,
-  },
-  appliedFiltersTitle: {
-    ...typography.footnote,
-    textTransform: 'uppercase' as const,
-    letterSpacing: 0.5,
-    color: t.text.secondary,
-  },
-  clearAllButton: {
-    minHeight: touchTarget,
-    justifyContent: 'center' as const,
-    paddingHorizontal: space.sm,
-  },
-  clearAllText: {
-    ...typography.callout,
-    color: t.brand.tint,
-  },
-  appliedFiltersList: {
-    flexDirection: 'row' as const,
-    flexWrap: 'wrap' as const,
-    gap: space.sm,
-  },
-  filterChip: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    borderRadius: radius.pill,
-    paddingLeft: space.md,
-    backgroundColor: t.brand.subtle,
-  },
-  filterChipText: {
-    ...typography.caption1,
-    fontWeight: fontWeight.semibold,
-    color: t.brand.tint,
-  },
-  filterChipRemove: {
-    width: touchTarget,
-    height: 32,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
   },
 
   // Dialog

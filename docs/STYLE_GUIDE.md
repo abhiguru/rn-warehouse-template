@@ -791,7 +791,7 @@ Rules: label above the field, never only a placeholder. Height 44 minimum, radiu
 | Component | Spec |
 |---|---|
 | `ui/DatePickerInput.tsx` | Looks like a text field with a `calendar-outline` icon; opens the platform picker; shows the date format from [12.3](#123-formats). |
-| `DateRangePicker.tsx` | Two date fields, from and to; the to date cannot be before the from date; quick ranges are chips. |
+| `features/filters/components/editors/DateRangeEditor.tsx` | Quick ranges as chips (Today, Yesterday, Last 7 days, This month, Last month), then From and To date fields; "To" covers the whole of its day. |
 | `ui/CompoundRackInput.tsx` | Rack, floor and chamber pickers side by side, stacked at large text sizes; values shown as "Chamber 2 · Rack B-14". The Android picker dropdown follows the system theme, not the app's. |
 | `fiori/StepperInput.tsx` | Minus and plus buttons in `border.button` with `brand.tint` icons, `brand.subtle` while pressed; value in `body` with tabular numbers; the buttons disable at min and max; layouts `stacked`, `inline`, `compact`. |
 | `grn/components/item-form/QuantityWeightFields.tsx` | Numeric keypad, unit as a suffix in `text.secondary`, tabular numbers. |
@@ -815,9 +815,9 @@ Sheets with an on-screen keypad (the GRN picker in dispatch) keep the search fie
 
 | Component | Spec |
 |---|---|
-| `FilterChip.tsx` | Pill, `brand.subtle` background, `brand.tint` label in `caption1` weight 600, `close` icon as a 44 px target with label "Remove filter …". |
-| `QuickFilterChips.tsx` | Unselected: `surface.card`, 1 px `border.button`, `text.primary`. Selected: `brand.subtle`, `brand.tint`, check icon. Horizontal scroll with 16 side padding. |
-| `filters/AppliedFiltersBar.tsx` | Row of `FilterChip`s plus a tertiary "Clear all". |
+| `features/filters/components/FilterBarChip.tsx` | Pill, 36 px high with a 44 px touch target. Idle (a fast filter that is off): `surface.card`, 1 px `border.button`, `text.primary`, chevron when it opens a sheet. Active (a filter that is on): `brand.subtle`, `brand.tint` label in weight 600, and a separate `close` target labelled "Remove filter …". Action ("Filters" with its count badge, the sort chip). Text ("Clear all"). |
+| `features/filters/components/ChoiceChips.tsx` | A radio group of pills. Unselected: `surface.card`, 1 px `border.button`, `text.primary`. Selected: `brand.subtle`, `brand.tint`, check icon. |
+| `features/filters/components/FilterBar.tsx` | One row that scrolls sideways, in this order: Filters (opens the full page), the sort chip, active filters, unused fast filters, "Clear all". Its height never changes, so the list below does not jump. |
 | `common/overview-tab/InfoChip.tsx` | Neutral tag: `status.neutral.background`, `status.neutral.text`. |
 | `ui/StatusTag.tsx` | `status.*.background`, `status.*.text`, the standard icon from [3.5](#35-status-colours) at `iconSize.xs`, `radius.field`, `caption1` weight 600. Use it for every status; do not build local tags. |
 | `ui/Fab.tsx` | Floating create button for list reports, see 14.1. |
@@ -835,7 +835,7 @@ Sheets with an on-screen keypad (the GRN picker in dispatch) keep the search fie
 | `fiori/KeyValueCell.tsx` | Key `subhead` `text.secondary`, value `body` `text.primary` (`emphasized` uses 600). `inline` layout: key left, value right; `stacked`: key above value. Actionable values use `brand.tint` and a chevron. Switch to stacked at large text sizes. |
 | `ui/SectionHeader.tsx` | `footnote`, capitals, `text.secondary`, 16 side padding, 24 above and 8 below; optional count and a tertiary action on the right. `SectionFooter` uses `footnote` `text.secondary`. |
 | `common/overview-tab/SectionHeader.tsx`, `ContactCard`, `NotesSection`, `ActionsSection` | Same rules as above; contact actions (call, message) are icon buttons with `brand.tint`; notes show `text.primary` body text. |
-| Lists (`lists/*FlashList`, `list/GenericFilterableList.tsx`, `CustomerList.tsx`, `GRNListFiori.tsx`, `lists/SupervisorOrderQueueList.tsx`) | `background.base` behind; rows on `surface.card`; dividers `border.divider` inset 16 from the left (or past the avatar). Pull to refresh with `RefreshControl` tinted `brand.tint`. Infinite scroll loads 25 to 50 at a time with a footer spinner. Sticky section headers where grouped. |
+| Lists (`lists/*FlashList`, `CustomerList.tsx`, `GRNListFiori.tsx`, `lists/SupervisorOrderQueueList.tsx`) | `background.base` behind; rows on `surface.card`; dividers `border.divider` inset 16 from the left (or past the avatar). Pull to refresh with `RefreshControl` tinted `brand.tint`. Infinite scroll loads 25 to 50 at a time with a footer spinner. Sticky section headers where grouped. |
 | `list/ListSkeletonCard.tsx`, `skeletons/*` | Blocks in `surface.cardActive` at the size of real content, `radius.field` for text lines; shimmer off with Reduce Motion. |
 | `list/ListEmptyState.tsx`, `reports/ReportEmptyState.tsx` | Centred: icon `iconSize.hero` in `icon.secondary`, title `title3`, subtitle `subhead` `text.secondary`, optional primary or secondary button. Separate wording for "no data yet" and "no match for filters" (with "Clear filters"). |
 | `list/LoadingState.tsx` | Use skeletons for lists and object pages; a centred spinner in `brand.tint` only for short unknown waits. |
@@ -885,7 +885,7 @@ More header rules:
 |---|---|
 | `ConfirmDialog.tsx`, `PrintRangeDialog.tsx`, `DocumentSuccessDialog.tsx`, `invoice/components/InvoiceSuccessDialog.tsx`, `ForceUpdateModal.tsx`, `UpdatePrompt.tsx` | `surface.sheet`, `radius.card`, `shadow[4]`, over `overlay.scrim`. Optional icon (`warning` uses `status.critical.text`, `danger` uses `status.negative.text`, success uses `status.positive.text`). Title `title3`, message `body` `text.secondary`. Buttons: Cancel secondary, the action primary (negative style when destructive). Max width 420. Back button and tapping the scrim cancel, except for a forced update. |
 | Bottom sheets (`ChangeLogBottomSheet`, `common/ItemsSummaryBottomSheet`, `common/SearchableBottomSheet`, `CustomerSearchBottomSheet`, `PrintJobsBottomSheet`, `RolePickerBottomSheet`, `DispatchHistoryFilterSheet`, `filters/AutocompleteBottomSheet`, `dispatch/components/*BottomSheet`, `grn/components/*BottomSheet`) | `surface.sheet`, top corners `radius.sheet`, grab handle 36 × 4 in `border.separator`, `shadow[4]`, scrim behind. Title `headline` with a close or Done action. Content scrolls; actions stay pinned at the bottom with the safe-area inset. Searchable sheets put the search field at the top and keep it visible. |
-| Filter screens (`filters/GenericFilterModal.tsx`, `filters/fields/*`, `DispatchFilterOverlay.tsx`, `GRNFilterOverlay.tsx`) | Full-height sheet: fields grouped by section headers, "Reset" tertiary in the header, "Show results" primary at the bottom with the result count when known. |
+| Filter screens (`app/list-filters.tsx`, `features/filters/components/SingleFilterSheet.tsx`) | The page "Sort and filter": one card per filter under a section heading, close at the start of the header, "Reset" at its end, and one primary button at the bottom that names the result ("Show 34 items", "No items match"). Long choices (customers, items) open inside the page with Back. A chip opens a short sheet for that one filter with the same button. The button stays above the keyboard. Closing the page with changes asks first. |
 | Message strip (inline, `fiori/InlineValidation.tsx`) | `status.*.background`, 1 px `status.*.border`, `radius.button`, icon plus text in `status.*.text`. Variants `helper` (no container, `text.secondary`), `success`, `warning`, `error`. |
 | Banners (`OfflineBanner.tsx`, `TokenExpiryBanner.tsx`) | Full-width under the header. Offline: `status.neutral.background`, `cloud-off-outline`. Session expiring: `status.critical.background` with a "Sign in again" tertiary action. Never cover content; push it down. |
 | Snackbar / toast | `surface.inverse` background with `text.inverse` text (16.86:1 light, 14.64:1 dark), `shadow[3]`, `radius.button`, above the tab bar, 4 seconds. One optional action in `text.inverse`, weight 600, underlined. Never for errors that need action; use a message strip or dialog for those. |
@@ -985,9 +985,16 @@ Customer, item, pricing, user and profile forms.
 
 ### 14.5 Filter and sort
 
-- Filters open in a full-height sheet (pattern [13.9](#139-dialogs-sheets-and-messages)).
-- Lists that sort in place use the shared `list/SortBar` under the header: "Sort by", a segmented control of fields, a direction button and an optional expand-all button. Give each sort option its `kind` (`date`, `number` or `text`) so the direction button names the order in matching words: "newest first", "highest number first" or "Z to A". Changing the sort field keeps the direction the user chose; only the direction button changes it. Lists that sort on the server put sort in the filter sheet as a radio list.
-- Filters persist per list during the session and show as chips.
+Every list with filters uses the parts in `src/features/filters` and one configuration in `src/features/filters/configs`. Do not build a filter sheet, chip row or sort control for one screen.
+
+- **Header**: title row, search field, filter bar (`FilteredListHeader`). It is shown in every state of the list (loading, error, nothing found), so a search or filter can always be changed or cleared.
+- **Filter bar**: one row that scrolls sideways: "Filters" with the number applied, the sort chip, the filters that are on (each with its own remove target), the fast filters that are off, and "Clear all". It returns to its start when the filters change.
+- **One tap, one sheet**: a chip opens a short sheet for that filter only. A choice or the sort applies on the tap. Anything typed or picked is a draft until the button, which names the result: "Show 34 items", or "No items match". Never open a sheet from a sheet.
+- **Sort and filter page** (`app/list-filters.tsx`): every filter of the list on one page, for the filters that have no chip and for setting several at once. Nothing applies until its button. Customers and items are chosen inside the page.
+- **Sort**: give each sort option its `kind` (`date`, `number` or `text`) so the direction reads "Newest first", "Highest number first" or "A to Z". Changing the field keeps the direction. A list sorted by anything but date shows no date headings.
+- **A filter that is shown must work.** `toRequest` in the list's configuration is the only place a value becomes a request parameter, and `configs.test.ts` fails if a visible field does not change the request.
+- **Session only**: filters, search and sort last until the app is closed, and are cleared on sign-out and a facility switch. "Clear all" clears the current list only and keeps its sort.
+- Lists assembled in the app for customer accounts (dispatches, invoices) apply the same filters with the same meaning as the backend; their tests share the backend's cases.
 
 ### 14.6 Search
 
@@ -995,6 +1002,9 @@ Customer, item, pricing, user and profile forms.
 - Recent searches show when the field is empty.
 - Results highlight the match in bold.
 - Server search shows a spinner in the field and a clear message when offline.
+- List search (`ListSearchField`) matches every typed word, each in any of the list's columns, whatever its case. When the match is inside a collapsed card, the card shows a short line naming it.
+- A date or a number range typed in a list search ("7 Oct", "A0010-A0020", "FY 2026") becomes a filter chip with a search icon. Removing that chip searches for the same words as plain text.
+- When nothing matches, the empty state names the search text and offers "Clear search and filters".
 
 ### 14.7 Master–detail on tablets
 

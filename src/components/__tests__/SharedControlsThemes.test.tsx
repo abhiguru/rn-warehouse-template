@@ -18,14 +18,6 @@ import { CompoundRackInput } from '@/components/ui/CompoundRackInput';
 import { InlineValidation } from '@/components/fiori/InlineValidation';
 import { KeyValueCell, KeyValueGroup } from '@/components/fiori/KeyValueCell';
 import { StepperInput } from '@/components/fiori/StepperInput';
-import FilterChip from '@/components/FilterChip';
-import QuickFilterChips from '@/components/QuickFilterChips';
-import AppliedFiltersBar from '@/components/filters/AppliedFiltersBar';
-import { AutocompleteFilterField } from '@/components/filters/fields/AutocompleteFilterField';
-import { RadioFilterField } from '@/components/filters/fields/RadioFilterField';
-import { TextFilterField } from '@/components/filters/fields/TextFilterField';
-import { NumberRangeFilterField } from '@/components/filters/fields/NumberRangeFilterField';
-import { DateRangeFilterField } from '@/components/filters/fields/DateRangeFilterField';
 import StockIndicator from '@/components/StockIndicator';
 import { FioriLinearProgress, FioriSegmentedProgress } from '@/components/FioriLinearProgress';
 import StepIndicator from '@/components/StepIndicator';
@@ -130,17 +122,6 @@ function Gallery() {
       <KeyValueGroup items={[{ key: 'Bags', value: 120, emphasized: true }]} />
       <StepperInput label="Bags" value={2} onValueChange={jest.fn()} max={2} errorText="Too many" />
       <StepperInput value={0} onValueChange={jest.fn()} layout="compact" />
-      <FilterChip label="Patel Traders" type="customer" onRemove={jest.fn()} />
-      <QuickFilterChips selectedPeriod="last7days" onSelectPeriod={jest.fn()} />
-      <AppliedFiltersBar filters={{ stockStatus: 'in_stock', weightMin: 1, dateFrom: '2026-10-01' }} activeFilterCount={3}
-        onUpdateFilter={jest.fn()} onClearAll={jest.fn()} />
-      <AutocompleteFilterField label="Customer" autocompleteType="customer" onPress={jest.fn()} onRemoveSelection={jest.fn()}
-        value={[{ id: '1', label: 'Patel Traders', type: 'customer' }]} />
-      <RadioFilterField label="Stock" value="all" onChange={jest.fn()}
-        options={[{ label: 'All', value: 'all' }, { label: 'In stock', value: 'in', description: 'Has bags' }]} />
-      <TextFilterField label="Lot" value="L1" onChangeText={jest.fn()} icon="tag-outline" />
-      <NumberRangeFilterField label="Weight" value={[1, 2]} onChange={jest.fn()} />
-      <DateRangeFilterField label="Date" value={[new Date(2026, 9, 1), undefined]} onChange={jest.fn()} />
       <StockIndicator currentStock={20} originalStock={200} flashRed />
       <FioriLinearProgress progress={0.4} showPercentage label="Upload" />
       <FioriLinearProgress progress={0.4} variant="error" coloredTrack size="prominent" />

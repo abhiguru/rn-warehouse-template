@@ -7,10 +7,4 @@
 
 export { ListSkeletonCard } from './ListSkeletonCard';
 export { ListEmptyState, type ListEmptyStateProps } from './ListEmptyState';
-export {
-  GenericFilterableList,
-  GenericFilterableSectionList,
-  type GenericFilterableListProps,
-  type GenericFilterableSectionListProps,
-} from './GenericFilterableList';
 export { ListErrorBoundary, ListErrorFallback } from './ListErrorBoundary';

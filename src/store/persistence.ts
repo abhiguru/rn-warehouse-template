@@ -10,6 +10,5 @@ export async function restorePreferences(
   return {
     _persist: state._persist,
     theme: saved.theme,
-    filter: saved.filter,
   } as PersistedState;
 }

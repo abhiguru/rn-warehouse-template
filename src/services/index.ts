@@ -12,7 +12,7 @@
  * - Order: order-service, change-log-service
  * - Invoice: invoice-service
  * - User: user-service, user-core-service
- * - Search: search-service, autocomplete-service, filter-autocomplete-service
+ * - Search: search-service, autocomplete-service
  * - Recent: recent-customers-service, recent-items-service, session-recent-items-service
  * - Infrastructure: configService, print-service, sensor-service
  * - Pricing: item-pricing-service
@@ -59,7 +59,6 @@ export * from './user-core-service';
 // ============================================================================
 export * from './search-service';
 export * from './autocomplete-service';
-export * from './filter-autocomplete-service';
 
 // ============================================================================
 // Recent Items Services

@@ -451,29 +451,6 @@ const makeStyles = (t: ThemeTokens) => ({
     flex: 1,
     backgroundColor: t.background.base,
   },
-  // App bar on surface.header with a hairline divider (§13.8)
-  header: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    justifyContent: 'space-between' as const,
-    paddingHorizontal: layout.marginCompact,
-    minHeight: layout.rowMinHeight,
-    paddingVertical: space.md,
-    backgroundColor: t.surface.header,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: t.border.divider,
-  },
-  // Large title for a top-level tab screen
-  headerTitle: {
-    ...typography.largeTitle,
-    color: t.text.primary,
-    flexShrink: 1,
-  },
-  headerActions: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: space.xs,
-  },
   // Plain count badge: brand.fill with brand.onFill. "Needs action" counts use
   // destructive.fill with destructive.onFill instead (§13.5).
   countBadge: {
@@ -489,41 +466,6 @@ const makeStyles = (t: ThemeTokens) => ({
     fontWeight: fontWeight.semibold,
     fontVariant: ['tabular-nums' as const],
     color: t.brand.onFill,
-  },
-  avatarButton: {
-    width: touchTarget,
-    height: touchTarget,
-    justifyContent: 'center' as const,
-    alignItems: 'center' as const,
-  },
-  // Search bar under the header (§14.6)
-  searchContainer: {
-    paddingHorizontal: layout.marginCompact,
-    paddingVertical: space.sm,
-    backgroundColor: t.surface.header,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: t.border.divider,
-  },
-  searchInputContainer: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    minHeight: layout.rowMinHeight,
-    paddingHorizontal: space.md,
-    borderRadius: radius.button,
-    gap: space.sm,
-    backgroundColor: t.background.base,
-  },
-  searchInput: {
-    flex: 1,
-    ...typography.body,
-    color: t.text.primary,
-    paddingVertical: space.xs,
-  },
-  clearButton: {
-    minWidth: space.xxxl,
-    minHeight: space.xxxl,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
   },
   listContent: {
     paddingBottom: space.xxl,

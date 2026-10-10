@@ -28,7 +28,7 @@ test('legacy persisted identity cannot bypass SecureStore during a real rehydrat
         key: 'root',
         storage,
         timeout: 0,
-        whitelist: ['theme', 'filter'],
+        whitelist: ['theme'],
         migrate: restorePreferences,
       },
       (state = initial) => state

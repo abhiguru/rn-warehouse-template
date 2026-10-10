@@ -1,5 +1,27 @@
 # Changelog
 
+## Unreleased — list search and new filters (2026-10-10)
+
+- GRNs, Dispatches, Invoices, Orders and the Queue have a search field. Every
+  typed word must match; a date ("7 Oct"), a number range ("A0010-A0020") or a
+  financial year ("FY 2026") typed there becomes a filter chip.
+- Filters are one row of chips under the search field, with a full "Sort and
+  filter" page for the rest. Each chip opens one short sheet whose button names
+  the result ("Show 34 items"). The sort is the second chip; the separate sort
+  bar is gone. Invoices can be sorted by date, number, customer or total.
+- Filters that were shown but never applied now work (dispatch date range and
+  package, invoice date range and several customers, item-pricing effective
+  dates) or were removed (dispatch weight, invoice payment status and amount).
+- Filters, search and sort last until the app is closed and are cleared on
+  sign-out; "Clear all" affects the current list only.
+- GRN and dispatch cards have an outline and a footer reading "Tap for item
+  details".
+- Removed: the customer dispatch history screen (nothing opened it) and the old
+  filter sheet, sort bar and filter store.
+- Needs backend migrations 31–37 (document number order, list search, invoice
+  and dispatch filters). Deploy the backend first: on an older backend the
+  search and the new filters are ignored or refused.
+
 ## Unreleased — invoice discount reason (2026-10-09)
 
 - The invoice review step has a "Discount reason" field whenever there is a

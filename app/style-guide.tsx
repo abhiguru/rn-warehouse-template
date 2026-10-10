@@ -29,7 +29,7 @@ import { Avatar, Card, Input, RadioGroup, SegmentedControl, StatusTag, Switch } 
 import StockIndicator from '@/components/StockIndicator';
 import { FioriLinearProgress } from '@/components/FioriLinearProgress';
 import StepIndicator from '@/components/StepIndicator';
-import FilterChip from '@/components/FilterChip';
+import { FilterBarChip } from '@/features/filters/components/FilterBarChip';
 import { StepperInput } from '@/components/fiori/StepperInput';
 import { KPICard } from '@/components/reports/KPICard';
 import { ListEmptyState } from '@/components/list/ListEmptyState';
@@ -318,8 +318,12 @@ export default function StyleGuideScreen() {
             <Avatar name="Dev Administrator" id="user-1" size="lg" />
           </View>
           <View style={styles.wrapRow}>
-            <FilterChip label="Last 7 days" onRemove={() => {}} />
-            <FilterChip label="In stock" onRemove={() => {}} />
+            {/* Filter bar chips (§14.5): open the page, the sort, an applied filter, a fast filter, clear */}
+            <FilterBarChip variant="action" icon="tune-variant" label="Filters" count={2} onPress={() => {}} accessibilityLabel="Filters, 2 applied. Open sort and filter" />
+            <FilterBarChip variant="action" icon="arrow-down" label="GRN no." chevron onPress={() => {}} accessibilityLabel="Sorted by GRN no., highest number first. Change sort" />
+            <FilterBarChip variant="active" label="In stock" onPress={() => {}} onRemove={() => {}} accessibilityLabel="Stock: In stock. Change" removeLabel="Stock In stock" />
+            <FilterBarChip label="Date" chevron onPress={() => {}} accessibilityLabel="Filter by date" />
+            <FilterBarChip variant="text" label="Clear all" onPress={() => {}} accessibilityLabel="Clear all filters and the search" />
           </View>
           <StockIndicator currentStock={150} originalStock={200} />
           <StockIndicator currentStock={20} originalStock={200} />
