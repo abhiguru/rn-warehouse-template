@@ -7,6 +7,7 @@
  * @module features/grn/components/CustomerAutocomplete
  */
 
+import { containsPattern } from '@/utils/postgrestFilter';
 import React, { useCallback } from 'react';
 import { View, Text } from 'react-native';
 import { RemoteAutocompleteInput } from '@/components/RemoteAutocompleteInput';
@@ -66,7 +67,7 @@ export const CustomerAutocomplete: React.FC<CustomerAutocompleteProps> = ({
       const { data, error: queryError } = await (await getAuthenticatedClient())
         .from('customers')
         .select('id, name, mobile')
-        .ilike('name', `%${query}%`)
+        .ilike('name', containsPattern(query))
         .order('name')
         .limit(10);
 

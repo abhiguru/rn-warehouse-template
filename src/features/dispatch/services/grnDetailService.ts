@@ -4,6 +4,7 @@
  * Provides autocomplete search for GRN numbers
  */
 
+import { containsPattern } from '@/utils/postgrestFilter';
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
 import { t } from '@/i18n';
 import type {
@@ -40,7 +41,7 @@ export const searchGRNNumbers = async (
     let queryBuilder = authenticatedClient
       .from('goodsreceived')
       .select('id, gr_no, date, customer_name')
-      .ilike('gr_no', `%${query}%`)
+      .ilike('gr_no', containsPattern(query))
       .order('gr_no', { ascending: false })
       .limit(50);
 

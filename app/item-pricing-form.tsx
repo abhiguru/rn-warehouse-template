@@ -1,3 +1,4 @@
+import { containsPattern } from '@/utils/postgrestFilter';
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   View,
@@ -275,7 +276,7 @@ const ItemPricingFormScreen: React.FC = () => {
         .from('items')
         .select('id, name, packaging')
         .eq('active', true)
-        .ilike('name', `%${query}%`)
+        .ilike('name', containsPattern(query))
         .order('name', { ascending: true })
         .limit(10);
 

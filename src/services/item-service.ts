@@ -22,7 +22,7 @@ import {
   DeleteItemResponse,
   DEFAULT_ITEM_FILTERS,
 } from '@/types/item.types';
-import { executeRPC, createErrorResponse } from '@/utils/serviceErrorHandler';
+import { executeRPC, createErrorResponse, handleGlobalAuthError } from '@/utils/serviceErrorHandler';
 import { t } from '@/i18n';
 import { serverText } from '@/utils/serverText';
 
@@ -75,6 +75,7 @@ class ItemService {
       });
 
       if (error) {
+        handleGlobalAuthError(error);
         console.error('[ItemService] Search error:', error);
         return [];
       }
@@ -130,6 +131,7 @@ class ItemService {
       });
 
       if (error) {
+        handleGlobalAuthError(error);
         console.error('[ItemService] List error:', error);
         return {
           success: false,
@@ -248,6 +250,7 @@ class ItemService {
       });
 
       if (error) {
+        handleGlobalAuthError(error);
         console.error('[ItemService] Get by ID error:', error);
         return {
           success: false,

@@ -407,7 +407,7 @@ export class StockService {
             try {
               // Validate customer ID exists
               if (!customer.id) {
-                console.error(`[StockService] Customer missing ID:`, customer);
+                console.error('[StockService] Customer missing ID');
                 return null;
               }
 
@@ -497,8 +497,7 @@ export class StockService {
         // Validate customer ID exists
         if (!customer.id) {
           console.error(
-            `[StockService] Customer missing ID at index ${processedCount - 1}:`,
-            customer
+            `[StockService] Customer missing ID at index ${processedCount - 1}`
           );
           continue;
         }
@@ -548,10 +547,7 @@ export class StockService {
             try {
               // Validate customer ID exists
               if (!customer.id) {
-                console.error(
-                  `[StockService] Customer missing ID in batch:`,
-                  customer
-                );
+                console.error('[StockService] Customer missing ID in batch');
                 return null;
               }
 

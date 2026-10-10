@@ -21,8 +21,9 @@ import {
   UpdateCustomerParams,
   DEFAULT_CUSTOMER_FILTERS,
 } from '@/types/customer.types';
-import { executeRPC, createErrorResponse } from '@/utils/serviceErrorHandler';
+import { executeRPC, createErrorResponse, handleGlobalAuthError } from '@/utils/serviceErrorHandler';
 import { t } from '@/i18n';
+import { containsPattern, orContains } from '@/utils/postgrestFilter';
 import { serverText } from '@/utils/serverText';
 
 // =============================================================================
@@ -44,7 +45,7 @@ class CustomerService {
   ): Promise<CustomerListItem[]> {
     try {
       console.log('[CustomerService] searchCustomers called:', {
-        query,
+        queryLength: query?.length ?? 0,
         limit,
       });
 
@@ -70,6 +71,7 @@ class CustomerService {
       });
 
       if (error) {
+        handleGlobalAuthError(error);
         console.error('[CustomerService] Search error:', error);
         return [];
       }
@@ -124,9 +126,6 @@ class CustomerService {
       });
 
       console.log('[CustomerService] Mapped results:', results.length);
-      if (results.length > 0) {
-        console.log('[CustomerService] First result:', results[0]);
-      }
 
       return results;
     } catch (error) {
@@ -146,7 +145,9 @@ class CustomerService {
   ): Promise<CustomerListResponse> {
     try {
       console.log('[CustomerService] getCustomerList:', {
-        filters,
+        hasSearch: Boolean(filters.search),
+        hasCity: Boolean(filters.city),
+        active: filters.active,
         limit,
         offset,
       });
@@ -162,8 +163,10 @@ class CustomerService {
 
       // Apply filters
       if (filters.search) {
+        // The search text is data: quoted and escaped, so a comma, a bracket
+        // or a % in a name cannot change the filter.
         query = query.or(
-          `name.ilike.%${filters.search}%,mobile.ilike.%${filters.search}%`
+          `${orContains('name', filters.search)},${orContains('mobile', filters.search)}`
         );
       }
 
@@ -172,7 +175,7 @@ class CustomerService {
       }
 
       if (filters.city) {
-        query = query.ilike('city', `%${filters.city}%`);
+        query = query.ilike('city', containsPattern(filters.city));
       }
 
       // Apply sorting
@@ -186,6 +189,7 @@ class CustomerService {
       const { data, error, count } = await query;
 
       if (error) {
+        handleGlobalAuthError(error);
         console.error('[CustomerService] List error:', error);
         return {
           success: false,
@@ -265,6 +269,7 @@ class CustomerService {
         .single();
 
       if (error) {
+        handleGlobalAuthError(error);
         console.error('[CustomerService] Get by ID error:', error);
         return {
           success: false,
@@ -337,8 +342,7 @@ class CustomerService {
     params: CreateCustomerParams
   ): Promise<CustomerServiceResponse> {
     console.log('[CustomerService] createCustomer:', {
-      ...params,
-      p_image_urls: params.p_image_urls?.length || 0,
+      image_count: params.p_image_urls?.length || 0,
     });
 
     // Validate image count
@@ -541,6 +545,7 @@ class CustomerService {
       });
 
       if (error) {
+        handleGlobalAuthError(error);
         console.error('[CustomerService] Inactivate error:', error);
 
         // The server owns the rules for this (a customer that still holds stock
@@ -602,6 +607,7 @@ class CustomerService {
       });
 
       if (error) {
+        handleGlobalAuthError(error);
         console.error('[CustomerService] Restore error:', error);
 
         // As for deactivation: a failed call is reported, never replaced by a

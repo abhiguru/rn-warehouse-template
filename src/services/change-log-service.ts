@@ -6,7 +6,7 @@ import { ChangeLogResponse, ChangeLogEntry } from '@/types/order.types';
 // M3 Fix: Using executeRPC wrapper - Note: All methods in this service have extensive
 // debug logging and custom response structures (EnhancedChangeLogResponse) that require
 // the manual RPC pattern. Imports retained for consistency and future use.
-import { executeRPC, createErrorResponse } from '@/utils/serviceErrorHandler';
+import { executeRPC, createErrorResponse, handleGlobalAuthError } from '@/utils/serviceErrorHandler';
 import { t } from '@/i18n';
 import { serverText } from '@/utils/serverText';
 
@@ -254,10 +254,12 @@ export class ChangeLogService {
       );
 
       if (error) {
+        handleGlobalAuthError(error);
         /* No action needed. */
       }
 
       if (error) {
+        handleGlobalAuthError(error);
         console.error('[ChangeLogService] RPC error:', error);
         return {
           success: false,
@@ -344,6 +346,7 @@ export class ChangeLogService {
       );
 
       if (error) {
+        handleGlobalAuthError(error);
         console.error('[ChangeLogService] RPC error:', error);
         return {
           success: false,
@@ -426,6 +429,7 @@ export class ChangeLogService {
       );
 
       if (error) {
+        handleGlobalAuthError(error);
         console.error('[ChangeLogService] RPC error:', error);
         return {
           success: false,
