@@ -60,7 +60,7 @@ export const grn: Translation<typeof source> = {
     pricingMode: 'ભાડાની રીત',
     oneTime: 'એક વખત',
     monthly: 'માસિક',
-    leon: 'લિયોન',
+    leon: 'બેંક લિયન',
     notePlaceholder: 'આ આવક પાવતી માટે નોંધ લખો',
   },
 
@@ -384,7 +384,7 @@ export const grn: Translation<typeof source> = {
   },
 
   status: {
-    fullyDispatched: 'બધો માલ ગયો',
+    fullyDispatched: 'પૂરી જાવક થઈ',
   },
 
   overview: {
@@ -411,13 +411,13 @@ export const grn: Translation<typeof source> = {
     emptyMessage: 'આ આવક પાવતીની આઇટમની જાવક અહીં દેખાશે.',
     emptyForItem: '{{item}} ની જાવક અહીં દેખાશે.',
     emptyForGrn: 'આ આવક પાવતીની જાવક અહીં દેખાશે.',
-    itemSummaryLabel: '{{item}}, {{total}} માંથી {{dispatched}} બોરીની જાવક થઈ, {{dispatches}}',
+    itemSummaryLabel: '{{item}}, {{total}} માંથી {{dispatched}} નંગની જાવક થઈ, {{dispatches}}',
     dispatchedOfTotal: '{{total}} માંથી {{dispatched}}',
     itemNotDispatched: 'આ આઇટમની હજુ જાવક થઈ નથી.',
     rowLabel: 'જાવક {{number}}, {{bags}}, {{date}}',
     rowLabelDateFirst: 'જાવક {{number}}, {{date}}, {{bags}}',
     openHint: 'જાવક ખોલે છે',
-    bagUnit: { one: 'બોરી', other: 'બોરી' },
+    bagUnit: { one: 'નંગ', other: 'નંગ' },
   },
 
   images: {
@@ -434,7 +434,7 @@ export const grn: Translation<typeof source> = {
     uploadingLabel: 'ફોટો અપલોડ થઈ રહ્યો છે',
     uploading: 'અપલોડ થઈ રહ્યું છે…',
     addImage: 'ફોટો ઉમેરો',
-    filterHeader: 'પાવતી',
+    filterHeader: 'આવક',
   },
 
   invoices: {

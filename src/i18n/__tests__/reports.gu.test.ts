@@ -47,7 +47,7 @@ describe('activity reports in Gujarati', () => {
 
   it('formats a raw count and keeps the noun unchanged after a number', () => {
     expect(t('reports.invoiceHistory.paidCount', { count: 12 }, 'gu')).toBe('ચૂકવેલ (૧૨)');
-    expect(t('reports.dispatchActivity.bagUnit', { count: 5 }, 'gu')).toBe('બોરી');
+    expect(t('reports.dispatchActivity.bagUnit', { count: 5 }, 'gu')).toBe('નંગ');
   });
 
   it('keeps a dispatch number as stored', () => {

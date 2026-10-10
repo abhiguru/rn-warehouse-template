@@ -14,7 +14,7 @@ export const components: Translation<typeof source> = {
     unlocking: 'અનલૉક થઈ રહ્યું છે',
     unlockWith: '{{method}} વડે અનલૉક કરો',
     or: 'અથવા',
-    signInWithMobile: 'મોબાઇલ નંબરથી સાઇન ઇન કરો',
+    signInWithMobile: 'મોબાઇલ નંબરથી લૉગિન કરો',
   },
   image: {
     loading: 'ફોટો લોડ થઈ રહ્યો છે',
@@ -111,10 +111,10 @@ export const components: Translation<typeof source> = {
   session: {
     dismissError: 'ભૂલનો સંદેશ બંધ કરો',
     dismissWarning: 'ચેતવણી બંધ કરો',
-    signInAgain: 'ફરી સાઇન ઇન કરો',
+    signInAgain: 'ફરી લૉગિન કરો',
     configFailed: 'ઍપના સેટિંગ લોડ કરી શકાયા નથી, તેથી કેટલીક સુવિધાઓ કદાચ કામ નહીં કરે. તમારું કનેક્શન તપાસો અને ઍપ ફરી ખોલો.',
-    expired: 'તમારું સેશન પૂરું થયું છે. આગળ વધવા ફરી સાઇન ઇન કરો.',
-    expiring: 'તમારું સેશન થોડી વારમાં પૂરું થશે. સાઇન ઇન રહેવા ફરી સાઇન ઇન કરો.',
+    expired: 'તમારા લૉગિનનો સમય પૂરો થયો છે. આગળ વધવા ફરી લૉગિન કરો.',
+    expiring: 'તમારા લૉગિનનો સમય થોડી વારમાં પૂરો થશે. ચાલુ રાખવા ફરી લૉગિન કરો.',
   },
   update: {
     ready: 'અપડેટ તૈયાર છે',
@@ -157,7 +157,7 @@ export const components: Translation<typeof source> = {
     last24Hours: 'છેલ્લા ૨૪ કલાક',
     changeCount: { one: '{{count}} ફેરફાર', other: '{{count}} ફેરફાર' },
     editorCount: { one: 'ફેરફાર કરનાર: {{count}}', other: 'ફેરફાર કરનાર: {{count}}' },
-    quantityUpdated: 'આઇટમનો જથ્થો બદલાયો: {{item}}',
+    quantityUpdated: 'આઇટમના નંગ બદલાયા: {{item}}',
     itemAdded: 'આઇટમ ઉમેરાઈ: {{item}}',
     itemRemoved: 'આઇટમ કાઢી નખાઈ: {{item}}',
     orderCreated: 'ઑર્ડર બન્યો',

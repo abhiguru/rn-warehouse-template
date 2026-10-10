@@ -67,7 +67,7 @@ describe('GenericStepIndicatorHeader', () => {
     ['dispatch', 'create', 'Cancel Dispatch', 'જાવક રદ કરો'],
     ['dispatch', 'edit', 'Cancel editing', 'ફેરફાર રદ કરો'],
     ['invoice', 'create', 'Cancel Invoice', 'ઇન્વૉઇસ રદ કરો'],
-    ['customer', 'create', 'Cancel Customer', 'વેપારી રદ કરો'],
+    ['customer', 'create', 'Cancel customer', 'વેપારી રદ કરો'],
   ] as const)('names the close button for %s in %s mode in both languages', (entity, mode, english, gujarati) => {
     expect(closeButton(header({ entity, mode })).props.accessibilityLabel).toBe(english);
     setLanguage('gu');
@@ -141,11 +141,11 @@ describe('PrintRangeDialog', () => {
   it('words the range texts for the document in both languages', () => {
     const english = dialog({ entity: 'grn' });
     expect(texts(english)).toEqual(expect.arrayContaining([
-      'Choose the range of grn numbers to print.',
-      'Use the same number in both fields to print one grn number.',
+      'Choose the range of GRN numbers to print.',
+      'Use the same number in both fields to print one GRN number.',
     ]));
-    expect(placeholders(english)).toEqual(['Start grn number', 'End grn number']);
-    expect(labels(english)).toEqual(expect.arrayContaining(['From grn number', 'To grn number']));
+    expect(placeholders(english)).toEqual(['Start GRN number', 'End GRN number']);
+    expect(labels(english)).toEqual(expect.arrayContaining(['From GRN number', 'To GRN number']));
 
     setLanguage('gu');
     const gujarati = dialog({ entity: 'grn' });

@@ -68,7 +68,7 @@ describe('shared yup helpers', () => {
     const result = await validate({ note: 'too long a note', qty: 1, photos: [], items: [{}] });
     expect(result.errors).toEqual({
       note: 'નોંધ વધુમાં વધુ ૫ અક્ષરનું હોવું જોઈએ',
-      qty: 'જથ્થો ઓછામાં ઓછું ૨ હોવું જોઈએ',
+      qty: 'નંગ ઓછામાં ઓછું ૨ હોવું જોઈએ',
       items: 'ઓછામાં ઓછી ૨ આઇટમ જરૂરી છે',
     });
   });

@@ -43,7 +43,7 @@ export const validation: Translation<typeof source> = {
   fieldName: {
     field: 'આ વિગત',
     date: 'તારીખ',
-    quantity: 'જથ્થો',
+    quantity: 'નંગ',
     value: 'સંખ્યા',
     amount: 'રકમ',
     percentage: 'ટકા',

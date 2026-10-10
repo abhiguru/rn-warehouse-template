@@ -8,9 +8,9 @@ export const settings: Translation<typeof source> = {
   features: {
     title: 'ઍપની સુવિધાઓ',
     customersSubtitle: 'વેપારીઓનાં એકાઉન્ટ સંભાળો',
-    enrollmentReviewSubtitle: 'વેપારીઓને મંજૂર કરો, ઍક્સેસ આપો',
+    enrollmentReviewSubtitle: 'વેપારીઓને મંજૂરી આપો',
     itemsSubtitle: 'સ્ટોકની આઇટમ સંભાળો',
-    usersSubtitle: 'વપરાશકર્તાઓનાં એકાઉન્ટ સંભાળો',
+    usersSubtitle: 'યુઝરનાં એકાઉન્ટ સંભાળો',
     itemPricing: 'આઇટમના દર',
     itemPricingSubtitle: 'દર જુઓ અને બદલો',
     sensors: 'તાપમાન અને ભેજ',

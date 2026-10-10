@@ -86,7 +86,7 @@ describe('sign-in screen and the language switch', () => {
 
     expect(getLanguage()).toBe('gu');
     expect(texts(tree)).not.toContain('Sign in');
-    expect(texts(tree)).toContain('સાઇન ઇન કરો');
+    expect(texts(tree)).toContain('લૉગિન કરો');
     // A broken screen would show '' here: the new instance starts from its own empty state.
     expect(phoneField(tree).props.value).toBe('98765 43');
     act(() => tree.unmount());

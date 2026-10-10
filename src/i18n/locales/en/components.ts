@@ -269,12 +269,12 @@ export const components = {
     toLabel: 'To {{label}}',
     // Whole sentences by document (PrintRangeDialog `entity`).
     grn: {
-      chooseRange: 'Choose the range of grn numbers to print.',
-      sameNumberHint: 'Use the same number in both fields to print one grn number.',
-      startPlaceholder: 'Start grn number',
-      endPlaceholder: 'End grn number',
-      fromLabel: 'From grn number',
-      toLabel: 'To grn number',
+      chooseRange: 'Choose the range of GRN numbers to print.',
+      sameNumberHint: 'Use the same number in both fields to print one GRN number.',
+      startPlaceholder: 'Start GRN number',
+      endPlaceholder: 'End GRN number',
+      fromLabel: 'From GRN number',
+      toLabel: 'To GRN number',
     },
     dispatch: {
       chooseRange: 'Choose the range of dispatch numbers to print.',
@@ -323,8 +323,8 @@ export const components = {
     cancelFor: {
       grn: { create: 'Cancel GRN', edit: 'Cancel editing' },
       dispatch: { create: 'Cancel Dispatch', edit: 'Cancel editing' },
-      invoice: { create: 'Cancel Invoice', edit: 'Cancel Edit invoice' },
-      customer: { create: 'Cancel Customer', edit: 'Cancel Customer' },
+      invoice: { create: 'Cancel Invoice', edit: 'Cancel invoice edit' },
+      customer: { create: 'Cancel customer', edit: 'Cancel customer' },
     },
     // The discard question when a screen gives no title of its own.
     discardFor: {

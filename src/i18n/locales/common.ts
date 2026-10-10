@@ -62,7 +62,7 @@ const gu: CommonWords = {
   kg: 'કિલો',
   nouns: {
     item: same('આઇટમ'),
-    bag: same('બોરી'),
+    bag: same('નંગ'),
     dispatch: same('જાવક'),
     GRN: same('આવક પાવતી'),
     invoice: same('ઇન્વૉઇસ'),

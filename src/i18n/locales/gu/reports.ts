@@ -11,7 +11,7 @@ export const reports: Translation<typeof source> = {
     grnActivity: 'આવકની કામગીરી',
     invoiceHistory: 'ઇન્વૉઇસનો ઇતિહાસ',
     stockAging: 'માલ કેટલા દિવસથી પડ્યો છે',
-    operationsDashboard: 'કામગીરીનું ડેશબોર્ડ',
+    operationsDashboard: 'કામગીરીની ઝલક',
   },
   shared: {
     units: 'નંગ',
@@ -134,7 +134,7 @@ export const reports: Translation<typeof source> = {
     },
   },
   operations: {
-    loadError: 'કામગીરીનું ડેશબોર્ડ લોડ કરી શકાયું નથી. તમારું કનેક્શન તપાસો અને ફરી પ્રયાસ કરો.',
+    loadError: 'કામગીરીની ઝલક લોડ કરી શકાઈ નથી. તમારું કનેક્શન તપાસો અને ફરી પ્રયાસ કરો.',
     staffOnlyError: 'આ અહેવાલ ફક્ત સ્ટાફ માટે છે',
     activityA11y: '{{type}} {{ref}}, {{customer}}, {{time}}',
     activitySubtitle: '{{type}} · {{customer}}',
@@ -154,9 +154,9 @@ export const reports: Translation<typeof source> = {
     noActivity: 'આ સમયગાળામાં કોઈ આવક પાવતી કે જાવક નથી. નવી કામગીરી અહીં દેખાશે.',
     service: {
       accessDenied: 'પરવાનગી નથી. આ અહેવાલ ફક્ત સ્ટાફ માટે છે.',
-      fetchFailed: 'કામગીરીનું ડેશબોર્ડ મેળવી શકાયું નથી',
+      fetchFailed: 'કામગીરીની ઝલક મેળવી શકાઈ નથી',
       noData: 'કામગીરીની કોઈ માહિતી ઉપલબ્ધ નથી',
-      retrieved: 'કામગીરીનું ડેશબોર્ડ મળી ગયું',
+      retrieved: 'કામગીરીની ઝલક મળી ગઈ',
     },
   },
   customerActivity: {
@@ -246,7 +246,7 @@ export const reports: Translation<typeof source> = {
     errorTitle: 'જાવકની કામગીરી લોડ કરી શકાઈ નથી',
     retryLabel: 'જાવકની કામગીરી ફરી લોડ કરો',
     dateRange: '{{from}}થી {{to}} સુધી',
-    bagsDispatched: 'ગયેલી બોરી',
+    bagsDispatched: 'જાવકના નંગ',
     customersWithDispatches: 'જાવકવાળા વેપારી',
     customerHint: 'આ વેપારીની જાવક બતાવે છે',
     noMatch: '"{{search}}" સાથે મળતો કોઈ વેપારી નથી',
@@ -258,11 +258,11 @@ export const reports: Translation<typeof source> = {
     cardLabel: 'જાવક {{number}}, {{date}}, {{supervisor}}, {{bags}}',
     hideItemsHint: 'આઇટમ છુપાવે છે',
     showItemsHint: 'આઇટમ બતાવે છે',
-    bagUnit: { one: 'બોરી', other: 'બોરી' },
+    bagUnit: { one: 'નંગ', other: 'નંગ' },
     openDispatch: 'જાવક {{number}} ખોલો',
     ofQuantity: 'કુલ {{quantity}}માંથી',
     itemLabel: '{{item}}, {{bags}}, આવક પાવતી {{grn}}',
-    sourceGrnHint: 'જે આવક પાવતીમાંથી માલ ગયો તે ખોલે છે',
+    sourceGrnHint: 'જે આવક પાવતીમાંથી જાવક થઈ તે ખોલે છે',
     errors: {
       fetchFailed: 'જાવકની કામગીરી મેળવી શકાઈ નથી',
       fetchAllFailed: 'બધા વેપારીની જાવકની કામગીરી મેળવી શકાઈ નથી',

@@ -7,10 +7,10 @@ afterEach(() => setLanguage('en'));
 describe('invoice texts in Gujarati', () => {
   it('counts items in ૦-૯ and keeps the noun unchanged after a number', () => {
     expect(t('invoice.items.missingPrice', { count: 1 }, 'gu')).toBe(
-      '૧ આઇટમમાં ભાડાનો દર કે સમયગાળો નથી. ૦ થી વધુ દર અને સમયગાળો લખો.'
+      '૧ આઇટમમાં ભાડાનો દર કે મુદત નથી. ૦ થી વધુ દર અને મુદત લખો.'
     );
     expect(t('invoice.items.missingPrice', { count: 12 }, 'gu')).toBe(
-      '૧૨ આઇટમમાં ભાડાનો દર કે સમયગાળો નથી. ૦ થી વધુ દર અને સમયગાળો લખો.'
+      '૧૨ આઇટમમાં ભાડાનો દર કે મુદત નથી. ૦ થી વધુ દર અને મુદત લખો.'
     );
     expect(t('invoice.table.showDispatches', { count: 3 }, 'gu')).toBe('૩ જાવક બતાવો');
   });
@@ -56,7 +56,7 @@ describe('invoice texts in Gujarati', () => {
     expect(surcharge.adjustmentLabel).toBe('વધારાનો ચાર્જ');
     const discount = savedInvoiceAmounts({ total: 950, tax_amount: 50, discount: 100 });
     expect(discount.isSurcharge).toBe(false);
-    expect(discount.adjustmentLabel).toBe('ડિસ્કાઉન્ટ');
+    expect(discount.adjustmentLabel).toBe('છૂટ');
   });
 
   it('gives validation messages in the language in use when validating', async () => {
@@ -72,7 +72,7 @@ describe('invoice texts in Gujarati', () => {
     expect(gujarati.errors).toMatchObject({
       charge: 'ભાડાનો દર શૂન્યથી ઓછો ન હોઈ શકે',
       tax: 'ટેક્સ ૧૦૦% થી વધુ ન હોઈ શકે',
-      duration: 'સમયગાળો ઓછામાં ઓછો ૦.૫ મહિના હોવો જોઈએ',
+      duration: 'મુદત ઓછામાં ઓછી ૦.૫ મહિના હોવી જોઈએ',
     });
   });
 });

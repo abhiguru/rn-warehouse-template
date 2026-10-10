@@ -20,7 +20,7 @@ in Gujarati script; **English** = left in English letters.
 2. **Digits**: in Gujarati mode counts, weights, amounts, dates and times use ૦-૯.
    Identifiers stay as typed in 0-9: receipt, dispatch and invoice numbers, vehicle, GST,
    PAN, phone numbers, login codes.
-3. **A noun does not change after a number**: ૧ બોરી, ૫ બોરી; ૧ આઇટમ, ૩ આઇટમ.
+3. **A noun does not change after a number**: ૧ નંગ, ૫ નંગ; ૧ આઇટમ, ૩ આઇટમ.
 4. **Whole sentences**: "…થી … સુધી" follows its values, so a date or number range uses
    noun labels (શરૂઆતની તારીખ, છેલ્લી તારીખ), never "From:" and "To:" word for word.
 5. **Spelling**: ઑ in ઑર્ડર, ઑગસ્ટ, ઑક્ટોબર; પહેલાં with its dot; plural વિગતો, પરિણામો.
@@ -49,7 +49,7 @@ in Gujarati script; **English** = left in English letters.
 | In stock | સ્ટોકમાં છે | translate | Owner's choice |
 | Low stock | ઓછો સ્ટોક | translate | Owner's choice |
 | Out of stock | સ્ટોક નથી | translate | Owner's choice |
-| Bag, bags | બોરી | translate | Owner's choice |
+| Bag, bags (as a count) | નંગ (બોરી only as a kind of packing) | translate | Owner's choice (wording review) |
 | Package mark | માર્કો | translate | Owner's choice |
 | Packaging | પેકિંગ | Gujarati letters | Draft |
 | Chamber | ચેમ્બર | Gujarati letters | Owner's choice |
@@ -57,7 +57,8 @@ in Gujarati script; **English** = left in English letters.
 | Weight | વજન | translate | Checked |
 | kg | કિલો (kg in narrow columns) | translate | Checked |
 | Quantity (a count of bags) | નંગ | translate | Checked |
-| Quantity (a general amount) | જથ્થો | translate | Checked |
+| Quantity (a general amount) | નંગ | translate | Follows from the owner's "નંગ everywhere"; જથ્થો now means a lot |
+| Lot (one GRN line that stock is taken from) | જથ્થો | translate | Owner's choice (wording review) |
 | Vehicle number | વાહન નંબર | translate | Checked |
 | Driver | ડ્રાઇવર | Gujarati letters | Checked |
 | Rent, storage charge | ભાડું | translate | Checked |
@@ -66,8 +67,8 @@ in Gujarati script; **English** = left in English letters.
 | Monthly | માસિક | translate | Checked |
 | One-time | એક વખત | translate | Checked |
 | Labour (loading and unloading) | મજૂરી | translate | Owner's choice |
-| Discount | ડિસ્કાઉન્ટ | Gujarati letters | Checked |
-| Discount reason | ડિસ્કાઉન્ટનું કારણ | translate | Checked |
+| Discount | છૂટ | translate | Owner's choice (wording review) |
+| Discount reason | છૂટનું કારણ | translate | Owner's choice (wording review) |
 | Tax | ટેક્સ | Gujarati letters | Owner's choice |
 | GST | GST | English | Checked |
 | Total | કુલ | translate | Checked |
@@ -86,8 +87,9 @@ in Gujarati script; **English** = left in English letters.
 | Photo | ફોટો | Gujarati letters | Checked |
 | Order status: open | બાકી | translate | Owner's choice |
 | Order status: closed | પૂર્ણ | translate | Owner's choice |
-| Fully dispatched | બધો માલ ગયો | translate | Owner's choice |
-| Partly dispatched | થોડો માલ ગયો | translate | Owner's choice |
+| Fully dispatched | પૂરી જાવક થઈ | translate | Owner's choice (wording review) |
+| Partly dispatched | થોડી જાવક થઈ | translate | Follows from the row above |
+| Dispatched (order status) | જાવક થઈ | translate | Owner's choice (wording review) |
 
 ## Bottom tabs
 
@@ -131,7 +133,7 @@ in Gujarati script; **English** = left in English letters.
 | Settings | સેટિંગ | Gujarati letters | Checked |
 | Profile | પ્રોફાઇલ | Gujarati letters | Checked |
 | Language | ભાષા | translate | Checked |
-| Sign in, Sign out | સાઇન ઇન કરો, સાઇન આઉટ કરો | Gujarati letters | Checked |
+| Sign in, Sign out | લૉગિન કરો, લૉગઆઉટ કરો (no word "સેશન" in messages) | Gujarati letters | Owner's choice (wording review); લૉગઆઉટ follows from it |
 | Mobile number | મોબાઇલ નંબર | Gujarati letters | Checked |
 | Login code | OTP | English | Checked |
 | Refresh | રિફ્રેશ કરો | Gujarati letters | Checked |
@@ -159,6 +161,32 @@ From the Unicode locale data that Android uses.
 ## Open points
 
 - સુપરવાઇઝર, સ્ટાફ and પેકિંગ are drafts with no source found.
-- Whether "૧ બોરી" reads naturally with the number one was not seen in a source.
+- Whether "૧ નંગ" reads naturally with the number one was not seen in a source.
 - The web check found Gujarati business text mostly writes amounts in 0-9. The owner chose
   ૦-૯; the receipt-list pilot is where that choice is looked at again on a real screen.
+
+## Wording review with the owner (2026-10-10)
+
+The owner chose these one by one after seeing the converted app. They override earlier rows where they differ.
+
+| English | Gujarati | Replaces |
+|---|---|---|
+| Bag as a count, quantity | નંગ | બોરી, જથ્થો |
+| User | યુઝર | વપરાશકર્તા |
+| Sign in, sign out | લૉગિન, લૉગઆઉટ; no word for "session" in messages | સાઇન ઇન, સાઇન આઉટ, સેશન |
+| Access | મંજૂરી | ઍક્સેસ |
+| Enrollment (asking to join a facility) | અરજી | નોંધણી |
+| Role | હોદ્દો | ભૂમિકા |
+| Lot | જથ્થો | લોટ |
+| Sensor reading | નોંધ | રીડિંગ |
+| Dashboard | ઝલક | ડેશબોર્ડ |
+| Duration on an invoice | મુદત (a report period stays સમયગાળો) | સમયગાળો |
+| Round off | પૂરા રૂપિયા | રાઉન્ડ ઑફ |
+| Default price | મૂળ દર | સામાન્ય દર |
+| Discount | છૂટ | ડિસ્કાઉન્ટ |
+| Dispatched (status) | જાવક થઈ | માલ ગયો |
+| With items (order filter) | આઇટમ સાથે | આઇટમવાળા |
+| GRN in a narrow column or chip | આવક, આવક નં. | પાવતી, પાવતી નં. |
+| Lien (GRN switch; English label was misspelled "Leon") | બેંક લિયન | લિયોન |
+
+Kept as they were: કામગીરી (activity), પ્રિન્ટ જૉબ, વધારાનો ચાર્જ, સુપરવાઇઝર, સંપર્ક, કેટલોગ, અહીં મળ્યું.

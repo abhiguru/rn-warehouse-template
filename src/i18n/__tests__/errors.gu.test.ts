@@ -67,7 +67,7 @@ describe('error handling does not read translated text', () => {
       errorCode: ErrorCode.DUPLICATE_ENTRY,
       message: 'આ નોંધ પહેલેથી છે.',
     });
-    expect(categorizeError(new Error('JWT expired')).userMessage).toBe('તમારું સેશન પૂરું થયું છે. ફરી સાઇન ઇન કરો.');
+    expect(categorizeError(new Error('JWT expired')).userMessage).toBe('તમારા લૉગિનનો સમય પૂરો થયો છે. ફરી લૉગિન કરો.');
   });
 
   it('gives the friendly message of the language at the time of the call', () => {

@@ -48,13 +48,15 @@ describe('one word per idea', () => {
 
   it('does not use the words that were replaced', () => {
     // સમીક્ષા and ઝાંખી (review, overview), સંબંધિત લોકો (participants), ભાવ for a storage rate, હજી (spelled હજુ), જોબ (spelled જૉબ).
-    const replaced = /સમીક્ષા|ઝાંખી|સંબંધિત લોકો|ભાવ|હજી|જોબ|યુઝર(?!નેમ)/;
-    const found = [...GUJARATI].filter(([, value]) => replaced.test(asString(value))).map(([key]) => key);
+    // Wording review with the owner (2026-10-10): વપરાશકર્તા, ભૂમિકા, સેશન, ઍક્સેસ, સાઇન ઇન, ડિસ્કાઉન્ટ, લોટ and બોરી as a count gave way to
+    // યુઝર, હોદ્દો, લૉગિન, મંજૂરી, છૂટ, જથ્થો and નંગ. બોરી stays only as a kind of packing (items.form.packagingPlaceholder).
+    const replaced = /સમીક્ષા|ઝાંખી|સંબંધિત લોકો|ભાવ|હજી|જોબ|વપરાશકર્તા|ભૂમિકા|સેશન|ઍક્સેસ|સાઇન ઇન|સાઇન આઉટ|ડિસ્કાઉન્ટ|રાઉન્ડ ઑફ|ડેશબોર્ડ|રીડિંગ/;
+    const found = [...GUJARATI].filter(([key, value]) => replaced.test(asString(value)) || (/બોરી/.test(asString(value)) && key !== "items.form.packagingPlaceholder")).map(([key]) => key);
     expect(found).toEqual([]);
   });
 
-  it('keeps role (ભૂમિકા), status (સ્થિતિ), session (સેશન) and access (ઍક્સેસ) to their one word', () => {
-    // રોલ, સ્ટેટસ, સત્ર and એક્સેસ are the other spellings; સ્ક્રોલ (scroll) is a different word.
+  it('keeps role (હોદ્દો), status (સ્થિતિ), sign-in (લૉગિન) and access (મંજૂરી) to their one word', () => {
+    // રોલ, સ્ટેટસ, સત્ર and એક્સેસ are other spellings or words; સ્ક્રોલ (scroll) is a different word.
     const wrong = [...GUJARATI].filter(([, value]) => /(^|[^઀-૿])રોલ|સ્ટેટસ|(^|[^઀-૿])સત્ર|એક્સેસ/.test(asString(value))).map(([key]) => key);
     expect(wrong).toEqual([]);
   });
@@ -64,9 +66,8 @@ describe('one word per idea', () => {
     const DIFFERENT_ON_PURPOSE: Record<string, string> = {
       'edit': 'a button (ફેરફાર કરો) and the title of the dispatch form in edit mode (ફેરફાર)',
       'edit invoice': 'the title of the form (a noun phrase) and a button (a command)',
-      'quantity': 'a count of bags (નંગ) and a general amount (જથ્થો): glossary',
       'in stock': 'the status (સ્ટોકમાં છે) and the label beside a number (સ્ટોકમાં)',
-      'grn': 'the bottom tab (આવક) and a narrow column (પાવતી): glossary',
+      'grn': 'the bottom tab (આવક) and a narrow column (also આવક since the wording review); the full name is આવક પાવતી',
       'order': 'a customer order and the sort order (ક્રમ)',
       'invoices': 'the bottom tab only is બિલ: glossary',
       'kg': 'kg stays in narrow columns: glossary',
@@ -75,7 +76,7 @@ describe('one word per idea', () => {
       'latest {{date}}': 'agrees with the document: the latest GRN (પાવતી, feminine) and the latest invoice',
       'from': 'start date and start number: glossary rule 4',
       'to': 'end date and end number: glossary rule 4',
-      'dispatched': 'the label beside a count, an order status (માલ ગયો) and a report column',
+      'dispatched': 'the label beside a count, an order status (જાવક થઈ) and a report column',
       'custom': 'a price of its own and a period of chosen dates',
       'base': 'the base amount of an invoice line and the base band of a price',
       'remove {{name}}?': 'an item (feminine) and a person',

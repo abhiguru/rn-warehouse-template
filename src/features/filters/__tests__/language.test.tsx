@@ -45,10 +45,10 @@ describe('a language switch at run time', () => {
     expect(field(GRN_FILTERS, 'customers').label).toBe('વેપારી');
     expect(field(GRN_FILTERS, 'numberRange').label).toBe('આવક પાવતી નંબર');
     expect(field(GRN_FILTERS, 'package').label).toBe('માર્કો');
-    expect(field(DISPATCH_FILTERS, 'bags').label).toBe('એક લાઇનની બોરી');
+    expect(field(DISPATCH_FILTERS, 'bags').label).toBe('એક લાઇનના નંગ');
     expect(field(INVOICE_FILTERS, 'year').label).toBe('નાણાકીય વર્ષ');
     expect(field(ITEM_PRICING_FILTERS, 'expired').label).toBe('સમાપ્ત થયેલા દર પણ');
-    expect(field(ORDER_FILTERS, 'withItems').label).toBe('આઇટમવાળા');
+    expect(field(ORDER_FILTERS, 'withItems').label).toBe('આઇટમ સાથે');
     setLanguage('en');
     expect(field(GRN_FILTERS, 'date').label).toBe('Date');
   });
@@ -100,7 +100,7 @@ describe('a language switch at run time', () => {
     expect(sortLabels()).toEqual(['આવક પાવતી નંબર', 'તારીખ']);
     expect(SORT_DIRECTIONS.date).toEqual({ desc: 'સૌથી નવા પહેલાં', asc: 'સૌથી જૂના પહેલાં' });
     expect(SORT_DIRECTIONS.number).toEqual({ desc: 'નંબર: ઉતરતા ક્રમમાં', asc: 'નંબર: ચઢતા ક્રમમાં' });
-    expect(describeSort(GRN_FILTERS, undefined)).toEqual({ label: 'પાવતી નં.', direction: 'નંબર: ઉતરતા ક્રમમાં', spoken: 'નંબર: ઉતરતા ક્રમમાં' });
+    expect(describeSort(GRN_FILTERS, undefined)).toEqual({ label: 'આવક નં.', direction: 'નંબર: ઉતરતા ક્રમમાં', spoken: 'નંબર: ઉતરતા ક્રમમાં' });
     expect(describeSort(INVOICE_FILTERS, { field: 'customer_name', order: 'asc' })).toEqual({ label: 'વેપારી', direction: 'A થી Z', spoken: 'A થી Z' });
     expect(describeSort(ORDER_FILTERS, undefined).label).toBe('સૉર્ટ કરો');
   });
@@ -230,7 +230,7 @@ describe('the filter bar in Gujarati', () => {
     const bar = labels({ stock: 'in_stock', weight: { min: 10, max: 50 }, search: 'A0010થી A0012' });
     expect(bar.found).toEqual([
       'ફિલ્ટર, ૨ લાગુ છે. સૉર્ટ અને ફિલ્ટર ખોલો',
-      'પાવતી નં. મુજબ સૉર્ટ કરેલું, નંબર: ઉતરતા ક્રમમાં. સૉર્ટ બદલો',
+      'આવક નં. મુજબ સૉર્ટ કરેલું, નંબર: ઉતરતા ક્રમમાં. સૉર્ટ બદલો',
       'સ્ટોક: સ્ટોકમાં છે. બદલો',
       'સ્ટોક: સ્ટોકમાં છે ફિલ્ટર કાઢી નાખો',
       'વજન: ૧૦થી ૫૦ કિલો સુધી. બદલો',
@@ -242,7 +242,7 @@ describe('the filter bar in Gujarati', () => {
       'બધા ફિલ્ટર અને શોધ સાફ કરો',
     ]);
     // The visible chip texts, and the badge count in Gujarati digits.
-    for (const visible of ['ફિલ્ટર', '"૨"', 'પાવતી નં.', 'સ્ટોકમાં છે', '૧૦થી ૫૦ કિલો સુધી', 'A0010થી A0012 સુધી', 'બધું સાફ કરો']) {
+    for (const visible of ['ફિલ્ટર', '"૨"', 'આવક નં.', 'સ્ટોકમાં છે', '૧૦થી ૫૦ કિલો સુધી', 'A0010થી A0012 સુધી', 'બધું સાફ કરો']) {
       expect(bar.text).toContain(visible);
     }
   });

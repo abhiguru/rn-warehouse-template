@@ -49,7 +49,7 @@ describe('formatters in Gujarati', () => {
   it('names counted things in Gujarati, the same after 1 and after many', () => {
     expect(formatCount(1, 'item')).toBe('૧ આઇટમ');
     expect(formatCount(3, 'item')).toBe('૩ આઇટમ');
-    expect(formatCount(1200, 'bag')).toBe('૧,૨૦૦ બોરી');
+    expect(formatCount(1200, 'bag')).toBe('૧,૨૦૦ નંગ');
     expect(formatCount(2, 'dispatch', 'dispatches')).toBe('૨ જાવક');
     expect(formatCount(0, 'invoice')).toBe('૦ ઇન્વૉઇસ');
   });

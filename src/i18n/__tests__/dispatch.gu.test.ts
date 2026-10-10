@@ -29,9 +29,9 @@ describe('dispatch texts in Gujarati', () => {
 
   it('builds the lot count as one sentence', () => {
     const lots = t('dispatch.count.lots', { count: 3 }, 'gu');
-    expect(lots).toBe('૩ લોટ');
-    expect(t('dispatch.lotSheet.countInStockWithOut', { lots, out: 2 }, 'gu')).toBe('સ્ટોકમાં ૩ લોટ (૨માં સ્ટોક નથી)');
-    expect(t('dispatch.items.maxBagsAvailable', { count: 50 }, 'gu')).toBe('૫૦ કે તેથી ઓછી બોરી લખો. સ્ટોકમાં એટલી જ છે.');
+    expect(lots).toBe('૩ જથ્થા');
+    expect(t('dispatch.lotSheet.countInStockWithOut', { lots, out: 2 }, 'gu')).toBe('સ્ટોકમાં ૩ જથ્થા (૨માં સ્ટોક નથી)');
+    expect(t('dispatch.items.maxBagsAvailable', { count: 50 }, 'gu')).toBe('૫૦ કે તેથી ઓછા નંગ લખો. સ્ટોકમાં એટલા જ છે.');
   });
 });
 

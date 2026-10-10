@@ -33,7 +33,7 @@ describe('grn texts in Gujarati', () => {
 
   it('builds a sentence from formatted values', () => {
     setLanguage('gu');
-    expect(t('grn.sourceGrns.receivedBags', { bags: formatCount(50, 'bag') })).toBe('આવક ૫૦ બોરી');
+    expect(t('grn.sourceGrns.receivedBags', { bags: formatCount(50, 'bag') })).toBe('આવક ૫૦ નંગ');
     expect(t('grn.upload.fileTooLarge', { size: formatNumber(12.34, 1) })).toBe(
       'ફાઇલ (૧૨.૩MB) બહુ મોટી છે. વધુમાં વધુ ૧૦MB ચાલશે.'
     );
@@ -67,7 +67,7 @@ describe('grn code that follows the language', () => {
     expect(parseReceiptQuantity('૧૨૫')).toBe(125);
     expect(parseReceiptQuantity(' ૧૨5 ')).toBe(125);
     expect(parseReceiptWeight('૫૦')).toBe(50);
-    expect(parseReceiptQuantity('૧૨ બોરી')).toBeNull();
+    expect(parseReceiptQuantity('૧૨ નંગ')).toBeNull();
     expect(parseReceiptQuantity('૦')).toBeNull();
   });
 
@@ -88,7 +88,7 @@ describe('grn code that follows the language', () => {
   it('labels the stock status in the language at the time of the call', () => {
     expect(getGRNStockStatus(0, 100)?.label).toBe('Fully dispatched');
     setLanguage('gu');
-    expect(getGRNStockStatus(0, 100)?.label).toBe('બધો માલ ગયો');
+    expect(getGRNStockStatus(0, 100)?.label).toBe('પૂરી જાવક થઈ');
     expect(getGRNStockStatus(10, 100)?.label).toBe('ઓછો સ્ટોક');
     expect(getGRNStockStatus(80, 100)?.label).toBe('સ્ટોકમાં છે');
   });

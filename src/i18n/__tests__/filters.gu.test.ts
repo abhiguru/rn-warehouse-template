@@ -18,7 +18,7 @@ describe('filters in Gujarati', () => {
     const year = new Date().getFullYear();
     expect(t('filters.chip.dateBetween', { from: formatDate(`${year}-10-01`, 'short'), to: formatDate(`${year}-10-07`, 'short') })).toBe('૧ ઑક્ટોથી ૭ ઑક્ટો સુધી');
     expect(t('filters.chip.numberBetweenUnit', { min: formatNumber(10), max: formatNumber(1500), unit: t('filters.unit.kg') })).toBe('૧૦થી ૧,૫૦૦ કિલો સુધી');
-    expect(t('filters.chip.atLeastUnit', { min: formatNumber(40), unit: t('filters.unit.bags') })).toBe('૪૦ બોરી કે વધુ');
+    expect(t('filters.chip.atLeastUnit', { min: formatNumber(40), unit: t('filters.unit.bags') })).toBe('૪૦ નંગ કે વધુ');
     expect(t('filters.chip.upTo', { max: formatNumber(99) })).toBe('૯૯ સુધી');
   });
 
@@ -32,7 +32,7 @@ describe('filters in Gujarati', () => {
 
   it('puts the verb last in the spoken chip labels', () => {
     expect(t('filters.bar.sortedBy', { label: 'તારીખ', direction: 'સૌથી નવા પહેલાં' }, 'gu')).toBe('તારીખ મુજબ સૉર્ટ કરેલું, સૌથી નવા પહેલાં. સૉર્ટ બદલો');
-    expect(t('filters.bar.removeFilter', { name: 'આઇટમવાળા' }, 'gu')).toBe('આઇટમવાળા ફિલ્ટર કાઢી નાખો');
+    expect(t('filters.bar.removeFilter', { name: 'આઇટમ સાથે' }, 'gu')).toBe('આઇટમ સાથે ફિલ્ટર કાઢી નાખો');
     expect(t('filters.bar.filterBy', { label: 'વેપારી' }, 'gu')).toBe('વેપારી મુજબ ફિલ્ટર કરો');
     expect(t('filters.range.cellLabelUnit', { label: 'વજન', name: 'ઓછામાં ઓછું', unit: 'કિલો' }, 'gu')).toBe('વજન, ઓછામાં ઓછું, કિલોમાં');
   });

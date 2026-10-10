@@ -10,7 +10,7 @@ afterEach(() => setLanguage('en'));
 describe('auth, settings and users in Gujarati', () => {
   it('counts customers without changing the noun, in Gujarati digits', () => {
     expect(t('auth.review.approveMessage', { name: 'મીરા', count: 1 }, 'gu')).toBe(
-      'મીરા સાઇન ઇન કરી શકશે અને ૧ વેપારીના ઑર્ડર જોઈ શકશે.'
+      'મીરા લૉગિન કરી શકશે અને ૧ વેપારીના ઑર્ડર જોઈ શકશે.'
     );
     expect(t('users.list.customersAssigned', { count: 12 }, 'gu')).toBe('૧૨ વેપારી સોંપેલા');
     expect(t('users.list.customersAssigned', { count: 1 })).toBe('1 customer assigned');
@@ -41,7 +41,7 @@ describe('auth, settings and users in Gujarati', () => {
     setLanguage('gu');
     expect(roleLabel('admin')).toBe('એડમિન');
     expect(roleLabel('customer')).toBe('વેપારી');
-    expect(roleLabel('something-new')).toBe('વપરાશકર્તા');
+    expect(roleLabel('something-new')).toBe('યુઝર');
     expect(t('users.edit.roleChanged.supervisor', { name: 'મીરા' })).toBe('મીરા હવે સુપરવાઇઝર છે.');
   });
 

@@ -5,12 +5,12 @@ import type { Translation } from '../../types';
 export const filters: Translation<typeof source> = {
   field: {
     package: 'માર્કો',
-    bagsOnLine: 'એક લાઇનની બોરી',
+    bagsOnLine: 'એક લાઇનના નંગ',
     financialYear: 'નાણાકીય વર્ષ',
     priceType: 'દરનો પ્રકાર',
     effectiveDate: 'લાગુ થવાની તારીખ',
     includeExpired: 'સમાપ્ત થયેલા દર પણ',
-    withItems: 'આઇટમવાળા',
+    withItems: 'આઇટમ સાથે',
   },
   option: {
     allYears: 'બધાં વર્ષ',
@@ -19,7 +19,7 @@ export const filters: Translation<typeof source> = {
   },
   unit: {
     kg: 'કિલો',
-    bags: 'બોરી',
+    bags: 'નંગ',
   },
   placeholder: {
     packageName: 'માર્કાનું નામ',
@@ -33,7 +33,7 @@ export const filters: Translation<typeof source> = {
     price: { title: 'દર ફિલ્ટર કરો' },
   },
   sort: {
-    grnNumberChip: 'પાવતી નં.',
+    grnNumberChip: 'આવક નં.',
     numberChip: 'નંબર',
     fallback: 'સૉર્ટ કરો',
   },

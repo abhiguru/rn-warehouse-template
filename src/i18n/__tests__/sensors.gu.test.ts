@@ -36,7 +36,7 @@ describe('sensors in Gujarati', () => {
       { timestamp: '2026-10-02T00:00:00Z', temperature: 2.3, humidity: 90 },
     ] as SensorHistoryReading[];
     expect(summariseReadings(readings, '1 day')).toBe(
-      'તાપમાન −૧૮.૫°C થી ૨.૩°C સુધી, સરેરાશ −૮.૧°C. ભેજ ૮૦% થી ૯૦% સુધી, સરેરાશ ૮૫%. ૨ રીડિંગ, દરરોજની સરેરાશ.'
+      'તાપમાન −૧૮.૫°C થી ૨.૩°C સુધી, સરેરાશ −૮.૧°C. ભેજ ૮૦% થી ૯૦% સુધી, સરેરાશ ૮૫%. ૨ નોંધ, દરરોજની સરેરાશ.'
     );
   });
 });

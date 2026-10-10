@@ -12,7 +12,7 @@ describe('navigation in Gujarati', () => {
   it('follows a language switch at run time', () => {
     expect(t('nav.screens.signIn')).toBe('Sign in');
     setLanguage('gu');
-    expect(t('nav.screens.signIn')).toBe('સાઇન ઇન કરો');
+    expect(t('nav.screens.signIn')).toBe('લૉગિન કરો');
     expect(t('nav.screens.enterCode')).toBe('OTP લખો');
     expect(t('nav.ordersView.queue')).toBe('કતાર');
   });

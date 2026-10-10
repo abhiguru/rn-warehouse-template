@@ -61,7 +61,7 @@ export const grn = {
     pricingMode: 'Pricing mode',
     oneTime: 'One time',
     monthly: 'Monthly',
-    leon: 'Leon',
+    leon: 'Lien',
     notePlaceholder: 'Add a note for this GRN',
   },
 

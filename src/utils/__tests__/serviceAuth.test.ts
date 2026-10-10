@@ -36,7 +36,7 @@ describe('service authentication', () => {
       errorCode: 'AUTH_REQUIRED',
     });
     setLanguage('gu');
-    expect(createAuthFailureResponse().message).toBe('સાઇન ઇન કરવું જરૂરી છે');
+    expect(createAuthFailureResponse().message).toBe('લૉગિન કરવું જરૂરી છે');
   });
 
   it('still recognizes the English server text, and leaves other app errors alone', async () => {

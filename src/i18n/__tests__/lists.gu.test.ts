@@ -26,7 +26,7 @@ describe('lists in Gujarati', () => {
       'બટાકા, રેક B7, ૫૦ કિલો, આવક પાવતી Z0797, ૧,૨૦૦ નંગ જાવક'
     );
     expect(t('lists.grn.stockCount', { stock: formatNumber(4500) })).toBe('સ્ટોકમાં ૪,૫૦૦');
-    expect(t('lists.orderGroup.itemRowLow', { item: 'લસણ', stock: 5, quantity: 40 })).toBe('લસણ, સ્ટોક ૫, જથ્થો ૪૦, ઓછો સ્ટોક');
+    expect(t('lists.orderGroup.itemRowLow', { item: 'લસણ', stock: 5, quantity: 40 })).toBe('લસણ, સ્ટોક ૫, નંગ ૪૦, ઓછો સ્ટોક');
   });
 
   it('builds whole sentences around a count that is already worded', () => {

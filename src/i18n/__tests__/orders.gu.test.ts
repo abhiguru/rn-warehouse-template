@@ -2,8 +2,8 @@ import { t } from '..';
 
 describe('orders in Gujarati', () => {
   it('counts bags without changing the noun', () => {
-    expect(t('orders.catalog.addBags', { count: 1, name: 'બટાકા' }, 'gu')).toBe('બટાકા ની ૧ બોરી ઉમેરો');
-    expect(t('orders.catalog.addBags', { count: 10, name: 'બટાકા' }, 'gu')).toBe('બટાકા ની ૧૦ બોરી ઉમેરો');
+    expect(t('orders.catalog.addBags', { count: 1, name: 'બટાકા' }, 'gu')).toBe('બટાકા ના ૧ નંગ ઉમેરો');
+    expect(t('orders.catalog.addBags', { count: 10, name: 'બટાકા' }, 'gu')).toBe('બટાકા ના ૧૦ નંગ ઉમેરો');
     expect(t('orders.catalog.addBags', { count: 10, name: 'Potato' })).toBe('Add 10 bags of Potato');
     expect(t('orders.catalog.addBags', { count: 1, name: 'Potato' })).toBe('Add 1 bag of Potato');
   });
