@@ -99,6 +99,13 @@ describe('language on the profile', () => {
     expect(calls('set_my_language')).toHaveLength(1);
   });
 
+  it('counts a session restored from saved tokens, which has no session object, as signed in', async () => {
+    mockState.theme.language = 'gu';
+    mockState.auth = { session: null, userProfile: { id: 'p1' } };
+    await render();
+    expect(calls('set_my_language')).toEqual([['set_my_language', { p_language: 'gu' }]]);
+  });
+
   it('reads the profile again for another account', async () => {
     mockState.auth = { session: {}, userProfile: { id: 'p1' } };
     const renderer = await render();

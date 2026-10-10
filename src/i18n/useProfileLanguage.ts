@@ -12,14 +12,14 @@ import { selectLanguagePreference, setLanguagePreference } from '@/store/slices/
 import { fetchProfileLanguage, saveProfileLanguage } from './profileLanguage';
 import type { LanguagePreference } from './language';
 
-type AuthState = { auth: { session?: unknown; userProfile?: { id?: string } | null } };
+type AuthState = { auth: { userProfile?: { id?: string } | null } };
 
 export function useProfileLanguage(): void {
   const dispatch = useAppDispatch();
   const preference = useAppSelector(selectLanguagePreference);
-  const profileId = useAppSelector((state: AuthState) =>
-    state.auth.session ? state.auth.userProfile?.id : undefined
-  );
+  // A profile in the store is what "signed in" means here (see useAuthGuard); a session
+  // restored from saved tokens has no session object.
+  const profileId = useAppSelector((state: AuthState) => state.auth.userProfile?.id);
   const last = useRef<{ profileId?: string; preference?: LanguagePreference }>({});
 
   useEffect(() => {
