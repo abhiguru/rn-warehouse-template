@@ -194,12 +194,13 @@ export const GRNItemDispatchTable: React.FC<GRNItemDispatchTableProps> = ({
               {item.item_name}
             </Text>
             <View style={styles.itemMeta}>
-              {item.package_mark && (
+              {item.package_mark ? (
                 <Text style={styles.metaText}>{item.package_mark}</Text>
-              )}
-              {item.weight && (
-                <Text style={styles.metaText}>{formatWeight(item.weight)}</Text>
-              )}
+              ) : null}
+              {/* A number is never the left side of && here: 0 would be rendered as text. */}
+              {Number(item.weight) > 0 ? (
+                <Text style={styles.metaText}>{formatWeight(Number(item.weight))}</Text>
+              ) : null}
             </View>
           </View>
         </View>

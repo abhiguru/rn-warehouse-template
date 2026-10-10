@@ -485,13 +485,14 @@ const ItemRow: React.FC<ItemRowProps> = ({ item, isLast = false }) => {
       <View style={styles.itemRowAttributes}>
         <View style={styles.itemRowQtyRow}>
           <Text style={styles.itemRowQty}>{formatNumber(item.qty)}</Text>
-          {item.orig_qty && item.orig_qty !== item.qty && (
+          {/* Numbers are compared, never used as the left side of &&: 0 would be rendered as text. */}
+          {Number(item.orig_qty) > 0 && item.orig_qty !== item.qty ? (
             <Text style={styles.itemRowOrigQty}>{tr('reports.dispatchActivity.ofQuantity', { quantity: formatNumber(item.orig_qty) })}</Text>
-          )}
+          ) : null}
         </View>
-        {item.weight && (
+        {Number(item.weight) > 0 ? (
           <Text style={styles.itemRowWeight}>{formatWeight(item.weight)}</Text>
-        )}
+        ) : null}
       </View>
 
       {isNavigable && (
