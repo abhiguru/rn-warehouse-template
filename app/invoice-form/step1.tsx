@@ -5,8 +5,7 @@
  * Refactored to use useInvoiceForm hook for form state management.
  */
 
-import React, { useState, useRef, useCallback } from 'react';
-import { useFocusEffect } from 'expo-router';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -63,9 +62,6 @@ export default function InvoiceFormStep1() {
 
   const [showNoItemsDialog, setShowNoItemsDialog] = useState(false);
 
-  // Track focus count to skip initial mount for data reload
-  const focusCountRef = useRef(0);
-
   // I11: Handle Android back button - on step 1, go back to invoice list
   useBackHandler({
     currentStep: 1,
@@ -76,17 +72,11 @@ export default function InvoiceFormStep1() {
 
   // Note: Form initialization (invoice number generation) is handled by useInvoiceForm hook
 
-  // Reload GRN data when returning from details/edit screen
-  useFocusEffect(
-    useCallback(() => {
-      focusCountRef.current += 1;
-
-      // Only reload on subsequent focuses (not initial mount)
-      if (focusCountRef.current > 1 && header.gr_id) {
-        loadGRNData(header.gr_id);
-      }
-    }, [header.gr_id, loadGRNData])
-  );
+  // Nothing is reloaded when this screen comes back into focus (after the GRN
+  // was viewed, or on the way back from a later step). A reload replaced the
+  // lines with the price list's rates and threw away rates typed on step 2.
+  // Only choosing another GRN loads lines; a GRN that changed meanwhile is
+  // caught when the invoice is saved (the preview is read again before save).
 
   // Navigate to GRN details screen
   const handleViewGRNDetails = useCallback(() => {
