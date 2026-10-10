@@ -282,10 +282,13 @@ export const makeGRNListStyles = (t: ThemeTokens) => ({
   // =========================================================================
   // Object cell card
   // =========================================================================
+  // The outline keeps each card distinct in dark mode, where the shadow does not show.
   card: {
-    marginBottom: space.sm,
+    marginBottom: space.md,
     backgroundColor: t.surface.card,
     borderRadius: radius.card,
+    borderWidth: 1,
+    borderColor: t.border.separator,
     ...t.shadow[2],
   },
 
@@ -465,14 +468,18 @@ export const makeGRNListStyles = (t: ThemeTokens) => ({
   // =========================================================================
   // Expand / collapse button
   // =========================================================================
+  // The card's own footer: tinted, with the text at the start, so it reads as
+  // part of this card and not as a control for the whole list.
   expandButton: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: t.border.divider,
-    gap: space.xs,
+    justifyContent: 'space-between' as const,
+    borderTopWidth: 1,
+    borderTopColor: t.border.separator,
+    backgroundColor: t.background.base,
+    gap: space.sm,
     minHeight: touchTarget,
+    paddingHorizontal: space.lg,
   },
 
   expandButtonPressed: {
@@ -483,6 +490,7 @@ export const makeGRNListStyles = (t: ThemeTokens) => ({
     ...typography.subhead,
     fontWeight: fontWeight.semibold,
     color: t.brand.tint,
+    flexShrink: 1,
   },
 
   // =========================================================================
@@ -491,7 +499,7 @@ export const makeGRNListStyles = (t: ThemeTokens) => ({
   swipeActions: {
     flexDirection: 'row' as const,
     alignItems: 'stretch' as const,
-    marginBottom: space.sm,
+    marginBottom: space.md,
     marginLeft: space.sm,
     borderRadius: radius.card,
     overflow: 'hidden' as const,
