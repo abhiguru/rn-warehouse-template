@@ -78,8 +78,8 @@ type SortField = 'grNo' | 'date';
 type SortOrder = 'asc' | 'desc';
 
 const SORT_OPTIONS: SortOption<SortField>[] = [
-  { field: 'grNo', label: 'GRN no.', a11y: 'GRN number', icon: 'numeric' },
-  { field: 'date', label: 'Date', a11y: 'date', icon: 'calendar-outline' },
+  { field: 'grNo', label: 'GRN no.', a11y: 'GRN number', icon: 'numeric', kind: 'number' },
+  { field: 'date', label: 'Date', a11y: 'date', icon: 'calendar-outline', kind: 'date' },
 ];
 
 /** Status when nothing was received (no quantity to judge stock against). */

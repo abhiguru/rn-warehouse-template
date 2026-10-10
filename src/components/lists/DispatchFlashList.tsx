@@ -840,8 +840,8 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
 // ============================================================================
 
 const DISPATCH_SORT_OPTIONS: SortOption<SortField>[] = [
-  { field: 'dispDate', label: 'Date', a11y: 'date', icon: 'calendar-outline' },
-  { field: 'dispNo', label: 'Number', a11y: 'number', icon: 'pound' },
+  { field: 'dispDate', label: 'Date', a11y: 'date', icon: 'calendar-outline', kind: 'date' },
+  { field: 'dispNo', label: 'Number', a11y: 'number', icon: 'pound', kind: 'number' },
 ];
 
 const makeStyles = (t: ThemeTokens) => ({

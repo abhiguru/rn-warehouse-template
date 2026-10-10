@@ -986,7 +986,7 @@ Customer, item, pricing, user and profile forms.
 ### 14.5 Filter and sort
 
 - Filters open in a full-height sheet (pattern [13.9](#139-dialogs-sheets-and-messages)).
-- Lists that sort in place use the shared `list/SortBar` under the header: "Sort by", a segmented control of fields, a direction button and an optional expand-all button. Lists that sort on the server put sort in the filter sheet as a radio list.
+- Lists that sort in place use the shared `list/SortBar` under the header: "Sort by", a segmented control of fields, a direction button and an optional expand-all button. Give each sort option its `kind` (`date`, `number` or `text`) so the direction button names the order in matching words: "newest first", "highest number first" or "Z to A". Lists that sort on the server put sort in the filter sheet as a radio list.
 - Filters persist per list during the session and show as chips.
 
 ### 14.6 Search

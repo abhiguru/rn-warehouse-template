@@ -16,6 +16,29 @@ export interface SortOption<F extends string> {
   /** Spoken name, e.g. "GRN number". Defaults to the label. */
   a11y?: string;
   icon: string;
+  /**
+   * What the field holds, so the direction button names the order in the right
+   * words: 'date' newest/oldest first, 'number' highest/lowest number first,
+   * 'text' Z to A / A to Z. Defaults to 'date'.
+   */
+  kind?: SortKind;
+}
+
+export type SortKind = 'date' | 'number' | 'text';
+
+/** Spoken name of each direction, per kind of field. */
+const DIRECTION_WORDS: Record<SortKind, { desc: string; asc: string }> = {
+  date: { desc: 'newest first', asc: 'oldest first' },
+  number: { desc: 'highest number first', asc: 'lowest number first' },
+  text: { desc: 'Z to A', asc: 'A to Z' },
+};
+
+/** Label of the direction button: the current order, then what a tap does. */
+export function sortDirectionLabel(kind: SortKind = 'date', order: 'asc' | 'desc'): string {
+  const words = DIRECTION_WORDS[kind];
+  const current = order === 'desc' ? words.desc : words.asc;
+  const other = order === 'desc' ? words.asc : words.desc;
+  return `Sorted ${current}. Sort ${other}`;
 }
 
 export interface SortBarProps<F extends string> {
@@ -116,9 +139,7 @@ export function SortBar<F extends string>({
         style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
         onPress={onOrderToggle}
         accessibilityRole="button"
-        accessibilityLabel={
-          order === 'desc' ? 'Sorted newest first. Sort oldest first' : 'Sorted oldest first. Sort newest first'
-        }
+        accessibilityLabel={sortDirectionLabel(options.find(option => option.field === field)?.kind, order)}
       >
         <Icon name={order === 'desc' ? 'sort-descending' : 'sort-ascending'} size={iconSize.md} color={t.icon.primary} />
       </Pressable>
