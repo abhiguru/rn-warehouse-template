@@ -36,8 +36,10 @@ jest.mock('react-native-gesture-handler', () => ({
 jest.mock('@/components/GenericStepIndicatorHeader', () => ({ GenericStepIndicatorHeader: () => null }));
 jest.mock('@/components/RolePickerBottomSheet', () => ({ RolePickerBottomSheet: () => null }));
 jest.mock('@/components/common', () => ({ SearchableBottomSheet: () => null }));
+jest.mock('@/store', () => ({ store: { dispatch: jest.fn() } }));
 jest.mock('@/store/slices/authSlice', () => ({
-  logout: jest.fn(),
+  forceLogoutOnInvalidToken: jest.fn(),
+  logout: Object.assign(jest.fn(), { fulfilled: { type: 'auth/logout/fulfilled', match: () => false } }),
   deleteAccount: jest.fn(),
   setUserProfile: jest.fn(),
 }));
@@ -56,14 +58,6 @@ jest.mock('@/services/item-pricing-service', () => ({
   createItemStoragePrice: jest.fn(),
   updateItemStoragePrice: jest.fn(),
 }));
-const mockFilterState = {
-  debouncedValues: { priceType: 'monthly' },
-  activeFilterCount: 1,
-  updateFilter: () => undefined,
-  clearAllFilters: () => undefined,
-};
-jest.mock('@/hooks/useFilterState', () => ({ useFilterState: () => mockFilterState }));
-jest.mock('@/components/filters', () => ({ GenericFilterModal: () => null }));
 jest.mock('@/components/list/ListSkeletonCard', () => ({ ListSkeletonCard: () => null }));
 jest.mock('@gorhom/bottom-sheet', () => {
   const RN = require('react-native');
@@ -207,6 +201,8 @@ describe.each(BRANDS.flatMap(brand => MODES.map(mode => [brand, mode] as [Brand,
     mockState = {
       theme: { preference: mode, brand },
       auth: { user: { id: 'a1' }, userProfile: { id: 'u1', name: 'Asha', role: 'admin', mobile: '9876543210' } },
+      // Item pricing reads its filters from here: one applied, as before.
+      listFilters: { lists: { 'item-pricing-list': { values: { priceType: 'monthly' } } } },
     };
     let tree!: ReactTestRenderer;
     await act(async () => {
