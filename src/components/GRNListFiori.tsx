@@ -374,11 +374,11 @@ const GRNCardFiori = memo<GRNCardProps>(({
               }}
               style={({ pressed }) => [styles.expandButton, pressed && styles.expandButtonPressed]}
               accessibilityRole="button"
-              accessibilityLabel={isExpanded ? `Hide the items of ${grnTitle(group.grNo)}` : `${itemCountLabel} in this GRN. Show`}
+              accessibilityLabel={isExpanded ? `Hide item details of ${grnTitle(group.grNo)}` : `${itemCountLabel} in this GRN. Show item details`}
               accessibilityState={{ expanded: isExpanded }}
             >
               <Text style={styles.expandButtonText}>
-                {isExpanded ? 'Hide items' : `${itemCountLabel} in this GRN`}
+                {isExpanded ? 'Hide item details' : 'Tap for item details'}
               </Text>
               <Icon
                 name={isExpanded ? 'chevron-up' : 'chevron-down'}

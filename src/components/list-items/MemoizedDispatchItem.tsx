@@ -458,11 +458,11 @@ const DispatchItemContent: React.FC<MemoizedDispatchItemProps> = ({
           onPress={handleToggleExpand}
           style={({ pressed }) => [styles.expandButton, pressed && styles.expandButtonPressed]}
           accessibilityRole="button"
-          accessibilityLabel={isExpanded ? `Hide the items of dispatch ${dispatch.disp_no}` : `${itemsLabel} in this dispatch. Show`}
+          accessibilityLabel={isExpanded ? `Hide item details of dispatch ${dispatch.disp_no}` : `${itemsLabel} in this dispatch. Show item details`}
           accessibilityState={{ expanded: isExpanded }}
         >
           <Text style={styles.expandButtonText}>
-            {isExpanded ? 'Hide items' : `${itemsLabel} in this dispatch`}
+            {isExpanded ? 'Hide item details' : 'Tap for item details'}
           </Text>
           <Icon
             name={isExpanded ? 'chevron-up' : 'chevron-down'}
