@@ -2,7 +2,7 @@ import { getAuthenticatedClient } from '@/config/supabaseConfig';
 import { getAssignedCustomerDispatchList } from '../dispatch-service';
 import { getAssignedCustomerInvoices } from '../invoice-service';
 import { clearCustomerHistoryCache, CUSTOMER_HISTORY_TTL_MS } from '../customerHistoryCache';
-import { CUSTOMER_DISPATCH_MAX } from '../dispatch-service';
+import { CUSTOMER_DISPATCH_MAX, CUSTOMER_DISPATCH_PARALLEL } from '../dispatch-service';
 import { advanceSessionGeneration } from '@/config/sessionLifecycle';
 
 jest.mock('@/config/supabaseConfig', () => ({
@@ -295,6 +295,52 @@ describe('how much of a customer history is downloaded', () => {
     const result = await getAssignedCustomerDispatchList([CUSTOMER_A], { p_filters: { search: 'DD' } });
     expect(rpc).toHaveBeenCalledTimes(CUSTOMER_DISPATCH_MAX / 100);
     expect(result.data.pagination.history_limit_reached).toBe(true);
+  });
+
+  // RM-5: with the bound at 10,000 the pages must not be fetched one after another.
+  it('collects a long history a few pages at a time, complete and in order', async () => {
+    const server = dispatchServer(6000);
+    let inFlight = 0;
+    let most = 0;
+    let rounds = 0;
+    const rpc = jest.fn(async (name: string, args: { p_customer_id: string; p_limit: number; p_offset: number }) => {
+      if (inFlight === 0) rounds += 1;
+      inFlight += 1;
+      most = Math.max(most, inFlight);
+      await new Promise(resolve => setTimeout(resolve, 1));
+      inFlight -= 1;
+      return server(name, args);
+    });
+    mockClient(rpc);
+    const result = await getAssignedCustomerDispatchList([CUSTOMER_A], { p_limit: 20, offset: 5980, p_filters: { search: 'DD' } });
+    expect(rpc).toHaveBeenCalledTimes(60);
+    expect(most).toBe(CUSTOMER_DISPATCH_PARALLEL);
+    // One request to learn the size, then 59 pages five at a time.
+    expect(rounds).toBe(13);
+    expect(result.data.pagination.total_count).toBe(6000);
+    expect(result.data.pagination.history_limit_reached).toBeFalsy();
+    // The oldest twenty close the list: nothing was lost or doubled on the way.
+    expect(result.data.dispatches.map(dispatch => dispatch.disp_no)).toEqual(
+      Array.from({ length: 20 }, (_, index) => `DD${String(20 - index).padStart(4, '0')}`)
+    );
+  });
+
+  it('a page that fails while collecting fails the list, and a row that came twice is kept once', async () => {
+    const server = dispatchServer(250);
+    const failing = jest.fn(async (name: string, args: { p_customer_id: string; p_limit: number; p_offset: number }) =>
+      args.p_offset === 200 ? { data: null, error: { message: 'TypeError: Network request failed' } } : server(name, args));
+    mockClient(failing as never);
+    expect((await getAssignedCustomerDispatchList([CUSTOMER_A], { p_filters: { search: 'DD' } })).success).toBe(false);
+
+    // A dispatch created between two pages moves every later row by one.
+    const shifted = jest.fn(async (name: string, args: { p_customer_id: string; p_limit: number; p_offset: number }) =>
+      server(name, { ...args, p_offset: args.p_offset === 0 ? 0 : args.p_offset - 1 }));
+    mockClient(shifted as never);
+    const result = await getAssignedCustomerDispatchList([CUSTOMER_B], { p_limit: 100, p_filters: { search: 'DD' } });
+    // 251 rows arrive (DD0151 twice); 250 different dispatches are listed.
+    expect(shifted).toHaveBeenCalledTimes(3);
+    expect(result.data.pagination.total_count).toBe(250);
+    expect(new Set(result.data.dispatches.map(dispatch => dispatch.id)).size).toBe(result.data.dispatches.length);
   });
 
   const invoiceServer = () =>

@@ -840,26 +840,47 @@ const isBlankFilter = (value: unknown): boolean =>
 
 type CollectedDispatches = { dispatches: Dispatch[]; limitReached: boolean } | DispatchListResponseNew;
 
-/** Every dispatch of one customer, newest first, 100 at a time. */
+/** Requests in flight at once while collecting one customer's dispatches. */
+export const CUSTOMER_DISPATCH_PARALLEL = 5;
+
+/**
+ * Every dispatch of one customer, newest first. The server gives at most 100
+ * rows per request, so a long history is many requests: the first one says
+ * how many rows there are, and the rest are sent a few at a time instead of
+ * one after another (6,000 dispatches: 12 rounds, not 60).
+ */
 async function collectCustomerDispatches(customerId: string): Promise<CollectedDispatches> {
-  const collected: Dispatch[] = [];
-  let limitReached = false;
-  for (;;) {
-    const page = await getCustomerDispatchList({
+  const pageAt = (offset: number) =>
+    getCustomerDispatchList({
       p_customer_id: customerId,
       p_limit: CUSTOMER_DISPATCH_PAGE,
-      p_offset: collected.length,
+      p_offset: offset,
       p_include_items: true,
     });
-    if (!page.success) return page;
-    collected.push(...page.data.dispatches);
-    if (!page.data.pagination.has_more || page.data.dispatches.length === 0) break;
-    if (collected.length >= CUSTOMER_DISPATCH_MAX) {
-      limitReached = true;
-      break;
+  const first = await pageAt(0);
+  if (!first.success) return first;
+  const pages: Dispatch[][] = [first.data.dispatches];
+  const total = first.data.pagination.total_count;
+  if (first.data.pagination.has_more && first.data.dispatches.length > 0) {
+    const offsets: number[] = [];
+    for (let offset = CUSTOMER_DISPATCH_PAGE; offset < Math.min(total, CUSTOMER_DISPATCH_MAX); offset += CUSTOMER_DISPATCH_PAGE)
+      offsets.push(offset);
+    for (let start = 0; start < offsets.length; start += CUSTOMER_DISPATCH_PARALLEL) {
+      const round = await Promise.all(offsets.slice(start, start + CUSTOMER_DISPATCH_PARALLEL).map(pageAt));
+      const failed = round.find(page => !page.success);
+      if (failed) return failed;
+      pages.push(...round.map(page => page.data.dispatches));
     }
   }
-  return { dispatches: collected, limitReached };
+  // A dispatch created while the pages were read moves the rows after it by
+  // one, so a row can come twice: it is kept once.
+  const seen = new Set<string>();
+  const collected = pages.flat().filter(dispatch => {
+    if (seen.has(dispatch.id)) return false;
+    seen.add(dispatch.id);
+    return true;
+  });
+  return { dispatches: collected, limitReached: total > CUSTOMER_DISPATCH_MAX };
 }
 
 /**

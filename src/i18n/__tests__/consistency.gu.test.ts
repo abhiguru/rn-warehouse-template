@@ -55,6 +55,13 @@ describe('one word per idea', () => {
     expect(found).toEqual([]);
   });
 
+  it('calls the customer વેપારી everywhere, never ગ્રાહક', () => {
+    // RM-9: the "history limited" notice of the dispatch list was the one text that said ગ્રાહક.
+    const wrong = [...GUJARATI].filter(([, value]) => /ગ્રાહક/.test(asString(value))).map(([key]) => key);
+    expect(wrong).toEqual([]);
+    expect(t('lists.dispatch.historyLimited', { count: '૧૦,૦૦૦' }, 'gu')).toContain('વેપારીની');
+  });
+
   it('keeps role (હોદ્દો), status (સ્થિતિ), sign-in (લૉગિન) and access (મંજૂરી) to their one word', () => {
     // રોલ, સ્ટેટસ, સત્ર and એક્સેસ are other spellings or words; સ્ક્રોલ (scroll) is a different word.
     const wrong = [...GUJARATI].filter(([, value]) => /(^|[^઀-૿])રોલ|સ્ટેટસ|(^|[^઀-૿])સત્ર|એક્સેસ/.test(asString(value))).map(([key]) => key);
