@@ -24,6 +24,7 @@
     "lint:fix": "eslint . --ext .ts,.tsx --fix",
     "format": "prettier --write .",
     "typecheck": "tsc --noEmit",
+    "typecheck:tests": "tsc -p tsconfig.test.json",
     "test": "jest --runInBand",
     "test:setup": "node --test scripts/*.test.mjs",
     "check:backend": "node scripts/check-backend.mjs",

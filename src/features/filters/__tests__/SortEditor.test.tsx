@@ -9,7 +9,7 @@ import TestRenderer, { act } from 'react-test-renderer';
 import { SortEditor } from '../components/editors/SortEditor';
 import { FILTER_CONFIGS } from '../configs';
 import { SORT_DIRECTIONS } from '../filterModel';
-import type { FilterContext, SortState } from '../types';
+import type { FilterContext, FilterValues, SortState } from '../types';
 
 jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
@@ -20,6 +20,7 @@ jest.mock('@/store', () => ({ store: { dispatch: jest.fn() } }));
 jest.mock('@/store/slices/authSlice', () => ({ forceLogoutOnInvalidToken: jest.fn() }));
 jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
 
+type ListWithRequest = { toRequest: (values: FilterValues, sort: SortState, ctx: FilterContext, today: Date) => unknown };
 const staff: FilterContext = { role: 'staff', isWarehouseRole: true, assignedCustomers: [] };
 const sortable = Object.values(FILTER_CONFIGS).filter(config => config.sort && config.sort.options.length > 1);
 
@@ -41,7 +42,8 @@ function open(listKey: string, initial: SortState) {
     sort: () => current,
     press: (label: string) => act(() => radios().find(node => node.props.accessibilityLabel === label)!.props.onPress()),
     selected: () => radios().filter(node => node.props.accessibilityState.selected).map(node => node.props.accessibilityLabel as string),
-    request: () => JSON.stringify(config.toRequest({}, current, staff, new Date(2026, 9, 10))),
+    // The registry hides each list's request type; the function itself is still there.
+    request: () => JSON.stringify((config as unknown as ListWithRequest).toRequest({}, current, staff, new Date(2026, 9, 10))),
   };
 }
 
