@@ -672,6 +672,10 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
             Vibration.vibrate(5);
             setEditingItemId(null);
             setOriginalDispatchedQty(0);
+            // Let this screen draw the saved item before it is replaced by step 3. Replacing the
+            // screen in the same frame as the save crashed Android's view mounting ("The specified
+            // child already has a parent").
+            await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
         }
 
         console.log('[DispatchItemsStep] Navigating to step3 via hook');
