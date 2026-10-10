@@ -254,7 +254,6 @@ export const dispatch = {
   validation: {
     title: 'Validation Error',
     failed: 'Validation failed',
-    checkFields: 'Please check: {{fields}}',
     fillRequired: 'Please fill all required fields',
     fillRequiredCorrectly: 'Please fill all required fields correctly',
     addOneItem: 'Please add at least one item to the dispatch',

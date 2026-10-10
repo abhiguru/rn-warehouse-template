@@ -257,7 +257,6 @@ export const dispatch: Translation<typeof source> = {
   validation: {
     title: 'વિગતોમાં ભૂલ',
     failed: 'વિગતો ચકાસી શકાઈ નથી',
-    checkFields: 'આ તપાસો: {{fields}}',
     fillRequired: 'બધી જરૂરી વિગતો ભરો',
     fillRequiredCorrectly: 'બધી જરૂરી વિગતો બરાબર ભરો',
     addOneItem: 'જાવકમાં ઓછામાં ઓછી એક આઇટમ ઉમેરો',

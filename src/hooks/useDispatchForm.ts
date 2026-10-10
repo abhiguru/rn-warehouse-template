@@ -90,6 +90,7 @@ import {
 import { showAlert } from '@/utils/alert';
 import { t } from '@/i18n';
 import { serverText } from '@/utils/serverText';
+import { validationSummary } from '@/utils/validationSummary';
 /**
  * Module-level session ID that persists across all hook instances.
  * This allows cancellation to work when navigating between create/edit routes.
@@ -563,9 +564,7 @@ export function useDispatchForm({
       const validation = await validateCurrentStep(step);
       if (!validation.isValid) {
         const errorFields = Object.keys(validation.errors);
-        const errorMessage = errorFields.length > 0
-          ? t('dispatch.validation.checkFields', { fields: errorFields.join(', ') })
-          : t('dispatch.validation.fillRequired');
+        const errorMessage = validationSummary(validation.errors) || t('dispatch.validation.fillRequired');
         console.log(`[useDispatchForm] Navigation blocked - step ${step} validation failed:`, errorFields);
         showAlert(t('dispatch.validation.title'), errorMessage);
         return false;
@@ -619,8 +618,7 @@ export function useDispatchForm({
     // Validate step 3
     const validation = await validateCurrentStep(3);
     if (!validation.isValid) {
-      const errorFields = Object.keys(validation.errors);
-      showAlert(t('dispatch.validation.title'), t('dispatch.validation.checkFields', { fields: errorFields.join(', ') }));
+      showAlert(t('dispatch.validation.title'), validationSummary(validation.errors) || t('dispatch.validation.fillRequired'));
       return { success: false, error: t('dispatch.validation.failed') };
     }
 
