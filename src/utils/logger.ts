@@ -15,12 +15,19 @@ export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 const SENSITIVE_PATTERNS = [
   // JWT tokens (starts with ey...)
   { pattern: /ey[A-Za-z0-9-_]+\.[A-Za-z0-9-_]+\.[A-Za-z0-9-_.+/]*/g, replacement: '[REDACTED_JWT]' },
-  // Phone numbers (various formats)
+  // Phone numbers (various formats). The app's own form is 91 followed by the
+  // 10-digit number, with no plus sign; it is matched first, as one word.
+  { pattern: /\b91\d{10}\b/g, replacement: '[REDACTED_PHONE]' },
+  { pattern: /\+\d{1,3}\s?\d{10}/g, replacement: '[REDACTED_PHONE]' },
   { pattern: /\b\d{3}[-.]?\d{3}[-.]?\d{4}\b/g, replacement: '[REDACTED_PHONE]' },
   { pattern: /\b\d{10}\b/g, replacement: '[REDACTED_PHONE]' },
-  { pattern: /\+\d{1,3}\s?\d{10}/g, replacement: '[REDACTED_PHONE]' },
-  // OTP codes (4-6 digits)
-  { pattern: /\b\d{4,6}\b/g, replacement: '[REDACTED_OTP]' },
+  // Login codes, by the name they are logged under ("otp": "123456", "OTP is
+  // 123456", "login code: 482913"). Not every 4-6 digit number: that also
+  // removed invoice numbers, years, amounts and database error codes.
+  {
+    pattern: /\b((?:otp(?:[ _]?code)?|passcode|pin|(?:verification|login|sms)[ _]?code)\b"?\s*(?:[:=]|is)?\s*"?)\d{4,8}\b/gi,
+    replacement: '$1[REDACTED_OTP]',
+  },
   // Email addresses
   { pattern: /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g, replacement: '[REDACTED_EMAIL]' },
   // API keys (common prefixes)
