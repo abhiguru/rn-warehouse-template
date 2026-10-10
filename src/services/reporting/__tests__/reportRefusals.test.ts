@@ -23,6 +23,7 @@ const CUSTOMER = 'cccccccc-1111-4222-8333-444444444444';
 const RANGE = { fromDate: '2026-10-01', toDate: '2026-10-11' };
 
 const rpc = jest.fn();
+let logged: jest.SpyInstance;
 
 function answer(data: unknown) {
   rpc.mockResolvedValue({ data, error: null });
@@ -49,7 +50,7 @@ const calls: [string, string, Call][] = [
 beforeEach(() => {
   jest.clearAllMocks();
   (getAuthenticatedClient as jest.Mock).mockResolvedValue({ rpc });
-  jest.spyOn(console, 'log').mockImplementation(() => {});
+  logged = jest.spyOn(console, 'log').mockImplementation(() => {});
   jest.spyOn(console, 'error').mockImplementation(() => {});
   jest.spyOn(console, 'warn').mockImplementation(() => {});
   setLanguage('en');
@@ -99,7 +100,7 @@ describe.each(calls)('%s', (_label, name, call) => {
   it('does not log the answer or the request', async () => {
     answer({ success: true, data: { summary: {}, customers: [{ customer_name: 'Example Traders' }] } });
     await call();
-    expect(console.log).not.toHaveBeenCalled();
+    expect(logged).not.toHaveBeenCalled();
   });
 
   it('still answers success for a body that is not a refusal', async () => {

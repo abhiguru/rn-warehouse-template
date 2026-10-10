@@ -35,6 +35,25 @@ Install that backend with its [operator guide](https://github.com/abhiguru/supab
   name, Storage sign/list). Reads are aborted by a server switch; only writes hold it back. Name a new
   read RPC `get_`/`search_`/`check_`/`list_`/`count_`, or it is treated as a write.
 
+## Dates and server answers
+
+- **A calendar day goes to the server as `'YYYY-MM-DD'`** built from the phone's calendar
+  (`toLocalISODate`, or `toCalendarDay` for a value that may be a timestamp). Never `toISOString()`:
+  local midnight in India is 18:30 UTC of the day before, and the server takes the day from the text.
+  `createGRN`/`updateGRN` and `createDispatch`/`updateDispatch` pass their date through `toCalendarDay`.
+- **A date range the server reads as moments** (the GRN, dispatch and invoice lists; `timestamptz`)
+  is sent as `startOfDayIST(day)` and `endOfDayIST(day)`: the zone (+05:30) is written out. The
+  report RPCs take plain `date` parameters and bucket with `::date` in the database's zone, which the
+  backend does not pin; see the changelog for what that leaves open.
+- `get_customer_grn_items` and `get_customer_dispatch_items` apply a range only when both ends are
+  given; `closeDateRange` fills an open end.
+- **An RPC can refuse in its answer** (HTTP 200 with `{success:false, error|message}` or, for the
+  older report functions, `{error, summary:null}`). Ask `rpcRefusal(data)` (`src/utils/rpcRefusal.ts`)
+  before reading rows; read as data, a refusal is an empty list. The reporting services use
+  `reportRefusal`/`refusedReport` from `src/services/reporting/reportEnvelope.ts`.
+- **Never put a number on the left of `&&` in JSX** (`{item.weight && <Text/>}`): 0 is rendered as
+  a bare number and React Native throws. Compare it (`Number(x) > 0 ? ... : null`).
+
 ## Session-scoped state
 
 `clearSessionScopedState` (`src/store/sessionScopedState.ts`) cancels and clears react-query, the

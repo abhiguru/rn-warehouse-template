@@ -1,5 +1,87 @@
 # Changelog
 
+## Unreleased — reports, dates, list filters, sign-in limits and the build audit from the 2026-10-10 review
+
+Works against the same backend migrations as the entries below (up to 44). No
+new migration is needed, but two things are only fully right after a backend
+change that has not been made yet; they are listed at the end.
+
+- Reports: a report the server refuses (no permission for the customer, or a
+  fault inside the report function) now says so, with the reason. Before, every
+  report showed "0 GRNs / 0 stock / 0 invoices" as if there were nothing. The
+  same for the recently ordered items of a customer and the GRN picker of the
+  dispatch form, which showed an empty list. The Operations Dashboard names the role refusal.
+- GRN date: a date chosen in the date picker is saved as that day. Before, it
+  was saved as 18:30 UTC of the day before, so the reports counted the GRN a
+  day early and stock aging was a day high. A GRN saved that way is put right
+  the next time it is edited and saved.
+- New dispatch: the default date is today as a day, like a date chosen in the
+  picker. A dispatch made between midnight and 05:30 was filed under the day
+  before.
+- Date filters on the GRN, dispatch and invoice lists cover the chosen days in
+  Indian time whatever the phone's time zone is. For customer accounts, a GRN
+  date filter with only "from" or only "to" now filters (the server ignored a
+  range with one end).
+- Reports: "Last 120 days" and the other periods cover the same days in every
+  report (Customer Activity covered one day more).
+- Orders queue: an order whose items cannot be loaded shows the reason and
+  "Try again". Before, the card asked the server again without end while it
+  was open.
+- GRN details, Dispatches tab: a GRN line saved without a weight no longer
+  breaks the tab. The Items tab no longer shows "0 kg" for such a line.
+- Search and filters:
+  - a number range typed in small letters ("a0010-a0020") or the wrong way
+    round finds the documents; before, it found nothing while the chip showed
+    the range as applied;
+  - two dates ("01/04/2025 - 31/03/2026", "1 apr to 30 apr") are read as a
+    range;
+  - Gujarati, Devanagari and Arabic-Indic digits are read as 0-9 everywhere,
+    also in the Package and GRN-number filters;
+  - the invoice-number filter shows numbers as written (1200, not 1,200 or
+    ૧,૨૦૦);
+  - one letter in a search field shows "Type at least two letters to search";
+  - "Today" follows the calendar when the app stays open past midnight, and
+    the invoice Year filter has the new financial year from 1 April;
+  - a customer taken away from a customer account is dropped from its stored
+    filter;
+  - the "Recent" searches are forgotten when a session ends.
+- Sign-in (backend migration 44): when the server says how long to wait for
+  another code, the countdown starts from that time (60 seconds, or 15 minutes
+  for a number that has used up its hourly codes). "Too many codes requested"
+  and "Too many new access requests today" have their own messages.
+- Users: the last administrator cannot be deactivated, given another role or
+  delete the account; each case has its own message (the role and status
+  screens showed the code `LAST_ADMIN`).
+- Messages from the server in Gujarati: an invoice whose dispatch lines
+  changed, a discount above the invoice amount, a missing discount reason, a
+  wrong mobile number and a missing customer assignment are named. An English
+  sentence that contains a Gujarati item name is no longer shown as it is.
+- A search answer that arrives late no longer replaces the results for what is
+  typed now (shared pickers, report customer search). A dispatch card shows
+  its changed lines after a reload. A request the server refused for the
+  session or permission is not repeated three times before the message.
+- Privacy: the report services no longer write the request, the answer or the
+  token state to the device log; list load errors are logged in development
+  only.
+- Build check: `npm run audit:artifact` fails on any Android permission that
+  is not on the reviewed list in `scripts/artifact-audit.mjs`
+  (`EXPECTED_ANDROID_PERMISSIONS`), not only on the blocked ones. A dependency
+  upgrade that adds a permission now needs a decision: block it in `app.json`
+  or add it to the list.
+
+Still open on the backend (the app cannot fix these):
+
+- The report RPCs bucket dates with `::date` in the database's time zone,
+  which nothing pins (migration 41 pinned only the invoice duration to
+  Asia/Kolkata). GRNs that were saved with a picked date before this change
+  are stored at 18:30 UTC of the previous day and stay one day early in the
+  reports until they are edited, or until the report functions use the
+  business date or a migration moves those rows.
+- `get_customer_grn_items` and `get_customer_dispatch_items` ignore a date
+  range that has one end; the app fills the other end in.
+- The Package filter matches differently on the GRN list and the dispatch
+  list (M4-13), and customer accounts' lists are still paged by offset (M9-7).
+
 ## Unreleased — sign-in session, profile, customer lists and crash reports from the 2026-10-10 review
 
 Backend migrations that belong with this: 42 (`direct_write_guard`), 43

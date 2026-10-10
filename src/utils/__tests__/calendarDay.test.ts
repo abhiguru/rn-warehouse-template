@@ -58,7 +58,6 @@ describe('a new dispatch', () => {
 });
 
 describe('dispatch date against the GRN date', () => {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { validateDispatchDateVsGRNDates } = require('@/features/dispatch/schemas/dispatchValidation');
   beforeEach(() => jest.spyOn(console, 'log').mockImplementation(() => {}));
   afterEach(() => jest.restoreAllMocks());

@@ -155,7 +155,6 @@ describe.each(THEMES)('report components in %s %s', (brand, mode) => {
 
 // M9-10: the answer to an earlier search must not replace the dropdown of the current one.
 describe('ReportCustomerSearch, answers out of order', () => {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { searchService } = require('@/services/search-service') as { searchService: { searchCustomers: jest.Mock } };
   beforeEach(() => jest.useFakeTimers());
   afterEach(() => {
