@@ -73,17 +73,20 @@ const withUploadTimeout = async <T>(
 // ============================================================================
 
 /**
- * Result from checkGrnExists - includes full GRN data to avoid second RPC call
- * E5 Fix: Added error and message fields to distinguish network errors from "not found"
+ * Result from checkGrnExists.
+ * E5 Fix: `error` distinguishes a failed check from "not found".
+ *
+ * The check only says whether the number is taken and by which GRN. It carries
+ * no items and no photos, so it must never be used to fill the form: a form
+ * loaded from it would list no photos, and saving that form makes `update_grn`
+ * delete every photo the GRN has. Load the GRN with `loadGRNData` instead.
  */
 export interface CheckGrnExistsResult {
   exists: boolean;
   grnId?: string;
-  // Full GRN data (when exists=true) - can be used to pre-populate form
-  grnData?: {
-    header: GRNHeaderData;
-    items: GRNItemData[];
-  };
+  grNo?: string;
+  customerName?: string;
+  date?: string;
   // E5: Distinguish errors from "not found"
   error?: boolean;
   message?: string;
@@ -91,8 +94,8 @@ export interface CheckGrnExistsResult {
 
 /**
  * Check if a GRN number already exists in the database
- * Uses optimized check_grn_exists RPC (18-31ms vs direct query with RLS overhead)
- * Returns full GRN data to avoid redundant load call
+ * Uses optimized check_grn_exists RPC (18-31ms vs direct query with RLS overhead),
+ * which answers `{ success, data: { exists, grn_id, gr_no, customer_name, date } }`.
  *
  * // M3 Fix: Not migrated to executeRPC - uses custom CheckGrnExistsResult return type
  * // with E5 fix error handling that distinguishes network errors from "not found"
@@ -120,49 +123,25 @@ export const checkGrnExists = async (
       return { exists: false, error: true, message: serverText(error.message, t('grn.form.checkNumberFailed')) };
     }
 
-    if (!data || !data.exists || !data.grn) {
+    if (!data || data.success !== true) {
+      console.error('[GRNFormService] check_grn_exists was refused');
+      return { exists: false, error: true, message: serverText(data?.message, t('grn.form.checkNumberFailed')) };
+    }
+
+    const found = data.data;
+    if (!found || found.exists !== true || !found.grn_id) {
       console.log('[GRNFormService] GRN not found:', grNo);
       return { exists: false };
     }
 
-    const grn = data.grn;
-    console.log('[GRNFormService] ✅ GRN found:', grNo, 'ID:', grn.id);
-
-    // Transform to GRNHeaderData format
-    const header: GRNHeaderData = {
-      gr_no: grn.gr_no,
-      registration: grn.registration || '',
-      date: grn.date,
-      sender_id: grn.sender_id || '',
-      sender_name: grn.sender_name || '',
-      customer_id: grn.customer_id,
-      customer_name: grn.customer_name,
-      supervisor_id: grn.supervisor_id || '',
-      supervisor_name: grn.supervisor_name || '',
-      note: grn.note || '',
-      leon: grn.leon || false,
-      pricing_mode: grn.pricing_mode || 'MONTHLY',
-      gr_images: [], // Images not included in check response
-    };
-
-    // Transform items to GRNItemData format
-    const items: GRNItemData[] = (grn.items || []).map((item: any) => ({
-      grn_trl_id: item.id,
-      item_table_id: item.item_id,
-      item_name: item.item_name,
-      packaging: item.packaging || '',
-      qty: item.qty,
-      stock: item.stock,
-      weight: item.weight || 0,
-      rack: item.rack || '',
-      package_mark: item.package_mark || '',
-      trl_images: [], // Images not included in check response
-    }));
+    console.log('[GRNFormService] ✅ GRN found:', grNo, 'ID:', found.grn_id);
 
     return {
       exists: true,
-      grnId: grn.id,
-      grnData: { header, items },
+      grnId: found.grn_id,
+      grNo: found.gr_no,
+      customerName: found.customer_name,
+      date: found.date,
     };
   } catch (error) {
     console.error('[GRNFormService] Error checking GRN exists:', error);

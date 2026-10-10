@@ -9,6 +9,13 @@ const msg = (key: TranslationKey) => () => t(key);
 
 // Step 1: GRN Header Schema
 export const step1Schema = yup.object().shape({
+  // Empty is allowed: the number is then generated on save. The column holds
+  // eight characters, and "G0001 " must not be stored next to "G0001".
+  gr_no: yup
+    .string()
+    .max(8, msg('grn.validation.numberMax'))
+    .matches(/^\S*$/, msg('grn.validation.numberNoSpaces')),
+
   registration: yup
     .string()
     .max(12, msg('grn.validation.registrationMax')),

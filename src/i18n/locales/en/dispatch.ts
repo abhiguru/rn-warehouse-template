@@ -36,6 +36,8 @@ export const dispatch = {
     errorTitle: 'Error',
     unknownError: 'Unknown error',
     numberFailed: 'Failed to generate dispatch number',
+    numberTaken: 'Dispatch {{number}} already exists. Enter a different number.',
+    numberTakenFor: 'Dispatch {{number}} already exists ({{customer}}). Enter a different number.',
     loadFailed: 'Failed to load dispatch data',
     saveFailed: 'Failed to save dispatch',
   },

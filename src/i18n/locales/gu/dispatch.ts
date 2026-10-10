@@ -39,6 +39,8 @@ export const dispatch: Translation<typeof source> = {
     errorTitle: 'ભૂલ',
     unknownError: 'અજાણી ભૂલ',
     numberFailed: 'જાવક નંબર બનાવી શકાયો નથી',
+    numberTaken: 'જાવક {{number}} પહેલેથી છે. બીજો નંબર લખો.',
+    numberTakenFor: 'જાવક {{number}} પહેલેથી છે ({{customer}}). બીજો નંબર લખો.',
     loadFailed: 'જાવકની વિગતો લોડ કરી શકાઈ નથી',
     saveFailed: 'જાવક સાચવી શકાઈ નથી',
   },

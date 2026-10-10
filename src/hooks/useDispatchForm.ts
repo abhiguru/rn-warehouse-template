@@ -4,12 +4,17 @@
  * Custom hook that consolidates Dispatch form logic from multiple screen components.
  * Handles form initialization, validation, navigation, and data management.
  *
- * ## Auto-Navigation Feature (Dispatch Number Change Detection)
+ * ## Dispatch number check
  *
- * When user types a Dispatch number, the hook automatically:
- * - In CREATE mode: If number exists → navigates to EDIT mode for that Dispatch
- * - In EDIT mode: If number doesn't exist → navigates to CREATE mode
- * - In EDIT mode: If number exists but different → navigates to EDIT that Dispatch
+ * When the user types a dispatch number, the hook asks the server whether it is taken:
+ * - taken by another dispatch → the field shows "already exists" and step 1
+ *   does not pass; the form (items, photos, mode) is left exactly as it was
+ * - the number of the dispatch being edited → nothing to report
+ * - free, or the check failed → nothing to report (the server refuses a
+ *   duplicate on save in any case)
+ *
+ * The check never navigates and never loads or resets the form: its answer has
+ * no items and no photos.
  *
  * ### Key Patterns Used:
  *
@@ -33,9 +38,6 @@
  *    - dispatchId is NOT in load effect deps (prevents reload on resetForm)
  *    - Only dispatchIdParam triggers reload (URL param change = new Dispatch to load)
  *
- * ### Important: For Invoice Form Implementation
- * When implementing similar auto-navigation for invoices, follow these patterns.
- * See plan file: ~/.claude/plans/buzzing-leaping-spark.md for detailed guide.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -90,9 +92,10 @@ import {
 } from '@/features/dispatch/services/dispatchFormService';
 
 import { showAlert } from '@/utils/alert';
-import { t } from '@/i18n';
+import { t, formatIdentifier } from '@/i18n';
 import { serverText } from '@/utils/serverText';
 import { validationSummary } from '@/utils/validationSummary';
+import { documentNumberState } from '@/utils/documentNumberCheck';
 /**
  * Module-level session ID that persists across all hook instances.
  * This allows cancellation to work when navigating between create/edit routes.
@@ -201,6 +204,8 @@ export function useDispatchForm({
 
   // AbortController for cancelling pending dispatch number change operations
   const dispNoChangeAbortRef = useRef<AbortController | null>(null);
+  // Message for a typed number that another dispatch already holds; step 1 does not pass while it is set.
+  const takenNumberErrorRef = useRef<string | null>(null);
 
   // Refs to prevent duplicate operations
   const hasInitialized = useRef(false);
@@ -359,14 +364,16 @@ export function useDispatchForm({
   }, [dispatch, clearLocalErrors]);
 
   /**
-   * Handle dispatch number change with auto-navigation
+   * Handle dispatch number change
    *
    * This function:
    * 1. Updates Redux immediately so UI is responsive
    * 2. Waits 750ms (debounce) before checking if number exists
-   * 3. If exists and different from current, navigates to edit that dispatch
-   * 4. If doesn't exist and in edit mode, navigates to create mode
+   * 3. If another dispatch holds the number, reports it on the field
    *
+   * It never navigates and never resets or reloads the form: the check's answer
+   * has no items and no photos, and a number that is free while editing is just
+   * this dispatch being given a new number.
    * Uses AbortController to cancel pending operations when user types more
    */
   const handleDispNoChange = useCallback((newDispNo: string) => {
@@ -378,6 +385,8 @@ export function useDispatchForm({
     // Update Redux immediately so UI is responsive
     dispatch(updateHeader({ disp_no: newDispNo }));
     dispatch(clearFieldError('disp_no'));
+    takenNumberErrorRef.current = null;
+    clearLocalErrors(['disp_no']);
 
     // Start async operation
     (async () => {
@@ -403,41 +412,22 @@ export function useDispatchForm({
         return;
       }
 
-      console.log('[useDispatchForm] handleDispNoChange: Check result:', result);
+      // In edit mode the dispatch's own number is not a duplicate.
+      const state = documentNumberState(
+        { exists: result.exists, id: result.dispatchId, error: result.error },
+        mode === 'edit' ? dispatchIdParam : null
+      );
+      console.log('[useDispatchForm] handleDispNoChange: Number is', state);
+      if (state !== 'taken') return;
 
-      // Navigate if needed
-      if (result.exists && result.dispatchId && result.dispatchId !== dispatchIdParam) {
-        // Dispatch exists and it's different from current - navigate to edit
-        console.log('[useDispatchForm] handleDispNoChange: Navigating to edit mode for:', result.dispatchId);
-        globalSessionId += 1;
-
-        // Pre-load dispatch data from checkDispatchExists result (avoids second RPC call)
-        if (result.dispatchData) {
-          console.log('[useDispatchForm] Pre-loading dispatch data from check result');
-          dispatch(loadDispatchData({
-            dispatchId: result.dispatchId,
-            header: result.dispatchData.header,
-            items: result.dispatchData.items,
-            images: [],
-          }));
-        } else {
-          dispatch(resetForm());
-        }
-
-        router.replace(`/dispatch-edit/${result.dispatchId}/step1`);
-      } else if (!result.exists && mode === 'edit') {
-        // Dispatch doesn't exist and we're in edit mode - navigate to create
-        console.log('[useDispatchForm] handleDispNoChange: Navigating to create mode');
-        globalSessionId += 1;
-        dispatch(resetForm());
-        // After reset, set the dispatch number user typed
-        dispatch(updateHeader({ disp_no: newDispNo }));
-        router.replace('/dispatch-form/step1');
-      }
-      // If dispatch exists and matches current (dispatchIdParam), do nothing - already editing it
-      // If dispatch doesn't exist and in create mode, do nothing - user is creating new
+      const takenNumber = result.dispNo || newDispNo;
+      const message = result.customerName
+        ? t('dispatch.wizard.numberTakenFor', { number: formatIdentifier(takenNumber), customer: result.customerName })
+        : t('dispatch.wizard.numberTaken', { number: formatIdentifier(takenNumber) });
+      takenNumberErrorRef.current = message;
+      setLocalValidationErrors((prev) => ({ ...prev, disp_no: message }));
     })();
-  }, [dispatchIdParam, mode, dispatch]);
+  }, [dispatchIdParam, mode, dispatch, clearLocalErrors]);
 
   // Item actions
   const addFormItem = useCallback((item: DispatchItemData) => {
@@ -535,6 +525,11 @@ export function useDispatchForm({
         break;
       default:
         result = { isValid: true, errors: {} };
+    }
+
+    // A number another dispatch holds keeps step 1 from passing until it is changed.
+    if (step === 1 && takenNumberErrorRef.current) {
+      result = { isValid: false, errors: { ...result.errors, disp_no: takenNumberErrorRef.current } };
     }
 
     if (!result.isValid) {

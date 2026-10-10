@@ -26,6 +26,8 @@ export const grn: Translation<typeof source> = {
     forExample: 'દા.ત. {{example}}',
     checkNumberFailed: 'આવક પાવતી નંબર તપાસી શકાયો નથી',
     checkNumberNetwork: 'આવક પાવતી નંબર તપાસતી વખતે નેટવર્કની ભૂલ આવી',
+    numberTaken: 'આવક પાવતી {{number}} પહેલેથી છે. બીજો નંબર લખો.',
+    numberTakenFor: 'આવક પાવતી {{number}} પહેલેથી છે ({{customer}}). બીજો નંબર લખો.',
     nextNumberFailed: 'આગળનો આવક પાવતી નંબર મળી શક્યો નથી',
     requestFailed: 'સર્વર સાથે કામ થઈ શક્યું નથી',
     creationFailed: 'આવક પાવતી બની શકી નથી',
@@ -272,6 +274,8 @@ export const grn: Translation<typeof source> = {
   },
 
   validation: {
+    numberMax: 'આવક પાવતી નંબર વધુમાં વધુ ૮ અક્ષરનો હોઈ શકે',
+    numberNoSpaces: 'આવક પાવતી નંબરમાં ખાલી જગ્યા ન હોવી જોઈએ',
     registrationMax: 'વાહન નંબર વધુમાં વધુ ૧૨ અક્ષરનો હોઈ શકે',
     dateRequired: 'તારીખ જરૂરી છે',
     dateFuture: 'આજ પછીની તારીખ પસંદ કરી શકાતી નથી',

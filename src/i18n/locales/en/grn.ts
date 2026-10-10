@@ -25,6 +25,8 @@ export const grn = {
     forExample: 'For example {{example}}',
     checkNumberFailed: 'Failed to check GRN',
     checkNumberNetwork: 'Network error checking GRN',
+    numberTaken: 'GRN {{number}} already exists. Enter a different number.',
+    numberTakenFor: 'GRN {{number}} already exists ({{customer}}). Enter a different number.',
     nextNumberFailed: 'Failed to get next GRN number',
     requestFailed: 'RPC call failed',
     creationFailed: 'GRN creation failed',
@@ -273,6 +275,8 @@ export const grn = {
 
   // Validation messages (src/features/grn/schemas/grnValidation.ts)
   validation: {
+    numberMax: 'GRN number must be at most 8 characters',
+    numberNoSpaces: 'GRN number cannot contain spaces',
     registrationMax: 'Registration must be at most 12 characters',
     dateRequired: 'Date is required',
     dateFuture: 'Cannot select a future date',
