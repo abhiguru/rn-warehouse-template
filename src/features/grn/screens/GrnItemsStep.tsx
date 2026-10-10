@@ -5,7 +5,7 @@ import {
   Vibration,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect } from 'expo-router';
 import { useThemedStyles } from '@/hooks/useTheme';
 import type { ThemeTokens } from '@/theme/tokens';
 import { useAppSelector, useAppDispatch } from '@/store/hooks';

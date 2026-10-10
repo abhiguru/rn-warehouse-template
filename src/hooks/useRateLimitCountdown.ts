@@ -120,7 +120,7 @@ const formatCountdown = (seconds: number): string => {
 export const useRateLimitCountdown = (): UseRateLimitCountdownReturn => {
   const [secondsRemaining, setSecondsRemaining] = useState(0);
   const [message, setMessage] = useState('');
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const endTimeRef = useRef<number>(0);
 
   // Cleanup on unmount

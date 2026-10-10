@@ -52,7 +52,7 @@ const makeStyles = (t: ThemeTokens) => ({
     justifyContent: 'flex-end' as const,
   },
   backdrop: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: t.overlay.scrim,
   },
   sheetContainer: {
@@ -240,7 +240,7 @@ export const GRNAutocomplete: React.FC<GRNAutocompleteProps> = ({
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
   const insets = useSafeAreaInsets();
-  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inputRef = useRef<TextInput>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [grns, setGrns] = useState<InvoiceableGrn[]>([]);

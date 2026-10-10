@@ -134,7 +134,7 @@ const ItemPricingFormScreen: React.FC = () => {
   // Refs
   const itemSheetRef = useRef<BottomSheetModal>(null);
   const customerSheetRef = useRef<BottomSheetModal>(null);
-  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Snap points for bottom sheets
   const snapPoints = useMemo(() => ['60%', '90%'], []);

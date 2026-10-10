@@ -16,7 +16,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { Swipeable } from 'react-native-gesture-handler';
-import { useIsFocused } from '@react-navigation/native';
+import { useIsFocused } from 'expo-router';
 import { router, Stack } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';

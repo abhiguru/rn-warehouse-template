@@ -7,7 +7,7 @@
  */
 
 import React, { useState, useRef, useCallback, useMemo } from 'react';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect } from 'expo-router';
 import {
   View,
   Text,

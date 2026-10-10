@@ -53,8 +53,8 @@ export default function OTPScreen() {
   const [expiryTimer, setExpiryTimer] = useState(300); // 5 minutes
   const [focusedIndex, setFocusedIndex] = useState(0);
   const hiddenInputRef = useRef<TextInput | null>(null);
-  const autoSubmitTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const focusTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const autoSubmitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const focusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const insets = useSafeAreaInsets();
   const t = useTokens();
   const styles = useThemedStyles(makeStyles);

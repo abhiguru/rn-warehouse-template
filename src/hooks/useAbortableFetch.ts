@@ -33,7 +33,7 @@ export interface AbortableFetchOptions {
 export function useAbortableFetch(options: AbortableFetchOptions = {}) {
   const { timeout = 30000, onAbort } = options;
   const abortControllerRef = useRef<AbortController | null>(null);
-  const timeoutIdRef = useRef<NodeJS.Timeout | null>(null);
+  const timeoutIdRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Cleanup function
   const cleanup = useCallback(() => {

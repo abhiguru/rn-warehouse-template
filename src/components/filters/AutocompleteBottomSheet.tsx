@@ -70,7 +70,7 @@ export const AutocompleteBottomSheet: React.FC<AutocompleteBottomSheetProps> = (
   const insets = useContext(SafeAreaInsetsContext) ?? { top: 0, bottom: 0, left: 0, right: 0 };
 
   // Debounce timer
-  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Input ref for programmatic focus
   const inputRef = useRef<TextInput>(null);

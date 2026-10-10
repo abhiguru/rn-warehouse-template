@@ -20,9 +20,7 @@ registerTranslation('en', en);
 // The splash background is fixed per build in app.json (style guide §15), so
 // the JS splash and the native root background before React renders read it
 // from the build config instead of repeating the value here.
-const buildSplashBackground: string | undefined =
-  Constants.expoConfig?.splash?.backgroundColor ??
-  Constants.expoConfig?.backgroundColor;
+const buildSplashBackground: string | undefined = Constants.expoConfig?.backgroundColor;
 
 // Set the native root background before React renders on supported platforms.
 // Android edge-to-edge mode rejects this call.
@@ -56,7 +54,7 @@ import {
   DarkTheme,
   DefaultTheme,
   ThemeProvider,
-} from '@react-navigation/native';
+} from 'expo-router';
 import { Provider } from 'react-redux';
 import { PersistGate } from 'redux-persist/integration/react';
 import { PaperProvider, MD3LightTheme, MD3DarkTheme } from 'react-native-paper';
@@ -131,11 +129,11 @@ if (typeof ErrorUtils !== 'undefined' && ErrorUtils) {
 }
 
 // Handle unhandled promise rejections
-if (typeof global !== 'undefined') {
+if (typeof globalThis !== 'undefined') {
   // React Native uses a polyfill that exposes tracking-rejection event
-  const originalRejectionHandler = (global as any).onunhandledrejection;
+  const originalRejectionHandler = (globalThis as any).onunhandledrejection;
 
-  (global as any).onunhandledrejection = (event: {
+  (globalThis as any).onunhandledrejection = (event: {
     reason: any;
     promise: Promise<any>;
   }) => {
@@ -412,8 +410,8 @@ function ThemedContent() {
   // Keep the platform-specific system background in sync with theme changes.
   useEffect(() => {
     if (Platform.OS === 'android') {
-      // Set navigation bar button style (light icons for dark bg, dark icons for light bg)
-      NavigationBar.setButtonStyleAsync(isDarkMode ? 'light' : 'dark');
+      // The style names the button colour: light buttons on a dark background, dark buttons on light.
+      NavigationBar.setStyle(isDarkMode ? 'light' : 'dark');
     } else {
       SystemUI.setBackgroundColorAsync(screenBackground);
     }

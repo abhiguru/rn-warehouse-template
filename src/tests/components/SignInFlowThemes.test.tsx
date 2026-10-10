@@ -27,10 +27,16 @@ jest.mock('@expo/vector-icons', () => ({ Ionicons: 'Ionicons', MaterialCommunity
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
 }));
-jest.mock('expo-router', () => ({
-  Stack: { Screen: () => null },
-  router: { back: jest.fn(), push: jest.fn(), replace: jest.fn() },
-}));
+jest.mock('expo-router', () => {
+  const actual = jest.requireActual('expo-router');
+  return {
+    Stack: { Screen: () => null },
+    router: { back: jest.fn(), push: jest.fn(), replace: jest.fn() },
+    DarkTheme: actual.DarkTheme,
+    DefaultTheme: actual.DefaultTheme,
+    ThemeProvider: actual.ThemeProvider,
+  };
+});
 jest.mock('@/config/supabaseConfig', () => ({
   getPendingEnrollmentToken: jest.fn(() => new Promise(() => undefined)),
   signInWithPhone: jest.fn(),

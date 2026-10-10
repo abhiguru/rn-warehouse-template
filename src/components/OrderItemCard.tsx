@@ -47,7 +47,7 @@ const OrderItemCardComponent: React.FC<OrderItemCardProps> = ({
   const flashAnim = useRef(new Animated.Value(0)).current;
   
   // Refs for debouncing
-  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSavedQuantityRef = useRef(item.requested_quantity);
   
   // Update local quantity when item prop changes

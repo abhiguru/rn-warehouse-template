@@ -4,17 +4,11 @@
     "slug": "rn-warehouse-template",
     "version": "0.1.0",
     "orientation": "portrait",
-    "newArchEnabled": true,
     "icon": "./assets/icon-1024.png",
     "userInterfaceStyle": "automatic",
     "backgroundColor": "#11222c",
     "scheme": "warehousemanager",
     "runtimeVersion": "0.1.0",
-    "splash": {
-      "image": "./assets/splash-icon-1024.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#11222c"
-    },
     "ios": {
       "bundleIdentifier": "com.example.warehousemanager",
       "buildNumber": "1",
@@ -92,6 +86,14 @@
           "cameraPermission": "Allow $(PRODUCT_NAME) to scan warehouse QR codes and photograph items for GRN and dispatch documentation",
           "microphonePermission": false,
           "recordAudioAndroid": false
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon-1024.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#11222c"
         }
       ]
     ],

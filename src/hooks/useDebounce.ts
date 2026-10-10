@@ -94,7 +94,7 @@ export function useDebouncedCallback<T extends (...args: unknown[]) => unknown>(
   callback: T,
   delay: number = 300
 ): { debouncedFn: (...args: Parameters<T>) => void; cancel: () => void; flush: () => void } {
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const callbackRef = useRef(callback);
   const pendingArgsRef = useRef<Parameters<T> | null>(null);
 
@@ -196,7 +196,7 @@ export function useDebouncedSearch(
   const [value, setValueState] = useState(initialValue);
   const [debouncedValue, setDebouncedValue] = useState(initialValue);
   const [isDebouncing, setIsDebouncing] = useState(false);
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Clean up on unmount
   useEffect(() => {

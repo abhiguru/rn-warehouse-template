@@ -18,7 +18,7 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { View, Text, StyleSheet, RefreshControl, TextInput, Pressable } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
 import { ActivityIndicator, Portal, Snackbar } from 'react-native-paper';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect } from 'expo-router';
 import { router } from 'expo-router';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { ListSkeleton } from '@/components/skeletons';

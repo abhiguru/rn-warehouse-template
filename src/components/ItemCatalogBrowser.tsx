@@ -124,11 +124,11 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   // Every browse reload takes a new id; an older page is discarded.
   const browseRequestRef = useRef(0);
-  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Every search edit takes a new id; a response whose id is no longer current
   // is discarded so an earlier, slower search cannot overwrite a later one.
   const searchRequestRef = useRef(0);
-  const sliderUpdateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const sliderUpdateTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [showWeightSlider, setShowWeightSlider] = useState(false);
   const [range, setRange] = useState<[number, number]>([0, 50]);
   const [tempRange, setTempRange] = useState<[number, number]>([0, 50]);

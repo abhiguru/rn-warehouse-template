@@ -67,7 +67,7 @@ const makeStyles = (t: ThemeTokens) => ({
     justifyContent: 'flex-end' as const,
   },
   backdrop: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: t.overlay.scrim,
   },
   sheetContainer: {
@@ -353,7 +353,7 @@ const CustomKeyboard = memo<CustomKeyboardProps>(({
   const t = useTokens();
   // Local state for instant display - no parent re-render on keystroke
   const [localQuery, setLocalQuery] = useState('');
-  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Handle key press with local state update (instant) + debounced parent callback
   const handleKeyPress = useCallback((char: string) => {

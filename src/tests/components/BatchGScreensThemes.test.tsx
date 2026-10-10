@@ -18,8 +18,9 @@ jest.mock('expo-router', () => ({
   useRouter: () => ({ push: jest.fn(), back: jest.fn(), replace: jest.fn() }),
   useLocalSearchParams: () => ({ id: 'i1', userId: 'u1' }),
   Stack: { Screen: () => null },
+  useIsFocused: () => true,
+  useFocusEffect: jest.fn(),
 }));
-jest.mock('@react-navigation/native', () => ({ useIsFocused: () => true, useFocusEffect: jest.fn() }));
 jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => 'Icon');
 jest.mock('@expo/vector-icons', () => ({ Ionicons: 'Ionicons', MaterialCommunityIcons: 'MaterialCommunityIcons' }));
 jest.mock('react-native-safe-area-context', () => ({
