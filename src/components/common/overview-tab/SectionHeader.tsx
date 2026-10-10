@@ -7,7 +7,7 @@
 
 import React from 'react';
 import { View, Text } from 'react-native';
-import { overviewStyles, useOverviewColors } from './FioriStyles';
+import { useOverviewStyles, useOverviewColors } from './FioriStyles';
 
 interface SectionHeaderProps {
   title: string;
@@ -15,6 +15,7 @@ interface SectionHeaderProps {
 
 export const SectionHeader: React.FC<SectionHeaderProps> = ({ title }) => {
   const colorStyles = useOverviewColors();
+  const overviewStyles = useOverviewStyles();
 
   return (
     <View style={overviewStyles.sectionHeader}>

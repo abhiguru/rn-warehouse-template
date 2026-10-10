@@ -21,9 +21,11 @@ import {
   space,
   touchTarget,
   typography,
+  trackedText,
 } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
-import { formatCount, formatDate, toDate, formatWeight } from '@/utils/formatters';
+import { formatCount, formatDate, formatNumber, toDate, formatWeight } from '@/utils/formatters';
+import { t as tr, formatIdentifier } from '@/i18n';
 
 // ============================================================================
 // UTILITIES
@@ -91,7 +93,7 @@ const makeStyles = (t: ThemeTokens) => ({
     ...typography.footnote,
     fontWeight: fontWeight.semibold,
     textTransform: 'uppercase' as const,
-    letterSpacing: 0.5,
+    letterSpacing: trackedText(0.5),
     color: t.text.secondary,
     marginTop: space.md,
     marginBottom: space.sm,
@@ -180,20 +182,20 @@ const DispatchItemCardComponent: React.FC<DispatchItemCardProps> = ({
       <View
         style={styles.header}
         accessible
-        accessibilityLabel={`${item_name}, ${bags(dispatch_quantity)} dispatched`}
+        accessibilityLabel={tr('dispatch.details.itemBagsDispatched', { item: item_name, bags: bags(dispatch_quantity) })}
       >
         <Text style={styles.itemName} numberOfLines={2}>
           {item_name}
         </Text>
         <View style={styles.quantity}>
-          <Text style={styles.quantityValue}>{dispatch_quantity}</Text>
-          <Text style={styles.quantityLabel}>{dispatch_quantity === 1 ? 'bag' : 'bags'}</Text>
+          <Text style={styles.quantityValue}>{formatNumber(dispatch_quantity)}</Text>
+          <Text style={styles.quantityLabel}>{tr('dispatch.count.bagsUnit', { count: dispatch_quantity })}</Text>
         </View>
       </View>
 
       {/* GRN Reference Section */}
       <View style={styles.grnSection}>
-        <Text style={styles.grnLabel} accessibilityRole="header">From GRN</Text>
+        <Text style={styles.grnLabel} accessibilityRole="header">{tr('dispatch.details.fromGrn')}</Text>
 
         <Pressable
           style={({ pressed }) => [
@@ -203,13 +205,17 @@ const DispatchItemCardComponent: React.FC<DispatchItemCardProps> = ({
           onPress={handleGRNPress}
           disabled={!isGrnClickable}
           accessibilityRole={isGrnClickable ? 'button' : undefined}
-          accessibilityLabel={`GRN ${grn_no}${formattedGrnDate ? `, ${formattedGrnDate}` : ''}`}
-          accessibilityHint={isGrnClickable ? 'Opens the GRN' : undefined}
+          accessibilityLabel={
+            formattedGrnDate
+              ? tr('dispatch.details.grnLabelWithDate', { number: formatIdentifier(grn_no), date: formattedGrnDate })
+              : tr('dispatch.details.grnLabel', { number: formatIdentifier(grn_no) })
+          }
+          accessibilityHint={isGrnClickable ? tr('dispatch.details.opensGrn') : undefined}
         >
           <View style={styles.grnContent}>
             <Icon name="package-down" size={iconSize.md} color={t.icon.secondary} />
             <View style={styles.grnInfo}>
-              <Text style={styles.grnNo}>GRN {grn_no}</Text>
+              <Text style={styles.grnNo}>{tr('dispatch.details.grnLabel', { number: formatIdentifier(grn_no) })}</Text>
               {!!formattedGrnDate && <Text style={styles.grnDate}>{formattedGrnDate}</Text>}
             </View>
             {isGrnClickable && (
@@ -225,7 +231,7 @@ const DispatchItemCardComponent: React.FC<DispatchItemCardProps> = ({
               <View style={styles.detailChip}>
                 <Icon name="package-variant-closed" size={iconSize.sm} color={t.status.neutral.text} />
                 <Text style={styles.detailChipText} maxFontSizeMultiplier={1.6}>
-                  Received {bags(original_quantity)}
+                  {tr('dispatch.details.received', { bags: bags(original_quantity) })}
                 </Text>
               </View>
             )}

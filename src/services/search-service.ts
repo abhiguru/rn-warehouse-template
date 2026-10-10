@@ -1,7 +1,8 @@
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
 import { executeRPC, createErrorResponse } from '@/utils/serviceErrorHandler';
 
-import { toLocalISODate } from '@/utils/formatters';
+import { formatDate, toLocalISODate } from '@/utils/formatters';
+import { t } from '@/i18n';
 export interface SearchResult {
   label: string;
   value: string;
@@ -218,7 +219,7 @@ class SearchService {
       },
       {
         context: 'SearchService.searchDispatches',
-        errorMessage: 'Failed to search dispatches',
+        errorMessage: t('errors.dispatch.searchFailed'),
         transform: (data) => {
           if (__DEV__) console.log('[SearchService] searchDispatches raw response:', JSON.stringify(data, null, 2).slice(0, 1000));
           const dispatches = Array.isArray(data?.dispatches) ? data.dispatches : [];
@@ -231,7 +232,7 @@ class SearchService {
             return {
               label: `#${dispNo}`,
               value: dispatch.id as string,
-              detail: `${customerName} • ${dispDate ? new Date(dispDate as string).toLocaleDateString() : ''}`,
+              detail: `${customerName} • ${dispDate ? formatDate(dispDate as string) : ''}`,
               type: 'dispatch' as const
             };
           });
@@ -281,13 +282,13 @@ class SearchService {
       },
       {
         context: 'SearchService.searchGRNNumbers',
-        errorMessage: 'Failed to search GRN numbers',
+        errorMessage: t('errors.grn.searchNumbersFailed'),
         transform: (data) => {
           const grns = Array.isArray(data?.grns) ? data.grns : [];
           return grns.map((grn) => ({
             label: grn.gr_no,
             value: grn.id,
-            detail: `${grn.customer_name} • ${new Date(grn.date).toLocaleDateString()}`,
+            detail: `${grn.customer_name} • ${formatDate(grn.date)}`,
             type: 'grn' as const
           }));
         }

@@ -6,6 +6,8 @@ import {
   SensorHistoryResponse,
 } from '@/types/sensor-history.types';
 import { createLogger } from '@/utils/logger';
+import { t } from '@/i18n';
+import { serverText } from '@/utils/serverText';
 
 const sensorHistoryLogger = createLogger('SensorHistoryService');
 
@@ -28,7 +30,7 @@ export async function getSensorHistory(
 
     // Set a timeout for RPC calls (30 seconds)
     const timeoutPromise = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error('RPC request timed out after 30 seconds')), 30000)
+      setTimeout(() => reject(new Error(t('errors.network.rpcTimedOut30'))), 30000)
     );
 
     const rpcPromise = authenticatedClient.rpc('get_sensor_history', {
@@ -45,13 +47,13 @@ export async function getSensorHistory(
       sensorHistoryLogger.error('RPC error:', error);
       return {
         success: false,
-        message: error.message || 'Failed to fetch sensor history',
+        message: serverText(error.message, t('errors.sensor.historyFetchFailed')),
         error: error.message,
       };
     }
 
     if (!data || !data.success) {
-      const errorMsg = data?.error || 'No data returned from sensor history';
+      const errorMsg = serverText(data?.error, t('errors.sensor.historyNoData'));
       sensorHistoryLogger.warn('RPC returned unsuccessful response', { error: errorMsg });
       return {
         success: false,
@@ -71,14 +73,14 @@ export async function getSensorHistory(
       success: true,
       data: data.data,
       metadata: data.metadata,
-      message: 'Sensor history fetched successfully',
+      message: t('errors.sensor.historyFetched'),
     };
   } catch (error) {
     sensorHistoryLogger.error('Exception:', error);
     return {
       success: false,
-      message: 'Failed to fetch sensor history',
-      error: error instanceof Error ? error.message : 'Unknown error',
+      message: t('errors.sensor.historyFetchFailed'),
+      error: error instanceof Error ? error.message : t('errors.general.unknown'),
     };
   }
 }
@@ -88,11 +90,11 @@ export async function getSensorHistory(
  */
 export function getAggregationLabel(interval: string): string {
   const labels: Record<string, string> = {
-    '1 hour': 'Hourly averages',
-    '2 hours': '2-hour averages',
-    '4 hours': '4-hour averages',
-    '1 day': 'Daily averages',
-    '1 week': 'Weekly averages',
+    '1 hour': t('errors.sensor.aggregation.hourly'),
+    '2 hours': t('errors.sensor.aggregation.twoHours'),
+    '4 hours': t('errors.sensor.aggregation.fourHours'),
+    '1 day': t('errors.sensor.aggregation.daily'),
+    '1 week': t('errors.sensor.aggregation.weekly'),
   };
   return labels[interval] || interval;
 }
@@ -102,11 +104,11 @@ export function getAggregationLabel(interval: string): string {
  */
 export function getPeriodLabel(days: SensorHistoryPeriod): string {
   const labels: Record<SensorHistoryPeriod, string> = {
-    7: '7 days',
-    14: '14 days',
-    30: '30 days',
-    90: '90 days',
-    365: '1 year',
+    7: t('errors.sensor.period.days7'),
+    14: t('errors.sensor.period.days14'),
+    30: t('errors.sensor.period.days30'),
+    90: t('errors.sensor.period.days90'),
+    365: t('errors.sensor.period.year1'),
   };
   return labels[days];
 }

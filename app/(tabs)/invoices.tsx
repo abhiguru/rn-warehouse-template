@@ -14,6 +14,7 @@ import { ListErrorBoundary } from '@/components/list/ListErrorBoundary';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useThemedStyles } from '@/hooks/useTheme';
 import { Fab } from '@/components/ui/Fab';
+import { t } from '@/i18n';
 import { useAppDispatch } from '@/store/hooks';
 import { resetForm as resetInvoiceForm } from '@/store/slices/invoiceFormSlice';
 import type { ThemeTokens } from '@/theme/tokens';
@@ -42,7 +43,7 @@ export default function InvoicesTab() {
         <InvoiceFlashList />
       </ListErrorBoundary>
       {canCreate && (
-        <Fab label="Create invoice" onPress={handleCreateInvoice} testID="create-invoice-fab" />
+        <Fab label={t('lists.invoice.create')} onPress={handleCreateInvoice} testID="create-invoice-fab" />
       )}
     </View>
   );

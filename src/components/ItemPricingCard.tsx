@@ -24,6 +24,8 @@ import {
 import type { ItemStoragePrice } from '@/types/item-pricing.types';
 import { formatCurrency, formatDate } from '@/utils/formatters';
 import { Avatar, StatusTag } from '@/components/ui';
+import { localizeDigits, t as tr } from '@/i18n';
+import { priceTypeLabel, weightBandLabel } from '@/features/item-pricing/utils/priceLabels';
 
 interface ItemPricingCardProps {
   price: ItemStoragePrice;
@@ -70,9 +72,9 @@ const ItemPricingCard = memo<ItemPricingCardProps>(
       runOnJS(() => swipeableRef.current?.close())();
     };
 
-    const weightLabel = `${price.weight_min}–${price.weight_max} kg`;
+    const weightLabel = weightBandLabel(price.weight_min, price.weight_max);
     const isOneTime = price.price_type === 'one_time';
-    const typeLabel = isOneTime ? 'One-time' : 'Monthly';
+    const typeLabel = priceTypeLabel(isOneTime ? 'one_time' : 'monthly');
 
     const renderRightActions = () => (
       <View style={styles.swipeActionsContainer}>
@@ -80,20 +82,20 @@ const ItemPricingCard = memo<ItemPricingCardProps>(
           style={({ pressed }) => [styles.swipeAction, styles.swipeView, pressed && styles.swipeViewPressed]}
           onPress={() => handleSwipeAction('view')}
           accessibilityRole="button"
-          accessibilityLabel={`View price for ${weightLabel}`}
+          accessibilityLabel={tr('pricing.card.viewFor', { band: weightLabel })}
         >
           <Icon name="eye-outline" color={t.text.primary} size={iconSize.lg} />
-          <Text style={styles.swipeLabel} maxFontSizeMultiplier={1.4}>View</Text>
+          <Text style={styles.swipeLabel} maxFontSizeMultiplier={1.4}>{tr('common.view')}</Text>
         </Pressable>
         {canManage && (
           <Pressable
             style={({ pressed }) => [styles.swipeAction, styles.swipeEdit, pressed && styles.swipeEditPressed]}
             onPress={() => handleSwipeAction('edit')}
             accessibilityRole="button"
-            accessibilityLabel={`Edit price for ${weightLabel}`}
+            accessibilityLabel={tr('pricing.card.editFor', { band: weightLabel })}
           >
             <Icon name="pencil-outline" color={t.brand.onFill} size={iconSize.lg} />
-            <Text style={[styles.swipeLabel, styles.swipeLabelOnBrand]} maxFontSizeMultiplier={1.4}>Edit</Text>
+            <Text style={[styles.swipeLabel, styles.swipeLabelOnBrand]} maxFontSizeMultiplier={1.4}>{tr('common.edit')}</Text>
           </Pressable>
         )}
         {canManage && (
@@ -101,10 +103,10 @@ const ItemPricingCard = memo<ItemPricingCardProps>(
             style={({ pressed }) => [styles.swipeAction, styles.swipeDelete, pressed && styles.swipeDeletePressed]}
             onPress={() => handleSwipeAction('delete')}
             accessibilityRole="button"
-            accessibilityLabel={`Delete price for ${weightLabel}`}
+            accessibilityLabel={tr('pricing.card.deleteFor', { band: weightLabel })}
           >
             <Icon name="trash-can-outline" color={t.destructive.onFill} size={iconSize.lg} />
-            <Text style={[styles.swipeLabel, styles.swipeLabelOnDestructive]} maxFontSizeMultiplier={1.4}>Delete</Text>
+            <Text style={[styles.swipeLabel, styles.swipeLabelOnDestructive]} maxFontSizeMultiplier={1.4}>{tr('common.delete')}</Text>
           </Pressable>
         )}
       </View>
@@ -113,16 +115,18 @@ const ItemPricingCard = memo<ItemPricingCardProps>(
     // Check if price is expired
     const isExpired = !!price.effective_to && new Date(price.effective_to) < new Date();
     const isDefault = !price.customer_id;
-    const validity = `From ${formatDate(price.effective_from, 'short')}${
-      price.effective_to ? ` to ${formatDate(price.effective_to, 'short')}` : ''
-    }`;
+    const validity = price.effective_to
+      ? tr('pricing.card.validFromTo', { from: formatDate(price.effective_from, 'short'), to: formatDate(price.effective_to, 'short') })
+      : tr('pricing.card.validFrom', { from: formatDate(price.effective_from, 'short') });
+    const labourLabel = tr('pricing.card.labour', { amount: formatCurrency(price.labour_rate) });
+    const taxLabel = tr('pricing.card.tax', { percent: localizeDigits(String(price.tax_percent)) });
     const rowLabel = [
       weightLabel,
       typeLabel,
       formatCurrency(price.unit_price),
-      isExpired ? 'Expired' : null,
-      `Labour ${formatCurrency(price.labour_rate)}`,
-      `Tax ${price.tax_percent}%`,
+      isExpired ? tr('pricing.card.expired') : null,
+      labourLabel,
+      taxLabel,
       validity,
     ]
       .filter(Boolean)
@@ -145,9 +149,9 @@ const ItemPricingCard = memo<ItemPricingCardProps>(
                 <Avatar name={price.customer_name} id={price.customer_id} size="sm" />
               )}
               <Text style={styles.customerGroupName} numberOfLines={2}>
-                {price.customer_name || 'Default pricing'}
+                {price.customer_name || tr('pricing.card.defaultPricing')}
               </Text>
-              {isDefault && <StatusTag status="neutral" label="Base" icon={null} />}
+              {isDefault && <StatusTag status="neutral" label={tr('pricing.card.base')} icon={null} />}
             </View>
           )}
 
@@ -164,7 +168,7 @@ const ItemPricingCard = memo<ItemPricingCardProps>(
               onPress={() => onPress(price)}
               accessibilityRole="button"
               accessibilityLabel={rowLabel}
-              accessibilityHint="Swipe left for view, edit and delete"
+              accessibilityHint={tr('pricing.card.swipeHint')}
             >
               {({ pressed }) => (
                 <View style={[
@@ -193,13 +197,13 @@ const ItemPricingCard = memo<ItemPricingCardProps>(
                   {/* Secondary Row: Labour, Tax, Validity */}
                   <View style={styles.secondaryRow}>
                     <Text style={styles.secondaryText}>
-                      Labour {formatCurrency(price.labour_rate)}
+                      {labourLabel}
                     </Text>
                     <Text style={styles.separator}>·</Text>
-                    <Text style={styles.secondaryText}>Tax {price.tax_percent}%</Text>
+                    <Text style={styles.secondaryText}>{taxLabel}</Text>
                     <Text style={styles.separator}>·</Text>
                     <Text style={styles.secondaryText}>{validity}</Text>
-                    {isExpired && <StatusTag status="negative" label="Expired" style={styles.expiredTag} />}
+                    {isExpired && <StatusTag status="negative" label={tr('pricing.card.expired')} style={styles.expiredTag} />}
                   </View>
                 </View>
               )}
@@ -232,7 +236,7 @@ export const ItemPricingSkeletonCard = memo(() => {
     <Animated.View
       style={[styles.skeletonCard, animatedStyle]}
       accessibilityRole="progressbar"
-      accessibilityLabel="Loading prices"
+      accessibilityLabel={tr('pricing.card.loadingLabel')}
     >
       {/* Main row skeleton */}
       <View style={styles.skeletonRow}>

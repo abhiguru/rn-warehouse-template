@@ -251,15 +251,6 @@ export interface ValidationResult {
 // ============================================================================
 
 /**
- * Form step configuration
- */
-export interface DispatchFormStep {
-  number: number;
-  label: string;
-  path: string;
-}
-
-/**
  * Item form data (for Step 2 single item form)
  */
 export interface ItemFormData extends Partial<DispatchItemData> {
@@ -365,12 +356,6 @@ export interface DispatchItemEntity {
 // ============================================================================
 // CONSTANTS
 // ============================================================================
-
-export const DISPATCH_STEPS: DispatchFormStep[] = [
-  { number: 1, label: 'Header', path: '/dispatch-form/step1' },
-  { number: 2, label: 'Items', path: '/dispatch-form/step2' },
-  { number: 3, label: 'Review', path: '/dispatch-form/step3' },
-];
 
 export const EMPTY_DISPATCH_HEADER: DispatchHeaderData = {
   disp_no: '',

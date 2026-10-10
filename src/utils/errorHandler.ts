@@ -7,6 +7,8 @@
 
 import { createLogger } from './logger';
 import { ValidationError } from './inputValidation';
+import { getAppErrorCode } from './appError';
+import { getLanguage, localizeDigits, t, type TranslationKey } from '@/i18n';
 // Re-export ServiceResponse from canonical source for backward compatibility
 // @see J6 - DRY Violation: ServiceResponse Type Defined 8+ Times
 import { ServiceResponse } from '../types/service.types';
@@ -55,23 +57,29 @@ export enum ErrorCode {
 }
 
 /**
- * User-friendly error messages mapped to error codes
+ * User-friendly error messages mapped to error codes: the keys of the texts,
+ * read with `t` when a message is needed (never at module load).
  */
-const ERROR_MESSAGES: Record<ErrorCode, string> = {
-  [ErrorCode.NETWORK_ERROR]: 'Network connection failed. Please check your internet connection.',
-  [ErrorCode.TIMEOUT]: 'Request timed out. Please try again.',
-  [ErrorCode.UNAUTHORIZED]: 'You are not authorized to perform this action. Please sign in.',
-  [ErrorCode.FORBIDDEN]: 'You do not have permission to access this resource.',
-  [ErrorCode.SESSION_EXPIRED]: 'Your session has expired. Please sign in again.',
-  [ErrorCode.VALIDATION_ERROR]: 'The information provided is invalid. Please check and try again.',
-  [ErrorCode.INVALID_INPUT]: 'Invalid input provided. Please check your data.',
-  [ErrorCode.DATABASE_ERROR]: 'A database error occurred. Please try again later.',
-  [ErrorCode.NOT_FOUND]: 'The requested resource was not found.',
-  [ErrorCode.DUPLICATE_ENTRY]: 'This entry already exists.',
-  [ErrorCode.BUSINESS_RULE_VIOLATION]: 'This operation violates a business rule.',
-  [ErrorCode.INSUFFICIENT_STOCK]: 'Insufficient stock available for this operation.',
-  [ErrorCode.UNKNOWN_ERROR]: 'An unexpected error occurred. Please try again.',
+const ERROR_MESSAGE_KEYS: Record<ErrorCode, TranslationKey> = {
+  [ErrorCode.NETWORK_ERROR]: 'errors.code.networkError',
+  [ErrorCode.TIMEOUT]: 'errors.code.timeout',
+  [ErrorCode.UNAUTHORIZED]: 'errors.code.unauthorized',
+  [ErrorCode.FORBIDDEN]: 'errors.code.forbidden',
+  [ErrorCode.SESSION_EXPIRED]: 'errors.code.sessionExpired',
+  [ErrorCode.VALIDATION_ERROR]: 'errors.code.validationError',
+  [ErrorCode.INVALID_INPUT]: 'errors.code.invalidInput',
+  [ErrorCode.DATABASE_ERROR]: 'errors.code.databaseError',
+  [ErrorCode.NOT_FOUND]: 'errors.code.notFound',
+  [ErrorCode.DUPLICATE_ENTRY]: 'errors.code.duplicateEntry',
+  [ErrorCode.BUSINESS_RULE_VIOLATION]: 'errors.code.businessRuleViolation',
+  [ErrorCode.INSUFFICIENT_STOCK]: 'errors.code.insufficientStock',
+  [ErrorCode.UNKNOWN_ERROR]: 'errors.general.unexpectedRetry',
 };
+
+/** The message shown to a person for an error code, in the app's language. */
+export function getErrorCodeMessage(errorCode: ErrorCode): string {
+  return t(ERROR_MESSAGE_KEYS[errorCode]);
+}
 
 /**
  * Detect error code from error object
@@ -81,6 +89,13 @@ function detectErrorCode(error: unknown): ErrorCode {
     return ErrorCode.VALIDATION_ERROR;
   }
 
+  // Errors the app raised carry a code; their text is translated and is never matched.
+  const appCode = getAppErrorCode(error);
+  if (appCode === 'NETWORK') return ErrorCode.NETWORK_ERROR;
+  if (appCode === 'TIMEOUT') return ErrorCode.TIMEOUT;
+  if (appCode) return ErrorCode.UNKNOWN_ERROR;
+
+  // Everything else is server or system text, which stays English.
   if (error instanceof Error) {
     const message = error.message.toLowerCase();
 
@@ -163,7 +178,7 @@ function extractErrorMessage(error: unknown): string {
     return String((error as { message: unknown }).message);
   }
 
-  return 'An unknown error occurred';
+  return t('errors.general.anUnknownOccurred');
 }
 
 /**
@@ -181,7 +196,7 @@ export function handleError<T = unknown>(
   const errorCode = detectErrorCode(error);
   const severity = options.severity || getErrorSeverity(errorCode);
   const technicalMessage = extractErrorMessage(error);
-  const userMessage = options.defaultMessage || ERROR_MESSAGES[errorCode];
+  const userMessage = options.defaultMessage || getErrorCodeMessage(errorCode);
 
   // Log error with appropriate severity
   const logData = {
@@ -225,7 +240,7 @@ export function handleSuccess<T>(
   return {
     success: true,
     data,
-    message: message || 'Operation completed successfully',
+    message: message || t('errors.general.operationCompleted'),
   };
 }
 
@@ -273,81 +288,82 @@ export function isErrorCode(
 
 /**
  * User-friendly error messages for specific operation contexts
- * Maps operation context + error patterns to friendly messages
+ * Maps operation context + operation to the key of a friendly message;
+ * the text is read with `t` in getUserFriendlyError.
  */
-const CONTEXT_ERROR_MESSAGES: Record<string, Record<string, string>> = {
+const CONTEXT_ERROR_MESSAGE_KEYS: Record<string, Record<string, TranslationKey>> = {
   // GRN operations
   grn: {
-    load: 'Unable to load GRN details. Please try again.',
-    create: 'Unable to create GRN. Please check your data and try again.',
-    update: 'Unable to update GRN. Please try again.',
-    delete: 'Unable to delete GRN. Please try again.',
-    fetch: 'Unable to fetch GRN list. Please check your connection.',
+    load: 'errors.friendly.grn.load',
+    create: 'errors.friendly.grn.create',
+    update: 'errors.friendly.grn.update',
+    delete: 'errors.friendly.grn.delete',
+    fetch: 'errors.friendly.grn.fetch',
   },
   // Dispatch operations
   dispatch: {
-    load: 'Unable to load dispatch details. Please try again.',
-    create: 'Unable to create dispatch. Please check your data and try again.',
-    update: 'Unable to update dispatch. Please try again.',
-    delete: 'Unable to delete dispatch. Please try again.',
-    fetch: 'Unable to fetch dispatch list. Please check your connection.',
-    generate: 'Unable to generate dispatch number. Please try again.',
+    load: 'errors.friendly.dispatch.load',
+    create: 'errors.friendly.dispatch.create',
+    update: 'errors.friendly.dispatch.update',
+    delete: 'errors.friendly.dispatch.delete',
+    fetch: 'errors.friendly.dispatch.fetch',
+    generate: 'errors.friendly.dispatch.generate',
   },
   // Invoice operations
   invoice: {
-    load: 'Unable to load invoice details. Please try again.',
-    create: 'Unable to create invoice. Please check your data and try again.',
-    update: 'Unable to update invoice. Please try again.',
-    delete: 'Unable to delete invoice. Please try again.',
-    fetch: 'Unable to fetch invoice list. Please check your connection.',
+    load: 'errors.friendly.invoice.load',
+    create: 'errors.friendly.invoice.create',
+    update: 'errors.friendly.invoice.update',
+    delete: 'errors.friendly.invoice.delete',
+    fetch: 'errors.friendly.invoice.fetch',
   },
   // User operations
   user: {
-    load: 'Unable to load user data. Please try again.',
-    update: 'Unable to update user. Please try again.',
-    create: 'Unable to create user. Please try again.',
+    load: 'errors.friendly.user.load',
+    update: 'errors.friendly.user.update',
+    create: 'errors.friendly.user.create',
   },
   // Image operations
   image: {
-    pick: 'Unable to select images. Please try again.',
-    upload: 'Unable to upload image. Please check your connection.',
-    capture: 'Unable to take photo. Please check camera permissions.',
+    pick: 'errors.friendly.image.pick',
+    upload: 'errors.friendly.image.upload',
+    capture: 'errors.friendly.image.capture',
   },
   // Stock operations
   stock: {
-    load: 'Unable to load stock data. Please try again.',
-    fetch: 'Unable to fetch stock information. Please try again.',
+    load: 'errors.friendly.stock.load',
+    fetch: 'errors.friendly.stock.fetch',
   },
   // Order operations
   order: {
-    load: 'Unable to load order details. Please try again.',
-    fetch: 'Unable to fetch orders. Please check your connection.',
-    create: 'Unable to create order. Please try again.',
+    load: 'errors.friendly.order.load',
+    fetch: 'errors.friendly.order.fetch',
+    create: 'errors.friendly.order.create',
   },
   // Auth/OTP operations
   auth: {
-    sendOtp: 'Unable to send verification code. Please try again.',
-    verifyOtp: 'Unable to verify code. Please try again.',
-    invalidOtp: 'The code you entered is incorrect. Please check and try again.',
-    expiredOtp: 'This code has expired. Please request a new one.',
-    tooManyAttempts: 'Too many attempts. Please wait a few minutes and try again.',
-    phoneInvalid: 'Please enter a valid phone number.',
-    sessionExpired: 'Your session has expired. Please sign in again.',
+    sendOtp: 'errors.friendly.auth.sendOtp',
+    verifyOtp: 'errors.friendly.auth.verifyOtp',
+    invalidOtp: 'errors.friendly.auth.invalidOtp',
+    expiredOtp: 'errors.friendly.auth.expiredOtp',
+    tooManyAttempts: 'errors.friendly.auth.tooManyAttempts',
+    phoneInvalid: 'errors.friendly.auth.phoneInvalid',
+    sessionExpired: 'errors.code.sessionExpired',
   },
   // Price operations
   price: {
-    load: 'Unable to load price data. Please try again.',
-    create: 'Unable to create price entry. Please try again.',
-    update: 'Unable to update price. Please try again.',
-    notFound: 'Price entry not found.',
+    load: 'errors.friendly.price.load',
+    create: 'errors.friendly.price.create',
+    update: 'errors.friendly.price.update',
+    notFound: 'errors.friendly.price.notFound',
   },
   // General operations
   general: {
-    load: 'Unable to load data. Please try again.',
-    save: 'Unable to save changes. Please try again.',
-    delete: 'Unable to delete. Please try again.',
-    network: 'Network error. Please check your connection.',
-    unknown: 'Something went wrong. Please try again.',
+    load: 'errors.friendly.general.load',
+    save: 'errors.friendly.general.save',
+    delete: 'errors.friendly.general.delete',
+    network: 'errors.friendly.general.network',
+    unknown: 'errors.general.somethingWrongRetry',
   },
 };
 
@@ -368,18 +384,36 @@ export function getUserFriendlyError(
   operation: string,
   fallbackMessage?: string
 ): string {
-  const contextMessages = CONTEXT_ERROR_MESSAGES[context.toLowerCase()];
+  const contextMessages = CONTEXT_ERROR_MESSAGE_KEYS[context.toLowerCase()];
   if (contextMessages && contextMessages[operation.toLowerCase()]) {
-    return contextMessages[operation.toLowerCase()];
+    return t(contextMessages[operation.toLowerCase()]);
   }
 
   // Try general context
-  const generalMessages = CONTEXT_ERROR_MESSAGES.general;
+  const generalMessages = CONTEXT_ERROR_MESSAGE_KEYS.general;
   if (generalMessages[operation.toLowerCase()]) {
-    return generalMessages[operation.toLowerCase()];
+    return t(generalMessages[operation.toLowerCase()]);
   }
 
-  return fallbackMessage || 'An error occurred. Please try again.';
+  return fallbackMessage || t('errors.general.errorRetry');
+}
+
+const GUJARATI_SCRIPT = /[\u0A80-\u0AFF]/;
+
+/** Document names callers pass as `context`, by their lower-cased English word. */
+const CONTEXT_NAME_KEYS: Record<string, TranslationKey> = {
+  grn: 'common.grn',
+  dispatch: 'common.dispatch',
+  invoice: 'common.invoice',
+  order: 'common.order',
+  customer: 'common.customer',
+  item: 'common.item',
+};
+
+/** The context word in the app's language; English keeps the caller's own wording. */
+function contextName(context: string): string {
+  const key = CONTEXT_NAME_KEYS[context.toLowerCase()];
+  return key && getLanguage() !== 'en' ? t(key) : context;
 }
 
 /**
@@ -394,31 +428,38 @@ export function parseErrorToFriendly(
   context?: string
 ): string {
   if (!technicalError) {
-    return 'An unexpected error occurred. Please try again.';
+    return t('errors.general.unexpectedRetry');
+  }
+
+  // The keyword tests below read English text from the server. A message the app
+  // wrote in Gujarati is already what the person should read: it is never
+  // matched against English words, it is shown as it is.
+  if (GUJARATI_SCRIPT.test(technicalError)) {
+    return technicalError;
   }
 
   const errorLower = technicalError.toLowerCase();
 
   // OTP-specific errors (check these first for auth context)
   if (errorLower.includes('invalid') && errorLower.includes('otp')) {
-    return 'The code you entered is incorrect. Please check and try again.';
+    return t('errors.friendly.auth.invalidOtp');
   }
   if (errorLower.includes('expired') && errorLower.includes('otp')) {
-    return 'This code has expired. Please request a new one.';
+    return t('errors.friendly.auth.expiredOtp');
   }
   if (errorLower.includes('invalid or expired otp')) {
-    return 'The code is incorrect or has expired. Please try again or request a new code.';
+    return t('errors.parsed.otpIncorrectOrExpired');
   }
   if (errorLower.includes('too many') && (errorLower.includes('otp') || errorLower.includes('attempt'))) {
-    return 'Too many attempts. Please wait a few minutes before trying again.';
+    return t('errors.parsed.tooManyAttempts');
   }
   if (errorLower.includes('captcha')) {
-    return 'Verification required. Please try again.';
+    return t('errors.parsed.verificationRequired');
   }
 
   // Network errors
   if (errorLower.includes('network') || errorLower.includes('fetch') || errorLower.includes('connection')) {
-    return 'Network connection issue. Please check your internet and try again.';
+    return t('errors.parsed.network');
   }
 
   // I18: Rate limit / Too many requests (429) errors
@@ -431,55 +472,55 @@ export function parseErrorToFriendly(
     // Extract wait time if present
     const secondsMatch = technicalError.match(/wait\s+(\d+)\s*seconds?/i);
     if (secondsMatch) {
-      return `Too many requests. Please wait ${secondsMatch[1]} seconds before trying again.`;
+      return t('errors.parsed.rateLimitSeconds', { seconds: localizeDigits(secondsMatch[1]) });
     }
     const minutesMatch = technicalError.match(/wait\s+(\d+)\s*minutes?/i);
     if (minutesMatch) {
-      return `Too many requests. Please wait ${minutesMatch[1]} minutes before trying again.`;
+      return t('errors.parsed.rateLimitMinutes', { minutes: localizeDigits(minutesMatch[1]) });
     }
-    return 'Too many requests. Please wait before trying again.';
+    return t('errors.parsed.rateLimit');
   }
 
   // Authentication errors
   if (errorLower.includes('unauthorized') || errorLower.includes('401') || errorLower.includes('not authenticated')) {
-    return 'Your session has expired. Please sign in again.';
+    return t('errors.code.sessionExpired');
   }
 
   // Permission errors
   if (errorLower.includes('forbidden') || errorLower.includes('403') || errorLower.includes('permission')) {
-    return 'You do not have permission to perform this action.';
+    return t('errors.parsed.noPermission');
   }
 
   // Not found errors
   if (errorLower.includes('not found') || errorLower.includes('404')) {
     return context
-      ? `${context} not found. It may have been deleted.`
-      : 'The requested item was not found.';
+      ? t('errors.parsed.contextNotFound', { context: contextName(context) })
+      : t('errors.parsed.itemNotFound');
   }
 
   // Duplicate errors
   if (errorLower.includes('duplicate') || errorLower.includes('already exists') || errorLower.includes('unique')) {
-    return 'This entry already exists. Please use a different value.';
+    return t('errors.parsed.duplicate');
   }
 
   // Validation errors
   if (errorLower.includes('invalid') || errorLower.includes('required') || errorLower.includes('must be')) {
-    return 'Please check your input and try again.';
+    return t('errors.parsed.checkInput');
   }
 
   // Timeout errors
   if (errorLower.includes('timeout') || errorLower.includes('timed out')) {
-    return 'The request took too long. Please try again.';
+    return t('errors.category.timeout');
   }
 
   // Stock errors
   if (errorLower.includes('stock') || errorLower.includes('quantity') || errorLower.includes('insufficient')) {
-    return 'Insufficient stock available for this operation.';
+    return t('errors.code.insufficientStock');
   }
 
   // Database errors (hide technical details)
   if (errorLower.includes('database') || errorLower.includes('sql') || errorLower.includes('query')) {
-    return 'A server error occurred. Please try again later.';
+    return t('errors.parsed.serverError');
   }
 
   // If the error is already user-friendly (starts with capital, no technical jargon)
@@ -491,5 +532,5 @@ export function parseErrorToFriendly(
   }
 
   // Default fallback
-  return 'Something went wrong. Please try again.';
+  return t('errors.general.somethingWrongRetry');
 }

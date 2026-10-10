@@ -38,11 +38,14 @@ import {
   space,
   touchTarget,
   typography,
+  trackedText,
+  singleLineText,
 } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { searchGRNNumbers, getGRNPrefixesWithStock, getCustomerGRNsWithStock, type GRNPrefixWithStock } from '../services/grnDetailService';
 import type { GRNAutocompleteItem } from '@/types/dispatch.types';
-import { formatCount, formatDate } from '@/utils/formatters';
+import { formatCount, formatDate, formatNumber } from '@/utils/formatters';
+import { t as tr, formatIdentifier } from '@/i18n';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -127,7 +130,7 @@ const makeStyles = (t: ThemeTokens) => ({
     ...typography.footnote,
     fontWeight: fontWeight.semibold,
     textTransform: 'uppercase' as const,
-    letterSpacing: 0.5,
+    letterSpacing: trackedText(0.5),
     color: t.text.secondary,
   },
   emptyContainer: {
@@ -304,6 +307,10 @@ const makeStyles = (t: ThemeTokens) => ({
     borderRadius: radius.field,
     flexShrink: 1,
   },
+  // The date keeps its width; a long customer name beside it is the one that truncates.
+  metaBadgeFixed: {
+    flexShrink: 0,
+  },
   metaText: {
     ...typography.caption1,
     fontWeight: fontWeight.semibold,
@@ -423,7 +430,7 @@ const CustomKeyboard = memo<CustomKeyboardProps>(({
         style={styles.searchContainer}
         accessible
         accessibilityRole="search"
-        accessibilityLabel={localQuery.length > 0 ? `Search GRN number, ${localQuery}` : 'Search GRN number, empty'}
+        accessibilityLabel={localQuery.length > 0 ? tr('dispatch.grnSheet.searchLabel', { query: localQuery }) : tr('dispatch.grnSheet.searchEmptyLabel')}
       >
         <Icon
           name="magnify"
@@ -437,14 +444,14 @@ const CustomKeyboard = memo<CustomKeyboardProps>(({
             localQuery.length === 0 && styles.searchPlaceholder,
           ]}
         >
-          {localQuery.length > 0 ? localQuery : 'Search GRN number'}
+          {localQuery.length > 0 ? localQuery : tr('dispatch.grnSheet.searchPlaceholder')}
         </Text>
         {localQuery.length > 0 && (
           <Pressable
             onPress={handleClear}
             style={styles.clearButton}
             accessibilityRole="button"
-            accessibilityLabel="Clear search"
+            accessibilityLabel={tr('common.clearSearch')}
           >
             <Icon name="close-circle" size={iconSize.md} color={t.icon.secondary} />
           </Pressable>
@@ -456,7 +463,7 @@ const CustomKeyboard = memo<CustomKeyboardProps>(({
         {isPrefixesLoading ? (
           <View style={styles.prefixLoadingContainer}>
             <ActivityIndicator size="small" color={t.brand.tint} />
-            <Text style={styles.keyboardMessage}>Loading GRN prefixes…</Text>
+            <Text style={styles.keyboardMessage}>{tr('dispatch.grnSheet.loadingPrefixes')}</Text>
           </View>
         ) : prefixes.length > 0 ? (
           <>
@@ -464,7 +471,7 @@ const CustomKeyboard = memo<CustomKeyboardProps>(({
               <Pressable
                 key={prefixItem.prefix}
                 accessibilityRole="button"
-                accessibilityLabel={`Use GRN prefix ${prefixItem.prefix}, ${prefixItem.grnCount} GRNs`}
+                accessibilityLabel={tr('dispatch.grnSheet.usePrefix', { prefix: prefixItem.prefix, count: prefixItem.grnCount })}
                 style={({ pressed }) => [
                   styles.quickInputButton,
                   styles.prefixButton,
@@ -473,14 +480,14 @@ const CustomKeyboard = memo<CustomKeyboardProps>(({
                 onPress={() => handlePrefixTap(prefixItem.prefix)}
               >
                 <Text style={[styles.quickInputText, styles.prefixText]}>{prefixItem.prefix}</Text>
-                <Text style={styles.prefixCount} maxFontSizeMultiplier={1.6}>{prefixItem.grnCount}</Text>
+                <Text style={styles.prefixCount} maxFontSizeMultiplier={1.6}>{formatNumber(prefixItem.grnCount)}</Text>
               </Pressable>
             ))}
             {['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'].map((char) => (
               <Pressable
                 key={char}
                 accessibilityRole="button"
-                accessibilityLabel={`Enter GRN digit ${char}`}
+                accessibilityLabel={tr('dispatch.grnSheet.enterDigit', { digit: char })}
                 style={({ pressed }) => [styles.quickInputButton, pressed && styles.quickInputButtonPressed]}
                 onPress={() => handleKeyPress(char)}
               >
@@ -491,14 +498,14 @@ const CustomKeyboard = memo<CustomKeyboardProps>(({
         ) : (
           <View style={styles.noPrefixContainer}>
             <Icon name="information" size={iconSize.sm} color={t.icon.secondary} />
-            <Text style={styles.keyboardMessage}>No GRNs have stock left.</Text>
+            <Text style={styles.keyboardMessage}>{tr('dispatch.grnSheet.noStockLeft')}</Text>
           </View>
         )}
         <Pressable
           style={({ pressed }) => [styles.quickInputButton, pressed && styles.quickInputButtonPressed]}
           onPress={handleBackspace}
           accessibilityRole="button"
-          accessibilityLabel="Delete last character"
+          accessibilityLabel={tr('dispatch.grnSheet.deleteLast')}
         >
           <Icon name="backspace-outline" size={iconSize.md} color={t.icon.primary} />
         </Pressable>
@@ -540,10 +547,10 @@ const GRNListItem = memo<GRNListItemProps>(({
       style={({ pressed }) => [styles.viewAction, pressed && styles.viewActionPressed]}
       onPress={handleViewDetails}
       accessibilityRole="button"
-      accessibilityLabel={`View GRN ${item.gr_no}`}
+      accessibilityLabel={tr('dispatch.grnSheet.viewGrnNumbered', { number: formatIdentifier(item.gr_no) })}
     >
       <Icon name="eye-outline" size={iconSize.lg} color={t.brand.onFill} />
-      <Text style={styles.viewText}>View</Text>
+      <Text style={styles.viewText}>{tr('common.view')}</Text>
     </Pressable>
   ), [styles, t, handleViewDetails, item.gr_no]);
 
@@ -563,9 +570,9 @@ const GRNListItem = memo<GRNListItemProps>(({
           isSelected && styles.grnCardSelected,
         ]}
         accessibilityRole="button"
-        accessibilityLabel={`GRN ${item.gr_no}, ${grnDate}, ${item.customer_name}`}
+        accessibilityLabel={tr('dispatch.grnSheet.rowLabel', { number: formatIdentifier(item.gr_no), date: grnDate, customer: item.customer_name })}
         accessibilityState={{ selected: isSelected }}
-        accessibilityActions={[{ name: 'viewGRN', label: 'View GRN' }]}
+        accessibilityActions={[{ name: 'viewGRN', label: tr('dispatch.grnSheet.viewGrn') }]}
         onAccessibilityAction={(e) => {
           if (e.nativeEvent.actionName === 'viewGRN') handleViewDetails();
         }}
@@ -573,7 +580,7 @@ const GRNListItem = memo<GRNListItemProps>(({
         <View style={styles.grnHeader}>
           <View style={styles.grnTitleRow}>
             <Icon name="package-down" size={iconSize.md} color={t.brand.tint} />
-            <Text style={styles.grnNumber}>GRN {item.gr_no}</Text>
+            <Text style={styles.grnNumber}>{tr('dispatch.grnSheet.grnNumbered', { number: formatIdentifier(item.gr_no) })}</Text>
           </View>
           {isSelected && (
             <Icon name="check-circle" size={iconSize.lg} color={t.brand.tint} />
@@ -581,9 +588,9 @@ const GRNListItem = memo<GRNListItemProps>(({
         </View>
 
         <View style={styles.grnMeta}>
-          <View style={styles.metaBadge}>
+          <View style={[styles.metaBadge, styles.metaBadgeFixed]}>
             <Icon name="calendar-outline" size={iconSize.sm} color={t.status.neutral.text} />
-            <Text style={styles.metaText} maxFontSizeMultiplier={1.6}>{grnDate}</Text>
+            <Text style={styles.metaText} maxFontSizeMultiplier={1.6} {...singleLineText()}>{grnDate}</Text>
           </View>
           <View style={styles.metaBadge}>
             <Icon name="account-outline" size={iconSize.sm} color={t.status.neutral.text} />
@@ -753,7 +760,7 @@ export const GRNAutocompleteBottomSheet: React.FC<GRNAutocompleteBottomSheetProp
         <View style={styles.emptyContainer}>
           <ActivityIndicator size="large" color={t.brand.tint} />
           <Text style={styles.emptySubtext}>
-            {isLoading ? 'Searching GRNs…' : 'Loading GRNs…'}
+            {isLoading ? tr('dispatch.grnSheet.searching') : tr('dispatch.grnSheet.loading')}
           </Text>
         </View>
       );
@@ -763,8 +770,8 @@ export const GRNAutocompleteBottomSheet: React.FC<GRNAutocompleteBottomSheetProp
       return (
         <View style={styles.emptyContainer}>
           <Icon name="magnify" size={iconSize.hero} color={t.icon.secondary} />
-          <Text style={styles.emptyText}>No GRNs match</Text>
-          <Text style={styles.emptySubtext}>Try fewer digits or another prefix.</Text>
+          <Text style={styles.emptyText}>{tr('dispatch.grnSheet.noMatchTitle')}</Text>
+          <Text style={styles.emptySubtext}>{tr('dispatch.grnSheet.noMatchMessage')}</Text>
         </View>
       );
     }
@@ -773,9 +780,9 @@ export const GRNAutocompleteBottomSheet: React.FC<GRNAutocompleteBottomSheetProp
       return (
         <View style={styles.emptyContainer}>
           <Icon name="account-outline" size={iconSize.hero} color={t.icon.secondary} />
-          <Text style={styles.emptyText}>No customer chosen</Text>
+          <Text style={styles.emptyText}>{tr('dispatch.grnSheet.noCustomerTitle')}</Text>
           <Text style={styles.emptySubtext}>
-            Search by GRN number, or choose a customer in the first step.
+            {tr('dispatch.grnSheet.noCustomerMessage')}
           </Text>
         </View>
       );
@@ -784,8 +791,8 @@ export const GRNAutocompleteBottomSheet: React.FC<GRNAutocompleteBottomSheetProp
     return (
       <View style={styles.emptyContainer}>
         <Icon name="package-variant-closed" size={iconSize.hero} color={t.icon.secondary} />
-        <Text style={styles.emptyText}>No GRNs with stock</Text>
-        <Text style={styles.emptySubtext}>This customer has no GRNs with stock left to dispatch.</Text>
+        <Text style={styles.emptyText}>{tr('dispatch.grnSheet.noStockTitle')}</Text>
+        <Text style={styles.emptySubtext}>{tr('dispatch.grnSheet.noStockMessage')}</Text>
       </View>
     );
   }, [isLoading, isLoadingDefaults, hasSearchQuery, grnList.length, defaultGrnList.length, customerId, styles, t]);
@@ -805,19 +812,19 @@ export const GRNAutocompleteBottomSheet: React.FC<GRNAutocompleteBottomSheetProp
             style={styles.backdrop}
             onPress={handleClose}
             accessibilityRole="button"
-            accessibilityLabel="Close GRN list"
+            accessibilityLabel={tr('dispatch.grnSheet.close')}
           />
 
           {/* Bottom Sheet Content */}
           <View style={[styles.sheetContainer, { paddingBottom: insets.bottom }]} accessibilityViewIsModal>
             {/* Header with safe area padding */}
             <View style={[styles.header, { paddingTop: insets.top + space.sm }]}>
-              <Text style={styles.headerTitle} accessibilityRole="header">Choose GRN</Text>
+              <Text style={styles.headerTitle} accessibilityRole="header">{tr('dispatch.items.chooseGrn')}</Text>
               <Pressable
                 onPress={handleClose}
                 style={({ pressed }) => [styles.closeButton, pressed && styles.closeButtonPressed]}
                 accessibilityRole="button"
-                accessibilityLabel="Close GRN list"
+                accessibilityLabel={tr('dispatch.grnSheet.close')}
               >
                 <Icon name="close" size={iconSize.lg} color={t.icon.primary} />
               </Pressable>
@@ -828,8 +835,8 @@ export const GRNAutocompleteBottomSheet: React.FC<GRNAutocompleteBottomSheetProp
               <View style={styles.resultsCountContainer}>
                 <Text style={styles.resultsCount} accessibilityRole="header">
                   {hasSearchQuery
-                    ? `${formatCount(displayList.length, 'GRN')} found`
-                    : `${formatCount(displayList.length, 'GRN')} with stock`
+                    ? tr('dispatch.grnSheet.found', { grns: formatCount(displayList.length, 'GRN') })
+                    : tr('dispatch.grnSheet.withStock', { grns: formatCount(displayList.length, 'GRN') })
                   }
                 </Text>
               </View>
@@ -861,7 +868,7 @@ export const GRNAutocompleteBottomSheet: React.FC<GRNAutocompleteBottomSheetProp
             {displayList.length > 0 && (
               <View style={styles.hintContainer}>
                 <Icon name="gesture-swipe-left" size={iconSize.sm} color={t.icon.secondary} />
-                <Text style={styles.hintText}>Tap a GRN to choose it. Swipe left to view it.</Text>
+                <Text style={styles.hintText}>{tr('dispatch.grnSheet.hint')}</Text>
               </View>
             )}
 

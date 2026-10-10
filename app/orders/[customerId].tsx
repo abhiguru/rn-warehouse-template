@@ -15,6 +15,7 @@ import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
 import { iconSize, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import { t as tr } from '@/i18n';
 
 export default function CustomerOrderScreen() {
   const t = useTokens();
@@ -62,11 +63,11 @@ export default function CustomerOrderScreen() {
         setChangelogHasMore(result.data.pagination.has_more);
         setChangelogOffset(offset);
       } else {
-        setChangelogError("Couldn't load the order history. Check your connection and try again.");
+        setChangelogError(tr('orders.screen.historyError'));
       }
     } catch (error) {
       console.error('[CustomerOrderScreen] Error fetching changelog:', error);
-      setChangelogError("Couldn't load the order history. Check your connection and try again.");
+      setChangelogError(tr('orders.screen.historyError'));
     } finally {
       setChangelogLoading(false);
     }
@@ -97,13 +98,13 @@ export default function CustomerOrderScreen() {
 
       if (error) {
         console.error('[CustomerOrderScreen] Error fetching customer:', error);
-        setCustomerName('Customer');
+        setCustomerName(tr('common.customer'));
       } else {
-        setCustomerName(data?.name || 'Customer');
+        setCustomerName(data?.name || tr('common.customer'));
       }
     } catch (error) {
       console.error('[CustomerOrderScreen] Exception:', error);
-      setCustomerName('Customer');
+      setCustomerName(tr('common.customer'));
     } finally {
       setLoading(false);
     }
@@ -134,8 +135,8 @@ export default function CustomerOrderScreen() {
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={t.brand.tint} accessibilityLabel="Loading customer" />
-        <Text style={styles.loadingText}>Loading customer…</Text>
+        <ActivityIndicator size="large" color={t.brand.tint} accessibilityLabel={tr('customers.form.loadingLabel')} />
+        <Text style={styles.loadingText}>{tr('customers.form.loading')}</Text>
       </View>
     );
   }
@@ -150,14 +151,14 @@ export default function CustomerOrderScreen() {
           <View style={[styles.customHeaderContent, { paddingTop: insets.top }]}>
             <HeaderBackButton />
             <View style={styles.headerTitleContainer}>
-              <Text style={styles.headerTitle} numberOfLines={2} accessibilityRole="header">
-                Order for {customerName}
+              <Text style={styles.headerTitle} numberOfLines={1} ellipsizeMode="middle" accessibilityRole="header">
+                {tr('orders.screen.title', { name: customerName })}
               </Text>
             </View>
             <Pressable
               style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
               onPress={handleOpenChangelog}
-              accessibilityLabel="View order history"
+              accessibilityLabel={tr('orders.screen.viewHistory')}
               accessibilityRole="button"
             >
               <Icon name="history" size={iconSize.lg} color={t.brand.tint} />
@@ -165,7 +166,7 @@ export default function CustomerOrderScreen() {
             <Pressable
               style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
               onPress={handleOpenItemCatalog}
-              accessibilityLabel="Add items to order"
+              accessibilityLabel={tr('orders.screen.addItemsToOrder')}
               accessibilityRole="button"
             >
               <Icon name="plus" size={iconSize.lg} color={t.brand.tint} />

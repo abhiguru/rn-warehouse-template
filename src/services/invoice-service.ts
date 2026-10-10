@@ -1,6 +1,10 @@
 import { getSupabaseClient, getAuthenticatedClient } from '@/config/supabaseConfig';
 import { createErrorResponse, executeRPC } from '@/utils/serviceErrorHandler';
 import { PAGINATION } from '@/config/cacheConfig';
+import { toLocalISODate } from '@/utils/formatters';
+import { matchesSearch, searchTerms } from '@/features/filters/searchMatch';
+import { t } from '@/i18n';
+import { serverText } from '@/utils/serverText';
 
 // M1 Fix: DRY empty pagination response
 const EMPTY_INVOICE_PAGINATION = { total_count: 0, limit: PAGINATION.DEFAULT_LIMIT, offset: 0, has_more: false };
@@ -76,6 +80,13 @@ export interface GetInvoicesListParams {
   p_inv_no_to?: number;    // Invoice number range end
   p_sort_field?: string;   // Sort field (default: 'created_at')
   p_sort_direction?: 'asc' | 'desc';  // Sort direction (default: 'desc')
+  /** Quick search: every word must match the invoice number, customer or GRN number. */
+  p_search?: string;
+  /** Invoice date range, as moments in time. */
+  p_date_from?: string;
+  p_date_to?: string;
+  /** Several customers; an empty list is no filter. */
+  p_customer_ids?: string[];
 }
 
 export const getInvoicesList = async (
@@ -95,7 +106,11 @@ export const getInvoicesList = async (
       p_inv_no_from,
       p_inv_no_to,
       p_sort_field = 'created_at',
-      p_sort_direction = 'desc'
+      p_sort_direction = 'desc',
+      p_search,
+      p_date_from,
+      p_date_to,
+      p_customer_ids,
     } = params;
 
     console.log('[InvoiceService] Getting authenticated client...');
@@ -112,7 +127,11 @@ export const getInvoicesList = async (
       p_inv_no_from: p_inv_no_from || null,
       p_inv_no_to: p_inv_no_to || null,
       p_sort_field,
-      p_sort_direction
+      p_sort_direction,
+      p_search: p_search?.trim() || null,
+      p_date_from: p_date_from || null,
+      p_date_to: p_date_to || null,
+      p_customer_ids: p_customer_ids && p_customer_ids.length > 0 ? p_customer_ids : null,
     });
 
     const duration = Date.now() - startTime;
@@ -127,7 +146,7 @@ export const getInvoicesList = async (
     if (error) {
       console.error('[InvoiceService] Failed to fetch invoice list:', error.message);
       return {
-        ...createErrorResponse(error, 'Failed to fetch invoice list', 'InvoiceService.getInvoicesList'),
+        ...createErrorResponse(error, t('errors.invoice.fetchListFailed'), 'InvoiceService.getInvoicesList'),
         data: { invoices: [], pagination: { ...EMPTY_INVOICE_PAGINATION, limit: p_limit, offset: p_offset } }
       };
     }
@@ -135,7 +154,7 @@ export const getInvoicesList = async (
     if (!data || !data.success) {
       return {
         success: false,
-        message: data?.message || 'No data returned from server',
+        message: serverText(data?.message, t('errors.general.noDataFromServer')),
         data: {
           invoices: [],
           pagination: { total_count: 0, limit: p_limit, offset: p_offset, has_more: false }
@@ -145,7 +164,7 @@ export const getInvoicesList = async (
 
     return {
       success: true,
-      message: data.message || 'Invoice list retrieved successfully',
+      message: serverText(data.message, t('errors.invoice.listRetrieved')),
       data: {
         invoices: data.data || [],
         pagination: data.pagination || { total_count: 0, limit: p_limit, offset: p_offset, has_more: false }
@@ -155,8 +174,216 @@ export const getInvoicesList = async (
   } catch (error) {
     console.error('[InvoiceService] Exception:', error);
     return {
-      ...createErrorResponse(error, 'An unexpected error occurred', 'InvoiceService.getInvoicesList'),
+      ...createErrorResponse(error, t('errors.general.unexpected'), 'InvoiceService.getInvoicesList'),
       data: { invoices: [], pagination: { ...EMPTY_INVOICE_PAGINATION, limit: params.p_limit || PAGINATION.DEFAULT_LIMIT, offset: params.p_offset || 0 } }
+    };
+  }
+};
+
+export interface AssignedCustomerInvoiceParams {
+  p_limit?: number;
+  p_offset?: number;
+  /** Limit to one of the account's customers. */
+  p_customer_id?: string;
+  p_inv_no_from?: number;
+  p_inv_no_to?: number;
+  /** Invoice date range, as moments in time. */
+  p_date_from?: string;
+  p_date_to?: string;
+  p_search_grn_no?: string;
+  p_search?: string;
+  p_financial_year?: number;
+  /** Limit to several of the account's customers; an empty list is no filter. */
+  p_customer_ids?: string[];
+  p_sort_field?: string;
+  p_sort_direction?: 'asc' | 'desc';
+  /** Names for the list rows, keyed by customer id (the RPC rows carry no customer name). */
+  customerNames?: Record<string, string>;
+}
+
+interface CustomerInvoiceRow {
+  invoice_id: string;
+  /** "<financial year start>-<zero-padded number>", for example "2026-0014". */
+  invoice_number: string;
+  invoice_date: string;
+  /** For example "2026-2027". */
+  financial_year: string;
+  grn_ref: string | null;
+  grn_id: string | null;
+  total: number | null;
+  labour: number | null;
+  discount: number | null;
+  tax_amount: number | null;
+  notes: string | null;
+}
+
+/** get_customer_invoice_summary returns a shorter row than the staff list; fill the list shape from it. */
+const mapCustomerInvoiceRow = (row: CustomerInvoiceRow, customerId: string, customerName: string): Invoice => {
+  const [yearPart, numberPart] = String(row.invoice_number || '').split('-');
+  return {
+    invoice_id: row.invoice_id,
+    invoice_number: Number(numberPart) || 0,
+    invoice_date: row.invoice_date,
+    financial_year: row.financial_year || '',
+    inv_fin_year: Number(yearPart) || 0,
+    total: Number(row.total) || 0,
+    labour: Number(row.labour) || 0,
+    discount: Number(row.discount) || 0,
+    tax_amount: Number(row.tax_amount) || 0,
+    notes: row.notes ?? null,
+    inv_name: null,
+    created_by: '',
+    one_time_charge: false,
+    is_auto_generated: false,
+    invoice_pricing_mode: null,
+    customer: { id: customerId, name: customerName, city: '', phone: '', address: '', gst: '', email: '', active: true },
+    grn: {
+      id: row.grn_id || '',
+      gr_no: row.grn_ref || '',
+      date: '',
+      sender_id: '',
+      sender_name: '',
+      customer_id: customerId,
+      customer_name: customerName,
+      supervisor_id: null,
+      supervisor_name: '',
+      registration: '',
+    },
+  };
+};
+
+/**
+ * The filters, search and order of the staff invoice list (get_invoices_list),
+ * applied to invoices already collected for a customer account. Same parameter
+ * names, same meaning.
+ */
+export function selectCustomerInvoices(all: Invoice[], params: AssignedCustomerInvoiceParams): Invoice[] {
+  const moment = (value?: string) => {
+    const time = value ? Date.parse(value) : NaN;
+    return Number.isNaN(time) ? null : time;
+  };
+  const dateFrom = moment(params.p_date_from);
+  const dateTo = moment(params.p_date_to);
+  const grnQuery = (params.p_search_grn_no || '').trim().toLowerCase();
+  const terms = searchTerms(params.p_search);
+  const customerIds = params.p_customer_ids ?? [];
+
+  const matching = all.filter(invoice => {
+    if (customerIds.length > 0 && !customerIds.includes(invoice.customer.id)) return false;
+    if (params.p_financial_year && invoice.inv_fin_year !== params.p_financial_year) return false;
+    if (params.p_inv_no_from && invoice.invoice_number < params.p_inv_no_from) return false;
+    if (params.p_inv_no_to && invoice.invoice_number > params.p_inv_no_to) return false;
+    if (grnQuery && !invoice.grn.gr_no.toLowerCase().includes(grnQuery)) return false;
+    if (dateFrom !== null || dateTo !== null) {
+      const time = Date.parse(String(invoice.invoice_date));
+      if (Number.isNaN(time)) return false;
+      if (dateFrom !== null && time < dateFrom) return false;
+      if (dateTo !== null && time > dateTo) return false;
+    }
+    return matchesSearch(terms, [
+      invoice.invoice_number,
+      invoice.customer.name,
+      invoice.grn.gr_no,
+      `${invoice.inv_fin_year}-${invoice.invoice_number}`,
+      `${invoice.inv_fin_year}-${String(invoice.invoice_number).padStart(4, '0')}`,
+    ]);
+  });
+
+  const direction = params.p_sort_direction === 'asc' ? 1 : -1;
+  const byDate = (a: Invoice, b: Invoice) => String(a.invoice_date).localeCompare(String(b.invoice_date));
+  const newestFirst = (a: Invoice, b: Invoice) => byDate(b, a) || b.invoice_number - a.invoice_number;
+  return matching.sort((a, b) => {
+    switch (params.p_sort_field) {
+      case 'inv_no':
+        return (a.invoice_number - b.invoice_number) * direction || newestFirst(a, b);
+      case 'customer_name':
+        return a.customer.name.localeCompare(b.customer.name) * direction || newestFirst(a, b);
+      case 'total':
+        return (a.total - b.total) * direction || newestFirst(a, b);
+      default:
+        return byDate(a, b) * direction || b.invoice_number - a.invoice_number;
+    }
+  });
+}
+
+/** The summary RPC defaults to the last 30 days, so the list always sends a range. */
+const CUSTOMER_INVOICE_EARLIEST = '2000-01-01';
+
+/**
+ * Invoice list for a customer account. The all-customers list RPC is for
+ * warehouse roles only, so this reads get_customer_invoice_summary for each
+ * assigned customer, newest first, and pages the result here.
+ */
+export const getAssignedCustomerInvoices = async (
+  assignedCustomerIds: string[],
+  params: AssignedCustomerInvoiceParams = {}
+): Promise<InvoiceListResponse> => {
+  const limit = params.p_limit || PAGINATION.DEFAULT_LIMIT;
+  const offset = params.p_offset || 0;
+  const failure = (message: string): InvoiceListResponse => ({
+    success: false,
+    message,
+    data: { invoices: [], pagination: { total_count: 0, limit, offset, has_more: false } },
+  });
+
+  const assigned = [...new Set(assignedCustomerIds.filter(Boolean))];
+  const requested = [...(params.p_customer_ids ?? []), ...(params.p_customer_id ? [params.p_customer_id] : [])];
+  if (requested.some(id => !assigned.includes(id))) return failure(t('errors.customer.accessDenied'));
+  const targetIds = requested.length > 0 ? [...new Set(requested)] : assigned;
+  if (targetIds.length === 0) return failure(t('errors.customer.noAssignment'));
+
+  try {
+    const authenticatedClient = await getAuthenticatedClient();
+    // The summary rows carry no customer name. Use the caller's names, else read
+    // them; a failed name lookup only leaves the row's name line empty.
+    const names: Record<string, string> = { ...(params.customerNames || {}) };
+    if (targetIds.some(id => !names[id])) {
+      const { data: customers } = await authenticatedClient.from('customers').select('id, name').in('id', targetIds);
+      for (const customer of customers || []) names[customer.id] = customer.name;
+    }
+
+    const results = await Promise.all(
+      targetIds.map(async (customerId): Promise<{ success: boolean; message?: string; invoices: Invoice[] }> => {
+        const { data, error } = await authenticatedClient.rpc('get_customer_invoice_summary', {
+          p_customer_uuid: customerId,
+          // The whole history; the date filter is applied here, to the moment.
+          p_from_date: CUSTOMER_INVOICE_EARLIEST,
+          p_to_date: toLocalISODate(new Date()),
+        });
+        if (error) {
+          const failed = createErrorResponse(error, t('errors.invoice.fetchListFailed'), 'InvoiceService.getAssignedCustomerInvoices');
+          return { success: false, message: failed.message, invoices: [] };
+        }
+        if (!data?.success) {
+          return { success: false, message: serverText(data?.error || data?.message, t('errors.general.noDataFromServer')), invoices: [] };
+        }
+        const rows: CustomerInvoiceRow[] = data.data?.invoices || [];
+        return { success: true, invoices: rows.map(row => mapCustomerInvoiceRow(row, customerId, names[customerId] || '')) };
+      })
+    );
+    const failed = results.find(result => !result.success);
+    if (failed) return failure(serverText(failed.message, t('errors.invoice.fetchListFailed')));
+
+    const matching = selectCustomerInvoices(results.flatMap(result => result.invoices), params);
+
+    const invoices = matching.slice(offset, offset + limit);
+    return {
+      success: true,
+      message: t('errors.invoice.listRetrieved'),
+      data: {
+        invoices,
+        pagination: {
+          total_count: matching.length,
+          limit,
+          offset,
+          has_more: offset + invoices.length < matching.length,
+        },
+      },
+    };
+  } catch (error) {
+    return {
+      ...createErrorResponse(error, t('errors.general.unexpected'), 'InvoiceService.getAssignedCustomerInvoices'),
+      data: { invoices: [], pagination: { ...EMPTY_INVOICE_PAGINATION, limit, offset } },
     };
   }
 };
@@ -260,8 +487,8 @@ export const getInvoiceDetails = async (invoiceId: string): Promise<InvoiceDetai
     if (!invoiceId) {
       return {
         success: false,
-        message: 'Invoice ID is required',
-        error: 'Missing parameter'
+        message: t('errors.invoice.idRequired'),
+        error: t('errors.general.missingParameter')
       };
     }
 
@@ -288,33 +515,33 @@ export const getInvoiceDetails = async (invoiceId: string): Promise<InvoiceDetai
 
     if (error) {
       console.error('[InvoiceService] Failed to fetch invoice details:', error.message, error);
-      return createErrorResponse(error, 'Failed to fetch invoice details', 'InvoiceService.getInvoiceDetails');
+      return createErrorResponse(error, t('errors.invoice.fetchDetailsFailed'), 'InvoiceService.getInvoiceDetails');
     }
 
     if (!data) {
       return {
         success: false,
-        message: 'No data returned from server',
-        error: 'Empty response from server'
+        message: t('errors.general.noDataFromServer'),
+        error: t('errors.general.emptyResponseFromServer')
       };
     }
 
     if (!data.success) {
       return {
         success: false,
-        message: data.message || 'No invoice found',
-        error: data.error || 'Invoice not found or access denied'
+        message: serverText(data.message, t('errors.invoice.noneFound')),
+        error: serverText(data.error, t('errors.invoice.notFoundOrDenied'))
       };
     }
 
     return {
       success: true,
       data: data.data,
-      message: 'Invoice details fetched successfully'
+      message: t('errors.invoice.detailsFetched')
     };
   } catch (error) {
     console.error('[InvoiceService] Exception:', error);
-    return createErrorResponse(error, 'An unexpected error occurred', 'InvoiceService.getInvoiceDetails');
+    return createErrorResponse(error, t('errors.general.unexpected'), 'InvoiceService.getInvoiceDetails');
   }
 };
 
@@ -366,8 +593,8 @@ export const getInvoiceItemsDetailed = async (invoiceId: string): Promise<Invoic
     if (!invoiceId) {
       return {
         success: false,
-        message: 'Invoice ID is required',
-        error: 'Missing parameter'
+        message: t('errors.invoice.idRequired'),
+        error: t('errors.general.missingParameter')
       };
     }
 
@@ -389,7 +616,7 @@ export const getInvoiceItemsDetailed = async (invoiceId: string): Promise<Invoic
 
     if (error) {
       console.error('[InvoiceService] Failed to fetch invoice items:', error.message);
-      return createErrorResponse(error, 'Failed to fetch invoice items', 'InvoiceService.getInvoiceItemsDetailed');
+      return createErrorResponse(error, t('errors.invoice.fetchItemsFailed'), 'InvoiceService.getInvoiceItemsDetailed');
     }
 
     // Handle array response format (RPC returns items directly as array)
@@ -480,7 +707,7 @@ export const getInvoiceItemsDetailed = async (invoiceId: string): Promise<Invoic
           dispatchQty: dispatch.quantity || item.dispatch_qty || item.dispatchQty || item.quantity || 0,
           grnQuantity: grnItem.original_quantity || item.grn_quantity || item.grnQuantity || item.original_quantity || 0,
           // Item name - check catalog first, then grn_item, then flat fields
-          itemName: catalog.name || grnItem.name || item.item_name || item.itemName || item.name || item.catalog_name || 'Unknown Item',
+          itemName: catalog.name || grnItem.name || item.item_name || item.itemName || item.name || item.catalog_name || t('errors.general.unknownItem'),
           // GRN number - check flat fields
           grNo: item.gr_no || item.grNo || '',
           // Dispatch details
@@ -510,7 +737,7 @@ export const getInvoiceItemsDetailed = async (invoiceId: string): Promise<Invoic
             }, 0)
           }
         },
-        message: 'Invoice items fetched successfully'
+        message: t('errors.invoice.itemsFetched')
       };
     }
 
@@ -519,8 +746,8 @@ export const getInvoiceItemsDetailed = async (invoiceId: string): Promise<Invoic
       console.warn('[InvoiceService] Invoice items not successful:', data?.error || data?.message);
       return {
         success: false,
-        message: data?.message || 'No invoice items found',
-        error: data?.error || 'Invoice items not found or access denied'
+        message: serverText(data?.message, t('errors.invoice.noItemsFound')),
+        error: serverText(data?.error, t('errors.invoice.itemsNotFoundOrDenied'))
       };
     }
 
@@ -532,11 +759,11 @@ export const getInvoiceItemsDetailed = async (invoiceId: string): Promise<Invoic
     return {
       success: true,
       data: data.data,
-      message: 'Invoice items fetched successfully'
+      message: t('errors.invoice.itemsFetched')
     };
   } catch (error) {
     console.error('[InvoiceService] Invoice Items Exception:', error);
-    return createErrorResponse(error, 'An unexpected error occurred', 'InvoiceService.getInvoiceItemsDetailed');
+    return createErrorResponse(error, t('errors.general.unexpected'), 'InvoiceService.getInvoiceItemsDetailed');
   }
 };
 
@@ -578,7 +805,7 @@ export const deleteInvoice = async (invoiceId: string): Promise<DeleteInvoiceRes
     getAuthenticatedClient,
     'delete_invoice',
     { p_invoice_id: invoiceId },
-    { context: 'InvoiceService.deleteInvoice', errorMessage: 'Failed to delete invoice', unwrapNested: false, validateSuccess: true }
+    { context: 'InvoiceService.deleteInvoice', errorMessage: t('errors.invoice.deleteFailed'), unwrapNested: false, validateSuccess: true }
   );
 
   if (!result.success) {

@@ -5,6 +5,7 @@
 
 import type { Order, OrderItem } from '@/types/order.types';
 import type { DispatchHeaderData, DispatchItemData } from '@/types/dispatch.types';
+import { t } from '@/i18n';
 
 export interface ConvertedDispatchData {
   header: Partial<DispatchHeaderData>;
@@ -29,7 +30,7 @@ export function convertOrderToDispatchData(order: Order): ConvertedDispatchData 
     if (!grnItem) {
       skippedItems.push({
         item: orderItem,
-        reason: 'Missing GRN item data',
+        reason: t('errors.dispatch.missingGrnItem'),
       });
       return;
     }
@@ -38,7 +39,7 @@ export function convertOrderToDispatchData(order: Order): ConvertedDispatchData 
     if (grnItem.current_stock <= 0) {
       skippedItems.push({
         item: orderItem,
-        reason: 'No stock available',
+        reason: t('errors.dispatch.noStock'),
       });
       return;
     }

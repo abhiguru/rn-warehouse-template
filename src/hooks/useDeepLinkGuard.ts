@@ -15,6 +15,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'expo-router';
 import { useAppSelector } from '@/store/hooks';
+import { t } from '@/i18n';
 
 export type ResourceType = 'grn' | 'dispatch' | 'invoice' | 'order' | 'customer';
 
@@ -79,7 +80,7 @@ export function useDeepLinkGuard(options: DeepLinkGuardOptions): DeepLinkGuardRe
       }
       setIsValidating(false);
       setHasAccess(false);
-      setError('Authentication required');
+      setError(t('errors.auth.required'));
       router.replace('/login');
       return;
     }
@@ -91,7 +92,7 @@ export function useDeepLinkGuard(options: DeepLinkGuardOptions): DeepLinkGuardRe
       }
       setIsValidating(false);
       setHasAccess(false);
-      setError('Invalid resource ID');
+      setError(t('errors.auth.invalidResourceId'));
       return;
     }
 
@@ -126,7 +127,7 @@ export function useDeepLinkGuard(options: DeepLinkGuardOptions): DeepLinkGuardRe
           console.log(`[DeepLinkGuard] Access denied to ${resourceType}/${resourceId}`);
         }
         setHasAccess(false);
-        setError('Access denied');
+        setError(t('errors.general.accessDenied'));
 
         // Redirect if specified
         if (redirectOnDeny) {
@@ -142,7 +143,7 @@ export function useDeepLinkGuard(options: DeepLinkGuardOptions): DeepLinkGuardRe
       }
     } catch (err) {
       console.error(`[DeepLinkGuard] Validation error for ${resourceType}/${resourceId}:`, err);
-      setError(err instanceof Error ? err.message : 'Validation failed');
+      setError(err instanceof Error ? err.message : t('errors.general.validationFailed'));
       setHasAccess(false);
     } finally {
       setIsValidating(false);

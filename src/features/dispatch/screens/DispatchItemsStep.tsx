@@ -23,7 +23,7 @@ import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { router, useLocalSearchParams } from 'expo-router';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { DispatchStepIndicator } from '@/components/DispatchStepIndicator';
+import { DispatchStepIndicator, dispatchSteps } from '@/components/DispatchStepIndicator';
 import SwipeableFormStep from '@/components/SwipeableFormStep';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
@@ -35,6 +35,7 @@ import {
     space,
     touchTarget,
     typography,
+    trackedText,
 } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { useDispatchForm } from '@/hooks/useDispatchForm';
@@ -48,12 +49,13 @@ import { getGRNDetailByNumber } from '@/features/dispatch/services/grnDetailServ
 import { validateSingleItem, checkDuplicateLots } from '@/features/dispatch/schemas/dispatchValidation';
 import type { GRNDetailItem, DispatchItemData, ItemFormData } from '@/types/dispatch.types';
 import { EMPTY_DISPATCH_ITEM } from '@/types/dispatch.types';
-import { DISPATCH_STEPS, DISPATCH_STEP_NUMBERS, getDispatchCompletedSteps } from '@/constants/dispatchSteps';
+import { DISPATCH_STEP_NUMBERS, getDispatchCompletedSteps } from '@/constants/dispatchSteps';
 import { getUserFriendlyError } from '@/utils/errorHandler';
 import { areAllAvailableLotsAlreadyAdded } from '@/features/dispatch/utils/lotAvailability';
 
 import { showAlert } from '@/utils/alert';
-import { formatCount, formatWeight } from '@/utils/formatters';
+import { formatCount, formatNumber, formatWeight } from '@/utils/formatters';
+import { localizeDigits, normalizeDigits, t as tr, formatIdentifier } from '@/i18n';
 type DispatchItemsStepProps = {
     mode: 'create' | 'edit';
 };
@@ -193,7 +195,7 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
                 const result = await getGRNDetailByNumber(grn.gr_no, true);
 
                 if (!result.success || !result.data) {
-                    showAlert("Couldn't load the GRN", 'Check your connection and try again.');
+                    showAlert(tr('dispatch.items.loadGrnFailedTitle'), tr('common.checkConnection'));
                     return;
                 }
 
@@ -271,7 +273,7 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
                 });
             } catch (error) {
                 console.error('[DispatchItemsStep] Error loading GRN:', error);
-                showAlert("Couldn't load the GRN", getUserFriendlyError('grn', 'load'));
+                showAlert(tr('dispatch.items.loadGrnFailedTitle'), getUserFriendlyError('grn', 'load'));
             } finally {
                 setIsLoadingGRN(false);
             }
@@ -326,7 +328,7 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
 
     // Handle quantity change
     const handleQuantityChange = (text: string) => {
-        const qty = parseInt(text) || 0;
+        const qty = parseInt(normalizeDigits(text)) || 0;
         setCurrentItem((prev) => ({
             ...prev,
             disp_quantity: qty,
@@ -412,7 +414,7 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
 
             if (!validation.isValid) {
                 setValidationErrors(validation.errors);
-                showAlert('Check the item', 'Fix the fields marked in red, then try again.');
+                showAlert(tr('dispatch.items.checkItemTitle'), tr('dispatch.items.checkItemMessage'));
                 return;
             }
 
@@ -425,8 +427,8 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
 
             if (duplicateCheck.hasDuplicates) {
                 showAlert(
-                    'Lot already added',
-                    'This lot is already in the dispatch. Each lot can be dispatched once.'
+                    tr('dispatch.items.lotAlreadyAddedTitle'),
+                    tr('dispatch.items.lotAlreadyAddedMessage')
                 );
                 return;
             }
@@ -553,7 +555,7 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
         const validation = await validateSingleItem(currentItem);
         if (!validation.isValid) {
             setShowUnsavedEditDialog(false);
-            showAlert('Check the item', 'Fix the fields marked in red before you save.');
+            showAlert(tr('dispatch.items.checkItemTitle'), tr('dispatch.items.checkItemBeforeSave'));
             return;
         }
         setShowUnsavedEditDialog(false);
@@ -634,7 +636,7 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
         const isEditing = editingItemId !== null;
 
         if (savedItems.length === 0 && !isCurrentItemValid) {
-            showAlert('Add an item first', 'Add at least one item before you continue.');
+            showAlert(tr('dispatch.items.addFirstTitle'), tr('dispatch.items.addFirstMessage'));
             return;
         }
 
@@ -643,7 +645,7 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
 
             if (!validation.isValid) {
                 setValidationErrors(validation.errors);
-                showAlert('Check the item', 'Fix the fields marked in red, then try again.');
+                showAlert(tr('dispatch.items.checkItemTitle'), tr('dispatch.items.checkItemMessage'));
                 return;
             }
 
@@ -655,8 +657,8 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
 
             if (duplicateCheck.hasDuplicates) {
                 showAlert(
-                    'Lot already added',
-                    'This lot is already in the dispatch. Each lot can be dispatched once.'
+                    tr('dispatch.items.lotAlreadyAddedTitle'),
+                    tr('dispatch.items.lotAlreadyAddedMessage')
                 );
                 return;
             }
@@ -670,6 +672,10 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
             Vibration.vibrate(5);
             setEditingItemId(null);
             setOriginalDispatchedQty(0);
+            // Let this screen draw the saved item before it is replaced by step 3. Replacing the
+            // screen in the same frame as the save crashed Android's view mounting ("The specified
+            // child already has a parent").
+            await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
         }
 
         console.log('[DispatchItemsStep] Navigating to step3 via hook');
@@ -701,8 +707,8 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
     const quantityHasError = !!validationErrors.disp_quantity || exceedsMax;
     const canSaveItem = !!isCurrentItemValid && !isAddingItem;
     const itemTitle = isEditingItem
-        ? `Editing item ${editingItemNumber}`
-        : `Adding item ${savedItems.length + 1}`;
+        ? tr('dispatch.items.editingItem', { number: editingItemNumber })
+        : tr('dispatch.items.addingItem', { number: savedItems.length + 1 });
 
     const renderError = (message?: string) =>
         message ? (
@@ -723,24 +729,24 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
             onPress={() => handleQuickQuantityChange(delta)}
             disabled={!currentItem.grnItems_id}
             accessibilityRole="button"
-            accessibilityLabel={delta > 0 ? `Add ${delta} bags` : `Remove ${-delta} bags`}
+            accessibilityLabel={delta > 0 ? tr('dispatch.items.addBags', { count: delta }) : tr('dispatch.items.removeBags', { count: -delta })}
             accessibilityState={{ disabled: !currentItem.grnItems_id }}
         >
-            <Text style={styles.quickButtonText}>{delta > 0 ? `+${delta}` : `−${-delta}`}</Text>
+            <Text style={styles.quickButtonText}>{localizeDigits(delta > 0 ? `+${delta}` : `−${-delta}`)}</Text>
         </Pressable>
     );
 
     return (
         <View style={styles.container}>
             <DispatchStepIndicator
-                steps={DISPATCH_STEPS}
+                steps={dispatchSteps()}
                 currentStep={DISPATCH_STEP_NUMBERS.ITEMS}
                 completedSteps={getDispatchCompletedSteps(DISPATCH_STEP_NUMBERS.ITEMS)}
                 onCancel={handleCancel}
                 cancelMessage={
                     isCreateMode
-                        ? 'Cancel this dispatch? Everything you entered will be lost.'
-                        : 'Cancel editing? Your unsaved changes will be lost.'
+                        ? tr('dispatch.wizard.cancelCreateMessage')
+                        : tr('dispatch.wizard.cancelEditMessage')
                 }
                 dispNo={header.disp_no}
                 onStepPress={handleStepIndicatorPress}
@@ -764,13 +770,13 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
                     accessibilityRole={savedItems.length > 0 ? 'button' : 'header'}
                     accessibilityLabel={
                         savedItems.length > 0
-                            ? `${itemTitle}. View all ${formatCount(savedItems.length, 'item')}`
+                            ? tr('dispatch.items.titleAndViewAll', { title: itemTitle, items: formatCount(savedItems.length, 'item') })
                             : itemTitle
                     }
                 >
                     <View style={[styles.heroItemBadge, isEditingItem && styles.heroItemBadgeEditing]}>
                         <Text style={[styles.heroItemBadgeText, isEditingItem && styles.heroItemBadgeTextEditing]}>
-                            {isEditingItem ? editingItemNumber : savedItems.length + 1}
+                            {formatNumber(isEditingItem ? editingItemNumber : savedItems.length + 1)}
                         </Text>
                     </View>
                     <View style={styles.heroTextContainer}>
@@ -779,7 +785,7 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
                             <View style={styles.heroSubtitleContainer}>
                                 <Icon name="format-list-bulleted" size={iconSize.sm} color={t.brand.tint} />
                                 <Text style={styles.heroSubtitle}>
-                                    View all {formatCount(savedItems.length, 'item')}
+                                    {tr('dispatch.items.viewAll', { items: formatCount(savedItems.length, 'item') })}
                                 </Text>
                             </View>
                         )}
@@ -791,7 +797,7 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
                         style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
                         onPress={handleClearCurrentItem}
                         accessibilityRole="button"
-                        accessibilityLabel="Clear this item"
+                        accessibilityLabel={tr('dispatch.items.clearItem')}
                     >
                         <Icon name="close" size={iconSize.lg} color={t.icon.primary} />
                     </Pressable>
@@ -803,7 +809,7 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
                         !canSaveItem && styles.disabled,
                     ]}
                     accessibilityRole="button"
-                    accessibilityLabel={isEditingItem ? 'Save item changes' : 'Save item'}
+                    accessibilityLabel={isEditingItem ? tr('dispatch.items.saveItemChanges') : tr('dispatch.items.saveItem')}
                     accessibilityState={{ disabled: !canSaveItem, busy: isAddingItem }}
                     onPress={handleAddItem}
                     disabled={!canSaveItem}
@@ -839,16 +845,19 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
                         <View style={styles.editModeBanner}>
                             <Icon name="pencil-outline" size={iconSize.md} color={t.status.informative.text} />
                             <View style={styles.editModeBannerText}>
-                                <Text style={styles.editModeBannerTitle}>Editing item</Text>
+                                <Text style={styles.editModeBannerTitle}>{tr('dispatch.items.editingBannerTitle')}</Text>
                                 <Text style={styles.editModeBannerSubtitle}>
-                                    {currentItem.grnItems_item_name} (GRN {currentItem.grns_gr_no})
+                                    {tr('dispatch.items.editingBannerSubtitle', {
+                                        item: currentItem.grnItems_item_name,
+                                        grn: formatIdentifier(currentItem.grns_gr_no),
+                                    })}
                                 </Text>
                             </View>
                             <Pressable
                                 onPress={handleCancelEdit}
                                 style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
                                 accessibilityRole="button"
-                                accessibilityLabel="Stop editing this item"
+                                accessibilityLabel={tr('dispatch.items.stopEditing')}
                             >
                                 <Icon name="close" size={iconSize.md} color={t.status.informative.text} />
                             </Pressable>
@@ -858,7 +867,7 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
                     {/* GRN Selector */}
                     <View style={styles.formGroup}>
                         <Text style={[styles.label, validationErrors.grns_gr_no && styles.labelError]}>
-                            GRN<Text style={styles.required}> *</Text>
+                            {tr('common.grn')}<Text style={styles.required}> *</Text>
                         </Text>
                         <Pressable
                             style={({ pressed }) => [
@@ -868,8 +877,8 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
                             ]}
                             onPress={() => setShowGRNBottomSheet(true)}
                             accessibilityRole="button"
-                            accessibilityLabel={`GRN, required, ${currentItem.grns_gr_no || 'not chosen'}`}
-                            accessibilityHint="Opens the GRN list"
+                            accessibilityLabel={tr('dispatch.items.grnFieldLabel', { value: currentItem.grns_gr_no || tr('dispatch.items.notChosen') })}
+                            accessibilityHint={tr('dispatch.items.opensGrnList')}
                             accessibilityState={{ busy: isLoadingGRN }}
                         >
                             <Icon
@@ -882,7 +891,7 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
                                 style={[styles.selectorText, !currentItem.grns_gr_no && styles.placeholderText]}
                                 numberOfLines={1}
                             >
-                                {currentItem.grns_gr_no || 'Choose GRN'}
+                                {currentItem.grns_gr_no || tr('dispatch.items.chooseGrn')}
                             </Text>
                             {isLoadingGRN ? (
                                 <ActivityIndicator size="small" color={t.brand.tint} />
@@ -896,7 +905,7 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
                     {/* Item Selector */}
                     <View style={styles.formGroup}>
                         <Text style={[styles.label, validationErrors.grnItems_item_id && styles.labelError]}>
-                            Item<Text style={styles.required}> *</Text>
+                            {tr('common.item')}<Text style={styles.required}> *</Text>
                         </Text>
                         <Pressable
                             style={({ pressed }) => [
@@ -908,8 +917,8 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
                             onPress={() => selectedGRN && setShowItemBottomSheet(true)}
                             disabled={!selectedGRN || allAvailableLotsAlreadyAdded}
                             accessibilityRole="button"
-                            accessibilityLabel={`Item, required, ${currentItem.grnItems_item_name || 'not chosen'}`}
-                            accessibilityHint={selectedGRN ? 'Opens the item list' : 'Choose a GRN first'}
+                            accessibilityLabel={tr('dispatch.items.itemFieldLabel', { value: currentItem.grnItems_item_name || tr('dispatch.items.notChosen') })}
+                            accessibilityHint={selectedGRN ? tr('dispatch.items.opensItemList') : tr('dispatch.items.chooseGrnFirst')}
                             accessibilityState={{ disabled: !selectedGRN || allAvailableLotsAlreadyAdded }}
                         >
                             <Icon
@@ -925,7 +934,7 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
                                 ]}
                                 numberOfLines={1}
                             >
-                                {currentItem.grnItems_item_name || 'Choose item'}
+                                {currentItem.grnItems_item_name || tr('dispatch.items.chooseItem')}
                             </Text>
                             <Icon name="chevron-down" size={iconSize.md} color={t.icon.secondary} />
                         </Pressable>
@@ -935,7 +944,7 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
                                 <Icon name="information" size={iconSize.md} color={t.status.informative.text} />
                                 <View style={styles.allLotsAddedContent}>
                                     <Text style={styles.allLotsAddedText}>
-                                        Every item from GRN {selectedGRN.gr_no} with stock is already in this dispatch.
+                                        {tr('dispatch.items.allItemsAdded', { grn: formatIdentifier(selectedGRN.gr_no) })}
                                     </Text>
                                     <Pressable
                                         style={({ pressed }) => [styles.viewAllItemsButton, pressed && styles.linkPressed]}
@@ -944,9 +953,9 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
                                             setShowSummaryBottomSheet(true);
                                         }}
                                         accessibilityRole="button"
-                                        accessibilityLabel={`View all ${savedItems.length} dispatch items`}
+                                        accessibilityLabel={tr('dispatch.items.viewAllDispatchItems', { count: savedItems.length })}
                                     >
-                                        <Text style={styles.viewAllItemsText}>View all items</Text>
+                                        <Text style={styles.viewAllItemsText}>{tr('dispatch.items.viewAllItems')}</Text>
                                         <Icon name="chevron-right" size={iconSize.sm} color={t.brand.tint} />
                                     </Pressable>
                                 </View>
@@ -957,7 +966,7 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
                     {/* Lot Selector */}
                     <View style={styles.formGroup}>
                         <Text style={[styles.label, validationErrors.grnItems_id && styles.labelError]}>
-                            Lot<Text style={styles.required}> *</Text>
+                            {tr('dispatch.items.lot')}<Text style={styles.required}> *</Text>
                         </Text>
                         <Pressable
                             style={({ pressed }) => [
@@ -969,10 +978,15 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
                             onPress={() => currentItem.grnItems_item_id && setShowLotBottomSheet(true)}
                             disabled={!currentItem.grnItems_item_id}
                             accessibilityRole="button"
-                            accessibilityLabel={`Lot, required, ${currentItem.grnItems_id
-                                ? `GRN quantity ${currentItem.grnItems_quantity ?? 0}, ${currentItem.grnItems_stock ?? 0} in stock`
-                                : 'not chosen'}`}
-                            accessibilityHint={currentItem.grnItems_item_id ? 'Opens the lot list' : 'Choose an item first'}
+                            accessibilityLabel={tr('dispatch.items.lotFieldLabel', {
+                                value: currentItem.grnItems_id
+                                    ? tr('dispatch.items.lotValueLabel', {
+                                        quantity: currentItem.grnItems_quantity ?? 0,
+                                        stock: currentItem.grnItems_stock ?? 0,
+                                    })
+                                    : tr('dispatch.items.notChosen'),
+                            })}
+                            accessibilityHint={currentItem.grnItems_item_id ? tr('dispatch.items.opensLotList') : tr('dispatch.items.chooseItemFirst')}
                             accessibilityState={{ disabled: !currentItem.grnItems_item_id }}
                         >
                             <Icon name="layers-outline" size={iconSize.md} color={t.icon.secondary} style={styles.inputIcon} />
@@ -981,8 +995,11 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
                                 numberOfLines={1}
                             >
                                 {currentItem.grnItems_id
-                                    ? `GRN qty ${currentItem.grnItems_quantity ?? 0} · ${currentItem.grnItems_stock ?? 0} in stock`
-                                    : 'Choose lot'}
+                                    ? tr('dispatch.items.lotValue', {
+                                        quantity: currentItem.grnItems_quantity ?? 0,
+                                        stock: currentItem.grnItems_stock ?? 0,
+                                    })
+                                    : tr('dispatch.items.chooseLot')}
                             </Text>
                             <Icon name="chevron-down" size={iconSize.md} color={t.icon.secondary} />
                         </Pressable>
@@ -992,7 +1009,7 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
                     {/* Quantity Input - after Lot selector */}
                     <View style={styles.formGroup}>
                         <Text style={[styles.label, quantityHasError && styles.labelError]}>
-                            Bags to dispatch<Text style={styles.required}> *</Text>
+                            {tr('dispatch.items.bagsToDispatch')}<Text style={styles.required}> *</Text>
                         </Text>
 
                         {currentItem.grnItems_id && (
@@ -1004,7 +1021,7 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
                                     <View style={styles.dispatchingFromRow}>
                                         <Icon name="alert" size={iconSize.sm} color={t.status.critical.text} />
                                         <Text style={styles.dispatchingFromText}>
-                                            Dispatching from another customer:{' '}
+                                            {tr('dispatch.items.fromAnotherCustomer')}{' '}
                                             <Text style={styles.dispatchingFromValue}>{currentItem.grns_customer_name}</Text>
                                         </Text>
                                     </View>
@@ -1012,12 +1029,12 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
                                 <View style={styles.stockInfoRow}>
                                     <Icon name="information" size={iconSize.sm} color={t.status.informative.text} />
                                     <Text style={styles.stockDisplayText}>
-                                        In stock{' '}
-                                        <Text style={styles.stockDisplayValue}>{currentItem.grnItems_stock ?? 0}</Text>
+                                        {tr('common.inStock')}{' '}
+                                        <Text style={styles.stockDisplayValue}>{formatNumber(currentItem.grnItems_stock ?? 0)}</Text>
                                     </Text>
                                     {(currentItem.disp_quantity ?? 0) > 0 && (
                                         <Text style={styles.stockDisplayText}>
-                                            · Left after dispatch <Text style={styles.stockDisplayValue}>{displayStock}</Text>
+                                            · {tr('dispatch.items.leftAfterDispatch')} <Text style={styles.stockDisplayValue}>{formatNumber(displayStock)}</Text>
                                         </Text>
                                     )}
                                 </View>
@@ -1041,13 +1058,13 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
                                 />
                                 <TextInput
                                     ref={quantityInputRef}
-                                    accessibilityLabel="Bags to dispatch"
+                                    accessibilityLabel={tr('dispatch.items.bagsToDispatch')}
                                     style={styles.input}
                                     value={
-                                        (currentItem.disp_quantity ?? 0) > 0 ? (currentItem.disp_quantity ?? 0).toString() : ''
+                                        (currentItem.disp_quantity ?? 0) > 0 ? localizeDigits((currentItem.disp_quantity ?? 0).toString()) : ''
                                     }
                                     onChangeText={handleQuantityChange}
-                                    placeholder="Bags"
+                                    placeholder={tr('common.bags')}
                                     placeholderTextColor={t.text.placeholder}
                                     keyboardType="numeric"
                                     editable={!!currentItem.grnItems_id}
@@ -1064,7 +1081,9 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
                         </View>
                         {exceedsMax &&
                             renderError(
-                                `Enter ${maxAllowedQty} bags or fewer. That is the ${isEditingItem ? 'original' : 'available'} stock.`
+                                tr(isEditingItem ? 'dispatch.items.maxBagsOriginal' : 'dispatch.items.maxBagsAvailable', {
+                                    count: maxAllowedQty,
+                                })
                             )}
                         {renderError(validationErrors.disp_quantity)}
                     </View>
@@ -1072,11 +1091,11 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
                     {/* Lot Details */}
                     {currentItem.grnItems_id && (
                         <View style={styles.lotDetailsCard}>
-                            <Text style={styles.lotDetailsTitle} accessibilityRole="header">Lot details</Text>
+                            <Text style={styles.lotDetailsTitle} accessibilityRole="header">{tr('dispatch.items.lotDetails')}</Text>
                             <View style={styles.lotDetailsGrid}>
                                 <View style={styles.detailItem}>
                                     <Icon name="warehouse" size={iconSize.sm} color={t.icon.secondary} />
-                                    <Text style={styles.detailLabel}>In stock</Text>
+                                    <Text style={styles.detailLabel}>{tr('common.inStock')}</Text>
                                     <Text style={styles.detailValue}>
                                         {formatCount(currentItem.grnItems_stock, 'bag')}
                                     </Text>
@@ -1084,20 +1103,20 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
                                 {currentItem.grnItems_package_mark && (
                                     <View style={styles.detailItem}>
                                         <Icon name="label-outline" size={iconSize.sm} color={t.icon.secondary} />
-                                        <Text style={styles.detailLabel}>Package mark</Text>
+                                        <Text style={styles.detailLabel}>{tr('common.packageMark')}</Text>
                                         <Text style={styles.detailValue}>{currentItem.grnItems_package_mark}</Text>
                                     </View>
                                 )}
                                 {currentItem.grnItems_rack && (
                                     <View style={styles.detailItem}>
                                         <Icon name="view-grid-outline" size={iconSize.sm} color={t.icon.secondary} />
-                                        <Text style={styles.detailLabel}>Rack</Text>
+                                        <Text style={styles.detailLabel}>{tr('common.rack')}</Text>
                                         <Text style={styles.detailValue}>{currentItem.grnItems_rack}</Text>
                                     </View>
                                 )}
                                 <View style={styles.detailItem}>
                                     <Icon name="weight" size={iconSize.sm} color={t.icon.secondary} />
-                                    <Text style={styles.detailLabel}>Weight</Text>
+                                    <Text style={styles.detailLabel}>{tr('common.weight')}</Text>
                                     <Text style={styles.detailValue}>{formatWeight(currentItem.grnItems_weight)}</Text>
                                 </View>
                             </View>
@@ -1112,18 +1131,18 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
                     style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryButtonPressed]}
                     onPress={handleBack}
                     accessibilityRole="button"
-                    accessibilityLabel="Back to dispatch details"
+                    accessibilityLabel={tr('dispatch.items.backToDetails')}
                 >
                     <Icon name="chevron-left" size={iconSize.md} color={t.text.primary} />
-                    <Text style={styles.secondaryButtonText}>Back</Text>
+                    <Text style={styles.secondaryButtonText}>{tr('common.back')}</Text>
                 </Pressable>
                 <Pressable
                     style={({ pressed }) => [styles.primaryButton, pressed && styles.primaryButtonPressed]}
                     onPress={handleNext}
                     accessibilityRole="button"
-                    accessibilityLabel="Next, review dispatch"
+                    accessibilityLabel={tr('dispatch.items.nextReview')}
                 >
-                    <Text style={styles.primaryButtonText}>Next</Text>
+                    <Text style={styles.primaryButtonText}>{tr('common.next')}</Text>
                     <Icon name="chevron-right" size={iconSize.md} color={t.brand.onFill} />
                 </Pressable>
             </View>
@@ -1175,10 +1194,10 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
             {/* Confirmation dialogs */}
             <ConfirmDialog
                 visible={showDiscardDialog}
-                title="Discard this dispatch?"
-                message={`The ${formatCount(savedItems.length, 'item')} you added will be lost.`}
-                confirmText="Discard dispatch"
-                cancelText="Keep editing"
+                title={tr('dispatch.wizard.discardTitle')}
+                message={tr('dispatch.wizard.discardItemsMessage', { count: savedItems.length })}
+                confirmText={tr('dispatch.wizard.discardDispatch')}
+                cancelText={tr('common.keepEditing')}
                 onConfirm={handleDiscardConfirm}
                 onCancel={() => setShowDiscardDialog(false)}
                 variant="danger"
@@ -1187,10 +1206,10 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
 
             <ConfirmDialog
                 visible={showClearItemDialog}
-                title="Clear this item?"
-                message="The GRN, lot and bags you entered for this item will be cleared."
-                confirmText="Clear item"
-                cancelText="Keep item"
+                title={tr('dispatch.items.clearItemTitle')}
+                message={tr('dispatch.items.clearItemMessage')}
+                confirmText={tr('dispatch.items.clearItemConfirm')}
+                cancelText={tr('dispatch.items.keepItem')}
                 onConfirm={handleClearItemConfirm}
                 onCancel={() => setShowClearItemDialog(false)}
                 variant="warning"
@@ -1199,10 +1218,10 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
 
             <ConfirmDialog
                 visible={showUnsavedBackDialog}
-                title="Go back to details?"
-                message="You have items that are not saved yet. Go back anyway?"
-                confirmText="Go back"
-                cancelText="Stay"
+                title={tr('dispatch.items.backTitle')}
+                message={tr('dispatch.items.backMessage')}
+                confirmText={tr('common.goBack')}
+                cancelText={tr('dispatch.items.stay')}
                 onConfirm={handleUnsavedBackConfirm}
                 onCancel={() => setShowUnsavedBackDialog(false)}
                 variant="warning"
@@ -1211,10 +1230,10 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
 
             <ConfirmDialog
                 visible={showUnsavedEditDialog}
-                title="Discard changes to this item?"
-                message="Your changes to this item will be lost."
-                confirmText="Discard changes"
-                cancelText="Keep editing"
+                title={tr('dispatch.items.discardItemChangesTitle')}
+                message={tr('dispatch.items.discardItemChangesMessage')}
+                confirmText={tr('dispatch.items.discardChanges')}
+                cancelText={tr('common.keepEditing')}
                 onConfirm={handleUnsavedEditDiscard}
                 onCancel={() => setShowUnsavedEditDialog(false)}
                 variant="warning"
@@ -1494,7 +1513,7 @@ const makeStyles = (t: ThemeTokens) => ({
         ...typography.footnote,
         fontWeight: fontWeight.semibold,
         textTransform: 'uppercase' as const,
-        letterSpacing: 0.5,
+        letterSpacing: trackedText(0.5),
         color: t.text.secondary,
         marginBottom: space.md,
     },

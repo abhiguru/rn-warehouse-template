@@ -10,13 +10,21 @@ import React from 'react';
 import { View, Text, Pressable, ActivityIndicator } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { iconSize } from '@/theme/tokens';
-import { overviewStyles, useOverviewColors } from './FioriStyles';
+import { useOverviewStyles, useOverviewColors } from './FioriStyles';
 import { SectionHeader } from './SectionHeader';
 
 import { showAlert } from '@/utils/alert';
+import { t } from '@/i18n';
+import type { DocumentEntity } from '@/i18n/entities';
+
 interface ActionsSectionProps {
-  /** Entity type label for edit/delete buttons (e.g., "GRN", "Dispatch", "Invoice") */
-  entityType: string;
+  /** Which document the actions are for. Selects whole-sentence texts in both languages. */
+  entity?: DocumentEntity;
+  /**
+   * Older way to name the document: a word placed into the English sentences
+   * ("Edit {{entity}}"). Used only when `entity` is not given.
+   */
+  entityType?: string;
   /** Entity number for delete confirmation message */
   entityNumber?: string;
   /** Entity ID - actions are disabled if not provided */
@@ -42,7 +50,8 @@ interface ActionsSectionProps {
 }
 
 export const ActionsSection: React.FC<ActionsSectionProps> = ({
-  entityType,
+  entity,
+  entityType = '',
   entityNumber,
   entityId,
   onSharePDF,
@@ -56,6 +65,7 @@ export const ActionsSection: React.FC<ActionsSectionProps> = ({
   isDeleting = false,
 }) => {
   const colorStyles = useOverviewColors();
+  const overviewStyles = useOverviewStyles();
 
   // Resolve canDelete - if not explicitly provided, fall back to canEdit
   const resolvedCanDelete = canDelete ?? canEdit;
@@ -70,15 +80,30 @@ export const ActionsSection: React.FC<ActionsSectionProps> = ({
     return null;
   }
 
+  const labels = entity
+    ? {
+        deleteNumberedTitle: (number: string) => t(`components.actions.${entity}.deleteNumberedTitle`, { number }),
+        deleteThisTitle: t(`components.actions.${entity}.deleteThisTitle`),
+        delete: t(`components.actions.${entity}.delete`),
+        print: t(`components.actions.${entity}.print`),
+        edit: t(`components.actions.${entity}.edit`),
+      }
+    : {
+        deleteNumberedTitle: (number: string) => t('components.actions.deleteNumberedTitle', { entity: entityType, number }),
+        deleteThisTitle: t('components.actions.deleteThisTitle', { entity: entityType }),
+        delete: t('components.actions.deleteEntity', { entity: entityType }),
+        print: t('components.actions.printEntity', { entity: entityType }),
+        edit: t('components.actions.editEntity', { entity: entityType }),
+      };
+
   const handleDeletePress = () => {
-    const objectName = entityNumber ? `${entityType} ${entityNumber}` : `this ${entityType}`;
     showAlert(
-      `Delete ${objectName}?`,
-      "It will be removed for everyone. You can't undo this.",
+      entityNumber ? labels.deleteNumberedTitle(entityNumber) : labels.deleteThisTitle,
+      t('components.actions.deleteMessage'),
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t('common.cancel'), style: 'cancel' },
         {
-          text: `Delete ${entityType}`,
+          text: labels.delete,
           style: 'destructive',
           onPress: onDelete,
         },
@@ -88,7 +113,7 @@ export const ActionsSection: React.FC<ActionsSectionProps> = ({
 
   return (
     <>
-      <SectionHeader title="Actions" />
+      <SectionHeader title={t('components.actions.title')} />
       <View style={overviewStyles.actionsContainer}>
         {/* Share PDF Button - Secondary Tint */}
         {showShareButton && (
@@ -102,7 +127,7 @@ export const ActionsSection: React.FC<ActionsSectionProps> = ({
             onPress={onSharePDF}
             disabled={isShareLoading}
             accessibilityRole="button"
-            accessibilityLabel="Share PDF"
+            accessibilityLabel={t('components.sharePdf')}
             accessibilityState={{ disabled: isShareLoading, busy: isShareLoading }}
           >
             {isShareLoading ? (
@@ -111,7 +136,7 @@ export const ActionsSection: React.FC<ActionsSectionProps> = ({
               <Icon name="share-variant-outline" size={iconSize.lg} color={colorStyles.iconBrand} />
             )}
             <Text style={[overviewStyles.secondaryTintButtonText, colorStyles.secondaryTintButtonText]}>
-              {isShareLoading ? 'Preparing PDF…' : 'Share PDF'}
+              {isShareLoading ? t('components.preparingPdf') : t('components.sharePdf')}
             </Text>
           </Pressable>
         )}
@@ -128,7 +153,7 @@ export const ActionsSection: React.FC<ActionsSectionProps> = ({
             onPress={onPrint}
             disabled={isPrintLoading}
             accessibilityRole="button"
-            accessibilityLabel={`Print ${entityType}`}
+            accessibilityLabel={labels.print}
             accessibilityState={{ disabled: isPrintLoading, busy: isPrintLoading }}
           >
             {isPrintLoading ? (
@@ -137,7 +162,7 @@ export const ActionsSection: React.FC<ActionsSectionProps> = ({
               <Icon name="printer-outline" size={iconSize.lg} color={colorStyles.iconBrand} />
             )}
             <Text style={[overviewStyles.secondaryTintButtonText, colorStyles.secondaryTintButtonText]}>
-              {isPrintLoading ? 'Printing…' : `Print ${entityType}`}
+              {isPrintLoading ? t('components.printRange.printing') : labels.print}
             </Text>
           </Pressable>
         )}
@@ -152,10 +177,10 @@ export const ActionsSection: React.FC<ActionsSectionProps> = ({
             ]}
             onPress={onEdit}
             accessibilityRole="button"
-            accessibilityLabel={`Edit ${entityType}`}
+            accessibilityLabel={labels.edit}
           >
             <Icon name="pencil-outline" size={iconSize.lg} color={colorStyles.iconOnFill} />
-            <Text style={[overviewStyles.primaryButtonText, colorStyles.primaryButtonText]}>Edit {entityType}</Text>
+            <Text style={[overviewStyles.primaryButtonText, colorStyles.primaryButtonText]}>{labels.edit}</Text>
           </Pressable>
         )}
 
@@ -171,7 +196,7 @@ export const ActionsSection: React.FC<ActionsSectionProps> = ({
             onPress={handleDeletePress}
             disabled={isDeleting}
             accessibilityRole="button"
-            accessibilityLabel={`Delete ${entityType}`}
+            accessibilityLabel={labels.delete}
             accessibilityState={{ disabled: isDeleting, busy: isDeleting }}
           >
             {isDeleting ? (
@@ -180,7 +205,7 @@ export const ActionsSection: React.FC<ActionsSectionProps> = ({
               <Icon name="trash-can-outline" size={iconSize.lg} color={colorStyles.iconError} />
             )}
             <Text style={[overviewStyles.secondaryNegativeButtonText, colorStyles.secondaryNegativeButtonText]}>
-              {isDeleting ? 'Deleting…' : `Delete ${entityType}`}
+              {isDeleting ? t('common.deleting') : labels.delete}
             </Text>
           </Pressable>
         )}

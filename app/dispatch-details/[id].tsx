@@ -53,6 +53,8 @@ import { withNativeHandoff } from '@/config/nativeHandoff';
 import { uploadDispatchImage } from '@/features/dispatch/services/dispatchImageService';
 
 import { showAlert } from '@/utils/alert';
+import { t as tr, formatIdentifier } from '@/i18n';
+import { serverText } from '@/utils/serverText';
 // ============================================================================
 // STYLES (docs/STYLE_GUIDE.md §14.2 object page)
 // ============================================================================
@@ -199,7 +201,7 @@ function DispatchDetailScreen() {
         setData(result.data);
         setError(null);
       } else {
-        setError(result.error || result.message || "Check your connection and try again.");
+        setError(serverText(result.error || result.message, tr('common.checkConnection')));
       }
     } catch (err) {
       // Ignore abort errors - they're expected when navigating away
@@ -208,7 +210,7 @@ function DispatchDetailScreen() {
         return;
       }
       console.error('[DispatchDetailScreen] Exception:', err);
-      setError('Check your connection and try again.');
+      setError(tr('common.checkConnection'));
     } finally {
       // Only update loading state if not aborted
       if (!controller.signal.aborted) {
@@ -267,11 +269,13 @@ function DispatchDetailScreen() {
 
       if (result.success) {
         showAlert(
-          'Dispatch deleted',
-          data?.dispatch.disp_no ? `Dispatch ${data.dispatch.disp_no} is deleted.` : 'The dispatch is deleted.',
+          tr('dispatch.details.deletedTitle'),
+          data?.dispatch.disp_no
+            ? tr('dispatch.details.deletedMessage', { number: formatIdentifier(data.dispatch.disp_no) })
+            : tr('dispatch.details.deletedMessageNoNumber'),
           [
             {
-              text: 'View dispatches',
+              text: tr('dispatch.details.viewDispatches'),
               onPress: () => {
                 // Navigate back to dispatch list
                 router.replace('/dispatch');
@@ -283,17 +287,17 @@ function DispatchDetailScreen() {
         // Handle invoice blocking case specially
         if (result.blockingReason === 'invoices_exist') {
           showAlert(
-            "Can't delete dispatch",
-            `${result.error}\n\n${result.instructions || 'Delete its invoices first, then try again.'}`,
-            [{ text: 'Close' }]
+            tr('dispatch.details.cannotDeleteTitle'),
+            `${result.error}\n\n${result.instructions || tr('dispatch.details.deleteInvoicesFirst')}`,
+            [{ text: tr('common.close') }]
           );
         } else {
-          showAlert("Couldn't delete dispatch", result.error || result.message || 'Try again.');
+          showAlert(tr('dispatch.details.deleteFailedTitle'), serverText(result.error || result.message, tr('dispatch.details.tryAgain')));
         }
       }
     } catch (error) {
       console.error('[DispatchDetailScreen] Error deleting dispatch:', error);
-      showAlert("Couldn't delete dispatch", 'Check your connection and try again.');
+      showAlert(tr('dispatch.details.deleteFailedTitle'), tr('common.checkConnection'));
     }
   };
 
@@ -309,7 +313,7 @@ function DispatchDetailScreen() {
       const pdfResult = await generateDispatchPDF(data.dispatch.disp_no);
 
       if (!pdfResult.success || !pdfResult.pdfUrl) {
-        showAlert("Couldn't create the PDF", 'Check your connection and try again.');
+        showAlert(tr('dispatch.details.pdfFailedTitle'), tr('common.checkConnection'));
         return;
       }
 
@@ -322,11 +326,11 @@ function DispatchDetailScreen() {
       );
 
       if (!shareResult.success) {
-        showAlert("Couldn't share the PDF", 'Try again.');
+        showAlert(tr('dispatch.details.shareFailedTitle'), tr('dispatch.details.tryAgain'));
       }
     } catch (error) {
       console.error('[DispatchDetailScreen] Share PDF error:', error);
-      showAlert("Couldn't share the PDF", 'Try again.');
+      showAlert(tr('dispatch.details.shareFailedTitle'), tr('dispatch.details.tryAgain'));
     } finally {
       setIsShareLoading(false);
     }
@@ -359,8 +363,8 @@ function DispatchDetailScreen() {
       <>
         <Stack.Screen
           options={{
-            title: !loading && !error ? 'Dispatch not found' : 'Dispatch',
-            headerBackTitle: 'Back',
+            title: !loading && !error ? tr('dispatch.details.notFoundTitle') : tr('common.dispatch'),
+            headerBackTitle: tr('common.back'),
             headerShown: true,
             headerStyle: { backgroundColor: t.surface.header },
             headerShadowVisible: false,
@@ -375,7 +379,7 @@ function DispatchDetailScreen() {
           ) : error ? (
             <View style={styles.errorContainer}>
               <Icon name="alert-circle-outline" size={iconSize.hero} color={t.status.negative.text} />
-              <Text style={styles.errorTitle} accessibilityRole="header">Couldn't load the dispatch</Text>
+              <Text style={styles.errorTitle} accessibilityRole="header">{tr('dispatch.details.loadFailedTitle')}</Text>
               <Text style={styles.errorMessage}>{error}</Text>
               <Pressable
                 style={({ pressed }) => [styles.retryButton, pressed && styles.retryButtonPressed]}
@@ -384,34 +388,34 @@ function DispatchDetailScreen() {
                   fetchDispatchDetails();
                 }}
                 accessibilityRole="button"
-                accessibilityLabel="Try loading the dispatch again"
+                accessibilityLabel={tr('dispatch.details.retryLoad')}
               >
                 <Icon name="refresh" size={iconSize.md} color={t.brand.tint} />
-                <Text style={styles.retryButtonText}>Try again</Text>
+                <Text style={styles.retryButtonText}>{tr('common.retry')}</Text>
               </Pressable>
               <Pressable
                 style={({ pressed }) => [styles.tertiaryButton, pressed && styles.tertiaryButtonPressed]}
                 onPress={() => router.back()}
                 accessibilityRole="button"
-                accessibilityLabel="Go back"
+                accessibilityLabel={tr('common.goBack')}
               >
-                <Text style={styles.tertiaryButtonText}>Go back</Text>
+                <Text style={styles.tertiaryButtonText}>{tr('common.goBack')}</Text>
               </Pressable>
             </View>
           ) : (
             <View style={styles.errorContainer}>
               <Icon name="truck-delivery-outline" size={iconSize.hero} color={t.icon.secondary} />
-              <Text style={styles.errorTitle} accessibilityRole="header">Dispatch not found</Text>
+              <Text style={styles.errorTitle} accessibilityRole="header">{tr('dispatch.details.notFoundTitle')}</Text>
               <Text style={styles.errorMessage}>
-                It may have been deleted. Go back to the dispatch list.
+                {tr('dispatch.details.notFoundMessage')}
               </Text>
               <Pressable
                 style={({ pressed }) => [styles.tertiaryButton, pressed && styles.tertiaryButtonPressed]}
                 onPress={() => router.back()}
                 accessibilityRole="button"
-                accessibilityLabel="Go back"
+                accessibilityLabel={tr('common.goBack')}
               >
-                <Text style={styles.tertiaryButtonText}>Go back</Text>
+                <Text style={styles.tertiaryButtonText}>{tr('common.goBack')}</Text>
               </Pressable>
             </View>
           )}
@@ -425,9 +429,9 @@ function DispatchDetailScreen() {
   // Prepare items for DispatchItemsTab (snake_case from backend)
   const items: DispatchItem[] = (dispatch.items || []).map((item: any) => ({
     id: item.id || item.grn_item_id,
-    item_name: item.item_details?.name || item.item_name || 'Unknown Item',
+    item_name: item.item_details?.name || item.item_name || tr('dispatch.details.unknownItem'),
     dispatch_quantity: item.disp_qty || item.dispatch_quantity || 0,
-    grn_no: item.grn_details?.gr_no || item.grn_no || 'N/A',
+    grn_no: item.grn_details?.gr_no || item.grn_no || tr('dispatch.details.notAvailable'),
     grn_date: item.grn_details?.date || item.grn_date || new Date().toISOString(),
     grn_id: item.grn_details?.id || item.grn_id,
     original_quantity: item.grn_item_details?.qty || item.original_qty,
@@ -483,7 +487,7 @@ function DispatchDetailScreen() {
       if (Platform.OS !== 'android') {
         const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
         if (!permission.granted) {
-          setSnackbarMessage('Allow photo access in Settings to add a photo.');
+          setSnackbarMessage(tr('dispatch.photos.allowAccess'));
           setSnackbarVisible(true);
           return;
         }
@@ -501,15 +505,15 @@ function DispatchDetailScreen() {
       setIsUploadingImage(true);
       const result = await uploadDispatchImage(picked.assets[0], id);
       if (!result.success) {
-        setSnackbarMessage("Couldn't upload the photo. Try again.");
+        setSnackbarMessage(tr('dispatch.photos.uploadFailedRetry'));
         setSnackbarVisible(true);
         return;
       }
       await fetchDispatchDetails();
-      setSnackbarMessage('Photo added.');
+      setSnackbarMessage(tr('dispatch.photos.added'));
       setSnackbarVisible(true);
     } catch {
-      setSnackbarMessage("Couldn't upload the photo. Try again.");
+      setSnackbarMessage(tr('dispatch.photos.uploadFailedRetry'));
       setSnackbarVisible(true);
     } finally {
       setIsUploadingImage(false);
@@ -539,7 +543,7 @@ function DispatchDetailScreen() {
           ),
           headerTitle: () => (
             <Text style={styles.headerTitle} numberOfLines={1} accessibilityRole="header">
-              Dispatch
+              {tr('common.dispatch')}
             </Text>
           ),
         }}
@@ -633,18 +637,20 @@ function DispatchDetailScreen() {
           const result = await printDispatchRange(start, end);
           if (result.success) {
             setSnackbarMessage(
-              `Print job${result.print_job?.cups_job_id ? ` ${result.print_job.cups_job_id}` : ''} sent to the printer.`
+              result.print_job?.cups_job_id
+                ? tr('dispatch.details.printSentWithJob', { job: String(result.print_job.cups_job_id) })
+                : tr('dispatch.details.printSent')
             );
           } else {
-            setSnackbarMessage("Couldn't send the print job. Try again.");
+            setSnackbarMessage(tr('dispatch.details.printFailed'));
           }
           setSnackbarVisible(true);
           setShowPrintDialog(false);
         }}
-        title="Print dispatches"
+        title={tr('dispatch.details.printTitle')}
         defaultNumber={dispatch.disp_no || ''}
-        label="Dispatch number"
-        placeholder="For example, I4613"
+        entity="dispatch"
+        placeholder={tr('dispatch.review.printPlaceholder', { example: 'I4613' })}
       />
 
       {/* Snackbar for print and photo feedback (guide §13.9) */}

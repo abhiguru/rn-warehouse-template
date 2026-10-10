@@ -9,8 +9,9 @@
 import React from 'react';
 import { Image, Text, View } from 'react-native';
 import { useThemedStyles, useTheme } from '@/hooks/useTheme';
-import { radius, space, typography } from '@/theme/tokens';
+import { radius, space, typography, trackedText } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
+import { t as tr } from '@/i18n';
 
 const templateLogo = require('../../assets/logo.png');
 
@@ -47,7 +48,7 @@ const makeStyles = (t: ThemeTokens) => ({
     ...typography.caption1,
     marginTop: space.xs,
     fontWeight: '600' as const,
-    letterSpacing: 1,
+    letterSpacing: trackedText(1),
     color: t.brandMark.caption,
   },
 });
@@ -57,15 +58,15 @@ export function BrandMark({ label }: BrandMarkProps) {
   const styles = useThemedStyles(makeStyles);
   if (brand === 'gcsa') {
     return (
-      <View style={styles.card} accessible accessibilityRole="image" accessibilityLabel={`${label} logo`}>
+      <View style={styles.card} accessible accessibilityRole="image" accessibilityLabel={tr('auth.brand.logoLabel', { name: label })}>
         <Text style={styles.wordmark}>GCSA</Text>
         <View style={styles.rule} />
-        <Text style={styles.caption}>COLD STORAGE ASSOCIATION</Text>
+        <Text style={styles.caption}>{tr('auth.brand.associationCaption')}</Text>
       </View>
     );
   }
   return (
-    <View style={styles.card} accessible accessibilityRole="image" accessibilityLabel={`${label} logo`}>
+    <View style={styles.card} accessible accessibilityRole="image" accessibilityLabel={tr('auth.brand.logoLabel', { name: label })}>
       <Image source={templateLogo} style={styles.image} resizeMode="contain" />
     </View>
   );

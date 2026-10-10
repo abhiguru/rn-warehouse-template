@@ -5,25 +5,7 @@
  * Used by StepIndicator and navigation components.
  */
 
-import { StepConfig } from '@/components/StepIndicator';
-
-/**
- * Configuration for customer form steps
- */
-export const CUSTOMER_STEPS: StepConfig[] = [
-  {
-    label: 'Basic information',
-    shortLabel: 'Basic',
-  },
-  {
-    label: 'Address and tax details',
-    shortLabel: 'Details',
-  },
-  {
-    label: 'Documents and review',
-    shortLabel: 'Review',
-  },
-];
+// The step names are text: `customerSteps()` in src/features/customer/customerStepLabels.ts.
 
 /**
  * Step numbers for easy reference
@@ -37,18 +19,7 @@ export const CUSTOMER_STEP_NUMBERS = {
 /**
  * Total number of steps
  */
-export const CUSTOMER_TOTAL_STEPS = CUSTOMER_STEPS.length;
-
-/**
- * Get next step label for navigation button
- */
-export function getNextStepLabel(currentStep: number, isEditMode: boolean = false): string {
-  if (currentStep >= CUSTOMER_STEPS.length) {
-    return isEditMode ? 'Update Customer' : 'Create Customer';
-  }
-  const nextStep = CUSTOMER_STEPS[currentStep];
-  return `Next: ${nextStep.shortLabel}`;
-}
+export const CUSTOMER_TOTAL_STEPS = 3;
 
 /**
  * Get completed steps array for StepIndicator
@@ -87,15 +58,6 @@ export function getStepRoutePath(
     return `/customer-edit/${customerId}/${stepPath}`;
   }
 }
-
-/**
- * Step titles for review display
- */
-export const CUSTOMER_STEP_TITLES = {
-  [CUSTOMER_STEP_NUMBERS.BASIC]: 'Basic information',
-  [CUSTOMER_STEP_NUMBERS.DETAILS]: 'Address and tax details',
-  [CUSTOMER_STEP_NUMBERS.REVIEW]: 'Documents and review',
-} as const;
 
 /**
  * Fields per step (for validation grouping)

@@ -6,6 +6,7 @@
  */
 
 import type { InvoiceHeaderData, InvoiceItemData } from '@/types/invoice.types';
+import { localizeDigits, t } from '@/i18n';
 
 /**
  * Round money values to 2 decimal places
@@ -178,7 +179,9 @@ export function savedInvoiceAmounts(header: { total: number; tax_amount: number;
   return {
     netBeforeTax: roundMoney(header.total - header.tax_amount),
     hasAdjustment: header.discount !== 0,
-    adjustmentLabel: header.discount < 0 ? 'Surcharge' : 'Discount',
+    /** A negative discount is a surcharge. Use this, not the label, to tell them apart: the label is translated. */
+    isSurcharge: header.discount < 0,
+    adjustmentLabel: header.discount < 0 ? t('invoice.label.surcharge') : t('invoice.label.discount'),
     adjustmentSign: header.discount < 0 ? '+' : '-',
     adjustmentAmount: Math.abs(header.discount),
   };
@@ -493,11 +496,12 @@ const invoiceMoneyFormat = new Intl.NumberFormat('en-IN', {
 /**
  * Money on an invoice (style guide §12.3): Indian grouping, rupee sign and two
  * decimals, e.g. "₹1,23,456.50". Missing values show as "₹0.00". A negative
- * amount gets a leading minus sign: "−₹250.00".
+ * amount gets a leading minus sign: "−₹250.00". In Gujarati the digits are
+ * ૦-૯: "₹૧,૯૦૬.૦૦".
  */
 export function formatInvoiceAmount(amount: number | null | undefined): string {
   const value = typeof amount === 'number' && Number.isFinite(amount) ? amount : 0;
-  const formatted = `₹${invoiceMoneyFormat.format(Math.abs(value))}`;
+  const formatted = `₹${localizeDigits(invoiceMoneyFormat.format(Math.abs(value)))}`;
   return value < 0 ? `−${formatted}` : formatted;
 }
 

@@ -25,7 +25,8 @@ import {
 } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { formatDate, formatCount, formatWeight } from '@/utils/formatters';
+import { formatDate, formatCount, formatNumber, formatWeight } from '@/utils/formatters';
+import { t as translate, formatIdentifier } from '@/i18n';
 import type { RecentDispatchedOrder } from '@/types/dispatch.types';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import {
@@ -272,15 +273,15 @@ const RecentDispatchedOrderCardContent: React.FC<RecentDispatchedOrderCardProps>
 
   // One combined label for the row (guide §11.3)
   const accessibilityDescription = [
-    `Dispatch ${dispatch.disp_no}`,
+    translate('lists.dispatch.cardTitle', { number: formatIdentifier(dispatch.disp_no) }),
     dispatch.customer_name,
-    `from order ${dispatch.order_no}`,
+    translate('lists.recent.fromOrder', { number: formatIdentifier(dispatch.order_no) }),
     itemsLabel,
     bagsLabel,
-    dispatch.registration ? `Vehicle ${dispatch.registration}` : null,
-    `Created by ${dispatch.created_by_name}`,
+    dispatch.registration ? translate('lists.card.vehicle', { number: formatIdentifier(dispatch.registration) }) : null,
+    translate('lists.recent.createdBy', { name: dispatch.created_by_name }),
     dateLabel,
-    'Dispatched',
+    translate('lists.order.statusDispatched'),
   ]
     .filter(Boolean)
     .join(', ');
@@ -292,7 +293,7 @@ const RecentDispatchedOrderCardContent: React.FC<RecentDispatchedOrderCardProps>
         style={({ pressed }) => [styles.cardContent, pressed && styles.cardContentPressed]}
         accessibilityRole="button"
         accessibilityLabel={accessibilityDescription}
-        accessibilityHint="Opens the dispatch"
+        accessibilityHint={translate('lists.dispatch.openHint')}
       >
         <View style={styles.objectCellRow}>
           {/* Object icon (left) */}
@@ -303,7 +304,7 @@ const RecentDispatchedOrderCardContent: React.FC<RecentDispatchedOrderCardProps>
           {/* Main content */}
           <View style={styles.mainContent}>
             <Text style={styles.titleText} numberOfLines={2}>
-              Dispatch {dispatch.disp_no}
+              {translate('lists.dispatch.cardTitle', { number: formatIdentifier(dispatch.disp_no) })}
             </Text>
             <Text style={styles.subtitleText} numberOfLines={1}>
               {dispatch.customer_name}
@@ -313,7 +314,7 @@ const RecentDispatchedOrderCardContent: React.FC<RecentDispatchedOrderCardProps>
             <View style={styles.orderRefRow}>
               <Icon name="clipboard-list-outline" size={iconSize.sm} color={t.icon.secondary} />
               <Text style={styles.orderRefText} numberOfLines={1}>
-                Order {dispatch.order_no}
+                {translate('lists.recent.orderRef', { number: formatIdentifier(dispatch.order_no) })}
               </Text>
             </View>
 
@@ -342,7 +343,7 @@ const RecentDispatchedOrderCardContent: React.FC<RecentDispatchedOrderCardProps>
           <View style={styles.attributeStack}>
             <Text style={styles.quantityValue}>{bagsLabel}</Text>
             <Text style={styles.itemCountText}>{itemsLabel}</Text>
-            <StatusTag status="positive" label="Dispatched" style={styles.statusTag} />
+            <StatusTag status="positive" label={translate('lists.order.statusDispatched')} style={styles.statusTag} />
           </View>
         </View>
       </Pressable>
@@ -351,10 +352,10 @@ const RecentDispatchedOrderCardContent: React.FC<RecentDispatchedOrderCardProps>
       {isExpanded && hasItems && (
         <Animated.View entering={FadeIn.duration(motion.standard)} style={styles.expandedSection}>
           <View style={styles.tableHeader}>
-            <Text style={[styles.tableHeaderCell, styles.colItem]}>Item</Text>
-            <Text style={[styles.tableHeaderCell, styles.colWeight]}>Kg</Text>
-            <Text style={[styles.tableHeaderCell, styles.colGrn]}>GRN</Text>
-            <Text style={[styles.tableHeaderCell, styles.colQty]}>Qty</Text>
+            <Text style={[styles.tableHeaderCell, styles.colItem]}>{translate('common.item')}</Text>
+            <Text style={[styles.tableHeaderCell, styles.colWeight]}>{translate('lists.card.colKg')}</Text>
+            <Text style={[styles.tableHeaderCell, styles.colGrn]}>{translate('lists.card.colGrn')}</Text>
+            <Text style={[styles.tableHeaderCell, styles.colQty]}>{translate('lists.card.colQty')}</Text>
           </View>
 
           {dispatch.items.map((item, idx) => (
@@ -362,7 +363,13 @@ const RecentDispatchedOrderCardContent: React.FC<RecentDispatchedOrderCardProps>
               key={`${dispatch.dispatch_id}-item-${idx}`}
               style={[styles.tableRow, idx > 0 && styles.tableRowDivider]}
               accessible
-              accessibilityLabel={`${item.item_name}${item.rack ? `, rack ${item.rack}` : ''}, ${formatWeight(item.weight, 0)}, GRN ${item.gr_no}, ${item.disp_qty} dispatched`}
+              accessibilityLabel={translate(item.rack ? 'lists.dispatch.itemRowRack' : 'lists.dispatch.itemRow', {
+                item: item.item_name,
+                rack: item.rack,
+                weight: formatWeight(item.weight, 0),
+                grn: formatIdentifier(item.gr_no),
+                quantity: item.disp_qty,
+              })}
             >
               <View style={[styles.tableCell, styles.colItem]}>
                 <View style={styles.itemNameRow}>
@@ -378,13 +385,13 @@ const RecentDispatchedOrderCardContent: React.FC<RecentDispatchedOrderCardProps>
                 )}
               </View>
               <Text style={[styles.tableCell, styles.colWeight, styles.tableCellValue]}>
-                {Math.round(item.weight || 0)}
+                {formatNumber(Math.round(item.weight || 0))}
               </Text>
-              <Text style={[styles.tableCell, styles.colGrn, styles.tableCellValue]}>
+              <Text style={[styles.tableCell, styles.colGrn, styles.tableCellValue]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
                 {item.gr_no}
               </Text>
               <Text style={[styles.tableCell, styles.colQty, styles.tableCellQty]}>
-                {item.disp_qty}
+                {formatNumber(item.disp_qty)}
               </Text>
             </View>
           ))}
@@ -397,11 +404,11 @@ const RecentDispatchedOrderCardContent: React.FC<RecentDispatchedOrderCardProps>
           onPress={handleToggleExpand}
           style={({ pressed }) => [styles.expandButton, pressed && styles.expandButtonPressed]}
           accessibilityRole="button"
-          accessibilityLabel={isExpanded ? 'Hide items' : `Show ${itemsLabel}`}
+          accessibilityLabel={isExpanded ? translate('lists.recent.hideItems') : translate('lists.recent.showItems', { items: itemsLabel })}
           accessibilityState={{ expanded: isExpanded }}
         >
           <Text style={styles.expandButtonText}>
-            {isExpanded ? 'Hide items' : `Show ${itemsLabel}`}
+            {isExpanded ? translate('lists.recent.hideItems') : translate('lists.recent.showItems', { items: itemsLabel })}
           </Text>
           <Icon
             name={isExpanded ? 'chevron-up' : 'chevron-down'}

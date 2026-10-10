@@ -8,6 +8,8 @@ import { validateStep1, validateStep2 } from '@/features/dispatch/schemas/dispat
 import type { DispatchHeaderData, DispatchItemData } from '@/types/dispatch.types';
 
 import { showAlert } from '@/utils/alert';
+import { t } from '@/i18n';
+import { serverText } from '@/utils/serverText';
 /**
  * Validate Step 1 header data before allowing swipe to Step 2
  * @param header - Dispatch header data to validate
@@ -18,8 +20,8 @@ export const canNavigateFromDispatchStep1 = async (header: DispatchHeaderData): 
     await validateStep1(header);
     return true;
   } catch (error: any) {
-    const errorMessage = error?.message || 'Please fill all required fields correctly';
-    showAlert('Validation Error', errorMessage);
+    const errorMessage = serverText(error?.message, t('dispatch.validation.fillRequiredCorrectly'));
+    showAlert(t('dispatch.validation.title'), errorMessage);
     return false;
   }
 };
@@ -33,7 +35,7 @@ export const canNavigateFromDispatchStep2 = async (items: DispatchItemData[]): P
   try {
     // Check if at least one item exists
     if (!items || items.length === 0) {
-      showAlert('Validation Error', 'Please add at least one item to the dispatch');
+      showAlert(t('dispatch.validation.title'), t('dispatch.validation.addOneItem'));
       return false;
     }
 
@@ -41,8 +43,8 @@ export const canNavigateFromDispatchStep2 = async (items: DispatchItemData[]): P
     await validateStep2({ items });
     return true;
   } catch (error: any) {
-    const errorMessage = error?.message || 'Please check the items and try again';
-    showAlert('Validation Error', errorMessage);
+    const errorMessage = serverText(error?.message, t('dispatch.validation.checkItems'));
+    showAlert(t('dispatch.validation.title'), errorMessage);
     return false;
   }
 };
@@ -85,21 +87,21 @@ export const showUnsavedItemsAlert = (
   onCancel: () => void
 ) => {
   showAlert(
-    'Unsaved Changes',
-    'You have unsaved item changes. What would you like to do?',
+    t('dispatch.unsaved.title'),
+    t('dispatch.unsaved.message'),
     [
       {
-        text: 'Cancel',
+        text: t('common.cancel'),
         style: 'cancel',
         onPress: onCancel,
       },
       {
-        text: 'Discard',
+        text: t('common.discard'),
         style: 'destructive',
         onPress: onDiscard,
       },
       {
-        text: 'Save',
+        text: t('common.save'),
         onPress: onSave,
       },
     ],

@@ -26,6 +26,7 @@ import type {
 } from '@/types/report.types';
 
 import { toLocalISODate } from '@/utils/formatters';
+import { t } from '@/i18n';
 // Default 420-day period
 const DEFAULT_DAYS_BACK = 420;
 
@@ -149,7 +150,7 @@ export async function getAllCustomerActivity(
       return {
         success: false,
         data: EMPTY_LIST_RESPONSE,
-        message: 'Failed to fetch customer activity summary',
+        message: t('reports.customerActivity.errors.summaryFailed'),
         error: error.message,
       };
     }
@@ -159,7 +160,7 @@ export async function getAllCustomerActivity(
       return {
         success: true,
         data: EMPTY_LIST_RESPONSE,
-        message: 'No customer activity data found',
+        message: t('reports.customerActivity.errors.noData'),
       };
     }
 
@@ -232,14 +233,14 @@ export async function getAllCustomerActivity(
     return {
       success: true,
       data: { summary, customers },
-      message: 'Customer activity summary retrieved successfully',
+      message: t('reports.customerActivity.retrievedSummary'),
     };
   } catch (error) {
     console.error('[CustomerActivity] Unexpected error:', error);
     return {
       success: false,
       data: EMPTY_LIST_RESPONSE,
-      message: 'Failed to fetch customer activity summary',
+      message: t('reports.customerActivity.errors.summaryFailed'),
       error: error instanceof Error ? error.message : 'Unknown error',
     };
   }
@@ -259,7 +260,7 @@ export async function getCustomerActivityDetail(
     return {
       success: false,
       data: EMPTY_DETAIL_RESPONSE,
-      message: 'Customer ID is required',
+      message: t('reports.customerActivity.errors.customerIdRequired'),
       error: 'MISSING_CUSTOMER_ID',
     };
   }
@@ -303,7 +304,7 @@ export async function getCustomerActivityDetail(
       return {
         success: false,
         data: EMPTY_DETAIL_RESPONSE,
-        message: 'Failed to fetch customer activity detail',
+        message: t('reports.customerActivity.errors.detailFailed'),
         error: error.message,
       };
     }
@@ -313,7 +314,7 @@ export async function getCustomerActivityDetail(
       return {
         success: true,
         data: EMPTY_DETAIL_RESPONSE,
-        message: 'No customer activity data found',
+        message: t('reports.customerActivity.errors.noData'),
       };
     }
 
@@ -427,14 +428,14 @@ export async function getCustomerActivityDetail(
         top_stock_items: topStockItems,
         recent_invoices: recentInvoices,
       },
-      message: 'Customer activity detail retrieved successfully',
+      message: t('reports.customerActivity.retrievedDetail'),
     };
   } catch (error) {
     console.error('[CustomerActivityDetail] Unexpected error:', error);
     return {
       success: false,
       data: EMPTY_DETAIL_RESPONSE,
-      message: 'Failed to fetch customer activity detail',
+      message: t('reports.customerActivity.errors.detailFailed'),
       error: error instanceof Error ? error.message : 'Unknown error',
     };
   }

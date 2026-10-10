@@ -13,10 +13,13 @@ import {
   fontWeight,
   iconSize,
   layout,
+  singleLineText,
   space,
   typography,
   type ThemeTokens,
 } from '@/theme/tokens';
+import { getLanguage, t as tr } from '@/i18n';
+import { commonWords } from '@/i18n/locales/common';
 
 interface CustomerOrderSummaryProps {
   order: Order;
@@ -61,9 +64,17 @@ const CustomerOrderSummary: React.FC<CustomerOrderSummaryProps> = ({ order }) =>
 
   // Relative time under 24 hours, then the date (style guide §12.3)
   const relative = formatRelativeTime(order.updated_at || order.created_at);
-  const timeAgo = relative === 'Just now' ? 'just now' : relative;
+  // "Just now" sits inside a sentence here: lower case where the language has it.
+  const justNow = commonWords(getLanguage()).justNow;
+  const timeAgo = relative === justNow ? justNow.toLowerCase() : relative;
   const updatedBy = order.updated_by_display_name || order.updated_by_name;
-  const savedText = `Saved ${timeAgo}${updatedBy ? ` · ${updatedBy}` : ''}`;
+  const savedOnly = tr('components.orderSummary.saved', { time: timeAgo });
+  const savedText = updatedBy
+    ? tr('components.orderSummary.savedBy', { time: timeAgo, name: updatedBy })
+    : savedOnly;
+  // Gujarati is too long for one line beside the counts: the time on one line and
+  // the name under it, so the line never ends in a cut-off separator.
+  const stacked = getLanguage() === 'gu' && Boolean(updatedBy);
   const itemsText = formatCount(activeItemCount, 'item');
   // Units differ per item, so the total stays in plain "units"
   const quantityText = formatCount(activeQuantity, 'unit');
@@ -77,9 +88,20 @@ const CustomerOrderSummary: React.FC<CustomerOrderSummaryProps> = ({ order }) =>
       {/* Left: Auto-save status */}
       <View style={styles.helperSection}>
         <Icon name="check-circle" size={iconSize.sm} color={t.status.positive.text} />
-        <Text style={styles.helperText} numberOfLines={1}>
-          {savedText}
-        </Text>
+        {stacked ? (
+          <View style={styles.helperLines}>
+            <Text style={styles.helperText} {...singleLineText()}>
+              {savedOnly}
+            </Text>
+            <Text style={styles.helperText} numberOfLines={1}>
+              {updatedBy}
+            </Text>
+          </View>
+        ) : (
+          <Text style={styles.helperText} numberOfLines={1} {...singleLineText()}>
+            {savedText}
+          </Text>
+        )}
       </View>
 
       {/* Right: Compact metrics - using active (non-fulfilled) counts */}
@@ -123,6 +145,9 @@ const makeStyles = (t: ThemeTokens) => ({
     gap: space.s6,
     flex: 1,
     marginRight: space.sm,
+  },
+  helperLines: {
+    flex: 1,
   },
   helperText: {
     ...typography.footnote,

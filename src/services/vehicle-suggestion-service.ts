@@ -5,6 +5,7 @@
 
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
 import { executeRPC, createErrorResponse } from '@/utils/serviceErrorHandler';
+import { t } from '@/i18n';
 
 export interface VehicleSuggestion {
   registration: string;
@@ -44,7 +45,7 @@ export async function getVehicleSuggestions(
     },
     {
       context: 'VehicleSuggestionService.getVehicleSuggestions',
-      errorMessage: 'Failed to fetch vehicle suggestions',
+      errorMessage: t('errors.dispatch.vehicleSuggestionsFailed'),
       unwrapNested: false,
       validateSuccess: false,
       transform: (data) => data?.suggestions ?? [],

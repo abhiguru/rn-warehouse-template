@@ -17,6 +17,7 @@ import { useForceUpdate } from '@/hooks/useForceUpdate';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, layout, radius, space, touchTarget, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
+import { t as tr } from '@/i18n';
 
 const ICON_CIRCLE = layout.avatar.lg + space.lg;
 
@@ -147,8 +148,6 @@ export function ForceUpdateModal() {
     return null;
   }
 
-  const storeName = Platform.OS === 'ios' ? 'App Store' : 'Play Store';
-
   return (
     <Modal
       visible={true}
@@ -164,20 +163,20 @@ export function ForceUpdateModal() {
           </View>
 
           <Text style={styles.title} accessibilityRole="header">
-            Update required
+            {tr('components.forceUpdate.title')}
           </Text>
 
           <Text style={styles.description}>
-            This version of the app is no longer supported. Update the app to keep using it.
+            {tr('components.forceUpdate.description')}
           </Text>
 
           <View style={styles.versionContainer}>
-            <View style={styles.versionRow} accessible accessibilityLabel={`Your version ${currentVersion}`}>
-              <Text style={styles.versionLabel}>Your version</Text>
+            <View style={styles.versionRow} accessible accessibilityLabel={tr('components.forceUpdate.yourVersionLabel', { version: currentVersion })}>
+              <Text style={styles.versionLabel}>{tr('components.forceUpdate.yourVersion')}</Text>
               <Text style={styles.versionValue}>{currentVersion}</Text>
             </View>
-            <View style={styles.versionRow} accessible accessibilityLabel={`Required version ${minimumVersion}`}>
-              <Text style={styles.versionLabel}>Required version</Text>
+            <View style={styles.versionRow} accessible accessibilityLabel={tr('components.forceUpdate.requiredVersionLabel', { version: minimumVersion })}>
+              <Text style={styles.versionLabel}>{tr('components.forceUpdate.requiredVersion')}</Text>
               <Text style={styles.versionValue}>{minimumVersion}</Text>
             </View>
           </View>
@@ -186,20 +185,20 @@ export function ForceUpdateModal() {
             onPress={openStore}
             style={({ pressed }) => [styles.updateButton, pressed && styles.updateButtonPressed]}
             accessibilityRole="button"
-            accessibilityLabel="Update app"
-            accessibilityHint={`Opens the ${storeName}`}
+            accessibilityLabel={tr('components.forceUpdate.updateApp')}
+            accessibilityHint={tr(Platform.OS === 'ios' ? 'components.forceUpdate.opensAppStore' : 'components.forceUpdate.opensPlayStore')}
           >
             <MaterialCommunityIcons
               name={Platform.OS === 'ios' ? 'apple' : 'google-play'}
               size={iconSize.md}
               color={t.brand.onFill}
             />
-            <Text style={styles.updateButtonLabel}>Update app</Text>
+            <Text style={styles.updateButtonLabel}>{tr('components.forceUpdate.updateApp')}</Text>
           </Pressable>
 
           <View style={styles.securityNotice}>
             <MaterialCommunityIcons name="shield-check-outline" size={iconSize.sm} color={t.status.positive.text} />
-            <Text style={styles.securityText}>This update includes important security improvements.</Text>
+            <Text style={styles.securityText}>{tr('components.forceUpdate.securityNotice')}</Text>
           </View>
         </View>
       </View>

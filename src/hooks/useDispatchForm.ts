@@ -42,6 +42,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { router } from 'expo-router';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
+import { useStore } from 'react-redux';
+import type { RootState } from '@/store';
 import {
   updateHeader,
   setDispatchId,
@@ -88,6 +90,9 @@ import {
 } from '@/features/dispatch/services/dispatchFormService';
 
 import { showAlert } from '@/utils/alert';
+import { t } from '@/i18n';
+import { serverText } from '@/utils/serverText';
+import { validationSummary } from '@/utils/validationSummary';
 /**
  * Module-level session ID that persists across all hook instances.
  * This allows cancellation to work when navigating between create/edit routes.
@@ -176,6 +181,7 @@ export function useDispatchForm({
   const dispatch = useAppDispatch();
   const { userProfile } = useAppSelector((state) => state.auth);
   const dispatchFormState = useAppSelector((state) => state.dispatchForm);
+  const store = useStore<RootState>();
 
   // Selectors
   const header = dispatchFormState.header;
@@ -240,7 +246,7 @@ export function useDispatchForm({
       } catch (error) {
         console.error('[useDispatchForm] Failed to generate dispatch number:', error);
         if (globalSessionId === currentSessionId) {
-          showAlert('Error', 'Failed to generate dispatch number');
+          showAlert(t('dispatch.wizard.errorTitle'), t('dispatch.wizard.numberFailed'));
         }
       } finally {
         setIsGeneratingNumber(false);
@@ -299,13 +305,13 @@ export function useDispatchForm({
         }));
       } else {
         if (globalSessionId === currentSessionId) {
-          showAlert('Error', result.error || 'Failed to load dispatch data');
+          showAlert(t('dispatch.wizard.errorTitle'), serverText(result.error, t('dispatch.wizard.loadFailed')));
         }
       }
     } catch (error) {
       console.error('[useDispatchForm] Failed to load dispatch:', error);
       if (globalSessionId === currentSessionId) {
-        showAlert('Error', 'Failed to load dispatch data');
+        showAlert(t('dispatch.wizard.errorTitle'), t('dispatch.wizard.loadFailed'));
       }
     } finally {
       dispatch(setIsLoading(false));
@@ -327,18 +333,30 @@ export function useDispatchForm({
     }));
   }, [dispatch]);
 
+  // The screens read the local copy of the errors, so a changed field has to be cleared there too.
+  const clearLocalErrors = useCallback((fields: string[]) => {
+    setLocalValidationErrors((prev) => {
+      if (!fields.some((field) => field in prev)) return prev;
+      const next = { ...prev };
+      fields.forEach((field) => { delete next[field]; });
+      return next;
+    });
+  }, []);
+
   // Header actions
   const updateHeaderField = useCallback((field: keyof DispatchHeaderData, value: unknown) => {
     dispatch(updateHeader({ [field]: value }));
     dispatch(clearFieldError(field));
-  }, [dispatch]);
+    clearLocalErrors([field]);
+  }, [dispatch, clearLocalErrors]);
 
   const updateHeaderFields = useCallback((updates: Partial<DispatchHeaderData>) => {
     dispatch(updateHeader(updates));
     Object.keys(updates).forEach((field) => {
       dispatch(clearFieldError(field));
     });
-  }, [dispatch]);
+    clearLocalErrors(Object.keys(updates));
+  }, [dispatch, clearLocalErrors]);
 
   /**
    * Handle dispatch number change with auto-navigation
@@ -472,6 +490,9 @@ export function useDispatchForm({
    * Validate a specific step
    */
   const validateCurrentStep = useCallback(async (step: number): Promise<{ isValid: boolean; errors: Record<string, string> }> => {
+    // Read the store, not the values from the last render: the items step saves the item being typed and
+    // asks for the next step in the same tap, and the saved item is not in this render yet.
+    const { header, items } = store.getState().dispatchForm;
     let result: { isValid: boolean; errors: Record<string, string> };
 
     console.log('[useDispatchForm] validateCurrentStep called for step:', step);
@@ -507,7 +528,7 @@ export function useDispatchForm({
           if (!dateValidation.isValid) {
             result = {
               isValid: false,
-              errors: { disp_date: dateValidation.error || 'Invalid dispatch date' },
+              errors: { disp_date: serverText(dateValidation.error, t('dispatch.validation.dispatchDateInvalid')) },
             };
           }
         }
@@ -527,7 +548,7 @@ export function useDispatchForm({
     }
 
     return result;
-  }, [header, items, dispatch]);
+  }, [store, dispatch]);
 
   const clearFieldValidationError = useCallback((field: string) => {
     setLocalValidationErrors((prev) => {
@@ -561,11 +582,9 @@ export function useDispatchForm({
       const validation = await validateCurrentStep(step);
       if (!validation.isValid) {
         const errorFields = Object.keys(validation.errors);
-        const errorMessage = errorFields.length > 0
-          ? `Please check: ${errorFields.join(', ')}`
-          : 'Please fill all required fields';
+        const errorMessage = validationSummary(validation.errors) || t('dispatch.validation.fillRequired');
         console.log(`[useDispatchForm] Navigation blocked - step ${step} validation failed:`, errorFields);
-        showAlert('Validation Error', errorMessage);
+        showAlert(t('dispatch.validation.title'), errorMessage);
         return false;
       }
     }
@@ -617,9 +636,8 @@ export function useDispatchForm({
     // Validate step 3
     const validation = await validateCurrentStep(3);
     if (!validation.isValid) {
-      const errorFields = Object.keys(validation.errors);
-      showAlert('Validation Error', `Please check: ${errorFields.join(', ')}`);
-      return { success: false, error: 'Validation failed' };
+      showAlert(t('dispatch.validation.title'), validationSummary(validation.errors) || t('dispatch.validation.fillRequired'));
+      return { success: false, error: t('dispatch.validation.failed') };
     }
 
     dispatch(setIsSaving(true));
@@ -643,13 +661,13 @@ export function useDispatchForm({
           sourceOrderCleared: result.source_order_cleared,
         };
       } else {
-        showAlert('Error', result.error || 'Failed to save dispatch');
+        showAlert(t('dispatch.wizard.errorTitle'), serverText(result.error, t('dispatch.wizard.saveFailed')));
         return { success: false, error: result.error };
       }
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      const errorMessage = error instanceof Error ? error.message : t('dispatch.wizard.unknownError');
       console.error('[useDispatchForm] Submit error:', error);
-      showAlert('Error', errorMessage);
+      showAlert(t('dispatch.wizard.errorTitle'), errorMessage);
       return { success: false, error: errorMessage };
     } finally {
       dispatch(setIsSaving(false));

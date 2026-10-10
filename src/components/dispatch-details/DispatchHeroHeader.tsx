@@ -13,6 +13,7 @@ import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { iconSize, layout, radius, space, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { formatCount, formatDate, formatNumber, toDate } from '@/utils/formatters';
+import { t as tr } from '@/i18n';
 
 // ============================================================================
 // TYPES - Using snake_case to match backend
@@ -100,7 +101,7 @@ export const DispatchHeroHeader: React.FC<DispatchHeroHeaderProps> = ({
 
   return (
     <View style={styles.surface}>
-      <Text style={styles.docType}>Dispatch</Text>
+      <Text style={styles.docType}>{tr('common.dispatch')}</Text>
       {!!disp_no && (
         <Text style={styles.number} accessibilityRole="header">
           {disp_no}
@@ -118,19 +119,19 @@ export const DispatchHeroHeader: React.FC<DispatchHeroHeaderProps> = ({
           <Icon name="cube-outline" size={iconSize.md} color={t.icon.secondary} />
           <View style={styles.statContent}>
             <Text style={styles.statValue}>{formatNumber(safeItems)}</Text>
-            <Text style={styles.statLabel}>{safeItems === 1 ? 'Item' : 'Items'}</Text>
+            <Text style={styles.statLabel}>{tr('dispatch.count.itemsLabel', { count: safeItems })}</Text>
           </View>
         </View>
 
         <View
           style={styles.statChip}
           accessible
-          accessibilityLabel={`${formatCount(safeQuantity, 'bag')} dispatched`}
+          accessibilityLabel={tr('dispatch.details.bagsDispatched', { bags: formatCount(safeQuantity, 'bag') })}
         >
           <Icon name="truck-delivery-outline" size={iconSize.md} color={t.icon.secondary} />
           <View style={styles.statContent}>
             <Text style={styles.statValue}>{formatNumber(safeQuantity)}</Text>
-            <Text style={styles.statLabel}>{safeQuantity === 1 ? 'Bag' : 'Bags'}</Text>
+            <Text style={styles.statLabel}>{tr('dispatch.count.bagsLabel', { count: safeQuantity })}</Text>
           </View>
         </View>
       </View>

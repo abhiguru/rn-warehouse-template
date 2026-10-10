@@ -19,6 +19,7 @@ import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { iconSize, layout, radius, space, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { createLogger } from '@/utils/logger';
+import { t as tr } from '@/i18n';
 
 const logger = createLogger('BiometricLockScreen');
 
@@ -128,7 +129,7 @@ export function BiometricLockScreen({
     return (
       <View style={[styles.loading, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
         <EdgeToEdgeStatusBar barStyle={t.statusBarStyle} />
-        <ActivityIndicator size="large" color={t.brand.tint} accessibilityLabel="Loading" />
+        <ActivityIndicator size="large" color={t.brand.tint} accessibilityLabel={tr('components.loading')} />
       </View>
     );
   }
@@ -147,28 +148,28 @@ export function BiometricLockScreen({
           </View>
 
           <Text style={styles.title} accessibilityRole="header">
-            Welcome back
+            {tr('components.biometric.welcomeBack')}
           </Text>
-          <Text style={styles.subtitle}>Use {biometricLabel} to unlock the app.</Text>
+          <Text style={styles.subtitle}>{tr('components.biometric.useToUnlock', { method: biometricLabel })}</Text>
 
           <View style={styles.buttons}>
             <Button
               onPress={handleBiometricAuth}
               loading={isAuthenticating}
-              loadingText="Unlocking"
+              loadingText={tr('components.biometric.unlocking')}
               size="fullWidth"
             >
-              {`Unlock with ${biometricLabel}`}
+              {tr('components.biometric.unlockWith', { method: biometricLabel })}
             </Button>
 
             <View style={styles.divider} accessibilityElementsHidden importantForAccessibility="no">
               <View style={styles.dividerLine} />
-              <Text style={styles.dividerText}>or</Text>
+              <Text style={styles.dividerText}>{tr('components.biometric.or')}</Text>
               <View style={styles.dividerLine} />
             </View>
 
             <Button type="tertiary" size="fullWidth" onPress={onUsePhoneLogin}>
-              Sign in with mobile number
+              {tr('components.biometric.signInWithMobile')}
             </Button>
           </View>
         </View>

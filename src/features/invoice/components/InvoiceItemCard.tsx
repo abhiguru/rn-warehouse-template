@@ -2,11 +2,12 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, TextInput, Pressable, Platform } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
-import { fontWeight, iconSize, layout, radius, space, touchTarget, typography } from '@/theme/tokens';
+import { fontWeight, iconSize, layout, radius, space, touchTarget, typography, trackedText } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { InvoiceItemData } from '@/types/invoice.types';
 import { formatInvoiceAmount } from '@/utils/invoiceCalculations';
 import { formatCount, formatNumber } from '@/utils/formatters';
+import { localizeDigits, normalizeDigits, t as tr } from '@/i18n';
 
 interface InvoiceItemCardProps {
   item: InvoiceItemData;
@@ -89,7 +90,7 @@ const makeStyles = (t: ThemeTokens) => ({
     ...typography.footnote,
     fontWeight: fontWeight.semibold,
     textTransform: 'uppercase' as const,
-    letterSpacing: 0.5,
+    letterSpacing: trackedText(0.5),
     color: t.text.secondary,
     marginBottom: space.sm,
   },
@@ -264,7 +265,9 @@ export const InvoiceItemCard: React.FC<InvoiceItemCardProps> = ({ item, onUpdate
   // Helper to check if a field is overridden
   const isOverridden = (field: string) => overriddenFields.includes(field);
 
-  const handleFieldChange = (field: string, text: string) => {
+  const handleFieldChange = (field: string, typed: string) => {
+    // Digits typed as ૦-૯ are read as 0-9.
+    const text = normalizeDigits(typed);
     const value = parseFloat(text);
     if (!isNaN(value) && value >= 0) {
       onUpdate(item.temp_id, field, value);
@@ -278,18 +281,18 @@ export const InvoiceItemCard: React.FC<InvoiceItemCardProps> = ({ item, onUpdate
   };
 
   const customBadge = (
-    <View style={styles.overrideBadge} accessible accessibilityLabel="Custom price for this item">
+    <View style={styles.overrideBadge} accessible accessibilityLabel={tr('invoice.itemCard.customA11y')}>
       <Icon name="pencil-outline" size={iconSize.sm} color={t.brand.tint} />
-      <Text style={styles.overrideBadgeText}>Custom</Text>
+      <Text style={styles.overrideBadgeText}>{tr('invoice.itemCard.custom')}</Text>
     </View>
   );
 
   const total = formatInvoiceAmount(item.item_total);
   const summaryLabel = [
     item.item_name,
-    `quantity ${formatNumber(item.qty)}`,
-    item.package_mark ? `mark ${item.package_mark}` : null,
-    item.rack ? `rack ${item.rack}` : null,
+    tr('invoice.itemCard.quantityA11y', { qty: formatNumber(item.qty) }),
+    item.package_mark ? tr('invoice.itemCard.markA11y', { mark: item.package_mark }) : null,
+    item.rack ? tr('invoice.itemCard.rackA11y', { rack: item.rack }) : null,
     total,
   ]
     .filter(Boolean)
@@ -303,7 +306,7 @@ export const InvoiceItemCard: React.FC<InvoiceItemCardProps> = ({ item, onUpdate
         onPress={toggleExpand}
         accessibilityRole="button"
         accessibilityLabel={summaryLabel}
-        accessibilityHint={isExpanded ? 'Hides the pricing' : 'Shows the pricing to edit'}
+        accessibilityHint={isExpanded ? tr('invoice.itemCard.hidesPricingHint') : tr('invoice.itemCard.showsPricingHint')}
         accessibilityState={{ expanded: isExpanded }}
       >
         <View style={styles.itemInfo}>
@@ -313,7 +316,7 @@ export const InvoiceItemCard: React.FC<InvoiceItemCardProps> = ({ item, onUpdate
           <View style={styles.metaRow}>
             <View style={styles.chip}>
               <Icon name="cube-outline" size={iconSize.sm} color={t.status.neutral.text} />
-              <Text style={styles.chipText}>Qty {formatNumber(item.qty)}</Text>
+              <Text style={styles.chipText}>{tr('invoice.lineItem.qty', { qty: formatNumber(item.qty) })}</Text>
             </View>
             {!!item.package_mark && (
               <View style={styles.chip}>
@@ -344,11 +347,11 @@ export const InvoiceItemCard: React.FC<InvoiceItemCardProps> = ({ item, onUpdate
       {isExpanded && (
         <View style={styles.expandedContent}>
           <View style={styles.inputSection}>
-            <Text style={styles.sectionTitle} accessibilityRole="header">Pricing</Text>
+            <Text style={styles.sectionTitle} accessibilityRole="header">{tr('invoice.itemCard.pricing')}</Text>
 
             {/* Duration - read only */}
             <View style={styles.inputGroup}>
-              <Text style={[styles.inputLabel, styles.readOnlyLabel]}>Duration</Text>
+              <Text style={[styles.inputLabel, styles.readOnlyLabel]}>{tr('invoice.label.duration')}</Text>
               <View style={styles.readOnlyField}>
                 <Text style={styles.readOnlyText}>
                   {formatCount(item.duration, 'month')}
@@ -358,7 +361,7 @@ export const InvoiceItemCard: React.FC<InvoiceItemCardProps> = ({ item, onUpdate
 
             {/* Number of days - read only */}
             <View style={styles.inputGroup}>
-              <Text style={[styles.inputLabel, styles.readOnlyLabel]}>Number of days</Text>
+              <Text style={[styles.inputLabel, styles.readOnlyLabel]}>{tr('invoice.itemCard.numberOfDays')}</Text>
               <View style={styles.readOnlyField}>
                 <Text style={styles.readOnlyText}>
                   {formatCount(item.no_of_days, 'day')}
@@ -370,7 +373,7 @@ export const InvoiceItemCard: React.FC<InvoiceItemCardProps> = ({ item, onUpdate
             <View style={styles.inputGroup}>
               <View style={styles.labelRow}>
                 <Text style={styles.inputLabel}>
-                  Storage charge (₹ per unit per month)<Text style={styles.required}> *</Text>
+                  {tr('invoice.itemCard.chargeLabel')}<Text style={styles.required}> *</Text>
                 </Text>
                 {isOverridden('charge') && customBadge}
               </View>
@@ -378,10 +381,10 @@ export const InvoiceItemCard: React.FC<InvoiceItemCardProps> = ({ item, onUpdate
                 <Text style={[styles.affix, styles.prefix]}>₹</Text>
                 <TextInput
                   style={styles.input}
-                  accessibilityLabel="Storage charge per unit per month"
-                  value={item.charge > 0 ? item.charge.toString() : ''}
+                  accessibilityLabel={tr('invoice.itemCard.chargeA11y')}
+                  value={item.charge > 0 ? localizeDigits(item.charge.toString()) : ''}
                   onChangeText={(text) => handleFieldChange('charge', text)}
-                  placeholder="0.00"
+                  placeholder={localizeDigits('0.00')}
                   keyboardType="decimal-pad"
                   placeholderTextColor={t.text.placeholder}
                 />
@@ -392,7 +395,7 @@ export const InvoiceItemCard: React.FC<InvoiceItemCardProps> = ({ item, onUpdate
             <View style={styles.inputGroup}>
               <View style={styles.labelRow}>
                 <Text style={styles.inputLabel}>
-                  Labour rate (₹ per unit)<Text style={styles.required}> *</Text>
+                  {tr('invoice.itemCard.labourRateLabel')}<Text style={styles.required}> *</Text>
                 </Text>
                 {isOverridden('labour_rate') && customBadge}
               </View>
@@ -400,10 +403,10 @@ export const InvoiceItemCard: React.FC<InvoiceItemCardProps> = ({ item, onUpdate
                 <Text style={[styles.affix, styles.prefix]}>₹</Text>
                 <TextInput
                   style={styles.input}
-                  accessibilityLabel="Labour rate per unit"
-                  value={item.labour_rate > 0 ? item.labour_rate.toString() : ''}
+                  accessibilityLabel={tr('invoice.itemCard.labourRateA11y')}
+                  value={item.labour_rate > 0 ? localizeDigits(item.labour_rate.toString()) : ''}
                   onChangeText={(text) => handleFieldChange('labour_rate', text)}
-                  placeholder="0.00"
+                  placeholder={localizeDigits('0.00')}
                   keyboardType="decimal-pad"
                   placeholderTextColor={t.text.placeholder}
                 />
@@ -414,17 +417,17 @@ export const InvoiceItemCard: React.FC<InvoiceItemCardProps> = ({ item, onUpdate
             <View style={styles.inputGroup}>
               <View style={styles.labelRow}>
                 <Text style={styles.inputLabel}>
-                  Tax (%)<Text style={styles.required}> *</Text>
+                  {tr('invoice.itemCard.taxLabel')}<Text style={styles.required}> *</Text>
                 </Text>
                 {isOverridden('tax') && customBadge}
               </View>
               <View style={[styles.field, isOverridden('tax') && styles.fieldOverridden]}>
                 <TextInput
                   style={styles.input}
-                  accessibilityLabel="Tax percent"
-                  value={item.tax > 0 ? item.tax.toString() : ''}
+                  accessibilityLabel={tr('invoice.itemCard.taxA11y')}
+                  value={item.tax > 0 ? localizeDigits(item.tax.toString()) : ''}
                   onChangeText={(text) => handleFieldChange('tax', text)}
-                  placeholder="0"
+                  placeholder={localizeDigits('0')}
                   keyboardType="decimal-pad"
                   placeholderTextColor={t.text.placeholder}
                 />
@@ -435,12 +438,12 @@ export const InvoiceItemCard: React.FC<InvoiceItemCardProps> = ({ item, onUpdate
 
           {/* Calculated amounts */}
           <View style={styles.calculationSection}>
-            <Text style={styles.sectionTitle} accessibilityRole="header">Calculated amounts</Text>
-            <AmountRow styles={styles} label="Storage amount" value={formatInvoiceAmount(item.amount)} />
-            <AmountRow styles={styles} label="Labour amount" value={formatInvoiceAmount(item.labour_amount)} />
-            <AmountRow styles={styles} label="Tax" value={formatInvoiceAmount(item.tax_amount)} />
-            <View style={styles.totalRow} accessible accessibilityLabel={`Item total, ${total}`}>
-              <Text style={styles.totalLabel}>Item total</Text>
+            <Text style={styles.sectionTitle} accessibilityRole="header">{tr('invoice.itemCard.calculatedAmounts')}</Text>
+            <AmountRow styles={styles} label={tr('invoice.itemCard.storageAmount')} value={formatInvoiceAmount(item.amount)} />
+            <AmountRow styles={styles} label={tr('invoice.itemCard.labourAmount')} value={formatInvoiceAmount(item.labour_amount)} />
+            <AmountRow styles={styles} label={tr('invoice.label.tax')} value={formatInvoiceAmount(item.tax_amount)} />
+            <View style={styles.totalRow} accessible accessibilityLabel={`${tr('invoice.itemCard.itemTotal')}, ${total}`}>
+              <Text style={styles.totalLabel}>{tr('invoice.itemCard.itemTotal')}</Text>
               <Text style={styles.totalAmount}>{total}</Text>
             </View>
           </View>
@@ -458,23 +461,23 @@ export const InvoiceItemCard: React.FC<InvoiceItemCardProps> = ({ item, onUpdate
               color={t.brand.tint}
             />
             <Text style={styles.formulaToggleText}>
-              {showFormula ? 'Hide calculation' : 'Show calculation'}
+              {showFormula ? tr('invoice.itemCard.hideCalculation') : tr('invoice.itemCard.showCalculation')}
             </Text>
           </Pressable>
 
           {showFormula && (
             <View style={styles.formulaSection}>
               <Text style={styles.formulaText}>
-                Storage = Qty × Charge × Duration{'\n'}
-                = {item.qty} × {formatInvoiceAmount(item.charge)} × {item.duration} = {formatInvoiceAmount(item.amount)}
+                {tr('invoice.itemCard.formulaStorage')}{'\n'}
+                = {localizeDigits(String(item.qty))} × {formatInvoiceAmount(item.charge)} × {localizeDigits(String(item.duration))} = {formatInvoiceAmount(item.amount)}
               </Text>
               <Text style={styles.formulaText}>
-                Labour = Qty × Labour rate{'\n'}
-                = {item.qty} × {formatInvoiceAmount(item.labour_rate)} = {formatInvoiceAmount(item.labour_amount)}
+                {tr('invoice.itemCard.formulaLabour')}{'\n'}
+                = {localizeDigits(String(item.qty))} × {formatInvoiceAmount(item.labour_rate)} = {formatInvoiceAmount(item.labour_amount)}
               </Text>
               <Text style={styles.formulaText}>
-                Tax = (Storage + Labour) × Tax %{'\n'}
-                = {formatInvoiceAmount(item.amount + item.labour_amount)} × {item.tax}% = {formatInvoiceAmount(item.tax_amount)}
+                {tr('invoice.itemCard.formulaTax')}{'\n'}
+                = {formatInvoiceAmount(item.amount + item.labour_amount)} × {localizeDigits(String(item.tax))}% = {formatInvoiceAmount(item.tax_amount)}
               </Text>
             </View>
           )}

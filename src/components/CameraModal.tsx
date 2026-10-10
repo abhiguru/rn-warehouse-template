@@ -27,6 +27,7 @@ import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, layout, motion, radius, space, touchTarget, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { createLogger } from '@/utils/logger';
+import { t as tr } from '@/i18n';
 
 const logger = createLogger('CameraModal');
 
@@ -118,10 +119,18 @@ export const CameraModal: React.FC<CameraModalProps> = ({
 
     const getFlashLabel = () => {
         switch (flashMode) {
-            case 'on': return 'On';
-            case 'off': return 'Off';
-            case 'auto': return 'Auto';
-            default: return 'On';
+            case 'on': return tr('common.on');
+            case 'off': return tr('common.off');
+            case 'auto': return tr('components.camera.flashAuto');
+            default: return tr('common.on');
+        }
+    };
+
+    const getFlashAccessibilityLabel = () => {
+        switch (flashMode) {
+            case 'off': return tr('components.camera.flashOffLabel');
+            case 'auto': return tr('components.camera.flashAutoLabel');
+            default: return tr('components.camera.flashOnLabel');
         }
     };
 
@@ -132,7 +141,7 @@ export const CameraModal: React.FC<CameraModalProps> = ({
                 <View
                     style={styles.loadingContainer}
                     accessible
-                    accessibilityLabel="Opening camera"
+                    accessibilityLabel={tr('components.camera.opening')}
                     accessibilityState={{ busy: true }}
                 >
                     <ActivityIndicator size="large" color={t.overlay.onImage} />
@@ -149,26 +158,26 @@ export const CameraModal: React.FC<CameraModalProps> = ({
                 <SafeAreaView style={styles.permissionContainer}>
                     <Icon name="camera-off-outline" size={iconSize.hero} color={t.icon.secondary} />
                     <Text style={styles.permissionTitle} accessibilityRole="header">
-                        Allow camera access
+                        {tr('components.camera.permissionTitle')}
                     </Text>
                     <Text style={styles.permissionText}>
-                        The app uses the camera to take photos of goods and documents for your records.
+                        {tr('components.camera.permissionText')}
                     </Text>
                     <Pressable
                         style={({ pressed }) => [styles.permissionButton, pressed && styles.permissionButtonPressed]}
                         onPress={requestPermission}
                         accessibilityRole="button"
-                        accessibilityLabel="Allow camera"
+                        accessibilityLabel={tr('components.camera.allow')}
                     >
-                        <Text style={styles.permissionButtonText}>Allow camera</Text>
+                        <Text style={styles.permissionButtonText}>{tr('components.camera.allow')}</Text>
                     </Pressable>
                     <Pressable
                         style={({ pressed }) => [styles.cancelButton, pressed && styles.cancelButtonPressed]}
                         onPress={handleClose}
                         accessibilityRole="button"
-                        accessibilityLabel="Cancel"
+                        accessibilityLabel={tr('common.cancel')}
                     >
-                        <Text style={styles.cancelButtonText}>Cancel</Text>
+                        <Text style={styles.cancelButtonText}>{tr('common.cancel')}</Text>
                     </Pressable>
                 </SafeAreaView>
             </Modal>
@@ -187,7 +196,7 @@ export const CameraModal: React.FC<CameraModalProps> = ({
                         contentFit="contain"
                         cachePolicy="memory"
                         transition={motion.fast}
-                        accessibilityLabel="Photo preview"
+                        accessibilityLabel={tr('components.camera.preview')}
                     />
 
                     {/* Preview Controls */}
@@ -196,20 +205,20 @@ export const CameraModal: React.FC<CameraModalProps> = ({
                             style={({ pressed }) => [styles.retakeButton, pressed && styles.overlayButtonPressed]}
                             onPress={handleRetake}
                             accessibilityRole="button"
-                            accessibilityLabel="Retake photo"
+                            accessibilityLabel={tr('components.camera.retakePhoto')}
                         >
                             <Icon name="camera-retake-outline" size={iconSize.lg} color={t.overlay.onImage} />
-                            <Text style={styles.retakeButtonText}>Retake</Text>
+                            <Text style={styles.retakeButtonText}>{tr('components.camera.retake')}</Text>
                         </Pressable>
 
                         <Pressable
                             style={({ pressed }) => [styles.usePhotoButton, pressed && styles.usePhotoButtonPressed]}
                             onPress={handleUsePhoto}
                             accessibilityRole="button"
-                            accessibilityLabel="Use photo"
+                            accessibilityLabel={tr('components.camera.usePhoto')}
                         >
                             <Icon name="check" size={iconSize.lg} color={t.brand.onFill} />
-                            <Text style={styles.usePhotoButtonText}>Use photo</Text>
+                            <Text style={styles.usePhotoButtonText}>{tr('components.camera.usePhoto')}</Text>
                         </Pressable>
                     </View>
                 </View>
@@ -233,7 +242,7 @@ export const CameraModal: React.FC<CameraModalProps> = ({
                             style={({ pressed }) => [styles.roundButton, pressed && styles.overlayButtonPressed]}
                             onPress={handleClose}
                             accessibilityRole="button"
-                            accessibilityLabel="Close camera"
+                            accessibilityLabel={tr('components.camera.close')}
                         >
                             <Icon name="close" size={iconSize.lg} color={t.overlay.onImage} />
                         </Pressable>
@@ -242,8 +251,8 @@ export const CameraModal: React.FC<CameraModalProps> = ({
                             style={({ pressed }) => [styles.flashButton, pressed && styles.overlayButtonPressed]}
                             onPress={toggleFlash}
                             accessibilityRole="button"
-                            accessibilityLabel={`Flash ${getFlashLabel().toLowerCase()}`}
-                            accessibilityHint="Changes the flash mode"
+                            accessibilityLabel={getFlashAccessibilityLabel()}
+                            accessibilityHint={tr('components.camera.flashHint')}
                         >
                             <Icon name={getFlashIcon()} size={iconSize.lg} color={t.overlay.onImage} />
                             <Text style={styles.flashLabel}>{getFlashLabel()}</Text>
@@ -253,7 +262,7 @@ export const CameraModal: React.FC<CameraModalProps> = ({
                             style={({ pressed }) => [styles.roundButton, pressed && styles.overlayButtonPressed]}
                             onPress={toggleCameraFacing}
                             accessibilityRole="button"
-                            accessibilityLabel="Switch camera"
+                            accessibilityLabel={tr('components.camera.switchCamera')}
                         >
                             <Icon name="camera-flip-outline" size={iconSize.lg} color={t.overlay.onImage} />
                         </Pressable>
@@ -270,7 +279,7 @@ export const CameraModal: React.FC<CameraModalProps> = ({
                                 onPress={handleCapture}
                                 disabled={isCapturing}
                                 accessibilityRole="button"
-                                accessibilityLabel="Take photo"
+                                accessibilityLabel={tr('components.camera.takePhoto')}
                                 accessibilityState={{ disabled: isCapturing, busy: isCapturing }}
                             >
                                 {isCapturing && <ActivityIndicator size="small" color={t.overlay.imageBackdrop} />}

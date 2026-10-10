@@ -27,9 +27,11 @@ import {
   space,
   touchTarget,
   typography,
+  trackedText,
 } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { formatCount } from '@/utils/formatters';
+import { t as tr } from '@/i18n';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const NUM_COLUMNS = 3;
@@ -70,7 +72,7 @@ const makeStyles = (t: ThemeTokens) => ({
     ...typography.footnote,
     fontWeight: fontWeight.semibold,
     textTransform: 'uppercase' as const,
-    letterSpacing: 0.5,
+    letterSpacing: trackedText(0.5),
     color: t.text.secondary,
     flex: 1,
   },
@@ -164,14 +166,14 @@ export const DispatchImagesTab: React.FC<DispatchImagesTabProps> = ({
     return (
       <View style={styles.emptyContainer}>
         <Icon name="image-outline" size={iconSize.hero} color={t.icon.secondary} />
-        <Text style={styles.emptyTitle}>No photos yet</Text>
+        <Text style={styles.emptyTitle}>{tr('dispatch.photos.emptyTitle')}</Text>
         <Text style={styles.emptySubtitle}>
-          {onUpload ? 'Add a photo of the loaded vehicle or goods.' : 'Photos of this dispatch appear here.'}
+          {onUpload ? tr('dispatch.photos.emptyCanAdd') : tr('dispatch.photos.emptyReadOnly')}
         </Text>
         {onUpload && (
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Add dispatch photo"
+            accessibilityLabel={tr('dispatch.photos.addLabel')}
             accessibilityState={{ disabled: isUploading, busy: isUploading }}
             style={({ pressed }) => [styles.uploadButton, pressed && styles.uploadButtonPressed]}
             onPress={onUpload}
@@ -182,7 +184,7 @@ export const DispatchImagesTab: React.FC<DispatchImagesTabProps> = ({
             ) : (
               <Icon name="camera-plus-outline" size={iconSize.md} color={t.brand.onFill} />
             )}
-            <Text style={styles.uploadButtonText}>{isUploading ? 'Uploading…' : 'Add photo'}</Text>
+            <Text style={styles.uploadButtonText}>{isUploading ? tr('dispatch.photos.uploading') : tr('dispatch.photos.add')}</Text>
           </Pressable>
         )}
       </View>
@@ -194,8 +196,8 @@ export const DispatchImagesTab: React.FC<DispatchImagesTabProps> = ({
       style={({ pressed }) => [styles.imageWrapper, pressed && styles.imageWrapperPressed]}
       onPress={() => onImagePress?.(images, index)}
       accessibilityRole="imagebutton"
-      accessibilityLabel={`Dispatch photo ${index + 1} of ${images.length}`}
-      accessibilityHint="Opens the photo full screen"
+      accessibilityLabel={tr('dispatch.photos.photoOf', { index: index + 1, total: images.length })}
+      accessibilityHint={tr('dispatch.photos.opensFullScreen')}
     >
       <Image
         source={{ uri: item.image_url }}
@@ -219,7 +221,7 @@ export const DispatchImagesTab: React.FC<DispatchImagesTabProps> = ({
         {onUpload && (
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Add dispatch photo"
+            accessibilityLabel={tr('dispatch.photos.addLabel')}
             accessibilityState={{ disabled: isUploading, busy: isUploading }}
             style={({ pressed }) => [styles.addIconButton, pressed && styles.addIconButtonPressed]}
             onPress={onUpload}
@@ -230,7 +232,7 @@ export const DispatchImagesTab: React.FC<DispatchImagesTabProps> = ({
             ) : (
               <Icon name="camera-plus-outline" size={iconSize.md} color={t.brand.tint} />
             )}
-            <Text style={styles.addIconButtonText}>{isUploading ? 'Uploading…' : 'Add photo'}</Text>
+            <Text style={styles.addIconButtonText}>{isUploading ? tr('dispatch.photos.uploading') : tr('dispatch.photos.add')}</Text>
           </Pressable>
         )}
       </View>

@@ -7,7 +7,7 @@ import {
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
-import { fontWeight, iconSize, radius, space, touchTarget, typography } from '@/theme/tokens';
+import { fontWeight, iconSize, radius, space, touchTarget, typography, trackedText } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { triggerSuccess, triggerError, triggerWarning } from '@/hooks/useHaptics';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -31,7 +31,8 @@ import { validateStep3 } from '@/features/grn/schemas/grnValidation';
 import { ImagePreviewGrid } from '@/features/grn/components/ImagePreviewGrid';
 import { ImageOverlay } from '@/components/ImageOverlay';
 import { GRNStepIndicator } from '@/components/GRNStepIndicator';
-import { GRN_STEPS, STEP_NUMBERS, getCompletedSteps } from '@/constants/grnSteps';
+import { GRN_STEP_COUNT, STEP_NUMBERS, getCompletedSteps } from '@/constants/grnSteps';
+import { grnSteps } from '@/features/grn/utils/grnStepLabels';
 import { PrintRangeDialog } from '@/components/PrintRangeDialog';
 import { printGRNRange } from '@/services/print-service';
 import { DocumentSuccessDialog, DocumentData } from '@/components/DocumentSuccessDialog';
@@ -43,17 +44,19 @@ import { showAlert } from '@/utils/alert';
 import WizardBottomBar from '@/components/WizardBottomBar';
 import { formatCount, formatDate, formatNumber, formatWeight } from '@/utils/formatters';
 import { StatusTag } from '@/components/ui';
+import { t as tr, formatIdentifier } from '@/i18n';
+import { serverText } from '@/utils/serverText';
 
 /** "9 Oct 2026" (§12.3); today when no date is set yet. */
 function formatReviewDate(value: string | undefined): string {
   return formatDate(value || new Date());
 }
 
-const STOCK_PROTECTED_TITLE = 'Some items are already dispatched';
-const STOCK_PROTECTED_MESSAGE =
-  "You can't change the quantity or stock of dispatched items. You can still change other details.";
-const SAVE_FAILED_TITLE = "Couldn't save the GRN";
-const CONNECTION_HINT = 'Check your connection and try again.';
+// Alert texts as functions, so they follow the app's language (docs/I18N.md rule 2).
+const stockProtectedTitle = () => tr('grn.header.dispatchedWarningTitle');
+const stockProtectedMessage = () => tr('grn.review.stockProtectedMessage');
+const saveFailedTitle = () => tr('grn.review.saveFailedTitle');
+const connectionHint = () => tr('common.checkConnection');
 
 type GrnReviewStepProps = {
   mode: 'create' | 'edit';
@@ -98,12 +101,12 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
 
   const handleCancel = () => {
     showAlert(
-      isCreateMode ? 'Discard this GRN?' : 'Discard changes to this GRN?',
-      `${formatCount(items.length, 'item')} ${isCreateMode ? 'and the GRN details' : 'and your changes'} will be lost.`,
+      isCreateMode ? tr('grn.form.discardTitle') : tr('grn.form.discardChangesTitle'),
+      tr(isCreateMode ? 'grn.review.discardCreateMessage' : 'grn.review.discardEditMessage', { count: items.length }),
       [
-        { text: 'Keep editing', style: 'cancel' },
+        { text: tr('common.keepEditing'), style: 'cancel' },
         {
-          text: isCreateMode ? 'Discard GRN' : 'Discard changes',
+          text: isCreateMode ? tr('grn.form.discardGrn') : tr('grn.form.discardChanges'),
           style: 'destructive',
           onPress: () => {
             resetFormState();
@@ -154,21 +157,21 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
       const errorMessages: string[] = [];
       Object.entries(validation.errors).forEach(([field, message]) => {
         if (field.startsWith('header.')) {
-          errorMessages.push(`• ${message} (GRN details)`);
+          errorMessages.push(tr('grn.review.errorInDetails', { message }));
         } else if (field.startsWith('items')) {
           const match = field.match(/items\[(\d+)\]\.(.+)/);
           if (match) {
             const itemIndex = parseInt(match[1], 10) + 1;
-            errorMessages.push(`• ${message} (item ${itemIndex})`);
+            errorMessages.push(tr('grn.review.errorInItem', { message, number: itemIndex }));
           } else {
-            errorMessages.push(`• ${message} (items)`);
+            errorMessages.push(tr('grn.review.errorInItems', { message }));
           }
         } else {
           errorMessages.push(`• ${message}`);
         }
       });
 
-      showAlert('Check the GRN details', errorMessages.join('\n') || 'Go back and fix the highlighted fields.');
+      showAlert(tr('grn.form.checkDetailsTitle'), errorMessages.join('\n') || tr('grn.review.fixHighlighted'));
       return false;
     }
 
@@ -183,8 +186,8 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
 
     if (!header.gr_images || header.gr_images.length === 0) {
       showAlert(
-        'Add a photo of the GRN',
-        `Attach a photo of the GRN book entry for GRN ${header.gr_no}.`
+        tr('grn.review.photoRequiredTitle'),
+        tr('grn.review.photoRequiredMessage', { number: formatIdentifier(header.gr_no) })
       );
       return;
     }
@@ -226,19 +229,19 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
         setDocumentNumber(grNo);
         setSuccessDialogData({
           documentNo: grNo,
-          customerName: header.customer_name || 'Unknown',
+          customerName: header.customer_name || tr('common.unknown'),
           date: formatReviewDate(header.date),
           itemCount: items.length,
         });
         setShowSuccessDialog(true);
       } else {
         triggerError();
-        showAlert(SAVE_FAILED_TITLE, result.error || CONNECTION_HINT);
+        showAlert(saveFailedTitle(), serverText(result.error, connectionHint()));
       }
     } catch (error) {
       triggerError();
       console.error('[GrnReviewStep] Submission error:', error);
-      showAlert(SAVE_FAILED_TITLE, CONNECTION_HINT);
+      showAlert(saveFailedTitle(), connectionHint());
     } finally {
       setIsSubmitting(false);
     }
@@ -246,7 +249,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
 
   const performUpdate = async () => {
     if (!grnId) {
-      showAlert(SAVE_FAILED_TITLE, 'Go back to the GRN list and open this GRN again.');
+      showAlert(saveFailedTitle(), tr('grn.form.reopenMessage'));
       return;
     }
 
@@ -288,10 +291,10 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
         if (skippedItems && skippedItems.length > 0) {
           triggerWarning();
           const skippedText = skippedItems.map((item) => `• ${item.item_name}: ${item.reason}`).join('\n');
-          setSnackbarMessage(`GRN saved. Some quantities were not changed because those items are already dispatched:\n${skippedText}`);
+          setSnackbarMessage(tr('grn.review.savedWithSkipped', { items: skippedText }));
         } else {
           triggerSuccess();
-          setSnackbarMessage(header.gr_no ? `GRN ${header.gr_no} saved.` : 'GRN saved.');
+          setSnackbarMessage(header.gr_no ? tr('grn.review.savedWithNumber', { number: formatIdentifier(header.gr_no) }) : tr('grn.review.saved'));
         }
         setSnackbarVisible(true);
 
@@ -299,18 +302,18 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
         setDocumentNumber(grNo);
         setSuccessDialogData({
           documentNo: grNo,
-          customerName: header.customer_name || 'Unknown',
+          customerName: header.customer_name || tr('common.unknown'),
           date: formatReviewDate(header.date),
           itemCount: items.length,
         });
         setShowSuccessDialog(true);
       } else {
         triggerError();
-        const errorMessage = result.error || CONNECTION_HINT;
+        const errorMessage = serverText(result.error, connectionHint());
         if (errorMessage.includes('Stock Protection') || errorMessage.includes('STOCK_PROTECTED') || errorMessage.includes('dispatches exist')) {
-          showAlert(STOCK_PROTECTED_TITLE, STOCK_PROTECTED_MESSAGE);
+          showAlert(stockProtectedTitle(), stockProtectedMessage());
         } else {
-          showAlert(SAVE_FAILED_TITLE, errorMessage);
+          showAlert(saveFailedTitle(), errorMessage);
         }
       }
     } catch (error) {
@@ -318,9 +321,9 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
       console.error('[GrnReviewStep] Update error:', error);
       const errorMessage = error instanceof Error ? error.message : '';
       if (errorMessage.includes('Stock Protection') || errorMessage.includes('STOCK_PROTECTED') || errorMessage.includes('dispatches exist')) {
-        showAlert(STOCK_PROTECTED_TITLE, STOCK_PROTECTED_MESSAGE);
+        showAlert(stockProtectedTitle(), stockProtectedMessage());
       } else {
-        showAlert(SAVE_FAILED_TITLE, CONNECTION_HINT);
+        showAlert(saveFailedTitle(), connectionHint());
       }
     } finally {
       dispatch(setIsSaving(false));
@@ -333,19 +336,19 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
     try {
       const pdfResult = await generateGRNPDF(documentNumber);
       if (!pdfResult.success || !pdfResult.pdfUrl) {
-        setSnackbarMessage("Couldn't create the PDF. Try again.");
+        setSnackbarMessage(tr('grn.review.pdfCreateFailed'));
         setSnackbarVisible(true);
         return;
       }
 
       const shareResult = await downloadAndSharePDF(pdfResult.pdfUrl, `GRN_${documentNumber}.pdf`);
       if (!shareResult.success) {
-        setSnackbarMessage("Couldn't share the PDF. Try again.");
+        setSnackbarMessage(tr('grn.review.pdfShareFailed'));
         setSnackbarVisible(true);
       }
     } catch (error) {
       console.error('[GrnReviewStep] Share PDF error:', error);
-      setSnackbarMessage("Couldn't share the PDF. Try again.");
+      setSnackbarMessage(tr('grn.review.pdfShareFailed'));
       setSnackbarVisible(true);
     } finally {
       setIsShareLoading(false);
@@ -381,7 +384,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
 
   const imageUploadGrnId = isCreateMode ? (grnId || tempGrnId) ?? undefined : grnId ?? undefined;
   const isSubmittingState = isCreateMode ? isSubmitting : isSaving;
-  const ctaLabel = isCreateMode ? 'Create GRN' : 'Save GRN';
+  const ctaLabel = isCreateMode ? tr('grn.review.createGrn') : tr('grn.review.saveGrn');
 
   // ============================================================================
   // FIORI BUILDING BLOCKS (plain render helpers, so rows are not remounted)
@@ -401,11 +404,11 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
           onPress={options.onEdit}
           style={({ pressed }) => [styles.editLink, pressed && styles.editLinkPressed]}
           accessibilityRole="button"
-          accessibilityLabel={options.editLabel ?? `Edit ${title.toLowerCase()}`}
+          accessibilityLabel={options.editLabel ?? tr('common.edit')}
           hitSlop={{ top: space.xs, bottom: space.xs }}
         >
           <Icon name="pencil-outline" size={iconSize.sm} color={t.brand.tint} />
-          <Text style={styles.editLinkText}>Edit</Text>
+          <Text style={styles.editLinkText}>{tr('common.edit')}</Text>
         </Pressable>
       ) : null}
     </View>
@@ -430,15 +433,15 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
     const packageMark = item.package_mark?.trim();
     const imageCount = item.trl_images?.length || 0;
     const a11yParts = [
-      `Item ${index + 1}`,
+      tr('grn.item.itemNumber', { number: index + 1 }),
       item.item_name,
       item.packaging,
-      `quantity ${formatNumber(qty)}`,
-      hasWeight ? `${formatWeight(weight)} each` : undefined,
-      rack ? `rack ${rack}` : undefined,
-      packageMark ? `mark ${packageMark}` : undefined,
+      tr('grn.item.a11yQuantity', { quantity: formatNumber(qty) }),
+      hasWeight ? tr('grn.review.weightEach', { weight: formatWeight(weight) }) : undefined,
+      rack ? tr('grn.item.a11yRack', { rack }) : undefined,
+      packageMark ? tr('grn.item.a11yMark', { mark: packageMark }) : undefined,
       imageCount > 0 ? formatCount(imageCount, 'photo') : undefined,
-      isProtected ? 'already dispatched, quantity locked' : undefined,
+      isProtected ? tr('grn.review.a11yDispatchedLocked') : undefined,
     ].filter(Boolean);
 
     return (
@@ -449,7 +452,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
         accessibilityLabel={a11yParts.join(', ')}
       >
         <View style={styles.objectCellAvatar}>
-          <Text style={styles.objectCellAvatarText}>{index + 1}</Text>
+          <Text style={styles.objectCellAvatarText}>{formatNumber(index + 1)}</Text>
         </View>
 
         <View style={styles.objectCellContent}>
@@ -465,8 +468,8 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
 
           <View style={styles.objectCellFootnote}>
             {hasWeight && <StatusTag status="neutral" label={formatWeight(weight)} icon="weight-kilogram" />}
-            {rack ? <StatusTag status="neutral" label={`Rack ${rack}`} icon="view-grid-outline" /> : null}
-            {packageMark ? <StatusTag status="neutral" label={`Mark ${packageMark}`} icon="label-outline" /> : null}
+            {rack ? <StatusTag status="neutral" label={tr('grn.item.rackWithValue', { rack })} icon="view-grid-outline" /> : null}
+            {packageMark ? <StatusTag status="neutral" label={tr('grn.item.markWithValue', { mark: packageMark })} icon="label-outline" /> : null}
             {imageCount > 0 && (
               <StatusTag status="neutral" label={formatCount(imageCount, 'photo')} icon="camera-outline" />
             )}
@@ -475,9 +478,9 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
 
         <View style={styles.objectCellStatus}>
           <Text style={styles.qtyValue}>{formatNumber(qty)}</Text>
-          <Text style={styles.qtyLabel}>Qty</Text>
+          <Text style={styles.qtyLabel}>{tr('grn.item.qtyShort')}</Text>
           {isProtected && (
-            <StatusTag status="critical" label="Quantity locked" icon="lock-outline" />
+            <StatusTag status="critical" label={tr('grn.item.quantityLocked')} icon="lock-outline" />
           )}
         </View>
       </View>
@@ -501,7 +504,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
   return (
     <View style={styles.container}>
       <GRNStepIndicator
-        steps={GRN_STEPS}
+        steps={grnSteps()}
         currentStep={STEP_NUMBERS.REVIEW}
         completedSteps={getCompletedSteps(STEP_NUMBERS.REVIEW)}
         onCancel={handleCancel}
@@ -517,26 +520,26 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
           showsVerticalScrollIndicator={false}
         >
           {/* GRN details */}
-          {renderSectionHeader('GRN details', { onEdit: handleNavigateToHeader, editLabel: 'Edit GRN details' })}
+          {renderSectionHeader(tr('grn.steps.details'), { onEdit: handleNavigateToHeader, editLabel: tr('grn.review.editDetails') })}
           <View style={styles.card}>
             <View style={styles.cardBody}>
-              {renderKeyValue('GRN number', header.gr_no || 'Not set', true)}
-              {header.registration ? renderKeyValue('Vehicle registration', header.registration) : null}
-              {renderKeyValue('Date', formatReviewDate(header.date))}
-              {renderKeyValue('Customer', header.customer_name || 'Not selected')}
-              {renderKeyValue('Sender', header.sender_name || 'Not selected')}
-              {renderKeyValue('Supervisor', header.supervisor_name || 'Not selected')}
-              {renderKeyValue('Pricing mode', header.pricing_mode === 'ONE_TIME' ? 'One time' : 'Monthly')}
+              {renderKeyValue(tr('common.grnNumber'), header.gr_no || tr('common.notSet'), true)}
+              {header.registration ? renderKeyValue(tr('grn.header.vehicleRegistration'), header.registration) : null}
+              {renderKeyValue(tr('common.date'), formatReviewDate(header.date))}
+              {renderKeyValue(tr('common.customer'), header.customer_name || tr('grn.review.notSelected'))}
+              {renderKeyValue(tr('grn.header.sender'), header.sender_name || tr('grn.review.notSelected'))}
+              {renderKeyValue(tr('grn.header.supervisor'), header.supervisor_name || tr('grn.review.notSelected'))}
+              {renderKeyValue(tr('grn.header.pricingMode'), header.pricing_mode === 'ONE_TIME' ? tr('grn.header.oneTime') : tr('grn.header.monthly'))}
               {header.leon
                 ? renderKeyValue(
-                    'Leon',
-                    <StatusTag status="positive" label="On" />
+                    tr('grn.header.leon'),
+                    <StatusTag status="positive" label={tr('common.on')} />
                   )
                 : null}
 
               {header.note ? (
                 <View style={styles.notesSection}>
-                  <Text style={styles.notesLabel}>Notes</Text>
+                  <Text style={styles.notesLabel}>{tr('common.notes')}</Text>
                   <Text style={styles.notesValue}>{header.note}</Text>
                 </View>
               ) : null}
@@ -544,11 +547,11 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
           </View>
 
           {/* GRN photos */}
-          {renderSectionHeader('GRN photos', { count: grImages.length > 0 ? grImages.length : undefined })}
+          {renderSectionHeader(tr('grn.review.photosTitle'), { count: grImages.length > 0 ? grImages.length : undefined })}
           <View style={styles.card}>
             <View style={styles.cardBody}>
               <Text style={styles.imagesSectionSubtitle}>
-                Attach a photo of the GRN book entry. At least one photo is required.
+                {tr('grn.review.photosHint')}
               </Text>
 
               <ImageUploadButton
@@ -598,13 +601,13 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
           </View>
 
           {/* Items */}
-          {renderSectionHeader('Items', { count: items.length, onEdit: handlePrevious, editLabel: 'Edit items' })}
+          {renderSectionHeader(tr('common.items'), { count: items.length, onEdit: handlePrevious, editLabel: tr('grn.review.editItems') })}
           <View style={styles.card}>
             {items.length === 0 ? (
               <View style={styles.emptyState}>
                 <Icon name="package-variant-closed" size={iconSize.hero} color={t.icon.secondary} />
-                <Text style={styles.emptyStateTitle}>No items yet</Text>
-                <Text style={styles.emptyStateSubtitle}>Go back to the Items step to add items to this GRN.</Text>
+                <Text style={styles.emptyStateTitle}>{tr('grn.review.emptyTitle')}</Text>
+                <Text style={styles.emptyStateSubtitle}>{tr('grn.review.emptySubtitle')}</Text>
               </View>
             ) : (
               <View>
@@ -616,11 +619,11 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
           </View>
 
           {/* Summary */}
-          {renderSectionHeader('Summary')}
+          {renderSectionHeader(tr('grn.review.summary'))}
           <View style={styles.card}>
             <View style={styles.summaryGrid}>
-              {renderSummaryKPI('format-list-numbered', 'Total items', totalItems)}
-              {renderSummaryKPI('counter', 'Total quantity', totalQty)}
+              {renderSummaryKPI('format-list-numbered', tr('grn.review.totalItems'), totalItems)}
+              {renderSummaryKPI('counter', tr('grn.review.totalQuantity'), totalQty)}
             </View>
           </View>
         </ScrollView>
@@ -628,22 +631,26 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
         {/* Bottom action bar */}
         <WizardBottomBar
           currentStep={STEP_NUMBERS.REVIEW}
-          totalSteps={GRN_STEPS.length}
+          totalSteps={GRN_STEP_COUNT}
           onPrevious={handlePrevious}
           onNext={handleSubmit}
           nextLabel={ctaLabel}
           isLoading={isSubmittingState}
-          loadingLabel={isCreateMode ? 'Creating GRN…' : 'Saving GRN…'}
+          loadingLabel={isCreateMode ? tr('grn.review.creating') : tr('grn.review.saving')}
         />
       </View>
 
       {/* Confirm Submit Dialog */}
       <ConfirmDialog
         visible={showConfirmDialog}
-        title={isCreateMode ? 'Create this GRN?' : 'Save changes to this GRN?'}
-        message={`${isCreateMode ? 'Create' : 'Save'} ${header.gr_no ? `GRN ${header.gr_no}` : 'this GRN'} with ${formatCount(totalItems, 'item')}?`}
-        confirmText={isCreateMode ? 'Create GRN' : 'Save GRN'}
-        cancelText="Cancel"
+        title={isCreateMode ? tr('grn.review.confirmCreateTitle') : tr('grn.review.confirmSaveTitle')}
+        message={
+          header.gr_no
+            ? tr(isCreateMode ? 'grn.review.confirmCreateNumbered' : 'grn.review.confirmSaveNumbered', { number: formatIdentifier(header.gr_no), count: totalItems })
+            : tr(isCreateMode ? 'grn.review.confirmCreate' : 'grn.review.confirmSave', { count: totalItems })
+        }
+        confirmText={ctaLabel}
+        cancelText={tr('common.cancel')}
         onConfirm={handleConfirmSubmit}
         onCancel={() => setShowConfirmDialog(false)}
         variant="default"
@@ -652,7 +659,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
 
       <DocumentSuccessDialog
         isVisible={showSuccessDialog}
-        documentType="GRN"
+        entity="grn"
         documentData={successDialogData}
         onCreateAnother={handleCreateAnother}
         onViewList={handleViewList}
@@ -674,9 +681,9 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
         onConfirm={async (start, end) => {
           const result = await printGRNRange(start, end);
           if (result.success) {
-            setSnackbarMessage('Print job sent to the printer.');
+            setSnackbarMessage(tr('grn.review.printSent'));
           } else {
-            setSnackbarMessage("Couldn't send the print job. Check the printer and try again.");
+            setSnackbarMessage(tr('grn.review.printFailed'));
           }
           setSnackbarVisible(true);
           setShowPrintDialog(false);
@@ -685,10 +692,10 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
             router.replace('/grn');
           }
         }}
-        title="Print GRN"
+        title={tr('grn.details.printTitle')}
         defaultNumber={documentNumber || header.gr_no || ''}
-        label="GRN number"
-        placeholder="For example Z0797"
+        entity="grn"
+        placeholder={tr('grn.form.forExample', { example: 'Z0797' })}
       />
 
       <Snackbar
@@ -740,7 +747,7 @@ const makeStyles = (t: ThemeTokens) => ({
   sectionHeaderText: {
     ...typography.footnote,
     fontWeight: fontWeight.semibold,
-    letterSpacing: 0.5,
+    letterSpacing: trackedText(0.5),
     color: t.text.secondary,
     flex: 1,
   },

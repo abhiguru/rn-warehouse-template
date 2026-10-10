@@ -11,6 +11,7 @@ import { Modal, Pressable, ScrollView, Text, View, type AlertButton } from 'reac
 import { useThemedStyles } from '@/hooks/useTheme';
 import { fontWeight, layout, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 import { registerAlertHost, type AlertRequest } from '@/utils/alert';
+import { t as tr } from '@/i18n';
 
 type Role = 'primary' | 'secondary' | 'destructive';
 
@@ -124,7 +125,7 @@ export function AlertHost() {
           style={styles.scrim}
           onPress={cancel}
           accessibilityRole="button"
-          accessibilityLabel="Close dialog"
+          accessibilityLabel={tr('components.alert.closeDialog')}
         />
         <View style={styles.dialog} accessibilityViewIsModal accessibilityRole="alert">
           <ScrollView bounces={false}>
@@ -136,7 +137,7 @@ export function AlertHost() {
           <View style={stacked ? styles.buttonsStack : styles.buttonsRow}>
             {ordered.map((button, index) => {
               const role = roleOf(button, current.buttons.indexOf(button), current.buttons);
-              const label = button.text ?? 'OK';
+              const label = button.text ?? tr('common.ok');
               return (
                 <Pressable
                   key={`${label}-${index}`}

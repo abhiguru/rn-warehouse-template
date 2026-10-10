@@ -1,23 +1,8 @@
-import { StepConfig } from '@/components/StepIndicator';
-
 /**
- * Configuration for GRN creation steps
- * Used by StepIndicator and navigation components
+ * The GRN wizard: how many steps it has and their numbers.
+ * The step names are text: `grnSteps()` in src/features/grn/utils/grnStepLabels.ts.
  */
-export const GRN_STEPS: StepConfig[] = [
-  {
-    label: 'GRN details',
-    shortLabel: 'Details',
-  },
-  {
-    label: 'Items',
-    shortLabel: 'Items',
-  },
-  {
-    label: 'Review',
-    shortLabel: 'Review',
-  },
-];
+export const GRN_STEP_COUNT = 3;
 
 /**
  * Step numbers for easy reference
@@ -27,17 +12,6 @@ export const STEP_NUMBERS = {
   ITEMS: 2,
   REVIEW: 3,
 } as const;
-
-/**
- * Get next step label for navigation button
- */
-export function getNextStepLabel(currentStep: number): string {
-  if (currentStep >= GRN_STEPS.length) {
-    return 'Create GRN';
-  }
-  const nextStep = GRN_STEPS[currentStep];
-  return `Next: ${nextStep.shortLabel}`;
-}
 
 /**
  * Get completed steps array for StepIndicator

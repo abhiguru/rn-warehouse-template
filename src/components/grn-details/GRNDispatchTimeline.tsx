@@ -26,7 +26,8 @@ import {
   typography,
 } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
-import { formatCount, formatDate, toDate, formatMonth } from '@/utils/formatters';
+import { formatCount, formatDate, formatNumber, toDate, formatMonth } from '@/utils/formatters';
+import { t as tr, formatIdentifier } from '@/i18n';
 
 export interface DispatchRecord {
   id: string;
@@ -291,11 +292,11 @@ export const GRNDispatchTimeline: React.FC<GRNDispatchTimelineProps> = ({
         <View style={styles.emptyIconContainer}>
           <Icon name="truck-delivery-outline" size={iconSize.hero} color={t.icon.secondary} />
         </View>
-        <Text style={styles.emptyTitle}>No dispatches yet</Text>
+        <Text style={styles.emptyTitle}>{tr('grn.dispatches.emptyTitle')}</Text>
         <Text style={styles.emptySubtitle}>
           {itemName
-            ? `Dispatches of ${itemName} appear here.`
-            : 'Dispatches from this GRN appear here.'}
+            ? tr('grn.dispatches.emptyForItem', { item: itemName })
+            : tr('grn.dispatches.emptyForGrn')}
         </Text>
       </View>
     );
@@ -327,7 +328,7 @@ export const GRNDispatchTimeline: React.FC<GRNDispatchTimelineProps> = ({
                 <Text style={styles.monthText} accessibilityRole="header">{group.month}</Text>
                 <View style={styles.monthBadge}>
                   <Text style={styles.monthBadgeText} maxFontSizeMultiplier={1.6}>
-                    {group.dispatches.length}
+                    {formatNumber(group.dispatches.length)}
                   </Text>
                 </View>
               </View>
@@ -361,8 +362,8 @@ export const GRNDispatchTimeline: React.FC<GRNDispatchTimelineProps> = ({
                         style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
                         onPress={() => handleDispatchPress(dispatch.dispatchId)}
                         accessibilityRole="button"
-                        accessibilityLabel={`Dispatch ${dispatch.dispNo}, ${bagsLabel(dispatch.dispQuantity)}, ${dateLabel}`}
-                        accessibilityHint="Opens the dispatch"
+                        accessibilityLabel={tr('grn.dispatches.rowLabel', { number: formatIdentifier(dispatch.dispNo), bags: bagsLabel(dispatch.dispQuantity), date: dateLabel })}
+                        accessibilityHint={tr('grn.dispatches.openHint')}
                       >
                         <View style={styles.cardContent}>
                           {/* Left: Icon and Info */}
@@ -379,9 +380,9 @@ export const GRNDispatchTimeline: React.FC<GRNDispatchTimelineProps> = ({
                           {/* Right: Quantity and Arrow */}
                           <View style={styles.cardRight}>
                             <View style={styles.quantityBadge}>
-                              <Text style={styles.quantityText}>{dispatch.dispQuantity}</Text>
+                              <Text style={styles.quantityText}>{formatNumber(dispatch.dispQuantity)}</Text>
                               <Text style={styles.quantityLabel}>
-                                {dispatch.dispQuantity === 1 ? 'bag' : 'bags'}
+                                {tr('grn.dispatches.bagUnit', { count: dispatch.dispQuantity })}
                               </Text>
                             </View>
                             <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />

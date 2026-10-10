@@ -1,23 +1,8 @@
-import { StepConfig } from '@/components/StepIndicator';
-
 /**
- * Configuration for Dispatch creation steps
- * Used by StepIndicator and navigation components
+ * The dispatch wizard: how many steps it has and their numbers.
+ * The step names are text: `dispatchSteps()` in src/components/DispatchStepIndicator.tsx.
  */
-export const DISPATCH_STEPS: StepConfig[] = [
-  {
-    label: 'Dispatch details',
-    shortLabel: 'Details',
-  },
-  {
-    label: 'Items',
-    shortLabel: 'Items',
-  },
-  {
-    label: 'Review',
-    shortLabel: 'Review',
-  },
-];
+export const DISPATCH_STEP_COUNT = 3;
 
 /**
  * Step numbers for easy reference
@@ -27,17 +12,6 @@ export const DISPATCH_STEP_NUMBERS = {
   ITEMS: 2,
   REVIEW: 3,
 } as const;
-
-/**
- * Get next step label for navigation button
- */
-export function getDispatchNextStepLabel(currentStep: number): string {
-  if (currentStep >= DISPATCH_STEPS.length) {
-    return 'Create dispatch';
-  }
-  const nextStep = DISPATCH_STEPS[currentStep];
-  return `Next: ${nextStep.shortLabel}`;
-}
 
 /**
  * Get completed steps array for StepIndicator

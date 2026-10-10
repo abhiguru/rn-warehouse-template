@@ -12,6 +12,7 @@ import { fontWeight, space, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { formatInvoiceAmount } from '@/utils/invoiceCalculations';
 import { formatCount, formatDate, formatNumber, toDate } from '@/utils/formatters';
+import { t, formatIdentifier } from '@/i18n';
 
 // ============================================================================
 // TYPES
@@ -88,29 +89,29 @@ export const InvoiceHeroHeader: React.FC<InvoiceHeroHeaderProps> = ({
   const facts = [
     {
       key: 'items',
-      label: 'Items',
+      label: t('common.items'),
       value: formatNumber(safeItems),
       a11y: formatCount(safeItems, 'item'),
     },
     {
       key: 'total',
-      label: 'Total',
+      label: t('common.total'),
       value: formatInvoiceAmount(safeAmount),
-      a11y: `Total ${formatInvoiceAmount(safeAmount)}`,
+      a11y: t('invoice.details.totalA11y', { amount: formatInvoiceAmount(safeAmount) }),
       emphasized: true,
     },
     {
       key: 'tax',
-      label: 'Tax',
+      label: t('invoice.label.tax'),
       value: formatInvoiceAmount(safeTax),
-      a11y: `Tax ${formatInvoiceAmount(safeTax)}`,
+      a11y: t('invoice.details.taxA11y', { amount: formatInvoiceAmount(safeTax) }),
     },
   ];
 
   return (
     <View style={styles.container}>
-      <View accessible accessibilityRole="header" accessibilityLabel={`Invoice ${invoice_number}${subtitle ? `, ${subtitle}` : ''}`}>
-        <Text style={styles.docType}>Invoice</Text>
+      <View accessible accessibilityRole="header" accessibilityLabel={`${t('invoice.details.titleNumber', { number: formatIdentifier(invoice_number) })}${subtitle ? `, ${subtitle}` : ''}`}>
+        <Text style={styles.docType}>{t('common.invoice')}</Text>
         <Text style={styles.number}>{invoice_number}</Text>
         {subtitle ? <Text style={styles.subtitle} numberOfLines={2}>{subtitle}</Text> : null}
       </View>

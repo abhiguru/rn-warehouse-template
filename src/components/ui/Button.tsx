@@ -25,7 +25,7 @@ import {
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
-import { fontWeight, iconSize, radius, space, touchTarget, typography } from '@/theme/tokens';
+import { fontWeight, iconSize, radius, space, touchTarget, typography, singleLineText } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 
 // ============================================================================
@@ -270,7 +270,7 @@ export function Button({
 
         {/* Label (hidden for icon-only buttons) */}
         {!iconOnly && (
-          <Text style={labelStyle} numberOfLines={2}>
+          <Text style={labelStyle} numberOfLines={2} {...singleLineText(0.8)}>
             {label}
           </Text>
         )}

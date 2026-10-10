@@ -20,16 +20,20 @@ import {
   touchTarget,
   typography,
   type ThemeTokens,
+  trackedText,
 } from '@/theme/tokens';
 import type { ReportDefinition } from '@/types/report.types';
 import { Avatar } from '@/components/ui';
+import { t as translate } from '@/i18n';
 
-// Define all available reports
+// Define all available reports. Titles and descriptions are getters, so they
+// follow the app's language (docs/I18N.md rule 2). The titles are the report
+// screens' own titles (`reports.titles`), so the hub and the screen say the same.
 const CUSTOMER_REPORTS: ReportDefinition[] = [
   {
     id: 'customer-activity',
-    title: 'Customer activity',
-    description: 'Consolidated view of all customer operations',
+    get title() { return translate('reports.titles.customerActivity'); },
+    get description() { return translate('nav.reports.descriptions.customerActivity'); },
     icon: 'account-group-outline',
     route: '/reports/customer-activity',
     staffOnly: false,
@@ -37,8 +41,8 @@ const CUSTOMER_REPORTS: ReportDefinition[] = [
   },
   {
     id: 'stock-summary',
-    title: 'Stock summary',
-    description: 'View current inventory at a glance',
+    get title() { return translate('reports.titles.stockSummary'); },
+    get description() { return translate('nav.reports.descriptions.stockSummary'); },
     icon: 'warehouse',
     route: '/reports/stock-summary',
     staffOnly: false,
@@ -46,8 +50,8 @@ const CUSTOMER_REPORTS: ReportDefinition[] = [
   },
   {
     id: 'item-stock-summary',
-    title: 'Item stock summary',
-    description: 'View all items aggregated across customers',
+    get title() { return translate('reports.titles.itemStockSummary'); },
+    get description() { return translate('nav.reports.descriptions.itemStockSummary'); },
     icon: 'cube-outline',
     route: '/reports/item-stock-summary',
     staffOnly: false,
@@ -55,8 +59,8 @@ const CUSTOMER_REPORTS: ReportDefinition[] = [
   },
   {
     id: 'dispatch-activity',
-    title: 'Dispatch activity',
-    description: 'Recent dispatches and outbound goods',
+    get title() { return translate('reports.titles.dispatchActivity'); },
+    get description() { return translate('nav.reports.descriptions.dispatchActivity'); },
     icon: 'truck-delivery-outline',
     route: '/reports/dispatch-activity',
     staffOnly: false,
@@ -64,8 +68,8 @@ const CUSTOMER_REPORTS: ReportDefinition[] = [
   },
   {
     id: 'grn-activity',
-    title: 'GRN activity',
-    description: 'Recent goods received with invoice status',
+    get title() { return translate('reports.titles.grnActivity'); },
+    get description() { return translate('nav.reports.descriptions.grnActivity'); },
     icon: 'package-down',
     route: '/reports/grn-activity',
     staffOnly: false,
@@ -73,8 +77,8 @@ const CUSTOMER_REPORTS: ReportDefinition[] = [
   },
   {
     id: 'invoice-history',
-    title: 'Invoice history',
-    description: 'Billing history with payment status',
+    get title() { return translate('reports.titles.invoiceHistory'); },
+    get description() { return translate('nav.reports.descriptions.invoiceHistory'); },
     icon: 'file-document-outline',
     route: '/reports/invoice-history',
     staffOnly: false,
@@ -82,8 +86,8 @@ const CUSTOMER_REPORTS: ReportDefinition[] = [
   },
   {
     id: 'stock-aging',
-    title: 'Stock aging',
-    description: 'Analyse how long stock has been stored',
+    get title() { return translate('reports.titles.stockAging'); },
+    get description() { return translate('nav.reports.descriptions.stockAging'); },
     icon: 'calendar-clock',
     route: '/reports/stock-aging',
     staffOnly: false,
@@ -94,8 +98,8 @@ const CUSTOMER_REPORTS: ReportDefinition[] = [
 const STAFF_REPORTS: ReportDefinition[] = [
   {
     id: 'operations-dashboard',
-    title: 'Operations dashboard',
-    description: 'Daily KPIs and activity overview',
+    get title() { return translate('reports.titles.operationsDashboard'); },
+    get description() { return translate('nav.reports.descriptions.operationsDashboard'); },
     icon: 'view-dashboard-outline',
     route: '/reports/operations-dashboard',
     staffOnly: true,
@@ -160,7 +164,7 @@ const makeStyles = (t: ThemeTokens) =>
       ...typography.footnote,
       fontWeight: fontWeight.semibold,
       textTransform: 'uppercase',
-      letterSpacing: 0.5,
+      letterSpacing: trackedText(0.5),
       color: t.text.secondary,
       marginBottom: space.sm,
       marginLeft: space.xs,
@@ -216,7 +220,7 @@ const ReportCard: React.FC<ReportCardProps> = ({ report, onPress, styles, t }) =
   <Pressable
     style={({ pressed }) => [styles.reportCard, pressed && styles.reportCardPressed]}
     onPress={onPress}
-    accessibilityLabel={`${report.title}. ${report.description}`}
+    accessibilityLabel={translate('nav.reports.cardLabel', { title: report.title, description: report.description })}
     accessibilityRole="button"
   >
     <View style={styles.reportIconContainer}>
@@ -292,17 +296,17 @@ export default function ReportsScreen() {
         <View style={styles.headerRow}>
           <View style={styles.headerTitleContainer}>
             <Text style={styles.headerTitle} accessibilityRole="header">
-              Reports
+              {translate('nav.reports.title')}
             </Text>
             <Text style={styles.headerSubtitle}>
-              {isStaff ? 'View operations and customer reports' : 'View your inventory reports'}
+              {isStaff ? translate('nav.reports.subtitleStaff') : translate('nav.reports.subtitleCustomer')}
             </Text>
           </View>
           <Pressable
             onPress={() => router.push('/settings')}
             style={({ pressed }) => [styles.profileButton, pressed && styles.profileButtonPressed]}
             accessibilityRole="button"
-            accessibilityLabel="Profile and settings"
+            accessibilityLabel={translate('nav.reports.profileAndSettings')}
           >
             <Avatar name={userProfile?.name} id={userProfile?.id} size="sm" />
           </Pressable>
@@ -316,7 +320,7 @@ export default function ReportsScreen() {
         showsVerticalScrollIndicator={false}
       >
         <ReportSection
-          title="Inventory reports"
+          title={translate('nav.reports.inventorySection')}
           reports={customerReports}
           onReportPress={handleReportPress}
           styles={styles}
@@ -325,7 +329,7 @@ export default function ReportsScreen() {
 
         {isStaff && (
           <ReportSection
-            title="Operations reports"
+            title={translate('nav.reports.operationsSection')}
             reports={staffReports}
             onReportPress={handleReportPress}
             styles={styles}

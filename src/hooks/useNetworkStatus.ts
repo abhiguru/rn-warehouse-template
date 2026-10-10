@@ -9,6 +9,8 @@
 
 import { useState, useEffect } from 'react';
 import NetInfo, { NetInfoState } from '@react-native-community/netinfo';
+import { t } from '@/i18n';
+import { AppError } from '@/utils/appError';
 
 export interface NetworkStatus {
   isConnected: boolean;
@@ -100,11 +102,11 @@ export async function ensureNetworkConnection(): Promise<void> {
   const state = await NetInfo.fetch();
 
   if (!state.isConnected) {
-    throw new Error('No internet connection. Please check your network and try again.');
+    throw new AppError('NETWORK', t('errors.network.noInternet'));
   }
 
   if (state.isConnected && state.isInternetReachable === false) {
-    throw new Error('Internet is not reachable. Please check your network and try again.');
+    throw new AppError('NETWORK', t('errors.network.notReachable'));
   }
 }
 

@@ -36,9 +36,8 @@ import {
 import { SavedInvoiceData } from '@/types/invoice.types';
 import { useRoleBasedAccess } from '@/hooks/useRoleBasedAccess';
 import { discountNeedsReason, formatInvoiceAmount } from '@/utils/invoiceCalculations';
-import { InvoiceStepIndicator } from '@/components/InvoiceStepIndicator';
+import { InvoiceStepIndicator, invoiceSteps } from '@/components/InvoiceStepIndicator';
 import {
-  INVOICE_STEPS,
   STEP_NUMBERS,
   getCompletedSteps,
   formatInvoiceDate,
@@ -46,7 +45,9 @@ import {
 } from '@/constants/invoiceSteps';
 
 import { showAlert } from '@/utils/alert';
-import { formatNumber } from '@/utils/formatters';
+import { t as tr, formatIdentifier } from '@/i18n';
+import { formatNumber, formatFinancialYear } from '@/utils/formatters';
+import { serverText } from '@/utils/serverText';
 export default function InvoiceEditStep3() {
   const dispatch = useAppDispatch();
   const styles = useThemedStyles(makeInvoiceWizardStyles);
@@ -88,39 +89,39 @@ export default function InvoiceEditStep3() {
   const handleSubmit = async () => {
     // Final validation check
     if (items.length === 0) {
-      showAlert('No items to invoice', 'Go back to the details step and select a GRN that has dispatched items.');
+      showAlert(tr('invoice.form.noItemsTitle'), tr('invoice.review.noItemsMessage'));
       return;
     }
 
     if (!header.gr_id || !header.customer_id) {
-      showAlert('Select a GRN', 'Go back to the details step and select the GRN for this invoice.');
+      showAlert(tr('invoice.review.selectGrnTitle'), tr('invoice.review.selectGrnMessage'));
       return;
     }
 
     if (!invoiceId) {
-      showAlert("Couldn't find the invoice", 'Open the invoice again from the list.');
+      showAlert(tr('invoice.review.notFoundTitle'), tr('invoice.review.notFoundMessage'));
       return;
     }
 
     if (reasonRequired) {
-      showAlert('Enter a discount reason', 'Enter the reason for this discount change before updating the invoice.');
+      showAlert(tr('invoice.review.discountReasonTitle'), tr('invoice.review.discountReasonUpdateMessage'));
       return;
     }
 
     // Confirm submission
     showAlert(
-      `Update invoice ${header.inv_no}?`,
-      `${header.customer_name}\nTotal ${formatInvoiceAmount(header.total)}`,
+      tr('invoice.review.updateTitle', { number: formatIdentifier(header.inv_no) }),
+      tr('invoice.review.confirmMessage', { customer: header.customer_name, total: formatInvoiceAmount(header.total) }),
       [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Update invoice', style: 'default', onPress: submitInvoiceUpdate },
+        { text: tr('common.cancel'), style: 'cancel' },
+        { text: tr('invoice.review.updateInvoice'), style: 'default', onPress: submitInvoiceUpdate },
       ]
     );
   };
 
   const submitInvoiceUpdate = async () => {
     if (!invoiceId) {
-      showAlert("Couldn't find the invoice", 'Open the invoice again from the list.');
+      showAlert(tr('invoice.review.notFoundTitle'), tr('invoice.review.notFoundMessage'));
       return;
     }
 
@@ -147,11 +148,11 @@ export default function InvoiceEditStep3() {
         setShowSuccessDialog(true);
       } else {
         console.error('[InvoiceEditStep3] Failed to update invoice:', response.message);
-        showAlert("Couldn't update the invoice", response.message || 'Check your connection and try again.');
+        showAlert(tr('invoice.review.updateFailedTitle'), serverText(response.message, tr('common.checkConnection')));
       }
     } catch (error: any) {
       console.error('[InvoiceEditStep3] Error updating invoice:', error);
-      showAlert("Couldn't update the invoice", 'Check your connection and try again.');
+      showAlert(tr('invoice.review.updateFailedTitle'), tr('common.checkConnection'));
     } finally {
       dispatch(setIsSaving(false));
     }
@@ -193,7 +194,7 @@ export default function InvoiceEditStep3() {
         finYearNum
       );
       if (!pdfResult.success || !pdfResult.pdfUrl) {
-        setSnackbarMessage("Couldn't create the PDF. Try again.");
+        setSnackbarMessage(tr('invoice.review.pdfCreateFailed'));
         setSnackbarVisible(true);
         return;
       }
@@ -204,12 +205,12 @@ export default function InvoiceEditStep3() {
         `Invoice_${savedInvoiceData.invoice_no}_FY${header.inv_fin_year}.pdf`
       );
       if (!shareResult.success) {
-        setSnackbarMessage("Couldn't share the PDF. Try again.");
+        setSnackbarMessage(tr('invoice.review.pdfShareFailed'));
         setSnackbarVisible(true);
       }
     } catch (error) {
       console.error('[InvoiceEditStep3] Share PDF error:', error);
-      setSnackbarMessage("Couldn't share the PDF. Try again.");
+      setSnackbarMessage(tr('invoice.review.pdfShareFailed'));
       setSnackbarVisible(true);
     } finally {
       setIsShareLoading(false);
@@ -246,7 +247,7 @@ export default function InvoiceEditStep3() {
   return (
     <View style={styles.container}>
       <InvoiceStepIndicator
-        steps={INVOICE_STEPS}
+        steps={invoiceSteps()}
         currentStep={STEP_NUMBERS.REVIEW}
         completedSteps={getCompletedSteps(STEP_NUMBERS.REVIEW)}
         onCancel={handleCancel}
@@ -267,41 +268,41 @@ export default function InvoiceEditStep3() {
         <View>
           <View style={styles.sectionHeaderRow}>
             <Text style={[styles.sectionHeader, styles.sectionHeaderInRow]} accessibilityRole="header">
-              Invoice details
+              {tr('invoice.review.invoiceDetails')}
             </Text>
             <Pressable
               onPress={() => handleStepPress(STEP_NUMBERS.HEADER)}
               style={styles.editLink}
               accessibilityRole="link"
-              accessibilityLabel="Edit invoice details"
+              accessibilityLabel={tr('invoice.review.editDetailsA11y')}
             >
-              <Text style={styles.secondaryButtonText}>Edit</Text>
+              <Text style={styles.secondaryButtonText}>{tr('common.edit')}</Text>
             </Pressable>
           </View>
           <View style={styles.card}>
             <View style={styles.kvRowStacked}>
-              <Text style={styles.kvKey}>Customer</Text>
+              <Text style={styles.kvKey}>{tr('common.customer')}</Text>
               <Text style={styles.kvValueStacked}>{header.customer_name}</Text>
             </View>
             <View style={[styles.kvRow, styles.kvDivider]}>
-              <Text style={styles.kvKey}>Invoice number</Text>
+              <Text style={styles.kvKey}>{tr('common.invoiceNumber')}</Text>
               <Text style={[styles.kvValue, styles.numeric]}>{header.inv_no}</Text>
             </View>
             <View style={[styles.kvRow, styles.kvDivider]}>
-              <Text style={styles.kvKey}>Invoice date</Text>
+              <Text style={styles.kvKey}>{tr('invoice.form.invoiceDate')}</Text>
               <Text style={styles.kvValue}>{formatInvoiceDate(header.inv_date)}</Text>
             </View>
             <View style={[styles.kvRow, styles.kvDivider]}>
-              <Text style={styles.kvKey}>Financial year</Text>
-              <Text style={[styles.kvValue, styles.numeric]}>{header.inv_fin_year}</Text>
+              <Text style={styles.kvKey}>{tr('invoice.label.financialYear')}</Text>
+              <Text style={[styles.kvValue, styles.numeric]}>{formatFinancialYear(header.inv_fin_year)}</Text>
             </View>
             <View style={[styles.kvRow, styles.kvDivider]}>
-              <Text style={styles.kvKey}>GRN</Text>
+              <Text style={styles.kvKey}>{tr('common.grn')}</Text>
               <Text style={styles.kvValue}>{header.gr_no}</Text>
             </View>
             <View style={[styles.kvRow, styles.kvDivider]}>
-              <Text style={styles.kvKey}>One-time charge</Text>
-              <Text style={styles.kvValue}>{header.one_time_charge ? 'Yes' : 'No'}</Text>
+              <Text style={styles.kvKey}>{tr('invoice.label.oneTimeCharge')}</Text>
+              <Text style={styles.kvValue}>{header.one_time_charge ? tr('common.yes') : tr('common.no')}</Text>
             </View>
           </View>
         </View>
@@ -310,24 +311,24 @@ export default function InvoiceEditStep3() {
         <View>
           <View style={styles.sectionHeaderRow}>
             <Text style={[styles.sectionHeader, styles.sectionHeaderInRow]} accessibilityRole="header">
-              Items
+              {tr('common.items')}
             </Text>
             <Pressable
               onPress={() => handleStepPress(STEP_NUMBERS.ITEMS)}
               style={styles.editLink}
               accessibilityRole="link"
-              accessibilityLabel="Edit items"
+              accessibilityLabel={tr('invoice.review.editItemsA11y')}
             >
-              <Text style={styles.secondaryButtonText}>Edit</Text>
+              <Text style={styles.secondaryButtonText}>{tr('common.edit')}</Text>
             </Pressable>
           </View>
           <View style={styles.card}>
             <View style={styles.kvRow}>
-              <Text style={styles.kvKey}>Quantity received on the GRN</Text>
+              <Text style={styles.kvKey}>{tr('invoice.review.qtyReceived')}</Text>
               <Text style={[styles.kvValue, styles.numeric]}>{formatNumber(totalGRQty)}</Text>
             </View>
             <View style={[styles.kvRow, styles.kvDivider]}>
-              <Text style={styles.kvKey}>Quantity dispatched</Text>
+              <Text style={styles.kvKey}>{tr('invoice.review.qtyDispatched')}</Text>
               <Text style={[styles.kvValue, styles.numeric]}>{formatNumber(totalDispatchQty)}</Text>
             </View>
           </View>
@@ -350,28 +351,28 @@ export default function InvoiceEditStep3() {
           onPress={handleBack}
           disabled={isSaving}
           accessibilityRole="button"
-          accessibilityLabel="Back to items"
+          accessibilityLabel={tr('invoice.review.backToItems')}
           accessibilityState={{ disabled: isSaving }}
         >
           <Icon name="chevron-left" size={iconSize.md} color={t.brand.tint} />
-          <Text style={styles.secondaryButtonText}>Back</Text>
+          <Text style={styles.secondaryButtonText}>{tr('common.back')}</Text>
         </Pressable>
         <Pressable
           style={({ pressed }) => [styles.button, styles.primaryButton, pressed && styles.primaryButtonPressed]}
           onPress={isSaving ? undefined : handleSubmit}
           accessibilityRole="button"
-          accessibilityLabel={isSaving ? 'Saving invoice' : 'Update invoice'}
+          accessibilityLabel={isSaving ? tr('invoice.review.savingA11y') : tr('invoice.review.updateInvoice')}
           accessibilityState={{ busy: isSaving }}
         >
           {isSaving ? (
             <>
               <ActivityIndicator size="small" color={t.brand.onFill} />
-              <Text style={styles.primaryButtonText}>Saving…</Text>
+              <Text style={styles.primaryButtonText}>{tr('common.saving')}</Text>
             </>
           ) : (
             <>
               <Icon name="check" size={iconSize.md} color={t.brand.onFill} />
-              <Text style={styles.primaryButtonText}>Update invoice</Text>
+              <Text style={styles.primaryButtonText}>{tr('invoice.review.updateInvoice')}</Text>
             </>
           )}
         </Pressable>
@@ -402,19 +403,23 @@ export default function InvoiceEditStep3() {
           const result = await printInvoiceRange(start, end);
           setShowPrintDialog(false);
           if (result.success) {
-            setSnackbarMessage(end && end !== start ? `Invoices ${start} to ${end} sent to the printer.` : `Invoice ${start} sent to the printer.`);
+            setSnackbarMessage(
+              end && end !== start
+                ? tr('invoice.print.sentRange', { start: String(start), end: String(end) })
+                : tr('invoice.print.sentOne', { number: formatIdentifier(start) })
+            );
           } else {
-            setSnackbarMessage("Couldn't print the invoice. Check the printer and try again.");
+            setSnackbarMessage(tr('invoice.print.failed'));
           }
           setSnackbarVisible(true);
           dispatch(resetForm());
           router.dismiss(3);
           router.push('/invoices');
         }}
-        title="Print invoice"
+        title={tr('invoice.print.title')}
         defaultNumber={savedInvoiceData?.invoice_no?.toString() || ''}
-        label="Invoice number"
-        placeholder="For example, 123"
+        entity="invoice"
+        placeholder={tr('invoice.print.example', { example: '123' })}
       />
 
       {/* Snackbar for print status */}
@@ -423,7 +428,7 @@ export default function InvoiceEditStep3() {
         onDismiss={() => setSnackbarVisible(false)}
         duration={4000}
         action={{
-          label: 'Dismiss',
+          label: tr('common.dismiss'),
           onPress: () => setSnackbarVisible(false),
         }}
       >

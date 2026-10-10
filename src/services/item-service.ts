@@ -23,6 +23,8 @@ import {
   DEFAULT_ITEM_FILTERS,
 } from '@/types/item.types';
 import { executeRPC, createErrorResponse } from '@/utils/serviceErrorHandler';
+import { t } from '@/i18n';
+import { serverText } from '@/utils/serverText';
 
 // =============================================================================
 // RAW RPC RESPONSE TYPES
@@ -131,7 +133,7 @@ class ItemService {
         console.error('[ItemService] List error:', error);
         return {
           success: false,
-          message: error.message || 'Failed to fetch items',
+          message: serverText(error.message, t('errors.item.fetchListFailed')),
           data: [],
           error: error.message,
         };
@@ -175,7 +177,7 @@ class ItemService {
         // RPC returned error in response body
         return {
           success: false,
-          message: data.message || 'Failed to fetch items',
+          message: serverText(data.message, t('errors.item.fetchListFailed')),
           data: [],
           error: data.message,
         };
@@ -193,7 +195,7 @@ class ItemService {
 
       return {
         success: true,
-        message: 'Items fetched successfully',
+        message: t('errors.item.listFetched'),
         data: items,
         pagination: {
           total_count: totalCount,
@@ -206,9 +208,9 @@ class ItemService {
       console.error('[ItemService] Exception in getItemList:', error);
       return {
         success: false,
-        message: 'Failed to fetch items',
+        message: t('errors.item.fetchListFailed'),
         data: [],
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: error instanceof Error ? error.message : t('errors.general.unknown'),
       };
     }
   }
@@ -227,8 +229,8 @@ class ItemService {
       if (!itemId) {
         return {
           success: false,
-          message: 'Item ID is required',
-          error: 'Missing parameter',
+          message: t('errors.item.idRequired'),
+          error: t('errors.general.missingParameter'),
         };
       }
 
@@ -249,7 +251,7 @@ class ItemService {
         console.error('[ItemService] Get by ID error:', error);
         return {
           success: false,
-          message: error.message || 'Item not found',
+          message: serverText(error.message, t('errors.item.notFound')),
           error: error.message,
         };
       }
@@ -257,7 +259,7 @@ class ItemService {
       if (!data) {
         return {
           success: false,
-          message: 'Item not found',
+          message: t('errors.item.notFound'),
           error: 'NOT_FOUND',
         };
       }
@@ -271,7 +273,7 @@ class ItemService {
       if (data.success === false) {
         return {
           success: false,
-          message: data.message || 'Item not found',
+          message: serverText(data.message, t('errors.item.notFound')),
           error: 'NOT_FOUND',
         };
       } else if (data.item) {
@@ -285,7 +287,7 @@ class ItemService {
       if (!itemData) {
         return {
           success: false,
-          message: 'Item not found',
+          message: t('errors.item.notFound'),
           error: 'NOT_FOUND',
         };
       }
@@ -302,15 +304,15 @@ class ItemService {
 
       return {
         success: true,
-        message: 'Item fetched successfully',
+        message: t('errors.item.fetched'),
         data: item,
       };
     } catch (error) {
       console.error('[ItemService] Exception in getItemById:', error);
       return {
         success: false,
-        message: 'Failed to fetch item',
-        error: error instanceof Error ? error.message : 'Unknown error',
+        message: t('errors.item.fetchFailed'),
+        error: error instanceof Error ? error.message : t('errors.general.unknown'),
       };
     }
   }
@@ -345,7 +347,7 @@ class ItemService {
       params as unknown as Record<string, unknown>,
       {
         context: 'ItemService.createItem',
-        errorMessage: 'Failed to create item',
+        errorMessage: t('errors.item.createFailed'),
         unwrapNested: false,
         validateSuccess: false, // We validate manually below
       }
@@ -364,15 +366,15 @@ class ItemService {
       console.error('[ItemService] RPC returned success=false:', rpcData);
       return {
         success: false,
-        message: rpcData.message || 'Failed to create item',
-        error: rpcData.error || 'Unknown error',
+        message: serverText(rpcData.message, t('errors.item.createFailed')),
+        error: serverText(rpcData.error, t('errors.general.unknown')),
       };
     }
 
     console.log('[ItemService] Item created via RPC:', rpcData.item_id);
     return {
       success: true,
-      message: rpcData.message || 'Item created successfully',
+      message: serverText(rpcData.message, t('errors.item.created')),
       data: {
         id: rpcData.item_id,
         name: params.p_name,
@@ -411,7 +413,7 @@ class ItemService {
       params as unknown as Record<string, unknown>,
       {
         context: 'ItemService.updateItem',
-        errorMessage: 'Failed to update item',
+        errorMessage: t('errors.item.updateFailed'),
         unwrapNested: false,
         validateSuccess: false,
       }
@@ -430,15 +432,15 @@ class ItemService {
       console.error('[ItemService] RPC returned success=false:', rpcData);
       return {
         success: false,
-        message: rpcData.message || 'Failed to update item',
-        error: rpcData.error || 'Unknown error',
+        message: serverText(rpcData.message, t('errors.item.updateFailed')),
+        error: serverText(rpcData.error, t('errors.general.unknown')),
       };
     }
 
     console.log('[ItemService] Item updated via RPC');
     return {
       success: true,
-      message: rpcData.message || 'Item updated successfully',
+      message: serverText(rpcData.message, t('errors.item.updated')),
     };
   }
 
@@ -458,7 +460,7 @@ class ItemService {
     if (!itemId) {
       return {
         success: false,
-        message: 'Item ID is required',
+        message: t('errors.item.idRequired'),
       };
     }
 
@@ -478,7 +480,7 @@ class ItemService {
       { p_item_id: itemId },
       {
         context: 'ItemService.deleteItem',
-        errorMessage: 'Failed to delete item',
+        errorMessage: t('errors.item.deleteFailed'),
         unwrapNested: false,
         validateSuccess: false,
       }
@@ -496,14 +498,14 @@ class ItemService {
     if (rpcData.success === false) {
       return {
         success: false,
-        message: rpcData.message || 'Cannot delete item',
+        message: serverText(rpcData.message, t('errors.item.cannotDelete')),
         references: rpcData.references,
       };
     }
 
     return {
       success: true,
-      message: rpcData.message || 'Item deleted successfully',
+      message: serverText(rpcData.message, t('errors.item.deleted')),
     };
   }
 
@@ -524,7 +526,7 @@ class ItemService {
       if (!currentItem.success || !currentItem.data) {
         return {
           success: false,
-          message: 'Item not found',
+          message: t('errors.item.notFound'),
           error: 'NOT_FOUND',
         };
       }
@@ -541,8 +543,8 @@ class ItemService {
       console.error('[ItemService] Exception in toggleItemActive:', error);
       return {
         success: false,
-        message: 'Failed to toggle item status',
-        error: error instanceof Error ? error.message : 'Unknown error',
+        message: t('errors.item.toggleStatusFailed'),
+        error: error instanceof Error ? error.message : t('errors.general.unknown'),
       };
     }
   }

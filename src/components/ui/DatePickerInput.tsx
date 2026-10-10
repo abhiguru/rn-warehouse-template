@@ -35,6 +35,7 @@ import {
   type ThemeTokens,
 } from '@/theme/tokens';
 import { formatDate, formatDateTime, formatTime } from '@/utils/formatters';
+import { getLanguage, t as tr } from '@/i18n';
 
 const IOS_PICKER_HEIGHT = 216;
 
@@ -133,7 +134,10 @@ export const DatePickerInput: React.FC<DatePickerInputProps> = ({
   };
 
   const displayValue = value ? formatPickerValue(value, mode) : undefined;
-  const fieldName = mode === 'time' ? 'time' : 'date';
+  const selectText = mode === 'time' ? tr('components.datePicker.selectTime') : tr('components.datePicker.selectDate');
+  const fieldLabel = label ?? (mode === 'time' ? tr('components.datePicker.time') : tr('common.date'));
+  // The native picker draws its own month and weekday names; iOS follows this locale, Android the phone's.
+  const pickerLocale = getLanguage() === 'gu' ? 'gu-IN' : 'en-IN';
 
   // Field outline per state (style guide §13.2)
   const fieldStateStyle = hasError
@@ -178,10 +182,17 @@ export const DatePickerInput: React.FC<DatePickerInputProps> = ({
         style={[styles.inputContainer, fieldStateStyle]}
         onPress={handlePress}
         disabled={isDisabled || isReadOnly}
-        accessibilityLabel={`${label ?? (mode === 'time' ? 'Time' : 'Date')}${required ? ', required' : ''}, ${
-          displayValue ?? 'not set'
-        }`}
-        accessibilityHint={isReadOnly ? 'Read only' : `Opens the ${fieldName} picker`}
+        accessibilityLabel={tr(required ? 'components.datePicker.fieldLabelRequired' : 'components.datePicker.fieldLabel', {
+          label: fieldLabel,
+          value: displayValue ?? tr('components.datePicker.notSet'),
+        })}
+        accessibilityHint={
+          isReadOnly
+            ? tr('components.input.readOnly')
+            : mode === 'time'
+              ? tr('components.datePicker.opensTimePicker')
+              : tr('components.datePicker.opensDatePicker')
+        }
         accessibilityRole="button"
         accessibilityState={{
           disabled: isDisabled || isReadOnly,
@@ -195,7 +206,7 @@ export const DatePickerInput: React.FC<DatePickerInputProps> = ({
             isDisabled && styles.textDisabled,
           ]}
         >
-          {displayValue ?? placeholder ?? `Select ${fieldName}`}
+          {displayValue ?? placeholder ?? selectText}
         </Text>
 
         <Icon
@@ -230,7 +241,7 @@ export const DatePickerInput: React.FC<DatePickerInputProps> = ({
             style={styles.modalOverlay}
             onPress={closeIOSPicker}
             accessibilityRole="button"
-            accessibilityLabel="Close"
+            accessibilityLabel={tr('common.close')}
           >
             <Pressable style={styles.modalContent} onPress={() => undefined} accessible={false}>
               <View style={styles.modalHeader}>
@@ -238,20 +249,20 @@ export const DatePickerInput: React.FC<DatePickerInputProps> = ({
                   onPress={closeIOSPicker}
                   style={styles.modalAction}
                   accessibilityRole="button"
-                  accessibilityLabel="Cancel"
+                  accessibilityLabel={tr('common.cancel')}
                 >
-                  <Text style={styles.modalCancelText}>Cancel</Text>
+                  <Text style={styles.modalCancelText}>{tr('common.cancel')}</Text>
                 </Pressable>
                 <Text style={styles.modalTitle} accessibilityRole="header">
-                  {mode === 'time' ? 'Select time' : 'Select date'}
+                  {selectText}
                 </Text>
                 <Pressable
                   onPress={closeIOSPicker}
                   style={styles.modalAction}
                   accessibilityRole="button"
-                  accessibilityLabel="Done"
+                  accessibilityLabel={tr('common.done')}
                 >
-                  <Text style={styles.modalDoneText}>Done</Text>
+                  <Text style={styles.modalDoneText}>{tr('common.done')}</Text>
                 </Pressable>
               </View>
 
@@ -259,6 +270,7 @@ export const DatePickerInput: React.FC<DatePickerInputProps> = ({
                 value={value}
                 mode={mode === 'datetime' ? 'date' : mode}
                 display="spinner"
+                locale={pickerLocale}
                 onChange={handleDateChange}
                 minimumDate={minimumDate}
                 maximumDate={maximumDate}

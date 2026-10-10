@@ -33,12 +33,14 @@ import type {
   RecentActivityItem,
   ReportPeriod,
 } from '@/types/report.types';
-import { formatDate, formatNumber } from '@/utils/formatters';
+import { formatDate, formatNumber, formatRelativeTime } from '@/utils/formatters';
 import { createLogger } from '@/utils/logger';
+import { t as tr, localizeDigits, formatIdentifier } from '@/i18n';
 
 const logger = createLogger('OperationsDashboard');
 
-const LOAD_ERROR = "Couldn't load the operations dashboard. Check your connection and try again.";
+// A function, not a constant: the text follows the app language (docs/I18N.md rule 2).
+const loadError = () => tr('reports.operations.loadError');
 
 const oneDecimal = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 1 });
 
@@ -131,6 +133,7 @@ const makeStyles = (t: ThemeTokens) =>
     activityTime: {
       ...typography.caption1,
       color: t.text.secondary,
+      marginTop: space.xxs,
     },
     trendBody: {
       flexDirection: 'row',
@@ -197,15 +200,30 @@ interface ActivityItemProps {
   t: ThemeTokens;
 }
 
+/**
+ * The server sends the time of an activity as a timestamp. It is shown as "2 hr ago"
+ * or a date; a value that is not a date (already worded by the server) is shown as it is.
+ */
+const activityTime = (value: string | null | undefined): string => {
+  if (!value) return '';
+  return Number.isNaN(new Date(value).getTime()) ? value : formatRelativeTime(value);
+};
+
 const ActivityItem: React.FC<ActivityItemProps> = ({ activity, isLast = false, styles, t }) => {
   const isGrn = activity.type === 'grn';
-  const typeLabel = isGrn ? 'GRN' : 'Dispatch';
+  const typeLabel = isGrn ? tr('common.grn') : tr('common.dispatch');
+  const time = activityTime(activity.time);
 
   return (
     <View
       style={[styles.activityItem, !isLast && styles.activityDivider]}
       accessible
-      accessibilityLabel={`${typeLabel} ${activity.ref}, ${activity.customer}, ${activity.time}`}
+      accessibilityLabel={tr('reports.operations.activityA11y', {
+        type: typeLabel,
+        ref: formatIdentifier(activity.ref),
+        customer: activity.customer,
+        time,
+      })}
     >
       <View style={styles.activityIcon}>
         <Icon
@@ -219,12 +237,12 @@ const ActivityItem: React.FC<ActivityItemProps> = ({ activity, isLast = false, s
         <Text style={styles.activityRef} numberOfLines={2}>
           {activity.ref}
         </Text>
-        <Text style={styles.activityCustomer} numberOfLines={1}>
-          {`${typeLabel} · ${activity.customer}`}
+        <Text style={styles.activityCustomer} numberOfLines={2}>
+          {tr('reports.operations.activitySubtitle', { type: typeLabel, customer: activity.customer })}
         </Text>
+        {/* On its own line: beside the number it took the room the number needs. */}
+        {time ? <Text style={styles.activityTime}>{time}</Text> : null}
       </View>
-
-      <Text style={styles.activityTime}>{activity.time}</Text>
     </View>
   );
 };
@@ -245,7 +263,7 @@ export default function OperationsDashboardScreen() {
 
   const fetchData = useCallback(async (showRefreshIndicator = false) => {
     if (!isStaff) {
-      setError('This report is for staff only');
+      setError(tr('reports.operations.staffOnlyError'));
       setIsLoading(false);
       return;
     }
@@ -267,11 +285,11 @@ export default function OperationsDashboardScreen() {
         setData(response.data);
       } else {
         logger.warn('Load failed', { error: response.error });
-        setError(LOAD_ERROR);
+        setError(loadError());
       }
     } catch (err) {
       logger.error('Error fetching data', err);
-      setError(LOAD_ERROR);
+      setError(loadError());
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
@@ -297,10 +315,10 @@ export default function OperationsDashboardScreen() {
 
     const kpis = data.kpis;
     return [
-      { icon: 'package-down', value: kpis.total_grns, label: 'GRNs', variant: 'primary' },
-      { icon: 'truck-delivery-outline', value: kpis.total_dispatches, label: 'Dispatches', variant: 'primary' },
-      { icon: 'clipboard-list-outline', value: kpis.pending_orders, label: 'Pending orders', variant: 'neutral' },
-      { icon: 'account-group-outline', value: kpis.active_customers, label: 'Active customers', variant: 'neutral' },
+      { icon: 'package-down', value: kpis.total_grns, label: tr('reports.operations.grns'), variant: 'primary' },
+      { icon: 'truck-delivery-outline', value: kpis.total_dispatches, label: tr('reports.operations.dispatches'), variant: 'primary' },
+      { icon: 'clipboard-list-outline', value: kpis.pending_orders, label: tr('reports.operations.pendingOrders'), variant: 'neutral' },
+      { icon: 'account-group-outline', value: kpis.active_customers, label: tr('reports.operations.activeCustomers'), variant: 'neutral' },
     ];
   }, [data?.kpis]);
 
@@ -309,18 +327,18 @@ export default function OperationsDashboardScreen() {
 
     const kpis = data.kpis;
     return [
-      { icon: 'warehouse', value: formatNumber(kpis.total_stock_qty), label: 'Total stock', variant: 'primary' },
+      { icon: 'warehouse', value: formatNumber(kpis.total_stock_qty), label: tr('reports.operations.totalStock'), variant: 'primary' },
       {
         icon: 'scale-balance',
         value: formatNumber(kpis.total_stock_weight, 2),
-        label: 'Total weight',
+        label: tr('reports.operations.totalWeight'),
         variant: 'primary',
-        unit: 'kg',
+        unit: tr('reports.operations.kg'),
       },
     ];
   }, [data?.kpis]);
 
-  const subtitle = `${formatDate(dateRange.from)} – ${formatDate(dateRange.to)}`;
+  const subtitle = tr('reports.period.dateRange', { from: formatDate(dateRange.from), to: formatDate(dateRange.to) });
 
   const refreshControl = (
     <RefreshControl
@@ -335,11 +353,11 @@ export default function OperationsDashboardScreen() {
   if (!isStaff) {
     return (
       <View style={styles.container}>
-        <ReportHeader title="Operations dashboard" />
+        <ReportHeader title={tr('reports.titles.operationsDashboard')} />
         <ReportEmptyState
           icon="lock-outline"
-          message="Staff only"
-          description="This report is available to staff members only."
+          message={tr('reports.operations.staffOnly')}
+          description={tr('reports.operations.staffOnlyDescription')}
         />
       </View>
     );
@@ -349,15 +367,15 @@ export default function OperationsDashboardScreen() {
   if (isLoading && !data) {
     return (
       <View style={styles.container}>
-        <ReportHeader title="Operations dashboard" />
+        <ReportHeader title={tr('reports.titles.operationsDashboard')} />
         <PeriodSelector selectedPeriod={selectedPeriod} onPeriodChange={handlePeriodChange} />
         <View style={styles.loadingContainer}>
           <KPIGrid
             items={[
-              { icon: 'package-down', value: '-', label: 'GRNs', variant: 'primary' },
-              { icon: 'truck-delivery-outline', value: '-', label: 'Dispatches', variant: 'primary' },
-              { icon: 'clipboard-list-outline', value: '-', label: 'Pending orders', variant: 'neutral' },
-              { icon: 'account-group-outline', value: '-', label: 'Active customers', variant: 'neutral' },
+              { icon: 'package-down', value: '-', label: tr('reports.operations.grns'), variant: 'primary' },
+              { icon: 'truck-delivery-outline', value: '-', label: tr('reports.operations.dispatches'), variant: 'primary' },
+              { icon: 'clipboard-list-outline', value: '-', label: tr('reports.operations.pendingOrders'), variant: 'neutral' },
+              { icon: 'account-group-outline', value: '-', label: tr('reports.operations.activeCustomers'), variant: 'neutral' },
             ]}
             isLoading={true}
             compact
@@ -371,14 +389,14 @@ export default function OperationsDashboardScreen() {
   if (error && !data) {
     return (
       <View style={styles.container}>
-        <ReportHeader title="Operations dashboard" />
+        <ReportHeader title={tr('reports.titles.operationsDashboard')} />
         <PeriodSelector selectedPeriod={selectedPeriod} onPeriodChange={handlePeriodChange} />
         <ReportEmptyState
           icon="alert-circle-outline"
           tone="error"
-          message="Something went wrong"
+          message={tr('reports.shared.errorTitle')}
           description={error}
-          actionLabel="Try again"
+          actionLabel={tr('common.retry')}
           onAction={() => fetchData()}
         />
       </View>
@@ -386,11 +404,13 @@ export default function OperationsDashboardScreen() {
   }
 
   const average = (points: { count: number }[]) =>
-    points.length > 0 ? oneDecimal.format(points.reduce((sum, d) => sum + d.count, 0) / points.length) : '0';
+    localizeDigits(
+      points.length > 0 ? oneDecimal.format(points.reduce((sum, d) => sum + d.count, 0) / points.length) : '0'
+    );
 
   return (
     <View style={styles.container}>
-      <ReportHeader title="Operations dashboard" subtitle={subtitle} />
+      <ReportHeader title={tr('reports.titles.operationsDashboard')} subtitle={subtitle} />
       <PeriodSelector selectedPeriod={selectedPeriod} onPeriodChange={handlePeriodChange} />
 
       <ScrollView
@@ -410,19 +430,25 @@ export default function OperationsDashboardScreen() {
           <View style={styles.cardContainer}>
             <View style={styles.card}>
               <View style={styles.cardInner}>
-                <CardHeader icon="chart-line" title="Period averages" styles={styles} t={t} />
+                <CardHeader icon="chart-line" title={tr('reports.operations.periodAverages')} styles={styles} t={t} />
                 <View style={styles.trendBody}>
-                  <View style={styles.trendItem} accessible accessibilityLabel={`GRNs per day: ${average(data.trends.grn_daily)}`}>
-                    <Text style={styles.trendLabel}>GRNs per day</Text>
+                  <View style={styles.trendItem} accessible accessibilityLabel={tr('reports.shared.labelValue', {
+                      label: tr('reports.operations.grnsPerDay'),
+                      value: average(data.trends.grn_daily),
+                    })}>
+                    <Text style={styles.trendLabel}>{tr('reports.operations.grnsPerDay')}</Text>
                     <Text style={styles.trendValue}>{average(data.trends.grn_daily)}</Text>
                   </View>
                   <View style={styles.trendDivider} />
                   <View
                     style={styles.trendItem}
                     accessible
-                    accessibilityLabel={`Dispatches per day: ${average(data.trends.dispatch_daily)}`}
+                    accessibilityLabel={tr('reports.shared.labelValue', {
+                      label: tr('reports.operations.dispatchesPerDay'),
+                      value: average(data.trends.dispatch_daily),
+                    })}
                   >
-                    <Text style={styles.trendLabel}>Dispatches per day</Text>
+                    <Text style={styles.trendLabel}>{tr('reports.operations.dispatchesPerDay')}</Text>
                     <Text style={styles.trendValue}>{average(data.trends.dispatch_daily)}</Text>
                   </View>
                 </View>
@@ -436,7 +462,7 @@ export default function OperationsDashboardScreen() {
           <View style={styles.cardContainer}>
             <View style={styles.card}>
               <View style={styles.cardInner}>
-                <CardHeader icon="history" title="Recent activity" styles={styles} t={t} />
+                <CardHeader icon="history" title={tr('reports.operations.recentActivity')} styles={styles} t={t} />
                 {data.recent_activity && data.recent_activity.length > 0 ? (
                   data.recent_activity.map((activity, index) => (
                     <ActivityItem
@@ -449,7 +475,7 @@ export default function OperationsDashboardScreen() {
                   ))
                 ) : (
                   <Text style={styles.emptyActivity}>
-                    No GRNs or dispatches in this period. New activity appears here.
+                    {tr('reports.operations.noActivity')}
                   </Text>
                 )}
               </View>

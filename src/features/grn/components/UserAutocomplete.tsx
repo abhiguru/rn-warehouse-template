@@ -11,9 +11,11 @@ import React, { useCallback } from 'react';
 import { View, Text } from 'react-native';
 import { RemoteAutocompleteInput } from '@/components/RemoteAutocompleteInput';
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
+import { formatMobile } from '@/utils/formatters';
 import { useThemedStyles } from '@/hooks/useTheme';
 import { space, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
+import { t as tr } from '@/i18n';
 
 // ============================================================================
 // TYPES
@@ -44,7 +46,7 @@ interface UserAutocompleteProps {
 export const UserAutocomplete: React.FC<UserAutocompleteProps> = ({
   value,
   onChange,
-  placeholder = 'Search supervisors',
+  placeholder = tr('grn.pickers.searchSupervisors'),
   error,
   disabled = false,
   required = false,
@@ -104,7 +106,7 @@ export const UserAutocomplete: React.FC<UserAutocompleteProps> = ({
         <Text style={styles.itemName} numberOfLines={1}>
           {user.name}
         </Text>
-        {user.phone ? <Text style={styles.phoneText}>{user.phone}</Text> : null}
+        {user.phone ? <Text style={styles.phoneText}>{formatMobile(user.phone)}</Text> : null}
       </View>
     );
   }, [styles]);
@@ -128,7 +130,7 @@ export const UserAutocomplete: React.FC<UserAutocompleteProps> = ({
       editable={!disabled}
       minChars={2}
       debounceMs={300}
-      emptyText="No matches"
+      emptyText={tr('grn.pickers.noMatches')}
     />
   );
 };

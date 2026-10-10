@@ -20,7 +20,7 @@ import {
   StyleProp,
 } from 'react-native';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
-import { fontWeight, layout, space, typography } from '@/theme/tokens';
+import { fontWeight, layout, space, typography, trackedText } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { triggerLightTap } from '@/hooks/useHaptics';
 
@@ -301,7 +301,7 @@ const makeStyles = (t: ThemeTokens) => ({
     fontWeight: fontWeight.semibold,
     color: t.text.secondary,
     textTransform: 'uppercase' as const,
-    letterSpacing: 0.5,
+    letterSpacing: trackedText(0.5),
     paddingHorizontal: space.lg,
     paddingTop: space.xxl,
     paddingBottom: space.sm,

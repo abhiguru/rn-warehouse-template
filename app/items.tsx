@@ -37,11 +37,14 @@ import {
   touchTarget,
   typography,
   type ThemeTokens,
+  singleLineText,
 } from '@/theme/tokens';
 
 import { showAlert } from '@/utils/alert';
 import { Avatar, StatusTag } from '@/components/ui';
 import { formatCount } from '@/utils/formatters';
+import { t as tr } from '@/i18n';
+import { serverText } from '@/utils/serverText';
 // =============================================================================
 // TYPES
 // =============================================================================
@@ -178,14 +181,14 @@ export default function ItemsScreen() {
         } else {
           // Show error to user
           showAlert(
-            currentActive ? "Couldn't deactivate the item" : "Couldn't activate the item",
-            result.message || 'Try again in a moment.',
-            [{ text: 'OK' }]
+            currentActive ? tr('items.list.couldNotDeactivateTitle') : tr('items.list.couldNotActivateTitle'),
+            serverText(result.message, tr('items.list.tryAgainInAMoment')),
+            [{ text: tr('common.ok') }]
           );
         }
       } catch (error) {
         console.error('[Items] Toggle active error:', error);
-        showAlert("Couldn't update the item", 'Check your connection and try again.', [{ text: 'OK' }]);
+        showAlert(tr('items.list.couldNotUpdateTitle'), tr('common.checkConnection'), [{ text: tr('common.ok') }]);
       }
     },
     []
@@ -198,10 +201,10 @@ export default function ItemsScreen() {
         handleToggleActive(item.id, false);
         return;
       }
-      showAlert(`Deactivate ${item.name}?`, undefined, [
-        { text: 'Cancel', style: 'cancel' },
+      showAlert(tr('items.list.deactivateConfirmTitle', { name: item.name }), undefined, [
+        { text: tr('common.cancel'), style: 'cancel' },
         {
-          text: 'Deactivate item',
+          text: tr('items.list.deactivateItem'),
           style: 'destructive',
           onPress: () => handleToggleActive(item.id, true),
         },
@@ -217,12 +220,12 @@ export default function ItemsScreen() {
   const handleDeleteItem = useCallback(
     async (item: ItemListItem) => {
       showAlert(
-        `Delete ${item.name}?`,
-        'The item will be removed from your catalogue.',
+        tr('items.delete.confirmTitle', { name: item.name }),
+        tr('items.delete.confirmMessage'),
         [
-          { text: 'Cancel', style: 'cancel' },
+          { text: tr('common.cancel'), style: 'cancel' },
           {
-            text: 'Delete item',
+            text: tr('items.delete.deleteItem'),
             style: 'destructive',
             onPress: async () => {
               try {
@@ -235,30 +238,30 @@ export default function ItemsScreen() {
                     data: prev.data.filter((i) => i.id !== item.id),
                     totalCount: prev.totalCount - 1,
                   }));
-                  showAlert('Item deleted', `${item.name} deleted.`);
+                  showAlert(tr('items.delete.deletedTitle'), tr('items.delete.deletedMessage', { name: item.name }));
                 } else {
                   // Check if blocked due to references
                   if (result.references) {
                     const refs = result.references;
-                    let message = 'This item is used in:\n\n';
+                    let message = `${tr('items.delete.usedIn')}\n\n`;
                     if (refs.grn_count > 0) {
-                      message += `• ${formatCount(refs.grn_count, 'GRN')}\n`;
+                      message += `${tr('items.delete.usedInLine', { count: formatCount(refs.grn_count, 'GRN') })}\n`;
                     }
                     if (refs.dispatch_count > 0) {
-                      message += `• ${formatCount(refs.dispatch_count, 'dispatch', 'dispatches')}\n`;
+                      message += `${tr('items.delete.usedInLine', { count: formatCount(refs.dispatch_count, 'dispatch', 'dispatches') })}\n`;
                     }
                     if (refs.invoice_count > 0) {
-                      message += `• ${formatCount(refs.invoice_count, 'invoice')}\n`;
+                      message += `${tr('items.delete.usedInLine', { count: formatCount(refs.invoice_count, 'invoice') })}\n`;
                     }
-                    message += '\nDeactivate the item instead to hide it from searches.';
-                    showAlert("Can't delete this item", message);
+                    message += `\n${tr('items.delete.deactivateInstead')}`;
+                    showAlert(tr('items.delete.cannotDeleteTitle'), message);
                   } else {
-                    showAlert("Couldn't delete the item", result.message || 'Try again in a moment.');
+                    showAlert(tr('items.delete.couldNotDeleteTitle'), serverText(result.message, tr('items.list.tryAgainInAMoment')));
                   }
                 }
               } catch (error) {
                 console.error('[Items] Delete error:', error);
-                showAlert("Couldn't delete the item", 'Check your connection and try again.');
+                showAlert(tr('items.delete.couldNotDeleteTitle'), tr('common.checkConnection'));
               }
             },
           },
@@ -289,9 +292,9 @@ export default function ItemsScreen() {
   const renderEmpty = useCallback(() => {
     if (state.loading) {
       return (
-        <View style={styles.emptyContainer} accessibilityRole="progressbar" accessibilityLabel="Loading items">
+        <View style={styles.emptyContainer} accessibilityRole="progressbar" accessibilityLabel={tr('items.list.loadingLabel')}>
           <ActivityIndicator size="large" color={t.brand.tint} />
-          <Text style={styles.emptyText}>Loading items…</Text>
+          <Text style={styles.emptyText}>{tr('items.list.loading')}</Text>
         </View>
       );
     }
@@ -302,16 +305,16 @@ export default function ItemsScreen() {
         <View style={styles.emptyContainer} accessibilityRole="alert">
           <Icon name="alert-circle-outline" size={iconSize.hero} color={t.status.negative.text} />
           <Text style={styles.emptyTitle} accessibilityRole="header">
-            Couldn't load items
+            {tr('items.list.loadErrorTitle')}
           </Text>
-          <Text style={styles.emptyText}>Check your connection and try again.</Text>
+          <Text style={styles.emptyText}>{tr('common.checkConnection')}</Text>
           <Pressable
             style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryButtonPressed]}
             onPress={() => fetchItems(state.filters, 0)}
             accessibilityRole="button"
           >
             <Icon name="refresh" size={iconSize.md} color={t.brand.tint} />
-            <Text style={styles.secondaryButtonText}>Try again</Text>
+            <Text style={styles.secondaryButtonText}>{tr('common.retry')}</Text>
           </Pressable>
         </View>
       );
@@ -321,16 +324,16 @@ export default function ItemsScreen() {
       <View style={styles.emptyContainer}>
         <Icon name="cube-outline" size={iconSize.hero} color={t.icon.secondary} />
         <Text style={styles.emptyTitle} accessibilityRole="header">
-          No items yet
+          {tr('items.list.emptyTitle')}
         </Text>
-        <Text style={styles.emptyText}>Items you add appear here.</Text>
+        <Text style={styles.emptyText}>{tr('items.list.emptyMessage')}</Text>
         <Pressable
           style={({ pressed }) => [styles.primaryButton, pressed && styles.primaryButtonPressed]}
           onPress={handleAddItem}
           accessibilityRole="button"
         >
           <Icon name="plus" size={iconSize.md} color={t.brand.onFill} />
-          <Text style={styles.primaryButtonText}>Add item</Text>
+          <Text style={styles.primaryButtonText}>{tr('items.list.addItem')}</Text>
         </Pressable>
       </View>
     );
@@ -340,9 +343,9 @@ export default function ItemsScreen() {
     if (!state.loadingMore) return null;
 
     return (
-      <View style={styles.footerContainer} accessibilityRole="progressbar" accessibilityLabel="Loading more items">
+      <View style={styles.footerContainer} accessibilityRole="progressbar" accessibilityLabel={tr('items.list.loadingMoreLabel')}>
         <ActivityIndicator size="small" color={t.brand.tint} />
-        <Text style={styles.footerText}>Loading more…</Text>
+        <Text style={styles.footerText}>{tr('common.loadingMore')}</Text>
       </View>
     );
   }, [state.loadingMore, styles, t]);
@@ -362,9 +365,9 @@ export default function ItemsScreen() {
           ),
           headerTitle: () => (
             <View style={styles.titleContainer} accessible accessibilityRole="header">
-              <Text style={styles.headerTitle}>Items</Text>
+              <Text style={styles.headerTitle}>{tr('common.items')}</Text>
               {state.totalCount > 0 && (
-                <Text style={styles.headerSubtitle}>{formatCount(state.totalCount, 'item')}</Text>
+                <Text style={styles.headerSubtitle} {...singleLineText()}>{formatCount(state.totalCount, 'item')}</Text>
               )}
             </View>
           ),
@@ -374,7 +377,7 @@ export default function ItemsScreen() {
               style={styles.addButton}
               hitSlop={space.sm}
               accessibilityRole="button"
-              accessibilityLabel="Add item"
+              accessibilityLabel={tr('items.list.addItem')}
             >
               <Icon name="plus" size={iconSize.lg} color={t.brand.tint} />
             </Pressable>
@@ -426,8 +429,8 @@ function FioriItemCard({ item, onPress, onToggleActive, onDelete }: FioriItemCar
   const swipeableRef = useRef<Swipeable | null>(null);
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
-  const actionLabel = item.active ? 'Deactivate' : 'Activate';
-  const rowLabel = [item.name, item.active ? null : 'Inactive', item.packaging, item.description]
+  const actionLabel = item.active ? tr('items.list.deactivate') : tr('items.list.activate');
+  const rowLabel = [item.name, item.active ? null : tr('common.inactive'), item.packaging, item.description]
     .filter(Boolean)
     .join(', ');
 
@@ -451,7 +454,7 @@ function FioriItemCard({ item, onPress, onToggleActive, onDelete }: FioriItemCar
         ]}
         onPress={handleToggle}
         accessibilityRole="button"
-        accessibilityLabel={`${actionLabel} ${item.name}`}
+        accessibilityLabel={tr(item.active ? 'items.list.deactivateName' : 'items.list.activateName', { name: item.name })}
       >
         <Icon
           name={item.active ? 'archive-arrow-down-outline' : 'archive-arrow-up-outline'}
@@ -469,10 +472,10 @@ function FioriItemCard({ item, onPress, onToggleActive, onDelete }: FioriItemCar
         style={({ pressed }) => [styles.swipeAction, pressed && styles.swipeActionPressed]}
         onPress={handleDelete}
         accessibilityRole="button"
-        accessibilityLabel={`Delete ${item.name}`}
+        accessibilityLabel={tr('items.list.deleteName', { name: item.name })}
       >
         <Icon name="trash-can-outline" size={iconSize.lg} color={t.destructive.onFill} />
-        <Text style={styles.swipeActionText}>Delete</Text>
+        <Text style={styles.swipeActionText}>{tr('common.delete')}</Text>
       </Pressable>
     </View>
   );
@@ -490,10 +493,10 @@ function FioriItemCard({ item, onPress, onToggleActive, onDelete }: FioriItemCar
         onPress={onPress}
         accessibilityRole="button"
         accessibilityLabel={rowLabel}
-        accessibilityHint={`Opens the item for editing. Swipe left to ${actionLabel.toLowerCase()} or delete.`}
+        accessibilityHint={item.active ? tr('items.list.rowHintDeactivate') : tr('items.list.rowHintActivate')}
         accessibilityActions={[
           { name: 'toggleActive', label: actionLabel },
-          { name: 'delete', label: 'Delete' },
+          { name: 'delete', label: tr('common.delete') },
         ]}
         onAccessibilityAction={(event) => {
           if (event.nativeEvent.actionName === 'toggleActive') onToggleActive();
@@ -508,7 +511,7 @@ function FioriItemCard({ item, onPress, onToggleActive, onDelete }: FioriItemCar
           <Text style={[styles.headline, !item.active && styles.textInactive]} numberOfLines={2}>
             {item.name}
           </Text>
-          {!item.active && <StatusTag status="neutral" label="Inactive" />}
+          {!item.active && <StatusTag status="neutral" label={tr('common.inactive')} />}
 
           {/* Subheadline - Item Details */}
           <View style={styles.attributeStack}>

@@ -10,9 +10,10 @@ import React from 'react';
 import { View, Text, ScrollView } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
-import { fontWeight, iconSize, layout, radius, space, typography } from '@/theme/tokens';
+import { fontWeight, iconSize, layout, radius, space, typography, trackedText } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
-import { formatCount, formatCurrency } from '@/utils/formatters';
+import { formatCount, formatCurrency, formatNumber } from '@/utils/formatters';
+import { t as tr, formatIdentifier } from '@/i18n';
 
 // Using snake_case to match backend RPC types
 export interface InvoiceSummary {
@@ -79,7 +80,7 @@ const makeStyles = (t: ThemeTokens) => ({
   sectionTitle: {
     ...typography.footnote,
     fontWeight: fontWeight.semibold,
-    letterSpacing: 0.5,
+    letterSpacing: trackedText(0.5),
     textTransform: 'uppercase' as const,
     color: t.text.secondary,
     marginBottom: space.sm,
@@ -139,16 +140,16 @@ export const DispatchInvoicesTab: React.FC<DispatchInvoicesTabProps> = ({
     return (
       <View style={styles.emptyContainer}>
         <Icon name="file-document-outline" size={iconSize.hero} color={t.icon.secondary} />
-        <Text style={styles.emptyTitle} accessibilityRole="header">No invoices yet</Text>
+        <Text style={styles.emptyTitle} accessibilityRole="header">{tr('dispatch.details.invoicesEmptyTitle')}</Text>
         <Text style={styles.emptySubtitle}>
-          Invoices created for this dispatch appear here.
+          {tr('dispatch.details.invoicesEmptyMessage')}
         </Text>
       </View>
     );
   }
 
   const invoiceNumbers = invoiceSummary.invoice_numbers || [];
-  const countLabel = invoiceSummary.total_invoices === 1 ? 'Invoice' : 'Invoices';
+  const countLabel = tr('dispatch.count.invoicesLabel', { count: invoiceSummary.total_invoices });
 
   return (
     <ScrollView
@@ -166,27 +167,29 @@ export const DispatchInvoicesTab: React.FC<DispatchInvoicesTabProps> = ({
           <View style={[styles.iconCircle, styles.iconCircleNeutral]}>
             <Icon name="file-document-multiple-outline" size={iconSize.lg} color={t.status.neutral.text} />
           </View>
-          <Text style={styles.summaryValue}>{invoiceSummary.total_invoices}</Text>
+          <Text style={styles.summaryValue}>{formatNumber(invoiceSummary.total_invoices)}</Text>
           <Text style={styles.summaryLabel}>{countLabel}</Text>
         </View>
 
         <View
           style={styles.summaryCard}
           accessible
-          accessibilityLabel={`Total amount ${formatCurrency(invoiceSummary.total_amount, { maximumFractionDigits: 0 })}`}
+          accessibilityLabel={tr('dispatch.details.totalAmountLabel', {
+            amount: formatCurrency(invoiceSummary.total_amount, { maximumFractionDigits: 0 }),
+          })}
         >
           <View style={[styles.iconCircle, styles.iconCircleBrand]}>
             <Icon name="currency-inr" size={iconSize.lg} color={t.brand.tint} />
           </View>
           <Text style={styles.summaryValue}>{formatCurrency(invoiceSummary.total_amount, { maximumFractionDigits: 0 })}</Text>
-          <Text style={styles.summaryLabel}>Total amount</Text>
+          <Text style={styles.summaryLabel}>{tr('dispatch.details.totalAmount')}</Text>
         </View>
       </View>
 
       {/* Invoice numbers */}
       {invoiceNumbers.length > 0 && (
         <View>
-          <Text style={styles.sectionTitle} accessibilityRole="header">Invoices</Text>
+          <Text style={styles.sectionTitle} accessibilityRole="header">{tr('dispatch.details.invoices')}</Text>
           <View style={styles.invoicesSection}>
             {invoiceNumbers.map((invoiceNo, index) => (
               <View
@@ -196,10 +199,10 @@ export const DispatchInvoicesTab: React.FC<DispatchInvoicesTabProps> = ({
                   index < invoiceNumbers.length - 1 && styles.invoiceRowDivider,
                 ]}
                 accessible
-                accessibilityLabel={`Invoice ${invoiceNo}`}
+                accessibilityLabel={tr('dispatch.details.invoiceNumbered', { number: formatIdentifier(invoiceNo) })}
               >
                 <Icon name="file-document-outline" size={iconSize.md} color={t.icon.secondary} />
-                <Text style={styles.invoiceNumberText}>Invoice {invoiceNo}</Text>
+                <Text style={styles.invoiceNumberText}>{tr('dispatch.details.invoiceNumbered', { number: formatIdentifier(invoiceNo) })}</Text>
               </View>
             ))}
           </View>

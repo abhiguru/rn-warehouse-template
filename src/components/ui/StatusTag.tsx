@@ -7,7 +7,7 @@ import React from 'react';
 import { Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
-import { fontWeight, iconSize, radius, space, typography, type ThemeTokens } from '@/theme/tokens';
+import { fontWeight, iconSize, radius, singleLineText, space, typography, type ThemeTokens } from '@/theme/tokens';
 
 export type StatusKind = 'negative' | 'critical' | 'positive' | 'informative' | 'neutral';
 
@@ -59,7 +59,7 @@ export function StatusTag({ status, label, icon, style, testID }: StatusTagProps
       testID={testID}
     >
       {glyph ? <Icon name={glyph} size={iconSize.xs} color={tone.text} /> : null}
-      <Text style={[styles.text, { color: tone.text }]} maxFontSizeMultiplier={1.6} numberOfLines={1}>
+      <Text style={[styles.text, { color: tone.text }]} maxFontSizeMultiplier={1.6} numberOfLines={1} {...singleLineText(0.9)}>
         {label}
       </Text>
     </View>

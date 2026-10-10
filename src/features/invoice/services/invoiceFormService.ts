@@ -9,8 +9,10 @@ import {
   InvoiceItemData,
   InvoiceHeaderData,
 } from '@/types/invoice.types';
+import { t } from '@/i18n';
 
 import { toLocalISODate } from '@/utils/formatters';
+import { serverText } from '@/utils/serverText';
 /**
  * Get the next available invoice number
  * Uses optimized get_next_invoice_number RPC that returns formatted string (e.g., "I0000554")
@@ -25,8 +27,8 @@ export const getNextInvoiceNumber = async (
     const { data, error } = await authenticatedClient.rpc('get_next_invoice_number');
 
     if (error) {
-      console.error('[InvoiceFormService] RPC Error:', error.message);
-      throw new Error(error.message || 'Failed to get next invoice number');
+      console.error('[InvoiceFormService] RPC error:', error.message);
+      throw new Error(serverText(error.message, t('invoice.service.nextNumberFailed')));
     }
 
     if (!data) {
@@ -52,7 +54,8 @@ export const getNextInvoiceNumber = async (
       },
     };
   } catch (error: any) {
-    console.error('[InvoiceFormService] Error in getNextInvoiceNumber:', error);
+    // Handled: the form then asks for the number to be typed.
+    console.warn('[InvoiceFormService] Error in getNextInvoiceNumber:', error);
     // Return 1 as default for first invoice of the year
     return {
       success: false,
@@ -60,7 +63,7 @@ export const getNextInvoiceNumber = async (
         next_invoice_number: 1,
         financial_year: finYear,
       },
-      message: error.message || 'Failed to get next invoice number',
+      message: serverText(error.message, t('invoice.service.nextNumberFailed')),
     };
   }
 };
@@ -87,7 +90,7 @@ export const getInvoiceableGrns = async (
 
     if (error) {
       console.error('[InvoiceFormService] Error fetching invoiceable GRNs:', error);
-      throw new Error(error.message || 'Failed to fetch invoiceable GRNs');
+      throw new Error(serverText(error.message, t('invoice.service.grnsFailed')));
     }
 
     // Handle case where RPC returns an object wrapper instead of an array
@@ -144,7 +147,7 @@ export const getInvoiceableGrns = async (
     return {
       success: false,
       data: [],
-      message: error.message || 'Failed to fetch invoiceable GRNs',
+      message: serverText(error.message, t('invoice.service.grnsFailed')),
     };
   }
 };
@@ -173,7 +176,7 @@ export const loadInvoiceFormData = async (
 
     if (error) {
       console.error('[InvoiceFormService] Error loading invoice form data:', error);
-      throw new Error(error.message || 'Failed to load invoice form data');
+      throw new Error(serverText(error.message, t('invoice.service.formDataFailed')));
     }
 
     // Handle the wrapped response structure from RPC
@@ -181,7 +184,7 @@ export const loadInvoiceFormData = async (
     const responseData = response;
 
     if (!responseData) {
-      throw new Error('No response data from RPC - GRN may not be ready for invoicing');
+      throw new Error(t('invoice.service.noResponse'));
     }
 
     // Check if this is an error response from the RPC
@@ -190,9 +193,9 @@ export const loadInvoiceFormData = async (
 
       // Provide user-friendly error messages for common issues
       if (errorMsg.includes('column') && errorMsg.includes('does not exist')) {
-        throw new Error('Database schema error. Please contact system administrator.');
+        throw new Error(t('invoice.service.schemaError'));
       } else if (errorMsg.includes('not be ready for invoicing')) {
-        throw new Error('This GRN has no dispatched items available for invoicing.');
+        throw new Error(t('invoice.service.noDispatchedItems'));
       } else {
         throw new Error(errorMsg);
       }
@@ -203,16 +206,14 @@ export const loadInvoiceFormData = async (
     const itemsData = responseData.items || responseData.rows;
 
     if (!responseData.header || !itemsData) {
-      throw new Error('Invalid response format from RPC');
+      throw new Error(t('invoice.service.invalidResponse'));
     }
 
     const headerData = responseData.header;
 
     // Check if there are any items to invoice
     if (!itemsData || itemsData.length === 0) {
-      throw new Error(
-        'This GRN has no dispatched items available for invoicing. Please ensure items have been dispatched first.'
-      );
+      throw new Error(t('invoice.service.noDispatchedItemsLong'));
     }
 
     // Determine one_time_charge from GRN's pricing_mode
@@ -350,7 +351,7 @@ export const loadInvoiceFormData = async (
         },
         items: [],
       },
-      message: error.message || 'Failed to load invoice form data',
+      message: serverText(error.message, t('invoice.service.formDataFailed')),
     };
   }
 };
@@ -368,13 +369,13 @@ export const createInvoice = async (
 
     // Validate required fields
     if (!payload.header.customer_id) {
-      throw new Error('Customer ID is required');
+      throw new Error(t('invoice.service.customerRequired'));
     }
     if (!payload.header.gr_id) {
-      throw new Error('GR ID is required');
+      throw new Error(t('invoice.service.grnRequired'));
     }
     if (!payload.header.inv_date) {
-      throw new Error('Invoice date is required');
+      throw new Error(t('invoice.validation.invoiceDateRequired'));
     }
 
     // Convert financial year string to number (e.g., '2025-26' -> 2025)
@@ -409,10 +410,10 @@ export const createInvoice = async (
     const invoiceItems = payload.items.map((item, index) => {
       // Validate required IDs
       if (!item.disp_trl_id) {
-        throw new Error(`Item ${index + 1} is missing dispatch ID (disp_trl_id)`);
+        throw new Error(t('invoice.service.itemMissingDispatch', { index: index + 1 }));
       }
       if (!item.grn_item_id) {
-        throw new Error(`Item ${index + 1} is missing GRN item ID (grn_item_id)`);
+        throw new Error(t('invoice.service.itemMissingGrnItem', { index: index + 1 }));
       }
 
       return {
@@ -444,11 +445,11 @@ export const createInvoice = async (
 
     if (error) {
       console.error('[InvoiceFormService] RPC error:', error);
-      throw new Error(error.message || 'Failed to create invoice');
+      throw new Error(serverText(error.message, t('invoice.service.createFailed')));
     }
 
     if (!data || !data.success) {
-      const errorMsg = data?.error || data?.message || 'Failed to create invoice';
+      const errorMsg = serverText(data?.error || data?.message, t('invoice.service.createFailed'));
       throw new Error(errorMsg);
     }
 
@@ -467,7 +468,7 @@ export const createInvoice = async (
         invoice_id: '',
         invoice_no: 0,
       },
-      message: error.message || 'Failed to create invoice',
+      message: serverText(error.message, t('invoice.service.createFailed')),
     };
   }
 };
@@ -492,11 +493,11 @@ export const loadInvoiceData = async (
 
     if (error) {
       console.error('[InvoiceFormService] RPC error:', error);
-      throw new Error(error.message || 'Failed to fetch invoice data');
+      throw new Error(serverText(error.message, t('invoice.service.fetchFailed')));
     }
 
     if (!data || !data.success) {
-      const errorMsg = data?.error || 'Invoice not found';
+      const errorMsg = serverText(data?.error, t('invoice.details.notFoundTitle'));
       return {
         success: false,
         data: {
@@ -520,7 +521,7 @@ export const loadInvoiceData = async (
           header: { customer_id: '', customer_name: '', gr_id: '', gr_no: '' },
           items: [],
         },
-        message: 'Invoice data not found in server response',
+        message: t('invoice.service.dataMissing'),
       };
     }
 
@@ -634,7 +635,7 @@ export const loadInvoiceData = async (
         header: formattedHeader,
         items: formattedItems,
       },
-      message: 'Invoice data loaded successfully',
+      message: t('invoice.service.loaded'),
     };
   } catch (error: any) {
     console.error('[InvoiceFormService] Error loading invoice:', error);
@@ -644,7 +645,7 @@ export const loadInvoiceData = async (
         header: { customer_id: '', customer_name: '', gr_id: '', gr_no: '' },
         items: [],
       },
-      message: error.message || 'Failed to load invoice data',
+      message: serverText(error.message, t('invoice.service.loadFailed')),
     };
   }
 };
@@ -662,13 +663,13 @@ export const updateInvoice = async (
 
     // Validate required fields
     if (!payload.header.customer_id) {
-      throw new Error('Customer ID is required');
+      throw new Error(t('invoice.service.customerRequired'));
     }
     if (!payload.header.gr_id) {
-      throw new Error('GR ID is required');
+      throw new Error(t('invoice.service.grnRequired'));
     }
     if (!payload.header.inv_date) {
-      throw new Error('Invoice date is required');
+      throw new Error(t('invoice.validation.invoiceDateRequired'));
     }
 
     // Convert financial year string to number (e.g., '2025-26' -> 2025)
@@ -716,14 +717,14 @@ export const updateInvoice = async (
 
     if (error) {
       console.error('[InvoiceFormService] RPC error:', error);
-      throw new Error(error.message || 'Failed to update invoice');
+      throw new Error(serverText(error.message, t('invoice.service.updateFailed')));
     }
 
     // RPC returns an object directly
     const result = data;
 
     if (!result || !result.success) {
-      const errorMsg = result?.error || 'Unknown error from RPC';
+      const errorMsg = serverText(result?.error, t('invoice.service.unknownRpcError'));
       return {
         success: false,
         data: { invoice_id: '', invoice_no: 0 },
@@ -737,14 +738,14 @@ export const updateInvoice = async (
         invoice_id: result.invoice_id,
         invoice_no: parseInt(result.invoice_number),
       },
-      message: result.message || 'Invoice updated successfully',
+      message: serverText(result.message, t('invoice.service.updated')),
     };
   } catch (error: any) {
     console.error('[InvoiceFormService] Error updating invoice:', error);
     return {
       success: false,
       data: { invoice_id: '', invoice_no: 0 },
-      message: error.message || 'Failed to update invoice',
+      message: serverText(error.message, t('invoice.service.updateFailed')),
     };
   }
 };

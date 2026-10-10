@@ -1,5 +1,7 @@
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
 import { getSessionGeneration } from '@/config/sessionLifecycle';
+import { t } from '@/i18n';
+import { AppError } from '@/utils/appError';
 
 export type PendingEnrollment = {
   id: string;
@@ -12,7 +14,7 @@ export type PendingEnrollment = {
 export type EnrollmentCustomer = { id: string; name: string };
 
 function unchanged(generation: number) {
-  if (generation !== getSessionGeneration()) throw new Error('Session changed');
+  if (generation !== getSessionGeneration()) throw new AppError('SESSION_CHANGED', t('errors.auth.sessionChanged'));
 }
 
 export async function listPendingEnrollments(): Promise<PendingEnrollment[]> {
@@ -53,7 +55,7 @@ export async function reviewEnrollment(
   customerIds: string[] = []
 ): Promise<void> {
   if (decision === 'approved' && customerIds.length === 0)
-    throw new Error('Select at least one existing customer.');
+    throw new Error(t('errors.user.selectExistingCustomer'));
   const generation = getSessionGeneration();
   const client = await getAuthenticatedClient();
   const { data, error } = await client.rpc('operator_review_enrollment', {
@@ -64,5 +66,5 @@ export async function reviewEnrollment(
   unchanged(generation);
   if (error) throw new Error(error.message);
   if (data?.success !== true || data?.data?.status !== decision)
-    throw new Error('Enrollment review was not accepted.');
+    throw new Error(t('errors.user.enrollmentReviewNotAccepted'));
 }

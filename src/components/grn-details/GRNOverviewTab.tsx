@@ -8,7 +8,7 @@ import React from 'react';
 import { View, ScrollView } from 'react-native';
 import { useTokens } from '@/hooks/useTheme';
 import {
-  overviewStyles,
+  useOverviewStyles,
   useOverviewColors,
   SectionHeader,
   ContactCard,
@@ -16,6 +16,7 @@ import {
   NotesSection,
   ActionsSection,
 } from '@/components/common/overview-tab';
+import { t as tr } from '@/i18n';
 
 // Using snake_case to match backend RPC types
 interface CustomerDetails {
@@ -65,6 +66,7 @@ export const GRNOverviewTab: React.FC<GRNOverviewTabProps> = ({
   is_print_loading = false,
 }) => {
   const colorStyles = useOverviewColors();
+  const overviewStyles = useOverviewStyles();
   const t = useTokens();
   const isOneTime = pricing_mode?.toUpperCase() === 'ONE_TIME';
 
@@ -77,11 +79,11 @@ export const GRNOverviewTab: React.FC<GRNOverviewTabProps> = ({
       {/* SECTION: PARTICIPANTS */}
       {(customer_details || supervisor_details) && (
         <>
-          <SectionHeader title="Participants" />
+          <SectionHeader title={tr('grn.overview.participants')} />
 
           {customer_details && (
             <ContactCard
-              type="Customer"
+              type={tr('common.customer')}
               name={customer_details.name}
               phone={customer_details.mobile || undefined}
               email={customer_details.email || undefined}
@@ -93,7 +95,7 @@ export const GRNOverviewTab: React.FC<GRNOverviewTabProps> = ({
 
           {supervisor_details && (
             <ContactCard
-              type="Supervisor"
+              type={tr('grn.header.supervisor')}
               name={supervisor_details.name}
               phone={supervisor_details.mobile || undefined}
               iconName="account-supervisor-outline"
@@ -107,7 +109,7 @@ export const GRNOverviewTab: React.FC<GRNOverviewTabProps> = ({
       {/* SECTION: VEHICLE INFORMATION */}
       {registration && (
         <>
-          <SectionHeader title="Vehicle" />
+          <SectionHeader title={tr('grn.overview.vehicle')} />
           <View style={overviewStyles.chipsCard}>
             <InfoChip
               icon="truck-outline"
@@ -121,11 +123,11 @@ export const GRNOverviewTab: React.FC<GRNOverviewTabProps> = ({
       {/* SECTION: BILLING TYPE */}
       {pricing_mode && (
         <>
-          <SectionHeader title="Billing" />
+          <SectionHeader title={tr('grn.overview.billing')} />
           <View style={overviewStyles.chipsCard}>
             <InfoChip
               icon={isOneTime ? 'calendar-check' : 'calendar-sync'}
-              label={isOneTime ? 'One-time charge' : 'Monthly recurring'}
+              label={isOneTime ? tr('grn.overview.oneTimeCharge') : tr('grn.overview.monthlyRecurring')}
               iconColor={t.status.neutral.text}
             />
           </View>
@@ -137,7 +139,7 @@ export const GRNOverviewTab: React.FC<GRNOverviewTabProps> = ({
 
       {/* SECTION: ACTIONS */}
       <ActionsSection
-        entityType="GRN"
+        entity="grn"
         entityNumber={gr_no}
         entityId={grn_id}
         onSharePDF={onSharePDF}

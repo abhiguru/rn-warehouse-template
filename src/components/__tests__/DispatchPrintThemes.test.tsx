@@ -6,7 +6,6 @@ import React from 'react';
 import { StyleSheet } from 'react-native';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
 import { BRANDS, getTokens, type Mode } from '@/theme/tokens';
-import DispatchGroupCard from '@/components/DispatchGroupCard';
 import { PrintRangeDialog } from '@/components/PrintRangeDialog';
 import { DocumentSuccessDialog } from '@/components/DocumentSuccessDialog';
 import { GRNItemDispatchTable } from '@/components/grn-details/GRNItemDispatchTable';
@@ -55,20 +54,6 @@ const dispatchItem = {
 
 describe.each(THEMES)('%s %s', (brand, mode) => {
   const t = getTokens(brand, mode);
-
-  it('renders DispatchGroupCard on surface.card with no brand-filled header', () => {
-    const tree = renderIn(
-      brand,
-      mode,
-      <DispatchGroupCard
-        dispatch={{ dispatchId: 'd1', dispNo: '42', dispDate: '2026-10-09', customerName: 'Patel', note: 'Fragile' }}
-        items={[dispatchItem as any]}
-      />
-    );
-    const bgs = backgrounds(tree);
-    expect(bgs).toContain(t.surface.card);
-    expect(bgs).not.toContain(t.brand.fill);
-  });
 
   it('renders PrintRangeDialog as a token dialog', () => {
     const tree = renderIn(

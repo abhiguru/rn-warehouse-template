@@ -34,6 +34,7 @@ import {
   touchTarget,
   typography,
   type ThemeTokens,
+  trackedText,
 } from '@/theme/tokens';
 import type {
   StockSummaryData,
@@ -47,10 +48,12 @@ import { StatusTag } from '@/components/ui';
 import { createLogger } from '@/utils/logger';
 
 import { showAlert } from '@/utils/alert';
+import { t as tr, formatIdentifier } from '@/i18n';
 const logger = createLogger('StockSummary');
 
-const LOAD_ERROR = "Couldn't load the stock summary. Check your connection and try again.";
-const NO_CUSTOMER = 'No customer is linked to your account. Ask your facility to link one.';
+// Functions, not constants: the text follows the app language (docs/I18N.md rule 2).
+const loadError = () => tr('reports.stockSummary.loadError');
+const noCustomer = () => tr('reports.shared.noCustomer');
 
 // ============================================================================
 // Styles
@@ -77,7 +80,7 @@ const makeStyles = (t: ThemeTokens) =>
     sectionHeaderText: {
       ...typography.footnote,
       fontWeight: fontWeight.semibold,
-      letterSpacing: 0.5,
+      letterSpacing: trackedText(0.5),
       textTransform: 'uppercase',
       color: t.text.secondary,
     },
@@ -212,9 +215,13 @@ const ItemCard: React.FC<ItemCardProps> = ({ item, isExpanded, onToggle, isOutOf
           style={({ pressed }) => [styles.objectCell, pressed && styles.rowPressed]}
           onPress={onToggle}
           accessibilityRole="button"
-          accessibilityLabel={`${item.item_name}, ${isOutOfStock ? 'out of stock' : `${formatNumber(item.total_stock)} units`}, ${grns}`}
+          accessibilityLabel={
+            isOutOfStock
+              ? tr('reports.stockSummary.itemA11yOutOfStock', { name: item.item_name, grns })
+              : tr('reports.stockSummary.itemA11y', { name: item.item_name, units: formatNumber(item.total_stock), grns })
+          }
           accessibilityState={{ expanded: isExpanded }}
-          accessibilityHint={isExpanded ? 'Hides the GRNs' : 'Shows the GRNs for this item'}
+          accessibilityHint={isExpanded ? tr('reports.shared.hidesGrnsHint') : tr('reports.stockSummary.showsGrnsHint')}
         >
           <View style={[styles.cellImage, isOutOfStock && styles.cellImageMuted]}>
             <Icon
@@ -229,17 +236,17 @@ const ItemCard: React.FC<ItemCardProps> = ({ item, isExpanded, onToggle, isOutOf
               {item.item_name}
             </Text>
             <Text style={styles.cellSubtitle} numberOfLines={1}>
-              {isOutOfStock ? `${grns} dispatched` : grns}
+              {isOutOfStock ? tr('reports.stockSummary.grnsDispatched', { grns }) : grns}
             </Text>
             {isOutOfStock && (
-              <StatusTag status="negative" label="Out of stock" />
+              <StatusTag status="negative" label={tr('common.outOfStock')} />
             )}
           </View>
 
           {!isOutOfStock && (
             <View style={styles.cellValue}>
               <Text style={styles.cellValueText}>{formatNumber(item.total_stock)}</Text>
-              <Text style={styles.cellValueLabel}>units</Text>
+              <Text style={styles.cellValueLabel}>{tr('reports.shared.units')}</Text>
             </View>
           )}
 
@@ -287,21 +294,21 @@ const GRNRow: React.FC<GRNRowProps> = ({ grn, isLast = false, onPress, isOutOfSt
   };
 
   const isNavigable = !!grn.grn_id;
-  const received = `Received ${formatDate(grn.date, 'short')}`;
-  const emptied = isOutOfStock && grn.emptied_date ? `Emptied ${formatDate(grn.emptied_date, 'short')}` : null;
-  const extra = !emptied ? [grn.packaging, grn.rack ? `Rack ${grn.rack}` : null].filter(Boolean).join(' · ') : '';
+  const received = tr('reports.shared.receivedOn', { date: formatDate(grn.date, 'short') });
+  const emptied = isOutOfStock && grn.emptied_date ? tr('reports.stockSummary.emptiedOn', { date: formatDate(grn.emptied_date, 'short') }) : null;
+  const extra = !emptied ? [grn.packaging, grn.rack ? tr('reports.shared.rack', { rack: String(grn.rack) }) : null].filter(Boolean).join(' · ') : '';
   const stockText = grn.orig_qty > 0
-    ? `${formatNumber(grn.stock)} of ${formatNumber(grn.orig_qty)}`
+    ? tr('reports.stockSummary.stockOf', { stock: formatNumber(grn.stock), total: formatNumber(grn.orig_qty) })
     : formatNumber(grn.stock);
-  const weight = `${formatWeight(grn.item_weight || 0)} each`;
+  const weight = tr('reports.stockSummary.weightEach', { weight: formatWeight(grn.item_weight || 0) });
 
   const a11yLabel = [
-    `GRN ${grn.gr_no}`,
-    grn.package_mark ? `mark ${grn.package_mark}` : null,
+    tr('reports.shared.grnNumber', { number: formatIdentifier(grn.gr_no) }),
+    grn.package_mark ? tr('reports.shared.markA11y', { mark: grn.package_mark }) : null,
     received,
     emptied,
     extra || null,
-    `${stockText} units`,
+    tr('reports.shared.unitsValue', { value: stockText }),
     weight,
   ]
     .filter(Boolean)
@@ -312,7 +319,7 @@ const GRNRow: React.FC<GRNRowProps> = ({ grn, isLast = false, onPress, isOutOfSt
       <View style={styles.grnRowContent}>
         <View style={styles.grnRowTitleRow}>
           <Text style={styles.grnRowTitle} numberOfLines={1}>
-            {`GRN ${grn.gr_no}`}
+            {tr('reports.shared.grnNumber', { number: formatIdentifier(grn.gr_no) })}
           </Text>
           {grn.package_mark && (
             <StatusTag status="neutral" label={grn.package_mark} icon={null} />
@@ -347,7 +354,7 @@ const GRNRow: React.FC<GRNRowProps> = ({ grn, isLast = false, onPress, isOutOfSt
         onPress={handlePress}
         accessibilityRole="button"
         accessibilityLabel={a11yLabel}
-        accessibilityHint="Opens the GRN"
+        accessibilityHint={tr('reports.shared.opensGrnHint')}
       >
         {content}
       </Pressable>
@@ -412,11 +419,11 @@ export default function StockSummaryScreen() {
         setAllCustomersData(response.data);
       } else {
         logger.warn('All-customer load failed', { error: response.error });
-        setError(LOAD_ERROR);
+        setError(loadError());
       }
     } catch (err) {
       logger.error('Error fetching all customers data', err);
-      setError(LOAD_ERROR);
+      setError(loadError());
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
@@ -441,11 +448,11 @@ export default function StockSummaryScreen() {
         setData(response.data);
       } else {
         logger.warn('Customer load failed', { error: response.error });
-        setError(LOAD_ERROR);
+        setError(loadError());
       }
     } catch (err) {
       logger.error('Error fetching single customer data', err);
-      setError(LOAD_ERROR);
+      setError(loadError());
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
@@ -461,7 +468,7 @@ export default function StockSummaryScreen() {
       // Regular users with only one assigned customer go directly to that customer
       fetchSingleCustomerData(singleAssignedCustomerId);
     } else {
-      setError(NO_CUSTOMER);
+      setError(noCustomer());
       setIsLoading(false);
     }
   }, [shouldShowListView, singleAssignedCustomerId, fetchAllCustomersData, fetchSingleCustomerData]);
@@ -540,11 +547,11 @@ export default function StockSummaryScreen() {
         }
       } else {
         logger.warn('PDF generation failed', { error: result.error });
-        showAlert("Couldn't create the stock PDF", 'Check your connection and try again.');
+        showAlert(tr('reports.stockSummary.pdfErrorTitle'), tr('common.checkConnection'));
       }
     } catch (error) {
       logger.error('Error sharing customer stock PDF', error);
-      showAlert("Couldn't create the stock PDF", 'Check your connection and try again.');
+      showAlert(tr('reports.stockSummary.pdfErrorTitle'), tr('common.checkConnection'));
     } finally {
       setSharingCustomerId(null);
     }
@@ -590,13 +597,13 @@ export default function StockSummaryScreen() {
       {
         icon: 'cube-outline',
         value: summary.total_items,
-        label: 'Items',
+        label: tr('common.items'),
         variant: 'primary',
       },
       {
         icon: 'warehouse',
         value: summary.total_quantity,
-        label: 'Units in stock',
+        label: tr('reports.stockSummary.unitsInStock'),
         variant: 'primary',
       },
     ];
@@ -611,13 +618,13 @@ export default function StockSummaryScreen() {
       {
         icon: 'warehouse',
         value: summary.total_quantity,
-        label: 'Units in stock',
+        label: tr('reports.stockSummary.unitsInStock'),
         variant: 'primary',
       },
       {
         icon: 'package-down',
         value: summary.grn_count,
-        label: 'GRNs with stock',
+        label: tr('reports.stockSummary.grnsWithStock'),
         variant: 'primary',
       },
     ];
@@ -627,7 +634,7 @@ export default function StockSummaryScreen() {
     if (!data?.summary) return '';
     const oldestDate = data.summary.oldest_stock_date;
     if (oldestDate) {
-      return `Oldest stock ${formatDate(oldestDate)}`;
+      return tr('reports.stockSummary.oldestStock', { date: formatDate(oldestDate) });
     }
     return '';
   };
@@ -637,7 +644,7 @@ export default function StockSummaryScreen() {
   const hasData = isListView ? allCustomersData : data;
 
   // Subtitle for list view
-  const listViewSubtitle = isStaff ? 'All customers' : 'My customers';
+  const listViewSubtitle = isStaff ? tr('reports.shared.allCustomers') : tr('reports.shared.myCustomers');
 
   const refreshControl = (
     <RefreshControl
@@ -658,12 +665,12 @@ export default function StockSummaryScreen() {
   if (isLoading && !hasData) {
     return (
       <View style={styles.container}>
-        <ReportHeader title="Stock summary" />
+        <ReportHeader title={tr('reports.titles.stockSummary')} />
         <View style={styles.loadingContainer}>
           <KPIGrid
             items={[
-              { icon: 'warehouse', value: '-', label: 'Units in stock', variant: 'primary' },
-              { icon: 'package-down', value: '-', label: 'GRNs with stock', variant: 'primary' },
+              { icon: 'warehouse', value: '-', label: tr('reports.stockSummary.unitsInStock'), variant: 'primary' },
+              { icon: 'package-down', value: '-', label: tr('reports.stockSummary.grnsWithStock'), variant: 'primary' },
             ]}
             isLoading={true}
             compact
@@ -677,16 +684,16 @@ export default function StockSummaryScreen() {
   if (error && !hasData) {
     return (
       <View style={styles.container}>
-        <ReportHeader title="Stock summary" />
-        {error === NO_CUSTOMER ? (
-          <ReportEmptyState icon="account-off-outline" message="No customer linked" description={error} />
+        <ReportHeader title={tr('reports.titles.stockSummary')} />
+        {error === noCustomer() ? (
+          <ReportEmptyState icon="account-off-outline" message={tr('reports.shared.noCustomerLinked')} description={error} />
         ) : (
           <ReportEmptyState
             icon="alert-circle-outline"
             tone="error"
-            message="Something went wrong"
+            message={tr('reports.shared.errorTitle')}
             description={error}
-            actionLabel="Try again"
+            actionLabel={tr('common.retry')}
             onAction={retry}
           />
         )}
@@ -700,7 +707,7 @@ export default function StockSummaryScreen() {
 
     return (
       <View style={styles.container}>
-        <ReportHeader title="Stock summary" subtitle={listViewSubtitle} />
+        <ReportHeader title={tr('reports.titles.stockSummary')} subtitle={listViewSubtitle} />
 
         <ScrollView
           style={styles.scrollView}
@@ -724,7 +731,7 @@ export default function StockSummaryScreen() {
           {/* Customers List */}
           {filteredCustomers.length > 0 ? (
             <View style={styles.section}>
-              <SectionHeader title="Customers with stock" styles={styles} />
+              <SectionHeader title={tr('reports.stockSummary.customersWithStock')} styles={styles} />
               <View style={styles.card}>
                 <View style={styles.cardClip}>
                   {filteredCustomers.map((customer, index) => (
@@ -732,13 +739,13 @@ export default function StockSummaryScreen() {
                       <ReportCustomerCard
                         title={customer.customer_name}
                         customerId={customer.customer_id}
-                        subtitle={`${formatCount(customer.item_count, 'item')} · ${formatCount(customer.grn_count, 'GRN')}`}
+                        subtitle={[formatCount(customer.item_count, 'item'), formatCount(customer.grn_count, 'GRN')]}
                         value={customer.total_stock}
-                        valueLabel="units"
+                        valueLabel={tr('reports.shared.units')}
                         onPress={() => handleCustomerSelect(customer)}
                         onShare={() => handleShareCustomerStock(customer.customer_id, customer.customer_name)}
                         isSharing={sharingCustomerId === customer.customer_id}
-                        accessibilityHint="Opens this customer's stock"
+                        accessibilityHint={tr('reports.stockSummary.opensCustomerHint')}
                       />
                       {index < filteredCustomers.length - 1 && <View style={styles.divider} />}
                     </React.Fragment>
@@ -750,16 +757,16 @@ export default function StockSummaryScreen() {
             customerSearchQuery.trim() ? (
               <ReportEmptyState
                 icon="magnify-close"
-                message="No matching customers"
-                description={`No customers match "${customerSearchQuery.trim()}". Try fewer letters.`}
-                actionLabel="Clear search"
+                message={tr('reports.shared.noMatchingCustomers')}
+                description={tr('reports.shared.noCustomersMatch', { search: customerSearchQuery.trim() })}
+                actionLabel={tr('common.clearSearch')}
                 onAction={() => setCustomerSearchQuery('')}
               />
             ) : (
               <ReportEmptyState
                 icon="package-variant-closed"
-                message="No stock yet"
-                description="Stock appears here once goods are received."
+                message={tr('reports.shared.noStockYet')}
+                description={tr('reports.shared.noStockYetDescription')}
               />
             )
           )}
@@ -775,7 +782,7 @@ export default function StockSummaryScreen() {
     ? [
         {
           icon: 'file-pdf-box',
-          label: 'Share stock PDF',
+          label: tr('reports.stockSummary.sharePdf'),
           busy: !!sharingCustomerId,
           onPress: () => handleShareCustomerStock(currentCustomerId, currentCustomerName),
         },
@@ -788,15 +795,15 @@ export default function StockSummaryScreen() {
     return (
       <View style={styles.container}>
         <ReportHeader
-          title="Stock summary"
+          title={tr('reports.titles.stockSummary')}
           subtitle={selectedCustomer?.customer_name}
           onBack={shouldShowListView ? handleBackToAll : undefined}
           actions={pdfActions}
         />
         <ReportEmptyState
           icon="package-variant-closed"
-          message="No stock for this customer"
-          description="Stock appears here once goods are received for this customer."
+          message={tr('reports.shared.noStockForCustomer')}
+          description={tr('reports.shared.noStockForCustomerDescription')}
         />
       </View>
     );
@@ -805,7 +812,7 @@ export default function StockSummaryScreen() {
   return (
     <View style={styles.container}>
       <ReportHeader
-        title="Stock summary"
+        title={tr('reports.titles.stockSummary')}
         subtitle={selectedCustomer?.customer_name || getSubtitle()}
         onBack={shouldShowListView ? handleBackToAll : undefined}
         actions={pdfActions}
@@ -822,7 +829,7 @@ export default function StockSummaryScreen() {
 
         {/* Items List */}
         <View style={styles.section}>
-          <SectionHeader title="Items in storage" styles={styles} />
+          <SectionHeader title={tr('reports.stockSummary.itemsInStorage')} styles={styles} />
           <View style={styles.itemsList}>
             {data.items.map((item) => (
               <ItemCard
@@ -847,7 +854,7 @@ export default function StockSummaryScreen() {
                   style={({ pressed }) => [styles.collapsibleHeader, pressed && styles.rowPressed]}
                   onPress={toggleOutOfStockSection}
                   accessibilityRole="button"
-                  accessibilityLabel={`Out of stock, ${formatCount(data.out_of_stock_items.length, 'item')}, last 360 days`}
+                  accessibilityLabel={tr('reports.stockSummary.outOfStockA11y', { items: formatCount(data.out_of_stock_items.length, 'item') })}
                   accessibilityState={{ expanded: outOfStockExpanded }}
                 >
                   <View style={styles.collapsibleHeaderLeft}>
@@ -857,15 +864,15 @@ export default function StockSummaryScreen() {
                       color={t.icon.secondary}
                     />
                     <Text style={styles.collapsibleHeaderTitle} accessibilityRole="header">
-                      Out of stock
+                      {tr('common.outOfStock')}
                     </Text>
                     <View style={styles.countBadge}>
                       <Text style={styles.countBadgeText} maxFontSizeMultiplier={1.6}>
-                        {data.out_of_stock_items.length}
+                        {formatNumber(data.out_of_stock_items.length)}
                       </Text>
                     </View>
                   </View>
-                  <Text style={styles.collapsibleHeaderHint}>Last 360 days</Text>
+                  <Text style={styles.collapsibleHeaderHint}>{tr('reports.stockSummary.last360Days')}</Text>
                 </Pressable>
               </View>
             </View>

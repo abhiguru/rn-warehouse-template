@@ -18,6 +18,9 @@ import { beginOperatorSwitch, clearPendingEnrollment, endOperatorSwitch, getPend
 import { commitStagedOperatorServer, discoverOperator, getActiveOperatorServer, parseOperatorOrigin, stageOperatorServer } from '@/config/operatorServer';
 
 import { showAlert } from '@/utils/alert';
+import { t as tr } from '@/i18n';
+import { useAppLanguage } from '@/i18n/useAppLanguage';
+import { LanguageSwitch } from '@/components/LanguageSwitch';
 type Discovery = Awaited<ReturnType<typeof discoverOperator>>;
 
 export interface OperatorServerSelectionProps {
@@ -34,6 +37,8 @@ export function OperatorServerSelection({ initial = false, onCancel }: OperatorS
   const dispatch = useAppDispatch();
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
+  // Shown before the app shell exists (app/_layout.tsx), so this screen follows the language itself.
+  useAppLanguage();
   const [focused, setFocused] = useState(false);
   const [origin, setOrigin] = useState('');
   const [candidate, setCandidate] = useState<Discovery | null>(null);
@@ -58,7 +63,7 @@ export function OperatorServerSelection({ initial = false, onCancel }: OperatorS
       setCandidate(discovered);
     } catch (error) {
       if (request !== inspection.current) return;
-      showAlert('Server unavailable', error instanceof Error ? error.message : "Couldn't check this server. Check the address and try again.");
+      showAlert(tr('auth.server.unavailableTitle'), error instanceof Error ? error.message : tr('auth.server.couldNotCheck'));
     } finally { if (request === inspection.current) setBusy(false); }
   };
 
@@ -76,11 +81,11 @@ export function OperatorServerSelection({ initial = false, onCancel }: OperatorS
     // leaving this screen invalidates its callback before any session change.
     if (request !== inspection.current || busy || activating.current) return;
     if (queryClient.isMutating() > 0) {
-      showAlert('Operation in progress', 'Finish the current operation before switching servers.');
+      showAlert(tr('auth.server.busyTitle'), tr('auth.server.busyMessage'));
       return;
     }
     if (!beginOperatorSwitch()) {
-      showAlert('Operation in progress', 'Finish the current operation before switching servers.');
+      showAlert(tr('auth.server.busyTitle'), tr('auth.server.busyMessage'));
       return;
     }
     activating.current = true;
@@ -107,9 +112,9 @@ export function OperatorServerSelection({ initial = false, onCancel }: OperatorS
       await commitStagedOperatorServer(selected.server);
       if (!initial) router.replace('/login');
     } catch {
-      showAlert("Couldn't change server", sessionCleared
-        ? 'The old session was cleared. Check the selected server and sign in again.'
-        : 'The current server was kept. Try again.');
+      showAlert(tr('auth.server.couldNotChangeTitle'), sessionCleared
+        ? tr('auth.server.sessionClearedMessage')
+        : tr('auth.server.serverKeptMessage'));
     } finally { endOperatorSwitch(); activating.current = false; setBusy(false); }
   };
 
@@ -120,11 +125,11 @@ export function OperatorServerSelection({ initial = false, onCancel }: OperatorS
     const previous = getActiveOperatorServer();
     if (previous && (previous.origin !== selected.server.origin || previous.instanceId !== selected.server.instanceId)) {
       showAlert(
-        'Change warehouse server?',
-        `Changing to ${selected.server.displayName} will sign you out and discard unsaved forms. You will need to sign in again.`,
+        tr('auth.server.confirmTitle'),
+        tr('auth.server.confirmMessage', { name: selected.server.displayName }),
         [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Change server', style: 'destructive', onPress: () => { void activate(selected, request); } },
+          { text: tr('common.cancel'), style: 'cancel' },
+          { text: tr('auth.server.confirmAction'), style: 'destructive', onPress: () => { void activate(selected, request); } },
         ]
       );
       return;
@@ -139,28 +144,28 @@ export function OperatorServerSelection({ initial = false, onCancel }: OperatorS
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
         <View style={styles.column}>
-          <Text style={styles.title} accessibilityRole="header">Choose your warehouse server</Text>
-          <Text style={styles.help}>Enter the server address your facility gave you, or scan its QR code.</Text>
+          <Text style={styles.title} accessibilityRole="header">{tr('auth.server.title')}</Text>
+          <Text style={styles.help}>{tr('auth.server.help')}</Text>
 
           <View style={styles.field}>
-            <Text style={styles.label} nativeID="server-origin-label">Server address</Text>
+            <Text style={styles.label} nativeID="server-origin-label">{tr('auth.server.addressLabel')}</Text>
             <TextInput value={origin} onChangeText={value => { if (activating.current) return; inspection.current += 1; setBusy(false); setOrigin(value); setCandidate(null); }}
               autoCapitalize="none" autoCorrect={false} keyboardType="url" placeholder="https://warehouse.example.com"
               placeholderTextColor={t.text.placeholder} textContentType="URL" autoComplete="url" returnKeyType="go"
               onSubmitEditing={() => { if (!busy) void inspect(origin); }}
               onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
-              style={fieldStyle} accessibilityLabel="Server origin" accessibilityLabelledBy="server-origin-label" />
+              style={fieldStyle} accessibilityLabel={tr('auth.server.originLabel')} accessibilityLabelledBy="server-origin-label" />
           </View>
 
           <View style={styles.actions}>
-            <Button type={candidate ? 'secondary' : 'primary'} size="fullWidth" onPress={() => void inspect(origin)} disabled={busy}>Check server</Button>
-            <Button type="secondary" size="fullWidth" onPress={() => void scan()} disabled={busy}>Scan QR code</Button>
-            {onCancel && <Button type="secondary" variant="normal" size="fullWidth" onPress={onCancel} disabled={busy}>Back</Button>}
+            <Button type={candidate ? 'secondary' : 'primary'} size="fullWidth" onPress={() => void inspect(origin)} disabled={busy}>{tr('auth.server.check')}</Button>
+            <Button type="secondary" size="fullWidth" onPress={() => void scan()} disabled={busy}>{tr('auth.server.scan')}</Button>
+            {onCancel && <Button type="secondary" variant="normal" size="fullWidth" onPress={onCancel} disabled={busy}>{tr('common.back')}</Button>}
           </View>
 
           {busy && <View style={styles.busy}>
             <ActivityIndicator color={t.brand.tint} />
-            <Text style={styles.busyText}>Checking server</Text>
+            <Text style={styles.busyText}>{tr('auth.server.checking')}</Text>
           </View>}
 
           {candidate && <View style={styles.card}>
@@ -174,8 +179,11 @@ export function OperatorServerSelection({ initial = false, onCancel }: OperatorS
                 <Text style={styles.originText}>{candidate.server.origin}</Text>
               </View>
             </View>
-            <Button size="fullWidth" onPress={chooseServer} disabled={busy}>Use this server</Button>
+            <Button size="fullWidth" onPress={chooseServer} disabled={busy}>{tr('auth.server.use')}</Button>
           </View>}
+
+          {/* English or Gujarati, below the actions so it never pushes them down */}
+          <LanguageSwitch />
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -187,10 +195,10 @@ export function OperatorServerSelection({ initial = false, onCancel }: OperatorS
             scanLocked.current = true;
             setScanning(false);
             try { void inspect(parseOperatorOrigin(data)); }
-            catch { showAlert('Invalid QR code', 'Scan a QR code containing only an HTTPS server origin.'); }
+            catch { showAlert(tr('auth.server.invalidQrTitle'), tr('auth.server.invalidQrMessage')); }
           }} />
-        <Text style={styles.cameraHint}>Point the camera at the server QR code.</Text>
-        <Button type="secondary" variant="normal" size="fullWidth" onPress={() => setScanning(false)} style={styles.cameraCancel} textStyle={styles.cameraCancelText}>Cancel</Button>
+        <Text style={styles.cameraHint}>{tr('auth.server.cameraHint')}</Text>
+        <Button type="secondary" variant="normal" size="fullWidth" onPress={() => setScanning(false)} style={styles.cameraCancel} textStyle={styles.cameraCancelText}>{tr('common.cancel')}</Button>
       </SafeAreaView>
     </Modal>
   </SafeAreaView>;

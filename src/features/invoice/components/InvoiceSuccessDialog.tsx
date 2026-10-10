@@ -25,6 +25,8 @@ import {
 } from '@/theme/tokens';
 import { formatInvoiceAmount } from '@/utils/invoiceCalculations';
 import { SavedInvoiceData } from '@/types/invoice.types';
+import { t as tr, formatIdentifier } from '@/i18n';
+import { formatFinancialYear } from '@/utils/formatters';
 
 interface InvoiceSuccessDialogProps {
   isVisible: boolean;
@@ -188,10 +190,10 @@ export const InvoiceSuccessDialog: React.FC<InvoiceSuccessDialogProps> = ({
 
   if (!invoiceData) return null;
 
-  const title = isEditMode ? 'Invoice updated' : 'Invoice saved';
+  const title = isEditMode ? tr('invoice.success.updatedTitle') : tr('invoice.success.savedTitle');
   const message = isEditMode
-    ? `Invoice ${invoiceData.invoice_no} has been updated.`
-    : `Invoice ${invoiceData.invoice_no} has been saved.`;
+    ? tr('invoice.success.updatedMessage', { number: formatIdentifier(invoiceData.invoice_no) })
+    : tr('invoice.success.savedMessage', { number: formatIdentifier(invoiceData.invoice_no) });
   const total = formatInvoiceAmount(invoiceData.total);
 
   return (
@@ -222,27 +224,32 @@ export const InvoiceSuccessDialog: React.FC<InvoiceSuccessDialogProps> = ({
             <View
               style={styles.detailsCard}
               accessible
-              accessibilityLabel={`Invoice ${invoiceData.invoice_no}, financial year ${invoiceData.fin_year}, ${invoiceData.customer_name}, total ${total}`}
+              accessibilityLabel={tr('invoice.success.detailsA11y', {
+                number: formatIdentifier(invoiceData.invoice_no),
+                year: formatFinancialYear(invoiceData.fin_year),
+                customer: invoiceData.customer_name,
+                total,
+              })}
             >
               <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>Invoice number</Text>
+                <Text style={styles.detailLabel}>{tr('common.invoiceNumber')}</Text>
                 <Text style={styles.detailValue}>{invoiceData.invoice_no}</Text>
               </View>
 
               <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>Financial year</Text>
-                <Text style={styles.detailValue}>{invoiceData.fin_year}</Text>
+                <Text style={styles.detailLabel}>{tr('invoice.label.financialYear')}</Text>
+                <Text style={styles.detailValue}>{formatFinancialYear(invoiceData.fin_year)}</Text>
               </View>
 
               <View style={styles.detailRowVertical}>
-                <Text style={styles.detailLabel}>Customer</Text>
+                <Text style={styles.detailLabel}>{tr('common.customer')}</Text>
                 <Text style={styles.detailValueCustomer} numberOfLines={2}>
                   {invoiceData.customer_name}
                 </Text>
               </View>
 
               <View style={styles.totalRow}>
-                <Text style={styles.totalLabel}>Total</Text>
+                <Text style={styles.totalLabel}>{tr('common.total')}</Text>
                 <Text style={styles.totalValue}>{total}</Text>
               </View>
             </View>
@@ -253,7 +260,7 @@ export const InvoiceSuccessDialog: React.FC<InvoiceSuccessDialogProps> = ({
                 onPress={onViewList}
                 accessibilityRole="button"
               >
-                <Text style={styles.primaryButtonText}>View invoices</Text>
+                <Text style={styles.primaryButtonText}>{tr('invoice.success.viewInvoices')}</Text>
               </Pressable>
 
               {onSharePDF && (
@@ -267,7 +274,7 @@ export const InvoiceSuccessDialog: React.FC<InvoiceSuccessDialogProps> = ({
                   onPress={onSharePDF}
                   disabled={isShareLoading}
                   accessibilityRole="button"
-                  accessibilityLabel={isShareLoading ? 'Preparing PDF' : 'Share invoice PDF'}
+                  accessibilityLabel={isShareLoading ? tr('invoice.success.preparingPdfA11y') : tr('invoice.success.sharePdfA11y')}
                   accessibilityState={{ busy: isShareLoading, disabled: isShareLoading }}
                 >
                   {isShareLoading ? (
@@ -275,7 +282,7 @@ export const InvoiceSuccessDialog: React.FC<InvoiceSuccessDialogProps> = ({
                   ) : (
                     <MaterialCommunityIcons name="share-variant-outline" size={iconSize.md} color={t.brand.tint} />
                   )}
-                  <Text style={styles.secondaryButtonText}>{isShareLoading ? 'Preparing PDF…' : 'Share PDF'}</Text>
+                  <Text style={styles.secondaryButtonText}>{isShareLoading ? tr('invoice.success.preparingPdf') : tr('invoice.success.sharePdf')}</Text>
                 </Pressable>
               )}
 
@@ -286,7 +293,7 @@ export const InvoiceSuccessDialog: React.FC<InvoiceSuccessDialogProps> = ({
                   accessibilityRole="button"
                 >
                   <MaterialCommunityIcons name="printer-outline" size={iconSize.md} color={t.brand.tint} />
-                  <Text style={styles.secondaryButtonText}>Print invoice</Text>
+                  <Text style={styles.secondaryButtonText}>{tr('invoice.print.title')}</Text>
                 </Pressable>
               )}
 
@@ -298,7 +305,7 @@ export const InvoiceSuccessDialog: React.FC<InvoiceSuccessDialogProps> = ({
                   onPress={onCreateAnother}
                   accessibilityRole="button"
                 >
-                  <Text style={styles.secondaryButtonText}>Create another invoice</Text>
+                  <Text style={styles.secondaryButtonText}>{tr('invoice.success.createAnother')}</Text>
                 </Pressable>
               )}
             </View>

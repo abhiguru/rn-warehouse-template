@@ -3,6 +3,7 @@ import { validateStep1, validateStep2 } from '../schemas/invoiceValidation';
 import type { InvoiceHeaderData, InvoiceItemData } from '@/types/invoice.types';
 
 import { showAlert } from '@/utils/alert';
+import { t } from '@/i18n';
 /**
  * Check if navigation from Step 1 is allowed
  * Validates all Step 1 fields and checks for items
@@ -16,16 +17,16 @@ export const canNavigateFromStep1 = async (
   if (!validation.isValid) {
     const errorFields = Object.keys(validation.errors);
     const errorMessage = errorFields.length > 0
-      ? `Please fix: ${errorFields.join(', ')}`
-      : 'Please fill all required fields correctly';
+      ? t('invoice.swipe.pleaseFix', { fields: errorFields.join(', ') })
+      : t('invoice.swipe.fillRequired');
 
-    showAlert('Validation Error', errorMessage);
+    showAlert(t('invoice.swipe.validationErrorTitle'), errorMessage);
     return false;
   }
 
   // Check if items are loaded from GRN selection
   if (!items || items.length === 0) {
-    showAlert('No Items', 'Please select a GRN with dispatch items');
+    showAlert(t('invoice.swipe.noItemsTitle'), t('invoice.swipe.noItemsMessage'));
     return false;
   }
 
@@ -43,9 +44,9 @@ export const canNavigateFromStep2 = async (
 
   if (!validation.isValid) {
     const errorCount = Object.keys(validation.errors).length;
-    const errorMessage = `${errorCount} validation error(s) found. Please check all item fields.`;
+    const errorMessage = t('invoice.swipe.errorsFound', { count: errorCount });
 
-    showAlert('Validation Error', errorMessage);
+    showAlert(t('invoice.swipe.validationErrorTitle'), errorMessage);
     return false;
   }
 

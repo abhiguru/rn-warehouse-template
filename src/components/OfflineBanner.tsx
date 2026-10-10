@@ -18,6 +18,7 @@ import { useIsOffline } from '@/hooks/useNetworkStatus';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { iconSize, layout, motion, space, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
+import { t as tr } from '@/i18n';
 
 interface OfflineBannerProps {
   /**
@@ -56,10 +57,11 @@ const makeStyles = (t: ThemeTokens) => ({
  * Automatically shows/hides based on network status
  */
 export const OfflineBanner: React.FC<OfflineBannerProps> = ({
-  message = "You're offline. Actions that need the server will work again when you reconnect.",
+  message: messageProp,
 }) => {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
+  const message = messageProp ?? tr('components.offline.message');
   const insets = useSafeAreaInsets();
   const isOffline = useIsOffline();
   const [visible, setVisible] = React.useState(false);

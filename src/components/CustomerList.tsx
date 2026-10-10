@@ -23,6 +23,7 @@ import { StatusTag } from '@/components/ui';
 import { formatMobile } from '@/utils/formatters';
 import { avatarColors, avatarInitials } from '@/utils/avatar';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { t as tr } from '@/i18n';
 import {
   iconSize,
   layout,
@@ -62,13 +63,13 @@ interface CustomerCardProps {
 function CustomerCard({ customer, onEdit, onToggleActive }: CustomerCardProps) {
   const t = useTokens();
   const styles = useThemedStyles(makeStyles);
-  const name = customer.name || 'Customer';
+  const name = customer.name || tr('common.customer');
   const avatarBackground = customer.active
     ? avatarColors(customer.id || name, t).background
     : t.status.neutral.background;
   const rowLabel = [
     name,
-    customer.active ? null : 'Inactive',
+    customer.active ? null : tr('common.inactive'),
     customer.mobile ? formatMobile(customer.mobile) : null,
     customer.city,
   ].filter(Boolean).join(', ');
@@ -79,7 +80,7 @@ function CustomerCard({ customer, onEdit, onToggleActive }: CustomerCardProps) {
       onPress={onEdit}
       accessibilityRole="button"
       accessibilityLabel={rowLabel}
-      accessibilityHint="Opens the customer to edit"
+      accessibilityHint={tr('customers.list.openToEditHint')}
     >
       {/* Customer Avatar */}
       <View style={[styles.avatar, { backgroundColor: avatarBackground }]}>
@@ -98,7 +99,7 @@ function CustomerCard({ customer, onEdit, onToggleActive }: CustomerCardProps) {
             {name}
           </Text>
           {!customer.active && (
-            <StatusTag status="neutral" label="Inactive" />
+            <StatusTag status="neutral" label={tr('common.inactive')} />
           )}
         </View>
 
@@ -136,7 +137,7 @@ function CustomerCard({ customer, onEdit, onToggleActive }: CustomerCardProps) {
           style={({ pressed }) => [styles.actionButton, pressed && styles.actionButtonPressed]}
           onPress={onEdit}
           accessibilityRole="button"
-          accessibilityLabel={`Edit ${name}`}
+          accessibilityLabel={tr('customers.list.editName', { name })}
         >
           <Icon name="pencil-outline" size={iconSize.md} color={t.brand.tint} />
         </Pressable>
@@ -144,7 +145,7 @@ function CustomerCard({ customer, onEdit, onToggleActive }: CustomerCardProps) {
           style={({ pressed }) => [styles.actionButton, pressed && styles.actionButtonPressed]}
           onPress={onToggleActive}
           accessibilityRole="button"
-          accessibilityLabel={customer.active ? `Deactivate ${name}` : `Activate ${name}`}
+          accessibilityLabel={tr(customer.active ? 'customers.list.deactivateName' : 'customers.list.activateName', { name })}
         >
           <Icon
             name={customer.active ? 'eye-off-outline' : 'eye-outline'}
@@ -170,7 +171,7 @@ export function CustomerList({
   hasMore = false,
   onEditCustomer,
   onInactivateCustomer,
-  emptyMessage = 'Customers you add appear here.',
+  emptyMessage = tr('customers.list.emptyMessage'),
 }: CustomerListProps) {
   const t = useTokens();
   const styles = useThemedStyles(makeStyles);
@@ -196,8 +197,8 @@ export function CustomerList({
     if (loading) {
       return (
         <View style={styles.emptyContainer}>
-          <ActivityIndicator size="large" color={t.brand.tint} accessibilityLabel="Loading customers" />
-          <Text style={styles.emptyText}>Loading customers…</Text>
+          <ActivityIndicator size="large" color={t.brand.tint} accessibilityLabel={tr('customers.list.loadingLabel')} />
+          <Text style={styles.emptyText}>{tr('customers.list.loading')}</Text>
         </View>
       );
     }
@@ -205,7 +206,7 @@ export function CustomerList({
     return (
       <View style={styles.emptyContainer}>
         <Icon name="account-group-outline" size={iconSize.hero} color={t.icon.secondary} />
-        <Text style={styles.emptyTitle} accessibilityRole="header">No customers yet</Text>
+        <Text style={styles.emptyTitle} accessibilityRole="header">{tr('customers.list.emptyTitle')}</Text>
         <Text style={styles.emptyText}>{emptyMessage}</Text>
         <Button
           type="primary"
@@ -213,7 +214,7 @@ export function CustomerList({
           leftIcon="plus"
           onPress={() => router.push('/customer-form/step1')}
         >
-          Add customer
+          {tr('customers.list.addCustomer')}
         </Button>
       </View>
     );
@@ -225,7 +226,7 @@ export function CustomerList({
     return (
       <View style={styles.footerContainer}>
         <ActivityIndicator size="small" color={t.brand.tint} />
-        <Text style={styles.footerText}>Loading more customers…</Text>
+        <Text style={styles.footerText}>{tr('customers.list.loadingMore')}</Text>
       </View>
     );
   }, [hasMore, onLoadMore, styles, t]);

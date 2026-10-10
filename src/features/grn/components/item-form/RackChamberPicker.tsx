@@ -13,8 +13,9 @@ import React, { useState, useEffect, useCallback, useMemo, useRef, forwardRef, u
 import { View, Text, TextInput, Pressable, Platform } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
-import { fontWeight, iconSize, radius, space, typography } from '@/theme/tokens';
+import { fontWeight, iconSize, radius, space, typography, trackedText, singleLineText } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
+import { t as tr } from '@/i18n';
 
 // Floor and Chamber options
 export const FLOOR_OPTIONS = ['BASE', 'F1', 'F2', 'F3', 'F4'];
@@ -192,7 +193,7 @@ export const RackChamberPicker = forwardRef<RackChamberPickerRef, RackChamberPic
         {selected && (
           <Icon name="check" size={iconSize.sm} color={t.brand.tint} style={styles.chipCheckmark} />
         )}
-        <Text style={[styles.chipText, selected && styles.chipTextSelected]} maxFontSizeMultiplier={1.6}>
+        <Text style={[styles.chipText, selected && styles.chipTextSelected]} maxFontSizeMultiplier={1.6} {...singleLineText()}>
           {option}
         </Text>
       </Pressable>
@@ -202,7 +203,7 @@ export const RackChamberPicker = forwardRef<RackChamberPickerRef, RackChamberPic
       <View>
         <View style={styles.labelRow}>
           <Icon name="view-grid-outline" size={iconSize.sm} color={t.icon.secondary} />
-          <Text style={styles.label}>Rack</Text>
+          <Text style={styles.label}>{tr('common.rack')}</Text>
           {!!fullRackValue && (
             <Text style={styles.rackPreviewInline} numberOfLines={1}>
               {fullRackValue}
@@ -212,11 +213,11 @@ export const RackChamberPicker = forwardRef<RackChamberPickerRef, RackChamberPic
 
         <TextInput
           ref={inputRef}
-          accessibilityLabel="Rack"
+          accessibilityLabel={tr('common.rack')}
           style={[styles.input, !!error && styles.inputError, isFocused && styles.inputFocused]}
           value={rackTextOnly}
           onChangeText={handleRackTextChange}
-          placeholder="For example 20B-20C"
+          placeholder={tr('grn.form.forExample', { example: '20B-20C' })}
           placeholderTextColor={t.text.placeholder}
           returnKeyType="next"
           onSubmitEditing={onSubmitEditing}
@@ -228,20 +229,20 @@ export const RackChamberPicker = forwardRef<RackChamberPickerRef, RackChamberPic
 
         {/* Floor Chips */}
         <View style={styles.chipSection}>
-          <Text style={styles.chipLabel} accessibilityRole="header">Floor</Text>
+          <Text style={styles.chipLabel} accessibilityRole="header">{tr('grn.item.floor')}</Text>
           <View style={styles.chipWrap} accessibilityRole="radiogroup">
             {FLOOR_OPTIONS.map((floor) =>
-              renderChip(floor, selectedFloor === floor, () => handleFloorSelect(floor), 'Floor')
+              renderChip(floor, selectedFloor === floor, () => handleFloorSelect(floor), tr('grn.item.floor'))
             )}
           </View>
         </View>
 
         {/* Chamber Chips */}
         <View style={styles.chipSection}>
-          <Text style={styles.chipLabel} accessibilityRole="header">Chamber</Text>
+          <Text style={styles.chipLabel} accessibilityRole="header">{tr('common.chamber')}</Text>
           <View style={styles.chipWrap} accessibilityRole="radiogroup">
             {CHAMBER_OPTIONS.map((chamber) =>
-              renderChip(chamber, selectedChamber === chamber, () => handleChamberSelect(chamber), 'Chamber')
+              renderChip(chamber, selectedChamber === chamber, () => handleChamberSelect(chamber), tr('common.chamber'))
             )}
           </View>
         </View>
@@ -309,7 +310,7 @@ const makeStyles = (t: ThemeTokens) => ({
     ...typography.caption1,
     fontWeight: fontWeight.semibold,
     textTransform: 'uppercase' as const,
-    letterSpacing: 0.5,
+    letterSpacing: trackedText(0.5),
     color: t.text.secondary,
     marginBottom: space.xs,
   },

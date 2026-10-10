@@ -17,6 +17,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 // so they are kept unchanged to preserve debugging capability
 import { executeRPC, createErrorResponse } from '@/utils/serviceErrorHandler';
 import { isTemporaryGRNImageId } from './imageId';
+import { formatNumber } from '@/utils/formatters';
+import { t } from '@/i18n';
+import { serverText } from '@/utils/serverText';
 
 export interface ImageUploadProgress {
   loaded: number;
@@ -198,7 +201,7 @@ export const uploadGRNImage = async (
     if (asset.fileSize && asset.fileSize > MAX_FILE_SIZE) {
       return {
         success: false,
-        error: `File size (${(asset.fileSize / (1024 * 1024)).toFixed(1)}MB) exceeds maximum limit (10MB)`,
+        error: t('grn.upload.fileTooLarge', { size: formatNumber(asset.fileSize / (1024 * 1024), 1) }),
       };
     }
 
@@ -214,7 +217,7 @@ export const uploadGRNImage = async (
     if (fileSize > MAX_FILE_SIZE) {
       return {
         success: false,
-        error: `Compressed file size (${(fileSize / (1024 * 1024)).toFixed(1)}MB) still exceeds maximum limit (10MB)`,
+        error: t('grn.upload.compressedTooLarge', { size: formatNumber(fileSize / (1024 * 1024), 1) }),
       };
     }
 
@@ -271,7 +274,7 @@ export const uploadGRNImage = async (
       console.error('[ImageService] Registration failed:', regError);
       return {
         success: false,
-        error: regError.message || 'Failed to register image upload',
+        error: serverText(regError.message, t('grn.upload.registerFailed')),
       };
     }
 
@@ -279,7 +282,7 @@ export const uploadGRNImage = async (
       console.error('[ImageService] Registration rejected:', regResult?.error);
       return {
         success: false,
-        error: regResult?.error || 'Registration failed on server',
+        error: serverText(regResult?.error, t('grn.upload.registrationRejected')),
       };
     }
 
@@ -343,7 +346,7 @@ export const uploadGRNImage = async (
           confirmResult?.error
         );
         throw new Error(
-          confirmResult?.error || 'Confirmation failed on server'
+          serverText(confirmResult?.error, t('grn.upload.confirmationFailed'))
         );
       }
 
@@ -408,20 +411,20 @@ export const uploadGRNImage = async (
         error:
           uploadOrConfirmError instanceof Error
             ? uploadOrConfirmError.message
-            : 'Upload failed',
+            : t('grn.photos.uploadFailed'),
       };
     }
   } catch (error) {
     console.error('[ImageService] Upload exception:', error);
 
-    let errorMessage = 'Upload failed';
+    let errorMessage = t('grn.photos.uploadFailed');
     if (error instanceof Error) {
       if (error.message.includes('Network request failed')) {
         errorMessage =
-          'Network connection failed. Please check your internet connection and try again.';
+          t('grn.upload.networkFailed');
       } else if (error.message.includes('Failed to read image')) {
         errorMessage =
-          'Failed to process image file. Please try a different image.';
+          t('grn.upload.processFailed');
       } else {
         errorMessage = error.message;
       }
@@ -474,7 +477,7 @@ export const deleteGRNImage = async (
     return {
       success: true,
       partial: true,
-      error: 'The photo was removed from this GRN, but its stored file could not be confirmed deleted.',
+      error: t('grn.upload.partialDelete'),
     };
   }
   return { success: result.success, error: result.error };
@@ -547,7 +550,7 @@ export const validateImageFile = (
   if (asset.fileSize && asset.fileSize > MAX_FILE_SIZE) {
     return {
       valid: false,
-      error: `File size (${(asset.fileSize / (1024 * 1024)).toFixed(1)}MB) exceeds maximum limit (10MB)`,
+      error: t('grn.upload.fileTooLarge', { size: formatNumber(asset.fileSize / (1024 * 1024), 1) }),
     };
   }
 
@@ -563,7 +566,7 @@ export const validateImageFile = (
   if (asset.mimeType && !allowedTypes.includes(asset.mimeType.toLowerCase())) {
     return {
       valid: false,
-      error: `File type ${asset.mimeType} is not supported. Use JPEG, PNG, WebP, or HEIC.`,
+      error: t('grn.upload.unsupportedType', { type: asset.mimeType }),
     };
   }
 
@@ -616,7 +619,7 @@ export const saveImageMetadataAfterGRN = async (
       console.error('[ImageService] Metadata save error:', metadataError);
       return {
         success: false,
-        error: metadataError.message || 'Failed to save image metadata',
+        error: serverText(metadataError.message, t('grn.upload.metadataFailed')),
       };
     }
 
@@ -628,7 +631,7 @@ export const saveImageMetadataAfterGRN = async (
     console.error('[ImageService] Save metadata exception:', error);
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to save metadata',
+      error: error instanceof Error ? error.message : t('grn.upload.metadataFailedShort'),
     };
   }
 };
@@ -738,7 +741,7 @@ const uploadSingleDeferredImage = async (
         actualFileSize = result.size;
       } catch (sizeError) {
         console.error(`[ImageService] Failed to get file size:`, sizeError);
-        return { success: false, error: 'Failed to read image file' };
+        return { success: false, error: t('grn.upload.readFailed') };
       }
     }
 
@@ -770,7 +773,7 @@ const uploadSingleDeferredImage = async (
       );
       return {
         success: false,
-        error: regResult?.error || 'Registration failed',
+        error: serverText(regResult?.error, t('grn.upload.registerFailed')),
       };
     }
 
@@ -829,7 +832,7 @@ const uploadSingleDeferredImage = async (
           `[ImageService] Confirmation rejected for deferred ${imageType} image:`,
           confirmResult?.error
         );
-        throw new Error(confirmResult?.error || 'Confirmation failed');
+        throw new Error(serverText(confirmResult?.error, t('grn.upload.confirmationFailed')));
       }
 
       return { success: true };
@@ -863,7 +866,7 @@ const uploadSingleDeferredImage = async (
         error:
           uploadOrConfirmError instanceof Error
             ? uploadOrConfirmError.message
-            : 'Upload failed',
+            : t('grn.photos.uploadFailed'),
       };
     }
   } catch (err) {
@@ -873,7 +876,7 @@ const uploadSingleDeferredImage = async (
     );
     return {
       success: false,
-      error: err instanceof Error ? err.message : 'Unknown error',
+      error: err instanceof Error ? err.message : t('grn.photos.uploadFailed'),
     };
   }
 };

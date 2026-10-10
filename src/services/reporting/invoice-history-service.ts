@@ -22,6 +22,7 @@ import type {
 } from '@/types/report.types';
 
 import { toLocalISODate } from '@/utils/formatters';
+import { t } from '@/i18n';
 /**
  * Default empty response for error cases
  */
@@ -95,7 +96,7 @@ export async function getCustomerInvoiceHistory(
     return {
       success: false,
       data: EMPTY_RESPONSE,
-      message: 'Customer ID is required',
+      message: t('reports.customerActivity.errors.customerIdRequired'),
       error: 'MISSING_CUSTOMER_ID',
     };
   }
@@ -148,7 +149,7 @@ export async function getCustomerInvoiceHistory(
       return {
         success: false,
         data: EMPTY_RESPONSE,
-        message: 'Failed to fetch invoice history',
+        message: t('reports.invoiceHistory.errors.fetchFailed'),
         error: error.message,
       };
     }
@@ -158,7 +159,7 @@ export async function getCustomerInvoiceHistory(
       return {
         success: true,
         data: EMPTY_RESPONSE,
-        message: 'No invoice history found',
+        message: t('reports.invoiceHistory.errors.noData'),
       };
     }
 
@@ -254,14 +255,14 @@ export async function getCustomerInvoiceHistory(
     return {
       success: true,
       data: { summary, invoices, by_month: byMonth },
-      message: 'Invoice history retrieved successfully',
+      message: t('reports.invoiceHistory.retrieved'),
     };
   } catch (error) {
     console.error('[InvoiceHistory] Unexpected error:', error);
     return {
       success: false,
       data: EMPTY_RESPONSE,
-      message: 'Failed to fetch invoice history',
+      message: t('reports.invoiceHistory.errors.fetchFailed'),
       error: error instanceof Error ? error.message : 'Unknown error',
     };
   }
@@ -322,7 +323,7 @@ export async function getAllInvoiceHistory(
       return {
         success: false,
         data: EMPTY_ALL_RESPONSE,
-        message: 'Failed to fetch all-customers invoice history',
+        message: t('reports.invoiceHistory.errors.fetchAllFailed'),
         error: error.message,
       };
     }
@@ -332,7 +333,7 @@ export async function getAllInvoiceHistory(
       return {
         success: true,
         data: EMPTY_ALL_RESPONSE,
-        message: 'No invoice history found',
+        message: t('reports.invoiceHistory.errors.noData'),
       };
     }
 
@@ -385,14 +386,14 @@ export async function getAllInvoiceHistory(
     return {
       success: true,
       data: { summary, by_customer: byCustomer, by_month: byMonth },
-      message: 'All-customers invoice history retrieved successfully',
+      message: t('reports.invoiceHistory.retrievedAll'),
     };
   } catch (error) {
     console.error('[AllInvoiceHistory] Unexpected error:', error);
     return {
       success: false,
       data: EMPTY_ALL_RESPONSE,
-      message: 'Failed to fetch all-customers invoice history',
+      message: t('reports.invoiceHistory.errors.fetchAllFailed'),
       error: error instanceof Error ? error.message : 'Unknown error',
     };
   }

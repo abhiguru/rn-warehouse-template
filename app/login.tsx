@@ -3,7 +3,7 @@
  *
  * Implements SAP Fiori onboarding/welcome screen pattern (style guide §14.8)
  */
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -39,13 +39,19 @@ import {
   touchTarget,
   typography,
   type ThemeTokens,
+  trackedText,
 } from '@/theme/tokens';
 
 import { showAlert } from '@/utils/alert';
+import { getLanguage, localizeDigits, normalizeDigits, t as tr } from '@/i18n';
+import { LanguageSwitch } from '@/components/LanguageSwitch';
+import { clearSignInDraft, readSignInDraft, saveSignInDraft } from '@/utils/signInDraft';
+import { serverText } from '@/utils/serverText';
 const APP_NAME = process.env.EXPO_PUBLIC_APP_NAME || 'Warehouse Manager';
+/** Splits the agreement sentence at its two link placeholders, keeping them. */
+const AGREEMENT_LINKS = /(\{\{terms\}\}|\{\{privacy\}\})/;
 
 export default function LoginScreen() {
-  const [phoneNumber, setPhoneNumber] = useState('');
   const dispatch = useAppDispatch();
   const { isAuthenticating } = useAppSelector((state) => state.auth);
   const insets = useSafeAreaInsets();
@@ -54,6 +60,25 @@ export default function LoginScreen() {
   // The warehouse this sign-in is for; becomes the facility picker with central login.
   const facility = getActiveOperatorServer();
   const facilityHost = facility ? facility.origin.replace(/^https:\/\//, '') : '';
+  const facilityOrigin = facility?.origin ?? '';
+
+  // The language switch below rebuilds every screen (app/_layout.tsx), this one
+  // included: the number typed so far is kept outside the component and read back.
+  const [phoneNumber, setPhoneNumberState] = useState(() => readSignInDraft(facilityOrigin));
+  const setPhoneNumber = useCallback((value: string) => {
+    setPhoneNumberState(value);
+    saveSignInDraft(value, facilityOrigin);
+  }, [facilityOrigin]);
+  const typedNumber = useRef(phoneNumber);
+  typedNumber.current = phoneNumber;
+  useEffect(() => {
+    const languageAtMount = getLanguage();
+    saveSignInDraft(typedNumber.current, facilityOrigin);
+    // Leaving for another screen forgets the number; a rebuild for a new language keeps it.
+    return () => {
+      if (getLanguage() === languageAtMount) clearSignInDraft();
+    };
+  }, [facilityOrigin]);
 
   useEffect(() => {
     let active = true;
@@ -72,6 +97,8 @@ export default function LoginScreen() {
     message: rateLimitMessage,
     handleRateLimitError,
   } = useRateLimitCountdown();
+  // A countdown is a number: ૦-૯ in Gujarati.
+  const countdown = localizeDigits(countdownText);
 
   const validatePhoneNumber = (phone: string): boolean => {
     const digitsOnly = phone.replace(/\D/g, '');
@@ -99,12 +126,12 @@ export default function LoginScreen() {
     }
 
     if (!phoneNumber.trim()) {
-      showAlert('Enter your mobile number', 'Enter your 10-digit mobile number to get a code.');
+      showAlert(tr('auth.login.enterMobileTitle'), tr('auth.login.enterMobileMessage'));
       return;
     }
 
     if (!validatePhoneNumber(phoneNumber)) {
-      showAlert('Check your mobile number', 'Enter a 10-digit mobile number.');
+      showAlert(tr('auth.login.checkMobileTitle'), tr('auth.login.checkMobileMessage'));
       return;
     }
 
@@ -120,19 +147,19 @@ export default function LoginScreen() {
         dispatch(setOtpSent(true));
         router.push('/otp');
       } else {
-        if (handleRateLimitError(result.error)) {
+        if (handleRateLimitError(result)) {
           return;
         }
         showAlert(
-          "Couldn't send the code",
-          result.error || 'Check your connection and try again.'
+          tr('auth.login.couldNotSendTitle'),
+          serverText(result.error, tr('common.checkConnection'))
         );
       }
     } catch (error) {
       if (handleRateLimitError(error)) {
         return;
       }
-      showAlert("Couldn't send the code", 'Check your connection and try again.');
+      showAlert(tr('auth.login.couldNotSendTitle'), tr('common.checkConnection'));
     } finally {
       dispatch(setAuthenticating(false));
     }
@@ -170,7 +197,7 @@ export default function LoginScreen() {
               <Icon name="office-building-outline" size={iconSize.md} color={t.icon.secondary} />
               <View style={styles.facilityText}>
                 <Text style={styles.facilityName} numberOfLines={1}>
-                  {facility?.companyName || 'No warehouse selected'}
+                  {facility?.companyName || tr('auth.login.noWarehouse')}
                 </Text>
                 {facilityHost ? (
                   <Text style={styles.facilityHost} numberOfLines={1}>
@@ -181,10 +208,10 @@ export default function LoginScreen() {
               <Pressable
                 onPress={() => router.push('/operator-server')}
                 accessibilityRole="button"
-                accessibilityLabel="Change warehouse server"
+                accessibilityLabel={tr('auth.server.change')}
                 style={({ pressed }) => [styles.facilityChangeButton, pressed && styles.facilityChangePressed]}
               >
-                <Text style={styles.facilityChange}>Change</Text>
+                <Text style={styles.facilityChange}>{tr('common.change')}</Text>
               </Pressable>
             </View>
             {/* A. Logo Section */}
@@ -199,9 +226,9 @@ export default function LoginScreen() {
               accessibilityRole="header"
             >
               <Text style={styles.appName}>{APP_NAME}</Text>
-              <Text style={styles.welcomeTitle}>Sign in</Text>
+              <Text style={styles.welcomeTitle}>{tr('auth.signIn')}</Text>
               <Text style={styles.welcomeSubtitle}>
-                Enter your mobile number to get a one-time code.
+                {tr('auth.login.subtitle')}
               </Text>
             </View>
 
@@ -211,14 +238,14 @@ export default function LoginScreen() {
                 style={styles.messageStrip}
                 accessible={true}
                 accessibilityRole="alert"
-                accessibilityLabel={`Warning. ${rateLimitMessage}. Try again in ${countdownText}`}
+                accessibilityLabel={tr('auth.rateLimit.warningLabel', { message: rateLimitMessage, time: countdown })}
                 accessibilityLiveRegion="polite"
               >
                 <Icon name="alert" size={iconSize.md} color={t.status.critical.text} />
                 <View style={styles.messageStripContent}>
                   <Text style={styles.messageStripTitle}>{rateLimitMessage}</Text>
                   <Text style={styles.messageStripText}>
-                    Try again in {countdownText}
+                    {tr('auth.rateLimit.tryAgainIn', { time: countdown })}
                   </Text>
                 </View>
               </View>
@@ -228,20 +255,21 @@ export default function LoginScreen() {
             <View style={styles.formSection}>
               {/* Fiori Section Header */}
               <Text style={styles.sectionHeader} accessibilityRole="header">
-                MOBILE NUMBER
+                {tr('auth.login.mobileHeader')}
               </Text>
 
               <PhoneInput
                 placeholder="98765 43210"
                 value={formatPhoneDisplay(phoneNumber)}
                 onChangeText={(text) => {
-                  const digitsOnly = text.replace(/\D/g, '');
+                  // ૦-૯ typed on a Gujarati keyboard count as 0-9.
+                  const digitsOnly = normalizeDigits(text).replace(/\D/g, '');
                   setPhoneNumber(digitsOnly);
                 }}
                 maxLength={12}
                 editable={!isAuthenticating && !isRateLimited}
-                accessibilityLabel="Mobile number"
-                accessibilityHint="The +91 country code is added for you"
+                accessibilityLabel={tr('common.mobileNumber')}
+                accessibilityHint={tr('auth.login.countryCodeHint', { code: '+91' })}
                 autoComplete="tel-national"
                 textContentType="telephoneNumber"
                 returnKeyType="send"
@@ -262,19 +290,19 @@ export default function LoginScreen() {
                 onPress={handleSendOTP}
                 disabled={isAuthenticating || isRateLimited}
                 loading={isAuthenticating}
-                loadingText="Sending code…"
+                loadingText={tr('auth.login.sendingCode')}
                 accessibilityLabel={
                   isRateLimited
-                    ? `Wait ${countdownText} before sending a code`
-                    : 'Send code'
+                    ? tr('auth.login.waitBeforeSending', { time: countdown })
+                    : tr('auth.login.sendCode')
                 }
-                accessibilityHint="Sends a one-time code to your mobile number"
+                accessibilityHint={tr('auth.login.sendCodeHint')}
                 accessibilityState={{
                   disabled: isAuthenticating || isRateLimited,
                   busy: isAuthenticating,
                 }}
               >
-                {isRateLimited ? `Wait ${countdownText}` : 'Send code'}
+                {isRateLimited ? tr('auth.rateLimit.wait', { time: countdown }) : tr('auth.login.sendCode')}
               </Button>
             </View>
 
@@ -286,26 +314,45 @@ export default function LoginScreen() {
             >
               <View style={styles.footerDivider} />
               <Text style={styles.footerText}>
-                By continuing, you agree to our{' '}
-                <Text
-                  style={styles.footerLink}
-                  onPress={() => router.push('/terms-of-service')}
-                  accessibilityRole="link"
-                  accessibilityLabel="Terms of Service"
-                >
-                  Terms of Service
-                </Text>
-                {' '}and{' '}
-                <Text
-                  style={styles.footerLink}
-                  onPress={() => router.push('/privacy-policy')}
-                  accessibilityRole="link"
-                  accessibilityLabel="Privacy Policy"
-                >
-                  Privacy Policy
-                </Text>
+                {/* One sentence per language; the two links sit where its placeholders are. */}
+                {tr('auth.legal.agreement').split(AGREEMENT_LINKS).map((part, index) => {
+                  if (part === '{{terms}}') {
+                    return (
+                      <Text
+                        key={index}
+                        style={styles.footerLink}
+                        onPress={() => router.push('/terms-of-service')}
+                        accessibilityRole="link"
+                        accessibilityLabel={tr('auth.legal.termsOfService')}
+                      >
+                        {tr('auth.legal.termsOfService')}
+                      </Text>
+                    );
+                  }
+                  if (part === '{{privacy}}') {
+                    return (
+                      <Text
+                        key={index}
+                        style={styles.footerLink}
+                        onPress={() => router.push('/privacy-policy')}
+                        accessibilityRole="link"
+                        accessibilityLabel={tr('auth.legal.privacyPolicy')}
+                      >
+                        {tr('auth.legal.privacyPolicy')}
+                      </Text>
+                    );
+                  }
+                  return part;
+                })}
               </Text>
+              {/* The two pages are not translated: say so where they are linked. */}
+              {getLanguage() === 'gu' && (
+                <Text style={[styles.footerText, styles.footerNote]}>{tr('auth.legal.englishOnly')}</Text>
+              )}
             </View>
+
+            {/* G. Language: English or Gujarati, below everything so the form keeps its place */}
+            <LanguageSwitch style={styles.languageSwitch} />
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -464,7 +511,7 @@ const makeStyles = (t: ThemeTokens) => ({
   sectionHeader: {
     ...typography.footnote,
     fontWeight: fontWeight.semibold,
-    letterSpacing: 0.5,
+    letterSpacing: trackedText(0.5),
     color: t.text.secondary,
     marginBottom: space.sm,
   },
@@ -495,5 +542,13 @@ const makeStyles = (t: ThemeTokens) => ({
     ...typography.caption1,
     color: t.brand.tint,
     textDecorationLine: 'underline' as const,
+  },
+
+  footerNote: {
+    marginTop: space.xs,
+  },
+
+  languageSwitch: {
+    marginTop: space.lg,
   },
 });

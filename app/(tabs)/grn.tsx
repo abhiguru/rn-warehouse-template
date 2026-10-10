@@ -28,32 +28,11 @@ export default function GRNTab() {
     rangeEnd?: string;
   }>();
 
-  // Build initial filters from URL params
-  const initialFilters = React.useMemo(() => {
-    if (rangeStart || rangeEnd) {
-      return {
-        grNoFrom: rangeStart
-          ? [
-              {
-                id: rangeStart,
-                label: rangeStart,
-                type: 'grn' as const,
-              },
-            ]
-          : undefined,
-        grNoTo: rangeEnd
-          ? [
-              {
-                id: rangeEnd,
-                label: rangeEnd,
-                type: 'grn' as const,
-              },
-            ]
-          : undefined,
-      };
-    }
-    return undefined;
-  }, [rangeStart, rangeEnd]);
+  // A print-range link opens the list on that range of GRN numbers.
+  const initialNumberRange = React.useMemo(
+    () => (rangeStart || rangeEnd ? { from: rangeStart, to: rangeEnd } : undefined),
+    [rangeStart, rangeEnd]
+  );
 
   const handleItemPress = (item: GRNItem) => {
     if (__DEV__) console.log('[GRNTab] Item pressed:', item);
@@ -66,8 +45,7 @@ export default function GRNTab() {
       <ListErrorBoundary listName="GRN items">
         <GRNListFiori
           onItemPress={handleItemPress}
-          initialFilters={initialFilters}
-          clearFiltersOnMount={!!initialFilters}
+          initialNumberRange={initialNumberRange}
         />
       </ListErrorBoundary>
     </View>

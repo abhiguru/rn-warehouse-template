@@ -10,6 +10,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { getActiveOperatorOrigin } from '@/config/operatorServer';
+import { withLocalizedBootstrapErrors } from '@/config/bootstrapErrors';
 import { createSessionReadFetch } from '@/config/supabaseConfig';
 import { getAuthToken } from '@/utils/authTokenUtils';
 import {
@@ -21,6 +22,7 @@ import {
   getSessionGeneration,
   onSessionChange,
 } from '@/config/sessionLifecycle';
+import { t } from '@/i18n';
 
 export interface PublicConfig {
   supabaseUrl: string;
@@ -175,14 +177,14 @@ class ConfigService {
           );
           if (!response.ok)
             throw new Error(
-              `Configuration request failed (HTTP ${response.status}).`
+              t('errors.server.configRequestFailedHttp', { status: String(response.status) })
             );
           return response.json();
         })(),
         new Promise<never>((_, reject) => {
           timeout = setTimeout(() => {
             controller.abort();
-            reject(new Error('Configuration request timed out.'));
+            reject(new Error(t('errors.server.configRequestTimedOut')));
           }, 15000);
         }),
       ]);
@@ -207,10 +209,8 @@ class ConfigService {
         /* Reject corrupt or expired public-key caches. */
       }
     }
-    const data = validatePublicConfig(
-      await this.fetchConfig('get-public-config'),
-      origin
-    );
+    const fetched = await this.fetchConfig('get-public-config');
+    const data = withLocalizedBootstrapErrors(() => validatePublicConfig(fetched, origin));
     const entry = { data, timestamp: Date.now(), scope: origin };
     this.publicCache = entry;
     await this.write(() => AsyncStorage.setItem(key, JSON.stringify(entry)));
@@ -271,10 +271,8 @@ class ConfigService {
       }
       // The bearer token is a credential: route it through the identity gate.
       // get-public-config stays raw; it is public discovery used by forced logout.
-      const data = validateFullConfig(
-        await this.fetchConfig('get-config', token, createSessionReadFetch()),
-        origin
-      );
+      const fetched = await this.fetchConfig('get-config', token, createSessionReadFetch());
+      const data = withLocalizedBootstrapErrors(() => validateFullConfig(fetched, origin));
       if (!current() || this.fullKey !== key) return null;
       const entry = { data, timestamp: Date.now(), scope };
       this.fullCache = entry;

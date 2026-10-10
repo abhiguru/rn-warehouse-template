@@ -1,4 +1,6 @@
 import { operatorResumeGate } from '@/config/operatorResume';
+import { t } from '@/i18n';
+import { AppError } from '@/utils/appError';
 import { createClient } from '@supabase/supabase-js';
 import {
   ensureValidTokens,
@@ -64,10 +66,10 @@ export function subscribeToOrderChanges(refresh: () => void | Promise<void>) {
       },
       accessToken: async () => {
         if (!current() || !(await ensureValidTokens()))
-          throw new Error('Sign in required');
+          throw new AppError('SIGN_IN_REQUIRED', t('errors.auth.signInRequired'));
         const token = await getStoredToken();
         if (!current() || !token.isValid || !token.authToken)
-          throw new Error('Sign in required');
+          throw new AppError('SIGN_IN_REQUIRED', t('errors.auth.signInRequired'));
         return token.authToken;
       },
     });

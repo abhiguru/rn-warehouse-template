@@ -9,6 +9,7 @@ import {
   TAB_ICONS,
   type TabConfig,
 } from '@/components/common/GenericDetailTabNavigator';
+import { t } from '@/i18n';
 
 // ============================================================================
 // TYPES
@@ -41,30 +42,30 @@ export const DispatchTabNavigator: React.FC<DispatchTabNavigatorProps> = ({
   const tabs = useMemo<TabConfig<TabKey>[]>(() => [
     {
       key: 'overview',
-      label: 'Overview',
+      label: t('dispatch.tabs.overview'),
       icon: TAB_ICONS.overview,
     },
     {
       key: 'items',
-      label: 'Items',
+      label: t('dispatch.tabs.items'),
       icon: TAB_ICONS.items,
       badgeCount: item_count > 0 ? item_count : undefined,
     },
     {
       key: 'grns',
-      label: 'GRNs',
+      label: t('dispatch.tabs.grns'),
       icon: TAB_ICONS.grns,
       badgeCount: grn_count > 0 ? grn_count : undefined,
     },
     {
       key: 'images',
-      label: 'Images',
+      label: t('dispatch.tabs.images'),
       icon: TAB_ICONS.images,
       badgeCount: image_count > 0 ? image_count : undefined,
     },
     {
       key: 'invoices',
-      label: 'Invoices',
+      label: t('dispatch.tabs.invoices'),
       icon: TAB_ICONS.invoices,
       badgeCount: invoice_count > 0 ? invoice_count : undefined,
     },

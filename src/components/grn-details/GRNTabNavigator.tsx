@@ -9,6 +9,7 @@ import {
   TAB_ICONS,
   type TabConfig,
 } from '@/components/common/GenericDetailTabNavigator';
+import { t as tr } from '@/i18n';
 
 // ============================================================================
 // TYPES
@@ -40,30 +41,30 @@ export const GRNTabNavigator: React.FC<GRNTabNavigatorProps> = ({
   const tabs = useMemo<TabConfig<TabKey>[]>(() => [
     {
       key: 'overview',
-      label: 'Overview',
+      label: tr('grn.tabs.overview'),
       icon: TAB_ICONS.overview,
     },
     {
       key: 'items',
-      label: 'Items',
+      label: tr('common.items'),
       icon: TAB_ICONS.items,
       badgeCount: item_count > 0 ? item_count : undefined,
     },
     {
       key: 'dispatches',
-      label: 'Dispatches',
+      label: tr('grn.tabs.dispatches'),
       icon: TAB_ICONS.dispatches,
       badgeCount: dispatch_count > 0 ? dispatch_count : undefined,
     },
     {
       key: 'images',
-      label: 'Images',
+      label: tr('grn.tabs.images'),
       icon: TAB_ICONS.images,
       badgeCount: image_count > 0 ? image_count : undefined,
     },
     {
       key: 'invoices',
-      label: 'Invoices',
+      label: tr('grn.tabs.invoices'),
       icon: TAB_ICONS.invoices,
       badgeCount: invoice_count > 0 ? invoice_count : undefined,
     },

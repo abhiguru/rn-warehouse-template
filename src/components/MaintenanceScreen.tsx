@@ -11,13 +11,14 @@ import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityI
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSupport, useEnvironment } from '@/hooks/useConfig';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
-import { fontWeight, iconSize, layout, radius, space, typography } from '@/theme/tokens';
+import { fontWeight, iconSize, layout, radius, space, typography, trackedText } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
 import { formatDate, toDate } from '@/utils/formatters';
+import { t as tr } from '@/i18n';
 
 function formatBuildDate(value: string): string {
-  return toDate(value) ? `\nBuilt ${formatDate(value)}` : '';
+  return toDate(value) ? `\n${tr('components.maintenance.built', { date: formatDate(value) })}` : '';
 }
 
 const makeStyles = (t: ThemeTokens) => ({
@@ -38,7 +39,7 @@ const makeStyles = (t: ThemeTokens) => ({
     fontWeight: fontWeight.semibold,
     color: t.text.secondary,
     textTransform: 'uppercase' as const,
-    letterSpacing: 0.5,
+    letterSpacing: trackedText(0.5),
     alignSelf: 'stretch' as const,
     marginBottom: space.sm,
     paddingHorizontal: space.lg,
@@ -107,18 +108,17 @@ const MaintenanceScreen: React.FC = () => {
           />
 
           <Text style={styles.title} accessibilityRole="header">
-            The app is under maintenance
+            {tr('components.maintenance.title')}
           </Text>
 
           <Text style={styles.message}>
-            We&apos;re making scheduled improvements. The app will be back shortly. Your saved
-            data is safe.
+            {tr('components.maintenance.message')}
           </Text>
 
           {hasSupport && (
             <>
               <Text style={styles.sectionHeader} accessibilityRole="header">
-                Need help?
+                {tr('components.maintenance.needHelp')}
               </Text>
               <View style={styles.card}>
                 {support?.email ? (
@@ -126,8 +126,8 @@ const MaintenanceScreen: React.FC = () => {
                     style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
                     onPress={handleEmailPress}
                     accessibilityRole="link"
-                    accessibilityLabel={`Email support at ${support.email}`}
-                    accessibilityHint="Opens your email app"
+                    accessibilityLabel={tr('components.maintenance.emailSupport', { email: support.email })}
+                    accessibilityHint={tr('components.maintenance.emailHint')}
                   >
                     <MaterialCommunityIcons name="email-outline" size={iconSize.md} color={t.brand.tint} />
                     <Text style={styles.rowText}>{support.email}</Text>
@@ -144,8 +144,8 @@ const MaintenanceScreen: React.FC = () => {
                     ]}
                     onPress={handlePhonePress}
                     accessibilityRole="link"
-                    accessibilityLabel={`Call support at ${support.phone}`}
-                    accessibilityHint="Opens your phone app"
+                    accessibilityLabel={tr('components.maintenance.callSupport', { phone: support.phone })}
+                    accessibilityHint={tr('components.maintenance.phoneHint')}
                   >
                     <MaterialCommunityIcons name="phone-outline" size={iconSize.md} color={t.brand.tint} />
                     <Text style={styles.rowText}>{support.phone}</Text>
@@ -158,7 +158,7 @@ const MaintenanceScreen: React.FC = () => {
 
           {environment ? (
             <Text style={styles.env}>
-              {`${environment.name} · Version ${environment.version}`}
+              {tr('components.maintenance.version', { name: environment.name, version: environment.version })}
               {environment.buildDate ? formatBuildDate(environment.buildDate) : ''}
             </Text>
           ) : null}
@@ -166,7 +166,7 @@ const MaintenanceScreen: React.FC = () => {
       </ScrollView>
 
       <View style={styles.footer}>
-        <Text style={styles.footerText}>Thank you for your patience.</Text>
+        <Text style={styles.footerText}>{tr('components.maintenance.thanks')}</Text>
       </View>
     </SafeAreaView>
   );

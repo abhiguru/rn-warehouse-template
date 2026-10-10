@@ -30,6 +30,9 @@ import { clearAllRateLimits } from '@/utils/otpRateLimiter';
 import { UserService } from '@/services/user-service';
 import { UserProfile } from '@/types/user.types';
 import { clearSessionScopedState } from '../sessionScopedState';
+import { AppError } from '@/utils/appError';
+import { t } from '@/i18n';
+import { serverText } from '@/utils/serverText';
 
 interface AuthState {
   // Loading states
@@ -327,14 +330,14 @@ export const initializeAuth = createAsyncThunk(
         }
       } catch (error: unknown) {
         const errorMessage =
-          error instanceof Error ? error.message : 'Failed to initialize auth';
+          error instanceof Error ? error.message : t('errors.auth.initializeFailed');
         console.error('[AuthSlice] Initialize auth error:', error);
         return rejectWithValue(errorMessage);
       }
     })();
     return generation === getSessionGeneration()
       ? result
-      : rejectWithValue('Session changed');
+      : rejectWithValue(t('errors.auth.sessionChanged'));
   }
 );
 
@@ -348,10 +351,10 @@ export const fetchUserProfile = createAsyncThunk(
       // Cache the profile for next time
       await cacheUserProfile(result.data, generation);
       if (generation !== getSessionGeneration())
-        throw new Error('Session changed');
+        throw new AppError('SESSION_CHANGED', t('errors.auth.sessionChanged'));
       return result.data;
     } else {
-      throw new Error('Failed to fetch user profile');
+      throw new Error(t('errors.user.fetchProfileFailed'));
     }
   }
 );
@@ -465,9 +468,9 @@ export const deleteAccount = createAsyncThunk(
     const generation = getSessionGeneration();
     const result = await UserService.deleteAccount();
     if (generation !== getSessionGeneration())
-      return rejectWithValue('Session changed');
+      return rejectWithValue(t('errors.auth.sessionChanged'));
     if (!result.success)
-      return rejectWithValue(result.error || 'Failed to delete account');
+      return rejectWithValue(serverText(result.error, t('errors.user.deleteAccountFailed')));
     await dispatch(logout()).unwrap();
   }
 );
@@ -537,7 +540,7 @@ export const refreshAuthToken = createAsyncThunk(
       const customRefreshResult = await refreshCustomJWT();
 
       if (generation !== getSessionGeneration())
-        return rejectWithValue('Session changed');
+        return rejectWithValue(t('errors.auth.sessionChanged'));
       if (customRefreshResult) {
         console.log(
           '[AuthSlice] Custom JWT refresh successful, expires:',
@@ -552,10 +555,10 @@ export const refreshAuthToken = createAsyncThunk(
         };
       }
 
-      return rejectWithValue('Custom session refresh unavailable');
+      return rejectWithValue(t('errors.auth.refreshUnavailable'));
     } catch (error) {
       const message =
-        error instanceof Error ? error.message : 'Token refresh failed';
+        error instanceof Error ? error.message : t('errors.auth.tokenRefreshFailed');
       console.error('[AuthSlice] Token refresh error:', message);
       return rejectWithValue(message);
     }

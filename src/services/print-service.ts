@@ -1,6 +1,8 @@
 import { createAuthenticatedFetch, getCurrentConfig } from '../config/supabaseConfig';
 import { getAuthTokenString } from '@/utils/authTokenUtils';
 import { createLogger } from '@/utils/logger';
+import { t } from '@/i18n';
+import { serverText } from '@/utils/serverText';
 
 // Logging rule: the print endpoints carry the session credential, document
 // ranges and printer diagnostics. Only the HTTP status and ok flag of a
@@ -74,7 +76,7 @@ export interface GetPrinterStatusResponse {
   error?: string;
 }
 
-const AUTH_REQUIRED_ERROR = 'Authentication required. Please log in again.';
+const authRequiredError = () => t('errors.auth.loginAgain');
 
 /**
  * Get authentication token for print API calls
@@ -101,7 +103,7 @@ async function submitPrintJob(
     const authToken = await getAuthToken();
     if (!authToken) {
       log.warn(`${operation} refused: no session`);
-      return { success: false, error: AUTH_REQUIRED_ERROR };
+      return { success: false, error: authRequiredError() };
     }
 
     const config = getCurrentConfig();
@@ -121,7 +123,7 @@ async function submitPrintJob(
     if (!contentType || !contentType.includes('application/json')) {
       return {
         success: false,
-        error: `Server error (${response.status}): The print server is unavailable. Please try again later.`,
+        error: t('errors.print.serverUnavailable', { status: String(response.status) }),
       };
     }
 
@@ -130,7 +132,7 @@ async function submitPrintJob(
     if (!response.ok) {
       return {
         success: false,
-        error: data.error || `HTTP error! status: ${response.status}`,
+        error: serverText(data.error, t('errors.print.httpError', { status: String(response.status) })),
       };
     }
 
@@ -139,7 +141,7 @@ async function submitPrintJob(
     log.error(`${operation} failed`);
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to submit print job',
+      error: error instanceof Error ? error.message : t('errors.print.submitFailed'),
     };
   }
 }
@@ -221,7 +223,7 @@ export async function getPrintJobs(
     const authToken = await getAuthToken();
     if (!authToken) {
       log.warn('getPrintJobs refused: no session');
-      return { success: false, error: AUTH_REQUIRED_ERROR };
+      return { success: false, error: authRequiredError() };
     }
 
     const config = getCurrentConfig();
@@ -247,9 +249,8 @@ export async function getPrintJobs(
       return {
         success: false,
         error:
-          data.error ||
-          data.message ||
-          `HTTP error! status: ${response.status}`,
+          serverText(data.error ||
+          data.message, t('errors.print.httpError', { status: String(response.status) })),
       };
     }
 
@@ -262,7 +263,7 @@ export async function getPrintJobs(
     return {
       success: false,
       error:
-        error instanceof Error ? error.message : 'Failed to fetch print jobs',
+        error instanceof Error ? error.message : t('errors.print.fetchJobsFailed'),
     };
   }
 }
@@ -280,7 +281,7 @@ export async function cancelPrintJob(
     const authToken = await getAuthToken();
     if (!authToken) {
       log.warn('cancelPrintJob refused: no session');
-      return { success: false, error: AUTH_REQUIRED_ERROR };
+      return { success: false, error: authRequiredError() };
     }
 
     const config = getCurrentConfig();
@@ -303,20 +304,20 @@ export async function cancelPrintJob(
     if (!response.ok) {
       return {
         success: false,
-        error: data.error || data.message || 'Failed to cancel print job',
+        error: serverText(data.error || data.message, t('errors.print.cancelFailed')),
       };
     }
 
     return {
       success: true,
-      message: data?.message || 'Print job cancelled successfully',
+      message: serverText(data?.message, t('errors.print.cancelled')),
     };
   } catch (error) {
     log.error('cancelPrintJob failed');
     return {
       success: false,
       error:
-        error instanceof Error ? error.message : 'Failed to cancel print job',
+        error instanceof Error ? error.message : t('errors.print.cancelFailed'),
     };
   }
 }
@@ -334,7 +335,7 @@ export async function getPrinterStatus(
     const authToken = await getAuthToken();
     if (!authToken) {
       log.warn('getPrinterStatus refused: no session');
-      return { success: false, error: AUTH_REQUIRED_ERROR };
+      return { success: false, error: authRequiredError() };
     }
 
     const config = getCurrentConfig();
@@ -357,9 +358,8 @@ export async function getPrinterStatus(
       return {
         success: false,
         error:
-          data.error ||
-          data.message ||
-          `HTTP error! status: ${response.status}`,
+          serverText(data.error ||
+          data.message, t('errors.print.httpError', { status: String(response.status) })),
       };
     }
 
@@ -382,7 +382,7 @@ export async function getPrinterStatus(
       error:
         error instanceof Error
           ? error.message
-          : 'Failed to check printer status',
+          : t('errors.print.statusFailed'),
     };
   }
 }

@@ -7,6 +7,8 @@ import { isTemporaryGRNImageId } from './imageId';
 // Note: Current RPC methods have custom error handling (E5 fix) or extensive debug logging
 // and are not migrated to executeRPC pattern to preserve their specialized behavior
 import { executeRPC, createErrorResponse } from '@/utils/serviceErrorHandler';
+import { t } from '@/i18n';
+import { serverText } from '@/utils/serverText';
 
 // Helper function to construct full image URL
 // Note: This is a fallback for when signed URL generation fails
@@ -115,7 +117,7 @@ export const checkGrnExists = async (
     if (error) {
       console.error('[GRNFormService] ❌ RPC Error:', error);
       // E5 Fix: Return distinct error response so caller can distinguish from "not found"
-      return { exists: false, error: true, message: error.message || 'Failed to check GRN' };
+      return { exists: false, error: true, message: serverText(error.message, t('grn.form.checkNumberFailed')) };
     }
 
     if (!data || !data.exists || !data.grn) {
@@ -168,7 +170,7 @@ export const checkGrnExists = async (
     return {
       exists: false,
       error: true,
-      message: error instanceof Error ? error.message : 'Network error checking GRN'
+      message: error instanceof Error ? error.message : t('grn.form.checkNumberNetwork')
     };
   }
 };
@@ -196,7 +198,7 @@ export const getNextGRNNumber = async (): Promise<string> => {
         hint: error.hint,
         code: error.code,
       });
-      throw new Error(error.message || 'Failed to get next GRN number');
+      throw new Error(serverText(error.message, t('grn.form.nextNumberFailed')));
     }
 
     if (!data) {
@@ -341,12 +343,12 @@ export const createGRN = async (payload: CreateGRNPayload) => {
 
     if (error) {
       console.error('[GRNFormService] Enhanced RPC Error:', error);
-      throw new Error(error.message || 'RPC call failed');
+      throw new Error(serverText(error.message, t('grn.form.requestFailed')));
     }
 
     if (!data || !data.success) {
       console.error('[GRNFormService] Enhanced RPC returned failure:', data);
-      throw new Error(data?.message || 'GRN creation failed');
+      throw new Error(serverText(data?.message, t('grn.form.creationFailed')));
     }
 
     const rpcResult = data.data;
@@ -435,7 +437,7 @@ export const createGRN = async (payload: CreateGRNPayload) => {
     console.error('[GRNFormService] Error creating GRN with enhanced RPC:', error);
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to create GRN',
+      error: error instanceof Error ? error.message : t('grn.form.createFailed'),
     };
   } finally {
     finishMutation?.();
@@ -794,7 +796,7 @@ export const updateGRN = async (grnId: string, payload: UpdateGRNPayload) => {
         throw new Error(`Stock Protection: ${error.message}`);
       }
 
-      throw new Error(error.message || 'RPC call failed');
+      throw new Error(serverText(error.message, t('grn.form.requestFailed')));
     }
 
     // RPC returns array, get first result (with safe array access)
@@ -808,7 +810,7 @@ export const updateGRN = async (grnId: string, payload: UpdateGRNPayload) => {
         throw new Error(`Stock Protection: ${rpcResult.message}`);
       }
 
-      throw new Error(rpcResult?.message || 'GRN update failed');
+      throw new Error(serverText(rpcResult?.message, t('grn.form.updateRejected')));
     }
 
     console.log('[GRNFormService] Update RPC Success:', {
@@ -920,12 +922,12 @@ export const updateGRN = async (grnId: string, payload: UpdateGRNPayload) => {
     console.error('[GRNFormService] Error updating GRN with RPC:', error);
 
     // Provide user-friendly error messages
-    let errorMessage = 'Failed to update GRN';
+    let errorMessage = t('grn.form.updateFailed');
     if (error instanceof Error) {
       if (error.message.includes('Stock Protection:')) {
         errorMessage = error.message; // Keep stock protection messages as-is
       } else if (error.message.includes('dispatches exist')) {
-        errorMessage = 'Cannot modify quantities for items with existing dispatches. Other details can still be updated.';
+        errorMessage = t('grn.form.dispatchedQuantityLocked');
       } else {
         errorMessage = error.message;
       }
@@ -1161,7 +1163,7 @@ export const loadGRNData = async (grnId: string) => {
     console.error('[GRNFormService] Error loading GRN:', error);
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to load GRN',
+      error: error instanceof Error ? error.message : t('grn.form.loadFailed'),
     };
   }
 };

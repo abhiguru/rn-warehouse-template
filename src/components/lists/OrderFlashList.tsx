@@ -21,17 +21,17 @@ import { OrderRefreshAction } from '@/components/OrderRefreshAction';
  */
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { View, Text, StyleSheet, RefreshControl, Pressable } from 'react-native';
+import { View, Text, StyleSheet, RefreshControl } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
-import { ActivityIndicator, IconButton, Snackbar } from 'react-native-paper';
+import { ActivityIndicator, Snackbar } from 'react-native-paper';
 import { router } from 'expo-router';
 import { useFocusEffect } from 'expo-router';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { ListSkeleton } from '@/components/skeletons';
 import { ListEmptyState } from '@/components/list/ListEmptyState';
 import { ErrorStateView } from '@/components/ErrorBoundary';
-import { Avatar } from '@/components/ui/Avatar';
-import { formatCount } from '@/utils/formatters';
+import { formatCount, formatNumber } from '@/utils/formatters';
+import { t as translate } from '@/i18n';
 import { CustomerSearchBottomSheet, CustomerSearchBottomSheetRef } from '@/components/CustomerSearchBottomSheet';
 
 // Types and utilities
@@ -49,6 +49,12 @@ import { OrderService } from '@/services/order-service';
 import { PAGINATION } from '@/config/cacheConfig';
 import type { Order, OrderFilters } from '@/types/order.types';
 
+// Search and filters
+import { ORDER_FILTERS } from '@/features/filters/configs';
+import { useListFilters } from '@/features/filters/useListFilters';
+import { FilteredListHeader, filteredEmptyProps } from '@/features/filters/components/FilteredListHeader';
+import { searchWords } from '@/features/filters/components/HighlightedText';
+
 // Components
 import { MemoizedOrderItem } from '@/components/list-items';
 
@@ -57,7 +63,7 @@ import { useAppSelector } from '@/store/hooks';
 
 // Theme
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
-import { fontWeight, iconSize, layout, radius, space, touchTarget, typography } from '@/theme/tokens';
+import { fontWeight, iconSize, layout, radius, space, touchTarget, typography, trackedText } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 
 import { Fab, FAB_CLEARANCE } from '@/components/ui/Fab';
@@ -72,6 +78,8 @@ export interface OrderFlashListProps {
   onItemPress?: (order: Order) => void;
   /** Show only orders with items */
   hasItemsOnly?: boolean;
+  /** Rendered directly under the header in every state, e.g. a view switch. */
+  subHeader?: React.ReactNode;
 }
 
 // ============================================================================
@@ -91,11 +99,11 @@ const SectionHeader = React.memo<SectionHeaderProps>(({ title, count }) => {
       style={styles.sectionHeader}
       accessible
       accessibilityRole="header"
-      accessibilityLabel={`${title}, ${formatCount(count, 'order')}`}
+      accessibilityLabel={translate('lists.section.label', { title, countText: formatCount(count, 'order') })}
     >
       <Text style={styles.sectionTitle}>{title.toUpperCase()}</Text>
       <View style={styles.sectionBadge}>
-        <Text style={styles.sectionBadgeText} maxFontSizeMultiplier={1.6}>{count}</Text>
+        <Text style={styles.sectionBadgeText} maxFontSizeMultiplier={1.6}>{formatNumber(count)}</Text>
       </View>
     </View>
   );
@@ -104,40 +112,13 @@ const SectionHeader = React.memo<SectionHeaderProps>(({ title, count }) => {
 SectionHeader.displayName = 'SectionHeader';
 
 // ============================================================================
-// EMPTY STATE COMPONENT
-// ============================================================================
-
-interface EmptyStateProps {
-  isFiltered: boolean;
-  onClearFilters: () => void;
-}
-
-// Empty state: the shared ListEmptyState with the order wording (style guide §13.6)
-const EmptyState = React.memo<EmptyStateProps>(({
-  isFiltered,
-  onClearFilters,
-}) => (
-  <ListEmptyState
-    activeFilterCount={isFiltered ? 1 : 0}
-    emptyIcon="clipboard-list-outline"
-    emptyTitle="No orders yet"
-    emptySubtitle="Orders appear here when customers add items."
-    filteredTitle="No orders with items"
-    filteredSubtitle="Clear the filter to see empty orders too."
-    onClearFilters={onClearFilters}
-  />
-));
-
-EmptyState.displayName = 'EmptyState';
-
-// ============================================================================
 // MAIN COMPONENT
 // ============================================================================
 
 const OrderFlashList: React.FC<OrderFlashListProps> = ({
   customerId,
   onItemPress,
-  hasItemsOnly = false,
+  subHeader,
 }) => {
   const fetchInProgressRef = useRef(false);
   const liveRefreshPendingRef = useRef(false);
@@ -170,8 +151,13 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
   // Rows received from the server so far; the next page starts here.
   const loadedCountRef = useRef(0);
 
-  // Filter state
-  const [showWithItemsOnly, setShowWithItemsOnly] = useState(hasItemsOnly);
+  // Search and the "With items" filter
+  const filters = useListFilters(ORDER_FILTERS);
+  const showWithItemsOnly = filters.request.has_items === true;
+  const searchText = filters.request.search;
+  const words = useMemo(() => searchWords(searchText), [searchText]);
+  // The first answer has arrived: later loads keep the rows on screen.
+  const [hasLoaded, setHasLoaded] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
   const [snackbarVisible, setSnackbarVisible] = useState(false);
 
@@ -180,17 +166,20 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
   // ============================================================================
 
   const buildFilters = useCallback((): OrderFilters => {
-    const filters: OrderFilters = {};
-    if (customerId) filters.customer_id = customerId;
-    if (showWithItemsOnly) filters.has_items = true;
-    return filters;
-  }, [customerId, showWithItemsOnly]);
+    const params: OrderFilters = {};
+    if (customerId) params.customer_id = customerId;
+    if (showWithItemsOnly) params.has_items = true;
+    if (searchText) params.search = searchText;
+    return params;
+  }, [customerId, showWithItemsOnly, searchText]);
 
   // isSilent = true → fetch data without showing RefreshControl spinner.
   // Used by useFocusEffect to avoid contentOffset.y = -60 gap from RefreshControl.
   const fetchOrders = useCallback(async (isRefresh = false, isSilent = false) => {
     if (fetchInProgressRef.current) {
-      if (isSilent) liveRefreshPendingRef.current = true;
+      // Run again when the request in flight ends, with the filters in effect then:
+      // a live update, or a search or filter the user changed meanwhile.
+      liveRefreshPendingRef.current = true;
       return;
     }
     fetchInProgressRef.current = true;
@@ -244,7 +233,7 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
         setHasMore(result.metadata?.has_more ?? false);
       } else {
         setError(result.message || 'Failed to load orders');
-        setSnackbarMessage("Couldn't load orders. Check your connection and try again.");
+        setSnackbarMessage(translate('lists.order.loadFailed'));
         setSnackbarVisible(true);
       }
     } catch (err: unknown) {
@@ -255,22 +244,26 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
       console.error('[OrderFlashList] Error:', err);
       const errorMessage = err instanceof Error ? err.message : 'Failed to load orders';
       setError(errorMessage);
-      setSnackbarMessage("Couldn't load orders. Check your connection and try again.");
+      setSnackbarMessage(translate('lists.order.loadFailed'));
       setSnackbarVisible(true);
     } finally {
       fetchInProgressRef.current = false;
       if (liveRefreshPendingRef.current && isMountedRef.current && sessionGeneration === getSessionGeneration()) {
         liveRefreshPendingRef.current = false;
-        void fetchOrders(true, true);
+        void fetchOrdersRef.current(true, true);
       }
       // E3 Fix: Only update state if still mounted
       if (isMountedRef.current) {
+        setHasLoaded(true);
         setIsLoading(false);
         setIsRefreshing(false);
         setIsLoadingMore(false);
       }
     }
   }, [buildFilters, showWithItemsOnly]);
+  // The newest fetch, for a rerun queued while an older one was in flight.
+  const fetchOrdersRef = useRef(fetchOrders);
+  fetchOrdersRef.current = fetchOrders;
 
   // Next page, appended. Shares the in-flight guard and request id with refreshes,
   // so a refresh that starts later wins and a stale page is discarded.
@@ -302,23 +295,23 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
         });
         setHasMore(result.metadata?.has_more ?? false);
       } else {
-        setSnackbarMessage("Couldn't load more orders. Scroll down to try again.");
+        setSnackbarMessage(translate('lists.order.loadMoreFailed'));
         setSnackbarVisible(true);
       }
     } catch (err: unknown) {
       if (!isMountedRef.current) return;
       console.error('[OrderFlashList] Load more error:', err);
-      setSnackbarMessage("Couldn't load more orders. Scroll down to try again.");
+      setSnackbarMessage(translate('lists.order.loadMoreFailed'));
       setSnackbarVisible(true);
     } finally {
       fetchInProgressRef.current = false;
       if (isMountedRef.current) setIsLoadingMore(false);
       if (liveRefreshPendingRef.current && isMountedRef.current && sessionGeneration === getSessionGeneration()) {
         liveRefreshPendingRef.current = false;
-        void fetchOrders(true, true);
+        void fetchOrdersRef.current(true, true);
       }
     }
-  }, [hasMore, isLoading, isLoadingMore, buildFilters, showWithItemsOnly, fetchOrders]);
+  }, [hasMore, isLoading, isLoadingMore, buildFilters, showWithItemsOnly]);
 
   // E3 Fix: Cleanup on unmount to prevent state updates after unmount
   useEffect(() => {
@@ -330,10 +323,12 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
 
   useOrderLiveUpdates(() => fetchOrders(true, true));
 
-  // Initial load
+  // First load, and a new first page whenever the search or filter changes.
   useEffect(() => {
+    loadedCountRef.current = 0;
     fetchOrders();
-  }, [showWithItemsOnly]);
+     
+  }, [showWithItemsOnly, searchText]);
 
   // Refresh when screen comes into focus (after editing an order)
   // Silent refresh (isSilent=true) — avoids RefreshControl pushing content down by ~60px
@@ -361,20 +356,8 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
     }
   }, [onItemPress]);
 
-  const handleClearFilters = useCallback(() => {
-    setShowWithItemsOnly(false);
-  }, []);
-
-  const toggleItemsFilter = useCallback(() => {
-    setShowWithItemsOnly(prev => !prev);
-  }, []);
-
   const dismissSnackbar = useCallback(() => {
     setSnackbarVisible(false);
-  }, []);
-
-  const navigateToSettings = useCallback(() => {
-    router.push('/settings');
   }, []);
 
   // Handle add order button press
@@ -391,8 +374,8 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
       }
       setSnackbarMessage(
         userProfile.assignedCustomerIds?.length
-          ? 'Select an existing assigned-customer order.'
-          : 'No assigned customer is available for this account.'
+          ? translate('lists.order.selectExisting')
+          : translate('lists.order.noAssignedCustomer')
       );
       setSnackbarVisible(true);
       return;
@@ -433,14 +416,14 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
 
     if (activeOrders.length > 0) {
       sections.push({
-        title: 'Active orders',
+        title: translate('lists.order.activeSection'),
         data: activeOrders,
       });
     }
 
     if (emptyOrders.length > 0 && !showWithItemsOnly) {
       sections.push({
-        title: 'Empty orders',
+        title: translate('lists.order.emptySection'),
         data: emptyOrders,
       });
     }
@@ -469,9 +452,10 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
       <MemoizedOrderItem
         order={item.data}
         onPress={handleOrderPress}
+        words={words}
       />
     );
-  }, [handleOrderPress]);
+  }, [handleOrderPress, words]);
 
   // ============================================================================
   // LIST FOOTER
@@ -485,7 +469,7 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
     return (
       <View style={styles.footerLoader} accessibilityLiveRegion="polite">
         <ActivityIndicator size="small" color={t.brand.tint} />
-        <Text style={styles.footerLoaderText}>Loading more orders…</Text>
+        <Text style={styles.footerLoaderText}>{translate('lists.order.loadingMore')}</Text>
       </View>
     );
   }, [isLoadingMore, styles, t]);
@@ -494,152 +478,94 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
   // RENDER
   // ============================================================================
 
-  const userName = userProfile?.name || 'U';
-
-  const headerActions = (withAvatar: boolean) => (
-    <View style={styles.headerActions}>
-      <OrderRefreshAction onRefresh={handleRefresh} refreshing={isRefreshing} label="Refresh orders" />
-      <IconButton
-        icon={showWithItemsOnly ? 'filter-check' : 'filter-variant'}
-        size={iconSize.lg}
-        iconColor={showWithItemsOnly ? t.brand.tint : t.icon.primary}
-        style={styles.iconButton}
-        onPress={toggleItemsFilter}
-        accessibilityLabel={showWithItemsOnly ? 'Show all orders' : 'Show only orders with items'}
-        accessibilityState={{ selected: showWithItemsOnly }}
-      />
-      {withAvatar && (
-        <Pressable
-          onPress={navigateToSettings}
-          style={styles.avatarButton}
-          accessibilityRole="button"
-          accessibilityLabel="Open settings"
-        >
-          <Avatar name={userName} id={userProfile?.id} size="sm" />
-        </Pressable>
-      )}
-    </View>
+  // The header, search field and filter chip are shown in every state, so the
+  // search or filter can always be changed or cleared.
+  const header = (
+    <FilteredListHeader
+      title={translate('lists.order.title')}
+      config={ORDER_FILTERS}
+      filters={filters}
+      loading={isLoading}
+      actions={<OrderRefreshAction onRefresh={handleRefresh} refreshing={isRefreshing} label={translate('lists.order.refresh')} />}
+    >
+      {subHeader}
+    </FilteredListHeader>
   );
 
-  // Loading state
-  if (isLoading && !isRefreshing) {
-    return (
-      <View style={styles.container}>
-        <View style={styles.header}>
-          <Text style={styles.headerTitle} accessibilityRole="header">Orders</Text>
+  let content: React.ReactNode;
+  if (!hasLoaded && isLoading) {
+    // First load: skeleton. Later loads keep the rows on screen while the new ones arrive.
+    content = <ListSkeleton count={5} metricsCount={3} />;
+  } else if (orders.length > 0) {
+    content = (
+      <>
+        {/* Stale data warning: critical message strip */}
+        {error && (
+          <View accessibilityRole="alert" style={styles.messageStrip}>
+            <Icon name="alert" size={iconSize.md} color={t.status.critical.text} style={styles.messageStripIcon} />
+            <View style={styles.messageStripBody}>
+              <Text style={styles.messageStripTitle}>{translate('lists.order.staleTitle')}</Text>
+              <Text style={styles.messageStripText}>
+                {translate('lists.order.staleText')}
+              </Text>
+            </View>
+          </View>
+        )}
+
+        {/* FlashList - The key to performance */}
+        <View style={styles.listWrapper}>
+          <FlashList
+            data={flattenedData}
+            renderItem={renderItem}
+            keyExtractor={keyExtractor}
+            getItemType={getItemType}
+            extraData={{ handleOrderPress, words }}
+            contentContainerStyle={styles.listContent}
+            contentInsetAdjustmentBehavior="never"
+            automaticallyAdjustContentInsets={false}
+            refreshControl={
+              <RefreshControl
+                refreshing={isRefreshing}
+                onRefresh={handleRefresh}
+                colors={[t.brand.tint]}
+                tintColor={t.brand.tint}
+                progressBackgroundColor={t.surface.card}
+              />
+            }
+            ListFooterComponent={ListFooter}
+            onEndReached={handleLoadMore}
+            onEndReachedThreshold={DEFAULT_LIST_CONFIG.onEndReachedThreshold}
+            showsVerticalScrollIndicator={false}
+          />
         </View>
-        <ListSkeleton count={5} metricsCount={3} />
-      </View>
+      </>
     );
-  }
-
-  // E1 Fix: Error state with retry button
-  if (error && orders.length === 0) {
-    return (
-      <View style={styles.container}>
-        <View style={styles.header}>
-          <Text style={styles.headerTitle} accessibilityRole="header">Orders</Text>
-        </View>
-        <ErrorStateView
-          presentation="inline"
-          title="Couldn't load orders"
-          message="Check your connection and try again."
-          onRetry={handleRefresh}
-        />
-      </View>
+  } else if (error) {
+    content = (
+      <ErrorStateView
+        presentation="inline"
+        title={translate('lists.order.loadFailedTitle')}
+        message={translate('common.checkConnection')}
+        onRetry={handleRefresh}
+      />
     );
-  }
-
-  // Empty state
-  if (!isLoading && orders.length === 0 && !error) {
-    return (
-      <View style={styles.container}>
-        <View style={styles.header}>
-          <Text style={styles.headerTitle} accessibilityRole="header">Orders</Text>
-          {headerActions(false)}
-        </View>
-        <EmptyState
-          isFiltered={showWithItemsOnly}
-          onClearFilters={handleClearFilters}
-        />
-
-        <Fab label="Create order" onPress={handleAddOrder} />
-
-        {/* Customer Search Bottom Sheet */}
-        <CustomerSearchBottomSheet
-          ref={customerSearchRef}
-          onSelect={handleCustomerSelect}
-          title="Select customer"
-        />
-      </View>
+  } else {
+    content = (
+      <ListEmptyState
+        {...filteredEmptyProps(filters, 'orders')}
+        emptyIcon="clipboard-list-outline"
+        emptyTitle={translate('lists.order.emptyTitle')}
+        emptySubtitle={translate('lists.order.emptySubtitle')}
+      />
     );
   }
 
   return (
     <View style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.headerTitle} accessibilityRole="header">Orders</Text>
-        {headerActions(true)}
-      </View>
+      {header}
+      {content}
 
-      {/* Stale data warning: critical message strip */}
-      {error && (
-        <View accessibilityRole="alert" style={styles.messageStrip}>
-          <Icon name="alert" size={iconSize.md} color={t.status.critical.text} style={styles.messageStripIcon} />
-          <View style={styles.messageStripBody}>
-            <Text style={styles.messageStripTitle}>Couldn't refresh orders.</Text>
-            <Text style={styles.messageStripText}>
-              Showing previously loaded orders. Refresh to get current data.
-            </Text>
-          </View>
-        </View>
-      )}
-
-      {showWithItemsOnly && (
-        <View style={styles.filterChipContainer}>
-          <Pressable
-            style={({ pressed }) => [styles.filterChip, pressed && styles.filterChipPressed]}
-            onPress={toggleItemsFilter}
-            hitSlop={space.sm}
-            accessibilityRole="button"
-            accessibilityLabel="Remove filter: with items only"
-          >
-            <Icon name="cart-check" size={iconSize.sm} color={t.brand.tint} />
-            <Text style={styles.filterChipText} maxFontSizeMultiplier={1.6}>With items only</Text>
-            <Icon name="close" size={iconSize.sm} color={t.brand.tint} />
-          </Pressable>
-        </View>
-      )}
-
-      {/* FlashList - The key to performance */}
-      <View style={styles.listWrapper}>
-        <FlashList
-          data={flattenedData}
-          renderItem={renderItem}
-          keyExtractor={keyExtractor}
-          getItemType={getItemType}
-          extraData={handleOrderPress}
-          contentContainerStyle={styles.listContent}
-          contentInsetAdjustmentBehavior="never"
-          automaticallyAdjustContentInsets={false}
-          refreshControl={
-            <RefreshControl
-              refreshing={isRefreshing}
-              onRefresh={handleRefresh}
-              colors={[t.brand.tint]}
-              tintColor={t.brand.tint}
-              progressBackgroundColor={t.surface.card}
-            />
-          }
-          ListFooterComponent={ListFooter}
-          onEndReached={handleLoadMore}
-          onEndReachedThreshold={DEFAULT_LIST_CONFIG.onEndReachedThreshold}
-          showsVerticalScrollIndicator={false}
-        />
-      </View>
-
-      <Fab label="Create order" onPress={handleAddOrder} />
+      <Fab label={translate('lists.order.create')} onPress={handleAddOrder} />
 
       {/* Snackbar */}
       <Snackbar
@@ -655,7 +581,7 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
       <CustomerSearchBottomSheet
         ref={customerSearchRef}
         onSelect={handleCustomerSelect}
-        title="Select customer"
+        title={translate('lists.order.selectCustomer')}
       />
     </View>
   );
@@ -669,39 +595,6 @@ const makeStyles = (t: ThemeTokens) => ({
   container: {
     flex: 1,
     backgroundColor: t.background.base,
-  },
-  // App bar on surface.header with a hairline divider (§13.8)
-  header: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    justifyContent: 'space-between' as const,
-    paddingHorizontal: layout.marginCompact,
-    minHeight: layout.rowMinHeight,
-    paddingVertical: space.md,
-    backgroundColor: t.surface.header,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: t.border.divider,
-  },
-  // Large title for a top-level tab screen
-  headerTitle: {
-    ...typography.largeTitle,
-    color: t.text.primary,
-    flexShrink: 1,
-  },
-  headerActions: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-  },
-  iconButton: {
-    width: touchTarget,
-    height: touchTarget,
-    margin: 0,
-  },
-  avatarButton: {
-    width: touchTarget,
-    height: touchTarget,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
   },
   // Critical message strip (§13.9)
   messageStrip: {
@@ -730,30 +623,6 @@ const makeStyles = (t: ThemeTokens) => ({
     ...typography.footnote,
     color: t.status.critical.text,
   },
-  // Applied filter chip (§13.5 FilterChip)
-  filterChipContainer: {
-    paddingHorizontal: layout.marginCompact,
-    paddingVertical: space.sm,
-  },
-  filterChip: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    alignSelf: 'flex-start' as const,
-    minHeight: space.xxxl,
-    borderRadius: radius.pill,
-    paddingHorizontal: space.md,
-    paddingVertical: space.s6,
-    gap: space.s6,
-    backgroundColor: t.brand.subtle,
-  },
-  filterChipPressed: {
-    backgroundColor: t.brand.subtleStrong,
-  },
-  filterChipText: {
-    ...typography.caption1,
-    fontWeight: fontWeight.semibold,
-    color: t.brand.tint,
-  },
   listWrapper: {
     flex: 1,
   },
@@ -775,7 +644,7 @@ const makeStyles = (t: ThemeTokens) => ({
   sectionTitle: {
     ...typography.footnote,
     fontWeight: fontWeight.semibold,
-    letterSpacing: 0.5,
+    letterSpacing: trackedText(0.5),
     color: t.text.secondary,
   },
   // Plain count badge: brand.fill with brand.onFill. "Needs action" counts use

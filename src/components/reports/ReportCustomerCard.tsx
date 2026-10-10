@@ -24,6 +24,8 @@ import {
 } from '@/theme/tokens';
 import { Avatar, StatusTag, type StatusKind } from '@/components/ui';
 import { formatNumber as formatShared } from '@/utils/formatters';
+import { t as tr } from '@/i18n';
+import { FactLines, joinFacts } from './FactLines';
 
 // ============================================================================
 // TYPES
@@ -32,8 +34,11 @@ import { formatNumber as formatShared } from '@/utils/formatters';
 export interface ReportCustomerCardProps {
   /** Customer name (title) */
   title: string;
-  /** Subtitle text (e.g., "3 dispatches", "Avg: 120 days") */
-  subtitle: string;
+  /**
+   * Subtitle (e.g., "3 dispatches"). Give several facts as a list: they share one
+   * line in English and get a line each in Gujarati (see FactLines).
+   */
+  subtitle: string | string[];
   /** Main numeric value to display */
   value: number | string;
   /** Label for the value (default: "units") */
@@ -105,8 +110,10 @@ const makeStyles = (t: ThemeTokens) =>
     shareButtonPressed: {
       backgroundColor: t.brand.subtle,
     },
+    // The value keeps its width; the title and facts take what is left.
     valueContainer: {
       alignItems: 'flex-end',
+      flexShrink: 0,
     },
     value: {
       ...typography.headline,
@@ -139,15 +146,18 @@ export const ReportCustomerCard: React.FC<ReportCustomerCardProps> = ({
   onShare,
   isSharing,
   accessibilityLabel,
-  accessibilityHint = 'Opens details',
+  accessibilityHint = tr('reports.shared.opensDetailsHint'),
 }) => {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
 
+  const facts = Array.isArray(subtitle) ? subtitle : [subtitle];
+  const subtitleText = joinFacts(facts);
+
   // Auto-generate accessibility label if not provided
   const a11yLabel =
     accessibilityLabel ??
-    [title, subtitle, `${formatNumber(value)} ${valueLabel}`, status?.label].filter(Boolean).join(', ');
+    [title, subtitleText, tr('reports.components.valueWithLabel', { value: formatNumber(value), label: valueLabel }), status?.label].filter(Boolean).join(', ');
 
   return (
     <Pressable
@@ -165,9 +175,7 @@ export const ReportCustomerCard: React.FC<ReportCustomerCardProps> = ({
         <Text style={styles.title} numberOfLines={2}>
           {title}
         </Text>
-        <Text style={styles.subtitle} numberOfLines={1}>
-          {subtitle}
-        </Text>
+        <FactLines facts={facts} style={styles.subtitle} numberOfLines={1} />
       </View>
 
       {/* C. Share Button (optional) */}
@@ -180,7 +188,7 @@ export const ReportCustomerCard: React.FC<ReportCustomerCardProps> = ({
           style={({ pressed }) => [styles.shareButton, pressed && styles.shareButtonPressed]}
           disabled={isSharing}
           accessibilityRole="button"
-          accessibilityLabel={`Share PDF for ${title}`}
+          accessibilityLabel={tr('reports.components.sharePdfFor', { name: title })}
           accessibilityState={{ busy: !!isSharing, disabled: !!isSharing }}
         >
           {isSharing ? (

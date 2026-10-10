@@ -20,6 +20,7 @@ import { useRouter } from 'expo-router';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { formatCount, formatNumber, formatRelativeTime } from '@/utils/formatters';
 import { Avatar, StatusTag } from '@/components/ui';
+import { t as translate } from '@/i18n';
 import { useAppDispatch } from '@/store/hooks';
 import { loadFromOrder } from '@/store/slices/dispatchFormSlice';
 import { convertOrderToDispatchData, canConvertToDispatch } from '@/utils/orderToDispatchConverter';
@@ -126,9 +127,9 @@ const CustomerOrderGroupCardContent: React.FC<CustomerOrderGroupCardProps> = ({
 
     if (!canDispatch) {
       showAlert(
-        "Can't create a dispatch",
-        'No items in this order have stock available. Each item needs a GRN with stock.',
-        [{ text: 'OK' }]
+        translate('lists.orderGroup.cannotDispatchTitle'),
+        translate('lists.orderGroup.cannotDispatchMessage'),
+        [{ text: translate('common.ok') }]
       );
       return;
     }
@@ -145,16 +146,16 @@ const CustomerOrderGroupCardContent: React.FC<CustomerOrderGroupCardProps> = ({
     // Show warning if some items were skipped
     if (skippedItems.length > 0) {
       const skippedNames = skippedItems
-        .map(s => `• ${s.item.grn_item?.name || 'Unknown item'}: ${s.reason}`)
+        .map(s => translate('lists.orderGroup.skippedLine', { item: s.item.grn_item?.name || translate('lists.orderGroup.unknownItem'), reason: s.reason }))
         .join('\n');
 
       showAlert(
-        'Some items will be skipped',
-        `These items can't be dispatched:\n\n${skippedNames}\n\nCreate a dispatch with ${formatCount(items.length, 'item')}?`,
+        translate('lists.orderGroup.skippedTitle'),
+        translate('lists.orderGroup.skippedMessage', { items: skippedNames, itemCount: formatCount(items.length, 'item') }),
         [
-          { text: 'Cancel', style: 'cancel' },
+          { text: translate('common.cancel'), style: 'cancel' },
           {
-            text: 'Create dispatch',
+            text: translate('lists.dispatch.create'),
             onPress: () => {
               dispatch(loadFromOrder({
                 header,
@@ -182,7 +183,7 @@ const CustomerOrderGroupCardContent: React.FC<CustomerOrderGroupCardProps> = ({
     router.push(`/orders/${order.customer_id}`);
   }, [order.customer_id, router]);
 
-  const customerName = order.customer?.name || 'Unknown customer';
+  const customerName = order.customer?.name || translate('lists.orderGroup.unknownCustomer');
   // Same wording as the order rows: "3 items · 45 units".
   const itemsLabel = formatCount(itemCount, 'item');
   const unitsLabel = formatCount(totalQty, 'unit');
@@ -194,7 +195,7 @@ const CustomerOrderGroupCardContent: React.FC<CustomerOrderGroupCardProps> = ({
         onPress={handleToggle}
         style={({ pressed }) => [styles.header, pressed && styles.headerPressed]}
         accessibilityRole="button"
-        accessibilityLabel={`${customerName}, ${itemsLabel}, ${unitsLabel}, open`}
+        accessibilityLabel={translate('lists.orderGroup.headerLabel', { customer: customerName, items: itemsLabel, units: unitsLabel })}
         accessibilityState={{ expanded: isExpanded }}
       >
         {/* Customer Avatar */}
@@ -215,7 +216,7 @@ const CustomerOrderGroupCardContent: React.FC<CustomerOrderGroupCardProps> = ({
 
         {/* Status Tag + Chevron */}
         <View style={styles.rightSection}>
-          <StatusTag status="neutral" label="Open" />
+          <StatusTag status="neutral" label={translate('lists.order.statusOpen')} />
           <Icon
             name={isExpanded ? 'chevron-up' : 'chevron-down'}
             size={iconSize.lg}
@@ -229,17 +230,17 @@ const CustomerOrderGroupCardContent: React.FC<CustomerOrderGroupCardProps> = ({
         <View style={styles.expandedContent}>
           {/* Order Items Section */}
           {isLoadingItems ? (
-            <View style={styles.loadingContainer} accessibilityRole="progressbar" accessibilityLabel="Loading items">
+            <View style={styles.loadingContainer} accessibilityRole="progressbar" accessibilityLabel={translate('lists.orderGroup.loadingItems')}>
               <ActivityIndicator size="small" color={t.brand.tint} />
-              <Text style={styles.loadingText}>Loading items…</Text>
+              <Text style={styles.loadingText}>{translate('lists.orderGroup.loadingItemsText')}</Text>
             </View>
           ) : displayItems.length > 0 ? (
             <View>
               {/* Data Table Header */}
               <View style={styles.tableHeader}>
-                <Text style={[styles.tableHeaderCell, styles.colItem]}>Item</Text>
-                <Text style={[styles.tableHeaderCell, styles.colStock, styles.numeric]}>Stock</Text>
-                <Text style={[styles.tableHeaderCell, styles.colQty, styles.numeric]}>Qty</Text>
+                <Text style={[styles.tableHeaderCell, styles.colItem]}>{translate('common.item')}</Text>
+                <Text style={[styles.tableHeaderCell, styles.colStock, styles.numeric]}>{translate('common.stock')}</Text>
+                <Text style={[styles.tableHeaderCell, styles.colQty, styles.numeric]}>{translate('lists.card.colQty')}</Text>
               </View>
 
               {/* Data Table Rows */}
@@ -247,14 +248,14 @@ const CustomerOrderGroupCardContent: React.FC<CustomerOrderGroupCardProps> = ({
                 const currentStock = item.grn_item?.current_stock || 0;
                 const requestedQty = item.requested_quantity || 0;
                 const hasEnoughStock = currentStock >= requestedQty;
-                const itemName = item.grn_item?.name || 'Unknown item';
+                const itemName = item.grn_item?.name || translate('lists.orderGroup.unknownItem');
 
                 return (
                   <View
                     key={item.id}
                     style={styles.tableRow}
                     accessible
-                    accessibilityLabel={`${itemName}, stock ${currentStock}, quantity ${requestedQty}${hasEnoughStock ? '' : ', low stock'}`}
+                    accessibilityLabel={translate(hasEnoughStock ? 'lists.orderGroup.itemRow' : 'lists.orderGroup.itemRowLow', { item: itemName, stock: currentStock, quantity: requestedQty })}
                   >
                     {/* Item Column - Primary info */}
                     <View style={[styles.tableCell, styles.colItem]}>
@@ -290,7 +291,7 @@ const CustomerOrderGroupCardContent: React.FC<CustomerOrderGroupCardProps> = ({
               {displayItems.length > 5 && (
                 <View style={styles.moreItemsRow}>
                   <Text style={styles.moreItemsText}>
-                    {formatCount(displayItems.length - 5, 'more item')}
+                    {translate('lists.orderGroup.moreItems', { count: displayItems.length - 5 })}
                   </Text>
                 </View>
               )}
@@ -298,7 +299,7 @@ const CustomerOrderGroupCardContent: React.FC<CustomerOrderGroupCardProps> = ({
           ) : (
             <View style={styles.emptyItemsContainer}>
               <Icon name="package-variant-closed" size={iconSize.xl} color={t.icon.secondary} />
-              <Text style={styles.noItemsText}>No items in this order.</Text>
+              <Text style={styles.noItemsText}>{translate('lists.orderGroup.noItems')}</Text>
             </View>
           )}
 
@@ -306,10 +307,11 @@ const CustomerOrderGroupCardContent: React.FC<CustomerOrderGroupCardProps> = ({
           {order.updated_at && (
             <View style={styles.footerInfo}>
               <View style={styles.keyValueRow}>
-                <Text style={styles.keyLabel}>Last updated</Text>
+                <Text style={styles.keyLabel}>{translate('lists.orderGroup.lastUpdated')}</Text>
                 <Text style={styles.valueText}>
-                  {formatRelativeTime(order.updated_at)}
-                  {order.updated_by_display_name ? ` by ${order.updated_by_display_name}` : ''}
+                  {order.updated_by_display_name
+                    ? translate('lists.orderGroup.updatedBy', { time: formatRelativeTime(order.updated_at), name: order.updated_by_display_name })
+                    : formatRelativeTime(order.updated_at)}
                 </Text>
               </View>
             </View>
@@ -321,10 +323,10 @@ const CustomerOrderGroupCardContent: React.FC<CustomerOrderGroupCardProps> = ({
               style={({ pressed }) => [styles.editButton, pressed && styles.editButtonPressed]}
               onPress={handleEditOrder}
               accessibilityRole="button"
-              accessibilityLabel={`Edit order for ${customerName}`}
+              accessibilityLabel={translate('lists.orderGroup.editLabel', { customer: customerName })}
             >
               <Icon name="pencil-outline" size={iconSize.md} color={t.text.primary} />
-              <Text style={styles.editButtonText}>Edit</Text>
+              <Text style={styles.editButtonText}>{translate('common.edit')}</Text>
             </Pressable>
 
             <Pressable
@@ -336,17 +338,17 @@ const CustomerOrderGroupCardContent: React.FC<CustomerOrderGroupCardProps> = ({
               onPress={handleGenerateDispatch}
               disabled={!canDispatch}
               accessibilityRole="button"
-              accessibilityLabel="Create dispatch"
-              accessibilityHint={canDispatch ? undefined : 'No items have stock available to dispatch'}
+              accessibilityLabel={translate('lists.dispatch.create')}
+              accessibilityHint={canDispatch ? undefined : translate('lists.orderGroup.noStockHint')}
               accessibilityState={{ disabled: !canDispatch }}
             >
               <Icon name="truck-delivery-outline" size={iconSize.md} color={t.brand.onFill} />
-              <Text style={styles.dispatchButtonText}>Create dispatch</Text>
+              <Text style={styles.dispatchButtonText}>{translate('lists.dispatch.create')}</Text>
             </Pressable>
           </View>
           {!canDispatch && !isLoadingItems && (
             <Text style={styles.helperText}>
-              No items have stock available to dispatch.
+              {translate('lists.orderGroup.noStockText')}
             </Text>
           )}
         </View>

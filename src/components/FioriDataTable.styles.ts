@@ -47,11 +47,21 @@ export const FIORI_DATA_TABLE = {
     /** Width of the fade shown at the horizontal scroll edge. */
     fadeWidth: space.xxl,
   },
+  // Read when a stylesheet is built, not when this file is loaded: the type styles
+  // follow the language (Gujarati has taller lines).
   typography: {
-    header: { ...typography.footnote, fontWeight: fontWeight.semibold },
-    data: typography.subhead,
-    dataMedium: { ...typography.subhead, fontWeight: fontWeight.medium },
-    subtext: typography.caption1,
+    get header() {
+      return { ...typography.footnote, fontWeight: fontWeight.semibold };
+    },
+    get data() {
+      return typography.subhead;
+    },
+    get dataMedium() {
+      return { ...typography.subhead, fontWeight: fontWeight.medium };
+    },
+    get subtext() {
+      return typography.caption1;
+    },
   },
   /** Legacy static colours (default brand, light mode). Use tokens instead. */
   colors: {

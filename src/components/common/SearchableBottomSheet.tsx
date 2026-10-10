@@ -55,9 +55,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useSearchAutocomplete } from '@/hooks';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
-import { fontWeight, iconSize, layout, radius, space, touchTarget, typography } from '@/theme/tokens';
+import { fontWeight, iconSize, layout, radius, space, touchTarget, typography, trackedText } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { useAppSelector } from '@/store/hooks';
+import { normalizeDigits, t as tr } from '@/i18n';
 
 // ============================================================================
 // Types
@@ -170,7 +171,7 @@ export function SearchableBottomSheet<T extends { id: string }>({
   onClose,
   onSelect,
   title,
-  placeholder = 'Search',
+  placeholder: placeholderProp,
   searchFn,
   renderItem,
   keyExtractor,
@@ -182,9 +183,14 @@ export function SearchableBottomSheet<T extends { id: string }>({
   debounceMs = 300,
   snapPoints: customSnapPoints,
   emptySearchText,
-  emptyInitialText = 'Search to find items',
-  emptySubText = 'Type at least 2 letters.',
+  emptyInitialText: emptyInitialTextProp,
+  emptySubText: emptySubTextProp,
 }: SearchableBottomSheetProps<T>): ReactElement {
+  const placeholder = placeholderProp ?? tr('common.search');
+  const emptyInitialText = emptyInitialTextProp ?? tr('components.searchSheet.emptyInitial');
+  const emptySubText = emptySubTextProp ?? tr('components.searchSheet.emptyHint');
+  // ૧૨ and 12 find the same things (docs/I18N.md rule 6)
+  const searchNormalized = useCallback((query: string) => searchFn(normalizeDigits(query)), [searchFn]);
   const bottomSheetRef = useRef<BottomSheetModal>(null);
   const inputRef = useRef<React.ElementRef<typeof BottomSheetTextInput>>(null);
 
@@ -212,7 +218,7 @@ export function SearchableBottomSheet<T extends { id: string }>({
     performSearchNow,
     searchTimeoutRef,
   } = useSearchAutocomplete<T>({
-    searchFn,
+    searchFn: searchNormalized,
     minQueryLength,
     debounceMs,
   });
@@ -273,7 +279,7 @@ export function SearchableBottomSheet<T extends { id: string }>({
 
     return (
       <View style={dynamicStyles.recentSection}>
-        <Text style={dynamicStyles.recentTitle} accessibilityRole="header">Recent</Text>
+        <Text style={dynamicStyles.recentTitle} accessibilityRole="header">{tr('components.searchSheet.recent')}</Text>
         {recentItems.map((item) => (
           <React.Fragment key={keyExtractor(item)}>
             {renderRecentItem ? (
@@ -283,7 +289,7 @@ export function SearchableBottomSheet<T extends { id: string }>({
                 style={({ pressed }) => [dynamicStyles.recentItem, pressed && dynamicStyles.recentItemPressed]}
                 onPress={() => handleItemSelect(item)}
                 accessibilityRole="button"
-                accessibilityLabel={`Select ${(item as T & { name?: string }).name || keyExtractor(item)}`}
+                accessibilityLabel={tr('components.searchSheet.selectItem', { name: (item as T & { name?: string }).name || keyExtractor(item) })}
               >
                 <View style={dynamicStyles.recentIcon}>
                   <Icon name="clock-outline" size={iconSize.sm} color={t.icon.secondary} />
@@ -314,7 +320,7 @@ export function SearchableBottomSheet<T extends { id: string }>({
       return (
         <View style={dynamicStyles.emptyContainer}>
           <ActivityIndicator size="large" color={t.brand.tint} />
-          <Text style={dynamicStyles.emptyText}>Searching…</Text>
+          <Text style={dynamicStyles.emptyText}>{tr('components.searchSheet.searching')}</Text>
         </View>
       );
     }
@@ -329,9 +335,9 @@ export function SearchableBottomSheet<T extends { id: string }>({
             style={styles.emptyIcon}
           />
           <Text style={dynamicStyles.emptyText}>
-            {emptySearchText || `Nothing matches "${searchQuery}"`}
+            {emptySearchText || tr('components.searchSheet.noMatch', { search: searchQuery })}
           </Text>
-          <Text style={dynamicStyles.emptySubText}>Try fewer letters or a different word.</Text>
+          <Text style={dynamicStyles.emptySubText}>{tr('components.searchSheet.noMatchHint')}</Text>
         </View>
       );
     }
@@ -429,7 +435,7 @@ export function SearchableBottomSheet<T extends { id: string }>({
             style={({ pressed }) => [dynamicStyles.closeButton, pressed && dynamicStyles.closeButtonPressed]}
             onPress={() => bottomSheetRef.current?.dismiss()}
             accessibilityRole="button"
-            accessibilityLabel="Close"
+            accessibilityLabel={tr('common.close')}
           >
             <Icon name="close" size={iconSize.lg} color={t.icon.primary} />
           </Pressable>
@@ -471,7 +477,7 @@ export function SearchableBottomSheet<T extends { id: string }>({
                 inputRef.current?.focus();
               }}
               accessibilityRole="button"
-              accessibilityLabel="Clear search"
+              accessibilityLabel={tr('common.clearSearch')}
             >
               <Icon name="close-circle" size={iconSize.md} color={t.icon.secondary} />
             </Pressable>
@@ -592,7 +598,7 @@ const makeStyles = (t: ThemeTokens) => ({
     fontWeight: fontWeight.semibold,
     color: t.text.secondary,
     textTransform: 'uppercase' as const,
-    letterSpacing: 0.5,
+    letterSpacing: trackedText(0.5),
     marginBottom: space.md,
   },
   recentItem: {

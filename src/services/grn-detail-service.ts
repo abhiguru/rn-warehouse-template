@@ -14,6 +14,7 @@ import type {
   RpcItemDetails,
   RpcUserDetails,
 } from '@/types/rpc-canonical.types';
+import { t } from '@/i18n';
 
 // Re-export canonical types for consumers
 export type {
@@ -224,8 +225,8 @@ export const getGRNDetails = async (grnId: string): Promise<GRNDetailsResponse> 
     if (!grnId) {
       return {
         success: false,
-        message: 'GRN ID is required',
-        error: 'Missing parameter'
+        message: t('errors.grn.idRequired'),
+        error: t('errors.general.missingParameter')
       };
     }
 
@@ -244,7 +245,7 @@ export const getGRNDetails = async (grnId: string): Promise<GRNDetailsResponse> 
       console.error('[GRNDetailService] Failed to fetch GRN details:', error.message);
       return {
         success: false,
-        message: 'Failed to fetch GRN details',
+        message: t('errors.grn.fetchDetailsFailed'),
         error: error.message
       };
     }
@@ -266,8 +267,8 @@ export const getGRNDetails = async (grnId: string): Promise<GRNDetailsResponse> 
       console.log('[GRNDetailService] No GRN found in response');
       return {
         success: false,
-        message: 'No GRN found',
-        error: 'GRN not found or access denied'
+        message: t('errors.grn.noneFound'),
+        error: t('errors.grn.notFoundOrDenied')
       };
     }
 
@@ -306,14 +307,14 @@ export const getGRNDetails = async (grnId: string): Promise<GRNDetailsResponse> 
     return {
       success: true,
       data: responseData,
-      message: 'GRN details fetched successfully'
+      message: t('errors.grn.detailsFetched')
     };
   } catch (error) {
     console.error('[GRNDetailService] Exception:', error);
     return {
       success: false,
-      message: 'An unexpected error occurred',
-      error: error instanceof Error ? error.message : 'Unknown error'
+      message: t('errors.general.unexpected'),
+      error: error instanceof Error ? error.message : t('errors.general.unknown')
     };
   }
 };
@@ -325,8 +326,8 @@ export const getGRNItemDispatches = async (grnItemId: string): Promise<GRNItemDi
   if (!grnItemId) {
     return {
       success: false,
-      message: 'GRN Item ID is required',
-      error: 'Missing parameter'
+      message: t('errors.grn.itemIdRequired'),
+      error: t('errors.general.missingParameter')
     };
   }
 
@@ -341,7 +342,7 @@ export const getGRNItemDispatches = async (grnItemId: string): Promise<GRNItemDi
     { p_grn_item_id: grnItemId },
     {
       context: 'GRNDetailService.getGRNItemDispatches',
-      errorMessage: 'Failed to fetch GRN item dispatches',
+      errorMessage: t('errors.grn.fetchItemDispatchesFailed'),
       unwrapNested: true,
       validateSuccess: true
     }
@@ -359,15 +360,15 @@ export const getGRNItemDispatches = async (grnItemId: string): Promise<GRNItemDi
     console.log('[GRNDetailService] No dispatch data found in response');
     return {
       success: false,
-      message: 'No dispatch data found',
-      error: 'Dispatch data not found'
+      message: t('errors.grn.noDispatchData'),
+      error: t('errors.grn.dispatchDataNotFound')
     };
   }
 
   return {
     success: true,
     data: result.data,
-    message: 'GRN item dispatches retrieved successfully'
+    message: t('errors.grn.itemDispatchesRetrieved')
   };
 };
 
@@ -404,8 +405,8 @@ export const deleteGRN = async (grnId: string): Promise<DeleteGRNResponse> => {
   if (!grnId) {
     return {
       success: false,
-      message: 'GRN ID is required',
-      error: 'Missing parameter'
+      message: t('errors.grn.idRequired'),
+      error: t('errors.general.missingParameter')
     };
   }
 
@@ -415,7 +416,7 @@ export const deleteGRN = async (grnId: string): Promise<DeleteGRNResponse> => {
     { p_grn_id: grnId },
     {
       context: 'GRNDetailService.deleteGRN',
-      errorMessage: 'Failed to delete GRN',
+      errorMessage: t('errors.grn.deleteFailed'),
       unwrapNested: false, // delete_grn_safe returns direct response object
       validateSuccess: false // We handle success: false case manually below
     }

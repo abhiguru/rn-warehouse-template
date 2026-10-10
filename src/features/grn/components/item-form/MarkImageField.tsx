@@ -16,7 +16,8 @@ import { iconSize, radius, space, touchTarget, typography } from '@/theme/tokens
 import type { ThemeTokens } from '@/theme/tokens';
 
 import { showAlert } from '@/utils/alert';
-import { formatCount } from '@/utils/formatters';
+import { formatNumber } from '@/utils/formatters';
+import { t as tr } from '@/i18n';
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -67,8 +68,8 @@ export const MarkImageField = forwardRef<MarkImageFieldRef, MarkImageFieldProps>
     const handleImagePickPress = useCallback(() => {
       if (images.length >= maxImages) {
         showAlert(
-          'Photo limit reached',
-          `You can add up to ${formatCount(maxImages, 'photo')} per item.`
+          tr('grn.photos.limitTitle'),
+          tr('grn.photos.limitPerItem', { count: maxImages })
         );
         return;
       }
@@ -88,12 +89,12 @@ export const MarkImageField = forwardRef<MarkImageFieldRef, MarkImageFieldProps>
       <View>
         <View style={styles.labelRow}>
           <Icon name="tag-outline" size={iconSize.sm} color={t.icon.secondary} />
-          <Text style={styles.label}>Mark</Text>
+          <Text style={styles.label}>{tr('grn.item.mark')}</Text>
           <Pressable
             onPress={handleImagePickPress}
             style={({ pressed }) => [styles.cameraButton, pressed && styles.cameraButtonPressed]}
             accessibilityRole="button"
-            accessibilityLabel="Add mark photo"
+            accessibilityLabel={tr('grn.item.addMarkPhoto')}
           >
             <Icon name="camera-outline" size={iconSize.md} color={t.brand.tint} />
           </Pressable>
@@ -101,11 +102,11 @@ export const MarkImageField = forwardRef<MarkImageFieldRef, MarkImageFieldProps>
 
         <TextInput
           ref={inputRef}
-          accessibilityLabel="Mark"
+          accessibilityLabel={tr('grn.item.mark')}
           style={[styles.input, isFocused && styles.inputFocused]}
           value={value}
           onChangeText={onChange}
-          placeholder="For example MARK001"
+          placeholder={tr('grn.form.forExample', { example: 'MARK001' })}
           placeholderTextColor={t.text.placeholder}
           returnKeyType="done"
           onSubmitEditing={onSubmitEditing}
@@ -124,7 +125,7 @@ export const MarkImageField = forwardRef<MarkImageFieldRef, MarkImageFieldProps>
                 style={({ pressed }) => [styles.miniThumb, pressed && styles.thumbPressed]}
                 onPress={() => onImageRemove(img.id)}
                 accessibilityRole="button"
-                accessibilityLabel={`Remove mark photo ${idx + 1}`}
+                accessibilityLabel={tr('grn.item.removeMarkPhoto', { position: idx + 1 })}
               >
                 <Image
                   source={{ uri: img.imageUrl }}
@@ -140,7 +141,7 @@ export const MarkImageField = forwardRef<MarkImageFieldRef, MarkImageFieldProps>
             ))}
             {images.length > maxImages && (
               <View style={styles.moreThumb}>
-                <Text style={styles.moreText}>+{images.length - maxImages}</Text>
+                <Text style={styles.moreText}>+{formatNumber(images.length - maxImages)}</Text>
               </View>
             )}
           </View>

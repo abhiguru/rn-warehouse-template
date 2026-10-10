@@ -2,6 +2,20 @@
  * Shared formatting utilities for consistent display across the app
  */
 
+import { getLanguage, localizeDigits } from '@/i18n/language';
+import { commonWords } from '@/i18n/locales/common';
+
+/** The calendar and unit words of the app's language. */
+const words = () => commonWords(getLanguage());
+
+/**
+ * A number with Indian grouping, in the digits of the app's language. Every
+ * number the app formats goes through here; identifiers do not (see
+ * `formatIdentifier` in `@/i18n/language`).
+ */
+const indianNumber = (value: number, options?: Intl.NumberFormatOptions): string =>
+  localizeDigits(new Intl.NumberFormat('en-IN', options).format(value));
+
 /**
  * Format a number as Indian Rupee currency
  * Uses Intl.NumberFormat for proper localization
@@ -25,13 +39,10 @@ export const formatCurrency = (
   } = options || {};
 
   if (amount === null || amount === undefined || isNaN(amount)) {
-    return showSymbol ? '₹0' : '0';
+    return localizeDigits(showSymbol ? '₹0' : '0');
   }
 
-  const formatted = new Intl.NumberFormat('en-IN', {
-    minimumFractionDigits,
-    maximumFractionDigits,
-  }).format(amount);
+  const formatted = indianNumber(amount, { minimumFractionDigits, maximumFractionDigits });
 
   return showSymbol ? `₹${formatted}` : formatted;
 };
@@ -48,12 +59,9 @@ export const formatNumber = (
   decimals?: number
 ): string => {
   if (num === null || num === undefined || isNaN(num)) {
-    return decimals !== undefined ? '0'.padEnd(2 + decimals, '0').replace('00', '0.') : '0';
+    return localizeDigits(decimals !== undefined ? '0'.padEnd(2 + decimals, '0').replace('00', '0.') : '0');
   }
-  return new Intl.NumberFormat('en-IN', {
-    minimumFractionDigits: decimals,
-    maximumFractionDigits: decimals,
-  }).format(num);
+  return indianNumber(num, { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
 };
 
 /**
@@ -68,10 +76,9 @@ export const formatWeight = (
   decimals: number = 2
 ): string => {
   if (weight === null || weight === undefined || isNaN(weight)) {
-    return '0 kg';
+    return `${localizeDigits('0')} ${words().kg}`;
   }
-  const formatted = new Intl.NumberFormat('en-IN', { maximumFractionDigits: decimals }).format(weight);
-  return `${formatted} kg`;
+  return `${indianNumber(weight, { maximumFractionDigits: decimals })} ${words().kg}`;
 };
 
 /**
@@ -86,9 +93,9 @@ export const formatQuantity = (
   unit?: string
 ): string => {
   if (qty === null || qty === undefined || isNaN(qty)) {
-    return unit ? `0 ${unit}` : '0';
+    return unit ? `${localizeDigits('0')} ${unit}` : localizeDigits('0');
   }
-  const formatted = new Intl.NumberFormat('en-IN').format(qty);
+  const formatted = indianNumber(qty);
   return unit ? `${formatted} ${unit}` : formatted;
 };
 
@@ -102,15 +109,11 @@ export const formatCount = (
   plural: string = `${singular}s`
 ): string => {
   const n = count === null || count === undefined || isNaN(count) ? 0 : count;
-  return `${new Intl.NumberFormat('en-IN').format(n)} ${n === 1 ? singular : plural}`;
+  // Another language names the noun by its English singular; an unknown noun stays English.
+  const translated = words().nouns[singular];
+  const noun = translated ? translated[n === 1 ? 0 : 1] : n === 1 ? singular : plural;
+  return `${indianNumber(n)} ${noun}`;
 };
-
-const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-const MONTHS_LONG = [
-  'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December',
-];
-const WEEKDAYS_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 /** Parse a date-only string in local time, a timestamp, or a Date; null when invalid. */
 export const toDate = (date: string | Date | null | undefined): Date | null => {
@@ -142,11 +145,11 @@ export const formatDate = (
 ): string => {
   const d = toDate(date);
   if (!d) return '—';
-  const day = d.getDate();
-  const year = d.getFullYear();
-  if (format === 'long') return `${day} ${MONTHS_LONG[d.getMonth()]} ${year}`;
-  const month = MONTHS_SHORT[d.getMonth()];
-  if ((format === 'short' || format === 'compact') && year === new Date().getFullYear()) {
+  const day = localizeDigits(String(d.getDate()));
+  const year = localizeDigits(String(d.getFullYear()));
+  if (format === 'long') return `${day} ${words().monthsLong[d.getMonth()]} ${year}`;
+  const month = words().monthsShort[d.getMonth()];
+  if ((format === 'short' || format === 'compact') && d.getFullYear() === new Date().getFullYear()) {
     return `${day} ${month}`;
   }
   return `${day} ${month} ${year}`;
@@ -160,8 +163,9 @@ export const formatMonth = (
   const d = toDate(date);
   if (!d) return '—';
   // Chart axes: the month alone, "Oct".
-  if (format === 'narrow') return MONTHS_SHORT[d.getMonth()];
-  return `${(format === 'long' ? MONTHS_LONG : MONTHS_SHORT)[d.getMonth()]} ${d.getFullYear()}`;
+  if (format === 'narrow') return words().monthsShort[d.getMonth()];
+  const names = format === 'long' ? words().monthsLong : words().monthsShort;
+  return `${names[d.getMonth()]} ${localizeDigits(String(d.getFullYear()))}`;
 };
 
 /** "4:05 pm" (§12.3). */
@@ -170,7 +174,7 @@ export const formatTime = (date: string | Date | null | undefined): string => {
   if (!d) return '—';
   const h = d.getHours();
   const m = String(d.getMinutes()).padStart(2, '0');
-  return `${h % 12 === 0 ? 12 : h % 12}:${m} ${h < 12 ? 'am' : 'pm'}`;
+  return `${localizeDigits(`${h % 12 === 0 ? 12 : h % 12}:${m}`)} ${h < 12 ? words().am : words().pm}`;
 };
 
 /** "9 Oct 2026, 4:05 pm" (§12.3). */
@@ -179,6 +183,14 @@ export const formatDateTime = (date: string | Date | null | undefined): string =
   if (!d) return '—';
   return `${formatDate(d)}, ${formatTime(d)}`;
 };
+
+/**
+ * A financial year for display: "2026-27" or the backend's "2027-2028", in the
+ * language's digits (a period, not an identifier). Values sent to the backend
+ * stay as they are: never send the result of this.
+ */
+export const formatFinancialYear = (year: string | number | null | undefined): string =>
+  year === null || year === undefined ? '' : localizeDigits(String(year));
 
 /**
  * Mobile number with the +91 prefix and 5 + 5 grouping (§12.3):
@@ -197,7 +209,7 @@ export const formatMobile = (mobile: string | null | undefined): string => {
 export const formatTemperature = (celsius: number | null | undefined): string => {
   if (celsius === null || celsius === undefined || isNaN(celsius)) return '—';
   const fixed = Math.abs(celsius).toFixed(1);
-  return `${celsius < 0 && fixed !== '0.0' ? '\u2212' : ''}${fixed}°C`;
+  return localizeDigits(`${celsius < 0 && fixed !== '0.0' ? '\u2212' : ''}${fixed}°C`);
 };
 
 /**
@@ -212,10 +224,10 @@ export const formatPercentage = (
   isDecimal: boolean = false
 ): string => {
   if (value === null || value === undefined || isNaN(value)) {
-    return '0%';
+    return localizeDigits('0%');
   }
   const percentage = isDecimal ? value * 100 : value;
-  return `${percentage.toFixed(1)}%`;
+  return localizeDigits(`${percentage.toFixed(1)}%`);
 };
 
 /**
@@ -256,12 +268,12 @@ export const formatSectionDate = (dateString: string): string => {
   yesterday.setDate(yesterday.getDate() - 1);
 
   if (date.toDateString() === today.toDateString()) {
-    return 'Today';
+    return words().today;
   }
   if (date.toDateString() === yesterday.toDateString()) {
-    return 'Yesterday';
+    return words().yesterday;
   }
-  return `${WEEKDAYS_SHORT[date.getDay()]}, ${formatDate(date, 'short')}`;
+  return `${words().weekdaysShort[date.getDay()]}, ${formatDate(date, 'short')}`;
 };
 
 /**
@@ -290,11 +302,11 @@ export const formatRelativeTime = (dateString: string): string => {
 
   // Handle negative time (future dates)
   if (diffMins < 0) {
-    return 'Just now';
+    return words().justNow;
   }
 
-  if (diffMins < 1) return 'Just now';
-  if (diffMins < 60) return `${diffMins} min ago`;
-  if (diffHours < 24) return `${diffHours} h ago`;
+  if (diffMins < 1) return words().justNow;
+  if (diffMins < 60) return words().minutesAgo.replace('{n}', localizeDigits(String(diffMins)));
+  if (diffHours < 24) return words().hoursAgo.replace('{n}', localizeDigits(String(diffHours)));
   return formatDate(date, 'short');
 };

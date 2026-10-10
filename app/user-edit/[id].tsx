@@ -43,11 +43,23 @@ import {
   touchTarget,
   typography,
   type ThemeTokens,
+  trackedText,
 } from '@/theme/tokens';
 import { Avatar, StatusTag } from '@/components/ui';
 import { formatMobile } from '@/utils/formatters';
 
 import { showAlert } from '@/utils/alert';
+import { t as tr, type TranslationKey } from '@/i18n';
+import { roleLabel as roleName } from '@/utils/roleLabel';
+import { serverText } from '@/utils/serverText';
+
+/** "… is now an admin." is one sentence per role: the article and word order differ by language. */
+const ROLE_CHANGED_KEYS: Record<UserRole, TranslationKey> = {
+  admin: 'users.edit.roleChanged.admin',
+  supervisor: 'users.edit.roleChanged.supervisor',
+  staff: 'users.edit.roleChanged.staff',
+  customer: 'users.edit.roleChanged.customer',
+};
 /** Roles are categories, not statuses: staff roles informative, others neutral. */
 const ROLE_TONE: Record<UserRole, 'informative' | 'neutral'> = {
   admin: 'informative',
@@ -150,13 +162,13 @@ export default function UserEditScreen() {
         if (response.success) {
           setSelectedRole(newRole);
           setUser((prev) => (prev ? { ...prev, role: newRole } : null));
-          showAlert('Role changed', `${user.name || 'This user'} is now ${newRole === 'admin' ? 'an' : 'a'} ${newRole}.`);
+          showAlert(tr('users.edit.roleChangedTitle'), tr(ROLE_CHANGED_KEYS[newRole], { name: user.name || tr('users.thisUser') }));
         } else {
-          showAlert("Couldn't change the role", response.error || 'Try again in a moment.');
+          showAlert(tr('users.edit.couldNotChangeRole'), serverText(response.error, tr('users.edit.tryAgainSoon')));
         }
       } catch (err) {
         console.error('[UserEdit] Role update error:', err);
-        showAlert("Couldn't change the role", 'Check your connection and try again.');
+        showAlert(tr('users.edit.couldNotChangeRole'), tr('common.checkConnection'));
       } finally {
         setSaving(false);
       }
@@ -171,12 +183,12 @@ export default function UserEditScreen() {
       // Confirm deactivation
       if (!newActive) {
         showAlert(
-          `Deactivate ${user.name}?`,
-          "They won't be able to use the app until you activate them again.",
+          tr('users.edit.deactivateTitle', { name: user.name }),
+          tr('users.edit.deactivateMessage'),
           [
-            { text: 'Cancel', style: 'cancel' },
+            { text: tr('common.cancel'), style: 'cancel' },
             {
-              text: 'Deactivate user',
+              text: tr('users.edit.deactivateAction'),
               style: 'destructive',
               onPress: async () => {
                 await updateStatus(false);
@@ -202,13 +214,16 @@ export default function UserEditScreen() {
       if (response.success) {
         setIsActive(active);
         setUser((prev) => (prev ? { ...prev, active } : null));
-        showAlert(active ? 'User activated' : 'User deactivated', `${user.name || 'This user'} ${active ? 'can use the app again.' : "can't use the app now."}`);
+        showAlert(
+          tr(active ? 'users.edit.activatedTitle' : 'users.edit.deactivatedTitle'),
+          tr(active ? 'users.edit.activatedMessage' : 'users.edit.deactivatedMessage', { name: user.name || tr('users.thisUser') })
+        );
       } else {
-        showAlert("Couldn't change the status", response.error || 'Try again in a moment.');
+        showAlert(tr('users.edit.couldNotChangeStatus'), serverText(response.error, tr('users.edit.tryAgainSoon')));
       }
     } catch (err) {
       console.error('[UserEdit] Status update error:', err);
-      showAlert("Couldn't change the status", 'Check your connection and try again.');
+      showAlert(tr('users.edit.couldNotChangeStatus'), tr('common.checkConnection'));
     } finally {
       setSaving(false);
     }
@@ -220,7 +235,7 @@ export default function UserEditScreen() {
 
       // Check if already assigned
       if (assignedCustomers.some((c) => c.customer_id === customer.id)) {
-        showAlert('Already assigned', `${customer.name} is already assigned to this user.`);
+        showAlert(tr('users.edit.alreadyAssignedTitle'), tr('users.edit.alreadyAssignedMessage', { name: customer.name }));
         return;
       }
 
@@ -242,13 +257,13 @@ export default function UserEditScreen() {
             assigned_by_name: userProfile?.name || null,
           };
           setAssignedCustomers((prev) => [...prev, newAssignment]);
-          showAlert('Customer assigned', `${customer.name} assigned.`);
+          showAlert(tr('users.edit.assignedTitle'), tr('users.edit.assignedMessage', { name: customer.name }));
         } else {
-          showAlert("Couldn't assign the customer", response.error || 'Try again in a moment.');
+          showAlert(tr('users.edit.couldNotAssign'), serverText(response.error, tr('users.edit.tryAgainSoon')));
         }
       } catch (err) {
         console.error('[UserEdit] Assign customer error:', err);
-        showAlert("Couldn't assign the customer", 'Check your connection and try again.');
+        showAlert(tr('users.edit.couldNotAssign'), tr('common.checkConnection'));
       } finally {
         setSaving(false);
         setShowCustomerSearch(false);
@@ -262,12 +277,12 @@ export default function UserEditScreen() {
       if (!user) return;
 
       showAlert(
-        `Remove ${customerName}?`,
-        `${customerName} will no longer be assigned to this user.`,
+        tr('users.edit.removeTitle', { name: customerName }),
+        tr('users.edit.removeMessage', { name: customerName }),
         [
-          { text: 'Cancel', style: 'cancel' },
+          { text: tr('common.cancel'), style: 'cancel' },
           {
-            text: 'Remove customer',
+            text: tr('users.edit.removeAction'),
             style: 'destructive',
             onPress: async () => {
               setSaving(true);
@@ -281,16 +296,16 @@ export default function UserEditScreen() {
                   setAssignedCustomers((prev) =>
                     prev.filter((c) => c.customer_id !== customerId)
                   );
-                  showAlert('Customer removed', `${customerName} removed.`);
+                  showAlert(tr('users.edit.removedTitle'), tr('users.edit.removedMessage', { name: customerName }));
                 } else {
                   showAlert(
-                    "Couldn't remove the customer",
-                    response.error || 'Try again in a moment.'
+                    tr('users.edit.couldNotRemove'),
+                    serverText(response.error, tr('users.edit.tryAgainSoon'))
                   );
                 }
               } catch (err) {
                 console.error('[UserEdit] Remove customer error:', err);
-                showAlert("Couldn't remove the customer", 'Check your connection and try again.');
+                showAlert(tr('users.edit.couldNotRemove'), tr('common.checkConnection'));
               } finally {
                 setSaving(false);
               }
@@ -334,7 +349,7 @@ export default function UserEditScreen() {
           style={({ pressed }) => [styles.searchResultItem, pressed && styles.rowPressed]}
           onPress={() => onSelect(item)}
           accessibilityRole="button"
-          accessibilityLabel={meta ? `Assign ${item.name}, ${meta}` : `Assign ${item.name}`}
+          accessibilityLabel={meta ? tr('users.edit.assignLabelDetails', { name: item.name, details: meta }) : tr('users.edit.assignLabel', { name: item.name })}
         >
           <View style={styles.flex}>
             <Text style={styles.searchResultName}>{item.name}</Text>
@@ -362,7 +377,7 @@ export default function UserEditScreen() {
     ),
     headerTitle: () => (
       <Text style={styles.title} accessibilityRole="header">
-        Edit user
+        {tr('users.edit.title')}
       </Text>
     ),
   };
@@ -375,10 +390,10 @@ export default function UserEditScreen() {
         <View
           style={[styles.container, styles.centerContainer]}
           accessibilityRole="progressbar"
-          accessibilityLabel="Loading user"
+          accessibilityLabel={tr('users.edit.loading')}
         >
           <ActivityIndicator size="large" color={t.brand.tint} />
-          <Text style={styles.loadingText}>Loading user…</Text>
+          <Text style={styles.loadingText}>{tr('users.edit.loadingText')}</Text>
         </View>
       </>
     );
@@ -392,23 +407,24 @@ export default function UserEditScreen() {
         <View style={[styles.container, styles.centerContainer]} accessibilityRole="alert">
           <Icon name="alert-circle-outline" size={iconSize.hero} color={t.status.negative.text} />
           <Text style={styles.errorTitle} accessibilityRole="header">
-            Couldn't load this user
+            {tr('users.edit.errorTitle')}
           </Text>
-          <Text style={styles.errorText}>Check your connection and try again.</Text>
+          <Text style={styles.errorText}>{tr('common.checkConnection')}</Text>
           <Pressable
             style={({ pressed }) => [styles.retryButton, pressed && styles.retryButtonPressed]}
             onPress={loadUser}
             accessibilityRole="button"
           >
             <Icon name="refresh" size={iconSize.md} color={t.brand.tint} />
-            <Text style={styles.retryButtonText}>Try again</Text>
+            <Text style={styles.retryButtonText}>{tr('common.retry')}</Text>
           </Pressable>
         </View>
       </>
     );
   }
 
-  const roleLabel = selectedRole.charAt(0).toUpperCase() + selectedRole.slice(1);
+  const roleLabel = roleName(selectedRole);
+  const displayName = user.name || tr('users.unknownUser');
   const roleLocked = !canEdit || isSelfEdit;
 
   return (
@@ -420,11 +436,11 @@ export default function UserEditScreen() {
         contentContainerStyle={{ paddingBottom: insets.bottom + space.xl }}
       >
         {/* User Info Card */}
-        <View style={styles.card} accessible accessibilityLabel={`${user.name || 'Unknown user'}, ${formatMobile(user.mobile)}`}>
+        <View style={styles.card} accessible accessibilityLabel={`${displayName}, ${formatMobile(user.mobile)}`}>
           <View style={styles.userHeader}>
-            <Avatar name={user.name || 'Unknown user'} id={user.id} size="lg" style={styles.avatar} />
+            <Avatar name={displayName} id={user.id} size="lg" style={styles.avatar} />
             <View style={styles.flex}>
-              <Text style={styles.userName}>{user.name || 'Unknown user'}</Text>
+              <Text style={styles.userName}>{displayName}</Text>
               <Text style={styles.userMobile}>{formatMobile(user.mobile)}</Text>
             </View>
           </View>
@@ -432,7 +448,7 @@ export default function UserEditScreen() {
 
         {/* Role Section */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle} accessibilityRole="header">Role</Text>
+          <Text style={styles.sectionTitle} accessibilityRole="header">{tr('users.fields.role')}</Text>
           <Pressable
             style={({ pressed }) => [
               styles.fieldRow,
@@ -445,13 +461,13 @@ export default function UserEditScreen() {
             }}
             disabled={roleLocked}
             accessibilityRole="button"
-            accessibilityLabel={`User role, ${roleLabel}`}
-            accessibilityHint={roleLocked ? undefined : 'Opens the role picker'}
+            accessibilityLabel={tr('users.edit.roleFieldLabel', { role: roleLabel })}
+            accessibilityHint={roleLocked ? undefined : tr('users.edit.rolePickerHint')}
             accessibilityState={{ disabled: roleLocked }}
           >
             <View style={styles.fieldLeft}>
               <Icon name="shield-account-outline" size={iconSize.md} color={t.icon.secondary} />
-              <Text style={styles.fieldLabel}>User role</Text>
+              <Text style={styles.fieldLabel}>{tr('users.edit.roleField')}</Text>
             </View>
             <View style={styles.fieldRight}>
               <StatusTag status={ROLE_TONE[selectedRole] ?? 'neutral'} label={roleLabel} icon={null} />
@@ -461,16 +477,16 @@ export default function UserEditScreen() {
             </View>
           </Pressable>
           {isSelfEdit && (
-            <Text style={styles.helperText}>You can't change your own role.</Text>
+            <Text style={styles.helperText}>{tr('users.edit.ownRole')}</Text>
           )}
           {!canEdit && !isSelfEdit && (
-            <Text style={styles.helperText}>Supervisors can't change administrators.</Text>
+            <Text style={styles.helperText}>{tr('users.edit.supervisorLimit')}</Text>
           )}
         </View>
 
         {/* Status Section */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle} accessibilityRole="header">Status</Text>
+          <Text style={styles.sectionTitle} accessibilityRole="header">{tr('users.fields.status')}</Text>
           <View style={styles.fieldRow}>
             <View style={styles.fieldLeft}>
               <Icon
@@ -479,9 +495,9 @@ export default function UserEditScreen() {
                 color={isActive ? t.status.positive.text : t.status.negative.text}
               />
               <View style={styles.flex}>
-                <Text style={styles.fieldLabel}>{isActive ? 'Active' : 'Inactive'}</Text>
+                <Text style={styles.fieldLabel}>{tr(isActive ? 'common.active' : 'common.inactive')}</Text>
                 <Text style={styles.fieldSubLabel}>
-                  {isActive ? 'This user can use the app.' : "This user can't use the app."}
+                  {tr(isActive ? 'users.edit.canUse' : 'users.edit.cannotUse')}
                 </Text>
               </View>
             </View>
@@ -493,12 +509,12 @@ export default function UserEditScreen() {
               thumbColor={t.control.thumb}
               ios_backgroundColor={t.control.trackOff}
               style={(roleLocked || saving) && styles.disabled}
-              accessibilityLabel="Account active"
+              accessibilityLabel={tr('users.edit.accountActive')}
               accessibilityState={{ checked: isActive, disabled: roleLocked || saving }}
             />
           </View>
           {isSelfEdit && (
-            <Text style={styles.helperText}>You can't deactivate your own account.</Text>
+            <Text style={styles.helperText}>{tr('users.edit.ownStatus')}</Text>
           )}
         </View>
 
@@ -506,7 +522,7 @@ export default function UserEditScreen() {
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={[styles.sectionTitle, styles.sectionTitleInline]} accessibilityRole="header">
-              Customer assignments
+              {tr('users.edit.assignments')}
             </Text>
             {canEdit && (
               <Pressable
@@ -514,11 +530,11 @@ export default function UserEditScreen() {
                 onPress={() => setShowCustomerSearch(true)}
                 disabled={saving}
                 accessibilityRole="button"
-                accessibilityLabel="Assign customer"
+                accessibilityLabel={tr('users.edit.assignCustomer')}
                 accessibilityState={{ disabled: saving }}
               >
                 <Icon name="plus" size={iconSize.md} color={t.brand.tint} />
-                <Text style={styles.addButtonText}>Add</Text>
+                <Text style={styles.addButtonText}>{tr('common.add')}</Text>
               </Pressable>
             )}
           </View>
@@ -526,9 +542,9 @@ export default function UserEditScreen() {
           {assignedCustomers.length === 0 ? (
             <View style={styles.emptyAssignments}>
               <Icon name="account-multiple-outline" size={iconSize.xl} color={t.icon.secondary} />
-              <Text style={styles.emptyText}>No customers assigned yet.</Text>
+              <Text style={styles.emptyText}>{tr('users.edit.noAssignments')}</Text>
               {canEdit && (
-                <Text style={styles.emptySubText}>Tap Add to assign customers to this user.</Text>
+                <Text style={styles.emptySubText}>{tr('users.edit.addHint')}</Text>
               )}
             </View>
           ) : (
@@ -560,7 +576,7 @@ export default function UserEditScreen() {
                         }
                         disabled={saving}
                         accessibilityRole="button"
-                        accessibilityLabel={`Remove ${customer.customer_name}`}
+                        accessibilityLabel={tr('users.edit.removeLabel', { name: customer.customer_name })}
                         accessibilityState={{ disabled: saving }}
                       >
                         <Icon name="close" size={iconSize.md} color={t.status.negative.text} />
@@ -575,9 +591,9 @@ export default function UserEditScreen() {
 
         {/* Saving Indicator */}
         {saving && (
-          <View style={styles.savingOverlay} accessibilityRole="progressbar" accessibilityLabel="Saving">
+          <View style={styles.savingOverlay} accessibilityRole="progressbar" accessibilityLabel={tr('users.edit.saving')}>
             <ActivityIndicator size="small" color={t.brand.tint} />
-            <Text style={styles.savingText}>Saving…</Text>
+            <Text style={styles.savingText}>{tr('common.saving')}</Text>
           </View>
         )}
       </ScrollView>
@@ -596,13 +612,13 @@ export default function UserEditScreen() {
         isVisible={showCustomerSearch}
         onClose={() => setShowCustomerSearch(false)}
         onSelect={handleAddCustomer}
-        title="Assign customer"
-        placeholder="Search customers by name"
+        title={tr('users.edit.assignCustomer')}
+        placeholder={tr('users.edit.searchPlaceholder')}
         searchFn={searchCustomers}
         renderItem={renderCustomerSearchItem}
         keyExtractor={(item) => item.id}
-        emptyInitialText="Search for a customer"
-        emptySubText="Type at least 2 letters to search."
+        emptyInitialText={tr('users.edit.searchEmpty')}
+        emptySubText={tr('users.edit.searchHint')}
       />
     </GestureHandlerRootView>
   );
@@ -703,7 +719,7 @@ const makeStyles = (t: ThemeTokens) => ({
   sectionTitle: {
     ...typography.footnote,
     textTransform: 'uppercase' as const,
-    letterSpacing: 0.5,
+    letterSpacing: trackedText(0.5),
     color: t.text.secondary,
     marginBottom: space.sm,
   },

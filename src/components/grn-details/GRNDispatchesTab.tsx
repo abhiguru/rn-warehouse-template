@@ -21,6 +21,7 @@ import type { ThemeTokens } from '@/theme/tokens';
 import { DispatchRecord } from '@/services/grn-detail-service';
 import { GRNItem } from './GRNItemsTab';
 import { GRNItemDispatchTable } from './GRNItemDispatchTable';
+import { t as tr } from '@/i18n';
 
 interface GRNDispatchesTabProps {
   /** GRN items array */
@@ -108,9 +109,9 @@ export const GRNDispatchesTab: React.FC<GRNDispatchesTabProps> = ({
 
   if (loading) {
     return (
-      <View style={styles.loadingContainer} accessibilityLabel="Loading dispatches">
+      <View style={styles.loadingContainer} accessibilityLabel={tr('grn.dispatches.loadingLabel')}>
         <ActivityIndicator size="large" color={t.brand.tint} />
-        <Text style={styles.loadingText}>Loading dispatches…</Text>
+        <Text style={styles.loadingText}>{tr('grn.dispatches.loading')}</Text>
       </View>
     );
   }
@@ -125,17 +126,17 @@ export const GRNDispatchesTab: React.FC<GRNDispatchesTabProps> = ({
           style={styles.emptyIcon}
         />
         <Text style={styles.emptyTitle} accessibilityRole="header">
-          Couldn't load dispatches
+          {tr('grn.dispatches.loadFailedTitle')}
         </Text>
         <Text style={styles.emptyMessage}>{error}</Text>
         {onRetry ? (
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Retry loading dispatches"
+            accessibilityLabel={tr('grn.dispatches.retryLabel')}
             onPress={onRetry}
             style={({ pressed }) => [styles.retryButton, pressed && styles.retryButtonPressed]}
           >
-            <Text style={styles.retryText}>Try again</Text>
+            <Text style={styles.retryText}>{tr('common.retry')}</Text>
           </Pressable>
         ) : null}
       </View>
@@ -156,9 +157,9 @@ export const GRNDispatchesTab: React.FC<GRNDispatchesTabProps> = ({
           color={t.icon.secondary}
           style={styles.emptyIcon}
         />
-        <Text style={styles.emptyTitle}>No dispatches yet</Text>
+        <Text style={styles.emptyTitle}>{tr('grn.dispatches.emptyTitle')}</Text>
         <Text style={styles.emptyMessage}>
-          Dispatches of items from this GRN appear here.
+          {tr('grn.dispatches.emptyMessage')}
         </Text>
       </View>
     );

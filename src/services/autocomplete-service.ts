@@ -2,6 +2,8 @@ import { getAuthenticatedClient, getCurrentConfig } from '@/config/supabaseConfi
 import { getSessionGeneration } from '@/config/sessionLifecycle';
 import { unwrapNestedData } from '@/utils/responseUtils';
 import { executeRPC } from '@/utils/serviceErrorHandler';
+import { t } from '@/i18n';
+import { serverText } from '@/utils/serverText';
 
 // Types for autocomplete results
 export interface AutocompleteItem {
@@ -69,8 +71,8 @@ async function getAutocomplete(
   if (!searchQuery || searchQuery.trim().length < 2) {
     return {
       success: false,
-      message: 'Search query must be at least 2 characters',
-      error: 'Query too short',
+      message: t('errors.search.minChars'),
+      error: t('errors.general.queryTooShort'),
     };
   }
 
@@ -84,8 +86,8 @@ async function getAutocomplete(
       origin === getCurrentConfig().url;
     const staleResponse: AutocompleteResponse = {
       success: false,
-      message: 'Search session changed. Please search again.',
-      error: 'Search session changed',
+      message: t('errors.search.sessionChangedRetry'),
+      error: t('errors.search.sessionChanged'),
     };
     const client = await getAuthenticatedClient();
     if (!isCurrent()) return staleResponse;
@@ -95,7 +97,7 @@ async function getAutocomplete(
       { p_search_query: searchQuery.trim().toLowerCase(), p_limit: limit },
       {
         context: 'AutocompleteService',
-        errorMessage: 'Failed to fetch autocomplete results',
+        errorMessage: t('errors.search.fetchFailed'),
         unwrapNested: false,
         validateSuccess: false,
       }
@@ -105,20 +107,20 @@ async function getAutocomplete(
     if (!result.success || !result.data) {
       return {
         success: false,
-        message: result.message || 'Failed to fetch autocomplete results',
-        error: result.error || 'Empty response',
+        message: serverText(result.message, t('errors.search.fetchFailed')),
+        error: serverText(result.error, t('errors.general.emptyResponse')),
       };
     }
     return {
       success: true,
       data: unwrapNestedData(result.data) || result.data,
-      message: 'Autocomplete results retrieved successfully',
+      message: t('errors.search.retrieved'),
     };
   } catch (error) {
     return {
       success: false,
-      message: 'Failed to fetch autocomplete results',
-      error: error instanceof Error ? error.message : 'Unknown error',
+      message: t('errors.search.fetchFailed'),
+      error: error instanceof Error ? error.message : t('errors.general.unknown'),
     };
   }
 }

@@ -27,6 +27,7 @@ import {
   touchTarget,
   typography,
   type ThemeTokens,
+  singleLineText,
 } from '@/theme/tokens';
 import { formatCount, formatDate, formatNumber, formatWeight } from '@/utils/formatters';
 import { StatusTag } from '@/components/ui';
@@ -37,14 +38,12 @@ import { GRNItem, Catalog, EnhancedSearchFilters, SearchMetadata } from '@/types
 import RecentItemsQuickAdd, { QuickAddItem } from './RecentItemsQuickAdd';
 
 import { showAlert } from '@/utils/alert';
+import { localizeDigits, normalizeDigits, t as tr, formatIdentifier } from '@/i18n';
 type StockStatus = 'positive' | 'critical' | 'negative';
 
 // Status words and icons per guide §3.5 (stock level: low stock is critical).
-const STOCK_LABEL: Record<StockStatus, string> = {
-  positive: 'In stock',
-  critical: 'Low stock',
-  negative: 'Out of stock',
-};
+const stockLabel = (status: StockStatus): string =>
+  status === 'negative' ? tr('common.outOfStock') : status === 'critical' ? tr('common.lowStock') : tr('common.inStock');
 const formatBags = (n: number) => formatCount(n, 'bag');
 
 interface ItemCatalogBrowserProps {
@@ -244,12 +243,12 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
         });
       } else {
         console.error('[ItemCatalogBrowser] Failed to load items:', result.message);
-        showAlert("Couldn't load items", 'Check your connection and try again.');
+        showAlert(tr('orders.catalog.couldNotLoadTitle'), tr('common.checkConnection'));
       }
     } catch (error) {
       if (!isCurrent()) return;
       console.error('[ItemCatalogBrowser] Error fetching items:', error);
-      showAlert("Couldn't load items", 'Check your connection and try again.');
+      showAlert(tr('orders.catalog.couldNotLoadTitle'), tr('common.checkConnection'));
     } finally {
       if (isCurrent()) setLoading(false);
     }
@@ -259,7 +258,8 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
   const buildSearchFilters = useCallback((query: string, offset: number): EnhancedSearchFilters => {
     const filters: EnhancedSearchFilters = {
       customer_id: customerId,
-      search_query: query,
+      // A query of numbers only (a weight or a weight range) is sent in 0-9 whatever digits were typed.
+      search_query: /^[\d.\s-]+$/.test(normalizeDigits(query)) ? normalizeDigits(query) : query,
       search_type: 'auto',
       stock_filter_min: inStockOnly ? 1 : 0,
       catalog_id: selectedCatalog || undefined,
@@ -267,7 +267,7 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
       offset,
     };
     // A whole-number range such as "10-20" searches by weight.
-    const weightRangeMatch = query.match(/^(\d+)-(\d+)$/);
+    const weightRangeMatch = normalizeDigits(query).match(/^(\d+)-(\d+)$/);
     if (weightRangeMatch) {
       filters.weight_min = parseInt(weightRangeMatch[1], 10);
       filters.weight_max = parseInt(weightRangeMatch[2], 10);
@@ -601,7 +601,7 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
     }));
 
     if (itemsToAdd.length === 0) {
-      showAlert('No items selected', 'Choose a quantity for at least one item, then tap Add.');
+      showAlert(tr('orders.catalog.noneSelectedTitle'), tr('orders.catalog.noneSelectedMessage'));
       return;
     }
 
@@ -612,15 +612,15 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
   // Helper functions for search UI
   const getSearchPlaceholder = useCallback(() => {
     if (!searchQuery.trim()) {
-      return 'Search by name, mark or weight, e.g. 10-20';
+      return tr('orders.catalog.searchPlaceholderHint');
     }
-    return 'Search items';
+    return tr('orders.catalog.searchItems');
   }, [searchQuery]);
 
   const getSearchTypeIndicator = useCallback(() => {
     if (!searchMetadata) {
       // Client-side detection for immediate feedback
-      if (/^\d+(\.\d+)?(-\d+(\.\d+)?)?$/.test(searchQuery.trim())) {
+      if (/^\d+(\.\d+)?(-\d+(\.\d+)?)?$/.test(normalizeDigits(searchQuery).trim())) {
         return '🔢'; // Weight search
       }
       return '📝'; // Text search
@@ -640,9 +640,11 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
     if (!searchMetadata) return '';
     
     const { current_count, total_count, search_type } = searchMetadata;
-    const searchTypeText = search_type === 'weight' || search_type === 'weight_range' ? 'by weight' : 'by name/package';
     
-    return `${formatNumber(current_count)} of ${formatCount(total_count, 'item')} ${searchTypeText}`;
+    return tr(search_type === 'weight' || search_type === 'weight_range' ? 'orders.catalog.resultsByWeight' : 'orders.catalog.resultsByName', {
+      shown: formatNumber(current_count),
+      total: formatCount(total_count, 'item'),
+    });
   }, [searchMetadata]);
 
   // Weight range slider handlers - only update temp values during sliding
@@ -764,18 +766,21 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
 
     const stockStatus = getStockStatus(item.current_stock, item.original_quantity);
     const status = t.status[stockStatus];
-    const stockWord = STOCK_LABEL[stockStatus];
+    const stockWord = stockLabel(stockStatus);
     const grnDate = item.grn_date ? formatDate(item.grn_date, 'short') : null;
     const weightText = item.weight ? formatWeight(item.weight) : null;
     const rowLabel = [
       item.name,
-      item.package_mark ? `mark ${item.package_mark}` : null,
-      item.grn_number ? `GRN ${item.grn_number}` : null,
+      item.package_mark ? tr('orders.catalog.rowMark', { mark: item.package_mark }) : null,
+      item.grn_number ? tr('orders.catalog.grn', { number: formatIdentifier(item.grn_number) }) : null,
       weightText,
-      `${stockWord}, ${formatBags(item.current_stock)} of ${formatBags(item.original_quantity)}`,
-      isInExistingOrder ? 'already in order' : null,
-      quantity > 0 ? `${formatBags(quantity)} selected` : null,
+      tr('orders.catalog.rowStock', { status: stockWord, current: formatBags(item.current_stock), total: formatBags(item.original_quantity) }),
+      isInExistingOrder ? tr('orders.catalog.rowAlreadyInOrder') : null,
+      quantity > 0 ? tr('orders.catalog.rowSelected', { bags: formatBags(quantity) }) : null,
     ].filter(Boolean).join(', ');
+
+    const addBags = (count: number) => tr('orders.catalog.addBags', { count, name: item.name });
+    const removeBags = (count: number) => tr('orders.catalog.removeBags', { count, name: item.name });
 
     const preset = (amount: number, label: string, a11y: string, disabled = false) => (
       <Pressable
@@ -787,7 +792,7 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
         accessibilityLabel={a11y}
         accessibilityState={{ disabled }}
       >
-        <Text style={styles.presetButtonText}>{label}</Text>
+        <Text style={styles.presetButtonText}>{localizeDigits(label)}</Text>
       </Pressable>
     );
 
@@ -801,7 +806,7 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
         accessibilityLabel={a11y}
         accessibilityState={{ disabled }}
       >
-        <Text style={label.length > 1 ? styles.smallButtonText : styles.quantityButtonText}>{label}</Text>
+        <Text style={label.length > 1 ? styles.smallButtonText : styles.quantityButtonText}>{localizeDigits(label)}</Text>
       </Pressable>
     );
 
@@ -826,7 +831,7 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
               {isInExistingOrder && (
                 <View style={styles.alreadyInOrderBadge}>
                   <Icon name="check" size={iconSize.sm} color={t.brand.tint} />
-                  <Text style={styles.alreadyInOrderBadgeText} maxFontSizeMultiplier={1.6}>In order</Text>
+                  <Text style={styles.alreadyInOrderBadgeText} maxFontSizeMultiplier={1.6}>{tr('orders.catalog.inOrder')}</Text>
                 </View>
               )}
             </View>
@@ -834,7 +839,7 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
             {/* Subtitle Row - Package Mark */}
             <View style={styles.subtitleRow}>
               <Text style={styles.subtitleText} numberOfLines={1}>
-                {item.package_mark || 'No mark'}
+                {item.package_mark || tr('orders.item.noMark')}
               </Text>
             </View>
 
@@ -843,7 +848,7 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
               {item.grn_number ? (
                 <View style={styles.footerItem}>
                   <Icon name="package-down" size={iconSize.sm} color={t.icon.secondary} />
-                  <Text style={styles.footerText}>GRN {item.grn_number}</Text>
+                  <Text style={styles.footerText}>{tr('orders.catalog.grn', { number: formatIdentifier(item.grn_number) })}</Text>
                 </View>
               ) : null}
               {grnDate ? <Text style={styles.footerText}>{grnDate}</Text> : null}
@@ -865,7 +870,7 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
               ]}>
                 {formatNumber(item.current_stock)}
               </Animated.Text>
-              <Text style={styles.stockLabel}>of {formatBags(item.original_quantity)}</Text>
+              <Text style={styles.stockLabel}>{tr('orders.catalog.ofTotal', { total: formatBags(item.original_quantity) })}</Text>
             </View>
             <StatusTag status={stockStatus} label={stockWord} style={styles.statusBadge} />
           </View>
@@ -876,10 +881,10 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
           {/* Preset Buttons Row */}
           {quantity === 0 && (
             <View style={styles.presetButtonsRow}>
-              {preset(10, '+10', `Add 10 bags of ${item.name}`, item.current_stock < 10)}
-              {preset(50, '+50', `Add 50 bags of ${item.name}`, item.current_stock < 50)}
-              {preset(100, '+100', `Add 100 bags of ${item.name}`, item.current_stock < 100)}
-              {preset(1, '+1', `Add 1 bag of ${item.name}`)}
+              {preset(10, '+10', addBags(10), item.current_stock < 10)}
+              {preset(50, '+50', addBags(50), item.current_stock < 50)}
+              {preset(100, '+100', addBags(100), item.current_stock < 100)}
+              {preset(1, '+1', addBags(1))}
             </View>
           )}
 
@@ -887,20 +892,20 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
           {quantity > 0 && (
             <View style={styles.quantityControlsContainer}>
               <View style={styles.quantityControls}>
-                {stepper(Math.max(0, quantity - 10), '−10', `Remove 10 bags of ${item.name}`, quantity < 10)}
-                {stepper(quantity - 1, '−', `Remove 1 bag of ${item.name}`, quantity === 0)}
+                {stepper(Math.max(0, quantity - 10), '−10', removeBags(10), quantity < 10)}
+                {stepper(quantity - 1, '−', removeBags(1), quantity === 0)}
                 <Text
                   style={styles.quantity}
-                  accessibilityLabel={`${formatBags(quantity)} of ${item.name} selected`}
+                  accessibilityLabel={tr('orders.catalog.selectedOf', { bags: formatBags(quantity), name: item.name })}
                   accessibilityLiveRegion="polite"
                 >
                   {formatNumber(quantity)}
                 </Text>
-                {stepper(quantity + 1, '+', `Add 1 bag of ${item.name}`, item.current_stock === 0)}
+                {stepper(quantity + 1, '+', addBags(1), item.current_stock === 0)}
                 {stepper(
                   Math.min(item.current_stock, quantity + 10),
                   '+10',
-                  `Add 10 bags of ${item.name}`,
+                  addBags(10),
                   quantity + 10 > item.current_stock || item.current_stock === 0
                 )}
               </View>
@@ -961,23 +966,23 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
           onPress={onClose}
           style={({ pressed }) => [styles.headerButton, pressed && styles.headerButtonPressed]}
           accessibilityRole="button"
-          accessibilityLabel="Cancel adding items"
+          accessibilityLabel={tr('orders.catalog.cancelAdding')}
         >
-          <Text style={styles.headerButtonTextCancel}>Cancel</Text>
+          <Text style={styles.headerButtonTextCancel} {...singleLineText()}>{tr('common.cancel')}</Text>
         </Pressable>
-        <Text style={styles.headerTitle} accessibilityRole="header">Add items</Text>
+        <Text style={styles.headerTitle} accessibilityRole="header">{tr('orders.catalog.addItems')}</Text>
         <Pressable
           onPress={handleAddItems}
           style={({ pressed }) => [styles.headerButton, styles.headerButtonEnd, pressed && styles.headerButtonPressed]}
           accessibilityRole="button"
           accessibilityLabel={
             selectionSummary.count === 0
-              ? 'Add items to order'
-              : `Add ${formatCount(selectionSummary.count, 'item')} to order`
+              ? tr('orders.screen.addItemsToOrder')
+              : tr('orders.catalog.addCountToOrder', { items: formatCount(selectionSummary.count, 'item') })
           }
         >
-          <Text style={styles.headerButtonTextAction}>
-            {selectionSummary.count > 0 ? `Add (${selectionSummary.count})` : 'Add'}
+          <Text style={styles.headerButtonTextAction} {...singleLineText()}>
+            {selectionSummary.count > 0 ? tr('orders.catalog.addCount', { count: selectionSummary.count }) : tr('common.add')}
           </Text>
         </Pressable>
       </View>
@@ -989,7 +994,7 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
         <View style={styles.searchField}>
           <Icon name="magnify" size={iconSize.md} color={t.icon.secondary} />
           <TextInput
-            accessibilityLabel="Search stock items"
+            accessibilityLabel={tr('orders.catalog.searchLabel')}
             value={searchQuery}
             onChangeText={setSearchQuery}
             placeholder={getSearchPlaceholder()}
@@ -1005,7 +1010,7 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
               hitSlop={space.md}
               style={styles.clearButton}
               accessibilityRole="button"
-              accessibilityLabel="Clear search"
+              accessibilityLabel={tr('common.clearSearch')}
             >
               <Icon name="close-circle" size={iconSize.md} color={t.icon.secondary} />
             </Pressable>
@@ -1039,19 +1044,19 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
         {searching ? (
           <>
             <Text style={styles.emptyText} accessibilityRole="header">
-              No stock available for "{searchQuery}"
+              {tr('orders.catalog.noStockForTitle', { search: searchQuery })}
             </Text>
             <Text style={styles.emptySubtext}>
-              Try fewer letters, another package mark or a weight range such as 10-20.
+              {tr('orders.catalog.noStockForMessage')}
             </Text>
           </>
         ) : (
           <>
             <Text style={styles.emptyText} accessibilityRole="header">
-              No items in stock
+              {tr('orders.catalog.emptyTitle')}
             </Text>
             <Text style={styles.emptySubtext}>
-              Items from this customer's GRNs appear here while they have stock.
+              {tr('orders.catalog.emptyMessage')}
             </Text>
           </>
         )}
@@ -1063,15 +1068,15 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
   const listFooterComponent = useMemo(() => (
     <>
       {isLoadingMore && (
-        <View style={styles.loadMoreRow} accessibilityLabel="Loading more items">
+        <View style={styles.loadMoreRow} accessibilityLabel={tr('items.list.loadingMoreLabel')}>
           <ActivityIndicator size="small" color={t.brand.tint} />
-          <Text style={styles.loadMoreText}>Loading more items…</Text>
+          <Text style={styles.loadMoreText}>{tr('orders.catalog.loadingMore')}</Text>
         </View>
       )}
       {/* Catalog Filter */}
       {catalogs.length > 0 && (
         <View style={styles.bottomCatalogFilter}>
-          {[{ id: null as string | null, name: 'All' }, ...catalogs].map(catalog => {
+          {[{ id: null as string | null, name: tr('common.all') }, ...catalogs].map(catalog => {
             const on = selectedCatalog === catalog.id;
             return (
               <Pressable
@@ -1084,7 +1089,7 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
                 onPress={() => setSelectedCatalog(catalog.id)}
                 hitSlop={{ top: space.s6, bottom: space.s6 }}
                 accessibilityRole="button"
-                accessibilityLabel={catalog.id ? `Catalog ${catalog.name}` : 'All catalogs'}
+                accessibilityLabel={catalog.id ? tr('orders.catalog.catalogName', { name: catalog.name }) : tr('orders.catalog.allCatalogs')}
                 accessibilityState={{ selected: on }}
               >
                 {on && <Icon name="check" size={iconSize.sm} color={t.brand.tint} />}
@@ -1117,9 +1122,9 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
       handleStyle={styles.bottomSheetHandleContainer}
     >
       {loading ? (
-        <View style={styles.loadingContainer} accessibilityRole="progressbar" accessibilityLabel="Loading items">
+        <View style={styles.loadingContainer} accessibilityRole="progressbar" accessibilityLabel={tr('items.list.loadingLabel')}>
           <ActivityIndicator size="large" color={t.brand.tint} />
-          <Text style={styles.loadingText}>Loading items…</Text>
+          <Text style={styles.loadingText}>{tr('items.list.loading')}</Text>
         </View>
       ) : (
         <BottomSheetFlatList

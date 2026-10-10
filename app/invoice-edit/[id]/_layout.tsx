@@ -17,6 +17,8 @@ import { InvoiceHeaderData } from '@/types/invoice.types';
 import { Alert } from 'react-native';
 
 import { showAlert } from '@/utils/alert';
+import { t as tr } from '@/i18n';
+import { serverText } from '@/utils/serverText';
 export default function InvoiceEditLayout() {
   const dispatch = useAppDispatch();
   const navigation = useNavigation();
@@ -50,7 +52,7 @@ export default function InvoiceEditLayout() {
   useEffect(() => {
     const initializeEdit = async () => {
       if (!id) {
-        showAlert("Couldn't open the invoice", 'The invoice link is incomplete. Open the invoice again from the list.');
+        showAlert(tr('invoice.edit.openFailedTitle'), tr('invoice.edit.openFailedMessage'));
         router.back();
         return;
       }
@@ -94,13 +96,13 @@ export default function InvoiceEditLayout() {
             grId: result.data.header.gr_id || '',
           }));
         } else {
-          showAlert("Couldn't load the invoice", result.message || 'Check your connection and try again.');
+          showAlert(tr('invoice.edit.loadFailedTitle'), serverText(result.message, tr('common.checkConnection')));
           router.back();
         }
       } catch (error) {
         if (mountedRef.current && loadingIdRef.current === id) {
           console.error('[InvoiceEditLayout] Failed to load invoice data:', error);
-          showAlert("Couldn't load the invoice", 'Check your connection and try again.');
+          showAlert(tr('invoice.edit.loadFailedTitle'), tr('common.checkConnection'));
           router.back();
         }
       } finally {
@@ -130,9 +132,9 @@ export default function InvoiceEditLayout() {
 
   if (isLoading) {
     return (
-      <View style={styles.loadingContainer} accessibilityRole="progressbar" accessibilityLabel="Loading invoice">
+      <View style={styles.loadingContainer} accessibilityRole="progressbar" accessibilityLabel={tr('invoice.label.loadingInvoiceA11y')}>
         <ActivityIndicator size="large" color={t.brand.tint} />
-        <Text style={styles.loadingText}>Loading invoice…</Text>
+        <Text style={styles.loadingText}>{tr('invoice.label.loadingInvoice')}</Text>
       </View>
     );
   }

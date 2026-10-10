@@ -24,6 +24,8 @@ import { fontWeight, iconSize, radius, space, touchTarget, typography } from '@/
 import type { ThemeTokens } from '@/theme/tokens';
 
 import { showAlert } from '@/utils/alert';
+import { t as tr } from '@/i18n';
+import { serverText } from '@/utils/serverText';
 // Type for custom upload function metadata (supports both camelCase and snake_case)
 type CustomUploadMetadata = {
   // camelCase (GRN format)
@@ -98,7 +100,7 @@ export const ImageUploadButton: React.FC<ImageUploadButtonProps> = ({
   maxImages = 10,
   loading = false,
   disabled = false,
-  buttonText = 'Add photos',
+  buttonText = tr('grn.photos.addPhotos'),
   showProgress = true,
   allowMultiple = true,
   customUploadFunction,
@@ -127,7 +129,7 @@ export const ImageUploadButton: React.FC<ImageUploadButtonProps> = ({
     // Validate image before upload
     const validation = validateImageFile(asset);
     if (!validation.valid) {
-      showAlert("Can't use this photo", validation.error);
+      showAlert(tr('grn.photos.cantUseTitle'), validation.error);
       return;
     }
 
@@ -211,17 +213,17 @@ export const ImageUploadButton: React.FC<ImageUploadButtonProps> = ({
           hasStoragePath: !!storagePath
         });
       } else {
-        throw new Error(result.error || 'Upload failed');
+        throw new Error(serverText(result.error, tr('grn.photos.uploadFailed')));
       }
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Upload failed';
+      const errorMessage = error instanceof Error ? error.message : tr('grn.photos.uploadFailed');
       console.error('[ImageUploadButton] Upload error:', errorMessage);
 
       // Notify parent component of upload error
       onImageUploadError?.(tempImageId, errorMessage);
 
       // Show error to user (the raw cause is logged above, not shown)
-      showAlert("Couldn't upload the photo", 'Check your connection and try again.');
+      showAlert(tr('grn.photos.uploadFailedTitle'), tr('common.checkConnection'));
 
       // Legacy support: remove failed upload from URLs
       if (onImagesSelected && !onImageUploadError) {
@@ -258,7 +260,7 @@ export const ImageUploadButton: React.FC<ImageUploadButtonProps> = ({
 
   const pickImages = async () => {
     if (remainingSlots <= 0) {
-      showAlert('Photo limit reached', `You can add up to ${maxImages} photos.`);
+      showAlert(tr('grn.photos.limitTitle'), tr('grn.photos.limitMessage', { max: maxImages }));
       return;
     }
 
@@ -280,14 +282,14 @@ export const ImageUploadButton: React.FC<ImageUploadButtonProps> = ({
       }
     } catch (error) {
       console.error('[ImageUpload] Error picking images:', error);
-      showAlert("Couldn't open your photos", 'Try again.');
+      showAlert(tr('grn.photos.openLibraryFailedTitle'), tr('grn.photos.tryAgain'));
     }
   };
 
   // Open custom camera modal with flash control
   const takePhoto = () => {
     if (remainingSlots <= 0) {
-      showAlert('Photo limit reached', `You can add up to ${maxImages} photos.`);
+      showAlert(tr('grn.photos.limitTitle'), tr('grn.photos.limitMessage', { max: maxImages }));
       return;
     }
     setShowCameraModal(true);
@@ -323,18 +325,18 @@ export const ImageUploadButton: React.FC<ImageUploadButtonProps> = ({
       await uploadImage(asset);
     } catch (error) {
       console.error('[ImageUpload] Error processing captured photo:', error);
-      showAlert("Couldn't use the photo", 'Take the photo again.');
+      showAlert(tr('grn.photos.captureFailedTitle'), tr('grn.photos.captureFailedMessage'));
     }
   };
 
   const showImageOptions = () => {
     showAlert(
-      'Add photo',
-      'Take a new photo or choose one from your library.',
+      tr('grn.photos.addPhotoTitle'),
+      tr('grn.photos.addPhotoMessage'),
       [
-        { text: 'Take photo', onPress: takePhoto },
-        { text: 'Choose from library', onPress: pickImages },
-        { text: 'Cancel', style: 'cancel' },
+        { text: tr('grn.photos.takePhoto'), onPress: takePhoto },
+        { text: tr('grn.photos.chooseFromLibrary'), onPress: pickImages },
+        { text: tr('common.cancel'), style: 'cancel' },
       ],
       { cancelable: true }
     );
@@ -346,8 +348,12 @@ export const ImageUploadButton: React.FC<ImageUploadButtonProps> = ({
   const averageProgress = hasActiveUploads
     ? Object.values(uploadProgress).reduce((sum, progress) => sum + progress, 0) / Object.values(uploadProgress).length
     : 0;
-  const countText = remainingSlots < maxImages ? `${currentImages.length} of ${maxImages}` : '';
-  const busyText = showProgress && hasActiveUploads ? `Uploading ${Math.round(averageProgress)}%` : 'Uploading';
+  const countText = remainingSlots < maxImages
+    ? tr('grn.photos.countOfMax', { added: currentImages.length, max: maxImages })
+    : '';
+  const busyText = showProgress && hasActiveUploads
+    ? tr('grn.photos.uploadingPercent', { percent: Math.round(averageProgress) })
+    : tr('grn.photos.uploadingShort');
 
   return (
     <View style={styles.container}>
@@ -360,7 +366,13 @@ export const ImageUploadButton: React.FC<ImageUploadButtonProps> = ({
         onPress={showImageOptions}
         disabled={isDisabled}
         accessibilityRole="button"
-        accessibilityLabel={isBusy ? busyText : `${buttonText}${countText ? `, ${countText} added` : ''}`}
+        accessibilityLabel={
+          isBusy
+            ? busyText
+            : countText
+              ? tr('grn.photos.buttonLabelWithCount', { label: buttonText, added: currentImages.length, max: maxImages })
+              : buttonText
+        }
         accessibilityState={{ disabled: isDisabled, busy: isBusy }}
       >
         {isBusy ? (
@@ -385,7 +397,7 @@ export const ImageUploadButton: React.FC<ImageUploadButtonProps> = ({
             variant="default"
             size="default"
             showPercentage={false}
-            accessibilityLabel={`Upload progress ${Math.round(averageProgress)}%`}
+            accessibilityLabel={tr('grn.photos.progressLabel', { percent: Math.round(averageProgress) })}
           />
         </View>
       )}

@@ -23,6 +23,8 @@ import {
   PeriodSelector,
   ReportEmptyState,
   ReportCustomerSearch,
+  FactLines,
+  joinFacts,
   getDateRangeForPeriod,
   type KPIItem,
 } from '@/components/reports';
@@ -38,6 +40,7 @@ import {
   space,
   typography,
   type ThemeTokens,
+  trackedText,
 } from '@/theme/tokens';
 import type {
   GRNActivityData,
@@ -48,6 +51,7 @@ import type {
 } from '@/types/report.types';
 import { formatCount, formatDate, formatNumber, formatSectionDate } from '@/utils/formatters';
 import { StatusTag, Avatar } from '@/components/ui';
+import { t as tr, formatIdentifier } from '@/i18n';
 
 const NO_CUSTOMER_ERROR = 'No customer assigned to your account';
 
@@ -77,7 +81,7 @@ const makeStyles = (t: ThemeTokens) => ({
   sectionHeaderText: {
     ...typography.footnote,
     fontWeight: fontWeight.semibold,
-    letterSpacing: 0.5,
+    letterSpacing: trackedText(0.5),
     textTransform: 'uppercase' as const,
     color: t.text.secondary,
   },
@@ -93,7 +97,7 @@ const makeStyles = (t: ThemeTokens) => ({
   dateSectionText: {
     ...typography.footnote,
     fontWeight: fontWeight.semibold,
-    letterSpacing: 0.5,
+    letterSpacing: trackedText(0.5),
     textTransform: 'uppercase' as const,
     color: t.text.secondary,
   },
@@ -162,7 +166,7 @@ const makeStyles = (t: ThemeTokens) => ({
     backgroundColor: t.surface.card,
   },
   customerContent: { flex: 1, gap: space.xxs },
-  customerQty: { alignItems: 'flex-end' as const },
+  customerQty: { alignItems: 'flex-end' as const, flexShrink: 0 },
   divider: {
     height: StyleSheet.hairlineWidth,
     backgroundColor: t.border.divider,
@@ -205,13 +209,16 @@ const GRNCard: React.FC<GRNCardProps> = ({ grn, styles }) => {
   const invoiced = grn.invoice_status.is_invoiced;
   const invoiceLabel = invoiced
     ? grn.invoice_status.invoice_number
-      ? `Invoice ${grn.invoice_status.invoice_number}`
-      : 'Invoiced'
-    : 'Not invoiced';
+      ? tr('reports.customerActivity.invoiceNumber', { number: formatIdentifier(grn.invoice_status.invoice_number) })
+      : tr('reports.grnActivity.invoiced')
+    : tr('reports.grnActivity.notInvoiced');
   const dispatchCount = grn.dispatch_summary.dispatch_count;
   const dispatchLabel = dispatchCount > 0 ? formatCount(dispatchCount, 'dispatch', 'dispatches') : null;
-  const people = [grn.sender_name || 'Sender not recorded', grn.supervisor_name].filter(Boolean).join(' · ');
-  const stockLabel = `${formatNumber(grn.dispatch_summary.current_stock)} of ${formatCount(grn.total_qty, 'bag')} in stock`;
+  const people = [grn.sender_name || tr('reports.grnActivity.senderNotRecorded'), grn.supervisor_name].filter(Boolean).join(' · ');
+  const stockLabel = tr('reports.grnActivity.stockLabel', {
+    stock: formatNumber(grn.dispatch_summary.current_stock),
+    bags: formatCount(grn.total_qty, 'bag'),
+  });
 
   const handlePress = () => {
     if (grn.grn_id) {
@@ -225,14 +232,14 @@ const GRNCard: React.FC<GRNCardProps> = ({ grn, styles }) => {
       onPress={handlePress}
       accessibilityRole="button"
       accessibilityLabel={[
-        `GRN ${grn.gr_no}`,
+        tr('reports.customerActivity.grnNumber', { number: formatIdentifier(grn.gr_no) }),
         people,
         stockLabel,
         invoiceLabel,
         dispatchLabel,
         grn.image_count > 0 ? formatCount(grn.image_count, 'photo') : null,
       ].filter(Boolean).join(', ')}
-      accessibilityHint="Opens the GRN"
+      accessibilityHint={tr('reports.grnActivity.openHint')}
     >
       <View style={styles.objectCell}>
         <View style={styles.objectIcon}>
@@ -242,7 +249,7 @@ const GRNCard: React.FC<GRNCardProps> = ({ grn, styles }) => {
         <View style={styles.objectContent}>
           <View style={styles.titleRow}>
             <Text style={styles.title} numberOfLines={2}>
-              GRN {grn.gr_no}
+              {tr('reports.customerActivity.grnNumber', { number: formatIdentifier(grn.gr_no) })}
             </Text>
             {grn.image_count > 0 && (
               <StatusTag status="neutral" label={formatNumber(grn.image_count)} icon="camera-outline" />
@@ -255,7 +262,7 @@ const GRNCard: React.FC<GRNCardProps> = ({ grn, styles }) => {
 
         <View style={styles.stockInfo}>
           <Text style={styles.stockValue}>{formatNumber(grn.dispatch_summary.current_stock)}</Text>
-          <Text style={styles.stockLabel}>of {formatNumber(grn.total_qty)}</Text>
+          <Text style={styles.stockLabel}>{tr('reports.grnActivity.ofTotal', { total: formatNumber(grn.total_qty) })}</Text>
         </View>
 
         <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />
@@ -280,7 +287,8 @@ const CustomerCard: React.FC<CustomerCardProps> = ({ customer, onPress, styles }
   const t = useTokens();
   const latest = customer.latest_grn_date ? formatDate(customer.latest_grn_date, 'short') : '';
   const grnCount = formatCount(customer.grn_count, 'GRN');
-  const subtitle = latest && latest !== '—' ? `${grnCount} · Latest ${latest}` : grnCount;
+  const facts = [grnCount, latest && latest !== '—' ? tr('reports.grnActivity.latestGrn', { date: latest }) : null];
+  const subtitle = joinFacts(facts);
   const bags = formatCount(customer.total_quantity, 'bag');
   return (
     <Pressable
@@ -288,18 +296,18 @@ const CustomerCard: React.FC<CustomerCardProps> = ({ customer, onPress, styles }
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={`${customer.customer_name}, ${subtitle}, ${bags}`}
-      accessibilityHint="Shows this customer's GRNs"
+      accessibilityHint={tr('reports.grnActivity.customerHint')}
     >
       <Avatar name={customer.customer_name} id={customer.customer_id} />
       <View style={styles.customerContent}>
         <Text style={styles.title} numberOfLines={2}>
           {customer.customer_name}
         </Text>
-        <Text style={styles.subtitle}>{subtitle}</Text>
+        <FactLines facts={facts} style={styles.subtitle} />
       </View>
       <View style={styles.customerQty}>
         <Text style={styles.stockValue}>{formatNumber(customer.total_quantity)}</Text>
-        <Text style={styles.stockLabel}>{customer.total_quantity === 1 ? 'bag' : 'bags'}</Text>
+        <Text style={styles.stockLabel}>{tr('reports.dispatchActivity.bagUnit', { count: customer.total_quantity })}</Text>
       </View>
       <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />
     </Pressable>
@@ -501,8 +509,8 @@ export default function GRNActivityScreen() {
     if (!allCustomersData?.summary) return [];
     const s = allCustomersData.summary;
     return [
-      { icon: 'package-down', value: s.total_grns, label: 'GRNs', variant: 'primary' },
-      { icon: 'package-variant', value: s.total_quantity, label: 'Bags', variant: 'secondary' },
+      { icon: 'package-down', value: s.total_grns, label: tr('reports.customerActivity.grns'), variant: 'primary' },
+      { icon: 'package-variant', value: s.total_quantity, label: tr('common.bags'), variant: 'secondary' },
     ];
   }, [allCustomersData?.summary]);
 
@@ -511,15 +519,15 @@ export default function GRNActivityScreen() {
     if (!data?.summary) return [];
     const s = data.summary;
     return [
-      { icon: 'package-down', value: s.total_grns, label: 'GRNs', variant: 'primary' },
-      { icon: 'package-variant', value: s.total_quantity, label: 'Bags', variant: 'secondary' },
-      { icon: 'file-document-outline', value: `${formatNumber(s.total_invoiced_grns)} of ${formatNumber(s.total_grns)}`, label: 'Invoiced', variant: 'accent' },
+      { icon: 'package-down', value: s.total_grns, label: tr('reports.customerActivity.grns'), variant: 'primary' },
+      { icon: 'package-variant', value: s.total_quantity, label: tr('common.bags'), variant: 'secondary' },
+      { icon: 'file-document-outline', value: tr('reports.grnActivity.invoicedOfTotal', { invoiced: formatNumber(s.total_invoiced_grns), total: formatNumber(s.total_grns) }), label: tr('reports.grnActivity.invoiced'), variant: 'accent' },
     ];
   }, [data?.summary]);
 
 
   const { from, to } = getDateRangeForPeriod(selectedPeriod);
-  const dateRangeText = `${formatDate(from)} to ${formatDate(to)}`;
+  const dateRangeText = tr('reports.grnActivity.dateRange', { from: formatDate(from), to: formatDate(to) });
 
   const isListView = shouldShowListView && viewMode === 'all';
   const hasData = isListView ? allCustomersData : data;
@@ -538,13 +546,13 @@ export default function GRNActivityScreen() {
   if (isLoading && !hasData) {
     return (
       <View style={styles.container}>
-        <ReportHeader title="GRN activity" />
+        <ReportHeader title={tr('reports.titles.grnActivity')} />
         <PeriodSelector selectedPeriod={selectedPeriod} onPeriodChange={handlePeriodChange} />
-        <View style={styles.loadingContainer} accessibilityLabel="Loading GRN activity" accessibilityState={{ busy: true }}>
+        <View style={styles.loadingContainer} accessibilityLabel={tr('reports.grnActivity.loading')} accessibilityState={{ busy: true }}>
           <KPIGrid
             items={[
-              { icon: 'package-down', value: '-', label: 'GRNs', variant: 'primary' },
-              { icon: 'package-variant', value: '-', label: 'Bags', variant: 'secondary' },
+              { icon: 'package-down', value: '-', label: tr('reports.customerActivity.grns'), variant: 'primary' },
+              { icon: 'package-variant', value: '-', label: tr('common.bags'), variant: 'secondary' },
             ]}
             isLoading={true}
             compact
@@ -559,21 +567,21 @@ export default function GRNActivityScreen() {
     const noCustomer = error === NO_CUSTOMER_ERROR;
     return (
       <View style={styles.container}>
-        <ReportHeader title="GRN activity" />
+        <ReportHeader title={tr('reports.titles.grnActivity')} />
         <PeriodSelector selectedPeriod={selectedPeriod} onPeriodChange={handlePeriodChange} />
         <ReportEmptyState
           icon="alert-circle-outline"
-          message={noCustomer ? 'No customer linked to your account' : "Couldn't load GRN activity"}
+          message={tr(noCustomer ? 'reports.grnActivity.noCustomerTitle' : 'reports.grnActivity.errorTitle')}
           description={
             noCustomer
-              ? 'Ask your facility to link your account to a customer.'
-              : 'Check your connection and try again.'
+              ? tr('reports.grnActivity.noCustomerDescription')
+              : tr('common.checkConnection')
           }
         />
         {!noCustomer && (
           <View style={styles.retry}>
             <Button type="secondary" variant="tint" onPress={handleRefresh}>
-              Try again
+              {tr('common.retry')}
             </Button>
           </View>
         )}
@@ -585,7 +593,10 @@ export default function GRNActivityScreen() {
   if (isListView && allCustomersData) {
     return (
       <View style={styles.container}>
-        <ReportHeader title="GRN activity" subtitle={isStaff ? 'All customers' : 'My customers'} />
+        <ReportHeader
+          title={tr('reports.titles.grnActivity')}
+          subtitle={tr(isStaff ? 'reports.customerActivity.allCustomers' : 'reports.customerActivity.myCustomers')}
+        />
         <PeriodSelector selectedPeriod={selectedPeriod} onPeriodChange={handlePeriodChange} />
         <Text style={styles.dateRangeText}>{dateRangeText}</Text>
 
@@ -610,7 +621,7 @@ export default function GRNActivityScreen() {
 
           {filteredCustomers.length > 0 ? (
             <View style={styles.section}>
-              <SectionHeader title="Customers" styles={styles} />
+              <SectionHeader title={tr('common.customers')} styles={styles} />
               <View style={styles.customersCard}>
                 {filteredCustomers.map((customer, index) => (
                   <React.Fragment key={customer.customer_id}>
@@ -623,14 +634,14 @@ export default function GRNActivityScreen() {
           ) : customerSearchQuery.trim() && allCustomersData.by_customer.length > 0 ? (
             <ReportEmptyState
               icon="magnify"
-              message={`No customers match "${customerSearchQuery.trim()}"`}
-              description="Try fewer letters."
+              message={tr('reports.dispatchActivity.noMatch', { search: customerSearchQuery.trim() })}
+              description={tr('reports.dispatchActivity.tryFewerLetters')}
             />
           ) : (
             <ReportEmptyState
               icon="package-down"
-              message="No GRNs in this period"
-              description="Choose a longer period to see more GRNs."
+              message={tr('reports.grnActivity.emptyTitle')}
+              description={tr('reports.grnActivity.emptyDescription')}
             />
           )}
         </ScrollView>
@@ -643,7 +654,7 @@ export default function GRNActivityScreen() {
     return (
       <View style={styles.container}>
         <ReportHeader
-          title="GRN activity"
+          title={tr('reports.titles.grnActivity')}
           subtitle={selectedCustomer?.customer_name}
           onBack={shouldShowListView || routeCustomerId ? handleBackToAll : undefined}
         />
@@ -651,8 +662,8 @@ export default function GRNActivityScreen() {
         <Text style={styles.dateRangeText}>{dateRangeText}</Text>
         <ReportEmptyState
           icon="package-down"
-          message="No GRNs in this period"
-          description="Choose a longer period to see more GRNs."
+          message={tr('reports.grnActivity.emptyTitle')}
+          description={tr('reports.grnActivity.emptyDescription')}
         />
       </View>
     );
@@ -661,7 +672,7 @@ export default function GRNActivityScreen() {
   return (
     <View style={styles.container}>
       <ReportHeader
-        title="GRN activity"
+        title={tr('reports.titles.grnActivity')}
         subtitle={selectedCustomer?.customer_name}
         onBack={shouldShowListView || routeCustomerId ? handleBackToAll : undefined}
       />

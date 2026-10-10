@@ -16,6 +16,7 @@ import { useOTAUpdates } from '@/hooks/useOTAUpdates';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, layout, radius, space, touchTarget, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
+import { t as tr } from '@/i18n';
 
 interface UpdatePromptProps {
   /** Whether to show the prompt as a modal (true) or inline banner (false) */
@@ -202,27 +203,27 @@ export function UpdatePrompt({ asModal = true }: UpdatePromptProps) {
       </View>
 
       <Text style={styles.title} accessibilityRole="header">
-        {isUpdatePending ? 'Update ready' : 'Update available'}
+        {isUpdatePending ? tr('components.update.ready') : tr('components.update.available')}
       </Text>
 
       <Text style={styles.description}>
         {isDownloading
-          ? 'Downloading the new version of the app.'
+          ? tr('components.update.downloadingDescription')
           : isUpdatePending
-            ? 'The new version has been downloaded. Restart the app to use it.'
-            : 'A new version of the app is available.'}
+            ? tr('components.update.readyDescription')
+            : tr('components.update.availableDescription')}
       </Text>
 
       {isDownloading && (
         <View
           style={styles.progressContainer}
           accessible
-          accessibilityLabel={percent !== null ? `Downloading, ${percent}%` : 'Downloading'}
+          accessibilityLabel={percent !== null ? tr('components.update.downloadingPercentLabel', { percent }) : tr('components.update.downloadingLabel')}
           accessibilityState={{ busy: true }}
         >
           <ActivityIndicator size="small" color={t.brand.tint} />
           <Text style={styles.progressText}>
-            {percent !== null ? `Downloading… ${percent}%` : 'Downloading…'}
+            {percent !== null ? tr('components.update.downloadingPercent', { percent }) : tr('components.update.downloading')}
           </Text>
         </View>
       )}
@@ -231,17 +232,17 @@ export function UpdatePrompt({ asModal = true }: UpdatePromptProps) {
         <View style={styles.errorRow} accessibilityRole="alert">
           <MaterialCommunityIcons name="alert-circle" size={iconSize.md} color={t.status.negative.text} />
           <Text style={styles.errorText}>
-            Couldn&apos;t download the update. Check your connection and try again.
+            {tr('components.update.downloadFailed')}
           </Text>
         </View>
       )}
 
       <View style={styles.actions}>
         {isUpdatePending
-          ? [renderButton('Later', dismissUpdate, false), renderButton('Restart app', applyUpdate, true)]
+          ? [renderButton(tr('components.update.later'), dismissUpdate, false), renderButton(tr('components.update.restart'), applyUpdate, true)]
           : !isDownloading && [
-              renderButton('Not now', dismissUpdate, false),
-              renderButton('Download update', downloadUpdate, true),
+              renderButton(tr('components.update.notNow'), dismissUpdate, false),
+              renderButton(tr('components.update.download'), downloadUpdate, true),
             ]}
       </View>
     </View>

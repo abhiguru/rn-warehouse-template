@@ -13,13 +13,14 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { Image } from 'expo-image';
 import { RemoteAutocompleteInput } from '@/components/RemoteAutocompleteInput';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
-import { fontWeight, iconSize, radius, space, touchTarget, typography } from '@/theme/tokens';
+import { fontWeight, iconSize, radius, space, touchTarget, typography, trackedText } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { GRNImageData } from '@/store/slices/grnFormSlice';
 import { searchItems } from '@/services/item-search-service';
 
 import { showAlert } from '@/utils/alert';
-import { formatCount } from '@/utils/formatters';
+import { formatNumber } from '@/utils/formatters';
+import { normalizeDigits, t as tr, localizeDigits } from '@/i18n';
 const FIELD_WIDTH_LARGE = 220; // Width for item name field
 const FIELD_WIDTH_QTY_WEIGHT = 117; // Qty & Weight reduced by 35% (was 180)
 const FIELD_WIDTH_RACK = 196; // Rack reduced by 30% (was 280), chips will wrap
@@ -284,16 +285,16 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                         accessibilityRole={canViewAll ? 'button' : 'header'}
                         accessibilityLabel={
                             canViewAll
-                                ? `${isEditing ? 'Editing' : 'New'} item ${itemNumber}. View ${formatCount(savedItemsCount, 'saved item')}`
-                                : `${isEditing ? 'Editing' : 'New'} item ${itemNumber}`
+                                ? tr(isEditing ? 'grn.item.a11yEditingItemViewSaved' : 'grn.item.a11yNewItemViewSaved', { number: itemNumber, count: savedItemsCount })
+                                : tr(isEditing ? 'grn.item.a11yEditingItem' : 'grn.item.a11yNewItem', { number: itemNumber })
                         }
                     >
-                        <Text style={styles.heroOverline}>{isEditing ? 'Editing item' : 'New item'}</Text>
+                        <Text style={styles.heroOverline}>{isEditing ? tr('grn.item.editingItem') : tr('grn.item.newItem')}</Text>
                         <View style={styles.heroTitleRow}>
-                            <Text style={styles.heroTitle}>Item {itemNumber}</Text>
+                            <Text style={styles.heroTitle}>{tr('grn.item.itemNumber', { number: itemNumber })}</Text>
                             {canViewAll && (
                                 <View style={styles.viewAll}>
-                                    <Text style={styles.viewAllText}>{savedItemsCount} saved</Text>
+                                    <Text style={styles.viewAllText}>{tr('grn.item.savedCount', { count: savedItemsCount })}</Text>
                                     <Icon name="chevron-right" size={iconSize.sm} color={t.brand.tint} />
                                 </View>
                             )}
@@ -312,7 +313,7 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                             !isValid && styles.saveButtonDisabled,
                         ]}
                         accessibilityRole="button"
-                        accessibilityLabel="Save receipt item"
+                        accessibilityLabel={tr('grn.item.saveLabel')}
                         accessibilityState={{ disabled: !isValid }}
                         onPress={onSaveItem}
                         disabled={!isValid}
@@ -335,14 +336,14 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                     <View style={[styles.fieldContainer, { width: FIELD_WIDTH_LARGE, zIndex: 1000 }]}>
                         <View style={styles.labelRow}>
                             <Icon name="cube-outline" size={iconSize.sm} color={t.icon.secondary} />
-                            <Text style={styles.label}>Item<Text style={styles.required}> *</Text></Text>
+                            <Text style={styles.label}>{tr('common.item')}<Text style={styles.required}> *</Text></Text>
                         </View>
                         <RemoteAutocompleteInput<{ id: string; name: string; packaging?: string }>
                             value={currentItem.item_name}
-                            placeholder="Search items"
+                            placeholder={tr('grn.item.searchPlaceholder')}
                             fetchData={searchItems}
                             suggestionPlacement="inline"
-                            getItemAccessibilityLabel={(item) => `Select receipt item ${item.name}`}
+                            getItemAccessibilityLabel={(item) => tr('grn.item.selectItemLabel', { name: item.name })}
                             onSelect={(item) => {
                                 if (item) {
                                     onFieldChange('item_table_id', item.id);
@@ -377,20 +378,20 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                     {/* Field 2: Quantity */}
                     <View style={[styles.fieldContainer, { width: FIELD_WIDTH_QTY_WEIGHT }]}>
                         <View style={styles.labelRow}>
-                            <Text style={styles.label}>Quantity<Text style={styles.required}> *</Text></Text>
+                            <Text style={styles.label}>{tr('grn.item.quantity')}<Text style={styles.required}> *</Text></Text>
                             {isQtyLocked && (
                                 <Icon
                                     name="lock-outline"
                                     size={iconSize.sm}
                                     color={t.icon.secondary}
-                                    accessibilityLabel="Quantity locked"
+                                    accessibilityLabel={tr('grn.item.quantityLocked')}
                                 />
                             )}
                         </View>
                         <TextInput
                             ref={qtyInputRef}
-                            accessibilityLabel="Receipt item quantity"
-                            accessibilityHint={isQtyLocked ? 'Locked because this item has dispatches' : undefined}
+                            accessibilityLabel={tr('grn.item.quantityInputLabel')}
+                            accessibilityHint={isQtyLocked ? tr('grn.item.quantityLockedHint') : undefined}
                             style={[
                                 styles.input,
                                 styles.numericInput,
@@ -398,15 +399,15 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                                 isQtyLocked && styles.inputReadOnly,
                                 focusedField === 'qty' && !isQtyLocked && styles.inputFocused,
                             ]}
-                            value={currentItem.qty}
+                            value={localizeDigits(currentItem.qty ?? '')}
                             onChangeText={(text) => {
                                 if (isQtyLocked) {
                                     onQtyLockedPress?.();
                                     return;
                                 }
-                                onFieldChange('qty', text);
+                                onFieldChange('qty', normalizeDigits(text));
                             }}
-                            placeholder="0"
+                            placeholder={formatNumber(0)}
                             placeholderTextColor={t.text.placeholder}
                             keyboardType="numeric"
                             returnKeyType="next"
@@ -431,7 +432,7 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                     {/* Field 3: Weight */}
                     <View style={[styles.fieldContainer, { width: FIELD_WIDTH_QTY_WEIGHT }]}>
                         <View style={styles.labelRow}>
-                            <Text style={styles.label}>Weight</Text>
+                            <Text style={styles.label}>{tr('common.weight')}</Text>
                         </View>
                         <View
                             style={[
@@ -443,11 +444,11 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                         >
                             <TextInput
                                 ref={weightInputRef}
-                                accessibilityLabel="Receipt item weight in kilograms"
+                                accessibilityLabel={tr('grn.item.weightInputLabel')}
                                 style={[styles.suffixInput, styles.numericInput]}
-                                value={currentItem.weight}
-                                onChangeText={(text) => onFieldChange('weight', text)}
-                                placeholder="0"
+                                value={localizeDigits(currentItem.weight ?? '')}
+                                onChangeText={(text) => onFieldChange('weight', normalizeDigits(text))}
+                                placeholder={formatNumber(0)}
                                 placeholderTextColor={t.text.placeholder}
                                 keyboardType="numeric"
                                 returnKeyType="next"
@@ -460,7 +461,7 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                                 onBlur={() => setFocusedField(null)}
                                 selectTextOnFocus
                             />
-                            <Text style={styles.suffix} importantForAccessibility="no">kg</Text>
+                            <Text style={styles.suffix} importantForAccessibility="no">{tr('grn.item.weightUnit')}</Text>
                         </View>
                         {renderError(currentItem.errors.weight)}
                     </View>
@@ -469,14 +470,14 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                     <View style={[styles.fieldContainer, { width: FIELD_WIDTH_RACK }]}>
                         <View style={styles.labelRow}>
                             <Icon name="view-grid-outline" size={iconSize.sm} color={t.icon.secondary} />
-                            <Text style={styles.label}>Rack</Text>
+                            <Text style={styles.label}>{tr('common.rack')}</Text>
                             {!!fullRackValue && (
                                 <Text style={styles.rackPreviewInline} numberOfLines={1}>{fullRackValue}</Text>
                             )}
                         </View>
                         <TextInput
                             ref={rackInputRef}
-                            accessibilityLabel="Rack"
+                            accessibilityLabel={tr('common.rack')}
                             style={[
                                 styles.input,
                                 !!currentItem.errors.rack && styles.inputError,
@@ -484,7 +485,7 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                             ]}
                             value={rackTextOnly}
                             onChangeText={handleRackTextChange}
-                            placeholder="For example 20B-20C"
+                            placeholder={tr('grn.form.forExample', { example: '20B-20C' })}
                             placeholderTextColor={t.text.placeholder}
                             returnKeyType="next"
                             onSubmitEditing={() => focusNext('rack')}
@@ -499,20 +500,20 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
 
                         {/* Floor Chips */}
                         <View style={styles.chipSection}>
-                            <Text style={styles.chipLabel} accessibilityRole="header">Floor</Text>
+                            <Text style={styles.chipLabel} accessibilityRole="header">{tr('grn.item.floor')}</Text>
                             <View style={styles.chipWrap} accessibilityRole="radiogroup">
                                 {FLOOR_OPTIONS.map((floor) =>
-                                    renderChip(floor, selectedFloor === floor, () => handleFloorSelect(floor), 'Floor')
+                                    renderChip(floor, selectedFloor === floor, () => handleFloorSelect(floor), tr('grn.item.floor'))
                                 )}
                             </View>
                         </View>
 
                         {/* Chamber Chips */}
                         <View style={styles.chipSection}>
-                            <Text style={styles.chipLabel} accessibilityRole="header">Chamber</Text>
+                            <Text style={styles.chipLabel} accessibilityRole="header">{tr('common.chamber')}</Text>
                             <View style={styles.chipWrap} accessibilityRole="radiogroup">
                                 {CHAMBER_OPTIONS.map((chamber) =>
-                                    renderChip(chamber, selectedChamber === chamber, () => handleChamberSelect(chamber), 'Chamber')
+                                    renderChip(chamber, selectedChamber === chamber, () => handleChamberSelect(chamber), tr('common.chamber'))
                                 )}
                             </View>
                         </View>
@@ -524,32 +525,32 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                     <View style={[styles.fieldContainer, { width: FIELD_WIDTH_MARK }]}>
                         <View style={styles.labelRow}>
                             <Icon name="tag-outline" size={iconSize.sm} color={t.icon.secondary} />
-                            <Text style={styles.label}>Mark</Text>
+                            <Text style={styles.label}>{tr('grn.item.mark')}</Text>
                             <Pressable
                                 onPress={() => {
                                     if (imageCount >= 2) {
-                                        showAlert('Photo limit reached', 'You can add up to 2 photos per item.');
+                                        showAlert(tr('grn.photos.limitTitle'), tr('grn.photos.limitPerItem', { count: 2 }));
                                         return;
                                     }
                                     onImagePick();
                                 }}
                                 style={({ pressed }) => [styles.cameraButton, pressed && styles.iconButtonPressed]}
                                 accessibilityRole="button"
-                                accessibilityLabel="Add mark photo"
+                                accessibilityLabel={tr('grn.item.addMarkPhoto')}
                             >
                                 <Icon name="camera-outline" size={iconSize.md} color={t.brand.tint} />
                             </Pressable>
                         </View>
                         <TextInput
                             ref={packageMarkInputRef}
-                            accessibilityLabel="Mark"
+                            accessibilityLabel={tr('grn.item.mark')}
                             style={[
                                 styles.input,
                                 focusedField === 'package_mark' && styles.inputFocused,
                             ]}
                             value={currentItem.package_mark}
                             onChangeText={(text) => onFieldChange('package_mark', text)}
-                            placeholder="For example MARK001"
+                            placeholder={tr('grn.form.forExample', { example: 'MARK001' })}
                             placeholderTextColor={t.text.placeholder}
                             returnKeyType="done"
                             onSubmitEditing={() => focusNext('package_mark')}
@@ -570,7 +571,7 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                                         style={({ pressed }) => [styles.miniThumb, pressed && styles.thumbPressed]}
                                         onPress={() => onImageRemove(img.id)}
                                         accessibilityRole="button"
-                                        accessibilityLabel={`Remove mark photo ${idx + 1}`}
+                                        accessibilityLabel={tr('grn.item.removeMarkPhoto', { position: idx + 1 })}
                                     >
                                         <Image
                                             source={{ uri: img.imageUrl }}
@@ -586,7 +587,7 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                                 ))}
                                 {currentItem.trl_images.length > 2 && (
                                     <View style={styles.moreThumb}>
-                                        <Text style={styles.moreText}>+{currentItem.trl_images.length - 2}</Text>
+                                        <Text style={styles.moreText}>+{formatNumber(currentItem.trl_images.length - 2)}</Text>
                                     </View>
                                 )}
                             </View>
@@ -842,7 +843,7 @@ const makeStyles = (t: ThemeTokens) => ({
         ...typography.caption1,
         fontWeight: fontWeight.semibold,
         textTransform: 'uppercase' as const,
-        letterSpacing: 0.5,
+        letterSpacing: trackedText(0.5),
         color: t.text.secondary,
         marginBottom: space.xs,
     },

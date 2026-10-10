@@ -20,7 +20,6 @@ import { FioriDataTable as ReportsPathTable } from '../reports/FioriDataTable';
 import { ListEmptyState } from '../list/ListEmptyState';
 import { LoadingState } from '../list/LoadingState';
 import { ListSkeletonCard } from '../list/ListSkeletonCard';
-import { GenericFilterableList } from '../list/GenericFilterableList';
 import { DetailSkeleton, ListSkeleton, SkeletonBox } from '../skeletons';
 import {
   ActionsSection,
@@ -260,7 +259,7 @@ describe.each(THEMES)('shared containers in %s %s', (brand, mode) => {
     act(() => empty.unmount());
   });
 
-  it('list states, skeletons and the filterable list use tokens', () => {
+  it('list states and skeletons use tokens', () => {
     const emptyFiltered = render(<ListEmptyState activeFilterCount={2} onClearFilters={jest.fn()} />);
     expect(texts(emptyFiltered)).toContain('Clear filters');
     act(() => emptyFiltered.unmount());
@@ -279,27 +278,6 @@ describe.each(THEMES)('shared containers in %s %s', (brand, mode) => {
     );
     expect(hasBackground(skeletons, t.surface.cardActive)).toBe(true);
     act(() => skeletons.unmount());
-
-    const list = render(
-      <GenericFilterableList
-        data={[]}
-        loading={false}
-        refreshing={false}
-        loadingMore={false}
-        onRefresh={jest.fn()}
-        onEndReached={jest.fn()}
-        renderItem={() => null}
-        keyExtractor={(_: unknown, i: number) => String(i)}
-        activeFilterCount={1}
-        onFilterPress={jest.fn()}
-        headerTitle="GRNs"
-        totalCount={1}
-      />
-    );
-    expect(hasBackground(list, t.background.base)).toBe(true);
-    expect(list.root.findAll(n => n.props.accessibilityLabel === 'Filter, 1 active').length).toBeGreaterThan(0);
-    expect(texts(list)).toContain('1 item');
-    act(() => list.unmount());
   });
 
   it('overview tab blocks use tokens', () => {

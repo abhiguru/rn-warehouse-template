@@ -14,6 +14,8 @@ import {
   beginOperatorMutation,
 } from '@/config/supabaseConfig';
 import type { DispatchImageData } from '@/types/dispatch.types';
+import { localizeDigits, t } from '@/i18n';
+import { serverText } from '@/utils/serverText';
 
 // ============================================================================
 // TYPES
@@ -137,6 +139,9 @@ const compressImage = async (
   }
 };
 
+/** A file size in megabytes with one decimal, in the digits of the app's language. */
+const megabytes = (bytes: number): string => localizeDigits((bytes / (1024 * 1024)).toFixed(1));
+
 /**
  * Validate image file before upload
  */
@@ -146,7 +151,7 @@ export const validateImageFile = (
   if (asset.fileSize && asset.fileSize > MAX_FILE_SIZE) {
     return {
       valid: false,
-      error: `File size (${(asset.fileSize / (1024 * 1024)).toFixed(1)}MB) exceeds maximum limit (10MB)`,
+      error: t('dispatch.photos.tooLarge', { size: megabytes(asset.fileSize) }),
     };
   }
 
@@ -161,7 +166,7 @@ export const validateImageFile = (
   if (asset.mimeType && !allowedTypes.includes(asset.mimeType.toLowerCase())) {
     return {
       valid: false,
-      error: `File type ${asset.mimeType} is not supported. Use JPEG, PNG, WebP, or HEIC.`,
+      error: t('dispatch.photos.typeNotSupported', { type: asset.mimeType }),
     };
   }
 
@@ -197,7 +202,7 @@ export const uploadDispatchImage = async (
     if (asset.fileSize && asset.fileSize > MAX_FILE_SIZE) {
       return {
         success: false,
-        error: `File size (${(asset.fileSize / (1024 * 1024)).toFixed(1)}MB) exceeds maximum limit (10MB)`,
+        error: t('dispatch.photos.tooLarge', { size: megabytes(asset.fileSize) }),
       };
     }
 
@@ -213,7 +218,7 @@ export const uploadDispatchImage = async (
     if (fileSize > MAX_FILE_SIZE) {
       return {
         success: false,
-        error: `Compressed file size (${(fileSize / (1024 * 1024)).toFixed(1)}MB) still exceeds maximum limit (10MB)`,
+        error: t('dispatch.photos.tooLargeCompressed', { size: megabytes(fileSize) }),
       };
     }
 
@@ -267,7 +272,7 @@ export const uploadDispatchImage = async (
       console.error('[DispatchImageService] Registration failed:', regError);
       return {
         success: false,
-        error: regError.message || 'Failed to register image upload',
+        error: serverText(regError.message, t('dispatch.photos.registerFailed')),
       };
     }
 
@@ -278,7 +283,7 @@ export const uploadDispatchImage = async (
       );
       return {
         success: false,
-        error: regResult?.error || 'Registration failed on server',
+        error: serverText(regResult?.error, t('dispatch.photos.registrationFailedServer')),
       };
     }
 
@@ -346,7 +351,7 @@ export const uploadDispatchImage = async (
           confirmResult?.error
         );
         throw new Error(
-          confirmResult?.error || 'Confirmation failed on server'
+          serverText(confirmResult?.error, t('dispatch.photos.confirmationFailedServer'))
         );
       }
 
@@ -415,20 +420,18 @@ export const uploadDispatchImage = async (
         error:
           uploadOrConfirmError instanceof Error
             ? uploadOrConfirmError.message
-            : 'Upload failed',
+            : t('dispatch.photos.uploadFailed'),
       };
     }
   } catch (error) {
     console.error('[DispatchImageService] Upload exception:', error);
 
-    let errorMessage = 'Upload failed';
+    let errorMessage = t('dispatch.photos.uploadFailed');
     if (error instanceof Error) {
       if (error.message.includes('Network request failed')) {
-        errorMessage =
-          'Network connection failed. Please check your internet connection and try again.';
+        errorMessage = t('dispatch.photos.networkFailed');
       } else if (error.message.includes('Failed to read image')) {
-        errorMessage =
-          'Failed to process image file. Please try a different image.';
+        errorMessage = t('dispatch.photos.processFailed');
       } else {
         errorMessage = error.message;
       }
@@ -460,7 +463,7 @@ export const deleteDispatchImage = async (
     return {
       success: true,
       partial: true,
-      error: 'The photo was removed from this dispatch, but its stored file could not be confirmed deleted.',
+      error: t('dispatch.photos.removedFileUnconfirmed'),
     };
   }
   return { success: result.success, error: result.error };
@@ -501,7 +504,7 @@ const uploadSingleDeferredImage = async (
     if (!regResult?.success) {
       return {
         success: false,
-        error: regResult?.error || 'Registration failed',
+        error: serverText(regResult?.error, t('dispatch.photos.registrationFailed')),
       };
     }
 
@@ -540,7 +543,7 @@ const uploadSingleDeferredImage = async (
       }
 
       if (!confirmResult?.success) {
-        throw new Error(confirmResult?.error || 'Confirmation failed');
+        throw new Error(serverText(confirmResult?.error, t('dispatch.photos.confirmationFailed')));
       }
 
       return { success: true };
@@ -573,7 +576,7 @@ const uploadSingleDeferredImage = async (
         error:
           uploadOrConfirmError instanceof Error
             ? uploadOrConfirmError.message
-            : 'Upload failed',
+            : t('dispatch.photos.uploadFailed'),
       };
     }
   } catch (err) {
@@ -583,7 +586,7 @@ const uploadSingleDeferredImage = async (
     );
     return {
       success: false,
-      error: err instanceof Error ? err.message : 'Unknown error',
+      error: err instanceof Error ? err.message : t('dispatch.wizard.unknownError'),
     };
   }
 };
@@ -646,7 +649,7 @@ export const uploadDeferredDispatchImages = async (
       errors: [
         error instanceof Error
           ? error.message
-          : 'Failed to upload deferred images',
+          : t('dispatch.photos.deferredFailed'),
       ],
     };
   } finally {

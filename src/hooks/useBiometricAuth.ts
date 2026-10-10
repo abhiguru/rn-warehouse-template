@@ -21,6 +21,7 @@ import * as LocalAuthentication from 'expo-local-authentication';
 import * as SecureStore from 'expo-secure-store';
 
 import { showAlert } from '@/utils/alert';
+import { t } from '@/i18n';
 // SecureStore keys
 const BIOMETRIC_ENABLED_KEY = 'biometric_auth_enabled';
 const BIOMETRIC_ENROLLED_KEY = 'biometric_enrolled_timestamp';
@@ -66,13 +67,13 @@ export type UseBiometricAuthReturn = BiometricAuthState & BiometricAuthActions;
 function getBiometricLabel(type: BiometricType): string {
   switch (type) {
     case 'face':
-      return Platform.OS === 'ios' ? 'Face ID' : 'Face Recognition';
+      return Platform.OS === 'ios' ? 'Face ID' : t('errors.biometric.faceRecognition');
     case 'fingerprint':
-      return Platform.OS === 'ios' ? 'Touch ID' : 'Fingerprint';
+      return Platform.OS === 'ios' ? 'Touch ID' : t('errors.biometric.fingerprint');
     case 'iris':
-      return 'Iris Scan';
+      return t('errors.biometric.irisScan');
     default:
-      return 'Biometric';
+      return t('errors.biometric.generic');
   }
 }
 
@@ -101,7 +102,7 @@ export function useBiometricAuth(): UseBiometricAuthReturn {
     isBiometricEnrolled: false,
     isBiometricAvailable: false,
     biometricType: 'none',
-    biometricLabel: 'Biometric',
+    biometricLabel: t('errors.biometric.generic'),
     isBiometricEnabled: false,
     isLoading: true,
   });
@@ -156,16 +157,16 @@ export function useBiometricAuth(): UseBiometricAuthReturn {
     try {
       if (!state.isBiometricAvailable) {
         showAlert(
-          'Biometric Not Available',
-          `${state.biometricLabel} is not available on this device. Please set it up in your device settings first.`
+          t('errors.biometric.notAvailableTitle'),
+          t('errors.biometric.notAvailableMessage', { method: state.biometricLabel })
         );
         return false;
       }
 
       // Verify biometric before enabling
       const result = await LocalAuthentication.authenticateAsync({
-        promptMessage: `Authenticate to enable ${state.biometricLabel}`,
-        cancelLabel: 'Cancel',
+        promptMessage: t('errors.biometric.authenticateToEnable', { method: state.biometricLabel }),
+        cancelLabel: t('common.cancel'),
         disableDeviceFallback: true,
         fallbackLabel: '',
       });
@@ -212,10 +213,10 @@ export function useBiometricAuth(): UseBiometricAuthReturn {
         }
 
         const result = await LocalAuthentication.authenticateAsync({
-          promptMessage: promptMessage || `Unlock with ${state.biometricLabel}`,
-          cancelLabel: 'Use Phone Login',
+          promptMessage: promptMessage || t('errors.biometric.unlockWith', { method: state.biometricLabel }),
+          cancelLabel: t('errors.biometric.usePhoneLogin'),
           disableDeviceFallback: false, // Allow passcode fallback on iOS
-          fallbackLabel: 'Use Passcode',
+          fallbackLabel: t('errors.biometric.usePasscode'),
         });
 
         return result.success;
@@ -254,11 +255,11 @@ export function useBiometricAuth(): UseBiometricAuthReturn {
 
     return new Promise((resolve) => {
       showAlert(
-        `Enable ${state.biometricLabel}?`,
-        `Would you like to use ${state.biometricLabel} to quickly unlock the app next time?`,
+        t('errors.biometric.enableTitle', { method: state.biometricLabel }),
+        t('errors.biometric.enableMessage', { method: state.biometricLabel }),
         [
           {
-            text: 'Not now',
+            text: t('errors.biometric.notNow'),
             style: 'cancel',
             onPress: async () => {
               // Store timestamp so we don't ask again for 7 days
@@ -267,7 +268,7 @@ export function useBiometricAuth(): UseBiometricAuthReturn {
             },
           },
           {
-            text: 'Enable',
+            text: t('errors.biometric.enable'),
             style: 'default',
             onPress: async () => {
               const enabled = await enableBiometric();
@@ -335,7 +336,7 @@ export async function checkBiometricSupport(): Promise<{
     return {
       isAvailable: false,
       biometricType: 'none',
-      biometricLabel: 'Biometric',
+      biometricLabel: t('errors.biometric.generic'),
     };
   }
 }
@@ -351,10 +352,10 @@ export async function authenticateBiometric(promptMessage?: string): Promise<boo
     }
 
     const result = await LocalAuthentication.authenticateAsync({
-      promptMessage: promptMessage || `Unlock with ${biometricLabel}`,
-      cancelLabel: 'Use Phone Login',
+      promptMessage: promptMessage || t('errors.biometric.unlockWith', { method: biometricLabel }),
+      cancelLabel: t('errors.biometric.usePhoneLogin'),
       disableDeviceFallback: false,
-      fallbackLabel: 'Use Passcode',
+      fallbackLabel: t('errors.biometric.usePasscode'),
     });
 
     return result.success;

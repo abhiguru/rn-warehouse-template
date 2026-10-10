@@ -27,14 +27,15 @@ import { useInvoiceForm } from '@/hooks/useInvoiceForm';
 import { useBackHandler } from '@/hooks/useBackHandler';
 import { GRNAutocomplete } from '@/features/invoice/components/GRNAutocomplete';
 import { InvoiceableGrn } from '@/types/invoice.types';
-import { InvoiceStepIndicator } from '@/components/InvoiceStepIndicator';
+import { InvoiceStepIndicator, invoiceSteps } from '@/components/InvoiceStepIndicator';
 import {
-  INVOICE_STEPS,
   STEP_NUMBERS,
   getCompletedSteps,
   formatInvoiceDate,
   makeInvoiceWizardStyles,
 } from '@/constants/invoiceSteps';
+import { getLanguage, normalizeDigits, t as tr, formatIdentifier, identifierInput } from '@/i18n';
+import { formatFinancialYear } from '@/utils/formatters';
 
 export default function InvoiceFormStep1() {
   const styles = useThemedStyles(makeInvoiceWizardStyles);
@@ -47,6 +48,7 @@ export default function InvoiceFormStep1() {
     items,
     isLoading,
     isLoadingItems,
+    nextNumberFailed,
     validationErrors,
     updateHeaderField,
     updateHeaderFields,
@@ -137,7 +139,7 @@ export default function InvoiceFormStep1() {
   };
 
   const handleInvoiceNumberChange = (text: string) => {
-    const numValue = parseInt(text);
+    const numValue = parseInt(normalizeDigits(text));
     if (!isNaN(numValue) && numValue > 0) {
       updateHeaderField('inv_no', numValue);
     } else if (text === '') {
@@ -190,7 +192,7 @@ export default function InvoiceFormStep1() {
   return (
     <View style={styles.container}>
       <InvoiceStepIndicator
-        steps={INVOICE_STEPS}
+        steps={invoiceSteps()}
         currentStep={STEP_NUMBERS.HEADER}
         completedSteps={getCompletedSteps(STEP_NUMBERS.HEADER)}
         onCancel={handleCancel}
@@ -208,14 +210,18 @@ export default function InvoiceFormStep1() {
         {/* Invoice date */}
         <View style={styles.formGroup}>
           <Text style={[styles.label, !!invDateError && styles.labelError]}>
-            Invoice date <Text style={styles.required}>*</Text>
+            {tr('invoice.form.invoiceDate')} <Text style={styles.required}>*</Text>
           </Text>
           <Pressable
             style={({ pressed }) => [styles.field, styles.fieldRow, pressed && styles.fieldPressed, !!invDateError && styles.fieldError]}
             onPress={() => setShowDatePicker(true)}
             accessibilityRole="button"
-            accessibilityLabel={`Invoice date, ${formatInvoiceDate(header.inv_date) || 'not set'}`}
-            accessibilityHint="Opens the date picker"
+            accessibilityLabel={
+              formatInvoiceDate(header.inv_date)
+                ? tr('invoice.form.invoiceDateA11y', { date: formatInvoiceDate(header.inv_date) })
+                : tr('invoice.form.invoiceDateNotSetA11y')
+            }
+            accessibilityHint={tr('invoice.form.datePickerHint')}
           >
             <Text style={styles.fieldValue}>{formatInvoiceDate(header.inv_date)}</Text>
             <View style={styles.fieldIconButton}>
@@ -227,7 +233,7 @@ export default function InvoiceFormStep1() {
 
         {/* Date Picker Modal */}
         <DatePickerModal
-          locale="en"
+          locale={getLanguage()}
           mode="single"
           visible={showDatePicker}
           onDismiss={handleDateDismiss}
@@ -235,34 +241,34 @@ export default function InvoiceFormStep1() {
           onConfirm={handleDateConfirm}
           onChange={handleDateConfirm}
           validRange={{ endDate: new Date() }}
-          label="Select invoice date"
+          label={tr('invoice.form.selectInvoiceDate')}
+          saveLabel={tr('common.save')}
         />
 
         {/* Financial year (read-only, calculated) */}
         <View style={styles.formGroup}>
-          <Text style={styles.label}>Financial year</Text>
+          <Text style={styles.label}>{tr('invoice.label.financialYear')}</Text>
           <View style={styles.readOnlyField}>
-            <Text style={[styles.readOnlyText, styles.numeric]}>{header.inv_fin_year}</Text>
+            <Text style={[styles.readOnlyText, styles.numeric]}>{formatFinancialYear(header.inv_fin_year)}</Text>
           </View>
-          <Text style={styles.helperText}>Set from the invoice date.</Text>
+          <Text style={styles.helperText}>{tr('invoice.form.financialYearHelp')}</Text>
         </View>
 
         {/* Invoice number */}
         <View style={styles.formGroup}>
           <Text style={[styles.label, !!invNoError && styles.labelError]}>
-            Invoice number <Text style={styles.required}>*</Text>
+            {tr('common.invoiceNumber')} <Text style={styles.required}>*</Text>
           </Text>
           <View style={[styles.field, styles.fieldRow, !!invNoError && styles.fieldError]}>
             <TextInput
               style={[styles.fieldValue, styles.numeric]}
-              value={header.inv_no > 0 ? header.inv_no.toString() : ''}
-              onChangeText={handleInvoiceNumberChange}
-              placeholder={isLoading ? 'Generating…' : 'Invoice number'}
+              {...identifierInput(header.inv_no > 0 ? header.inv_no : '', handleInvoiceNumberChange)}
+              placeholder={isLoading ? tr('invoice.form.generating') : tr('common.invoiceNumber')}
               placeholderTextColor={t.text.placeholder}
               keyboardType="number-pad"
               returnKeyType="done"
               editable={!isLoading}
-              accessibilityLabel="Invoice number"
+              accessibilityLabel={tr('common.invoiceNumber')}
             />
             {isLoading && (
               <View style={styles.fieldSpinner}>
@@ -272,14 +278,18 @@ export default function InvoiceFormStep1() {
           </View>
           {renderError(invNoError)}
           <Text style={styles.helperText}>
-            {isLoading ? 'Getting the next invoice number…' : 'The next number is filled in. You can change it.'}
+            {isLoading
+              ? tr('invoice.form.gettingNumber')
+              : nextNumberFailed && !header.inv_no
+                ? tr('invoice.form.numberUnavailable')
+                : tr('invoice.form.numberHelp')}
           </Text>
         </View>
 
         {/* GRN selection */}
         <View style={styles.formGroup}>
           <Text style={[styles.label, !!grError && styles.labelError]}>
-            GRN <Text style={styles.required}>*</Text>
+            {tr('common.grn')} <Text style={styles.required}>*</Text>
           </Text>
           <View style={[styles.field, styles.fieldRow, !!grError && styles.fieldError]}>
             <Pressable
@@ -287,14 +297,14 @@ export default function InvoiceFormStep1() {
               onPress={() => setShowGRNBottomSheet(true)}
               disabled={isLoadingItems}
               accessibilityRole="button"
-              accessibilityLabel={header.gr_no ? `GRN ${header.gr_no}. Change GRN` : 'Select GRN'}
+              accessibilityLabel={header.gr_no ? tr('invoice.form.grnChangeA11y', { number: formatIdentifier(header.gr_no) }) : tr('invoice.form.selectGrn')}
               accessibilityState={{ disabled: isLoadingItems, busy: isLoadingItems }}
             >
               <Text
                 style={[styles.readOnlyText, !header.gr_no && styles.fieldPlaceholder]}
                 numberOfLines={1}
               >
-                {header.gr_no ? `GRN ${header.gr_no}` : 'Search and select a GRN'}
+                {header.gr_no ? tr('invoice.label.grnNumber', { number: formatIdentifier(header.gr_no) }) : tr('invoice.form.grnPlaceholder')}
               </Text>
             </Pressable>
 
@@ -309,7 +319,7 @@ export default function InvoiceFormStep1() {
                     onPress={handleViewGRNDetails}
                     style={styles.fieldIconButton}
                     accessibilityRole="button"
-                    accessibilityLabel="View GRN details"
+                    accessibilityLabel={tr('invoice.form.viewGrnDetails')}
                   >
                     <Icon name="eye-outline" size={iconSize.md} color={t.brand.tint} />
                   </Pressable>
@@ -318,7 +328,7 @@ export default function InvoiceFormStep1() {
                   onPress={() => setShowGRNBottomSheet(true)}
                   style={styles.fieldIconButton}
                   accessibilityRole="button"
-                  accessibilityLabel="Search GRNs"
+                  accessibilityLabel={tr('invoice.form.searchGrns')}
                 >
                   <Icon name="magnify" size={iconSize.md} color={t.icon.primary} />
                 </Pressable>
@@ -330,10 +340,10 @@ export default function InvoiceFormStep1() {
 
         {/* Customer (filled from the GRN, read-only) */}
         <View style={styles.formGroup}>
-          <Text style={styles.label}>Customer</Text>
+          <Text style={styles.label}>{tr('common.customer')}</Text>
           <View style={styles.readOnlyField}>
             <Text style={[styles.readOnlyText, !header.customer_name && styles.readOnlyPlaceholder]}>
-              {header.customer_name || 'Filled in when you select a GRN'}
+              {header.customer_name || tr('invoice.form.customerPlaceholder')}
             </Text>
           </View>
         </View>
@@ -343,13 +353,13 @@ export default function InvoiceFormStep1() {
           style={({ pressed }) => [styles.switchRow, pressed && styles.switchRowPressed]}
           onPress={() => updateHeaderField('one_time_charge', !header.one_time_charge)}
           accessibilityRole="switch"
-          accessibilityLabel="One-time charge"
+          accessibilityLabel={tr('invoice.label.oneTimeCharge')}
           accessibilityState={{ checked: header.one_time_charge }}
         >
           <View style={styles.switchLabelContainer}>
-            <Text style={styles.switchLabel}>One-time charge</Text>
+            <Text style={styles.switchLabel}>{tr('invoice.label.oneTimeCharge')}</Text>
             <Text style={styles.helperText}>
-              On: every item is charged for 1 month. Off: items are charged for the months they were stored.
+              {tr('invoice.form.oneTimeChargeHelp')}
             </Text>
           </View>
           <Switch
@@ -372,9 +382,9 @@ export default function InvoiceFormStep1() {
           style={({ pressed }) => [styles.button, styles.primaryButton, pressed && styles.primaryButtonPressed]}
           onPress={handleNext}
           accessibilityRole="button"
-          accessibilityLabel="Next: items"
+          accessibilityLabel={tr('invoice.form.nextItems')}
         >
-          <Text style={styles.primaryButtonText}>Next: items</Text>
+          <Text style={styles.primaryButtonText}>{tr('invoice.form.nextItems')}</Text>
           <Icon name="chevron-right" size={iconSize.md} color={t.brand.onFill} />
         </Pressable>
       </View>
@@ -390,10 +400,10 @@ export default function InvoiceFormStep1() {
       {/* No Items Dialog */}
       <ConfirmDialog
         visible={showNoItemsDialog}
-        title="No items to invoice"
-        message="Select a GRN that has dispatched items, then continue."
-        confirmText="Select GRN"
-        cancelText="Close"
+        title={tr('invoice.form.noItemsTitle')}
+        message={tr('invoice.form.noItemsMessage')}
+        confirmText={tr('invoice.form.selectGrn')}
+        cancelText={tr('common.close')}
         onConfirm={() => {
           setShowNoItemsDialog(false);
           setShowGRNBottomSheet(true);

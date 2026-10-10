@@ -59,7 +59,6 @@ export * from './report.types';
 export * from './service.types';
 
 // Filter system types
-export * from './filter.types';
 
 // RPC response types (raw backend data - legacy dual-naming)
 export * from './rpc.types';

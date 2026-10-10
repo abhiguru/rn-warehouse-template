@@ -38,11 +38,14 @@ import {
   touchTarget,
   typography,
   type ThemeTokens,
+  singleLineText,
 } from '@/theme/tokens';
 
 import { Avatar, StatusTag } from '@/components/ui';
 import { showAlert } from '@/utils/alert';
 import { formatCount, formatMobile } from '@/utils/formatters';
+import { t as tr } from '@/i18n';
+import { serverText } from '@/utils/serverText';
 // =============================================================================
 // TYPES
 // =============================================================================
@@ -168,14 +171,14 @@ export default function CustomersScreen() {
         } else {
           // Show error to user
           showAlert(
-            currentActive ? "Couldn't deactivate the customer" : "Couldn't activate the customer",
-            result.message || 'Try again in a moment.',
-            [{ text: 'OK' }]
+            currentActive ? tr('customers.list.couldNotDeactivateTitle') : tr('customers.list.couldNotActivateTitle'),
+            serverText(result.message, tr('customers.list.tryAgainInAMoment')),
+            [{ text: tr('common.ok') }]
           );
         }
       } catch (error) {
         console.error('[Customers] Toggle active error:', error);
-        showAlert("Couldn't update the customer", 'Check your connection and try again.', [{ text: 'OK' }]);
+        showAlert(tr('customers.list.couldNotUpdateTitle'), tr('common.checkConnection'), [{ text: tr('common.ok') }]);
       }
     },
     []
@@ -189,10 +192,10 @@ export default function CustomersScreen() {
         handleInactivateCustomer(customer.id, false);
         return;
       }
-      showAlert(`Deactivate ${customer.name}?`, undefined, [
-        { text: 'Cancel', style: 'cancel' },
+      showAlert(tr('customers.list.deactivateConfirmTitle', { name: customer.name }), undefined, [
+        { text: tr('common.cancel'), style: 'cancel' },
         {
-          text: 'Deactivate customer',
+          text: tr('customers.list.deactivateCustomer'),
           style: 'destructive',
           onPress: () => handleInactivateCustomer(customer.id, true),
         },
@@ -299,9 +302,9 @@ export default function CustomersScreen() {
   const renderEmpty = useCallback(() => {
     if (state.loading) {
       return (
-        <View style={styles.emptyContainer} accessibilityRole="progressbar" accessibilityLabel="Loading customers">
+        <View style={styles.emptyContainer} accessibilityRole="progressbar" accessibilityLabel={tr('customers.list.loadingLabel')}>
           <ActivityIndicator size="large" color={t.brand.tint} />
-          <Text style={styles.emptyText}>Loading customers…</Text>
+          <Text style={styles.emptyText}>{tr('customers.list.loading')}</Text>
         </View>
       );
     }
@@ -312,16 +315,16 @@ export default function CustomersScreen() {
         <View style={styles.emptyContainer} accessibilityRole="alert">
           <Icon name="alert-circle-outline" size={iconSize.hero} color={t.status.negative.text} />
           <Text style={styles.emptyTitle} accessibilityRole="header">
-            Couldn't load customers
+            {tr('customers.list.loadErrorTitle')}
           </Text>
-          <Text style={styles.emptyText}>Check your connection and try again.</Text>
+          <Text style={styles.emptyText}>{tr('common.checkConnection')}</Text>
           <Pressable
             style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryButtonPressed]}
             onPress={() => fetchCustomers(state.filters)}
             accessibilityRole="button"
           >
             <Icon name="refresh" size={iconSize.md} color={t.brand.tint} />
-            <Text style={styles.secondaryButtonText}>Try again</Text>
+            <Text style={styles.secondaryButtonText}>{tr('common.retry')}</Text>
           </Pressable>
         </View>
       );
@@ -331,16 +334,16 @@ export default function CustomersScreen() {
       <View style={styles.emptyContainer}>
         <Icon name="account-group-outline" size={iconSize.hero} color={t.icon.secondary} />
         <Text style={styles.emptyTitle} accessibilityRole="header">
-          No customers yet
+          {tr('customers.list.emptyTitle')}
         </Text>
-        <Text style={styles.emptyText}>Customers you add appear here.</Text>
+        <Text style={styles.emptyText}>{tr('customers.list.emptyMessage')}</Text>
         <Pressable
           style={({ pressed }) => [styles.primaryButton, pressed && styles.primaryButtonPressed]}
           onPress={handleAddCustomer}
           accessibilityRole="button"
         >
           <Icon name="plus" size={iconSize.md} color={t.brand.onFill} />
-          <Text style={styles.primaryButtonText}>Add customer</Text>
+          <Text style={styles.primaryButtonText}>{tr('customers.list.addCustomer')}</Text>
         </Pressable>
       </View>
     );
@@ -363,9 +366,9 @@ export default function CustomersScreen() {
           ),
           headerTitle: () => (
             <View style={styles.titleContainer} accessible accessibilityRole="header">
-              <Text style={styles.headerTitle}>Customers</Text>
+              <Text style={styles.headerTitle}>{tr('common.customers')}</Text>
               {state.totalCount > 0 && (
-                <Text style={styles.headerSubtitle}>
+                <Text style={styles.headerSubtitle} {...singleLineText()}>
                   {formatCount(state.totalCount, 'customer')}
                 </Text>
               )}
@@ -377,7 +380,7 @@ export default function CustomersScreen() {
               style={styles.addButton}
               hitSlop={space.sm}
               accessibilityRole="button"
-              accessibilityLabel="Add customer"
+              accessibilityLabel={tr('customers.list.addCustomer')}
             >
               <Icon name="plus" size={iconSize.lg} color={t.brand.tint} />
             </Pressable>
@@ -458,7 +461,7 @@ function AlphabeticalRail({
             onPress={() => onLetterPress(letter)}
             style={[styles.letterItem, isActive && styles.letterItemActive]}
             accessibilityRole="button"
-            accessibilityLabel={`Jump to ${letter}`}
+            accessibilityLabel={tr('customers.list.jumpTo', { letter })}
             accessibilityState={{ disabled: !hasLoadedCustomers, selected: isActive }}
           >
             <Text
@@ -493,10 +496,10 @@ function FioriCustomerCard({ customer, onPress, onToggleActive }: FioriCustomerC
   const t = useTokens();
   const swipeableRef = useRef<Swipeable | null>(null);
   const mobile = customer.mobile ? formatMobile(customer.mobile) : null;
-  const actionLabel = customer.active ? 'Deactivate' : 'Activate';
+  const actionLabel = customer.active ? tr('customers.list.deactivate') : tr('customers.list.activate');
   const rowLabel = [
     customer.name,
-    customer.active ? null : 'Inactive',
+    customer.active ? null : tr('common.inactive'),
     mobile,
     customer.city,
     customer.email,
@@ -519,7 +522,7 @@ function FioriCustomerCard({ customer, onPress, onToggleActive }: FioriCustomerC
         ]}
         onPress={handleAction}
         accessibilityRole="button"
-        accessibilityLabel={`${actionLabel} ${customer.name}`}
+        accessibilityLabel={tr(customer.active ? 'customers.list.deactivateName' : 'customers.list.activateName', { name: customer.name })}
       >
         <Icon
           name={customer.active ? 'account-off-outline' : 'account-check-outline'}
@@ -549,7 +552,7 @@ function FioriCustomerCard({ customer, onPress, onToggleActive }: FioriCustomerC
         onPress={onPress}
         accessibilityRole="button"
         accessibilityLabel={rowLabel}
-        accessibilityHint={`Opens the customer for editing. Swipe left to ${actionLabel.toLowerCase()}.`}
+        accessibilityHint={customer.active ? tr('customers.list.rowHintDeactivate') : tr('customers.list.rowHintActivate')}
         accessibilityActions={[{ name: 'toggleActive', label: actionLabel }]}
         onAccessibilityAction={(event) => {
           if (event.nativeEvent.actionName === 'toggleActive') onToggleActive();
@@ -564,7 +567,7 @@ function FioriCustomerCard({ customer, onPress, onToggleActive }: FioriCustomerC
           <Text style={[styles.headline, !customer.active && styles.textInactive]} numberOfLines={2}>
             {customer.name}
           </Text>
-          {!customer.active && <StatusTag status="neutral" label="Inactive" />}
+          {!customer.active && <StatusTag status="neutral" label={tr('common.inactive')} />}
 
           {/* Subheadline - Contact Details */}
           <View style={styles.attributeStack}>

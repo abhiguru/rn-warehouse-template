@@ -10,9 +10,10 @@ import React from 'react';
 import { View, Text, ScrollView } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
-import { fontWeight, iconSize, layout, radius, space, typography } from '@/theme/tokens';
+import { fontWeight, iconSize, layout, radius, space, typography, trackedText } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
-import { formatCount, formatCurrency } from '@/utils/formatters';
+import { formatCount, formatCurrency, formatNumber } from '@/utils/formatters';
+import { t as tr, formatIdentifier } from '@/i18n';
 
 // Using snake_case to match backend RPC types
 interface InvoiceSummary {
@@ -41,7 +42,7 @@ const makeStyles = (t: ThemeTokens) => ({
   sectionTitle: {
     ...typography.footnote,
     fontWeight: fontWeight.semibold,
-    letterSpacing: 0.5,
+    letterSpacing: trackedText(0.5),
     textTransform: 'uppercase' as const,
     color: t.text.secondary,
     marginBottom: space.sm,
@@ -145,9 +146,9 @@ export const GRNInvoicesTab: React.FC<GRNInvoicesTabProps> = ({
     return (
       <View style={styles.emptyContainer}>
         <Icon name="file-document-outline" size={iconSize.hero} color={t.icon.secondary} />
-        <Text style={styles.emptyTitle} accessibilityRole="header">No invoices yet</Text>
+        <Text style={styles.emptyTitle} accessibilityRole="header">{tr('grn.invoices.emptyTitle')}</Text>
         <Text style={styles.emptySubtitle}>
-          Invoices created for this GRN appear here.
+          {tr('grn.invoices.emptySubtitle')}
         </Text>
       </View>
     );
@@ -157,7 +158,7 @@ export const GRNInvoicesTab: React.FC<GRNInvoicesTabProps> = ({
     <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
       {/* Summary tiles */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle} accessibilityRole="header">Financial summary</Text>
+        <Text style={styles.sectionTitle} accessibilityRole="header">{tr('grn.invoices.summaryTitle')}</Text>
 
         <View style={styles.summaryGrid}>
           <View
@@ -168,32 +169,32 @@ export const GRNInvoicesTab: React.FC<GRNInvoicesTabProps> = ({
             <View style={[styles.iconCircle, styles.iconCircleNeutral]}>
               <Icon name="file-document-multiple-outline" size={iconSize.lg} color={t.status.neutral.text} />
             </View>
-            <Text style={styles.summaryValue}>{total_invoices}</Text>
-            <Text style={styles.summaryLabel}>{total_invoices === 1 ? 'Invoice' : 'Invoices'}</Text>
+            <Text style={styles.summaryValue}>{formatNumber(total_invoices)}</Text>
+            <Text style={styles.summaryLabel}>{tr('grn.invoices.invoiceUnit', { count: total_invoices })}</Text>
           </View>
 
           <View
             style={styles.summaryCard}
             accessible
-            accessibilityLabel={`Amount before tax ${formatCurrency(total_amount, { maximumFractionDigits: 0 })}`}
+            accessibilityLabel={tr('grn.invoices.amountBeforeTaxLabel', { amount: formatCurrency(total_amount, { maximumFractionDigits: 0 }) })}
           >
             <View style={[styles.iconCircle, styles.iconCircleBrand]}>
               <Icon name="currency-inr" size={iconSize.lg} color={t.brand.tint} />
             </View>
             <Text style={styles.summaryValue}>{formatCurrency(total_amount, { maximumFractionDigits: 0 })}</Text>
-            <Text style={styles.summaryLabel}>Amount before tax</Text>
+            <Text style={styles.summaryLabel}>{tr('grn.invoices.amountBeforeTax')}</Text>
           </View>
 
           <View
             style={[styles.summaryCard, styles.summaryCardFull]}
             accessible
-            accessibilityLabel={`Total with tax ${formatCurrency(total_with_tax || 0, { maximumFractionDigits: 0 })}`}
+            accessibilityLabel={tr('grn.invoices.totalWithTaxLabel', { amount: formatCurrency(total_with_tax || 0, { maximumFractionDigits: 0 }) })}
           >
             <View style={[styles.iconCircle, styles.iconCircleBrand]}>
               <Icon name="cash-multiple" size={iconSize.lg} color={t.brand.tint} />
             </View>
             <Text style={styles.summaryValue}>{formatCurrency(total_with_tax || 0, { maximumFractionDigits: 0 })}</Text>
-            <Text style={styles.summaryLabel}>Total with tax</Text>
+            <Text style={styles.summaryLabel}>{tr('grn.invoices.totalWithTax')}</Text>
           </View>
         </View>
       </View>
@@ -201,7 +202,7 @@ export const GRNInvoicesTab: React.FC<GRNInvoicesTabProps> = ({
       {/* Invoice numbers */}
       {invoice_numbers.length > 0 && (
         <View style={styles.section}>
-          <Text style={styles.sectionTitle} accessibilityRole="header">Invoices</Text>
+          <Text style={styles.sectionTitle} accessibilityRole="header">{tr('grn.tabs.invoices')}</Text>
           <View style={styles.listCard}>
             {invoice_numbers.map((invoiceNo, index) => (
               <View
@@ -211,10 +212,10 @@ export const GRNInvoicesTab: React.FC<GRNInvoicesTabProps> = ({
                   index < invoice_numbers.length - 1 && styles.invoiceRowDivider,
                 ]}
                 accessible
-                accessibilityLabel={`Invoice ${invoiceNo}`}
+                accessibilityLabel={tr('grn.invoices.invoiceWithNumber', { number: formatIdentifier(invoiceNo) })}
               >
                 <Icon name="file-document-outline" size={iconSize.md} color={t.icon.secondary} />
-                <Text style={styles.invoiceNumber}>Invoice {invoiceNo}</Text>
+                <Text style={styles.invoiceNumber}>{tr('grn.invoices.invoiceWithNumber', { number: formatIdentifier(invoiceNo) })}</Text>
               </View>
             ))}
           </View>

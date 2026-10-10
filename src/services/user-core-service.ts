@@ -7,6 +7,7 @@
 
 import { getAuthenticatedClient } from '../config/supabaseConfig';
 import type { UserProfile } from '@/types/user.types';
+import { t } from '@/i18n';
 
 /**
  * Fetches a single user document by its ID from Supabase.
@@ -17,7 +18,7 @@ export const getUserByIdDirect = async (userId: string): Promise<{
   error?: Error | string;
 }> => {
   if (!userId) {
-    return { status: 'error', data: null, error: 'User ID is required.' };
+    return { status: 'error', data: null, error: t('errors.user.idRequiredSentence') };
   }
   
   try {
@@ -29,7 +30,7 @@ export const getUserByIdDirect = async (userId: string): Promise<{
 
     if (error) {
       if (error.code === 'PGRST116') {
-        return { status: 'error', data: null, error: 'User not found.' };
+        return { status: 'error', data: null, error: t('errors.user.notFoundSentence') };
       }
       return { status: 'error', data: null, error };
     }

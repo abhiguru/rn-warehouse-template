@@ -17,6 +17,7 @@ import { SavedItemCard } from '@/features/grn/components/SavedItemCard';
 import { parseReceiptQuantity, parseReceiptWeight } from '@/features/grn/schemas/grnValidation';
 import { useTokens } from '@/hooks/useTheme';
 import { formatNumber, formatWeight } from '@/utils/formatters';
+import { t as tr } from '@/i18n';
 
 
 /** Form data for a GRN item */
@@ -87,13 +88,13 @@ const ItemsSummaryBottomSheet: React.FC<ItemsSummaryBottomSheetProps> = ({
       {
         icon: 'counter',
         iconColor: t.icon.secondary,
-        label: 'Total quantity:',
+        label: tr('grn.item.totalQuantityLabel'),
         value: formatNumber(totalQuantity),
       },
       {
         icon: 'weight',
         iconColor: t.icon.secondary,
-        label: 'Total weight:',
+        label: tr('grn.item.totalWeightLabel'),
         value: formatWeight(totalWeight),
       },
     ];
@@ -139,9 +140,9 @@ const ItemsSummaryBottomSheet: React.FC<ItemsSummaryBottomSheetProps> = ({
       onEditItem={onEditItem}
       editingItemKey={editingItemId}
       isItemProtected={isItemProtected}
-      entityName="item"
-      emptyTitle="No items added yet"
-      emptySubtitle="Fill in the item form and tap the check mark to save it here."
+      entity="item"
+      emptyTitle={tr('grn.item.summaryEmptyTitle')}
+      emptySubtitle={tr('grn.item.summaryEmptySubtitle')}
     />
   );
 };

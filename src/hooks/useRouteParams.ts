@@ -7,6 +7,7 @@
 
 import { useLocalSearchParams } from 'expo-router';
 import { useMemo } from 'react';
+import { t } from '@/i18n';
 
 export interface RouteParamValidation<T> {
   /** The validated params (or null if invalid) */
@@ -83,9 +84,9 @@ export function useValidatedRouteParams<T extends Record<string, string>>(
 
     let error: string | null = null;
     if (missingParams.length > 0) {
-      error = `Missing required parameter${missingParams.length > 1 ? 's' : ''}: ${missingParams.join(', ')}`;
+      error = t('errors.auth.missingParams', { count: missingParams.length, names: missingParams.join(', ') });
     } else if (invalidParams.length > 0) {
-      error = `Invalid parameter${invalidParams.length > 1 ? 's' : ''}: ${invalidParams.join(', ')}`;
+      error = t('errors.auth.invalidParams', { count: invalidParams.length, names: invalidParams.join(', ') });
     }
 
     return {

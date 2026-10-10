@@ -42,6 +42,7 @@ import { iconSize } from '@/theme/tokens';
 import { formatCurrency } from '@/utils/formatters';
 import { GhostTextInput } from './GhostTextInput';
 import { FIORI_DATA_TABLE, makeDataTableStyles, type DataTableStyles } from './FioriDataTable.styles';
+import { localizeDigits, normalizeDigits, t as tr } from '@/i18n';
 
 // ============================================================================
 // TYPES
@@ -174,8 +175,8 @@ export function formatCellValue(value: unknown, dataType?: FioriDataTableDataTyp
     const amount = Number(value);
     return Number.isFinite(amount) ? formatCurrency(amount, { minimumFractionDigits: 2 }) : String(value);
   }
-  if (dataType === 'percent') return `${value}%`;
-  if (dataType === 'number' && typeof value === 'number') return numberFormat.format(value);
+  if (dataType === 'percent') return localizeDigits(`${value}%`);
+  if (dataType === 'number' && typeof value === 'number') return localizeDigits(numberFormat.format(value));
   return String(value);
 }
 
@@ -215,9 +216,9 @@ function FioriDataTableComponent<T extends Record<string, any>>(props: FioriData
     onRefresh,
     refreshing = false,
     totals,
-    emptyMessage = 'No data to show.',
+    emptyMessage = tr('components.table.empty'),
     renderFooter,
-    accessibilityLabel = 'Data table',
+    accessibilityLabel = tr('components.table.label'),
   } = props;
 
   // The implementation works on plain rows; the public API stays generic.
@@ -290,7 +291,7 @@ function FioriDataTableComponent<T extends Record<string, any>>(props: FioriData
   const handleCellChange = useCallback(
     (rowId: string, columnKey: string, text: string, dataType?: FioriDataTableDataType) => {
       if (!onCellEdit) return;
-      const value = dataType && NUMERIC_TYPES.includes(dataType) ? parseFloat(text) || 0 : text;
+      const value = dataType && NUMERIC_TYPES.includes(dataType) ? parseFloat(normalizeDigits(text)) || 0 : text;
       onCellEdit(rowId, columnKey, value);
     },
     [onCellEdit]
@@ -327,8 +328,10 @@ function FioriDataTableComponent<T extends Record<string, any>>(props: FioriData
   // Rendering helpers
   // ---------------------------------------------------------------------------
   const sortLabel = (column: Column) => {
-    if (sortColumn !== column.key) return `${column.label}, not sorted`;
-    return `${column.label}, sorted ${sortDirection === 'asc' ? 'ascending' : 'descending'}`;
+    if (sortColumn !== column.key) return tr('components.table.notSorted', { column: column.label });
+    return tr(sortDirection === 'asc' ? 'components.table.sortedAscending' : 'components.table.sortedDescending', {
+      column: column.label,
+    });
   };
 
   const renderHeaderCell = (column: Column, pinned: boolean) => {
@@ -368,7 +371,7 @@ function FioriDataTableComponent<T extends Record<string, any>>(props: FioriData
           onPress={() => onSort?.(key)}
           accessibilityRole="button"
           accessibilityLabel={sortLabel(column)}
-          accessibilityHint="Changes the sort order"
+          accessibilityHint={tr('components.table.sortHint')}
         >
           {content}
         </Pressable>
@@ -379,7 +382,7 @@ function FioriDataTableComponent<T extends Record<string, any>>(props: FioriData
         key={key}
         style={cellStyle}
         accessibilityRole="header"
-        accessibilityLabel={key === ROW_NUMBER_KEY ? 'Row number' : column.label}
+        accessibilityLabel={key === ROW_NUMBER_KEY ? tr('components.table.rowNumber') : column.label}
       >
         {content}
       </View>
@@ -407,7 +410,7 @@ function FioriDataTableComponent<T extends Record<string, any>>(props: FioriData
     if (key === ROW_NUMBER_KEY) {
       return (
         <View key={key} style={[styles.dataCell, styles.dataCellAlignRight, { width }]}>
-          <Text style={styles.rowNumberText}>{rowIndex + 1}</Text>
+          <Text style={styles.rowNumberText}>{localizeDigits(String(rowIndex + 1))}</Text>
         </View>
       );
     }
@@ -464,7 +467,7 @@ function FioriDataTableComponent<T extends Record<string, any>>(props: FioriData
           ]}
           onPress={() => onEditingCellChange?.({ rowId, columnKey: key })}
           accessibilityRole="button"
-          accessibilityLabel={`Edit ${column.label}, ${formatCellValue(value, column.dataType)}`}
+          accessibilityLabel={tr('components.table.editCell', { column: column.label, value: formatCellValue(value, column.dataType) })}
         >
           <Text style={textStyle} numberOfLines={1}>
             {formatCellValue(value, column.dataType)}
@@ -592,7 +595,7 @@ function FioriDataTableComponent<T extends Record<string, any>>(props: FioriData
     loadingMore ? (
       <View style={[styles.footerLoader, { height: rowHeight }]}>
         <ActivityIndicator size="small" color={t.brand.tint} />
-        <Text style={styles.footerLoaderText}>Loading more…</Text>
+        <Text style={styles.footerLoaderText}>{tr('common.loadingMore')}</Text>
       </View>
     ) : null;
 
@@ -615,7 +618,7 @@ function FioriDataTableComponent<T extends Record<string, any>>(props: FioriData
         <View
           style={containerStyle}
           accessible
-          accessibilityLabel={`${accessibilityLabel}, loading`}
+          accessibilityLabel={tr('components.table.loadingLabel', { label: accessibilityLabel })}
           accessibilityState={{ busy: true }}
         >
           {stickyHeader && (
@@ -648,9 +651,9 @@ function FioriDataTableComponent<T extends Record<string, any>>(props: FioriData
   }
 
   const reloading = loading ? (
-    <View style={styles.loadingOverlay} accessible accessibilityLabel="Loading" accessibilityState={{ busy: true }}>
+    <View style={styles.loadingOverlay} accessible accessibilityLabel={tr('components.loading')} accessibilityState={{ busy: true }}>
       <ActivityIndicator size="small" color={t.brand.tint} />
-      <Text style={styles.loadingText}>Loading…</Text>
+      <Text style={styles.loadingText}>{tr('common.loading')}</Text>
     </View>
   ) : null;
 

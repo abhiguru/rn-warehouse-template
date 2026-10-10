@@ -33,6 +33,8 @@ import {
   typography,
 } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
+import { t as tr } from '@/i18n';
+import type { DocumentEntity } from '@/i18n/entities';
 
 interface PrintRangeDialogProps {
   visible: boolean;
@@ -40,7 +42,13 @@ interface PrintRangeDialogProps {
   onConfirm: (startNumber: string, endNumber: string) => Promise<void>;
   title: string;
   defaultNumber: string;
-  label: string;
+  /** Which document's numbers are printed. Selects whole-sentence texts in both languages. */
+  entity?: DocumentEntity;
+  /**
+   * Older way to name the number ("GRN number"): a word placed into the English
+   * sentences. Used only when `entity` is not given.
+   */
+  label?: string;
   placeholder?: string;
   onViewJobs?: () => void;
 }
@@ -234,7 +242,8 @@ export const PrintRangeDialog: React.FC<PrintRangeDialogProps> = ({
   onConfirm,
   title,
   defaultNumber,
-  label,
+  entity,
+  label = '',
   placeholder = '',
   onViewJobs,
 }) => {
@@ -265,7 +274,7 @@ export const PrintRangeDialog: React.FC<PrintRangeDialogProps> = ({
     setError(null);
 
     if (!startNumber.trim() || !endNumber.trim()) {
-      setError('Enter both a start and an end number.');
+      setError(tr('components.printRange.enterBoth'));
       return;
     }
 
@@ -278,7 +287,7 @@ export const PrintRangeDialog: React.FC<PrintRangeDialogProps> = ({
       setError(
         err instanceof Error && err.message
           ? err.message
-          : "Couldn't print. Check the printer and try again."
+          : tr('components.printRange.printFailed')
       );
     } finally {
       setLoading(false);
@@ -288,6 +297,23 @@ export const PrintRangeDialog: React.FC<PrintRangeDialogProps> = ({
   if (!visible) return null;
 
   const lowerLabel = label.toLowerCase();
+  const texts = entity
+    ? {
+        chooseRange: tr(`components.printRange.${entity}.chooseRange`),
+        sameNumberHint: tr(`components.printRange.${entity}.sameNumberHint`),
+        startPlaceholder: tr(`components.printRange.${entity}.startPlaceholder`),
+        endPlaceholder: tr(`components.printRange.${entity}.endPlaceholder`),
+        fromLabel: tr(`components.printRange.${entity}.fromLabel`),
+        toLabel: tr(`components.printRange.${entity}.toLabel`),
+      }
+    : {
+        chooseRange: tr('components.printRange.chooseRange', { label: lowerLabel }),
+        sameNumberHint: tr('components.printRange.sameNumberHint', { label: lowerLabel }),
+        startPlaceholder: tr('components.printRange.startPlaceholder', { label: lowerLabel }),
+        endPlaceholder: tr('components.printRange.endPlaceholder', { label: lowerLabel }),
+        fromLabel: tr('components.printRange.fromLabel', { label: lowerLabel }),
+        toLabel: tr('components.printRange.toLabel', { label: lowerLabel }),
+      };
 
   // Keep every entry point honest, including direct document detail actions.
   if (!DEMO_CAPABILITIES.printing)
@@ -303,20 +329,19 @@ export const PrintRangeDialog: React.FC<PrintRangeDialogProps> = ({
             style={StyleSheet.absoluteFill}
             onPress={onDismiss}
             accessibilityRole="button"
-            accessibilityLabel="Close printing notice"
+            accessibilityLabel={tr('components.printRange.closeNotice')}
           />
           <View style={styles.dialogContainer}>
             <View style={styles.dialog} accessibilityViewIsModal>
               <View style={styles.header}>
                 <Icon name="printer-outline" size={iconSize.lg} color={t.brand.tint} />
                 <Text style={styles.title} accessibilityRole="header">
-                  Printing unavailable
+                  {tr('components.printRange.unavailableTitle')}
                 </Text>
               </View>
               <View style={styles.noticeBody}>
                 <Text style={styles.noticeText}>
-                  Printing is unavailable in the local demo. Download the PDF or
-                  share it instead.
+                  {tr('components.printRange.unavailableMessage')}
                 </Text>
               </View>
               <View style={styles.actions}>
@@ -328,9 +353,9 @@ export const PrintRangeDialog: React.FC<PrintRangeDialogProps> = ({
                       pressed && styles.secondaryButtonPressed,
                     ]}
                     accessibilityRole="button"
-                    accessibilityLabel="Close printing notice"
+                    accessibilityLabel={tr('components.printRange.closeNotice')}
                   >
-                    <Text style={styles.secondaryButtonText}>Close</Text>
+                    <Text style={styles.secondaryButtonText}>{tr('common.close')}</Text>
                   </Pressable>
                 </View>
               </View>
@@ -355,7 +380,7 @@ export const PrintRangeDialog: React.FC<PrintRangeDialogProps> = ({
           style={StyleSheet.absoluteFill}
           onPress={onDismiss}
           accessibilityRole="button"
-          accessibilityLabel="Cancel printing"
+          accessibilityLabel={tr('components.printRange.cancelPrinting')}
         />
 
         <View style={styles.dialogContainer}>
@@ -373,7 +398,7 @@ export const PrintRangeDialog: React.FC<PrintRangeDialogProps> = ({
                   pressed && styles.iconButtonPressed,
                 ]}
                 accessibilityRole="button"
-                accessibilityLabel="Close print dialog"
+                accessibilityLabel={tr('components.printRange.closeDialog')}
               >
                 <Icon name="close" size={iconSize.lg} color={t.icon.primary} />
               </Pressable>
@@ -382,22 +407,22 @@ export const PrintRangeDialog: React.FC<PrintRangeDialogProps> = ({
             {/* Content */}
             <View style={styles.content}>
               <Text style={styles.description}>
-                Choose the range of {lowerLabel}s to print.
+                {texts.chooseRange}
               </Text>
               <Text style={styles.helpText}>
-                Use the same number in both fields to print one {lowerLabel}.
+                {texts.sameNumberHint}
               </Text>
 
               <View style={styles.rangeSection}>
                 {/* From Input */}
                 <View style={styles.inputGroup}>
                   <Text style={styles.inputLabelText} nativeID="print-range-from">
-                    From
+                    {tr('components.printRange.from')}
                   </Text>
                   <TextInput
                     value={startNumber}
                     onChangeText={setStartNumber}
-                    placeholder={placeholder || `Start ${lowerLabel}`}
+                    placeholder={placeholder || texts.startPlaceholder}
                     placeholderTextColor={t.text.placeholder}
                     editable={!loading}
                     onFocus={() => setFocused('start')}
@@ -407,7 +432,7 @@ export const PrintRangeDialog: React.FC<PrintRangeDialogProps> = ({
                       focused === 'start' && styles.inputFocused,
                       loading && styles.inputDisabled,
                     ]}
-                    accessibilityLabel={`From ${lowerLabel}`}
+                    accessibilityLabel={texts.fromLabel}
                     accessibilityLabelledBy="print-range-from"
                     returnKeyType="next"
                   />
@@ -416,12 +441,12 @@ export const PrintRangeDialog: React.FC<PrintRangeDialogProps> = ({
                 {/* To Input */}
                 <View style={styles.inputGroup}>
                   <Text style={styles.inputLabelText} nativeID="print-range-to">
-                    To
+                    {tr('components.printRange.to')}
                   </Text>
                   <TextInput
                     value={endNumber}
                     onChangeText={setEndNumber}
-                    placeholder={placeholder || `End ${lowerLabel}`}
+                    placeholder={placeholder || texts.endPlaceholder}
                     placeholderTextColor={t.text.placeholder}
                     editable={!loading}
                     onFocus={() => setFocused('end')}
@@ -431,7 +456,7 @@ export const PrintRangeDialog: React.FC<PrintRangeDialogProps> = ({
                       focused === 'end' && styles.inputFocused,
                       loading && styles.inputDisabled,
                     ]}
-                    accessibilityLabel={`To ${lowerLabel}`}
+                    accessibilityLabel={texts.toLabel}
                     accessibilityLabelledBy="print-range-to"
                     returnKeyType="done"
                     onSubmitEditing={handleConfirm}
@@ -465,7 +490,7 @@ export const PrintRangeDialog: React.FC<PrintRangeDialogProps> = ({
                       loading && styles.buttonDisabled,
                     ]}
                     accessibilityRole="button"
-                    accessibilityLabel="View print jobs"
+                    accessibilityLabel={tr('components.printRange.viewJobs')}
                     accessibilityState={{ disabled: loading }}
                   >
                     <Icon
@@ -473,7 +498,7 @@ export const PrintRangeDialog: React.FC<PrintRangeDialogProps> = ({
                       size={iconSize.md}
                       color={t.brand.tint}
                     />
-                    <Text style={styles.tertiaryButtonText}>Print jobs</Text>
+                    <Text style={styles.tertiaryButtonText}>{tr('components.printJobs.title')}</Text>
                   </Pressable>
                 </View>
               )}
@@ -488,10 +513,10 @@ export const PrintRangeDialog: React.FC<PrintRangeDialogProps> = ({
                     loading && styles.buttonDisabled,
                   ]}
                   accessibilityRole="button"
-                  accessibilityLabel="Cancel"
+                  accessibilityLabel={tr('common.cancel')}
                   accessibilityState={{ disabled: loading }}
                 >
-                  <Text style={styles.secondaryButtonText}>Cancel</Text>
+                  <Text style={styles.secondaryButtonText}>{tr('common.cancel')}</Text>
                 </Pressable>
 
                 <Pressable
@@ -502,7 +527,7 @@ export const PrintRangeDialog: React.FC<PrintRangeDialogProps> = ({
                     pressed && styles.primaryButtonPressed,
                   ]}
                   accessibilityRole="button"
-                  accessibilityLabel={loading ? 'Printing' : 'Print'}
+                  accessibilityLabel={loading ? tr('components.printRange.printingLabel') : tr('common.print')}
                   accessibilityState={{ busy: loading, disabled: loading }}
                 >
                   {loading ? (
@@ -511,7 +536,7 @@ export const PrintRangeDialog: React.FC<PrintRangeDialogProps> = ({
                     <Icon name="printer-outline" size={iconSize.md} color={t.brand.onFill} />
                   )}
                   <Text style={styles.primaryButtonText}>
-                    {loading ? 'Printing…' : 'Print'}
+                    {loading ? tr('components.printRange.printing') : tr('common.print')}
                   </Text>
                 </Pressable>
               </View>

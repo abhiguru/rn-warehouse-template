@@ -38,6 +38,8 @@ import {
 import { SavedInvoiceData } from '@/types/invoice.types';
 
 import { showAlert } from '@/utils/alert';
+import { t as tr, formatIdentifier } from '@/i18n';
+import { formatFinancialYear } from '@/utils/formatters';
 const makeHeaderStyles = (t: ThemeTokens) => ({
   header: {
     paddingHorizontal: layout.marginCompact,
@@ -96,12 +98,12 @@ export default function InvoiceFormStep4() {
   const handleSubmit = async () => {
     // Final validation check
     if (items.length === 0) {
-      showAlert('No items to invoice', 'Go back and select a GRN that has dispatched items.');
+      showAlert(tr('invoice.form.noItemsTitle'), tr('invoice.review.noItemsShortMessage'));
       return;
     }
 
     if (!header.gr_id || !header.customer_id) {
-      showAlert('Select a GRN', 'Go back and select the GRN for this invoice.');
+      showAlert(tr('invoice.review.selectGrnTitle'), tr('invoice.review.selectGrnShortMessage'));
       return;
     }
 
@@ -173,7 +175,7 @@ export default function InvoiceFormStep4() {
         finYearNum
       );
       if (!pdfResult.success || !pdfResult.pdfUrl) {
-        setSnackbarMessage("Couldn't create the PDF. Try again.");
+        setSnackbarMessage(tr('invoice.review.pdfCreateFailed'));
         setSnackbarVisible(true);
         return;
       }
@@ -184,12 +186,12 @@ export default function InvoiceFormStep4() {
         `Invoice_${savedInvoiceData.invoice_no}_FY${header.inv_fin_year}.pdf`
       );
       if (!shareResult.success) {
-        setSnackbarMessage("Couldn't share the PDF. Try again.");
+        setSnackbarMessage(tr('invoice.review.pdfShareFailed'));
         setSnackbarVisible(true);
       }
     } catch (error) {
       console.error('[InvoiceFormStep4] Share PDF error:', error);
-      setSnackbarMessage("Couldn't share the PDF. Try again.");
+      setSnackbarMessage(tr('invoice.review.pdfShareFailed'));
       setSnackbarVisible(true);
     } finally {
       setIsShareLoading(false);
@@ -204,8 +206,8 @@ export default function InvoiceFormStep4() {
       <EdgeToEdgeStatusBar barStyle={t.statusBarStyle} />
       {/* Header */}
       <View style={[headerStyles.header, { paddingTop: insets.top + space.md }]}>
-        <Text style={headerStyles.headerTitle} accessibilityRole="header">Review invoice</Text>
-        <Text style={headerStyles.stepText}>Step 4 of 4: Review</Text>
+        <Text style={headerStyles.headerTitle} accessibilityRole="header">{tr('invoice.review.title')}</Text>
+        <Text style={headerStyles.stepText}>{tr('invoice.review.stepOf', { step: 4, total: 4 })}</Text>
       </View>
 
       <ScrollView
@@ -215,63 +217,63 @@ export default function InvoiceFormStep4() {
       >
         {/* Invoice details */}
         <View>
-          <Text style={styles.sectionHeader} accessibilityRole="header">Invoice details</Text>
+          <Text style={styles.sectionHeader} accessibilityRole="header">{tr('invoice.review.invoiceDetails')}</Text>
           <View style={styles.card}>
             <View style={styles.kvRow}>
-              <Text style={styles.kvKey}>Invoice number</Text>
+              <Text style={styles.kvKey}>{tr('common.invoiceNumber')}</Text>
               <Text style={[styles.kvValue, styles.numeric]}>{header.inv_no}</Text>
             </View>
             <View style={[styles.kvRow, styles.kvDivider]}>
-              <Text style={styles.kvKey}>Invoice date</Text>
+              <Text style={styles.kvKey}>{tr('invoice.form.invoiceDate')}</Text>
               <Text style={styles.kvValue}>{formatInvoiceDate(header.inv_date)}</Text>
             </View>
             <View style={[styles.kvRow, styles.kvDivider]}>
-              <Text style={styles.kvKey}>Financial year</Text>
-              <Text style={[styles.kvValue, styles.numeric]}>{header.inv_fin_year}</Text>
+              <Text style={styles.kvKey}>{tr('invoice.label.financialYear')}</Text>
+              <Text style={[styles.kvValue, styles.numeric]}>{formatFinancialYear(header.inv_fin_year)}</Text>
             </View>
             <View style={[styles.kvRow, styles.kvDivider]}>
-              <Text style={styles.kvKey}>GRN</Text>
+              <Text style={styles.kvKey}>{tr('common.grn')}</Text>
               <Text style={styles.kvValue}>{header.gr_no}</Text>
             </View>
             <View style={[styles.kvRowStacked, styles.kvDivider]}>
-              <Text style={styles.kvKey}>Customer</Text>
+              <Text style={styles.kvKey}>{tr('common.customer')}</Text>
               <Text style={styles.kvValueStacked}>{header.customer_name}</Text>
             </View>
             <View style={[styles.kvRow, styles.kvDivider]}>
-              <Text style={styles.kvKey}>One-time charge</Text>
-              <Text style={styles.kvValue}>{header.one_time_charge ? 'Yes' : 'No'}</Text>
+              <Text style={styles.kvKey}>{tr('invoice.label.oneTimeCharge')}</Text>
+              <Text style={styles.kvValue}>{header.one_time_charge ? tr('common.yes') : tr('common.no')}</Text>
             </View>
           </View>
         </View>
 
         {/* Amounts */}
         <View>
-          <Text style={styles.sectionHeader} accessibilityRole="header">Amounts</Text>
+          <Text style={styles.sectionHeader} accessibilityRole="header">{tr('invoice.review.amounts')}</Text>
           <View style={styles.card}>
             <View style={styles.kvRow}>
-              <Text style={styles.kvKey}>Storage</Text>
+              <Text style={styles.kvKey}>{tr('invoice.label.storage')}</Text>
               <Text style={[styles.kvValue, styles.numeric]}>{formatInvoiceAmount(subtotal)}</Text>
             </View>
             <View style={[styles.kvRow, styles.kvDivider]}>
-              <Text style={styles.kvKey}>Labour</Text>
+              <Text style={styles.kvKey}>{tr('invoice.label.labour')}</Text>
               <Text style={[styles.kvValue, styles.numeric]}>{formatInvoiceAmount(header.labour)}</Text>
             </View>
             <View style={[styles.kvRow, styles.kvDivider]}>
-              <Text style={styles.kvKey}>Tax</Text>
+              <Text style={styles.kvKey}>{tr('invoice.label.tax')}</Text>
               <Text style={[styles.kvValue, styles.numeric]}>{formatInvoiceAmount(header.tax_amount)}</Text>
             </View>
             <View style={[styles.kvRow, styles.kvDivider]}>
-              <Text style={styles.kvKey}>Discount</Text>
+              <Text style={styles.kvKey}>{tr('invoice.label.discount')}</Text>
               <Text style={[styles.kvValue, styles.numeric, header.discount > 0 && styles.kvDeduction]}>
                 {formatInvoiceDeduction(header.discount)}
               </Text>
             </View>
             <View style={[styles.kvRow, styles.kvDivider]}>
-              <Text style={styles.kvKey}>Rounding</Text>
+              <Text style={styles.kvKey}>{tr('invoice.label.rounding')}</Text>
               <Text style={[styles.kvValue, styles.numeric]}>{formatInvoiceAmount(rounding)}</Text>
             </View>
             <View style={[styles.kvRow, styles.kvTotalRow]}>
-              <Text style={styles.kvTotalKey}>Total</Text>
+              <Text style={styles.kvTotalKey}>{tr('common.total')}</Text>
               <Text style={styles.kvTotalValue}>{formatInvoiceAmount(header.total)}</Text>
             </View>
           </View>
@@ -285,26 +287,26 @@ export default function InvoiceFormStep4() {
           onPress={handleBack}
           disabled={isSaving}
           accessibilityRole="button"
-          accessibilityLabel="Back"
+          accessibilityLabel={tr('common.back')}
           accessibilityState={{ disabled: isSaving }}
         >
           <Icon name="chevron-left" size={iconSize.md} color={t.brand.tint} />
-          <Text style={styles.secondaryButtonText}>Back</Text>
+          <Text style={styles.secondaryButtonText}>{tr('common.back')}</Text>
         </Pressable>
         <Pressable
           style={({ pressed }) => [styles.button, styles.primaryButton, pressed && styles.primaryButtonPressed]}
           onPress={isSaving ? undefined : handleSubmit}
           accessibilityRole="button"
-          accessibilityLabel={isSaving ? 'Saving invoice' : 'Save invoice'}
+          accessibilityLabel={isSaving ? tr('invoice.review.savingA11y') : tr('invoice.review.saveInvoice')}
           accessibilityState={{ busy: isSaving }}
         >
           {isSaving ? (
             <>
               <ActivityIndicator size="small" color={t.brand.onFill} />
-              <Text style={styles.primaryButtonText}>Saving…</Text>
+              <Text style={styles.primaryButtonText}>{tr('common.saving')}</Text>
             </>
           ) : (
-            <Text style={styles.primaryButtonText}>Save invoice</Text>
+            <Text style={styles.primaryButtonText}>{tr('invoice.review.saveInvoice')}</Text>
           )}
         </Pressable>
       </View>
@@ -312,10 +314,10 @@ export default function InvoiceFormStep4() {
       {/* Confirm Submit Dialog */}
       <ConfirmDialog
         visible={showConfirmDialog}
-        title={`Save invoice ${header.inv_no}?`}
-        message={`${header.customer_name}\nTotal ${formatInvoiceAmount(header.total)}`}
-        confirmText="Save invoice"
-        cancelText="Cancel"
+        title={tr('invoice.review.saveTitle', { number: formatIdentifier(header.inv_no) })}
+        message={tr('invoice.review.confirmMessage', { customer: header.customer_name, total: formatInvoiceAmount(header.total) })}
+        confirmText={tr('invoice.review.saveInvoice')}
+        cancelText={tr('common.cancel')}
         onConfirm={handleConfirmSubmit}
         onCancel={() => setShowConfirmDialog(false)}
         variant="default"
@@ -345,18 +347,22 @@ export default function InvoiceFormStep4() {
           const result = await printInvoiceRange(start, end);
           setShowPrintDialog(false);
           if (result.success) {
-            setSnackbarMessage(end && end !== start ? `Invoices ${start} to ${end} sent to the printer.` : `Invoice ${start} sent to the printer.`);
+            setSnackbarMessage(
+              end && end !== start
+                ? tr('invoice.print.sentRange', { start: String(start), end: String(end) })
+                : tr('invoice.print.sentOne', { number: formatIdentifier(start) })
+            );
           } else {
-            setSnackbarMessage("Couldn't print the invoice. Check the printer and try again.");
+            setSnackbarMessage(tr('invoice.print.failed'));
           }
           setSnackbarVisible(true);
           resetFormState();
           router.replace('/invoices');
         }}
-        title="Print invoice"
+        title={tr('invoice.print.title')}
         defaultNumber={savedInvoiceData?.invoice_no?.toString() || ''}
-        label="Invoice number"
-        placeholder="For example, 123"
+        entity="invoice"
+        placeholder={tr('invoice.print.example', { example: '123' })}
       />
 
       {/* Snackbar for print status */}
@@ -365,7 +371,7 @@ export default function InvoiceFormStep4() {
         onDismiss={() => setSnackbarVisible(false)}
         duration={4000}
         action={{
-          label: 'Dismiss',
+          label: tr('common.dismiss'),
           onPress: () => setSnackbarVisible(false),
         }}
       >

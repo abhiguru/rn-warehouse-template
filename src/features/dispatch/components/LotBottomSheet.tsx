@@ -43,6 +43,7 @@ import {
 import type { ThemeTokens } from '@/theme/tokens';
 import type { GRNDetailItem } from '@/types/dispatch.types';
 import { formatCount, formatWeight } from '@/utils/formatters';
+import { t as tr, formatIdentifier } from '@/i18n';
 import { StatusTag } from '@/components/ui/StatusTag';
 
 interface LotBottomSheetProps {
@@ -248,6 +249,19 @@ const makeStyles = (t: ThemeTokens) => ({
   },
 });
 
+/** "3 lots in stock (2 out of stock)" and its shorter forms, as one sentence per case. */
+const lotCountText = (inStock: number, outOfStock: number): string => {
+  if (inStock > 0) {
+    const lots = tr('dispatch.count.lots', { count: inStock });
+    return outOfStock > 0
+      ? tr('dispatch.lotSheet.countInStockWithOut', { lots, out: outOfStock })
+      : tr('dispatch.lotSheet.countInStock', { lots });
+  }
+  return outOfStock > 0
+    ? tr('dispatch.lotSheet.noneInStockWithOut', { out: outOfStock })
+    : tr('dispatch.lotSheet.noneInStock');
+};
+
 export const LotBottomSheet: React.FC<LotBottomSheetProps> = ({
   isVisible,
   onClose,
@@ -335,10 +349,10 @@ export const LotBottomSheet: React.FC<LotBottomSheetProps> = ({
         style={({ pressed }) => [styles.viewAction, pressed && styles.viewActionPressed]}
         onPress={handleViewGRNDetails}
         accessibilityRole="button"
-        accessibilityLabel={`View GRN ${grnInfo.gr_no}`}
+        accessibilityLabel={tr('dispatch.grnSheet.viewGrnNumbered', { number: formatIdentifier(grnInfo.gr_no) })}
       >
         <Icon name="eye-outline" size={iconSize.lg} color={t.brand.onFill} />
-        <Text style={styles.viewActionText}>View GRN</Text>
+        <Text style={styles.viewActionText}>{tr('dispatch.grnSheet.viewGrn')}</Text>
       </Pressable>
     );
   }, [grnInfo, handleViewGRNDetails, styles, t]);
@@ -365,13 +379,13 @@ export const LotBottomSheet: React.FC<LotBottomSheetProps> = ({
 
       // Primary display: "GRN qty [Qty] · [Package Mark]" or just "GRN qty [Qty]"
       const lotDisplayText = item.package_mark
-        ? `GRN qty ${item.quantity} · ${item.package_mark}`
-        : `GRN qty ${item.quantity}`;
+        ? tr('dispatch.lotSheet.lotTitleWithMark', { quantity: item.quantity, mark: item.package_mark })
+        : tr('dispatch.lotSheet.lotTitle', { quantity: item.quantity });
       const stateLabel = isOutOfStock
-        ? 'out of stock'
+        ? tr('dispatch.lotSheet.stateOutOfStock')
         : isAlreadyAdded
-          ? 'already added'
-          : `${item.stock} in stock`;
+          ? tr('dispatch.lotSheet.stateAlreadyAdded')
+          : tr('dispatch.lotSheet.stateInStock', { count: item.stock });
 
       const canViewGRN = !!grnInfo && !isDisabled;
 
@@ -386,9 +400,13 @@ export const LotBottomSheet: React.FC<LotBottomSheetProps> = ({
           onPress={() => !isDisabled && handleLotSelect(item)}
           disabled={isDisabled}
           accessibilityRole="button"
-          accessibilityLabel={`${lotDisplayText}${item.rack ? `, rack ${item.rack}` : ''}, ${stateLabel}`}
+          accessibilityLabel={
+            item.rack
+              ? tr('dispatch.lotSheet.rowLabelWithRack', { lot: lotDisplayText, rack: item.rack, state: stateLabel })
+              : tr('dispatch.lotSheet.rowLabel', { lot: lotDisplayText, state: stateLabel })
+          }
           accessibilityState={{ selected: isSelected && !isDisabled, disabled: isDisabled }}
-          accessibilityActions={canViewGRN ? [{ name: 'viewGRN', label: 'View GRN' }] : undefined}
+          accessibilityActions={canViewGRN ? [{ name: 'viewGRN', label: tr('dispatch.grnSheet.viewGrn') }] : undefined}
           onAccessibilityAction={(e) => {
             if (e.nativeEvent.actionName === 'viewGRN') handleViewGRNDetails();
           }}
@@ -398,9 +416,9 @@ export const LotBottomSheet: React.FC<LotBottomSheetProps> = ({
             <View style={styles.lotHeader}>
               <Text style={styles.lotTitle}>{lotDisplayText}</Text>
               <View style={styles.headerBadges}>
-                {isOutOfStock && renderStatusTag('negative', 'alert-circle', 'Out of stock')}
+                {isOutOfStock && renderStatusTag('negative', 'alert-circle', tr('common.outOfStock'))}
                 {isAlreadyAdded && !isOutOfStock &&
-                  renderStatusTag('informative', 'information', 'Already added')}
+                  renderStatusTag('informative', 'information', tr('dispatch.lotSheet.alreadyAdded'))}
                 {isSelected && !isDisabled && (
                   <Icon name="check-circle" size={iconSize.lg} color={t.brand.tint} />
                 )}
@@ -411,16 +429,16 @@ export const LotBottomSheet: React.FC<LotBottomSheetProps> = ({
             <View style={styles.lotDetails}>
               <View style={styles.detailRow}>
                 <Icon name="warehouse" size={iconSize.sm} color={t.icon.secondary} />
-                <Text style={styles.detailLabel}>In stock</Text>
+                <Text style={styles.detailLabel}>{tr('common.inStock')}</Text>
                 <Text style={styles.detailValue}>
-                  {isOutOfStock ? 0 : item.stock} {item.stock === 1 ? 'bag' : 'bags'}
+                  {formatCount(isOutOfStock ? 0 : item.stock, 'bag')}
                 </Text>
               </View>
 
               {item.rack && (
                 <View style={styles.detailRow}>
                   <Icon name="view-grid-outline" size={iconSize.sm} color={t.icon.secondary} />
-                  <Text style={styles.detailLabel}>Rack</Text>
+                  <Text style={styles.detailLabel}>{tr('common.rack')}</Text>
                   <Text style={styles.detailValue}>{item.rack}</Text>
                 </View>
               )}
@@ -428,7 +446,7 @@ export const LotBottomSheet: React.FC<LotBottomSheetProps> = ({
               {item.weight > 0 && (
                 <View style={styles.detailRow}>
                   <Icon name="weight" size={iconSize.sm} color={t.icon.secondary} />
-                  <Text style={styles.detailLabel}>Weight</Text>
+                  <Text style={styles.detailLabel}>{tr('common.weight')}</Text>
                   <Text style={styles.detailValue}>{formatWeight(item.weight)}</Text>
                 </View>
               )}
@@ -461,9 +479,9 @@ export const LotBottomSheet: React.FC<LotBottomSheetProps> = ({
     return (
       <View style={styles.emptyContainer}>
         <Icon name="package-variant-closed" size={iconSize.hero} color={t.icon.secondary} />
-        <Text style={styles.emptyText}>No lots found</Text>
+        <Text style={styles.emptyText}>{tr('dispatch.lotSheet.emptyTitle')}</Text>
         <Text style={styles.emptySubtext}>
-          This item has no lots in this GRN. Choose another item.
+          {tr('dispatch.lotSheet.emptyMessage')}
         </Text>
       </View>
     );
@@ -505,12 +523,12 @@ export const LotBottomSheet: React.FC<LotBottomSheetProps> = ({
     >
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle} accessibilityRole="header">Choose lot</Text>
+        <Text style={styles.headerTitle} accessibilityRole="header">{tr('dispatch.items.chooseLot')}</Text>
         <Pressable
           onPress={() => bottomSheetRef.current?.dismiss()}
           style={({ pressed }) => [styles.closeButton, pressed && styles.closeButtonPressed]}
           accessibilityRole="button"
-          accessibilityLabel="Close lot list"
+          accessibilityLabel={tr('dispatch.lotSheet.close')}
         >
           <Icon name="close" size={iconSize.lg} color={t.icon.primary} />
         </Pressable>
@@ -520,15 +538,12 @@ export const LotBottomSheet: React.FC<LotBottomSheetProps> = ({
       {lots.length > 0 && (
         <View style={styles.countContainer}>
           <Text style={styles.countText}>
-            {availableLotsCount > 0
-              ? `${formatCount(availableLotsCount, 'lot')} in stock`
-              : 'No lots in stock'}
-            {outOfStockLotsCount > 0 && ` (${outOfStockLotsCount} out of stock)`}
+            {lotCountText(availableLotsCount, outOfStockLotsCount)}
           </Text>
           <Text style={styles.countSubtext}>
             {availableLotsCount > 0
-              ? 'Choose the lot to dispatch from.'
-              : 'Every lot of this item has been dispatched.'}
+              ? tr('dispatch.lotSheet.chooseHint')
+              : tr('dispatch.lotSheet.allDispatched')}
           </Text>
         </View>
       )}
@@ -537,7 +552,7 @@ export const LotBottomSheet: React.FC<LotBottomSheetProps> = ({
       {availableLotsCount > 0 && grnInfo && !allLotsAlreadyAdded && (
         <View style={styles.hintContainer}>
           <Icon name="information" size={iconSize.sm} color={t.status.informative.text} />
-          <Text style={styles.hintText}>Tap a lot to choose it. Swipe left to view the GRN.</Text>
+          <Text style={styles.hintText}>{tr('dispatch.lotSheet.hint')}</Text>
         </View>
       )}
 
@@ -546,7 +561,7 @@ export const LotBottomSheet: React.FC<LotBottomSheetProps> = ({
         <View style={styles.allAddedBanner} accessibilityRole="alert">
           <Icon name="alert" size={iconSize.md} color={t.status.critical.text} />
           <Text style={styles.allAddedBannerText}>
-            Every lot of this item is already in this dispatch.
+            {tr('dispatch.lotSheet.allAdded')}
           </Text>
         </View>
       )}

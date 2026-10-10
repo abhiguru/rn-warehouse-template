@@ -32,6 +32,7 @@ import {
   space,
   touchTarget,
   typography,
+  trackedText,
 } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { getGRNDetailByNumber } from '../services/grnDetailService';
@@ -44,7 +45,8 @@ import { LotBottomSheet } from './LotBottomSheet';
 import { createLogger } from '@/utils/logger';
 
 import { showAlert } from '@/utils/alert';
-import { formatCount, formatWeight } from '@/utils/formatters';
+import { formatCount, formatNumber, formatWeight } from '@/utils/formatters';
+import { localizeDigits, normalizeDigits, t as tr } from '@/i18n';
 const addItemBottomSheetLogger = createLogger('AddItemBottomSheet');
 
 interface AddItemBottomSheetProps {
@@ -179,7 +181,7 @@ const makeStyles = (t: ThemeTokens) => ({
     ...typography.footnote,
     fontWeight: fontWeight.semibold,
     textTransform: 'uppercase' as const,
-    letterSpacing: 0.5,
+    letterSpacing: trackedText(0.5),
     color: t.text.secondary,
     marginBottom: space.md,
   },
@@ -359,7 +361,7 @@ export const AddItemBottomSheet: React.FC<AddItemBottomSheetProps> = ({
 
         if (!result.success || !result.data) {
           addItemBottomSheetLogger.error('[AddItemBottomSheet] GRN load failed:', result.error);
-          showAlert("Couldn't load the GRN", 'Check your connection and try again.');
+          showAlert(tr('dispatch.items.loadGrnFailedTitle'), tr('common.checkConnection'));
           return;
         }
 
@@ -388,7 +390,7 @@ export const AddItemBottomSheet: React.FC<AddItemBottomSheetProps> = ({
         });
       } catch (err) {
         addItemBottomSheetLogger.error('[AddItemBottomSheet] Error loading GRN:', err);
-        showAlert("Couldn't load the GRN", 'Check your connection and try again.');
+        showAlert(tr('dispatch.items.loadGrnFailedTitle'), tr('common.checkConnection'));
       } finally {
         setIsLoadingGRN(false);
       }
@@ -449,7 +451,7 @@ export const AddItemBottomSheet: React.FC<AddItemBottomSheetProps> = ({
 
   // Handle quantity change
   const handleQuantityChange = (text: string) => {
-    const qty = parseInt(text) || 0;
+    const qty = parseInt(normalizeDigits(text)) || 0;
     setCurrentItem((prev) => ({
       ...prev,
       disp_quantity: qty,
@@ -485,7 +487,7 @@ export const AddItemBottomSheet: React.FC<AddItemBottomSheetProps> = ({
 
     if (!validation.isValid) {
       setValidationErrors(validation.errors);
-      showAlert('Check the item', 'Fix the fields marked in red, then try again.');
+      showAlert(tr('dispatch.items.checkItemTitle'), tr('dispatch.items.checkItemMessage'));
       return;
     }
 
@@ -495,8 +497,8 @@ export const AddItemBottomSheet: React.FC<AddItemBottomSheetProps> = ({
 
     if (duplicateCheck.hasDuplicates) {
       showAlert(
-        'Lot already added',
-        'This lot is already in the dispatch. Each lot can be dispatched once.'
+        tr('dispatch.items.lotAlreadyAddedTitle'),
+        tr('dispatch.items.lotAlreadyAddedMessage')
       );
       return;
     }
@@ -516,7 +518,7 @@ export const AddItemBottomSheet: React.FC<AddItemBottomSheetProps> = ({
 
     if (!validation.isValid) {
       setValidationErrors(validation.errors);
-      showAlert('Check the item', 'Fix the fields marked in red, then try again.');
+      showAlert(tr('dispatch.items.checkItemTitle'), tr('dispatch.items.checkItemMessage'));
       return;
     }
 
@@ -525,8 +527,8 @@ export const AddItemBottomSheet: React.FC<AddItemBottomSheetProps> = ({
 
     if (duplicateCheck.hasDuplicates) {
       showAlert(
-        'Lot already added',
-        'This lot is already in the dispatch. Each lot can be dispatched once.'
+        tr('dispatch.items.lotAlreadyAddedTitle'),
+        tr('dispatch.items.lotAlreadyAddedMessage')
       );
       return;
     }
@@ -582,12 +584,12 @@ export const AddItemBottomSheet: React.FC<AddItemBottomSheetProps> = ({
         <View style={styles.container}>
           {/* Header */}
           <View style={styles.header}>
-            <Text style={styles.headerTitle} accessibilityRole="header">Add item</Text>
+            <Text style={styles.headerTitle} accessibilityRole="header">{tr('dispatch.items.addItem')}</Text>
             <Pressable
               onPress={() => bottomSheetRef.current?.dismiss()}
               style={({ pressed }) => [styles.closeButton, pressed && styles.closeButtonPressed]}
               accessibilityRole="button"
-              accessibilityLabel="Close add item"
+              accessibilityLabel={tr('dispatch.items.closeAddItem')}
             >
               <Icon name="close" size={iconSize.lg} color={t.icon.primary} />
             </Pressable>
@@ -601,7 +603,7 @@ export const AddItemBottomSheet: React.FC<AddItemBottomSheetProps> = ({
             {/* GRN Selector */}
             <View style={styles.formGroup}>
               <Text style={[styles.label, validationErrors.grns_gr_no && styles.labelError]}>
-                GRN <Text style={styles.required}>*</Text>
+                {tr('common.grn')} <Text style={styles.required}>*</Text>
               </Text>
               <Pressable
                 style={({ pressed }) => [
@@ -611,8 +613,8 @@ export const AddItemBottomSheet: React.FC<AddItemBottomSheetProps> = ({
                 ]}
                 onPress={() => setShowGRNBottomSheet(true)}
                 accessibilityRole="button"
-                accessibilityLabel={`GRN, required, ${currentItem.grns_gr_no || 'not chosen'}`}
-                accessibilityHint="Opens the GRN list"
+                accessibilityLabel={tr('dispatch.items.grnFieldLabel', { value: currentItem.grns_gr_no || tr('dispatch.items.notChosen') })}
+                accessibilityHint={tr('dispatch.items.opensGrnList')}
                 accessibilityState={{ busy: isLoadingGRN }}
               >
                 <Icon name="package-down" size={iconSize.md} color={t.icon.secondary} style={styles.inputIcon} />
@@ -622,7 +624,7 @@ export const AddItemBottomSheet: React.FC<AddItemBottomSheetProps> = ({
                     !currentItem.grns_gr_no && styles.placeholderText,
                   ]}
                 >
-                  {currentItem.grns_gr_no || 'Choose GRN'}
+                  {currentItem.grns_gr_no || tr('dispatch.items.chooseGrn')}
                 </Text>
                 <Icon name="chevron-down" size={iconSize.md} color={t.icon.secondary} />
               </Pressable>
@@ -632,7 +634,7 @@ export const AddItemBottomSheet: React.FC<AddItemBottomSheetProps> = ({
             {/* Item Selector */}
             <View style={styles.formGroup}>
               <Text style={[styles.label, validationErrors.grnItems_item_id && styles.labelError]}>
-                Item <Text style={styles.required}>*</Text>
+                {tr('common.item')} <Text style={styles.required}>*</Text>
               </Text>
               <Pressable
                 style={({ pressed }) => [
@@ -644,8 +646,8 @@ export const AddItemBottomSheet: React.FC<AddItemBottomSheetProps> = ({
                 onPress={() => selectedGRN && setShowItemBottomSheet(true)}
                 disabled={!selectedGRN}
                 accessibilityRole="button"
-                accessibilityLabel={`Item, required, ${currentItem.grnItems_item_name || 'not chosen'}`}
-                accessibilityHint={selectedGRN ? 'Opens the item list' : 'Choose a GRN first'}
+                accessibilityLabel={tr('dispatch.items.itemFieldLabel', { value: currentItem.grnItems_item_name || tr('dispatch.items.notChosen') })}
+                accessibilityHint={selectedGRN ? tr('dispatch.items.opensItemList') : tr('dispatch.items.chooseGrnFirst')}
                 accessibilityState={{ disabled: !selectedGRN }}
               >
                 <Icon name="cube-outline" size={iconSize.md} color={t.icon.secondary} style={styles.inputIcon} />
@@ -655,7 +657,7 @@ export const AddItemBottomSheet: React.FC<AddItemBottomSheetProps> = ({
                     !currentItem.grnItems_item_name && styles.placeholderText,
                   ]}
                 >
-                  {currentItem.grnItems_item_name || 'Choose item'}
+                  {currentItem.grnItems_item_name || tr('dispatch.items.chooseItem')}
                 </Text>
                 <Icon name="chevron-down" size={iconSize.md} color={t.icon.secondary} />
               </Pressable>
@@ -665,7 +667,7 @@ export const AddItemBottomSheet: React.FC<AddItemBottomSheetProps> = ({
             {/* Lot Selector */}
             <View style={styles.formGroup}>
               <Text style={[styles.label, validationErrors.grnItems_id && styles.labelError]}>
-                Lot <Text style={styles.required}>*</Text>
+                {tr('dispatch.items.lot')} <Text style={styles.required}>*</Text>
               </Text>
               <Pressable
                 style={({ pressed }) => [
@@ -677,8 +679,10 @@ export const AddItemBottomSheet: React.FC<AddItemBottomSheetProps> = ({
                 onPress={() => currentItem.grnItems_item_id && setShowLotBottomSheet(true)}
                 disabled={!currentItem.grnItems_item_id}
                 accessibilityRole="button"
-                accessibilityLabel={`Lot, required, ${currentItem.grnItems_id ? 'chosen' : 'not chosen'}`}
-                accessibilityHint={currentItem.grnItems_item_id ? 'Opens the lot list' : 'Choose an item first'}
+                accessibilityLabel={tr('dispatch.items.lotFieldLabel', {
+                  value: currentItem.grnItems_id ? tr('dispatch.items.lotChosenState') : tr('dispatch.items.notChosen'),
+                })}
+                accessibilityHint={currentItem.grnItems_item_id ? tr('dispatch.items.opensLotList') : tr('dispatch.items.chooseItemFirst')}
                 accessibilityState={{ disabled: !currentItem.grnItems_item_id }}
               >
                 <Icon name="layers-outline" size={iconSize.md} color={t.icon.secondary} style={styles.inputIcon} />
@@ -688,7 +692,7 @@ export const AddItemBottomSheet: React.FC<AddItemBottomSheetProps> = ({
                     !currentItem.grnItems_id && styles.placeholderText,
                   ]}
                 >
-                  {currentItem.grnItems_id ? 'Lot chosen' : 'Choose lot'}
+                  {currentItem.grnItems_id ? tr('dispatch.items.lotChosen') : tr('dispatch.items.chooseLot')}
                 </Text>
                 <Icon name="chevron-down" size={iconSize.md} color={t.icon.secondary} />
               </Pressable>
@@ -698,30 +702,30 @@ export const AddItemBottomSheet: React.FC<AddItemBottomSheetProps> = ({
             {/* Lot Details */}
             {currentItem.grnItems_id && (
               <View style={styles.lotDetailsCard}>
-                <Text style={styles.lotDetailsTitle} accessibilityRole="header">Lot details</Text>
+                <Text style={styles.lotDetailsTitle} accessibilityRole="header">{tr('dispatch.items.lotDetails')}</Text>
                 <View style={styles.lotDetailsGrid}>
                   {currentItem.grnItems_package_mark && (
                     <View style={styles.detailItem}>
                       <Icon name="label-outline" size={iconSize.sm} color={t.icon.secondary} />
-                      <Text style={styles.detailLabel}>Package mark</Text>
+                      <Text style={styles.detailLabel}>{tr('common.packageMark')}</Text>
                       <Text style={styles.detailValue}>{currentItem.grnItems_package_mark}</Text>
                     </View>
                   )}
                   {currentItem.grnItems_rack && (
                     <View style={styles.detailItem}>
                       <Icon name="view-grid-outline" size={iconSize.sm} color={t.icon.secondary} />
-                      <Text style={styles.detailLabel}>Rack</Text>
+                      <Text style={styles.detailLabel}>{tr('common.rack')}</Text>
                       <Text style={styles.detailValue}>{currentItem.grnItems_rack}</Text>
                     </View>
                   )}
                   <View style={styles.detailItem}>
                     <Icon name="weight" size={iconSize.sm} color={t.icon.secondary} />
-                    <Text style={styles.detailLabel}>Weight</Text>
+                    <Text style={styles.detailLabel}>{tr('common.weight')}</Text>
                     <Text style={styles.detailValue}>{formatWeight(currentItem.grnItems_weight)}</Text>
                   </View>
                   <View style={styles.detailItem}>
                     <Icon name="warehouse" size={iconSize.sm} color={t.icon.secondary} />
-                    <Text style={styles.detailLabel}>In stock</Text>
+                    <Text style={styles.detailLabel}>{tr('common.inStock')}</Text>
                     <Text style={styles.detailValue}>
                       {formatCount(currentItem.grnItems_stock, 'bag')}
                     </Text>
@@ -736,7 +740,7 @@ export const AddItemBottomSheet: React.FC<AddItemBottomSheetProps> = ({
                 style={[styles.label, (validationErrors.disp_quantity || exceedsStock) && styles.labelError]}
                 nativeID="add-item-quantity-label"
               >
-                Bags to dispatch <Text style={styles.required}>*</Text>
+                {tr('dispatch.items.bagsToDispatch')} <Text style={styles.required}>*</Text>
               </Text>
 
               {/* Dynamic Stock Display */}
@@ -744,11 +748,11 @@ export const AddItemBottomSheet: React.FC<AddItemBottomSheetProps> = ({
                 <View style={styles.stockDisplayCard}>
                   <Icon name="information" size={iconSize.sm} color={t.status.informative.text} />
                   <Text style={styles.stockDisplayText}>
-                    In stock <Text style={styles.stockDisplayValue}>{currentItem.grnItems_stock}</Text>
+                    {tr('common.inStock')} <Text style={styles.stockDisplayValue}>{formatNumber(currentItem.grnItems_stock)}</Text>
                   </Text>
                   {(currentItem.disp_quantity || 0) > 0 && (
                     <Text style={styles.stockDisplayText}>
-                      · Left after dispatch <Text style={styles.stockDisplayValue}>{displayStock}</Text>
+                      · {tr('dispatch.items.leftAfterDispatch')} <Text style={styles.stockDisplayValue}>{formatNumber(displayStock)}</Text>
                     </Text>
                   )}
                 </View>
@@ -767,18 +771,18 @@ export const AddItemBottomSheet: React.FC<AddItemBottomSheetProps> = ({
                     styles.input,
                     !currentItem.grnItems_id && styles.inputDisabledText,
                   ]}
-                  value={(currentItem.disp_quantity || 0) > 0 ? (currentItem.disp_quantity || 0).toString() : ''}
+                  value={(currentItem.disp_quantity || 0) > 0 ? localizeDigits((currentItem.disp_quantity || 0).toString()) : ''}
                   onChangeText={handleQuantityChange}
-                  placeholder="Enter bags"
+                  placeholder={tr('dispatch.items.enterBags')}
                   keyboardType="numeric"
                   editable={!!currentItem.grnItems_id}
                   placeholderTextColor={t.text.placeholder}
-                  accessibilityLabel="Bags to dispatch"
+                  accessibilityLabel={tr('dispatch.items.bagsToDispatch')}
                   accessibilityLabelledBy="add-item-quantity-label"
                 />
               </View>
               {exceedsStock &&
-                renderError(`Enter ${currentItem.grnItems_stock} bags or fewer. That is the stock in hand.`)}
+                renderError(tr('dispatch.items.maxBagsInHand', { count: currentItem.grnItems_stock }))}
               {renderError(validationErrors.disp_quantity)}
             </View>
           </BottomSheetScrollView>
@@ -794,11 +798,11 @@ export const AddItemBottomSheet: React.FC<AddItemBottomSheetProps> = ({
               onPress={handleAddItem}
               disabled={!isCurrentItemValid}
               accessibilityRole="button"
-              accessibilityLabel="Add item and add another"
+              accessibilityLabel={tr('dispatch.items.addAndAnother')}
               accessibilityState={{ disabled: !isCurrentItemValid }}
             >
               <Icon name="plus" size={iconSize.md} color={t.brand.tint} />
-              <Text style={styles.secondaryButtonText}>Add another</Text>
+              <Text style={styles.secondaryButtonText}>{tr('dispatch.items.addAnother')}</Text>
             </Pressable>
             <Pressable
               style={({ pressed }) => [
@@ -809,11 +813,11 @@ export const AddItemBottomSheet: React.FC<AddItemBottomSheetProps> = ({
               onPress={handleAddAndClose}
               disabled={!isCurrentItemValid}
               accessibilityRole="button"
-              accessibilityLabel="Add item"
+              accessibilityLabel={tr('dispatch.items.addItem')}
               accessibilityState={{ disabled: !isCurrentItemValid }}
             >
               <Icon name="check" size={iconSize.md} color={t.brand.onFill} />
-              <Text style={styles.primaryButtonText}>Add item</Text>
+              <Text style={styles.primaryButtonText}>{tr('dispatch.items.addItem')}</Text>
             </Pressable>
           </View>
         </View>

@@ -1,5 +1,4 @@
 import { StyleSheet } from 'react-native';
-import type { StepConfig } from '@/components/StepIndicator';
 import {
   fontWeight,
   layout,
@@ -8,16 +7,11 @@ import {
   touchTarget,
   typography,
   type ThemeTokens,
+  trackedText,
 } from '@/theme/tokens';
 import { formatDate, toDate } from '@/utils/formatters';
 
-// Step names are nouns (style guide §14.3).
-export const INVOICE_STEPS: StepConfig[] = [
-  { number: 1, label: 'Details', shortLabel: 'Details' },
-  { number: 2, label: 'Items', shortLabel: 'Items' },
-  { number: 3, label: 'Review', shortLabel: 'Review' },
-];
-
+// The step names are text: `invoiceSteps()` in src/components/InvoiceStepIndicator.tsx.
 export const STEP_NUMBERS = {
   HEADER: 1,
   ITEMS: 2,
@@ -179,7 +173,7 @@ export const makeInvoiceWizardStyles = (t: ThemeTokens) => ({
     ...typography.footnote,
     fontWeight: fontWeight.semibold,
     textTransform: 'uppercase' as const,
-    letterSpacing: 0.5,
+    letterSpacing: trackedText(0.5),
     color: t.text.secondary,
     marginBottom: space.sm,
     marginLeft: space.lg,

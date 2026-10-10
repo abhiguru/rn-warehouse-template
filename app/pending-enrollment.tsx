@@ -28,14 +28,15 @@ import {
 
 import { showAlert } from '@/utils/alert';
 import { StatusTag } from '@/components/ui';
+import { t as tr, type TranslationKey } from '@/i18n';
 type EnrollmentStatus = 'pending' | 'approved' | 'rejected' | 'disabled';
 type StatusKind = 'critical' | 'positive' | 'negative';
 
-const STATUS_VIEW: Record<EnrollmentStatus, { kind: StatusKind; icon: string; label: string; title: string }> = {
-  pending: { kind: 'critical', icon: 'alert', label: 'Requested', title: 'Waiting for approval' },
-  approved: { kind: 'positive', icon: 'check-circle', label: 'Approved', title: 'Access approved' },
-  rejected: { kind: 'negative', icon: 'alert-circle', label: 'Not approved', title: 'Access not available' },
-  disabled: { kind: 'negative', icon: 'alert-circle', label: 'Revoked', title: 'Access not available' },
+const STATUS_VIEW: Record<EnrollmentStatus, { kind: StatusKind; icon: string; label: TranslationKey; title: TranslationKey }> = {
+  pending: { kind: 'critical', icon: 'alert', label: 'auth.enrollment.status.pending', title: 'auth.enrollment.title.waiting' },
+  approved: { kind: 'positive', icon: 'check-circle', label: 'auth.enrollment.status.approved', title: 'auth.enrollment.title.approved' },
+  rejected: { kind: 'negative', icon: 'alert-circle', label: 'auth.enrollment.status.rejected', title: 'auth.enrollment.title.notAvailable' },
+  disabled: { kind: 'negative', icon: 'alert-circle', label: 'auth.enrollment.status.disabled', title: 'auth.enrollment.title.notAvailable' },
 };
 
 export default function PendingEnrollmentScreen() {
@@ -45,7 +46,7 @@ export default function PendingEnrollmentScreen() {
   const styles = useThemedStyles(makeStyles);
   const insets = useSafeAreaInsets();
   const facility = getActiveOperatorServer();
-  const facilityName = facility?.companyName || 'the facility';
+  const facilityName = facility?.companyName || tr('auth.enrollment.theFacility');
   const facilityHost = facility ? facility.origin.replace(/^https:\/\//, '') : '';
 
   const refresh = useCallback(async () => {
@@ -55,7 +56,7 @@ export default function PendingEnrollmentScreen() {
     if (result.success) {
       setStatus(result.status);
     } else {
-      showAlert("Couldn't check your access", 'Check your connection and try again.');
+      showAlert(tr('auth.enrollment.couldNotCheckTitle'), tr('common.checkConnection'));
     }
   }, []);
 
@@ -76,17 +77,18 @@ export default function PendingEnrollmentScreen() {
       router.replace('/login');
     } catch {
       setLoading(false);
-      showAlert("Couldn't sign out", 'Check your connection and try again.');
+      showAlert(tr('auth.signOut.couldNotTitle'), tr('common.checkConnection'));
     }
   };
 
   const message = status === 'approved'
-    ? `${facilityName} approved your access. Sign in again with a new code to continue.`
+    ? tr('auth.enrollment.approvedMessage', { facility: facilityName })
     : status === 'rejected' || status === 'disabled'
-      ? `You don't have access to ${facilityName}. Contact the facility's administrator if you think this is wrong.`
-      : `You asked ${facilityName} for access. Please wait while the facility approves your access. You can check again at any time.`;
+      ? tr('auth.enrollment.noAccessMessage', { facility: facilityName })
+      : tr('auth.enrollment.pendingMessage', { facility: facilityName });
 
   const view = STATUS_VIEW[status];
+  const statusLabel = tr(view.label);
   const tone = t.status[view.kind];
 
   return (
@@ -102,30 +104,30 @@ export default function PendingEnrollmentScreen() {
           <View style={styles.hero}>
             <Icon name={view.icon} size={iconSize.hero} color={tone.text} />
           </View>
-          <Text style={styles.heading} accessibilityRole="header">{view.title}</Text>
+          <Text style={styles.heading} accessibilityRole="header">{tr(view.title)}</Text>
 
           {/* What was requested, and from which facility */}
-          <View style={styles.card} accessible accessibilityLabel={`${facilityName}, ${view.label}`}>
+          <View style={styles.card} accessible accessibilityLabel={`${facilityName}, ${statusLabel}`}>
             <Icon name="office-building-outline" size={iconSize.md} color={t.icon.secondary} />
             <View style={styles.cardText}>
               <Text style={styles.facilityName} numberOfLines={2}>{facilityName}</Text>
               {facilityHost ? <Text style={styles.facilityHost} numberOfLines={1}>{facilityHost}</Text> : null}
             </View>
-            <StatusTag status={view.kind} label={view.label} icon={view.icon} />
+            <StatusTag status={view.kind} label={statusLabel} icon={view.icon} />
           </View>
 
           {/* What happens next */}
           <Text style={styles.message}>{message}</Text>
 
           {loading ? (
-            <ActivityIndicator color={t.brand.tint} accessibilityLabel="Checking your access" />
+            <ActivityIndicator color={t.brand.tint} accessibilityLabel={tr('auth.enrollment.checking')} />
           ) : (
             <View style={styles.actions}>
               {status === 'pending' && (
-                <Button size="fullWidth" onPress={() => void refresh()}>Check status</Button>
+                <Button size="fullWidth" onPress={() => void refresh()}>{tr('auth.enrollment.checkStatus')}</Button>
               )}
               {status === 'approved' ? (
-                <Button size="fullWidth" onPress={() => void leave()}>Sign in</Button>
+                <Button size="fullWidth" onPress={() => void leave()}>{tr('auth.signIn')}</Button>
               ) : (
                 <Button
                   size="fullWidth"
@@ -133,7 +135,7 @@ export default function PendingEnrollmentScreen() {
                   variant={status === 'pending' ? 'normal' : 'tint'}
                   onPress={() => void leave()}
                 >
-                  Sign out
+                  {tr('auth.signOut.action')}
                 </Button>
               )}
             </View>

@@ -19,6 +19,7 @@ import { useRouter, Href } from 'expo-router';
 import { useFocusEffect } from 'expo-router';
 
 import { showAlert } from '@/utils/alert';
+import { t } from '@/i18n';
 export interface BackHandlerOptions {
   /**
    * Whether the handler is enabled
@@ -107,8 +108,8 @@ export function useBackHandler(options: BackHandlerOptions = {}): void {
     totalSteps,
     stepBasePath,
     hasUnsavedChanges = false,
-    confirmationMessage = 'You have unsaved changes. Are you sure you want to go back?',
-    confirmationTitle = 'Discard changes?',
+    confirmationMessage = t('errors.unsaved.confirmBack'),
+    confirmationTitle = t('common.discardChangesTitle'),
     onBackPress,
     onConfirmBack,
     exitRoute,
@@ -139,11 +140,11 @@ export function useBackHandler(options: BackHandlerOptions = {}): void {
         confirmationMessage,
         [
           {
-            text: 'Cancel',
+            text: t('common.cancel'),
             style: 'cancel',
           },
           {
-            text: 'Discard',
+            text: t('common.discard'),
             style: 'destructive',
             onPress: () => {
               onConfirmBack?.();

@@ -15,6 +15,7 @@ import { useThemedStyles } from '@/hooks/useTheme';
 import { fontWeight, radius, space, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { StatusTag } from '@/components/ui';
+import { t as tr } from '@/i18n';
 
 // ============================================================================
 // TYPES
@@ -46,7 +47,7 @@ interface ItemAutocompleteProps {
 export const ItemAutocomplete: React.FC<ItemAutocompleteProps> = ({
   value,
   onChange,
-  placeholder = 'Search items',
+  placeholder = tr('grn.item.searchPlaceholder'),
   error,
   disabled = false,
   required = false,
@@ -147,7 +148,7 @@ export const ItemAutocomplete: React.FC<ItemAutocompleteProps> = ({
       editable={!disabled}
       minChars={2}
       debounceMs={300}
-      emptyText="No matches"
+      emptyText={tr('grn.pickers.noMatches')}
     />
   );
 };

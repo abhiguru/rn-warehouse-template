@@ -22,6 +22,7 @@ import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import {
+    byLanguage,
     fontWeight,
     iconSize,
     layout,
@@ -34,13 +35,14 @@ import type { ThemeTokens } from '@/theme/tokens';
 import { useDispatchForm } from '@/hooks/useDispatchForm';
 import { CustomerSearchBottomSheet, CustomerSearchBottomSheetRef } from '@/components/CustomerSearchBottomSheet';
 import { SupervisorBottomSheet } from '@/features/grn/components/SupervisorBottomSheet';
-import { DispatchStepIndicator } from '@/components/DispatchStepIndicator';
+import { DispatchStepIndicator, dispatchSteps } from '@/components/DispatchStepIndicator';
 import SwipeableFormStep from '@/components/SwipeableFormStep';
 import WizardBottomBar from '@/components/WizardBottomBar';
-import { DISPATCH_STEPS, DISPATCH_STEP_NUMBERS, getDispatchCompletedSteps } from '@/constants/dispatchSteps';
+import { DISPATCH_STEP_COUNT, DISPATCH_STEP_NUMBERS, getDispatchCompletedSteps } from '@/constants/dispatchSteps';
 import { toLocalISODate, formatDate, toDate } from '@/utils/formatters';
 import { GhostTextInput } from '@/components/GhostTextInput';
 import { getTopVehicleSuggestion } from '@/services/vehicle-suggestion-service';
+import { getLanguage, localizeDigits, normalizeDigits, t as tr } from '@/i18n';
 
 type DispatchHeaderStepProps = {
     mode: 'create' | 'edit';
@@ -162,6 +164,10 @@ const makeStyles = (t: ThemeTokens) => ({
     },
     halfField: {
         flex: 1,
+    },
+    // The Gujarati date ("૧૦ ઑક્ટો ૨૦૨૬") is wider than the eight-character number beside it.
+    dateField: {
+        flex: byLanguage(1, 1.35),
     },
     optionalToggle: {
         flexDirection: 'row' as const,
@@ -295,7 +301,8 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
     };
 
     const handleRegistrationChange = (text: string) => {
-        const upperText = text.toUpperCase();
+        // A vehicle number is an identifier: ૦-૯ typed on a Gujarati keypad become 0-9.
+        const upperText = normalizeDigits(text).toUpperCase();
         updateHeaderField('registration', upperText);
     };
 
@@ -333,7 +340,7 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
         return (
             <View style={styles.loadingContainer} accessibilityRole="progressbar" accessibilityState={{ busy: true }}>
                 <ActivityIndicator size="large" color={t.brand.tint} />
-                <Text style={styles.loadingText}>Loading dispatch…</Text>
+                <Text style={styles.loadingText}>{tr('dispatch.form.loading')}</Text>
             </View>
         );
     }
@@ -352,14 +359,14 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
         <View style={styles.container}>
             {/* Step Indicator with Cancel Pill */}
             <DispatchStepIndicator
-                steps={DISPATCH_STEPS}
+                steps={dispatchSteps()}
                 currentStep={DISPATCH_STEP_NUMBERS.INFO}
                 completedSteps={getDispatchCompletedSteps(DISPATCH_STEP_NUMBERS.INFO)}
                 onCancel={handleCancel}
                 cancelMessage={
                     isCreateMode
-                        ? 'Discard this dispatch? The details you entered will be lost.'
-                        : 'Discard your changes to this dispatch? Unsaved changes will be lost.'
+                        ? tr('dispatch.wizard.discardCreateMessage')
+                        : tr('dispatch.wizard.discardEditMessage')
                 }
                 dispNo={header.disp_no}
                 onStepPress={handleStepIndicatorPress}
@@ -390,12 +397,12 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
                             {/* Dispatch Number */}
                             <View style={[styles.formGroup, styles.halfField]}>
                                 <Text style={styles.label}>
-                                    Dispatch number<Text style={styles.required}> *</Text>
+                                    {tr('common.dispatchNumber')}<Text style={styles.required}> *</Text>
                                 </Text>
                                 {isCreateMode && isGeneratingNumber ? (
                                     <View
                                         style={styles.loadingInputContainer}
-                                        accessibilityLabel="Generating dispatch number"
+                                        accessibilityLabel={tr('dispatch.form.generatingNumber')}
                                         accessibilityState={{ busy: true }}
                                     >
                                         <ActivityIndicator size="small" color={t.brand.tint} />
@@ -405,9 +412,9 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
                                         <Icon name="truck-delivery-outline" size={iconSize.md} color={t.icon.secondary} style={styles.inputIcon} />
                                         <TextInput
                                             style={styles.input}
-                                            accessibilityLabel="Dispatch number"
+                                            accessibilityLabel={tr('common.dispatchNumber')}
                                             value={header.disp_no}
-                                            onChangeText={(text) => handleDispNoChange(text.toUpperCase())}
+                                            onChangeText={(text) => handleDispNoChange(normalizeDigits(text).toUpperCase())}
                                             placeholder="I####"
                                             placeholderTextColor={t.text.placeholder}
                                             autoCapitalize="characters"
@@ -419,9 +426,9 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
                             </View>
 
                             {/* Date */}
-                            <View style={[styles.formGroup, styles.halfField]}>
+                            <View style={[styles.formGroup, styles.halfField, styles.dateField]}>
                                 <Text style={styles.label}>
-                                    Date<Text style={styles.required}> *</Text>
+                                    {tr('common.date')}<Text style={styles.required}> *</Text>
                                 </Text>
                                 <Pressable
                                     style={({ pressed }) => [
@@ -431,11 +438,16 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
                                     ]}
                                     onPress={openDatePicker}
                                     accessibilityRole="button"
-                                    accessibilityLabel={displayDate ? `Dispatch date, ${displayDate}` : 'Choose dispatch date'}
+                                    accessibilityLabel={displayDate ? tr('dispatch.form.dispatchDateLabel', { date: displayDate }) : tr('dispatch.form.chooseDispatchDate')}
                                 >
                                     <Icon name="calendar-outline" size={iconSize.md} color={t.icon.secondary} style={styles.inputIcon} />
-                                    <Text style={[styles.valueText, !header.disp_date && styles.placeholderText]} numberOfLines={1}>
-                                        {displayDate || 'Choose date'}
+                                    <Text
+                                        style={[styles.valueText, !header.disp_date && styles.placeholderText]}
+                                        numberOfLines={1}
+                                        adjustsFontSizeToFit
+                                        minimumFontScale={0.75}
+                                    >
+                                        {displayDate || tr('dispatch.form.chooseDate')}
                                     </Text>
                                 </Pressable>
                                 <FieldError message={validationErrors.disp_date} styles={styles} color={t.status.negative.text} />
@@ -445,7 +457,7 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
                         {/* Customer - before Registration so we can use customer-specific suggestions */}
                         <View style={styles.formGroup}>
                             <Text style={styles.label}>
-                                Customer<Text style={styles.required}> *</Text>
+                                {tr('common.customer')}<Text style={styles.required}> *</Text>
                             </Text>
                             <Pressable
                                 style={({ pressed }) => [
@@ -455,13 +467,13 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
                                 ]}
                                 onPress={() => customerBottomSheetRef.current?.open()}
                                 accessibilityRole="button"
-                                accessibilityLabel={header.customer_name ? `Customer, ${header.customer_name}` : 'Choose customer'}
+                                accessibilityLabel={header.customer_name ? tr('dispatch.form.customerLabel', { name: header.customer_name }) : tr('dispatch.form.chooseCustomer')}
                             >
                                 <Text
                                     style={[styles.valueText, !header.customer_name && styles.placeholderText]}
                                     numberOfLines={1}
                                 >
-                                    {header.customer_name || 'Choose customer'}
+                                    {header.customer_name || tr('dispatch.form.chooseCustomer')}
                                 </Text>
                                 <Icon name="magnify" size={iconSize.md} color={t.icon.secondary} />
                             </Pressable>
@@ -471,15 +483,15 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
                         {/* Vehicle Registration - uses customer-specific suggestions */}
                         <View style={styles.formGroup}>
                             <Text style={styles.label}>
-                                Vehicle registration<Text style={styles.required}> *</Text>
+                                {tr('dispatch.form.vehicleRegistration')}<Text style={styles.required}> *</Text>
                             </Text>
                             <GhostTextInput
-                                accessibilityLabel="Vehicle registration"
+                                accessibilityLabel={tr('dispatch.form.vehicleRegistration')}
                                 value={header.registration}
                                 onChangeText={handleRegistrationChange}
                                 getSuggestion={getTopVehicleSuggestion}
                                 suggestionContext={header.customer_id}
-                                placeholder="Vehicle registration"
+                                placeholder={tr('dispatch.form.vehicleRegistration')}
                                 autoCapitalize="characters"
                                 maxLength={30}
                                 icon="car"
@@ -491,7 +503,7 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
                         {/* Supervisor */}
                         <View style={[styles.formGroup, styles.formGroupLast]}>
                             <Text style={styles.label}>
-                                Supervisor<Text style={styles.required}> *</Text>
+                                {tr('dispatch.form.supervisor')}<Text style={styles.required}> *</Text>
                             </Text>
                             <Pressable
                                 style={({ pressed }) => [
@@ -501,13 +513,13 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
                                 ]}
                                 onPress={() => setShowSupervisorBottomSheet(true)}
                                 accessibilityRole="button"
-                                accessibilityLabel={header.supervisor_name ? `Supervisor, ${header.supervisor_name}` : 'Choose supervisor'}
+                                accessibilityLabel={header.supervisor_name ? tr('dispatch.form.supervisorLabel', { name: header.supervisor_name }) : tr('dispatch.form.chooseSupervisor')}
                             >
                                 <Text
                                     style={[styles.valueText, !header.supervisor_name && styles.placeholderText]}
                                     numberOfLines={1}
                                 >
-                                    {header.supervisor_name || 'Choose supervisor'}
+                                    {header.supervisor_name || tr('dispatch.form.chooseSupervisor')}
                                 </Text>
                                 <Icon name="magnify" size={iconSize.md} color={t.icon.secondary} />
                             </Pressable>
@@ -519,7 +531,7 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
                             style={({ pressed }) => [styles.optionalToggle, pressed && styles.optionalTogglePressed]}
                             onPress={toggleOptionalFields}
                             accessibilityRole="button"
-                            accessibilityLabel={showOptionalFields ? 'Hide optional fields' : 'Show optional fields'}
+                            accessibilityLabel={showOptionalFields ? tr('dispatch.form.hideOptional') : tr('dispatch.form.showOptional')}
                             accessibilityState={{ expanded: showOptionalFields }}
                         >
                             <View style={styles.optionalToggleLeft}>
@@ -529,12 +541,12 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
                                     color={t.brand.tint}
                                 />
                                 <Text style={styles.optionalToggleText}>
-                                    {showOptionalFields ? 'Hide' : 'Show'} optional fields
+                                    {showOptionalFields ? tr('dispatch.form.hideOptional') : tr('dispatch.form.showOptional')}
                                 </Text>
                             </View>
                             {header.note && !showOptionalFields && (
                                 <View style={styles.optionalBadge}>
-                                    <Text style={styles.optionalBadgeText} maxFontSizeMultiplier={1.6}>Has notes</Text>
+                                    <Text style={styles.optionalBadgeText} maxFontSizeMultiplier={1.6}>{tr('dispatch.form.hasNotes')}</Text>
                                 </View>
                             )}
                         </Pressable>
@@ -543,22 +555,22 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
                     {/* Notes (Optional) */}
                     {showOptionalFields && (
                         <View style={styles.formGroup}>
-                            <Text style={styles.label}>Notes</Text>
+                            <Text style={styles.label}>{tr('common.notes')}</Text>
                             <View style={styles.inputContainer}>
                                 <Icon name="note-text-outline" size={iconSize.md} color={t.icon.secondary} style={styles.inputIcon} />
                                 <TextInput
                                     style={[styles.input, styles.textArea]}
-                                    accessibilityLabel="Notes"
+                                    accessibilityLabel={tr('common.notes')}
                                     value={header.note}
                                     onChangeText={handleNoteChange}
-                                    placeholder="Additional notes (up to 250 characters)"
+                                    placeholder={tr('dispatch.form.notesPlaceholder')}
                                     placeholderTextColor={t.text.placeholder}
                                     multiline
                                     maxLength={250}
                                 />
                             </View>
                             {header.note.length > 0 && (
-                                <Text style={styles.charCount}>{header.note.length}/250</Text>
+                                <Text style={styles.charCount}>{localizeDigits(`${header.note.length}/250`)}</Text>
                             )}
                         </View>
                     )}
@@ -568,7 +580,7 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
             {/* Same bottom bar as every wizard step (guide §14.3); Next validates like the swipe */}
             <WizardBottomBar
                 currentStep={1}
-                totalSteps={DISPATCH_STEPS.length}
+                totalSteps={DISPATCH_STEP_COUNT}
                 onNext={() => { void navigateToStep(2); }}
             />
 
@@ -576,7 +588,7 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
             <CustomerSearchBottomSheet
                 ref={customerBottomSheetRef}
                 onSelect={handleCustomerSelect}
-                title="Choose customer"
+                title={tr('dispatch.form.chooseCustomer')}
             />
 
             <SupervisorBottomSheet
@@ -592,7 +604,7 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
 
             {/* Date Picker Modal - Pure JS with dark mode support */}
             <DatePickerModal
-                locale="en"
+                locale={getLanguage()}
                 mode="single"
                 visible={showDatePicker}
                 onDismiss={handleDateDismiss}
@@ -600,16 +612,16 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
                 onConfirm={handleDateConfirm}
                 onChange={handleDateConfirm}
                 validRange={{ endDate: new Date() }}
-                label="Choose date"
+                label={tr('dispatch.form.chooseDate')}
             />
 
             {/* Discard Changes Dialog */}
             <ConfirmDialog
                 visible={showDiscardDialog}
-                title="Discard this dispatch?"
-                message="The details you entered will be lost."
-                confirmText="Discard dispatch"
-                cancelText="Keep editing"
+                title={tr('dispatch.wizard.discardTitle')}
+                message={tr('dispatch.wizard.discardDetailsMessage')}
+                confirmText={tr('dispatch.wizard.discardDispatch')}
+                cancelText={tr('common.keepEditing')}
                 onConfirm={handleDiscardConfirm}
                 onCancel={() => setShowDiscardDialog(false)}
                 variant="danger"

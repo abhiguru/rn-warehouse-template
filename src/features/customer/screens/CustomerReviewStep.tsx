@@ -21,11 +21,10 @@ import * as ImagePicker from 'expo-image-picker';
 import { withNativeHandoff } from '@/config/nativeHandoff';
 import { router } from 'expo-router';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
-import { fontWeight, iconSize, layout, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
+import { fontWeight, iconSize, layout, radius, space, touchTarget, typography, type ThemeTokens, trackedText } from '@/theme/tokens';
 import { useCustomerForm } from '@/hooks/useCustomerForm';
 import { GenericStepIndicatorHeader } from '@/components/GenericStepIndicatorHeader';
 import {
-  CUSTOMER_STEPS,
   CUSTOMER_STEP_NUMBERS,
   getCompletedSteps,
 } from '@/constants/customerSteps';
@@ -36,6 +35,8 @@ import {
 
 import { showAlert } from '@/utils/alert';
 import { formatMobile } from '@/utils/formatters';
+import { customerSteps } from '@/features/customer/customerStepLabels';
+import { t as tr } from '@/i18n';
 // =============================================================================
 // COMPONENT
 // =============================================================================
@@ -83,11 +84,11 @@ export function CustomerReviewStep({
 
     if (isDirty) {
       showAlert(
-        isCreateMode ? 'Discard this customer?' : 'Discard your changes?',
-        'Your unsaved changes will be lost.',
+        isCreateMode ? tr('customers.form.discardNewTitle') : tr('customers.form.discardChangesTitle'),
+        tr('customers.form.discardMessage'),
         [
-          { text: 'Keep editing', style: 'cancel' },
-          { text: 'Discard', style: 'destructive', onPress: confirmDiscard },
+          { text: tr('common.keepEditing'), style: 'cancel' },
+          { text: tr('common.discard'), style: 'destructive', onPress: confirmDiscard },
         ]
       );
     } else {
@@ -125,7 +126,7 @@ export function CustomerReviewStep({
   // Document handling
   const handleAddDocument = useCallback(async () => {
     if (formData.document_images.length >= 10) {
-      showAlert('Document limit reached', 'A customer can have up to 10 documents. Remove one to add another.');
+      showAlert(tr('customers.review.documentLimitTitle'), tr('customers.review.documentLimitMessage', { max: 10 }));
       return;
     }
 
@@ -155,7 +156,7 @@ export function CustomerReviewStep({
       }
     } catch (error) {
       console.error('[CustomerReviewStep] Image picker error:', error);
-      showAlert("Couldn't add photos", 'Try again, or choose different photos.');
+      showAlert(tr('customers.review.couldNotAddPhotosTitle'), tr('customers.review.couldNotAddPhotosMessage'));
     } finally {
       setIsPickingImage(false);
     }
@@ -164,12 +165,12 @@ export function CustomerReviewStep({
   const handleRemoveDocument = useCallback(
     (uri: string) => {
       showAlert(
-        'Remove this document?',
-        'It will not be saved with the customer.',
+        tr('customers.review.removeDocumentTitle'),
+        tr('customers.review.removeDocumentMessage'),
         [
-          { text: 'Cancel', style: 'cancel' },
+          { text: tr('common.cancel'), style: 'cancel' },
           {
-            text: 'Remove document',
+            text: tr('customers.review.removeDocument'),
             style: 'destructive',
             onPress: () => removeDocument(uri),
           },
@@ -185,6 +186,7 @@ export function CustomerReviewStep({
 
   const renderSectionCard = (
     title: string,
+    editLabel: string,
     icon: string,
     step: number,
     children: React.ReactNode
@@ -201,11 +203,11 @@ export function CustomerReviewStep({
           style={({ pressed }) => [styles.editButton, pressed && styles.editButtonPressed]}
           onPress={() => handleEditSection(step)}
           accessibilityRole="button"
-          accessibilityLabel={`Edit ${title.toLowerCase()}`}
+          accessibilityLabel={editLabel}
           hitSlop={space.sm}
         >
           <Icon name="pencil-outline" size={iconSize.sm} color={t.brand.tint} />
-          <Text style={styles.editButtonText}>Edit</Text>
+          <Text style={styles.editButtonText}>{tr('common.edit')}</Text>
         </Pressable>
       </View>
       <View style={styles.sectionContent}>{children}</View>
@@ -215,7 +217,7 @@ export function CustomerReviewStep({
   const renderDetailRow = (label: string, value: string | undefined) => {
     if (!value) return null;
     return (
-      <View style={styles.detailRow} accessible accessibilityLabel={`${label}, ${value}`}>
+      <View style={styles.detailRow} accessible accessibilityLabel={tr('customers.review.labelValue', { label, value })}>
         <Text style={styles.detailLabel}>{label}</Text>
         <Text style={styles.detailValue}>{value}</Text>
       </View>
@@ -226,19 +228,21 @@ export function CustomerReviewStep({
   // RENDER
   // ===========================================================================
 
-  const submitLabel = isCreateMode ? 'Create customer' : 'Save customer';
+  const submitLabel = isCreateMode ? tr('customers.review.createCustomer') : tr('customers.review.saveCustomer');
 
   return (
     <View style={styles.container}>
       {/* Step Indicator */}
       <GenericStepIndicatorHeader
-        steps={CUSTOMER_STEPS}
+        steps={customerSteps()}
         currentStep={CUSTOMER_STEP_NUMBERS.REVIEW}
         completedSteps={getCompletedSteps(CUSTOMER_STEP_NUMBERS.REVIEW)}
         onCancel={handleCancel}
         onStepPress={handleStepIndicatorPress}
-        entityName="Customer"
-        entityId={isCreateMode ? undefined : formData.name || 'Editing'}
+        entity="customer"
+        mode={isCreateMode ? 'create' : 'edit'}
+        entityId={isCreateMode ? undefined : formData.name || tr('customers.form.editing')}
+        cancelTitle={tr('customers.form.discardHeaderTitle')}
       />
 
       <ScrollView
@@ -249,31 +253,33 @@ export function CustomerReviewStep({
         {/* Header */}
         <View style={styles.header}>
           <Text style={styles.title} accessibilityRole="header">
-            Review
+            {tr('customers.review.title')}
           </Text>
           <Text style={styles.subtitle}>
-            Check the details below before you {isCreateMode ? 'create' : 'save'} the customer.
+            {isCreateMode ? tr('customers.review.subtitleCreate') : tr('customers.review.subtitleSave')}
           </Text>
         </View>
 
         {/* Basic Information Section */}
         {renderSectionCard(
-          'Basic information',
+          tr('customers.steps.basic.label'),
+          tr('customers.review.editBasic'),
           'account-outline',
           CUSTOMER_STEP_NUMBERS.BASIC,
           <>
-            {renderDetailRow('Name', formData.name)}
-            {renderDetailRow('Mobile', formatMobile(formData.mobile))}
-            {renderDetailRow('Email', formData.email)}
+            {renderDetailRow(tr('customers.fields.name'), formData.name)}
+            {renderDetailRow(tr('customers.fields.mobile'), formatMobile(formData.mobile))}
+            {renderDetailRow(tr('customers.fields.email'), formData.email)}
             {!formData.name && !formData.mobile && (
-              <Text style={styles.emptyText}>No basic information entered.</Text>
+              <Text style={styles.emptyText}>{tr('customers.review.noBasic')}</Text>
             )}
           </>
         )}
 
         {/* Address & Tax Section */}
         {renderSectionCard(
-          'Address and tax details',
+          tr('customers.steps.details.label'),
+          tr('customers.review.editDetails'),
           'map-marker-outline',
           CUSTOMER_STEP_NUMBERS.DETAILS,
           <>
@@ -284,12 +290,12 @@ export function CustomerReviewStep({
               formData.address) && (
               <View style={styles.subsection}>
                 <Text style={styles.subsectionTitle} accessibilityRole="header">
-                  Address
+                  {tr('customers.form.address')}
                 </Text>
-                {renderDetailRow('City', formData.city)}
-                {renderDetailRow('State', formData.state)}
-                {renderDetailRow('Pincode', formData.pincode)}
-                {renderDetailRow('Address', formData.address)}
+                {renderDetailRow(tr('customers.fields.city'), formData.city)}
+                {renderDetailRow(tr('customers.fields.state'), formData.state)}
+                {renderDetailRow(tr('customers.fields.pincode'), formData.pincode)}
+                {renderDetailRow(tr('customers.fields.address'), formData.address)}
               </View>
             )}
 
@@ -297,10 +303,10 @@ export function CustomerReviewStep({
             {(formData.gst || formData.pan) && (
               <View style={styles.subsection}>
                 <Text style={styles.subsectionTitle} accessibilityRole="header">
-                  Tax details
+                  {tr('customers.form.taxDetails')}
                 </Text>
-                {renderDetailRow('GST', formData.gst)}
-                {renderDetailRow('PAN', formData.pan)}
+                {renderDetailRow(tr('customers.fields.gst'), formData.gst)}
+                {renderDetailRow(tr('customers.fields.pan'), formData.pan)}
               </View>
             )}
 
@@ -310,16 +316,16 @@ export function CustomerReviewStep({
               formData.contact_email) && (
               <View style={styles.subsection}>
                 <Text style={styles.subsectionTitle} accessibilityRole="header">
-                  Contact person
+                  {tr('customers.form.contactPerson')}
                 </Text>
-                {renderDetailRow('Name', formData.contact_name)}
-                {renderDetailRow('Mobile', formatMobile(formData.contact_mobile))}
-                {renderDetailRow('Email', formData.contact_email)}
+                {renderDetailRow(tr('customers.fields.name'), formData.contact_name)}
+                {renderDetailRow(tr('customers.fields.mobile'), formatMobile(formData.contact_mobile))}
+                {renderDetailRow(tr('customers.fields.email'), formData.contact_email)}
               </View>
             )}
 
             {!formData.city && !formData.gst && !formData.contact_name && (
-              <Text style={styles.emptyText}>No additional details entered.</Text>
+              <Text style={styles.emptyText}>{tr('customers.review.noDetails')}</Text>
             )}
           </>
         )}
@@ -330,14 +336,14 @@ export function CustomerReviewStep({
             <View style={styles.sectionTitleRow}>
               <Icon name="file-document-outline" size={iconSize.md} color={t.brand.tint} />
               <Text style={styles.sectionTitle} accessibilityRole="header">
-                Documents
+                {tr('customers.review.documents')}
               </Text>
             </View>
             <Text
               style={styles.documentCount}
-              accessibilityLabel={`${formData.document_images.length} of 10 documents`}
+              accessibilityLabel={tr('customers.review.documentCountLabel', { count: formData.document_images.length, max: 10 })}
             >
-              {formData.document_images.length} of 10
+              {tr('customers.review.documentCount', { count: formData.document_images.length, max: 10 })}
             </Text>
           </View>
 
@@ -352,13 +358,13 @@ export function CustomerReviewStep({
                     contentFit="cover"
                     cachePolicy="memory-disk"
                     transition={150}
-                    accessibilityLabel={`Customer document ${index + 1}`}
+                    accessibilityLabel={tr('customers.review.documentImage', { number: index + 1 })}
                   />
                   <Pressable
                     style={styles.removeDocumentButton}
                     onPress={() => handleRemoveDocument(doc.uri)}
                     accessibilityRole="button"
-                    accessibilityLabel={`Remove document ${index + 1}`}
+                    accessibilityLabel={tr('customers.review.removeDocumentNumber', { number: index + 1 })}
                   >
                     <View style={styles.removeDocumentCircle}>
                       <Icon name="close" size={iconSize.sm} color={t.overlay.onImage} />
@@ -376,13 +382,13 @@ export function CustomerReviewStep({
                   ]}
                   onPress={() =>
                     showAlert(
-                      'Uploads unavailable',
-                      "Customer document uploads aren't available in the local demo."
+                      tr('customers.review.uploadsUnavailableTitle'),
+                      tr('customers.review.uploadsUnavailableMessage')
                     )
                   }
                   disabled={isPickingImage}
                   accessibilityRole="button"
-                  accessibilityLabel="Add document"
+                  accessibilityLabel={tr('customers.review.addDocument')}
                   accessibilityState={{ disabled: isPickingImage, busy: isPickingImage }}
                 >
                   {isPickingImage ? (
@@ -390,7 +396,7 @@ export function CustomerReviewStep({
                   ) : (
                     <>
                       <Icon name="camera-outline" size={iconSize.xl} color={t.brand.tint} />
-                      <Text style={styles.addDocumentText}>Add</Text>
+                      <Text style={styles.addDocumentText}>{tr('common.add')}</Text>
                     </>
                   )}
                 </Pressable>
@@ -398,7 +404,7 @@ export function CustomerReviewStep({
             </View>
 
             <Text style={styles.helperText}>
-              Customer document uploads aren't available in the local demo.
+              {tr('customers.review.uploadsUnavailableMessage')}
             </Text>
           </View>
         </View>
@@ -418,11 +424,11 @@ export function CustomerReviewStep({
           onPress={handleBack}
           disabled={isSubmitting}
           accessibilityRole="button"
-          accessibilityLabel="Back to address and tax details"
+          accessibilityLabel={tr('customers.form.backToDetails')}
           accessibilityState={{ disabled: isSubmitting }}
         >
           <Icon name="chevron-left" size={iconSize.md} color={t.brand.tint} />
-          <Text style={styles.backButtonText}>Back</Text>
+          <Text style={styles.backButtonText}>{tr('common.back')}</Text>
         </Pressable>
 
         <Pressable
@@ -436,7 +442,7 @@ export function CustomerReviewStep({
           {isSubmitting ? (
             <>
               <ActivityIndicator color={t.brand.onFill} />
-              <Text style={styles.submitButtonText}>Saving…</Text>
+              <Text style={styles.submitButtonText}>{tr('common.saving')}</Text>
             </>
           ) : (
             <>
@@ -537,7 +543,7 @@ const makeStyles = (t: ThemeTokens) => ({
   subsectionTitle: {
     ...typography.footnote,
     textTransform: 'uppercase' as const,
-    letterSpacing: 0.5,
+    letterSpacing: trackedText(0.5),
     color: t.text.secondary,
     marginBottom: space.sm,
   },

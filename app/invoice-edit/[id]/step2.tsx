@@ -24,9 +24,8 @@ import {
 import { InvoiceItemsTable } from '@/features/invoice/components/InvoiceItemsTable';
 import { InvoiceItemCard } from '@/features/invoice/components/InvoiceItemCard';
 import { validateStep2 } from '@/features/invoice/schemas/invoiceValidation';
-import { InvoiceStepIndicator } from '@/components/InvoiceStepIndicator';
+import { InvoiceStepIndicator, invoiceSteps } from '@/components/InvoiceStepIndicator';
 import {
-  INVOICE_STEPS,
   STEP_NUMBERS,
   getCompletedSteps,
   makeInvoiceWizardStyles,
@@ -34,7 +33,8 @@ import {
 import { canNavigateFromStep2 } from '@/features/invoice/utils/swipeNavigationHelpers';
 
 import { showAlert } from '@/utils/alert';
-import { formatCount } from '@/utils/formatters';
+import { t as tr } from '@/i18n';
+import { formatNumber } from '@/utils/formatters';
 export default function InvoiceEditStep2() {
   const dispatch = useAppDispatch();
   const styles = useThemedStyles(makeInvoiceWizardStyles);
@@ -74,7 +74,7 @@ export default function InvoiceEditStep2() {
       setLocalValidationErrors(validation.errors);
       dispatch(setValidationErrors(validation.errors));
 
-      showAlert('Check the item prices', 'Every item needs a charge and a duration greater than 0.');
+      showAlert(tr('invoice.items.checkPricesTitle'), tr('invoice.items.checkPricesMessage'));
       return;
     }
 
@@ -85,8 +85,8 @@ export default function InvoiceEditStep2() {
 
     if (invalidItems.length > 0) {
       showAlert(
-        'Check the item prices',
-        `${invalidItems.length === 1 ? '1 item has' : `${invalidItems.length} items have`} no charge or duration. Enter a charge and duration greater than 0.`
+        tr('invoice.items.checkPricesTitle'),
+        tr('invoice.items.missingPrice', { count: invalidItems.length })
       );
       return;
     }
@@ -120,7 +120,7 @@ export default function InvoiceEditStep2() {
   return (
     <View style={styles.container}>
       <InvoiceStepIndicator
-        steps={INVOICE_STEPS}
+        steps={invoiceSteps()}
         currentStep={STEP_NUMBERS.ITEMS}
         completedSteps={getCompletedSteps(STEP_NUMBERS.ITEMS)}
         onCancel={handleCancel}
@@ -139,9 +139,9 @@ export default function InvoiceEditStep2() {
         keyboardShouldPersistTaps="handled"
       >
         {/* Item count */}
-        <View style={[styles.card, styles.kvRow]} accessible accessibilityLabel={`${formatCount(items.length, 'item')} to invoice`}>
-          <Text style={styles.kvKey}>Items to invoice</Text>
-          <Text style={[styles.kvValue, styles.bold, styles.numeric]}>{items.length}</Text>
+        <View style={[styles.card, styles.kvRow]} accessible accessibilityLabel={tr('invoice.items.itemsToInvoiceA11y', { count: items.length })}>
+          <Text style={styles.kvKey}>{tr('invoice.items.itemsToInvoice')}</Text>
+          <Text style={[styles.kvValue, styles.bold, styles.numeric]}>{formatNumber(items.length)}</Text>
         </View>
 
         {/* Grouped Items Table */}
@@ -156,17 +156,17 @@ export default function InvoiceEditStep2() {
         <View style={styles.infoStrip}>
           <Icon name="information" size={iconSize.md} color={t.status.informative.text} />
           <View style={styles.infoStripContent}>
-            <Text style={styles.infoStripTitle} accessibilityRole="header">How pricing works</Text>
+            <Text style={styles.infoStripTitle} accessibilityRole="header">{tr('invoice.items.guide.title')}</Text>
             <Text style={styles.infoStripText}>
-              • Tap an item group to open or close it.{'\n'}
-              • Group prices apply to every dispatch in the group.{'\n'}
-              • Open a dispatch to change the price of one line.{'\n'}
-              • <Text style={styles.bold}>Duration</Text>: months in storage (calculated).{'\n'}
-              • <Text style={styles.bold}>Charge</Text>: storage rate per unit per month.{'\n'}
-              • <Text style={styles.bold}>Labour rate</Text>: handling charge per unit.{'\n'}
-              • <Text style={styles.bold}>Tax</Text>: tax percent, for example 18 for 18%.{'\n'}
-              • Lines with their own price show a &quot;Custom&quot; tag.{'\n'}
-              • Amounts are calculated for you.
+              • {tr('invoice.items.guide.tapGroup')}{'\n'}
+              • {tr('invoice.items.guide.groupPrices')}{'\n'}
+              • {tr('invoice.items.guide.openDispatch')}{'\n'}
+              • <Text style={styles.bold}>{tr('invoice.label.duration')}</Text>{tr('invoice.items.guide.durationText')}{'\n'}
+              • <Text style={styles.bold}>{tr('invoice.label.charge')}</Text>{tr('invoice.items.guide.chargeText')}{'\n'}
+              • <Text style={styles.bold}>{tr('invoice.label.labourRate')}</Text>{tr('invoice.items.guide.labourText')}{'\n'}
+              • <Text style={styles.bold}>{tr('invoice.label.tax')}</Text>{tr('invoice.items.guide.taxText')}{'\n'}
+              • {tr('invoice.items.guide.customTag')}{'\n'}
+              • {tr('invoice.items.guide.calculated')}
             </Text>
           </View>
         </View>
@@ -178,18 +178,18 @@ export default function InvoiceEditStep2() {
           style={({ pressed }) => [styles.button, styles.secondaryButton, pressed && styles.secondaryButtonPressed]}
           onPress={handleBack}
           accessibilityRole="button"
-          accessibilityLabel="Back to details"
+          accessibilityLabel={tr('invoice.items.backToDetails')}
         >
           <Icon name="chevron-left" size={iconSize.md} color={t.brand.tint} />
-          <Text style={styles.secondaryButtonText}>Back</Text>
+          <Text style={styles.secondaryButtonText}>{tr('common.back')}</Text>
         </Pressable>
         <Pressable
           style={({ pressed }) => [styles.button, styles.primaryButton, pressed && styles.primaryButtonPressed]}
           onPress={handleNext}
           accessibilityRole="button"
-          accessibilityLabel="Next: review"
+          accessibilityLabel={tr('invoice.items.nextReview')}
         >
-          <Text style={styles.primaryButtonText}>Next: review</Text>
+          <Text style={styles.primaryButtonText}>{tr('invoice.items.nextReview')}</Text>
           <Icon name="chevron-right" size={iconSize.md} color={t.brand.onFill} />
         </Pressable>
       </View>

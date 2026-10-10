@@ -1,61 +1,68 @@
 import * as yup from 'yup';
+import { normalizeDigits, t, type TranslationKey } from '@/i18n';
+
+/**
+ * A yup message resolved when the error is reported, not when this file is
+ * loaded, so it follows the app's language (docs/I18N.md rule 2).
+ */
+const msg = (key: TranslationKey) => () => t(key);
 
 // Step 1: GRN Header Schema
 export const step1Schema = yup.object().shape({
   registration: yup
     .string()
-    .max(12, 'Registration must be at most 12 characters'),
+    .max(12, msg('grn.validation.registrationMax')),
 
   date: yup
     .date()
-    .required('Date is required')
-    .max(new Date(), 'Cannot select a future date'),
+    .required(msg('grn.validation.dateRequired'))
+    .max(new Date(), msg('grn.validation.dateFuture')),
 
   sender_name: yup
     .string()
-    .required('Sender name is required')
-    .max(200, 'Sender name must be at most 200 characters'),
+    .required(msg('grn.validation.senderRequired'))
+    .max(200, msg('grn.validation.senderMax')),
 
   customer_id: yup
     .string()
-    .uuid('Invalid customer selection')
-    .required('Customer is required'),
+    .uuid(msg('grn.validation.customerInvalid'))
+    .required(msg('grn.validation.customerRequired')),
 
   customer_name: yup
     .string()
-    .required('Customer name is required')
-    .max(200, 'Customer name must be at most 200 characters'),
+    .required(msg('grn.validation.customerRequired'))
+    .max(200, msg('grn.validation.customerNameMax')),
 
   supervisor_id: yup
     .string()
-    .uuid('Invalid supervisor selection')
-    .required('Supervisor is required'),
+    .uuid(msg('grn.validation.supervisorInvalid'))
+    .required(msg('grn.validation.supervisorRequired')),
 
   supervisor_name: yup
     .string()
-    .required('Supervisor name is required')
-    .max(30, 'Supervisor name must be at most 30 characters'),
+    .required(msg('grn.validation.supervisorRequired'))
+    .max(30, msg('grn.validation.supervisorNameMax')),
 
   note: yup
     .string()
-    .max(280, 'Note must be at most 280 characters'),
+    .max(280, msg('grn.validation.noteMax')),
 
   leon: yup
     .boolean(),
 
   pricing_mode: yup
     .string()
-    .oneOf(['ONE_TIME', 'MONTHLY'], 'Invalid pricing mode')
-    .required('Pricing mode is required'),
+    .oneOf(['ONE_TIME', 'MONTHLY'], msg('grn.validation.pricingModeInvalid'))
+    .required(msg('grn.validation.pricingModeRequired')),
 
   gr_image_urls: yup
     .array()
-    .of(yup.string().test('valid-uri', 'Invalid image URL', (value) => {
+    .of(yup.string().test('valid-uri', msg('grn.validation.imageUrlInvalid'), (value) => {
       if (!value) return true; // Allow empty values
       // Allow http/https URLs and local file URIs
       return /^(https?:\/\/|file:\/\/\/)/.test(value);
     }))
-    .max(10, 'Maximum 10 images allowed'),
+    .max(10, msg('grn.validation.imagesMax')),
 });
 
 // ---------------------------------------------------------------------------
@@ -75,12 +82,13 @@ const WHOLE_NUMBER_PATTERN = /^\d{1,9}$/;
 
 /**
  * Parse a typed whole number: surrounding whitespace is ignored, otherwise the
- * text must be one to nine ASCII digits. No sign, exponent, radix prefix,
- * separator, decimal point or inner whitespace. Returns null for anything else.
+ * text must be one to nine digits (0-9, or ૦-૯ which mean the same). No sign,
+ * exponent, radix prefix, separator, decimal point or inner whitespace.
+ * Returns null for anything else.
  */
 export const parseWholeNumberInput = (text: string): number | null => {
   if (typeof text !== 'string') return null;
-  const trimmed = text.trim();
+  const trimmed = normalizeDigits(text.trim());
   if (!WHOLE_NUMBER_PATTERN.test(trimmed)) return null;
   return Number(trimmed);
 };
@@ -117,28 +125,28 @@ const wholeNumberTransform = (_value: unknown, originalValue: unknown): unknown 
 export const receiptQuantitySchema = yup
   .number()
   .transform(wholeNumberTransform)
-  .typeError('Quantity must be a whole number')
-  .required('Quantity is required')
-  .integer('Quantity must be a whole number')
-  .min(1, 'Quantity must be at least 1')
-  .max(WHOLE_NUMBER_MAX, 'Quantity must be at most 999,999,999');
+  .typeError(msg('grn.validation.quantityWhole'))
+  .required(msg('grn.validation.quantityRequired'))
+  .integer(msg('grn.validation.quantityWhole'))
+  .min(1, msg('grn.validation.quantityMin'))
+  .max(WHOLE_NUMBER_MAX, msg('grn.validation.quantityMax'));
 
 export const receiptStockSchema = yup
   .number()
   .transform(wholeNumberTransform)
-  .typeError('Stock must be a whole number')
-  .required('Stock is required')
-  .integer('Stock must be a whole number')
-  .min(0, 'Stock cannot be negative')
-  .max(yup.ref('qty'), 'Stock cannot exceed the received quantity');
+  .typeError(msg('grn.validation.stockWhole'))
+  .required(msg('grn.validation.stockRequired'))
+  .integer(msg('grn.validation.stockWhole'))
+  .min(0, msg('grn.validation.stockNegative'))
+  .max(yup.ref('qty'), msg('grn.validation.stockExceeds'));
 
 export const receiptWeightSchema = yup
   .number()
   .transform(wholeNumberTransform)
-  .typeError('Weight must be a whole number')
-  .integer('Weight must be a whole number')
-  .min(0, 'Weight cannot be negative')
-  .max(WHOLE_NUMBER_MAX, 'Weight must be at most 999,999,999');
+  .typeError(msg('grn.validation.weightWhole'))
+  .integer(msg('grn.validation.weightWhole'))
+  .min(0, msg('grn.validation.weightNegative'))
+  .max(WHOLE_NUMBER_MAX, msg('grn.validation.weightMax'));
 
 export const isValidReceiptQuantity = (value: string): boolean =>
   parseReceiptQuantity(value) !== null;
@@ -147,17 +155,17 @@ export const isValidReceiptQuantity = (value: string): boolean =>
 export const itemSchema = yup.object().shape({
   item_table_id: yup
     .string()
-    .uuid('Invalid item selection')
-    .required('Please select an item from the catalog'),
+    .uuid(msg('grn.validation.itemInvalid'))
+    .required(msg('grn.validation.itemSelectRequired')),
 
   item_name: yup
     .string()
-    .required('Item name is required')
-    .max(30, 'Item name must be at most 30 characters'),
+    .required(msg('grn.validation.itemNameRequired'))
+    .max(30, msg('grn.validation.itemNameMax')),
 
   packaging: yup
     .string()
-    .max(20, 'Packaging must be at most 20 characters'),
+    .max(20, msg('grn.validation.packagingMax')),
 
   qty: receiptQuantitySchema,
 
@@ -167,10 +175,10 @@ export const itemSchema = yup.object().shape({
 
   rack: yup
     .string()
-    .max(30, 'Rack must be at most 30 characters')
+    .max(30, msg('grn.validation.rackMax'))
     .test(
       'valid-rack-format',
-      'Rack must be in format: Floor/Chamber or Rack/Floor/Chamber',
+      msg('grn.validation.rackFormat'),
       function (value) {
         // Empty rack is valid (optional field)
         if (!value || value.trim() === '') return true;
@@ -183,7 +191,7 @@ export const itemSchema = yup.object().shape({
 
         if (!floorChamberOnlyPattern.test(value) && !fullPattern.test(value)) {
           return this.createError({
-            message: 'Rack must be in format: Floor/Chamber or Rack/Floor/Chamber with valid Floor (BASE, F1-F4) and Chamber (C4, C7, C2, Anti-Ch)',
+            message: t('grn.validation.rackFormatDetailed', { floors: 'BASE, F1-F4', chambers: 'C4, C7, C2, Anti-Ch' }),
           });
         }
 
@@ -193,11 +201,11 @@ export const itemSchema = yup.object().shape({
 
   package_mark: yup
     .string()
-    .max(60, 'Package mark must be at most 60 characters'),
+    .max(60, msg('grn.validation.packageMarkMax')),
 
   trl_img_url: yup
     .string()
-    .test('valid-uri', 'Invalid image URL', (value) => {
+    .test('valid-uri', msg('grn.validation.imageUrlInvalid'), (value) => {
       if (!value) return true; // Allow empty values
       // Allow http/https URLs and local file URIs
       return /^(https?:\/\/|file:\/\/\/)/.test(value);
@@ -208,8 +216,8 @@ export const step2Schema = yup.object().shape({
   items: yup
     .array()
     .of(itemSchema)
-    .min(1, 'At least one item is required')
-    .required('Items are required'),
+    .min(1, msg('grn.validation.itemsMin'))
+    .required(msg('grn.validation.itemsRequired')),
 });
 
 // Combined schema for full validation
@@ -227,13 +235,13 @@ export const validateStep1 = async (data: any): Promise<{ isValid: boolean; erro
     if (error instanceof yup.ValidationError) {
       const errors: Record<string, string> = {};
       error.inner.forEach((err) => {
-        if (err.path) {
+        if (err.path && (!(err.path in errors) || err.type === 'required')) {
           errors[err.path] = err.message;
         }
       });
       return { isValid: false, errors };
     }
-    return { isValid: false, errors: { _error: 'Validation failed' } };
+    return { isValid: false, errors: { _error: t('grn.validation.failed') } };
   }
 };
 
@@ -245,13 +253,13 @@ export const validateStep2 = async (data: any): Promise<{ isValid: boolean; erro
     if (error instanceof yup.ValidationError) {
       const errors: Record<string, string> = {};
       error.inner.forEach((err) => {
-        if (err.path) {
+        if (err.path && (!(err.path in errors) || err.type === 'required')) {
           errors[err.path] = err.message;
         }
       });
       return { isValid: false, errors };
     }
-    return { isValid: false, errors: { _error: 'Validation failed' } };
+    return { isValid: false, errors: { _error: t('grn.validation.failed') } };
   }
 };
 
@@ -263,13 +271,13 @@ export const validateStep3 = async (data: any): Promise<{ isValid: boolean; erro
     if (error instanceof yup.ValidationError) {
       const errors: Record<string, string> = {};
       error.inner.forEach((err) => {
-        if (err.path) {
+        if (err.path && (!(err.path in errors) || err.type === 'required')) {
           errors[err.path] = err.message;
         }
       });
       return { isValid: false, errors };
     }
-    return { isValid: false, errors: { _error: 'Validation failed' } };
+    return { isValid: false, errors: { _error: t('grn.validation.failed') } };
   }
 };
 
@@ -281,12 +289,12 @@ export const validateFullGRN = async (data: any): Promise<{ isValid: boolean; er
     if (error instanceof yup.ValidationError) {
       const errors: Record<string, string> = {};
       error.inner.forEach((err) => {
-        if (err.path) {
+        if (err.path && (!(err.path in errors) || err.type === 'required')) {
           errors[err.path] = err.message;
         }
       });
       return { isValid: false, errors };
     }
-    return { isValid: false, errors: { _error: 'Validation failed' } };
+    return { isValid: false, errors: { _error: t('grn.validation.failed') } };
   }
 };

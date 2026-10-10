@@ -41,10 +41,13 @@ import {
   space,
   typography,
   type ThemeTokens,
+  trackedText,
 } from '@/theme/tokens';
 
 import { showAlert } from '@/utils/alert';
 import { formatMobile } from '@/utils/formatters';
+import { localizeDigits, normalizeDigits, t as tr } from '@/i18n';
+import { clearSignInDraft } from '@/utils/signInDraft';
 const CODE_LENGTH = 6;
 
 export default function OTPScreen() {
@@ -71,6 +74,8 @@ export default function OTPScreen() {
     message: rateLimitMessage,
     handleRateLimitError,
   } = useRateLimitCountdown();
+  // A countdown is a number: ૦-૯ in Gujarati.
+  const countdown = localizeDigits(countdownText);
 
   useEffect(() => {
     if (!phoneNumber) {
@@ -96,7 +101,8 @@ export default function OTPScreen() {
   }, [phoneNumber]);
 
   const handleOtpChange = (value: string) => {
-    const numericValue = value.replace(/[^0-9]/g, '').slice(0, CODE_LENGTH);
+    // ૦-૯ typed on a Gujarati keyboard count as 0-9; the code is stored and sent in 0-9.
+    const numericValue = normalizeDigits(value).replace(/[^0-9]/g, '').slice(0, CODE_LENGTH);
     setOtpCode(numericValue);
     setFocusedIndex(numericValue.length);
 
@@ -125,7 +131,7 @@ export default function OTPScreen() {
 
   const handleVerifyOTPWithCode = async (code: string) => {
     if (code.length !== CODE_LENGTH) {
-      showAlert('Enter the full code', 'Enter all 6 digits of the code we sent you.');
+      showAlert(tr('auth.otp.incompleteTitle'), tr('auth.otp.incompleteMessage'));
       return;
     }
 
@@ -135,6 +141,8 @@ export default function OTPScreen() {
       const result = await verifyOTP(phoneNumber, code);
 
       if (result.success && result.data) {
+        // Signed in (or waiting for approval): the number typed on the sign-in screen is no longer needed.
+        clearSignInDraft();
         if (result.data.action === 'pending') {
           dispatch(setOtpSent(false));
           router.replace('/pending-enrollment');
@@ -153,10 +161,10 @@ export default function OTPScreen() {
         const friendlyMessage = parseErrorToFriendly(
           (result as { success: false; error: string }).error
         );
-        showAlert("Couldn't verify the code", friendlyMessage);
+        showAlert(tr('auth.otp.couldNotVerifyTitle'), friendlyMessage);
       }
     } catch {
-      showAlert("Couldn't verify the code", 'Check your connection and try again.');
+      showAlert(tr('auth.otp.couldNotVerifyTitle'), tr('common.checkConnection'));
     } finally {
       dispatch(setVerifyingOTP(false));
     }
@@ -180,21 +188,21 @@ export default function OTPScreen() {
         setOtpCode('');
         setFocusedIndex(0);
         showAlert(
-          'Code sent',
-          `A new code was sent to ${formatMobile(phoneNumber)}.`
+          tr('auth.otp.codeSentTitle'),
+          tr('auth.otp.codeSentMessage', { phone: formatMobile(phoneNumber) })
         );
       } else {
-        if (handleRateLimitError(result.error)) {
+        if (handleRateLimitError(result)) {
           return;
         }
         const friendlyMessage = parseErrorToFriendly(result.error);
-        showAlert("Couldn't send the code", friendlyMessage);
+        showAlert(tr('auth.login.couldNotSendTitle'), friendlyMessage);
       }
     } catch (error) {
       if (handleRateLimitError(error)) {
         return;
       }
-      showAlert("Couldn't send the code", 'Check your connection and try again.');
+      showAlert(tr('auth.login.couldNotSendTitle'), tr('common.checkConnection'));
     } finally {
       dispatch(setAuthenticating(false));
     }
@@ -205,11 +213,11 @@ export default function OTPScreen() {
     router.back();
   };
 
-  // Format timer display
+  // Format timer display (a number: ૦-૯ in Gujarati)
   const formatTimer = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
+    return localizeDigits(`${mins}:${secs.toString().padStart(2, '0')}`);
   };
 
   const displayPhone = formatMobile(phoneNumber);
@@ -231,8 +239,8 @@ export default function OTPScreen() {
         caretHidden
         editable={!isVerifyingOTP}
         style={styles.hiddenInput}
-        accessibilityLabel="Verification code"
-        accessibilityHint={`Enter the 6-digit code sent to ${displayPhone}`}
+        accessibilityLabel={tr('auth.otp.codeLabel')}
+        accessibilityHint={tr('auth.otp.codeHint', { phone: displayPhone })}
       />
 
       {/* Navigation bar - back button, outside the ScrollView */}
@@ -265,9 +273,9 @@ export default function OTPScreen() {
                   color={t.brand.tint}
                 />
               </View>
-              <Text style={styles.title}>Verify your phone</Text>
+              <Text style={styles.title}>{tr('auth.otp.title')}</Text>
               <Text style={styles.description}>
-                Enter the 6-digit code sent to
+                {tr('auth.otp.sentToLead')}
               </Text>
               <Text style={styles.phoneNumber}>{displayPhone}</Text>
             </View>
@@ -275,15 +283,15 @@ export default function OTPScreen() {
             {/* B. Code Input Section */}
             <View style={styles.otpSection}>
               <Text style={styles.sectionHeader} accessibilityRole="header">
-                VERIFICATION CODE
+                {tr('auth.otp.codeHeader')}
               </Text>
 
               <Pressable
                 style={styles.otpContainer}
                 onPress={focusHiddenInput}
                 accessibilityRole="button"
-                accessibilityLabel={`Verification code, ${otpCode.length} of ${CODE_LENGTH} digits entered`}
-                accessibilityHint="Opens the keyboard to type the code"
+                accessibilityLabel={tr('auth.otp.codeProgress', { entered: otpCode.length, total: CODE_LENGTH })}
+                accessibilityHint={tr('auth.otp.openKeyboardHint')}
               >
                 {Array.from({ length: CODE_LENGTH }, (_, index) => {
                   const digit = otpCode[index] || '';
@@ -303,7 +311,7 @@ export default function OTPScreen() {
 
               {/* Helper text */}
               <Text style={styles.helperText}>
-                Code expires in {formatTimer(expiryTimer)}
+                {tr('auth.otp.expiresIn', { time: formatTimer(expiryTimer) })}
               </Text>
             </View>
 
@@ -313,14 +321,14 @@ export default function OTPScreen() {
                 style={styles.messageStrip}
                 accessible={true}
                 accessibilityRole="alert"
-                accessibilityLabel={`Warning. ${rateLimitMessage}. Try again in ${countdownText}`}
+                accessibilityLabel={tr('auth.rateLimit.warningLabel', { message: rateLimitMessage, time: countdown })}
                 accessibilityLiveRegion="polite"
               >
                 <Icon name="alert" size={iconSize.md} color={t.status.critical.text} />
                 <View style={styles.messageStripContent}>
                   <Text style={styles.messageStripTitle}>{rateLimitMessage}</Text>
                   <Text style={styles.messageStripText}>
-                    Try again in {countdownText}
+                    {tr('auth.rateLimit.tryAgainIn', { time: countdown })}
                   </Text>
                 </View>
               </View>
@@ -334,15 +342,15 @@ export default function OTPScreen() {
                 onPress={handleVerifyOTP}
                 disabled={isVerifyingOTP}
                 loading={isVerifyingOTP}
-                loadingText="Verifying…"
-                accessibilityLabel="Verify code"
-                accessibilityHint="Verifies the 6-digit code you entered"
+                loadingText={tr('auth.otp.verifying')}
+                accessibilityLabel={tr('auth.otp.verify')}
+                accessibilityHint={tr('auth.otp.verifyHint')}
                 accessibilityState={{
                   disabled: isVerifyingOTP,
                   busy: isVerifyingOTP,
                 }}
               >
-                Verify code
+                {tr('auth.otp.verify')}
               </Button>
             </View>
 
@@ -351,7 +359,7 @@ export default function OTPScreen() {
               <View style={styles.divider} />
 
               <Text style={styles.resendLabel}>
-                Didn't receive the code?
+                {tr('auth.otp.notReceived')}
               </Text>
 
               {resendTimer > 0 || isRateLimited ? (
@@ -361,14 +369,14 @@ export default function OTPScreen() {
                   accessibilityRole="timer"
                   accessibilityLabel={
                     isRateLimited
-                      ? `Wait ${countdownText} before resending`
-                      : `Resend available in ${formatTimer(resendTimer)}`
+                      ? tr('auth.otp.waitBeforeResending', { time: countdown })
+                      : tr('auth.otp.resendAvailableIn', { time: formatTimer(resendTimer) })
                   }
                   accessibilityLiveRegion="polite"
                 >
                   {isRateLimited
-                    ? `Wait ${countdownText}`
-                    : `Resend in ${formatTimer(resendTimer)}`}
+                    ? tr('auth.rateLimit.wait', { time: countdown })
+                    : tr('auth.otp.resendIn', { time: formatTimer(resendTimer) })}
                 </Text>
               ) : (
                 <Button
@@ -378,14 +386,14 @@ export default function OTPScreen() {
                   onPress={handleResendOTP}
                   disabled={isAuthenticating}
                   loading={isAuthenticating}
-                  accessibilityLabel="Resend code"
-                  accessibilityHint={`Sends a new code to ${displayPhone}`}
+                  accessibilityLabel={tr('auth.otp.resend')}
+                  accessibilityHint={tr('auth.otp.resendHint', { phone: displayPhone })}
                   accessibilityState={{
                     disabled: isAuthenticating,
                     busy: isAuthenticating,
                   }}
                 >
-                  Resend code
+                  {tr('auth.otp.resend')}
                 </Button>
               )}
             </View>
@@ -397,10 +405,10 @@ export default function OTPScreen() {
                 variant="tint"
                 size="auto"
                 onPress={handleBack}
-                accessibilityLabel="Wrong number? Change mobile number"
-                accessibilityHint="Goes back to enter a different mobile number"
+                accessibilityLabel={tr('auth.otp.wrongNumberLabel')}
+                accessibilityHint={tr('auth.otp.wrongNumberHint')}
               >
-                Wrong number?
+                {tr('auth.otp.wrongNumber')}
               </Button>
             </View>
           </View>
@@ -502,7 +510,7 @@ const makeStyles = (t: ThemeTokens) => ({
   sectionHeader: {
     ...typography.footnote,
     fontWeight: fontWeight.semibold,
-    letterSpacing: 0.5,
+    letterSpacing: trackedText(0.5),
     color: t.text.secondary,
     marginBottom: space.lg,
   },

@@ -1,4 +1,5 @@
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
+import { compareDocumentNumbers } from '@/utils/documentNumber';
 import { offsetToPage, hasMoreItems } from '@/utils/paginationUtils';
 import {
   generateScopedCacheKey,
@@ -12,8 +13,11 @@ import { createErrorResponse, executeRPC, handleGlobalAuthError, isOfflineFailur
 import { deduplicatedRequest, generateRequestKey } from '@/utils/requestDedup';
 import { BackendDispatchData, RecentDispatchedOrdersResponse } from '@/types/dispatch.types';
 import { CACHE_DURATION_DEFAULT_MS, CACHE_PREFIXES, PAGINATION } from '@/config/cacheConfig';
+import { matchesSearch, searchTerms } from '@/features/filters/searchMatch';
 // Import canonical types for migration
 import type { RpcPagination, RpcDispatchListItem } from '@/types/rpc-canonical.types';
+import { t } from '@/i18n';
+import { serverText } from '@/utils/serverText';
 
 // Cache configuration for dispatch data (DRY-7: Using shared cacheManager)
 const DISPATCH_CACHE_PREFIX = CACHE_PREFIXES.DISPATCH_LIST;
@@ -329,16 +333,16 @@ export const getAllDispatchItems = async (
       handleGlobalAuthError(error);
       return {
         success: false,
-        message: 'Failed to fetch dispatch items',
-        error: error.message || error.details || 'Unknown database error'
+        message: t('errors.dispatch.fetchItemsFailed'),
+        error: serverText(error.message || error.details, t('errors.general.unknownDatabase'))
       };
     }
 
     if (!data) {
       return {
         success: false,
-        message: 'No data returned from server',
-        error: 'Empty response'
+        message: t('errors.general.noDataFromServer'),
+        error: t('errors.general.emptyResponse')
       };
     }
 
@@ -356,7 +360,7 @@ export const getAllDispatchItems = async (
 
     return {
       success: true,
-      message: 'Dispatch items fetched successfully',
+      message: t('errors.dispatch.itemsFetched'),
       data: {
         items: responseData.items || [],
         pagination: {
@@ -380,7 +384,7 @@ export const getAllDispatchItems = async (
     };
 
   } catch (error) {
-    return createErrorResponse(error, 'An unexpected error occurred', 'DispatchService.getAllDispatchItems');
+    return createErrorResponse(error, t('errors.general.unexpected'), 'DispatchService.getAllDispatchItems');
   }
 };
 
@@ -424,7 +428,7 @@ export const getDispatchList = async (
       handleGlobalAuthError(error);
       return {
         success: false,
-        message: 'Failed to fetch dispatch list',
+        message: t('errors.dispatch.fetchListFailed'),
         data: {
           dispatches: [],
           pagination: { total_count: 0, limit: p_limit, offset: p_offset, has_more: false },
@@ -438,7 +442,7 @@ export const getDispatchList = async (
     if (!data || !data.success) {
       return {
         success: false,
-        message: data?.message || 'No data returned from server',
+        message: serverText(data?.message, t('errors.general.noDataFromServer')),
         data: {
           dispatches: [],
           pagination: { total_count: 0, limit: p_limit, offset: p_offset, has_more: false },
@@ -451,13 +455,13 @@ export const getDispatchList = async (
 
     return {
       success: true,
-      message: data.message || 'Dispatch list retrieved successfully',
+      message: serverText(data.message, t('errors.dispatch.listRetrieved')),
       data: data.data
     };
 
   } catch (error) {
     return {
-      ...createErrorResponse(error, 'An unexpected error occurred', 'DispatchService.getDispatchList'),
+      ...createErrorResponse(error, t('errors.general.unexpected'), 'DispatchService.getDispatchList'),
       data: {
         dispatches: [],
         pagination: { total_count: 0, limit: params.p_limit || PAGINATION.DEFAULT_LIMIT, offset: params.p_offset || 0, has_more: false },
@@ -499,7 +503,7 @@ export const getDispatchListWithItems = async (
     console.log('[DispatchService] Network error, returning cached dispatch data as fallback');
     return {
       success: true,
-      message: 'Dispatch list retrieved from cache (network error fallback)',
+      message: t('errors.dispatch.listFromCache'),
       data: cachedData,
     };
   };
@@ -564,7 +568,7 @@ export const getDispatchListWithItems = async (
       if (cached) return cached;
       return {
         success: false,
-        message: error.message || 'Failed to fetch dispatch list',
+        message: serverText(error.message, t('errors.dispatch.fetchListFailed')),
         data: {
           dispatches: [],
           pagination: { total_count: 0, limit: p_limit, offset: offset, has_more: false },
@@ -579,7 +583,7 @@ export const getDispatchListWithItems = async (
       console.error('[getDispatchListWithItems] Invalid response', { success: data?.success === true });
       return {
         success: false,
-        message: data?.message || 'No data returned from server',
+        message: serverText(data?.message, t('errors.general.noDataFromServer')),
         data: {
           dispatches: [],
           pagination: { total_count: 0, limit: p_limit, offset: offset, has_more: false },
@@ -654,7 +658,7 @@ export const getDispatchListWithItems = async (
 
     return {
       success: true,
-      message: data.message || 'Dispatch list retrieved successfully',
+      message: serverText(data.message, t('errors.dispatch.listRetrieved')),
       data: responsePayload
     };
 
@@ -665,7 +669,7 @@ export const getDispatchListWithItems = async (
     if (cached) return cached;
 
     return {
-      ...createErrorResponse(error, 'An unexpected error occurred', 'DispatchService.getDispatchListWithItems'),
+      ...createErrorResponse(error, t('errors.general.unexpected'), 'DispatchService.getDispatchListWithItems'),
       data: {
         dispatches: [],
         pagination: { total_count: 0, limit: params.p_limit || PAGINATION.DEFAULT_LIMIT, offset: params.offset || 0, has_more: false },
@@ -711,7 +715,7 @@ export const getCustomerDispatchList = async (
   if (!params.p_customer_id) {
     return {
       success: false,
-      message: 'Customer ID is required',
+      message: t('errors.customer.idRequired'),
       data: emptyData,
     };
   }
@@ -732,7 +736,7 @@ export const getCustomerDispatchList = async (
       return {
         ...createErrorResponse(
           error,
-          'Failed to fetch customer dispatches',
+          t('errors.dispatch.fetchCustomerFailed'),
           'DispatchService.getCustomerDispatchList'
         ),
         data: emptyData,
@@ -742,7 +746,7 @@ export const getCustomerDispatchList = async (
     if (!data?.success || !data.data) {
       return {
         success: false,
-        message: data?.message || 'Failed to fetch customer dispatches',
+        message: serverText(data?.message, t('errors.dispatch.fetchCustomerFailed')),
         data: emptyData,
       };
     }
@@ -755,7 +759,7 @@ export const getCustomerDispatchList = async (
 
     return {
       success: true,
-      message: data.message || 'Customer dispatches retrieved successfully',
+      message: serverText(data.message, t('errors.dispatch.customerRetrieved')),
       data: {
         ...emptyData,
         dispatches,
@@ -790,12 +794,165 @@ export const getCustomerDispatchList = async (
     return {
       ...createErrorResponse(
         error,
-        'Failed to fetch customer dispatches',
+        t('errors.dispatch.fetchCustomerFailed'),
         'DispatchService.getCustomerDispatchList'
       ),
       data: emptyData,
     };
   }
+};
+
+/** Rows per request when collecting a customer account's dispatches. */
+const CUSTOMER_DISPATCH_PAGE = 100;
+/** Upper bound on dispatches collected per customer for one list view. */
+const CUSTOMER_DISPATCH_MAX = 1000;
+
+export interface AssignedCustomerDispatchParams {
+  p_sort_by?: 'disp_no' | 'dispatch_date';
+  p_sort_order?: 'asc' | 'desc';
+  p_limit?: number;
+  offset?: number;
+  /** Same keys the staff list sends (see selectCustomerDispatches). */
+  p_filters?: Record<string, unknown>;
+}
+
+/**
+ * The filters, search and order of the staff dispatch list (get_dispatch_list_with_items),
+ * applied to dispatches already collected for a customer account. Same filter
+ * keys, same meaning: a line filter matches when one line of the dispatch does.
+ */
+export function selectCustomerDispatches(
+  all: Dispatch[],
+  filters: Record<string, unknown>,
+  sortBy: 'disp_no' | 'dispatch_date' = 'dispatch_date',
+  sortOrder: 'asc' | 'desc' = 'desc'
+): Dispatch[] {
+  const text = (value: unknown) => (typeof value === 'string' ? value.trim() : '');
+  const number = (value: unknown) => (typeof value === 'number' && Number.isFinite(value) ? value : null);
+  const moment = (value: unknown) => {
+    const time = text(value) ? Date.parse(text(value)) : NaN;
+    return Number.isNaN(time) ? null : time;
+  };
+  const itemIds = Array.isArray(filters.item_ids) ? (filters.item_ids as string[]) : [];
+  const from = text(filters.disp_no_from);
+  const to = text(filters.disp_no_to);
+  const dateFrom = moment(filters.date_from);
+  const dateTo = moment(filters.date_to);
+  const qtyMin = number(filters.disp_qty_min);
+  const qtyMax = number(filters.disp_qty_max);
+  const packageTerms = searchTerms(text(filters.package_mark));
+  const terms = searchTerms(text(filters.search));
+  // The backend's order for document numbers, so customer accounts and warehouse roles agree.
+  const compareNo = compareDocumentNumbers;
+
+  const matching = all.filter(dispatch => {
+    const lines = dispatch.items ?? [];
+    if (itemIds.length > 0 && !lines.some(item => itemIds.includes(item.item_id))) return false;
+    if (from && compareNo(dispatch.disp_no, from) < 0) return false;
+    if (to && compareNo(dispatch.disp_no, to) > 0) return false;
+    if (dateFrom !== null || dateTo !== null) {
+      const time = Date.parse(String(dispatch.disp_date));
+      if (Number.isNaN(time)) return false;
+      if (dateFrom !== null && time < dateFrom) return false;
+      if (dateTo !== null && time > dateTo) return false;
+    }
+    if (qtyMin !== null || qtyMax !== null) {
+      const fits = (qty: number) => (qtyMin === null || qty >= qtyMin) && (qtyMax === null || qty <= qtyMax);
+      if (!lines.some(item => fits(item.disp_qty ?? 0))) return false;
+    }
+    if (packageTerms.length > 0 && !lines.some(item => matchesSearch(packageTerms, [item.package_mark]))) return false;
+    // Each word may match the dispatch itself or any one of its lines.
+    return terms.every(term =>
+      matchesSearch([term], [dispatch.disp_no, dispatch.customer_name, dispatch.registration]) ||
+      lines.some(item => matchesSearch([term], [item.item_name, item.package_mark, item.rack, item.gr_no]))
+    );
+  });
+  const direction = sortOrder === 'asc' ? 1 : -1;
+  return matching.sort((a, b) => {
+    const primary =
+      sortBy === 'disp_no'
+        ? compareNo(a.disp_no, b.disp_no)
+        : String(a.disp_date).localeCompare(String(b.disp_date));
+    return (primary || compareNo(a.disp_no, b.disp_no)) * direction;
+  });
+}
+
+/**
+ * Dispatch list for a customer account. The all-customers list RPC is for
+ * warehouse roles only, so this collects get_customer_dispatch_list for each
+ * assigned customer and sorts, filters and pages the result here.
+ */
+export const getAssignedCustomerDispatchList = async (
+  assignedCustomerIds: string[],
+  params: AssignedCustomerDispatchParams = {}
+): Promise<DispatchListResponseNew> => {
+  const limit = Math.min(Math.max(params.p_limit || PAGINATION.DEFAULT_LIMIT, 1), 100);
+  const offset = Math.max(params.offset || 0, 0);
+  const sortBy = params.p_sort_by || 'dispatch_date';
+  const sortOrder = params.p_sort_order || 'desc';
+  const filters = params.p_filters || {};
+  const empty = (message: string, success: boolean): DispatchListResponseNew => ({
+    success,
+    message,
+    data: {
+      dispatches: [],
+      pagination: { total_count: 0, limit, offset, has_more: false },
+      aggregations: { total_dispatches: 0, total_dispatched_qty: 0, total_weight: null, unique_customers: 0, unique_grns: 0 },
+      filters: { date_from: null, date_to: null, applied_filters: {}, sort_by: 'disp_date', sort_order: sortOrder },
+      user_access: { user_id: '', role: 'customer', is_admin: false, is_supervisor: false, accessible_customers: 0 },
+    },
+  });
+
+  const assigned = [...new Set(assignedCustomerIds.filter(Boolean))];
+  const requested = Array.isArray(filters.customer_ids) ? (filters.customer_ids as string[]) : [];
+  if (requested.some(id => !assigned.includes(id))) return empty(t('errors.customer.accessDenied'), false);
+  const targetIds = requested.length > 0 ? requested : assigned;
+  if (targetIds.length === 0) {
+    return empty(t('errors.customer.noAssignment'), false);
+  }
+
+  const perCustomer = await Promise.all(
+    targetIds.map(async customerId => {
+      const collected: Dispatch[] = [];
+      let pageOffset = 0;
+      while (collected.length < CUSTOMER_DISPATCH_MAX) {
+        const page = await getCustomerDispatchList({
+          p_customer_id: customerId,
+          p_limit: CUSTOMER_DISPATCH_PAGE,
+          p_offset: pageOffset,
+          p_include_items: true,
+        });
+        if (!page.success) return page;
+        collected.push(...page.data.dispatches);
+        if (!page.data.pagination.has_more || page.data.dispatches.length === 0) break;
+        pageOffset += page.data.dispatches.length;
+      }
+      return collected;
+    })
+  );
+  const failed = perCustomer.find((result): result is DispatchListResponseNew => !Array.isArray(result));
+  if (failed) return failed;
+
+  const matching = selectCustomerDispatches((perCustomer as Dispatch[][]).flat(), filters, sortBy, sortOrder);
+
+  const dispatches = matching.slice(offset, offset + limit);
+  const result = empty(t('errors.dispatch.customerRetrieved'), true);
+  result.data.dispatches = dispatches;
+  result.data.pagination = {
+    total_count: matching.length,
+    limit,
+    offset,
+    has_more: offset + dispatches.length < matching.length,
+  };
+  result.data.aggregations = {
+    total_dispatches: matching.length,
+    total_dispatched_qty: matching.reduce((total, dispatch) => total + (dispatch.total_qty || 0), 0),
+    total_weight: matching.reduce((total, dispatch) => total + (dispatch.total_weight || 0), 0),
+    unique_customers: new Set(matching.map(dispatch => dispatch.customer_id)).size,
+    unique_grns: new Set(matching.flatMap(dispatch => dispatch.items?.map(item => item.gr_no) || [])).size,
+  };
+  result.data.user_access.accessible_customers = assigned.length;
+  return result;
 };
 
 /**
@@ -825,7 +982,7 @@ export const deleteDispatch = async (
       handleGlobalAuthError(error);
       return {
         success: false,
-        message: 'Failed to delete dispatch',
+        message: t('errors.dispatch.deleteFailed'),
         error: error.message,
       };
     }
@@ -837,7 +994,7 @@ export const deleteDispatch = async (
       console.error('[DispatchService] Dispatch deletion refused', { blocked: Boolean(result.blocking_reason) });
       return {
         success: false,
-        message: result.message || 'Failed to delete dispatch',
+        message: serverText(result.message, t('errors.dispatch.deleteFailed')),
         error: result.error,
         invoiceItemsCount: result.invoice_items_count,
         blockingReason: result.blocking_reason,
@@ -864,14 +1021,14 @@ export const deleteDispatch = async (
 
     return {
       success: true,
-      message: result.message || 'Dispatch deleted successfully with order and stock restoration.',
+      message: serverText(result.message, t('errors.dispatch.deletedWithRestore')),
       cacheInvalidated, // E10: Inform UI if cache invalidation failed
       orderRestored: result.order_restored || result.orderRestored || false,
       restoredOrderId: result.restored_order_id || result.restoredOrderId,
     };
   } catch (error) {
     console.error('[DispatchService] ❌ Exception deleting dispatch:', error);
-    return createErrorResponse(error, 'An unexpected error occurred', 'DispatchService.deleteDispatch');
+    return createErrorResponse(error, t('errors.general.unexpected'), 'DispatchService.deleteDispatch');
   }
 };
 
@@ -901,14 +1058,14 @@ export const getRecentDispatchedOrders = async (
       handleGlobalAuthError(error);
       return {
         success: false,
-        error: error.message || 'Failed to fetch recent dispatched orders',
+        error: serverText(error.message, t('errors.dispatch.fetchRecentOrdersFailed')),
       };
     }
 
     if (!data) {
       return {
         success: false,
-        error: 'No data returned from server',
+        error: t('errors.general.noDataFromServer'),
       };
     }
 
@@ -916,7 +1073,7 @@ export const getRecentDispatchedOrders = async (
     if (!data.success) {
       return {
         success: false,
-        error: data.error || 'Access denied',
+        error: serverText(data.error, t('errors.general.accessDenied')),
       };
     }
 
@@ -935,7 +1092,7 @@ export const getRecentDispatchedOrders = async (
     console.error('[DispatchService] Exception in getRecentDispatchedOrders:', error);
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'An unexpected error occurred',
+      error: error instanceof Error ? error.message : t('errors.general.unexpected'),
     };
   }
 };

@@ -11,6 +11,7 @@ import React, { memo } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { space } from '@/theme/tokens';
 import { ListSkeletonCard } from '../list/ListSkeletonCard';
+import { t as tr } from '@/i18n';
 
 export interface ListSkeletonProps {
   /** Number of skeleton items to render (default: 5) */
@@ -27,7 +28,7 @@ export const ListSkeleton = memo<ListSkeletonProps>(({
   showFooter = true,
 }) => {
   return (
-    <View style={styles.container} accessible accessibilityLabel="Loading list" accessibilityState={{ busy: true }}>
+    <View style={styles.container} accessible accessibilityLabel={tr('components.skeleton.loadingList')} accessibilityState={{ busy: true }}>
       {Array.from({ length: count }).map((_, index) => (
         <ListSkeletonCard
           key={index}

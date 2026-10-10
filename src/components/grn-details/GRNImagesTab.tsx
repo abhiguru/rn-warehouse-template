@@ -13,7 +13,8 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, radius, space, touchTarget, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
-import { formatCount } from '@/utils/formatters';
+import { formatCount, formatNumber } from '@/utils/formatters';
+import { t as tr } from '@/i18n';
 
 const LOG_PREFIX = '[GRNImagesTab]';
 
@@ -176,7 +177,15 @@ const makeStyles = (t: ThemeTokens) => ({
 type Styles = ReturnType<typeof makeStyles>;
 
 function imageLabel(item: GRNImageData): string {
-  return item.category === 'header' ? 'GRN photo' : `Photo of ${item.item_name || 'item'}`;
+  if (item.category === 'header') return tr('grn.images.grnPhoto');
+  return item.item_name ? tr('grn.images.photoOfItem', { item: item.item_name }) : tr('grn.images.photoOfUnnamedItem');
+}
+
+function deleteImageLabel(item: GRNImageData): string {
+  if (item.category === 'header') return tr('grn.images.deleteGrnPhoto');
+  return item.item_name
+    ? tr('grn.images.deletePhotoOfItem', { item: item.item_name })
+    : tr('grn.images.deletePhotoOfUnnamedItem');
 }
 
 // Individual image tile with loading and error placeholders
@@ -197,7 +206,7 @@ const ImageTile: React.FC<{
         onPress={onPress}
         accessibilityRole="imagebutton"
         accessibilityLabel={label}
-        accessibilityHint="Opens the photo full screen"
+        accessibilityHint={tr('grn.images.openHint')}
         style={styles.imagePressable}
       >
         {({ pressed }) => (
@@ -258,7 +267,7 @@ const ImageTile: React.FC<{
       {onDelete && (
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={`Delete ${label.charAt(0).toLowerCase()}${label.slice(1)}`}
+          accessibilityLabel={deleteImageLabel(item)}
           style={styles.removeButton}
           onPress={onDelete}
         >
@@ -297,17 +306,17 @@ export const GRNImagesTab: React.FC<GRNImagesTabProps> = ({
       <View style={styles.emptyContainer}>
         <Icon name="image-off-outline" size={iconSize.hero} color={t.icon.secondary} />
         <Text style={styles.emptyTitle} accessibilityRole="header">
-          No images
+          {tr('grn.images.emptyTitle')}
         </Text>
         <Text style={styles.emptySubtitle}>
           {onUpload
-            ? 'Photos of this GRN appear here. Add one to keep a record of the goods.'
-            : 'No photos have been added to this GRN.'}
+            ? tr('grn.images.emptyCanAdd')
+            : tr('grn.images.emptyReadOnly')}
         </Text>
         {onUpload && (
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={isUploading ? 'Uploading image' : 'Add image'}
+            accessibilityLabel={isUploading ? tr('grn.images.uploadingLabel') : tr('grn.images.addImage')}
             accessibilityState={{ disabled: isUploading, busy: isUploading }}
             style={({ pressed }) => [
               styles.uploadButton,
@@ -322,7 +331,7 @@ export const GRNImagesTab: React.FC<GRNImagesTabProps> = ({
             ) : (
               <Icon name="image-plus" size={iconSize.md} color={t.brand.onFill} />
             )}
-            <Text style={styles.uploadButtonText}>{isUploading ? 'Uploading…' : 'Add image'}</Text>
+            <Text style={styles.uploadButtonText}>{isUploading ? tr('grn.images.uploading') : tr('grn.images.addImage')}</Text>
           </Pressable>
         )}
       </View>
@@ -346,7 +355,7 @@ export const GRNImagesTab: React.FC<GRNImagesTabProps> = ({
       >
         {selected && <Icon name="check" size={iconSize.sm} color={t.brand.tint} />}
         <Text style={[styles.filterText, selected && styles.filterTextSelected]} maxFontSizeMultiplier={1.6}>
-          {label} ({count})
+          {label} ({formatNumber(count)})
         </Text>
       </Pressable>
     );
@@ -366,13 +375,13 @@ export const GRNImagesTab: React.FC<GRNImagesTabProps> = ({
     <View style={styles.container}>
       {/* Quick filters and add action */}
       <View style={styles.filterRow}>
-        <FilterButton type="all" label="All" count={images.length} />
-        <FilterButton type="header" label="Header" count={headerCount} />
-        <FilterButton type="item" label="Items" count={itemCount} />
+        <FilterButton type="all" label={tr('common.all')} count={images.length} />
+        <FilterButton type="header" label={tr('grn.images.filterHeader')} count={headerCount} />
+        <FilterButton type="item" label={tr('common.items')} count={itemCount} />
         {onUpload && (
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={isUploading ? 'Uploading image' : 'Add image'}
+            accessibilityLabel={isUploading ? tr('grn.images.uploadingLabel') : tr('grn.images.addImage')}
             accessibilityState={{ disabled: isUploading, busy: isUploading }}
             style={({ pressed }) => [styles.addIconButton, pressed && styles.addIconButtonPressed]}
             onPress={onUpload}

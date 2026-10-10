@@ -15,6 +15,7 @@ import { iconSize, layout, space, typography, touchTarget } from '@/theme/tokens
 import type { ThemeTokens } from '@/theme/tokens';
 import { Avatar } from '@/components/ui';
 import { formatMobile } from '@/utils/formatters';
+import { t as tr } from '@/i18n';
 
 interface Supervisor {
   id: string;
@@ -146,14 +147,14 @@ export const SupervisorBottomSheet: React.FC<SupervisorBottomSheetProps> = ({
       isVisible={isVisible}
       onClose={onClose}
       onSelect={onSelect}
-      title="Select supervisor"
-      placeholder="Search supervisors by name"
+      title={tr('grn.pickers.supervisorTitle')}
+      placeholder={tr('grn.pickers.supervisorPlaceholder')}
       searchFn={searchSupervisors}
       renderItem={renderSupervisorItem}
       keyExtractor={keyExtractor}
       currentValue={currentValue}
-      emptyInitialText="Search for a supervisor"
-      emptySubText="Type at least 2 characters to find supervisors or admins"
+      emptyInitialText={tr('grn.pickers.supervisorEmptyInitial')}
+      emptySubText={tr('grn.pickers.supervisorEmptySub')}
     />
   );
 };

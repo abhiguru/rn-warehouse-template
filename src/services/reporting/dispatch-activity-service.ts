@@ -21,6 +21,7 @@ import type {
 } from '@/types/report.types';
 
 import { toLocalISODate } from '@/utils/formatters';
+import { t } from '@/i18n';
 /**
  * Default empty response for error cases
  */
@@ -83,7 +84,7 @@ export async function getCustomerDispatchActivity(
     return {
       success: false,
       data: EMPTY_RESPONSE,
-      message: 'Customer ID is required',
+      message: t('reports.customerActivity.errors.customerIdRequired'),
       error: 'MISSING_CUSTOMER_ID',
     };
   }
@@ -132,7 +133,7 @@ export async function getCustomerDispatchActivity(
       return {
         success: false,
         data: EMPTY_RESPONSE,
-        message: 'Failed to fetch dispatch activity',
+        message: t('reports.dispatchActivity.errors.fetchFailed'),
         error: error.message,
       };
     }
@@ -142,7 +143,7 @@ export async function getCustomerDispatchActivity(
       return {
         success: true,
         data: EMPTY_RESPONSE,
-        message: 'No dispatch activity found',
+        message: t('reports.dispatchActivity.errors.noData'),
       };
     }
 
@@ -190,14 +191,14 @@ export async function getCustomerDispatchActivity(
     return {
       success: true,
       data: { summary, dispatches },
-      message: 'Dispatch activity retrieved successfully',
+      message: t('reports.dispatchActivity.retrieved'),
     };
   } catch (error) {
     console.error('[DispatchActivity] Unexpected error:', error);
     return {
       success: false,
       data: EMPTY_RESPONSE,
-      message: 'Failed to fetch dispatch activity',
+      message: t('reports.dispatchActivity.errors.fetchFailed'),
       error: error instanceof Error ? error.message : 'Unknown error',
     };
   }
@@ -252,7 +253,7 @@ export async function getAllDispatchActivity(
       return {
         success: false,
         data: EMPTY_ALL_RESPONSE,
-        message: 'Failed to fetch all-customers dispatch activity',
+        message: t('reports.dispatchActivity.errors.fetchAllFailed'),
         error: error.message,
       };
     }
@@ -262,7 +263,7 @@ export async function getAllDispatchActivity(
       return {
         success: true,
         data: EMPTY_ALL_RESPONSE,
-        message: 'No dispatch activity found',
+        message: t('reports.dispatchActivity.errors.noData'),
       };
     }
 
@@ -301,14 +302,14 @@ export async function getAllDispatchActivity(
     return {
       success: true,
       data: { summary, by_customer: byCustomer },
-      message: 'All-customers dispatch activity retrieved successfully',
+      message: t('reports.dispatchActivity.retrievedAll'),
     };
   } catch (error) {
     console.error('[AllDispatchActivity] Unexpected error:', error);
     return {
       success: false,
       data: EMPTY_ALL_RESPONSE,
-      message: 'Failed to fetch all-customers dispatch activity',
+      message: t('reports.dispatchActivity.errors.fetchAllFailed'),
       error: error instanceof Error ? error.message : 'Unknown error',
     };
   }

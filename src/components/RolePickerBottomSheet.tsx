@@ -18,6 +18,8 @@ import { UserRole } from '@/types/user.types';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { iconSize, layout, radius, space, touchTarget, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
+import { t as tr, type TranslationKey } from '@/i18n';
+import { roleLabel } from '@/utils/roleLabel';
 
 // =============================================================================
 // ROLE CONFIGURATION
@@ -25,8 +27,8 @@ import type { ThemeTokens } from '@/theme/tokens';
 
 interface RoleOption {
   value: UserRole;
-  label: string;
-  description: string;
+  /** Key of the one-line description; the name comes from `roleLabel`. */
+  descriptionKey: TranslationKey;
   icon: string;
   /** Index into the theme's avatar palette (category colour, not status). */
   avatarIndex: number;
@@ -35,29 +37,25 @@ interface RoleOption {
 const ALL_ROLES: RoleOption[] = [
   {
     value: 'admin',
-    label: 'Admin',
-    description: 'Full system access and user management',
+    descriptionKey: 'users.roleDescription.admin',
     icon: 'shield-crown',
     avatarIndex: 0,
   },
   {
     value: 'supervisor',
-    label: 'Supervisor',
-    description: 'Can manage operations and view all data',
+    descriptionKey: 'users.roleDescription.supervisor',
     icon: 'account-supervisor',
     avatarIndex: 5,
   },
   {
     value: 'staff',
-    label: 'Staff',
-    description: 'Can create and manage GRNs and dispatches',
+    descriptionKey: 'users.roleDescription.staff',
     icon: 'account-hard-hat',
     avatarIndex: 8,
   },
   {
     value: 'customer',
-    label: 'Customer',
-    description: 'Can view assigned orders and invoices',
+    descriptionKey: 'users.roleDescription.customer',
     icon: 'account',
     avatarIndex: 6,
   },
@@ -160,12 +158,12 @@ export const RolePickerBottomSheet: React.FC<RolePickerBottomSheetProps> = ({
       <BottomSheetView style={[styles.container, { paddingBottom: insets.bottom + space.lg }]}>
         {/* Header */}
         <View style={dynamicStyles.header}>
-          <Text style={dynamicStyles.title} accessibilityRole="header">Select role</Text>
+          <Text style={dynamicStyles.title} accessibilityRole="header">{tr('users.rolePicker.title')}</Text>
           <Pressable
             style={styles.closeButton}
             onPress={onClose}
             accessibilityRole="button"
-            accessibilityLabel="Close role picker"
+            accessibilityLabel={tr('users.rolePicker.close')}
           >
             <Icon name="close" size={iconSize.lg} color={t.icon.primary} />
           </Pressable>
@@ -175,6 +173,8 @@ export const RolePickerBottomSheet: React.FC<RolePickerBottomSheetProps> = ({
         <View style={styles.roleList} accessibilityRole="radiogroup">
           {availableRoles.map((role) => {
             const isSelected = role.value === currentRole;
+            const label = roleLabel(role.value);
+            const description = tr(role.descriptionKey);
             return (
               <Pressable
                 key={role.value}
@@ -186,7 +186,7 @@ export const RolePickerBottomSheet: React.FC<RolePickerBottomSheetProps> = ({
                 onPress={() => handleSelect(role.value)}
                 accessibilityRole="radio"
                 accessibilityState={{ checked: isSelected, selected: isSelected }}
-                accessibilityLabel={`${role.label}. ${role.description}`}
+                accessibilityLabel={tr('users.rolePicker.optionLabel', { role: label, description })}
               >
                 <View
                   style={[styles.roleIcon, { backgroundColor: t.avatar[role.avatarIndex % t.avatar.length] }]}
@@ -194,8 +194,8 @@ export const RolePickerBottomSheet: React.FC<RolePickerBottomSheetProps> = ({
                   <Icon name={role.icon} size={iconSize.lg} color={avatarIconColor} />
                 </View>
                 <View style={styles.roleContent}>
-                  <Text style={dynamicStyles.roleLabel}>{role.label}</Text>
-                  <Text style={dynamicStyles.roleDescription}>{role.description}</Text>
+                  <Text style={dynamicStyles.roleLabel}>{label}</Text>
+                  <Text style={dynamicStyles.roleDescription}>{description}</Text>
                 </View>
                 {isSelected && (
                   <Icon
@@ -212,7 +212,7 @@ export const RolePickerBottomSheet: React.FC<RolePickerBottomSheetProps> = ({
         {/* Helper text for supervisors */}
         {callerRole === 'supervisor' && (
           <Text style={dynamicStyles.helperText}>
-            Only admins can assign the Admin role.
+            {tr('users.rolePicker.adminOnly')}
           </Text>
         )}
       </BottomSheetView>

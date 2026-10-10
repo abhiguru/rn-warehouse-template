@@ -6,14 +6,15 @@
  * one-to-one onto the platform styles and uses the system font where SAP's
  * "72" typeface is not bundled (as here).
  */
+import { getLanguage } from '@/i18n/language';
 import { Platform, TextStyle } from 'react-native';
 
 type TypeStyle = Pick<TextStyle, 'fontSize' | 'lineHeight' | 'fontWeight' | 'letterSpacing'>;
 
 const body = Platform.OS === 'ios' ? 17 : 16;
 
-/** Text styles, largest to smallest. Use these, never raw fontSize values. */
-export const typography = {
+/** Text styles for Latin script, largest to smallest. Use `typography`, never raw fontSize values. */
+const latinTypography = {
   /** Screen titles in large-title navigation bars. */
   largeTitle: { fontSize: 34, lineHeight: 41, fontWeight: '700', letterSpacing: 0.37 },
   /** Hero numbers, sign-in title. */
@@ -40,7 +41,53 @@ export const typography = {
   wordmark: { fontSize: 48, lineHeight: 52, fontWeight: '800', letterSpacing: 2 },
 } as const satisfies Record<string, TypeStyle>;
 
-export type TypographyStyle = keyof typeof typography;
+/**
+ * Gujarati has marks above and below its letters and no letter-spacing tuning:
+ * the same sizes and weights, spacing 0, and a line at least 1.4 times the size
+ * so the marks are not clipped.
+ */
+const GUJARATI_LINE_RATIO = 1.4;
+const gujaratiTypography = Object.fromEntries(
+  Object.entries(latinTypography).map(([name, style]) => [
+    name,
+    name === 'wordmark'
+      ? style
+      : { ...style, letterSpacing: 0, lineHeight: Math.max(style.lineHeight, Math.ceil(style.fontSize * GUJARATI_LINE_RATIO)) },
+  ])
+) as unknown as typeof latinTypography;
+
+/**
+ * Text styles, largest to smallest, for the app's language. Read a style when a
+ * stylesheet is built (inside a `useThemedStyles` factory), not at module level,
+ * so it follows the language.
+ */
+export const typography: typeof latinTypography = new Proxy(latinTypography, {
+  get: (target, name: string) => (getLanguage() === 'gu' ? gujaratiTypography : target)[name as keyof typeof latinTypography],
+});
+
+export type TypographyStyle = keyof typeof latinTypography;
+
+/**
+ * Letter spacing for capitals-style headings. Spacing pulls Gujarati conjuncts
+ * apart, so it is 0 there. Call it inside a `useThemedStyles` factory, never in
+ * a module-level `StyleSheet.create`, so it follows the language.
+ */
+export const trackedText = (value: number): number => (getLanguage() === 'gu' ? 0 : value);
+
+/**
+ * Props for a short Gujarati text that must stay on one line (a date, a count, a
+ * chip label, a table cell): one line, shrinking a little when the box is a
+ * pixel too narrow. Gujarati text is laid out with line breaking even when it is
+ * one line, so a box that is slightly short drops the last word to a second,
+ * clipped line; Latin text does not. English gets no props: its layout stays as it is.
+ *
+ *   <Text style={styles.date} {...singleLineText()}>{date}</Text>
+ */
+/** A size that differs by script (Gujarati digits and words are wider). Call it inside a `useThemedStyles` factory. */
+export const byLanguage = <T>(latin: T, gujarati: T): T => (getLanguage() === 'gu' ? gujarati : latin);
+
+export const singleLineText = (minimumFontScale = 0.85) =>
+  getLanguage() === 'gu' ? ({ numberOfLines: 1, adjustsFontSizeToFit: true, minimumFontScale } as const) : {};
 
 export const fontWeight = {
   regular: '400',

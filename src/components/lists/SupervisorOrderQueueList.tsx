@@ -15,17 +15,15 @@ import { OrderRefreshAction } from '@/components/OrderRefreshAction';
  */
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { View, Text, StyleSheet, RefreshControl, TextInput, Pressable } from 'react-native';
+import { View, Text, StyleSheet, RefreshControl } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
 import { ActivityIndicator, Portal, Snackbar } from 'react-native-paper';
 import { useFocusEffect } from 'expo-router';
-import { router } from 'expo-router';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { ListSkeleton } from '@/components/skeletons';
 import { ListEmptyState } from '@/components/list/ListEmptyState';
 import { ErrorStateView } from '@/components/ErrorBoundary';
-import { Avatar } from '@/components/ui/Avatar';
-import { formatCount } from '@/utils/formatters';
+import { formatCount, formatNumber } from '@/utils/formatters';
+import { t as translate } from '@/i18n';
 
 // Services
 import { OrderService } from '@/services/order-service';
@@ -33,12 +31,14 @@ import { PAGINATION } from '@/config/cacheConfig';
 import { DEFAULT_LIST_CONFIG } from './types';
 import type { Order, OrderFilters } from '@/types/order.types';
 
+// Search
+import { ORDER_QUEUE_FILTERS } from '@/features/filters/configs';
+import { useListFilters } from '@/features/filters/useListFilters';
+import { FilteredListHeader, filteredEmptyProps } from '@/features/filters/components/FilteredListHeader';
+
 // Components
 import { CustomerOrderGroupCard } from '@/components/list-items/CustomerOrderGroupCard';
 import RecentDispatchedOrdersSection from '@/components/RecentDispatchedOrdersSection';
-
-// State
-import { useAppSelector } from '@/store/hooks';
 
 // Theme
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
@@ -52,39 +52,9 @@ import type { ThemeTokens } from '@/theme/tokens';
 export interface SupervisorOrderQueueListProps {
   /** Optional customer name filter */
   customerFilter?: string;
+  /** Rendered directly under the header in every state, e.g. a view switch. */
+  subHeader?: React.ReactNode;
 }
-
-// ============================================================================
-// EMPTY STATE COMPONENT
-// ============================================================================
-
-interface EmptyStateProps {
-  isFiltered: boolean;
-  onClearFilters: () => void;
-  /** The search text that matched nothing. */
-  query?: string;
-}
-
-// Empty state: the shared ListEmptyState with the queue wording (style guide §13.6, §12.2)
-const EmptyState = React.memo<EmptyStateProps>(({
-  isFiltered,
-  onClearFilters,
-  query,
-}) => (
-  <ListEmptyState
-    activeFilterCount={isFiltered ? 1 : 0}
-    emptyIcon="clipboard-check-outline"
-    filteredIcon="magnify"
-    emptyTitle="No orders in the queue"
-    emptySubtitle="Customer orders with items appear here."
-    filteredTitle="No orders match your search"
-    filteredSubtitle={`No customers match "${query ?? ''}". Try fewer letters.`}
-    onClearFilters={onClearFilters}
-    clearFiltersLabel="Clear search"
-  />
-));
-
-EmptyState.displayName = 'EmptyState';
 
 // ============================================================================
 // MAIN COMPONENT
@@ -92,6 +62,7 @@ EmptyState.displayName = 'EmptyState';
 
 const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = ({
   customerFilter: externalFilter,
+  subHeader,
 }) => {
   const fetchInProgressRef = useRef(false);
   const liveRefreshPendingRef = useRef(false);
@@ -100,8 +71,6 @@ const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = ({
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
 
-  // User state
-  const { userProfile } = useAppSelector(state => state.auth);
 
   // List state
   const [orders, setOrders] = useState<Order[]>([]);
@@ -116,8 +85,11 @@ const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = ({
   // Expanded state - track which orders are expanded
   const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set());
 
-  // Search state
-  const [searchQuery, setSearchQuery] = useState('');
+  // Search: the server looks through the whole queue, not only the rows loaded so far.
+  const filters = useListFilters(ORDER_QUEUE_FILTERS);
+  const searchText = filters.request.search || externalFilter?.trim() || undefined;
+  // The first answer has arrived: later loads keep the rows on screen.
+  const [hasLoaded, setHasLoaded] = useState(false);
 
   // Snackbar state
   const [snackbarMessage, setSnackbarMessage] = useState('');
@@ -139,7 +111,8 @@ const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = ({
   // isSilent = true → fetch without showing RefreshControl spinner (avoids -60px offset gap)
   const fetchOrders = useCallback(async (isRefresh = false, isSilent = false) => {
     if (fetchInProgressRef.current) {
-      if (isSilent) liveRefreshPendingRef.current = true;
+      // Run again when the request in flight ends, with the search in effect then.
+      liveRefreshPendingRef.current = true;
       return;
     }
     fetchInProgressRef.current = true;
@@ -158,6 +131,7 @@ const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = ({
       // Fetch only orders with items. A refresh reloads every row already shown.
       const filters: OrderFilters = {
         has_items: true,
+        search: searchText,
         offset: 0,
         limit: Math.max(PAGINATION.DEFAULT_LIMIT, loadedCountRef.current),
       };
@@ -191,7 +165,7 @@ const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = ({
         setHasMore(result.metadata?.has_more ?? false);
       } else {
         setError(result.message || 'Failed to load orders');
-        setSnackbarMessage("Couldn't load the order queue. Check your connection and try again.");
+        setSnackbarMessage(translate('lists.queue.loadFailed'));
         setSnackbarVisible(true);
       }
     } catch (err: unknown) {
@@ -201,20 +175,24 @@ const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = ({
       console.error('[SupervisorOrderQueueList] Error:', err);
       const errorMessage = err instanceof Error ? err.message : 'Failed to load orders';
       setError(errorMessage);
-      setSnackbarMessage("Couldn't load the order queue. Check your connection and try again.");
+      setSnackbarMessage(translate('lists.queue.loadFailed'));
       setSnackbarVisible(true);
     } finally {
       fetchInProgressRef.current = false;
       if (liveRefreshPendingRef.current && isMountedRef.current && sessionGeneration === getSessionGeneration()) {
         liveRefreshPendingRef.current = false;
-        void fetchOrders(true, true);
+        void fetchOrdersRef.current(true, true);
       }
       if (isMountedRef.current) {
+        setHasLoaded(true);
         setIsLoading(false);
         setIsRefreshing(false);
       }
     }
-  }, []);
+  }, [searchText]);
+  // The newest fetch, for a rerun queued while an older one was in flight.
+  const fetchOrdersRef = useRef(fetchOrders);
+  fetchOrdersRef.current = fetchOrders;
 
   // Next page, appended; shares the in-flight guard and request id with refreshes.
   const handleLoadMore = useCallback(async () => {
@@ -227,6 +205,7 @@ const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = ({
     try {
       const result = await OrderService.getOrdersList({
         has_items: true,
+        search: searchText,
         offset,
         limit: PAGINATION.DEFAULT_LIMIT,
       });
@@ -244,30 +223,30 @@ const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = ({
         });
         setHasMore(result.metadata?.has_more ?? false);
       } else {
-        setSnackbarMessage("Couldn't load more orders. Scroll down to try again.");
+        setSnackbarMessage(translate('lists.order.loadMoreFailed'));
         setSnackbarVisible(true);
       }
     } catch (err: unknown) {
       if (!isMountedRef.current) return;
       console.error('[SupervisorOrderQueueList] Load more error:', err);
-      setSnackbarMessage("Couldn't load more orders. Scroll down to try again.");
+      setSnackbarMessage(translate('lists.order.loadMoreFailed'));
       setSnackbarVisible(true);
     } finally {
       fetchInProgressRef.current = false;
       if (isMountedRef.current) setIsLoadingMore(false);
       if (liveRefreshPendingRef.current && isMountedRef.current && sessionGeneration === getSessionGeneration()) {
         liveRefreshPendingRef.current = false;
-        void fetchOrders(true, true);
+        void fetchOrdersRef.current(true, true);
       }
     }
-  }, [hasMore, isLoading, isLoadingMore, fetchOrders]);
+  }, [hasMore, isLoading, isLoadingMore, searchText]);
 
   const ListFooter = useMemo(() => {
     if (!isLoadingMore) return null;
     return (
       <View style={styles.footerLoader} accessibilityLiveRegion="polite">
         <ActivityIndicator size="small" color={t.brand.tint} />
-        <Text style={styles.footerLoaderText}>Loading more orders…</Text>
+        <Text style={styles.footerLoaderText}>{translate('lists.order.loadingMore')}</Text>
       </View>
     );
   }, [isLoadingMore, styles, t]);
@@ -282,8 +261,9 @@ const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = ({
 
   useOrderLiveUpdates(() => fetchOrders(true, true));
 
-  // Initial load
+  // First load, and a new first page whenever the search changes.
   useEffect(() => {
+    loadedCountRef.current = 0;
     fetchOrders();
   }, [fetchOrders]);
 
@@ -301,15 +281,7 @@ const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = ({
   // FILTERED DATA
   // ============================================================================
 
-  const filteredOrders = useMemo(() => {
-    const query = (searchQuery || externalFilter || '').toLowerCase().trim();
-    if (!query) return orders;
-
-    return orders.filter(order => {
-      const customerName = (order.customer?.name || '').toLowerCase();
-      return customerName.includes(query);
-    });
-  }, [orders, searchQuery, externalFilter]);
+  const filteredOrders = orders;
 
   // ============================================================================
   // STABLE CALLBACKS
@@ -331,10 +303,6 @@ const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = ({
       }
       return newSet;
     });
-  }, []);
-
-  const handleClearSearch = useCallback(() => {
-    setSearchQuery('');
   }, []);
 
   const dismissSnackbar = useCallback(() => {
@@ -371,131 +339,93 @@ const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = ({
   // RENDER STATES
   // ============================================================================
 
-  // Loading state
-  if (isLoading && !isRefreshing) {
-    return (
-      <View style={styles.container}>
-        <View style={styles.header}>
-          <Text style={styles.headerTitle} accessibilityRole="header">Order queue</Text>
-        </View>
-        <ListSkeleton count={5} />
-      </View>
-    );
-  }
+  const queueCount = orders.length;
 
-  // Error state with empty list
-  if (error && orders.length === 0) {
-    return (
-      <View style={styles.container}>
-        <View style={styles.header}>
-          <Text style={styles.headerTitle} accessibilityRole="header">Order queue</Text>
-        </View>
-        <ErrorStateView
-          presentation="inline"
-          title="Couldn't load the order queue"
-          message="Check your connection and try again."
-          onRetry={() => fetchOrders()}
-        />
-      </View>
-    );
-  }
-
-  const userName = userProfile?.name || 'U';
-  const queueCount = filteredOrders.length;
-
-  return (
-    <View style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.headerTitle} accessibilityRole="header">Order queue</Text>
-        <View style={styles.headerActions}>
-          <OrderRefreshAction onRefresh={handleRefresh} refreshing={isRefreshing} label="Refresh order queue" />
+  // The header and search field are shown in every state, so the search can
+  // always be changed or cleared.
+  const header = (
+    <FilteredListHeader
+      title={translate('lists.queue.title')}
+      config={ORDER_QUEUE_FILTERS}
+      filters={filters}
+      loading={isLoading}
+      actions={
+        <>
+          <OrderRefreshAction onRefresh={handleRefresh} refreshing={isRefreshing} label={translate('lists.queue.refresh')} />
           {/* Order count badge: plain count (§13.5) */}
           <View
             style={styles.countBadge}
             accessible
-            accessibilityLabel={`${formatCount(queueCount, 'order')} in the queue`}
+            accessibilityLabel={translate('lists.queue.countLabel', { orders: formatCount(queueCount, 'order') })}
           >
-            <Text style={styles.countText} maxFontSizeMultiplier={1.6}>{queueCount}</Text>
+            <Text style={styles.countText} maxFontSizeMultiplier={1.6}>{formatNumber(queueCount)}</Text>
           </View>
-          {/* Profile avatar - navigates to settings */}
-          <Pressable
-            onPress={() => router.push('/settings')}
-            style={styles.avatarButton}
-            accessibilityRole="button"
-            accessibilityLabel="Open settings"
-          >
-            <Avatar name={userName} id={userProfile?.id} size="sm" />
-          </Pressable>
-        </View>
-      </View>
+        </>
+      }
+    >
+      {subHeader}
+    </FilteredListHeader>
+  );
 
-      {/* Search Bar */}
-      <View style={styles.searchContainer}>
-        <View style={styles.searchInputContainer}>
-          <Icon name="magnify" size={iconSize.md} color={t.icon.secondary} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search by customer name"
-            placeholderTextColor={t.text.placeholder}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            returnKeyType="search"
-            autoCapitalize="none"
-            autoCorrect={false}
-            accessibilityLabel="Search by customer name"
+  let content: React.ReactNode;
+  if (!hasLoaded && isLoading) {
+    // First load: skeleton. Later loads keep the rows on screen while the new ones arrive.
+    content = <ListSkeleton count={5} />;
+  } else if (orders.length > 0) {
+    content = (
+      <FlashList
+        data={filteredOrders}
+        keyExtractor={keyExtractor}
+        renderItem={renderItem}
+        extraData={expandedOrders}
+        ListHeaderComponent={ListHeaderComponent}
+        ListFooterComponent={ListFooter}
+        onEndReached={handleLoadMore}
+        onEndReachedThreshold={DEFAULT_LIST_CONFIG.onEndReachedThreshold}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={handleRefresh}
+            colors={[t.brand.tint]}
+            tintColor={t.brand.tint}
+            progressBackgroundColor={t.surface.card}
           />
-          {searchQuery.length > 0 && (
-            <Pressable
-              onPress={handleClearSearch}
-              style={styles.clearButton}
-              hitSlop={space.sm}
-              accessibilityRole="button"
-              accessibilityLabel="Clear search"
-            >
-              <Icon name="close-circle" size={iconSize.md} color={t.icon.secondary} />
-            </Pressable>
-          )}
-        </View>
-      </View>
-
-      {/* Recent Dispatched Orders Section (shown when list is empty too) */}
-      {filteredOrders.length === 0 && (
+        }
+        contentContainerStyle={styles.listContent}
+        contentInsetAdjustmentBehavior="never"
+        automaticallyAdjustContentInsets={false}
+        showsVerticalScrollIndicator={false}
+      />
+    );
+  } else if (error) {
+    content = (
+      <ErrorStateView
+        presentation="inline"
+        title={translate('lists.queue.loadFailedTitle')}
+        message={translate('common.checkConnection')}
+        onRetry={() => fetchOrders()}
+      />
+    );
+  } else {
+    content = (
+      <>
+        {/* Recently dispatched orders stay in view when the queue is empty */}
         <RecentDispatchedOrdersSection refreshTrigger={refreshTrigger} limit={10} />
-      )}
+        <ListEmptyState
+          {...filteredEmptyProps(filters, 'orders')}
+          emptyIcon="clipboard-check-outline"
+          filteredIcon="magnify"
+          emptyTitle={translate('lists.queue.emptyTitle')}
+          emptySubtitle={translate('lists.queue.emptySubtitle')}
+        />
+      </>
+    );
+  }
 
-      {/* Order List */}
-      {filteredOrders.length === 0 ? (
-        <EmptyState
-          isFiltered={searchQuery.length > 0}
-          onClearFilters={handleClearSearch}
-          query={searchQuery.trim()}
-        />
-      ) : (
-        <FlashList
-          data={filteredOrders}
-          keyExtractor={keyExtractor}
-          renderItem={renderItem}
-          extraData={expandedOrders}
-          ListHeaderComponent={ListHeaderComponent}
-          ListFooterComponent={ListFooter}
-          onEndReached={handleLoadMore}
-          onEndReachedThreshold={DEFAULT_LIST_CONFIG.onEndReachedThreshold}
-          refreshControl={
-            <RefreshControl
-              refreshing={isRefreshing}
-              onRefresh={handleRefresh}
-              colors={[t.brand.tint]}
-              tintColor={t.brand.tint}
-              progressBackgroundColor={t.surface.card}
-            />
-          }
-          contentContainerStyle={styles.listContent}
-          contentInsetAdjustmentBehavior="never"
-          automaticallyAdjustContentInsets={false}
-          showsVerticalScrollIndicator={false}
-        />
-      )}
+  return (
+    <View style={styles.container}>
+      {header}
+      {content}
 
       {/* Snackbar for errors */}
       <Portal>
@@ -504,7 +434,7 @@ const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = ({
           onDismiss={dismissSnackbar}
           duration={4000}
           style={styles.snackbar}
-          action={{ label: 'Dismiss', onPress: dismissSnackbar, textColor: t.text.inverse }}
+          action={{ label: translate('common.dismiss'), onPress: dismissSnackbar, textColor: t.text.inverse }}
         >
           {snackbarMessage}
         </Snackbar>
@@ -522,29 +452,6 @@ const makeStyles = (t: ThemeTokens) => ({
     flex: 1,
     backgroundColor: t.background.base,
   },
-  // App bar on surface.header with a hairline divider (§13.8)
-  header: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    justifyContent: 'space-between' as const,
-    paddingHorizontal: layout.marginCompact,
-    minHeight: layout.rowMinHeight,
-    paddingVertical: space.md,
-    backgroundColor: t.surface.header,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: t.border.divider,
-  },
-  // Large title for a top-level tab screen
-  headerTitle: {
-    ...typography.largeTitle,
-    color: t.text.primary,
-    flexShrink: 1,
-  },
-  headerActions: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: space.xs,
-  },
   // Plain count badge: brand.fill with brand.onFill. "Needs action" counts use
   // destructive.fill with destructive.onFill instead (§13.5).
   countBadge: {
@@ -560,41 +467,6 @@ const makeStyles = (t: ThemeTokens) => ({
     fontWeight: fontWeight.semibold,
     fontVariant: ['tabular-nums' as const],
     color: t.brand.onFill,
-  },
-  avatarButton: {
-    width: touchTarget,
-    height: touchTarget,
-    justifyContent: 'center' as const,
-    alignItems: 'center' as const,
-  },
-  // Search bar under the header (§14.6)
-  searchContainer: {
-    paddingHorizontal: layout.marginCompact,
-    paddingVertical: space.sm,
-    backgroundColor: t.surface.header,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: t.border.divider,
-  },
-  searchInputContainer: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    minHeight: layout.rowMinHeight,
-    paddingHorizontal: space.md,
-    borderRadius: radius.button,
-    gap: space.sm,
-    backgroundColor: t.background.base,
-  },
-  searchInput: {
-    flex: 1,
-    ...typography.body,
-    color: t.text.primary,
-    paddingVertical: space.xs,
-  },
-  clearButton: {
-    minWidth: space.xxxl,
-    minHeight: space.xxxl,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
   },
   listContent: {
     paddingBottom: space.xxl,

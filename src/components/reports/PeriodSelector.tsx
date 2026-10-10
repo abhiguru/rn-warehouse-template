@@ -20,22 +20,22 @@ import {
   touchTarget,
   typography,
   type ThemeTokens,
+  singleLineText,
 } from '@/theme/tokens';
 import type { ReportPeriod } from '@/types/report.types';
 
 import { toLocalISODate } from '@/utils/formatters';
+import { t as tr } from '@/i18n';
 interface PeriodOption {
   id: ReportPeriod;
-  label: string;
-  accessibilityLabel: string;
-  days?: number;
+  days: number;
 }
 
 const PERIOD_OPTIONS: PeriodOption[] = [
-  { id: 'last120days', label: '120 days', accessibilityLabel: 'Last 120 days', days: 120 },
-  { id: 'last240days', label: '240 days', accessibilityLabel: 'Last 240 days', days: 240 },
-  { id: 'last364days', label: '364 days', accessibilityLabel: 'Last 364 days', days: 364 },
-  { id: 'last420days', label: '420 days', accessibilityLabel: 'Last 420 days', days: 420 },
+  { id: 'last120days', days: 120 },
+  { id: 'last240days', days: 240 },
+  { id: 'last364days', days: 364 },
+  { id: 'last420days', days: 420 },
 ];
 
 interface PeriodSelectorProps {
@@ -171,7 +171,7 @@ export const PeriodSelector: React.FC<PeriodSelectorProps> = ({
 
   return (
     <View style={styles.container}>
-      <View style={styles.segmented} accessibilityRole="radiogroup" accessibilityLabel="Report period">
+      <View style={styles.segmented} accessibilityRole="radiogroup" accessibilityLabel={tr('reports.period.groupLabel')}>
         {PERIOD_OPTIONS.map((option, index) => {
           const isSelected = selectedPeriod === option.id;
           return (
@@ -187,13 +187,14 @@ export const PeriodSelector: React.FC<PeriodSelectorProps> = ({
               onPress={() => handlePeriodSelect(option.id)}
               accessibilityRole="radio"
               accessibilityState={{ selected: isSelected, checked: isSelected }}
-              accessibilityLabel={option.accessibilityLabel}
+              accessibilityLabel={tr('reports.period.lastDays', { count: option.days })}
             >
               <Text
                 style={[styles.segmentText, isSelected && styles.segmentTextSelected]}
                 maxFontSizeMultiplier={1.6}
+                {...singleLineText()}
               >
-                {option.label}
+                {tr('reports.period.days', { count: option.days })}
               </Text>
             </Pressable>
           );
@@ -209,7 +210,7 @@ export const PeriodSelector: React.FC<PeriodSelectorProps> = ({
           onPress={() => handlePeriodSelect('custom')}
           accessibilityRole="button"
           accessibilityState={{ selected: customSelected }}
-          accessibilityLabel="Custom date range"
+          accessibilityLabel={tr('reports.period.customRange')}
         >
           <Icon
             name={customSelected ? 'check' : 'calendar-range'}
@@ -219,8 +220,9 @@ export const PeriodSelector: React.FC<PeriodSelectorProps> = ({
           <Text
             style={[styles.customChipText, customSelected && styles.customChipTextSelected]}
             maxFontSizeMultiplier={1.6}
+            {...singleLineText()}
           >
-            Custom
+            {tr('reports.period.custom')}
           </Text>
         </Pressable>
       )}

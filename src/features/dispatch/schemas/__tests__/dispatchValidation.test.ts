@@ -1,4 +1,6 @@
 import { validateStep1 } from '../dispatchValidation';
+import { validationSummary } from '@/utils/validationSummary';
+import { t } from '@/i18n';
 
 const validHeader = {
   disp_date: '2026-01-01',
@@ -26,5 +28,29 @@ describe('dispatch Step 1 generated-number contract', () => {
 
     expect(result.isValid).toBe(false);
     expect(result.errors.disp_no).toBe('Dispatch number must be at most 8 characters');
+  });
+});
+
+describe('dispatch Step 1 messages for empty fields', () => {
+  it('says the vehicle number is required, not that its format is wrong', async () => {
+    const result = await validateStep1({ ...validHeader, disp_no: 'I0001', registration: '' });
+
+    expect(result.isValid).toBe(false);
+    expect(result.errors.registration).toBe(t('dispatch.validation.registrationRequired'));
+    expect(result.errors.registration).not.toBe(t('dispatch.validation.registrationFormat'));
+  });
+
+  it('still reports a wrong format when a value is typed', async () => {
+    const result = await validateStep1({ ...validHeader, disp_no: 'I0001', registration: 'gj-01' });
+
+    expect(result.errors.registration).toBe(t('dispatch.validation.registrationFormat'));
+  });
+
+  it('lists a missing customer once in the summary, although two fields fail', async () => {
+    const result = await validateStep1({ ...validHeader, disp_no: 'I0001', customer_id: '', customer_name: '' });
+
+    expect(result.errors.customer_id).toBe(t('dispatch.validation.customerRequired'));
+    expect(result.errors.customer_name).toBe(t('dispatch.validation.customerRequired'));
+    expect(validationSummary(result.errors)).toBe(t('dispatch.validation.customerRequired'));
   });
 });

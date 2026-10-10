@@ -17,6 +17,7 @@ import {
   touchTarget,
   typography,
   type ThemeTokens,
+  trackedText,
 } from '@/theme/tokens';
 
 const tabular = ['tabular-nums' as const];
@@ -248,7 +249,7 @@ export const makeGRNListStyles = (t: ThemeTokens) => ({
     fontWeight: fontWeight.semibold,
     color: t.text.secondary,
     textTransform: 'uppercase' as const,
-    letterSpacing: 0.5,
+    letterSpacing: trackedText(0.5),
   },
 
   sectionBadge: {
@@ -282,10 +283,13 @@ export const makeGRNListStyles = (t: ThemeTokens) => ({
   // =========================================================================
   // Object cell card
   // =========================================================================
+  // The outline keeps each card distinct in dark mode, where the shadow does not show.
   card: {
-    marginBottom: space.sm,
+    marginBottom: space.md,
     backgroundColor: t.surface.card,
     borderRadius: radius.card,
+    borderWidth: 1,
+    borderColor: t.border.separator,
     ...t.shadow[2],
   },
 
@@ -338,10 +342,12 @@ export const makeGRNListStyles = (t: ThemeTokens) => ({
     gap: space.xs,
   },
 
+  // One fact (icon and text): it never shrinks, so the row wraps between facts and a date never breaks inside itself.
   footerItem: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
     gap: space.xxs,
+    flexShrink: 0,
   },
 
   footerText: {
@@ -446,6 +452,11 @@ export const makeGRNListStyles = (t: ThemeTokens) => ({
     marginLeft: space.sm,
   },
 
+  // StatusTag aligns itself to the start; in the table it sits under its right-aligned header.
+  stockTag: {
+    alignSelf: 'flex-end' as const,
+  },
+
   cellValue: {
     ...typography.subhead,
     color: t.text.primary,
@@ -465,14 +476,18 @@ export const makeGRNListStyles = (t: ThemeTokens) => ({
   // =========================================================================
   // Expand / collapse button
   // =========================================================================
+  // The card's own footer: tinted, with the text at the start, so it reads as
+  // part of this card and not as a control for the whole list.
   expandButton: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: t.border.divider,
-    gap: space.xs,
+    justifyContent: 'space-between' as const,
+    borderTopWidth: 1,
+    borderTopColor: t.border.separator,
+    backgroundColor: t.background.base,
+    gap: space.sm,
     minHeight: touchTarget,
+    paddingHorizontal: space.lg,
   },
 
   expandButtonPressed: {
@@ -483,6 +498,7 @@ export const makeGRNListStyles = (t: ThemeTokens) => ({
     ...typography.subhead,
     fontWeight: fontWeight.semibold,
     color: t.brand.tint,
+    flexShrink: 1,
   },
 
   // =========================================================================
@@ -491,7 +507,7 @@ export const makeGRNListStyles = (t: ThemeTokens) => ({
   swipeActions: {
     flexDirection: 'row' as const,
     alignItems: 'stretch' as const,
-    marginBottom: space.sm,
+    marginBottom: space.md,
     marginLeft: space.sm,
     borderRadius: radius.card,
     overflow: 'hidden' as const,

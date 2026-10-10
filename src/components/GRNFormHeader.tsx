@@ -7,6 +7,7 @@ import { iconSize, layout, radius, space, touchTarget, typography } from '@/them
 import type { ThemeTokens } from '@/theme/tokens';
 
 import { showAlert } from '@/utils/alert';
+import { t as tr } from '@/i18n';
 export interface GRNFormHeaderProps {
   title: string; // e.g., "Create GRN"
   onCancel: () => void; // Called after user confirms cancellation
@@ -67,7 +68,7 @@ export default function GRNFormHeader({
   onCancel,
   showCancelButton = true,
   confirmCancel = true,
-  cancelMessage = 'The details you entered will be lost.',
+  cancelMessage = tr('grn.form.discardMessage'),
 }: GRNFormHeaderProps) {
   const insets = useSafeAreaInsets();
   const styles = useThemedStyles(makeStyles);
@@ -76,11 +77,11 @@ export default function GRNFormHeader({
   const handleCancelPress = useCallback(() => {
     if (confirmCancel) {
       showAlert(
-        'Discard this GRN?',
+        tr('grn.form.discardTitle'),
         cancelMessage,
         [
-          { text: 'Keep editing', style: 'cancel' },
-          { text: 'Discard GRN', style: 'destructive', onPress: onCancel },
+          { text: tr('common.keepEditing'), style: 'cancel' },
+          { text: tr('grn.form.discardGrn'), style: 'destructive', onPress: onCancel },
         ],
         { cancelable: true }
       );
@@ -99,11 +100,11 @@ export default function GRNFormHeader({
               onPress={handleCancelPress}
               hitSlop={space.sm}
               accessibilityRole="button"
-              accessibilityLabel="Cancel GRN"
-              accessibilityHint="Asks before discarding the details you entered"
+              accessibilityLabel={tr('grn.form.cancelLabel')}
+              accessibilityHint={tr('grn.form.cancelHint')}
             >
               <Icon name="close" size={iconSize.lg} color={t.brand.tint} />
-              <Text style={styles.cancelText}>Cancel</Text>
+              <Text style={styles.cancelText}>{tr('common.cancel')}</Text>
             </Pressable>
           )}
         </View>

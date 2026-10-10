@@ -90,7 +90,7 @@ it.each([
 ] as const)('labels saved total%s/discount%s without inventing a storage subtotal',
   (total, discount, netBeforeTax, hasAdjustment, adjustmentLabel, adjustmentSign, adjustmentAmount) => {
     expect(savedInvoiceAmounts({total, tax_amount: 9, discount})).toEqual({
-      netBeforeTax, hasAdjustment, adjustmentLabel, adjustmentSign, adjustmentAmount,
+      netBeforeTax, hasAdjustment, isSurcharge: discount < 0, adjustmentLabel, adjustmentSign, adjustmentAmount,
     });
   });
 

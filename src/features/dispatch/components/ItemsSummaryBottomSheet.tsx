@@ -18,7 +18,8 @@ import {
   ItemsSummaryBottomSheet as GenericItemsSummaryBottomSheet,
   TotalBadge,
 } from '@/components/common/ItemsSummaryBottomSheet';
-import { formatCount, formatWeight } from '@/utils/formatters';
+import { formatCount, formatNumber, formatWeight } from '@/utils/formatters';
+import { t as tr, formatIdentifier } from '@/i18n';
 
 interface DispatchItemsSummaryBottomSheetProps {
   isVisible: boolean;
@@ -142,12 +143,17 @@ const DispatchItemCard: React.FC<{
     <View
       style={[styles.itemCard, isLast && styles.lastItem, isEditing && styles.itemCardEditing]}
       accessible
-      accessibilityLabel={`Item ${index + 1}, ${item.grnItems_item_name}, GRN ${item.grns_gr_no}, ${bags}${isEditing ? ', editing' : ''}`}
+      accessibilityLabel={tr(isEditing ? 'dispatch.summarySheet.rowLabelEditing' : 'dispatch.summarySheet.rowLabel', {
+        index: index + 1,
+        item: item.grnItems_item_name,
+        grn: formatIdentifier(item.grns_gr_no),
+        bags,
+      })}
     >
       <View style={styles.itemHeader}>
         <View style={[styles.itemNumberBadge, isEditing && styles.itemNumberBadgeEditing]}>
           <Text style={[styles.itemNumber, isEditing && styles.itemNumberEditing]}>
-            {index + 1}
+            {formatNumber(index + 1)}
           </Text>
         </View>
         <View style={styles.itemInfo}>
@@ -155,13 +161,13 @@ const DispatchItemCard: React.FC<{
             <Text style={styles.itemName} numberOfLines={2}>
               {item.grnItems_item_name}
             </Text>
-            {isEditing && <Text style={styles.editingText}>Editing</Text>}
+            {isEditing && <Text style={styles.editingText}>{tr('dispatch.summarySheet.editing')}</Text>}
           </View>
           <View style={styles.itemMeta}>
             <View style={styles.metaBadge}>
               <Icon name="package-down" size={iconSize.sm} color={t.status.neutral.text} />
               <Text style={styles.metaText} maxFontSizeMultiplier={1.6}>
-                {item.grns_gr_no}/{item.grnItems_quantity}
+                {item.grns_gr_no}/{formatNumber(item.grnItems_quantity)}
               </Text>
             </View>
             <View style={styles.metaBadge}>
@@ -231,20 +237,20 @@ export const ItemsSummaryBottomSheet: React.FC<DispatchItemsSummaryBottomSheetPr
       {
         icon: 'cube-outline',
         iconColor: t.icon.secondary,
-        label: 'Bags',
-        value: totalQuantity,
+        label: tr('common.bags'),
+        value: formatNumber(totalQuantity),
       },
       {
         icon: 'weight',
         iconColor: t.icon.secondary,
-        label: 'Weight',
+        label: tr('common.weight'),
         value: formatWeight(totalWeight, 0),
       },
       {
         icon: 'package-down',
         iconColor: t.icon.secondary,
-        label: 'GRNs',
-        value: uniqueGRNs,
+        label: tr('dispatch.summarySheet.grns'),
+        value: formatNumber(uniqueGRNs),
       },
     ];
   }, [t]);
@@ -274,9 +280,9 @@ export const ItemsSummaryBottomSheet: React.FC<DispatchItemsSummaryBottomSheetPr
       onDeleteItem={onDeleteItem}
       onEditItem={onEditItem}
       editingItemKey={editingItemId}
-      entityName="item"
-      emptyTitle="No items added yet"
-      emptySubtitle="Fill in the form and tap Add to add items to this dispatch."
+      entity="item"
+      emptyTitle={tr('dispatch.summarySheet.emptyTitle')}
+      emptySubtitle={tr('dispatch.summarySheet.emptySubtitle')}
     />
   );
 };

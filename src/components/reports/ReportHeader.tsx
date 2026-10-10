@@ -141,7 +141,7 @@ export const ReportHeader: React.FC<ReportHeaderProps> = ({
             {title}
           </Text>
           {subtitle ? (
-            <Text style={styles.subtitle} numberOfLines={1}>
+            <Text style={styles.subtitle} numberOfLines={2}>
               {subtitle}
             </Text>
           ) : null}

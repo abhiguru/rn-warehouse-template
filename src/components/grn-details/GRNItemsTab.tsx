@@ -12,6 +12,7 @@ import { GRNItemCard } from './GRNItemCard';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { iconSize, space, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
+import { t as tr } from '@/i18n';
 
 const makeStyles = (t: ThemeTokens) => ({
   container: {
@@ -138,9 +139,9 @@ export const GRNItemsTab: React.FC<GRNItemsTabProps> = ({
       <View style={styles.emptyContainer}>
         <Icon name="cube-outline" size={iconSize.hero} color={t.icon.secondary} />
         <Text style={styles.emptyTitle} accessibilityRole="header">
-          No items
+          {tr('grn.itemsTab.emptyTitle')}
         </Text>
-        <Text style={styles.emptySubtitle}>This GRN has no items. Edit the GRN to add them.</Text>
+        <Text style={styles.emptySubtitle}>{tr('grn.itemsTab.emptySubtitle')}</Text>
       </View>
     );
   };
@@ -149,9 +150,9 @@ export const GRNItemsTab: React.FC<GRNItemsTabProps> = ({
     if (!loading) return null;
 
     return (
-      <View style={styles.loadingFooter} accessibilityRole="progressbar" accessibilityLabel="Loading items">
+      <View style={styles.loadingFooter} accessibilityRole="progressbar" accessibilityLabel={tr('grn.itemsTab.loadingLabel')}>
         <ActivityIndicator size="small" color={t.brand.tint} />
-        <Text style={styles.loadingText}>Loading items…</Text>
+        <Text style={styles.loadingText}>{tr('grn.itemsTab.loading')}</Text>
       </View>
     );
   };
@@ -159,9 +160,9 @@ export const GRNItemsTab: React.FC<GRNItemsTabProps> = ({
   // Initial loading state
   if (loading && items.length === 0) {
     return (
-      <View style={styles.loadingContainer} accessibilityRole="progressbar" accessibilityLabel="Loading items">
+      <View style={styles.loadingContainer} accessibilityRole="progressbar" accessibilityLabel={tr('grn.itemsTab.loadingLabel')}>
         <ActivityIndicator size="large" color={t.brand.tint} />
-        <Text style={styles.loadingText}>Loading items…</Text>
+        <Text style={styles.loadingText}>{tr('grn.itemsTab.loading')}</Text>
       </View>
     );
   }

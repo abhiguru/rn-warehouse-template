@@ -17,15 +17,13 @@
  * @module lists/DispatchFlashList
  */
 
-import React, { useState, useEffect, useCallback, useRef, useMemo, memo } from 'react';
-import { View, Text, StyleSheet, RefreshControl, Pressable, LayoutAnimation } from 'react-native';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { View, Text, StyleSheet, RefreshControl, LayoutAnimation } from 'react-native';
 
-import { FlashList } from '@shopify/flash-list';
-import { ActivityIndicator, Badge, IconButton, Portal, Snackbar } from 'react-native-paper';
+import { FlashList, type FlashListRef } from '@shopify/flash-list';
+import { ActivityIndicator, Snackbar } from 'react-native-paper';
 import { router } from 'expo-router';
 import { useFocusEffect } from 'expo-router';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import Animated, { FadeIn } from 'react-native-reanimated';
 import { ListSkeleton } from '@/components/skeletons';
 
 // Types and utilities
@@ -40,47 +38,35 @@ import {
 // Services
 import {
   getDispatchListWithItems,
+  getAssignedCustomerDispatchList,
   Dispatch,
 } from '@/services/dispatch-service';
-
-import { getAutocompleteSelections, getStringValue, AutocompleteSelection } from '@/types/filter.types';
-
-// Local type for Redux filter state (camelCase as defined in DISPATCH_FILTER_CONFIG)
-interface ReduxDispatchFilters {
-  customerName?: AutocompleteSelection[];
-  dispNoFrom?: AutocompleteSelection[];
-  dispNoTo?: AutocompleteSelection[];
-  itemName?: AutocompleteSelection[];
-  weightMin?: number;
-  weightMax?: number;
-  packageMark?: string;
-}
 
 // Components
 import { MemoizedDispatchItem } from '@/components/list-items';
 import { ListEmptyState } from '@/components/list/ListEmptyState';
 import { ErrorStateView } from '@/components/ErrorBoundary';
-import { Avatar } from '@/components/ui/Avatar';
-import { formatCount, formatNumber, formatWeight } from '@/utils/formatters';
-import { GenericFilterModal } from '@/components/filters';
+import { formatCount, formatNumber } from '@/utils/formatters';
+import { t as translate } from '@/i18n';
 
 // State
-import { useAppSelector, useAppDispatch } from '@/store/hooks';
 import { usePermissions } from '@/hooks/usePermissions';
-import { selectFilterValues, clearFilter, setFilterValues } from '@/store/slices/filterSlice';
+import { useRoleBasedAccess } from '@/hooks/useRoleBasedAccess';
 
-// Config
-import { DISPATCH_FILTER_CONFIG } from '@/config/filterConfigs';
+// Filters, search and sort
+import { DISPATCH_FILTERS } from '@/features/filters/configs';
+import { readSearch } from '@/features/filters/filterModel';
+import { useListFilters } from '@/features/filters/useListFilters';
+import { FilteredListHeader, filteredEmptyProps } from '@/features/filters/components/FilteredListHeader';
+import { searchWords } from '@/features/filters/components/HighlightedText';
 import { formatSectionDate } from '@/utils/formatters';
-import { createLogger } from '@/utils/logger';
 
 // Theme
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
-import { fontWeight, iconSize, layout, radius, space, touchTarget, typography } from '@/theme/tokens';
+import { fontWeight, iconSize, layout, radius, space, touchTarget, typography, trackedText } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 
 import { FAB_CLEARANCE } from '@/components/ui/Fab';
-import { SortBar, type SortOption } from '@/components/list/SortBar';
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -89,9 +75,6 @@ export interface DispatchFlashListProps {
   /** Optional customer ID to filter dispatches */
   customerId?: string;
 }
-
-type SortField = 'dispNo' | 'dispDate';
-type SortOrder = 'asc' | 'desc';
 
 // ============================================================================
 // SECTION HEADER COMPONENT (Memoized)
@@ -110,11 +93,11 @@ const SectionHeader = React.memo<SectionHeaderProps>(({ title, count }) => {
       style={styles.sectionHeader}
       accessible
       accessibilityRole="header"
-      accessibilityLabel={`${title}, ${formatCount(count, 'dispatch', 'dispatches')}`}
+      accessibilityLabel={translate('lists.section.label', { title, countText: formatCount(count, 'dispatch', 'dispatches') })}
     >
       <Text style={styles.sectionTitle}>{title}</Text>
       <View style={styles.sectionBadge}>
-        <Text style={styles.sectionCount} maxFontSizeMultiplier={1.6}>{count}</Text>
+        <Text style={styles.sectionCount} maxFontSizeMultiplier={1.6}>{formatNumber(count)}</Text>
       </View>
     </View>
   );
@@ -123,215 +106,37 @@ const SectionHeader = React.memo<SectionHeaderProps>(({ title, count }) => {
 SectionHeader.displayName = 'SectionHeader';
 
 // ============================================================================
-// EMPTY STATE COMPONENT
-// ============================================================================
-
-interface EmptyStateProps {
-  hasFilters: boolean;
-  onClearFilters: () => void;
-  canCreate: boolean;
-  onCreateDispatch: () => void;
-}
-
-// Empty state: the shared ListEmptyState with the dispatch wording (style guide §13.6)
-const EmptyState = React.memo<EmptyStateProps>(({
-  hasFilters,
-  onClearFilters,
-  canCreate,
-  onCreateDispatch,
-}) => (
-  <ListEmptyState
-    activeFilterCount={hasFilters ? 1 : 0}
-    emptyIcon="truck-delivery-outline"
-    emptyTitle="No dispatches yet"
-    emptySubtitle={canCreate ? 'Dispatches you create appear here.' : 'Dispatches appear here once they are created.'}
-    filteredTitle="No dispatches match these filters"
-    filteredSubtitle="Try fewer filters, or clear them to see all dispatches."
-    onClearFilters={onClearFilters}
-    showCreateButton={canCreate}
-    createButtonLabel="Create dispatch"
-    onCreatePress={onCreateDispatch}
-  />
-));
-
-EmptyState.displayName = 'EmptyState';
-
-// ============================================================================
-// FILTER CHIPS COMPONENT
-// ============================================================================
-
-interface FilterChipsProps {
-  filters: ReduxDispatchFilters;
-  activeFilterCount: number;
-  updateFilter: (key: string, value: AutocompleteSelection[] | string | number | undefined) => void;
-  clearAllFilters: () => void;
-}
-
-const FilterChips: React.FC<FilterChipsProps> = memo(({
-  filters,
-  activeFilterCount,
-  updateFilter,
-  clearAllFilters,
-}) => {
-  const styles = useThemedStyles(makeStyles);
-  const t = useTokens();
-  if (activeFilterCount === 0) return null;
-
-  const chips: { key: string; label: string; icon: string; onRemove: () => void }[] = [];
-
-  // Item chips
-  if (filters.itemName && filters.itemName.length > 0) {
-    filters.itemName.forEach((item: AutocompleteSelection) => {
-      chips.push({
-        key: `item-${item.id}`,
-        label: item.label,
-        icon: 'cube-outline',
-        onRemove: () => {
-          const remaining = (filters.itemName ?? []).filter((i: AutocompleteSelection) => i.id !== item.id);
-          updateFilter('itemName', remaining.length > 0 ? remaining : []);
-        },
-      });
-    });
-  }
-
-  // Customer chips
-  if (filters.customerName && filters.customerName.length > 0) {
-    filters.customerName.forEach((item: AutocompleteSelection) => {
-      chips.push({
-        key: `customer-${item.id}`,
-        label: item.label,
-        icon: 'account-outline',
-        onRemove: () => {
-          const remaining = (filters.customerName ?? []).filter((i: AutocompleteSelection) => i.id !== item.id);
-          updateFilter('customerName', remaining.length > 0 ? remaining : []);
-        },
-      });
-    });
-  }
-
-  // Dispatch number range chips
-  if (filters.dispNoFrom && filters.dispNoFrom.length > 0) {
-    chips.push({
-      key: 'disp-from',
-      label: `From ${filters.dispNoFrom[0].label}`,
-      icon: 'file-document-outline',
-      onRemove: () => updateFilter('dispNoFrom', []),
-    });
-  }
-  if (filters.dispNoTo && filters.dispNoTo.length > 0) {
-    chips.push({
-      key: 'disp-to',
-      label: `To ${filters.dispNoTo[0].label}`,
-      icon: 'file-document-outline',
-      onRemove: () => updateFilter('dispNoTo', []),
-    });
-  }
-
-  // Weight range chip
-  if (filters.weightMin || filters.weightMax) {
-    const min = formatNumber(Number(filters.weightMin || 0));
-    chips.push({
-      key: 'weight-range',
-      label: filters.weightMax
-        ? `${min} – ${formatWeight(Number(filters.weightMax))}`
-        : `${min} kg or more`,
-      icon: 'weight-kilogram',
-      onRemove: () => {
-        updateFilter('weightMin', undefined);
-        updateFilter('weightMax', undefined);
-      },
-    });
-  }
-
-  // Package mark chip
-  if (filters.packageMark) {
-    chips.push({
-      key: 'package-mark',
-      label: filters.packageMark,
-      icon: 'tag-outline',
-      onRemove: () => updateFilter('packageMark', ''),
-    });
-  }
-
-  return (
-    <Animated.View entering={FadeIn} style={styles.filterChipsContainer}>
-      <View style={styles.filterChipsHeader}>
-        <View style={styles.filterCountBadge}>
-          <Icon name="filter-variant" size={iconSize.sm} color={t.brand.tint} />
-          <Text style={styles.filterCountText}>
-            {formatCount(activeFilterCount, 'filter')}
-          </Text>
-        </View>
-        <Pressable
-          onPress={clearAllFilters}
-          style={styles.clearAllButton}
-          accessibilityRole="button"
-          accessibilityLabel="Clear all filters"
-        >
-          <Text style={styles.clearAllText}>Clear all</Text>
-        </Pressable>
-      </View>
-      <View style={styles.filterChipsList}>
-        {chips.map((chip) => (
-          <Pressable
-            key={chip.key}
-            onPress={chip.onRemove}
-            hitSlop={space.sm}
-            style={({ pressed }) => [styles.filterChip, pressed && styles.filterChipPressed]}
-            accessibilityRole="button"
-            accessibilityLabel={`Remove filter ${chip.label}`}
-          >
-            <Icon name={chip.icon} size={iconSize.sm} color={t.brand.tint} />
-            <Text style={styles.filterChipText} numberOfLines={1} maxFontSizeMultiplier={1.6}>
-              {chip.label}
-            </Text>
-            <Icon name="close" size={iconSize.sm} color={t.brand.tint} />
-          </Pressable>
-        ))}
-      </View>
-    </Animated.View>
-  );
-});
-
-FilterChips.displayName = 'FilterChips';
-
-// ============================================================================
 // MAIN COMPONENT
 // ============================================================================
 
 const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => {
-  const reduxDispatch = useAppDispatch();
-  const fetchInProgressRef = useRef(false);
+  const listRef = useRef<FlashListRef<FlattenedItem<Dispatch>>>(null);
 
   // Theme
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
 
   // User state & permissions
-  const { userProfile } = useAppSelector(state => state.auth);
   const { canCreate, canUpdate } = usePermissions();
+  const { canManageOrders: isWarehouseRole, assignedCustomerIds } = useRoleBasedAccess();
   const canPrint = canCreate || canUpdate; // Staff can print (they have update permission)
   const canCreateDispatch = canCreate;
+
+  // Filters, search and sort
+  const filters = useListFilters(DISPATCH_FILTERS);
+  const { request, sort } = filters;
+  const sortedByNumber = sort?.field === 'disp_no';
+  const words = useMemo(() => searchWords(readSearch(DISPATCH_FILTERS, filters.values).text), [filters.values]);
 
   // List state
   const [dispatches, setDispatches] = useState<Dispatch[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [hasLoaded, setHasLoaded] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [currentOffset, setCurrentOffset] = useState(0);
   const [error, setError] = useState<string | null>(null);
-
-  // E3 Fix: Track mounted state to prevent state updates after unmount
-  const isMountedRef = useRef(true);
-
-  // E7 Fix: Track request ID to discard stale pagination responses
-  const requestIdRef = useRef(0);
-
-  // Sort & Filter state
-  const [sortField, setSortField] = useState<SortField>('dispDate');
-  const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
-  const [isFilterModalVisible, setIsFilterModalVisible] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
   const [snackbarVisible, setSnackbarVisible] = useState(false);
 
@@ -339,159 +144,7 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
   const [allExpanded, setAllExpanded] = useState(false);
   const [expandKey, setExpandKey] = useState(0);
 
-  // Get filters from Redux (camelCase as defined in DISPATCH_FILTER_CONFIG)
-  const filters = useAppSelector(state =>
-    selectFilterValues(state, DISPATCH_FILTER_CONFIG.persistKey)
-  ) as ReduxDispatchFilters;
-
-  // Calculate active filter count
-  const activeFilterCount = useMemo(() => {
-    return Object.values(filters || {}).filter(val => {
-      if (Array.isArray(val)) return val.length > 0;
-      if (typeof val === 'string') return val.length > 0;
-      return false;
-    }).length;
-  }, [filters]);
-
-  // ============================================================================
-  // DATA FETCHING
-  // ============================================================================
-
-  const fetchDispatches = useCallback(async (offset: number = 0, append: boolean = false) => {
-    if (fetchInProgressRef.current && offset === 0 && !append) {
-      return;
-    }
-
-    // E7 Fix: Increment request ID to track this request
-    const currentRequestId = ++requestIdRef.current;
-
-    try {
-      if (offset === 0 && !append) {
-        fetchInProgressRef.current = true;
-        setIsLoading(true);
-        setError(null);
-      } else if (append) {
-        setIsLoadingMore(true);
-      }
-
-      // Debug: Log raw filter values from Redux
-      if (__DEV__) {
-        console.log('[DispatchFlashList] 🔍 Raw filters from Redux:', JSON.stringify(filters, null, 2));
-        console.log('[DispatchFlashList] 🔍 dispNoFrom raw:', filters?.dispNoFrom);
-        console.log('[DispatchFlashList] 🔍 dispNoTo raw:', filters?.dispNoTo);
-      }
-
-      // Extract dispatch number range from autocomplete selections
-      // dispNoFrom/dispNoTo are autocomplete fields storing AutocompleteSelection[]
-      const dispNoFromSelections = getAutocompleteSelections(filters?.dispNoFrom);
-      const dispNoToSelections = getAutocompleteSelections(filters?.dispNoTo);
-      const dispNoFromValue = dispNoFromSelections.length > 0 ? dispNoFromSelections[0].label : undefined;
-      const dispNoToValue = dispNoToSelections.length > 0 ? dispNoToSelections[0].label : undefined;
-
-      // Extract customer and item IDs from autocomplete selections (multi-select)
-      const customerSelections = getAutocompleteSelections(filters?.customerName);
-      const itemSelections = getAutocompleteSelections(filters?.itemName);
-
-      // Build API filters - pass IDs for customer/item filters (similar to GRN pattern)
-      const apiFilters: Record<string, unknown> = {};
-
-      // Customer filter: pass customer IDs for filtering
-      if (customerSelections.length > 0) {
-        apiFilters.customer_ids = customerSelections.map(c => c.id);
-      }
-
-      // Item filter: pass item IDs for filtering dispatches containing these items
-      if (itemSelections.length > 0) {
-        apiFilters.item_ids = itemSelections.map(i => i.id);
-      }
-
-      // Dispatch number range
-      if (dispNoFromValue) {
-        apiFilters.disp_no_from = dispNoFromValue;
-      }
-      if (dispNoToValue) {
-        apiFilters.disp_no_to = dispNoToValue;
-      }
-
-      if (__DEV__) {
-        console.log('[DispatchFlashList] 🔍 Extracted dispNoFrom:', dispNoFromValue);
-        console.log('[DispatchFlashList] 🔍 Extracted dispNoTo:', dispNoToValue);
-        console.log('[DispatchFlashList] 🔍 Customer IDs:', customerSelections.map(c => c.id));
-        console.log('[DispatchFlashList] 🔍 Item IDs:', itemSelections.map(i => i.id));
-        console.log('[DispatchFlashList] 🔍 API filters being sent:', JSON.stringify(apiFilters, null, 2));
-      }
-
-      const response = await getDispatchListWithItems({
-        p_customer_id: customerId,
-        p_sort_by: sortField === 'dispNo' ? 'disp_no' : 'dispatch_date',
-        p_sort_order: sortOrder,
-        p_limit: 20,
-        offset: offset,
-        p_filters: apiFilters,
-      });
-
-      // E3 Fix: Skip state updates if component unmounted during fetch
-      if (!isMountedRef.current) {
-        return;
-      }
-
-      // E7 Fix: Discard stale response if a newer request was made
-      if (currentRequestId !== requestIdRef.current) {
-        if (__DEV__) console.log('[DispatchFlashList] Discarding stale response', { currentRequestId, latestRequestId: requestIdRef.current });
-        return;
-      }
-
-      if (!response.success) {
-        throw new Error(response.message || 'Failed to load dispatches');
-      }
-
-      const { dispatches: newDispatches, pagination } = response.data;
-
-      if (__DEV__) console.log('[DispatchFlashList] Pagination response:', {
-        newDispatchesCount: newDispatches.length,
-        pagination,
-        currentOffset: offset,
-        nextOffset: offset + newDispatches.length,
-      });
-
-      if (append) {
-        setDispatches(prev => {
-          const existingIds = new Set(prev.map(d => d.dispatch_id || d.id));
-          const uniqueNew = newDispatches.filter(
-            (d: Dispatch) => !existingIds.has(d.dispatch_id || d.id)
-          );
-          return [...prev, ...uniqueNew];
-        });
-      } else {
-        setDispatches(newDispatches);
-      }
-
-      setHasMore(pagination.has_more);
-      setCurrentOffset(offset + newDispatches.length);
-    } catch (err: unknown) {
-      // E3 Fix: Skip state updates if component unmounted
-      if (!isMountedRef.current) {
-        return;
-      }
-      console.error('[DispatchFlashList] Error:', err);
-      const errorMessage = err instanceof Error ? err.message : 'Failed to load dispatches';
-      setError(errorMessage);
-      setSnackbarMessage(append
-        ? "Couldn't load more dispatches. Scroll down to try again."
-        : "Couldn't load dispatches. Check your connection and try again.");
-      setSnackbarVisible(true);
-    } finally {
-      fetchInProgressRef.current = false;
-      // E3 Fix: Only update state if still mounted
-      if (isMountedRef.current) {
-        setIsLoading(false);
-        setIsRefreshing(false);
-        setIsLoadingMore(false);
-      }
-    }
-  }, [customerId, sortField, sortOrder, filters]);
-
-  // E3 Fix: Cleanup on unmount to prevent state updates after unmount
+  const isMountedRef = useRef(true);
   useEffect(() => {
     isMountedRef.current = true;
     return () => {
@@ -499,23 +152,77 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
     };
   }, []);
 
-  // Track focus count to skip refetch on initial mount
-  const focusCountRef = useRef(0);
+  // ============================================================================
+  // DATA FETCHING
+  // ============================================================================
 
-  // Initial load
+  // A newer request (the user kept typing, or changed a filter) replaces an
+  // older one: late answers to old questions are dropped.
+  const latestRequest = useRef(0);
+  const fetchDispatches = useCallback(async (offset: number = 0, append: boolean = false) => {
+    const requestId = append ? latestRequest.current : ++latestRequest.current;
+    try {
+      if (append) setIsLoadingMore(true);
+      else {
+        setIsLoading(true);
+        setError(null);
+      }
+
+      const params = { ...request, p_limit: 20, offset };
+      // The all-customers list is for warehouse roles; customer accounts read
+      // their assigned customers' dispatches.
+      const response = isWarehouseRole
+        ? await getDispatchListWithItems({ ...params, p_customer_id: customerId })
+        : await getAssignedCustomerDispatchList(customerId ? [customerId] : assignedCustomerIds, params);
+      if (!isMountedRef.current || requestId !== latestRequest.current) return;
+
+      if (!response.success) {
+        throw new Error(response.message || 'Failed to load dispatches');
+      }
+
+      const { dispatches: newDispatches, pagination } = response.data;
+      if (append) {
+        setDispatches(prev => {
+          const existingIds = new Set(prev.map(d => d.dispatch_id || d.id));
+          return [...prev, ...newDispatches.filter((d: Dispatch) => !existingIds.has(d.dispatch_id || d.id))];
+        });
+      } else {
+        setDispatches(newDispatches);
+        // A new search, filter or sort starts from its first row.
+        listRef.current?.scrollToOffset({ offset: 0, animated: false });
+      }
+      setHasMore(pagination.has_more);
+      setCurrentOffset(offset + newDispatches.length);
+    } catch (err: unknown) {
+      if (!isMountedRef.current || requestId !== latestRequest.current) return;
+      console.error('[DispatchFlashList] Error:', err);
+      setError(err instanceof Error ? err.message : 'Failed to load dispatches');
+      setSnackbarMessage(append
+        ? translate('lists.dispatch.loadMoreFailed')
+        : translate('lists.dispatch.loadFailed'));
+      setSnackbarVisible(true);
+    } finally {
+      if (isMountedRef.current && requestId === latestRequest.current) {
+        setIsLoading(false);
+        setHasLoaded(true);
+        setIsRefreshing(false);
+        setIsLoadingMore(false);
+      }
+    }
+  }, [customerId, request, isWarehouseRole, assignedCustomerIds]);
+
+  // Any change of filter, search or sort is a new first page.
   useEffect(() => {
     setCurrentOffset(0);
     fetchDispatches(0, false);
-  }, [sortField, sortOrder, filters]);
+  }, [fetchDispatches]);
 
-  // Refetch on focus (e.g., returning from edit screen)
-  // Skip the first focus (initial mount) to avoid double-fetch
+  // Refetch on focus (e.g., returning from edit screen); the first focus is the initial load.
+  const focusCountRef = useRef(0);
   useFocusEffect(
     useCallback(() => {
       focusCountRef.current += 1;
-      // Only refetch on subsequent focuses (not initial mount)
       if (focusCountRef.current > 1) {
-        fetchInProgressRef.current = false;
         setCurrentOffset(0);
         fetchDispatches(0, false);
       }
@@ -527,20 +234,12 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
   // ============================================================================
 
   const handleRefresh = useCallback(() => {
-    fetchInProgressRef.current = false;
     setIsRefreshing(true);
     setCurrentOffset(0);
     fetchDispatches(0, false);
   }, [fetchDispatches]);
 
   const handleLoadMore = useCallback(() => {
-    if (__DEV__) console.log('[DispatchFlashList] handleLoadMore called:', {
-      isLoadingMore,
-      hasMore,
-      isLoading,
-      currentOffset,
-      willFetch: !isLoadingMore && hasMore && !isLoading,
-    });
     if (!isLoadingMore && hasMore && !isLoading) {
       fetchDispatches(currentOffset, true);
     }
@@ -554,42 +253,8 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
     router.push('/dispatch-form/step1');
   }, []);
 
-  const handleClearFilters = useCallback(() => {
-    reduxDispatch(clearFilter({ key: DISPATCH_FILTER_CONFIG.persistKey }));
-  }, [reduxDispatch]);
-
-  // Update a single filter value in Redux
-  const updateFilter = useCallback((key: string, value: AutocompleteSelection[] | string | number | undefined) => {
-    const currentFilters = filters || {};
-    const updatedFilters = { ...currentFilters, [key]: value };
-    reduxDispatch(setFilterValues({
-      key: DISPATCH_FILTER_CONFIG.persistKey,
-      values: updatedFilters,
-    }));
-  }, [reduxDispatch, filters]);
-
-  const openFilterModal = useCallback(() => {
-    const logger = createLogger('DispatchFlashList');
-    logger.info(`[FILTER_BUTTON_CLICKED] Opening filter modal`);
-    setIsFilterModalVisible(true);
-  }, []);
-
-  const closeFilterModal = useCallback(() => {
-    const logger = createLogger('DispatchFlashList');
-    logger.info(`[CLOSE_FILTER_MODAL] Closing filter modal`);
-    setIsFilterModalVisible(false);
-  }, []);
-
   const dismissSnackbar = useCallback(() => {
     setSnackbarVisible(false);
-  }, []);
-
-  const toggleSortField = useCallback(() => {
-    setSortField(prev => prev === 'dispDate' ? 'dispNo' : 'dispDate');
-  }, []);
-
-  const toggleSortOrder = useCallback(() => {
-    setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc');
   }, []);
 
   // Toggle expand/collapse all cards
@@ -605,6 +270,16 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
 
   const flattenedData = useMemo((): FlattenedItem<Dispatch>[] => {
     if (dispatches.length === 0) return [];
+
+    // Sorted by number: a flat list in the order the rows arrived. Date sections
+    // would pull same-day dispatches together and break the number order.
+    if (sortedByNumber) {
+      return dispatches.map(dispatch => ({
+        type: 'card' as const,
+        data: dispatch,
+        key: dispatch.dispatch_id || dispatch.id,
+      }));
+    }
 
     // Group by date for section headers
     const groups: Record<string, Dispatch[]> = {};
@@ -622,17 +297,9 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
     }));
 
     return flattenSections(sections, (dispatch) => dispatch.dispatch_id || dispatch.id);
-  }, [dispatches]);
-
-  // ============================================================================
-  // FLASHLIST KEY EXTRACTOR (stable, not inline)
-  // ============================================================================
+  }, [dispatches, sortedByNumber]);
 
   const keyExtractor = useCallback((item: FlattenedItem<Dispatch>) => item.key, []);
-
-  // ============================================================================
-  // FLASHLIST RENDER ITEM (memoized, no inline functions)
-  // ============================================================================
 
   const renderItem = useCallback(({ item }: { item: FlattenedItem<Dispatch> }) => {
     if (item.type === 'header') {
@@ -646,20 +313,17 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
         canPrint={canPrint || false}
         globalExpanded={allExpanded}
         globalExpandedKey={expandKey}
+        words={words}
       />
     );
-  }, [handleDispatchPress, canPrint, allExpanded, expandKey]);
-
-  // ============================================================================
-  // LIST FOOTER
-  // ============================================================================
+  }, [handleDispatchPress, canPrint, allExpanded, expandKey, words]);
 
   const ListFooter = useMemo(() => {
     if (!isLoadingMore) return null;
     return (
       <View style={styles.footerLoader} accessibilityLiveRegion="polite">
         <ActivityIndicator size="small" color={t.brand.tint} />
-        <Text style={styles.footerLoaderText}>Loading more dispatches…</Text>
+        <Text style={styles.footerLoaderText}>{translate('lists.dispatch.loadingMore')}</Text>
       </View>
     );
   }, [isLoadingMore, styles, t]);
@@ -668,123 +332,38 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
   // RENDER
   // ============================================================================
 
-  const userName = userProfile?.name || 'U';
-
-  const filterButton = (
-    <View style={styles.filterBtnContainer}>
-      <IconButton
-        icon="filter-variant"
-        size={iconSize.lg}
-        iconColor={activeFilterCount > 0 ? t.brand.tint : t.icon.primary}
-        style={styles.iconButton}
-        onPress={openFilterModal}
-        accessibilityLabel={activeFilterCount > 0 ? `Filter dispatches, ${activeFilterCount} active` : 'Filter dispatches'}
-      />
-      {activeFilterCount > 0 && (
-        <Badge size={18} style={styles.filterBadge} accessible={false}>{activeFilterCount}</Badge>
-      )}
-    </View>
+  // The header, search field and filter bar are shown in every state, so a
+  // search or filter can always be changed or cleared.
+  const header = (
+    <FilteredListHeader
+      title={translate('lists.dispatch.title')}
+      config={DISPATCH_FILTERS}
+      filters={filters}
+      loading={isLoading}
+      expand={{
+        expanded: allExpanded,
+        onToggle: handleToggleAllExpanded,
+        nounPlural: 'dispatches',
+        disabled: dispatches.length === 0,
+      }}
+    />
   );
 
-  // Loading state
-  if (isLoading && !isRefreshing) {
-    return (
-      <View style={styles.container}>
-        <View style={styles.header}>
-          <Text style={styles.headerTitle} accessibilityRole="header">Dispatches</Text>
-        </View>
-        <ListSkeleton count={5} metricsCount={3} />
-      </View>
-    );
-  }
-
-  // E1 Fix: Error state with retry button
-  if (error && dispatches.length === 0) {
-    return (
-      <View style={styles.container}>
-        <View style={styles.header}>
-          <Text style={styles.headerTitle} accessibilityRole="header">Dispatches</Text>
-        </View>
-        <ErrorStateView
-          presentation="inline"
-          title="Couldn't load dispatches"
-          message="Check your connection and try again."
-          onRetry={handleRefresh}
-        />
-      </View>
-    );
-  }
-
-  // Empty state
-  if (!isLoading && dispatches.length === 0 && !error) {
-    return (
-      <View style={styles.container}>
-        <View style={styles.header}>
-          <Text style={styles.headerTitle} accessibilityRole="header">Dispatches</Text>
-          <View style={styles.headerActions}>{filterButton}</View>
-        </View>
-        <EmptyState
-          hasFilters={activeFilterCount > 0}
-          onClearFilters={handleClearFilters}
-          canCreate={canCreateDispatch}
-          onCreateDispatch={handleCreateDispatch}
-        />
-        <Portal>
-          <GenericFilterModal
-            visible={isFilterModalVisible}
-            onClose={closeFilterModal}
-            config={DISPATCH_FILTER_CONFIG}
-          />
-        </Portal>
-      </View>
-    );
-  }
-
-  return (
-    <View style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.headerTitle} accessibilityRole="header">Dispatches</Text>
-        <View style={styles.headerActions}>
-          {filterButton}
-          <Pressable
-            onPress={() => router.push('/settings')}
-            style={styles.avatarButton}
-            accessibilityRole="button"
-            accessibilityLabel="Open settings"
-          >
-            <Avatar name={userName} id={userProfile?.id} size="sm" />
-          </Pressable>
-        </View>
-      </View>
-
-      {/* Sort bar (guide §14.5) */}
-      <SortBar
-        options={DISPATCH_SORT_OPTIONS}
-        field={sortField}
-        order={sortOrder}
-        onFieldChange={field => { if (field !== sortField) toggleSortField(); }}
-        onOrderToggle={toggleSortOrder}
-        expanded={allExpanded}
-        onExpandToggle={handleToggleAllExpanded}
-        itemsLabel="dispatches"
-      />
-
-      {/* Filter Chips */}
-      <FilterChips
-        filters={filters}
-        activeFilterCount={activeFilterCount}
-        updateFilter={updateFilter}
-        clearAllFilters={handleClearFilters}
-      />
-
-      {/* FlashList - The key to performance */}
+  let content: React.ReactNode;
+  if (!hasLoaded && isLoading) {
+    // First load: skeleton. Later loads keep the rows on screen while the new ones arrive.
+    content = <ListSkeleton count={5} metricsCount={3} />;
+  } else if (dispatches.length > 0) {
+    content = (
       <FlashList
+        ref={listRef}
         data={flattenedData}
+        // Re-sorted lists must not stay anchored on the row that was on top before.
+        maintainVisibleContentPosition={{ disabled: true }}
         renderItem={renderItem}
         keyExtractor={keyExtractor}
         getItemType={getItemType}
-        extraData={{ canPrint, handleDispatchPress, allExpanded, expandKey }}
+        extraData={{ canPrint, handleDispatchPress, allExpanded, expandKey, words }}
         contentContainerStyle={styles.listContent}
         refreshControl={
           <RefreshControl
@@ -800,19 +379,34 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
         ListFooterComponent={ListFooter}
         showsVerticalScrollIndicator={false}
       />
+    );
+  } else if (error) {
+    content = (
+      <ErrorStateView
+        presentation="inline"
+        title={translate('lists.dispatch.loadFailedTitle')}
+        message={translate('common.checkConnection')}
+        onRetry={handleRefresh}
+      />
+    );
+  } else {
+    content = (
+      <ListEmptyState
+        {...filteredEmptyProps(filters, 'dispatches')}
+        emptyIcon="truck-delivery-outline"
+        emptyTitle={translate('lists.dispatch.emptyTitle')}
+        emptySubtitle={canCreateDispatch ? translate('lists.dispatch.emptyCreator') : translate('lists.dispatch.emptyViewer')}
+        showCreateButton={canCreateDispatch}
+        createButtonLabel={translate('lists.dispatch.create')}
+        onCreatePress={handleCreateDispatch}
+      />
+    );
+  }
 
-      {/* Filter Modal - Only render Portal when visible to prevent Android gesture handler issues */}
-      {isFilterModalVisible && (
-        <Portal>
-          <GenericFilterModal
-            visible={isFilterModalVisible}
-            onClose={closeFilterModal}
-            config={DISPATCH_FILTER_CONFIG}
-          />
-        </Portal>
-      )}
-
-      {/* Snackbar */}
+  return (
+    <View style={styles.container}>
+      {header}
+      {content}
       <Snackbar
         visible={snackbarVisible}
         onDismiss={dismissSnackbar}
@@ -829,128 +423,10 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
 // STYLES - tokens only (docs/STYLE_GUIDE.md)
 // ============================================================================
 
-const DISPATCH_SORT_OPTIONS: SortOption<SortField>[] = [
-  { field: 'dispDate', label: 'Date', a11y: 'date', icon: 'calendar-outline' },
-  { field: 'dispNo', label: 'Number', a11y: 'number', icon: 'pound' },
-];
-
 const makeStyles = (t: ThemeTokens) => ({
   container: {
     flex: 1,
     backgroundColor: t.background.base,
-  },
-  // App bar on surface.header with a hairline divider (§13.8)
-  header: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    justifyContent: 'space-between' as const,
-    paddingHorizontal: layout.marginCompact,
-    paddingVertical: space.sm,
-    minHeight: layout.rowMinHeight,
-    backgroundColor: t.surface.header,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: t.border.divider,
-  },
-  headerTitle: {
-    // Top-level tab title (guide §13.8): large title on every tab.
-    ...typography.largeTitle,
-    color: t.text.primary,
-    flexShrink: 1,
-  },
-  headerActions: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-  },
-  iconButton: {
-    width: touchTarget,
-    height: touchTarget,
-    margin: 0,
-  },
-  // Create action: brand.fill circle, kept at the minimum touch size
-  addBtn: {
-    width: touchTarget,
-    height: touchTarget,
-    borderRadius: radius.pill,
-    margin: 0,
-    marginRight: space.xs,
-  },
-  filterBtnContainer: {
-    position: 'relative' as const,
-  },
-  // Plain count badge (active filters): brand.fill with brand.onFill. "Needs action"
-  // counts use destructive.fill with destructive.onFill instead (§13.5).
-  filterBadge: {
-    position: 'absolute' as const,
-    top: space.xxs,
-    right: space.xxs,
-    backgroundColor: t.brand.fill,
-    color: t.brand.onFill,
-  },
-  avatarButton: {
-    width: touchTarget,
-    height: touchTarget,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-  },
-  // Sort toolbar with a hairline separator
-  // Applied filters bar (§13.5)
-  filterChipsContainer: {
-    paddingHorizontal: layout.marginCompact,
-    paddingVertical: space.md,
-    backgroundColor: t.surface.header,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: t.border.separator,
-  },
-  filterChipsHeader: {
-    flexDirection: 'row' as const,
-    justifyContent: 'space-between' as const,
-    alignItems: 'center' as const,
-    marginBottom: space.sm,
-  },
-  filterCountBadge: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: space.s6,
-  },
-  filterCountText: {
-    ...typography.footnote,
-    fontWeight: fontWeight.semibold,
-    color: t.text.secondary,
-  },
-  clearAllButton: {
-    minHeight: touchTarget,
-    justifyContent: 'center' as const,
-    paddingHorizontal: space.sm,
-  },
-  clearAllText: {
-    ...typography.footnote,
-    fontWeight: fontWeight.semibold,
-    color: t.brand.tint,
-  },
-  filterChipsList: {
-    flexDirection: 'row' as const,
-    flexWrap: 'wrap' as const,
-    gap: space.sm,
-  },
-  filterChip: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    maxWidth: '100%' as const,
-    minHeight: space.xxxl,
-    borderRadius: radius.pill,
-    paddingHorizontal: space.md,
-    paddingVertical: space.s6,
-    gap: space.s6,
-    backgroundColor: t.brand.subtle,
-  },
-  filterChipPressed: {
-    backgroundColor: t.brand.subtleStrong,
-  },
-  filterChipText: {
-    ...typography.caption1,
-    fontWeight: fontWeight.semibold,
-    color: t.brand.tint,
-    flexShrink: 1,
   },
   listContent: {
     paddingTop: space.sm,
@@ -970,7 +446,7 @@ const makeStyles = (t: ThemeTokens) => ({
     ...typography.footnote,
     fontWeight: fontWeight.semibold,
     textTransform: 'uppercase' as const,
-    letterSpacing: 0.5,
+    letterSpacing: trackedText(0.5),
     color: t.text.secondary,
   },
   // Plain count badge: brand.fill with brand.onFill (§13.5)

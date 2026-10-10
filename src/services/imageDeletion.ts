@@ -1,4 +1,5 @@
 import { beginOperatorMutation, getAuthenticatedClient } from '@/config/supabaseConfig';
+import { t } from '@/i18n';
 
 export interface ImageDeletionResult {
   success: boolean;
@@ -23,14 +24,14 @@ export async function deleteWarehouseImage(
       p_image_id: imageId,
     });
     if (error || data?.success !== true)
-      return { success: false, error: 'Image deletion was rejected.' };
+      return { success: false, error: t('errors.image.deletionRejected') };
     // Use the authorized RPC's path, never a signed URL containing a query token.
     const path = data.data?.storage_path;
     if (typeof path !== 'string' || !path)
       return {
         success: false,
         partial: true,
-        error: 'Image access removed; storage path unavailable.',
+        error: t('errors.image.removedPathUnavailable'),
       };
     const { data: removed, error: storageError } = await client.storage
       .from(`${kind}-images`)
@@ -39,7 +40,7 @@ export async function deleteWarehouseImage(
       return {
         success: false,
         partial: true,
-        error: 'Image access removed; stored file cleanup failed.',
+        error: t('errors.image.removedCleanupFailed'),
       };
     // Storage reports the objects it actually removed. An empty list means the
     // bytes are still there (already gone, or a policy refused the delete).
@@ -47,13 +48,13 @@ export async function deleteWarehouseImage(
       return {
         success: false,
         partial: true,
-        error: 'Image access removed; stored file was not confirmed deleted.',
+        error: t('errors.image.removedNotConfirmed'),
       };
     return { success: true };
   } catch {
     return {
       success: false,
-      error: 'Image deletion failed. Check your connection.',
+      error: t('errors.image.deletionFailed'),
     };
   } finally {
     finishMutation?.();

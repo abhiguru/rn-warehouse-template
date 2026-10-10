@@ -23,6 +23,7 @@ import {
 import { useThemedStyles } from '@/hooks/useTheme';
 import { fontWeight, space, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
+import { localizeDigits, t } from '@/i18n';
 
 // ============================================================================
 // TYPES
@@ -71,7 +72,8 @@ export const FormLabel: React.FC<FormLabelProps> = ({
     size === 'small' && styles.labelSmall,
     error && styles.labelError,
   ];
-  const a11yLabel = typeof children === 'string' ? `${children}${required ? ', required' : ''}` : undefined;
+  const a11yLabel =
+    typeof children === 'string' ? (required ? t('components.input.requiredLabel', { label: children }) : children) : undefined;
 
   // Simple label without helper text
   if (!helperText) {
@@ -178,7 +180,7 @@ export const FormLabelGroup: React.FC<FormLabelGroupProps> = ({
         ]}
         accessible
         accessibilityRole="text"
-        accessibilityLabel={`${label}${required ? ', required' : ''}`}
+        accessibilityLabel={required ? t('components.input.requiredLabel', { label }) : label}
       >
         {label}
         {required && <Text style={styles.requiredMark}> *</Text>}
@@ -209,9 +211,12 @@ export const FormLabelGroup: React.FC<FormLabelGroupProps> = ({
               ]}
               accessible
               accessibilityRole="text"
-              accessibilityLabel={`${characterCount.current} of ${characterCount.max} characters`}
+              accessibilityLabel={t('components.input.characterCount', {
+                current: localizeDigits(String(characterCount.current)),
+                max: localizeDigits(String(characterCount.max)),
+              })}
             >
-              {characterCount.current}/{characterCount.max}
+              {localizeDigits(`${characterCount.current}/${characterCount.max}`)}
             </Text>
           )}
         </View>

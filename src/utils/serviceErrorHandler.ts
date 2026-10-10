@@ -10,6 +10,9 @@
 import { createLogger } from './logger';
 import type { ServiceResponse, ServiceListResponse } from '../types/service.types';
 import { createEmptyListResponse } from '../types/service.types';
+import { getAppErrorCode } from './appError';
+import { t, type TranslationKey } from '@/i18n';
+import { serverText } from '@/utils/serverText';
 
 const logger = createLogger('ServiceErrorHandler');
 
@@ -44,7 +47,7 @@ export function handleGlobalAuthError(error: unknown): void {
       const store = getStore();
       const forceLogout = getForceLogoutAction();
       if (store && forceLogout) {
-        store.dispatch(forceLogout('Authentication failed. Please sign in again.'));
+        store.dispatch(forceLogout(t('errors.auth.authenticationFailed')));
       }
     } catch (e) {
       console.error('[ServiceErrorHandler] Failed to dispatch logout:', e);
@@ -95,15 +98,16 @@ export interface CategorizedError {
 }
 
 /**
- * User-friendly error messages by category
+ * User-friendly error messages by category: the keys of the texts, read with
+ * `t` when an error is categorized (never at module load).
  */
-const USER_MESSAGES: Record<ErrorCategory, string> = {
-  network: 'Unable to connect. Please check your internet connection and try again.',
-  auth: 'Your session has expired. Please sign in again.',
-  server: 'Something went wrong on our end. Please try again later.',
-  validation: 'The information provided is invalid. Please check and try again.',
-  timeout: 'The request took too long. Please try again.',
-  unknown: 'An unexpected error occurred. Please try again.',
+const USER_MESSAGE_KEYS: Record<ErrorCategory, TranslationKey> = {
+  network: 'errors.category.network',
+  auth: 'errors.code.sessionExpired',
+  server: 'errors.category.server',
+  validation: 'errors.code.validationError',
+  timeout: 'errors.category.timeout',
+  unknown: 'errors.general.unexpectedRetry',
 };
 
 /**
@@ -114,9 +118,22 @@ export function categorizeError(error: unknown): CategorizedError {
   let httpStatus: number | undefined;
   let shouldLogout = false;
   let retryable = false;
-  let message = 'An unexpected error occurred';
+  let message = t('errors.general.unexpected');
 
-  if (error instanceof Error) {
+  // An error the app raised says what it is by its code. Its text is translated,
+  // so it is never searched for English words.
+  const appCode = getAppErrorCode(error);
+  if (appCode && error instanceof Error) {
+    message = error.message;
+    if (appCode === 'NETWORK') {
+      category = 'network';
+      retryable = true;
+    } else if (appCode === 'TIMEOUT') {
+      category = 'timeout';
+      retryable = true;
+    }
+  } else if (error instanceof Error) {
+    // Server and system errors: their text stays English.
     message = error.message;
     const lowerMessage = message.toLowerCase();
 
@@ -233,7 +250,7 @@ export function categorizeError(error: unknown): CategorizedError {
     category,
     code: httpStatus?.toString(),
     message,
-    userMessage: USER_MESSAGES[category],
+    userMessage: t(USER_MESSAGE_KEYS[category]),
     retryable,
     httpStatus,
     shouldLogout,
@@ -334,8 +351,13 @@ const extractMessage = (error: unknown): string =>
  * offline conditions: a cache must never answer in their place.
  */
 export function isOfflineFailure(error: unknown): boolean {
+  const appCode = getAppErrorCode(error);
+  if (appCode) return appCode === 'NETWORK' || appCode === 'TIMEOUT';
   const message = extractMessage(error);
   if (!message) return false;
+  // Signals raised inside the gated fetch reach this point wrapped by the
+  // PostgREST client as plain text ("Error: Session changed"), so those few
+  // stay English and are matched here.
   if (
     /session changed|sign in required|identity verification|server switch in progress/i.test(
       message
@@ -600,7 +622,7 @@ export async function executeRPC<TRaw, TResult = TRaw>(
 
       return {
         success: false,
-        message: errorMessage || supabaseError.message || `Failed to execute ${rpcName}`,
+        message: errorMessage || serverText(supabaseError.message, t('errors.general.executeFailed', { name: rpcName })),
         error: supabaseError.message || 'RPC_ERROR',
         errorCode: supabaseError.code,
       };
@@ -610,7 +632,7 @@ export async function executeRPC<TRaw, TResult = TRaw>(
     if (data === null || data === undefined) {
       return {
         success: false,
-        message: errorMessage || 'No data returned from server',
+        message: errorMessage || t('errors.general.noDataFromServer'),
         error: 'EMPTY_RESPONSE',
       };
     }
@@ -621,7 +643,7 @@ export async function executeRPC<TRaw, TResult = TRaw>(
       handleGlobalAuthError(dataObj);
       return {
         success: false,
-        message: (dataObj.message as string) || errorMessage || 'Operation failed',
+        message: (dataObj.message as string) || errorMessage || t('errors.general.operationFailed'),
         error: (dataObj.error as string) || 'API_ERROR',
       };
     }
@@ -639,7 +661,7 @@ export async function executeRPC<TRaw, TResult = TRaw>(
 
     return {
       success: true,
-      message: (dataObj?.message as string) || 'Operation completed successfully',
+      message: (dataObj?.message as string) || t('errors.general.operationCompleted'),
       data: finalData,
     };
   } catch (error) {

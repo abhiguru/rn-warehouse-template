@@ -27,6 +27,7 @@ import {
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { iconSize, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
+import { normalizeDigits, t as tr } from '@/i18n';
 
 const DROPDOWN_MAX_HEIGHT = 200;
 const CLEAR_HIT_SLOP = (touchTarget - iconSize.md) / 2;
@@ -90,7 +91,7 @@ interface RemoteAutocompleteInputProps<T> {
 export function RemoteAutocompleteInput<T>({
   value,
   label,
-  placeholder = 'Type to search...',
+  placeholder: placeholderProp,
   helperText,
   error,
   required = false,
@@ -110,8 +111,10 @@ export function RemoteAutocompleteInput<T>({
   editable = true,
   leftIcon,
   rightIcon,
-  emptyText = 'No matches',
+  emptyText: emptyTextProp,
 }: RemoteAutocompleteInputProps<T>) {
+  const placeholder = placeholderProp ?? tr('components.autocomplete.placeholder');
+  const emptyText = emptyTextProp ?? tr('components.autocomplete.noMatches');
   const [query, setQuery] = useState(value);
   const [suggestions, setSuggestions] = useState<T[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -175,7 +178,7 @@ export function RemoteAutocompleteInput<T>({
       searchTimeoutRef.current = setTimeout(async () => {
         searchTimeoutRef.current = null;
         try {
-          const results = await fetchData(text);
+          const results = await fetchData(normalizeDigits(text));
           if (!isCurrent()) return;
           setSuggestions(results);
         } catch (err) {
@@ -261,9 +264,9 @@ export function RemoteAutocompleteInput<T>({
           editable={!isReadOnly && editable}
           selectTextOnFocus={isReadOnly}
           accessibilityLabel={
-            label ? `${label}${required ? ', required' : ''}` : placeholder
+            label ? (required ? tr('components.input.requiredLabel', { label }) : label) : placeholder
           }
-          accessibilityHint={isReadOnly ? 'Read only' : hasError ? error : 'Type to see suggestions'}
+          accessibilityHint={isReadOnly ? tr('components.input.readOnly') : hasError ? error : tr('components.autocomplete.hint')}
           accessibilityState={{ disabled: isDisabled }}
           onFocus={() => {
             setIsFocused(true);
@@ -292,7 +295,7 @@ export function RemoteAutocompleteInput<T>({
           <Pressable
             onPress={clearInput}
             style={styles.clearButton}
-            accessibilityLabel={`Clear ${label ? label.toLowerCase() : 'text'}`}
+            accessibilityLabel={label ? tr('components.input.clearLabel', { label: label.toLowerCase() }) : tr('components.input.clearText')}
             accessibilityRole="button"
             hitSlop={CLEAR_HIT_SLOP}
           >

@@ -6,6 +6,7 @@
  */
 
 import * as yup from 'yup';
+import { localizeDigits, t } from '@/i18n';
 
 // ============================================================================
 // TYPES
@@ -16,6 +17,22 @@ export interface ValidationResult {
   errors: Record<string, string>;
 }
 
+/**
+ * The name of a field inside a message. A schema is usually built once, when
+ * its file is loaded, so pass a function (`() => t('invoice.fields.date')`) to
+ * have the name follow the app's language; a plain string is shown as it is.
+ */
+export type FieldName = string | (() => string);
+
+const nameOf = (fieldName: FieldName): string =>
+  typeof fieldName === 'function' ? fieldName() : fieldName;
+
+/** A limit inside a message: the number as written in code, in the language's digits (no grouping). */
+const limit = (value: number): string => localizeDigits(String(value));
+
+// Every message below is a function: yup calls it when a value fails, so the
+// text is in the language the app has at that moment, not at module load.
+
 // ============================================================================
 // COMMON FIELD VALIDATORS
 // ============================================================================
@@ -23,54 +40,59 @@ export interface ValidationResult {
 /**
  * UUID validator with custom error message
  */
-export const uuidField = (fieldName: string) =>
-  yup.string().uuid(`Invalid ${fieldName} selection`);
+export const uuidField = (fieldName: FieldName) =>
+  yup.string().uuid(() => t('validation.field.invalidSelection', { field: nameOf(fieldName) }));
 
 /**
  * Required UUID validator
  */
-export const requiredUuidField = (fieldName: string) =>
-  uuidField(fieldName).required(`${fieldName} is required`);
+export const requiredUuidField = (fieldName: FieldName) =>
+  uuidField(fieldName).required(() => t('validation.field.required', { field: nameOf(fieldName) }));
 
 /**
  * Required string with max length
  */
-export const requiredStringField = (fieldName: string, maxLength: number) =>
+export const requiredStringField = (fieldName: FieldName, maxLength: number) =>
   yup
     .string()
-    .required(`${fieldName} is required`)
-    .max(maxLength, `${fieldName} must be at most ${maxLength} characters`);
+    .required(() => t('validation.field.required', { field: nameOf(fieldName) }))
+    .max(maxLength, () => t('validation.field.maxChars', { field: nameOf(fieldName), max: limit(maxLength) }));
 
 /**
  * Optional string with max length
  */
-export const optionalStringField = (maxLength: number, fieldName?: string) =>
+export const optionalStringField = (maxLength: number, fieldName?: FieldName) =>
   yup
     .string()
-    .max(maxLength, `${fieldName || 'Field'} must be at most ${maxLength} characters`);
+    .max(maxLength, () =>
+      t('validation.field.maxChars', {
+        field: fieldName ? nameOf(fieldName) : t('validation.fieldName.field'),
+        max: limit(maxLength),
+      })
+    );
 
 /**
  * Date field that cannot be in the future
  */
-export const pastDateField = (fieldName: string = 'Date') =>
+export const pastDateField = (fieldName: FieldName = () => t('validation.fieldName.date')) =>
   yup
     .date()
-    .required(`${fieldName} is required`)
-    .max(new Date(), 'Cannot select a future date');
+    .required(() => t('validation.field.required', { field: nameOf(fieldName) }))
+    .max(new Date(), () => t('validation.field.futureDate'));
 
 /**
  * Date string field that cannot be in the future
  */
-export const pastDateStringField = (fieldName: string = 'Date') =>
+export const pastDateStringField = (fieldName: FieldName = () => t('validation.fieldName.date')) =>
   yup
     .string()
-    .required(`${fieldName} is required`)
-    .test('valid-date', 'Invalid date format', (value) => {
+    .required(() => t('validation.field.required', { field: nameOf(fieldName) }))
+    .test('valid-date', () => t('validation.field.invalidDateFormat'), (value) => {
       if (!value) return false;
       const date = new Date(value);
       return !isNaN(date.getTime());
     })
-    .test('not-future', 'Cannot select a future date', (value) => {
+    .test('not-future', () => t('validation.field.futureDate'), (value) => {
       if (!value) return true;
       const date = new Date(value);
       const today = new Date();
@@ -81,54 +103,63 @@ export const pastDateStringField = (fieldName: string = 'Date') =>
 /**
  * Positive integer quantity field
  */
-export const quantityField = (fieldName: string = 'Quantity', minValue: number = 1) =>
+export const quantityField = (
+  fieldName: FieldName = () => t('validation.fieldName.quantity'),
+  minValue: number = 1
+) =>
   yup
     .number()
-    .required(`${fieldName} is required`)
-    .positive(`${fieldName} must be positive`)
-    .integer(`${fieldName} must be a whole number`)
-    .min(minValue, `${fieldName} must be at least ${minValue}`);
+    .required(() => t('validation.field.required', { field: nameOf(fieldName) }))
+    .positive(() => t('validation.field.positive', { field: nameOf(fieldName) }))
+    .integer(() => t('validation.field.wholeNumber', { field: nameOf(fieldName) }))
+    .min(minValue, () => t('validation.field.min', { field: nameOf(fieldName), min: limit(minValue) }));
 
 /**
  * Non-negative integer field (for stock, counts)
  */
-export const nonNegativeIntegerField = (fieldName: string = 'Value') =>
+export const nonNegativeIntegerField = (fieldName: FieldName = () => t('validation.fieldName.value')) =>
   yup
     .number()
-    .required(`${fieldName} is required`)
-    .integer(`${fieldName} must be a whole number`)
-    .min(0, `${fieldName} cannot be negative`);
+    .required(() => t('validation.field.required', { field: nameOf(fieldName) }))
+    .integer(() => t('validation.field.wholeNumber', { field: nameOf(fieldName) }))
+    .min(0, () => t('validation.field.notNegative', { field: nameOf(fieldName) }));
 
 /**
  * Monetary amount field (non-negative with max)
  */
-export const moneyField = (fieldName: string = 'Amount', maxValue: number = 999999.99) =>
+export const moneyField = (
+  fieldName: FieldName = () => t('validation.fieldName.amount'),
+  maxValue: number = 999999.99
+) =>
   yup
     .number()
-    .min(0, `${fieldName} cannot be negative`)
-    .max(maxValue, `${fieldName} is too large`);
+    .min(0, () => t('validation.field.notNegative', { field: nameOf(fieldName) }))
+    .max(maxValue, () => t('validation.field.tooLarge', { field: nameOf(fieldName) }));
 
 /**
  * Required monetary amount field
  */
-export const requiredMoneyField = (fieldName: string = 'Amount', maxValue: number = 999999.99) =>
-  moneyField(fieldName, maxValue).required(`${fieldName} is required`);
+export const requiredMoneyField = (
+  fieldName: FieldName = () => t('validation.fieldName.amount'),
+  maxValue: number = 999999.99
+) =>
+  moneyField(fieldName, maxValue).required(() => t('validation.field.required', { field: nameOf(fieldName) }));
 
 /**
  * Percentage field (0-100)
  */
-export const percentageField = (fieldName: string = 'Percentage') =>
+export const percentageField = (fieldName: FieldName = () => t('validation.fieldName.percentage')) =>
   yup
     .number()
-    .required(`${fieldName} is required`)
-    .min(0, `${fieldName} cannot be negative`)
-    .max(100, `${fieldName} cannot exceed 100%`);
+    .required(() => t('validation.field.required', { field: nameOf(fieldName) }))
+    .min(0, () => t('validation.field.notNegative', { field: nameOf(fieldName) }))
+    .max(100, () => t('validation.field.maxPercent', { field: nameOf(fieldName) }));
 
 /**
  * Image URL field (http/https/file URI)
  */
 export const imageUrlField = () =>
-  yup.string().test('valid-uri', 'Invalid image URL', (value) => {
+  yup.string().test('valid-uri', () => t('validation.field.invalidImageUrl'), (value) => {
     if (!value) return true;
     return /^(https?:\/\/|file:\/\/\/)/.test(value);
   });
@@ -140,7 +171,7 @@ export const imageUrlArrayField = (maxCount: number = 10) =>
   yup
     .array()
     .of(imageUrlField())
-    .max(maxCount, `Maximum ${maxCount} images allowed`);
+    .max(maxCount, () => t('validation.field.maxImages', { count: maxCount }));
 
 /**
  * Items array with minimum count
@@ -152,8 +183,8 @@ export const itemsArrayField = <T extends yup.AnyObject>(
   yup
     .array()
     .of(itemSchema)
-    .min(minCount, `At least ${minCount === 1 ? 'one item is' : `${minCount} items are`} required`)
-    .required('Items are required');
+    .min(minCount, () => t('validation.field.minItems', { count: minCount }))
+    .required(() => t('validation.field.itemsRequired'));
 
 // ============================================================================
 // VALIDATION HELPER FACTORY
@@ -186,7 +217,7 @@ export function createStepValidator<T extends yup.AnyObject>(
         });
         return { isValid: false, errors };
       }
-      return { isValid: false, errors: { _error: 'Validation failed' } };
+      return { isValid: false, errors: { _error: t('errors.general.validationFailed') } };
     }
   };
 }
@@ -226,7 +257,7 @@ export function createStepValidatorWithLogging<T extends yup.AnyObject>(
         });
         return { isValid: false, errors };
       }
-      return { isValid: false, errors: { _error: 'Validation failed' } };
+      return { isValid: false, errors: { _error: t('errors.general.validationFailed') } };
     }
   };
 }

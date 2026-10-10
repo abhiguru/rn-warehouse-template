@@ -14,8 +14,10 @@ import React from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { formatCount, formatRelativeTime } from '@/utils/formatters';
+import { t as translate, formatIdentifier } from '@/i18n';
 import { StatusTag, type StatusKind, Avatar } from '@/components/ui';
 import type { Order } from '@/types/order.types';
+import { HighlightedText, matchesAnyWord } from '@/features/filters/components/HighlightedText';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import {
   iconSize,
@@ -39,15 +41,34 @@ export interface MemoizedOrderItemProps {
   onViewDetails?: (order: Order) => void;
   /** Callback for convert to dispatch action */
   onConvertToDispatch?: (order: Order) => void;
+  /** Lower-cased search words to show in bold (see `searchWords`). */
+  words?: string[];
 }
 
 // ============================================================================
 // COMPONENT
 // ============================================================================
 
+/** Where a search matched inside the order: city, or the item, package or GRN number of a line. */
+function hiddenMatches(order: Order, words: string[] | undefined): string[] {
+  if (!words || words.length === 0) return [];
+  const found = new Set<string>();
+  const lines = (order.items ?? []) as unknown as Record<string, string | null | undefined>[];
+  for (const text of [order.customer?.city]) {
+    if (text && matchesAnyWord(text, words)) found.add(text);
+  }
+  for (const line of lines) {
+    for (const text of [line.grn_items_item_name, line.grn_items_package_mark, line.grns_gr_no ? translate('lists.card.grnRef', { number: formatIdentifier(line.grns_gr_no) }) : null]) {
+      if (text && matchesAnyWord(text, words)) found.add(text);
+    }
+  }
+  return [...found].slice(0, 3);
+}
+
 const OrderItemContent: React.FC<MemoizedOrderItemProps> = ({
   order,
   onPress,
+  words,
 }) => {
   const t = useTokens();
   const styles = useThemedStyles(makeStyles);
@@ -56,35 +77,36 @@ const OrderItemContent: React.FC<MemoizedOrderItemProps> = ({
   const totalQty = order.quantity_sum ?? order.total_quantity ?? 0;
   const hasItems = itemCount > 0;
 
-  const customerName = order.customer?.name || 'Unknown';
+  const customerName = order.customer?.name || translate('common.unknown');
+  const matched = hiddenMatches(order, words);
 
   // Check if order is dispatched
   const isDispatched = (order.status || '').toUpperCase() === 'DISPATCHED';
 
   // Status per style guide §3.5: dispatched orders are positive, open ones neutral.
   const statusConfig: { kind: StatusKind; label: string } = isDispatched
-    ? { kind: 'positive', label: 'Dispatched' }
+    ? { kind: 'positive', label: translate('lists.order.statusDispatched') }
     : hasItems
-      ? { kind: 'neutral', label: 'Open' }
-      : { kind: 'neutral', label: 'Empty' };
+      ? { kind: 'neutral', label: translate('lists.order.statusOpen') }
+      : { kind: 'neutral', label: translate('lists.order.statusEmpty') };
 
   // Build subtitle: "3 items · 45 units" (the unit differs per item, so "units") or "No items yet"
   const subtitle = hasItems
-    ? `${formatCount(itemCount, 'item')} · ${formatCount(totalQty, 'unit')}`
-    : 'No items yet';
+    ? translate('lists.order.summary', { items: formatCount(itemCount, 'item'), units: formatCount(totalQty, 'unit') })
+    : translate('lists.order.noItemsYet');
 
   // Build footnote: "Mumbai · 2h ago" or just "2h ago"
-  const timeText = order.updated_at ? formatRelativeTime(order.updated_at) : 'Recently';
+  const timeText = order.updated_at ? formatRelativeTime(order.updated_at) : translate('lists.order.recently');
   const footnote = order.customer?.city
     ? `${order.customer.city} · ${timeText}`
     : timeText;
 
   // Accessibility
   const accessibilityDescription = [
-    `Order for ${customerName}`,
+    translate('lists.order.orderFor', { customer: customerName }),
     statusConfig.label,
     subtitle,
-    order.customer?.city ? `Location: ${order.customer.city}` : null,
+    order.customer?.city ? translate('lists.order.location', { city: order.customer.city }) : null,
   ].filter(Boolean).join(', ');
 
   return (
@@ -93,7 +115,7 @@ const OrderItemContent: React.FC<MemoizedOrderItemProps> = ({
       style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
       accessibilityRole="button"
       accessibilityLabel={accessibilityDescription}
-      accessibilityHint="Double tap to view order details"
+      accessibilityHint={translate('lists.order.openHint')}
     >
       {/* SAP Fiori Object Cell Layout */}
       <View style={styles.objectCellRow}>
@@ -103,9 +125,7 @@ const OrderItemContent: React.FC<MemoizedOrderItemProps> = ({
         {/* Main Content: Title + Subtitle + Footnote */}
         <View style={styles.mainContent}>
           {/* Title - headline, two lines max */}
-          <Text style={styles.title} numberOfLines={2}>
-            {customerName}
-          </Text>
+          <HighlightedText style={styles.title} numberOfLines={2} text={customerName} words={words} />
 
           {/* Subtitle - subhead */}
           <Text style={styles.subtitle}>
@@ -116,6 +136,11 @@ const OrderItemContent: React.FC<MemoizedOrderItemProps> = ({
           <Text style={styles.footnote} numberOfLines={1}>
             {footnote}
           </Text>
+
+          {/* Why this order matched, when the match is not in the customer's name */}
+          {matched.length > 0 ? (
+            <HighlightedText style={styles.footnote} numberOfLines={2} text={matched.join(' · ')} words={words} />
+          ) : null}
         </View>
 
         {/* Attribute: Status Badge + Chevron */}
@@ -158,7 +183,8 @@ const areEqual = (
     prevOrder.updated_at === nextOrder.updated_at &&
     prevOrder.updated_by_display_name === nextOrder.updated_by_display_name &&
     prevOrder.note === nextOrder.note &&
-    prevProps.onPress === nextProps.onPress
+    prevProps.onPress === nextProps.onPress &&
+    prevProps.words === nextProps.words
   );
 
   if (__DEV__ && !result) {

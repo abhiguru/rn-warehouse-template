@@ -33,19 +33,20 @@ import {
   touchTarget,
   typography,
   type ThemeTokens,
+  trackedText,
 } from '@/theme/tokens';
 import { SensorService } from '@/services/sensor-service';
 import { SensorDevice, SensorDashboard } from '@/types/sensor.types';
 import { createLogger } from '@/utils/logger';
-import { formatRelativeTime, formatTemperature, formatTime } from '@/utils/formatters';
+import { formatNumber, formatRelativeTime, formatTime } from '@/utils/formatters';
 import { StatusTag, STATUS_ICONS, type StatusKind } from '@/components/ui';
-import { formatHumidity } from '@/components/sensors/SensorHistoryChart';
+import { formatHumidity, formatTemperature } from '@/components/sensors/SensorHistoryChart';
+import { t as tr } from '@/i18n';
 
 const logger = createLogger('SensorsScreen');
 
 const POLL_INTERVAL = 10 * 1000; // 10 seconds
 const LAST_POLL_KEY = 'sensor_last_poll_timestamp';
-const LOAD_ERROR = "Couldn't load sensor data. Check your connection and try again.";
 
 // ============================================================================
 // Status and formatting helpers (guide §3.5, §12.3)
@@ -68,13 +69,13 @@ interface SensorStatus {
 export function healthStatus(health: SensorDevice['health_status']): SensorStatus {
   switch (health) {
     case 'healthy':
-      return { kind: 'positive', label: 'Healthy' };
+      return { kind: 'positive', label: tr('sensors.status.healthy') };
     case 'warning':
-      return { kind: 'critical', label: 'Warning' };
+      return { kind: 'critical', label: tr('sensors.status.warning') };
     case 'critical':
-      return { kind: 'negative', label: 'Critical' };
+      return { kind: 'negative', label: tr('sensors.status.critical') };
     default:
-      return { kind: 'neutral', label: 'Unknown' };
+      return { kind: 'neutral', label: tr('common.unknown') };
   }
 }
 
@@ -82,9 +83,9 @@ export function healthStatus(health: SensorDevice['health_status']): SensorStatu
 export function batteryStatus(battery: SensorDevice['battery_status']): SensorStatus | null {
   switch (battery) {
     case 'LOW':
-      return { kind: 'critical', label: 'Battery low' };
+      return { kind: 'critical', label: tr('sensors.status.batteryLow') };
     case 'CRITICAL':
-      return { kind: 'negative', label: 'Battery critical' };
+      return { kind: 'negative', label: tr('sensors.status.batteryCritical') };
     default:
       return null;
   }
@@ -93,8 +94,8 @@ export function batteryStatus(battery: SensorDevice['battery_status']): SensorSt
 /** The one status shown in the list: the most severe of connectivity, health and battery. */
 export function rowStatus(device: SensorDevice): SensorStatus {
   const candidates: SensorStatus[] = [healthStatus(device.health_status)];
-  if (device.connectivity_status === 'OFFLINE') candidates.push({ kind: 'negative', label: 'Offline' });
-  else if (device.is_stale) candidates.push({ kind: 'critical', label: 'No recent data' });
+  if (device.connectivity_status === 'OFFLINE') candidates.push({ kind: 'negative', label: tr('sensors.status.offline') });
+  else if (device.is_stale) candidates.push({ kind: 'critical', label: tr('sensors.status.noRecentData') });
   const battery = batteryStatus(device.battery_status);
   if (battery) candidates.push(battery);
   return candidates.reduce((worst, s) => (SEVERITY[s.kind] > SEVERITY[worst.kind] ? s : worst));
@@ -186,7 +187,7 @@ const makeStyles = (t: ThemeTokens) =>
       ...typography.footnote,
       fontWeight: fontWeight.semibold,
       textTransform: 'uppercase',
-      letterSpacing: 0.5,
+      letterSpacing: trackedText(0.5),
       color: t.text.secondary,
       marginTop: space.md,
     },
@@ -418,12 +419,12 @@ const SensorsScreen: React.FC = () => {
     iconColour: string,
     iconBackground: string
   ) => (
-    <View style={styles.tile} accessible accessibilityLabel={`${label}: ${value}`}>
+    <View style={styles.tile} accessible accessibilityLabel={tr('sensors.labelValue', { label, value })}>
       <View style={[styles.tileIcon, { backgroundColor: iconBackground }]}>
         <Icon name={icon} size={iconSize.md} color={iconColour} />
       </View>
       <Text style={styles.tileLabel}>{label}</Text>
-      <Text style={styles.tileValue}>{value}</Text>
+      <Text style={styles.tileValue}>{formatNumber(value)}</Text>
     </View>
   );
 
@@ -432,13 +433,13 @@ const SensorsScreen: React.FC = () => {
 
     const alerts: SensorStatus[] = [];
     if (dashboard.stale_sensors > 0) {
-      alerts.push({ kind: 'critical', label: `${dashboard.stale_sensors} with no recent data` });
+      alerts.push({ kind: 'critical', label: tr('sensors.list.staleCount', { count: dashboard.stale_sensors }) });
     }
     if (dashboard.low_battery_count > 0) {
-      alerts.push({ kind: 'critical', label: `${dashboard.low_battery_count} low battery` });
+      alerts.push({ kind: 'critical', label: tr('sensors.list.lowBatteryCount', { count: dashboard.low_battery_count }) });
     }
     if (dashboard.critical_battery_count > 0) {
-      alerts.push({ kind: 'negative', label: `${dashboard.critical_battery_count} battery critical` });
+      alerts.push({ kind: 'negative', label: tr('sensors.list.criticalBatteryCount', { count: dashboard.critical_battery_count }) });
     }
 
     const seconds = Math.max(0, Math.floor(nextPollIn / 1000));
@@ -446,16 +447,16 @@ const SensorsScreen: React.FC = () => {
     return (
       <View style={styles.dashboardSection}>
         <View style={styles.tileRow}>
-          {renderTile('Sensors', dashboard.total_active_sensors, 'thermometer', t.brand.tint, t.brand.subtle)}
+          {renderTile(tr('sensors.sensors'), dashboard.total_active_sensors, 'thermometer', t.brand.tint, t.brand.subtle)}
           {renderTile(
-            'Online',
+            tr('sensors.status.online'),
             dashboard.online_sensors,
             STATUS_ICONS.positive,
             t.status.positive.text,
             t.status.positive.background
           )}
           {renderTile(
-            'Offline',
+            tr('sensors.status.offline'),
             dashboard.offline_sensors,
             STATUS_ICONS.negative,
             t.status.negative.text,
@@ -474,17 +475,17 @@ const SensorsScreen: React.FC = () => {
         <View style={styles.pollingInfo}>
           <View style={styles.pollingRow}>
             <Icon name="timer-outline" size={iconSize.sm} color={t.icon.secondary} />
-            <Text style={styles.pollingText}>{`Next update in ${seconds} s`}</Text>
+            <Text style={styles.pollingText}>{tr('sensors.list.nextUpdate', { seconds })}</Text>
           </View>
           {dashboard.most_recent_sync && (
-            <Text style={styles.pollingText}>{`Last sync ${formatTime(dashboard.most_recent_sync)}`}</Text>
+            <Text style={styles.pollingText}>{tr('sensors.list.lastSync', { time: formatTime(dashboard.most_recent_sync) })}</Text>
           )}
         </View>
 
         {errorVisible && (
           <View style={styles.messageStrip} accessibilityLiveRegion="polite">
             <Icon name={STATUS_ICONS.negative} size={iconSize.md} color={t.status.negative.text} />
-            <Text style={styles.messageText}>{LOAD_ERROR}</Text>
+            <Text style={styles.messageText}>{tr('sensors.list.loadError')}</Text>
             <Pressable
               style={styles.stripAction}
               onPress={() => {
@@ -492,16 +493,16 @@ const SensorsScreen: React.FC = () => {
                 onRefresh();
               }}
               accessibilityRole="button"
-              accessibilityLabel="Try again"
+              accessibilityLabel={tr('common.retry')}
             >
-              <Text style={styles.stripActionText}>Try again</Text>
+              <Text style={styles.stripActionText}>{tr('common.retry')}</Text>
             </Pressable>
           </View>
         )}
 
         {devices.length > 0 && (
           <Text style={styles.sectionHeader} accessibilityRole="header">
-            Sensors
+            {tr('sensors.sensors')}
           </Text>
         )}
       </View>
@@ -516,8 +517,8 @@ const SensorsScreen: React.FC = () => {
       device.device_name,
       device.location,
       status.label,
-      hasReading ? `temperature ${formatTemperature(device.latest_temperature)}` : null,
-      hasReading ? `humidity ${formatHumidity(device.latest_humidity)}` : null,
+      hasReading ? tr('sensors.list.spokenTemperature', { value: formatTemperature(device.latest_temperature) }) : null,
+      hasReading ? tr('sensors.list.spokenHumidity', { value: formatHumidity(device.latest_humidity) }) : null,
     ]
       .filter(Boolean)
       .join(', ');
@@ -528,7 +529,7 @@ const SensorsScreen: React.FC = () => {
         onPress={() => router.push(`/sensor-detail/${device.id}`)}
         accessibilityRole="button"
         accessibilityLabel={a11yLabel}
-        accessibilityHint="Opens sensor history"
+        accessibilityHint={tr('sensors.list.openHint')}
       >
         {/* Device Header */}
         <View style={styles.deviceHeader}>
@@ -555,27 +556,27 @@ const SensorsScreen: React.FC = () => {
             <View style={styles.readingsRow}>
               <View style={styles.readingBox}>
                 <Icon name="thermometer" size={iconSize.md} color={t.icon.secondary} />
-                <Text style={styles.readingLabel}>Temperature</Text>
+                <Text style={styles.readingLabel}>{tr('sensors.temperature')}</Text>
                 <Text style={styles.readingValue}>{formatTemperature(device.latest_temperature)}</Text>
               </View>
 
               <View style={styles.readingBox}>
                 <Icon name="water-percent" size={iconSize.md} color={t.icon.secondary} />
-                <Text style={styles.readingLabel}>Humidity</Text>
+                <Text style={styles.readingLabel}>{tr('sensors.humidity')}</Text>
                 <Text style={styles.readingValue}>{formatHumidity(device.latest_humidity)}</Text>
               </View>
             </View>
 
             {device.latest_reading_timestamp && (
-              <Text style={styles.timestampText}>{`Updated ${formatRelativeTime(device.latest_reading_timestamp)}`}</Text>
+              <Text style={styles.timestampText}>{tr('sensors.list.updated', { time: formatRelativeTime(device.latest_reading_timestamp) })}</Text>
             )}
           </>
         ) : (
           <View style={styles.offlineContainer}>
             <Icon name="cloud-off-outline" size={iconSize.xl} color={t.icon.secondary} />
-            <Text style={styles.offlineText}>{device.is_stale ? 'No recent data' : 'Offline'}</Text>
+            <Text style={styles.offlineText}>{device.is_stale ? tr('sensors.status.noRecentData') : tr('sensors.status.offline')}</Text>
             {device.last_reading_at && (
-              <Text style={styles.timestampText}>{`Last seen ${formatRelativeTime(device.last_reading_at)}`}</Text>
+              <Text style={styles.timestampText}>{tr('sensors.list.lastSeen', { time: formatRelativeTime(device.last_reading_at) })}</Text>
             )}
           </View>
         )}
@@ -586,16 +587,16 @@ const SensorsScreen: React.FC = () => {
   const renderEmpty = () => (
     <ReportEmptyState
       icon="thermometer-off"
-      message="No sensors yet"
-      description="Sensors set up for this facility appear here."
+      message={tr('sensors.list.emptyTitle')}
+      description={tr('sensors.list.emptyDescription')}
     />
   );
 
   const header = (
     <ReportHeader
-      title="Temperature and humidity"
+      title={tr('sensors.title')}
       actionIcon="refresh"
-      actionLabel="Refresh sensor data"
+      actionLabel={tr('sensors.refresh')}
       onAction={onRefresh}
     />
   );
@@ -606,7 +607,7 @@ const SensorsScreen: React.FC = () => {
         {header}
         <View style={styles.loadingContainer} accessibilityLiveRegion="polite">
           <ActivityIndicator size="large" color={t.brand.tint} />
-          <Text style={styles.loadingText}>Loading sensors</Text>
+          <Text style={styles.loadingText}>{tr('sensors.list.loading')}</Text>
         </View>
       </View>
     );
@@ -625,9 +626,9 @@ const SensorsScreen: React.FC = () => {
             <ReportEmptyState
               icon="alert-circle-outline"
               tone="error"
-              message="Something went wrong"
-              description={LOAD_ERROR}
-              actionLabel="Try again"
+              message={tr('sensors.somethingWentWrong')}
+              description={tr('sensors.list.loadError')}
+              actionLabel={tr('common.retry')}
               onAction={onRefresh}
             />
           ) : (
@@ -665,12 +666,12 @@ function SensorsEntry() {
   const styles = useThemedStyles(makeEntryStyles);
   return (
     <View style={styles.container}>
-      <ReportHeader title="Temperature and humidity" />
+      <ReportHeader title={tr('sensors.title')} />
       <ReportEmptyState
         icon="thermometer-off"
-        message="Sensors aren't available"
-        description="Sensor monitoring is unavailable in the local demo."
-        actionLabel="Go back"
+        message={tr('sensors.list.demoTitle')}
+        description={tr('sensors.list.demoDescription')}
+        actionLabel={tr('common.goBack')}
         onAction={() => router.back()}
       />
     </View>

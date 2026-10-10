@@ -14,6 +14,7 @@ import { fontWeight, iconSize, layout, radius, space, touchTarget, typography } 
 import type { ThemeTokens } from '@/theme/tokens';
 import { formatNumber, formatDate, formatCount, formatWeight } from '@/utils/formatters';
 import { formatInvoiceAmount } from '@/utils/invoiceCalculations';
+import { t as tr, formatIdentifier } from '@/i18n';
 
 // ============================================================================
 // TYPES
@@ -212,28 +213,28 @@ const InvoiceLineItemCardComponent: React.FC<InvoiceLineItemCardProps> = ({
           {durationNum > 0 && (
             <View style={styles.storageItem}>
               <Icon name="clock-outline" size={iconSize.sm} color={t.icon.secondary} />
-              <Text style={styles.storageLabel}>Duration</Text>
+              <Text style={styles.storageLabel}>{tr('invoice.label.duration')}</Text>
               <Text style={styles.storageValue}>{durationText}</Text>
             </View>
           )}
           {packageMark && (
             <View style={styles.storageItem}>
               <Icon name="tag-outline" size={iconSize.sm} color={t.icon.secondary} />
-              <Text style={styles.storageLabel}>Mark</Text>
+              <Text style={styles.storageLabel}>{tr('invoice.lineItem.mark')}</Text>
               <Text style={styles.storageValue}>{packageMark}</Text>
             </View>
           )}
           {rack && (
             <View style={styles.storageItem}>
               <Icon name="view-grid-outline" size={iconSize.sm} color={t.icon.secondary} />
-              <Text style={styles.storageLabel}>Rack</Text>
+              <Text style={styles.storageLabel}>{tr('common.rack')}</Text>
               <Text style={styles.storageValue}>{rack}</Text>
             </View>
           )}
           {weight !== undefined && weight > 0 && (
             <View style={styles.storageItem}>
               <Icon name="weight" size={iconSize.sm} color={t.icon.secondary} />
-              <Text style={styles.storageLabel}>Weight</Text>
+              <Text style={styles.storageLabel}>{tr('common.weight')}</Text>
               <Text style={styles.storageValue}>{formatWeight(weight)}</Text>
             </View>
           )}
@@ -244,14 +245,14 @@ const InvoiceLineItemCardComponent: React.FC<InvoiceLineItemCardProps> = ({
       {hasQuantities && (
         <View style={[styles.section, styles.quantitiesSection]}>
           {grnQuantity !== undefined && grnQuantity > 0 && (
-            <View style={styles.quantityItem} accessible accessibilityLabel={`Received ${formatNumber(grnQuantity)}`}>
-              <Text style={styles.quantityLabel}>Received</Text>
+            <View style={styles.quantityItem} accessible accessibilityLabel={tr('invoice.lineItem.receivedA11y', { qty: formatNumber(grnQuantity) })}>
+              <Text style={styles.quantityLabel}>{tr('invoice.lineItem.received')}</Text>
               <Text style={styles.quantityValue}>{formatNumber(grnQuantity)}</Text>
             </View>
           )}
           {dispatchQty !== undefined && dispatchQty > 0 && (
-            <View style={styles.quantityItem} accessible accessibilityLabel={`Dispatched ${formatNumber(dispatchQty)}`}>
-              <Text style={styles.quantityLabel}>Dispatched</Text>
+            <View style={styles.quantityItem} accessible accessibilityLabel={tr('invoice.lineItem.dispatchedA11y', { qty: formatNumber(dispatchQty) })}>
+              <Text style={styles.quantityLabel}>{tr('invoice.lineItem.dispatched')}</Text>
               <Text style={styles.quantityValue}>{formatNumber(dispatchQty)}</Text>
             </View>
           )}
@@ -262,18 +263,22 @@ const InvoiceLineItemCardComponent: React.FC<InvoiceLineItemCardProps> = ({
       <View
         style={[styles.section, styles.financialGrid]}
         accessible
-        accessibilityLabel={`Charge ${formatInvoiceAmount(charge)}, tax ${formatInvoiceAmount(tax)}, total ${formatInvoiceAmount(total)}`}
+        accessibilityLabel={tr('invoice.lineItem.amountsA11y', {
+          charge: formatInvoiceAmount(charge),
+          tax: formatInvoiceAmount(tax),
+          total: formatInvoiceAmount(total),
+        })}
       >
         <View style={styles.financialItem}>
-          <Text style={styles.financialLabel}>Charge</Text>
+          <Text style={styles.financialLabel}>{tr('invoice.label.charge')}</Text>
           <Text style={styles.amount}>{formatInvoiceAmount(charge)}</Text>
         </View>
         <View style={styles.financialItem}>
-          <Text style={styles.financialLabel}>Tax</Text>
+          <Text style={styles.financialLabel}>{tr('invoice.label.tax')}</Text>
           <Text style={styles.amount}>{formatInvoiceAmount(tax)}</Text>
         </View>
         <View style={styles.financialItem}>
-          <Text style={styles.financialLabel}>Total</Text>
+          <Text style={styles.financialLabel}>{tr('common.total')}</Text>
           <Text style={styles.totalAmount}>{formatInvoiceAmount(total)}</Text>
         </View>
       </View>
@@ -290,13 +295,13 @@ const InvoiceLineItemCardComponent: React.FC<InvoiceLineItemCardProps> = ({
               onPress={handleGRNPress}
               disabled={!isGrnClickable}
               accessibilityRole="button"
-              accessibilityLabel={`View GRN ${grNo}`}
-              accessibilityHint="Opens the GRN"
+              accessibilityLabel={tr('invoice.label.viewGrnNumber', { number: formatIdentifier(grNo) })}
+              accessibilityHint={tr('invoice.details.opensGrnHint')}
               accessibilityState={{ disabled: !isGrnClickable }}
             >
               <Icon name="package-down" size={iconSize.md} color={t.icon.secondary} />
               <View style={styles.referenceContent}>
-                <Text style={styles.referenceType}>GRN</Text>
+                <Text style={styles.referenceType}>{tr('common.grn')}</Text>
                 <Text style={styles.referenceNumber}>{grNo}</Text>
               </View>
               {isGrnClickable && (
@@ -314,14 +319,14 @@ const InvoiceLineItemCardComponent: React.FC<InvoiceLineItemCardProps> = ({
               onPress={handleDispatchPress}
               disabled={!isDispatchClickable}
               accessibilityRole="button"
-              accessibilityLabel={dispatchNo ? `View dispatch ${dispatchNo}` : 'View dispatch'}
-              accessibilityHint="Opens the dispatch"
+              accessibilityLabel={dispatchNo ? tr('invoice.lineItem.viewDispatchNumberA11y', { number: formatIdentifier(dispatchNo) }) : tr('invoice.lineItem.viewDispatch')}
+              accessibilityHint={tr('invoice.lineItem.opensDispatchHint')}
               accessibilityState={{ disabled: !isDispatchClickable }}
             >
               <Icon name="truck-delivery-outline" size={iconSize.md} color={t.icon.secondary} />
               <View style={styles.referenceContent}>
-                <Text style={styles.referenceType}>Dispatch</Text>
-                <Text style={styles.referenceNumber}>{dispatchNo || 'View dispatch'}</Text>
+                <Text style={styles.referenceType}>{tr('common.dispatch')}</Text>
+                <Text style={styles.referenceNumber}>{dispatchNo || tr('invoice.lineItem.viewDispatch')}</Text>
                 {(dispatchDate || (dispatchQty !== undefined && dispatchQty > 0)) && (
                   <View style={styles.dispatchDetailsRow}>
                     {dispatchDate && (
@@ -333,7 +338,7 @@ const InvoiceLineItemCardComponent: React.FC<InvoiceLineItemCardProps> = ({
                     {dispatchQty !== undefined && dispatchQty > 0 && (
                       <View style={styles.dispatchDetail}>
                         <Icon name="cube-outline" size={iconSize.sm} color={t.icon.secondary} />
-                        <Text style={styles.dispatchDetailText}>{`Qty ${formatNumber(dispatchQty)}`}</Text>
+                        <Text style={styles.dispatchDetailText}>{tr('invoice.lineItem.qty', { qty: formatNumber(dispatchQty) })}</Text>
                       </View>
                     )}
                   </View>

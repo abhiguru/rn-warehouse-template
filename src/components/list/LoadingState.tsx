@@ -10,6 +10,7 @@
 import React, { memo } from 'react';
 import { View, Text, ActivityIndicator } from 'react-native';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
+import { t as translate } from '@/i18n';
 import { space, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 
@@ -45,7 +46,7 @@ const makeStyles = (t: ThemeTokens) => ({
 });
 
 export const LoadingState = memo<LoadingStateProps>(({
-  message = 'Loading…',
+  message = translate('common.loading'),
   size = 'large',
   color,
   fullScreen = true,
@@ -59,7 +60,7 @@ export const LoadingState = memo<LoadingStateProps>(({
     <View
       style={[styles.container, fullScreen && styles.fullScreen]}
       accessible={true}
-      accessibilityLabel={message || 'Loading'}
+      accessibilityLabel={message || translate('nav.loading')}
       accessibilityRole="progressbar"
       accessibilityState={{ busy: true }}
       testID={testID}

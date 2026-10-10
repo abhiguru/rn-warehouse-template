@@ -60,10 +60,12 @@ import {
 } from '@/features/invoice/services/invoiceFormService';
 
 import { showAlert } from '@/utils/alert';
+import { t } from '@/i18n';
+import { serverText } from '@/utils/serverText';
 /** Field errors as plain sentences for an alert (style guide §12.2), never raw field keys. */
 function describeValidationErrors(errors: Record<string, string>): string {
   const messages = Array.from(new Set(Object.values(errors).filter(Boolean)));
-  if (messages.length === 0) return 'Fill in the required fields, then try again.';
+  if (messages.length === 0) return t('invoice.form.fillRequired');
   return messages.slice(0, 5).join('\n');
 }
 
@@ -84,6 +86,7 @@ export interface UseInvoiceFormReturn {
   invoiceId: string | null;
   selectedGrId: string | null;
   isLoading: boolean;
+  nextNumberFailed: boolean;
   isSaving: boolean;
   isLoadingItems: boolean;
   validationErrors: Record<string, string>;
@@ -157,6 +160,8 @@ export function useInvoiceForm({
 
   // Local state
   const [validationErrors, setLocalValidationErrors] = useState<Record<string, string>>({});
+  // True when the server could not suggest the next invoice number, so the form asks for it to be typed.
+  const [nextNumberFailed, setNextNumberFailed] = useState(false);
 
   // Refs to prevent duplicate operations
   const hasInitialized = useRef(false);
@@ -180,10 +185,12 @@ export function useInvoiceForm({
             inv_no: result.data.next_invoice_number,
             inv_fin_year: result.data.financial_year,
           }));
+        } else {
+          setNextNumberFailed(true);
         }
       } catch (error) {
         console.error('[useInvoiceForm] Failed to generate invoice number:', error);
-        showAlert("Couldn't get an invoice number", 'Check your connection and try again.');
+        showAlert(t('invoice.form.numberFailedTitle'), t('common.checkConnection'));
       }
     }
   }, [isCreateMode, header.inv_no, header.inv_fin_year, dispatch]);
@@ -208,11 +215,11 @@ export function useInvoiceForm({
           grId: loadedHeader.gr_id || '',
         }));
       } else {
-        showAlert("Couldn't load the invoice", result.message || 'Check your connection and try again.');
+        showAlert(t('invoice.edit.loadFailedTitle'), serverText(result.message, t('common.checkConnection')));
       }
     } catch (error) {
       console.error('[useInvoiceForm] Failed to load invoice:', error);
-      showAlert("Couldn't load the invoice", 'Check your connection and try again.');
+      showAlert(t('invoice.edit.loadFailedTitle'), t('common.checkConnection'));
     } finally {
       dispatch(setIsLoading(false));
       isLoadingData.current = false;
@@ -233,28 +240,40 @@ export function useInvoiceForm({
           grId,
         }));
       } else {
-        showAlert("Couldn't load the GRN", result.message || 'Check your connection and try again.');
+        showAlert(t('invoice.form.grnLoadFailedTitle'), serverText(result.message, t('common.checkConnection')));
       }
     } catch (error) {
       console.error('[useInvoiceForm] Failed to load GRN data:', error);
-      showAlert("Couldn't load the GRN", 'Check your connection and try again.');
+      showAlert(t('invoice.form.grnLoadFailedTitle'), t('common.checkConnection'));
     } finally {
       dispatch(setIsLoadingItems(false));
     }
   }, [dispatch]);
 
+  // The screens read the local copy of the errors, so a changed field has to be cleared there too.
+  const clearLocalErrors = useCallback((fields: string[]) => {
+    setLocalValidationErrors((prev) => {
+      if (!fields.some((field) => field in prev)) return prev;
+      const next = { ...prev };
+      fields.forEach((field) => { delete next[field]; });
+      return next;
+    });
+  }, []);
+
   // Header actions
   const updateHeaderField = useCallback((field: keyof InvoiceHeaderData, value: unknown) => {
     dispatch(updateHeader({ [field]: value }));
     dispatch(clearValidationError(field));
-  }, [dispatch]);
+    clearLocalErrors([field]);
+  }, [dispatch, clearLocalErrors]);
 
   const updateHeaderFields = useCallback((updates: Partial<InvoiceHeaderData>) => {
     dispatch(updateHeader(updates));
     Object.keys(updates).forEach((field) => {
       dispatch(clearValidationError(field));
     });
-  }, [dispatch]);
+    clearLocalErrors(Object.keys(updates));
+  }, [dispatch, clearLocalErrors]);
 
   const updateDiscountAmount = useCallback((discount: number) => {
     dispatch(updateDiscount(discount));
@@ -355,7 +374,7 @@ export function useInvoiceForm({
     for (let step = currentStep; step < targetStep; step++) {
       const validation = await validateCurrentStep(step);
       if (!validation.isValid) {
-        showAlert('Check the invoice', describeValidationErrors(validation.errors));
+        showAlert(t('invoice.form.checkInvoiceTitle'), describeValidationErrors(validation.errors));
         return false;
       }
     }
@@ -402,8 +421,8 @@ export function useInvoiceForm({
     // Validate full invoice
     const validation = await validateFullInvoice({ header, items });
     if (!validation.isValid) {
-      showAlert('Check the invoice', describeValidationErrors(validation.errors));
-      return { success: false, error: 'Validation failed' };
+      showAlert(t('invoice.form.checkInvoiceTitle'), describeValidationErrors(validation.errors));
+      return { success: false, error: t('errors.general.validationFailed') };
     }
 
     dispatch(setIsSaving(true));
@@ -430,13 +449,13 @@ export function useInvoiceForm({
           invoiceNo: result.data?.invoice_no,
         };
       } else {
-        showAlert("Couldn't save the invoice", result.message || 'Check your connection and try again.');
+        showAlert(t('invoice.form.saveFailedTitle'), serverText(result.message, t('common.checkConnection')));
         return { success: false, error: result.message };
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       console.error('[useInvoiceForm] Submit error:', error);
-      showAlert("Couldn't save the invoice", 'Check your connection and try again.');
+      showAlert(t('invoice.form.saveFailedTitle'), t('common.checkConnection'));
       return { success: false, error: errorMessage };
     } finally {
       dispatch(setIsSaving(false));
@@ -478,6 +497,7 @@ export function useInvoiceForm({
     invoiceId,
     selectedGrId,
     isLoading: invoiceFormState.is_loading,
+    nextNumberFailed,
     isSaving: invoiceFormState.is_saving,
     isLoadingItems: invoiceFormState.is_loading_items,
     validationErrors,

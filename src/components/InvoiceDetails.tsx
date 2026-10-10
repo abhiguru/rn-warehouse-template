@@ -18,7 +18,7 @@ import { Portal, Snackbar } from 'react-native-paper';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
-import { fontWeight, iconSize, radius, space, typography } from '@/theme/tokens';
+import { fontWeight, iconSize, radius, space, typography, trackedText } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import {
   getInvoiceDetails,
@@ -30,7 +30,8 @@ import {
 } from '@/services/invoice-service';
 import { isAbortError } from '@/hooks/useAbortableFetch';
 import { formatInvoiceAmount, formatInvoiceDeduction } from '@/utils/invoiceCalculations';
-import { formatCount, formatDate, toDate, formatNumber } from '@/utils/formatters';
+import { formatCount, formatDate, toDate, formatNumber, formatFinancialYear } from '@/utils/formatters';
+import { t as tr } from '@/i18n';
 
 interface InvoiceDetailsProps {
   invoiceId: string;
@@ -109,7 +110,7 @@ const makeStyles = (t: ThemeTokens) => ({
     ...typography.footnote,
     color: t.text.secondary,
     textTransform: 'uppercase' as const,
-    letterSpacing: 0.5,
+    letterSpacing: trackedText(0.5),
     marginTop: space.sm,
   },
   summaryLine: { ...typography.subhead, color: t.text.secondary, fontVariant: ['tabular-nums' as const] },
@@ -194,7 +195,7 @@ const InvoiceDetails: React.FC<InvoiceDetailsProps> = ({ invoiceId, onBack }) =>
         setInvoiceHeader(headerResult.data.header);
         setInvoiceItems(headerResult.data.items || []);
       } else {
-        setErrorMessage("Couldn't load the invoice. Check your connection and try again.");
+        setErrorMessage(tr('invoice.details.loadFailed'));
         setErrorVisible(true);
         return;
       }
@@ -215,7 +216,7 @@ const InvoiceDetails: React.FC<InvoiceDetailsProps> = ({ invoiceId, onBack }) =>
         return;
       }
       console.error('[InvoiceDetails] Error fetching data:', error);
-      setErrorMessage("Couldn't load the invoice. Check your connection and try again.");
+      setErrorMessage(tr('invoice.details.loadFailed'));
       setErrorVisible(true);
     } finally {
       // Only update loading state if not aborted
@@ -245,7 +246,7 @@ const InvoiceDetails: React.FC<InvoiceDetailsProps> = ({ invoiceId, onBack }) =>
   };
 
   const renderInfoRow = (icon: string, label: string, value?: string | null) => (
-    <View style={styles.infoRow} accessible accessibilityLabel={`${label}, ${value || 'not set'}`}>
+    <View style={styles.infoRow} accessible accessibilityLabel={`${label}, ${value || tr('invoice.details.notSetA11y')}`}>
       <Icon name={icon} size={iconSize.md} color={t.icon.secondary} />
       <View style={styles.infoTextContainer}>
         <Text style={styles.infoLabel}>{label}</Text>
@@ -270,36 +271,36 @@ const InvoiceDetails: React.FC<InvoiceDetailsProps> = ({ invoiceId, onBack }) =>
           {onBack && (
             <HeaderBackButton onPress={onBack} />
           )}
-          <Text style={styles.pageTitle} accessibilityRole="header">Invoice details</Text>
+          <Text style={styles.pageTitle} accessibilityRole="header">{tr('invoice.review.invoiceDetails')}</Text>
         </View>
 
         {/* Object header */}
         <View style={styles.card}>
-          <Text style={styles.docType}>Invoice</Text>
+          <Text style={styles.docType}>{tr('common.invoice')}</Text>
           <Text style={styles.docNumber}>{invoiceHeader.invoice_number}</Text>
           <Text style={styles.docDate}>{formatDisplayDate(invoiceHeader.invoice_date)}</Text>
         </View>
 
         {/* Customer and GRN */}
         <View style={styles.card}>
-          {renderInfoRow('account-outline', 'Customer', invoiceHeader.customer?.name || invoiceHeader.invoice_customer_name)}
+          {renderInfoRow('account-outline', tr('common.customer'), invoiceHeader.customer?.name || invoiceHeader.invoice_customer_name)}
           <View style={styles.divider} />
-          {renderInfoRow('package-down', 'GRN', invoiceHeader.grn?.number || invoiceHeader.gr_no)}
+          {renderInfoRow('package-down', tr('common.grn'), invoiceHeader.grn?.number || invoiceHeader.gr_no)}
           <View style={styles.divider} />
-          {renderInfoRow('calendar-range', 'Financial year', invoiceHeader.financial_year)}
+          {renderInfoRow('calendar-range', tr('invoice.label.financialYear'), formatFinancialYear(invoiceHeader.financial_year))}
         </View>
 
         {/* Amounts */}
         <View style={styles.card}>
-          {renderAmountRow('Labour', formatInvoiceAmount(invoiceHeader.labour))}
-          {renderAmountRow('Discount', formatInvoiceDeduction(invoiceHeader.discount), true)}
-          {renderAmountRow('Tax', formatInvoiceAmount(invoiceHeader.tax_amount))}
+          {renderAmountRow(tr('invoice.label.labour'), formatInvoiceAmount(invoiceHeader.labour))}
+          {renderAmountRow(tr('invoice.label.discount'), formatInvoiceDeduction(invoiceHeader.discount), true)}
+          {renderAmountRow(tr('invoice.label.tax'), formatInvoiceAmount(invoiceHeader.tax_amount))}
           <View
             style={styles.totalRow}
             accessible
-            accessibilityLabel={`Total amount, ${formatInvoiceAmount(invoiceHeader.total)}`}
+            accessibilityLabel={`${tr('invoice.label.totalAmount')}, ${formatInvoiceAmount(invoiceHeader.total)}`}
           >
-            <Text style={styles.totalLabel}>Total amount</Text>
+            <Text style={styles.totalLabel}>{tr('invoice.label.totalAmount')}</Text>
             <Text style={styles.totalValue}>{formatInvoiceAmount(invoiceHeader.total)}</Text>
           </View>
         </View>
@@ -314,15 +315,15 @@ const InvoiceDetails: React.FC<InvoiceDetailsProps> = ({ invoiceId, onBack }) =>
       return (
         <View style={styles.emptySection}>
           <Icon name="cube-outline" size={iconSize.hero} color={t.icon.secondary} />
-          <Text style={styles.emptyTitle}>No line items</Text>
-          <Text style={styles.emptyText}>Items billed on this invoice appear here.</Text>
+          <Text style={styles.emptyTitle}>{tr('invoice.details.noLineItems')}</Text>
+          <Text style={styles.emptyText}>{tr('invoice.details.noLineItemsText')}</Text>
         </View>
       );
     }
 
     return (
       <>
-        <Text style={styles.sectionHeader} accessibilityRole="header">Line items</Text>
+        <Text style={styles.sectionHeader} accessibilityRole="header">{tr('invoice.details.lineItems')}</Text>
         {itemsSummary && (
           <Text style={styles.summaryLine}>
             {`${formatCount(itemsSummary.totalItems, 'item')} · ${formatInvoiceAmount(itemsSummary.totalAmount)}`}
@@ -346,31 +347,31 @@ const InvoiceDetails: React.FC<InvoiceDetailsProps> = ({ invoiceId, onBack }) =>
 
             <View style={styles.detailsGrid}>
               <View style={styles.detailItem}>
-                <Text style={styles.detailLabel}>GRN</Text>
+                <Text style={styles.detailLabel}>{tr('common.grn')}</Text>
                 <Text style={styles.detailValue}>{item.grNo || '—'}</Text>
               </View>
               <View style={styles.detailItem}>
-                <Text style={styles.detailLabel}>Dispatch</Text>
+                <Text style={styles.detailLabel}>{tr('common.dispatch')}</Text>
                 <Text style={styles.detailValue}>{item.dispatchNo ?? '—'}</Text>
               </View>
               <View style={styles.detailItem}>
-                <Text style={styles.detailLabel}>Package mark</Text>
+                <Text style={styles.detailLabel}>{tr('common.packageMark')}</Text>
                 <Text style={styles.detailValue}>{item.packageMark || '—'}</Text>
               </View>
               <View style={styles.detailItem}>
-                <Text style={styles.detailLabel}>Rack</Text>
+                <Text style={styles.detailLabel}>{tr('common.rack')}</Text>
                 <Text style={styles.detailValue}>{item.rack || '—'}</Text>
               </View>
               <View style={styles.detailItem}>
-                <Text style={styles.detailLabel}>Dispatch qty</Text>
+                <Text style={styles.detailLabel}>{tr('invoice.details.dispatchQty')}</Text>
                 <Text style={styles.detailValue}>{formatNumber(item.dispatchQty)}</Text>
               </View>
               <View style={styles.detailItem}>
-                <Text style={styles.detailLabel}>GRN qty</Text>
+                <Text style={styles.detailLabel}>{tr('invoice.details.grnQty')}</Text>
                 <Text style={styles.detailValue}>{formatNumber(item.grnQuantity)}</Text>
               </View>
               <View style={styles.detailItem}>
-                <Text style={styles.detailLabel}>Tax</Text>
+                <Text style={styles.detailLabel}>{tr('invoice.label.tax')}</Text>
                 <Text style={styles.detailValue}>{formatInvoiceAmount(item.tax)}</Text>
               </View>
             </View>
@@ -379,11 +380,11 @@ const InvoiceDetails: React.FC<InvoiceDetailsProps> = ({ invoiceId, onBack }) =>
 
         {itemsSummary && (
           <View style={styles.card}>
-            <Text style={[styles.infoValue, styles.emphasis]} accessibilityRole="header">Items summary</Text>
-            {renderAmountRow('Total items', formatNumber(itemsSummary.totalItems))}
-            {renderAmountRow('Total dispatch qty', formatNumber(itemsSummary.totalDispatchQty))}
+            <Text style={[styles.infoValue, styles.emphasis]} accessibilityRole="header">{tr('invoice.details.itemsSummary')}</Text>
+            {renderAmountRow(tr('invoice.details.totalItems'), formatNumber(itemsSummary.totalItems))}
+            {renderAmountRow(tr('invoice.details.totalDispatchQty'), formatNumber(itemsSummary.totalDispatchQty))}
             <View style={styles.totalRow}>
-              <Text style={styles.totalLabel}>Total amount</Text>
+              <Text style={styles.totalLabel}>{tr('invoice.label.totalAmount')}</Text>
               <Text style={styles.totalValue}>{formatInvoiceAmount(itemsSummary.totalAmount)}</Text>
             </View>
           </View>
@@ -396,7 +397,7 @@ const InvoiceDetails: React.FC<InvoiceDetailsProps> = ({ invoiceId, onBack }) =>
     return (
       <View style={styles.loadingContainer} accessibilityRole="progressbar" accessibilityState={{ busy: true }}>
         <ActivityIndicator size="large" color={t.brand.tint} />
-        <Text style={styles.loadingText}>Loading invoice…</Text>
+        <Text style={styles.loadingText}>{tr('invoice.label.loadingInvoice')}</Text>
       </View>
     );
   }
@@ -430,7 +431,7 @@ const InvoiceDetails: React.FC<InvoiceDetailsProps> = ({ invoiceId, onBack }) =>
           style={styles.snackbar}
           theme={{ colors: { inverseOnSurface: t.text.inverse, inversePrimary: t.text.inverse } }}
           action={{
-            label: 'Try again',
+            label: tr('common.retry'),
             textColor: t.text.inverse,
             onPress: () => fetchInvoiceData(),
           }}

@@ -18,6 +18,7 @@ import type {
 } from '@/types/report.types';
 
 import { toLocalISODate } from '@/utils/formatters';
+import { t } from '@/i18n';
 /**
  * Default empty response for error cases
  */
@@ -116,7 +117,7 @@ export async function getOperationsDashboard(
         return {
           success: false,
           data: EMPTY_RESPONSE,
-          message: 'Access denied. This report is for staff only.',
+          message: t('reports.operations.service.accessDenied'),
           error: 'STAFF_ONLY',
         };
       }
@@ -124,7 +125,7 @@ export async function getOperationsDashboard(
       return {
         success: false,
         data: EMPTY_RESPONSE,
-        message: 'Failed to fetch operations dashboard',
+        message: t('reports.operations.service.fetchFailed'),
         error: error.message,
       };
     }
@@ -134,7 +135,7 @@ export async function getOperationsDashboard(
       return {
         success: true,
         data: EMPTY_RESPONSE,
-        message: 'No operations data available',
+        message: t('reports.operations.service.noData'),
       };
     }
 
@@ -186,14 +187,14 @@ export async function getOperationsDashboard(
     return {
       success: true,
       data: { kpis, trends, recent_activity },
-      message: 'Operations dashboard retrieved successfully',
+      message: t('reports.operations.service.retrieved'),
     };
   } catch (error) {
     console.error('[OperationsDashboard] Unexpected error:', error);
     return {
       success: false,
       data: EMPTY_RESPONSE,
-      message: 'Failed to fetch operations dashboard',
+      message: t('reports.operations.service.fetchFailed'),
       error: error instanceof Error ? error.message : 'Unknown error',
     };
   }

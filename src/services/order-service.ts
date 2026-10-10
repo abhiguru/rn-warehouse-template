@@ -30,6 +30,8 @@ import type {
   RpcEnhancedGrnItem,
   RpcSearchMetadata,
 } from '@/types/rpc-canonical.types';
+import { t } from '@/i18n';
+import { serverText } from '@/utils/serverText';
 
 // Order Service - Frontend uses "Order" terminology, backend uses "Cart"
 export class OrderService {
@@ -75,7 +77,7 @@ export class OrderService {
       return {
         success: false,
         error:
-          error instanceof Error ? error.message : 'Connection test failed',
+          error instanceof Error ? error.message : t('errors.general.connectionTestFailed'),
         details: { originalError: error },
       };
     }
@@ -90,8 +92,8 @@ export class OrderService {
         console.error('[OrderService] ERROR: Missing customer ID');
         return {
           success: false,
-          message: 'Customer ID is required',
-          error: 'Missing parameter',
+          message: t('errors.customer.idRequired'),
+          error: t('errors.general.missingParameter'),
         };
       }
 
@@ -104,8 +106,8 @@ export class OrderService {
         console.error('[OrderService] ERROR: No access token found');
         return {
           success: false,
-          message: 'Authentication required - no access token',
-          error: 'No JWT token in storage',
+          message: t('errors.auth.requiredNoToken'),
+          error: t('errors.auth.noJwtInStorage'),
         };
       }
 
@@ -134,7 +136,7 @@ export class OrderService {
         );
         return {
           success: false,
-          message: 'Failed to get or create order',
+          message: t('errors.order.getOrCreateFailed'),
           error: error.message,
         };
       }
@@ -152,8 +154,8 @@ export class OrderService {
         console.error('[OrderService] Full Data Object:', JSON.stringify(data));
         return {
           success: false,
-          message: data.message || 'Failed to get or create order',
-          error: data.error || 'RPC function returned error',
+          message: serverText(data.message, t('errors.order.getOrCreateFailed')),
+          error: serverText(data.error, t('errors.general.rpcReturnedError')),
         };
       }
 
@@ -162,7 +164,7 @@ export class OrderService {
 
       return {
         success: true,
-        message: 'Order retrieved successfully',
+        message: t('errors.order.retrieved'),
         data: {
           cart_id: cartId,
           is_new: false, // We can't determine this from the current response
@@ -178,7 +180,7 @@ export class OrderService {
       console.error('[OrderService] ========================================');
       return createErrorResponse(
         error,
-        'An unexpected error occurred',
+        t('errors.general.unexpected'),
         'OrderService.getOrCreateOrder'
       );
     }
@@ -194,8 +196,8 @@ export class OrderService {
     if (!orderId || !grnItemId || quantity <= 0) {
       return {
         success: false,
-        message: 'Invalid parameters',
-        error: 'Order ID, item ID, and positive quantity required',
+        message: t('errors.general.invalidParameters'),
+        error: t('errors.order.addItemParamsRequired'),
       };
     }
 
@@ -209,14 +211,14 @@ export class OrderService {
       },
       {
         context: 'OrderService.addItemToOrder',
-        errorMessage: 'Failed to add item to order',
+        errorMessage: t('errors.order.addItemFailed'),
         unwrapNested: false, // Response is direct data
       }
     );
 
     return {
       success: result.success,
-      message: result.success ? 'Item added to order' : result.message,
+      message: result.success ? t('errors.order.itemAdded') : result.message,
       data: result.data,
       error: result.error,
     };
@@ -238,7 +240,7 @@ export class OrderService {
       // Return a success response with placeholder OrderItem data
       return {
         success: true,
-        message: 'Item removed successfully',
+        message: t('errors.order.itemRemovedSuccessfully'),
         data: {
           id: itemId,
           order_id: orderId,
@@ -258,14 +260,14 @@ export class OrderService {
       },
       {
         context: 'OrderService.updateOrderItemQuantity',
-        errorMessage: 'Failed to update item quantity',
+        errorMessage: t('errors.order.updateQuantityFailed'),
         unwrapNested: false,
       }
     );
 
     return {
       success: result.success,
-      message: result.success ? 'Quantity updated' : result.message,
+      message: result.success ? t('errors.order.quantityUpdated') : result.message,
       data: result.data,
       error: result.error,
     };
@@ -279,8 +281,8 @@ export class OrderService {
     if (!itemId) {
       return {
         success: false,
-        message: 'Invalid parameters',
-        error: 'Order item ID required',
+        message: t('errors.general.invalidParameters'),
+        error: t('errors.order.itemIdRequired'),
       };
     }
 
@@ -290,14 +292,14 @@ export class OrderService {
       { p_order_item_id: itemId },
       {
         context: 'OrderService.removeItemFromOrder',
-        errorMessage: 'Failed to remove item',
+        errorMessage: t('errors.order.removeItemFailed'),
         unwrapNested: false,
       }
     );
 
     return {
       success: result.success,
-      message: result.success ? 'Item removed from order' : result.message,
+      message: result.success ? t('errors.order.itemRemoved') : result.message,
       error: result.error,
     };
   }
@@ -319,7 +321,7 @@ export class OrderService {
         console.error('[OrderService] RPC Error:', error);
         return {
           success: false,
-          message: 'Failed to fetch order details',
+          message: t('errors.order.fetchDetailsFailed'),
           error: error.message,
         };
       }
@@ -327,8 +329,8 @@ export class OrderService {
       if (!data) {
         return {
           success: false,
-          message: 'Order not found',
-          error: 'No data returned',
+          message: t('errors.order.notFound'),
+          error: t('errors.general.noDataReturned'),
         };
       }
 
@@ -343,8 +345,8 @@ export class OrderService {
         );
         return {
           success: false,
-          message: 'Invalid response format',
-          error: 'Failed to parse response',
+          message: t('errors.general.invalidResponseFormat'),
+          error: t('errors.general.parseFailed'),
         };
       }
 
@@ -365,16 +367,16 @@ export class OrderService {
       } else {
         return {
           success: false,
-          message: 'Invalid response structure',
-          error: 'Expected order data in response',
+          message: t('errors.general.invalidResponseStructure'),
+          error: t('errors.order.expectedData'),
         };
       }
 
       if (!orderRecord.order_data || !orderRecord.items) {
         return {
           success: false,
-          message: 'Incomplete order data',
-          error: 'Missing order_data or items',
+          message: t('errors.order.incompleteData'),
+          error: t('errors.order.missingDataOrItems'),
         };
       }
 
@@ -449,14 +451,14 @@ export class OrderService {
 
       return {
         success: true,
-        message: 'Order retrieved successfully',
+        message: t('errors.order.retrieved'),
         data: finalOrderData,
       };
     } catch (error) {
       console.error('[OrderService] Exception:', error);
       return createErrorResponse(
         error,
-        'An unexpected error occurred',
+        t('errors.general.unexpected'),
         'OrderService.getOrderWithItems'
       );
     }
@@ -490,6 +492,7 @@ export class OrderService {
         p_user_id: null, // Use current session user
         p_limit: limit,
         p_offset: offset,
+        p_search: filters?.search?.trim() || null,
       });
 
       const { data, error } = await rpcCall;
@@ -514,14 +517,14 @@ export class OrderService {
           return {
             success: false,
             message:
-              'Network connection error. Please check your internet connection and try again.',
+              t('errors.network.connectionError'),
             error: 'Network request failed - ' + error.message,
           };
         }
 
         return {
           success: false,
-          message: 'Failed to fetch orders',
+          message: t('errors.order.fetchListFailed'),
           error: error.message,
         };
       }
@@ -529,8 +532,8 @@ export class OrderService {
       if (data && typeof data === 'object' && data.success === false) {
         return {
           success: false,
-          message: data.message || 'Failed to fetch orders',
-          error: data.error || 'RPC function returned error',
+          message: serverText(data.message, t('errors.order.fetchListFailed')),
+          error: serverText(data.error, t('errors.general.rpcReturnedError')),
         };
       }
 
@@ -553,7 +556,7 @@ export class OrderService {
 
       return {
         success: true,
-        message: 'Orders retrieved successfully',
+        message: t('errors.order.listRetrieved'),
         data: ordersArray,
         metadata: {
           total_count: totalCount,
@@ -569,7 +572,7 @@ export class OrderService {
       );
       return createErrorResponse(
         error,
-        'An unexpected error occurred',
+        t('errors.general.unexpected'),
         'OrderService.getOrdersList'
       );
     }
@@ -599,8 +602,8 @@ export class OrderService {
       if (!customerId) {
         return {
           success: false,
-          message: 'Customer ID is required',
-          error: 'Missing customer_id parameter',
+          message: t('errors.customer.idRequired'),
+          error: t('errors.customer.missingIdParameter'),
         };
       }
 
@@ -654,7 +657,7 @@ export class OrderService {
         console.error('[OrderService] Customer dispatches RPC Error:', error);
         return {
           success: false,
-          message: 'Failed to fetch customer dispatches',
+          message: t('errors.dispatch.fetchCustomerFailed'),
           error: error.message,
         };
       }
@@ -662,7 +665,7 @@ export class OrderService {
       if (!data || !data.data) {
         return {
           success: true,
-          message: 'No dispatches found for this customer',
+          message: t('errors.dispatch.noneForCustomer'),
           data: {
             items: [],
             pagination: { total_count: 0, has_more: false },
@@ -678,14 +681,14 @@ export class OrderService {
 
       return {
         success: true,
-        message: 'Customer dispatches retrieved successfully',
+        message: t('errors.dispatch.customerRetrieved'),
         data: data.data,
       };
     } catch (error) {
       console.error('[OrderService] Customer dispatches exception:', error);
       return createErrorResponse(
         error,
-        'An unexpected error occurred',
+        t('errors.general.unexpected'),
         'OrderService.getCustomerDispatches'
       );
     }
@@ -701,8 +704,8 @@ export class OrderService {
       if (!filters.customer_id) {
         return {
           success: false,
-          message: 'Customer ID is required',
-          error: 'Missing customer_id parameter',
+          message: t('errors.customer.idRequired'),
+          error: t('errors.customer.missingIdParameter'),
         };
       }
 
@@ -736,7 +739,7 @@ export class OrderService {
         console.error('[OrderService] Enhanced search RPC Error:', error);
         return {
           success: false,
-          message: 'Failed to search items',
+          message: t('errors.item.searchFailed'),
           error: error.message,
         };
       }
@@ -748,7 +751,7 @@ export class OrderService {
       if (!data) {
         return {
           success: true,
-          message: 'No items found',
+          message: t('errors.item.noneFound'),
           data: [],
           metadata: {
             search_type: 'text',
@@ -768,8 +771,8 @@ export class OrderService {
       ) {
         return {
           success: false,
-          message: data.message || data.error || 'Failed to search items',
-          error: data.error || 'Search refused',
+          message: serverText(data.message || data.error, t('errors.item.searchFailed')),
+          error: serverText(data.error, t('errors.order.searchRefused')),
         };
       }
 
@@ -793,7 +796,7 @@ export class OrderService {
       } else {
         return {
           success: true,
-          message: 'No items found',
+          message: t('errors.item.noneFound'),
           data: [],
           metadata: {
             search_type: 'text',
@@ -808,7 +811,7 @@ export class OrderService {
       if (itemsArray.length === 0) {
         return {
           success: true,
-          message: 'No items found for search criteria',
+          message: t('errors.item.noneFoundForSearch'),
           data: [],
           metadata: {
             search_type:
@@ -898,7 +901,7 @@ export class OrderService {
 
       return {
         success: true,
-        message: 'Items found successfully',
+        message: t('errors.item.listFound'),
         data: mappedItems,
         metadata: searchMetadata,
       };
@@ -906,7 +909,7 @@ export class OrderService {
       console.error('[OrderService] Enhanced search exception:', error);
       return createErrorResponse(
         error,
-        'An unexpected error occurred during search',
+        t('errors.general.unexpectedDuringSearch'),
         'OrderService.searchCustomerItemsForOrder'
       );
     }
@@ -923,8 +926,8 @@ export class OrderService {
         );
         return {
           success: false,
-          message: 'Customer ID is required',
-          error: 'Missing customer_id parameter',
+          message: t('errors.customer.idRequired'),
+          error: t('errors.customer.missingIdParameter'),
         };
       }
 
@@ -945,7 +948,7 @@ export class OrderService {
       if (response?.success === false) {
         return {
           success: false,
-          message: response.message || 'Failed to fetch items',
+          message: serverText(response.message, t('errors.item.fetchListFailed')),
           error: 'BACKEND_ERROR',
         };
       }
@@ -956,7 +959,7 @@ export class OrderService {
         console.error('[OrderService] RPC Error:', error);
         return {
           success: false,
-          message: 'Failed to fetch items',
+          message: t('errors.item.fetchListFailed'),
           error: error.message,
         };
       }
@@ -964,7 +967,7 @@ export class OrderService {
       if (!data || !Array.isArray(data)) {
         return {
           success: true,
-          message: 'No items available',
+          message: t('errors.item.noneAvailable'),
           data: [],
         };
       }
@@ -972,7 +975,7 @@ export class OrderService {
       if (data.length === 0) {
         return {
           success: true,
-          message: 'No items available for this customer',
+          message: t('errors.item.noneAvailableForCustomer'),
           data: [],
         };
       }
@@ -1032,7 +1035,7 @@ export class OrderService {
 
       return {
         success: true,
-        message: 'Items retrieved successfully',
+        message: t('errors.item.listRetrieved'),
         data: mappedItems,
         // Include pagination metadata if needed in the future
         metadata: {
@@ -1047,7 +1050,7 @@ export class OrderService {
       console.error('[OrderService] Exception:', error);
       return createErrorResponse(
         error,
-        'An unexpected error occurred',
+        t('errors.general.unexpected'),
         'OrderService.getAvailableItems'
       );
     }

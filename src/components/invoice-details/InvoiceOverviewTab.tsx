@@ -18,7 +18,8 @@ import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, layout, radius, space, touchTarget, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { savedInvoiceAmounts, formatInvoiceAmount, formatInvoiceDeduction } from '@/utils/invoiceCalculations';
-import { formatDate, toDate } from '@/utils/formatters';
+import { formatDate, toDate, formatFinancialYear, formatMobile } from '@/utils/formatters';
+import { t as tr, formatIdentifier } from '@/i18n';
 
 // ============================================================================
 // TYPES
@@ -216,12 +217,12 @@ export const InvoiceOverviewTab: React.FC<InvoiceOverviewTabProps> = ({
 
     return (
       <View style={styles.card}>
-        <View style={styles.objectCellHeader} accessible accessibilityLabel={`Customer, ${customer_details.name}`}>
+        <View style={styles.objectCellHeader} accessible accessibilityLabel={`${tr('common.customer')}, ${customer_details.name}`}>
           <View style={styles.avatar}>
             <Icon name="account-outline" size={iconSize.lg} color={t.brand.tint} />
           </View>
           <View style={styles.objectCellContent}>
-            <Text style={styles.objectCellLabel}>Customer</Text>
+            <Text style={styles.objectCellLabel}>{tr('common.customer')}</Text>
             <Text style={styles.objectCellHeadline} numberOfLines={2}>{customer_details.name}</Text>
           </View>
         </View>
@@ -248,14 +249,14 @@ export const InvoiceOverviewTab: React.FC<InvoiceOverviewTabProps> = ({
             {(customer_details.gst || customer_details.pan) && (
               <View style={styles.taxChipsRow}>
                 {customer_details.gst && (
-                  <View style={styles.taxChip} accessible accessibilityLabel={`GST ${customer_details.gst}`}>
-                    <Text style={styles.taxChipLabel} maxFontSizeMultiplier={1.6}>GST</Text>
+                  <View style={styles.taxChip} accessible accessibilityLabel={`${tr('invoice.label.gst')} ${customer_details.gst}`}>
+                    <Text style={styles.taxChipLabel} maxFontSizeMultiplier={1.6}>{tr('invoice.label.gst')}</Text>
                     <Text style={styles.taxChipValue} maxFontSizeMultiplier={1.6}>{customer_details.gst}</Text>
                   </View>
                 )}
                 {customer_details.pan && (
-                  <View style={styles.taxChip} accessible accessibilityLabel={`PAN ${customer_details.pan}`}>
-                    <Text style={styles.taxChipLabel} maxFontSizeMultiplier={1.6}>PAN</Text>
+                  <View style={styles.taxChip} accessible accessibilityLabel={`${tr('invoice.label.pan')} ${customer_details.pan}`}>
+                    <Text style={styles.taxChipLabel} maxFontSizeMultiplier={1.6}>{tr('invoice.label.pan')}</Text>
                     <Text style={styles.taxChipValue} maxFontSizeMultiplier={1.6}>{customer_details.pan}</Text>
                   </View>
                 )}
@@ -270,10 +271,10 @@ export const InvoiceOverviewTab: React.FC<InvoiceOverviewTabProps> = ({
             style={({ pressed }) => [styles.contactAction, pressed && styles.cardPressed]}
             onPress={() => handlePhonePress(customer_details.mobile!)}
             accessibilityRole="button"
-            accessibilityLabel={`Call ${customer_details.name}, ${customer_details.mobile}`}
+            accessibilityLabel={tr('invoice.details.callA11y', { name: customer_details.name, mobile: formatMobile(customer_details.mobile) })}
           >
             <Icon name="phone-outline" size={iconSize.md} color={t.brand.tint} />
-            <Text style={styles.contactActionText}>{customer_details.mobile}</Text>
+            <Text style={styles.contactActionText}>{formatMobile(customer_details.mobile)}</Text>
             <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />
           </Pressable>
         )}
@@ -283,7 +284,7 @@ export const InvoiceOverviewTab: React.FC<InvoiceOverviewTabProps> = ({
             style={({ pressed }) => [styles.contactAction, pressed && styles.cardPressed]}
             onPress={() => handleEmailPress(customer_details.email!)}
             accessibilityRole="button"
-            accessibilityLabel={`Email ${customer_details.name}, ${customer_details.email}`}
+            accessibilityLabel={tr('invoice.details.emailA11y', { name: customer_details.name, email: customer_details.email })}
           >
             <Icon name="email-outline" size={iconSize.md} color={t.brand.tint} />
             <Text style={styles.contactActionText}>{customer_details.email}</Text>
@@ -305,16 +306,16 @@ export const InvoiceOverviewTab: React.FC<InvoiceOverviewTabProps> = ({
         onPress={handleGRNPress}
         disabled={!on_view_grn}
         accessibilityRole={on_view_grn ? 'button' : undefined}
-        accessibilityLabel={`GRN ${grn_details.number}${grnDate ? `, ${grnDate}` : ''}`}
-        accessibilityHint={on_view_grn ? 'Opens the GRN' : undefined}
+        accessibilityLabel={`${tr('invoice.label.grnNumber', { number: formatIdentifier(grn_details.number) })}${grnDate ? `, ${grnDate}` : ''}`}
+        accessibilityHint={on_view_grn ? tr('invoice.details.opensGrnHint') : undefined}
       >
         <View style={styles.objectCellHeader}>
           <View style={styles.avatar}>
             <Icon name="package-down" size={iconSize.lg} color={t.brand.tint} />
           </View>
           <View style={styles.objectCellContent}>
-            <Text style={styles.objectCellLabel}>Linked GRN</Text>
-            <Text style={styles.objectCellHeadline}>{`GRN ${grn_details.number}`}</Text>
+            <Text style={styles.objectCellLabel}>{tr('invoice.details.linkedGrn')}</Text>
+            <Text style={styles.objectCellHeadline}>{tr('invoice.label.grnNumber', { number: formatIdentifier(grn_details.number) })}</Text>
           </View>
           {on_view_grn && (
             <Icon name="chevron-right" size={iconSize.lg} color={t.icon.secondary} />
@@ -348,7 +349,7 @@ export const InvoiceOverviewTab: React.FC<InvoiceOverviewTabProps> = ({
   };
 
   const saved = savedInvoiceAmounts(financial_summary);
-  const isDiscount = saved.adjustmentLabel === 'Discount';
+  const isDiscount = !saved.isSurcharge;
   const adjustmentText = isDiscount
     ? formatInvoiceDeduction(saved.adjustmentAmount)
     : `+${formatInvoiceAmount(saved.adjustmentAmount)}`;
@@ -368,34 +369,34 @@ export const InvoiceOverviewTab: React.FC<InvoiceOverviewTabProps> = ({
           <Icon name="currency-inr" size={iconSize.lg} color={t.brand.tint} />
         </View>
         <View style={styles.objectCellContent}>
-          <Text style={styles.objectCellHeadline}>Amounts</Text>
+          <Text style={styles.objectCellHeadline}>{tr('invoice.review.amounts')}</Text>
           {financial_year && (
-            <Text style={styles.objectCellSubheadline}>{`Financial year ${financial_year}`}</Text>
+            <Text style={styles.objectCellSubheadline}>{tr('invoice.details.financialYearValue', { year: formatFinancialYear(financial_year) })}</Text>
           )}
         </View>
       </View>
 
       <View style={styles.detailsContainer}>
-        {renderFinancialRow('Net before tax', formatInvoiceAmount(saved.netBeforeTax))}
+        {renderFinancialRow(tr('invoice.label.netBeforeTax'), formatInvoiceAmount(saved.netBeforeTax))}
 
         {saved.hasAdjustment &&
           renderFinancialRow(
-            `${saved.adjustmentLabel} (included)`,
+            tr(saved.isSurcharge ? 'invoice.label.surchargeIncluded' : 'invoice.label.discountIncluded'),
             adjustmentText,
             isDiscount ? styles.discountValue : undefined
           )}
 
         {financial_summary.labour > 0 &&
-          renderFinancialRow('Labour (included)', formatInvoiceAmount(financial_summary.labour))}
+          renderFinancialRow(tr('invoice.label.labourIncluded'), formatInvoiceAmount(financial_summary.labour))}
 
-        {renderFinancialRow('Tax', formatInvoiceAmount(financial_summary.tax_amount))}
+        {renderFinancialRow(tr('invoice.label.tax'), formatInvoiceAmount(financial_summary.tax_amount))}
 
         <View
           style={[styles.financialRow, styles.financialRowTotal]}
           accessible
-          accessibilityLabel={`Total amount, ${formatInvoiceAmount(financial_summary.total)}`}
+          accessibilityLabel={`${tr('invoice.label.totalAmount')}, ${formatInvoiceAmount(financial_summary.total)}`}
         >
-          <Text style={styles.financialLabelTotal}>Total amount</Text>
+          <Text style={styles.financialLabelTotal}>{tr('invoice.label.totalAmount')}</Text>
           <Text style={styles.financialValueTotal}>{formatInvoiceAmount(financial_summary.total)}</Text>
         </View>
       </View>
@@ -411,7 +412,7 @@ export const InvoiceOverviewTab: React.FC<InvoiceOverviewTabProps> = ({
       {/* SECTION: CUSTOMER */}
       {customer_details && (
         <>
-          <SectionHeader title="Customer" />
+          <SectionHeader title={tr('common.customer')} />
           {renderCustomerCard()}
         </>
       )}
@@ -419,13 +420,13 @@ export const InvoiceOverviewTab: React.FC<InvoiceOverviewTabProps> = ({
       {/* SECTION: LINKED GRN */}
       {grn_details && (
         <>
-          <SectionHeader title="Reference" />
+          <SectionHeader title={tr('invoice.details.reference')} />
           {renderGRNReferenceCard()}
         </>
       )}
 
       {/* SECTION: FINANCIAL SUMMARY */}
-      <SectionHeader title="Financial summary" />
+      <SectionHeader title={tr('invoice.details.financialSummary')} />
       {renderFinancialSummaryCard()}
 
       {/* SECTION: NOTES */}
@@ -433,7 +434,7 @@ export const InvoiceOverviewTab: React.FC<InvoiceOverviewTabProps> = ({
 
       {/* SECTION: ACTIONS */}
       <ActionsSection
-        entityType="Invoice"
+        entity="invoice"
         entityNumber={invoice_number}
         entityId={invoice_id || 'invoice'}
         onSharePDF={on_share_pdf}
