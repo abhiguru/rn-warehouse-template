@@ -410,8 +410,8 @@ function ThemedContent() {
   // Keep the platform-specific system background in sync with theme changes.
   useEffect(() => {
     if (Platform.OS === 'android') {
-      // Navigation bar style: 'dark' (light icons) on a dark background, 'light' (dark icons) on light.
-      NavigationBar.setStyle(isDarkMode ? 'dark' : 'light');
+      // The style names the button colour: light buttons on a dark background, dark buttons on light.
+      NavigationBar.setStyle(isDarkMode ? 'light' : 'dark');
     } else {
       SystemUI.setBackgroundColorAsync(screenBackground);
     }
