@@ -1061,7 +1061,7 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({
         options={SORT_OPTIONS}
         field={sortBy}
         order={sortOrder}
-        onFieldChange={field => { setSortBy(field); setSortOrder('desc'); }}
+        onFieldChange={setSortBy}
         onOrderToggle={() => setSortOrder(prev => (prev === 'desc' ? 'asc' : 'desc'))}
         expanded={allExpanded}
         onExpandToggle={handleToggleAllExpanded}
