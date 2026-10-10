@@ -1,9 +1,9 @@
 import { getSupabaseClient, getAuthenticatedClient } from '@/config/supabaseConfig';
 import { createErrorResponse, executeRPC } from '@/utils/serviceErrorHandler';
 import { PAGINATION } from '@/config/cacheConfig';
-import { toLocalISODate } from '@/utils/formatters';
 import { matchesSearch, searchTerms } from '@/features/filters/searchMatch';
 import { t } from '@/i18n';
+import { customerHistory } from './customerHistoryCache';
 import { serverText } from '@/utils/serverText';
 
 // M1 Fix: DRY empty pagination response
@@ -197,6 +197,8 @@ export interface AssignedCustomerInvoiceParams {
   p_customer_ids?: string[];
   p_sort_field?: string;
   p_sort_direction?: 'asc' | 'desc';
+  /** Read the server again instead of the history kept for paging (pull to refresh). */
+  p_fresh?: boolean;
   /** Names for the list rows, keyed by customer id (the RPC rows carry no customer name). */
   customerNames?: Record<string, string>;
 }
@@ -306,8 +308,15 @@ export function selectCustomerInvoices(all: Invoice[], params: AssignedCustomerI
   });
 }
 
-/** The summary RPC defaults to the last 30 days, so the list always sends a range. */
+/**
+ * The summary RPC defaults to the last 30 days, so the list always sends a
+ * range. The upper bound is not the device's date: a device whose clock or
+ * zone is behind the facility's day would hide today's invoices.
+ */
 const CUSTOMER_INVOICE_EARLIEST = '2000-01-01';
+const CUSTOMER_INVOICE_LATEST = '2999-12-31';
+
+type CustomerInvoiceHistory = { success: boolean; message?: string; rows: CustomerInvoiceRow[] };
 
 /**
  * Invoice list for a customer account. The all-customers list RPC is for
@@ -342,29 +351,42 @@ export const getAssignedCustomerInvoices = async (
       for (const customer of customers || []) names[customer.id] = customer.name;
     }
 
+    // The summary RPC has no search, sort or paging, so a customer's history is
+    // read once and kept for a short time (customerHistoryCache): the next
+    // page, a sort, a search and the count do not download it again.
     const results = await Promise.all(
-      targetIds.map(async (customerId): Promise<{ success: boolean; message?: string; invoices: Invoice[] }> => {
-        const { data, error } = await authenticatedClient.rpc('get_customer_invoice_summary', {
-          p_customer_uuid: customerId,
-          // The whole history; the date filter is applied here, to the moment.
-          p_from_date: CUSTOMER_INVOICE_EARLIEST,
-          p_to_date: toLocalISODate(new Date()),
-        });
-        if (error) {
-          const failed = createErrorResponse(error, t('errors.invoice.fetchListFailed'), 'InvoiceService.getAssignedCustomerInvoices');
-          return { success: false, message: failed.message, invoices: [] };
-        }
-        if (!data?.success) {
-          return { success: false, message: serverText(data?.error || data?.message, t('errors.general.noDataFromServer')), invoices: [] };
-        }
-        const rows: CustomerInvoiceRow[] = data.data?.invoices || [];
-        return { success: true, invoices: rows.map(row => mapCustomerInvoiceRow(row, customerId, names[customerId] || '')) };
-      })
+      targetIds.map(customerId =>
+        customerHistory<CustomerInvoiceHistory>(
+          `invoices:${customerId}`,
+          async () => {
+            const { data, error } = await authenticatedClient.rpc('get_customer_invoice_summary', {
+              p_customer_uuid: customerId,
+              // The whole history; the date filter is applied here, to the moment.
+              p_from_date: CUSTOMER_INVOICE_EARLIEST,
+              p_to_date: CUSTOMER_INVOICE_LATEST,
+            });
+            if (error) {
+              const failed = createErrorResponse(error, t('errors.invoice.fetchListFailed'), 'InvoiceService.getAssignedCustomerInvoices');
+              return { success: false, message: failed.message, rows: [] };
+            }
+            if (!data?.success) {
+              return { success: false, message: serverText(data?.error || data?.message, t('errors.general.noDataFromServer')), rows: [] };
+            }
+            return { success: true, rows: data.data?.invoices || [] };
+          },
+          { fresh: params.p_fresh, keep: result => result.success }
+        )
+      )
     );
     const failed = results.find(result => !result.success);
     if (failed) return failure(serverText(failed.message, t('errors.invoice.fetchListFailed')));
 
-    const matching = selectCustomerInvoices(results.flatMap(result => result.invoices), params);
+    const matching = selectCustomerInvoices(
+      results.flatMap((result, index) =>
+        result.rows.map(row => mapCustomerInvoiceRow(row, targetIds[index], names[targetIds[index]] || ''))
+      ),
+      params
+    );
 
     const invoices = matching.slice(offset, offset + limit);
     return {

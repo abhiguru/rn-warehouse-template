@@ -73,6 +73,7 @@ export const lists = {
     loadFailedTitle: "Couldn't load dispatches",
     loadFailed: "Couldn't load dispatches. Check your connection and try again.",
     loadMoreFailed: "Couldn't load more dispatches. Scroll down to try again.",
+    historyLimited: 'Only the newest {{count}} dispatches of a customer are searched here. Ask the facility for older ones.',
     emptyTitle: 'No dispatches yet',
     emptyCreator: 'Dispatches you create appear here.',
     emptyViewer: 'Dispatches appear here once they are created.',

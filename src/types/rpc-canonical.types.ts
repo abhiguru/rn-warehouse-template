@@ -66,6 +66,8 @@ export interface RpcPagination {
   limit: number;
   offset: number;
   has_more: boolean;
+  /** Customer-account lists: the history collected in the app stopped at its upper bound. */
+  history_limit_reached?: boolean;
 }
 
 /**

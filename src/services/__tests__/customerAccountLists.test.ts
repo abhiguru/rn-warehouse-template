@@ -1,6 +1,9 @@
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
 import { getAssignedCustomerDispatchList } from '../dispatch-service';
 import { getAssignedCustomerInvoices } from '../invoice-service';
+import { clearCustomerHistoryCache, CUSTOMER_HISTORY_TTL_MS } from '../customerHistoryCache';
+import { CUSTOMER_DISPATCH_MAX } from '../dispatch-service';
+import { advanceSessionGeneration } from '@/config/sessionLifecycle';
 
 jest.mock('@/config/supabaseConfig', () => ({
   getAuthenticatedClient: jest.fn(),
@@ -30,7 +33,10 @@ function mockClient(rpc: jest.Mock, customers: { id: string; name: string }[] = 
   });
 }
 
-beforeEach(() => jest.clearAllMocks());
+beforeEach(() => {
+  jest.clearAllMocks();
+  clearCustomerHistoryCache();
+});
 
 describe('dispatch list for a customer account', () => {
   const rpc = jest.fn(async (name: string, args: { p_customer_id: string }) => ({
@@ -183,5 +189,168 @@ describe('invoice list for a customer account', () => {
     expect(result.success).toBe(false);
     expect(result.message).toBe('Access denied');
     expect(result.data.invoices).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Review 2026-10-10, M2-4 / M4-2 / M2-10: what a customer account downloads
+// ---------------------------------------------------------------------------
+describe('how much of a customer history is downloaded', () => {
+  /** A customer with `total` dispatches, DD0001 the oldest, served newest first, at most 100 a page. */
+  const dispatchServer = (total: number) =>
+    jest.fn(async (_name: string, args: { p_customer_id: string; p_limit: number; p_offset: number }) => {
+      const rows = [];
+      for (let index = args.p_offset; index < Math.min(args.p_offset + args.p_limit, total); index++) {
+        const number = total - index;
+        const day = new Date(Date.UTC(2020, 0, number)).toISOString().slice(0, 10);
+        rows.push(dispatchRow(`d${number}`, `DD${String(number).padStart(4, '0')}`, day, args.p_customer_id, 'item-1'));
+      }
+      return {
+        data: { success: true, data: { dispatches: rows, pagination: { total_count: total, limit: args.p_limit, offset: args.p_offset, has_more: args.p_offset + rows.length < total } } },
+        error: null,
+      };
+    });
+
+  it('one customer, newest first, no filter: the server pages and counts', async () => {
+    const rpc = dispatchServer(1200);
+    mockClient(rpc);
+    const third = await getAssignedCustomerDispatchList([CUSTOMER_A], { p_limit: 20, offset: 40, p_filters: { search: '', item_ids: [] } });
+    expect(rpc).toHaveBeenCalledTimes(1);
+    expect(rpc).toHaveBeenCalledWith('get_customer_dispatch_list', { p_customer_id: CUSTOMER_A, p_limit: 20, p_offset: 40, p_include_items: true });
+    expect(third.data.dispatches).toHaveLength(20);
+    expect(third.data.dispatches[0].disp_no).toBe('DD1160');
+    expect(third.data.pagination).toMatchObject({ total_count: 1200, offset: 40, has_more: true });
+  });
+
+  it('a search reaches a dispatch older than the newest 1000 and says nothing is cut', async () => {
+    const rpc = dispatchServer(1200);
+    mockClient(rpc);
+    const found = await getAssignedCustomerDispatchList([CUSTOMER_A], { p_filters: { search: 'DD0042' } });
+    expect(found.data.dispatches.map(d => d.disp_no)).toEqual(['DD0042']);
+    expect(found.data.pagination.total_count).toBe(1);
+    expect(found.data.pagination.history_limit_reached).toBeUndefined();
+    expect(rpc).toHaveBeenCalledTimes(12);
+  });
+
+  it('the next page, a sort, another search and the count use the history already collected', async () => {
+    const rpc = dispatchServer(250);
+    mockClient(rpc);
+    const filters = { search: 'DD' };
+    await getAssignedCustomerDispatchList([CUSTOMER_A], { p_filters: filters, p_limit: 20, offset: 0 });
+    expect(rpc).toHaveBeenCalledTimes(3);
+    const second = await getAssignedCustomerDispatchList([CUSTOMER_A], { p_filters: filters, p_limit: 20, offset: 20 });
+    const sorted = await getAssignedCustomerDispatchList([CUSTOMER_A], { p_filters: filters, p_sort_by: 'disp_no', p_sort_order: 'asc' });
+    const other = await getAssignedCustomerDispatchList([CUSTOMER_A], { p_filters: { search: 'DD0007' } });
+    const count = await getAssignedCustomerDispatchList([CUSTOMER_A], { p_filters: filters, p_limit: 1, offset: 0 });
+    expect(rpc).toHaveBeenCalledTimes(3);
+    expect(second.data.dispatches[0].disp_no).toBe('DD0230');
+    expect(sorted.data.dispatches[0].disp_no).toBe('DD0001');
+    expect(other.data.dispatches.map(d => d.disp_no)).toEqual(['DD0007']);
+    expect(count.data.pagination.total_count).toBe(250);
+  });
+
+  it('the list and its count asked at the same moment share one download', async () => {
+    const rpc = dispatchServer(150);
+    mockClient(rpc);
+    const filters = { search: 'DD' };
+    await Promise.all([
+      getAssignedCustomerDispatchList([CUSTOMER_A], { p_filters: filters }),
+      getAssignedCustomerDispatchList([CUSTOMER_A], { p_filters: filters, p_limit: 1 }),
+    ]);
+    expect(rpc).toHaveBeenCalledTimes(2);
+  });
+
+  it('pull to refresh, a new session and an old history read the server again', async () => {
+    const rpc = dispatchServer(50);
+    mockClient(rpc);
+    const request = { p_filters: { search: 'DD' } };
+    await getAssignedCustomerDispatchList([CUSTOMER_A], request);
+    await getAssignedCustomerDispatchList([CUSTOMER_A], { ...request, p_fresh: true });
+    expect(rpc).toHaveBeenCalledTimes(2);
+    advanceSessionGeneration();
+    await getAssignedCustomerDispatchList([CUSTOMER_A], request);
+    expect(rpc).toHaveBeenCalledTimes(3);
+    const now = Date.now();
+    const clock = jest.spyOn(Date, 'now').mockReturnValue(now + CUSTOMER_HISTORY_TTL_MS + 1);
+    await getAssignedCustomerDispatchList([CUSTOMER_A], request);
+    clock.mockRestore();
+    expect(rpc).toHaveBeenCalledTimes(4);
+  });
+
+  it('a failed collection is not kept', async () => {
+    const refused = jest.fn(async () => ({ data: { success: false, message: 'Customer access denied' }, error: null }));
+    mockClient(refused);
+    const request = { p_filters: { search: 'DD' } };
+    expect((await getAssignedCustomerDispatchList([CUSTOMER_A], request)).success).toBe(false);
+    const rpc = dispatchServer(5);
+    mockClient(rpc);
+    const result = await getAssignedCustomerDispatchList([CUSTOMER_A], request);
+    expect(result.success).toBe(true);
+    expect(result.data.pagination.total_count).toBe(5);
+  });
+
+  it('says so when the collection stops at its upper bound', async () => {
+    const rpc = dispatchServer(CUSTOMER_DISPATCH_MAX + 500);
+    mockClient(rpc);
+    const result = await getAssignedCustomerDispatchList([CUSTOMER_A], { p_filters: { search: 'DD' } });
+    expect(rpc).toHaveBeenCalledTimes(CUSTOMER_DISPATCH_MAX / 100);
+    expect(result.data.pagination.history_limit_reached).toBe(true);
+  });
+
+  const invoiceServer = () =>
+    jest.fn(async (_name: string, args: { p_customer_uuid: string }) => ({
+      data: {
+        success: true,
+        data: {
+          invoices: Array.from({ length: 45 }, (_, index) => ({
+            invoice_id: `${args.p_customer_uuid}-i${index + 1}`, invoice_number: `2026-${String(index + 1).padStart(4, '0')}`,
+            invoice_date: `2026-08-${String((index % 28) + 1).padStart(2, '0')}`, financial_year: '2026-2027',
+            grn_ref: `DV${String(index + 1).padStart(4, '0')}`, grn_id: `g${index + 1}`, total: 100 + index, labour: 0, discount: 0, tax_amount: 0, notes: null,
+          })),
+        },
+      },
+      error: null,
+    }));
+  const names = { [CUSTOMER_A]: 'Fictional Agro', [CUSTOMER_B]: 'Fictional Traders' };
+
+  it('invoices: pages, a sort, a search and the count come from one download per customer', async () => {
+    const rpc = invoiceServer();
+    mockClient(rpc);
+    const first = await getAssignedCustomerInvoices([CUSTOMER_A, CUSTOMER_B], { customerNames: names, p_limit: 20, p_offset: 0 });
+    expect(rpc).toHaveBeenCalledTimes(2);
+    const [second, sorted, searched, count] = await Promise.all([
+      getAssignedCustomerInvoices([CUSTOMER_A, CUSTOMER_B], { customerNames: names, p_limit: 20, p_offset: 20 }),
+      getAssignedCustomerInvoices([CUSTOMER_A, CUSTOMER_B], { customerNames: names, p_sort_field: 'total', p_sort_direction: 'asc' }),
+      getAssignedCustomerInvoices([CUSTOMER_A, CUSTOMER_B], { customerNames: names, p_search: 'DV0045' }),
+      getAssignedCustomerInvoices([CUSTOMER_A, CUSTOMER_B], { customerNames: names, p_limit: 1, p_offset: 0 }),
+    ]);
+    expect(rpc).toHaveBeenCalledTimes(2);
+    expect(first.data.pagination).toMatchObject({ total_count: 90, has_more: true });
+    expect(second.data.invoices).toHaveLength(20);
+    expect(sorted.data.invoices[0].total).toBe(100);
+    expect(searched.data.invoices.map(invoice => invoice.grn.gr_no)).toEqual(['DV0045', 'DV0045']);
+    expect(count.data.pagination.total_count).toBe(90);
+    expect(first.data.invoices[0].customer.name).toMatch(/^Fictional/);
+    await getAssignedCustomerInvoices([CUSTOMER_A, CUSTOMER_B], { customerNames: names, p_fresh: true });
+    expect(rpc).toHaveBeenCalledTimes(4);
+  });
+
+  it('invoices: the upper date bound does not depend on the device date (M2-10)', async () => {
+    const rpc = invoiceServer();
+    mockClient(rpc);
+    const clock = jest.spyOn(Date, 'now').mockReturnValue(Date.UTC(2020, 0, 1));
+    await getAssignedCustomerInvoices([CUSTOMER_A], { customerNames: names });
+    clock.mockRestore();
+    expect(rpc).toHaveBeenCalledWith('get_customer_invoice_summary', {
+      p_customer_uuid: CUSTOMER_A, p_from_date: '2000-01-01', p_to_date: '2999-12-31',
+    });
+  });
+
+  it('invoices: a refused read is not kept', async () => {
+    mockClient(jest.fn(async () => ({ data: { success: false, error: 'Access denied' }, error: null })));
+    expect((await getAssignedCustomerInvoices([CUSTOMER_A], { customerNames: names })).success).toBe(false);
+    const rpc = invoiceServer();
+    mockClient(rpc);
+    expect((await getAssignedCustomerInvoices([CUSTOMER_A], { customerNames: names })).data.pagination.total_count).toBe(45);
   });
 });

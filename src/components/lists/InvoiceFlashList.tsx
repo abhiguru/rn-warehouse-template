@@ -157,7 +157,9 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
   // A newer request (the user kept typing, or changed a filter) replaces an
   // older one: late answers to old questions are dropped.
   const latestRequest = useRef(0);
-  const fetchInvoices = useCallback(async (offset: number = 0, append: boolean = false) => {
+  // `fresh`: pull to refresh and a return to the screen read the server again;
+  // a customer account's next page, sort and search use the history kept for it.
+  const fetchInvoices = useCallback(async (offset: number = 0, append: boolean = false, fresh: boolean = false) => {
     const requestId = append ? latestRequest.current : ++latestRequest.current;
     try {
       if (append) setIsLoadingMore(true);
@@ -168,7 +170,7 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
       // their assigned customers' invoices.
       const result = isWarehouseRole
         ? await getInvoicesList(params)
-        : await getAssignedCustomerInvoices(assignedCustomerIds, { ...params, customerNames: assignedCustomerNames });
+        : await getAssignedCustomerInvoices(assignedCustomerIds, { ...params, customerNames: assignedCustomerNames, p_fresh: fresh });
       if (!isMountedRef.current || requestId !== latestRequest.current) return;
 
       if (!result.success || !result.data) throw new Error(result.message || 'Failed to load invoices');
@@ -217,7 +219,7 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
       focusCountRef.current += 1;
       if (focusCountRef.current > 1) {
         setCurrentOffset(0);
-        fetchInvoices(0, false);
+        fetchInvoices(0, false, true);
       }
     }, [fetchInvoices])
   );
@@ -229,7 +231,7 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({ onItemPress }) => {
   const handleRefresh = useCallback(() => {
     setIsRefreshing(true);
     setCurrentOffset(0);
-    fetchInvoices(0, false);
+    fetchInvoices(0, false, true);
   }, [fetchInvoices]);
 
   const handleLoadMore = useCallback(() => {

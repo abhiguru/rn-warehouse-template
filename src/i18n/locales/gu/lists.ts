@@ -73,6 +73,7 @@ export const lists: Translation<typeof source> = {
     loadFailedTitle: 'જાવક લોડ કરી શકાઈ નથી',
     loadFailed: 'જાવક લોડ કરી શકાઈ નથી. તમારું કનેક્શન તપાસો અને ફરી પ્રયાસ કરો.',
     loadMoreFailed: 'વધુ જાવક લોડ કરી શકાઈ નથી. ફરી પ્રયાસ કરવા નીચે સ્ક્રોલ કરો.',
+    historyLimited: 'અહીં ગ્રાહકની ફક્ત છેલ્લી {{count}} જાવકમાં શોધ થાય છે. જૂની જાવક માટે ફેસિલિટીને પૂછો.',
     emptyTitle: 'હજુ કોઈ જાવક નથી',
     emptyCreator: 'તમે બનાવેલી જાવક અહીં દેખાશે.',
     emptyViewer: 'જાવક બને પછી અહીં દેખાશે.',
