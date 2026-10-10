@@ -6,7 +6,7 @@
  * Refactored to use useDispatchForm hook for form state management.
  */
 
-import React, { useState, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { useFocusEffect } from 'expo-router';
 import {
   View,
@@ -53,10 +53,11 @@ import { DISPATCH_STEP_NUMBERS, getDispatchCompletedSteps } from '@/constants/di
 import { getUserFriendlyError } from '@/utils/errorHandler';
 import { areAllAvailableLotsAlreadyAdded } from '@/features/dispatch/utils/lotAvailability';
 import { isOtherCustomersStock } from '@/features/dispatch/utils/lotOwnership';
+import { readDispatchQuantityInput } from '@/features/dispatch/utils/dispatchQuantityInput';
 
 import { showAlert } from '@/utils/alert';
 import { formatCount, formatNumber, formatWeight } from '@/utils/formatters';
-import { localizeDigits, normalizeDigits, t as tr, formatIdentifier } from '@/i18n';
+import { localizeDigits, t as tr, formatIdentifier } from '@/i18n';
 type DispatchItemsStepProps = {
     mode: 'create' | 'edit';
 };
@@ -92,6 +93,13 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
         ...EMPTY_DISPATCH_ITEM,
         unique_id: `item_${Date.now()}`,
     });
+
+    // Quantity text that is not a whole number ("12.5", "-5"): shown as typed until it is corrected.
+    const [rejectedQuantityText, setRejectedQuantityText] = useState<string | null>(null);
+    useEffect(() => {
+        // Another item in the form starts with a clean field.
+        setRejectedQuantityText(null);
+    }, [currentItem.unique_id]);
 
     // Editing state - tracks which item is being edited (null = adding new item)
     const [editingItemId, setEditingItemId] = useState<string | null>(null);
@@ -356,15 +364,17 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
 
     // Handle quantity change
     const handleQuantityChange = (text: string) => {
-        const qty = parseInt(normalizeDigits(text)) || 0;
+        const { quantity, isWholeNumber } = readDispatchQuantityInput(text);
         setCurrentItem((prev) => ({
             ...prev,
-            disp_quantity: qty,
+            disp_quantity: quantity,
         }));
+        // Text that is not a whole number stays in the field as typed, with the reason under it.
+        setRejectedQuantityText(isWholeNumber ? null : text);
 
         setValidationErrors((prev) => {
             const { disp_quantity, ...rest } = prev;
-            return rest;
+            return isWholeNumber ? rest : { ...rest, disp_quantity: tr('dispatch.validation.quantityWhole') };
         });
     };
 
@@ -372,6 +382,7 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
     const handleQuickQuantityChange = useCallback((delta: number) => {
         if (!currentItem.grnItems_id) return;
 
+        setRejectedQuantityText(null);
         setCurrentItem((prev) => {
             const currentQty = prev.disp_quantity ?? 0;
             const newQty = Math.max(0, currentQty + delta);
@@ -1104,7 +1115,8 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
                                     accessibilityLabel={tr('dispatch.items.bagsToDispatch')}
                                     style={styles.input}
                                     value={
-                                        (currentItem.disp_quantity ?? 0) > 0 ? localizeDigits((currentItem.disp_quantity ?? 0).toString()) : ''
+                                        rejectedQuantityText ??
+                                        ((currentItem.disp_quantity ?? 0) > 0 ? localizeDigits((currentItem.disp_quantity ?? 0).toString()) : '')
                                     }
                                     onChangeText={handleQuantityChange}
                                     placeholder={tr('common.bags')}
