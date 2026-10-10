@@ -33,8 +33,11 @@ selection or session handling.
 - Every request goes through `gatedFetch` in `src/config/supabaseConfig.ts` (identity gate,
   server-switch and session-generation checks, rotated-key detection). Keep new network code
   on that path.
-- Roles: `admin`, `supervisor`, `staff`, `customer` (`src/hooks/useRoleBasedAccess.ts`,
-  `src/config/permissions.ts`). Staff have full order access (2026-10-09 decision).
+- Roles: `admin`, `supervisor`, `staff`, `customer`. Who is offered which screen is one table
+  in `src/config/roles.ts`; `src/navigation/routeAccess.ts` sends a signed-out or wrong-role
+  visitor away from a route. `src/hooks/useRoleBasedAccess.ts` reads the table for a screen and
+  `src/config/permissions.ts` holds create/read/update/delete per role. The server decides
+  again on every request. Staff have full order access (2026-10-09 decision).
 
 When building toward central login, reuse the existing pieces rather than replacing them:
 server switching and its cleanup (`beginOperatorSwitch`, `sessionLifecycle.ts`,

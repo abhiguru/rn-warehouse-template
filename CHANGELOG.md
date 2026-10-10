@@ -1,5 +1,57 @@
 # Changelog
 
+## Unreleased — photos, GRN logs, racks, search and Android backup from the 2026-10-10 review (low-severity items)
+
+No backend migration is needed. Build note: the next Android build is the
+first with backup turned off, and `npm run audit:artifact` now fails for a
+build that leaves it on (every APK built before this entry does).
+
+- Photos keep their shape. GRN and dispatch photos were resized to exactly
+  1280 x 1280, which stretched every photo that is not square and enlarged
+  small ones. Only the longer side is limited now, and a photo that already
+  fits is not resized.
+- The original camera or gallery file is never uploaded. When a photo could
+  not be re-encoded the original was sent as it was, with its EXIF block
+  (which can hold the GPS position), named `.webp` whatever it was. A GRN photo
+  that cannot be written as WebP is written as JPEG and sent under that name
+  and type; a photo that cannot be re-encoded at all is refused with "Failed to
+  process image file".
+- Racks: any floor and chamber codes are accepted. The rule was one facility's
+  list (BASE, F1-F4 and C4, C7, C2, Anti-Ch), so another facility could not
+  record a rack. A rack is now empty, `Floor/Chamber` or `Rack/Floor/Chamber`
+  with any text in each part. The floor and chamber chips still show the same
+  fixed lists; a facility with other codes types them in the rack field.
+- The supervisor picker of the GRN and dispatch forms shows names only. It
+  showed every administrator's, supervisor's and staff member's mobile number.
+- New invoice, GRN picker: the number typed is searched for whole (it was cut
+  at the first `_`), and `%` and `_` are matched as characters.
+- List search: "Only the first eight words are searched." is shown when more
+  are typed; the server drops the rest.
+- Sign-out and server switch empty the image cache (disk and memory), so
+  photos seen under one account do not stay on the phone for the next.
+- Android backup is off (`android.allowBackup: false` in `app.json`). It was
+  left at the default, on; only the rules added by `expo-secure-store` kept the
+  app's storage out of Google backup. See docs/TELEMETRY_AND_PRIVACY.md §4.
+- Device log: the GRN form, photo and details code, the pickers and the user
+  administration service no longer write GRN headers (names, note, signed
+  photo addresses), the whole `update_grn` request and answer, search text, the
+  user list or a user's mobile number to the console. What is left goes
+  through the redacting logger as identifiers, counts and error codes
+  (`loggableError` in `src/utils/logger.ts`).
+- Removed: `CustomerAutocomplete` and `UserAutocomplete`, which no screen used.
+- Tests added for the invoice save request (exact keys), customer pincode, GST
+  and PAN, the create/read/update/delete table per role, a stored customer
+  filter, and the sort control of every list.
+- `npm run typecheck:tests` type-checks the test files (`tsconfig.test.json`).
+  It is not part of `npm run typecheck` yet: it reports 66 errors in 28 test
+  files.
+
+Not done here: an offline sign-out still leaves the session valid on the
+server until it expires (needs a decision on keeping the token for a later
+revocation); floor and chamber lists per facility need a server setting; the
+server's search does not fold Gujarati digits itself; `get_supervisors` still
+returns mobile numbers that the app no longer reads.
+
 ## Unreleased — roles, reports per account, the sign-in guard and photo removal from the 2026-10-10 review
 
 **Needs backend migration 45** (`00000000000045_role_allowlist_alignment.sql`,
