@@ -98,6 +98,24 @@ describe('opened from an invoice line that has no price yet', () => {
   });
 });
 
+describe('numbers that are not numbers', () => {
+  it.each([
+    ['a thousands separator', { unit_price: '1,250' }],
+    ['a doubled minus sign', { unit_price: '--5' }],
+    ['letters', { labour_rate: 'Rs 2' }],
+    ['a tax above 100', { tax_percent: '101' }],
+  ])('are refused when saving: %s', async (_name, overrides) => {
+    mockParams = { ...fromInvoiceLine, ...overrides };
+    const tree = await render();
+
+    await act(async () => { await saveButton(tree)[0].props.onPress(); });
+
+    expect(createItemStoragePrice).not.toHaveBeenCalled();
+    expect(showAlert).toHaveBeenCalledWith(t('pricing.form.checkFieldsTitle'), expect.any(String));
+    await act(async () => { tree.unmount(); });
+  });
+});
+
 describe('a staff account', () => {
   beforeEach(() => { mockRole = 'staff'; });
 

@@ -57,6 +57,7 @@ import { showAlert } from '@/utils/alert';
 import { formatDate, toLocalISODate } from '@/utils/formatters';
 import { numericInput, t as tr } from '@/i18n';
 import { priceTypeLabel } from '@/features/item-pricing/utils/priceLabels';
+import { priceNumber } from '@/features/item-pricing/utils/priceNumbers';
 import { serverText } from '@/utils/serverText';
 import { useRoleBasedAccess } from '@/hooks/useRoleBasedAccess';
 const itemPricingFormLogger = createLogger('ItemPricingForm');
@@ -363,21 +364,28 @@ const ItemPricingFormScreen: React.FC = () => {
     if (!selectedItem) {
       errors.item = tr('pricing.validation.itemRequired');
     }
-    if (!unitPrice || parseFloat(unitPrice) < 0) {
+    // Each number is read strictly: text that is not a plain number is an
+    // error, not a number cut off at the first comma or a NaN that passes.
+    const price = priceNumber(unitPrice);
+    const minimum = priceNumber(weightMin, 3);
+    const maximum = priceNumber(weightMax, 3);
+    const labour = priceNumber(labourRate);
+    const tax = priceNumber(taxPercent);
+    if (price === null) {
       errors.unitPrice = tr('pricing.validation.unitPrice');
     }
-    if (!weightMin || parseFloat(weightMin) < 0) {
+    if (minimum === null) {
       errors.weightMin = tr('pricing.validation.weightMin');
     }
-    if (!weightMax || parseFloat(weightMax) <= 0) {
+    if (maximum === null || maximum <= 0) {
       errors.weightMax = tr('pricing.validation.weightMax');
-    } else if (parseFloat(weightMax) < parseFloat(weightMin)) {
+    } else if (minimum !== null && maximum < minimum) {
       errors.weightMax = tr('pricing.validation.weightOrder');
     }
-    if (!labourRate || parseFloat(labourRate) < 0) {
+    if (labour === null) {
       errors.labourRate = tr('pricing.validation.labourRate');
     }
-    if (!taxPercent || parseFloat(taxPercent) < 0 || parseFloat(taxPercent) > 100) {
+    if (tax === null || tax > 100) {
       errors.taxPercent = tr('pricing.validation.taxPercent');
     }
     if (effectiveTo && effectiveTo < effectiveFrom) {
@@ -405,11 +413,11 @@ const ItemPricingFormScreen: React.FC = () => {
           item_id: selectedItem!.id,
           customer_id: selectedCustomer?.id || null,
           price_type: priceType,
-          unit_price: parseFloat(unitPrice),
-          weight_min: parseFloat(weightMin),
-          weight_max: parseFloat(weightMax),
-          labour_rate: parseFloat(labourRate),
-          tax_percent: parseFloat(taxPercent),
+          unit_price: priceNumber(unitPrice) ?? 0,
+          weight_min: priceNumber(weightMin, 3) ?? 0,
+          weight_max: priceNumber(weightMax, 3) ?? 0,
+          labour_rate: priceNumber(labourRate) ?? 0,
+          tax_percent: priceNumber(taxPercent) ?? 0,
           effective_from: toLocalISODate(effectiveFrom),
           effective_to: effectiveTo ? toLocalISODate(effectiveTo) : null,
         };
@@ -425,11 +433,11 @@ const ItemPricingFormScreen: React.FC = () => {
       } else if (formMode === 'edit' && priceId) {
         const payload: UpdateItemPricingPayload = {
           price_type: priceType,
-          unit_price: parseFloat(unitPrice),
-          weight_min: parseFloat(weightMin),
-          weight_max: parseFloat(weightMax),
-          labour_rate: parseFloat(labourRate),
-          tax_percent: parseFloat(taxPercent),
+          unit_price: priceNumber(unitPrice) ?? 0,
+          weight_min: priceNumber(weightMin, 3) ?? 0,
+          weight_max: priceNumber(weightMax, 3) ?? 0,
+          labour_rate: priceNumber(labourRate) ?? 0,
+          tax_percent: priceNumber(taxPercent) ?? 0,
           effective_from: toLocalISODate(effectiveFrom),
           effective_to: effectiveTo ? toLocalISODate(effectiveTo) : null,
         };
