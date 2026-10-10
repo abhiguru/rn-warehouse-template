@@ -13,6 +13,7 @@ import { t as translate } from '@/i18n';
 import { fontWeight, iconSize, layout, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 
 import { SEARCH_MIN_LENGTH, recentSearches, rememberSearch } from '../recentSearches';
+import { hasTooManyWords } from '../searchMatch';
 
 export const SEARCH_DEBOUNCE_MS = 300;
 /** The server reads at most this much of a search (search_terms, backend migrations 35 and 36). */
@@ -111,6 +112,9 @@ export function ListSearchField({ listKey, value, onSearch, placeholder, loading
   // One letter is shown in the field but not searched for; say so, or the field and the list disagree.
   const tooShort = text.trim().length > 0 && text.trim().length < SEARCH_MIN_LENGTH;
 
+  // The server searches for the first eight words only; say so, or the ninth looks searched for.
+  const tooManyWords = hasTooManyWords(text);
+
   return (
     <View style={styles.wrap}>
       <View style={styles.field}>
@@ -157,6 +161,9 @@ export function ListSearchField({ listKey, value, onSearch, placeholder, loading
       </View>
       {tooShort ? (
         <Text style={styles.hint} accessibilityLiveRegion="polite">{translate('filters.search.minLength')}</Text>
+      ) : null}
+      {tooManyWords ? (
+        <Text style={styles.hint} accessibilityLiveRegion="polite">{translate('filters.search.tooManyWords')}</Text>
       ) : null}
       {recent.length > 0 && (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled">

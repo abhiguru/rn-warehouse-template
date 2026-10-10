@@ -48,6 +48,19 @@ describe('ListSearchField', () => {
     expect(texts(renderer)).not.toContain(t('filters.search.minLength'));
   });
 
+  // X1-8: the server reads the first eight words of a search and drops the rest.
+  it('says that words after the eighth are not searched for', () => {
+    const onSearch = jest.fn();
+    const renderer = render(<ListSearchField listKey="grn-list" value="" onSearch={onSearch} placeholder="Search" />);
+
+    type(renderer, 'one two three four five six seven eight');
+    expect(texts(renderer)).not.toContain(t('filters.search.tooManyWords'));
+
+    type(renderer, 'one two three four five six seven eight nine');
+    expect(texts(renderer)).toContain(t('filters.search.tooManyWords'));
+    expect(t('filters.search.tooManyWords')).toBe('Only the first eight words are searched.');
+  });
+
   // M4-10: the server reads at most 120 characters of a search.
   it('takes no more text than the server reads', () => {
     const renderer = render(<ListSearchField listKey="grn-list" value="" onSearch={jest.fn()} placeholder="Search" />);
