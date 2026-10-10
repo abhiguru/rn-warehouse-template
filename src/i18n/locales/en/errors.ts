@@ -141,6 +141,7 @@ export const errors = {
     checkInput: 'Please check your input and try again.',
     serverError: 'A server error occurred. Please try again later.',
     inUse: 'Other records depend on this one, so it cannot be changed.',
+    otherCustomer: 'This stock belongs to another customer.',
     busy: 'The server is busy. Please try again in a moment.',
   },
   auth: {

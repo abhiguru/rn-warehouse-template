@@ -67,6 +67,8 @@ export const dispatch = {
     checkItemBeforeSave: 'Fix the fields marked in red before you save.',
     lotAlreadyAddedTitle: 'Lot already added',
     lotAlreadyAddedMessage: 'This lot is already in the dispatch. Each lot can be dispatched once.',
+    otherCustomerTitle: "Another customer's GRN",
+    otherCustomerMessage: 'GRN {{grn}} belongs to {{customer}}. A dispatch can only take stock of its own customer.',
     addFirstTitle: 'Add an item first',
     addFirstMessage: 'Add at least one item before you continue.',
     editingItem: 'Editing item {{number}}',
@@ -301,6 +303,7 @@ export const dispatch = {
     itemsMin: 'At least one dispatch item is required',
     itemsRequired: 'Items are required',
     duplicateLots: 'Duplicate lots detected. Each lot can only be dispatched once per dispatch.',
+    otherCustomerLots: 'Remove the items from GRN {{grns}}: that stock belongs to another customer.',
     dateBeforeGrn:
       'GRN {{grn}} was received on {{grnDate}}, which is after the dispatch date ({{dispatchDate}}). Items cannot be dispatched before they are received.',
     dateBeforeGrns:

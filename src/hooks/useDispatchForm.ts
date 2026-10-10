@@ -96,6 +96,7 @@ import { t, formatIdentifier } from '@/i18n';
 import { serverText } from '@/utils/serverText';
 import { validationSummary } from '@/utils/validationSummary';
 import { documentNumberState } from '@/utils/documentNumberCheck';
+import { linesFromOtherCustomers } from '@/features/dispatch/utils/lotOwnership';
 /**
  * Module-level session ID that persists across all hook instances.
  * This allows cancellation to work when navigating between create/edit routes.
@@ -525,6 +526,25 @@ export function useDispatchForm({
         break;
       default:
         result = { isValid: true, errors: {} };
+    }
+
+    // A dispatch only takes stock of its own customer. The server refuses such a line too;
+    // this stops the form before the whole dispatch has been reviewed.
+    if (step === 2 || step === 3) {
+      const otherCustomerGrns = [
+        ...new Set(linesFromOtherCustomers(header.customer_id, items).map((line) => line.grns_gr_no)),
+      ];
+      if (otherCustomerGrns.length > 0) {
+        result = {
+          isValid: false,
+          errors: {
+            ...result.errors,
+            items: t('dispatch.validation.otherCustomerLots', {
+              grns: otherCustomerGrns.map((grNo) => formatIdentifier(grNo)).join(', '),
+            }),
+          },
+        };
+      }
     }
 
     // A number another dispatch holds keeps step 1 from passing until it is changed.

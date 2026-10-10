@@ -52,6 +52,7 @@ import { EMPTY_DISPATCH_ITEM } from '@/types/dispatch.types';
 import { DISPATCH_STEP_NUMBERS, getDispatchCompletedSteps } from '@/constants/dispatchSteps';
 import { getUserFriendlyError } from '@/utils/errorHandler';
 import { areAllAvailableLotsAlreadyAdded } from '@/features/dispatch/utils/lotAvailability';
+import { isOtherCustomersStock } from '@/features/dispatch/utils/lotOwnership';
 
 import { showAlert } from '@/utils/alert';
 import { formatCount, formatNumber, formatWeight } from '@/utils/formatters';
@@ -184,6 +185,24 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
         router.replace('/dispatch');
     };
 
+    // The GRN (or the item being typed) belongs to a customer other than the dispatch's.
+    const showOtherCustomerAlert = useCallback((grNo: string | undefined, customerName: string | undefined) => {
+        showAlert(
+            tr('dispatch.items.otherCustomerTitle'),
+            tr('dispatch.items.otherCustomerMessage', {
+                grn: formatIdentifier(grNo),
+                customer: customerName || tr('common.unknown'),
+            })
+        );
+    }, []);
+
+    /** True (after telling the user) when the item being typed is another customer's stock. */
+    const currentItemIsOtherCustomers = () => {
+        if (!isOtherCustomersStock(header.customer_id, currentItem.grns_customer_id)) return false;
+        showOtherCustomerAlert(currentItem.grns_gr_no, currentItem.grns_customer_name);
+        return true;
+    };
+
     // Handle GRN selection
     const handleGRNSelect = useCallback(
         async (grn: { id: string; gr_no: string }) => {
@@ -200,6 +219,12 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
                 }
 
                 const { grn: grnHeader, items: grnItems } = result.data;
+
+                // A dispatch only takes stock of its own customer.
+                if (isOtherCustomersStock(header.customer_id, grnHeader.customer_id)) {
+                    showOtherCustomerAlert(grnHeader.gr_no, grnHeader.customer_name);
+                    return;
+                }
 
                 // Load GRN even if no items with stock - UI will show "available 0"
                 setSelectedGRN({
@@ -229,6 +254,7 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
                             grns_gr_no: grnHeader.gr_no,
                             grns_date: grnHeader.date,
                             grns_customer_name: grnHeader.customer_name,
+                            grns_customer_id: grnHeader.customer_id,
                             grnItems_item_id: firstAvailableLot.item_id,
                             grnItems_item_name: firstAvailableLot.item_name,
                             grnItems_id: firstAvailableLot.id,
@@ -246,6 +272,7 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
                             grns_gr_no: grnHeader.gr_no,
                             grns_date: grnHeader.date,
                             grns_customer_name: grnHeader.customer_name,
+                            grns_customer_id: grnHeader.customer_id,
                             // Clear any previous lot selection
                             grnItems_item_id: '',
                             grnItems_item_name: '',
@@ -264,6 +291,7 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
                         grns_gr_no: grnHeader.gr_no,
                         grns_date: grnHeader.date,
                         grns_customer_name: grnHeader.customer_name,
+                        grns_customer_id: grnHeader.customer_id,
                     }));
                 }
 
@@ -278,7 +306,7 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
                 setIsLoadingGRN(false);
             }
         },
-        [isCreateMode, savedItems]
+        [isCreateMode, savedItems, header.customer_id, showOtherCustomerAlert]
     );
 
     // Handle item selection
@@ -410,6 +438,8 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
             const isEditing = editingItemId !== null;
             console.log('[DispatchItemsStep]', isEditing ? 'Updating item' : 'Adding item');
 
+            if (currentItemIsOtherCustomers()) return;
+
             const validation = await validateSingleItem(currentItem);
 
             if (!validation.isValid) {
@@ -488,6 +518,7 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
                 grns_gr_no: item.grns_gr_no,
                 grns_date: item.grns_date,
                 grns_customer_name: item.grns_customer_name,
+                grns_customer_id: item.grns_customer_id,
                 grnItems_id: item.grnItems_id,
                 grnItems_item_id: item.grnItems_item_id,
                 grnItems_item_name: item.grnItems_item_name,
@@ -512,6 +543,12 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
                         customer_name: grnHeader.customer_name,
                         items: grnItems,
                     });
+                    // Now the GRN's customer is known, so saving this item checks it.
+                    setCurrentItem((prev) =>
+                        prev.unique_id === item.unique_id
+                            ? { ...prev, grns_customer_id: grnHeader.customer_id }
+                            : prev
+                    );
                 }
             } catch (error) {
                 console.error('[DispatchItemsStep] Error loading GRN for edit:', error);
@@ -552,6 +589,10 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
     };
 
     const handleUnsavedEditSave = async () => {
+        if (currentItemIsOtherCustomers()) {
+            setShowUnsavedEditDialog(false);
+            return;
+        }
         const validation = await validateSingleItem(currentItem);
         if (!validation.isValid) {
             setShowUnsavedEditDialog(false);
@@ -641,6 +682,8 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
         }
 
         if (isCurrentItemValid) {
+            if (currentItemIsOtherCustomers()) return;
+
             const validation = await validateSingleItem(currentItem);
 
             if (!validation.isValid) {

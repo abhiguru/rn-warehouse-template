@@ -21,6 +21,8 @@ const REASONS: [RegExp, TranslationKey][] = [
     /access denied|permission|only admins?\b|only administrators|only supervisors|supervisors cannot|staff access required|administrator required|you cannot change your own|self_edit_forbidden|cannot_modify_admin|cannot_promote_to_admin/,
     'errors.parsed.noPermission',
   ],
+  // Stock, a lot or an item that is not the document's customer's.
+  [/(another|different|other) customer/, 'errors.parsed.otherCustomer'],
   [/insufficient stock/, 'errors.code.insufficientStock'],
   [/delete invoices first|cannot delete item|cannot modify invoiced|is pending tally sync/, 'errors.parsed.inUse'],
   [/already exists|duplicate|overlapping/, 'errors.parsed.duplicate'],

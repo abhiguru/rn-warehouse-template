@@ -44,6 +44,9 @@ describe('server text in Gujarati', () => {
     ['GRN number already exists: A0005', 'errors.parsed.duplicate'],
     ['Overlapping price configuration exists', 'errors.parsed.duplicate'],
     ['Dispatch not found or already deleted', 'errors.parsed.itemNotFound'],
+    ['Lot A0010 belongs to another customer', 'errors.parsed.otherCustomer'],
+    ['Dispatch items must come from GRNs of the dispatch customer; GRN B0007 belongs to a different customer', 'errors.parsed.otherCustomer'],
+    ['Item belongs to another customer', 'errors.parsed.otherCustomer'],
     ['Transaction conflict: too many retries. Please try again.', 'errors.parsed.busy'],
     ['TypeError: Network request failed', 'errors.parsed.network'],
   ] as const)('gives the reason for "%s"', (text, key) => {

@@ -51,6 +51,8 @@ export interface DispatchItemData {
   grns_gr_no: string;           // GRN number
   grns_date: string;           // ISO timestamp
   grns_customer_name: string;
+  /** Customer of the GRN; known only for a GRN looked up in this session. */
+  grns_customer_id?: string;
 
   // GRN Item (lot) reference - the specific lot being dispatched
   grnItems_id: string;         // Lot ID (gr_trl_id) - CRITICAL: This is the lot reference

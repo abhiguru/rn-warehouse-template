@@ -70,6 +70,8 @@ export const dispatch: Translation<typeof source> = {
     checkItemBeforeSave: 'સાચવતાં પહેલાં લાલ રંગમાં બતાવેલી વિગતો સુધારો.',
     lotAlreadyAddedTitle: 'જથ્થો પહેલેથી ઉમેરેલો છે',
     lotAlreadyAddedMessage: 'આ જથ્થો આ જાવકમાં પહેલેથી છે. એક જથ્થો એક જાવકમાં એક જ વાર મોકલી શકાય.',
+    otherCustomerTitle: 'બીજા વેપારીની આવક પાવતી',
+    otherCustomerMessage: 'આવક પાવતી {{grn}} {{customer}}ની છે. જાવકમાં તેના પોતાના વેપારીનો જ માલ લઈ શકાય.',
     addFirstTitle: 'પહેલાં આઇટમ ઉમેરો',
     addFirstMessage: 'આગળ વધતાં પહેલાં ઓછામાં ઓછી એક આઇટમ ઉમેરો.',
     editingItem: 'આઇટમ {{number}} માં ફેરફાર',
@@ -304,6 +306,7 @@ export const dispatch: Translation<typeof source> = {
     itemsMin: 'જાવકમાં ઓછામાં ઓછી એક આઇટમ જરૂરી છે',
     itemsRequired: 'આઇટમ જરૂરી છે',
     duplicateLots: 'એક જ જથ્થો બે વાર ઉમેરાયો છે. એક જાવકમાં એક જથ્થો એક જ વાર મોકલી શકાય.',
+    otherCustomerLots: 'આવક પાવતી {{grns}}ની આઇટમ કાઢી નાખો: એ માલ બીજા વેપારીનો છે.',
     dateBeforeGrn:
       'આવક પાવતી {{grn}}નો માલ {{grnDate}}ના રોજ આવ્યો હતો, જે જાવકની તારીખ ({{dispatchDate}}) પછી છે. માલ આવ્યા પહેલાં તેની જાવક ન થઈ શકે.',
     dateBeforeGrns:

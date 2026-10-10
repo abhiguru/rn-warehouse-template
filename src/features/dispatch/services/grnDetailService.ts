@@ -20,7 +20,8 @@ import { serverText } from '@/utils/serverText';
 
 /**
  * Search GRN numbers with autocomplete
- * Used in GRNAutocompleteBottomSheet
+ * Used in GRNAutocompleteBottomSheet, which always passes the dispatch's
+ * customer: a dispatch may only take that customer's stock.
  */
 export const searchGRNNumbers = async (
   query: string,
@@ -43,7 +44,7 @@ export const searchGRNNumbers = async (
       .order('gr_no', { ascending: false })
       .limit(50);
 
-    // Optionally filter by customer if provided
+    // Only this customer's GRNs
     if (customerId) {
       queryBuilder = queryBuilder.eq('customer_id', customerId);
     }
