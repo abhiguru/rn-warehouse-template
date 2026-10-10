@@ -25,7 +25,7 @@ import {
   getItemType,
   DEFAULT_LIST_CONFIG,
 } from '@/components/lists/types';
-import { Portal, Snackbar } from 'react-native-paper';
+import { Snackbar } from 'react-native-paper';
 import { router } from 'expo-router';
 import Animated, {
   FadeIn,
@@ -40,16 +40,10 @@ import {
   getAllGRNItems,
   getAssignedCustomerGRNItems,
   GRNItem,
-  GRNFilters,
   GRNListResponse,
-  GRNListParams,
 } from '@/services/grn-service';
-import { useFilterState } from '@/hooks/useFilterState';
-import type { AutocompleteSelection, FilterValues, FilterValueType } from '@/types/filter.types';
-import { getAutocompleteSelections, getStringValue, getNumberValue } from '@/types/filter.types';
 import { useAppSelector } from '@/store/hooks';
 import { usePermissions } from '@/hooks/usePermissions';
-import { GenericFilterModal } from '@/components/filters';
 import { PrintRangeDialog } from '@/components/PrintRangeDialog';
 import PrintJobsBottomSheet, { PrintJobsBottomSheetRef } from '@/components/PrintJobsBottomSheet';
 import { Button } from '@/components/ui/Button';
@@ -60,8 +54,13 @@ import { createLogger } from '@/utils/logger';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { iconSize } from '@/theme/tokens';
 
-// Filter configuration
-import { GRN_FILTER_CONFIG } from '@/config/filterConfigs';
+// Filters, search and sort (docs/STYLE_GUIDE.md §14.5)
+import { FILTER_CONFIGS, GRN_FILTERS } from '@/features/filters/configs';
+import { useListFilters } from '@/features/filters/useListFilters';
+import { readSearch } from '@/features/filters/filterModel';
+import { FilterBar } from '@/features/filters/components/FilterBar';
+import { ListSearchField } from '@/features/filters/components/ListSearchField';
+import { HighlightedText, matchesAnyWord, searchWords } from '@/features/filters/components/HighlightedText';
 
 // Styles
 import { makeGRNListStyles, type GRNListStyles } from './GRNListFiori.styles';
@@ -70,17 +69,7 @@ import { makeGRNListStyles, type GRNListStyles } from './GRNListFiori.styles';
 import { formatSectionDate, formatNumber, formatCount, formatDate, formatWeight } from '@/utils/formatters';
 
 import { Fab } from '@/components/ui/Fab';
-import { SortBar, type SortOption } from '@/components/list/SortBar';
 const logger = createLogger('GRNListFiori');
-
-// Sort configuration
-type SortField = 'grNo' | 'date';
-type SortOrder = 'asc' | 'desc';
-
-const SORT_OPTIONS: SortOption<SortField>[] = [
-  { field: 'grNo', label: 'GRN no.', a11y: 'GRN number', icon: 'numeric', kind: 'number' },
-  { field: 'date', label: 'Date', a11y: 'date', icon: 'calendar-outline', kind: 'date' },
-];
 
 /** Row title. A receipt saved without a number says so instead of showing a bare "GRN". */
 const grnTitle = (grNo: string) => (grNo.trim() ? `GRN ${grNo}` : 'GRN with no number');
@@ -163,6 +152,20 @@ interface GRNCardProps {
   globalExpanded?: boolean;
   /** Key to trigger sync with global state (increments on toggle) */
   globalExpandedKey?: number;
+  /** Lower-cased search words to show in bold. */
+  words: string[];
+}
+
+/** Where a search matched inside a collapsed card: item, package or rack names. */
+function hiddenMatches(group: GRNGroupData, words: string[]): string[] {
+  if (words.length === 0) return [];
+  const found = new Set<string>();
+  for (const item of group.items) {
+    for (const text of [item.item_name, item.package_mark, item.rack]) {
+      if (text && matchesAnyWord(text, words)) found.add(text);
+    }
+  }
+  return [...found].slice(0, 3);
 }
 
 const GRNCardFiori = memo<GRNCardProps>(({
@@ -176,9 +179,11 @@ const GRNCardFiori = memo<GRNCardProps>(({
   styles,
   globalExpanded,
   globalExpandedKey,
+  words,
 }) => {
   const t = useTokens();
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
+  const matched = hiddenMatches(group, words);
 
   // Sync with global expand/collapse state
   useEffect(() => {
@@ -274,10 +279,8 @@ const GRNCardFiori = memo<GRNCardProps>(({
 
             {/* Main content */}
             <View style={styles.mainContent}>
-              <Text style={styles.titleText} numberOfLines={2}>{grnTitle(group.grNo)}</Text>
-              <Text style={styles.subtitleText} numberOfLines={2}>
-                {group.customerName}
-              </Text>
+              <HighlightedText style={styles.titleText} numberOfLines={2} text={grnTitle(group.grNo)} words={words} />
+              <HighlightedText style={styles.subtitleText} numberOfLines={2} text={group.customerName ?? ''} words={words} />
 
               <View style={styles.footerRow}>
                 <View style={styles.footerItem}>
@@ -289,13 +292,23 @@ const GRNCardFiori = memo<GRNCardProps>(({
                     <View style={styles.footerDot} />
                     <View style={styles.footerItem}>
                       <Icon name="truck-outline" size={iconSize.sm} color={t.icon.secondary} />
-                      <Text style={styles.footerText}>{group.registration}</Text>
+                      <HighlightedText style={styles.footerText} text={group.registration} words={words} />
                     </View>
                   </>
                 )}
                 <View style={styles.footerDot} />
                 <Text style={styles.footerText}>{itemCountLabel}</Text>
               </View>
+              {/* Why this GRN matched, when the match is inside the collapsed items */}
+              {matched.length > 0 && !isExpanded ? (
+                <HighlightedText
+                  style={styles.footerText}
+                  numberOfLines={1}
+                  text={matched.join(' · ')}
+                  words={words}
+                  accessibilityLabel={`Matched ${matched.join(', ')}`}
+                />
+              ) : null}
             </View>
 
             {/* Attribute stack */}
@@ -385,181 +398,19 @@ GRNCardFiori.displayName = 'GRNCardFiori';
 // ============================================================================
 // APPLIED FILTERS BAR
 // ============================================================================
-interface FilterChipsProps {
-  filters: FilterValues;
-  activeFilterCount: number;
-  updateFilter: (key: string, value: FilterValueType) => void;
-  clearAllFilters: () => void;
-  styles: GRNListStyles;
-}
-
-const FilterChips: React.FC<FilterChipsProps> = memo(({
-  filters,
-  activeFilterCount,
-  updateFilter,
-  clearAllFilters,
-  styles,
-}) => {
-  const t = useTokens();
-  if (activeFilterCount === 0) return null;
-
-  const chips: { key: string; label: string; icon: string; onRemove: () => void }[] = [];
-
-  // Item chips
-  if (filters.itemName?.length > 0) {
-    filters.itemName.forEach((item: AutocompleteSelection) => {
-      chips.push({
-        key: `item-${item.id}`,
-        label: item.label,
-        icon: 'cube-outline',
-        onRemove: () => {
-          const remaining = (filters.itemName ?? []).filter((i: AutocompleteSelection) => i.id !== item.id);
-          updateFilter('itemName', remaining.length > 0 ? remaining : []);
-        },
-      });
-    });
-  }
-
-  // Customer chips
-  if (filters.customerName?.length > 0) {
-    filters.customerName.forEach((item: AutocompleteSelection) => {
-      chips.push({
-        key: `customer-${item.id}`,
-        label: item.label,
-        icon: 'account-outline',
-        onRemove: () => {
-          const remaining = (filters.customerName ?? []).filter((i: AutocompleteSelection) => i.id !== item.id);
-          updateFilter('customerName', remaining.length > 0 ? remaining : []);
-        },
-      });
-    });
-  }
-
-  // GRN range chips
-  if (filters.grNoFrom?.length > 0) {
-    chips.push({
-      key: 'grn-from',
-      label: `From GRN ${filters.grNoFrom[0].label}`,
-      icon: 'package-down',
-      onRemove: () => updateFilter('grNoFrom', []),
-    });
-  }
-  if (filters.grNoTo?.length > 0) {
-    chips.push({
-      key: 'grn-to',
-      label: `To GRN ${filters.grNoTo[0].label}`,
-      icon: 'package-down',
-      onRemove: () => updateFilter('grNoTo', []),
-    });
-  }
-
-  // Stock status chip
-  if (filters.stockStatus && filters.stockStatus !== 'all') {
-    chips.push({
-      key: 'stock-status',
-      label: filters.stockStatus === 'in_stock' ? 'In stock' : 'Out of stock',
-      icon: 'warehouse',
-      onRemove: () => updateFilter('stockStatus', 'all'),
-    });
-  }
-
-  // Weight range chip
-  if (filters.weightMin || filters.weightMax) {
-    chips.push({
-      key: 'weight-range',
-      label: filters.weightMax
-        ? `${formatNumber(Number(filters.weightMin) || 0)} to ${formatNumber(Number(filters.weightMax))} kg`
-        : `${formatNumber(Number(filters.weightMin) || 0)} kg or more`,
-      icon: 'weight-kilogram',
-      onRemove: () => {
-        updateFilter('weightMin', undefined);
-        updateFilter('weightMax', undefined);
-      },
-    });
-  }
-
-  // Package mark chip
-  if (filters.packageMark) {
-    chips.push({
-      key: 'package-mark',
-      label: filters.packageMark,
-      icon: 'tag-outline',
-      onRemove: () => updateFilter('packageMark', ''),
-    });
-  }
-
-  // Date range chip
-  if (filters.dateFrom || filters.dateTo) {
-    const fromDate = filters.dateFrom ? formatDate(filters.dateFrom) : null;
-    const toDate = filters.dateTo ? formatDate(filters.dateTo) : null;
-    chips.push({
-      key: 'date-range',
-      label: fromDate && toDate ? `${fromDate} to ${toDate}` : fromDate ? `From ${fromDate}` : `Until ${toDate}`,
-      icon: 'calendar-range',
-      onRemove: () => {
-        updateFilter('dateFrom', undefined);
-        updateFilter('dateTo', undefined);
-      },
-    });
-  }
-
-  return (
-    <Animated.View entering={FadeIn} style={styles.filterChipsContainer}>
-      <View style={styles.filterChipsHeader}>
-        <View style={styles.filterCountBadge}>
-          <Icon name="filter-variant" size={iconSize.sm} color={t.icon.secondary} />
-          <Text style={styles.filterCountText}>
-            {`${formatCount(activeFilterCount, 'filter')} applied`}
-          </Text>
-        </View>
-        <Pressable
-          onPress={clearAllFilters}
-          style={({ pressed }) => [styles.clearAllButton, pressed && styles.clearAllButtonPressed]}
-          accessibilityRole="button"
-          accessibilityLabel="Clear all filters"
-        >
-          <Text style={styles.clearAllText}>Clear all</Text>
-        </Pressable>
-      </View>
-      <View style={styles.filterChipsList}>
-        {chips.map((chip) => (
-          <View key={chip.key} style={styles.filterChip}>
-            <Icon name={chip.icon} size={iconSize.sm} color={t.brand.tint} />
-            <Text style={styles.filterChipText} numberOfLines={1} maxFontSizeMultiplier={1.6}>
-              {chip.label}
-            </Text>
-            <Pressable
-              onPress={chip.onRemove}
-              style={styles.filterChipRemove}
-              hitSlop={{ top: 8, bottom: 8 }}
-              accessibilityRole="button"
-              accessibilityLabel={`Remove filter ${chip.label}`}
-            >
-              <Icon name="close" size={iconSize.sm} color={t.brand.tint} />
-            </Pressable>
-          </View>
-        ))}
-      </View>
-    </Animated.View>
-  );
-});
-
-FilterChips.displayName = 'FilterChips';
-
-// ============================================================================
-// EMPTY AND ERROR STATES
-// ============================================================================
 interface EmptyStateProps {
-  activeFilterCount: number;
+  /** A filter or a search is narrowing the list. */
+  filtered: boolean;
+  /** The search text in effect, if any. */
+  search: string;
   onCreateGRN: () => void;
   onClearFilters: () => void;
   canCreate: boolean;
   styles: GRNListStyles;
 }
 
-const EmptyState: React.FC<EmptyStateProps> = memo(({ activeFilterCount, onCreateGRN, onClearFilters, canCreate, styles }) => {
+const EmptyState: React.FC<EmptyStateProps> = memo(({ filtered, search, onCreateGRN, onClearFilters, canCreate, styles }) => {
   const t = useTokens();
-  const filtered = activeFilterCount > 0;
   return (
     <View style={styles.emptyContainer}>
       <Icon
@@ -568,18 +419,20 @@ const EmptyState: React.FC<EmptyStateProps> = memo(({ activeFilterCount, onCreat
         color={t.icon.secondary}
       />
       <Text style={styles.emptyTitle} accessibilityRole="header">
-        {filtered ? 'No GRNs match your filters' : 'No GRNs yet'}
+        {filtered ? (search ? `No GRNs match "${search}"` : 'No GRNs match your filters') : 'No GRNs yet'}
       </Text>
       <Text style={styles.emptySubtitle}>
         {filtered
-          ? 'Try removing a filter or clearing them all.'
+          ? search
+            ? 'Check the spelling, try fewer words, or remove a filter.'
+            : 'Try removing a filter or clearing them all.'
           : canCreate
             ? 'GRNs you create appear here.'
             : 'GRNs for your goods appear here once they are received.'}
       </Text>
       {filtered ? (
         <Button type="secondary" variant="tint" onPress={onClearFilters}>
-          Clear filters
+          {search ? 'Clear search and filters' : 'Clear filters'}
         </Button>
       ) : canCreate ? (
         <Button type="primary" variant="tint" leftIcon="plus" onPress={onCreateGRN}>
@@ -613,14 +466,13 @@ ErrorState.displayName = 'ErrorState';
 // ============================================================================
 interface GRNListFioriProps {
   onItemPress?: (item: GRNItem) => void;
-  initialFilters?: FilterValues;
-  clearFiltersOnMount?: boolean;
+  /** Open the list showing this range of GRN numbers (print-range links). Replaces any filters. */
+  initialNumberRange?: { from?: string; to?: string };
 }
 
 const GRNListFiori: React.FC<GRNListFioriProps> = ({
   onItemPress,
-  initialFilters,
-  clearFiltersOnMount,
+  initialNumberRange,
 }) => {
   const { userProfile } = useAppSelector((state) => state.auth);
   const styles = useThemedStyles(makeGRNListStyles);
@@ -640,17 +492,14 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [currentOffset, setCurrentOffset] = useState(0);
-  const [showFilterModal, setShowFilterModal] = useState(false);
   const [loadError, setLoadError] = useState(false);
 
-  // Sort state
-  const [sortBy, setSortBy] = useState<SortField>('grNo');
-  const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
+  // Filters, search and sort
+  const filters = useListFilters(GRN_FILTERS);
+  const { request, sort, search } = filters;
+  const sortedByNumber = sort?.field === 'gr_no';
+  const words = useMemo(() => searchWords(readSearch(GRN_FILTERS, filters.values).text), [filters.values]);
   const listRef = useRef<FlashListRef<FlattenedItem<GRNGroupData>>>(null);
-  // A new sort starts from its first row, wherever the list was scrolled to.
-  useEffect(() => {
-    listRef.current?.scrollToOffset({ offset: 0, animated: false });
-  }, [sortBy, sortOrder]);
 
   // Expand all state
   const [allExpanded, setAllExpanded] = useState(false);
@@ -663,35 +512,23 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({
   const [snackbarMessage, setSnackbarMessage] = useState('');
 
   // Refs
-  const fetchInProgressRef = useRef(false);
   const printJobsBottomSheetRef = useRef<PrintJobsBottomSheetRef>(null);
   const hasDataRef = useRef(false);
   hasDataRef.current = (data?.items?.length ?? 0) > 0;
-
-  // Filter state - MUST use same persistKey as GRN_FILTER_CONFIG
-  const {
-    debouncedValues: filters,
-    activeFilterCount,
-    updateFilter,
-    updateFilters,
-    clearAllFilters,
-  } = useFilterState({
-    persistKey: GRN_FILTER_CONFIG.persistKey,
-    debounceMs: GRN_FILTER_CONFIG.debounceMs,
-  });
 
   // Permissions - use centralized permission system
   const { canCreate, canUpdate } = usePermissions();
   const canCreateGRN = canCreate;
   const canPrint = canCreate || canUpdate; // Staff can print (they have update permission)
 
-  // Apply initial filters
+  // A print-range link opens the list on exactly that range.
+  const initialFrom = initialNumberRange?.from;
+  const initialTo = initialNumberRange?.to;
   useEffect(() => {
-    if (clearFiltersOnMount && initialFilters) {
-      clearAllFilters();
-      setTimeout(() => updateFilters(initialFilters), 100);
-    }
-  }, []);
+    if (initialFrom || initialTo) filters.apply({ numberRange: { from: initialFrom, to: initialTo } });
+    // Only when the link's range changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialFrom, initialTo]);
 
   // A failed first page shows the error state; a failed later page or
   // refresh with data on screen shows a snackbar and keeps the list.
@@ -707,63 +544,20 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({
     }
   }, []);
 
-  // Fetch GRN items
+  // Fetch GRN items. A newer request (the user kept typing, or changed a filter)
+  // replaces an older one: late answers to old questions are dropped.
+  const latestRequest = useRef(0);
   const fetchGRNItems = useCallback(async (offset = 0, append = false) => {
-    if (fetchInProgressRef.current && offset === 0 && !append) return;
-
+    const requestId = append ? latestRequest.current : ++latestRequest.current;
     try {
-      if (offset === 0 && !append) {
-        fetchInProgressRef.current = true;
-        setLoading(true);
-      }
+      if (offset === 0 && !append) setLoading(true);
       if (offset > 0) setLoadingMore(true);
 
-      // Build API filters (using snake_case to match backend)
-      const apiFilters: GRNFilters = {};
-      const itemNames = getAutocompleteSelections(filters.itemName);
-      if (itemNames.length > 0) {
-        apiFilters.item_ids = itemNames.map((item) => item.id);
-      }
-      const customerNames = getAutocompleteSelections(filters.customerName);
-      if (customerNames.length > 0) {
-        apiFilters.customer_ids = customerNames.map((item) => item.id);
-      }
-      const grNoFrom = getAutocompleteSelections(filters.grNoFrom);
-      if (grNoFrom.length > 0) {
-        apiFilters.gr_no_from = grNoFrom[0].label;
-      }
-      const grNoTo = getAutocompleteSelections(filters.grNoTo);
-      if (grNoTo.length > 0) {
-        apiFilters.gr_no_to = grNoTo[0].label;
-      }
-      const stockStatus = getStringValue(filters.stockStatus);
-      if (stockStatus && stockStatus !== 'all') {
-        apiFilters.stock_status = stockStatus as GRNFilters['stock_status'];
-      }
-      const packageMark = getStringValue(filters.packageMark);
-      if (packageMark?.trim()) {
-        apiFilters.package_mark = packageMark.trim();
-      }
-      const weightMin = getNumberValue(filters.weightMin);
-      const weightMax = getNumberValue(filters.weightMax);
-      if (weightMin != null) apiFilters.weight_min = weightMin;
-      if (weightMax != null) apiFilters.weight_max = weightMax;
-
-      // Convert sortBy to snake_case for API (SortField is 'grNo' | 'date')
-      const apiSortBy = sortBy === 'grNo' ? 'gr_no' : sortBy;
-
-      const request: GRNListParams = {
-        p_filters: Object.keys(apiFilters).length > 0 ? apiFilters : undefined,
-        p_date_from: filters.dateFrom,
-        p_date_to: filters.dateTo,
-        p_sort_by: apiSortBy as GRNListParams['p_sort_by'],
-        p_sort_order: sortOrder,
-        p_limit: offset === 0 ? 20 : 80,
-        p_offset: offset,
-      };
+      const params = { ...request, p_limit: offset === 0 ? 20 : 80, p_offset: offset };
       const result = isCustomerAccount
-        ? await getAssignedCustomerGRNItems(assignedCustomerIds, request)
-        : await getAllGRNItems(request);
+        ? await getAssignedCustomerGRNItems(assignedCustomerIds, params)
+        : await getAllGRNItems(params);
+      if (requestId !== latestRequest.current) return;
 
       if (result.success && result.data) {
         setLoadError(false);
@@ -773,6 +567,7 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({
         } else {
           setData(result.data);
           setCurrentOffset(result.data.items.length);
+          listRef.current?.scrollToOffset({ offset: 0, animated: false });
         }
       } else {
         // Keep the server message for support; show plain words to the user
@@ -780,20 +575,23 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({
         showLoadFailure(append);
       }
     } catch (error) {
+      if (requestId !== latestRequest.current) return;
       logger.error('Exception:', error);
       showLoadFailure(append);
     } finally {
-      fetchInProgressRef.current = false;
-      setLoading(false);
-      setRefreshing(false);
-      setLoadingMore(false);
+      if (requestId === latestRequest.current) {
+        setLoading(false);
+        setRefreshing(false);
+        setLoadingMore(false);
+      }
     }
-  }, [assignedCustomerIds, filters, isCustomerAccount, sortBy, sortOrder, showLoadFailure]);
+  }, [assignedCustomerIds, request, isCustomerAccount, showLoadFailure]);
 
+  // Any change of filter, search or sort is a new first page.
   useEffect(() => {
     setCurrentOffset(0);
     fetchGRNItems();
-  }, [filters, sortBy, sortOrder]);
+  }, [fetchGRNItems]);
 
   // Event handlers
   const handleGRNPress = useCallback((group: GRNGroupData) => {
@@ -898,7 +696,7 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({
     // When sorting by GRN No, return a flat list in the order the rows arrived.
     // The server (or the customer merge in grn-service) already sorted them by
     // receipt number; groups are built in first-seen order, so nothing is re-sorted here.
-    if (sortBy === 'grNo') {
+    if (sortedByNumber) {
       return allGroups.map(group => ({
         type: 'card' as const,
         data: group,
@@ -924,7 +722,7 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({
     });
 
     return flattenSections(sections, (group) => `${group.grnId}_${group.grNo}`);
-  }, [data?.items, sortBy]);
+  }, [data?.items, sortedByNumber]);
 
 
   const handleRetry = useCallback(() => {
@@ -932,10 +730,6 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({
     fetchGRNItems();
   }, [fetchGRNItems]);
 
-  const openFilters = useCallback(() => {
-    logger.info(`[FILTER_BUTTON_CLICKED] Opening filter modal`);
-    setShowFilterModal(true);
-  }, []);
 
   // Render functions
   const renderItem = useCallback(({ item }: { item: FlattenedItem<GRNGroupData> }) => {
@@ -966,9 +760,10 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({
         styles={styles}
         globalExpanded={allExpanded}
         globalExpandedKey={expandKey}
+        words={words}
       />
     );
-  }, [handleGRNPress, handleViewDetails, handleEdit, handlePrint, canPrint, styles, allExpanded, expandKey]);
+  }, [handleGRNPress, handleViewDetails, handleEdit, handlePrint, canPrint, styles, allExpanded, expandKey, words]);
 
   const renderFooter = useCallback(() => {
     if (!loadingMore) return null;
@@ -986,23 +781,20 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({
     <View style={styles.header}>
       <Text style={styles.headerTitle} accessibilityRole="header">GRNs</Text>
       <View style={styles.headerActions}>
-        <View>
-          <Pressable
-            style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
-            onPress={openFilters}
-            disabled={!interactive}
-            accessibilityRole="button"
-            accessibilityLabel={activeFilterCount > 0 ? `Filter GRNs, ${activeFilterCount} applied` : 'Filter GRNs'}
-            accessibilityState={{ disabled: !interactive }}
-          >
-            <Icon name="filter-variant" size={iconSize.lg} color={t.icon.primary} />
-          </Pressable>
-          {activeFilterCount > 0 && (
-            <View style={styles.filterBadge} pointerEvents="none">
-              <Text style={styles.filterBadgeText} maxFontSizeMultiplier={1.6}>{activeFilterCount}</Text>
-            </View>
-          )}
-        </View>
+        <Pressable
+          style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
+          onPress={handleToggleAllExpanded}
+          disabled={!interactive}
+          accessibilityRole="button"
+          accessibilityLabel={allExpanded ? 'Collapse all GRNs' : 'Expand all GRNs'}
+          accessibilityState={{ disabled: !interactive, expanded: allExpanded }}
+        >
+          <Icon
+            name={allExpanded ? 'unfold-less-horizontal' : 'unfold-more-horizontal'}
+            size={iconSize.lg}
+            color={t.icon.primary}
+          />
+        </Pressable>
         <Pressable
           style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
           onPress={() => router.push('/settings')}
@@ -1015,11 +807,28 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({
     </View>
   );
 
-  // Loading state
-  if (loading && !refreshing) {
+  // Search field and filter bar: shown in every state, so a search or filter
+  // can always be changed or cleared, also while loading or when nothing matches.
+  const openAllFilters = () => router.push({ pathname: '/list-filters', params: { listKey: GRN_FILTERS.listKey } });
+  const renderSearchAndFilters = () => (
+    <>
+      <ListSearchField
+        listKey={GRN_FILTERS.listKey}
+        value={search}
+        onSearch={filters.setSearch}
+        placeholder={GRN_FILTERS.search?.placeholder ?? 'Search'}
+        loading={loading}
+      />
+      <FilterBar config={FILTER_CONFIGS[GRN_FILTERS.listKey]} filters={filters} onOpenAll={openAllFilters} />
+    </>
+  );
+
+  // First load: skeleton. Later loads keep the rows on screen while the new ones arrive.
+  if (loading && !refreshing && !data) {
     return (
       <View style={styles.container}>
         {renderHeader(false)}
+        {renderSearchAndFilters()}
         <View accessible accessibilityLabel="Loading GRNs" accessibilityState={{ busy: true }} style={{ flex: 1 }}>
           <FlatList
             data={[1, 2, 3, 4, 5]}
@@ -1038,26 +847,7 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({
       {/* Header */}
       {renderHeader(true)}
 
-      {/* Applied filters */}
-      <FilterChips
-        filters={filters}
-        activeFilterCount={activeFilterCount}
-        updateFilter={updateFilter}
-        clearAllFilters={clearAllFilters}
-        styles={styles}
-      />
-
-      {/* Sort bar (guide §14.5) */}
-      <SortBar
-        options={SORT_OPTIONS}
-        field={sortBy}
-        order={sortOrder}
-        onFieldChange={setSortBy}
-        onOrderToggle={() => setSortOrder(prev => (prev === 'desc' ? 'asc' : 'desc'))}
-        expanded={allExpanded}
-        onExpandToggle={handleToggleAllExpanded}
-        itemsLabel="GRNs"
-      />
+      {renderSearchAndFilters()}
 
       {/* Main content */}
       {flattenedData.length > 0 ? (
@@ -1088,9 +878,10 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({
         <ErrorState onRetry={handleRetry} styles={styles} />
       ) : (
         <EmptyState
-          activeFilterCount={activeFilterCount}
+          filtered={filters.hasAny}
+          search={search}
           onCreateGRN={handleCreateGRN}
-          onClearFilters={clearAllFilters}
+          onClearFilters={filters.clear}
           canCreate={canCreateGRN}
           styles={styles}
         />
@@ -1099,17 +890,6 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({
       {/* Create GRN (floating action button, guide 14.1) */}
       {canCreateGRN && (
         <Fab label="Create GRN" onPress={handleCreateGRN} />
-      )}
-
-      {/* Filter modal - only render the Portal when visible to avoid Android gesture handler issues */}
-      {showFilterModal && (
-        <Portal>
-          <GenericFilterModal
-            visible={showFilterModal}
-            onClose={() => setShowFilterModal(false)}
-            config={GRN_FILTER_CONFIG}
-          />
-        </Portal>
       )}
 
       {/* Print dialog */}

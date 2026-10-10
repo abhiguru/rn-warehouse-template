@@ -324,6 +324,11 @@ function NavigationStack({ screenBackground }: { screenBackground: string }) {
       <Stack.Screen name="enrollment-review" options={{ title: 'Enrollment review' }} />
 
       {/* Detail screens */}
+      {/* Sort and filter page of a list: slides up like a sheet, closes with its own button */}
+      <Stack.Screen
+        name="list-filters"
+        options={{ headerShown: false, animation: 'slide_from_bottom', gestureEnabled: false }}
+      />
       <Stack.Screen name="grn-details/[id]" options={{ headerShown: false }} />
       <Stack.Screen name="dispatch-details/[id]" options={{ headerShown: false }} />
       <Stack.Screen name="invoice-details/[id]" options={{ headerShown: false }} />
