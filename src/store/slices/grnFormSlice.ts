@@ -1,6 +1,7 @@
 import { createSlice, PayloadAction, createSelector } from '@reduxjs/toolkit';
 
 import { toLocalISODate } from '@/utils/formatters';
+import { isTemporaryGRNImageId } from '@/features/grn/services/imageId';
 // Image data structure
 export interface GRNImageData {
   id: string;
@@ -47,6 +48,15 @@ export interface GRNItemData {
   trl_images: GRNImageData[]; // Multiple images per item (changed from single trl_image)
 }
 
+/**
+ * A photo of the saved GRN that was removed in the form. Nothing is deleted on
+ * the server until the GRN is saved; discarding the form forgets the list.
+ */
+export interface RemovedGRNImage {
+  id: string;
+  storagePath?: string;
+}
+
 // Snapshot for rollback support
 interface GRNFormSnapshot {
   grnId: string | null;
@@ -64,6 +74,9 @@ interface GRNFormState {
   // Form data
   header: GRNHeaderData;
   items: GRNItemData[];
+
+  // Saved photos removed in this edit; applied when the GRN is saved
+  removedImages: RemovedGRNImage[];
 
   // UI state
   currentStep: number;
@@ -101,6 +114,7 @@ const createInitialState = (): GRNFormState => ({
     gr_images: [],
   },
   items: [],
+  removedImages: [],
   currentStep: 0,
   isLoading: false,
   isSaving: false,
@@ -108,6 +122,13 @@ const createInitialState = (): GRNFormState => ({
   validationErrors: {},
   snapshot: null,
 });
+
+/** A removed photo that exists on the server (not a photo picked in this form) is kept for the save. */
+const rememberRemovedImage = (state: GRNFormState, image: GRNImageData | undefined) => {
+  if (!image || isTemporaryGRNImageId(image.id)) return;
+  if (state.removedImages.some(removed => removed.id === image.id)) return;
+  state.removedImages.push({ id: image.id, storagePath: image.storagePath });
+};
 
 const grnFormSlice = createSlice({
   name: 'grnForm',
@@ -194,6 +215,7 @@ const grnFormSlice = createSlice({
       });
 
       state.header.gr_images = state.header.gr_images.filter(img => img.id !== imageIdToRemove);
+      rememberRemovedImage(state, imageToRemove);
 
       console.log('[GRNFormSlice] 🗑️ After removal:', {
         afterCount: state.header.gr_images.length,
@@ -260,6 +282,7 @@ const grnFormSlice = createSlice({
     removeItemImage: (state, action: PayloadAction<{ itemId: string; imageId: string }>) => {
       const item = state.items.find(item => item.grn_trl_id === action.payload.itemId);
       if (item && item.trl_images) {
+        rememberRemovedImage(state, item.trl_images.find(img => img.id === action.payload.imageId));
         item.trl_images = item.trl_images.filter(img => img.id !== action.payload.imageId);
       }
     },
@@ -296,6 +319,7 @@ const grnFormSlice = createSlice({
       state.header = action.payload.header;
       state.items = action.payload.items;
       state.grnId = action.payload.grnId;
+      state.removedImages = [];
     },
     resetForm: () => {
       return createInitialState();
@@ -384,6 +408,7 @@ export const {
 export const selectGRNFormHeader = (state: { grnForm: GRNFormState }) => state.grnForm.header;
 export const selectGRNFormItems = (state: { grnForm: GRNFormState }) => state.grnForm.items;
 export const selectGRNFormId = (state: { grnForm: GRNFormState }) => state.grnForm.grnId;
+export const selectGRNRemovedImages = (state: { grnForm: GRNFormState }) => state.grnForm.removedImages;
 export const selectGRNTempId = (state: { grnForm: GRNFormState }) => state.grnForm.tempGrnId;
 export const selectGRNFormValidationErrors = (state: { grnForm: GRNFormState }) => state.grnForm.validationErrors;
 export const selectGRNFormCurrentStep = (state: { grnForm: GRNFormState }) => state.grnForm.currentStep;

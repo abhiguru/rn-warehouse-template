@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -23,10 +23,13 @@ import {
   completeHeaderImageUpload,
   failHeaderImageUpload,
   setIsSaving,
+  selectGRNRemovedImages,
 } from '@/store/slices/grnFormSlice';
 import { useGRNForm } from '@/hooks';
 import { ImageUploadButton } from '@/features/grn/components/ImageUploadButton';
-import { createGRN, updateGRN } from '@/features/grn/services/grnFormService';
+import { createGRN, updateGRN, type GRNPhotoSaveReport } from '@/features/grn/services/grnFormService';
+import { uploadGRNPhotos, type FailedGRNPhoto } from '@/features/grn/services/imageUploadService';
+import { photosNotUploadedMessage } from '@/features/grn/utils/photoSaveReport';
 import { validateStep3 } from '@/features/grn/schemas/grnValidation';
 import { ImagePreviewGrid } from '@/features/grn/components/ImagePreviewGrid';
 import { ImageOverlay } from '@/components/ImageOverlay';
@@ -80,8 +83,14 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
   } = useGRNForm({ mode, grnIdParam: id });
 
   const dispatch = useAppDispatch();
+  // Saved photos removed in this edit; they are deleted when the GRN is saved.
+  const removedImages = useAppSelector(selectGRNRemovedImages) ?? [];
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // Photos of the GRN just saved that did not upload; the user is asked to try again or go on.
+  const [photosNotUploaded, setPhotosNotUploaded] = useState<{ grnId: string; failed: FailedGRNPhoto[] } | null>(null);
+  const [isRetryingPhotos, setIsRetryingPhotos] = useState(false);
+  const saveInFlightRef = useRef(false);
   const [localValidationErrors, setLocalValidationErrors] = useState<Record<string, string>>({});
   const [showPrintDialog, setShowPrintDialog] = useState(false);
   const [documentNumber, setDocumentNumber] = useState('');
@@ -196,13 +205,64 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
     setShowConfirmDialog(true);
   };
 
-  const handleConfirmSubmit = () => {
+  const handleConfirmSubmit = async () => {
     setShowConfirmDialog(false);
-    if (isCreateMode) {
-      performCreate();
-    } else {
-      performUpdate();
+    // One save at a time. A second tap on Confirm before the dialog closes would save again,
+    // and every photo picked in the form would be uploaded twice.
+    if (saveInFlightRef.current) return;
+    saveInFlightRef.current = true;
+    try {
+      if (isCreateMode) {
+        await performCreate();
+      } else {
+        await performUpdate();
+      }
+    } finally {
+      saveInFlightRef.current = false;
     }
+  };
+
+  /**
+   * The GRN is saved. Say what happened to its photos before the success dialog:
+   * photos that did not upload are listed with a retry, never passed over.
+   */
+  const finishSave = (savedGrnId: string | undefined, photos: GRNPhotoSaveReport | undefined) => {
+    if (photos && photos.removalFailures > 0) {
+      setSnackbarMessage(tr('grn.review.photosNotRemoved', { count: photos.removalFailures }));
+      setSnackbarVisible(true);
+    }
+    if (savedGrnId && photos && photos.failed.length > 0) {
+      triggerWarning();
+      setPhotosNotUploaded({ grnId: savedGrnId, failed: photos.failed });
+      return;
+    }
+    setShowSuccessDialog(true);
+  };
+
+  const handleRetryPhotos = async () => {
+    if (!photosNotUploaded || isRetryingPhotos) return;
+    const { grnId: savedGrnId, failed } = photosNotUploaded;
+    setPhotosNotUploaded(null);
+    setIsRetryingPhotos(true);
+    try {
+      const outcome = await uploadGRNPhotos(savedGrnId, failed);
+      if (outcome.failed.length > 0) {
+        triggerWarning();
+        setPhotosNotUploaded({ grnId: savedGrnId, failed: outcome.failed });
+        return;
+      }
+      triggerSuccess();
+      setSnackbarMessage(tr('grn.review.photosUploaded'));
+      setSnackbarVisible(true);
+      setShowSuccessDialog(true);
+    } finally {
+      setIsRetryingPhotos(false);
+    }
+  };
+
+  const handleContinueWithoutPhotos = () => {
+    setPhotosNotUploaded(null);
+    setShowSuccessDialog(true);
   };
 
   const performCreate = async () => {
@@ -233,7 +293,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
           date: formatReviewDate(header.date),
           itemCount: items.length,
         });
-        setShowSuccessDialog(true);
+        finishSave(result.data.id, result.data.photos);
       } else {
         triggerError();
         showAlert(saveFailedTitle(), serverText(result.error, connectionHint()));
@@ -282,7 +342,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
           package_mark: item.package_mark,
           trl_images: item.trl_images || [],
         })),
-      });
+      }, { removedImages });
 
       if (result.success) {
         const resultData = result.data as { data?: { items_skipped_stock?: Array<{ item_name: string; reason: string }> }; items_skipped_stock?: Array<{ item_name: string; reason: string }> } | undefined;
@@ -306,7 +366,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
           date: formatReviewDate(header.date),
           itemCount: items.length,
         });
-        setShowSuccessDialog(true);
+        finishSave(grnId, result.data?.photos);
       } else {
         triggerError();
         const errorMessage = serverText(result.error, connectionHint());
@@ -382,8 +442,11 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
     setShowPrintDialog(true);
   };
 
-  const imageUploadGrnId = isCreateMode ? (grnId || tempGrnId) ?? undefined : grnId ?? undefined;
-  const isSubmittingState = isCreateMode ? isSubmitting : isSaving;
+  // Photos are never uploaded when they are picked, in create or in edit mode: they stay on
+  // the device under a temporary id and go up when the GRN is saved, so "Discard changes"
+  // leaves the saved GRN's photos as they were.
+  const imageUploadGrnId = tempGrnId ?? undefined;
+  const isSubmittingState = (isCreateMode ? isSubmitting : isSaving) || isRetryingPhotos;
   const ctaLabel = isCreateMode ? tr('grn.review.createGrn') : tr('grn.review.saveGrn');
 
   // ============================================================================
@@ -583,6 +646,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
               {header.gr_images && header.gr_images.length > 0 && (
                 <ImagePreviewGrid
                   imageData={header.gr_images}
+                  removeFromServer={false}
                   onRemoveImage={(imageId: string) => {
                     dispatch(removeHeaderImage(imageId));
                   }}
@@ -636,7 +700,11 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
           onNext={handleSubmit}
           nextLabel={ctaLabel}
           isLoading={isSubmittingState}
-          loadingLabel={isCreateMode ? tr('grn.review.creating') : tr('grn.review.saving')}
+          loadingLabel={
+            isRetryingPhotos
+              ? tr('grn.review.uploadingPhotos')
+              : isCreateMode ? tr('grn.review.creating') : tr('grn.review.saving')
+          }
         />
       </View>
 
@@ -655,6 +723,20 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
         onCancel={() => setShowConfirmDialog(false)}
         variant="default"
         icon={isCreateMode ? 'plus-circle' : 'pencil-outline'}
+      />
+
+      {/* Photos of the saved GRN that did not upload */}
+      <ConfirmDialog
+        visible={photosNotUploaded !== null}
+        title={tr('grn.review.photosNotUploadedTitle')}
+        message={photosNotUploaded ? photosNotUploadedMessage(documentNumber, photosNotUploaded.failed) : ''}
+        confirmText={tr('grn.review.retryPhotos')}
+        cancelText={tr('grn.review.continueWithoutPhotos')}
+        onConfirm={handleRetryPhotos}
+        onCancel={handleContinueWithoutPhotos}
+        variant="warning"
+        icon="image-off-outline"
+        dismissible={false}
       />
 
       <DocumentSuccessDialog

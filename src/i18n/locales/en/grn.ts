@@ -214,6 +214,8 @@ export const grn = {
     metadataFailed: 'Failed to save image metadata',
     metadataFailedShort: 'Failed to save metadata',
     readFailed: 'Failed to read image file',
+    lineNotFound: 'The item this photo belongs to was not found on the saved GRN',
+    stillUploading: 'The upload was still running',
   },
 
   // Step 3: review
@@ -239,6 +241,19 @@ export const grn = {
       'GRN saved. Some quantities were not changed because those items are already dispatched:\n{{items}}',
     savedWithNumber: 'GRN {{number}} saved.',
     saved: 'GRN saved.',
+    photosNotUploadedTitle: 'Photos not uploaded',
+    photosNotUploadedMessage: 'GRN {{number}} is saved, but these photos were not uploaded:\n{{photos}}',
+    photosNotUploadedMessageNoNumber: 'The GRN is saved, but these photos were not uploaded:\n{{photos}}',
+    failedGrnPhoto: 'GRN photo {{position}}',
+    failedItemPhoto: '{{item}}, photo {{position}}',
+    retryPhotos: 'Try again',
+    continueWithoutPhotos: 'Continue without them',
+    photosUploaded: 'Photos uploaded.',
+    uploadingPhotos: 'Uploading photos…',
+    photosNotRemoved: {
+      one: '{{count}} removed photo is still on the GRN. Open the GRN and remove it again.',
+      other: '{{count}} removed photos are still on the GRN. Open the GRN and remove them again.',
+    },
     pdfCreateFailed: "Couldn't create the PDF. Try again.",
     pdfShareFailed: "Couldn't share the PDF. Try again.",
     createGrn: 'Create GRN',

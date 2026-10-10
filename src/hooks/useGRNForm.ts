@@ -66,6 +66,7 @@ import {
   selectGRNFormItems,
   selectGRNFormId,
   selectGRNTempId,
+  selectGRNRemovedImages,
   GRNHeaderData,
   GRNItemData,
   GRNImageData,
@@ -166,6 +167,7 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
   const items = useAppSelector(selectGRNFormItems);
   const grnId = useAppSelector(selectGRNFormId);
   const tempGrnId = useAppSelector(selectGRNTempId);
+  const removedImages = useAppSelector(selectGRNRemovedImages);
 
   const isCreateMode = mode === 'create';
 
@@ -552,7 +554,7 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
 
       const result = isCreateMode
         ? await createGRN(payload)
-        : await updateGRN(grnId!, payload);
+        : await updateGRN(grnId!, payload, { removedImages });
 
       if (result.success) {
         return { success: true, grnId: result.data?.id };
@@ -568,7 +570,7 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
     } finally {
       dispatch(setIsSaving(false));
     }
-  }, [header, items, grnId, isCreateMode, validateCurrentStep, dispatch]);
+  }, [header, items, grnId, removedImages, isCreateMode, validateCurrentStep, dispatch]);
 
   /**
    * Reset form to initial state

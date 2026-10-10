@@ -35,6 +35,12 @@ interface ImagePreviewGridProps {
   columns?: number;
   showMetadata?: boolean;
   showProgress?: boolean;
+  /**
+   * Whether removing a saved photo deletes it on the server at once (default).
+   * A form that applies its changes on Save passes false: the photo is only
+   * taken out of the form, and the form's save deletes it.
+   */
+  removeFromServer?: boolean;
 }
 
 const { width: screenWidth } = Dimensions.get('window');
@@ -57,6 +63,7 @@ export const ImagePreviewGrid: React.FC<ImagePreviewGridProps> = ({
   columns = 3,
   showMetadata = false,
   showProgress = true,
+  removeFromServer = true,
 }) => {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
@@ -152,7 +159,7 @@ export const ImagePreviewGrid: React.FC<ImagePreviewGridProps> = ({
 
             try {
               // If image has a database ID, delete from backend
-              if (imageData.id && imageData.uploadStatus === 'completed') {
+              if (removeFromServer && imageData.id && imageData.uploadStatus === 'completed') {
                 console.log('[ImagePreviewGrid] 🗑️ Calling deleteGRNImage RPC for:', imageData.id);
                 const result = await deleteGRNImage(imageData.id, imageData.imageUrl);
                 console.log('[ImagePreviewGrid] 🗑️ deleteGRNImage result:', result);

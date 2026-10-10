@@ -1,7 +1,14 @@
 import { submissionIdempotencyKey } from '@/utils/submissionIdempotency';
 import { beginOperatorMutation, getAuthenticatedClient, getCurrentConfig } from '@/config/supabaseConfig';
-import { GRNHeaderData, GRNItemData, GRNImageData } from '@/store/slices/grnFormSlice';
-import { savePendingImageMetadata, uploadDeferredImages } from './imageUploadService';
+import { GRNHeaderData, GRNItemData, GRNImageData, RemovedGRNImage } from '@/store/slices/grnFormSlice';
+import {
+  savePendingImageMetadata,
+  collectDeferredGRNPhotos,
+  deleteGRNImage,
+  uploadGRNPhotos,
+  type FailedGRNPhoto,
+  type PendingGRNPhoto,
+} from './imageUploadService';
 import { isTemporaryGRNImageId } from './imageId';
 // M3 Fix: Import executeRPC for potential future refactoring
 // Note: Current RPC methods have custom error handling (E5 fix) or extensive debug logging
@@ -44,27 +51,33 @@ interface UpdateGRNPayload {
   })[];
 }
 
-const withUploadTimeout = async <T>(
-  uploadPromise: Promise<T>,
-  timeoutResult: T,
-  timeoutMessage: string,
-  timeoutMs = 30000
-): Promise<T> => {
-  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+/**
+ * What happened to the photos of a saved GRN. The GRN itself is saved either
+ * way; the screen tells the user about anything listed here and offers to try
+ * the uploads again (`uploadGRNPhotos(grnId, failed)`).
+ */
+export interface GRNPhotoSaveReport {
+  uploadedCount: number;
+  /** Photos picked in the form that did not reach the server. */
+  failed: FailedGRNPhoto[];
+  /** Photos removed in the form that are still on the GRN. */
+  removalFailures: number;
+}
 
+/** Upload a saved GRN's photos; a failure of the whole step fails every photo, never the save. */
+const uploadPhotosOfSavedGRN = async (
+  grnId: string,
+  pending: PendingGRNPhoto[]
+): Promise<{ uploadedCount: number; failed: FailedGRNPhoto[] }> => {
+  if (pending.length === 0) return { uploadedCount: 0, failed: [] };
   try {
-    const timeoutPromise = new Promise<T>((resolve) => {
-      timeoutId = setTimeout(() => {
-        console.warn(timeoutMessage);
-        resolve(timeoutResult);
-      }, timeoutMs);
-    });
-
-    return await Promise.race([uploadPromise, timeoutPromise]);
-  } finally {
-    if (timeoutId !== undefined) {
-      clearTimeout(timeoutId);
-    }
+    return await uploadGRNPhotos(grnId, pending);
+  } catch (uploadError) {
+    console.error('[GRNFormService] 📸 Photo upload failed:', uploadError);
+    return {
+      uploadedCount: 0,
+      failed: pending.map(photo => ({ ...photo, error: t('grn.photos.uploadFailed') })),
+    };
   }
 };
 
@@ -348,57 +361,25 @@ export const createGRN = async (payload: CreateGRNPayload) => {
       });
     }
 
-    // ✅ Upload deferred images now that we have a real GRN ID
-    // Check if any images were deferred (have imageUrl but no storagePath)
-    const deferredHeaderImages = (payload.header.gr_images || []).filter(img => img.imageUrl && !img.storagePath);
-    const deferredItemImages = payload.items.flatMap(item =>
-      (item.trl_images || []).filter(img => img.imageUrl && !img.storagePath)
+    // ✅ Upload the photos picked in the form now that we have a real GRN ID.
+    // Each line's id comes from the mapping save_grn returns.
+    const itemMapping: Array<{ index: number; item_id: string }> = rpcResult.item_mapping || [];
+    const pendingPhotos = collectDeferredGRNPhotos(
+      payload.header.gr_images || [],
+      payload.items.map((item, index) => ({
+        itemId: (itemMapping.find(mapping => mapping.index === index) ?? itemMapping[index])?.item_id,
+        itemName: item.item_name,
+        images: item.trl_images,
+      }))
     );
+    console.log('[GRNFormService] 📸 Photos to upload with real GRN ID:', pendingPhotos.length);
 
-    const totalDeferredImages = deferredHeaderImages.length + deferredItemImages.length;
-
-    if (totalDeferredImages > 0) {
-      console.log('[GRNFormService] 📸 Uploading deferred images with real GRN ID:', rpcResult.grn_id);
-      console.log('[GRNFormService] 📸 Deferred images count:', {
-        header: deferredHeaderImages.length,
-        items: deferredItemImages.length,
-        total: totalDeferredImages
-      });
-
-      // Prepare items with item mapping for proper item ID association
-      const itemsForUpload = payload.items.map((item, index) => ({
-        grn_trl_id: rpcResult.item_mapping?.[index]?.item_id || '',
-        trl_images: item.trl_images
-      }));
-
-      try {
-        // Add a timeout for image uploads - don't block GRN creation indefinitely
-        const uploadPromise = uploadDeferredImages(
-          rpcResult.grn_id,
-          payload.header.gr_images || [],
-          itemsForUpload,
-          rpcResult.item_mapping
-        );
-
-        const uploadResult = await withUploadTimeout(
-          uploadPromise,
-          { success: false, uploadedCount: 0, errors: ['Upload timeout - images will be uploaded in background'] },
-          '[GRNFormService] 📸 Image upload timeout - continuing without waiting'
-        );
-
-        console.log('[GRNFormService] 📸 Deferred image upload result:', uploadResult);
-
-        if (!uploadResult.success) {
-          console.warn('[GRNFormService] Some images failed to upload:', uploadResult.errors);
-          // Don't fail the whole operation - GRN is created, just warn about images
-        }
-      } catch (uploadError) {
-        console.error('[GRNFormService] 📸 Deferred image upload failed:', uploadError);
-        // Don't fail the whole operation - GRN is created successfully
-      }
-    } else {
-      console.log('[GRNFormService] 📸 No deferred images to upload');
+    // The GRN is created whatever happens to its photos; the caller is told which ones failed.
+    const photoUpload = await uploadPhotosOfSavedGRN(rpcResult.grn_id, pendingPhotos);
+    if (photoUpload.failed.length > 0) {
+      console.warn('[GRNFormService] Photos not uploaded:', photoUpload.failed.length);
     }
+    const photos: GRNPhotoSaveReport = { ...photoUpload, removalFailures: 0 };
 
     return {
       success: true,
@@ -410,6 +391,7 @@ export const createGRN = async (payload: CreateGRNPayload) => {
         item_ids: rpcResult.item_ids,
         image_ids: rpcResult.image_ids,
         item_mapping: rpcResult.item_mapping,
+        photos,
       },
     };
   } catch (error) {
@@ -426,7 +408,16 @@ export const createGRN = async (payload: CreateGRNPayload) => {
 // Update existing GRN using update_grn RPC
 // M3 Fix: Not migrated to executeRPC - extensive debug logging for troubleshooting
 // field normalization, ID validation, image updates; complex stock protection handling
-export const updateGRN = async (grnId: string, payload: UpdateGRNPayload) => {
+//
+// Photo changes made in the form are applied here and nowhere earlier:
+// photos picked in the form are uploaded after update_grn succeeds, and photos
+// removed in the form (`options.removedImages`) are deleted after it succeeds.
+// If update_grn fails, or the form is discarded, the server keeps its photos.
+export const updateGRN = async (
+  grnId: string,
+  payload: UpdateGRNPayload,
+  options: { removedImages?: RemovedGRNImage[] } = {}
+) => {
   let finishMutation: (() => void) | undefined;
   try {
     finishMutation = beginOperatorMutation();
@@ -810,91 +801,64 @@ export const updateGRN = async (grnId: string, payload: UpdateGRNPayload) => {
       });
     }
 
-    // ✅ Upload deferred images now that the GRN update succeeded
-    // Check if any images were deferred (have imageUrl but no storagePath - local file:// URLs)
-    // Also exclude images that already have a real database ID (non-temp) as they were already uploaded
-    const deferredHeaderImages = (payload.header.gr_images || []).filter(img => {
-      const hasLocalUrl = img.imageUrl && img.imageUrl.startsWith('file://');
-      const hasNoStoragePath = !img.storagePath;
-
-      // Skip if image already has a real database ID (was already uploaded during image selection)
-      if (!isTemporaryGRNImageId(img.id)) {
-        console.log('[GRNFormService] Skipping already-uploaded header image:', { id: img.id, fileName: img.fileName });
-        return false;
+    // ✅ Photos removed in the form. update_grn deletes the rows it was not sent,
+    // but only when it was sent at least one image, so the answer's own image
+    // list decides what is left to delete.
+    const remainingImageIds: Set<string> | null = Array.isArray(rpcResult.grn?.images)
+      ? new Set(rpcResult.grn.images.map((image: { id: string }) => image.id))
+      : null;
+    let removalFailures = 0;
+    const orphanedPaths: string[] = [];
+    for (const removed of options.removedImages || []) {
+      const stillOnGrn = remainingImageIds ? remainingImageIds.has(removed.id) : rpcImages.length === 0;
+      if (stillOnGrn) {
+        const deletion = await deleteGRNImage(removed.id, '');
+        if (!deletion.success) removalFailures++;
+      } else if (remainingImageIds && removed.storagePath) {
+        orphanedPaths.push(removed.storagePath);
       }
-
-      return hasLocalUrl && hasNoStoragePath;
-    });
-
-    // Get deferred item images from normalized items
-    // Also exclude images that already have a real database ID
-    const deferredItemImages = normalizedItems.flatMap((item, index) =>
-      (item.trl_images || [])
-        .filter(img => {
-          const hasLocalUrl = img.imageUrl && img.imageUrl.startsWith('file://');
-          const hasNoStoragePath = !img.storagePath;
-
-          // Skip if image already has a real database ID
-          if (!isTemporaryGRNImageId(img.id)) {
-            console.log('[GRNFormService] Skipping already-uploaded item image:', { id: img.id, fileName: img.fileName });
-            return false;
-          }
-
-          return hasLocalUrl && hasNoStoragePath;
-        })
-        .map(img => ({ image: img, itemId: item.grn_trl_id || '' }))
-    );
-
-    const totalDeferredImages = deferredHeaderImages.length + deferredItemImages.length;
-
-    if (totalDeferredImages > 0) {
-      console.log('[GRNFormService] 📸 Uploading deferred images for GRN update:', grnId);
-      console.log('[GRNFormService] 📸 Deferred images count:', {
-        header: deferredHeaderImages.length,
-        items: deferredItemImages.length,
-        total: totalDeferredImages
-      });
-
-      // Prepare items with proper item IDs for image association
-      const itemsForUpload = normalizedItems.map((item) => ({
-        grn_trl_id: item.grn_trl_id || '',
-        trl_images: item.trl_images
-      }));
-
-      try {
-        // Add a timeout for image uploads - don't block GRN update indefinitely
-        const uploadPromise = uploadDeferredImages(
-          grnId,
-          payload.header.gr_images || [],
-          itemsForUpload
-        );
-
-        const uploadResult = await withUploadTimeout(
-          uploadPromise,
-          { success: false, uploadedCount: 0, errors: ['Upload timeout - images will be uploaded in background'] },
-          '[GRNFormService] 📸 Image upload timeout during update - continuing without waiting'
-        );
-
-        console.log('[GRNFormService] 📸 Deferred image upload result for update:', uploadResult);
-
-        if (!uploadResult.success) {
-          console.warn('[GRNFormService] Some images failed to upload during update:', uploadResult.errors);
-          // Don't fail the whole operation - GRN is updated, just warn about images
-        }
-      } catch (uploadError) {
-        console.error('[GRNFormService] 📸 Deferred image upload failed during update:', uploadError);
-        // Don't fail the whole operation - GRN is updated successfully
-      }
-    } else {
-      console.log('[GRNFormService] 📸 No deferred images to upload for update');
     }
+    if (orphanedPaths.length > 0) {
+      // The rows are gone; the stored files are removed on a best effort.
+      try {
+        await authenticatedClient.storage.from('grn-images').remove(orphanedPaths);
+      } catch (removeError) {
+        console.warn('[GRNFormService] Could not remove the files of deleted photos:', removeError);
+      }
+    }
+
+    // ✅ Photos picked in the form are uploaded now that the update succeeded.
+    // A line added in this edit gets its id from update_grn's item_mapping
+    // (index = position in p_items); before the save it only had a local id.
+    const newLineIds = new Map<number, string>(
+      (rpcResult.item_mapping || []).map(
+        (mapping: { index: number; grn_trl_item_id: string }) => [mapping.index, mapping.grn_trl_item_id]
+      )
+    );
+    const pendingPhotos = collectDeferredGRNPhotos(
+      payload.header.gr_images || [],
+      normalizedItems.map((item, index) => ({
+        itemId: item.grn_trl_id || newLineIds.get(index),
+        itemName: item.item_name,
+        images: item.trl_images,
+      }))
+    );
+    console.log('[GRNFormService] 📸 Photos to upload for GRN update:', pendingPhotos.length);
+
+    // The GRN is updated whatever happens to its photos; the caller is told which ones failed.
+    const photoUpload = await uploadPhotosOfSavedGRN(grnId, pendingPhotos);
+    if (photoUpload.failed.length > 0) {
+      console.warn('[GRNFormService] Photos not uploaded during update:', photoUpload.failed.length);
+    }
+    const photos: GRNPhotoSaveReport = { ...photoUpload, removalFailures };
 
     return {
       success: true,
       data: {
         id: rpcResult.gr_id || grnId,
         message: rpcResult.message,
-        stats: rpcResult.stats
+        stats: rpcResult.stats,
+        photos,
       },
     };
   } catch (error) {

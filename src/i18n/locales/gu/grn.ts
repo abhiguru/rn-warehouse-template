@@ -210,6 +210,8 @@ export const grn: Translation<typeof source> = {
     metadataFailed: 'ફોટોની વિગતો સાચવી શકાઈ નથી',
     metadataFailedShort: 'ફોટોની વિગતો સાચવી શકાઈ નથી',
     readFailed: 'ફોટોની ફાઇલ વાંચી શકાઈ નથી',
+    lineNotFound: 'આ ફોટો જે આઇટમનો છે તે સચવાયેલી આવક પાવતીમાં મળી નથી',
+    stillUploading: 'અપલોડ હજુ ચાલુ હતું',
   },
 
   review: {
@@ -233,6 +235,19 @@ export const grn: Translation<typeof source> = {
       'આવક પાવતી સચવાઈ ગઈ. કેટલાક નંગ બદલાયા નથી, કારણ કે તે આઇટમની જાવક થઈ ગઈ છે:\n{{items}}',
     savedWithNumber: 'આવક પાવતી {{number}} સચવાઈ ગઈ.',
     saved: 'આવક પાવતી સચવાઈ ગઈ.',
+    photosNotUploadedTitle: 'ફોટો અપલોડ થયા નથી',
+    photosNotUploadedMessage: 'આવક પાવતી {{number}} સચવાઈ ગઈ છે, પણ આ ફોટો અપલોડ થયા નથી:\n{{photos}}',
+    photosNotUploadedMessageNoNumber: 'આવક પાવતી સચવાઈ ગઈ છે, પણ આ ફોટો અપલોડ થયા નથી:\n{{photos}}',
+    failedGrnPhoto: 'આવક પાવતીનો ફોટો {{position}}',
+    failedItemPhoto: '{{item}}, ફોટો {{position}}',
+    retryPhotos: 'ફરી પ્રયાસ કરો',
+    continueWithoutPhotos: 'ફોટો વગર આગળ વધો',
+    photosUploaded: 'ફોટો અપલોડ થઈ ગયા.',
+    uploadingPhotos: 'ફોટો અપલોડ થઈ રહ્યા છે…',
+    photosNotRemoved: {
+      one: 'કાઢેલો {{count}} ફોટો હજુ આવક પાવતી પર છે. આવક પાવતી ખોલીને ફરી કાઢો.',
+      other: 'કાઢેલા {{count}} ફોટો હજુ આવક પાવતી પર છે. આવક પાવતી ખોલીને ફરી કાઢો.',
+    },
     pdfCreateFailed: 'PDF બનાવી શકાઈ નથી. ફરી પ્રયાસ કરો.',
     pdfShareFailed: 'PDF શેર કરી શકાઈ નથી. ફરી પ્રયાસ કરો.',
     createGrn: 'આવક પાવતી બનાવો',

@@ -9,7 +9,7 @@ jest.mock('@/config/supabaseConfig', () => ({
   beginOperatorMutation: () => jest.fn(),
   getAuthenticatedClient: async () => ({ rpc: mockRpc }),
 }));
-jest.mock('../imageUploadService', () => ({ uploadDeferredImages: jest.fn() }));
+jest.mock('../imageUploadService', () => ({}));
 
 const GRN_ID = '11111111-2222-4333-8444-555555555555';
 

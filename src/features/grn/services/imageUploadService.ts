@@ -881,133 +881,152 @@ const uploadSingleDeferredImage = async (
   }
 };
 
+// ============================================================================
+// PHOTOS KEPT ON THE DEVICE UNTIL THE GRN IS SAVED
+// ============================================================================
+
 /**
- * Upload deferred images after GRN creation
- * This handles images that were selected with a temp GRN ID and need to be uploaded with the real GRN ID
- * Uses parallel uploads for better performance
+ * A photo picked in the GRN form. It stays on the device (a local file) until
+ * the GRN is saved, in create and in edit mode alike, so that discarding the
+ * form leaves the server as it was.
  */
-export const uploadDeferredImages = async (
-  realGrnId: string,
+export interface PendingGRNPhoto {
+  image: GRNImageData;
+  imageType: 'header' | 'item';
+  /** goodsreceived_trl id for an item photo; empty when the saved line could not be identified. */
+  itemId?: string;
+  /** Name of the line, to tell the user which photo this is. */
+  itemName?: string;
+  /** 1-based place among the photos picked for the GRN, or for that line. */
+  position: number;
+}
+
+/** A photo that did not reach the server. */
+export interface FailedGRNPhoto extends PendingGRNPhoto {
+  error?: string;
+  /**
+   * Set when the upload was still running when the wait ended. A retry waits
+   * for this same upload before it starts another, so a slow upload that lands
+   * late is not uploaded twice.
+   */
+  inFlight?: Promise<{ success: boolean; error?: string }>;
+}
+
+export interface GRNPhotoUploadOutcome {
+  uploadedCount: number;
+  failed: FailedGRNPhoto[];
+}
+
+/** How long a save waits for its photos before reporting the rest as not uploaded. */
+export const GRN_PHOTO_UPLOAD_WAIT_MS = 30000;
+
+/** A photo that exists only on the device: a local file, no storage path, no server id. */
+export const isDeferredGRNPhoto = (image: GRNImageData): boolean =>
+  !!image.imageUrl &&
+  image.imageUrl.startsWith('file://') &&
+  !image.storagePath &&
+  isTemporaryGRNImageId(image.id);
+
+/**
+ * The photos of a form that still have to be uploaded.
+ * @param lines the saved lines, each with the id the server gave it
+ */
+export const collectDeferredGRNPhotos = (
   headerImages: GRNImageData[],
-  items: Array<{ grn_trl_id: string; trl_images?: GRNImageData[] }>,
-  itemMapping?: Array<{ index: number; item_id: string; item_name: string }>
-): Promise<{ success: boolean; uploadedCount: number; errors: string[] }> => {
-  const errors: string[] = [];
-  let uploadedCount = 0;
+  lines: Array<{ itemId?: string; itemName?: string; images?: GRNImageData[] }>
+): PendingGRNPhoto[] => {
+  const photos: PendingGRNPhoto[] = headerImages
+    .filter(isDeferredGRNPhoto)
+    .map((image, index) => ({ image, imageType: 'header' as const, position: index + 1 }));
 
-  // Filter to only deferred images (have local file:// imageUrl but no storagePath)
-  // Also exclude images that already have a valid database ID (not temp_*) as they're already uploaded
-  const deferredHeaderImages = headerImages.filter(img => {
-    const hasLocalUrl = img.imageUrl && img.imageUrl.startsWith('file://');
-    const hasNoStoragePath = !img.storagePath;
-    const isNotAlreadyUploaded = isTemporaryGRNImageId(img.id);
-
-    // Skip if image already has a real database ID (was already uploaded)
-    if (!isTemporaryGRNImageId(img.id)) {
-      return false;
-    }
-
-    return hasLocalUrl && hasNoStoragePath;
-  });
-  const deferredItemImages: Array<{ image: GRNImageData; itemId: string }> = [];
-
-  for (let itemIndex = 0; itemIndex < items.length; itemIndex++) {
-    const item = items[itemIndex];
-    // Same logic as header images - exclude already-uploaded images
-    const itemImages = (item.trl_images || []).filter(img => {
-      const hasLocalUrl = img.imageUrl && img.imageUrl.startsWith('file://');
-      const hasNoStoragePath = !img.storagePath;
-
-      // Skip if image already has a real database ID
-      if (!isTemporaryGRNImageId(img.id)) {
-        return false;
-      }
-
-      return hasLocalUrl && hasNoStoragePath;
+  for (const line of lines) {
+    (line.images || []).filter(isDeferredGRNPhoto).forEach((image, index) => {
+      photos.push({
+        image,
+        imageType: 'item',
+        itemId: line.itemId,
+        itemName: line.itemName,
+        position: index + 1,
+      });
     });
-
-    // Get the real item ID from the mapping if available
-    let realItemId = item.grn_trl_id;
-    if (itemMapping && itemMapping[itemIndex]) {
-      realItemId = itemMapping[itemIndex].item_id;
-    }
-
-    for (const image of itemImages) {
-      deferredItemImages.push({ image, itemId: realItemId });
-    }
   }
 
-  const totalImages = deferredHeaderImages.length + deferredItemImages.length;
+  return photos;
+};
 
-  if (totalImages === 0) {
-    return { success: true, uploadedCount: 0, errors: [] };
+/**
+ * Upload photos to a saved GRN, in parallel, and report each one that did not
+ * arrive. Never throws.
+ *
+ * Pass the `failed` list of an earlier call to try those photos again.
+ */
+export const uploadGRNPhotos = async (
+  realGrnId: string,
+  photos: Array<PendingGRNPhoto | FailedGRNPhoto>,
+  waitMs: number = GRN_PHOTO_UPLOAD_WAIT_MS
+): Promise<GRNPhotoUploadOutcome> => {
+  if (photos.length === 0) {
+    return { uploadedCount: 0, failed: [] };
   }
+
+  const describe = ({ image, imageType, itemId, itemName, position }: PendingGRNPhoto): PendingGRNPhoto => ({
+    image,
+    imageType,
+    itemId,
+    itemName,
+    position,
+  });
 
   let finishMutation: (() => void) | undefined;
+  let supabase: Awaited<ReturnType<typeof getAuthenticatedClient>>;
   try {
     finishMutation = beginOperatorMutation();
-    const supabase = await getAuthenticatedClient();
-
-    // Upload all images in parallel for better performance
-    const uploadPromises: Promise<{
-      success: boolean;
-      error?: string;
-      type: string;
-    }>[] = [];
-
-    // Add header image uploads
-    for (const image of deferredHeaderImages) {
-      uploadPromises.push(
-        uploadSingleDeferredImage(supabase, realGrnId, image, 'header').then(
-          result => ({ ...result, type: `header:${image.fileName}` })
-        )
-      );
-    }
-
-    // Add item image uploads
-    for (const { image, itemId } of deferredItemImages) {
-      uploadPromises.push(
-        uploadSingleDeferredImage(
-          supabase,
-          realGrnId,
-          image,
-          'item',
-          itemId
-        ).then(result => ({ ...result, type: `item:${image.fileName}` }))
-      );
-    }
-
-    // Wait for all uploads to complete
-    const results = await Promise.all(uploadPromises);
-
-    // Count successes and collect errors
-    for (const result of results) {
-      if (result.success) {
-        uploadedCount++;
-      } else if (result.error) {
-        errors.push(`${result.type}: ${result.error}`);
-      }
-    }
-
-    return {
-      success: errors.length === 0,
-      uploadedCount,
-      errors,
-    };
+    supabase = await getAuthenticatedClient();
   } catch (error) {
-    console.error('[ImageService] uploadDeferredImages exception:', error);
-    return {
-      success: false,
-      uploadedCount,
-      errors: [
-        error instanceof Error
-          ? error.message
-          : 'Failed to upload deferred images',
-      ],
-    };
-  } finally {
     finishMutation?.();
+    console.error('[ImageService] uploadGRNPhotos could not start:', error);
+    return {
+      uploadedCount: 0,
+      failed: photos.map(photo => ({ ...describe(photo), error: t('grn.photos.uploadFailed') })),
+    };
   }
+
+  const attempts = photos.map(async (photo): Promise<{ success: boolean; error?: string }> => {
+    // An upload from an earlier try may still be running: its result counts.
+    const earlier = (photo as FailedGRNPhoto).inFlight;
+    if (earlier) {
+      const earlierResult = await earlier;
+      if (earlierResult.success) return earlierResult;
+    }
+    if (photo.imageType === 'item' && !photo.itemId) {
+      return { success: false, error: t('grn.upload.lineNotFound') };
+    }
+    return uploadSingleDeferredImage(supabase, realGrnId, photo.image, photo.imageType, photo.itemId);
+  });
+  // The uploads are not cancelled when the wait ends, so the mutation ends with them.
+  void Promise.all(attempts).then(() => finishMutation?.());
+
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<null>(resolve => {
+    timer = setTimeout(() => resolve(null), waitMs);
+  });
+  const results = await Promise.all(attempts.map(attempt => Promise.race([attempt, deadline])));
+  if (timer !== undefined) clearTimeout(timer);
+
+  let uploadedCount = 0;
+  const failed: FailedGRNPhoto[] = [];
+  results.forEach((result, index) => {
+    if (result?.success) {
+      uploadedCount++;
+    } else if (result) {
+      failed.push({ ...describe(photos[index]), error: result.error });
+    } else {
+      console.warn('[ImageService] Photo upload still running when the wait ended');
+      failed.push({ ...describe(photos[index]), error: t('grn.upload.stillUploading'), inFlight: attempts[index] });
+    }
+  });
+
+  return { uploadedCount, failed };
 };
 
 // Note: imageToBase64 helper is defined at the top of this file
