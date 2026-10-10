@@ -12,7 +12,7 @@ import { isTemporaryGRNImageId } from './imageId';
 // M3 Fix: Import executeRPC for potential future refactoring
 // Note: Current RPC methods have custom error handling (E5 fix) or extensive debug logging
 // and are not migrated to executeRPC pattern to preserve their specialized behavior
-import { executeRPC, createErrorResponse } from '@/utils/serviceErrorHandler';
+import { executeRPC, createErrorResponse, isOfflineFailure } from '@/utils/serviceErrorHandler';
 import { t } from '@/i18n';
 import { serverText } from '@/utils/serverText';
 import { toCalendarDay } from '@/utils/formatters';
@@ -317,6 +317,11 @@ export const updateGRN = async (
   options: { removedImages?: RemovedGRNImage[] } = {}
 ) => {
   let finishMutation: (() => void) | undefined;
+  // True when update_grn was sent and no answer came back: the server may have
+  // applied it. update_grn has no idempotency key, so a line added in this edit
+  // must not be sent again as new until the server has been asked what it holds
+  // (findLinesSavedByLostUpdate).
+  let outcomeUnknown = false;
   try {
     finishMutation = beginOperatorMutation();
 
@@ -473,6 +478,7 @@ export const updateGRN = async (
 
     if (error) {
       log.error('update_grn failed', loggableError(error));
+      outcomeUnknown = isOfflineFailure(error);
 
       // Handle stock protection errors specifically
       if (error.message?.includes('dispatches exist') || error.message?.includes('STOCK_PROTECTED')) {
@@ -573,9 +579,64 @@ export const updateGRN = async (
     return {
       success: false,
       error: errorMessage,
+      outcomeUnknown,
     };
   } finally {
     finishMutation?.();
+  }
+};
+
+/** A line of the form as far as matching it to a saved line needs. */
+type FormLine = Pick<GRNItemData, 'grn_trl_id' | 'item_table_id' | 'packaging' | 'qty' | 'weight' | 'rack' | 'package_mark'>;
+
+const isSavedLineId = (id: string | undefined | null): id is string =>
+  !!id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+
+/**
+ * After an update whose answer was lost: which lines the form still holds as
+ * new are already on the GRN. Reads the GRN's lines from the server and pairs
+ * each new line of the form with a saved line the form does not know, same
+ * item, packing, quantity, weight, rack and mark, each saved line used once.
+ *
+ * The caller gives the paired lines their server id, so the next Save updates
+ * them instead of adding them a second time. Nothing else in the form changes.
+ *
+ * @returns `adopted`: local line id -> saved line id. A failure means the
+ * server could not be asked; the form must not be saved until it can.
+ */
+export const findLinesSavedByLostUpdate = async (
+  grnId: string,
+  lines: FormLine[]
+): Promise<{ success: true; adopted: Record<string, string> } | { success: false; error: string }> => {
+  try {
+    const authenticatedClient = await getAuthenticatedClient();
+    const { data, error } = await authenticatedClient
+      .from('goodsreceived_trl')
+      .select('id, item_id, packaging, qty, weight, rack, package_mark')
+      .eq('gr_id', grnId);
+    if (error) throw error;
+
+    const text = (value: unknown) => (value === null || value === undefined ? '' : String(value).trim());
+    const signature = (line: { item: unknown; packaging: unknown; qty: unknown; weight: unknown; rack: unknown; mark: unknown }) =>
+      JSON.stringify([text(line.item), text(line.packaging), Number(line.qty) || 0, Number(line.weight) || 0, text(line.rack), text(line.mark)]);
+
+    const known = new Set(lines.map(line => line.grn_trl_id).filter(isSavedLineId));
+    const unknownSaved = ((data ?? []) as Array<Record<string, unknown>>).filter(row => !known.has(String(row.id)));
+    const adopted: Record<string, string> = {};
+    for (const line of lines) {
+      if (isSavedLineId(line.grn_trl_id)) continue;
+      const wanted = signature({ item: line.item_table_id, packaging: line.packaging, qty: line.qty, weight: line.weight, rack: line.rack, mark: line.package_mark });
+      const at = unknownSaved.findIndex(row =>
+        signature({ item: row.item_id, packaging: row.packaging, qty: row.qty, weight: row.weight, rack: row.rack, mark: row.package_mark }) === wanted
+      );
+      if (at === -1) continue;
+      adopted[line.grn_trl_id] = String(unknownSaved[at].id);
+      unknownSaved.splice(at, 1);
+    }
+    return { success: true, adopted };
+  } catch (error) {
+    log.error('Could not read the lines of the GRN after a lost update', loggableError(error));
+    return { success: false, error: t('grn.review.saveNotConfirmed') };
   }
 };
 
@@ -623,15 +684,22 @@ export const loadGRNData = async (grnId: string) => {
       }
     }
 
-    // Fetch GRN images
+    // Fetch GRN images. Only confirmed rows are photos: a row left 'pending' by
+    // an upload that could not be cancelled has no file behind it.
     const { data: imagesData, error: imagesError } = await authenticatedClient
       .from('grn_images')
       .select('*')
       .eq('grn_id', grnId)
       .eq('image_type', 'header')
+      .eq('status', 'confirmed')
       .order('display_order', { ascending: true });
 
-    if (imagesError) log.warn('Failed to fetch images', loggableError(imagesError));
+    // A photo list that could not be read is not an empty one: the next Save
+    // would tell update_grn to delete every photo this form did not load.
+    if (imagesError) {
+      log.error('Failed to fetch images', loggableError(imagesError));
+      throw imagesError;
+    }
 
     // Get signed URLs for images
     const imagesWithUrls = await Promise.all((imagesData || []).map(async (img) => {
@@ -690,13 +758,15 @@ export const loadGRNData = async (grnId: string) => {
         .select('*')
         .in('grn_item_id', itemIds)
         .eq('image_type', 'item')
+        .eq('status', 'confirmed')
         .order('display_order', { ascending: true });
 
+      // As for the header photos: an unread list fails the load.
       if (itemImagesError) {
-        log.warn('Failed to fetch item images', loggableError(itemImagesError));
-      } else {
-        itemImagesData = itemImages || [];
+        log.error('Failed to fetch item images', loggableError(itemImagesError));
+        throw itemImagesError;
       }
+      itemImagesData = itemImages || [];
     }
 
     // Get signed URLs for item images

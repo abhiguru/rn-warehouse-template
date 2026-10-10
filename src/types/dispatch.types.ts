@@ -94,6 +94,10 @@ export interface DispatchFormState {
 
   // Validation
   validationErrors: Record<string, string>;
+
+  // Message for a typed dispatch number another dispatch holds. Kept with the form, not
+  // in a screen, so step 1 still refuses the number after it was left and reopened.
+  takenNumberError?: string | null;
 }
 
 // ============================================================================

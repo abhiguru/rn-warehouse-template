@@ -86,6 +86,14 @@ interface GRNFormState {
   // Error state for displaying save/load failures to user
   error: string | null;
 
+  // An update was sent and no answer came back: the server is asked what it
+  // holds before the next Save (see findLinesSavedByLostUpdate).
+  saveUnconfirmed: boolean;
+
+  // Message for a typed GRN number another GRN holds. Kept here, not in a
+  // screen, so step 1 still refuses the number after it was left and reopened.
+  takenNumberError: string | null;
+
   // Validation
   validationErrors: Record<string, string>;
 
@@ -119,6 +127,8 @@ const createInitialState = (): GRNFormState => ({
   isLoading: false,
   isSaving: false,
   error: null,
+  saveUnconfirmed: false,
+  takenNumberError: null,
   validationErrors: {},
   snapshot: null,
 });
@@ -167,7 +177,8 @@ const grnFormSlice = createSlice({
     },
     updateHeaderImageProgress: (state, action: PayloadAction<{ imageId: string; progress: number }>) => {
       const image = state.header.gr_images.find(img => img.id === action.payload.imageId);
-      if (image) {
+      // A late progress report never turns a prepared photo back into one in progress.
+      if (image && image.uploadStatus !== 'completed') {
         image.uploadProgress = action.payload.progress;
         image.uploadStatus = 'uploading';
       }
@@ -220,7 +231,7 @@ const grnFormSlice = createSlice({
       const item = state.items.find(item => item.grn_trl_id === action.payload.itemId);
       if (item && item.trl_images) {
         const image = item.trl_images.find(img => img.id === action.payload.imageId);
-        if (image) {
+        if (image && image.uploadStatus !== 'completed') {
           image.uploadProgress = action.payload.progress;
           image.uploadStatus = 'uploading';
         }
@@ -295,6 +306,19 @@ const grnFormSlice = createSlice({
     clearValidationError: (state, action: PayloadAction<string>) => {
       delete state.validationErrors[action.payload];
     },
+    setTakenNumberError: (state, action: PayloadAction<string | null>) => {
+      state.takenNumberError = action.payload;
+    },
+    setSaveUnconfirmed: (state, action: PayloadAction<boolean>) => {
+      state.saveUnconfirmed = action.payload;
+    },
+    /** Lines the form held as new that the server already has: local id -> saved id. */
+    adoptSavedLines: (state, action: PayloadAction<Record<string, string>>) => {
+      for (const item of state.items) {
+        const savedId = action.payload[item.grn_trl_id];
+        if (savedId) item.grn_trl_id = savedId;
+      }
+    },
 
     // Bulk operations
     loadGRNData: (state, action: PayloadAction<{ header: GRNHeaderData; items: GRNItemData[]; grnId: string }>) => {
@@ -302,6 +326,8 @@ const grnFormSlice = createSlice({
       state.items = action.payload.items;
       state.grnId = action.payload.grnId;
       state.removedImages = [];
+      state.saveUnconfirmed = false;
+      state.takenNumberError = null;
     },
     resetForm: () => {
       return createInitialState();
@@ -374,6 +400,9 @@ export const {
   clearError,
   setValidationErrors,
   clearValidationError,
+  setTakenNumberError,
+  setSaveUnconfirmed,
+  adoptSavedLines,
   loadGRNData,
   resetForm,
   // #18 Fix: Snapshot actions for optimistic update rollback
@@ -391,6 +420,8 @@ export const selectGRNFormHeader = (state: { grnForm: GRNFormState }) => state.g
 export const selectGRNFormItems = (state: { grnForm: GRNFormState }) => state.grnForm.items;
 export const selectGRNFormId = (state: { grnForm: GRNFormState }) => state.grnForm.grnId;
 export const selectGRNRemovedImages = (state: { grnForm: GRNFormState }) => state.grnForm.removedImages;
+export const selectGRNSaveUnconfirmed = (state: { grnForm: GRNFormState }) => state.grnForm.saveUnconfirmed === true;
+export const selectGRNTakenNumberError = (state: { grnForm: GRNFormState }) => state.grnForm.takenNumberError ?? null;
 export const selectGRNTempId = (state: { grnForm: GRNFormState }) => state.grnForm.tempGrnId;
 export const selectGRNFormValidationErrors = (state: { grnForm: GRNFormState }) => state.grnForm.validationErrors;
 export const selectGRNFormCurrentStep = (state: { grnForm: GRNFormState }) => state.grnForm.currentStep;

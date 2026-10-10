@@ -42,6 +42,9 @@ const describeFormat = (format: ImageManipulator.SaveFormat): { mimeType: string
   }
 };
 
+const isKnownSize = (width: number | undefined, height: number | undefined): boolean =>
+  Number.isFinite(width) && Number.isFinite(height) && width! > 0 && height! > 0;
+
 /**
  * The resize step for a photo of the given size: the longer side becomes
  * `maxEdge` and the other follows. No step when the photo already fits. When
@@ -52,8 +55,7 @@ export const resizeToFit = (
   height: number | undefined,
   maxEdge: number
 ): ImageManipulator.Action[] => {
-  const known = Number.isFinite(width) && Number.isFinite(height) && width! > 0 && height! > 0;
-  if (!known) return [{ resize: { width: maxEdge } }];
+  if (!isKnownSize(width, height)) return [{ resize: { width: maxEdge } }];
   if (Math.max(width!, height!) <= maxEdge) return [];
   return width! >= height! ? [{ resize: { width: maxEdge } }] : [{ resize: { height: maxEdge } }];
 };
@@ -62,7 +64,20 @@ export const compressPhoto = async (
   source: { uri: string; width?: number; height?: number },
   settings: PhotoCompressionSettings
 ): Promise<CompressedPhoto> => {
-  const actions = resizeToFit(source.width, source.height, settings.maxEdge);
+  // A photo from the in-app camera arrives without its size (0 x 0). The size
+  // is read first: limiting the width blindly leaves a portrait photo taller
+  // than `maxEdge` and enlarges a small one.
+  let { width, height } = source;
+  if (!isKnownSize(width, height)) {
+    try {
+      const probe = await ImageManipulator.manipulateAsync(source.uri, [], {});
+      width = probe.width;
+      height = probe.height;
+    } catch {
+      // The size stays unknown; the width is limited, which keeps the shape.
+    }
+  }
+  const actions = resizeToFit(width, height, settings.maxEdge);
   const formats = [settings.format];
   if (settings.fallbackFormat && settings.fallbackFormat !== settings.format) {
     formats.push(settings.fallbackFormat);

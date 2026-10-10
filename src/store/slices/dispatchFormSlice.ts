@@ -50,6 +50,7 @@ const createInitialState = (): DispatchFormState & { snapshot: DispatchFormSnaps
 
   // Validation
   validationErrors: {},
+  takenNumberError: null,
 
   // #18 Fix: Snapshot for optimistic update rollback
   snapshot: null,
@@ -296,6 +297,11 @@ const dispatchFormSlice = createSlice({
       state.validationErrors = action.payload;
     },
 
+    /** The message for a typed number another dispatch holds; null when the number changes. */
+    setTakenNumberError: (state, action: PayloadAction<string | null>) => {
+      state.takenNumberError = action.payload;
+    },
+
     /**
      * Clear validation errors
      */
@@ -469,6 +475,7 @@ export const {
   loadDispatchData,
   resetForm,
   resetFormData,
+  setTakenNumberError,
   loadFromOrder,
 
   // #18 Fix: Snapshot actions for optimistic update rollback
@@ -539,6 +546,7 @@ const selectDispatchFormState = (state: { dispatchForm: DispatchFormState }) => 
 export const selectDispatchFormHeader = (state: { dispatchForm: DispatchFormState }) => state.dispatchForm.header;
 export const selectDispatchFormItems = (state: { dispatchForm: DispatchFormState }) => state.dispatchForm.items;
 export const selectDispatchFormImages = (state: { dispatchForm: DispatchFormState }) => state.dispatchForm.images;
+export const selectDispatchTakenNumberError = (state: { dispatchForm: DispatchFormState }) => state.dispatchForm.takenNumberError ?? null;
 export const selectDispatchFormValidationErrors = (state: { dispatchForm: DispatchFormState }) => state.dispatchForm.validationErrors;
 export const selectDispatchFormCurrentStep = (state: { dispatchForm: DispatchFormState }) => state.dispatchForm.current_step;
 export const selectDispatchFormId = (state: { dispatchForm: DispatchFormState }) => state.dispatchForm.dispatch_id;

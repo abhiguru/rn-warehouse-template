@@ -710,12 +710,37 @@ export interface GRNPhotoUploadOutcome {
 /** How long a save waits for its photos before reporting the rest as not uploaded. */
 export const GRN_PHOTO_UPLOAD_WAIT_MS = 30000;
 
-/** A photo that exists only on the device: a local file, no storage path, no server id. */
+/**
+ * A photo that exists only on the device and is ready to be uploaded: the
+ * prepared (re-encoded) local file, no storage path, no server id.
+ *
+ * Until its preparation has finished, and when it has failed, the entry still
+ * points at the original camera or gallery file, with its EXIF block. That file
+ * is never uploaded, so only a 'completed' entry counts.
+ */
 export const isDeferredGRNPhoto = (image: GRNImageData): boolean =>
+  image.uploadStatus === 'completed' &&
   !!image.imageUrl &&
   image.imageUrl.startsWith('file://') &&
   !image.storagePath &&
   isTemporaryGRNImageId(image.id);
+
+/**
+ * What keeps a form from being saved because of its photos: one that is still
+ * being prepared, or one whose preparation failed. Null when every photo is
+ * either on the server or prepared.
+ */
+export const unpreparedGRNPhotos = (
+  headerImages: GRNImageData[],
+  lines: Array<{ images?: GRNImageData[] }>
+): 'preparing' | 'failed' | null => {
+  const local = [...headerImages, ...lines.flatMap(line => line.images || [])].filter(
+    image => !image.storagePath && isTemporaryGRNImageId(image.id)
+  );
+  if (local.some(image => image.uploadStatus === 'failed')) return 'failed';
+  if (local.some(image => image.uploadStatus !== 'completed')) return 'preparing';
+  return null;
+};
 
 /**
  * The photos of a form that still have to be uploaded.
@@ -790,6 +815,10 @@ export const uploadGRNPhotos = async (
     }
     if (photo.imageType === 'item' && !photo.itemId) {
       return { success: false, error: t('grn.upload.lineNotFound') };
+    }
+    // Only the prepared copy is ever sent, whatever list the caller built.
+    if (!isDeferredGRNPhoto(photo.image)) {
+      return { success: false, error: t('grn.upload.notPrepared') };
     }
     return uploadSingleDeferredImage(supabase, realGrnId, photo.image, photo.imageType, photo.itemId);
   });

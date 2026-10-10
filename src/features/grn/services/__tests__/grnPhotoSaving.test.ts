@@ -6,7 +6,7 @@
  * RPCs by name, storage calls as `storage.upload` / `storage.remove`.
  */
 import { createGRN, updateGRN } from '../grnFormService';
-import { uploadGRNPhotos, collectDeferredGRNPhotos, type FailedGRNPhoto } from '../imageUploadService';
+import { uploadGRNPhotos, collectDeferredGRNPhotos, unpreparedGRNPhotos, type FailedGRNPhoto } from '../imageUploadService';
 import type { GRNHeaderData, GRNImageData } from '@/store/slices/grnFormSlice';
 
 type RpcAnswer = { data: unknown; error: unknown };
@@ -393,6 +393,102 @@ describe('saving an edited GRN', () => {
 
     expect(result.success).toBe(false);
     expect(names()).toEqual(['update_grn']);
+  });
+});
+
+// RF-1 (M5-11): until a photo's preparation has finished, and when it has
+// failed, the form's entry still points at the original camera or gallery file.
+describe('a photo whose preparation has not finished or has failed', () => {
+  /** The entry ImageUploadButton puts in the form the moment a photo is picked. */
+  const original = (name: string, uploadStatus: 'uploading' | 'failed'): GRNImageData => ({
+    id: `temp_${name}`,
+    fileName: `${name}.jpg`,
+    imageUrl: `file:///DCIM/Camera/${name}.jpg`,
+    uploadStatus,
+    fileSize: 8_000_000,
+    mimeType: 'image/jpeg',
+  });
+  const createBackend = () => {
+    mockRpcHandlers.save_grn = () => ({
+      data: { success: true, data: { grn_id: GRN_ID, gr_no: 'A0010', item_mapping: [{ index: 0, item_id: LINE_ID }] } },
+      error: null,
+    });
+  };
+
+  it('is not among the photos to upload', () => {
+    const photos = collectDeferredGRNPhotos(
+      [picked('book'), original('running', 'uploading'), original('broken', 'failed')],
+      [{ itemId: LINE_ID, itemName: 'Example Potatoes', images: [original('mark', 'uploading')] }]
+    );
+    expect(photos.map((photo) => photo.image.id)).toEqual(['temp_book']);
+  });
+
+  it('tells the form apart: preparing, failed, ready', () => {
+    expect(unpreparedGRNPhotos([picked('book'), saved(KEPT_PHOTO_ID, 'kept')], [{ images: [picked('mark')] }])).toBeNull();
+    expect(unpreparedGRNPhotos([picked('book')], [{ images: [original('mark', 'uploading')] }])).toBe('preparing');
+    expect(unpreparedGRNPhotos([original('running', 'uploading'), original('broken', 'failed')], [])).toBe('failed');
+  });
+
+  it('is never sent by a create: the original file is not registered, read or uploaded', async () => {
+    createBackend();
+    const result = await createGRN({
+      header: header([picked('book'), original('broken', 'failed'), original('running', 'uploading')]),
+      items: [line('item-1', 'Example Potatoes', [original('mark', 'failed')])],
+    });
+
+    expect(result.success).toBe(true);
+    expect(callsTo('register_grn_image_upload').map((call) => call.args.p_file_name)).toEqual(['book.webp']);
+    expect(callsTo('storage.upload')).toHaveLength(1);
+    expect(JSON.stringify((global as any).fetch.mock.calls)).not.toContain('DCIM');
+  });
+
+  it('is never sent by an edit', async () => {
+    mockRpcHandlers.update_grn = () => ({
+      data: { success: true, grn: { id: GRN_ID, images: [{ id: KEPT_PHOTO_ID }] }, item_mapping: [] },
+      error: null,
+    });
+    const result = await updateGRN(GRN_ID, {
+      header: header([saved(KEPT_PHOTO_ID, 'kept'), original('broken', 'failed')]),
+      items: [line(LINE_ID, 'Example Potatoes', [original('mark', 'uploading')])],
+    });
+
+    expect(result.success).toBe(true);
+    expect(callsTo('register_grn_image_upload')).toHaveLength(0);
+    expect(callsTo('storage.upload')).toHaveLength(0);
+  });
+
+  it('is refused by the upload itself, whatever list it is given', async () => {
+    const outcome = await uploadGRNPhotos(GRN_ID, [
+      { image: original('broken', 'failed'), imageType: 'header', position: 1 },
+      { image: picked('book'), imageType: 'header', position: 2 },
+    ]);
+
+    expect(outcome.uploadedCount).toBe(1);
+    expect(outcome.failed.map((photo) => [photo.image.id, photo.error])).toEqual([['temp_broken', 'The photo was not ready to upload']]);
+    expect(callsTo('register_grn_image_upload')).toHaveLength(1);
+  });
+});
+
+// RF-3: update_grn has no idempotency key. The service says when its answer
+// was lost, so the form asks the server what it holds before saving again.
+describe('an update whose answer is lost', () => {
+  const edit = () => updateGRN(GRN_ID, { header: header([saved(KEPT_PHOTO_ID, 'kept')]), items: [line('item-new', 'Example Onions')] });
+
+  it.each([
+    ['a dropped connection', 'TypeError: Network request failed'],
+    ['the request time limit', 'TimeoutError: Request timeout'],
+  ])('is reported as "outcome unknown" after %s', async (_case, message) => {
+    mockRpcHandlers.update_grn = () => ({ data: null, error: { message, code: '', details: '', hint: '' } });
+    const result = await edit();
+    expect(result.success).toBe(false);
+    expect(result.outcomeUnknown).toBe(true);
+  });
+
+  it('is not claimed when the server answered with a refusal', async () => {
+    mockRpcHandlers.update_grn = () => ({ data: { success: false, message: 'GRN number already exists: A0010' }, error: null });
+    expect((await edit()).outcomeUnknown).toBe(false);
+    mockRpcHandlers.update_grn = () => ({ data: null, error: { message: 'new row violates check constraint', code: '23514' } });
+    expect((await edit()).outcomeUnknown).toBe(false);
   });
 });
 

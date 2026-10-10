@@ -226,4 +226,34 @@ describe('GRN number check', () => {
       await unmount();
     });
   });
+
+  // RF-14: the block used to live in a ref of one screen instance.
+  describe('a taken number after step 1 was left and reopened', () => {
+    it('still keeps step 1 from passing, shows on the field, logs no number, and clears when the number changes', async () => {
+      const logged = jest.spyOn(console, 'log');
+      (checkGrnExists as jest.Mock).mockResolvedValue({ exists: true, grnId: OTHER_ID, grNo: 'A0020' });
+      const store = makeStore();
+      store.dispatch(loadGRNData({ header, items: [line], grnId: OWN_ID }));
+      const first = await mount('edit', store, OWN_ID);
+      await typeNumber(first.form, 'A0020');
+      expect(first.form().validationErrors.gr_no).toMatch(/A0020/);
+      await first.unmount();
+
+      // A new instance of the hook: step 1 opened again (or the review step asking).
+      const second = await mount('edit', store, OWN_ID);
+      expect(second.form().validationErrors.gr_no).toMatch(/A0020/);
+      let validation!: { isValid: boolean; errors: Record<string, string> };
+      await act(async () => { validation = await second.form().validateCurrentStep(1); });
+      expect(validation.isValid).toBe(false);
+      expect(validation.errors.gr_no).toMatch(/A0020/);
+      expect(JSON.stringify(logged.mock.calls)).not.toContain('A0020');
+
+      (checkGrnExists as jest.Mock).mockResolvedValue({ exists: false });
+      await typeNumber(second.form, 'A0021');
+      await act(async () => { validation = await second.form().validateCurrentStep(1); });
+      expect(validation.isValid).toBe(true);
+      expect(store.getState().grnForm.takenNumberError).toBeNull();
+      await second.unmount();
+    });
+  });
 });

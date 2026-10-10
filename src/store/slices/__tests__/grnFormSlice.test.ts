@@ -1,8 +1,16 @@
 import reducer, {
+  addHeaderImage,
   addItem,
   addItemImage,
+  adoptSavedLines,
+  completeHeaderImageUpload,
   completeItemImageUpload,
   GRNItemData,
+  loadGRNData,
+  resetForm,
+  setSaveUnconfirmed,
+  setTakenNumberError,
+  updateHeaderImageProgress,
 } from '../grnFormSlice';
 
 describe('grnForm item image uploads', () => {
@@ -125,5 +133,46 @@ describe('grnForm removed photos', () => {
 
     expect(reducer(removed, resetForm()).removedImages).toEqual([]);
     expect(reducer(removed, loadGRNData({ grnId: 'other', header: removed.header, items: [] })).removedImages).toEqual([]);
+  });
+});
+
+// RF-1: Save looks at the status, so a late progress report must not undo "prepared".
+describe('grnForm photo status', () => {
+  const prepared = { imageId: 'temp_1', imageUrl: 'file:///cache/prepared.webp', fileSize: 1200, mimeType: 'image/webp' };
+  const picked = { id: 'temp_1', fileName: 'photo.jpg', imageUrl: 'file:///DCIM/photo.jpg', uploadStatus: 'uploading' as const };
+
+  it('a progress report after the photo was prepared leaves it prepared', () => {
+    let state = reducer(undefined, addHeaderImage(picked));
+    state = reducer(state, completeHeaderImageUpload(prepared));
+    state = reducer(state, updateHeaderImageProgress({ imageId: 'temp_1', progress: 60 }));
+    expect(state.header.gr_images[0]).toMatchObject({ uploadStatus: 'completed', uploadProgress: 100, imageUrl: 'file:///cache/prepared.webp' });
+  });
+});
+
+// RF-3: after an update whose answer was lost.
+describe('grnForm lines the server already holds', () => {
+  const line = (id: string): GRNItemData => ({
+    grn_trl_id: id, item_table_id: 'master-1', item_name: 'Example Potatoes', packaging: 'Bag', qty: 100, stock: 100, weight: 10, rack: '', package_mark: '', trl_images: [],
+  });
+
+  it('gives an adopted line its saved id and keeps everything else of it', () => {
+    let state = reducer(undefined, addItem(line('55555555-2222-4333-8444-555555555555')));
+    state = reducer(state, addItem({ ...line('item-new'), qty: 7 }));
+    state = reducer(state, setSaveUnconfirmed(true));
+    state = reducer(state, adoptSavedLines({ 'item-new': '99999999-2222-4333-8444-555555555555' }));
+    expect(state.items.map((item) => [item.grn_trl_id, item.qty])).toEqual([
+      ['55555555-2222-4333-8444-555555555555', 100],
+      ['99999999-2222-4333-8444-555555555555', 7],
+    ]);
+    expect(state.saveUnconfirmed).toBe(true);
+  });
+
+  it('a freshly loaded or reset form is not marked', () => {
+    let state = reducer(undefined, setSaveUnconfirmed(true));
+    state = reducer(state, setTakenNumberError('taken'));
+    state = reducer(state, loadGRNData({ header: state.header, items: [], grnId: 'g1' }));
+    expect(state).toMatchObject({ saveUnconfirmed: false, takenNumberError: null });
+    state = reducer(reducer(state, setSaveUnconfirmed(true)), resetForm());
+    expect(state).toMatchObject({ saveUnconfirmed: false, takenNumberError: null });
   });
 });

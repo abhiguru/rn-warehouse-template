@@ -5,19 +5,21 @@
 import React from 'react';
 import { act, create, ReactTestRenderer } from 'react-test-renderer';
 import { GrnReviewStep } from '@/features/grn/screens/GrnReviewStep';
-import { createGRN, updateGRN } from '@/features/grn/services/grnFormService';
-import { uploadGRNPhotos } from '@/features/grn/services/imageUploadService';
-import { removeHeaderImage } from '@/store/slices/grnFormSlice';
+import { createGRN, updateGRN, findLinesSavedByLostUpdate } from '@/features/grn/services/grnFormService';
+import { uploadGRNPhotos, unpreparedGRNPhotos } from '@/features/grn/services/imageUploadService';
+import { removeHeaderImage, adoptSavedLines, setSaveUnconfirmed } from '@/store/slices/grnFormSlice';
+import { showAlert } from '@/utils/alert';
 
 const GRN_ID = '11111111-2222-4333-8444-555555555555';
 const SAVED_PHOTO = 'aaaaaaaa-2222-4333-8444-555555555555';
 
 const mockDispatch = jest.fn();
 let mockRemovedImages: Array<{ id: string; storagePath?: string }> = [];
+let mockSaveUnconfirmed = false;
 jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => mockDispatch,
   useAppSelector: (selector: (state: unknown) => unknown) =>
-    selector({ theme: { preference: 'light', brand: 'orange' }, grnForm: { items: [], removedImages: mockRemovedImages } }),
+    selector({ theme: { preference: 'light', brand: 'orange' }, grnForm: { items: [], removedImages: mockRemovedImages, saveUnconfirmed: mockSaveUnconfirmed } }),
 }));
 
 const mockHeader = {
@@ -52,9 +54,11 @@ jest.mock('react-native-paper', () => ({ Snackbar: 'Snackbar' }));
 jest.mock('@/hooks/useHaptics', () => ({ triggerSuccess: jest.fn(), triggerError: jest.fn(), triggerWarning: jest.fn() }));
 jest.mock('@/components/GRNStepIndicator', () => ({ GRNStepIndicator: () => null }));
 jest.mock('@/components/ImageOverlay', () => ({ ImageOverlay: () => null }));
-jest.mock('@/components/PrintRangeDialog', () => ({ PrintRangeDialog: () => null }));
-jest.mock('@/features/grn/services/grnFormService', () => ({ createGRN: jest.fn(), updateGRN: jest.fn() }));
-jest.mock('@/features/grn/services/imageUploadService', () => ({ uploadGRNPhotos: jest.fn() }));
+jest.mock('@/components/PrintRangeDialog', () => ({ PrintRangeDialog: 'PrintRangeDialog' }));
+jest.mock('@/features/grn/services/grnFormService', () => ({ createGRN: jest.fn(), updateGRN: jest.fn(), findLinesSavedByLostUpdate: jest.fn() }));
+// What unpreparedGRNPhotos answers for real forms is tested with the service (grnPhotoSaving.test.ts).
+jest.mock('@/features/grn/services/imageUploadService', () => ({ uploadGRNPhotos: jest.fn(), unpreparedGRNPhotos: jest.fn(() => null) }));
+jest.mock('@/utils/alert', () => ({ showAlert: jest.fn() }));
 jest.mock('@/features/grn/schemas/grnValidation', () => ({ validateStep3: jest.fn(async () => ({ isValid: true, errors: {} })) }));
 jest.mock('@/services/print-service', () => ({ printGRNRange: jest.fn() }));
 jest.mock('@/services/pdf-service', () => ({ generateGRNPDF: jest.fn() }));
@@ -107,6 +111,8 @@ describe('GRN review step photos', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockRemovedImages = [];
+    mockSaveUnconfirmed = false;
+    (unpreparedGRNPhotos as jest.Mock).mockReturnValue(null);
     jest.spyOn(console, 'log').mockImplementation(() => {});
   });
   afterEach(() => jest.restoreAllMocks());
@@ -233,6 +239,118 @@ describe('GRN review step photos', () => {
 
       expect(uploadGRNPhotos).toHaveBeenCalledWith(GRN_ID, [failedHeaderPhoto]);
       expect(one(tree, 'DocumentSuccessDialog').props.isVisible).toBe(true);
+      await act(async () => { tree.unmount(); });
+    });
+  });
+  // RF-1 (M5-11): Save waits for the prepared copy of every photo; the original file is never sent.
+  describe('photos that are not ready', () => {
+    it.each([
+      ['preparing', 'Photos are still being prepared'],
+      ['failed', "A photo couldn't be prepared"],
+    ])('a photo that is %s holds the save: no question, no request', async (state, title) => {
+      (unpreparedGRNPhotos as jest.Mock).mockReturnValue(state);
+      for (const mode of ['create', 'edit'] as const) {
+        const tree = await render(mode);
+        await act(async () => { await one(tree, 'WizardBottomBar').props.onNext(); });
+        expect(showAlert).toHaveBeenLastCalledWith(title, expect.any(String));
+        expect(saveDialog(tree).props.visible).toBe(false);
+        await act(async () => { tree.unmount(); });
+      }
+      expect(unpreparedGRNPhotos).toHaveBeenCalledWith(mockHeader.gr_images, [{ images: [] }]);
+      expect(createGRN).not.toHaveBeenCalled();
+      expect(updateGRN).not.toHaveBeenCalled();
+    });
+  });
+
+  // RF-4: the form that created a GRN is not a form that can create it again.
+  describe('after the GRN was created', () => {
+    it('Print, then closing the print dialog, returns to the choices; Create does not create again', async () => {
+      (createGRN as jest.Mock).mockResolvedValue({
+        success: true,
+        data: { id: GRN_ID, gr_no: 'A0010', photos: { uploadedCount: 2, failed: [], removalFailures: 0 } },
+      });
+      const tree = await render('create');
+      await save(tree);
+      expect(createGRN).toHaveBeenCalledTimes(1);
+      expect(one(tree, 'DocumentSuccessDialog').props.isVisible).toBe(true);
+
+      act(() => one(tree, 'DocumentSuccessDialog').props.onPrint());
+      expect(one(tree, 'PrintRangeDialog').props.visible).toBe(true);
+      expect(one(tree, 'DocumentSuccessDialog').props.isVisible).toBe(false);
+      act(() => one(tree, 'PrintRangeDialog').props.onDismiss());
+      expect(one(tree, 'PrintRangeDialog').props.visible).toBe(false);
+      expect(one(tree, 'DocumentSuccessDialog').props.isVisible).toBe(true);
+
+      // The form in this test keeps its fields (the real one is reset): Create must still do nothing.
+      await act(async () => { await one(tree, 'WizardBottomBar').props.onNext(); });
+      expect(saveDialog(tree).props.visible).toBe(false);
+      await act(async () => { await saveDialog(tree).props.onConfirm(); });
+      expect(createGRN).toHaveBeenCalledTimes(1);
+      await act(async () => { tree.unmount(); });
+    });
+  });
+
+  // RF-3: update_grn has no idempotency key, so a lost answer is not followed by a blind second Save.
+  describe('an update the server did not answer', () => {
+    const NEW_LINE = { ...mockItems[0], grn_trl_id: 'item-1700000000000-new', item_name: 'Example Onions' };
+    const SAVED_ID = '99999999-2222-4333-8444-555555555555';
+    const withNewLine = (tree: ReactTestRenderer) => {
+      mockForm = { ...mockForm, items: [mockItems[0], NEW_LINE] };
+      return act(async () => { tree.update(<GrnReviewStep mode="edit" />); });
+    };
+
+    it('marks the form, keeps it, and says the save may have arrived', async () => {
+      (updateGRN as jest.Mock).mockResolvedValue({ success: false, error: 'Request timeout', outcomeUnknown: true });
+      const tree = await render('edit');
+      await save(tree);
+      expect(mockDispatch).toHaveBeenCalledWith(setSaveUnconfirmed(true));
+      expect(showAlert).toHaveBeenLastCalledWith("Couldn't save the GRN", expect.stringContaining('may or may not be saved'));
+      expect(mockForm.resetFormState).not.toHaveBeenCalled();
+      await act(async () => { tree.unmount(); });
+    });
+
+    it('a refusal the server did answer does not mark the form', async () => {
+      (updateGRN as jest.Mock).mockResolvedValue({ success: false, error: 'GRN number already exists: A0010', outcomeUnknown: false });
+      const tree = await render('edit');
+      await save(tree);
+      expect(mockDispatch).not.toHaveBeenCalledWith(setSaveUnconfirmed(true));
+      await act(async () => { tree.unmount(); });
+    });
+
+    it('the next Save first asks the server, and sends the line it already holds as an update', async () => {
+      mockSaveUnconfirmed = true;
+      (findLinesSavedByLostUpdate as jest.Mock).mockResolvedValue({ success: true, adopted: { [NEW_LINE.grn_trl_id]: SAVED_ID } });
+      (updateGRN as jest.Mock).mockResolvedValue({ success: true, data: { id: GRN_ID, photos: { uploadedCount: 0, failed: [], removalFailures: 0 } } });
+      const tree = await render('edit');
+      await withNewLine(tree);
+      await save(tree);
+
+      expect(findLinesSavedByLostUpdate).toHaveBeenCalledWith(GRN_ID, [mockItems[0], NEW_LINE]);
+      expect((updateGRN as jest.Mock).mock.calls[0][1].items.map((item: { grn_trl_id: string }) => item.grn_trl_id)).toEqual([mockItems[0].grn_trl_id, SAVED_ID]);
+      expect(mockDispatch).toHaveBeenCalledWith(adoptSavedLines({ [NEW_LINE.grn_trl_id]: SAVED_ID }));
+      expect(mockDispatch).toHaveBeenCalledWith(setSaveUnconfirmed(false));
+      await act(async () => { tree.unmount(); });
+    });
+
+    it('does not save while the server cannot be asked', async () => {
+      mockSaveUnconfirmed = true;
+      (findLinesSavedByLostUpdate as jest.Mock).mockResolvedValue({ success: false, error: 'not reachable' });
+      const tree = await render('edit');
+      await withNewLine(tree);
+      await save(tree);
+
+      expect(updateGRN).not.toHaveBeenCalled();
+      expect(showAlert).toHaveBeenLastCalledWith("Couldn't save the GRN", 'not reachable');
+      expect(mockDispatch).not.toHaveBeenCalledWith(setSaveUnconfirmed(false));
+      await act(async () => { tree.unmount(); });
+    });
+
+    it('a form that is not marked saves without asking', async () => {
+      (updateGRN as jest.Mock).mockResolvedValue({ success: true, data: { id: GRN_ID, photos: { uploadedCount: 0, failed: [], removalFailures: 0 } } });
+      const tree = await render('edit');
+      await save(tree);
+      expect(findLinesSavedByLostUpdate).not.toHaveBeenCalled();
+      expect(updateGRN).toHaveBeenCalledTimes(1);
       await act(async () => { tree.unmount(); });
     });
   });

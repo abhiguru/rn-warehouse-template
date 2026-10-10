@@ -45,6 +45,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { router } from 'expo-router';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
+import { createLogger } from '@/utils/logger';
 import {
   updateHeader,
   addItem,
@@ -67,6 +68,8 @@ import {
   selectGRNFormId,
   selectGRNTempId,
   selectGRNRemovedImages,
+  selectGRNTakenNumberError,
+  setTakenNumberError,
   GRNHeaderData,
   GRNItemData,
   GRNImageData,
@@ -93,6 +96,8 @@ function describeValidationErrors(errors: Record<string, string>): string {
  * Pattern: Increment before navigation, check in async functions before state updates.
  * If session changed, the async operation was cancelled and should not update state.
  */
+const log = createLogger('useGRNForm');
+
 let globalSessionId = 0;
 
 export type GRNFormMode = 'create' | 'edit';
@@ -171,14 +176,19 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
 
   const isCreateMode = mode === 'create';
 
+  // Message for a typed number that another GRN already holds; step 1 does not pass while it
+  // is set. It lives in the form slice: a screen's own copy was lost when step 1 was left
+  // and reopened, and the taken number then passed until save_grn refused it.
+  const takenNumberError = useAppSelector(selectGRNTakenNumberError);
+
   // Local state
-  const [validationErrors, setLocalValidationErrors] = useState<Record<string, string>>({});
+  const [validationErrors, setLocalValidationErrors] = useState<Record<string, string>>(
+    (): Record<string, string> => (takenNumberError ? { gr_no: takenNumberError } : {})
+  );
   const [isGeneratingNumber, setIsGeneratingNumber] = useState(isCreateMode && !header.gr_no);
 
   // AbortController for cancelling pending GRN number change operations
   const grNoChangeAbortRef = useRef<AbortController | null>(null);
-  // Message for a typed number that another GRN already holds; step 1 does not pass while it is set.
-  const takenNumberErrorRef = useRef<string | null>(null);
 
   // Cleanup AbortController on unmount to prevent memory leaks
   // @see PR14 - AbortController Refs Not Cleaned Up
@@ -260,7 +270,7 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
     // Auto-set supervisor to current user
     if (!header.supervisor_id && userProfile && !hasSetSupervisor.current) {
       hasSetSupervisor.current = true;
-      console.log('[useGRNForm] Auto-setting supervisor to current user:', userProfile.name);
+      log.debug('Auto-setting supervisor to the current user');
       dispatch(updateHeader({
         supervisor_id: userProfile.id,
         supervisor_name: userProfile.name,
@@ -271,6 +281,7 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
   /**
    * Load existing GRN data for edit mode
    */
+  const loadExistingGRNRef = useRef<((id: string) => Promise<void>) | null>(null);
   const loadExistingGRN = useCallback(async (id: string) => {
     console.log('[useGRNForm] loadExistingGRN called for id:', id, {
       isLoadingData: isLoadingData.current,
@@ -303,7 +314,12 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
         }));
       } else {
         if (globalSessionId === currentSessionId) {
-          showAlert(t('errors.grn.form.loadFailedTitle'), serverText(result.error, t('common.checkConnection')));
+          // Nothing is put in the form: a GRN that was read only in part (its photo list
+          // missing) must not be opened for saving. The person can ask again.
+          showAlert(t('errors.grn.form.loadFailedTitle'), serverText(result.error, t('common.checkConnection')), [
+            { text: t('common.cancel'), style: 'cancel' },
+            { text: t('common.retry'), onPress: () => { void loadExistingGRNRef.current?.(id); } },
+          ]);
         }
       }
     } catch (error) {
@@ -316,6 +332,8 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
       isLoadingData.current = false;
     }
   }, [dispatch]);
+
+  loadExistingGRNRef.current = loadExistingGRN;
 
   // The screens read the local copy of the errors, so a changed field has to be cleared there too.
   const clearLocalErrors = useCallback((fields: string[]) => {
@@ -365,30 +383,31 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
     // Update Redux immediately so UI is responsive
     dispatch(updateHeader({ gr_no: newGrNo }));
     dispatch(clearValidationError('gr_no'));
-    takenNumberErrorRef.current = null;
+    dispatch(setTakenNumberError(null));
     clearLocalErrors(['gr_no']);
 
     // Start async operation
     (async () => {
       // Skip check if < 5 chars
       if (newGrNo.length < 5) {
-        console.log('[useGRNForm] handleGrNoChange: Skipping check, < 5 chars');
+        log.debug('Number check skipped: fewer than 5 characters');
         return;
       }
 
       // Debounce 750ms
       await new Promise(r => setTimeout(r, 750));
       if (signal.aborted) {
-        console.log('[useGRNForm] handleGrNoChange: Aborted after debounce');
+        log.debug('Number check dropped after the wait');
         return;
       }
 
-      console.log('[useGRNForm] handleGrNoChange: Checking if GRN exists:', newGrNo);
+      // The typed number is not logged.
+      log.debug('Checking whether the typed GRN number exists');
 
       // Check existence
       const result = await checkGrnExists(newGrNo);
       if (signal.aborted) {
-        console.log('[useGRNForm] handleGrNoChange: Aborted after check');
+        log.debug('Number check dropped after the answer');
         return;
       }
 
@@ -397,14 +416,14 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
         { exists: result.exists, id: result.grnId, error: result.error },
         mode === 'edit' ? grnIdParam : null
       );
-      console.log('[useGRNForm] handleGrNoChange: Number is', state);
+      log.debug('Number check result', { state });
       if (state !== 'taken') return;
 
       const takenNumber = result.grNo || newGrNo;
       const message = result.customerName
         ? t('grn.form.numberTakenFor', { number: formatIdentifier(takenNumber), customer: result.customerName })
         : t('grn.form.numberTaken', { number: formatIdentifier(takenNumber) });
-      takenNumberErrorRef.current = message;
+      dispatch(setTakenNumberError(message));
       setLocalValidationErrors((prev) => ({ ...prev, gr_no: message }));
     })();
   }, [grnIdParam, mode, dispatch, clearLocalErrors]);
@@ -461,8 +480,8 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
     }
 
     // A number another GRN holds keeps step 1 from passing until it is changed.
-    if (step === 1 && takenNumberErrorRef.current) {
-      result = { isValid: false, errors: { ...result.errors, gr_no: takenNumberErrorRef.current } };
+    if (step === 1 && takenNumberError) {
+      result = { isValid: false, errors: { ...result.errors, gr_no: takenNumberError } };
     }
 
     if (!result.isValid) {
@@ -474,7 +493,7 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
     }
 
     return result;
-  }, [header, items, dispatch]);
+  }, [header, items, dispatch, takenNumberError]);
 
   const clearFieldError = useCallback((field: string) => {
     setLocalValidationErrors((prev) => {

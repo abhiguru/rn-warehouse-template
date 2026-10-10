@@ -216,6 +216,7 @@ export const grn = {
     readFailed: 'Failed to read image file',
     lineNotFound: 'The item this photo belongs to was not found on the saved GRN',
     stillUploading: 'The upload was still running',
+    notPrepared: 'The photo was not ready to upload',
   },
 
   // Step 3: review
@@ -242,6 +243,14 @@ export const grn = {
     savedWithNumber: 'GRN {{number}} saved.',
     saved: 'GRN saved.',
     photosNotUploadedTitle: 'Photos not uploaded',
+    photosPreparingTitle: 'Photos are still being prepared',
+    photosPreparingMessage: 'Wait a moment for the photos to finish, then save again.',
+    photoNotPreparedTitle: "A photo couldn't be prepared",
+    photoNotPreparedMessage: 'Remove the photo marked as failed, or add it again, then save.',
+    saveUnanswered:
+      'The server did not answer, so the GRN may or may not be saved. Nothing in the form was lost. Check your connection and save again: the app first checks what was saved.',
+    saveNotConfirmed:
+      "Couldn't check whether the last save reached the server. Check your connection and try again.",
     photosNotUploadedMessage: 'GRN {{number}} is saved, but these photos were not uploaded:\n{{photos}}',
     photosNotUploadedMessageNoNumber: 'The GRN is saved, but these photos were not uploaded:\n{{photos}}',
     failedGrnPhoto: 'GRN photo {{position}}',

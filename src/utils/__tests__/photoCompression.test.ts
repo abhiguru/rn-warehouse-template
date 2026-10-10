@@ -76,4 +76,39 @@ describe('compressPhoto', () => {
     ).rejects.toThrow(PHOTO_PROCESSING_FAILED);
     expect(global.fetch).not.toHaveBeenCalledWith('file:///cache/in.heic');
   });
+
+  // RF-10: the in-app camera hands over the photo as 0 x 0.
+  describe('a photo that arrives without its size', () => {
+    const sized = (width: number, height: number) =>
+      manipulate.mockImplementation(async (_uri: string, actions: unknown[], options: { format?: string }) =>
+        actions.length === 0 && !options.format ? { uri: 'file:///cache/probe.jpg', width, height } : { uri: `file:///cache/out.${options.format}` });
+
+    it('has its size read first, so a portrait photo is limited by its height', async () => {
+      sized(3000, 4000);
+      await compressPhoto({ uri: 'file:///cache/camera.jpg', width: 0, height: 0 }, WEBP);
+      expect(manipulate.mock.calls.map(([uri, actions]) => [uri, actions])).toEqual([
+        ['file:///cache/camera.jpg', []],
+        // The original is re-encoded, not the probe copy.
+        ['file:///cache/camera.jpg', [{ resize: { height: 1280 } }]],
+      ]);
+    });
+
+    it('is not enlarged when it is small', async () => {
+      sized(800, 600);
+      await compressPhoto({ uri: 'file:///cache/camera.jpg' }, WEBP);
+      expect(manipulate.mock.calls[1][1]).toEqual([]);
+    });
+
+    it('falls back to limiting the width when the size cannot be read', async () => {
+      manipulate.mockRejectedValueOnce(new Error('cannot read'));
+      const photo = await compressPhoto({ uri: 'file:///cache/camera.jpg', width: 0, height: 0 }, WEBP);
+      expect(manipulate.mock.calls[1][1]).toEqual([{ resize: { width: 1280 } }]);
+      expect(photo.mimeType).toBe('image/webp');
+    });
+
+    it('a photo that carries its size is not read twice', async () => {
+      await compressPhoto({ uri: 'file:///cache/in.jpg', width: 4000, height: 3000 }, WEBP);
+      expect(manipulate).toHaveBeenCalledTimes(1);
+    });
+  });
 });

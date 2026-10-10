@@ -65,6 +65,8 @@ import {
   setValidationErrors,
   clearValidationErrors,
   clearFieldError,
+  setTakenNumberError,
+  selectDispatchTakenNumberError,
   loadDispatchData,
   resetForm,
   loadFromOrder,
@@ -92,6 +94,7 @@ import {
 } from '@/features/dispatch/services/dispatchFormService';
 
 import { showAlert } from '@/utils/alert';
+import { createLogger } from '@/utils/logger';
 import { t, formatIdentifier } from '@/i18n';
 import { serverText } from '@/utils/serverText';
 import { validationSummary } from '@/utils/validationSummary';
@@ -104,6 +107,8 @@ import { linesFromOtherCustomers } from '@/features/dispatch/utils/lotOwnership'
  * Pattern: Increment before navigation, check in async functions before state updates.
  * If session changed, the async operation was cancelled and should not update state.
  */
+const log = createLogger('useDispatchForm');
+
 let globalSessionId = 0;
 
 export type DispatchFormMode = 'create' | 'edit';
@@ -198,15 +203,20 @@ export function useDispatchForm({
 
   const isCreateMode = mode === 'create';
 
+  // Message for a typed number that another dispatch already holds; step 1 does not pass
+  // while it is set. It lives in the form slice: a screen's own copy was lost when step 1
+  // was left and reopened.
+  const takenNumberError = useAppSelector(selectDispatchTakenNumberError);
+
   // Local state
-  const [validationErrors, setLocalValidationErrors] = useState<Record<string, string>>({});
+  const [validationErrors, setLocalValidationErrors] = useState<Record<string, string>>(
+    (): Record<string, string> => (takenNumberError ? { disp_no: takenNumberError } : {})
+  );
 
   const [isGeneratingNumber, setIsGeneratingNumber] = useState(isCreateMode && !header.disp_no);
 
   // AbortController for cancelling pending dispatch number change operations
   const dispNoChangeAbortRef = useRef<AbortController | null>(null);
-  // Message for a typed number that another dispatch already holds; step 1 does not pass while it is set.
-  const takenNumberErrorRef = useRef<string | null>(null);
 
   // Refs to prevent duplicate operations
   const hasInitialized = useRef(false);
@@ -267,7 +277,7 @@ export function useDispatchForm({
     // Auto-set supervisor to current user
     if (!header.supervisor_id && userProfile && !hasSetSupervisor.current) {
       hasSetSupervisor.current = true;
-      console.log('[useDispatchForm] Auto-setting supervisor to current user:', userProfile.name);
+      log.debug('Auto-setting supervisor to the current user');
       dispatch(updateHeader({
         supervisor_id: userProfile.id,
         supervisor_name: userProfile.name,
@@ -386,30 +396,31 @@ export function useDispatchForm({
     // Update Redux immediately so UI is responsive
     dispatch(updateHeader({ disp_no: newDispNo }));
     dispatch(clearFieldError('disp_no'));
-    takenNumberErrorRef.current = null;
+    dispatch(setTakenNumberError(null));
     clearLocalErrors(['disp_no']);
 
     // Start async operation
     (async () => {
       // Skip check if < 5 chars
       if (newDispNo.length < 5) {
-        console.log('[useDispatchForm] handleDispNoChange: Skipping check, < 5 chars');
+        log.debug('Number check skipped: fewer than 5 characters');
         return;
       }
 
       // Debounce 750ms
       await new Promise(r => setTimeout(r, 750));
       if (signal.aborted) {
-        console.log('[useDispatchForm] handleDispNoChange: Aborted after debounce');
+        log.debug('Number check dropped after the wait');
         return;
       }
 
-      console.log('[useDispatchForm] handleDispNoChange: Checking if dispatch exists:', newDispNo);
+      // The typed number is not logged.
+      log.debug('Checking whether the typed dispatch number exists');
 
       // Check existence
       const result = await checkDispatchExists(newDispNo);
       if (signal.aborted) {
-        console.log('[useDispatchForm] handleDispNoChange: Aborted after check');
+        log.debug('Number check dropped after the answer');
         return;
       }
 
@@ -418,14 +429,14 @@ export function useDispatchForm({
         { exists: result.exists, id: result.dispatchId, error: result.error },
         mode === 'edit' ? dispatchIdParam : null
       );
-      console.log('[useDispatchForm] handleDispNoChange: Number is', state);
+      log.debug('Number check result', { state });
       if (state !== 'taken') return;
 
       const takenNumber = result.dispNo || newDispNo;
       const message = result.customerName
         ? t('dispatch.wizard.numberTakenFor', { number: formatIdentifier(takenNumber), customer: result.customerName })
         : t('dispatch.wizard.numberTaken', { number: formatIdentifier(takenNumber) });
-      takenNumberErrorRef.current = message;
+      dispatch(setTakenNumberError(message));
       setLocalValidationErrors((prev) => ({ ...prev, disp_no: message }));
     })();
   }, [dispatchIdParam, mode, dispatch, clearLocalErrors]);
@@ -548,8 +559,8 @@ export function useDispatchForm({
     }
 
     // A number another dispatch holds keeps step 1 from passing until it is changed.
-    if (step === 1 && takenNumberErrorRef.current) {
-      result = { isValid: false, errors: { ...result.errors, disp_no: takenNumberErrorRef.current } };
+    if (step === 1 && takenNumberError) {
+      result = { isValid: false, errors: { ...result.errors, disp_no: takenNumberError } };
     }
 
     if (!result.isValid) {
@@ -563,7 +574,7 @@ export function useDispatchForm({
     }
 
     return result;
-  }, [store, dispatch]);
+  }, [store, dispatch, takenNumberError]);
 
   const clearFieldValidationError = useCallback((field: string) => {
     setLocalValidationErrors((prev) => {

@@ -435,6 +435,9 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
         handleImageUploadComplete(uploadedImageData, tempImageData.id);
       } catch (error) {
         log.error('Upload failed', loggableError(error));
+        // The entry still points at the original file: it is taken out, like a refused photo.
+        handleImageRemove(tempImageData.id);
+        showAlert(tr('grn.photos.captureFailedTitle'), tr('grn.photos.captureFailedMessage'));
       }
     }
   };

@@ -171,4 +171,28 @@ describe('dispatch number check', () => {
     expect(store.getState().dispatchForm.header.customer_name).toBe('Fictional Traders');
     await unmount();
   });
+  // RF-14: the block used to live in a ref of one screen instance.
+  it('a taken number still keeps step 1 from passing after the step was left and reopened', async () => {
+    const logged = jest.spyOn(console, 'log');
+    (checkDispatchExists as jest.Mock).mockResolvedValue({ exists: true, dispatchId: OTHER_ID, dispNo: 'DD0005' });
+    const store = makeStore();
+    store.dispatch(loadDispatchData({ dispatchId: OWN_ID, header, items: [item] }));
+    const first = await mount('edit', store, OWN_ID);
+    await typeNumber(first.form, 'DD0005');
+    await first.unmount();
+
+    const second = await mount('edit', store, OWN_ID);
+    expect(second.form().validationErrors.disp_no).toMatch(/DD0005/);
+    let validation!: { isValid: boolean; errors: Record<string, string> };
+    await act(async () => { validation = await second.form().validateCurrentStep(1); });
+    expect(validation.isValid).toBe(false);
+    expect(validation.errors.disp_no).toMatch(/DD0005/);
+    expect(JSON.stringify(logged.mock.calls.filter(([text]) => String(text).includes('handleDispNoChange') || String(text).includes('Checking')))).not.toContain('DD0005');
+
+    (checkDispatchExists as jest.Mock).mockResolvedValue({ exists: false });
+    await typeNumber(second.form, 'DD0006');
+    expect(store.getState().dispatchForm.takenNumberError).toBeNull();
+    expect(second.form().validationErrors.disp_no).toBeUndefined();
+    await second.unmount();
+  });
 });

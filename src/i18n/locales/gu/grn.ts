@@ -212,6 +212,7 @@ export const grn: Translation<typeof source> = {
     readFailed: 'ફોટોની ફાઇલ વાંચી શકાઈ નથી',
     lineNotFound: 'આ ફોટો જે આઇટમનો છે તે સચવાયેલી આવક પાવતીમાં મળી નથી',
     stillUploading: 'અપલોડ હજુ ચાલુ હતું',
+    notPrepared: 'ફોટો અપલોડ માટે તૈયાર ન હતો',
   },
 
   review: {
@@ -236,6 +237,14 @@ export const grn: Translation<typeof source> = {
     savedWithNumber: 'આવક પાવતી {{number}} સચવાઈ ગઈ.',
     saved: 'આવક પાવતી સચવાઈ ગઈ.',
     photosNotUploadedTitle: 'ફોટો અપલોડ થયા નથી',
+    photosPreparingTitle: 'ફોટો હજુ તૈયાર થઈ રહ્યા છે',
+    photosPreparingMessage: 'ફોટો તૈયાર થાય ત્યાં સુધી થોડી રાહ જુઓ, પછી ફરી સાચવો.',
+    photoNotPreparedTitle: 'એક ફોટો તૈયાર થઈ શક્યો નથી',
+    photoNotPreparedMessage: 'નિષ્ફળ બતાવેલો ફોટો કાઢી નાખો અથવા ફરી ઉમેરો, પછી સાચવો.',
+    saveUnanswered:
+      'સર્વર તરફથી જવાબ મળ્યો નથી, એટલે આવક પાવતી સચવાઈ છે કે નહીં તે નક્કી નથી. ફોર્મમાંથી કંઈ ગયું નથી. કનેક્શન તપાસો અને ફરી સાચવો: ઍપ પહેલાં તપાસશે કે શું સચવાયું છે.',
+    saveNotConfirmed:
+      'છેલ્લી વાર સાચવેલું સર્વર સુધી પહોંચ્યું કે નહીં તે તપાસી શકાયું નથી. કનેક્શન તપાસો અને ફરી પ્રયાસ કરો.',
     photosNotUploadedMessage: 'આવક પાવતી {{number}} સચવાઈ ગઈ છે, પણ આ ફોટો અપલોડ થયા નથી:\n{{photos}}',
     photosNotUploadedMessageNoNumber: 'આવક પાવતી સચવાઈ ગઈ છે, પણ આ ફોટો અપલોડ થયા નથી:\n{{photos}}',
     failedGrnPhoto: 'આવક પાવતીનો ફોટો {{position}}',
