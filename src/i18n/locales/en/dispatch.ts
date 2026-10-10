@@ -217,6 +217,7 @@ export const dispatch = {
     itemsTitle: 'Items ({{count}})',
     editItems: 'Edit items',
     photosTitle: 'Photos (optional)',
+    photoRemovedTitle: 'Photo removed',
     addPhotos: 'Add photos',
     addMorePhotos: 'Add more photos',
     photosHint: 'You can add photos of the goods or the vehicle.',

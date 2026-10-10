@@ -220,6 +220,7 @@ export const dispatch: Translation<typeof source> = {
     itemsTitle: 'આઇટમ ({{count}})',
     editItems: 'આઇટમમાં ફેરફાર કરો',
     photosTitle: 'ફોટો (વૈકલ્પિક)',
+    photoRemovedTitle: 'ફોટો કાઢી નાખ્યો',
     addPhotos: 'ફોટો ઉમેરો',
     addMorePhotos: 'વધુ ફોટો ઉમેરો',
     photosHint: 'તમે માલ કે વાહનના ફોટો ઉમેરી શકો છો.',

@@ -36,6 +36,8 @@ import type { ThemeTokens } from '@/theme/tokens';
 import { formatCount, formatDate, toDate, formatWeight, formatNumber } from '@/utils/formatters';
 import { DispatchStepIndicator, dispatchSteps } from '@/components/DispatchStepIndicator';
 import { t as tr, formatIdentifier } from '@/i18n';
+import { showAlert } from '@/utils/alert';
+import { serverText } from '@/utils/serverText';
 import SwipeableFormStep from '@/components/SwipeableFormStep';
 import { PrintRangeDialog } from '@/components/PrintRangeDialog';
 import { printDispatchRange } from '@/services/print-service';
@@ -224,13 +226,25 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
         updateImageStatus(imageId, 'failed');
     };
 
+    // A photo that is already on the server is removed there first. When that is refused
+    // or fails, the photo stays in the form and the reason is shown: dropping it from the
+    // form alone would hide a photo the dispatch still has.
     const handleRemoveImage = async (imageId: string) => {
         const imageToRemove = images.find((img) => img.id === imageId);
         if (imageToRemove?.upload_status === 'completed' && imageToRemove.storage_path) {
+            let result: Awaited<ReturnType<typeof deleteDispatchImage>>;
             try {
-                await deleteDispatchImage(imageId, imageToRemove.image_url);
-            } catch (error) {
-                console.error('[DispatchReviewStep] Failed to delete image:', error);
+                result = await deleteDispatchImage(imageId, imageToRemove.image_url);
+            } catch {
+                result = { success: false };
+            }
+            if (!result.success) {
+                showAlert(tr('grn.photos.removeFailedTitle'), serverText(result.error, tr('common.checkConnection')));
+                return;
+            }
+            // The record is gone; only its stored file could not be confirmed deleted.
+            if (result.partial) {
+                showAlert(tr('dispatch.review.photoRemovedTitle'), serverText(result.error, tr('dispatch.photos.removedFileUnconfirmed')));
             }
         }
         removeImageFromForm(imageId);
@@ -737,6 +751,9 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
                         <ImagePreviewGrid
                             imageData={imageDataForGrid}
                             onRemoveImage={handleRemoveImage}
+                            // handleRemoveImage removes a dispatch photo on the server; the
+                            // grid's own removal is the GRN one.
+                            removeFromServer={false}
                             onImagePress={(imageData) => {
                                 const index = images.findIndex(img => img.id === imageData.id);
                                 setSelectedImageIndex(index >= 0 ? index : 0);

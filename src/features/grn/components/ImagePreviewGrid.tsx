@@ -164,8 +164,9 @@ export const ImagePreviewGrid: React.FC<ImagePreviewGridProps> = ({
                 const result = await deleteGRNImage(imageData.id, imageData.imageUrl);
                 console.log('[ImagePreviewGrid] 🗑️ deleteGRNImage result:', result);
                 if (!result.success) {
-                  // Log but continue - we'll still remove from UI
-                  console.warn('[ImagePreviewGrid] ⚠️ Backend delete failed, will remove from local state only:', result.error);
+                  // The photo is still on the document: keep it and say why.
+                  showAlert(tr('grn.photos.removeFailedTitle'), result.error || tr('common.checkConnection'));
+                  return;
                 }
               } else {
                 console.log('[ImagePreviewGrid] 🗑️ Skipping backend delete (no DB ID or not completed)');

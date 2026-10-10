@@ -55,6 +55,17 @@ it('does not delete bytes after a business authorization rejection', async () =>
   });
   expect(remove).not.toHaveBeenCalled();
 });
+it.each([
+  ['the guard refuses the role', { data: null, error: { code: '42501', message: 'Staff access required' } }],
+  ['the function refuses in its answer', { data: { success: false, message: 'Access denied' }, error: null }],
+])('names the reason when %s', async (_, answer) => {
+  rpc.mockResolvedValue(answer);
+  expect(await deleteWarehouseImage('dispatch', 'image-id')).toEqual({
+    success: false,
+    error: 'You do not have permission to perform this action.',
+  });
+  expect(remove).not.toHaveBeenCalled();
+});
 it('reports incomplete cleanup instead of success when storage fails', async () => {
   remove.mockResolvedValue({ data: null, error: { message: 'Offline' } });
   expect(await deleteWarehouseImage('dispatch', 'image-id')).toEqual({
