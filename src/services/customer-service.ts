@@ -543,38 +543,9 @@ class CustomerService {
       if (error) {
         console.error('[CustomerService] Inactivate error:', error);
 
-        // Fallback to direct update if RPC doesn't exist
-        if (
-          error.code === 'PGRST202' ||
-          error.message?.includes('function') ||
-          error.message?.includes('does not exist')
-        ) {
-          console.log(
-            '[CustomerService] RPC not available, using direct update fallback'
-          );
-
-          const { error: updateError } = await client
-            .from('customers')
-            .update({
-              active: false,
-              deleted_at: new Date().toISOString(),
-            })
-            .eq('id', customerId);
-
-          if (updateError) {
-            return {
-              success: false,
-              message: serverText(updateError.message, t('errors.customer.inactivateFailed')),
-              error: updateError.message,
-            };
-          }
-
-          return {
-            success: true,
-            message: t('errors.customer.inactivated'),
-          };
-        }
-
+        // The server owns the rules for this (a customer that still holds stock
+        // cannot be deactivated), so a failed call is reported, never replaced
+        // by a direct write to the customers table.
         return {
           success: false,
           message: serverText(error.message, t('errors.customer.inactivateFailed')),
@@ -633,38 +604,8 @@ class CustomerService {
       if (error) {
         console.error('[CustomerService] Restore error:', error);
 
-        // Fallback to direct update if RPC doesn't exist
-        if (
-          error.code === 'PGRST202' ||
-          error.message?.includes('function') ||
-          error.message?.includes('does not exist')
-        ) {
-          console.log(
-            '[CustomerService] RPC not available, using direct update fallback'
-          );
-
-          const { error: updateError } = await client
-            .from('customers')
-            .update({
-              active: true,
-              deleted_at: null,
-            })
-            .eq('id', customerId);
-
-          if (updateError) {
-            return {
-              success: false,
-              message: serverText(updateError.message, t('errors.customer.restoreFailed')),
-              error: updateError.message,
-            };
-          }
-
-          return {
-            success: true,
-            message: t('errors.customer.restored'),
-          };
-        }
-
+        // As for deactivation: a failed call is reported, never replaced by a
+        // direct write to the customers table.
         return {
           success: false,
           message: serverText(error.message, t('errors.customer.restoreFailed')),
