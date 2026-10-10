@@ -26,6 +26,10 @@ import {
 import { executeRPC } from '@/utils/serviceErrorHandler';
 import { t } from '@/i18n';
 import { serverText } from '@/utils/serverText';
+import { createLogger, loggableError } from '@/utils/logger';
+
+// User ids and error codes only: names and mobile numbers stay out of the device log.
+const log = createLogger('users');
 
 // =============================================================================
 // RAW RPC RESPONSE TYPES
@@ -77,7 +81,6 @@ class AdminUserService {
     offset: number = 0
   ): Promise<{ success: boolean; data?: UserListResponse; error?: string }> {
     try {
-      console.log('[AdminUserService] getUsersList:', { filters, limit, offset });
 
       const client = await getAuthenticatedClient();
       const { data, error } = await client.rpc('get_users_list', {
@@ -89,19 +92,15 @@ class AdminUserService {
       });
 
       if (error) {
-        console.error('[AdminUserService] getUsersList error:', error);
+        log.error('getUsersList error', loggableError(error));
         return {
           success: false,
           error: serverText(error.message, t('errors.user.fetchListFailed')),
         };
       }
 
-      // Debug: Log raw response from RPC
-      console.log('[AdminUserService] getUsersList raw response:', JSON.stringify(data, null, 2));
-
       // Handle response - could be object or array with single element
       const responseData = Array.isArray(data) ? data[0] : data;
-      console.log('[AdminUserService] getUsersList responseData:', JSON.stringify(responseData, null, 2));
 
       if (!responseData) {
         return {
@@ -120,7 +119,7 @@ class AdminUserService {
 
       // Check if RPC returned an error response
       if (responseData.success === false || responseData.error) {
-        console.error('[AdminUserService] RPC returned error:', responseData.error, responseData.message);
+        log.error('get_users_list returned an error');
         return {
           success: false,
           error: serverText(responseData.message || responseData.error, t('errors.user.fetchListFailed')),
@@ -128,7 +127,6 @@ class AdminUserService {
       }
 
       // Map response to typed structure
-      console.log('[AdminUserService] responseData.users:', responseData.users);
       const users: UserListItem[] = (responseData.users || []).map((user: RpcUserRow) => ({
         id: user.id,
         auth_user_id: user.auth_user_id,
@@ -141,7 +139,6 @@ class AdminUserService {
         updated_at: user.updated_at,
         assigned_customers_count: user.assigned_customers_count || 0,
       }));
-      console.log('[AdminUserService] mapped users count:', users.length);
 
       return {
         success: true,
@@ -156,7 +153,7 @@ class AdminUserService {
         },
       };
     } catch (error) {
-      console.error('[AdminUserService] Exception in getUsersList:', error);
+      log.error('Exception in getUsersList', loggableError(error));
       return {
         success: false,
         error: error instanceof Error ? error.message : t('errors.general.unknown'),
@@ -175,7 +172,6 @@ class AdminUserService {
     userId: string
   ): Promise<{ success: boolean; data?: UserDetails; error?: string }> {
     try {
-      console.log('[AdminUserService] getUserDetails:', { userId });
 
       const client = await getAuthenticatedClient();
       const { data, error } = await client.rpc('get_user_details', {
@@ -183,7 +179,7 @@ class AdminUserService {
       });
 
       if (error) {
-        console.error('[AdminUserService] getUserDetails error:', error);
+        log.error('getUserDetails error', loggableError(error));
         return {
           success: false,
           error: serverText(error.message, t('errors.user.fetchDetailsFailed')),
@@ -229,7 +225,7 @@ class AdminUserService {
         },
       };
     } catch (error) {
-      console.error('[AdminUserService] Exception in getUserDetails:', error);
+      log.error('Exception in getUserDetails', loggableError(error));
       return {
         success: false,
         error: error instanceof Error ? error.message : t('errors.general.unknown'),
@@ -250,7 +246,6 @@ class AdminUserService {
     newRole: UserRole
   ): Promise<{ success: boolean; data?: UpdateUserRoleResponse; error?: string }> {
     try {
-      console.log('[AdminUserService] updateUserRole:', { userId, newRole });
 
       const client = await getAuthenticatedClient();
       const { data, error } = await client.rpc('update_user_role', {
@@ -259,7 +254,7 @@ class AdminUserService {
       });
 
       if (error) {
-        console.error('[AdminUserService] updateUserRole error:', error);
+        log.error('updateUserRole error', loggableError(error));
         return {
           success: false,
           error: serverText(error.message, t('errors.user.updateUserRoleFailed')),
@@ -289,7 +284,7 @@ class AdminUserService {
         },
       };
     } catch (error) {
-      console.error('[AdminUserService] Exception in updateUserRole:', error);
+      log.error('Exception in updateUserRole', loggableError(error));
       return {
         success: false,
         error: error instanceof Error ? error.message : t('errors.general.unknown'),
@@ -311,7 +306,6 @@ class AdminUserService {
     active: boolean
   ): Promise<{ success: boolean; data?: UpdateUserStatusResponse; error?: string }> {
     try {
-      console.log('[AdminUserService] updateUserStatus:', { userId, active });
 
       const client = await getAuthenticatedClient();
       const { data, error } = await client.rpc('update_user_status', {
@@ -320,7 +314,7 @@ class AdminUserService {
       });
 
       if (error) {
-        console.error('[AdminUserService] updateUserStatus error:', error);
+        log.error('updateUserStatus error', loggableError(error));
         return {
           success: false,
           error: serverText(error.message, t('errors.user.updateUserStatusFailed')),
@@ -348,7 +342,7 @@ class AdminUserService {
         },
       };
     } catch (error) {
-      console.error('[AdminUserService] Exception in updateUserStatus:', error);
+      log.error('Exception in updateUserStatus', loggableError(error));
       return {
         success: false,
         error: error instanceof Error ? error.message : t('errors.general.unknown'),
@@ -370,7 +364,6 @@ class AdminUserService {
     customerId: string,
     comment?: string
   ): Promise<{ success: boolean; error?: string }> {
-    console.log('[AdminUserService] assignCustomerToUser:', { userMobile, customerId });
 
     const result = await executeRPC<boolean>(
       getAuthenticatedClient,
@@ -403,7 +396,6 @@ class AdminUserService {
     userMobile: string,
     customerId: string
   ): Promise<{ success: boolean; error?: string }> {
-    console.log('[AdminUserService] removeCustomerAssignment:', { userMobile, customerId });
 
     const result = await executeRPC<boolean>(
       getAuthenticatedClient,
