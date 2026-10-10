@@ -9,6 +9,7 @@
  * @module list-items/MemoizedInvoiceItem
  */
 
+import { getLanguage } from '@/i18n/language';
 import React from 'react';
 import { View, Text, Pressable } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -211,7 +212,8 @@ const InvoiceItemContent: React.FC<MemoizedInvoiceItemProps> = ({
             <View style={styles.metaItem}>
               <Icon name="calendar-outline" size={iconSize.sm} color={t.icon.secondary} />
               <Text style={styles.metaText} {...singleLineText()}>{invoiceDate}</Text>
-              {invoice.grn?.gr_no ? <Text style={styles.metaText}>·</Text> : null}
+              {/* In Gujarati the GRN wraps to its own line, where a trailing dot would dangle; its icon separates it. */}
+              {invoice.grn?.gr_no && getLanguage() === 'en' ? <Text style={styles.metaText}>·</Text> : null}
             </View>
             {invoice.grn?.gr_no ? (
               <View style={styles.metaItem}>
