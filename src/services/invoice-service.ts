@@ -1,6 +1,7 @@
 import { getSupabaseClient, getAuthenticatedClient } from '@/config/supabaseConfig';
 import { createErrorResponse, executeRPC } from '@/utils/serviceErrorHandler';
 import { PAGINATION } from '@/config/cacheConfig';
+import { toLocalISODate } from '@/utils/formatters';
 
 // M1 Fix: DRY empty pagination response
 const EMPTY_INVOICE_PAGINATION = { total_count: 0, limit: PAGINATION.DEFAULT_LIMIT, offset: 0, has_more: false };
@@ -157,6 +158,167 @@ export const getInvoicesList = async (
     return {
       ...createErrorResponse(error, 'An unexpected error occurred', 'InvoiceService.getInvoicesList'),
       data: { invoices: [], pagination: { ...EMPTY_INVOICE_PAGINATION, limit: params.p_limit || PAGINATION.DEFAULT_LIMIT, offset: params.p_offset || 0 } }
+    };
+  }
+};
+
+export interface AssignedCustomerInvoiceParams {
+  p_limit?: number;
+  p_offset?: number;
+  /** Limit to one of the account's customers. */
+  p_customer_id?: string;
+  p_inv_no_from?: number;
+  p_inv_no_to?: number;
+  p_date_from?: string;
+  p_date_to?: string;
+  p_search_grn_no?: string;
+  /** Names for the list rows, keyed by customer id (the RPC rows carry no customer name). */
+  customerNames?: Record<string, string>;
+}
+
+interface CustomerInvoiceRow {
+  invoice_id: string;
+  /** "<financial year start>-<zero-padded number>", for example "2026-0014". */
+  invoice_number: string;
+  invoice_date: string;
+  /** For example "2026-2027". */
+  financial_year: string;
+  grn_ref: string | null;
+  grn_id: string | null;
+  total: number | null;
+  labour: number | null;
+  discount: number | null;
+  tax_amount: number | null;
+  notes: string | null;
+}
+
+/** get_customer_invoice_summary returns a shorter row than the staff list; fill the list shape from it. */
+const mapCustomerInvoiceRow = (row: CustomerInvoiceRow, customerId: string, customerName: string): Invoice => {
+  const [yearPart, numberPart] = String(row.invoice_number || '').split('-');
+  return {
+    invoice_id: row.invoice_id,
+    invoice_number: Number(numberPart) || 0,
+    invoice_date: row.invoice_date,
+    financial_year: row.financial_year || '',
+    inv_fin_year: Number(yearPart) || 0,
+    total: Number(row.total) || 0,
+    labour: Number(row.labour) || 0,
+    discount: Number(row.discount) || 0,
+    tax_amount: Number(row.tax_amount) || 0,
+    notes: row.notes ?? null,
+    inv_name: null,
+    created_by: '',
+    one_time_charge: false,
+    is_auto_generated: false,
+    invoice_pricing_mode: null,
+    customer: { id: customerId, name: customerName, city: '', phone: '', address: '', gst: '', email: '', active: true },
+    grn: {
+      id: row.grn_id || '',
+      gr_no: row.grn_ref || '',
+      date: '',
+      sender_id: '',
+      sender_name: '',
+      customer_id: customerId,
+      customer_name: customerName,
+      supervisor_id: null,
+      supervisor_name: '',
+      registration: '',
+    },
+  };
+};
+
+/** The summary RPC defaults to the last 30 days, so the list always sends a range. */
+const CUSTOMER_INVOICE_EARLIEST = '2000-01-01';
+
+/**
+ * Invoice list for a customer account. The all-customers list RPC is for
+ * warehouse roles only, so this reads get_customer_invoice_summary for each
+ * assigned customer, newest first, and pages the result here.
+ */
+export const getAssignedCustomerInvoices = async (
+  assignedCustomerIds: string[],
+  params: AssignedCustomerInvoiceParams = {}
+): Promise<InvoiceListResponse> => {
+  const limit = params.p_limit || PAGINATION.DEFAULT_LIMIT;
+  const offset = params.p_offset || 0;
+  const failure = (message: string): InvoiceListResponse => ({
+    success: false,
+    message,
+    data: { invoices: [], pagination: { total_count: 0, limit, offset, has_more: false } },
+  });
+
+  const assigned = [...new Set(assignedCustomerIds.filter(Boolean))];
+  if (params.p_customer_id && !assigned.includes(params.p_customer_id)) {
+    return failure('Customer access denied');
+  }
+  const targetIds = params.p_customer_id ? [params.p_customer_id] : assigned;
+  if (targetIds.length === 0) return failure('No customer assignment is available for this account');
+
+  try {
+    const authenticatedClient = await getAuthenticatedClient();
+    // The summary rows carry no customer name. Use the caller's names, else read
+    // them; a failed name lookup only leaves the row's name line empty.
+    const names: Record<string, string> = { ...(params.customerNames || {}) };
+    if (targetIds.some(id => !names[id])) {
+      const { data: customers } = await authenticatedClient.from('customers').select('id, name').in('id', targetIds);
+      for (const customer of customers || []) names[customer.id] = customer.name;
+    }
+
+    const results = await Promise.all(
+      targetIds.map(async (customerId): Promise<{ success: boolean; message?: string; invoices: Invoice[] }> => {
+        const { data, error } = await authenticatedClient.rpc('get_customer_invoice_summary', {
+          p_customer_uuid: customerId,
+          p_from_date: params.p_date_from || CUSTOMER_INVOICE_EARLIEST,
+          p_to_date: params.p_date_to || toLocalISODate(new Date()),
+        });
+        if (error) {
+          const failed = createErrorResponse(error, 'Failed to fetch invoice list', 'InvoiceService.getAssignedCustomerInvoices');
+          return { success: false, message: failed.message, invoices: [] };
+        }
+        if (!data?.success) {
+          return { success: false, message: data?.error || data?.message || 'No data returned from server', invoices: [] };
+        }
+        const rows: CustomerInvoiceRow[] = data.data?.invoices || [];
+        return { success: true, invoices: rows.map(row => mapCustomerInvoiceRow(row, customerId, names[customerId] || '')) };
+      })
+    );
+    const failed = results.find(result => !result.success);
+    if (failed) return failure(failed.message || 'Failed to fetch invoice list');
+
+    const grnQuery = (params.p_search_grn_no || '').toLowerCase();
+    const matching = results
+      .flatMap(result => result.invoices)
+      .filter(invoice => {
+        if (params.p_inv_no_from && invoice.invoice_number < params.p_inv_no_from) return false;
+        if (params.p_inv_no_to && invoice.invoice_number > params.p_inv_no_to) return false;
+        if (grnQuery && !invoice.grn.gr_no.toLowerCase().includes(grnQuery)) return false;
+        return true;
+      })
+      .sort(
+        (a, b) =>
+          String(b.invoice_date).localeCompare(String(a.invoice_date)) ||
+          b.inv_fin_year - a.inv_fin_year ||
+          b.invoice_number - a.invoice_number
+      );
+
+    const invoices = matching.slice(offset, offset + limit);
+    return {
+      success: true,
+      message: 'Invoice list retrieved successfully',
+      data: {
+        invoices,
+        pagination: {
+          total_count: matching.length,
+          limit,
+          offset,
+          has_more: offset + invoices.length < matching.length,
+        },
+      },
+    };
+  } catch (error) {
+    return {
+      ...createErrorResponse(error, 'An unexpected error occurred', 'InvoiceService.getAssignedCustomerInvoices'),
+      data: { invoices: [], pagination: { ...EMPTY_INVOICE_PAGINATION, limit, offset } },
     };
   }
 };

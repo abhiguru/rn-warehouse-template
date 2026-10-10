@@ -40,6 +40,7 @@ import {
 // Services
 import {
   getDispatchListWithItems,
+  getAssignedCustomerDispatchList,
   Dispatch,
 } from '@/services/dispatch-service';
 
@@ -67,6 +68,7 @@ import { GenericFilterModal } from '@/components/filters';
 // State
 import { useAppSelector, useAppDispatch } from '@/store/hooks';
 import { usePermissions } from '@/hooks/usePermissions';
+import { useRoleBasedAccess } from '@/hooks/useRoleBasedAccess';
 import { selectFilterValues, clearFilter, setFilterValues } from '@/store/slices/filterSlice';
 
 // Config
@@ -310,6 +312,7 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
   // User state & permissions
   const { userProfile } = useAppSelector(state => state.auth);
   const { canCreate, canUpdate } = usePermissions();
+  const { canManageOrders: isWarehouseRole, assignedCustomerIds } = useRoleBasedAccess();
   const canPrint = canCreate || canUpdate; // Staff can print (they have update permission)
   const canCreateDispatch = canCreate;
 
@@ -421,14 +424,21 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
         console.log('[DispatchFlashList] 🔍 API filters being sent:', JSON.stringify(apiFilters, null, 2));
       }
 
-      const response = await getDispatchListWithItems({
-        p_customer_id: customerId,
-        p_sort_by: sortField === 'dispNo' ? 'disp_no' : 'dispatch_date',
+      const request = {
+        p_sort_by: sortField === 'dispNo' ? ('disp_no' as const) : ('dispatch_date' as const),
         p_sort_order: sortOrder,
         p_limit: 20,
         offset: offset,
         p_filters: apiFilters,
-      });
+      };
+      // The all-customers list is for warehouse roles; customer accounts read
+      // their assigned customers' dispatches.
+      const response = isWarehouseRole
+        ? await getDispatchListWithItems({ ...request, p_customer_id: customerId })
+        : await getAssignedCustomerDispatchList(
+            customerId ? [customerId] : assignedCustomerIds,
+            request
+          );
 
       // E3 Fix: Skip state updates if component unmounted during fetch
       if (!isMountedRef.current) {
@@ -489,7 +499,7 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
         setIsLoadingMore(false);
       }
     }
-  }, [customerId, sortField, sortOrder, filters]);
+  }, [customerId, sortField, sortOrder, filters, isWarehouseRole, assignedCustomerIds]);
 
   // E3 Fix: Cleanup on unmount to prevent state updates after unmount
   useEffect(() => {

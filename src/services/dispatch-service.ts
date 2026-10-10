@@ -798,6 +798,115 @@ export const getCustomerDispatchList = async (
   }
 };
 
+/** Rows per request when collecting a customer account's dispatches. */
+const CUSTOMER_DISPATCH_PAGE = 100;
+/** Upper bound on dispatches collected per customer for one list view. */
+const CUSTOMER_DISPATCH_MAX = 1000;
+
+export interface AssignedCustomerDispatchParams {
+  p_sort_by?: 'disp_no' | 'dispatch_date';
+  p_sort_order?: 'asc' | 'desc';
+  p_limit?: number;
+  offset?: number;
+  /** Same keys the staff list sends: customer_ids, item_ids, disp_no_from, disp_no_to. */
+  p_filters?: Record<string, unknown>;
+}
+
+/**
+ * Dispatch list for a customer account. The all-customers list RPC is for
+ * warehouse roles only, so this collects get_customer_dispatch_list for each
+ * assigned customer and sorts, filters and pages the result here.
+ */
+export const getAssignedCustomerDispatchList = async (
+  assignedCustomerIds: string[],
+  params: AssignedCustomerDispatchParams = {}
+): Promise<DispatchListResponseNew> => {
+  const limit = Math.min(Math.max(params.p_limit || PAGINATION.DEFAULT_LIMIT, 1), 100);
+  const offset = Math.max(params.offset || 0, 0);
+  const sortBy = params.p_sort_by || 'dispatch_date';
+  const sortOrder = params.p_sort_order || 'desc';
+  const filters = params.p_filters || {};
+  const empty = (message: string, success: boolean): DispatchListResponseNew => ({
+    success,
+    message,
+    data: {
+      dispatches: [],
+      pagination: { total_count: 0, limit, offset, has_more: false },
+      aggregations: { total_dispatches: 0, total_dispatched_qty: 0, total_weight: null, unique_customers: 0, unique_grns: 0 },
+      filters: { date_from: null, date_to: null, applied_filters: {}, sort_by: 'disp_date', sort_order: sortOrder },
+      user_access: { user_id: '', role: 'customer', is_admin: false, is_supervisor: false, accessible_customers: 0 },
+    },
+  });
+
+  const assigned = [...new Set(assignedCustomerIds.filter(Boolean))];
+  const requested = Array.isArray(filters.customer_ids) ? (filters.customer_ids as string[]) : [];
+  if (requested.some(id => !assigned.includes(id))) return empty('Customer access denied', false);
+  const targetIds = requested.length > 0 ? requested : assigned;
+  if (targetIds.length === 0) {
+    return empty('No customer assignment is available for this account', false);
+  }
+
+  const perCustomer = await Promise.all(
+    targetIds.map(async customerId => {
+      const collected: Dispatch[] = [];
+      let pageOffset = 0;
+      while (collected.length < CUSTOMER_DISPATCH_MAX) {
+        const page = await getCustomerDispatchList({
+          p_customer_id: customerId,
+          p_limit: CUSTOMER_DISPATCH_PAGE,
+          p_offset: pageOffset,
+          p_include_items: true,
+        });
+        if (!page.success) return page;
+        collected.push(...page.data.dispatches);
+        if (!page.data.pagination.has_more || page.data.dispatches.length === 0) break;
+        pageOffset += page.data.dispatches.length;
+      }
+      return collected;
+    })
+  );
+  const failed = perCustomer.find((result): result is DispatchListResponseNew => !Array.isArray(result));
+  if (failed) return failed;
+
+  const itemIds = Array.isArray(filters.item_ids) ? (filters.item_ids as string[]) : [];
+  const from = filters.disp_no_from ? String(filters.disp_no_from) : '';
+  const to = filters.disp_no_to ? String(filters.disp_no_to) : '';
+  const compareNo = (a: string, b: string) => a.localeCompare(b, undefined, { numeric: true });
+  const matching = (perCustomer as Dispatch[][]).flat().filter(dispatch => {
+    if (itemIds.length > 0 && !dispatch.items?.some(item => itemIds.includes(item.item_id))) return false;
+    if (from && compareNo(dispatch.disp_no, from) < 0) return false;
+    if (to && compareNo(dispatch.disp_no, to) > 0) return false;
+    return true;
+  });
+  const direction = sortOrder === 'asc' ? 1 : -1;
+  matching.sort((a, b) => {
+    const primary =
+      sortBy === 'disp_no'
+        ? compareNo(a.disp_no, b.disp_no)
+        : String(a.disp_date).localeCompare(String(b.disp_date));
+    return (primary || compareNo(a.disp_no, b.disp_no)) * direction;
+  });
+
+  const dispatches = matching.slice(offset, offset + limit);
+  const result = empty('Customer dispatches retrieved successfully', true);
+  result.data.dispatches = dispatches;
+  result.data.pagination = {
+    total_count: matching.length,
+    limit,
+    offset,
+    has_more: offset + dispatches.length < matching.length,
+  };
+  result.data.aggregations = {
+    total_dispatches: matching.length,
+    total_dispatched_qty: matching.reduce((total, dispatch) => total + (dispatch.total_qty || 0), 0),
+    total_weight: matching.reduce((total, dispatch) => total + (dispatch.total_weight || 0), 0),
+    unique_customers: new Set(matching.map(dispatch => dispatch.customer_id)).size,
+    unique_grns: new Set(matching.flatMap(dispatch => dispatch.items?.map(item => item.gr_no) || [])).size,
+  };
+  result.data.user_access.accessible_customers = assigned.length;
+  return result;
+};
+
 /**
  * Delete a dispatch by ID with comprehensive cleanup
  * Restores stock, recreates order items, restores cart quantities, and resets order status

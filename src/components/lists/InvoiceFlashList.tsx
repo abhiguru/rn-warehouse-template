@@ -36,7 +36,7 @@ import {
 } from './types';
 
 // Services
-import { getInvoicesList, Invoice } from '@/services/invoice-service';
+import { getAssignedCustomerInvoices, getInvoicesList, Invoice } from '@/services/invoice-service';
 
 // Components
 import { MemoizedInvoiceItem } from '@/components/list-items';
@@ -46,6 +46,7 @@ import { GenericFilterModal } from '@/components/filters';
 import { useAppSelector, useAppDispatch } from '@/store/hooks';
 import { resetForm as resetInvoiceForm } from '@/store/slices/invoiceFormSlice';
 import { usePermissions } from '@/hooks/usePermissions';
+import { useRoleBasedAccess } from '@/hooks/useRoleBasedAccess';
 import { useFilterState } from '@/hooks/useFilterState';
 import type { AutocompleteSelection, FilterValues, FilterValueType } from '@/types/filter.types';
 
@@ -299,6 +300,11 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({
   const { userProfile } = useAppSelector(state => state.auth);
   const dispatch = useAppDispatch();
   const { canCreate, canUpdate } = usePermissions();
+  const { canManageOrders: isWarehouseRole, assignedCustomerIds } = useRoleBasedAccess();
+  const assignedCustomerNames = useMemo(
+    () => Object.fromEntries((userProfile?.assignedCustomers || []).map(customer => [customer.id, customer.name])),
+    [userProfile?.assignedCustomers]
+  );
   const canCreateInvoice = canCreate;
   const canPrint = canCreate || canUpdate; // Staff can print (they have update permission)
 
@@ -435,7 +441,11 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({
 
       console.log('[InvoiceFlashList] Final params:', JSON.stringify(params, null, 2));
 
-      const result = await getInvoicesList(params);
+      // The all-customers list is for warehouse roles; customer accounts read
+      // their assigned customers' invoices.
+      const result = isWarehouseRole
+        ? await getInvoicesList(params)
+        : await getAssignedCustomerInvoices(assignedCustomerIds, { ...params, customerNames: assignedCustomerNames });
 
       // E3 Fix: Skip state updates if component unmounted during fetch
       if (!isMountedRef.current) {
@@ -479,7 +489,7 @@ const InvoiceFlashList: React.FC<InvoiceFlashListProps> = ({
         setIsLoadingMore(false);
       }
     }
-  }, [filters, currentOffset]);
+  }, [filters, currentOffset, isWarehouseRole, assignedCustomerIds, assignedCustomerNames]);
 
   // E3 Fix: Cleanup on unmount to prevent state updates after unmount
   useEffect(() => {
