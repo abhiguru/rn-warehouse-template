@@ -72,22 +72,33 @@ export class TimeoutError extends Error {
   }
 }
 
+/**
+ * The timer is cleared as soon as the promise settles. `onTimeout` runs when
+ * the time is up, before the rejection: callRPC uses it to abort the request,
+ * so a request the app has stopped waiting for does not stay on the wire.
+ */
 export function withTimeout<T>(
   promise: Promise<T>,
   timeoutMs: number,
-  context: string = 'Operation'
+  context: string = 'Operation',
+  onTimeout?: () => void
 ): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
   return Promise.race([
     promise,
     new Promise<T>((_, reject) => {
-      setTimeout(() => {
-        reject(new TimeoutError(
-          t('errors.network.timedOutAfter', { context, seconds: localizeDigits(String(timeoutMs / 1000)) }),
-          timeoutMs
-        ));
+      timer = setTimeout(() => {
+        try {
+          onTimeout?.();
+        } finally {
+          reject(new TimeoutError(
+            t('errors.network.timedOutAfter', { context, seconds: localizeDigits(String(timeoutMs / 1000)) }),
+            timeoutMs
+          ));
+        }
       }, timeoutMs);
     }),
-  ]);
+  ]).finally(() => clearTimeout(timer));
 }
 
 /**
@@ -127,11 +138,16 @@ export async function callRPC<TData = unknown>(
 
     // E4 Fix: Execute RPC call with timeout wrapper
     // Wrap PostgrestFilterBuilder in Promise.resolve() for timeout wrapper compatibility
-    const rpcPromise = Promise.resolve(authenticatedClient.rpc(functionName, params));
+    const controller = new AbortController();
+    const request = authenticatedClient.rpc(functionName, params);
+    const rpcPromise = Promise.resolve(
+      typeof request.abortSignal === 'function' ? request.abortSignal(controller.signal) : request
+    );
     const { data, error } = await withTimeout<{ data: unknown; error: { message: string } | null }>(
       rpcPromise,
       timeout,
-      `RPC ${functionName}`
+      `RPC ${functionName}`,
+      () => controller.abort()
     );
 
     // Log timing if enabled
