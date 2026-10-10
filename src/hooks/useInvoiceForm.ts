@@ -20,8 +20,6 @@ import {
   bulkUpdateItemGroupPricing,
   updateDiscount,
   recalculateTotals,
-  updateAllDurations,
-  restoreOriginalDurations,
   setCurrentStep,
   setIsLoading,
   setIsSaving,
@@ -112,10 +110,6 @@ export interface UseInvoiceFormReturn {
   applyBulkPricing: (values: Partial<EditedItemValues>) => void;
   applyGroupPricing: (groupKey: string, pricing: { charge: number; labour_rate: number; tax: number }) => void;
 
-  // Duration actions (one_time_charge toggle)
-  setAllDurations: (duration: number) => void;
-  restoreOriginalItemDurations: () => void;
-
   // Validation
   validateCurrentStep: (step: number) => Promise<{ isValid: boolean; errors: Record<string, string> }>;
   clearFieldValidationError: (field: string) => void;
@@ -126,7 +120,8 @@ export interface UseInvoiceFormReturn {
   canNavigateToStep: (targetStep: number, currentStep: number) => Promise<boolean>;
 
   // Submission
-  submitForm: () => Promise<{ success: boolean; invoiceId?: string; invoiceNo?: number; error?: string }>;
+  /** `total` is the total the server stored, or null when it could not be read back after the save. */
+  submitForm: () => Promise<{ success: boolean; invoiceId?: string; invoiceNo?: number; total?: number | null; error?: string }>;
 
   // Reset
   resetFormState: () => void;
@@ -302,15 +297,6 @@ export function useInvoiceForm({
     dispatch(bulkUpdateItemGroupPricing({ group_key: groupKey, pricing }));
   }, [dispatch]);
 
-  // Duration actions
-  const setAllDurations = useCallback((duration: number) => {
-    dispatch(updateAllDurations(duration));
-  }, [dispatch]);
-
-  const restoreOriginalItemDurations = useCallback(() => {
-    dispatch(restoreOriginalDurations());
-  }, [dispatch]);
-
   // Totals recalculation
   const recalculateFormTotals = useCallback(() => {
     dispatch(recalculateTotals());
@@ -418,7 +404,7 @@ export function useInvoiceForm({
   /**
    * Submit the form (create or update)
    */
-  const submitForm = useCallback(async (): Promise<{ success: boolean; invoiceId?: string; invoiceNo?: number; error?: string }> => {
+  const submitForm = useCallback(async (): Promise<{ success: boolean; invoiceId?: string; invoiceNo?: number; total?: number | null; error?: string }> => {
     // Validate full invoice
     const validation = await validateFullInvoice({ header, items });
     if (!validation.isValid) {
@@ -459,6 +445,7 @@ export function useInvoiceForm({
           success: true,
           invoiceId: result.data?.invoice_id,
           invoiceNo: result.data?.invoice_no,
+          total: result.data?.total ?? null,
         };
       } else {
         showAlert(t('invoice.form.saveFailedTitle'), serverText(result.message, t('common.checkConnection')));
@@ -533,10 +520,6 @@ export function useInvoiceForm({
     // Bulk pricing actions
     applyBulkPricing,
     applyGroupPricing,
-
-    // Duration actions
-    setAllDurations,
-    restoreOriginalItemDurations,
 
     // Validation
     validateCurrentStep,

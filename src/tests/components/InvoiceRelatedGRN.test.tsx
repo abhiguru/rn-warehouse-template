@@ -93,3 +93,30 @@ it('does not invent a navigation target from the printed number when the UUID is
   )).toHaveLength(0);
   expect(router.push).not.toHaveBeenCalled();
 });
+
+it('opens a billed dispatch by its id, not by its printed number', async () => {
+  const dispatchId = '00000000-0000-4000-8000-000000000777';
+  jest.mocked(getInvoiceDetails).mockResolvedValue({
+    success: true,
+    data: {
+      header: { invoice_number: 20261005, invoice_date: '2026-10-01', gr_no: 'IRP05', total: 182, tax_amount: 9, labour: 20, discount: 0, grn: { id: grnId, gr_no: 'IRP05' } },
+      items: [{
+        item_id: 'line-1', charge: 5, tax: 5, duration: 1, no_of_days: 30, labour_rate: 2,
+        catalog: { name: 'Example Potatoes' }, grn_item: { id: 'grn-item-1', original_quantity: 100 },
+        dispatch: { disp_id: dispatchId, disp_no: 'I2660', quantity: 20 },
+      }],
+    },
+  } as unknown as InvoiceDetailsResponse);
+  jest.mocked(getInvoiceItemsDetailed).mockResolvedValue({ success: false });
+  await act(async () => { renderer = create(<InvoiceDetailScreen />); });
+  await act(async () => {
+    renderer.root.findByType('InvoiceTabNavigator' as unknown as React.ElementType).props.on_tab_change('breakdown');
+  });
+
+  const link = renderer.root.findAll(node => typeof node.props.onPress === 'function')
+    .find(node => String(node.props.accessibilityLabel ?? '').includes('I2660'));
+  expect(link).toBeDefined();
+  await act(async () => { link!.props.onPress(); });
+
+  expect(router.push).toHaveBeenCalledWith(`/dispatch-details/${dispatchId}`);
+});

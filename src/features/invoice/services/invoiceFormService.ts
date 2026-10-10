@@ -12,6 +12,7 @@ import {
 import { t } from '@/i18n';
 
 import { toLocalISODate } from '@/utils/formatters';
+import { calculateItemAmounts } from '@/utils/invoiceCalculations';
 import { serverReason, serverText } from '@/utils/serverText';
 
 /** The server's words for a GRN that the preview refuses: not fully dispatched, or already invoiced. */
@@ -26,6 +27,40 @@ class GrnNotInvoiceableError extends Error {}
  * own words in every language; other server text goes through serverText.
  */
 const INVOICE_REFUSAL = /already invoiced|already on another invoice|must be between/i;
+
+const isOneTime = (pricingMode: unknown): boolean => String(pricingMode ?? '').toUpperCase() === 'ONE_TIME';
+
+type RpcClient = Awaited<ReturnType<typeof getAuthenticatedClient>>;
+
+/** A money value the server sent, as a number; null when it sent none. */
+function serverAmount(value: unknown): number | null {
+  if (value === null || value === undefined || value === '') return null;
+  const amount = Number(value);
+  return Number.isFinite(amount) ? amount : null;
+}
+
+/**
+ * The total the server stored for an invoice that was just saved.
+ *
+ * The server recomputes every invoice from its own durations and the GRN's
+ * pricing mode and ignores the totals the phone sends (backend migration 24),
+ * so the figure to show after a save is the stored one. `save_invoice(jsonb)`
+ * returns it as `totals.grand_total`; the three-argument save and
+ * `update_invoice` return no totals, so the invoice is read back. null when
+ * it cannot be read: the save itself has succeeded and stays reported as such.
+ */
+async function savedInvoiceTotal(client: RpcClient, answer: any, invoiceId: string | undefined): Promise<number | null> {
+  const fromAnswer = serverAmount(answer?.totals?.grand_total ?? answer?.totals?.total);
+  if (fromAnswer !== null) return fromAnswer;
+  if (!invoiceId) return null;
+  try {
+    const { data, error } = await client.rpc('get_invoice_detail', { p_invoice_id: invoiceId });
+    if (error || !data?.success) return null;
+    return serverAmount(data.invoice?.total);
+  } catch {
+    return null;
+  }
+}
 
 function invoiceSaveMessage(text: unknown, fallback: string): string {
   if (typeof text === 'string' && INVOICE_REFUSAL.test(text)) {
@@ -247,8 +282,7 @@ export const loadInvoiceFormData = async (
       firstItem?.grnItems_pricing_mode ||   // camelCase variation
       firstItem?.pricing_mode ||
       'MONTHLY';
-    const pricingMode = String(rawPricingMode).toUpperCase();
-    const isOneTimeCharge = pricingMode === 'ONE_TIME';
+    const isOneTimeCharge = isOneTime(rawPricingMode);
 
     // Transform header to mobile format
     const header = {
@@ -289,6 +323,12 @@ export const loadInvoiceFormData = async (
       const charge = item.unit_price || item.charge || 0;
       const labourRate = item.labour_rate || 0;
       const tax = item.tax_percent || item.tax || 0;
+
+      // The GRN's pricing mode decides how the line is charged. Every row of
+      // the preview carries it; the header value covers a row that does not.
+      const oneTime = item.grn_items_pricing_mode || item.grnItems_pricing_mode || item.pricing_mode
+        ? isOneTime(item.grn_items_pricing_mode || item.grnItems_pricing_mode || item.pricing_mode)
+        : isOneTimeCharge;
 
       // Debug: Log item field extraction
       if (__DEV__ && index === 0) {
@@ -340,14 +380,9 @@ export const loadInvoiceFormData = async (
         labour_rate: labourRate,
         tax: tax,
 
-        // Calculate initial amounts using extracted values
-        amount: qty * charge * duration,
-        labour_amount: qty * labourRate,
-        tax_amount: ((qty * charge * duration) + (qty * labourRate)) * (tax / 100),
-        item_total:
-          (qty * charge * duration) +
-          (qty * labourRate) +
-          ((qty * charge * duration) + (qty * labourRate)) * (tax / 100),
+        // Amounts as the server computes them for this pricing mode
+        one_time: oneTime,
+        ...calculateItemAmounts(qty, charge, labourRate, tax, duration, oneTime),
       };
     });
 
@@ -510,6 +545,7 @@ export const createInvoice = async (
       data: {
         invoice_id: data.invoice_id,
         invoice_no: data.invoice_no || payload.header.inv_no,
+        total: await savedInvoiceTotal(authenticatedClient, data, data.invoice_id),
       },
     };
   } catch (error: any) {
@@ -526,8 +562,19 @@ export const createInvoice = async (
 };
 
 /**
- * Helper function to transform form data to RPC payload
+ * How the GRN of a saved invoice is priced ('ONE_TIME' or 'MONTHLY'); null
+ * when it cannot be read, in which case the caller falls back.
  */
+async function invoiceGrnPricingMode(client: RpcClient, invoiceId: string): Promise<string | null> {
+  try {
+    const { data, error } = await client.rpc('get_invoice_data', { p_invoice_id: invoiceId });
+    if (error || !data?.success) return null;
+    return data.data?.header?.grn?.pricing_mode || null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Load existing invoice data for editing
  * Calls get_invoice_detail RPC to fetch complete invoice with items
@@ -538,10 +585,13 @@ export const loadInvoiceData = async (
   try {
     const authenticatedClient = await getAuthenticatedClient();
 
-    // Call get_invoice_detail RPC
-    const { data, error } = await authenticatedClient.rpc('get_invoice_detail', {
-      p_invoice_id: invoiceId,
-    });
+    // get_invoice_detail has the invoice and its lines. It does not say how the
+    // GRN is priced, which decides how every line is charged, so the GRN's
+    // pricing mode is read from get_invoice_data alongside it.
+    const [{ data, error }, grnPricingMode] = await Promise.all([
+      authenticatedClient.rpc('get_invoice_detail', { p_invoice_id: invoiceId }),
+      invoiceGrnPricingMode(authenticatedClient, invoiceId),
+    ]);
 
     if (error) {
       console.error('[InvoiceFormService] RPC error:', error);
@@ -596,6 +646,10 @@ export const loadInvoiceData = async (
       }
     }
 
+    // The invoice's own pricing_mode column is the fallback; without either the
+    // lines are shown as monthly and the total stays labelled an estimate.
+    const oneTime = isOneTime(grnPricingMode ?? header.pricing_mode);
+
     // Convert header data - full InvoiceHeaderData format
     const formattedHeader: InvoiceHeaderData = {
       customer_id: header.customer_id || '',
@@ -605,7 +659,9 @@ export const loadInvoiceData = async (
       inv_date: header.inv_date ? header.inv_date.split('T')[0] : toLocalISODate(new Date()),
       inv_fin_year: finYear,
       inv_no: typeof header.inv_no === 'string' ? parseInt(header.inv_no.replace(/\D/g, ''), 10) || 0 : header.inv_no || 0,
-      one_time_charge: Boolean(header.one_time_charge),
+      // The GRN's pricing mode, not the flag stored with the invoice: the
+      // server charges by the GRN whatever that flag says.
+      one_time_charge: oneTime,
       discount: header.discount || 0,
       discount_reason: header.discount_reason || '',
       labour: header.labour || 0,
@@ -630,12 +686,6 @@ export const loadInvoiceData = async (
       const tax = item.tax || 0;
       const no_of_days = Math.round(item.no_of_days || 30);
       const qty = item.qty || 0;
-
-      const amount = qty * charge * duration;
-      const labour_amount = qty * labour_rate;
-      const taxable_amount = amount + labour_amount;
-      const tax_amount_calc = taxable_amount * (tax / 100);
-      const item_total = taxable_amount + tax_amount_calc;
 
       return {
         // Generate temp_id for React keys
@@ -673,11 +723,9 @@ export const loadInvoiceData = async (
         labour_rate: labour_rate,
         tax: tax,
 
-        // Calculated fields
-        amount: Math.round(amount * 100) / 100,
-        labour_amount: Math.round(labour_amount * 100) / 100,
-        tax_amount: Math.round(tax_amount_calc * 100) / 100,
-        item_total: Math.round(item_total * 100) / 100,
+        // Calculated fields, as the server computes them for this pricing mode
+        one_time: oneTime,
+        ...calculateItemAmounts(qty, charge, labour_rate, tax, duration, oneTime),
       };
     });
 
@@ -789,6 +837,7 @@ export const updateInvoice = async (
       data: {
         invoice_id: result.invoice_id,
         invoice_no: parseInt(result.invoice_number),
+        total: await savedInvoiceTotal(authenticatedClient, result, result.invoice_id || invoiceId),
       },
       message: serverText(result.message, t('invoice.service.updated')),
     };

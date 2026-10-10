@@ -544,9 +544,10 @@ export const InvoiceCalculationSummary: React.FC<InvoiceCalculationSummaryProps>
       <View
         style={styles.totalRow}
         accessible
-        accessibilityLabel={`${tr('invoice.summary.grandTotal')}, ${formatInvoiceAmount(header.total)}`}
+        accessibilityLabel={`${tr('invoice.summary.estimatedTotal')}, ${formatInvoiceAmount(header.total)}`}
       >
-        <Text style={styles.totalLabel}>{tr('invoice.summary.grandTotal')}</Text>
+        {/* An estimate: the server works out the stored total when the invoice is saved. */}
+        <Text style={styles.totalLabel}>{tr('invoice.summary.estimatedTotal')}</Text>
         <Text style={styles.totalValue}>{formatInvoiceAmount(header.total)}</Text>
       </View>
 

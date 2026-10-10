@@ -5,14 +5,13 @@
  * Refactored to use useInvoiceForm hook for form state management.
  */
 
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import { useFocusEffect } from 'expo-router';
 import {
   View,
   Text,
   TextInput,
   Pressable,
-  Switch,
   ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -53,8 +52,6 @@ export default function InvoiceFormStep1() {
     updateHeaderField,
     updateHeaderFields,
     loadGRNData,
-    setAllDurations,
-    restoreOriginalItemDurations,
     clearFieldValidationError,
     navigateToStep,
     resetFormState,
@@ -78,20 +75,6 @@ export default function InvoiceFormStep1() {
   });
 
   // Note: Form initialization (invoice number generation) is handled by useInvoiceForm hook
-
-  // Handle one_time_charge toggle - update all durations
-  useEffect(() => {
-    // Only run if items exist (after GRN is selected and loaded)
-    if (items.length === 0) return;
-
-    if (header.one_time_charge) {
-      // Set all durations to 1 month
-      setAllDurations(1);
-    } else {
-      // Restore original durations from cache
-      restoreOriginalItemDurations();
-    }
-  }, [header.one_time_charge, items.length, setAllDurations, restoreOriginalItemDurations]);
 
   // Reload GRN data when returning from details/edit screen
   useFocusEffect(
@@ -176,6 +159,14 @@ export default function InvoiceFormStep1() {
       }
     }
   };
+
+  // Whether the GRN is priced one-time. The server decides the amounts from
+  // the GRN, so this is shown for information and cannot be switched here.
+  const oneTimeChargeText = !header.gr_id
+    ? tr('invoice.form.customerPlaceholder')
+    : header.one_time_charge
+      ? tr('common.yes')
+      : tr('common.no');
 
   const invDateError = validationErrors.inv_date;
   const invNoError = validationErrors.inv_no;
@@ -348,32 +339,18 @@ export default function InvoiceFormStep1() {
           </View>
         </View>
 
-        {/* One-time charge */}
-        <Pressable
-          style={({ pressed }) => [styles.switchRow, pressed && styles.switchRowPressed]}
-          onPress={() => updateHeaderField('one_time_charge', !header.one_time_charge)}
-          accessibilityRole="switch"
-          accessibilityLabel={tr('invoice.label.oneTimeCharge')}
-          accessibilityState={{ checked: header.one_time_charge }}
-        >
-          <View style={styles.switchLabelContainer}>
-            <Text style={styles.switchLabel}>{tr('invoice.label.oneTimeCharge')}</Text>
-            <Text style={styles.helperText}>
-              {tr('invoice.form.oneTimeChargeHelp')}
-            </Text>
+        {/* One-time charge: the GRN's pricing mode, shown, not chosen here */}
+        <View style={styles.formGroup}>
+          <Text style={styles.label}>{tr('invoice.label.oneTimeCharge')}</Text>
+          <View
+            style={styles.readOnlyField}
+            accessible
+            accessibilityLabel={`${tr('invoice.label.oneTimeCharge')}, ${oneTimeChargeText}`}
+          >
+            <Text style={[styles.readOnlyText, !header.gr_id && styles.readOnlyPlaceholder]}>{oneTimeChargeText}</Text>
           </View>
-          <Switch
-            value={header.one_time_charge}
-            onValueChange={(value) => {
-              updateHeaderField('one_time_charge', value);
-            }}
-            trackColor={{ false: t.control.trackOff, true: t.brand.fill }}
-            thumbColor={t.control.thumb}
-            ios_backgroundColor={t.control.trackOff}
-            accessibilityElementsHidden
-            importantForAccessibility="no-hide-descendants"
-          />
-        </Pressable>
+          <Text style={styles.helperText}>{tr('invoice.form.oneTimeChargeHelp')}</Text>
+        </View>
       </KeyboardAwareScrollView>
 
       {/* Bottom action bar */}

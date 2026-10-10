@@ -551,14 +551,23 @@ export interface InvoiceItemDetailed {
   duration: string;
   noOfDays: number;
   charge: number;
+  /** Tax RATE in percent (e.g. 5 for 5 %). */
   tax: number;
+  /** The line's tax AMOUNT as the server computed it. Absent when the server sent none. */
+  taxAmount?: number;
+  /** The line's total (base plus tax) as the server computed it. Absent when the server sent none. */
+  totalAmount?: number;
+  /** goodsreceived_trl id of the line, for grouping. */
+  grnItemId?: string;
   dispatchQty: number;
   grnQuantity: number;
   itemName: string;
   grNo: string;
   // Dispatch details
+  /** dispatch id (uuid): what the dispatch screen is opened with. */
   dispatchId: string;
-  dispatchNo?: number;
+  /** Dispatch number as written, e.g. "I2660". */
+  dispatchNo?: string;
   dispatchDate?: string;
   // Storage details
   packageMark: string;
@@ -586,6 +595,118 @@ export interface InvoiceItemsDetailedResponse {
     summary: InvoiceItemsSummary;
   };
   error?: string;
+}
+
+// Type for raw RPC invoice item response
+interface RpcInvoiceItemRaw {
+  id?: string;
+  item_id?: string;
+  duration?: string | number;
+  no_of_days?: number;
+  noOfDays?: number;
+  charge?: number;
+  total_charge?: number;
+  tax?: number;
+  tax_amount?: number;
+  total_amount?: number;
+  dispatch_qty?: number;
+  dispatchQty?: number;
+  quantity?: number;
+  grn_quantity?: number;
+  grnQuantity?: number;
+  original_quantity?: number;
+  item_name?: string;
+  itemName?: string;
+  name?: string;
+  catalog_name?: string;
+  gr_no?: string;
+  grNo?: string;
+  disp_id?: string;
+  dispatch_id?: string;
+  dispatch_no?: string;
+  dispatchNo?: string;
+  dispatch_date?: string;
+  dispatchDate?: string;
+  package_mark?: string;
+  packageMark?: string;
+  rack?: string;
+  weight?: number;
+  packaging?: string;
+  labour_rate?: number;
+  labourRate?: number;
+  catalog?: {
+    name?: string;
+    packaging?: string;
+  };
+  grn_item?: {
+    id?: string;
+    name?: string;
+    original_quantity?: number;
+    package_mark?: string;
+    rack?: string;
+    weight?: number;
+    packaging?: string;
+  };
+  dispatch?: {
+    quantity?: number;
+    disp_id?: string;
+    dispatch_no?: string;
+    dispatch_date?: string;
+  };
+  grn_item_id?: string;
+}
+
+
+/** A number the server sent, or undefined when it sent none (0 is a value). */
+const sentNumber = (value: unknown): number | undefined => {
+  if (value === null || value === undefined || value === '') return undefined;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : undefined;
+};
+
+/**
+ * One line of get_invoice_items_detailed in the shape the screens use.
+ * The server sends nested objects (catalog, grn_item, dispatch) and flat
+ * fields; either is read. `tax` is the rate only: the line's tax amount and
+ * total are kept apart as the server computed them.
+ */
+function mapDetailedInvoiceItem(item: RpcInvoiceItemRaw): InvoiceItemDetailed {
+  const catalog = item.catalog || {};
+  const grnItem = item.grn_item || {};
+  const dispatch = item.dispatch || {};
+  const dispatchNo = dispatch.dispatch_no || item.dispatch_no || item.dispatchNo;
+
+  return {
+    id: item.id || item.item_id || '',
+    // Duration - could be string or number
+    duration: item.duration?.toString() || '',
+    noOfDays: item.no_of_days || item.noOfDays || 0,
+    // Rates
+    charge: item.charge || item.total_charge || 0,
+    tax: item.tax || 0,
+    // The server's amounts for the line
+    taxAmount: sentNumber(item.tax_amount),
+    totalAmount: sentNumber(item.total_amount),
+    // Quantities - check dispatch object first, then flat fields
+    dispatchQty: dispatch.quantity || item.dispatch_qty || item.dispatchQty || item.quantity || 0,
+    grnQuantity: grnItem.original_quantity || item.grn_quantity || item.grnQuantity || item.original_quantity || 0,
+    // Item name - check catalog first, then grn_item, then flat fields
+    itemName: catalog.name || grnItem.name || item.item_name || item.itemName || item.name || item.catalog_name || t('errors.general.unknownItem'),
+    // GRN number - check flat fields
+    grNo: item.gr_no || item.grNo || '',
+    grnItemId: grnItem.id || item.grn_item_id || undefined,
+    // Dispatch details. The number is kept as written ("I2660"): it is a label, the id opens the dispatch.
+    dispatchId: dispatch.disp_id || item.dispatch_id || item.disp_id || '',
+    dispatchNo: dispatchNo !== undefined && dispatchNo !== null && String(dispatchNo) !== '' ? String(dispatchNo) : undefined,
+    dispatchDate: dispatch.dispatch_date || item.dispatch_date || item.dispatchDate || undefined,
+    // Package details from grn_item
+    packageMark: grnItem.package_mark || item.package_mark || item.packageMark || '',
+    rack: grnItem.rack || item.rack || '',
+    // Additional fields that might be useful
+    weight: grnItem.weight || item.weight || 0,
+    packaging: catalog.packaging || grnItem.packaging || item.packaging || '',
+    labourRate: item.labour_rate || item.labourRate || 0,
+  };
 }
 
 export const getInvoiceItemsDetailed = async (invoiceId: string): Promise<InvoiceItemsDetailedResponse> => {
@@ -627,102 +748,7 @@ export const getInvoiceItemsDetailed = async (invoiceId: string): Promise<Invoic
         firstItem: data.length > 0 ? JSON.stringify(data[0]).substring(0, 1000) : 'empty'
       });
 
-      // Type for raw RPC invoice item response
-      interface RpcInvoiceItemRaw {
-        id?: string;
-        item_id?: string;
-        duration?: string | number;
-        no_of_days?: number;
-        noOfDays?: number;
-        charge?: number;
-        total_charge?: number;
-        tax?: number;
-        tax_amount?: number;
-        total_amount?: number;
-        dispatch_qty?: number;
-        dispatchQty?: number;
-        quantity?: number;
-        grn_quantity?: number;
-        grnQuantity?: number;
-        original_quantity?: number;
-        item_name?: string;
-        itemName?: string;
-        name?: string;
-        catalog_name?: string;
-        gr_no?: string;
-        grNo?: string;
-        disp_id?: string;
-        dispatch_id?: string;
-        dispatch_no?: string;
-        dispatchNo?: string;
-        dispatch_date?: string;
-        dispatchDate?: string;
-        package_mark?: string;
-        packageMark?: string;
-        rack?: string;
-        weight?: number;
-        packaging?: string;
-        labour_rate?: number;
-        labourRate?: number;
-        catalog?: {
-          name?: string;
-          packaging?: string;
-        };
-        grn_item?: {
-          name?: string;
-          original_quantity?: number;
-          package_mark?: string;
-          rack?: string;
-          weight?: number;
-          packaging?: string;
-        };
-        dispatch?: {
-          quantity?: number;
-          disp_id?: string;
-          dispatch_no?: string;
-          dispatch_date?: string;
-        };
-      }
-
-      // Map fields from RPC to camelCase fields expected by frontend
-      // RPC may return nested objects (catalog, grn_item, dispatch) or flat structure
-      const mappedItems: InvoiceItemDetailed[] = data.map((item: RpcInvoiceItemRaw) => {
-        // Extract from nested objects if present
-        const catalog = item.catalog || {};
-        const grnItem = item.grn_item || {};
-        const dispatch = item.dispatch || {};
-
-        // Debug: log raw duration value from API
-        console.log('[InvoiceService] Raw duration from API:', item.duration, 'type:', typeof item.duration);
-
-        return {
-          id: item.id || item.item_id || '',
-          // Duration - could be string or number
-          duration: item.duration?.toString() || '',
-          noOfDays: item.no_of_days || item.noOfDays || 0,
-          // Charges
-          charge: item.charge || item.total_charge || 0,
-          tax: item.tax || item.tax_amount || 0,
-          // Quantities - check dispatch object first, then flat fields
-          dispatchQty: dispatch.quantity || item.dispatch_qty || item.dispatchQty || item.quantity || 0,
-          grnQuantity: grnItem.original_quantity || item.grn_quantity || item.grnQuantity || item.original_quantity || 0,
-          // Item name - check catalog first, then grn_item, then flat fields
-          itemName: catalog.name || grnItem.name || item.item_name || item.itemName || item.name || item.catalog_name || t('errors.general.unknownItem'),
-          // GRN number - check flat fields
-          grNo: item.gr_no || item.grNo || '',
-          // Dispatch details
-          dispatchId: dispatch.disp_id || item.disp_id || item.dispatch_id || '',
-          dispatchNo: parseInt(dispatch.dispatch_no || item.dispatch_no || item.dispatchNo || '0', 10) || undefined,
-          dispatchDate: dispatch.dispatch_date || item.dispatch_date || item.dispatchDate || undefined,
-          // Package details from grn_item
-          packageMark: grnItem.package_mark || item.package_mark || item.packageMark || '',
-          rack: grnItem.rack || item.rack || '',
-          // Additional fields that might be useful
-          weight: grnItem.weight || item.weight || 0,
-          packaging: catalog.packaging || grnItem.packaging || item.packaging || '',
-          labourRate: item.labour_rate || item.labourRate || 0,
-        };
-      });
+      const mappedItems: InvoiceItemDetailed[] = data.map(mapDetailedInvoiceItem);
 
       return {
         success: true,
@@ -756,9 +782,14 @@ export const getInvoiceItemsDetailed = async (invoiceId: string): Promise<Invoic
       summary: data.data?.summary
     });
 
+    // The lines arrive in the server's own field names; the screens read the
+    // mapped shape (dispatch id and number, the server's line amounts).
     return {
       success: true,
-      data: data.data,
+      data: {
+        ...data.data,
+        items: Array.isArray(data.data?.items) ? data.data.items.map(mapDetailedInvoiceItem) : [],
+      },
       message: t('errors.invoice.itemsFetched')
     };
   } catch (error) {

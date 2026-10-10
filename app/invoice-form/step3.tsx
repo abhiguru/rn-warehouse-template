@@ -155,7 +155,9 @@ export default function InvoiceFormStep3() {
         invoice_no: result.invoiceNo || 0,
         fin_year: header.inv_fin_year,
         customer_name: header.customer_name,
-        total: header.total,
+        // The server's stored total; the form's figure was only an estimate.
+        total: result.total ?? null,
+        estimated_total: header.total,
       });
 
       // Show success dialog

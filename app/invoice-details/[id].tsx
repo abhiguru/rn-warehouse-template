@@ -15,7 +15,6 @@ import {
   getInvoiceDetails,
   getInvoiceItemsDetailed,
   InvoiceDetailsResponse,
-  InvoiceItem,
   InvoiceItemDetailed,
   InvoiceItemsSummary,
   deleteInvoice,
@@ -44,6 +43,7 @@ import type { ThemeTokens } from '@/theme/tokens';
 
 import { showAlert } from '@/utils/alert';
 import { formatDate } from '@/utils/formatters';
+import { buildInvoiceLineItems, relatedDispatchDocuments } from '@/features/invoice/utils/invoiceLineItems';
 import { t as tr, formatIdentifier } from '@/i18n';
 // ============================================================================
 // STYLES
@@ -167,12 +167,9 @@ function InvoiceDetailScreen() {
     router.push(`/grn-details/${grnId}?tab=overview`);
   };
 
-  // Handle Dispatch navigation
-  const handleViewDispatch = (dispatchNo: string) => {
-    // Find dispatch by number and navigate to its ID
-    // For now, we'll use the dispatch number as the route
-    // This may need adjustment based on your routing structure
-    router.push(`/dispatch-details/${dispatchNo}`);
+  // Handle Dispatch navigation. The dispatch screen is opened by dispatch id (uuid).
+  const handleViewDispatch = (dispatchId: string) => {
+    router.push(`/dispatch-details/${dispatchId}`);
   };
 
   // Handle Edit Invoice
@@ -337,72 +334,10 @@ function InvoiceDetailScreen() {
 
   const { header: invoice, items: invoiceItems } = data;
 
-  // Prepare line items for tab - use items from get_invoice_data RPC
-  // Items have nested structure: catalog, grn_item, dispatch (with disp_no, disp_date)
+  // Lines for the tab: the lines of get_invoice_data with the amounts the
+  // server computed for each of them (get_invoice_items_detailed).
   // Items are grouped by GRN item in InvoiceLineItemsTab
-  const lineItems: InvoiceLineItem[] = (invoiceItems && invoiceItems.length > 0)
-    ? invoiceItems.map((item: InvoiceItem) => {
-        const catalog = item.catalog || {};
-        const grnItem = item.grn_item || {};
-        const dispatch = item.dispatch || {};
-
-        return {
-          id: item.item_id,
-          item_name: catalog.name || grnItem.name || tr('invoice.details.unknownItem'),
-          duration: (item.duration || 1).toString(),
-          no_of_days: item.no_of_days || 0,
-          charge: item.charge || 0,
-          tax: item.tax || 0,
-          // Some deployed get_invoice_data variants omit grn.id, but every
-          // invoice line carries the authoritative GRN UUID on its dispatch.
-          grn_id: invoice.grn?.id || dispatch.gr_id || grnItem.gr_id || '',
-          gr_no: invoice.gr_no || invoice.grn?.number || '',
-          // GRN Item ID for grouping
-          grn_item_id: grnItem.id || '',
-          // Dispatch details - now directly on dispatch object from updated RPC
-          dispatch_id: dispatch.disp_id || '',
-          dispatch_no: dispatch.disp_no || undefined,  // e.g., "I2660"
-          dispatch_date: dispatch.disp_date,
-          dispatch_qty: dispatch.quantity || 0,
-          // Storage details
-          package_mark: grnItem.package_mark || '',
-          rack: grnItem.rack || '',
-          grn_quantity: grnItem.original_quantity || 0,
-          grn_date: invoice.grn?.date || '',
-          weight: grnItem.weight || 0,
-          packaging: catalog.packaging || grnItem.packaging || '',
-          // Rates for grouping calculations
-          labour_rate: item.labour_rate || 0,
-          charge_per_unit: item.charge || 0,
-        };
-      })
-    : detailedItems.map((item) => ({
-        id: item.id,
-        item_name: item.itemName || tr('invoice.details.unknownItem'),
-        duration: item.duration,
-        no_of_days: item.noOfDays,
-        charge: item.charge || 0,
-        tax: item.tax || 0,
-        grn_id: invoice.grn?.id || '',
-        gr_no: item.grNo,
-        // GRN Item ID for grouping (use dispatchId as fallback for unique grouping)
-        grn_item_id: item.dispatchId || item.id,
-        // Dispatch details
-        dispatch_id: item.dispatchId,
-        dispatch_no: item.dispatchNo !== undefined ? String(item.dispatchNo) : undefined,
-        dispatch_date: item.dispatchDate,
-        dispatch_qty: item.dispatchQty,
-        // Storage details
-        package_mark: item.packageMark,
-        rack: item.rack,
-        grn_quantity: item.grnQuantity,
-        grn_date: undefined,
-        weight: item.weight,
-        packaging: item.packaging,
-        // Rates
-        labour_rate: item.labourRate || 0,
-        charge_per_unit: item.charge || 0,
-      }));
+  const lineItems: InvoiceLineItem[] = buildInvoiceLineItems(invoice, invoiceItems, detailedItems);
 
   // Calculate financial summary
   const total = invoice.total || 0;
@@ -421,18 +356,8 @@ function InvoiceDetailScreen() {
     ...(invoice.grn?.id
       ? [{ id: invoice.grn.id, number: invoice.grn.number || invoice.gr_no || '', type: 'grn' as const }]
       : []),
-    // Add dispatch documents from line items
-    ...Array.from(
-      new Set(
-        detailedItems
-          .filter((item) => item.dispatchNo)
-          .map((item) => item.dispatchNo)
-      )
-    ).map((dispatchNo) => ({
-      id: String(dispatchNo!),
-      number: String(dispatchNo!),
-      type: 'dispatch' as const,
-    })),
+    // The dispatches billed, opened by dispatch id (the number is only their label)
+    ...relatedDispatchDocuments(lineItems),
   ];
 
   // Normalize the two supported summary shapes. The detailed-items service uses

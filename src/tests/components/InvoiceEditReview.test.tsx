@@ -149,3 +149,36 @@ describe('a discount the field did not accept', () => {
     await act(async () => { tree.unmount(); });
   });
 });
+
+describe('the total of an updated invoice', () => {
+  const confirmUpdate = async (tree: ReactTestRenderer) => {
+    await pressUpdate(tree);
+    const [, message, buttons] = jest.mocked(showAlert).mock.calls[0];
+    await act(async () => { await buttons!.find((button) => button.text === t('invoice.review.updateInvoice'))!.onPress!(); });
+    return message;
+  };
+
+  it('is asked for as an estimate and shown as the server stored it', async () => {
+    // The form holds 335 (735 less the discount of 400). The server counts 1.5 periods and stores 598.
+    jest.mocked(updateInvoice).mockResolvedValue({ success: true, data: { invoice_id: 'inv-42', invoice_no: 42, total: 598 } });
+    const tree = await render();
+
+    const message = await confirmUpdate(tree);
+
+    expect(message).toContain('Estimated total ₹335.00');
+    const dialog = standIn(tree, 'InvoiceSuccessDialog');
+    expect(dialog.props.isVisible).toBe(true);
+    expect(dialog.props.invoiceData).toMatchObject({ invoice_no: 42, total: 598, estimated_total: 335 });
+    await act(async () => { tree.unmount(); });
+  });
+
+  it('is left unknown when the server total could not be read back', async () => {
+    jest.mocked(updateInvoice).mockResolvedValue({ success: true, data: { invoice_id: 'inv-42', invoice_no: 42, total: null } });
+    const tree = await render();
+
+    await confirmUpdate(tree);
+
+    expect(standIn(tree, 'InvoiceSuccessDialog').props.invoiceData).toMatchObject({ total: null, estimated_total: 335 });
+    await act(async () => { tree.unmount(); });
+  });
+});

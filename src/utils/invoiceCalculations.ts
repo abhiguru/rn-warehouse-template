@@ -69,12 +69,22 @@ export interface ItemAmounts {
   item_total: number;
 }
 
+/**
+ * The amounts of one line, computed as the server computes them
+ * (recalculate_invoice_header, backend docs/INVOICE_RULES.md).
+ *
+ * A monthly line is storage (qty x charge x duration) plus labour (qty x
+ * labour rate), each rounded to two places. A line of a ONE_TIME GRN
+ * (`oneTime`) is storage charged once per unit: no duration, no labour.
+ * Which of the two applies is the GRN's pricing mode; the client cannot choose.
+ */
 export function calculateItemAmounts(
   qty: number,
   charge: number,
   labour_rate: number,
   tax: number,
-  duration: number
+  duration: number,
+  oneTime: boolean = false
 ): ItemAmounts {
   // Guard against NaN - use 0 as safe default for invalid values
   const safeQty = isNaN(qty) || qty < 0 ? 0 : qty;
@@ -83,8 +93,8 @@ export function calculateItemAmounts(
   const safeTax = isNaN(tax) || tax < 0 ? 0 : tax;
   const safeDuration = isNaN(duration) || duration <= 0 ? 1 : duration;
 
-  const amount = roundMoney(safeQty * safeCharge * safeDuration);
-  const labour_amount = roundMoney(safeQty * safeLabourRate);
+  const amount = roundMoney(oneTime ? safeQty * safeCharge : safeQty * safeCharge * safeDuration);
+  const labour_amount = oneTime ? 0 : roundMoney(safeQty * safeLabourRate);
   const taxable_amount = roundMoney(amount + labour_amount);
   const tax_amount = roundMoney(taxable_amount * (safeTax / 100));
   const item_total = roundMoney(taxable_amount + tax_amount);
@@ -120,7 +130,8 @@ export function applyPricingToItem(
     charge,
     labour_rate,
     tax,
-    duration
+    duration,
+    item.one_time
   );
 
   return {
@@ -201,33 +212,6 @@ export function calculateInvoiceBreakdown(
 }
 
 /**
- * Update all items with new duration and recalculate totals
- */
-export function updateAllItemDurations(
-  items: InvoiceItemData[],
-  newDuration: number
-): InvoiceItemData[] {
-  // Duration can be fractional (e.g., 7.5 months), don't round it
-  const duration = newDuration;
-
-  return items.map((item) => {
-    const amounts = calculateItemAmounts(
-      item.qty,
-      item.charge,
-      item.labour_rate,
-      item.tax,
-      duration
-    );
-
-    return {
-      ...item,
-      duration,
-      ...amounts,
-    };
-  });
-}
-
-/**
  * Apply bulk pricing to items matching a group key (item_id + package_mark)
  */
 export interface BulkPricingUpdate {
@@ -270,7 +254,8 @@ export function applyBulkItemGroupPricing(
       charge,
       labour_rate,
       tax,
-      item.duration
+      item.duration,
+      item.one_time
     );
 
     return {
@@ -286,32 +271,6 @@ export function applyBulkItemGroupPricing(
     updatedItems,
     updatedCount,
   };
-}
-
-/**
- * Restore original durations to items
- */
-export function restoreItemDurations(
-  items: InvoiceItemData[],
-  originalDurations: Record<string, number>
-): InvoiceItemData[] {
-  return items.map((item) => {
-    const originalDuration = originalDurations[item.temp_id] || 1;
-
-    const amounts = calculateItemAmounts(
-      item.qty,
-      item.charge,
-      item.labour_rate,
-      item.tax,
-      originalDuration
-    );
-
-    return {
-      ...item,
-      duration: originalDuration,
-      ...amounts,
-    };
-  });
 }
 
 /**
@@ -408,7 +367,7 @@ export function recalculateItemWithEdits(
   const tax = editedValues.tax ?? item.tax;
   const no_of_days = Math.round(editedValues.no_of_days ?? item.no_of_days);
 
-  const amounts = calculateItemAmounts(item.qty, charge, labour_rate, tax, duration);
+  const amounts = calculateItemAmounts(item.qty, charge, labour_rate, tax, duration, item.one_time);
 
   return {
     ...item,
@@ -477,7 +436,7 @@ export function applyBulkGroupPricing(
     const tax = overrides.includes('tax') ? item.tax : pricing.tax;
 
     // Recalculate amounts
-    const amounts = calculateItemAmounts(item.qty, charge, labour_rate, tax, item.duration);
+    const amounts = calculateItemAmounts(item.qty, charge, labour_rate, tax, item.duration, item.one_time);
 
     return {
       ...item,

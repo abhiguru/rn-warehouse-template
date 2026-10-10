@@ -10,6 +10,7 @@ import {
   roundMoney,
   calculateFinancialYear,
   calculateHeaderTotals,
+  calculateItemAmounts,
   recalculateItemWithEdits,
   applyBulkPricingToAllItems,
   applyBulkGroupPricing,
@@ -57,7 +58,6 @@ const createInitialState = (): InvoiceFormState & { snapshot: InvoiceFormSnapsho
   editedItems: {},
   itemOverrides: {},
   bulkPricing: {},
-  originalDurations: {},
   currentStep: 0,
   is_loading: false,
   is_saving: false,
@@ -315,11 +315,14 @@ const invoiceFormSlice = createSlice({
         saved_discount_reason: state.header.saved_discount_reason,
       };
 
-      // For one_time_charge: use the value from GRN's pricing_mode if provided,
-      // otherwise preserve the current value (for backward compatibility)
-      const oneTimeCharge = action.payload.header.one_time_charge !== undefined
-        ? action.payload.header.one_time_charge
-        : state.header.one_time_charge;
+      // The lines carry the GRN's pricing mode (`one_time`) and their amounts
+      // are worked out here as the server works them out. The header flag only
+      // reports that mode; it is not a switch and never changes a duration.
+      const items = action.payload.items.map((item) => ({
+        ...item,
+        ...calculateItemAmounts(item.qty, item.charge, item.labour_rate, item.tax, item.duration, item.one_time),
+      }));
+      const oneTimeCharge = items.length > 0 && items.every((item) => item.one_time === true);
 
       // Reset header completely to avoid stale data from previous GRN selection
       state.header = {
@@ -333,40 +336,11 @@ const invoiceFormSlice = createSlice({
         discount: preservedDiscount,
         ...preservedDiscountRecord,
       };
-      state.items = action.payload.items;
+      state.items = items;
       state.selected_gr_id = action.payload.grId;
       state.editedItems = {};
       state.itemOverrides = {};
       state.bulkPricing = {};
-
-      // Cache original durations for one_time_charge toggle restoration
-      // These are the calculated durations from the RPC (based on dispatch dates)
-      state.originalDurations = {};
-      action.payload.items.forEach((item) => {
-        state.originalDurations[item.temp_id] = item.duration;
-      });
-
-      // If one_time_charge is enabled, override all durations to 1 and recalculate amounts
-      // This handles GRNs with pricing_mode = ONE_TIME
-      if (oneTimeCharge) {
-        state.items.forEach((item, index) => {
-          const newDuration = 1;
-          const amount = roundMoney(item.qty * item.charge * newDuration);
-          const labour_amount = roundMoney(item.qty * item.labour_rate);
-          const taxable_amount = roundMoney(amount + labour_amount);
-          const tax_amount = roundMoney(taxable_amount * (item.tax / 100));
-          const item_total = roundMoney(taxable_amount + tax_amount);
-
-          state.items[index] = {
-            ...item,
-            duration: newDuration,
-            amount,
-            labour_amount,
-            tax_amount,
-            item_total,
-          };
-        });
-      }
 
       // Calculate initial totals with proper rounding
       Object.assign(state.header, calculateHeaderTotals(state.items, state.header.discount));
@@ -392,6 +366,9 @@ const invoiceFormSlice = createSlice({
         discount_reason: action.payload.header.discount_reason || '',
         saved_discount: action.payload.header.discount || 0,
         saved_discount_reason: action.payload.header.discount_reason || '',
+        // As in loadInvoiceFormData: the flag reports how the lines are priced.
+        one_time_charge:
+          action.payload.items.length > 0 && action.payload.items.every((item) => item.one_time === true),
       };
 
       // Replace all items
@@ -439,71 +416,8 @@ const invoiceFormSlice = createSlice({
         };
       });
 
-      // Cache original durations for one_time_charge toggle restoration
-      state.originalDurations = {};
-      action.payload.items.forEach((item) => {
-        state.originalDurations[item.temp_id] = item.duration;
-      });
-
       // Clear validation errors
       state.validationErrors = {};
-    },
-
-    // Update all item durations (for one_time_charge toggle)
-    updateAllDurations: (state, action: PayloadAction<number>) => {
-      const newDuration = action.payload;
-
-      // Update all items with new duration and recalculate
-      state.items.forEach((item, index) => {
-        const { charge, labour_rate, tax } = item;
-
-        // Recalculate amounts with new duration
-        const amount = roundMoney(item.qty * charge * newDuration);
-        const labour_amount = roundMoney(item.qty * labour_rate);
-        const taxable_amount = roundMoney(amount + labour_amount);
-        const tax_amount = roundMoney(taxable_amount * (tax / 100));
-        const item_total = roundMoney(taxable_amount + tax_amount);
-
-        state.items[index] = {
-          ...item,
-          duration: newDuration,
-          amount,
-          labour_amount,
-          tax_amount,
-          item_total,
-        };
-      });
-
-      // Recalculate header totals
-      Object.assign(state.header, calculateHeaderTotals(state.items, state.header.discount));
-    },
-
-    // Restore original durations from cache (for one_time_charge toggle off)
-    restoreOriginalDurations: (state) => {
-      // Restore each item's duration from cache (can be fractional, e.g., 7.5 months)
-      state.items.forEach((item, index) => {
-        const originalDuration = state.originalDurations[item.temp_id] || 1;
-        const { charge, labour_rate, tax } = item;
-
-        // Recalculate amounts with original duration
-        const amount = roundMoney(item.qty * charge * originalDuration);
-        const labour_amount = roundMoney(item.qty * labour_rate);
-        const taxable_amount = roundMoney(amount + labour_amount);
-        const tax_amount = roundMoney(taxable_amount * (tax / 100));
-        const item_total = roundMoney(taxable_amount + tax_amount);
-
-        state.items[index] = {
-          ...item,
-          duration: originalDuration,
-          amount,
-          labour_amount,
-          tax_amount,
-          item_total,
-        };
-      });
-
-      // Recalculate header totals
-      Object.assign(state.header, calculateHeaderTotals(state.items, state.header.discount));
     },
 
     resetForm: () => {
@@ -567,8 +481,6 @@ export const {
   bulkUpdateItemGroupPricing,
   updateDiscount,
   recalculateTotals,
-  updateAllDurations,
-  restoreOriginalDurations,
   setCurrentStep,
   setIsLoading,
   setIsSaving,
