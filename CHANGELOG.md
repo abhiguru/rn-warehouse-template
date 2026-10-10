@@ -1,5 +1,36 @@
 # Changelog
 
+## Unreleased — dependency gate, install check, workflow pins and search logs from the 2026-10-10 review
+
+No backend migration is needed. No dependency version changed. The details
+are in docs/DEPENDENCY_SECURITY.md, first section.
+
+- `npm run audit:dependencies` fails on any advisory at moderate, high or
+  critical that is not on its list of accepted advisories. It looked at high
+  and critical only. The list is the three locally repaired advisories
+  (node-forge, braces, sprintf-js), each with a review date of 2027-01-10.
+  **From 2027-01-11 the command fails on every branch until the list is
+  reviewed** and the dates are moved or the entries removed. Low and info
+  advisories are listed in the output and do not fail it.
+- `npm start`, `npm run android`, `npm run ios`, `npm run web` and `npm test`
+  first check that the postinstall patches are in place
+  (`scripts/check-install.mjs`). An install with `--ignore-scripts` left the
+  packages unpatched without a word.
+- Dependabot: the packages held back from weekly version updates now get
+  security pull requests. Each ignore entry names its update types.
+- Workflows: every action is referenced by commit, with the release in a
+  comment.
+- Over-the-air updates are off by an explicit setting
+  (`"updates": { "enabled": false }` in `app.json`); the native configuration
+  is unchanged. A test refuses turning them on without code signing.
+- Device log: the search, customer and user-profile services no longer write
+  what was typed into a search, the answer of the customer, item and dispatch
+  searches, the first result, or whole error objects to the console. They log
+  counts, identifiers and error codes through the redacting logger.
+
+Not done here: the `overrides` in `package.json` stay exact pins that are
+reviewed by hand (ranges would change what is installed).
+
 ## Unreleased — photos, GRN logs, racks, search and Android backup from the 2026-10-10 review (low-severity items)
 
 No backend migration is needed. Build note: the next Android build is the
