@@ -17,6 +17,7 @@
  * @module lists/DispatchFlashList
  */
 
+import { createLogger } from '@/utils/logger';
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { View, Text, StyleSheet, RefreshControl, LayoutAnimation } from 'react-native';
 
@@ -68,6 +69,8 @@ import { fontWeight, iconSize, layout, radius, space, touchTarget, typography, t
 import type { ThemeTokens } from '@/theme/tokens';
 
 import { FAB_CLEARANCE } from '@/components/ui/Fab';
+
+const logger = createLogger('DispatchList');
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -202,7 +205,8 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
       }
     } catch (err: unknown) {
       if (!isMountedRef.current || requestId !== latestRequest.current) return;
-      console.error('[DispatchFlashList] Error:', err);
+      // Development only, and through the redacting logger: the text is the server's and can name a table, a function or the facility's address.
+      logger.warn('List did not load', err instanceof Error ? err.message : err);
       setError(err instanceof Error ? err.message : 'Failed to load dispatches');
       setSnackbarMessage(append
         ? translate('lists.dispatch.loadMoreFailed')

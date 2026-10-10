@@ -72,12 +72,17 @@ export function useSearchAutocomplete<T>({
   const [results, setResults] = useState<T[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // The number of the search asked for last. An answer to an earlier one is
+  // dropped: answers can arrive out of order on a slow link.
+  const latestSearch = useRef(0);
 
   // Perform the actual search
   const performSearch = useCallback(
     async (query: string) => {
+      const search = ++latestSearch.current;
       if (query.trim().length < minQueryLength) {
         setResults([]);
+        setIsLoading(false);
         return;
       }
 
@@ -86,17 +91,19 @@ export function useSearchAutocomplete<T>({
 
       try {
         const searchResults = await searchFn(query);
+        if (search !== latestSearch.current) return;
         const finalResults = transformResults
           ? transformResults(searchResults)
           : searchResults;
         setResults(finalResults);
         onSearchComplete?.(finalResults);
       } catch (error) {
+        if (search !== latestSearch.current) return;
         console.error('[useSearchAutocomplete] Search error:', error);
         setResults([]);
         onSearchError?.(error);
       } finally {
-        setIsLoading(false);
+        if (search === latestSearch.current) setIsLoading(false);
       }
     },
     [searchFn, minQueryLength, transformResults, onSearchStart, onSearchComplete, onSearchError]
@@ -126,8 +133,11 @@ export function useSearchAutocomplete<T>({
       clearTimeout(searchTimeoutRef.current);
       searchTimeoutRef.current = null;
     }
+    // A search still on its way answers into a cleared field: drop it.
+    latestSearch.current += 1;
     setSearchQuery('');
     setResults([]);
+    setIsLoading(false);
   }, []);
 
   // Perform search immediately (no debounce)

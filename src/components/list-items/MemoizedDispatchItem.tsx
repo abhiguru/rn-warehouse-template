@@ -508,6 +508,9 @@ const areEqual = (
     prevDispatch.total_items === nextDispatch.total_items &&
     prevDispatch.registration === nextDispatch.registration &&
     prevDispatch.disp_date === nextDispatch.disp_date &&
+    // The lines are drawn when the card is expanded. A refetch gives a new
+    // array, so an edit that keeps every total above is still drawn again.
+    prevDispatch.items === nextDispatch.items &&
     // Compare callback references
     prevProps.onPress === nextProps.onPress &&
     prevProps.canPrint === nextProps.canPrint &&

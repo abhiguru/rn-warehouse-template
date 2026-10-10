@@ -1,4 +1,5 @@
 import { getSessionGeneration } from '@/config/sessionLifecycle';
+import { createLogger } from '@/utils/logger';
 import { useOrderLiveUpdates } from '@/hooks/useOrderLiveUpdates';
 import { OrderRefreshAction } from '@/components/OrderRefreshAction';
 /**
@@ -44,6 +45,8 @@ import RecentDispatchedOrdersSection from '@/components/RecentDispatchedOrdersSe
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, layout, radius, space, touchTarget, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
+
+const logger = createLogger('OrderQueue');
 
 // ============================================================================
 // TYPES
@@ -172,7 +175,8 @@ const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = ({
       if (!isMountedRef.current) {
         return;
       }
-      console.error('[SupervisorOrderQueueList] Error:', err);
+      // Development only, and through the redacting logger: the text is the server's and can name a table, a function or the facility's address.
+      logger.warn('List did not load', err instanceof Error ? err.message : err);
       const errorMessage = err instanceof Error ? err.message : 'Failed to load orders';
       setError(errorMessage);
       setSnackbarMessage(translate('lists.queue.loadFailed'));
@@ -228,7 +232,8 @@ const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = ({
       }
     } catch (err: unknown) {
       if (!isMountedRef.current) return;
-      console.error('[SupervisorOrderQueueList] Load more error:', err);
+      // Development only, and through the redacting logger: the text is the server's and can name a table, a function or the facility's address.
+      logger.warn('Next page did not load', err instanceof Error ? err.message : err);
       setSnackbarMessage(translate('lists.order.loadMoreFailed'));
       setSnackbarVisible(true);
     } finally {

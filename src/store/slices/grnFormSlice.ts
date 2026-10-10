@@ -200,28 +200,10 @@ const grnFormSlice = createSlice({
     },
     removeHeaderImage: (state, action: PayloadAction<string>) => {
       const imageIdToRemove = action.payload;
-      const beforeCount = state.header.gr_images.length;
       const imageToRemove = state.header.gr_images.find(img => img.id === imageIdToRemove);
-
-      console.log('[GRNFormSlice] 🗑️ removeHeaderImage called:', {
-        imageIdToRemove,
-        beforeCount,
-        imageFound: !!imageToRemove,
-        imageDetails: imageToRemove ? {
-          id: imageToRemove.id,
-          storagePath: imageToRemove.storagePath?.substring(0, 50),
-          uploadStatus: imageToRemove.uploadStatus,
-        } : null,
-      });
 
       state.header.gr_images = state.header.gr_images.filter(img => img.id !== imageIdToRemove);
       rememberRemovedImage(state, imageToRemove);
-
-      console.log('[GRNFormSlice] 🗑️ After removal:', {
-        afterCount: state.header.gr_images.length,
-        removed: beforeCount - state.header.gr_images.length,
-        remainingIds: state.header.gr_images.map(img => img.id),
-      });
     },
 
     // Item image management (supports multiple images per item)

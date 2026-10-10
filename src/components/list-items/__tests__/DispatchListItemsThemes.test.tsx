@@ -91,3 +91,34 @@ describe.each(THEMES)('%s %s', (brand, mode) => {
     expect(texts(tree)).toEqual(expect.arrayContaining(['Dispatch 43', 'Dispatched', '1 bag', 'Order 1042']));
   });
 });
+
+// M9-9: the memo comparators looked at the totals only, so a card kept its old
+// lines after a refetch that changed lines without changing a total.
+describe('a refetched dispatch whose lines changed is drawn again', () => {
+  const render = (element: React.ReactElement) => renderIn('orange', 'light', element);
+  const allText = (tree: ReactTestRenderer) => texts(tree).join(' | ');
+
+  it('dispatch card: a line swapped for another of the same quantity and weight', () => {
+    const onPress = jest.fn();
+    const words = undefined as never;
+    const element = (value: Dispatch) => <MemoizedDispatchItem dispatch={value} onPress={onPress} globalExpanded globalExpandedKey={1} words={words} />;
+    const tree = render(element(dispatch));
+    expect(allText(tree)).toContain('B-14');
+
+    const edited = { ...dispatch, items: [{ ...(dispatch.items as any[])[0], rack: 'C-02' }] } as unknown as Dispatch;
+    act(() => tree.update(element(edited)));
+    expect(allText(tree)).toContain('C-02');
+    expect(allText(tree)).not.toContain('B-14');
+    act(() => tree.unmount());
+  });
+
+  it('recent order card: the name of who made it', () => {
+    const onPress = jest.fn();
+    const element = (value: RecentDispatchedOrder) => <RecentDispatchedOrderCard dispatch={value} onPress={onPress} />;
+    const tree = render(element(recent));
+    expect(allText(tree)).toContain('Asha');
+    act(() => tree.update(element({ ...recent, created_by_name: 'Meera' })));
+    expect(allText(tree)).toContain('Meera');
+    act(() => tree.unmount());
+  });
+});
