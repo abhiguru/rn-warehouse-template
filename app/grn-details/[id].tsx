@@ -55,7 +55,7 @@ import { deleteGRNImage, uploadGRNImage } from '@/features/grn/services/imageUpl
 
 import { showAlert } from '@/utils/alert';
 import { formatCount } from '@/utils/formatters';
-import { t as tr } from '@/i18n';
+import { t as tr, formatIdentifier } from '@/i18n';
 const makeStyles = (t: ThemeTokens) => ({
   container: {
     flex: 1,
@@ -418,7 +418,7 @@ function GRNDetailScreen() {
   const handleDeleteGRN = () => {
     showAlert(
       data?.grn?.gr_no
-        ? tr('grn.details.deleteTitle', { number: String(data.grn.gr_no) })
+        ? tr('grn.details.deleteTitle', { number: formatIdentifier(data.grn.gr_no) })
         : tr('grn.details.deleteTitleNoNumber'),
       tr('grn.details.deleteMessage'),
       [
@@ -433,7 +433,7 @@ function GRNDetailScreen() {
               const result = await deleteGRN(id);
 
               if (result.success) {
-                const message = result.message || (data?.grn?.gr_no ? tr('grn.details.deletedWithNumber', { number: String(data.grn.gr_no) }) : tr('grn.details.deleted'));
+                const message = result.message || (data?.grn?.gr_no ? tr('grn.details.deletedWithNumber', { number: formatIdentifier(data.grn.gr_no) }) : tr('grn.details.deleted'));
                 const details = result.deleted_counts
                   ? tr('grn.details.removedCounts', {
                       items: formatCount(result.deleted_counts.grn_items, 'item'),
@@ -648,7 +648,7 @@ function GRNDetailScreen() {
           headerTitleStyle: styles.headerTitle,
           headerShadowVisible: false,
           headerTitleAlign: 'center',
-          title: tr('grn.details.titleWithNumber', { number: String(grn.gr_no) }),
+          title: tr('grn.details.titleWithNumber', { number: formatIdentifier(grn.gr_no) }),
           // Custom back button so Back always returns, even after a deep link
           headerLeft: () => (
             <HeaderBackButton />

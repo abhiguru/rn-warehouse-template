@@ -32,6 +32,9 @@ import {
   KPIGrid,
   ReportEmptyState,
   PeriodSelector,
+  FactLines,
+  joinFacts,
+  stacksFacts,
   type KPIItem,
 } from '@/components/reports';
 import {
@@ -49,6 +52,7 @@ import {
   touchTarget,
   typography,
   type ThemeTokens,
+  trackedText,
 } from '@/theme/tokens';
 import type {
   AllCustomerActivityData,
@@ -60,7 +64,7 @@ import type {
 import { formatCount, formatCurrency, formatDate, formatMonth, formatNumber, toDate } from '@/utils/formatters';
 import { Avatar, StatusTag, type StatusKind } from '@/components/ui';
 import { createLogger } from '@/utils/logger';
-import { localizeDigits, t as tr, type TranslationKey } from '@/i18n';
+import { localizeDigits, t as tr, type TranslationKey, formatIdentifier } from '@/i18n';
 
 const logger = createLogger('CustomerActivity');
 
@@ -160,7 +164,7 @@ const makeStyles = (t: ThemeTokens) =>
     sectionHeaderText: {
       ...typography.footnote,
       fontWeight: fontWeight.semibold,
-      letterSpacing: 0.5,
+      letterSpacing: trackedText(0.5),
       textTransform: 'uppercase',
       color: t.text.secondary,
     },
@@ -199,9 +203,12 @@ const makeStyles = (t: ThemeTokens) =>
       rowGap: space.xxs,
       marginTop: space.xs,
     },
+    // Stacked (Gujarati): a column of full-width lines; the text fills its line, so it is never squeezed into two.
+    customerMetricsStacked: { flexDirection: 'column', flexWrap: 'nowrap' },
+    metricTextStacked: { flex: 1 },
     metric: { flexDirection: 'row', alignItems: 'center', gap: space.xs },
     metricText: { ...typography.footnote, color: t.text.secondary, fontVariant: ['tabular-nums'] },
-    customerStock: { alignItems: 'flex-end' },
+    customerStock: { alignItems: 'flex-end', flexShrink: 0 },
     customerStockValue: { ...typography.headline, color: t.text.primary, fontVariant: ['tabular-nums'] },
     customerStockLabel: { ...typography.caption1, color: t.text.secondary },
     divider: {
@@ -414,9 +421,10 @@ interface CustomerCardProps {
 }
 
 const CustomerCard: React.FC<CustomerCardProps> = ({ customer, onPress, styles, t }) => {
-  const subtitle = [customer.customer_city, formatLastActivity(customer.last_activity_date)]
-    .filter(Boolean)
-    .join(' · ');
+  const subtitleFacts = [customer.customer_city, formatLastActivity(customer.last_activity_date)];
+  const subtitle = joinFacts(subtitleFacts);
+  // Gujarati: one metric per line for every row, so no row breaks inside "₹692 of invoices".
+  const stacked = stacksFacts();
   const grns = formatCount(customer.total_grns, 'GRN');
   const dispatches = formatCount(customer.total_dispatches, 'dispatch', 'dispatches');
   const invoiced = tr('reports.customerActivity.invoicedAmount', {
@@ -444,23 +452,26 @@ const CustomerCard: React.FC<CustomerCardProps> = ({ customer, onPress, styles, 
         <Text style={styles.customerName} numberOfLines={2}>
           {customer.customer_name}
         </Text>
-        {subtitle ? (
-          <Text style={styles.customerSubtitle} numberOfLines={1}>
-            {subtitle}
-          </Text>
-        ) : null}
-        <View style={styles.customerMetrics}>
+        <FactLines facts={subtitleFacts} style={styles.customerSubtitle} numberOfLines={1} />
+        <View style={[styles.customerMetrics, stacked && styles.customerMetricsStacked]}>
           <View style={styles.metric}>
             <Icon name="package-down" size={iconSize.sm} color={t.icon.secondary} />
-            <Text style={styles.metricText}>{grns}</Text>
+            <Text style={[styles.metricText, stacked && styles.metricTextStacked]} numberOfLines={stacked ? 1 : undefined}>{grns}</Text>
           </View>
           <View style={styles.metric}>
             <Icon name="truck-delivery-outline" size={iconSize.sm} color={t.icon.secondary} />
-            <Text style={styles.metricText}>{dispatches}</Text>
+            <Text style={[styles.metricText, stacked && styles.metricTextStacked]} numberOfLines={stacked ? 1 : undefined}>{dispatches}</Text>
           </View>
           <View style={styles.metric}>
             <Icon name="file-document-outline" size={iconSize.sm} color={t.icon.secondary} />
-            <Text style={styles.metricText}>{invoiced}</Text>
+            <Text
+              style={[styles.metricText, stacked && styles.metricTextStacked]}
+              numberOfLines={stacked ? 1 : undefined}
+              adjustsFontSizeToFit={stacked}
+              minimumFontScale={0.8}
+            >
+              {invoiced}
+            </Text>
           </View>
         </View>
       </View>
@@ -1256,7 +1267,7 @@ export default function CustomerActivityScreen() {
                 {detailData.recent_grns.slice(0, 3).map((grn) => (
                   <PreviewItem
                     key={grn.grn_id}
-                    label={tr('reports.customerActivity.grnNumber', { number: grn.gr_no })}
+                    label={tr('reports.customerActivity.grnNumber', { number: formatIdentifier(grn.gr_no) })}
                     sublabel={formatDate(grn.grn_date, 'short')}
                     value={tr('reports.customerActivity.stockOfTotal', {
                       stock: formatNumber(grn.current_stock),
@@ -1280,7 +1291,7 @@ export default function CustomerActivityScreen() {
                 {detailData.recent_dispatches.slice(0, 3).map((disp) => (
                   <PreviewItem
                     key={disp.dispatch_id}
-                    label={tr('reports.customerActivity.dispatchNumber', { number: disp.dispatch_no })}
+                    label={tr('reports.customerActivity.dispatchNumber', { number: formatIdentifier(disp.dispatch_no) })}
                     sublabel={formatDate(disp.dispatch_date, 'short')}
                     value={formatNumber(disp.total_qty)}
                     styles={styles}
@@ -1322,7 +1333,7 @@ export default function CustomerActivityScreen() {
                 {detailData.recent_invoices.slice(0, 3).map((inv) => (
                   <PreviewItem
                     key={inv.invoice_id}
-                    label={tr('reports.customerActivity.invoiceNumber', { number: inv.invoice_number })}
+                    label={tr('reports.customerActivity.invoiceNumber', { number: formatIdentifier(inv.invoice_number) })}
                     sublabel={formatDate(inv.invoice_date, 'short')}
                     value={formatCurrency(inv.net_total, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     status={invoiceStatus(inv.status)}

@@ -43,7 +43,7 @@ import {
 import type { ThemeTokens } from '@/theme/tokens';
 import type { GRNDetailItem } from '@/types/dispatch.types';
 import { formatCount, formatWeight } from '@/utils/formatters';
-import { t as tr } from '@/i18n';
+import { t as tr, formatIdentifier } from '@/i18n';
 import { StatusTag } from '@/components/ui/StatusTag';
 
 interface LotBottomSheetProps {
@@ -349,7 +349,7 @@ export const LotBottomSheet: React.FC<LotBottomSheetProps> = ({
         style={({ pressed }) => [styles.viewAction, pressed && styles.viewActionPressed]}
         onPress={handleViewGRNDetails}
         accessibilityRole="button"
-        accessibilityLabel={tr('dispatch.grnSheet.viewGrnNumbered', { number: grnInfo.gr_no })}
+        accessibilityLabel={tr('dispatch.grnSheet.viewGrnNumbered', { number: formatIdentifier(grnInfo.gr_no) })}
       >
         <Icon name="eye-outline" size={iconSize.lg} color={t.brand.onFill} />
         <Text style={styles.viewActionText}>{tr('dispatch.grnSheet.viewGrn')}</Text>

@@ -29,6 +29,7 @@ import {
   touchTarget,
   typography,
   type ThemeTokens,
+  trackedText,
 } from '@/theme/tokens';
 import { showAlert } from '@/utils/alert';
 import { avatarColors, avatarInitials } from '@/utils/avatar';
@@ -424,7 +425,7 @@ const makeStyles = (t: ThemeTokens) => ({
   sectionHeader: {
     ...typography.footnote,
     textTransform: 'uppercase' as const,
-    letterSpacing: 0.5,
+    letterSpacing: trackedText(0.5),
     color: t.text.secondary,
     marginHorizontal: layout.marginCompact,
     marginBottom: space.sm,

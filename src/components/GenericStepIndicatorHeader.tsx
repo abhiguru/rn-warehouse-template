@@ -336,7 +336,7 @@ export const GenericStepIndicatorHeader: React.FC<GenericStepIndicatorHeaderProp
 
         {/* Current step name (phones show only this one) */}
         {current && (
-          <Text style={styles.currentStepText} numberOfLines={1}>
+          <Text style={styles.currentStepText} numberOfLines={2}>
             {tr('components.steps.currentStep', { step: currentStep, total: steps.length, name: current.label })}
           </Text>
         )}

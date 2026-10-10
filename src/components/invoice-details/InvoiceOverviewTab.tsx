@@ -18,8 +18,8 @@ import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { fontWeight, iconSize, layout, radius, space, touchTarget, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { savedInvoiceAmounts, formatInvoiceAmount, formatInvoiceDeduction } from '@/utils/invoiceCalculations';
-import { formatDate, toDate } from '@/utils/formatters';
-import { t as tr } from '@/i18n';
+import { formatDate, toDate, formatFinancialYear, formatMobile } from '@/utils/formatters';
+import { t as tr, formatIdentifier } from '@/i18n';
 
 // ============================================================================
 // TYPES
@@ -271,10 +271,10 @@ export const InvoiceOverviewTab: React.FC<InvoiceOverviewTabProps> = ({
             style={({ pressed }) => [styles.contactAction, pressed && styles.cardPressed]}
             onPress={() => handlePhonePress(customer_details.mobile!)}
             accessibilityRole="button"
-            accessibilityLabel={tr('invoice.details.callA11y', { name: customer_details.name, mobile: customer_details.mobile })}
+            accessibilityLabel={tr('invoice.details.callA11y', { name: customer_details.name, mobile: formatMobile(customer_details.mobile) })}
           >
             <Icon name="phone-outline" size={iconSize.md} color={t.brand.tint} />
-            <Text style={styles.contactActionText}>{customer_details.mobile}</Text>
+            <Text style={styles.contactActionText}>{formatMobile(customer_details.mobile)}</Text>
             <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />
           </Pressable>
         )}
@@ -306,7 +306,7 @@ export const InvoiceOverviewTab: React.FC<InvoiceOverviewTabProps> = ({
         onPress={handleGRNPress}
         disabled={!on_view_grn}
         accessibilityRole={on_view_grn ? 'button' : undefined}
-        accessibilityLabel={`${tr('invoice.label.grnNumber', { number: String(grn_details.number) })}${grnDate ? `, ${grnDate}` : ''}`}
+        accessibilityLabel={`${tr('invoice.label.grnNumber', { number: formatIdentifier(grn_details.number) })}${grnDate ? `, ${grnDate}` : ''}`}
         accessibilityHint={on_view_grn ? tr('invoice.details.opensGrnHint') : undefined}
       >
         <View style={styles.objectCellHeader}>
@@ -315,7 +315,7 @@ export const InvoiceOverviewTab: React.FC<InvoiceOverviewTabProps> = ({
           </View>
           <View style={styles.objectCellContent}>
             <Text style={styles.objectCellLabel}>{tr('invoice.details.linkedGrn')}</Text>
-            <Text style={styles.objectCellHeadline}>{tr('invoice.label.grnNumber', { number: String(grn_details.number) })}</Text>
+            <Text style={styles.objectCellHeadline}>{tr('invoice.label.grnNumber', { number: formatIdentifier(grn_details.number) })}</Text>
           </View>
           {on_view_grn && (
             <Icon name="chevron-right" size={iconSize.lg} color={t.icon.secondary} />
@@ -371,7 +371,7 @@ export const InvoiceOverviewTab: React.FC<InvoiceOverviewTabProps> = ({
         <View style={styles.objectCellContent}>
           <Text style={styles.objectCellHeadline}>{tr('invoice.review.amounts')}</Text>
           {financial_year && (
-            <Text style={styles.objectCellSubheadline}>{tr('invoice.details.financialYearValue', { year: financial_year })}</Text>
+            <Text style={styles.objectCellSubheadline}>{tr('invoice.details.financialYearValue', { year: formatFinancialYear(financial_year) })}</Text>
           )}
         </View>
       </View>

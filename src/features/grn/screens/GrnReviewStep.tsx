@@ -7,7 +7,7 @@ import {
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
-import { fontWeight, iconSize, radius, space, touchTarget, typography } from '@/theme/tokens';
+import { fontWeight, iconSize, radius, space, touchTarget, typography, trackedText } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { triggerSuccess, triggerError, triggerWarning } from '@/hooks/useHaptics';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -44,7 +44,7 @@ import { showAlert } from '@/utils/alert';
 import WizardBottomBar from '@/components/WizardBottomBar';
 import { formatCount, formatDate, formatNumber, formatWeight } from '@/utils/formatters';
 import { StatusTag } from '@/components/ui';
-import { t as tr } from '@/i18n';
+import { t as tr, formatIdentifier } from '@/i18n';
 
 /** "9 Oct 2026" (§12.3); today when no date is set yet. */
 function formatReviewDate(value: string | undefined): string {
@@ -186,7 +186,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
     if (!header.gr_images || header.gr_images.length === 0) {
       showAlert(
         tr('grn.review.photoRequiredTitle'),
-        tr('grn.review.photoRequiredMessage', { number: String(header.gr_no) })
+        tr('grn.review.photoRequiredMessage', { number: formatIdentifier(header.gr_no) })
       );
       return;
     }
@@ -293,7 +293,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
           setSnackbarMessage(tr('grn.review.savedWithSkipped', { items: skippedText }));
         } else {
           triggerSuccess();
-          setSnackbarMessage(header.gr_no ? tr('grn.review.savedWithNumber', { number: String(header.gr_no) }) : tr('grn.review.saved'));
+          setSnackbarMessage(header.gr_no ? tr('grn.review.savedWithNumber', { number: formatIdentifier(header.gr_no) }) : tr('grn.review.saved'));
         }
         setSnackbarVisible(true);
 
@@ -645,7 +645,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
         title={isCreateMode ? tr('grn.review.confirmCreateTitle') : tr('grn.review.confirmSaveTitle')}
         message={
           header.gr_no
-            ? tr(isCreateMode ? 'grn.review.confirmCreateNumbered' : 'grn.review.confirmSaveNumbered', { number: String(header.gr_no), count: totalItems })
+            ? tr(isCreateMode ? 'grn.review.confirmCreateNumbered' : 'grn.review.confirmSaveNumbered', { number: formatIdentifier(header.gr_no), count: totalItems })
             : tr(isCreateMode ? 'grn.review.confirmCreate' : 'grn.review.confirmSave', { count: totalItems })
         }
         confirmText={ctaLabel}
@@ -746,7 +746,7 @@ const makeStyles = (t: ThemeTokens) => ({
   sectionHeaderText: {
     ...typography.footnote,
     fontWeight: fontWeight.semibold,
-    letterSpacing: 0.5,
+    letterSpacing: trackedText(0.5),
     color: t.text.secondary,
     flex: 1,
   },

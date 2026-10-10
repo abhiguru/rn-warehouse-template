@@ -38,12 +38,13 @@ import {
   space,
   touchTarget,
   typography,
+  trackedText,
 } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { searchGRNNumbers, getGRNPrefixesWithStock, getCustomerGRNsWithStock, type GRNPrefixWithStock } from '../services/grnDetailService';
 import type { GRNAutocompleteItem } from '@/types/dispatch.types';
 import { formatCount, formatDate, formatNumber } from '@/utils/formatters';
-import { t as tr } from '@/i18n';
+import { t as tr, formatIdentifier } from '@/i18n';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -128,7 +129,7 @@ const makeStyles = (t: ThemeTokens) => ({
     ...typography.footnote,
     fontWeight: fontWeight.semibold,
     textTransform: 'uppercase' as const,
-    letterSpacing: 0.5,
+    letterSpacing: trackedText(0.5),
     color: t.text.secondary,
   },
   emptyContainer: {
@@ -541,7 +542,7 @@ const GRNListItem = memo<GRNListItemProps>(({
       style={({ pressed }) => [styles.viewAction, pressed && styles.viewActionPressed]}
       onPress={handleViewDetails}
       accessibilityRole="button"
-      accessibilityLabel={tr('dispatch.grnSheet.viewGrnNumbered', { number: item.gr_no })}
+      accessibilityLabel={tr('dispatch.grnSheet.viewGrnNumbered', { number: formatIdentifier(item.gr_no) })}
     >
       <Icon name="eye-outline" size={iconSize.lg} color={t.brand.onFill} />
       <Text style={styles.viewText}>{tr('common.view')}</Text>
@@ -564,7 +565,7 @@ const GRNListItem = memo<GRNListItemProps>(({
           isSelected && styles.grnCardSelected,
         ]}
         accessibilityRole="button"
-        accessibilityLabel={tr('dispatch.grnSheet.rowLabel', { number: item.gr_no, date: grnDate, customer: item.customer_name })}
+        accessibilityLabel={tr('dispatch.grnSheet.rowLabel', { number: formatIdentifier(item.gr_no), date: grnDate, customer: item.customer_name })}
         accessibilityState={{ selected: isSelected }}
         accessibilityActions={[{ name: 'viewGRN', label: tr('dispatch.grnSheet.viewGrn') }]}
         onAccessibilityAction={(e) => {
@@ -574,7 +575,7 @@ const GRNListItem = memo<GRNListItemProps>(({
         <View style={styles.grnHeader}>
           <View style={styles.grnTitleRow}>
             <Icon name="package-down" size={iconSize.md} color={t.brand.tint} />
-            <Text style={styles.grnNumber}>{tr('dispatch.grnSheet.grnNumbered', { number: item.gr_no })}</Text>
+            <Text style={styles.grnNumber}>{tr('dispatch.grnSheet.grnNumbered', { number: formatIdentifier(item.gr_no) })}</Text>
           </View>
           {isSelected && (
             <Icon name="check-circle" size={iconSize.lg} color={t.brand.tint} />

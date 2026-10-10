@@ -21,5 +21,7 @@ export { FioriDataTable, type DataTableColumn, type DataTableProps } from './Fio
 // List Items
 export { ReportCustomerCard, type ReportCustomerCardProps } from './ReportCustomerCard';
 
+export { FactLines, joinFacts, stacksFacts } from './FactLines';
+
 // Search
 export { ReportCustomerSearch, type ReportCustomerSearchProps } from './ReportCustomerSearch';

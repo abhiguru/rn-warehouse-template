@@ -12,7 +12,7 @@ import { fontWeight, space, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { formatInvoiceAmount } from '@/utils/invoiceCalculations';
 import { formatCount, formatDate, formatNumber, toDate } from '@/utils/formatters';
-import { t } from '@/i18n';
+import { t, formatIdentifier } from '@/i18n';
 
 // ============================================================================
 // TYPES
@@ -110,7 +110,7 @@ export const InvoiceHeroHeader: React.FC<InvoiceHeroHeaderProps> = ({
 
   return (
     <View style={styles.container}>
-      <View accessible accessibilityRole="header" accessibilityLabel={`${t('invoice.details.titleNumber', { number: String(invoice_number) })}${subtitle ? `, ${subtitle}` : ''}`}>
+      <View accessible accessibilityRole="header" accessibilityLabel={`${t('invoice.details.titleNumber', { number: formatIdentifier(invoice_number) })}${subtitle ? `, ${subtitle}` : ''}`}>
         <Text style={styles.docType}>{t('common.invoice')}</Text>
         <Text style={styles.number}>{invoice_number}</Text>
         {subtitle ? <Text style={styles.subtitle} numberOfLines={2}>{subtitle}</Text> : null}

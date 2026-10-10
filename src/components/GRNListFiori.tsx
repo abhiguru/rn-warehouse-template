@@ -52,7 +52,7 @@ import { getGRNStockStatus, type GRNStockStatus } from '@/features/grn/utils/grn
 import { StatusTag, Avatar } from '@/components/ui';
 import { createLogger } from '@/utils/logger';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
-import { iconSize } from '@/theme/tokens';
+import { iconSize, singleLineText } from '@/theme/tokens';
 
 // Filters, search and sort (docs/STYLE_GUIDE.md §14.5)
 import { FILTER_CONFIGS, GRN_FILTERS } from '@/features/filters/configs';
@@ -69,11 +69,11 @@ import { makeGRNListStyles, type GRNListStyles } from './GRNListFiori.styles';
 import { formatSectionDate, formatNumber, formatCount, formatDate, formatWeight } from '@/utils/formatters';
 
 import { Fab } from '@/components/ui/Fab';
-import { t as translate } from '@/i18n';
+import { t as translate, formatIdentifier } from '@/i18n';
 const logger = createLogger('GRNListFiori');
 
 /** Row title. A receipt saved without a number says so instead of showing a bare "GRN". */
-const grnTitle = (grNo: string) => (grNo.trim() ? translate('lists.grn.cardTitle', { number: grNo }) : translate('lists.grn.noNumber'));
+const grnTitle = (grNo: string) => (grNo.trim() ? translate('lists.grn.cardTitle', { number: formatIdentifier(grNo) }) : translate('lists.grn.noNumber'));
 
 /** Status when nothing was received (no quantity to judge stock against). Built when drawn, so it follows the language. */
 const noQuantityStatus = (): GRNStockStatus => ({ status: 'neutral', label: translate('lists.grn.noQuantity'), icon: 'circle-outline' });
@@ -287,7 +287,7 @@ const GRNCardFiori = memo<GRNCardProps>(({
               <View style={styles.footerRow}>
                 <View style={styles.footerItem}>
                   <Icon name="calendar-outline" size={iconSize.sm} color={t.icon.secondary} />
-                  <Text style={styles.footerText}>{displayDate}</Text>
+                  <Text style={styles.footerText} {...singleLineText()}>{displayDate}</Text>
                 </View>
                 {group.registration && (
                   <>
@@ -299,7 +299,7 @@ const GRNCardFiori = memo<GRNCardProps>(({
                   </>
                 )}
                 <View style={styles.footerDot} />
-                <Text style={styles.footerText}>{itemCountLabel}</Text>
+                <Text style={styles.footerText} {...singleLineText()}>{itemCountLabel}</Text>
               </View>
               {/* Why this GRN matched, when the match is inside the collapsed items */}
               {matched.length > 0 && !isExpanded ? (

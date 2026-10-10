@@ -14,7 +14,7 @@ import React from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { formatCount, formatRelativeTime } from '@/utils/formatters';
-import { t as translate } from '@/i18n';
+import { t as translate, formatIdentifier } from '@/i18n';
 import { StatusTag, type StatusKind, Avatar } from '@/components/ui';
 import type { Order } from '@/types/order.types';
 import { HighlightedText, matchesAnyWord } from '@/features/filters/components/HighlightedText';
@@ -58,7 +58,7 @@ function hiddenMatches(order: Order, words: string[] | undefined): string[] {
     if (text && matchesAnyWord(text, words)) found.add(text);
   }
   for (const line of lines) {
-    for (const text of [line.grn_items_item_name, line.grn_items_package_mark, line.grns_gr_no ? translate('lists.card.grnRef', { number: line.grns_gr_no }) : null]) {
+    for (const text of [line.grn_items_item_name, line.grn_items_package_mark, line.grns_gr_no ? translate('lists.card.grnRef', { number: formatIdentifier(line.grns_gr_no) }) : null]) {
       if (text && matchesAnyWord(text, words)) found.add(text);
     }
   }

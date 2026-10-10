@@ -11,7 +11,7 @@ import { Pressable, Text, View, type Insets } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { t as translate } from '@/i18n';
-import { fontWeight, iconSize, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
+import { fontWeight, iconSize, radius, singleLineText, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 import { formatNumber } from '@/utils/formatters';
 
 export const CHIP_HEIGHT = 36;
@@ -55,6 +55,7 @@ const makeStyles = (t: ThemeTokens) => ({
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
     minHeight: CHIP_HEIGHT,
+    paddingVertical: space.xs,
     paddingLeft: space.md,
     paddingRight: space.md,
     gap: space.xs,
@@ -120,6 +121,7 @@ export function FilterBarChip({
           style={[styles.label, active && styles.labelActive, variant === 'text' && styles.labelText]}
           numberOfLines={1}
           maxFontSizeMultiplier={1.6}
+          {...singleLineText(0.9)}
         >
           {label}
         </Text>

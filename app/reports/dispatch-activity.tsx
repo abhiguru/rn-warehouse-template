@@ -39,6 +39,7 @@ import {
   space,
   touchTarget,
   typography,
+  trackedText,
 } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import type {
@@ -50,7 +51,7 @@ import type {
   CustomerDispatchRow,
 } from '@/types/report.types';
 import { formatNumber, formatWeight, formatDate, formatSectionDate, formatCount } from '@/utils/formatters';
-import { t as tr, type TranslationKey } from '@/i18n';
+import { t as tr, type TranslationKey, formatIdentifier } from '@/i18n';
 
 // Keys, not text: the text is looked up when it is drawn (docs/I18N.md rule 2).
 const LOAD_ERROR: TranslationKey = 'reports.dispatchActivity.loadError';
@@ -117,7 +118,7 @@ const makeStyles = (t: ThemeTokens) => ({
   sectionHeaderText: {
     ...typography.footnote,
     fontWeight: fontWeight.semibold,
-    letterSpacing: 0.5,
+    letterSpacing: trackedText(0.5),
     textTransform: 'uppercase' as const,
     color: t.text.secondary,
   },
@@ -377,7 +378,7 @@ const DispatchCard: React.FC<DispatchCardProps> = ({ dispatch, isExpanded, onTog
         onPress={onToggle}
         accessibilityRole="button"
         accessibilityLabel={tr('reports.dispatchActivity.cardLabel', {
-          number: dispatch.disp_no,
+          number: formatIdentifier(dispatch.disp_no),
           date: dateLabel,
           supervisor: dispatch.supervisor_name,
           bags: bagsLabel(dispatch.total_qty),
@@ -391,7 +392,7 @@ const DispatchCard: React.FC<DispatchCardProps> = ({ dispatch, isExpanded, onTog
 
         <View style={styles.objectCellContent}>
           <Text style={styles.objectCellTitle} numberOfLines={2}>
-            {tr('reports.customerActivity.dispatchNumber', { number: dispatch.disp_no })}
+            {tr('reports.customerActivity.dispatchNumber', { number: formatIdentifier(dispatch.disp_no) })}
           </Text>
           <Text style={styles.objectCellSubtitle} numberOfLines={1}>
             {dateLabel} · {dispatch.supervisor_name}
@@ -420,7 +421,7 @@ const DispatchCard: React.FC<DispatchCardProps> = ({ dispatch, isExpanded, onTog
             style={({ pressed }) => [styles.navButton, pressed && styles.navButtonPressed]}
             onPress={handleNavigateToDetails}
             accessibilityRole="button"
-            accessibilityLabel={tr('reports.dispatchActivity.openDispatch', { number: dispatch.disp_no })}
+            accessibilityLabel={tr('reports.dispatchActivity.openDispatch', { number: formatIdentifier(dispatch.disp_no) })}
           >
             <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />
           </Pressable>
@@ -477,7 +478,7 @@ const ItemRow: React.FC<ItemRowProps> = ({ item, isLast = false }) => {
           )}
         </View>
         <Text style={styles.itemRowFootnote} numberOfLines={1}>
-          {[tr('reports.customerActivity.grnNumber', { number: item.source_grn }), item.rack].filter(Boolean).join(' · ')}
+          {[tr('reports.customerActivity.grnNumber', { number: formatIdentifier(item.source_grn) }), item.rack].filter(Boolean).join(' · ')}
         </Text>
       </View>
 
@@ -509,7 +510,7 @@ const ItemRow: React.FC<ItemRowProps> = ({ item, isLast = false }) => {
         ]}
         onPress={handlePress}
         accessibilityRole="button"
-        accessibilityLabel={tr('reports.dispatchActivity.itemLabel', { item: item.item_name, bags: bagsLabel(item.qty), grn: item.source_grn })}
+        accessibilityLabel={tr('reports.dispatchActivity.itemLabel', { item: item.item_name, bags: bagsLabel(item.qty), grn: formatIdentifier(item.source_grn) })}
         accessibilityHint={tr('reports.dispatchActivity.sourceGrnHint')}
       >
         {content}
@@ -521,7 +522,7 @@ const ItemRow: React.FC<ItemRowProps> = ({ item, isLast = false }) => {
     <View
       style={[styles.itemRow, !isLast && styles.itemRowBorder]}
       accessible
-      accessibilityLabel={tr('reports.dispatchActivity.itemLabel', { item: item.item_name, bags: bagsLabel(item.qty), grn: item.source_grn })}
+      accessibilityLabel={tr('reports.dispatchActivity.itemLabel', { item: item.item_name, bags: bagsLabel(item.qty), grn: formatIdentifier(item.source_grn) })}
     >
       {content}
     </View>

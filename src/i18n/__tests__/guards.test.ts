@@ -164,3 +164,67 @@ describe('sign-in rate limit', () => {
     expect(text).not.toContain('handleRateLimitError(result.error)');
   });
 });
+
+/**
+ * Identifier parameters of `t` (docs/I18N.md rule 5). `t` formats a `number` parameter
+ * for the language, so a document number that is a number in the data ("Invoice 53")
+ * came out in ૦-૯ in Gujarati. A parameter with one of the names below is an
+ * identifier: its value must be wrapped in `formatIdentifier(…)` (or `String(…)`).
+ */
+const IDENTIFIER_PARAMS = new Set(['number', 'grn', 'ref', 'job', 'jobId']);
+/** Texts whose `number` is a position in a list ("Item 2"), a count that is formatted on purpose. */
+const POSITION_KEYS = /customers\.review\.|dispatch\.items\.(editingItem|addingItem)|grn\.item\.|grn\.review\.errorInItem/;
+/** Parameters that are already a string by declaration: "file  key". */
+const DECLARED_STRINGS = new Set([
+  // deleteNumberedTitle: (number: string) => …, called with a document number the caller formatted.
+  'src/components/common/overview-tab/ActionsSection.tsx  `components.actions.${entity}.deleteNumberedTitle`',
+  "src/components/common/overview-tab/ActionsSection.tsx  'components.actions.deleteNumberedTitle'",
+]);
+
+export function unformattedIdentifiers(source: ts.SourceFile, rel: string): string[] {
+  const names = translateNames(source, rel);
+  if (names.size === 0) return [];
+  const found: string[] = [];
+  const visit = (node: ts.Node) => {
+    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && names.has(node.expression.text) && node.arguments.length >= 2) {
+      const [key, params] = node.arguments;
+      const keyText = key.getText(source);
+      if (ts.isObjectLiteralExpression(params) && !POSITION_KEYS.test(keyText) && !DECLARED_STRINGS.has(`${rel}  ${keyText}`)) {
+        for (const property of params.properties) {
+          const name = property.name?.getText(source);
+          if (!name || !IDENTIFIER_PARAMS.has(name)) continue;
+          const value = ts.isPropertyAssignment(property) ? property.initializer.getText(source) : name;
+          if (!/^(formatIdentifier|String)\(/.test(value)) {
+            const { line } = source.getLineAndCharacterOfPosition(property.getStart());
+            found.push(`${rel}:${line + 1}  ${name}: ${value.slice(0, 50)}`);
+          }
+        }
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  return found;
+}
+
+describe('identifiers given to t are not formatted as numbers', () => {
+  const check = (code: string, rel = 'src/example.tsx') => unformattedIdentifiers(parse(rel, code), rel);
+
+  it('the check finds a document number passed as it is', () => {
+    expect(check(`import { t } from '@/i18n';\nconst title = (invoice: { invoice_number: number }) => t('lists.invoice.cardTitle', { number: invoice.invoice_number });`)).toEqual([
+      'src/example.tsx:2  number: invoice.invoice_number',
+    ]);
+    expect(check(`import { t as tr } from '@/i18n';\nconst a = (grn: number) => tr('dispatch.items.allItemsAdded', { grn });`)).toHaveLength(1);
+  });
+
+  it('the check accepts formatIdentifier, String and the position of an item', () => {
+    expect(check(`import { t, formatIdentifier } from '@/i18n';\nconst a = (n: number) => t('lists.invoice.cardTitle', { number: formatIdentifier(n) });`)).toEqual([]);
+    expect(check(`import { t } from '@/i18n';\nconst a = (n: number) => t('lists.invoice.cardTitle', { number: String(n) });`)).toEqual([]);
+    expect(check(`import { t } from '@/i18n';\nconst a = (index: number) => t('grn.item.itemNumber', { number: index + 1 });`)).toEqual([]);
+  });
+
+  it('no file under app/ or src/ does it', () => {
+    const found = FILES.flatMap(file => unformattedIdentifiers(parse(file.path), file.rel));
+    expect(found).toEqual([]);
+  });
+});

@@ -15,16 +15,18 @@ import { View, Text, StyleSheet, Pressable, LayoutAnimation } from 'react-native
 import Animated, { FadeIn } from 'react-native-reanimated';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { formatDate, formatCount, formatNumber, formatWeight } from '@/utils/formatters';
-import { t as translate } from '@/i18n';
+import { t as translate, formatIdentifier } from '@/i18n';
 import type { Dispatch } from '@/services/dispatch-service';
 import { HighlightedText, matchesAnyWord } from '@/features/filters/components/HighlightedText';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import {
   fontWeight,
   iconSize,
+  byLanguage,
   layout,
   motion,
   radius,
+  singleLineText,
   space,
   touchTarget,
   typography,
@@ -133,10 +135,12 @@ const makeStyles = (t: ThemeTokens) => ({
     columnGap: space.sm,
     rowGap: space.xxs,
   },
+  // One fact (icon and text): it never shrinks, so the row wraps between facts, never inside one.
   footerItem: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
     gap: space.xs,
+    flexShrink: 0,
   },
   footerText: {
     ...typography.footnote,
@@ -210,12 +214,13 @@ const makeStyles = (t: ThemeTokens) => ({
     paddingRight: space.sm,
   },
   colWeight: {
-    width: 48,
+    width: byLanguage(48, 56),
     textAlign: 'right' as const,
     paddingRight: space.md,
   },
+  // Gujarati digits are wider than Latin ones: "E0006/૧૦૦" needs more than "E0006/100".
   colGrn: {
-    width: 96,
+    width: byLanguage(96, 112),
     textAlign: 'center' as const,
     paddingRight: space.sm,
   },
@@ -287,12 +292,15 @@ const makeStyles = (t: ThemeTokens) => ({
 
 const NO_WORDS: string[] = [];
 
+/** A table value stays on one line and shrinks to its column: "E0006/100" must not break after "/10". */
+const TABLE_VALUE = { numberOfLines: 1, adjustsFontSizeToFit: true, minimumFontScale: 0.7 } as const;
+
 /** Where a search matched inside a collapsed card: item, package, rack or GRN number of a line. */
 function hiddenMatches(dispatch: Dispatch, words: string[]): string[] {
   if (words.length === 0) return [];
   const found = new Set<string>();
   for (const item of dispatch.items ?? []) {
-    for (const text of [item.item_name, item.package_mark, item.rack, item.gr_no ? translate('lists.card.grnRef', { number: item.gr_no }) : null]) {
+    for (const text of [item.item_name, item.package_mark, item.rack, item.gr_no ? translate('lists.card.grnRef', { number: formatIdentifier(item.gr_no) }) : null]) {
       if (text && matchesAnyWord(text, words)) found.add(text);
     }
   }
@@ -340,12 +348,12 @@ const DispatchItemContent: React.FC<MemoizedDispatchItemProps> = ({
 
   // One combined label for the row (guide §11.3)
   const accessibilityDescription = [
-    translate('lists.dispatch.cardTitle', { number: dispatch.disp_no }),
+    translate('lists.dispatch.cardTitle', { number: formatIdentifier(dispatch.disp_no) }),
     dispatch.customer_name,
     itemsLabel,
     bagsLabel,
     formatWeight(totalWeight, 0),
-    dispatch.registration ? translate('lists.card.vehicle', { number: dispatch.registration }) : null,
+    dispatch.registration ? translate('lists.card.vehicle', { number: formatIdentifier(dispatch.registration) }) : null,
     dateLabel,
     statusConfig.label,
     matched.length > 0 ? translate('lists.card.matched', { matches: matched.join(', ') }) : null,
@@ -368,14 +376,14 @@ const DispatchItemContent: React.FC<MemoizedDispatchItemProps> = ({
 
           {/* Main content */}
           <View style={styles.mainContent}>
-            <HighlightedText style={styles.titleText} numberOfLines={2} text={translate('lists.dispatch.cardTitle', { number: dispatch.disp_no })} words={words} />
+            <HighlightedText style={styles.titleText} numberOfLines={2} text={translate('lists.dispatch.cardTitle', { number: formatIdentifier(dispatch.disp_no) })} words={words} />
             <HighlightedText style={styles.subtitleText} numberOfLines={1} text={dispatch.customer_name ?? ''} words={words} />
 
             {/* Footnote: date, vehicle, item count */}
             <View style={styles.footerRow}>
               <View style={styles.footerItem}>
                 <Icon name="calendar-outline" size={iconSize.sm} color={t.icon.secondary} />
-                <Text style={styles.footerText}>{dateLabel}</Text>
+                <Text style={styles.footerText} {...singleLineText()}>{dateLabel}</Text>
               </View>
               {dispatch.registration && (
                 <View style={styles.footerItem}>
@@ -383,7 +391,7 @@ const DispatchItemContent: React.FC<MemoizedDispatchItemProps> = ({
                   <HighlightedText style={styles.footerText} text={dispatch.registration} words={words} />
                 </View>
               )}
-              <Text style={styles.footerText}>{itemsLabel}</Text>
+              <Text style={styles.footerText} {...singleLineText()}>{itemsLabel}</Text>
             </View>
 
             {/* Why this dispatch matched, when the match is inside the collapsed items */}
@@ -430,7 +438,7 @@ const DispatchItemContent: React.FC<MemoizedDispatchItemProps> = ({
                 item: item.item_name,
                 rack: item.rack,
                 weight: formatWeight(item.weight, 0),
-                grn: item.gr_no,
+                grn: formatIdentifier(item.gr_no),
                 quantity: item.disp_qty,
               })}
             >
@@ -445,13 +453,13 @@ const DispatchItemContent: React.FC<MemoizedDispatchItemProps> = ({
                   <HighlightedText style={styles.tableCellItemMark} numberOfLines={1} text={item.package_mark} words={words} />
                 )}
               </View>
-              <Text style={[styles.tableCell, styles.colWeight, styles.tableCellValue]}>
+              <Text style={[styles.tableCell, styles.colWeight, styles.tableCellValue]} {...TABLE_VALUE}>
                 {formatNumber(Math.round(item.weight || 0))}
               </Text>
-              <Text style={[styles.tableCell, styles.colGrn, styles.tableCellValue]}>
+              <Text style={[styles.tableCell, styles.colGrn, styles.tableCellValue]} {...TABLE_VALUE}>
                 {item.gr_no}/{formatNumber(item.grn_qty)}
               </Text>
-              <Text style={[styles.tableCell, styles.colQty, styles.tableCellQty]}>
+              <Text style={[styles.tableCell, styles.colQty, styles.tableCellQty]} {...TABLE_VALUE}>
                 {formatNumber(item.disp_qty)}
               </Text>
             </View>
@@ -465,7 +473,7 @@ const DispatchItemContent: React.FC<MemoizedDispatchItemProps> = ({
           onPress={handleToggleExpand}
           style={({ pressed }) => [styles.expandButton, pressed && styles.expandButtonPressed]}
           accessibilityRole="button"
-          accessibilityLabel={isExpanded ? translate('lists.dispatch.hideDetailsOf', { number: dispatch.disp_no }) : translate('lists.dispatch.showDetailsOf', { items: itemsLabel })}
+          accessibilityLabel={isExpanded ? translate('lists.dispatch.hideDetailsOf', { number: formatIdentifier(dispatch.disp_no) }) : translate('lists.dispatch.showDetailsOf', { items: itemsLabel })}
           accessibilityState={{ expanded: isExpanded }}
         >
           <Text style={styles.expandButtonText}>

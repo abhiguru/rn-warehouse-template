@@ -33,6 +33,7 @@ import {
   touchTarget,
   typography,
   type ThemeTokens,
+  trackedText,
 } from '@/theme/tokens';
 import { searchService } from '@/services/search-service';
 
@@ -108,7 +109,7 @@ const makeStyles = (t: ThemeTokens) =>
       ...typography.footnote,
       fontWeight: fontWeight.semibold,
       textTransform: 'uppercase',
-      letterSpacing: 0.5,
+      letterSpacing: trackedText(0.5),
       color: t.text.secondary,
       paddingHorizontal: space.md,
       paddingTop: space.md,

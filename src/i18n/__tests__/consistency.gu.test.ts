@@ -72,6 +72,7 @@ describe('one word per idea', () => {
       'kg': 'kg stays in narrow columns: glossary',
       'from {{from}}': 'a filter chip and "valid from" on a price',
       'recent': 'agrees with a different noun in each place',
+      'latest {{date}}': 'agrees with the document: the latest GRN (પાવતી, feminine) and the latest invoice',
       'from': 'start date and start number: glossary rule 4',
       'to': 'end date and end number: glossary rule 4',
       'dispatched': 'the label beside a count, an order status (માલ ગયો) and a report column',

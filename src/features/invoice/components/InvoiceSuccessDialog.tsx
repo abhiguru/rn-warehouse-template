@@ -25,7 +25,8 @@ import {
 } from '@/theme/tokens';
 import { formatInvoiceAmount } from '@/utils/invoiceCalculations';
 import { SavedInvoiceData } from '@/types/invoice.types';
-import { t as tr } from '@/i18n';
+import { t as tr, formatIdentifier } from '@/i18n';
+import { formatFinancialYear } from '@/utils/formatters';
 
 interface InvoiceSuccessDialogProps {
   isVisible: boolean;
@@ -191,8 +192,8 @@ export const InvoiceSuccessDialog: React.FC<InvoiceSuccessDialogProps> = ({
 
   const title = isEditMode ? tr('invoice.success.updatedTitle') : tr('invoice.success.savedTitle');
   const message = isEditMode
-    ? tr('invoice.success.updatedMessage', { number: String(invoiceData.invoice_no) })
-    : tr('invoice.success.savedMessage', { number: String(invoiceData.invoice_no) });
+    ? tr('invoice.success.updatedMessage', { number: formatIdentifier(invoiceData.invoice_no) })
+    : tr('invoice.success.savedMessage', { number: formatIdentifier(invoiceData.invoice_no) });
   const total = formatInvoiceAmount(invoiceData.total);
 
   return (
@@ -224,7 +225,7 @@ export const InvoiceSuccessDialog: React.FC<InvoiceSuccessDialogProps> = ({
               style={styles.detailsCard}
               accessible
               accessibilityLabel={tr('invoice.success.detailsA11y', {
-                number: String(invoiceData.invoice_no),
+                number: formatIdentifier(invoiceData.invoice_no),
                 year: invoiceData.fin_year,
                 customer: invoiceData.customer_name,
                 total,
@@ -237,7 +238,7 @@ export const InvoiceSuccessDialog: React.FC<InvoiceSuccessDialogProps> = ({
 
               <View style={styles.detailRow}>
                 <Text style={styles.detailLabel}>{tr('invoice.label.financialYear')}</Text>
-                <Text style={styles.detailValue}>{invoiceData.fin_year}</Text>
+                <Text style={styles.detailValue}>{formatFinancialYear(invoiceData.fin_year)}</Text>
               </View>
 
               <View style={styles.detailRowVertical}>

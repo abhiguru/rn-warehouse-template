@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, TextInput, Pressable, Platform } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
-import { fontWeight, iconSize, layout, radius, space, touchTarget, typography } from '@/theme/tokens';
+import { fontWeight, iconSize, layout, radius, space, touchTarget, typography, trackedText } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { InvoiceItemData } from '@/types/invoice.types';
 import { formatInvoiceAmount } from '@/utils/invoiceCalculations';
@@ -90,7 +90,7 @@ const makeStyles = (t: ThemeTokens) => ({
     ...typography.footnote,
     fontWeight: fontWeight.semibold,
     textTransform: 'uppercase' as const,
-    letterSpacing: 0.5,
+    letterSpacing: trackedText(0.5),
     color: t.text.secondary,
     marginBottom: space.sm,
   },

@@ -5,7 +5,7 @@
 
 import * as yup from 'yup';
 import { formatDate } from '@/utils/formatters';
-import { t, type TranslationKey } from '@/i18n';
+import { t, type TranslationKey, formatIdentifier } from '@/i18n';
 
 /**
  * A yup message read when the error is raised, not when this file is loaded, so
@@ -215,7 +215,7 @@ export const validateDispatchDateVsGRNDates = (
     if (invalidItems.length === 1) {
       const item = invalidItems[0];
       errorMessage = t('dispatch.validation.dateBeforeGrn', {
-        grn: item.grNo,
+        grn: formatIdentifier(item.grNo),
         grnDate: formatDate(item.grnDate),
         dispatchDate: dispDateFormatted,
       });

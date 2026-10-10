@@ -33,9 +33,9 @@ import type {
   RecentActivityItem,
   ReportPeriod,
 } from '@/types/report.types';
-import { formatDate, formatNumber } from '@/utils/formatters';
+import { formatDate, formatNumber, formatRelativeTime } from '@/utils/formatters';
 import { createLogger } from '@/utils/logger';
-import { t as tr, localizeDigits } from '@/i18n';
+import { t as tr, localizeDigits, formatIdentifier } from '@/i18n';
 
 const logger = createLogger('OperationsDashboard');
 
@@ -133,6 +133,7 @@ const makeStyles = (t: ThemeTokens) =>
     activityTime: {
       ...typography.caption1,
       color: t.text.secondary,
+      marginTop: space.xxs,
     },
     trendBody: {
       flexDirection: 'row',
@@ -199,9 +200,19 @@ interface ActivityItemProps {
   t: ThemeTokens;
 }
 
+/**
+ * The server sends the time of an activity as a timestamp. It is shown as "2 hr ago"
+ * or a date; a value that is not a date (already worded by the server) is shown as it is.
+ */
+const activityTime = (value: string | null | undefined): string => {
+  if (!value) return '';
+  return Number.isNaN(new Date(value).getTime()) ? value : formatRelativeTime(value);
+};
+
 const ActivityItem: React.FC<ActivityItemProps> = ({ activity, isLast = false, styles, t }) => {
   const isGrn = activity.type === 'grn';
   const typeLabel = isGrn ? tr('common.grn') : tr('common.dispatch');
+  const time = activityTime(activity.time);
 
   return (
     <View
@@ -209,9 +220,9 @@ const ActivityItem: React.FC<ActivityItemProps> = ({ activity, isLast = false, s
       accessible
       accessibilityLabel={tr('reports.operations.activityA11y', {
         type: typeLabel,
-        ref: activity.ref,
+        ref: formatIdentifier(activity.ref),
         customer: activity.customer,
-        time: activity.time,
+        time,
       })}
     >
       <View style={styles.activityIcon}>
@@ -226,12 +237,12 @@ const ActivityItem: React.FC<ActivityItemProps> = ({ activity, isLast = false, s
         <Text style={styles.activityRef} numberOfLines={2}>
           {activity.ref}
         </Text>
-        <Text style={styles.activityCustomer} numberOfLines={1}>
+        <Text style={styles.activityCustomer} numberOfLines={2}>
           {tr('reports.operations.activitySubtitle', { type: typeLabel, customer: activity.customer })}
         </Text>
+        {/* On its own line: beside the number it took the room the number needs. */}
+        {time ? <Text style={styles.activityTime}>{time}</Text> : null}
       </View>
-
-      <Text style={styles.activityTime}>{activity.time}</Text>
     </View>
   );
 };

@@ -11,7 +11,7 @@ import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityI
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSupport, useEnvironment } from '@/hooks/useConfig';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
-import { fontWeight, iconSize, layout, radius, space, typography } from '@/theme/tokens';
+import { fontWeight, iconSize, layout, radius, space, typography, trackedText } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { EdgeToEdgeStatusBar } from '@/components/EdgeToEdgeStatusBar';
 import { formatDate, toDate } from '@/utils/formatters';
@@ -39,7 +39,7 @@ const makeStyles = (t: ThemeTokens) => ({
     fontWeight: fontWeight.semibold,
     color: t.text.secondary,
     textTransform: 'uppercase' as const,
-    letterSpacing: 0.5,
+    letterSpacing: trackedText(0.5),
     alignSelf: 'stretch' as const,
     marginBottom: space.sm,
     paddingHorizontal: space.lg,

@@ -84,7 +84,7 @@ export function FilteredListHeader({ title, config, filters, loading, expand, ac
   return (
     <>
       <View style={styles.header}>
-        <Text style={styles.title} accessibilityRole="header" numberOfLines={1}>{title}</Text>
+        <Text style={styles.title} accessibilityRole="header" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>{title}</Text>
         <View style={styles.actions}>
           {expand ? (
             <Pressable

@@ -81,7 +81,7 @@ export function SheetFrame({ visible, title, onClose, closeLabel = t('common.can
             <Pressable style={({ pressed }) => [styles.side, pressed && styles.pressed]} onPress={onClose} accessibilityRole="button" accessibilityLabel={closeLabel}>
               <Text style={styles.sideText} maxFontSizeMultiplier={1.6}>{closeLabel}</Text>
             </Pressable>
-            <Text style={styles.title} accessibilityRole="header" numberOfLines={1} maxFontSizeMultiplier={1.6}>{title}</Text>
+            <Text style={styles.title} accessibilityRole="header" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} maxFontSizeMultiplier={1.6}>{title}</Text>
             <View style={[styles.side, styles.sideEnd]}>
               {action ? (
                 <Pressable

@@ -22,6 +22,7 @@ import {
   PeriodSelector,
   ReportEmptyState,
   ReportCustomerSearch,
+  FactLines,
   getDateRangeForPeriod,
   type KPIItem,
 } from '@/components/reports';
@@ -29,7 +30,7 @@ import { Button } from '@/components/ui/Button';
 import { getCustomerInvoiceHistory, getAllInvoiceHistory } from '@/services/reporting/invoice-history-service';
 import { useRoleBasedAccess } from '@/hooks/useRoleBasedAccess';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
-import { fontWeight, iconSize, layout, radius, space, typography } from '@/theme/tokens';
+import { fontWeight, iconSize, layout, radius, space, typography, trackedText } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import type {
   InvoiceHistoryData,
@@ -42,7 +43,7 @@ import type {
 import { formatDate, formatCount, formatCurrency, formatMonth } from '@/utils/formatters';
 import { formatInvoiceAmount } from '@/utils/invoiceCalculations';
 import { StatusTag } from '@/components/ui/StatusTag';
-import { localizeDigits, t as tr, type TranslationKey } from '@/i18n';
+import { localizeDigits, t as tr, type TranslationKey, formatIdentifier } from '@/i18n';
 
 // ============================================================================
 // Formatting
@@ -88,7 +89,7 @@ const makeStyles = (t: ThemeTokens) => ({
   sectionHeaderText: {
     ...typography.footnote,
     fontWeight: fontWeight.semibold,
-    letterSpacing: 0.5,
+    letterSpacing: trackedText(0.5),
     textTransform: 'uppercase' as const,
     color: t.text.secondary,
   },
@@ -269,7 +270,7 @@ const InvoiceCard: React.FC<InvoiceCardProps> = ({ invoice }) => {
   const isPaid = invoice.payment_status?.status === 'paid';
   const statusLabel = tr(isPaid ? 'reports.customerActivity.paid' : 'common.pending');
   const itemsLabel = formatCount(invoice.item_count, 'item');
-  const subtitle = [formatDate(invoice.invoice_date, 'short'), invoice.grn_ref ? tr('reports.customerActivity.grnNumber', { number: invoice.grn_ref }) : null]
+  const subtitle = [formatDate(invoice.invoice_date, 'short'), invoice.grn_ref ? tr('reports.customerActivity.grnNumber', { number: formatIdentifier(invoice.grn_ref) }) : null]
     .filter(Boolean)
     .join(' · ');
 
@@ -283,7 +284,7 @@ const InvoiceCard: React.FC<InvoiceCardProps> = ({ invoice }) => {
       onPress={handlePress}
       accessibilityRole="button"
       accessibilityLabel={tr('reports.invoiceHistory.cardLabel', {
-        number: invoice.invoice_number,
+        number: formatIdentifier(invoice.invoice_number),
         subtitle,
         amount: formatAmount(invoice.net_total),
         items: itemsLabel,
@@ -298,7 +299,7 @@ const InvoiceCard: React.FC<InvoiceCardProps> = ({ invoice }) => {
 
         <View style={styles.cellContent}>
           <Text style={styles.cellTitle} numberOfLines={2}>
-            {tr('reports.customerActivity.invoiceNumber', { number: invoice.invoice_number })}
+            {tr('reports.customerActivity.invoiceNumber', { number: formatIdentifier(invoice.invoice_number) })}
           </Text>
           <Text style={styles.cellSubtitle} numberOfLines={2}>
             {subtitle}
@@ -343,9 +344,10 @@ const CustomerCard: React.FC<CustomerCardProps> = ({ customer, onPress }) => {
         </View>
         <View style={styles.cellContent}>
           <Text style={styles.cellTitle} numberOfLines={2}>{customer.customer_name}</Text>
-          <Text style={styles.cellSubtitle}>
-            {latest ? tr('reports.invoiceHistory.customerSubtitle', { invoices: countLabel, date: latest }) : countLabel}
-          </Text>
+          <FactLines
+            facts={[countLabel, latest ? tr('reports.invoiceHistory.latestInvoice', { date: latest }) : null]}
+            style={styles.cellSubtitle}
+          />
         </View>
         <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />
       </View>

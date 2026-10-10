@@ -37,7 +37,7 @@ import { GRNItem, Catalog, EnhancedSearchFilters, SearchMetadata } from '@/types
 import RecentItemsQuickAdd, { QuickAddItem } from './RecentItemsQuickAdd';
 
 import { showAlert } from '@/utils/alert';
-import { localizeDigits, normalizeDigits, t as tr } from '@/i18n';
+import { localizeDigits, normalizeDigits, t as tr, formatIdentifier } from '@/i18n';
 type StockStatus = 'positive' | 'critical' | 'negative';
 
 // Status words and icons per guide §3.5 (stock level: low stock is critical).
@@ -771,7 +771,7 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
     const rowLabel = [
       item.name,
       item.package_mark ? tr('orders.catalog.rowMark', { mark: item.package_mark }) : null,
-      item.grn_number ? tr('orders.catalog.grn', { number: String(item.grn_number) }) : null,
+      item.grn_number ? tr('orders.catalog.grn', { number: formatIdentifier(item.grn_number) }) : null,
       weightText,
       tr('orders.catalog.rowStock', { status: stockWord, current: formatBags(item.current_stock), total: formatBags(item.original_quantity) }),
       isInExistingOrder ? tr('orders.catalog.rowAlreadyInOrder') : null,
@@ -847,7 +847,7 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
               {item.grn_number ? (
                 <View style={styles.footerItem}>
                   <Icon name="package-down" size={iconSize.sm} color={t.icon.secondary} />
-                  <Text style={styles.footerText}>{tr('orders.catalog.grn', { number: String(item.grn_number) })}</Text>
+                  <Text style={styles.footerText}>{tr('orders.catalog.grn', { number: formatIdentifier(item.grn_number) })}</Text>
                 </View>
               ) : null}
               {grnDate ? <Text style={styles.footerText}>{grnDate}</Text> : null}

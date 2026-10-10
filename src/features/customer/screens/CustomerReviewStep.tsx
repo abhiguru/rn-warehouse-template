@@ -21,7 +21,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { withNativeHandoff } from '@/config/nativeHandoff';
 import { router } from 'expo-router';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
-import { fontWeight, iconSize, layout, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
+import { fontWeight, iconSize, layout, radius, space, touchTarget, typography, type ThemeTokens, trackedText } from '@/theme/tokens';
 import { useCustomerForm } from '@/hooks/useCustomerForm';
 import { GenericStepIndicatorHeader } from '@/components/GenericStepIndicatorHeader';
 import {
@@ -543,7 +543,7 @@ const makeStyles = (t: ThemeTokens) => ({
   subsectionTitle: {
     ...typography.footnote,
     textTransform: 'uppercase' as const,
-    letterSpacing: 0.5,
+    letterSpacing: trackedText(0.5),
     color: t.text.secondary,
     marginBottom: space.sm,
   },

@@ -19,10 +19,11 @@ import {
   radius,
   space,
   typography,
+  trackedText,
 } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { formatCount, formatDate, toDate, formatWeight } from '@/utils/formatters';
-import { t as tr } from '@/i18n';
+import { t as tr, formatIdentifier } from '@/i18n';
 
 // Using snake_case to match backend RPC types
 interface GRNItemSummary {
@@ -61,7 +62,7 @@ const makeStyles = (t: ThemeTokens) => ({
     ...typography.footnote,
     fontWeight: fontWeight.semibold,
     textTransform: 'uppercase' as const,
-    letterSpacing: 0.5,
+    letterSpacing: trackedText(0.5),
     color: t.text.secondary,
     paddingBottom: space.sm,
   },
@@ -119,7 +120,7 @@ const makeStyles = (t: ThemeTokens) => ({
     ...typography.footnote,
     fontWeight: fontWeight.semibold,
     textTransform: 'uppercase' as const,
-    letterSpacing: 0.5,
+    letterSpacing: trackedText(0.5),
     color: t.text.secondary,
     marginBottom: space.sm,
   },
@@ -236,8 +237,8 @@ export const DispatchGRNsTab: React.FC<DispatchGRNsTabProps> = ({
             accessibilityRole={onViewGRN ? 'button' : undefined}
             accessibilityLabel={
               dateLabel
-                ? tr('grn.sourceGrns.cardLabelWithDate', { number: String(grn.grn_no), date: dateLabel, items: itemCount })
-                : tr('grn.sourceGrns.cardLabel', { number: String(grn.grn_no), items: itemCount })
+                ? tr('grn.sourceGrns.cardLabelWithDate', { number: formatIdentifier(grn.grn_no), date: dateLabel, items: itemCount })
+                : tr('grn.sourceGrns.cardLabel', { number: formatIdentifier(grn.grn_no), items: itemCount })
             }
             accessibilityHint={onViewGRN ? tr('grn.sourceGrns.openHint') : undefined}
             style={({ pressed }) => [
@@ -252,7 +253,7 @@ export const DispatchGRNsTab: React.FC<DispatchGRNsTabProps> = ({
                   <Icon name="package-down" size={iconSize.md} color={t.brand.tint} />
                 </View>
                 <View style={styles.grnInfo}>
-                  <Text style={styles.grnNo}>{tr('grn.details.titleWithNumber', { number: String(grn.grn_no) })}</Text>
+                  <Text style={styles.grnNo}>{tr('grn.details.titleWithNumber', { number: formatIdentifier(grn.grn_no) })}</Text>
                   {!!dateLabel && <Text style={styles.grnDate}>{dateLabel}</Text>}
                 </View>
               </View>

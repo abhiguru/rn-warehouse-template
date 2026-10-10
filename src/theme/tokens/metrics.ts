@@ -67,6 +67,28 @@ export const typography: typeof latinTypography = new Proxy(latinTypography, {
 
 export type TypographyStyle = keyof typeof latinTypography;
 
+/**
+ * Letter spacing for capitals-style headings. Spacing pulls Gujarati conjuncts
+ * apart, so it is 0 there. Call it inside a `useThemedStyles` factory, never in
+ * a module-level `StyleSheet.create`, so it follows the language.
+ */
+export const trackedText = (value: number): number => (getLanguage() === 'gu' ? 0 : value);
+
+/**
+ * Props for a short Gujarati text that must stay on one line (a date, a count, a
+ * chip label, a table cell): one line, shrinking a little when the box is a
+ * pixel too narrow. Gujarati text is laid out with line breaking even when it is
+ * one line, so a box that is slightly short drops the last word to a second,
+ * clipped line; Latin text does not. English gets no props: its layout stays as it is.
+ *
+ *   <Text style={styles.date} {...singleLineText()}>{date}</Text>
+ */
+/** A size that differs by script (Gujarati digits and words are wider). Call it inside a `useThemedStyles` factory. */
+export const byLanguage = <T>(latin: T, gujarati: T): T => (getLanguage() === 'gu' ? gujarati : latin);
+
+export const singleLineText = (minimumFontScale = 0.85) =>
+  getLanguage() === 'gu' ? ({ numberOfLines: 1, adjustsFontSizeToFit: true, minimumFontScale } as const) : {};
+
 export const fontWeight = {
   regular: '400',
   medium: '500',

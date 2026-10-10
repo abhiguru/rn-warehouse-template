@@ -26,7 +26,7 @@ import {
 import Animated, { FadeIn } from 'react-native-reanimated';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { formatDate, formatCount, formatNumber, formatWeight } from '@/utils/formatters';
-import { t as translate } from '@/i18n';
+import { t as translate, formatIdentifier } from '@/i18n';
 import type { RecentDispatchedOrder } from '@/types/dispatch.types';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import {
@@ -273,12 +273,12 @@ const RecentDispatchedOrderCardContent: React.FC<RecentDispatchedOrderCardProps>
 
   // One combined label for the row (guide §11.3)
   const accessibilityDescription = [
-    translate('lists.dispatch.cardTitle', { number: dispatch.disp_no }),
+    translate('lists.dispatch.cardTitle', { number: formatIdentifier(dispatch.disp_no) }),
     dispatch.customer_name,
-    translate('lists.recent.fromOrder', { number: dispatch.order_no }),
+    translate('lists.recent.fromOrder', { number: formatIdentifier(dispatch.order_no) }),
     itemsLabel,
     bagsLabel,
-    dispatch.registration ? translate('lists.card.vehicle', { number: dispatch.registration }) : null,
+    dispatch.registration ? translate('lists.card.vehicle', { number: formatIdentifier(dispatch.registration) }) : null,
     translate('lists.recent.createdBy', { name: dispatch.created_by_name }),
     dateLabel,
     translate('lists.order.statusDispatched'),
@@ -304,7 +304,7 @@ const RecentDispatchedOrderCardContent: React.FC<RecentDispatchedOrderCardProps>
           {/* Main content */}
           <View style={styles.mainContent}>
             <Text style={styles.titleText} numberOfLines={2}>
-              {translate('lists.dispatch.cardTitle', { number: dispatch.disp_no })}
+              {translate('lists.dispatch.cardTitle', { number: formatIdentifier(dispatch.disp_no) })}
             </Text>
             <Text style={styles.subtitleText} numberOfLines={1}>
               {dispatch.customer_name}
@@ -314,7 +314,7 @@ const RecentDispatchedOrderCardContent: React.FC<RecentDispatchedOrderCardProps>
             <View style={styles.orderRefRow}>
               <Icon name="clipboard-list-outline" size={iconSize.sm} color={t.icon.secondary} />
               <Text style={styles.orderRefText} numberOfLines={1}>
-                {translate('lists.recent.orderRef', { number: dispatch.order_no })}
+                {translate('lists.recent.orderRef', { number: formatIdentifier(dispatch.order_no) })}
               </Text>
             </View>
 
@@ -367,7 +367,7 @@ const RecentDispatchedOrderCardContent: React.FC<RecentDispatchedOrderCardProps>
                 item: item.item_name,
                 rack: item.rack,
                 weight: formatWeight(item.weight, 0),
-                grn: item.gr_no,
+                grn: formatIdentifier(item.gr_no),
                 quantity: item.disp_qty,
               })}
             >
@@ -387,7 +387,7 @@ const RecentDispatchedOrderCardContent: React.FC<RecentDispatchedOrderCardProps>
               <Text style={[styles.tableCell, styles.colWeight, styles.tableCellValue]}>
                 {formatNumber(Math.round(item.weight || 0))}
               </Text>
-              <Text style={[styles.tableCell, styles.colGrn, styles.tableCellValue]}>
+              <Text style={[styles.tableCell, styles.colGrn, styles.tableCellValue]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
                 {item.gr_no}
               </Text>
               <Text style={[styles.tableCell, styles.colQty, styles.tableCellQty]}>

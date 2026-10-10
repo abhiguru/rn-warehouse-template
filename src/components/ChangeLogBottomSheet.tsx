@@ -26,11 +26,11 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
-import { fontWeight, iconSize, radius, space, touchTarget, typography } from '@/theme/tokens';
+import { fontWeight, iconSize, radius, space, touchTarget, typography, trackedText } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { ChangeLogEntry, CustomerSummary, ChangeLogAnalytics } from '@/types/order.types';
 import { formatRelativeTime, formatWeight } from '@/utils/formatters';
-import { localizeDigits, t as tr } from '@/i18n';
+import { localizeDigits, t as tr, formatIdentifier } from '@/i18n';
 
 interface ChangeLogBottomSheetProps {
   isVisible: boolean;
@@ -147,7 +147,7 @@ const ChangeLogBottomSheet = forwardRef<ChangeLogBottomSheetRef, ChangeLogBottom
       case 'status_changed':
         return tr('components.changeLog.statusChanged');
       case 'dispatch_created':
-        return itemName || tr('components.changeLog.dispatchCreated', { number: entry.change_details.dispatch_no || tr('common.unknown') });
+        return itemName || tr('components.changeLog.dispatchCreated', { number: formatIdentifier(entry.change_details.dispatch_no || tr('common.unknown')) });
       default:
         return itemName || `${action.replace('_', ' ')}`;
     }
@@ -565,7 +565,7 @@ const makeStyles = (t: ThemeTokens) => ({
     ...typography.footnote,
     fontWeight: fontWeight.semibold,
     textTransform: 'uppercase' as const,
-    letterSpacing: 0.5,
+    letterSpacing: trackedText(0.5),
     color: t.text.secondary,
     marginBottom: space.md,
   },

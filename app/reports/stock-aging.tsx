@@ -32,6 +32,7 @@ import {
   space,
   typography,
   type ThemeTokens,
+  trackedText,
 } from '@/theme/tokens';
 import type {
   StockAgingData,
@@ -43,7 +44,7 @@ import type {
 import { formatCount, formatDate, formatNumber } from '@/utils/formatters';
 import { StatusTag, type StatusKind } from '@/components/ui';
 import { createLogger } from '@/utils/logger';
-import { t as tr, localizeDigits, type TranslationKey } from '@/i18n';
+import { t as tr, localizeDigits, type TranslationKey, formatIdentifier } from '@/i18n';
 
 const logger = createLogger('StockAging');
 
@@ -101,7 +102,7 @@ const makeStyles = (t: ThemeTokens) =>
     sectionHeaderText: {
       ...typography.footnote,
       fontWeight: fontWeight.semibold,
-      letterSpacing: 0.5,
+      letterSpacing: trackedText(0.5),
       textTransform: 'uppercase',
       color: t.text.secondary,
     },
@@ -397,7 +398,7 @@ const DetailRow: React.FC<{ label: string; value: string; styles: Styles }> = ({
 
 const StockEntryRow: React.FC<StockEntryRowProps> = ({ item, isExpanded, onToggle, isLast = false, styles, t }) => {
   const title = [
-    tr('reports.shared.grnNumber', { number: String(item.gr_no) }),
+    tr('reports.shared.grnNumber', { number: formatIdentifier(item.gr_no) }),
     item.rack ? tr('reports.shared.rack', { rack: String(item.rack) }) : null,
   ].filter(Boolean).join(' · ');
   const dispatch = item.dispatch_info;
@@ -457,7 +458,7 @@ const StockEntryRow: React.FC<StockEntryRowProps> = ({ item, isExpanded, onToggl
           )}
           <View style={styles.viewGrnButton}>
             <Button type="secondary" size="fullWidth" onPress={() => router.push(`/grn-details/${item.grn_id}`)}>
-              {tr('reports.stockAging.viewGrn', { number: String(item.gr_no) })}
+              {tr('reports.stockAging.viewGrn', { number: formatIdentifier(item.gr_no) })}
             </Button>
           </View>
         </View>
@@ -804,10 +805,10 @@ export default function StockAgingScreen() {
                     <React.Fragment key={customer.customer_id}>
                       <ReportCustomerCard
                         title={customer.customer_name}
-                        subtitle={tr('reports.stockAging.customerSubtitle', {
-                          age: days(customer.average_age_days),
-                          over: formatNumber(customer.items_over_365_days),
-                        })}
+                        subtitle={[
+                          tr('reports.stockAging.averageAgeOf', { age: days(customer.average_age_days) }),
+                          tr('reports.stockAging.overOneYearCount', { over: formatNumber(customer.items_over_365_days) }),
+                        ]}
                         value={customer.total_stock}
                         valueLabel={tr('reports.shared.units')}
                         onPress={() => handleCustomerSelect(customer)}

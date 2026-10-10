@@ -17,6 +17,7 @@ import {
   touchTarget,
   typography,
   type ThemeTokens,
+  trackedText,
 } from '@/theme/tokens';
 
 const tabular = ['tabular-nums' as const];
@@ -248,7 +249,7 @@ export const makeGRNListStyles = (t: ThemeTokens) => ({
     fontWeight: fontWeight.semibold,
     color: t.text.secondary,
     textTransform: 'uppercase' as const,
-    letterSpacing: 0.5,
+    letterSpacing: trackedText(0.5),
   },
 
   sectionBadge: {
@@ -341,10 +342,12 @@ export const makeGRNListStyles = (t: ThemeTokens) => ({
     gap: space.xs,
   },
 
+  // One fact (icon and text): it never shrinks, so the row wraps between facts and a date never breaks inside itself.
   footerItem: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
     gap: space.xxs,
+    flexShrink: 0,
   },
 
   footerText: {

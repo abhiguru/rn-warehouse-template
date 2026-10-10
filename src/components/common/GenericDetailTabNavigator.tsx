@@ -61,14 +61,22 @@ export interface GenericDetailTabNavigatorProps<T extends string = string> {
 // PREDEFINED ICON CONFIGS
 // ============================================================================
 
+/**
+ * Icons by a stable tab id, never by the tab's label (the label changes with the
+ * language). Every name must be a glyph of the bundled MaterialCommunityIcons
+ * font with visible detail: `receipt` is a solid silhouette there and showed as a
+ * grey block, so the GRN tab uses the GRN icon of the lists (`package-down`) and
+ * the invoice items tab uses `receipt-text`, like the bottom tab bar.
+ * `src/tests/components/DetailTabIcons.test.tsx` checks the names.
+ */
 export const TAB_ICONS = {
   overview: { filled: 'information', outline: 'information-outline' },
   items: { filled: 'package-variant', outline: 'package-variant' },
   dispatches: { filled: 'truck-delivery', outline: 'truck-delivery-outline' },
-  grns: { filled: 'receipt', outline: 'receipt' },
+  grns: { filled: 'package-down', outline: 'package-down' },
   images: { filled: 'image-multiple', outline: 'image-multiple-outline' },
   invoices: { filled: 'file-document', outline: 'file-document-outline' },
-  lineItems: { filled: 'receipt', outline: 'receipt-text-outline' },
+  lineItems: { filled: 'receipt-text', outline: 'receipt-text-outline' },
   breakdown: { filled: 'calculator-variant', outline: 'calculator-variant-outline' },
 } as const;
 

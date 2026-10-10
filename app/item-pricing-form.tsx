@@ -37,6 +37,7 @@ import {
   touchTarget,
   typography,
   type ThemeTokens,
+  trackedText,
 } from '@/theme/tokens';
 import {
   getItemStoragePrices,
@@ -545,7 +546,7 @@ const ItemPricingFormScreen: React.FC = () => {
         {/* Header */}
         <View style={[styles.header, { paddingTop: insets.top + space.xs }]}>
           <HeaderBackButton />
-          <Text style={styles.headerTitle} accessibilityRole="header" numberOfLines={1}>
+          <Text style={styles.headerTitle} accessibilityRole="header" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>
             {getTitle()}
           </Text>
           {!isReadOnly && (
@@ -1107,7 +1108,7 @@ const makeStyles = (t: ThemeTokens) => ({
   sectionHeader: {
     ...typography.footnote,
     textTransform: 'uppercase' as const,
-    letterSpacing: 0.5,
+    letterSpacing: trackedText(0.5),
     color: t.text.secondary,
     marginTop: space.sm,
     marginBottom: space.sm,

@@ -55,7 +55,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useSearchAutocomplete } from '@/hooks';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
-import { fontWeight, iconSize, layout, radius, space, touchTarget, typography } from '@/theme/tokens';
+import { fontWeight, iconSize, layout, radius, space, touchTarget, typography, trackedText } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { useAppSelector } from '@/store/hooks';
 import { normalizeDigits, t as tr } from '@/i18n';
@@ -598,7 +598,7 @@ const makeStyles = (t: ThemeTokens) => ({
     fontWeight: fontWeight.semibold,
     color: t.text.secondary,
     textTransform: 'uppercase' as const,
-    letterSpacing: 0.5,
+    letterSpacing: trackedText(0.5),
     marginBottom: space.md,
   },
   recentItem: {

@@ -244,7 +244,7 @@ const ItemEditScreen: React.FC = () => {
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + space.xs }]}>
         <HeaderBackButton onPress={handleBack} />
-        <Text style={styles.headerTitle} accessibilityRole="header" numberOfLines={1}>
+        <Text style={styles.headerTitle} accessibilityRole="header" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>
           {tr('items.form.editTitle')}
         </Text>
         <Pressable

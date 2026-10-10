@@ -29,11 +29,12 @@ import {
     space,
     touchTarget,
     typography,
+    trackedText,
 } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { formatCount, formatDate, toDate, formatWeight, formatNumber } from '@/utils/formatters';
 import { DispatchStepIndicator, dispatchSteps } from '@/components/DispatchStepIndicator';
-import { t as tr } from '@/i18n';
+import { t as tr, formatIdentifier } from '@/i18n';
 import SwipeableFormStep from '@/components/SwipeableFormStep';
 import { PrintRangeDialog } from '@/components/PrintRangeDialog';
 import { printDispatchRange } from '@/services/print-service';
@@ -538,7 +539,7 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
                             index: index + 1,
                             item: item.grnItems_item_name,
                             mark: item.grnItems_package_mark,
-                            grn: item.grns_gr_no,
+                            grn: formatIdentifier(item.grns_gr_no),
                             quantity: item.disp_quantity,
                         }
                     )}
@@ -572,7 +573,7 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
                             <View style={styles.metaBadge}>
                                 <Icon name="package-down" size={iconSize.sm} color={t.icon.secondary} />
                                 <Text style={styles.metaText} maxFontSizeMultiplier={1.6}>
-                                    {tr('dispatch.review.grnBadge', { number: item.grns_gr_no, quantity: item.grnItems_quantity })}
+                                    {tr('dispatch.review.grnBadge', { number: formatIdentifier(item.grns_gr_no), quantity: item.grnItems_quantity })}
                                 </Text>
                             </View>
                             <View style={styles.metaBadge}>
@@ -851,7 +852,7 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
             <ConfirmDialog
                 visible={showConfirmDialog}
                 title={tr(isCreateMode ? 'dispatch.review.confirmCreateTitle' : 'dispatch.review.confirmSaveTitle', {
-                    number: header.disp_no,
+                    number: formatIdentifier(header.disp_no),
                 })}
                 message={tr(isCreateMode ? 'dispatch.review.confirmCreateMessage' : 'dispatch.review.confirmSaveMessage', {
                     count: items.length,
@@ -953,7 +954,7 @@ export function DispatchReviewStep({ mode }: DispatchReviewStepProps) {
             {/* Edit Success Dialog (edit mode) */}
             <ConfirmDialog
                 visible={showEditSuccessDialog}
-                title={tr('dispatch.review.savedTitle', { number: header.disp_no })}
+                title={tr('dispatch.review.savedTitle', { number: formatIdentifier(header.disp_no) })}
                 message={tr('dispatch.review.savedMessage')}
                 confirmText={tr('dispatch.review.viewDispatch')}
                 cancelText=""
@@ -1083,7 +1084,7 @@ const makeStyles = (t: ThemeTokens) => ({
         ...typography.footnote,
         fontWeight: fontWeight.semibold,
         textTransform: 'uppercase' as const,
-        letterSpacing: 0.5,
+        letterSpacing: trackedText(0.5),
         color: t.text.secondary,
     },
     editLink: {

@@ -36,7 +36,7 @@ import {
 import { InvoiceableGrn } from '@/types/invoice.types';
 import { getInvoiceableGrns } from '@/features/invoice/services/invoiceFormService';
 import { formatCount, formatDate, toDate } from '@/utils/formatters';
-import { normalizeDigits, t as tr } from '@/i18n';
+import { normalizeDigits, t as tr, formatIdentifier } from '@/i18n';
 
 interface GRNAutocompleteProps {
   isVisible: boolean;
@@ -348,13 +348,13 @@ export const GRNAutocomplete: React.FC<GRNAutocompleteProps> = ({
           ]}
           onPress={() => handleGRNSelect(item)}
           accessibilityRole="button"
-          accessibilityLabel={`${tr('invoice.label.grnNumber', { number: String(item.gr_no) })}, ${item.customer_name}${date ? `, ${date}` : ''}`}
+          accessibilityLabel={`${tr('invoice.label.grnNumber', { number: formatIdentifier(item.gr_no) })}, ${item.customer_name}${date ? `, ${date}` : ''}`}
           accessibilityState={{ selected: isSelected }}
         >
           <Icon name="package-down" size={iconSize.lg} color={t.icon.secondary} />
           <View style={styles.grnContent}>
             <HighlightedText
-              text={tr('invoice.label.grnNumber', { number: String(item.gr_no) })}
+              text={tr('invoice.label.grnNumber', { number: formatIdentifier(item.gr_no) })}
               query={searchQuery}
               style={styles.grnNumber}
               boldStyle={styles.bold}

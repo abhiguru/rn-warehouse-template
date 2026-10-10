@@ -440,7 +440,7 @@ const ItemPricingScreen: React.FC = () => {
       <View style={styles.headerContent}>
         <View style={styles.titleRow}>
           <HeaderBackButton />
-          <Text style={styles.title} accessibilityRole="header" numberOfLines={1}>
+          <Text style={styles.title} accessibilityRole="header" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>
             {tr('pricing.list.title')}
           </Text>
         </View>

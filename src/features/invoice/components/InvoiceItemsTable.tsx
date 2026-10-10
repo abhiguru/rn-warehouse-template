@@ -9,14 +9,14 @@ import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, Pressable, TextInput, ScrollView, Platform } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
-import { fontWeight, iconSize, layout, radius, space, touchTarget, typography } from '@/theme/tokens';
+import { fontWeight, iconSize, layout, radius, space, touchTarget, typography, trackedText } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { InvoiceItemData, GroupedInvoiceItems } from '@/types/invoice.types';
 import { useAppSelector } from '@/store/hooks';
 import { selectInvoiceFormBulkPricing } from '@/store/slices/invoiceFormSlice';
 import { formatInvoiceAmount } from '@/utils/invoiceCalculations';
 import { formatCount, formatDate, formatWeight } from '@/utils/formatters';
-import { localizeDigits, normalizeDigits, t as tr } from '@/i18n';
+import { localizeDigits, normalizeDigits, t as tr, formatIdentifier } from '@/i18n';
 
 /** Table rows with editable cells keep the full 44 minimum (§13.7). */
 const ROW_MIN_HEIGHT = 44;
@@ -148,7 +148,7 @@ const makeStyles = (t: ThemeTokens) => ({
     ...typography.footnote,
     fontWeight: fontWeight.semibold,
     textTransform: 'uppercase' as const,
-    letterSpacing: 0.5,
+    letterSpacing: trackedText(0.5),
     color: t.text.secondary,
   },
   bulkPricingHint: {
@@ -638,13 +638,13 @@ export const InvoiceItemsTable: React.FC<InvoiceItemsTableProps> = ({
               ]}
               onPress={() => setEditingCell({ tempId: item.temp_id, field })}
               accessibilityRole="button"
-              accessibilityLabel={tr('invoice.table.cellA11y', { label, number: String(item.dispatch_no), value: display })}
+              accessibilityLabel={tr('invoice.table.cellA11y', { label, number: formatIdentifier(item.dispatch_no), value: display })}
               accessibilityHint={tr('invoice.table.editsValueHint')}
             >
               {isEditing ? (
                 <TextInput
                   style={styles.cellInput}
-                  accessibilityLabel={tr('invoice.table.cellInputA11y', { label, number: String(item.dispatch_no) })}
+                  accessibilityLabel={tr('invoice.table.cellInputA11y', { label, number: formatIdentifier(item.dispatch_no) })}
                   value={rawValue > 0 ? rawValue.toString() : ''}
                   onChangeText={(text) => handleCellValueChange(item.temp_id, field, text)}
                   keyboardType="decimal-pad"

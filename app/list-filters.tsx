@@ -153,7 +153,7 @@ function SortAndFilterPage({ config }: { config: CountableFilterList }) {
           <Icon name="close" size={iconSize.lg} color={t.icon.primary} />
         </Pressable>
       )}
-      <Text style={styles.headerTitle} accessibilityRole="header" numberOfLines={1} maxFontSizeMultiplier={1.6}>
+      <Text style={styles.headerTitle} accessibilityRole="header" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} maxFontSizeMultiplier={1.6}>
         {picker ? picker.label : translate('filters.page.title')}
       </Text>
       <View style={[styles.headerSide, styles.headerEnd]}>

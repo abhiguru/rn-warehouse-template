@@ -45,8 +45,8 @@ import {
 } from '@/constants/invoiceSteps';
 
 import { showAlert } from '@/utils/alert';
-import { t as tr } from '@/i18n';
-import { formatNumber } from '@/utils/formatters';
+import { t as tr, formatIdentifier } from '@/i18n';
+import { formatNumber, formatFinancialYear } from '@/utils/formatters';
 export default function InvoiceEditStep3() {
   const dispatch = useAppDispatch();
   const styles = useThemedStyles(makeInvoiceWizardStyles);
@@ -109,7 +109,7 @@ export default function InvoiceEditStep3() {
 
     // Confirm submission
     showAlert(
-      tr('invoice.review.updateTitle', { number: String(header.inv_no) }),
+      tr('invoice.review.updateTitle', { number: formatIdentifier(header.inv_no) }),
       tr('invoice.review.confirmMessage', { customer: header.customer_name, total: formatInvoiceAmount(header.total) }),
       [
         { text: tr('common.cancel'), style: 'cancel' },
@@ -293,7 +293,7 @@ export default function InvoiceEditStep3() {
             </View>
             <View style={[styles.kvRow, styles.kvDivider]}>
               <Text style={styles.kvKey}>{tr('invoice.label.financialYear')}</Text>
-              <Text style={[styles.kvValue, styles.numeric]}>{header.inv_fin_year}</Text>
+              <Text style={[styles.kvValue, styles.numeric]}>{formatFinancialYear(header.inv_fin_year)}</Text>
             </View>
             <View style={[styles.kvRow, styles.kvDivider]}>
               <Text style={styles.kvKey}>{tr('common.grn')}</Text>
@@ -405,7 +405,7 @@ export default function InvoiceEditStep3() {
             setSnackbarMessage(
               end && end !== start
                 ? tr('invoice.print.sentRange', { start: String(start), end: String(end) })
-                : tr('invoice.print.sentOne', { number: String(start) })
+                : tr('invoice.print.sentOne', { number: formatIdentifier(start) })
             );
           } else {
             setSnackbarMessage(tr('invoice.print.failed'));

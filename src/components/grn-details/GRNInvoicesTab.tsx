@@ -10,10 +10,10 @@ import React from 'react';
 import { View, Text, ScrollView } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
-import { fontWeight, iconSize, layout, radius, space, typography } from '@/theme/tokens';
+import { fontWeight, iconSize, layout, radius, space, typography, trackedText } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { formatCount, formatCurrency, formatNumber } from '@/utils/formatters';
-import { t as tr } from '@/i18n';
+import { t as tr, formatIdentifier } from '@/i18n';
 
 // Using snake_case to match backend RPC types
 interface InvoiceSummary {
@@ -42,7 +42,7 @@ const makeStyles = (t: ThemeTokens) => ({
   sectionTitle: {
     ...typography.footnote,
     fontWeight: fontWeight.semibold,
-    letterSpacing: 0.5,
+    letterSpacing: trackedText(0.5),
     textTransform: 'uppercase' as const,
     color: t.text.secondary,
     marginBottom: space.sm,
@@ -212,10 +212,10 @@ export const GRNInvoicesTab: React.FC<GRNInvoicesTabProps> = ({
                   index < invoice_numbers.length - 1 && styles.invoiceRowDivider,
                 ]}
                 accessible
-                accessibilityLabel={tr('grn.invoices.invoiceWithNumber', { number: String(invoiceNo) })}
+                accessibilityLabel={tr('grn.invoices.invoiceWithNumber', { number: formatIdentifier(invoiceNo) })}
               >
                 <Icon name="file-document-outline" size={iconSize.md} color={t.icon.secondary} />
-                <Text style={styles.invoiceNumber}>{tr('grn.invoices.invoiceWithNumber', { number: String(invoiceNo) })}</Text>
+                <Text style={styles.invoiceNumber}>{tr('grn.invoices.invoiceWithNumber', { number: formatIdentifier(invoiceNo) })}</Text>
               </View>
             ))}
           </View>

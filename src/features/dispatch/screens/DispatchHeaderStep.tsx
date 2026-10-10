@@ -22,6 +22,7 @@ import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import {
+    byLanguage,
     fontWeight,
     iconSize,
     layout,
@@ -163,6 +164,10 @@ const makeStyles = (t: ThemeTokens) => ({
     },
     halfField: {
         flex: 1,
+    },
+    // The Gujarati date ("૧૦ ઑક્ટો ૨૦૨૬") is wider than the eight-character number beside it.
+    dateField: {
+        flex: byLanguage(1, 1.35),
     },
     optionalToggle: {
         flexDirection: 'row' as const,
@@ -421,7 +426,7 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
                             </View>
 
                             {/* Date */}
-                            <View style={[styles.formGroup, styles.halfField]}>
+                            <View style={[styles.formGroup, styles.halfField, styles.dateField]}>
                                 <Text style={styles.label}>
                                     {tr('common.date')}<Text style={styles.required}> *</Text>
                                 </Text>
@@ -436,7 +441,12 @@ export function DispatchHeaderStep({ mode }: DispatchHeaderStepProps) {
                                     accessibilityLabel={displayDate ? tr('dispatch.form.dispatchDateLabel', { date: displayDate }) : tr('dispatch.form.chooseDispatchDate')}
                                 >
                                     <Icon name="calendar-outline" size={iconSize.md} color={t.icon.secondary} style={styles.inputIcon} />
-                                    <Text style={[styles.valueText, !header.disp_date && styles.placeholderText]} numberOfLines={1}>
+                                    <Text
+                                        style={[styles.valueText, !header.disp_date && styles.placeholderText]}
+                                        numberOfLines={1}
+                                        adjustsFontSizeToFit
+                                        minimumFontScale={0.75}
+                                    >
                                         {displayDate || tr('dispatch.form.chooseDate')}
                                     </Text>
                                 </Pressable>

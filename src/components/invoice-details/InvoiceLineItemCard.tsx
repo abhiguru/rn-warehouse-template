@@ -14,7 +14,7 @@ import { fontWeight, iconSize, layout, radius, space, touchTarget, typography } 
 import type { ThemeTokens } from '@/theme/tokens';
 import { formatNumber, formatDate, formatCount, formatWeight } from '@/utils/formatters';
 import { formatInvoiceAmount } from '@/utils/invoiceCalculations';
-import { t as tr } from '@/i18n';
+import { t as tr, formatIdentifier } from '@/i18n';
 
 // ============================================================================
 // TYPES
@@ -295,7 +295,7 @@ const InvoiceLineItemCardComponent: React.FC<InvoiceLineItemCardProps> = ({
               onPress={handleGRNPress}
               disabled={!isGrnClickable}
               accessibilityRole="button"
-              accessibilityLabel={tr('invoice.label.viewGrnNumber', { number: String(grNo) })}
+              accessibilityLabel={tr('invoice.label.viewGrnNumber', { number: formatIdentifier(grNo) })}
               accessibilityHint={tr('invoice.details.opensGrnHint')}
               accessibilityState={{ disabled: !isGrnClickable }}
             >
@@ -319,7 +319,7 @@ const InvoiceLineItemCardComponent: React.FC<InvoiceLineItemCardProps> = ({
               onPress={handleDispatchPress}
               disabled={!isDispatchClickable}
               accessibilityRole="button"
-              accessibilityLabel={dispatchNo ? tr('invoice.lineItem.viewDispatchNumberA11y', { number: String(dispatchNo) }) : tr('invoice.lineItem.viewDispatch')}
+              accessibilityLabel={dispatchNo ? tr('invoice.lineItem.viewDispatchNumberA11y', { number: formatIdentifier(dispatchNo) }) : tr('invoice.lineItem.viewDispatch')}
               accessibilityHint={tr('invoice.lineItem.opensDispatchHint')}
               accessibilityState={{ disabled: !isDispatchClickable }}
             >

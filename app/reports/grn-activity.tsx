@@ -23,6 +23,8 @@ import {
   PeriodSelector,
   ReportEmptyState,
   ReportCustomerSearch,
+  FactLines,
+  joinFacts,
   getDateRangeForPeriod,
   type KPIItem,
 } from '@/components/reports';
@@ -38,6 +40,7 @@ import {
   space,
   typography,
   type ThemeTokens,
+  trackedText,
 } from '@/theme/tokens';
 import type {
   GRNActivityData,
@@ -48,7 +51,7 @@ import type {
 } from '@/types/report.types';
 import { formatCount, formatDate, formatNumber, formatSectionDate } from '@/utils/formatters';
 import { StatusTag, Avatar } from '@/components/ui';
-import { t as tr } from '@/i18n';
+import { t as tr, formatIdentifier } from '@/i18n';
 
 const NO_CUSTOMER_ERROR = 'No customer assigned to your account';
 
@@ -78,7 +81,7 @@ const makeStyles = (t: ThemeTokens) => ({
   sectionHeaderText: {
     ...typography.footnote,
     fontWeight: fontWeight.semibold,
-    letterSpacing: 0.5,
+    letterSpacing: trackedText(0.5),
     textTransform: 'uppercase' as const,
     color: t.text.secondary,
   },
@@ -94,7 +97,7 @@ const makeStyles = (t: ThemeTokens) => ({
   dateSectionText: {
     ...typography.footnote,
     fontWeight: fontWeight.semibold,
-    letterSpacing: 0.5,
+    letterSpacing: trackedText(0.5),
     textTransform: 'uppercase' as const,
     color: t.text.secondary,
   },
@@ -163,7 +166,7 @@ const makeStyles = (t: ThemeTokens) => ({
     backgroundColor: t.surface.card,
   },
   customerContent: { flex: 1, gap: space.xxs },
-  customerQty: { alignItems: 'flex-end' as const },
+  customerQty: { alignItems: 'flex-end' as const, flexShrink: 0 },
   divider: {
     height: StyleSheet.hairlineWidth,
     backgroundColor: t.border.divider,
@@ -206,7 +209,7 @@ const GRNCard: React.FC<GRNCardProps> = ({ grn, styles }) => {
   const invoiced = grn.invoice_status.is_invoiced;
   const invoiceLabel = invoiced
     ? grn.invoice_status.invoice_number
-      ? tr('reports.customerActivity.invoiceNumber', { number: grn.invoice_status.invoice_number })
+      ? tr('reports.customerActivity.invoiceNumber', { number: formatIdentifier(grn.invoice_status.invoice_number) })
       : tr('reports.grnActivity.invoiced')
     : tr('reports.grnActivity.notInvoiced');
   const dispatchCount = grn.dispatch_summary.dispatch_count;
@@ -229,7 +232,7 @@ const GRNCard: React.FC<GRNCardProps> = ({ grn, styles }) => {
       onPress={handlePress}
       accessibilityRole="button"
       accessibilityLabel={[
-        tr('reports.customerActivity.grnNumber', { number: grn.gr_no }),
+        tr('reports.customerActivity.grnNumber', { number: formatIdentifier(grn.gr_no) }),
         people,
         stockLabel,
         invoiceLabel,
@@ -246,7 +249,7 @@ const GRNCard: React.FC<GRNCardProps> = ({ grn, styles }) => {
         <View style={styles.objectContent}>
           <View style={styles.titleRow}>
             <Text style={styles.title} numberOfLines={2}>
-              {tr('reports.customerActivity.grnNumber', { number: grn.gr_no })}
+              {tr('reports.customerActivity.grnNumber', { number: formatIdentifier(grn.gr_no) })}
             </Text>
             {grn.image_count > 0 && (
               <StatusTag status="neutral" label={formatNumber(grn.image_count)} icon="camera-outline" />
@@ -284,7 +287,8 @@ const CustomerCard: React.FC<CustomerCardProps> = ({ customer, onPress, styles }
   const t = useTokens();
   const latest = customer.latest_grn_date ? formatDate(customer.latest_grn_date, 'short') : '';
   const grnCount = formatCount(customer.grn_count, 'GRN');
-  const subtitle = latest && latest !== '—' ? tr('reports.grnActivity.customerSubtitle', { grns: grnCount, date: latest }) : grnCount;
+  const facts = [grnCount, latest && latest !== '—' ? tr('reports.grnActivity.latestGrn', { date: latest }) : null];
+  const subtitle = joinFacts(facts);
   const bags = formatCount(customer.total_quantity, 'bag');
   return (
     <Pressable
@@ -299,7 +303,7 @@ const CustomerCard: React.FC<CustomerCardProps> = ({ customer, onPress, styles }
         <Text style={styles.title} numberOfLines={2}>
           {customer.customer_name}
         </Text>
-        <Text style={styles.subtitle}>{subtitle}</Text>
+        <FactLines facts={facts} style={styles.subtitle} />
       </View>
       <View style={styles.customerQty}>
         <Text style={styles.stockValue}>{formatNumber(customer.total_quantity)}</Text>

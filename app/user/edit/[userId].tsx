@@ -26,6 +26,7 @@ import {
   touchTarget,
   typography,
   type ThemeTokens,
+  trackedText,
 } from '@/theme/tokens';
 import { UserService } from '@/services/user-service';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
@@ -250,7 +251,7 @@ const UserEditScreen: React.FC = () => {
         >
           <Text style={styles.cancelButtonText}>{tr('common.cancel')}</Text>
         </Pressable>
-        <Text style={styles.title} accessibilityRole="header" numberOfLines={1}>
+        <Text style={styles.title} accessibilityRole="header" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>
           {tr('users.profile.edit')}
         </Text>
         <Pressable
@@ -457,7 +458,7 @@ const makeStyles = (t: ThemeTokens) => ({
   sectionTitle: {
     ...typography.footnote,
     textTransform: 'uppercase' as const,
-    letterSpacing: 0.5,
+    letterSpacing: trackedText(0.5),
     color: t.text.secondary,
     marginTop: space.xxl,
     marginBottom: space.sm,

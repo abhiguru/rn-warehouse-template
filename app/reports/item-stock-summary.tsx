@@ -39,7 +39,7 @@ import {
 import { formatCount, formatDate, formatNumber, formatWeight } from '@/utils/formatters';
 import { StatusTag } from '@/components/ui';
 import { createLogger } from '@/utils/logger';
-import { t as tr } from '@/i18n';
+import { t as tr, formatIdentifier } from '@/i18n';
 import type { ItemWiseStockItem } from '@/types/stock.types';
 
 const logger = createLogger('ItemStockSummary');
@@ -204,7 +204,7 @@ const GRNRow: React.FC<GRNRowProps> = ({ grn, isLast = false, styles, t }) => {
   ].filter((d): d is { icon: string; text: string } => d !== null);
 
   const a11yLabel = [
-    tr('reports.shared.grnNumber', { number: String(grn.gr_no) }),
+    tr('reports.shared.grnNumber', { number: formatIdentifier(grn.gr_no) }),
     grn.package_mark ? tr('reports.shared.markA11y', { mark: grn.package_mark }) : null,
     grn.customer_name,
     ...details.map(d => d.text),
@@ -219,7 +219,7 @@ const GRNRow: React.FC<GRNRowProps> = ({ grn, isLast = false, styles, t }) => {
         {/* Line 1: GRN number + package mark */}
         <View style={styles.grnRowTitleRow}>
           <Text style={styles.grnRowTitle} numberOfLines={1}>
-            {tr('reports.shared.grnNumber', { number: String(grn.gr_no) })}
+            {tr('reports.shared.grnNumber', { number: formatIdentifier(grn.gr_no) })}
           </Text>
           {grn.package_mark && (
             <StatusTag status="neutral" label={grn.package_mark} icon={null} />

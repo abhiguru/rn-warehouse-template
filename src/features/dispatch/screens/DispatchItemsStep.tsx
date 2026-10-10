@@ -35,6 +35,7 @@ import {
     space,
     touchTarget,
     typography,
+    trackedText,
 } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { useDispatchForm } from '@/hooks/useDispatchForm';
@@ -54,7 +55,7 @@ import { areAllAvailableLotsAlreadyAdded } from '@/features/dispatch/utils/lotAv
 
 import { showAlert } from '@/utils/alert';
 import { formatCount, formatNumber, formatWeight } from '@/utils/formatters';
-import { localizeDigits, normalizeDigits, t as tr } from '@/i18n';
+import { localizeDigits, normalizeDigits, t as tr, formatIdentifier } from '@/i18n';
 type DispatchItemsStepProps = {
     mode: 'create' | 'edit';
 };
@@ -844,7 +845,7 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
                                 <Text style={styles.editModeBannerSubtitle}>
                                     {tr('dispatch.items.editingBannerSubtitle', {
                                         item: currentItem.grnItems_item_name,
-                                        grn: currentItem.grns_gr_no,
+                                        grn: formatIdentifier(currentItem.grns_gr_no),
                                     })}
                                 </Text>
                             </View>
@@ -939,7 +940,7 @@ export function DispatchItemsStep({ mode }: DispatchItemsStepProps) {
                                 <Icon name="information" size={iconSize.md} color={t.status.informative.text} />
                                 <View style={styles.allLotsAddedContent}>
                                     <Text style={styles.allLotsAddedText}>
-                                        {tr('dispatch.items.allItemsAdded', { grn: selectedGRN.gr_no })}
+                                        {tr('dispatch.items.allItemsAdded', { grn: formatIdentifier(selectedGRN.gr_no) })}
                                     </Text>
                                     <Pressable
                                         style={({ pressed }) => [styles.viewAllItemsButton, pressed && styles.linkPressed]}
@@ -1508,7 +1509,7 @@ const makeStyles = (t: ThemeTokens) => ({
         ...typography.footnote,
         fontWeight: fontWeight.semibold,
         textTransform: 'uppercase' as const,
-        letterSpacing: 0.5,
+        letterSpacing: trackedText(0.5),
         color: t.text.secondary,
         marginBottom: space.md,
     },

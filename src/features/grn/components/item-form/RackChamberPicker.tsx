@@ -13,7 +13,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef, forwardRef, u
 import { View, Text, TextInput, Pressable, Platform } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
-import { fontWeight, iconSize, radius, space, typography } from '@/theme/tokens';
+import { fontWeight, iconSize, radius, space, typography, trackedText } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { t as tr } from '@/i18n';
 
@@ -310,7 +310,7 @@ const makeStyles = (t: ThemeTokens) => ({
     ...typography.caption1,
     fontWeight: fontWeight.semibold,
     textTransform: 'uppercase' as const,
-    letterSpacing: 0.5,
+    letterSpacing: trackedText(0.5),
     color: t.text.secondary,
     marginBottom: space.xs,
   },

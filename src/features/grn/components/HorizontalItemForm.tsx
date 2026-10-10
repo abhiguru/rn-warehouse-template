@@ -13,7 +13,7 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { Image } from 'expo-image';
 import { RemoteAutocompleteInput } from '@/components/RemoteAutocompleteInput';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
-import { fontWeight, iconSize, radius, space, touchTarget, typography } from '@/theme/tokens';
+import { fontWeight, iconSize, radius, space, touchTarget, typography, trackedText } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { GRNImageData } from '@/store/slices/grnFormSlice';
 import { searchItems } from '@/services/item-search-service';
@@ -843,7 +843,7 @@ const makeStyles = (t: ThemeTokens) => ({
         ...typography.caption1,
         fontWeight: fontWeight.semibold,
         textTransform: 'uppercase' as const,
-        letterSpacing: 0.5,
+        letterSpacing: trackedText(0.5),
         color: t.text.secondary,
         marginBottom: space.xs,
     },

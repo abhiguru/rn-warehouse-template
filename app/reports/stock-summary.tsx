@@ -34,6 +34,7 @@ import {
   touchTarget,
   typography,
   type ThemeTokens,
+  trackedText,
 } from '@/theme/tokens';
 import type {
   StockSummaryData,
@@ -47,7 +48,7 @@ import { StatusTag } from '@/components/ui';
 import { createLogger } from '@/utils/logger';
 
 import { showAlert } from '@/utils/alert';
-import { t as tr } from '@/i18n';
+import { t as tr, formatIdentifier } from '@/i18n';
 const logger = createLogger('StockSummary');
 
 // Functions, not constants: the text follows the app language (docs/I18N.md rule 2).
@@ -79,7 +80,7 @@ const makeStyles = (t: ThemeTokens) =>
     sectionHeaderText: {
       ...typography.footnote,
       fontWeight: fontWeight.semibold,
-      letterSpacing: 0.5,
+      letterSpacing: trackedText(0.5),
       textTransform: 'uppercase',
       color: t.text.secondary,
     },
@@ -302,7 +303,7 @@ const GRNRow: React.FC<GRNRowProps> = ({ grn, isLast = false, onPress, isOutOfSt
   const weight = tr('reports.stockSummary.weightEach', { weight: formatWeight(grn.item_weight || 0) });
 
   const a11yLabel = [
-    tr('reports.shared.grnNumber', { number: String(grn.gr_no) }),
+    tr('reports.shared.grnNumber', { number: formatIdentifier(grn.gr_no) }),
     grn.package_mark ? tr('reports.shared.markA11y', { mark: grn.package_mark }) : null,
     received,
     emptied,
@@ -318,7 +319,7 @@ const GRNRow: React.FC<GRNRowProps> = ({ grn, isLast = false, onPress, isOutOfSt
       <View style={styles.grnRowContent}>
         <View style={styles.grnRowTitleRow}>
           <Text style={styles.grnRowTitle} numberOfLines={1}>
-            {tr('reports.shared.grnNumber', { number: String(grn.gr_no) })}
+            {tr('reports.shared.grnNumber', { number: formatIdentifier(grn.gr_no) })}
           </Text>
           {grn.package_mark && (
             <StatusTag status="neutral" label={grn.package_mark} icon={null} />
@@ -738,7 +739,7 @@ export default function StockSummaryScreen() {
                       <ReportCustomerCard
                         title={customer.customer_name}
                         customerId={customer.customer_id}
-                        subtitle={`${formatCount(customer.item_count, 'item')} · ${formatCount(customer.grn_count, 'GRN')}`}
+                        subtitle={[formatCount(customer.item_count, 'item'), formatCount(customer.grn_count, 'GRN')]}
                         value={customer.total_stock}
                         valueLabel={tr('reports.shared.units')}
                         onPress={() => handleCustomerSelect(customer)}

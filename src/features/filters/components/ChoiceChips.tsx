@@ -6,7 +6,7 @@ import React from 'react';
 import { Pressable, Text, View, type Insets } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
-import { fontWeight, iconSize, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
+import { fontWeight, iconSize, radius, singleLineText, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 
 const HEIGHT = 36;
 const HIT_SLOP: Insets = { top: (touchTarget - HEIGHT) / 2, bottom: (touchTarget - HEIGHT) / 2 };
@@ -25,8 +25,10 @@ const makeStyles = (t: ThemeTokens) => ({
   chip: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
+    // No fixed height: the chip grows with its label (Gujarati marks above and below the letters).
     minHeight: HEIGHT,
     paddingHorizontal: space.md,
+    paddingVertical: space.xs,
     gap: space.xs,
     borderRadius: radius.pill,
     borderWidth: 1,
@@ -35,7 +37,8 @@ const makeStyles = (t: ThemeTokens) => ({
   },
   chipSelected: { borderColor: t.brand.tint, backgroundColor: t.brand.subtle },
   chipPressed: { backgroundColor: t.surface.cardPressed },
-  label: { ...typography.subhead, color: t.text.primary },
+  // flexShrink 0: the label keeps its measured width whatever the row does.
+  label: { ...typography.subhead, color: t.text.primary, flexShrink: 0 },
   labelSelected: { fontWeight: fontWeight.semibold, color: t.brand.tint },
 });
 
@@ -57,7 +60,11 @@ export function ChoiceChips<T extends string>({ options, value, onChange, access
             accessibilityState={{ selected, checked: selected }}
           >
             {selected ? <Icon name="check" size={iconSize.sm} color={t.brand.tint} /> : null}
-            <Text style={[styles.label, selected && styles.labelSelected]} maxFontSizeMultiplier={1.6}>
+            {/*
+              One line (Gujarati): "બધાં વર્ષ" was drawn as "બધાં" with the top of "વર્ષ" showing
+              under it, a second line the chip had no height for.
+            */}
+            <Text style={[styles.label, selected && styles.labelSelected]} maxFontSizeMultiplier={1.6} {...singleLineText()}>
               {option.label}
             </Text>
           </Pressable>

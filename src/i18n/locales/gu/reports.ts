@@ -121,7 +121,8 @@ export const reports: Translation<typeof source> = {
     overOneYear: '૧ વર્ષથી વધુ',
     stockAge: 'માલ કેટલા દિવસથી પડ્યો છે',
     customersByStockAge: 'વેપારી મુજબ માલ કેટલો જૂનો છે',
-    customerSubtitle: 'સરેરાશ {{age}}થી · {{over}} આઇટમ ૧ વર્ષથી વધુ',
+    averageAgeOf: 'સરેરાશ {{age}}થી',
+    overOneYearCount: '{{over}} આઇટમ ૧ વર્ષથી વધુ',
     opensCustomerHint: 'આ વેપારીનો માલ કેટલા દિવસથી પડ્યો છે તે ખોલે છે',
     itemsHighestFirst: 'આઇટમ, સૌથી વધુ સ્ટોક પહેલાં',
     service: {
@@ -280,7 +281,7 @@ export const reports: Translation<typeof source> = {
     emptyTitle: 'આ સમયગાળામાં કોઈ આવક પાવતી નથી',
     emptyDescription: 'વધુ આવક પાવતી જોવા લાંબો સમયગાળો પસંદ કરો.',
     customerHint: 'આ વેપારીની આવક પાવતી બતાવે છે',
-    customerSubtitle: '{{grns}} · છેલ્લી {{date}}',
+    latestGrn: 'છેલ્લી {{date}}',
     // GRN cards
     invoiced: 'ઇન્વૉઇસ બન્યું',
     notInvoiced: 'ઇન્વૉઇસ બાકી',
@@ -315,7 +316,7 @@ export const reports: Translation<typeof source> = {
     cardLabel: 'ઇન્વૉઇસ {{number}}, {{subtitle}}, {{amount}}, {{items}}, {{status}}',
     openHint: 'ઇન્વૉઇસ ખોલે છે',
     customerHint: 'આ વેપારીના ઇન્વૉઇસ બતાવે છે',
-    customerSubtitle: '{{invoices}} · છેલ્લું {{date}}',
+    latestInvoice: 'છેલ્લું {{date}}',
     latestDate: 'છેલ્લું {{date}}',
     errors: {
       fetchFailed: 'ઇન્વૉઇસનો ઇતિહાસ મેળવી શકાયો નથી',

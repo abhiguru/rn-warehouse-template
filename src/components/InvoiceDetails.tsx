@@ -18,7 +18,7 @@ import { Portal, Snackbar } from 'react-native-paper';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { HeaderBackButton } from '@/components/ui/HeaderBackButton';
-import { fontWeight, iconSize, radius, space, typography } from '@/theme/tokens';
+import { fontWeight, iconSize, radius, space, typography, trackedText } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import {
   getInvoiceDetails,
@@ -30,7 +30,7 @@ import {
 } from '@/services/invoice-service';
 import { isAbortError } from '@/hooks/useAbortableFetch';
 import { formatInvoiceAmount, formatInvoiceDeduction } from '@/utils/invoiceCalculations';
-import { formatCount, formatDate, toDate, formatNumber } from '@/utils/formatters';
+import { formatCount, formatDate, toDate, formatNumber, formatFinancialYear } from '@/utils/formatters';
 import { t as tr } from '@/i18n';
 
 interface InvoiceDetailsProps {
@@ -110,7 +110,7 @@ const makeStyles = (t: ThemeTokens) => ({
     ...typography.footnote,
     color: t.text.secondary,
     textTransform: 'uppercase' as const,
-    letterSpacing: 0.5,
+    letterSpacing: trackedText(0.5),
     marginTop: space.sm,
   },
   summaryLine: { ...typography.subhead, color: t.text.secondary, fontVariant: ['tabular-nums' as const] },
@@ -287,7 +287,7 @@ const InvoiceDetails: React.FC<InvoiceDetailsProps> = ({ invoiceId, onBack }) =>
           <View style={styles.divider} />
           {renderInfoRow('package-down', tr('common.grn'), invoiceHeader.grn?.number || invoiceHeader.gr_no)}
           <View style={styles.divider} />
-          {renderInfoRow('calendar-range', tr('invoice.label.financialYear'), invoiceHeader.financial_year)}
+          {renderInfoRow('calendar-range', tr('invoice.label.financialYear'), formatFinancialYear(invoiceHeader.financial_year))}
         </View>
 
         {/* Amounts */}

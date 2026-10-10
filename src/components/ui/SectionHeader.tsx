@@ -29,6 +29,7 @@ import {
   touchTarget,
   typography,
   type ThemeTokens,
+  trackedText,
 } from '@/theme/tokens';
 import { localizeDigits, t as tr } from '@/i18n';
 
@@ -254,7 +255,7 @@ const makeStyles = (t: ThemeTokens) => ({
   title: {
     ...typography.footnote,
     fontWeight: fontWeight.semibold,
-    letterSpacing: 0.5,
+    letterSpacing: trackedText(0.5),
     textTransform: 'uppercase' as const,
     color: t.text.secondary,
   },

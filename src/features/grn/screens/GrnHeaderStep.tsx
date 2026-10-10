@@ -14,7 +14,7 @@ import { DatePickerModal } from 'react-native-paper-dates';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
-import { fontWeight, iconSize, radius, space, touchTarget, typography } from '@/theme/tokens';
+import { fontWeight, iconSize, radius, space, touchTarget, typography, trackedText } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { useAppSelector } from '@/store/hooks';
 import { selectGRNFormItems } from '@/store/slices/grnFormSlice';
@@ -537,7 +537,7 @@ const makeStyles = (t: ThemeTokens) => ({
   sectionHeaderText: {
     ...typography.footnote,
     fontWeight: fontWeight.semibold,
-    letterSpacing: 0.5,
+    letterSpacing: trackedText(0.5),
     color: t.text.secondary,
     paddingHorizontal: space.xs,
     marginBottom: space.sm,

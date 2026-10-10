@@ -185,6 +185,14 @@ export const formatDateTime = (date: string | Date | null | undefined): string =
 };
 
 /**
+ * A financial year for display: "2026-27" or the backend's "2027-2028", in the
+ * language's digits (a period, not an identifier). Values sent to the backend
+ * stay as they are: never send the result of this.
+ */
+export const formatFinancialYear = (year: string | number | null | undefined): string =>
+  year === null || year === undefined ? '' : localizeDigits(String(year));
+
+/**
  * Mobile number with the +91 prefix and 5 + 5 grouping (§12.3):
  * "9876543210" or "+919876543210" -> "+91 98765 43210". Other lengths are
  * returned trimmed and unchanged.

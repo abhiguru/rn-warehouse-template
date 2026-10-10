@@ -44,7 +44,7 @@ import type { ThemeTokens } from '@/theme/tokens';
 
 import { showAlert } from '@/utils/alert';
 import { formatDate } from '@/utils/formatters';
-import { t as tr } from '@/i18n';
+import { t as tr, formatIdentifier } from '@/i18n';
 // ============================================================================
 // STYLES
 // ============================================================================
@@ -191,10 +191,10 @@ function InvoiceDetailScreen() {
     const customerName = data.header.customer?.name || data.header.invoice_customer_name;
 
     showAlert(
-      tr('invoice.details.deleteTitle', { number: String(invoiceNumber) }),
+      tr('invoice.details.deleteTitle', { number: formatIdentifier(invoiceNumber) }),
       customerName
-        ? tr('invoice.details.deleteMessageFor', { number: String(invoiceNumber), customer: customerName })
-        : tr('invoice.details.deleteMessage', { number: String(invoiceNumber) }),
+        ? tr('invoice.details.deleteMessageFor', { number: formatIdentifier(invoiceNumber), customer: customerName })
+        : tr('invoice.details.deleteMessage', { number: formatIdentifier(invoiceNumber) }),
       [
         { text: tr('common.cancel'), style: 'cancel' },
         {
@@ -207,7 +207,7 @@ function InvoiceDetailScreen() {
 
               if (result.success) {
                 showAlert(
-                  tr('invoice.details.deletedTitle', { number: String(invoiceNumber) }),
+                  tr('invoice.details.deletedTitle', { number: formatIdentifier(invoiceNumber) }),
                   undefined,
                   [
                     {
@@ -475,13 +475,14 @@ function InvoiceDetailScreen() {
               style={styles.headerTitleContainer}
               accessible
               accessibilityRole="header"
-              accessibilityLabel={tr('invoice.details.titleNumber', { number: String(invoice.invoice_number) })}
+              accessibilityLabel={tr('invoice.details.titleNumber', { number: formatIdentifier(invoice.invoice_number) })}
             >
               <Text style={styles.headerTitle} numberOfLines={1}>
-                {tr('invoice.details.titleNumber', { number: String(invoice.invoice_number) })}
+                {tr('invoice.details.titleNumber', { number: formatIdentifier(invoice.invoice_number) })}
               </Text>
-              <Text style={styles.headerSubtitle} numberOfLines={1}>
-                {grnNumber ? tr('invoice.details.subtitleWithGrn', { date: formattedDate, number: String(grnNumber) }) : formattedDate}
+              {/* Two lines when the date and the GRN number do not fit on one: the number is never cut. */}
+              <Text style={styles.headerSubtitle} numberOfLines={2}>
+                {grnNumber ? tr('invoice.details.subtitleWithGrn', { date: formattedDate, number: formatIdentifier(grnNumber) }) : formattedDate}
               </Text>
             </View>
           ),

@@ -21,10 +21,11 @@ import {
   space,
   touchTarget,
   typography,
+  trackedText,
 } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { formatCount, formatDate, formatNumber, toDate, formatWeight } from '@/utils/formatters';
-import { t as tr } from '@/i18n';
+import { t as tr, formatIdentifier } from '@/i18n';
 
 // ============================================================================
 // UTILITIES
@@ -92,7 +93,7 @@ const makeStyles = (t: ThemeTokens) => ({
     ...typography.footnote,
     fontWeight: fontWeight.semibold,
     textTransform: 'uppercase' as const,
-    letterSpacing: 0.5,
+    letterSpacing: trackedText(0.5),
     color: t.text.secondary,
     marginTop: space.md,
     marginBottom: space.sm,
@@ -206,15 +207,15 @@ const DispatchItemCardComponent: React.FC<DispatchItemCardProps> = ({
           accessibilityRole={isGrnClickable ? 'button' : undefined}
           accessibilityLabel={
             formattedGrnDate
-              ? tr('dispatch.details.grnLabelWithDate', { number: grn_no, date: formattedGrnDate })
-              : tr('dispatch.details.grnLabel', { number: grn_no })
+              ? tr('dispatch.details.grnLabelWithDate', { number: formatIdentifier(grn_no), date: formattedGrnDate })
+              : tr('dispatch.details.grnLabel', { number: formatIdentifier(grn_no) })
           }
           accessibilityHint={isGrnClickable ? tr('dispatch.details.opensGrn') : undefined}
         >
           <View style={styles.grnContent}>
             <Icon name="package-down" size={iconSize.md} color={t.icon.secondary} />
             <View style={styles.grnInfo}>
-              <Text style={styles.grnNo}>{tr('dispatch.details.grnLabel', { number: grn_no })}</Text>
+              <Text style={styles.grnNo}>{tr('dispatch.details.grnLabel', { number: formatIdentifier(grn_no) })}</Text>
               {!!formattedGrnDate && <Text style={styles.grnDate}>{formattedGrnDate}</Text>}
             </View>
             {isGrnClickable && (

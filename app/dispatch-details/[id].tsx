@@ -53,7 +53,7 @@ import { withNativeHandoff } from '@/config/nativeHandoff';
 import { uploadDispatchImage } from '@/features/dispatch/services/dispatchImageService';
 
 import { showAlert } from '@/utils/alert';
-import { t as tr } from '@/i18n';
+import { t as tr, formatIdentifier } from '@/i18n';
 // ============================================================================
 // STYLES (docs/STYLE_GUIDE.md §14.2 object page)
 // ============================================================================
@@ -270,7 +270,7 @@ function DispatchDetailScreen() {
         showAlert(
           tr('dispatch.details.deletedTitle'),
           data?.dispatch.disp_no
-            ? tr('dispatch.details.deletedMessage', { number: data.dispatch.disp_no })
+            ? tr('dispatch.details.deletedMessage', { number: formatIdentifier(data.dispatch.disp_no) })
             : tr('dispatch.details.deletedMessageNoNumber'),
           [
             {

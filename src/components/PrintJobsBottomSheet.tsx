@@ -54,7 +54,7 @@ import { getPrintJobs, cancelPrintJob, PrintJob, PrinterStatus } from '@/service
 import { usePrintJobPolling } from '@/hooks/usePrintJobPolling';
 import { formatRelativeTime } from '@/utils/formatters';
 import { StatusTag, type StatusKind } from '@/components/ui/StatusTag';
-import { localizeDigits, t as tr, type TranslationKey } from '@/i18n';
+import { localizeDigits, t as tr, type TranslationKey, formatIdentifier } from '@/i18n';
 
 /** Key of the message shown when the list cannot be loaded. */
 const LOAD_ERROR_KEY: TranslationKey = 'components.printJobs.loadFailed';
@@ -421,8 +421,8 @@ const PrintJobsBottomSheet: React.ForwardRefRenderFunction<
           accessibilityRole="button"
           accessibilityLabel={tr('components.printJobs.jobLabel', {
             type: typeLabel,
-            start: job.document_range_start,
-            end: job.document_range_end,
+            start: formatIdentifier(job.document_range_start),
+            end: formatIdentifier(job.document_range_end),
             count: docCount,
             status: statusLabel,
           })}
@@ -464,7 +464,7 @@ const PrintJobsBottomSheet: React.ForwardRefRenderFunction<
                   pressed && styles.cancelButtonPressed,
                 ]}
                 accessibilityRole="button"
-                accessibilityLabel={tr('components.printJobs.cancelJobLabel', { start: job.document_range_start, end: job.document_range_end })}
+                accessibilityLabel={tr('components.printJobs.cancelJobLabel', { start: formatIdentifier(job.document_range_start), end: formatIdentifier(job.document_range_end) })}
               >
                 <Text style={styles.cancelButtonText}>{tr('components.printJobs.cancelJob')}</Text>
               </Pressable>

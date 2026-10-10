@@ -38,8 +38,8 @@ import {
   formatInvoiceDate,
   makeInvoiceWizardStyles,
 } from '@/constants/invoiceSteps';
-import { t as tr } from '@/i18n';
-import { formatNumber } from '@/utils/formatters';
+import { t as tr, formatIdentifier } from '@/i18n';
+import { formatNumber, formatFinancialYear } from '@/utils/formatters';
 
 export default function InvoiceFormStep3() {
   const styles = useThemedStyles(makeInvoiceWizardStyles);
@@ -283,7 +283,7 @@ export default function InvoiceFormStep3() {
             </View>
             <View style={[styles.kvRow, styles.kvDivider]}>
               <Text style={styles.kvKey}>{tr('invoice.label.financialYear')}</Text>
-              <Text style={[styles.kvValue, styles.numeric]}>{header.inv_fin_year}</Text>
+              <Text style={[styles.kvValue, styles.numeric]}>{formatFinancialYear(header.inv_fin_year)}</Text>
             </View>
             <View style={[styles.kvRow, styles.kvDivider]}>
               <Text style={styles.kvKey}>{tr('common.grn')}</Text>
@@ -393,7 +393,7 @@ export default function InvoiceFormStep3() {
             setSnackbarMessage(
               end && end !== start
                 ? tr('invoice.print.sentRange', { start: String(start), end: String(end) })
-                : tr('invoice.print.sentOne', { number: String(start) })
+                : tr('invoice.print.sentOne', { number: formatIdentifier(start) })
             );
           } else {
             setSnackbarMessage(tr('invoice.print.failed'));
@@ -437,7 +437,7 @@ export default function InvoiceFormStep3() {
       {/* Confirm Submit Dialog */}
       <ConfirmDialog
         visible={showConfirmSubmitDialog}
-        title={tr('invoice.review.saveTitle', { number: String(header.inv_no) })}
+        title={tr('invoice.review.saveTitle', { number: formatIdentifier(header.inv_no) })}
         message={tr('invoice.review.confirmMessage', { customer: header.customer_name, total: formatInvoiceAmount(header.total) })}
         confirmText={tr('invoice.review.saveInvoice')}
         cancelText={tr('common.cancel')}

@@ -23,20 +23,29 @@ import { fontWeight, iconSize, layout, radius, space, touchTarget, typography } 
 import type { ThemeTokens } from '@/theme/tokens';
 import { formatNumber, formatDate, formatCount, formatWeight } from '@/utils/formatters';
 import { formatInvoiceAmount } from '@/utils/invoiceCalculations';
-import { t as tr } from '@/i18n';
+import { t as tr, formatIdentifier } from '@/i18n';
 
-// Read-only compact table metrics (§5.2 density, §13.7)
+// Read-only compact table metrics (§5.2 density, §13.7).
+// The column values are the least widths; the columns grow in the same proportion to
+// fill the card. Pinned column plus the five least widths is 360, the card width of a
+// 392 dp phone, so the whole row shows there and no amount is cut at the right edge;
+// narrower phones scroll sideways. A value that is too long for its cell shrinks.
 const TABLE = {
   headerRowHeight: 44,
   dataRowHeight: 48,
-  cellPaddingH: space.md,
-  stickyColumnWidth: 104,
-  colQty: 72,
-  colDays: 64,
-  colDuration: 88,
-  colRate: 104,
-  colAmount: 120,
+  cellPaddingH: space.s6,
+  stickyColumnWidth: 84,
+  colQty: 40,
+  colDays: 44,
+  colDuration: 52,
+  colRate: 60,
+  colAmount: 80,
 } as const;
+
+/** A table value: one line, shrinking to its cell (Gujarati digits are wider than Latin ones). */
+const CELL_TEXT = { numberOfLines: 1, adjustsFontSizeToFit: true, minimumFontScale: 0.7 } as const;
+
+const column = (width: number) => ({ flexGrow: width, flexShrink: 0, flexBasis: width, minWidth: width });
 
 // ============================================================================
 // TYPES
@@ -193,7 +202,8 @@ const makeStyles = (t: ThemeTokens) => ({
   stickyHeaderCell: {
     height: TABLE.headerRowHeight,
     justifyContent: 'center' as const,
-    paddingHorizontal: TABLE.cellPaddingH,
+    paddingLeft: space.md,
+    paddingRight: TABLE.cellPaddingH,
     backgroundColor: t.background.base,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: t.border.separator,
@@ -204,7 +214,8 @@ const makeStyles = (t: ThemeTokens) => ({
   stickyDataCell: {
     height: TABLE.dataRowHeight,
     justifyContent: 'center' as const,
-    paddingHorizontal: TABLE.cellPaddingH,
+    paddingLeft: space.md,
+    paddingRight: TABLE.cellPaddingH,
     backgroundColor: t.surface.card,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: t.border.divider,
@@ -235,11 +246,11 @@ const makeStyles = (t: ThemeTokens) => ({
     marginTop: space.xxs,
     fontVariant: tabular,
   },
-  colQty: { width: TABLE.colQty },
-  colDays: { width: TABLE.colDays },
-  colDuration: { width: TABLE.colDuration },
-  colRate: { width: TABLE.colRate },
-  colAmount: { width: TABLE.colAmount },
+  colQty: column(TABLE.colQty),
+  colDays: column(TABLE.colDays),
+  colDuration: column(TABLE.colDuration),
+  colRate: column(TABLE.colRate),
+  colAmount: column(TABLE.colAmount),
   tableFooter: {
     paddingHorizontal: space.lg,
     paddingVertical: space.md,
@@ -405,7 +416,7 @@ const InvoiceLineItemGroupComponent: React.FC<InvoiceLineItemGroupProps> = ({
             {/* Pinned first column */}
             <View style={styles.stickyColumn}>
               <View style={styles.stickyHeaderCell}>
-                <Text style={styles.headerCellText}>{tr('common.dispatch')}</Text>
+                <Text style={styles.headerCellText} {...CELL_TEXT}>{tr('common.dispatch')}</Text>
               </View>
               {dispatchItems.map((item, index) => {
                 const canOpen = !!(item.dispatch_id && item.on_view_dispatch);
@@ -425,15 +436,15 @@ const InvoiceLineItemGroupComponent: React.FC<InvoiceLineItemGroupProps> = ({
                     disabled={!canOpen}
                     accessibilityRole={canOpen ? 'link' : undefined}
                     accessibilityLabel={tr('invoice.lineItem.dispatchRowA11y', {
-                      number: item.dispatch_no || '',
+                      number: formatIdentifier(item.dispatch_no || ''),
                       date: formatDate(item.dispatch_date, 'short'),
                     })}
                     accessibilityHint={canOpen ? tr('invoice.lineItem.opensDispatchHint') : undefined}
                   >
-                    <Text style={[styles.dispatchNoText, !canOpen && styles.dispatchNoTextPlain]}>
+                    <Text style={[styles.dispatchNoText, !canOpen && styles.dispatchNoTextPlain]} {...CELL_TEXT}>
                       {item.dispatch_no || '—'}
                     </Text>
-                    <Text style={styles.dispatchDateText}>
+                    <Text style={styles.dispatchDateText} {...CELL_TEXT}>
                       {formatDate(item.dispatch_date, 'short')}
                     </Text>
                   </Pressable>
@@ -449,22 +460,22 @@ const InvoiceLineItemGroupComponent: React.FC<InvoiceLineItemGroupProps> = ({
               style={localStyles.scrollableArea}
               contentContainerStyle={localStyles.scrollableContent}
             >
-              <View>
+              <View style={localStyles.scrollableTable}>
                 <View style={styles.headerRow}>
                   <View style={[styles.headerCell, styles.colQty]}>
-                    <Text style={[styles.headerCellText, styles.headerCellTextRight]}>{tr('invoice.lineItem.colQty')}</Text>
+                    <Text style={[styles.headerCellText, styles.headerCellTextRight]} {...CELL_TEXT}>{tr('invoice.lineItem.colQty')}</Text>
                   </View>
                   <View style={[styles.headerCell, styles.colDays]}>
-                    <Text style={[styles.headerCellText, styles.headerCellTextRight]}>{tr('invoice.lineItem.colDays')}</Text>
+                    <Text style={[styles.headerCellText, styles.headerCellTextRight]} {...CELL_TEXT}>{tr('invoice.lineItem.colDays')}</Text>
                   </View>
                   <View style={[styles.headerCell, styles.colDuration]}>
-                    <Text style={[styles.headerCellText, styles.headerCellTextRight]}>{tr('invoice.lineItem.colMonths')}</Text>
+                    <Text style={[styles.headerCellText, styles.headerCellTextRight]} {...CELL_TEXT}>{tr('invoice.lineItem.colMonths')}</Text>
                   </View>
                   <View style={[styles.headerCell, styles.colRate]}>
-                    <Text style={[styles.headerCellText, styles.headerCellTextRight]}>{tr('invoice.lineItem.colRate')}</Text>
+                    <Text style={[styles.headerCellText, styles.headerCellTextRight]} {...CELL_TEXT}>{tr('invoice.lineItem.colRate')}</Text>
                   </View>
                   <View style={[styles.headerCell, styles.colAmount]}>
-                    <Text style={[styles.headerCellText, styles.headerCellTextRight]}>{tr('common.amount')}</Text>
+                    <Text style={[styles.headerCellText, styles.headerCellTextRight]} {...CELL_TEXT}>{tr('common.amount')}</Text>
                   </View>
                 </View>
 
@@ -509,10 +520,10 @@ const InvoiceLineItemGroupComponent: React.FC<InvoiceLineItemGroupProps> = ({
               style={({ pressed }) => [styles.grnReferenceButton, pressed && styles.grnReferenceButtonPressed]}
               onPress={handleViewGRN}
               accessibilityRole="link"
-              accessibilityLabel={tr('invoice.label.viewGrnNumber', { number: String(group.gr_no) })}
+              accessibilityLabel={tr('invoice.label.viewGrnNumber', { number: formatIdentifier(group.gr_no) })}
             >
               <Icon name="package-down" size={iconSize.md} color={t.brand.tint} />
-              <Text style={styles.grnLabel}>{tr('invoice.label.viewGrnNumber', { number: String(group.gr_no) })}</Text>
+              <Text style={styles.grnLabel}>{tr('invoice.label.viewGrnNumber', { number: formatIdentifier(group.gr_no) })}</Text>
               <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />
             </Pressable>
           )}
@@ -549,21 +560,21 @@ const DispatchDataTableRow = React.memo<DispatchDataTableRowProps>(({
     })}
   >
     <View style={[styles.dataCell, styles.colQty]}>
-      <Text style={styles.dataCellText}>{formatNumber(item.dispatch_qty)}</Text>
+      <Text style={styles.dataCellText} {...CELL_TEXT}>{formatNumber(item.dispatch_qty)}</Text>
     </View>
     <View style={[styles.dataCell, styles.colDays]}>
-      <Text style={styles.dataCellText}>{formatNumber(item.no_of_days)}</Text>
+      <Text style={styles.dataCellText} {...CELL_TEXT}>{formatNumber(item.no_of_days)}</Text>
     </View>
     <View style={[styles.dataCell, styles.colDuration]}>
-      <Text style={styles.dataCellText}>{formatNumber(item.duration, 1)}</Text>
+      <Text style={styles.dataCellText} {...CELL_TEXT}>{formatNumber(item.duration, 1)}</Text>
     </View>
     <View style={[styles.dataCell, styles.colRate]}>
-      <Text style={styles.dataCellText}>{formatInvoiceAmount(item.charge_per_unit)}</Text>
+      <Text style={styles.dataCellText} {...CELL_TEXT}>{formatInvoiceAmount(item.charge_per_unit)}</Text>
     </View>
     <View style={[styles.dataCell, styles.colAmount]}>
-      <Text style={styles.dataCellText}>{formatInvoiceAmount(item.line_item_amount)}</Text>
+      <Text style={styles.dataCellText} {...CELL_TEXT}>{formatInvoiceAmount(item.line_item_amount)}</Text>
       {item.tax > 0 && (
-        <Text style={styles.taxSubtext}>{tr('invoice.lineItem.plusTax', { amount: formatInvoiceAmount(item.tax) })}</Text>
+        <Text style={styles.taxSubtext} {...CELL_TEXT}>{tr('invoice.lineItem.plusTax', { amount: formatInvoiceAmount(item.tax) })}</Text>
       )}
     </View>
   </View>
@@ -574,6 +585,7 @@ DispatchDataTableRow.displayName = 'DispatchDataTableRow';
 const localStyles = StyleSheet.create({
   scrollableArea: { flex: 1 },
   scrollableContent: { flexGrow: 1 },
+  scrollableTable: { flexGrow: 1 },
 });
 
 // Custom areEqual comparator for performance optimization

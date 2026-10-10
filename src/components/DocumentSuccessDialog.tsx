@@ -29,8 +29,8 @@ import {
   typography,
 } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
-import { formatCurrency } from '@/utils/formatters';
-import { localizeDigits, t as tr } from '@/i18n';
+import { formatCurrency, formatFinancialYear } from '@/utils/formatters';
+import { localizeDigits, t as tr, formatIdentifier } from '@/i18n';
 import type { DocumentEntity } from '@/i18n/entities';
 
 export type DocumentType = 'GRN' | 'Dispatch' | 'Invoice';
@@ -232,7 +232,7 @@ export const DocumentSuccessDialog: React.FC<DocumentSuccessDialogProps> = ({
         <View
           style={styles.dialog}
           accessibilityViewIsModal
-          accessibilityLabel={tr('components.documentSuccess.dialogLabel', { title: config.title, noun: config.noun, number: documentData.documentNo })}
+          accessibilityLabel={tr('components.documentSuccess.dialogLabel', { title: config.title, noun: config.noun, number: formatIdentifier(documentData.documentNo) })}
         >
           <ScrollView contentContainerStyle={styles.scrollContent} bounces={false}>
             {/* Success icon */}
@@ -256,7 +256,7 @@ export const DocumentSuccessDialog: React.FC<DocumentSuccessDialogProps> = ({
               {documentData.finYear && (
                 <View style={styles.detailRow}>
                   <Text style={styles.detailLabel}>{tr('components.documentSuccess.financialYear')}</Text>
-                  <Text style={styles.detailValue}>{documentData.finYear}</Text>
+                  <Text style={styles.detailValue}>{formatFinancialYear(documentData.finYear)}</Text>
                 </View>
               )}
 

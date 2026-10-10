@@ -118,7 +118,8 @@ export const reports = {
     overOneYear: 'Over 1 year',
     stockAge: 'Stock age',
     customersByStockAge: 'Customers by stock age',
-    customerSubtitle: 'Average age {{age}} · {{over}} over 1 year',
+    averageAgeOf: 'Average age {{age}}',
+    overOneYearCount: '{{over}} over 1 year',
     opensCustomerHint: "Opens this customer's stock aging",
     itemsHighestFirst: 'Items, highest stock first',
     service: {
@@ -277,7 +278,7 @@ export const reports = {
     emptyTitle: 'No GRNs in this period',
     emptyDescription: 'Choose a longer period to see more GRNs.',
     customerHint: "Shows this customer's GRNs",
-    customerSubtitle: '{{grns}} · Latest {{date}}',
+    latestGrn: 'Latest {{date}}',
     // GRN cards
     invoiced: 'Invoiced',
     notInvoiced: 'Not invoiced',
@@ -312,7 +313,7 @@ export const reports = {
     cardLabel: 'Invoice {{number}}, {{subtitle}}, {{amount}}, {{items}}, {{status}}',
     openHint: 'Opens the invoice',
     customerHint: "Shows this customer's invoices",
-    customerSubtitle: '{{invoices}} · Latest {{date}}',
+    latestInvoice: 'Latest {{date}}',
     latestDate: 'latest {{date}}',
     errors: {
       fetchFailed: 'Failed to fetch invoice history',

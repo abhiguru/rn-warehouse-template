@@ -20,6 +20,7 @@ import {
   touchTarget,
   typography,
   type ThemeTokens,
+  trackedText,
 } from '@/theme/tokens';
 import type { ReportDefinition } from '@/types/report.types';
 import { Avatar } from '@/components/ui';
@@ -163,7 +164,7 @@ const makeStyles = (t: ThemeTokens) =>
       ...typography.footnote,
       fontWeight: fontWeight.semibold,
       textTransform: 'uppercase',
-      letterSpacing: 0.5,
+      letterSpacing: trackedText(0.5),
       color: t.text.secondary,
       marginBottom: space.sm,
       marginLeft: space.xs,

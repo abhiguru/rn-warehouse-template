@@ -27,7 +27,7 @@ import {
 } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { formatCount, formatDate, formatNumber, toDate, formatMonth } from '@/utils/formatters';
-import { t as tr } from '@/i18n';
+import { t as tr, formatIdentifier } from '@/i18n';
 
 export interface DispatchRecord {
   id: string;
@@ -362,7 +362,7 @@ export const GRNDispatchTimeline: React.FC<GRNDispatchTimelineProps> = ({
                         style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
                         onPress={() => handleDispatchPress(dispatch.dispatchId)}
                         accessibilityRole="button"
-                        accessibilityLabel={tr('grn.dispatches.rowLabel', { number: String(dispatch.dispNo), bags: bagsLabel(dispatch.dispQuantity), date: dateLabel })}
+                        accessibilityLabel={tr('grn.dispatches.rowLabel', { number: formatIdentifier(dispatch.dispNo), bags: bagsLabel(dispatch.dispQuantity), date: dateLabel })}
                         accessibilityHint={tr('grn.dispatches.openHint')}
                       >
                         <View style={styles.cardContent}>

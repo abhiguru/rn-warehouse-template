@@ -20,7 +20,7 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { KPICard, KPIVariant } from './KPICard';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { t as tr } from '@/i18n';
-import { fontWeight, iconSize, layout, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
+import { fontWeight, iconSize, layout, space, touchTarget, typography, type ThemeTokens, trackedText } from '@/theme/tokens';
 
 export interface KPIItem {
   icon: string;
@@ -74,7 +74,7 @@ const makeStyles = (t: ThemeTokens) =>
       ...typography.footnote,
       fontWeight: fontWeight.semibold,
       textTransform: 'uppercase',
-      letterSpacing: 0.5,
+      letterSpacing: trackedText(0.5),
       color: t.text.secondary,
       flex: 1,
     },
@@ -88,8 +88,14 @@ const makeStyles = (t: ThemeTokens) =>
       flexDirection: 'row',
       gap: space.sm,
     },
+    // The same horizontal padding as a tile: a flex item is never narrower than
+    // its padding, so without it the tiles of a short row come out wider.
     emptyCell: {
       flex: 1,
+      paddingHorizontal: space.md,
+    },
+    emptyCellCompact: {
+      paddingHorizontal: space.sm,
     },
   });
 
@@ -112,7 +118,8 @@ export const KPIGrid: React.FC<KPIGridProps> = ({
     setIsExpanded(prev => !prev);
   };
 
-  const itemsPerRow = width >= TABLET_MIN_WIDTH ? 4 : compact ? 3 : 2;
+  // Four compact tiles on a phone make two rows of two, not three and one alone.
+  const itemsPerRow = width >= TABLET_MIN_WIDTH ? 4 : compact && items.length !== 4 ? 3 : 2;
   const rows: KPIItem[][] = [];
   for (let i = 0; i < items.length; i += itemsPerRow) {
     rows.push(items.slice(i, i + itemsPerRow));
@@ -140,7 +147,7 @@ export const KPIGrid: React.FC<KPIGridProps> = ({
           {/* Keep tiles the same width when the last row is short */}
           {rows.length > 1 &&
             Array.from({ length: itemsPerRow - row.length }, (_, i) => (
-              <View key={`empty-${i}`} style={styles.emptyCell} />
+              <View key={`empty-${i}`} style={[styles.emptyCell, compact && styles.emptyCellCompact]} />
             ))}
         </View>
       ))}

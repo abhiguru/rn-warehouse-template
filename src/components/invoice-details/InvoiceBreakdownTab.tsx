@@ -11,10 +11,10 @@ import React from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
-import { fontWeight, iconSize, layout, radius, space, touchTarget, typography } from '@/theme/tokens';
+import { fontWeight, iconSize, layout, radius, space, touchTarget, typography, trackedText } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { savedInvoiceAmounts, formatInvoiceAmount, formatInvoiceDeduction } from '@/utils/invoiceCalculations';
-import { t as tr } from '@/i18n';
+import { t as tr, formatIdentifier } from '@/i18n';
 
 // ============================================================================
 // TYPES
@@ -52,7 +52,7 @@ const makeStyles = (t: ThemeTokens) => ({
     ...typography.footnote,
     color: t.text.secondary,
     textTransform: 'uppercase' as const,
-    letterSpacing: 0.5,
+    letterSpacing: trackedText(0.5),
   },
   card: {
     backgroundColor: t.surface.card,
@@ -123,7 +123,7 @@ const makeStyles = (t: ThemeTokens) => ({
     ...typography.footnote,
     color: t.text.secondary,
     textTransform: 'uppercase' as const,
-    letterSpacing: 0.5,
+    letterSpacing: trackedText(0.5),
     paddingHorizontal: space.lg,
     paddingBottom: space.xs,
   },
@@ -230,11 +230,11 @@ export const InvoiceBreakdownTab: React.FC<InvoiceBreakdownTabProps> = ({
       onPress={() => handleDocumentPress(doc)}
       disabled={!hasNavigation}
       accessibilityRole="button"
-      accessibilityLabel={tr(doc.type === 'grn' ? 'invoice.label.viewGrnNumber' : 'invoice.breakdown.viewDispatchA11y', { number: doc.number })}
+      accessibilityLabel={tr(doc.type === 'grn' ? 'invoice.label.viewGrnNumber' : 'invoice.breakdown.viewDispatchA11y', { number: formatIdentifier(doc.number) })}
       accessibilityState={{ disabled: !hasNavigation }}
     >
       <Icon name={iconName} size={iconSize.md} color={t.icon.secondary} />
-      <Text style={styles.docNumber}>{tr(doc.type === 'grn' ? 'invoice.label.grnNumber' : 'invoice.label.dispatchNumber', { number: doc.number })}</Text>
+      <Text style={styles.docNumber}>{tr(doc.type === 'grn' ? 'invoice.label.grnNumber' : 'invoice.label.dispatchNumber', { number: formatIdentifier(doc.number) })}</Text>
       {hasNavigation && (
         <Icon name="chevron-right" size={iconSize.md} color={t.icon.secondary} />
       )}

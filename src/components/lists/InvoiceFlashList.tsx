@@ -58,7 +58,7 @@ import { ErrorStateView } from '@/components/ErrorBoundary';
 
 // Theme
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
-import { fontWeight, iconSize, layout, radius, space, touchTarget, typography } from '@/theme/tokens';
+import { fontWeight, iconSize, layout, radius, space, touchTarget, typography, trackedText } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 
 import { FAB_CLEARANCE } from '@/components/ui/Fab';
@@ -414,7 +414,7 @@ const makeStyles = (t: ThemeTokens) => ({
     ...typography.footnote,
     fontWeight: fontWeight.semibold,
     textTransform: 'uppercase' as const,
-    letterSpacing: 0.5,
+    letterSpacing: trackedText(0.5),
     color: t.text.secondary,
   },
   // Plain count badge: brand.fill with brand.onFill (§13.5)

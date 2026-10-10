@@ -9,7 +9,7 @@
 import React from 'react';
 import { Image, Text, View } from 'react-native';
 import { useThemedStyles, useTheme } from '@/hooks/useTheme';
-import { radius, space, typography } from '@/theme/tokens';
+import { radius, space, typography, trackedText } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { t as tr } from '@/i18n';
 
@@ -48,7 +48,7 @@ const makeStyles = (t: ThemeTokens) => ({
     ...typography.caption1,
     marginTop: space.xs,
     fontWeight: '600' as const,
-    letterSpacing: 1,
+    letterSpacing: trackedText(1),
     color: t.brandMark.caption,
   },
 });

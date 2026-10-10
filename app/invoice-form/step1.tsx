@@ -34,7 +34,8 @@ import {
   formatInvoiceDate,
   makeInvoiceWizardStyles,
 } from '@/constants/invoiceSteps';
-import { getLanguage, normalizeDigits, t as tr } from '@/i18n';
+import { getLanguage, normalizeDigits, t as tr, formatIdentifier } from '@/i18n';
+import { formatFinancialYear } from '@/utils/formatters';
 
 export default function InvoiceFormStep1() {
   const styles = useThemedStyles(makeInvoiceWizardStyles);
@@ -247,7 +248,7 @@ export default function InvoiceFormStep1() {
         <View style={styles.formGroup}>
           <Text style={styles.label}>{tr('invoice.label.financialYear')}</Text>
           <View style={styles.readOnlyField}>
-            <Text style={[styles.readOnlyText, styles.numeric]}>{header.inv_fin_year}</Text>
+            <Text style={[styles.readOnlyText, styles.numeric]}>{formatFinancialYear(header.inv_fin_year)}</Text>
           </View>
           <Text style={styles.helperText}>{tr('invoice.form.financialYearHelp')}</Text>
         </View>
@@ -292,14 +293,14 @@ export default function InvoiceFormStep1() {
               onPress={() => setShowGRNBottomSheet(true)}
               disabled={isLoadingItems}
               accessibilityRole="button"
-              accessibilityLabel={header.gr_no ? tr('invoice.form.grnChangeA11y', { number: String(header.gr_no) }) : tr('invoice.form.selectGrn')}
+              accessibilityLabel={header.gr_no ? tr('invoice.form.grnChangeA11y', { number: formatIdentifier(header.gr_no) }) : tr('invoice.form.selectGrn')}
               accessibilityState={{ disabled: isLoadingItems, busy: isLoadingItems }}
             >
               <Text
                 style={[styles.readOnlyText, !header.gr_no && styles.fieldPlaceholder]}
                 numberOfLines={1}
               >
-                {header.gr_no ? tr('invoice.label.grnNumber', { number: String(header.gr_no) }) : tr('invoice.form.grnPlaceholder')}
+                {header.gr_no ? tr('invoice.label.grnNumber', { number: formatIdentifier(header.gr_no) }) : tr('invoice.form.grnPlaceholder')}
               </Text>
             </Pressable>
 

@@ -19,7 +19,7 @@ import {
   TotalBadge,
 } from '@/components/common/ItemsSummaryBottomSheet';
 import { formatCount, formatNumber, formatWeight } from '@/utils/formatters';
-import { t as tr } from '@/i18n';
+import { t as tr, formatIdentifier } from '@/i18n';
 
 interface DispatchItemsSummaryBottomSheetProps {
   isVisible: boolean;
@@ -146,7 +146,7 @@ const DispatchItemCard: React.FC<{
       accessibilityLabel={tr(isEditing ? 'dispatch.summarySheet.rowLabelEditing' : 'dispatch.summarySheet.rowLabel', {
         index: index + 1,
         item: item.grnItems_item_name,
-        grn: item.grns_gr_no,
+        grn: formatIdentifier(item.grns_gr_no),
         bags,
       })}
     >

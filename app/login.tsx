@@ -39,6 +39,7 @@ import {
   touchTarget,
   typography,
   type ThemeTokens,
+  trackedText,
 } from '@/theme/tokens';
 
 import { showAlert } from '@/utils/alert';
@@ -509,7 +510,7 @@ const makeStyles = (t: ThemeTokens) => ({
   sectionHeader: {
     ...typography.footnote,
     fontWeight: fontWeight.semibold,
-    letterSpacing: 0.5,
+    letterSpacing: trackedText(0.5),
     color: t.text.secondary,
     marginBottom: space.sm,
   },

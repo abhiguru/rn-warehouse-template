@@ -31,6 +31,7 @@ import {
   touchTarget,
   typography,
   type ThemeTokens,
+  trackedText,
 } from '@/theme/tokens';
 import { SensorService } from '@/services/sensor-service';
 import { getSensorHistory } from '@/services/sensor-history-service';
@@ -235,7 +236,7 @@ const makeStyles = (t: ThemeTokens) =>
       ...typography.footnote,
       fontWeight: fontWeight.semibold,
       textTransform: 'uppercase',
-      letterSpacing: 0.5,
+      letterSpacing: trackedText(0.5),
       color: t.text.secondary,
       paddingHorizontal: layout.marginCompact,
     },

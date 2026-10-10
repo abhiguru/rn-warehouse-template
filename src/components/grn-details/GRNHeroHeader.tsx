@@ -15,7 +15,7 @@ import type { ThemeTokens } from '@/theme/tokens';
 import { formatDate, formatNumber } from '@/utils/formatters';
 import { StatusTag } from '@/components/ui';
 import { getGRNStockStatus } from '@/features/grn/utils/grnStockStatus';
-import { t as tr } from '@/i18n';
+import { t as tr, formatIdentifier } from '@/i18n';
 
 // ============================================================================
 // TYPES
@@ -133,7 +133,7 @@ export const GRNHeroHeader: React.FC<GRNHeroHeaderProps> = ({
           style={styles.titleBlock}
           accessible
           accessibilityRole="header"
-          accessibilityLabel={[tr('grn.details.titleWithNumber', { number: String(gr_no) }), customer_name, formattedDate].filter(Boolean).join(', ')}
+          accessibilityLabel={[tr('grn.details.titleWithNumber', { number: formatIdentifier(gr_no) }), customer_name, formattedDate].filter(Boolean).join(', ')}
         >
           <Text style={styles.docType}>{tr('common.grn')}</Text>
           <Text style={styles.number}>{gr_no}</Text>

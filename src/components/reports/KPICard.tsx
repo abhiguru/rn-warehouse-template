@@ -87,19 +87,21 @@ const makeStyles = (t: ThemeTokens) =>
     positiveCircle: { backgroundColor: t.status.positive.background },
     criticalCircle: { backgroundColor: t.status.critical.background },
     neutralCircle: { backgroundColor: t.status.neutral.background },
+    // One line: the value shrinks to fit and the unit keeps its size, so a long
+    // weight never pushes its unit onto a second line (tiles stay the same height).
     valueRow: {
       flexDirection: 'row',
-      flexWrap: 'wrap',
       alignItems: 'baseline',
       justifyContent: 'center',
+      alignSelf: 'stretch',
       columnGap: space.xs,
-      maxWidth: '100%',
     },
     value: {
       ...typography.title3,
       color: t.text.primary,
       textAlign: 'center',
       fontVariant: ['tabular-nums'],
+      flexShrink: 1,
     },
     valueCompact: {
       ...typography.headline,
@@ -107,14 +109,17 @@ const makeStyles = (t: ThemeTokens) =>
     unit: {
       ...typography.subhead,
       color: t.text.secondary,
+      flexShrink: 0,
     },
     unitCompact: {
       ...typography.footnote,
     },
+    // Full width, so a two-word label wraps only when it really does not fit.
     label: {
       ...typography.footnote,
       color: t.text.secondary,
       textAlign: 'center',
+      alignSelf: 'stretch',
     },
     trendRow: {
       flexDirection: 'row',
@@ -239,7 +244,14 @@ export const KPICard: React.FC<KPICardProps> = ({
       </View>
 
       <View style={styles.valueRow}>
-        <Text style={[styles.value, compact && styles.valueCompact]}>{shown}</Text>
+        <Text
+          style={[styles.value, compact && styles.valueCompact]}
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.6}
+        >
+          {shown}
+        </Text>
         {unit ? <Text style={[styles.unit, compact && styles.unitCompact]}>{unit}</Text> : null}
       </View>
 

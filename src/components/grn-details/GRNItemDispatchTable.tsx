@@ -28,7 +28,7 @@ import type { ThemeTokens } from '@/theme/tokens';
 import { DispatchRecord } from '@/services/grn-detail-service';
 import { GRNItem } from './GRNItemsTab';
 import { formatCount, formatDate, formatNumber, formatWeight } from '@/utils/formatters';
-import { t as tr } from '@/i18n';
+import { t as tr, formatIdentifier } from '@/i18n';
 
 interface GRNItemDispatchTableProps {
   item: GRNItem;
@@ -241,7 +241,7 @@ export const GRNItemDispatchTable: React.FC<GRNItemDispatchTableProps> = ({
                   style={({ pressed }) => [styles.tableRow, pressed && styles.tableRowPressed]}
                   onPress={() => handleDispatchPress(dispatch)}
                   accessibilityRole="button"
-                  accessibilityLabel={tr('grn.dispatches.rowLabelDateFirst', { number: String(dispatch.disp_no), date: formatDate(dispatch.disp_date, 'short'), bags: formatCount(dispatch.disp_quantity, 'bag') })}
+                  accessibilityLabel={tr('grn.dispatches.rowLabelDateFirst', { number: formatIdentifier(dispatch.disp_no), date: formatDate(dispatch.disp_date, 'short'), bags: formatCount(dispatch.disp_quantity, 'bag') })}
                   accessibilityHint={tr('grn.dispatches.openHint')}
                 >
                   <Text style={[styles.dataCell, styles.dispNoCell]}>
