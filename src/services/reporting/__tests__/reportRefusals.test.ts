@@ -140,3 +140,21 @@ describe('Operations Dashboard', () => {
     expect(result.message).toBe('Failed to retrieve dashboard: division by zero');
   });
 });
+
+describe('the days a report asks for', () => {
+  beforeEach(() => jest.useFakeTimers().setSystemTime(new Date(2026, 9, 11, 1, 30)));
+  afterEach(() => jest.useRealTimers());
+
+  it('"last N days" includes today, as on the period selector (M3-7)', async () => {
+    answer({ success: true, data: {} });
+    await getAllCustomerActivity({ daysBack: 120 });
+    // 11 Oct back to 14 Jun is 120 days.
+    expect(rpc.mock.calls[0][1]).toEqual({ p_from_date: '2026-06-14', p_to_date: '2026-10-11' });
+  });
+
+  it('are the phone calendar days, also in the small hours', async () => {
+    answer({ success: true, data: {} });
+    await getOperationsDashboard({ daysBack: 1 });
+    expect(rpc.mock.calls[0][1]).toEqual({ p_from_date: '2026-10-11', p_to_date: '2026-10-11' });
+  });
+});

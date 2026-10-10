@@ -258,6 +258,48 @@ export const toLocalISODate = (date: Date): string => {
 };
 
 /**
+ * The calendar day of a form's date value, as the server is to be told it.
+ *
+ * A day is sent as 'YYYY-MM-DD' built from the phone's own calendar. An instant
+ * will not do: a date picker gives local midnight, which in India is 18:30 UTC
+ * of the day before, and the server takes the day from the text it is sent.
+ *
+ * @param value - a plain day, a Date, or a timestamp (from a picker or from the server)
+ * @returns the local day; text that is not a date is returned unchanged
+ */
+export const toCalendarDay = (value: string | Date): string => {
+  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+  const date = value instanceof Date ? value : new Date(value);
+  if (isNaN(date.getTime())) return typeof value === 'string' ? value : '';
+  return toLocalISODate(date);
+};
+
+/** India Standard Time, the zone the facilities keep their books in. It has no summer time. */
+export const IST_OFFSET = '+05:30';
+
+/**
+ * The first and the last moment of a calendar day in India, for a range the
+ * server reads as moments (timestamptz). The zone is written out, so the range
+ * is the same day whatever the phone's or the database's clock zone is.
+ */
+export const startOfDayIST = (day: string): string => `${day}T00:00:00${IST_OFFSET}`;
+export const endOfDayIST = (day: string): string => `${day}T23:59:59.999${IST_OFFSET}`;
+
+/**
+ * Both ends of a date range for an RPC that applies the range only when both
+ * are given (`p_date_from IS NULL OR p_date_to IS NULL OR ... BETWEEN`): an end
+ * that was not asked for is set far enough out to mean "open". With neither
+ * end there is no range.
+ */
+export const closeDateRange = (
+  from: string | null | undefined,
+  to: string | null | undefined
+): { from: string; to: string } | null =>
+  from || to
+    ? { from: from || startOfDayIST('1900-01-01'), to: to || endOfDayIST('9999-12-31') }
+    : null;
+
+/**
  * Parse an ISO date string (YYYY-MM-DD) to a Date object in local timezone
  * This avoids timezone offset issues when reading dates
  *

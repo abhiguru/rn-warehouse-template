@@ -14,8 +14,8 @@ import type {
   RecentActivityItem,
 } from '@/types/report.types';
 
-import { toLocalISODate } from '@/utils/formatters';
 import { t } from '@/i18n';
+import { getDateDaysAgo, getToday } from './reportDates';
 import { createLogger } from '@/utils/logger';
 import { isAccessRefusal, reportBody, reportRefusal, refusedReport } from './reportEnvelope';
 
@@ -38,22 +38,6 @@ const EMPTY_RESPONSE: OperationsDashboardData = {
   },
   recent_activity: [],
 };
-
-/**
- * Get date string for N days ago
- */
-function getDateDaysAgo(days: number): string {
-  const date = new Date();
-  date.setDate(date.getDate() - days);
-  return toLocalISODate(date);
-}
-
-/**
- * Get today's date string
- */
-function getToday(): string {
-  return toLocalISODate(new Date());
-}
 
 export interface OperationsDashboardParams {
   fromDate?: string;

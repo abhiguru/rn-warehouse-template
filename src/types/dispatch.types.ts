@@ -7,6 +7,8 @@
 // DISPATCH IMAGE
 // ============================================================================
 
+import { toLocalISODate } from '@/utils/formatters';
+
 export interface DispatchImageData {
   id: string;
   file_name: string;
@@ -368,7 +370,7 @@ export interface DispatchItemEntity {
  */
 export const createEmptyDispatchHeader = (): DispatchHeaderData => ({
   disp_no: '',
-  disp_date: new Date().toISOString(),
+  disp_date: toLocalISODate(new Date()),
   registration: '',
   customer_id: '',
   customer_name: '',

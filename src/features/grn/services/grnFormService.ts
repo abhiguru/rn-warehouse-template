@@ -15,6 +15,7 @@ import { isTemporaryGRNImageId } from './imageId';
 import { executeRPC, createErrorResponse } from '@/utils/serviceErrorHandler';
 import { t } from '@/i18n';
 import { serverText } from '@/utils/serverText';
+import { toCalendarDay } from '@/utils/formatters';
 
 // Helper function to construct full image URL
 // Note: This is a fallback for when signed URL generation fails
@@ -257,7 +258,7 @@ export const createGRN = async (payload: CreateGRNPayload) => {
     // (migration 43). Photos are uploaded after the save, below.
     console.log('[GRNFormService] Calling enhanced save_grn RPC with:', {
       p_gr_no: grNumber,
-      p_date: payload.header.date,
+      p_date: toCalendarDay(payload.header.date),
       p_customer_id: payload.header.customer_id,
       p_customer_name: payload.header.customer_name,
       p_sender_id: payload.header.sender_id,
@@ -275,7 +276,7 @@ export const createGRN = async (payload: CreateGRNPayload) => {
     const authenticatedClient = await getAuthenticatedClient();
     const rpcPayload = {
       p_gr_no: grNumber,
-      p_date: payload.header.date,
+      p_date: toCalendarDay(payload.header.date),
       p_customer_id: payload.header.customer_id,
       p_customer_name: payload.header.customer_name,
       p_sender_id: payload.header.sender_id || null,
@@ -669,7 +670,7 @@ export const updateGRN = async (
     const rpcRequest = {
       p_grn_id: grnId, // ✅ Corrected: was p_gr_id
       p_gr_no: payload.header.gr_no || null,
-      p_date: payload.header.date || null,
+      p_date: payload.header.date ? toCalendarDay(payload.header.date) : null,
       p_customer_id: payload.header.customer_id || null,
       p_customer_name: payload.header.customer_name || null,
       p_sender_id: payload.header.sender_id || null, // ✅ New: sender ID

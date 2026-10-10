@@ -8,6 +8,7 @@ import type { RpcGrnItemRow, RpcPagination } from '@/types/rpc-canonical.types';
 import { hasMoreItems } from '@/utils/paginationUtils';
 import { PAGINATION } from '@/config/cacheConfig';
 import { t } from '@/i18n';
+import { closeDateRange } from '@/utils/formatters';
 import { serverText } from '@/utils/serverText';
 
 /**
@@ -323,8 +324,12 @@ export const getCustomerGRNItems = async (
       p_limit: limit,
       p_offset: offset,
     };
-    if (params.p_date_from) rpcParams.p_date_from = params.p_date_from;
-    if (params.p_date_to) rpcParams.p_date_to = params.p_date_to;
+    // The RPC applies the date range only when both ends are given.
+    const dates = closeDateRange(params.p_date_from, params.p_date_to);
+    if (dates) {
+      rpcParams.p_date_from = dates.from;
+      rpcParams.p_date_to = dates.to;
+    }
     if (params.p_filters) {
       const { customer_ids: _customerIds, ...customerFilters } = params.p_filters;
       if (Object.keys(customerFilters).length > 0) rpcParams.p_filters = customerFilters;

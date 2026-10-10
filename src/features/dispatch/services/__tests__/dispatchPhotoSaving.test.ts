@@ -79,3 +79,12 @@ it('photos that already have a storage path are not uploaded again and not repor
   expect(await uploadDeferredDispatchImages(DISPATCH_ID, [stored])).toEqual({ success: true, uploadedCount: 0, errors: [], failed: [] });
   expect(rpc).not.toHaveBeenCalled();
 });
+
+// The server takes the dispatch day from the text it is sent ('...'::date), so
+// an instant at 01:30 in India would be filed under the day before (M3-2).
+it('createDispatch sends the dispatch date as a calendar day', async () => {
+  const rpc = server([]);
+  await createDispatch({ ...payload, header: { ...payload.header, disp_date: new Date(2026, 9, 11, 1, 30).toISOString() }, images: [] });
+  const sent = rpc.mock.calls.find(([name]) => name === 'create_dispatch_with_stock_check')![1] as { p_dispatch_data: { disp_date: string } };
+  expect(sent.p_dispatch_data.disp_date).toBe('2026-10-11');
+});

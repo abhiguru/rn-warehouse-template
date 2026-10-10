@@ -395,3 +395,36 @@ describe('saving an edited GRN', () => {
     expect(names()).toEqual(['update_grn']);
   });
 });
+
+// A date picker gives local midnight. As an instant that is 18:30 UTC of the
+// day before in India, and the server takes the day from the text (M3-2).
+describe('the GRN date goes to the server as a calendar day', () => {
+  const pickedInstant = new Date(2026, 9, 11).toISOString();
+
+  it('on create', async () => {
+    mockRpcHandlers.save_grn = () => ({
+      data: { success: true, message: 'GRN created successfully', data: { grn_id: GRN_ID, gr_no: 'A0010', item_ids: [LINE_ID], image_ids: [], item_mapping: [] } },
+      error: null,
+    });
+    await createGRN({ header: { ...header([]), date: pickedInstant }, items: [line('item-1', 'Example Potatoes')] });
+    expect(callsTo('save_grn')[0].args.p_date).toBe('2026-10-11');
+  });
+
+  it('on edit, also for a date the server sent back as a timestamp', async () => {
+    mockRpcHandlers.update_grn = () => ({
+      data: { success: true, message: 'GRN updated successfully', grn: { id: GRN_ID, gr_no: 'A0010', items: [], images: [] }, stats: {}, item_mapping: [] },
+      error: null,
+    });
+    await updateGRN(GRN_ID, { header: { ...header([]), date: pickedInstant }, items: [line(LINE_ID, 'Example Potatoes')] });
+    expect(callsTo('update_grn')[0].args.p_date).toBe('2026-10-11');
+  });
+
+  it('leaves a plain day alone', async () => {
+    mockRpcHandlers.update_grn = () => ({
+      data: { success: true, message: 'GRN updated successfully', grn: { id: GRN_ID, gr_no: 'A0010', items: [], images: [] }, stats: {}, item_mapping: [] },
+      error: null,
+    });
+    await updateGRN(GRN_ID, { header: header([]), items: [line(LINE_ID, 'Example Potatoes')] });
+    expect(callsTo('update_grn')[0].args.p_date).toBe('2026-10-01');
+  });
+});

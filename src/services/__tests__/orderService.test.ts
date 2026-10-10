@@ -37,6 +37,24 @@ describe('getCustomerDispatches', () => {
   });
 });
 
+// get_customer_dispatch_items applies its date range only when both ends are given.
+describe('getCustomerDispatches date range', () => {
+  it('closes a range that has only a start, so "the last six months" is really asked for', async () => {
+    rpc.mockResolvedValue({ data: { data: { items: [] } }, error: null });
+    await OrderService.getCustomerDispatches('customer-a', { dateFrom: '2026-04-11T00:00:00+05:30' });
+    expect(rpc.mock.calls[0][1]).toMatchObject({
+      p_date_from: '2026-04-11T00:00:00+05:30',
+      p_date_to: '9999-12-31T23:59:59.999+05:30',
+    });
+  });
+
+  it('sends no dates when none are asked for', async () => {
+    rpc.mockResolvedValue({ data: { data: { items: [] } }, error: null });
+    await OrderService.getCustomerDispatches('customer-a');
+    expect(rpc.mock.calls[0][1]).toMatchObject({ p_date_from: null, p_date_to: null });
+  });
+});
+
 describe('getOrdersList', () => {
   it('requests one page and reports whether more remain', async () => {
     rpc.mockResolvedValue({

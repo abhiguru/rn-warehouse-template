@@ -23,7 +23,7 @@ import { CustomerSearchBottomSheet, CustomerSearchBottomSheetRef } from '@/compo
 import { SupervisorBottomSheet } from '@/features/grn/components/SupervisorBottomSheet';
 import { GRNStepIndicator } from '@/components/GRNStepIndicator';
 import WizardBottomBar from '@/components/WizardBottomBar';
-import { formatDate, formatNumber } from '@/utils/formatters';
+import { formatDate, formatNumber, toLocalISODate } from '@/utils/formatters';
 import { GRN_STEP_COUNT, STEP_NUMBERS, getCompletedSteps } from '@/constants/grnSteps';
 import { grnSteps } from '@/features/grn/utils/grnStepLabels';
 import { GhostTextInput, GhostTextInputRef } from '@/components/GhostTextInput';
@@ -121,7 +121,8 @@ export function GrnHeaderStep({ mode }: GrnHeaderStepProps) {
   const handleDateConfirm = (params: { date: Date | undefined }) => {
     setShowDatePicker(false);
     if (params.date) {
-      updateHeaderField('date', params.date.toISOString());
+      // The day, not the instant: local midnight in India is the day before in UTC.
+      updateHeaderField('date', toLocalISODate(params.date));
     }
   };
 

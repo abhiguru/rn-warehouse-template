@@ -134,20 +134,21 @@ describe('GRN request', () => {
 
   it('covers the whole of the last day of a date range', () => {
     const request = GRN_FILTERS.toRequest({ date: { from: '2026-09-01', to: '2026-09-30' } }, undefined, staff, today);
-    expect(new Date(request.p_date_from!)).toEqual(new Date(2026, 8, 1, 0, 0, 0, 0));
-    expect(new Date(request.p_date_to!)).toEqual(new Date(2026, 8, 30, 23, 59, 59, 999));
+    // The zone is written out: the day in India, whatever zone the phone or the database is in.
+    expect(request.p_date_from).toBe('2026-09-01T00:00:00+05:30');
+    expect(request.p_date_to).toBe('2026-09-30T23:59:59.999+05:30');
   });
 
   it('turns a date and a range typed in the search into filters, and searches for the rest', () => {
     const request = GRN_FILTERS.toRequest({ search: 'garlic 7 oct A0010-A0012' }, undefined, staff, today);
     expect(request.p_filters).toEqual({ gr_no_from: 'A0010', gr_no_to: 'A0012', search: 'garlic' });
-    expect(new Date(request.p_date_from!)).toEqual(new Date(2026, 9, 7));
-    expect(new Date(request.p_date_to!)).toEqual(new Date(2026, 9, 7, 23, 59, 59, 999));
+    expect(request.p_date_from).toBe('2026-10-07T00:00:00+05:30');
+    expect(request.p_date_to).toBe('2026-10-07T23:59:59.999+05:30');
   });
 
   it('lets a filter set by hand win over the same thing typed in the search', () => {
     const request = GRN_FILTERS.toRequest({ search: 'today', date: { from: '2026-01-01', to: '2026-01-31' } }, undefined, staff, today);
-    expect(new Date(request.p_date_from!)).toEqual(new Date(2026, 0, 1));
+    expect(request.p_date_from).toBe('2026-01-01T00:00:00+05:30');
     expect(request.p_filters).toEqual({ search: 'today' });
   });
 });
@@ -181,8 +182,8 @@ describe('dispatch request', () => {
         disp_qty_max: 40,
         package_mark: 'red',
         search: 'lakeview garlic',
-        date_from: new Date(2026, 8, 1).toISOString(),
-        date_to: new Date(2026, 8, 30, 23, 59, 59, 999).toISOString(),
+        date_from: '2026-09-01T00:00:00+05:30',
+        date_to: '2026-09-30T23:59:59.999+05:30',
       },
     });
   });
@@ -197,8 +198,8 @@ describe('dispatch request', () => {
       disp_no_from: 'DD0010',
       disp_no_to: 'DD0012',
       search: 'garlic',
-      date_from: new Date(2026, 9, 7).toISOString(),
-      date_to: new Date(2026, 9, 7, 23, 59, 59, 999).toISOString(),
+      date_from: '2026-10-07T00:00:00+05:30',
+      date_to: '2026-10-07T23:59:59.999+05:30',
     });
   });
 });
@@ -228,8 +229,8 @@ describe('invoice request', () => {
       p_inv_no_to: 20,
       p_search_grn_no: 'dv01',
       p_search: 'lakeview',
-      p_date_from: new Date(2026, 8, 1).toISOString(),
-      p_date_to: new Date(2026, 8, 30, 23, 59, 59, 999).toISOString(),
+      p_date_from: '2026-09-01T00:00:00+05:30',
+      p_date_to: '2026-09-30T23:59:59.999+05:30',
     });
   });
 

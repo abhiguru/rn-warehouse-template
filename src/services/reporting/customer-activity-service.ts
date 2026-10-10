@@ -22,30 +22,14 @@ import type {
   RecentInvoicePreview,
 } from '@/types/report.types';
 
-import { toLocalISODate } from '@/utils/formatters';
 import { t } from '@/i18n';
+import { getDateDaysAgo, getToday } from './reportDates';
 import { createLogger } from '@/utils/logger';
 import { reportBody, reportRefusal, refusedReport } from './reportEnvelope';
 
 const logger = createLogger('Reports');
 // Default 420-day period
 const DEFAULT_DAYS_BACK = 420;
-
-/**
- * Get ISO date string for N days ago
- */
-function getDateDaysAgo(days: number): string {
-  const date = new Date();
-  date.setDate(date.getDate() - days);
-  return toLocalISODate(date);
-}
-
-/**
- * Get today's ISO date string
- */
-function getToday(): string {
-  return toLocalISODate(new Date());
-}
 
 /**
  * Default empty response for Level 1 (all customers)

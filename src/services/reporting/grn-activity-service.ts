@@ -17,8 +17,8 @@ import type {
   CustomerGRNSummary,
 } from '@/types/report.types';
 
-import { toLocalISODate } from '@/utils/formatters';
 import { t } from '@/i18n';
+import { getDateDaysAgo, getToday } from './reportDates';
 import { createLogger } from '@/utils/logger';
 import { reportBody, reportRefusal, refusedReport } from './reportEnvelope';
 
@@ -51,22 +51,6 @@ const EMPTY_ALL_RESPONSE: AllGRNActivityData = {
   },
   by_customer: [],
 };
-
-/**
- * Get date string for N days ago
- */
-function getDateDaysAgo(days: number): string {
-  const date = new Date();
-  date.setDate(date.getDate() - days);
-  return toLocalISODate(date);
-}
-
-/**
- * Get today's date string
- */
-function getToday(): string {
-  return toLocalISODate(new Date());
-}
 
 export interface GRNActivityParams {
   customerId: string; // Required customer UUID

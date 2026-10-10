@@ -31,6 +31,7 @@ import type {
   RpcSearchMetadata,
 } from '@/types/rpc-canonical.types';
 import { t } from '@/i18n';
+import { closeDateRange } from '@/utils/formatters';
 import { serverText } from '@/utils/serverText';
 import { rpcRefusal } from '@/utils/rpcRefusal';
 
@@ -639,13 +640,15 @@ export class OrderService {
         ? sortKeyMap[options.sortBy] || options.sortBy
         : 'grn_gr_no';
 
+      // The RPC applies the date range only when both ends are given.
+      const dates = closeDateRange(options?.dateFrom, options?.dateTo);
       const authenticatedClient = await getAuthenticatedClient();
       const { data, error } = await authenticatedClient.rpc(
         'get_customer_dispatch_items',
         {
           p_customer_id: customerId,
-          p_date_from: options?.dateFrom || null,
-          p_date_to: options?.dateTo || null,
+          p_date_from: dates?.from ?? null,
+          p_date_to: dates?.to ?? null,
           p_filters: transformedFilters,
           p_sort_by: sortBy,
           p_sort_order: options?.sortOrder || 'asc',

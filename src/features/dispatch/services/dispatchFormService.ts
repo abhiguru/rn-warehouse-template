@@ -22,6 +22,7 @@ import type {
 } from '@/types/dispatch.types';
 import { uploadDeferredDispatchImages } from './dispatchImageService';
 import { serverText } from '@/utils/serverText';
+import { toCalendarDay } from '@/utils/formatters';
 
 const log = createLogger('dispatch');
 
@@ -196,7 +197,7 @@ export const createDispatch = async (payload: {
     const rpcBody = {
       p_dispatch_data: {
         disp_no: payload.header.disp_no,
-        disp_date: payload.header.disp_date, // ISO timestamp
+        disp_date: toCalendarDay(payload.header.disp_date), // the day, 'YYYY-MM-DD': the server takes the day from this text
         registration: payload.header.registration.toUpperCase(), // Ensure uppercase
         customer_id: payload.header.customer_id,
         customer_name: payload.header.customer_name,
@@ -325,7 +326,7 @@ export const updateDispatch = async (
       p_dispatch_id: dispatchId,
       p_dispatch_data: {
         disp_no: payload.header.disp_no,
-        disp_date: payload.header.disp_date,
+        disp_date: toCalendarDay(payload.header.disp_date),
         registration: payload.header.registration.toUpperCase(),
         customer_id: payload.header.customer_id,
         customer_name: payload.header.customer_name,
