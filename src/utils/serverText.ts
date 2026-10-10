@@ -10,8 +10,6 @@
 import { t, type TranslationKey } from '@/i18n';
 import { getLanguage } from '@/i18n/language';
 
-const GUJARATI_SCRIPT = /[઀-૿]/;
-
 /** Reasons the server gives, by the words it uses for them. The first match wins. */
 const REASONS: [RegExp, TranslationKey][] = [
   // "X not found or access denied": the record is missing as far as this person can tell.
@@ -31,6 +29,16 @@ const REASONS: [RegExp, TranslationKey][] = [
   [/grn is already invoiced/, 'errors.parsed.grnAlreadyInvoiced'],
   [/already on another invoice/, 'errors.parsed.lineOnOtherInvoice'],
   [/invoice that has payments/, 'errors.parsed.invoiceHasPayments'],
+  // Invoice line checks (assert_invoice_lines). The first sentence has the word
+  // "duplicate" in it and is not "this entry already exists".
+  [/missing, duplicate or unrelated dispatch line/, 'errors.parsed.invoiceLinesChanged'],
+  [/invoice requires at least one dispatch line/, 'errors.parsed.invoiceNeedsLine'],
+  [/invoice customer and grn must match/, 'errors.parsed.invoiceCustomerMismatch'],
+  [/discount exceeds the invoice amount/, 'errors.parsed.discountTooLarge'],
+  [/reason is required for an invoice discount/, 'errors.parsed.discountReasonRequired'],
+  // Users and enrollment review.
+  [/10-digit indian mobile number/, 'errors.parsed.mobileInvalid'],
+  [/customer assignment/, 'errors.parsed.customerAssignmentRequired'],
   // Photo rules (server migration 43): a photo is confirmed only for a file in
   // its own document's folder. save_grn wraps these as "Error creating GRN: <text>".
   [/image path does not belong to this (grn|dispatch)/, 'errors.parsed.imageWrongDocument'],
@@ -45,6 +53,18 @@ const REASONS: [RegExp, TranslationKey][] = [
   [/transaction conflict|too many retries|deadlock|could not serialize/, 'errors.parsed.busy'],
   [/network request failed|failed to fetch|fetch failed/, 'errors.parsed.network'],
 ];
+
+/**
+ * True for a sentence written in Gujarati: more Gujarati letters than Latin
+ * ones. An English server sentence that only names a Gujarati item or customer
+ * ('Cannot delete item "લસણ" - has 3 existing dispatches') is not one, and a
+ * sentence of the app's own that carries a code or a number ("A0010", "OTP") is.
+ */
+function writtenInGujarati(text: string): boolean {
+  const gujarati = text.match(/[઀-૿]/g)?.length ?? 0;
+  if (gujarati === 0) return false;
+  return gujarati > (text.match(/[A-Za-z]/g)?.length ?? 0);
+}
 
 /**
  * save_invoice(jsonb) reports a refusal as "Database error: <text> (SQLState: <code>)".
@@ -71,7 +91,7 @@ export function serverReason(text: string): string | undefined {
 export function serverText(text: unknown, fallback: string): string {
   if (typeof text !== 'string' || text.trim() === '') return fallback;
   // English keeps the server's wording; text the app wrote in Gujarati is already right.
-  if (GUJARATI_SCRIPT.test(text)) return text;
+  if (writtenInGujarati(text)) return text;
   if (getLanguage() === 'en') return unwrapDatabaseError(text) || fallback;
   return serverReason(text) ?? fallback;
 }

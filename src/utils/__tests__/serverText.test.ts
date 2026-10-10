@@ -107,3 +107,55 @@ describe('server text in Gujarati', () => {
     expect(serverReason('GRN created successfully')).toBeUndefined();
   });
 });
+
+// Review 2026-10-10, M4-3, M4-4, M4-5.
+describe('business-rule refusals in Gujarati', () => {
+  beforeEach(() => setLanguage('gu'));
+
+  // M4-3: "duplicate" in this sentence is not "this entry already exists".
+  it('an invoice whose dispatch lines changed is not called a duplicate entry', () => {
+    const text = 'Invoice contains a missing, duplicate or unrelated dispatch line';
+    expect(serverText(text, 'x')).toBe(t('errors.parsed.invoiceLinesChanged'));
+    expect(serverText(`Database error: ${text} (SQLState: P0001)`, 'x')).toBe(t('errors.parsed.invoiceLinesChanged'));
+    expect(serverReason(text)).not.toBe(t('errors.parsed.duplicate'));
+  });
+
+  // M4-5: refusals that say what to change used to become the caller's "could not save".
+  it.each([
+    ['Invoice requires at least one dispatch line', 'errors.parsed.invoiceNeedsLine'],
+    ['Invoice customer and GRN must match', 'errors.parsed.invoiceCustomerMismatch'],
+    ['Discount exceeds the invoice amount', 'errors.parsed.discountTooLarge'],
+    ['A reason is required for an invoice discount', 'errors.parsed.discountReasonRequired'],
+    ['Expected a 10-digit Indian mobile number', 'errors.parsed.mobileInvalid'],
+    ['At least one valid customer assignment is required', 'errors.parsed.customerAssignmentRequired'],
+    ['Pending enrollment must be reviewed with a customer assignment', 'errors.parsed.customerAssignmentRequired'],
+    ['Item belongs to another customer', 'errors.parsed.otherCustomer'],
+  ] as const)('%s', (text, key) => {
+    expect(serverText(text, 'સાચવી શકાયું નથી')).toBe(t(key));
+    expect(t(key)).toMatch(/[઀-૿]/);
+  });
+
+  // M4-4: a Gujarati item or customer name inside an English sentence is not "already Gujarati".
+  it('an English sentence that names a Gujarati item is still read for its reason', () => {
+    expect(serverText('Cannot delete item "લસણ" - has 3 existing dispatches', 'x')).toBe(t('errors.parsed.inUse'));
+    expect(serverText('Insufficient stock: લસણ (Available: 4, Requested: 9)', 'x')).toBe(t('errors.code.insufficientStock'));
+    expect(serverText('Customer not found: પટેલ ટ્રેડર્સ', 'x')).toBe(t('errors.parsed.itemNotFound'));
+  });
+
+  it('an English sentence with a Gujarati name and no known reason gives the fallback, not English', () => {
+    expect(serverText('Unexpected state for item "લસણ" while processing', 'સાચવી શકાયું નથી')).toBe('સાચવી શકાયું નથી');
+  });
+
+  it('a sentence the app wrote in Gujarati is shown as it is, also with a Latin word in it', () => {
+    for (const own of ['આવક પાવતી સાચવી શકાઈ નથી', 'GRN સાચવી શકાયું નથી', 'A0010 નંબર પહેલેથી વપરાયેલો છે', 'OTP મોકલી શકાયો નથી']) {
+      expect(serverText(own, 'x')).toBe(own);
+    }
+  });
+});
+
+describe('business-rule refusals in English', () => {
+  it('keep the server sentence, including one that names a Gujarati item', () => {
+    expect(serverText('Cannot delete item "લસણ" - has 3 existing dispatches', 'x')).toBe('Cannot delete item "લસણ" - has 3 existing dispatches');
+    expect(serverText('Discount exceeds the invoice amount', 'x')).toBe('Discount exceeds the invoice amount');
+  });
+});
