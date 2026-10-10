@@ -8,6 +8,7 @@ import { ChangeLogResponse, ChangeLogEntry } from '@/types/order.types';
 // the manual RPC pattern. Imports retained for consistency and future use.
 import { executeRPC, createErrorResponse } from '@/utils/serviceErrorHandler';
 import { t } from '@/i18n';
+import { serverText } from '@/utils/serverText';
 
 interface ServiceError {
   message: string;
@@ -270,7 +271,7 @@ export class ChangeLogService {
             },
           },
           error: {
-            message: error.message || t('errors.customer.changeLogFailed'),
+            message: serverText(error.message, t('errors.customer.changeLogFailed')),
             code: error.code || 'RPC_ERROR',
           },
         };
@@ -356,7 +357,7 @@ export class ChangeLogService {
             },
           },
           error: {
-            message: error.message || t('errors.order.changeLogFailed'),
+            message: serverText(error.message, t('errors.order.changeLogFailed')),
             code: error.code || 'RPC_ERROR',
           },
         };
@@ -438,7 +439,7 @@ export class ChangeLogService {
             },
           },
           error: {
-            message: error.message || t('errors.order.recentChangesFailed'),
+            message: serverText(error.message, t('errors.order.recentChangesFailed')),
             code: error.code || 'RPC_ERROR',
           },
         };

@@ -10,6 +10,7 @@ import type { ServiceResponse } from './errorHandler';
 import { handleError, handleSuccess } from './errorHandler';
 import { createLogger } from './logger';
 import { localizeDigits, t } from '@/i18n';
+import { serverText } from '@/utils/serverText';
 
 const rpcLogger = createLogger('RPCClient');
 
@@ -170,8 +171,8 @@ export async function callRPC<TData = unknown>(
       if (rpcResponse.success === false) {
         return {
           success: false,
-          message: rpcResponse.message || errorMessage || t('errors.general.operationFailed'),
-          error: rpcResponse.error || t('errors.general.backendReturnedError'),
+          message: serverText(rpcResponse.message || errorMessage, t('errors.general.operationFailed')),
+          error: serverText(rpcResponse.error, t('errors.general.backendReturnedError')),
         };
       }
     }

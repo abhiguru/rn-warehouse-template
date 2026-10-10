@@ -41,6 +41,7 @@ import type { ItemFormData, ItemValidationErrors } from '@/types/item.types';
 
 import { showAlert } from '@/utils/alert';
 import { t as tr } from '@/i18n';
+import { serverText } from '@/utils/serverText';
 const ItemFormScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
   const styles = useThemedStyles(makeStyles);
@@ -119,7 +120,7 @@ const ItemFormScreen: React.FC = () => {
             result.message?.toLowerCase().includes('already exists')) {
           setErrors({ name: tr('items.form.duplicateName') });
         } else {
-          showAlert(tr('items.form.couldNotAddTitle'), result.message || tr('items.list.tryAgainInAMoment'));
+          showAlert(tr('items.form.couldNotAddTitle'), serverText(result.message, tr('items.list.tryAgainInAMoment')));
         }
       }
     } catch (err) {

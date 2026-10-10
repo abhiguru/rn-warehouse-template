@@ -4,6 +4,7 @@ import { PAGINATION } from '@/config/cacheConfig';
 import { toLocalISODate } from '@/utils/formatters';
 import { matchesSearch, searchTerms } from '@/features/filters/searchMatch';
 import { t } from '@/i18n';
+import { serverText } from '@/utils/serverText';
 
 // M1 Fix: DRY empty pagination response
 const EMPTY_INVOICE_PAGINATION = { total_count: 0, limit: PAGINATION.DEFAULT_LIMIT, offset: 0, has_more: false };
@@ -153,7 +154,7 @@ export const getInvoicesList = async (
     if (!data || !data.success) {
       return {
         success: false,
-        message: data?.message || t('errors.general.noDataFromServer'),
+        message: serverText(data?.message, t('errors.general.noDataFromServer')),
         data: {
           invoices: [],
           pagination: { total_count: 0, limit: p_limit, offset: p_offset, has_more: false }
@@ -163,7 +164,7 @@ export const getInvoicesList = async (
 
     return {
       success: true,
-      message: data.message || t('errors.invoice.listRetrieved'),
+      message: serverText(data.message, t('errors.invoice.listRetrieved')),
       data: {
         invoices: data.data || [],
         pagination: data.pagination || { total_count: 0, limit: p_limit, offset: p_offset, has_more: false }
@@ -354,14 +355,14 @@ export const getAssignedCustomerInvoices = async (
           return { success: false, message: failed.message, invoices: [] };
         }
         if (!data?.success) {
-          return { success: false, message: data?.error || data?.message || t('errors.general.noDataFromServer'), invoices: [] };
+          return { success: false, message: serverText(data?.error || data?.message, t('errors.general.noDataFromServer')), invoices: [] };
         }
         const rows: CustomerInvoiceRow[] = data.data?.invoices || [];
         return { success: true, invoices: rows.map(row => mapCustomerInvoiceRow(row, customerId, names[customerId] || '')) };
       })
     );
     const failed = results.find(result => !result.success);
-    if (failed) return failure(failed.message || t('errors.invoice.fetchListFailed'));
+    if (failed) return failure(serverText(failed.message, t('errors.invoice.fetchListFailed')));
 
     const matching = selectCustomerInvoices(results.flatMap(result => result.invoices), params);
 
@@ -528,8 +529,8 @@ export const getInvoiceDetails = async (invoiceId: string): Promise<InvoiceDetai
     if (!data.success) {
       return {
         success: false,
-        message: data.message || t('errors.invoice.noneFound'),
-        error: data.error || t('errors.invoice.notFoundOrDenied')
+        message: serverText(data.message, t('errors.invoice.noneFound')),
+        error: serverText(data.error, t('errors.invoice.notFoundOrDenied'))
       };
     }
 
@@ -745,8 +746,8 @@ export const getInvoiceItemsDetailed = async (invoiceId: string): Promise<Invoic
       console.warn('[InvoiceService] Invoice items not successful:', data?.error || data?.message);
       return {
         success: false,
-        message: data?.message || t('errors.invoice.noItemsFound'),
-        error: data?.error || t('errors.invoice.itemsNotFoundOrDenied')
+        message: serverText(data?.message, t('errors.invoice.noItemsFound')),
+        error: serverText(data?.error, t('errors.invoice.itemsNotFoundOrDenied'))
       };
     }
 

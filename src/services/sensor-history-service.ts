@@ -7,6 +7,7 @@ import {
 } from '@/types/sensor-history.types';
 import { createLogger } from '@/utils/logger';
 import { t } from '@/i18n';
+import { serverText } from '@/utils/serverText';
 
 const sensorHistoryLogger = createLogger('SensorHistoryService');
 
@@ -46,13 +47,13 @@ export async function getSensorHistory(
       sensorHistoryLogger.error('RPC error:', error);
       return {
         success: false,
-        message: error.message || t('errors.sensor.historyFetchFailed'),
+        message: serverText(error.message, t('errors.sensor.historyFetchFailed')),
         error: error.message,
       };
     }
 
     if (!data || !data.success) {
-      const errorMsg = data?.error || t('errors.sensor.historyNoData');
+      const errorMsg = serverText(data?.error, t('errors.sensor.historyNoData'));
       sensorHistoryLogger.warn('RPC returned unsuccessful response', { error: errorMsg });
       return {
         success: false,

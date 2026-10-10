@@ -32,6 +32,7 @@ import { UserProfile } from '@/types/user.types';
 import { clearSessionScopedState } from '../sessionScopedState';
 import { AppError } from '@/utils/appError';
 import { t } from '@/i18n';
+import { serverText } from '@/utils/serverText';
 
 interface AuthState {
   // Loading states
@@ -469,7 +470,7 @@ export const deleteAccount = createAsyncThunk(
     if (generation !== getSessionGeneration())
       return rejectWithValue(t('errors.auth.sessionChanged'));
     if (!result.success)
-      return rejectWithValue(result.error || t('errors.user.deleteAccountFailed'));
+      return rejectWithValue(serverText(result.error, t('errors.user.deleteAccountFailed')));
     await dispatch(logout()).unwrap();
   }
 );

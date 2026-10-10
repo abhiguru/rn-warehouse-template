@@ -73,6 +73,7 @@ import { generateTempGRNId } from '@/features/grn/services/imageUploadService';
 
 import { showAlert } from '@/utils/alert';
 import { t } from '@/i18n';
+import { serverText } from '@/utils/serverText';
 /** Plain-language list of validation messages for an alert (never raw field keys). */
 function describeValidationErrors(errors: Record<string, string>): string {
   const messages = Array.from(new Set(Object.values(errors).filter(Boolean)));
@@ -294,7 +295,7 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
         }));
       } else {
         if (globalSessionId === currentSessionId) {
-          showAlert(t('errors.grn.form.loadFailedTitle'), result.error || t('common.checkConnection'));
+          showAlert(t('errors.grn.form.loadFailedTitle'), serverText(result.error, t('common.checkConnection')));
         }
       }
     } catch (error) {
@@ -546,7 +547,7 @@ export function useGRNForm({ mode, grnIdParam }: UseGRNFormOptions): UseGRNFormR
       if (result.success) {
         return { success: true, grnId: result.data?.id };
       } else {
-        showAlert(t('errors.grn.form.saveFailedTitle'), result.error || t('common.checkConnection'));
+        showAlert(t('errors.grn.form.saveFailedTitle'), serverText(result.error, t('common.checkConnection')));
         return { success: false, error: result.error };
       }
     } catch (error) {

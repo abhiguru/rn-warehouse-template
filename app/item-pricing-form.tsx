@@ -57,6 +57,7 @@ import { showAlert } from '@/utils/alert';
 import { formatDate, toLocalISODate } from '@/utils/formatters';
 import { numericInput, t as tr } from '@/i18n';
 import { priceTypeLabel } from '@/features/item-pricing/utils/priceLabels';
+import { serverText } from '@/utils/serverText';
 const itemPricingFormLogger = createLogger('ItemPricingForm');
 
 interface Item {
@@ -374,7 +375,7 @@ const ItemPricingFormScreen: React.FC = () => {
             { text: tr('common.ok'), onPress: () => router.back() },
           ]);
         } else {
-          showAlert(tr('pricing.form.couldNotSaveTitle'), result.message || tr('pricing.list.tryAgainInAMoment'));
+          showAlert(tr('pricing.form.couldNotSaveTitle'), serverText(result.message, tr('pricing.list.tryAgainInAMoment')));
         }
       } else if (formMode === 'edit' && priceId) {
         const payload: UpdateItemPricingPayload = {
@@ -394,7 +395,7 @@ const ItemPricingFormScreen: React.FC = () => {
             { text: tr('common.ok'), onPress: () => router.back() },
           ]);
         } else {
-          showAlert(tr('pricing.form.couldNotSaveTitle'), result.message || tr('pricing.list.tryAgainInAMoment'));
+          showAlert(tr('pricing.form.couldNotSaveTitle'), serverText(result.message, tr('pricing.list.tryAgainInAMoment')));
         }
       }
     } catch (err) {

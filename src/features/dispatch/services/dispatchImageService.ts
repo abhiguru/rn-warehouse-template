@@ -15,6 +15,7 @@ import {
 } from '@/config/supabaseConfig';
 import type { DispatchImageData } from '@/types/dispatch.types';
 import { localizeDigits, t } from '@/i18n';
+import { serverText } from '@/utils/serverText';
 
 // ============================================================================
 // TYPES
@@ -271,7 +272,7 @@ export const uploadDispatchImage = async (
       console.error('[DispatchImageService] Registration failed:', regError);
       return {
         success: false,
-        error: regError.message || t('dispatch.photos.registerFailed'),
+        error: serverText(regError.message, t('dispatch.photos.registerFailed')),
       };
     }
 
@@ -282,7 +283,7 @@ export const uploadDispatchImage = async (
       );
       return {
         success: false,
-        error: regResult?.error || t('dispatch.photos.registrationFailedServer'),
+        error: serverText(regResult?.error, t('dispatch.photos.registrationFailedServer')),
       };
     }
 
@@ -350,7 +351,7 @@ export const uploadDispatchImage = async (
           confirmResult?.error
         );
         throw new Error(
-          confirmResult?.error || t('dispatch.photos.confirmationFailedServer')
+          serverText(confirmResult?.error, t('dispatch.photos.confirmationFailedServer'))
         );
       }
 
@@ -503,7 +504,7 @@ const uploadSingleDeferredImage = async (
     if (!regResult?.success) {
       return {
         success: false,
-        error: regResult?.error || t('dispatch.photos.registrationFailed'),
+        error: serverText(regResult?.error, t('dispatch.photos.registrationFailed')),
       };
     }
 
@@ -542,7 +543,7 @@ const uploadSingleDeferredImage = async (
       }
 
       if (!confirmResult?.success) {
-        throw new Error(confirmResult?.error || t('dispatch.photos.confirmationFailed'));
+        throw new Error(serverText(confirmResult?.error, t('dispatch.photos.confirmationFailed')));
       }
 
       return { success: true };

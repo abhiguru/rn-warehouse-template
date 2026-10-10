@@ -8,6 +8,7 @@ import type { RpcGrnItemRow, RpcPagination } from '@/types/rpc-canonical.types';
 import { hasMoreItems } from '@/utils/paginationUtils';
 import { PAGINATION } from '@/config/cacheConfig';
 import { t } from '@/i18n';
+import { serverText } from '@/utils/serverText';
 
 /**
  * GRN Item type - uses snake_case matching backend RPC response
@@ -266,7 +267,7 @@ export const getAllGRNItems = async (params: GRNListParams = {}): Promise<GRNLis
         },
         user_access: { role: '', is_admin: false, is_supervisor: false, accessible_customers: 0 }
       },
-      message: responseData.message || t('errors.grn.itemsFetched')
+      message: serverText(responseData.message, t('errors.grn.itemsFetched'))
     };
     
   } catch (error) {
@@ -345,7 +346,7 @@ export const getCustomerGRNItems = async (
       return {
         success: false,
         data: emptyData,
-        message: response?.message || t('errors.grn.fetchCustomerItemsFailed'),
+        message: serverText(response?.message, t('errors.grn.fetchCustomerItemsFailed')),
       };
     }
 
@@ -359,7 +360,7 @@ export const getCustomerGRNItems = async (
 
     return {
       success: true,
-      message: response.message || t('errors.grn.customerItemsRetrieved'),
+      message: serverText(response.message, t('errors.grn.customerItemsRetrieved')),
       data: {
         items,
         pagination: {

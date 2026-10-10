@@ -54,6 +54,7 @@ import { uploadDispatchImage } from '@/features/dispatch/services/dispatchImageS
 
 import { showAlert } from '@/utils/alert';
 import { t as tr, formatIdentifier } from '@/i18n';
+import { serverText } from '@/utils/serverText';
 // ============================================================================
 // STYLES (docs/STYLE_GUIDE.md §14.2 object page)
 // ============================================================================
@@ -200,7 +201,7 @@ function DispatchDetailScreen() {
         setData(result.data);
         setError(null);
       } else {
-        setError(result.error || result.message || tr('common.checkConnection'));
+        setError(serverText(result.error || result.message, tr('common.checkConnection')));
       }
     } catch (err) {
       // Ignore abort errors - they're expected when navigating away
@@ -291,7 +292,7 @@ function DispatchDetailScreen() {
             [{ text: tr('common.close') }]
           );
         } else {
-          showAlert(tr('dispatch.details.deleteFailedTitle'), result.error || result.message || tr('dispatch.details.tryAgain'));
+          showAlert(tr('dispatch.details.deleteFailedTitle'), serverText(result.error || result.message, tr('dispatch.details.tryAgain')));
         }
       }
     } catch (error) {

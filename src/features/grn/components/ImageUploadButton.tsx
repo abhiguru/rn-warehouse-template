@@ -25,6 +25,7 @@ import type { ThemeTokens } from '@/theme/tokens';
 
 import { showAlert } from '@/utils/alert';
 import { t as tr } from '@/i18n';
+import { serverText } from '@/utils/serverText';
 // Type for custom upload function metadata (supports both camelCase and snake_case)
 type CustomUploadMetadata = {
   // camelCase (GRN format)
@@ -212,7 +213,7 @@ export const ImageUploadButton: React.FC<ImageUploadButtonProps> = ({
           hasStoragePath: !!storagePath
         });
       } else {
-        throw new Error(result.error || tr('grn.photos.uploadFailed'));
+        throw new Error(serverText(result.error, tr('grn.photos.uploadFailed')));
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : tr('grn.photos.uploadFailed');

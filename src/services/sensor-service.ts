@@ -9,6 +9,7 @@ import {
 import { createLogger } from '@/utils/logger';
 import { executeRPC, createErrorResponse } from '@/utils/serviceErrorHandler';
 import { t } from '@/i18n';
+import { serverText } from '@/utils/serverText';
 
 const sensorLogger = createLogger('SensorService');
 
@@ -45,7 +46,7 @@ export class SensorService {
         sensorLogger.error('RPC error:', error);
         return {
           success: false,
-          message: error.message || t('errors.sensor.fetchFailed'),
+          message: serverText(error.message, t('errors.sensor.fetchFailed')),
           error: error.message,
         };
       }

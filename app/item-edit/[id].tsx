@@ -42,6 +42,7 @@ import type { ItemFormData, ItemValidationErrors, Item } from '@/types/item.type
 
 import { showAlert } from '@/utils/alert';
 import { t as tr } from '@/i18n';
+import { serverText } from '@/utils/serverText';
 const ItemEditScreen: React.FC = () => {
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
@@ -199,7 +200,7 @@ const ItemEditScreen: React.FC = () => {
         ) {
           setErrors({ name: tr('items.form.duplicateName') });
         } else {
-          showAlert(tr('items.form.couldNotSaveTitle'), result.message || tr('items.list.tryAgainInAMoment'));
+          showAlert(tr('items.form.couldNotSaveTitle'), serverText(result.message, tr('items.list.tryAgainInAMoment')));
         }
       }
     } catch (err) {

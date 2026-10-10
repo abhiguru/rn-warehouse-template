@@ -47,6 +47,7 @@ import {
 import { showAlert } from '@/utils/alert';
 import { t as tr, formatIdentifier } from '@/i18n';
 import { formatNumber, formatFinancialYear } from '@/utils/formatters';
+import { serverText } from '@/utils/serverText';
 export default function InvoiceEditStep3() {
   const dispatch = useAppDispatch();
   const styles = useThemedStyles(makeInvoiceWizardStyles);
@@ -147,7 +148,7 @@ export default function InvoiceEditStep3() {
         setShowSuccessDialog(true);
       } else {
         console.error('[InvoiceEditStep3] Failed to update invoice:', response.message);
-        showAlert(tr('invoice.review.updateFailedTitle'), response.message || tr('common.checkConnection'));
+        showAlert(tr('invoice.review.updateFailedTitle'), serverText(response.message, tr('common.checkConnection')));
       }
     } catch (error: any) {
       console.error('[InvoiceEditStep3] Error updating invoice:', error);

@@ -22,6 +22,7 @@ import { hasMoreItems } from '@/utils/paginationUtils';
 import { PAGINATION } from '@/config/cacheConfig';
 import { executeRPC, createErrorResponse } from '@/utils/serviceErrorHandler';
 import { t } from '@/i18n';
+import { serverText } from '@/utils/serverText';
 
 const itemPricingLogger = createLogger('ItemPricingService');
 
@@ -130,7 +131,7 @@ export const getItemStoragePrices = async (
         success: false,
         data: [],
         pagination: { total_count: 0, limit: 20, offset: 0, has_more: false },
-        message: responseData?.message || t('errors.general.noDataAvailable'),
+        message: serverText(responseData?.message, t('errors.general.noDataAvailable')),
         error: responseData?.error,
       };
     }
@@ -208,7 +209,7 @@ export const createItemStoragePrice = async (
   return {
     success: true,
     data: result.data,
-    message: result.message || t('errors.price.created'),
+    message: serverText(result.message, t('errors.price.created')),
   };
 };
 
@@ -253,7 +254,7 @@ export const updateItemStoragePrice = async (
   return {
     success: true,
     data: result.data,
-    message: result.message || t('errors.price.updated'),
+    message: serverText(result.message, t('errors.price.updated')),
   };
 };
 
@@ -286,7 +287,7 @@ export const deleteItemStoragePrice = async (
 
   return {
     success: true,
-    message: result.message || t('errors.price.deleted'),
+    message: serverText(result.message, t('errors.price.deleted')),
   };
 };
 

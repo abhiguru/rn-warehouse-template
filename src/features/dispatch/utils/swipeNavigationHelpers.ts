@@ -9,6 +9,7 @@ import type { DispatchHeaderData, DispatchItemData } from '@/types/dispatch.type
 
 import { showAlert } from '@/utils/alert';
 import { t } from '@/i18n';
+import { serverText } from '@/utils/serverText';
 /**
  * Validate Step 1 header data before allowing swipe to Step 2
  * @param header - Dispatch header data to validate
@@ -19,7 +20,7 @@ export const canNavigateFromDispatchStep1 = async (header: DispatchHeaderData): 
     await validateStep1(header);
     return true;
   } catch (error: any) {
-    const errorMessage = error?.message || t('dispatch.validation.fillRequiredCorrectly');
+    const errorMessage = serverText(error?.message, t('dispatch.validation.fillRequiredCorrectly'));
     showAlert(t('dispatch.validation.title'), errorMessage);
     return false;
   }
@@ -42,7 +43,7 @@ export const canNavigateFromDispatchStep2 = async (items: DispatchItemData[]): P
     await validateStep2({ items });
     return true;
   } catch (error: any) {
-    const errorMessage = error?.message || t('dispatch.validation.checkItems');
+    const errorMessage = serverText(error?.message, t('dispatch.validation.checkItems'));
     showAlert(t('dispatch.validation.title'), errorMessage);
     return false;
   }

@@ -61,6 +61,7 @@ import {
 
 import { showAlert } from '@/utils/alert';
 import { t } from '@/i18n';
+import { serverText } from '@/utils/serverText';
 /** Field errors as plain sentences for an alert (style guide §12.2), never raw field keys. */
 function describeValidationErrors(errors: Record<string, string>): string {
   const messages = Array.from(new Set(Object.values(errors).filter(Boolean)));
@@ -209,7 +210,7 @@ export function useInvoiceForm({
           grId: loadedHeader.gr_id || '',
         }));
       } else {
-        showAlert(t('invoice.edit.loadFailedTitle'), result.message || t('common.checkConnection'));
+        showAlert(t('invoice.edit.loadFailedTitle'), serverText(result.message, t('common.checkConnection')));
       }
     } catch (error) {
       console.error('[useInvoiceForm] Failed to load invoice:', error);
@@ -234,7 +235,7 @@ export function useInvoiceForm({
           grId,
         }));
       } else {
-        showAlert(t('invoice.form.grnLoadFailedTitle'), result.message || t('common.checkConnection'));
+        showAlert(t('invoice.form.grnLoadFailedTitle'), serverText(result.message, t('common.checkConnection')));
       }
     } catch (error) {
       console.error('[useInvoiceForm] Failed to load GRN data:', error);
@@ -431,7 +432,7 @@ export function useInvoiceForm({
           invoiceNo: result.data?.invoice_no,
         };
       } else {
-        showAlert(t('invoice.form.saveFailedTitle'), result.message || t('common.checkConnection'));
+        showAlert(t('invoice.form.saveFailedTitle'), serverText(result.message, t('common.checkConnection')));
         return { success: false, error: result.message };
       }
     } catch (error) {

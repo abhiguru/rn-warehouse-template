@@ -6,6 +6,7 @@
 import * as yup from 'yup';
 import { formatDate } from '@/utils/formatters';
 import { t, type TranslationKey, formatIdentifier } from '@/i18n';
+import { serverText } from '@/utils/serverText';
 
 /**
  * A yup message read when the error is raised, not when this file is loaded, so
@@ -325,7 +326,7 @@ export const validateStep3 = async (data: {
       return {
         isValid: false,
         errors: {
-          disp_date: dateValidation.error || t('dispatch.validation.dispatchDateInvalid'),
+          disp_date: serverText(dateValidation.error, t('dispatch.validation.dispatchDateInvalid')),
         },
       };
     }

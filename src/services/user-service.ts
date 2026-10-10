@@ -9,6 +9,7 @@ import {
 // M3 Fix: Import executeRPC utilities (kept for future use - current methods have extensive debug logging)
 import { executeRPC, createErrorResponse } from '@/utils/serviceErrorHandler';
 import { t } from '@/i18n';
+import { serverText } from '@/utils/serverText';
 
 export class UserService {
   
@@ -328,14 +329,14 @@ export class UserService {
         console.error('[UserService] Account deletion failed:', rpcResponse?.error);
         return {
           success: false,
-          message: rpcResponse?.error || t('errors.user.deleteAccountFailed'),
-          error: rpcResponse?.error || t('errors.general.unknown')
+          message: serverText(rpcResponse?.error, t('errors.user.deleteAccountFailed')),
+          error: serverText(rpcResponse?.error, t('errors.general.unknown'))
         };
       }
 
       return {
         success: true,
-        message: rpcResponse.message || t('errors.user.accountDeleted'),
+        message: serverText(rpcResponse.message, t('errors.user.accountDeleted')),
         data: undefined
       };
     } catch (error) {

@@ -45,6 +45,7 @@ import { Avatar, StatusTag } from '@/components/ui';
 import { showAlert } from '@/utils/alert';
 import { formatCount, formatMobile } from '@/utils/formatters';
 import { t as tr } from '@/i18n';
+import { serverText } from '@/utils/serverText';
 // =============================================================================
 // TYPES
 // =============================================================================
@@ -171,7 +172,7 @@ export default function CustomersScreen() {
           // Show error to user
           showAlert(
             currentActive ? tr('customers.list.couldNotDeactivateTitle') : tr('customers.list.couldNotActivateTitle'),
-            result.message || tr('customers.list.tryAgainInAMoment'),
+            serverText(result.message, tr('customers.list.tryAgainInAMoment')),
             [{ text: tr('common.ok') }]
           );
         }

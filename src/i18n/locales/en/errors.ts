@@ -140,6 +140,8 @@ export const errors = {
     duplicate: 'This entry already exists. Please use a different value.',
     checkInput: 'Please check your input and try again.',
     serverError: 'A server error occurred. Please try again later.',
+    inUse: 'Other records depend on this one, so it cannot be changed.',
+    busy: 'The server is busy. Please try again in a moment.',
   },
   auth: {
     authenticationFailed: 'Authentication failed. Please sign in again.',

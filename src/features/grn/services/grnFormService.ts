@@ -8,6 +8,7 @@ import { isTemporaryGRNImageId } from './imageId';
 // and are not migrated to executeRPC pattern to preserve their specialized behavior
 import { executeRPC, createErrorResponse } from '@/utils/serviceErrorHandler';
 import { t } from '@/i18n';
+import { serverText } from '@/utils/serverText';
 
 // Helper function to construct full image URL
 // Note: This is a fallback for when signed URL generation fails
@@ -116,7 +117,7 @@ export const checkGrnExists = async (
     if (error) {
       console.error('[GRNFormService] ❌ RPC Error:', error);
       // E5 Fix: Return distinct error response so caller can distinguish from "not found"
-      return { exists: false, error: true, message: error.message || t('grn.form.checkNumberFailed') };
+      return { exists: false, error: true, message: serverText(error.message, t('grn.form.checkNumberFailed')) };
     }
 
     if (!data || !data.exists || !data.grn) {
@@ -197,7 +198,7 @@ export const getNextGRNNumber = async (): Promise<string> => {
         hint: error.hint,
         code: error.code,
       });
-      throw new Error(error.message || t('grn.form.nextNumberFailed'));
+      throw new Error(serverText(error.message, t('grn.form.nextNumberFailed')));
     }
 
     if (!data) {
@@ -342,12 +343,12 @@ export const createGRN = async (payload: CreateGRNPayload) => {
 
     if (error) {
       console.error('[GRNFormService] Enhanced RPC Error:', error);
-      throw new Error(error.message || t('grn.form.requestFailed'));
+      throw new Error(serverText(error.message, t('grn.form.requestFailed')));
     }
 
     if (!data || !data.success) {
       console.error('[GRNFormService] Enhanced RPC returned failure:', data);
-      throw new Error(data?.message || t('grn.form.creationFailed'));
+      throw new Error(serverText(data?.message, t('grn.form.creationFailed')));
     }
 
     const rpcResult = data.data;
@@ -795,7 +796,7 @@ export const updateGRN = async (grnId: string, payload: UpdateGRNPayload) => {
         throw new Error(`Stock Protection: ${error.message}`);
       }
 
-      throw new Error(error.message || t('grn.form.requestFailed'));
+      throw new Error(serverText(error.message, t('grn.form.requestFailed')));
     }
 
     // RPC returns array, get first result (with safe array access)
@@ -809,7 +810,7 @@ export const updateGRN = async (grnId: string, payload: UpdateGRNPayload) => {
         throw new Error(`Stock Protection: ${rpcResult.message}`);
       }
 
-      throw new Error(rpcResult?.message || t('grn.form.updateRejected'));
+      throw new Error(serverText(rpcResult?.message, t('grn.form.updateRejected')));
     }
 
     console.log('[GRNFormService] Update RPC Success:', {

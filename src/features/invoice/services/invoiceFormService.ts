@@ -12,6 +12,7 @@ import {
 import { t } from '@/i18n';
 
 import { toLocalISODate } from '@/utils/formatters';
+import { serverText } from '@/utils/serverText';
 /**
  * Get the next available invoice number
  * Uses optimized get_next_invoice_number RPC that returns formatted string (e.g., "I0000554")
@@ -27,7 +28,7 @@ export const getNextInvoiceNumber = async (
 
     if (error) {
       console.error('[InvoiceFormService] RPC Error:', error.message);
-      throw new Error(error.message || t('invoice.service.nextNumberFailed'));
+      throw new Error(serverText(error.message, t('invoice.service.nextNumberFailed')));
     }
 
     if (!data) {
@@ -61,7 +62,7 @@ export const getNextInvoiceNumber = async (
         next_invoice_number: 1,
         financial_year: finYear,
       },
-      message: error.message || t('invoice.service.nextNumberFailed'),
+      message: serverText(error.message, t('invoice.service.nextNumberFailed')),
     };
   }
 };
@@ -88,7 +89,7 @@ export const getInvoiceableGrns = async (
 
     if (error) {
       console.error('[InvoiceFormService] Error fetching invoiceable GRNs:', error);
-      throw new Error(error.message || t('invoice.service.grnsFailed'));
+      throw new Error(serverText(error.message, t('invoice.service.grnsFailed')));
     }
 
     // Handle case where RPC returns an object wrapper instead of an array
@@ -145,7 +146,7 @@ export const getInvoiceableGrns = async (
     return {
       success: false,
       data: [],
-      message: error.message || t('invoice.service.grnsFailed'),
+      message: serverText(error.message, t('invoice.service.grnsFailed')),
     };
   }
 };
@@ -174,7 +175,7 @@ export const loadInvoiceFormData = async (
 
     if (error) {
       console.error('[InvoiceFormService] Error loading invoice form data:', error);
-      throw new Error(error.message || t('invoice.service.formDataFailed'));
+      throw new Error(serverText(error.message, t('invoice.service.formDataFailed')));
     }
 
     // Handle the wrapped response structure from RPC
@@ -349,7 +350,7 @@ export const loadInvoiceFormData = async (
         },
         items: [],
       },
-      message: error.message || t('invoice.service.formDataFailed'),
+      message: serverText(error.message, t('invoice.service.formDataFailed')),
     };
   }
 };
@@ -443,11 +444,11 @@ export const createInvoice = async (
 
     if (error) {
       console.error('[InvoiceFormService] RPC error:', error);
-      throw new Error(error.message || t('invoice.service.createFailed'));
+      throw new Error(serverText(error.message, t('invoice.service.createFailed')));
     }
 
     if (!data || !data.success) {
-      const errorMsg = data?.error || data?.message || t('invoice.service.createFailed');
+      const errorMsg = serverText(data?.error || data?.message, t('invoice.service.createFailed'));
       throw new Error(errorMsg);
     }
 
@@ -466,7 +467,7 @@ export const createInvoice = async (
         invoice_id: '',
         invoice_no: 0,
       },
-      message: error.message || t('invoice.service.createFailed'),
+      message: serverText(error.message, t('invoice.service.createFailed')),
     };
   }
 };
@@ -491,11 +492,11 @@ export const loadInvoiceData = async (
 
     if (error) {
       console.error('[InvoiceFormService] RPC error:', error);
-      throw new Error(error.message || t('invoice.service.fetchFailed'));
+      throw new Error(serverText(error.message, t('invoice.service.fetchFailed')));
     }
 
     if (!data || !data.success) {
-      const errorMsg = data?.error || t('invoice.details.notFoundTitle');
+      const errorMsg = serverText(data?.error, t('invoice.details.notFoundTitle'));
       return {
         success: false,
         data: {
@@ -643,7 +644,7 @@ export const loadInvoiceData = async (
         header: { customer_id: '', customer_name: '', gr_id: '', gr_no: '' },
         items: [],
       },
-      message: error.message || t('invoice.service.loadFailed'),
+      message: serverText(error.message, t('invoice.service.loadFailed')),
     };
   }
 };
@@ -715,14 +716,14 @@ export const updateInvoice = async (
 
     if (error) {
       console.error('[InvoiceFormService] RPC error:', error);
-      throw new Error(error.message || t('invoice.service.updateFailed'));
+      throw new Error(serverText(error.message, t('invoice.service.updateFailed')));
     }
 
     // RPC returns an object directly
     const result = data;
 
     if (!result || !result.success) {
-      const errorMsg = result?.error || t('invoice.service.unknownRpcError');
+      const errorMsg = serverText(result?.error, t('invoice.service.unknownRpcError'));
       return {
         success: false,
         data: { invoice_id: '', invoice_no: 0 },
@@ -736,14 +737,14 @@ export const updateInvoice = async (
         invoice_id: result.invoice_id,
         invoice_no: parseInt(result.invoice_number),
       },
-      message: result.message || t('invoice.service.updated'),
+      message: serverText(result.message, t('invoice.service.updated')),
     };
   } catch (error: any) {
     console.error('[InvoiceFormService] Error updating invoice:', error);
     return {
       success: false,
       data: { invoice_id: '', invoice_no: 0 },
-      message: error.message || t('invoice.service.updateFailed'),
+      message: serverText(error.message, t('invoice.service.updateFailed')),
     };
   }
 };

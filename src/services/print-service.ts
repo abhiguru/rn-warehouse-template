@@ -2,6 +2,7 @@ import { createAuthenticatedFetch, getCurrentConfig } from '../config/supabaseCo
 import { getAuthTokenString } from '@/utils/authTokenUtils';
 import { createLogger } from '@/utils/logger';
 import { t } from '@/i18n';
+import { serverText } from '@/utils/serverText';
 
 // Logging rule: the print endpoints carry the session credential, document
 // ranges and printer diagnostics. Only the HTTP status and ok flag of a
@@ -131,7 +132,7 @@ async function submitPrintJob(
     if (!response.ok) {
       return {
         success: false,
-        error: data.error || t('errors.print.httpError', { status: String(response.status) }),
+        error: serverText(data.error, t('errors.print.httpError', { status: String(response.status) })),
       };
     }
 
@@ -248,9 +249,8 @@ export async function getPrintJobs(
       return {
         success: false,
         error:
-          data.error ||
-          data.message ||
-          t('errors.print.httpError', { status: String(response.status) }),
+          serverText(data.error ||
+          data.message, t('errors.print.httpError', { status: String(response.status) })),
       };
     }
 
@@ -304,13 +304,13 @@ export async function cancelPrintJob(
     if (!response.ok) {
       return {
         success: false,
-        error: data.error || data.message || t('errors.print.cancelFailed'),
+        error: serverText(data.error || data.message, t('errors.print.cancelFailed')),
       };
     }
 
     return {
       success: true,
-      message: data?.message || t('errors.print.cancelled'),
+      message: serverText(data?.message, t('errors.print.cancelled')),
     };
   } catch (error) {
     log.error('cancelPrintJob failed');
@@ -358,9 +358,8 @@ export async function getPrinterStatus(
       return {
         success: false,
         error:
-          data.error ||
-          data.message ||
-          t('errors.print.httpError', { status: String(response.status) }),
+          serverText(data.error ||
+          data.message, t('errors.print.httpError', { status: String(response.status) })),
       };
     }
 

@@ -31,6 +31,7 @@ import type {
   RpcSearchMetadata,
 } from '@/types/rpc-canonical.types';
 import { t } from '@/i18n';
+import { serverText } from '@/utils/serverText';
 
 // Order Service - Frontend uses "Order" terminology, backend uses "Cart"
 export class OrderService {
@@ -153,8 +154,8 @@ export class OrderService {
         console.error('[OrderService] Full Data Object:', JSON.stringify(data));
         return {
           success: false,
-          message: data.message || t('errors.order.getOrCreateFailed'),
-          error: data.error || t('errors.general.rpcReturnedError'),
+          message: serverText(data.message, t('errors.order.getOrCreateFailed')),
+          error: serverText(data.error, t('errors.general.rpcReturnedError')),
         };
       }
 
@@ -531,8 +532,8 @@ export class OrderService {
       if (data && typeof data === 'object' && data.success === false) {
         return {
           success: false,
-          message: data.message || t('errors.order.fetchListFailed'),
-          error: data.error || t('errors.general.rpcReturnedError'),
+          message: serverText(data.message, t('errors.order.fetchListFailed')),
+          error: serverText(data.error, t('errors.general.rpcReturnedError')),
         };
       }
 
@@ -770,8 +771,8 @@ export class OrderService {
       ) {
         return {
           success: false,
-          message: data.message || data.error || t('errors.item.searchFailed'),
-          error: data.error || t('errors.order.searchRefused'),
+          message: serverText(data.message || data.error, t('errors.item.searchFailed')),
+          error: serverText(data.error, t('errors.order.searchRefused')),
         };
       }
 
@@ -947,7 +948,7 @@ export class OrderService {
       if (response?.success === false) {
         return {
           success: false,
-          message: response.message || t('errors.item.fetchListFailed'),
+          message: serverText(response.message, t('errors.item.fetchListFailed')),
           error: 'BACKEND_ERROR',
         };
       }

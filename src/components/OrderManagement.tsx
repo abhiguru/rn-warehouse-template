@@ -40,6 +40,7 @@ import { searchService, SearchResult } from '@/services/search-service';
 
 import { showAlert } from '@/utils/alert';
 import { normalizeDigits, t as tr } from '@/i18n';
+import { serverText } from '@/utils/serverText';
 interface OrderManagementProps {
   customerId?: string;
   onOpenItemCatalog?: () => void;
@@ -86,7 +87,7 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
       const orderResult = await OrderService.getOrCreateOrder(custId);
       
       if (!orderResult.success) {
-        showAlert(tr('orders.manage.couldNotOpenTitle'), orderResult.message || tr('common.checkConnection'));
+        showAlert(tr('orders.manage.couldNotOpenTitle'), serverText(orderResult.message, tr('common.checkConnection')));
         return;
       }
 
@@ -214,7 +215,7 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
         await onRefresh();
         return true;
       }
-      showAlert(tr('orders.manage.couldNotChangeQuantityTitle'), result.message || tr('common.checkConnection'));
+      showAlert(tr('orders.manage.couldNotChangeQuantityTitle'), serverText(result.message, tr('common.checkConnection')));
       return false;
     } catch (error) {
       console.error('[OrderManagement] Update quantity error:', error);
@@ -242,7 +243,7 @@ const OrderManagement: React.FC<OrderManagementProps> = ({
               if (result.success) {
                 await onRefresh();
               } else {
-                showAlert(tr('orders.manage.couldNotRemoveTitle'), result.message || tr('common.checkConnection'));
+                showAlert(tr('orders.manage.couldNotRemoveTitle'), serverText(result.message, tr('common.checkConnection')));
               }
             } catch (error) {
               console.error('[OrderManagement] Remove item error:', error);

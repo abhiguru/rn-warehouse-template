@@ -89,6 +89,7 @@ import {
 
 import { showAlert } from '@/utils/alert';
 import { t } from '@/i18n';
+import { serverText } from '@/utils/serverText';
 /**
  * Module-level session ID that persists across all hook instances.
  * This allows cancellation to work when navigating between create/edit routes.
@@ -300,7 +301,7 @@ export function useDispatchForm({
         }));
       } else {
         if (globalSessionId === currentSessionId) {
-          showAlert(t('dispatch.wizard.errorTitle'), result.error || t('dispatch.wizard.loadFailed'));
+          showAlert(t('dispatch.wizard.errorTitle'), serverText(result.error, t('dispatch.wizard.loadFailed')));
         }
       }
     } catch (error) {
@@ -508,7 +509,7 @@ export function useDispatchForm({
           if (!dateValidation.isValid) {
             result = {
               isValid: false,
-              errors: { disp_date: dateValidation.error || t('dispatch.validation.dispatchDateInvalid') },
+              errors: { disp_date: serverText(dateValidation.error, t('dispatch.validation.dispatchDateInvalid')) },
             };
           }
         }
@@ -644,7 +645,7 @@ export function useDispatchForm({
           sourceOrderCleared: result.source_order_cleared,
         };
       } else {
-        showAlert(t('dispatch.wizard.errorTitle'), result.error || t('dispatch.wizard.saveFailed'));
+        showAlert(t('dispatch.wizard.errorTitle'), serverText(result.error, t('dispatch.wizard.saveFailed')));
         return { success: false, error: result.error };
       }
     } catch (error) {

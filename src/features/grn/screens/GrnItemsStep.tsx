@@ -46,6 +46,7 @@ import {
 
 import { showAlert } from '@/utils/alert';
 import { t as tr } from '@/i18n';
+import { serverText } from '@/utils/serverText';
 const EMPTY_GRN_ITEM = (): ItemFormData => ({
   grn_trl_id: `item-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
   item_table_id: '',
@@ -409,7 +410,7 @@ export function GrnItemsStep({ mode }: GrnItemsStepProps) {
 
       const validation = validateImageFile(asset);
       if (!validation.valid) {
-        showAlert(tr('grn.itemsStep.addPhotoFailedTitle'), validation.error || tr('grn.itemsStep.chooseJpegPng'));
+        showAlert(tr('grn.itemsStep.addPhotoFailedTitle'), serverText(validation.error, tr('grn.itemsStep.chooseJpegPng')));
         return;
       }
 

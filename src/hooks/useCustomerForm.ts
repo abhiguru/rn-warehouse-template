@@ -74,6 +74,7 @@ import {
 import { showAlert } from '@/utils/alert';
 import { t } from '@/i18n';
 import { customerNextStepLabel } from '@/features/customer/customerStepLabels';
+import { serverText } from '@/utils/serverText';
 // =============================================================================
 // TYPES
 // =============================================================================
@@ -249,7 +250,7 @@ export function useCustomerForm(
         const result = await getCustomerById(id);
 
         if (!result.success || !result.data) {
-          showAlert(t('customers.save.errorTitle'), result.message || t('customers.save.loadFailed'));
+          showAlert(t('customers.save.errorTitle'), serverText(result.message, t('customers.save.loadFailed')));
           router.back();
           return;
         }
@@ -624,7 +625,7 @@ export function useCustomerForm(
       }
 
       if (!result.success) {
-        showAlert(t('customers.save.errorTitle'), result.message || t('customers.save.saveFailed'));
+        showAlert(t('customers.save.errorTitle'), serverText(result.message, t('customers.save.saveFailed')));
         return { success: false, error: result.error };
       }
 

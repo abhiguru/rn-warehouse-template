@@ -19,6 +19,7 @@ import {
 } from './sessionLifecycle';
 import { AppError } from '@/utils/appError';
 import { localizeDigits, t } from '@/i18n';
+import { serverText } from '@/utils/serverText';
 
 // S2/S3 Fix: SecureStore keys for encrypted token storage
 const SECURE_KEYS = {
@@ -350,7 +351,7 @@ async function operatorOtpRequest(
     });
     const result = (await response.json()) as OperatorEnvelope;
     if (!response.ok || result.success !== true) {
-      return { success: false, error: result.error || result.message || t('errors.auth.requestFailedHttp', { status: String(response.status) }) };
+      return { success: false, error: serverText(result.error || result.message, t('errors.auth.requestFailedHttp', { status: String(response.status) })) };
     }
     return result;
   } finally {
@@ -369,7 +370,7 @@ export const getEnrollmentStatus = async () => {
   if (!enrollmentToken) return { success: false as const, error: t('errors.auth.enrollmentUnavailable') };
   try {
     const result = await operatorOtpRequest('status', { enrollment_token: enrollmentToken });
-    if (!result.success) return { success: false as const, error: result.error || t('errors.auth.enrollmentCheckFailed') };
+    if (!result.success) return { success: false as const, error: serverText(result.error, t('errors.auth.enrollmentCheckFailed')) };
     const status = result.data?.status;
     if (!['pending', 'approved', 'rejected', 'disabled'].includes(String(status)))
       return { success: false as const, error: t('errors.auth.enrollmentInvalidStatus') };
@@ -435,7 +436,7 @@ export const signInWithPhone = async (phone: string) => {
 
       return { success: true, data: responseData };
     } else {
-      const errorMsg = responseData.error || responseData.message || t('errors.auth.otpSendFailed');
+      const errorMsg = serverText(responseData.error || responseData.message, t('errors.auth.otpSendFailed'));
       console.error('[Auth] Send OTP failed:');
       return { success: false, error: errorMsg };
     }
@@ -573,7 +574,7 @@ export const verifyOTP = async (
     const isSuccess = rpcResponse?.success === true;
 
     if (!isSuccess || !rpcResponse?.data) {
-      const errorMsg = rpcResponse?.error || rpcResponse?.message || t('errors.auth.verificationFailed');
+      const errorMsg = serverText(rpcResponse?.error || rpcResponse?.message, t('errors.auth.verificationFailed'));
       console.error('[Auth] OTP verification failed:');
       return { success: false, error: errorMsg };
     }

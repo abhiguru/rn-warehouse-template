@@ -19,6 +19,7 @@ import { executeRPC, createErrorResponse } from '@/utils/serviceErrorHandler';
 import { isTemporaryGRNImageId } from './imageId';
 import { formatNumber } from '@/utils/formatters';
 import { t } from '@/i18n';
+import { serverText } from '@/utils/serverText';
 
 export interface ImageUploadProgress {
   loaded: number;
@@ -273,7 +274,7 @@ export const uploadGRNImage = async (
       console.error('[ImageService] Registration failed:', regError);
       return {
         success: false,
-        error: regError.message || t('grn.upload.registerFailed'),
+        error: serverText(regError.message, t('grn.upload.registerFailed')),
       };
     }
 
@@ -281,7 +282,7 @@ export const uploadGRNImage = async (
       console.error('[ImageService] Registration rejected:', regResult?.error);
       return {
         success: false,
-        error: regResult?.error || t('grn.upload.registrationRejected'),
+        error: serverText(regResult?.error, t('grn.upload.registrationRejected')),
       };
     }
 
@@ -345,7 +346,7 @@ export const uploadGRNImage = async (
           confirmResult?.error
         );
         throw new Error(
-          confirmResult?.error || t('grn.upload.confirmationFailed')
+          serverText(confirmResult?.error, t('grn.upload.confirmationFailed'))
         );
       }
 
@@ -618,7 +619,7 @@ export const saveImageMetadataAfterGRN = async (
       console.error('[ImageService] Metadata save error:', metadataError);
       return {
         success: false,
-        error: metadataError.message || t('grn.upload.metadataFailed'),
+        error: serverText(metadataError.message, t('grn.upload.metadataFailed')),
       };
     }
 
@@ -772,7 +773,7 @@ const uploadSingleDeferredImage = async (
       );
       return {
         success: false,
-        error: regResult?.error || t('grn.upload.registerFailed'),
+        error: serverText(regResult?.error, t('grn.upload.registerFailed')),
       };
     }
 
@@ -831,7 +832,7 @@ const uploadSingleDeferredImage = async (
           `[ImageService] Confirmation rejected for deferred ${imageType} image:`,
           confirmResult?.error
         );
-        throw new Error(confirmResult?.error || t('grn.upload.confirmationFailed'));
+        throw new Error(serverText(confirmResult?.error, t('grn.upload.confirmationFailed')));
       }
 
       return { success: true };

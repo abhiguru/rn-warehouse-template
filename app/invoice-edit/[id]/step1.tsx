@@ -47,6 +47,7 @@ import { canNavigateFromStep1 } from '@/features/invoice/utils/swipeNavigationHe
 import { showAlert } from '@/utils/alert';
 import { getLanguage, normalizeDigits, t as tr, formatIdentifier, identifierInput } from '@/i18n';
 import { formatFinancialYear } from '@/utils/formatters';
+import { serverText } from '@/utils/serverText';
 export default function InvoiceEditStep1() {
   const dispatch = useAppDispatch();
   const styles = useThemedStyles(makeInvoiceWizardStyles);
@@ -206,7 +207,7 @@ export default function InvoiceEditStep1() {
             customer_name: '',
           })
         );
-        showAlert(tr('invoice.form.grnLoadFailedTitle'), response.message || tr('common.checkConnection'));
+        showAlert(tr('invoice.form.grnLoadFailedTitle'), serverText(response.message, tr('common.checkConnection')));
       }
     } catch (error: any) {
       console.error('[InvoiceEditStep1] Error loading GRN data:', error);

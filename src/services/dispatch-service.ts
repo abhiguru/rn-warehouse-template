@@ -17,6 +17,7 @@ import { matchesSearch, searchTerms } from '@/features/filters/searchMatch';
 // Import canonical types for migration
 import type { RpcPagination, RpcDispatchListItem } from '@/types/rpc-canonical.types';
 import { t } from '@/i18n';
+import { serverText } from '@/utils/serverText';
 
 // Cache configuration for dispatch data (DRY-7: Using shared cacheManager)
 const DISPATCH_CACHE_PREFIX = CACHE_PREFIXES.DISPATCH_LIST;
@@ -333,7 +334,7 @@ export const getAllDispatchItems = async (
       return {
         success: false,
         message: t('errors.dispatch.fetchItemsFailed'),
-        error: error.message || error.details || t('errors.general.unknownDatabase')
+        error: serverText(error.message || error.details, t('errors.general.unknownDatabase'))
       };
     }
 
@@ -441,7 +442,7 @@ export const getDispatchList = async (
     if (!data || !data.success) {
       return {
         success: false,
-        message: data?.message || t('errors.general.noDataFromServer'),
+        message: serverText(data?.message, t('errors.general.noDataFromServer')),
         data: {
           dispatches: [],
           pagination: { total_count: 0, limit: p_limit, offset: p_offset, has_more: false },
@@ -454,7 +455,7 @@ export const getDispatchList = async (
 
     return {
       success: true,
-      message: data.message || t('errors.dispatch.listRetrieved'),
+      message: serverText(data.message, t('errors.dispatch.listRetrieved')),
       data: data.data
     };
 
@@ -567,7 +568,7 @@ export const getDispatchListWithItems = async (
       if (cached) return cached;
       return {
         success: false,
-        message: error.message || t('errors.dispatch.fetchListFailed'),
+        message: serverText(error.message, t('errors.dispatch.fetchListFailed')),
         data: {
           dispatches: [],
           pagination: { total_count: 0, limit: p_limit, offset: offset, has_more: false },
@@ -582,7 +583,7 @@ export const getDispatchListWithItems = async (
       console.error('[getDispatchListWithItems] Invalid response', { success: data?.success === true });
       return {
         success: false,
-        message: data?.message || t('errors.general.noDataFromServer'),
+        message: serverText(data?.message, t('errors.general.noDataFromServer')),
         data: {
           dispatches: [],
           pagination: { total_count: 0, limit: p_limit, offset: offset, has_more: false },
@@ -657,7 +658,7 @@ export const getDispatchListWithItems = async (
 
     return {
       success: true,
-      message: data.message || t('errors.dispatch.listRetrieved'),
+      message: serverText(data.message, t('errors.dispatch.listRetrieved')),
       data: responsePayload
     };
 
@@ -745,7 +746,7 @@ export const getCustomerDispatchList = async (
     if (!data?.success || !data.data) {
       return {
         success: false,
-        message: data?.message || t('errors.dispatch.fetchCustomerFailed'),
+        message: serverText(data?.message, t('errors.dispatch.fetchCustomerFailed')),
         data: emptyData,
       };
     }
@@ -758,7 +759,7 @@ export const getCustomerDispatchList = async (
 
     return {
       success: true,
-      message: data.message || t('errors.dispatch.customerRetrieved'),
+      message: serverText(data.message, t('errors.dispatch.customerRetrieved')),
       data: {
         ...emptyData,
         dispatches,
@@ -993,7 +994,7 @@ export const deleteDispatch = async (
       console.error('[DispatchService] Dispatch deletion refused', { blocked: Boolean(result.blocking_reason) });
       return {
         success: false,
-        message: result.message || t('errors.dispatch.deleteFailed'),
+        message: serverText(result.message, t('errors.dispatch.deleteFailed')),
         error: result.error,
         invoiceItemsCount: result.invoice_items_count,
         blockingReason: result.blocking_reason,
@@ -1020,7 +1021,7 @@ export const deleteDispatch = async (
 
     return {
       success: true,
-      message: result.message || t('errors.dispatch.deletedWithRestore'),
+      message: serverText(result.message, t('errors.dispatch.deletedWithRestore')),
       cacheInvalidated, // E10: Inform UI if cache invalidation failed
       orderRestored: result.order_restored || result.orderRestored || false,
       restoredOrderId: result.restored_order_id || result.restoredOrderId,
@@ -1057,7 +1058,7 @@ export const getRecentDispatchedOrders = async (
       handleGlobalAuthError(error);
       return {
         success: false,
-        error: error.message || t('errors.dispatch.fetchRecentOrdersFailed'),
+        error: serverText(error.message, t('errors.dispatch.fetchRecentOrdersFailed')),
       };
     }
 
@@ -1072,7 +1073,7 @@ export const getRecentDispatchedOrders = async (
     if (!data.success) {
       return {
         success: false,
-        error: data.error || t('errors.general.accessDenied'),
+        error: serverText(data.error, t('errors.general.accessDenied')),
       };
     }
 

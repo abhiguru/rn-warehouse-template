@@ -12,6 +12,7 @@ import type {
   GRNDetailItem,
   GRNAutocompleteItem,
 } from '@/types/dispatch.types';
+import { serverText } from '@/utils/serverText';
 
 // ============================================================================
 // SEARCH GRN NUMBERS (Autocomplete)
@@ -51,7 +52,7 @@ export const searchGRNNumbers = async (
 
     if (error) {
       console.error('[GRNDetailService] Error searching GRN numbers:', error);
-      throw new Error(error.message || t('dispatch.service.grnSearchFailed'));
+      throw new Error(serverText(error.message, t('dispatch.service.grnSearchFailed')));
     }
 
     const results: GRNAutocompleteItem[] = (data || []).map((item: any) => ({
@@ -99,7 +100,7 @@ export const getGRNPrefixesWithStock = async (
 
     if (error) {
       console.error('[GRNDetailService] Error fetching GRN prefixes:', error);
-      throw new Error(error.message || t('dispatch.service.grnPrefixesFailed'));
+      throw new Error(serverText(error.message, t('dispatch.service.grnPrefixesFailed')));
     }
 
     // Handle nested data structure: { data: [...], success: true }
@@ -162,7 +163,7 @@ export const getCustomerGRNsWithStock = async (
 
     if (error) {
       console.error('[GRNDetailService] Error fetching customer GRNs:', error);
-      throw new Error(error.message || t('dispatch.service.customerGrnsFailed'));
+      throw new Error(serverText(error.message, t('dispatch.service.customerGrnsFailed')));
     }
 
     // Handle nested data structure: { data: [...], success: true }
@@ -216,7 +217,7 @@ export const getGRNDetailByNumber = async (
 
     if (grnError || !grnLookup) {
       console.error('[GRNDetailService] Error fetching GRN:', grnError);
-      throw new Error(grnError?.message || t('dispatch.service.grnNotFound'));
+      throw new Error(serverText(grnError?.message, t('dispatch.service.grnNotFound')));
     }
 
     // Use RPC function to get full details with items
@@ -226,7 +227,7 @@ export const getGRNDetailByNumber = async (
 
     if (rpcError) {
       console.error('[GRNDetailService] Error calling get_grn_details RPC:', rpcError);
-      throw new Error(rpcError.message || t('dispatch.service.grnDetailsFailed'));
+      throw new Error(serverText(rpcError.message, t('dispatch.service.grnDetailsFailed')));
     }
 
     console.log('[GRNDetailService] RPC Response received, success:', rpcData?.success);
@@ -237,7 +238,7 @@ export const getGRNDetailByNumber = async (
 
     // RPC response structure: { success, message, data: { grn: {...} } }
     if (!rpcData.success || !rpcData.data || !rpcData.data.grn) {
-      throw new Error(rpcData.message || t('dispatch.service.grnDetailsFailed'));
+      throw new Error(serverText(rpcData.message, t('dispatch.service.grnDetailsFailed')));
     }
 
     const grnData = rpcData.data.grn;
@@ -294,7 +295,7 @@ export const getGRNDetailByNumber = async (
     console.error('[GRNDetailService] Exception fetching GRN detail:', error);
     return {
       success: false,
-      error: error.message || t('dispatch.service.grnDetailFailed'),
+      error: serverText(error.message, t('dispatch.service.grnDetailFailed')),
     };
   }
 };
@@ -321,7 +322,7 @@ export const getGRNDetailById = async (grnId: string): Promise<GRNDetailResponse
 
     if (rpcError) {
       console.error('[GRNDetailService] Error calling get_grn_details RPC:', rpcError);
-      throw new Error(rpcError.message || t('dispatch.service.grnDetailsFailed'));
+      throw new Error(serverText(rpcError.message, t('dispatch.service.grnDetailsFailed')));
     }
 
     if (!rpcData) {
@@ -330,7 +331,7 @@ export const getGRNDetailById = async (grnId: string): Promise<GRNDetailResponse
 
     // RPC response structure: { success, message, data: { grn: {...} } }
     if (!rpcData.success || !rpcData.data || !rpcData.data.grn) {
-      throw new Error(rpcData.message || t('dispatch.service.grnDetailsFailed'));
+      throw new Error(serverText(rpcData.message, t('dispatch.service.grnDetailsFailed')));
     }
 
     const grnData = rpcData.data.grn;
@@ -377,7 +378,7 @@ export const getGRNDetailById = async (grnId: string): Promise<GRNDetailResponse
     console.error('[GRNDetailService] Exception fetching GRN detail:', error);
     return {
       success: false,
-      error: error.message || t('dispatch.service.grnDetailFailed'),
+      error: serverText(error.message, t('dispatch.service.grnDetailFailed')),
     };
   }
 };
@@ -414,7 +415,7 @@ export const getGRNItemsGroupedByItem = async (
 
     if (rpcError) {
       console.error('[GRNDetailService] Error calling get_grn_details RPC:', rpcError);
-      throw new Error(rpcError.message || t('dispatch.service.grnDetailsFailed'));
+      throw new Error(serverText(rpcError.message, t('dispatch.service.grnDetailsFailed')));
     }
 
     if (!rpcData) {
@@ -423,7 +424,7 @@ export const getGRNItemsGroupedByItem = async (
 
     // RPC response structure: { success, message, data: { grn: {...} } }
     if (!rpcData.success || !rpcData.data || !rpcData.data.grn) {
-      throw new Error(rpcData.message || t('dispatch.service.grnDetailsFailed'));
+      throw new Error(serverText(rpcData.message, t('dispatch.service.grnDetailsFailed')));
     }
 
     const grnData = rpcData.data.grn;
@@ -481,7 +482,7 @@ export const getGRNItemsGroupedByItem = async (
     console.error('[GRNDetailService] Exception grouping GRN items:', error);
     return {
       success: false,
-      error: error.message || t('dispatch.service.grnGroupFailed'),
+      error: serverText(error.message, t('dispatch.service.grnGroupFailed')),
     };
   }
 };

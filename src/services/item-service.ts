@@ -24,6 +24,7 @@ import {
 } from '@/types/item.types';
 import { executeRPC, createErrorResponse } from '@/utils/serviceErrorHandler';
 import { t } from '@/i18n';
+import { serverText } from '@/utils/serverText';
 
 // =============================================================================
 // RAW RPC RESPONSE TYPES
@@ -132,7 +133,7 @@ class ItemService {
         console.error('[ItemService] List error:', error);
         return {
           success: false,
-          message: error.message || t('errors.item.fetchListFailed'),
+          message: serverText(error.message, t('errors.item.fetchListFailed')),
           data: [],
           error: error.message,
         };
@@ -176,7 +177,7 @@ class ItemService {
         // RPC returned error in response body
         return {
           success: false,
-          message: data.message || t('errors.item.fetchListFailed'),
+          message: serverText(data.message, t('errors.item.fetchListFailed')),
           data: [],
           error: data.message,
         };
@@ -250,7 +251,7 @@ class ItemService {
         console.error('[ItemService] Get by ID error:', error);
         return {
           success: false,
-          message: error.message || t('errors.item.notFound'),
+          message: serverText(error.message, t('errors.item.notFound')),
           error: error.message,
         };
       }
@@ -272,7 +273,7 @@ class ItemService {
       if (data.success === false) {
         return {
           success: false,
-          message: data.message || t('errors.item.notFound'),
+          message: serverText(data.message, t('errors.item.notFound')),
           error: 'NOT_FOUND',
         };
       } else if (data.item) {
@@ -365,15 +366,15 @@ class ItemService {
       console.error('[ItemService] RPC returned success=false:', rpcData);
       return {
         success: false,
-        message: rpcData.message || t('errors.item.createFailed'),
-        error: rpcData.error || t('errors.general.unknown'),
+        message: serverText(rpcData.message, t('errors.item.createFailed')),
+        error: serverText(rpcData.error, t('errors.general.unknown')),
       };
     }
 
     console.log('[ItemService] Item created via RPC:', rpcData.item_id);
     return {
       success: true,
-      message: rpcData.message || t('errors.item.created'),
+      message: serverText(rpcData.message, t('errors.item.created')),
       data: {
         id: rpcData.item_id,
         name: params.p_name,
@@ -431,15 +432,15 @@ class ItemService {
       console.error('[ItemService] RPC returned success=false:', rpcData);
       return {
         success: false,
-        message: rpcData.message || t('errors.item.updateFailed'),
-        error: rpcData.error || t('errors.general.unknown'),
+        message: serverText(rpcData.message, t('errors.item.updateFailed')),
+        error: serverText(rpcData.error, t('errors.general.unknown')),
       };
     }
 
     console.log('[ItemService] Item updated via RPC');
     return {
       success: true,
-      message: rpcData.message || t('errors.item.updated'),
+      message: serverText(rpcData.message, t('errors.item.updated')),
     };
   }
 
@@ -497,14 +498,14 @@ class ItemService {
     if (rpcData.success === false) {
       return {
         success: false,
-        message: rpcData.message || t('errors.item.cannotDelete'),
+        message: serverText(rpcData.message, t('errors.item.cannotDelete')),
         references: rpcData.references,
       };
     }
 
     return {
       success: true,
-      message: rpcData.message || t('errors.item.deleted'),
+      message: serverText(rpcData.message, t('errors.item.deleted')),
     };
   }
 

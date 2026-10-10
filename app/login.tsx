@@ -46,6 +46,7 @@ import { showAlert } from '@/utils/alert';
 import { getLanguage, localizeDigits, normalizeDigits, t as tr } from '@/i18n';
 import { LanguageSwitch } from '@/components/LanguageSwitch';
 import { clearSignInDraft, readSignInDraft, saveSignInDraft } from '@/utils/signInDraft';
+import { serverText } from '@/utils/serverText';
 const APP_NAME = process.env.EXPO_PUBLIC_APP_NAME || 'Warehouse Manager';
 /** Splits the agreement sentence at its two link placeholders, keeping them. */
 const AGREEMENT_LINKS = /(\{\{terms\}\}|\{\{privacy\}\})/;
@@ -151,7 +152,7 @@ export default function LoginScreen() {
         }
         showAlert(
           tr('auth.login.couldNotSendTitle'),
-          result.error || tr('common.checkConnection')
+          serverText(result.error, tr('common.checkConnection'))
         );
       }
     } catch (error) {

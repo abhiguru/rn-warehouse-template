@@ -51,6 +51,7 @@ import { formatMobile } from '@/utils/formatters';
 import { showAlert } from '@/utils/alert';
 import { t as tr, type TranslationKey } from '@/i18n';
 import { roleLabel as roleName } from '@/utils/roleLabel';
+import { serverText } from '@/utils/serverText';
 
 /** "… is now an admin." is one sentence per role: the article and word order differ by language. */
 const ROLE_CHANGED_KEYS: Record<UserRole, TranslationKey> = {
@@ -163,7 +164,7 @@ export default function UserEditScreen() {
           setUser((prev) => (prev ? { ...prev, role: newRole } : null));
           showAlert(tr('users.edit.roleChangedTitle'), tr(ROLE_CHANGED_KEYS[newRole], { name: user.name || tr('users.thisUser') }));
         } else {
-          showAlert(tr('users.edit.couldNotChangeRole'), response.error || tr('users.edit.tryAgainSoon'));
+          showAlert(tr('users.edit.couldNotChangeRole'), serverText(response.error, tr('users.edit.tryAgainSoon')));
         }
       } catch (err) {
         console.error('[UserEdit] Role update error:', err);
@@ -218,7 +219,7 @@ export default function UserEditScreen() {
           tr(active ? 'users.edit.activatedMessage' : 'users.edit.deactivatedMessage', { name: user.name || tr('users.thisUser') })
         );
       } else {
-        showAlert(tr('users.edit.couldNotChangeStatus'), response.error || tr('users.edit.tryAgainSoon'));
+        showAlert(tr('users.edit.couldNotChangeStatus'), serverText(response.error, tr('users.edit.tryAgainSoon')));
       }
     } catch (err) {
       console.error('[UserEdit] Status update error:', err);
@@ -258,7 +259,7 @@ export default function UserEditScreen() {
           setAssignedCustomers((prev) => [...prev, newAssignment]);
           showAlert(tr('users.edit.assignedTitle'), tr('users.edit.assignedMessage', { name: customer.name }));
         } else {
-          showAlert(tr('users.edit.couldNotAssign'), response.error || tr('users.edit.tryAgainSoon'));
+          showAlert(tr('users.edit.couldNotAssign'), serverText(response.error, tr('users.edit.tryAgainSoon')));
         }
       } catch (err) {
         console.error('[UserEdit] Assign customer error:', err);
@@ -299,7 +300,7 @@ export default function UserEditScreen() {
                 } else {
                   showAlert(
                     tr('users.edit.couldNotRemove'),
-                    response.error || tr('users.edit.tryAgainSoon')
+                    serverText(response.error, tr('users.edit.tryAgainSoon'))
                   );
                 }
               } catch (err) {

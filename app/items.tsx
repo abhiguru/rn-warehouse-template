@@ -44,6 +44,7 @@ import { showAlert } from '@/utils/alert';
 import { Avatar, StatusTag } from '@/components/ui';
 import { formatCount } from '@/utils/formatters';
 import { t as tr } from '@/i18n';
+import { serverText } from '@/utils/serverText';
 // =============================================================================
 // TYPES
 // =============================================================================
@@ -181,7 +182,7 @@ export default function ItemsScreen() {
           // Show error to user
           showAlert(
             currentActive ? tr('items.list.couldNotDeactivateTitle') : tr('items.list.couldNotActivateTitle'),
-            result.message || tr('items.list.tryAgainInAMoment'),
+            serverText(result.message, tr('items.list.tryAgainInAMoment')),
             [{ text: tr('common.ok') }]
           );
         }
@@ -255,7 +256,7 @@ export default function ItemsScreen() {
                     message += `\n${tr('items.delete.deactivateInstead')}`;
                     showAlert(tr('items.delete.cannotDeleteTitle'), message);
                   } else {
-                    showAlert(tr('items.delete.couldNotDeleteTitle'), result.message || tr('items.list.tryAgainInAMoment'));
+                    showAlert(tr('items.delete.couldNotDeleteTitle'), serverText(result.message, tr('items.list.tryAgainInAMoment')));
                   }
                 }
               } catch (error) {

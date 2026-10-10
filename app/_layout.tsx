@@ -77,6 +77,7 @@ import { useIsOffline } from '@/hooks/useNetworkStatus';
 import { createLogger } from '@/utils/logger';
 import { useAppDispatch } from '@/store/hooks';
 import { useAppLanguage } from '@/i18n/useAppLanguage';
+import { useProfileLanguage } from '@/i18n/useProfileLanguage';
 import { t as translate } from '@/i18n';
 import { initializeAuth } from '@/store/slices/authSlice';
 import { logout } from '@/store/slices/authSlice';
@@ -386,6 +387,8 @@ function ThemedContent() {
   // English or Gujarati. The key below rebuilds every screen when it changes, so
   // text and number formats switch at once, with no restart.
   const { language } = useAppLanguage();
+  // The choice is also kept on the person's profile at the facility.
+  useProfileLanguage();
 
   // Restore credentials before any route screen can redirect an initially
   // empty Redux auth state. Deep links can bypass the tab layout, so auth

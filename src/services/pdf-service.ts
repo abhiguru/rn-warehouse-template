@@ -1,6 +1,7 @@
 import { createAuthenticatedFetch, getCurrentConfig } from '../config/supabaseConfig';
 import { getAuthTokenString } from '@/utils/authTokenUtils';
 import { t } from '@/i18n';
+import { serverText } from '@/utils/serverText';
 
 /**
  * Fix private development origins returned by backend Edge Functions. Docker
@@ -112,7 +113,7 @@ export async function generateGRNPDF(grNo: string): Promise<PDFResponse> {
     if (!response.ok || !data.success) {
       return {
         success: false,
-        error: data.error || t('errors.pdf.generateFailedStatus', { status: String(response.status) }),
+        error: serverText(data.error, t('errors.pdf.generateFailedStatus', { status: String(response.status) })),
       };
     }
 
@@ -179,7 +180,7 @@ export async function generateDispatchPDF(
     if (!response.ok || !data.success) {
       return {
         success: false,
-        error: data.error || t('errors.pdf.generateFailedStatus', { status: String(response.status) }),
+        error: serverText(data.error, t('errors.pdf.generateFailedStatus', { status: String(response.status) })),
       };
     }
 
@@ -248,7 +249,7 @@ export async function generateInvoicePDF(
     if (!response.ok || !data.success) {
       return {
         success: false,
-        error: data.error || t('errors.pdf.generateFailedStatus', { status: String(response.status) }),
+        error: serverText(data.error, t('errors.pdf.generateFailedStatus', { status: String(response.status) })),
       };
     }
 
@@ -315,7 +316,7 @@ export async function generateCustomerStockPDF(
     if (!response.ok || !data.success) {
       return {
         success: false,
-        error: data.error || t('errors.pdf.generateFailedStatus', { status: String(response.status) }),
+        error: serverText(data.error, t('errors.pdf.generateFailedStatus', { status: String(response.status) })),
       };
     }
 

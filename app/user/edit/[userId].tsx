@@ -40,6 +40,7 @@ import {
 import { showAlert } from '@/utils/alert';
 import { formatMobile } from '@/utils/formatters';
 import { t as tr } from '@/i18n';
+import { serverText } from '@/utils/serverText';
 const UserEditScreen: React.FC = () => {
   const { userId } = useLocalSearchParams<{ userId: string }>();
   const styles = useThemedStyles(makeStyles);
@@ -93,7 +94,7 @@ const UserEditScreen: React.FC = () => {
       });
       
       if (!result.success || !result.data) {
-        showAlert(tr('users.selfEdit.couldNotLoadTitle'), result.message || tr('common.checkConnection'));
+        showAlert(tr('users.selfEdit.couldNotLoadTitle'), serverText(result.message, tr('common.checkConnection')));
         router.back();
         return;
       }
@@ -165,7 +166,7 @@ const UserEditScreen: React.FC = () => {
           ]
         );
       } else {
-        showAlert(tr('users.selfEdit.couldNotSaveTitle'), result.message || tr('users.edit.tryAgainSoon'));
+        showAlert(tr('users.selfEdit.couldNotSaveTitle'), serverText(result.message, tr('users.edit.tryAgainSoon')));
       }
     } catch (error) {
       console.error('[UserEditScreen] Save error:', error);

@@ -18,6 +18,7 @@ import { Alert } from 'react-native';
 
 import { showAlert } from '@/utils/alert';
 import { t as tr } from '@/i18n';
+import { serverText } from '@/utils/serverText';
 export default function InvoiceEditLayout() {
   const dispatch = useAppDispatch();
   const navigation = useNavigation();
@@ -95,7 +96,7 @@ export default function InvoiceEditLayout() {
             grId: result.data.header.gr_id || '',
           }));
         } else {
-          showAlert(tr('invoice.edit.loadFailedTitle'), result.message || tr('common.checkConnection'));
+          showAlert(tr('invoice.edit.loadFailedTitle'), serverText(result.message, tr('common.checkConnection')));
           router.back();
         }
       } catch (error) {

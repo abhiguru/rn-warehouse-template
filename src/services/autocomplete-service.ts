@@ -3,6 +3,7 @@ import { getSessionGeneration } from '@/config/sessionLifecycle';
 import { unwrapNestedData } from '@/utils/responseUtils';
 import { executeRPC } from '@/utils/serviceErrorHandler';
 import { t } from '@/i18n';
+import { serverText } from '@/utils/serverText';
 
 // Types for autocomplete results
 export interface AutocompleteItem {
@@ -106,8 +107,8 @@ async function getAutocomplete(
     if (!result.success || !result.data) {
       return {
         success: false,
-        message: result.message || t('errors.search.fetchFailed'),
-        error: result.error || t('errors.general.emptyResponse'),
+        message: serverText(result.message, t('errors.search.fetchFailed')),
+        error: serverText(result.error, t('errors.general.emptyResponse')),
       };
     }
     return {

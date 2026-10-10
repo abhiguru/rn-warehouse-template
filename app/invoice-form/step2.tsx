@@ -33,6 +33,7 @@ import {
 import { t as tr } from '@/i18n';
 import { findOrCreateItemStoragePrice, getItemStoragePrices } from '@/services/item-pricing-service';
 import { formatNumber } from '@/utils/formatters';
+import { serverText } from '@/utils/serverText';
 
 export default function InvoiceFormStep2() {
   const styles = useThemedStyles(makeInvoiceWizardStyles);
@@ -184,7 +185,7 @@ export default function InvoiceFormStep2() {
         // Navigate to pricing form in edit mode
         router.push(`/item-pricing-form?id=${result.data.id}&mode=edit`);
       } else {
-        showError(tr('invoice.items.pricingOpenFailedTitle'), result.message || tr('common.checkConnection'));
+        showError(tr('invoice.items.pricingOpenFailedTitle'), serverText(result.message, tr('common.checkConnection')));
       }
     } catch (error) {
       console.error('[InvoiceFormStep2] Error in handleEditPricing:', error);

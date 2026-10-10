@@ -23,6 +23,7 @@ import {
 } from '@/types/customer.types';
 import { executeRPC, createErrorResponse } from '@/utils/serviceErrorHandler';
 import { t } from '@/i18n';
+import { serverText } from '@/utils/serverText';
 
 // =============================================================================
 // SERVICE CLASS
@@ -188,7 +189,7 @@ class CustomerService {
         console.error('[CustomerService] List error:', error);
         return {
           success: false,
-          message: error.message || t('errors.customer.fetchListFailed'),
+          message: serverText(error.message, t('errors.customer.fetchListFailed')),
           data: [],
           error: error.message,
         };
@@ -267,7 +268,7 @@ class CustomerService {
         console.error('[CustomerService] Get by ID error:', error);
         return {
           success: false,
-          message: error.message || t('errors.customer.notFound'),
+          message: serverText(error.message, t('errors.customer.notFound')),
           error: error.message,
         };
       }
@@ -381,8 +382,8 @@ class CustomerService {
       console.error('[CustomerService] RPC returned success=false:', rpcData);
       return {
         success: false,
-        message: rpcData.message || t('errors.customer.createFailed'),
-        error: rpcData.error || t('errors.general.unknown'),
+        message: serverText(rpcData.message, t('errors.customer.createFailed')),
+        error: serverText(rpcData.error, t('errors.general.unknown')),
       };
     }
 
@@ -392,7 +393,7 @@ class CustomerService {
     );
     return {
       success: true,
-      message: rpcData.message || t('errors.customer.created'),
+      message: serverText(rpcData.message, t('errors.customer.created')),
       data: {
         id: rpcData.customer_id,
         name: params.p_name,
@@ -499,15 +500,15 @@ class CustomerService {
       console.error('[CustomerService] RPC returned success=false:', rpcData);
       return {
         success: false,
-        message: rpcData.message || t('errors.customer.updateFailed'),
-        error: rpcData.error || t('errors.general.unknown'),
+        message: serverText(rpcData.message, t('errors.customer.updateFailed')),
+        error: serverText(rpcData.error, t('errors.general.unknown')),
       };
     }
 
     console.log('[CustomerService] Customer updated via RPC');
     return {
       success: true,
-      message: rpcData.message || t('errors.customer.updated'),
+      message: serverText(rpcData.message, t('errors.customer.updated')),
     };
   }
 
@@ -563,7 +564,7 @@ class CustomerService {
           if (updateError) {
             return {
               success: false,
-              message: updateError.message || t('errors.customer.inactivateFailed'),
+              message: serverText(updateError.message, t('errors.customer.inactivateFailed')),
               error: updateError.message,
             };
           }
@@ -576,7 +577,7 @@ class CustomerService {
 
         return {
           success: false,
-          message: error.message || t('errors.customer.inactivateFailed'),
+          message: serverText(error.message, t('errors.customer.inactivateFailed')),
           error: error.message,
         };
       }
@@ -585,14 +586,14 @@ class CustomerService {
       if (data && data.success === false) {
         return {
           success: false,
-          message: data.message || t('errors.customer.inactivateFailed'),
+          message: serverText(data.message, t('errors.customer.inactivateFailed')),
           error: data.message,
         };
       }
 
       return {
         success: true,
-        message: data?.message || t('errors.customer.inactivated'),
+        message: serverText(data?.message, t('errors.customer.inactivated')),
         data: data,
       };
     } catch (error) {
@@ -653,7 +654,7 @@ class CustomerService {
           if (updateError) {
             return {
               success: false,
-              message: updateError.message || t('errors.customer.restoreFailed'),
+              message: serverText(updateError.message, t('errors.customer.restoreFailed')),
               error: updateError.message,
             };
           }
@@ -666,7 +667,7 @@ class CustomerService {
 
         return {
           success: false,
-          message: error.message || t('errors.customer.restoreFailed'),
+          message: serverText(error.message, t('errors.customer.restoreFailed')),
           error: error.message,
         };
       }
@@ -675,14 +676,14 @@ class CustomerService {
       if (data && data.success === false) {
         return {
           success: false,
-          message: data.message || t('errors.customer.restoreFailed'),
+          message: serverText(data.message, t('errors.customer.restoreFailed')),
           error: data.message,
         };
       }
 
       return {
         success: true,
-        message: data?.message || t('errors.customer.restored'),
+        message: serverText(data?.message, t('errors.customer.restored')),
         data: data,
       };
     } catch (error) {

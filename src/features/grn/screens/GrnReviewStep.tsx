@@ -45,6 +45,7 @@ import WizardBottomBar from '@/components/WizardBottomBar';
 import { formatCount, formatDate, formatNumber, formatWeight } from '@/utils/formatters';
 import { StatusTag } from '@/components/ui';
 import { t as tr, formatIdentifier } from '@/i18n';
+import { serverText } from '@/utils/serverText';
 
 /** "9 Oct 2026" (§12.3); today when no date is set yet. */
 function formatReviewDate(value: string | undefined): string {
@@ -235,7 +236,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
         setShowSuccessDialog(true);
       } else {
         triggerError();
-        showAlert(saveFailedTitle(), result.error || connectionHint());
+        showAlert(saveFailedTitle(), serverText(result.error, connectionHint()));
       }
     } catch (error) {
       triggerError();
@@ -308,7 +309,7 @@ export function GrnReviewStep({ mode }: GrnReviewStepProps) {
         setShowSuccessDialog(true);
       } else {
         triggerError();
-        const errorMessage = result.error || connectionHint();
+        const errorMessage = serverText(result.error, connectionHint());
         if (errorMessage.includes('Stock Protection') || errorMessage.includes('STOCK_PROTECTED') || errorMessage.includes('dispatches exist')) {
           showAlert(stockProtectedTitle(), stockProtectedMessage());
         } else {

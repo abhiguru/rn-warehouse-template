@@ -21,6 +21,7 @@ import { hasMoreItems } from '@/utils/paginationUtils';
 import { executeRPC, createErrorResponse, handleGlobalAuthError } from '@/utils/serviceErrorHandler';
 import { deduplicatedRequest, generateRequestKey } from '@/utils/requestDedup';
 import { localizeDigits, t } from '@/i18n';
+import { serverText } from '@/utils/serverText';
 
 // M3 Fix: Removed duplicate categorizeError function - now using centralized version from serviceErrorHandler.ts
 
@@ -112,7 +113,7 @@ export class StockService {
         handleGlobalAuthError(error);
         return {
           success: false,
-          message: error.message || t('errors.stock.analysisFailed'),
+          message: serverText(error.message, t('errors.stock.analysisFailed')),
           error: error.code,
         };
       }
@@ -121,14 +122,14 @@ export class StockService {
         handleGlobalAuthError(data);
         return {
           success: false,
-          message: data?.message || t('errors.stock.analysisFailed'),
+          message: serverText(data?.message, t('errors.stock.analysisFailed')),
           error: 'API_ERROR',
         };
       }
 
       return {
         success: true,
-        message: data.message || t('errors.stock.analysisRetrieved'),
+        message: serverText(data.message, t('errors.stock.analysisRetrieved')),
         data: data.data,
       };
     } catch (error) {
@@ -199,7 +200,7 @@ export class StockService {
         console.error('[StockService] RPC error:', error);
         return {
           success: false,
-          message: error.message || t('errors.grn.fetchItemsFailed'),
+          message: serverText(error.message, t('errors.grn.fetchItemsFailed')),
           error: error.code,
         };
       }
@@ -207,14 +208,14 @@ export class StockService {
       if (!data?.success) {
         return {
           success: false,
-          message: data?.message || t('errors.grn.fetchItemsFailed'),
+          message: serverText(data?.message, t('errors.grn.fetchItemsFailed')),
           error: 'API_ERROR',
         };
       }
 
       return {
         success: true,
-        message: data.message || t('errors.grn.itemsRetrieved'),
+        message: serverText(data.message, t('errors.grn.itemsRetrieved')),
         data: data.data,
       };
     } catch (error) {
@@ -379,7 +380,7 @@ export class StockService {
         );
         return {
           success: false,
-          message: customersError.message || t('errors.customer.fetchListFailed'),
+          message: serverText(customersError.message, t('errors.customer.fetchListFailed')),
           error: customersError.code,
         };
       }

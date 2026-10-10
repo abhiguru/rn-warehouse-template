@@ -43,6 +43,7 @@ import { showAlert } from '@/utils/alert';
 import { Avatar } from '@/components/ui';
 import { formatCount, formatDate, formatNumber } from '@/utils/formatters';
 import { t as tr } from '@/i18n';
+import { serverText } from '@/utils/serverText';
 const itemPricingScreenLogger = createLogger('ItemPricingScreen');
 
 // Section type for grouped pricing data
@@ -171,7 +172,7 @@ const ItemPricingScreen: React.FC = () => {
             offset: offset,
           });
         } else {
-          const errorMsg = result.message || result.error || tr('common.checkConnection');
+          const errorMsg = serverText(result.message || result.error, tr('common.checkConnection'));
           const totalDuration = Date.now() - startTime;
           itemPricingScreenLogger.warn(`[${fetchId}] Fetch failed after ${totalDuration}ms`, {
             success: result.success,
@@ -218,7 +219,7 @@ const ItemPricingScreen: React.FC = () => {
         setDeleteDialogVisible(false);
         setPriceToDelete(null);
       } else {
-        showAlert(tr('pricing.list.couldNotDeleteTitle'), result.message || tr('pricing.list.tryAgainInAMoment'));
+        showAlert(tr('pricing.list.couldNotDeleteTitle'), serverText(result.message, tr('pricing.list.tryAgainInAMoment')));
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);

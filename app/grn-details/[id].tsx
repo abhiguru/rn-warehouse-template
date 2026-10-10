@@ -56,6 +56,7 @@ import { deleteGRNImage, uploadGRNImage } from '@/features/grn/services/imageUpl
 import { showAlert } from '@/utils/alert';
 import { formatCount } from '@/utils/formatters';
 import { t as tr, formatIdentifier } from '@/i18n';
+import { serverText } from '@/utils/serverText';
 const makeStyles = (t: ThemeTokens) => ({
   container: {
     flex: 1,
@@ -213,7 +214,7 @@ function GRNDetailScreen() {
       setIsUploadingImage(true);
       const result = await uploadGRNImage(picked.assets[0], id, 'header');
       if (!result.success) {
-        setSnackbarMessage(result.error || tr('grn.details.imageUploadFailed'));
+        setSnackbarMessage(serverText(result.error, tr('grn.details.imageUploadFailed')));
         setSnackbarVisible(true);
         return;
       }
@@ -243,9 +244,9 @@ function GRNDetailScreen() {
             const result = await deleteGRNImage(image.id, image.image_url);
             if (result.success) {
               await fetchGRNDetails();
-              setSnackbarMessage(result.partial ? result.error || tr('grn.details.imageRemoved') : tr('grn.details.imageDeleted'));
+              setSnackbarMessage(result.partial ? serverText(result.error, tr('grn.details.imageRemoved')) : tr('grn.details.imageDeleted'));
             } else {
-              setSnackbarMessage(result.error || tr('grn.details.imageDeleteFailed'));
+              setSnackbarMessage(serverText(result.error, tr('grn.details.imageDeleteFailed')));
             }
           } catch {
             setSnackbarMessage(tr('grn.details.imageDeleteFailed'));
@@ -287,7 +288,7 @@ function GRNDetailScreen() {
       } else {
         setData(null);
         setError(
-          result.error || result.message || tr('grn.details.loadFailed')
+          serverText(result.error || result.message, tr('grn.details.loadFailed'))
         );
       }
     } catch (err) {
@@ -352,7 +353,7 @@ function GRNDetailScreen() {
           }
         } else if (!firstError) {
           firstError =
-            result.error || result.message || tr('grn.details.dispatchHistoryFailed');
+            serverText(result.error || result.message, tr('grn.details.dispatchHistoryFailed'));
         }
       });
 
@@ -433,7 +434,7 @@ function GRNDetailScreen() {
               const result = await deleteGRN(id);
 
               if (result.success) {
-                const message = result.message || (data?.grn?.gr_no ? tr('grn.details.deletedWithNumber', { number: formatIdentifier(data.grn.gr_no) }) : tr('grn.details.deleted'));
+                const message = serverText(result.message, data?.grn?.gr_no ? tr('grn.details.deletedWithNumber', { number: formatIdentifier(data.grn.gr_no) }) : tr('grn.details.deleted'));
                 const details = result.deleted_counts
                   ? tr('grn.details.removedCounts', {
                       items: formatCount(result.deleted_counts.grn_items, 'item'),
@@ -447,7 +448,7 @@ function GRNDetailScreen() {
                   { text: tr('common.done'), onPress: () => router.back() },
                 ]);
               } else {
-                let errorMessage = result.error || tr('grn.details.deleteFailed');
+                let errorMessage = serverText(result.error, tr('grn.details.deleteFailed'));
 
                 if (result.blocking_dependencies) {
                   const deps = result.blocking_dependencies;
@@ -488,7 +489,7 @@ function GRNDetailScreen() {
       const pdfResult = await generateGRNPDF(data.grn.gr_no);
 
       if (!pdfResult.success || !pdfResult.pdfUrl) {
-        showAlert(tr('grn.details.pdfCreateFailedTitle'), pdfResult.error || tr('grn.details.tryAgainInMoment'));
+        showAlert(tr('grn.details.pdfCreateFailedTitle'), serverText(pdfResult.error, tr('grn.details.tryAgainInMoment')));
         return;
       }
 
@@ -500,7 +501,7 @@ function GRNDetailScreen() {
       );
 
       if (!shareResult.success) {
-        showAlert(tr('grn.details.pdfShareFailedTitle'), shareResult.error || tr('grn.details.tryAgainInMoment'));
+        showAlert(tr('grn.details.pdfShareFailedTitle'), serverText(shareResult.error, tr('grn.details.tryAgainInMoment')));
       }
     } catch (error) {
       console.error('[GRNDetailScreen] Share PDF error:', error);
@@ -754,7 +755,7 @@ function GRNDetailScreen() {
                 : tr('grn.details.printJobSent')
             );
           } else {
-            setSnackbarMessage(result.error || tr('grn.details.printFailed'));
+            setSnackbarMessage(serverText(result.error, tr('grn.details.printFailed')));
           }
           setSnackbarVisible(true);
           setShowPrintDialog(false);

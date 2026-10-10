@@ -12,6 +12,7 @@ import type { ServiceResponse, ServiceListResponse } from '../types/service.type
 import { createEmptyListResponse } from '../types/service.types';
 import { getAppErrorCode } from './appError';
 import { t, type TranslationKey } from '@/i18n';
+import { serverText } from '@/utils/serverText';
 
 const logger = createLogger('ServiceErrorHandler');
 
@@ -621,7 +622,7 @@ export async function executeRPC<TRaw, TResult = TRaw>(
 
       return {
         success: false,
-        message: errorMessage || supabaseError.message || t('errors.general.executeFailed', { name: rpcName }),
+        message: errorMessage || serverText(supabaseError.message, t('errors.general.executeFailed', { name: rpcName })),
         error: supabaseError.message || 'RPC_ERROR',
         errorCode: supabaseError.code,
       };
