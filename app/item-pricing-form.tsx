@@ -58,6 +58,7 @@ import { formatDate, toLocalISODate } from '@/utils/formatters';
 import { numericInput, t as tr } from '@/i18n';
 import { priceTypeLabel } from '@/features/item-pricing/utils/priceLabels';
 import { serverText } from '@/utils/serverText';
+import { useRoleBasedAccess } from '@/hooks/useRoleBasedAccess';
 const itemPricingFormLogger = createLogger('ItemPricingForm');
 
 interface Item {
@@ -84,7 +85,23 @@ type FieldKey =
 type FieldErrors = Partial<Record<FieldKey, string>>;
 
 const ItemPricingFormScreen: React.FC = () => {
-  const params = useLocalSearchParams<{ id?: string; mode?: string }>();
+  // `id` and `mode` open an existing price. The other values fill a new price
+  // from an invoice line (item, customer and the line's rates); the row is
+  // created only when this form is saved.
+  const params = useLocalSearchParams<{
+    id?: string;
+    mode?: string;
+    item_id?: string;
+    item_name?: string;
+    customer_id?: string;
+    customer_name?: string;
+    price_type?: string;
+    unit_price?: string;
+    labour_rate?: string;
+    tax_percent?: string;
+    weight_min?: string;
+    weight_max?: string;
+  }>();
   const insets = useSafeAreaInsets();
   const styles = useThemedStyles(makeStyles);
   const t = useTokens();
@@ -93,13 +110,26 @@ const ItemPricingFormScreen: React.FC = () => {
   const priceId = params.id;
   const mode = params.mode;
 
+  // Prices are added and changed by administrators and supervisors only, the
+  // same rule as on the price list. The route alone does not grant it: anyone
+  // else sees an existing price read-only and cannot open the form to add one.
+  const { isStaff: canManagePrices } = useRoleBasedAccess();
+
   // Determine mode
   const formMode: FormMode = priceId
-    ? mode === 'edit'
+    ? mode === 'edit' && canManagePrices
       ? 'edit'
       : 'view'
     : 'create';
   const isReadOnly = formMode === 'view';
+  const notAllowed = formMode === 'create' && !canManagePrices;
+
+  useEffect(() => {
+    if (notAllowed) {
+      showAlert(tr('pricing.form.noAccessTitle'), tr('errors.parsed.noPermission'));
+      router.back();
+    }
+  }, [notAllowed]);
 
   itemPricingFormLogger.debug('Render - priceId:', priceId, 'mode:', mode, 'formMode:', formMode);
 
@@ -149,7 +179,22 @@ const ItemPricingFormScreen: React.FC = () => {
     if (priceId) {
       loadPriceData();
     } else {
-      // No priceId means create mode - stop loading immediately
+      // No priceId means create mode. Values handed over from an invoice line
+      // fill the form; nothing is saved until Save is pressed.
+      if (params.item_id) {
+        setSelectedItem({ id: params.item_id, name: params.item_name || '' });
+      }
+      if (params.customer_id) {
+        setSelectedCustomer({ id: params.customer_id, name: params.customer_name || '' });
+      }
+      if (params.price_type === 'one_time' || params.price_type === 'monthly') {
+        setPriceType(params.price_type);
+      }
+      if (params.unit_price !== undefined) setUnitPrice(params.unit_price);
+      if (params.labour_rate !== undefined) setLabourRate(params.labour_rate);
+      if (params.tax_percent !== undefined) setTaxPercent(params.tax_percent);
+      if (params.weight_min !== undefined) setWeightMin(params.weight_min);
+      if (params.weight_max !== undefined) setWeightMax(params.weight_max);
       setLoading(false);
     }
   }, [priceId]);
@@ -513,6 +558,10 @@ const ItemPricingFormScreen: React.FC = () => {
         return tr('pricing.form.viewTitle');
     }
   };
+
+  if (notAllowed) {
+    return <View style={styles.container} />;
+  }
 
   if (loading) {
     return (

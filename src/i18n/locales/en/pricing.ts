@@ -44,6 +44,7 @@ export const pricing = {
     addTitle: 'Add price',
     editTitle: 'Edit price',
     viewTitle: 'Price',
+    noAccessTitle: "Prices can't be changed",
     savePrice: 'Save price',
     loading: 'Loading price…',
     loadingLabel: 'Loading price',

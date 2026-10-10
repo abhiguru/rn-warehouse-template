@@ -98,25 +98,3 @@ export interface ItemPricingDeleteResponse {
   message: string;
   error?: string;
 }
-
-// Types for findOrCreateItemStoragePrice
-export interface FindOrCreatePricingParams {
-  item_id: string;
-  customer_id: string;
-  weight: number;
-  price_type: 'one_time' | 'monthly';
-  default_values?: {
-    unit_price?: number;
-    labour_rate?: number;
-    tax_percent?: number;
-    weight_min?: number;
-    weight_max?: number;
-  };
-}
-
-export interface FindOrCreatePricingResponse {
-  success: boolean;
-  data?: ItemStoragePrice & { was_created: boolean };
-  message?: string;
-  error?: string;
-}

@@ -31,8 +31,10 @@ import {
   makeInvoiceWizardStyles,
 } from '@/constants/invoiceSteps';
 import { t as tr } from '@/i18n';
-import { findOrCreateItemStoragePrice, getItemStoragePrices } from '@/services/item-pricing-service';
-import { formatNumber } from '@/utils/formatters';
+import { getItemStoragePrices } from '@/services/item-pricing-service';
+import { findCustomerPrice } from '@/features/item-pricing/utils/findCustomerPrice';
+import { useRoleBasedAccess } from '@/hooks/useRoleBasedAccess';
+import { formatNumber, toLocalISODate } from '@/utils/formatters';
 import { serverText } from '@/utils/serverText';
 
 export default function InvoiceFormStep2() {
@@ -67,12 +69,29 @@ export default function InvoiceFormStep2() {
     setErrorDialog({ visible: true, title, message });
   };
 
-  // Track the last edited item for applying pricing on return
-  const pendingPricingUpdate = useRef<{
-    item_id: string;
-    weight: number;
-    price_id: string;
-  } | null>(null);
+  // Prices are changed by administrators and supervisors only (as on the price list).
+  const { isStaff: canManagePrices } = useRoleBasedAccess();
+
+  // The customer's own price row for an item group, read from the price list. Nothing is written.
+  const findPriceFor = useCallback(
+    async (itemId: string, weight: number) => {
+      const result = await getItemStoragePrices({ p_filters: { item_ids: [itemId] }, p_limit: 100 });
+      if (!result.success) return { ok: false as const, message: result.message };
+      const price = findCustomerPrice(result.data, {
+        item_id: itemId,
+        customer_id: header.customer_id,
+        weight,
+        // The GRN's pricing mode decides which kind of price the invoice uses.
+        price_type: header.one_time_charge ? 'one_time' : 'monthly',
+        today: toLocalISODate(new Date()),
+      });
+      return { ok: true as const, price };
+    },
+    [header.customer_id, header.one_time_charge]
+  );
+
+  // The item group whose price form was opened, so its saved price can be applied on return
+  const pendingPricingUpdate = useRef<{ item_id: string; weight: number } | null>(null);
 
   // When screen regains focus, check if we need to apply updated pricing
   useFocusEffect(
@@ -80,39 +99,32 @@ export default function InvoiceFormStep2() {
       const applyUpdatedPricing = async () => {
         if (!pendingPricingUpdate.current) return;
 
-        const { item_id, weight, price_id } = pendingPricingUpdate.current;
+        const { item_id, weight } = pendingPricingUpdate.current;
 
         try {
-          // Fetch pricing records and find the specific one by ID
-          const result = await getItemStoragePrices({
-            p_filters: { item_ids: [item_id] },
-            p_limit: 100,
-          });
+          // The price as it is now saved. None when the form was left without saving a new price.
+          const found = await findPriceFor(item_id, weight);
+          const updatedPrice = found.ok ? found.price : undefined;
+          if (!updatedPrice) {
+            return;
+          }
 
-          if (result.success && result.data.length > 0) {
-            // Find the specific pricing record by ID
-            const updatedPrice = result.data.find(p => p.id === price_id);
-            if (!updatedPrice) {
-              return;
-            }
+          // Apply pricing to all groups with the same item_id AND weight
+          const matchingItems = items.filter(item =>
+            item.item_id === item_id && item.weight === weight
+          );
 
-            // Apply pricing to all groups with the same item_id AND weight
-            const matchingItems = items.filter(item =>
-              item.item_id === item_id && item.weight === weight
-            );
-
-            if (matchingItems.length > 0) {
-              // Get unique package_marks for groups with this weight
-              const packageMarks = new Set(matchingItems.map(item => item.package_mark));
-              packageMarks.forEach(packageMark => {
-                const groupKey = `${item_id}:::${packageMark}`;
-                applyGroupPricing(groupKey, {
-                  charge: updatedPrice.unit_price,
-                  labour_rate: updatedPrice.labour_rate,
-                  tax: updatedPrice.tax_percent,
-                });
+          if (matchingItems.length > 0) {
+            // Get unique package_marks for groups with this weight
+            const packageMarks = new Set(matchingItems.map(item => item.package_mark));
+            packageMarks.forEach(packageMark => {
+              const groupKey = `${item_id}:::${packageMark}`;
+              applyGroupPricing(groupKey, {
+                charge: updatedPrice.unit_price,
+                labour_rate: updatedPrice.labour_rate,
+                tax: updatedPrice.tax_percent,
               });
-            }
+            });
           }
         } catch (error) {
           console.error('[InvoiceFormStep2] Error applying updated pricing:', error);
@@ -123,7 +135,7 @@ export default function InvoiceFormStep2() {
       };
 
       applyUpdatedPricing();
-    }, [items, applyGroupPricing])
+    }, [items, applyGroupPricing, findPriceFor])
   );
 
   // I11: Handle Android back button - go to previous step
@@ -142,7 +154,10 @@ export default function InvoiceFormStep2() {
     applyGroupPricing(groupKey, pricing);
   };
 
-  // Handle edit pricing button press - find or create pricing record and navigate to edit form
+  // Pencil beside an item group: open the price form. Looking at a price writes
+  // nothing. The customer's existing price opens for editing; when there is
+  // none, an empty form opens filled from the line, and the price row is
+  // created only if that form is saved.
   const handleEditPricing = useCallback(async (params: {
     item_id: string;
     item_name: string;
@@ -160,34 +175,31 @@ export default function InvoiceFormStep2() {
     setIsLoadingPricing(true);
 
     try {
-      // Determine price type from invoice header
-      const priceType = header.one_time_charge ? 'one_time' : 'monthly';
+      const found = await findPriceFor(params.item_id, params.weight);
+      if (!found.ok) {
+        showError(tr('invoice.items.pricingOpenFailedTitle'), serverText(found.message, tr('common.checkConnection')));
+        return;
+      }
 
-      const result = await findOrCreateItemStoragePrice({
-        item_id: params.item_id,
-        customer_id: header.customer_id,
-        weight: params.weight,
-        price_type: priceType,
-        default_values: {
-          unit_price: params.charge,
-          labour_rate: params.labour_rate,
-          tax_percent: params.tax,
-          weight_min: 0,
-          weight_max: params.weight,
-        },
-      });
-
-      if (result.success && result.data) {
-        // Store the pending update so we can apply it when returning
-        pendingPricingUpdate.current = {
-          item_id: params.item_id,
-          weight: params.weight,
-          price_id: result.data.id,
-        };
-        // Navigate to pricing form in edit mode
-        router.push(`/item-pricing-form?id=${result.data.id}&mode=edit`);
+      pendingPricingUpdate.current = { item_id: params.item_id, weight: params.weight };
+      if (found.price) {
+        router.push({ pathname: '/item-pricing-form', params: { id: found.price.id, mode: 'edit' } });
       } else {
-        showError(tr('invoice.items.pricingOpenFailedTitle'), serverText(result.message, tr('common.checkConnection')));
+        router.push({
+          pathname: '/item-pricing-form',
+          params: {
+            item_id: params.item_id,
+            item_name: params.item_name,
+            customer_id: header.customer_id,
+            customer_name: header.customer_name,
+            price_type: header.one_time_charge ? 'one_time' : 'monthly',
+            unit_price: String(params.charge),
+            labour_rate: String(params.labour_rate),
+            tax_percent: String(params.tax),
+            weight_min: '0',
+            weight_max: String(params.weight),
+          },
+        });
       }
     } catch (error) {
       console.error('[InvoiceFormStep2] Error in handleEditPricing:', error);
@@ -195,7 +207,7 @@ export default function InvoiceFormStep2() {
     } finally {
       setIsLoadingPricing(false);
     }
-  }, [header.customer_id, header.one_time_charge]);
+  }, [header.customer_id, header.customer_name, header.one_time_charge, findPriceFor]);
 
   const handleBack = async () => {
     await navigateToStep(1);
@@ -284,7 +296,7 @@ export default function InvoiceFormStep2() {
           items={items}
           onItemUpdate={handleItemUpdate}
           onBulkEdit={handleBulkEdit}
-          onEditPricing={handleEditPricing}
+          onEditPricing={canManagePrices ? handleEditPricing : undefined}
           onInputErrorChange={setHasRateInputError}
           renderItem={renderItem}
         />

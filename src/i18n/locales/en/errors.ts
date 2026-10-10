@@ -299,12 +299,10 @@ export const errors = {
     createFailed: 'Failed to create item price',
     updateFailed: 'Failed to update item price',
     deleteFailed: 'Failed to delete item price',
-    findOrCreateFailed: 'Failed to find or create item price',
     fetched: 'Item prices fetched successfully',
     created: 'Price created successfully',
     updated: 'Price updated successfully',
     deleted: 'Price deleted successfully',
-    existingFound: 'Existing price found',
   },
   grn: {
     idRequired: 'GRN ID is required',

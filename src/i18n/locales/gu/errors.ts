@@ -302,12 +302,10 @@ export const errors: Translation<typeof source> = {
     createFailed: 'આઇટમનો દર ઉમેરી શકાયો નથી',
     updateFailed: 'આઇટમનો દર સાચવી શકાયો નથી',
     deleteFailed: 'આઇટમનો દર ડિલીટ કરી શકાયો નથી',
-    findOrCreateFailed: 'આઇટમનો દર શોધી કે ઉમેરી શકાયો નથી',
     fetched: 'આઇટમના દર લોડ થયા',
     created: 'દર ઉમેરાયો',
     updated: 'દર સાચવ્યો',
     deleted: 'દર ડિલીટ થયો',
-    existingFound: 'પહેલેથી નોંધાયેલો દર મળ્યો',
   },
   grn: {
     idRequired: 'આવક પાવતી પસંદ કરવી જરૂરી છે',
