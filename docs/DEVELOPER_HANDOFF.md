@@ -44,7 +44,8 @@ npm run doctor              # read-only check against an installed backend
 ```
 
 Dependabot ignores the packages pinned by the backports (`.github/dependabot.yml`); bump them together
-with the manifest.
+with the manifest. It also ignores every package whose version the Expo SDK sets; move those together
+in one SDK upgrade with `npx expo install --fix`.
 
 ## CI and releases
 

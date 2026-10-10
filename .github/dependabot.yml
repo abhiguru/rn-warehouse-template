@@ -22,6 +22,39 @@ updates:
       - dependency-name: "sprintf-js"
       - dependency-name: "metro-file-map"
       - dependency-name: "metro*"
+      # Expo SDK packages move together. Their versions come from the SDK
+      # (`npx expo install --check` fails CI on any other version), so they
+      # are updated by hand in one SDK upgrade, not one by one.
+      - dependency-name: "expo"
+      - dependency-name: "expo-*"
+      - dependency-name: "babel-preset-expo"
+      - dependency-name: "jest-expo"
+      - dependency-name: "react"
+      - dependency-name: "react-dom"
+      - dependency-name: "react-native"
+      - dependency-name: "react-native-gesture-handler"
+      - dependency-name: "react-native-reanimated"
+      - dependency-name: "react-native-worklets"
+      - dependency-name: "react-native-safe-area-context"
+      - dependency-name: "react-native-screens"
+      - dependency-name: "react-native-svg"
+      - dependency-name: "@expo/vector-icons"
+      - dependency-name: "@react-native-async-storage/async-storage"
+      - dependency-name: "@react-native-community/datetimepicker"
+      - dependency-name: "@react-native-community/netinfo"
+      - dependency-name: "@react-native-community/slider"
+      - dependency-name: "@react-native-picker/picker"
+      - dependency-name: "@sentry/react-native"
+      - dependency-name: "@shopify/flash-list"
+      - dependency-name: "@types/react"
+      - dependency-name: "typescript"
+      # Jest and Babel majors follow jest-expo and babel-preset-expo.
+      - dependency-name: "jest"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@types/jest"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@babel/core"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: github-actions
     directory: /
     schedule:
