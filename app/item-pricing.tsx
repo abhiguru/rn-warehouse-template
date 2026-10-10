@@ -28,12 +28,11 @@ import {
   type ThemeTokens,
 } from '@/theme/tokens';
 import { getItemStoragePrices, deleteItemStoragePrice } from '@/services/item-pricing-service';
-import type { ItemStoragePrice, ItemPricingFilters, ItemPricingListParams } from '@/types/item-pricing.types';
-import { useFilterState } from '@/hooks/useFilterState';
-import type { FilterConfig, AutocompleteSelection } from '@/types/filter.types';
-import { getAutocompleteSelections, getStringValue, getNumberValue, isDateFilterValue } from '@/types/filter.types';
+import type { ItemStoragePrice, ItemPricingListParams } from '@/types/item-pricing.types';
+import { FILTER_CONFIGS, ITEM_PRICING_FILTERS } from '@/features/filters/configs';
+import { useListFilters } from '@/features/filters/useListFilters';
+import { FilterBar } from '@/features/filters/components/FilterBar';
 import { useAppSelector } from '@/store/hooks';
-import { GenericFilterModal } from '@/components/filters';
 import ItemPricingCard from '@/components/ItemPricingCard';
 import { ListEmptyState } from '@/components/list/ListEmptyState';
 import { ListSkeletonCard } from '@/components/list/ListSkeletonCard';
@@ -52,73 +51,6 @@ interface PricingSection {
   totalCount: number; // Total count even when collapsed
 }
 
-// Filter configuration for Item Pricing List
-const itemPricingFilterConfig: FilterConfig = {
-  persistKey: 'item-pricing-list',
-  debounceMs: 500,
-  title: 'Filter prices',
-  fields: [
-    {
-      type: 'autocomplete',
-      key: 'itemIds',
-      label: 'Item',
-      autocompleteType: 'item',
-      placeholder: 'Search items',
-      icon: 'package-variant',
-      multiSelect: true,
-      renderAsChips: true,
-    },
-    {
-      type: 'autocomplete',
-      key: 'customerIds',
-      label: 'Customer',
-      autocompleteType: 'customer',
-      placeholder: 'Search customers',
-      icon: 'account',
-      multiSelect: true,
-      renderAsChips: true,
-    },
-    {
-      type: 'radio',
-      key: 'priceType',
-      label: 'Price type',
-      icon: 'tag-outline',
-      options: [
-        { label: 'All', value: '' },
-        { label: 'One-time', value: 'one_time' },
-        { label: 'Monthly', value: 'monthly' },
-      ],
-      defaultValue: '',
-    },
-    {
-      type: 'number-range',
-      key: ['weightMin', 'weightMax'],
-      label: 'Weight range (kg)',
-      icon: 'weight-kilogram',
-      placeholder: ['Min weight', 'Max weight'],
-      minValue: 0,
-    },
-    {
-      type: 'date-range',
-      key: ['effectiveFrom', 'effectiveTo'],
-      label: 'Effective dates',
-      icon: 'calendar-range',
-      placeholder: ['From date', 'To date'],
-    },
-    {
-      type: 'radio',
-      key: 'includeExpired',
-      label: 'Expired prices',
-      icon: 'clock-alert-outline',
-      options: [
-        { label: 'Active only', value: 'false' },
-        { label: 'Include expired', value: 'true' },
-      ],
-      defaultValue: 'false',
-    },
-  ],
-};
-
 // Main Component
 const ItemPricingScreen: React.FC = () => {
   const { userProfile } = useAppSelector((state) => state.auth);
@@ -132,7 +64,6 @@ const ItemPricingScreen: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [showFilterModal, setShowFilterModal] = useState(false);
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set()); // Track expanded item sections
   const [hasUserInteracted, setHasUserInteracted] = useState(false); // Track if user has interacted with accordion
 
@@ -146,16 +77,10 @@ const ItemPricingScreen: React.FC = () => {
   const hasFetchedRef = useRef(false);
   const lastFetchOffsetRef = useRef<number>(-1);
 
-  // Filter state management with Redux persistence
-  const {
-    debouncedValues: filters,
-    activeFilterCount,
-    updateFilter,
-    clearAllFilters,
-  } = useFilterState({
-    persistKey: 'item-pricing-list',
-    debounceMs: 500,
-  });
+  // Filters: session-only, shown as a chip row under the header
+  const filters = useListFilters(ITEM_PRICING_FILTERS);
+  const { request } = filters;
+  const activeFilterCount = filters.activeCount;
 
   // Check if user can manage prices (Supervisor/Admin only)
   const canManagePrices = useCallback(() => {
@@ -199,51 +124,8 @@ const ItemPricingScreen: React.FC = () => {
           itemPricingScreenLogger.debug(`[${fetchId}] Starting pagination fetch at offset ${offset}`, { timestamp: new Date().toISOString() });
         }
 
-        // Build API filters
-        const apiFilters: ItemPricingFilters = {};
-
-        const itemIds = getAutocompleteSelections(filters.itemIds);
-        if (itemIds.length > 0) {
-          apiFilters.item_ids = itemIds.map((item) => item.id);
-        }
-
-        const customerIds = getAutocompleteSelections(filters.customerIds);
-        if (customerIds.length > 0) {
-          apiFilters.customer_ids = customerIds.map((item) => item.id);
-        }
-
-        const priceType = getStringValue(filters.priceType);
-        if (priceType && priceType !== '') {
-          apiFilters.price_type = priceType as ItemPricingFilters['price_type'];
-        }
-
-        const weightMin = getNumberValue(filters.weightMin);
-        if (weightMin !== undefined) {
-          apiFilters.weight_min = weightMin;
-        }
-
-        const weightMax = getNumberValue(filters.weightMax);
-        if (weightMax !== undefined) {
-          apiFilters.weight_max = weightMax;
-        }
-
-        const effectiveFrom = getStringValue(filters.effectiveFrom);
-        if (effectiveFrom) {
-          apiFilters.effective_from = effectiveFrom;
-        }
-
-        const effectiveTo = getStringValue(filters.effectiveTo);
-        if (effectiveTo) {
-          apiFilters.effective_to = effectiveTo;
-        }
-
-        const includeExpired = getStringValue(filters.includeExpired);
-        if (includeExpired === 'true') {
-          apiFilters.include_expired = true;
-        }
-
         const requestParams: ItemPricingListParams = {
-          p_filters: Object.keys(apiFilters).length > 0 ? apiFilters : undefined,
+          ...request,
           p_sort_by: 'item_name',
           p_sort_order: 'asc',
           p_limit: 50,
@@ -313,7 +195,7 @@ const ItemPricingScreen: React.FC = () => {
         setLoadingMore(false);
       }
     },
-    [filters]
+    [request]
   );
 
   // Handle delete
@@ -404,106 +286,6 @@ const ItemPricingScreen: React.FC = () => {
     }
   }, [pagination, loadingMore, loading, fetchItemPrices]);
 
-  // Applied filter chip (style guide §13.5 FilterChip)
-  const renderFilterChip = (key: string, label: string, onRemove: () => void) => (
-    <View key={key} style={styles.filterChip}>
-      <Text style={styles.filterChipText} maxFontSizeMultiplier={1.6}>
-        {label}
-      </Text>
-      <Pressable
-        onPress={onRemove}
-        style={styles.filterChipRemove}
-        accessibilityRole="button"
-        accessibilityLabel={`Remove filter ${label}`}
-      >
-        <Icon name="close" size={iconSize.sm} color={t.brand.tint} />
-      </Pressable>
-    </View>
-  );
-
-  // Helper function to render applied filters
-  const renderAppliedFilters = () => {
-    if (activeFilterCount === 0) return null;
-
-    const priceType = getStringValue(filters.priceType);
-    const weightMin = getNumberValue(filters.weightMin);
-    const weightMax = getNumberValue(filters.weightMax);
-    const effectiveFrom = getStringValue(filters.effectiveFrom);
-    const effectiveTo = getStringValue(filters.effectiveTo);
-
-    return (
-      <View style={styles.appliedFiltersContainer}>
-        <View style={styles.appliedFiltersHeader}>
-          <Text style={styles.appliedFiltersTitle} accessibilityRole="header">
-            Filters ({activeFilterCount})
-          </Text>
-          <Pressable
-            onPress={clearAllFilters}
-            style={styles.clearAllButton}
-            accessibilityRole="button"
-            accessibilityLabel="Clear all filters"
-          >
-            <Text style={styles.clearAllText}>Clear all</Text>
-          </Pressable>
-        </View>
-        <View style={styles.appliedFiltersList}>
-          {getAutocompleteSelections(filters.itemIds).map((item) =>
-            renderFilterChip(`item-${item.id}`, `Item: ${item.label}`, () => {
-              const newSelections = getAutocompleteSelections(filters.itemIds).filter(
-                (i) => i.id !== item.id
-              );
-              updateFilter('itemIds', newSelections.length > 0 ? newSelections : []);
-            })
-          )}
-
-          {getAutocompleteSelections(filters.customerIds).map((item) =>
-            renderFilterChip(`customer-${item.id}`, `Customer: ${item.label}`, () => {
-              const newSelections = getAutocompleteSelections(filters.customerIds).filter(
-                (i) => i.id !== item.id
-              );
-              updateFilter('customerIds', newSelections.length > 0 ? newSelections : []);
-            })
-          )}
-
-          {priceType && priceType !== '' &&
-            renderFilterChip('priceType', priceType === 'one_time' ? 'One-time' : 'Monthly', () =>
-              updateFilter('priceType', '')
-            )}
-
-          {(weightMin !== undefined || weightMax !== undefined) &&
-            renderFilterChip(
-              'weight',
-              weightMax !== undefined
-                ? `Weight: ${weightMin ?? 0}–${weightMax} kg`
-                : `Weight: ${weightMin} kg or more`,
-              () => {
-                updateFilter('weightMin', undefined);
-                updateFilter('weightMax', undefined);
-              }
-            )}
-
-          {getStringValue(filters.includeExpired) === 'true' &&
-            renderFilterChip('includeExpired', 'Including expired', () =>
-              updateFilter('includeExpired', 'false')
-            )}
-
-          {(effectiveFrom || effectiveTo) &&
-            renderFilterChip(
-              'effective',
-              effectiveFrom && effectiveTo
-                ? `${formatDate(effectiveFrom)} to ${formatDate(effectiveTo)}`
-                : effectiveFrom
-                  ? `From ${formatDate(effectiveFrom)}`
-                  : `Until ${formatDate(effectiveTo!)}`,
-              () => {
-                updateFilter('effectiveFrom', undefined);
-                updateFilter('effectiveTo', undefined);
-              }
-            )}
-        </View>
-      </View>
-    );
-  };
 
   // Group data by item for SectionList, sorted by customer within each item
   const groupedData = useMemo((): PricingSection[] => {
@@ -672,25 +454,6 @@ const ItemPricingScreen: React.FC = () => {
               <Icon name="plus" size={iconSize.lg} color={t.brand.tint} />
             </Pressable>
           )}
-          {showActions && (
-            <Pressable
-              style={styles.iconButton}
-              onPress={() => setShowFilterModal(true)}
-              accessibilityRole="button"
-              accessibilityLabel={
-                activeFilterCount > 0 ? `Filter, ${activeFilterCount} active` : 'Filter'
-              }
-            >
-              <Icon name="filter-variant" size={iconSize.lg} color={t.icon.primary} />
-              {activeFilterCount > 0 && (
-                <View style={styles.filterBadge}>
-                  <Text style={styles.filterBadgeText} maxFontSizeMultiplier={1.6}>
-                    {activeFilterCount}
-                  </Text>
-                </View>
-              )}
-            </Pressable>
-          )}
           {userProfile && (
             <Pressable
               style={styles.iconButton}
@@ -726,8 +489,12 @@ const ItemPricingScreen: React.FC = () => {
     <View style={styles.container}>
       {renderHeader(true)}
 
-      {/* Applied Filters Section */}
-      {renderAppliedFilters()}
+      {/* Filter bar: Filters, active filters, fast filters, Clear all */}
+      <FilterBar
+        config={FILTER_CONFIGS[ITEM_PRICING_FILTERS.listKey]}
+        filters={filters}
+        onOpenAll={() => router.push({ pathname: '/list-filters', params: { listKey: ITEM_PRICING_FILTERS.listKey } })}
+      />
 
       {/* Main Content */}
       {data.length > 0 ? (
@@ -760,20 +527,14 @@ const ItemPricingScreen: React.FC = () => {
           emptyTitle="No prices yet"
           filteredTitle="No prices match these filters"
           emptySubtitle={canManagePrices() ? 'Prices you add appear here.' : 'No prices have been set up yet.'}
-          filteredSubtitle="Try fewer filters."
+          filteredSubtitle="Try removing a filter or clearing them all."
+          onClearFilters={filters.clear}
           showCreateButton={canManagePrices() && activeFilterCount === 0}
           createButtonLabel="Add price"
           createButtonIcon="plus"
           onCreatePress={handleCreatePrice}
         />
       )}
-
-      {/* Generic Filter Modal */}
-      <GenericFilterModal
-        visible={showFilterModal}
-        onClose={() => setShowFilterModal(false)}
-        config={itemPricingFilterConfig}
-      />
 
       {/* Delete Confirmation Dialog (style guide §13.9) */}
       <Modal

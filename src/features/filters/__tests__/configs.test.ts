@@ -1,4 +1,12 @@
-import { DISPATCH_FILTERS, FILTER_CONFIGS, GRN_FILTERS, INVOICE_FILTERS, ORDER_FILTERS, ORDER_QUEUE_FILTERS } from '../configs';
+import {
+  DISPATCH_FILTERS,
+  FILTER_CONFIGS,
+  GRN_FILTERS,
+  INVOICE_FILTERS,
+  ITEM_PRICING_FILTERS,
+  ORDER_FILTERS,
+  ORDER_QUEUE_FILTERS,
+} from '../configs';
 import { isFieldActive, visibleFields } from '../filterModel';
 import type { FilterContext, FilterFieldDef, FilterListConfig, FilterValue } from '../types';
 
@@ -40,6 +48,7 @@ function sample(field: FilterFieldDef): FilterValue {
 const configs: FilterListConfig<unknown>[] = [GRN_FILTERS as FilterListConfig<unknown>, DISPATCH_FILTERS as FilterListConfig<unknown>, INVOICE_FILTERS as FilterListConfig<unknown>,
   ORDER_FILTERS as FilterListConfig<unknown>,
   ORDER_QUEUE_FILTERS as FilterListConfig<unknown>,
+  ITEM_PRICING_FILTERS as FilterListConfig<unknown>,
 ];
 
 describe.each(configs.map(config => [config.listKey, config] as const))('filter config %s', (_key, config) => {
@@ -266,5 +275,40 @@ describe('order requests', () => {
   it('always asks the queue for orders with items', () => {
     expect(ORDER_QUEUE_FILTERS.toRequest({}, undefined, staff, today)).toEqual({ has_items: true });
     expect(ORDER_QUEUE_FILTERS.toRequest({ search: 'rajkot' }, undefined, staff, today)).toEqual({ has_items: true, search: 'rajkot' });
+  });
+});
+
+describe('item pricing request', () => {
+  const staff = contexts.staff;
+  it('sends no filters by default', () => {
+    expect(ITEM_PRICING_FILTERS.toRequest({ priceType: 'all' }, undefined, staff, today)).toEqual({});
+  });
+  it('maps every filter, with the effective dates as whole days', () => {
+    expect(
+      ITEM_PRICING_FILTERS.toRequest(
+        {
+          items: [{ id: 'i1', label: 'Garlic' }],
+          customers: [{ id: 'c1', label: 'A' }],
+          priceType: 'monthly',
+          weight: { min: 10.5, max: 50 },
+          effective: { from: '2026-09-01', to: '2026-09-30' },
+          expired: true,
+        },
+        undefined,
+        staff,
+        today
+      )
+    ).toEqual({
+      p_filters: {
+        item_ids: ['i1'],
+        customer_ids: ['c1'],
+        price_type: 'monthly',
+        weight_min: 10.5,
+        weight_max: 50,
+        effective_from: '2026-09-01',
+        effective_to: '2026-09-30',
+        include_expired: true,
+      },
+    });
   });
 });
