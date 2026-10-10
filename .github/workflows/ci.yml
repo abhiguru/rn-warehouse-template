@@ -116,7 +116,7 @@ jobs:
         run: npm run audit:dependencies -- --report-dir "$RUNNER_TEMP/dependency-security-report"
       - name: Preserve raw audit and installed-source verification
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: dependency-security-report
           path: ${{ runner.temp }}/dependency-security-report
