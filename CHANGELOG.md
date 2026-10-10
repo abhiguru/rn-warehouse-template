@@ -1,5 +1,60 @@
 # Changelog
 
+## Unreleased — invoice, pricing and customer fixes from the 2026-10-10 review
+
+Needs backend migrations 39 (`dispatch_lot_ownership`) and 41
+(`invoice_line_rules`); merge and deploy the backend first. Without 41 the
+server does not yet refuse a second invoice for a GRN or a rate outside the
+range, and the Line items tab shows a one-time GRN's lines with the old
+monthly amounts.
+
+- Invoice totals are the server's. After a save the dialog shows the total the
+  server stored (read back when the save does not return it); if it differs
+  from what the form showed, the dialog says so, and if it cannot be read no
+  amount is shown. The form's own total is labelled "Estimated total", also in
+  the confirmation.
+- "One-time charge" is no longer a switch on the invoice. It is shown
+  read-only and comes from the GRN's pricing mode, which is what the server
+  charges by: a one-time GRN is charged once per unit, without duration and
+  without labour. Change it on the GRN.
+- Invoice details, Line items: each line shows the tax and total the server
+  computed, so the groups add up to the invoice. A line whose GRN item is not
+  known is no longer merged with another line of the same name and quantity.
+  Breakdown: a billed dispatch opens by its id (the link never appeared before).
+- Editing an invoice: viewing the GRN and coming back no longer replaces the
+  saved line rates with the current price list or forgets the stored discount
+  and its reason. When the discount is changed, the recorded reason is taken
+  out of the field and a new one has to be written; typing the stored amount
+  again puts it back. The reason field stays when a discount is set to 0.
+- Rate fields (charge, labour rate, tax) keep what is typed, so "5.50" and a
+  tax of "2.5" can be entered. A value that is not a number, is negative or is
+  above the server's range (charge and labour rate 0 to 999999, tax 0 to 100)
+  is reported under the field and not stored; "Next" waits until it is
+  corrected. "1,500" is no longer read as 1.
+- Discount field: a discount above the invoice amount, or text that is not a
+  number, is reported and Save waits; on leaving the field it shows the
+  discount the invoice really has. On Android it opens the number keyboard.
+- Before a new invoice is saved the app checks the GRN again and says so when
+  it was invoiced meanwhile or its dispatches changed. The server's refusals
+  ("GRN is already invoiced", "A dispatch line is already on another invoice",
+  the rate ranges, "Cannot delete an invoice that has payments", and the
+  customer-ownership refusals of migration 39) are shown in the app's language.
+- The default invoice date, financial year and the "not in the future" limit
+  follow the current day when the app has been open past midnight or past
+  1 April. The default dispatch date does the same.
+- Opening the price form from an invoice line no longer creates a price: the
+  customer's existing price opens for editing, otherwise an empty form filled
+  from the line, and the price is created only by Save. The pencil is shown to
+  administrators and supervisors only, and the price form itself refuses
+  everyone else. The price form no longer accepts "1,250" as 1 or text that is
+  not a number.
+- Customers: a 10-digit mobile number that begins with 91 is accepted and
+  shown in full. A failed deactivate or restore is reported; the app no longer
+  writes the customers table directly when the server call fails.
+- Logs: invoice service errors are logged as code and message only, the
+  customer form no longer logs name and mobile, and the logger hides the
+  12-digit phone form while leaving ordinary 4-6 digit numbers readable.
+
 ## Unreleased — GRN and dispatch form fixes from the 2026-10-10 review
 
 - Dispatch: the GRN picker lists and searches only the GRNs of the dispatch's
