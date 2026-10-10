@@ -185,7 +185,7 @@ export const useRateLimitCountdown = (): UseRateLimitCountdownReturn => {
       errorString = error.message;
     } else if (error && typeof error === 'object') {
       // Handle objects with message or error properties
-      const errObj = error as { message?: string; error?: string; retryAfterSeconds?: unknown };
+      const errObj = error as { message?: string; error?: string; retryAfterSeconds?: unknown; errorCode?: unknown };
       errorString = errObj.message || errObj.error || '';
       // A limit applied by the app says how long to wait as a number. Start the
       // countdown from it and show the app's own (translated) sentence.
@@ -193,6 +193,10 @@ export const useRateLimitCountdown = (): UseRateLimitCountdownReturn => {
         triggerRateLimit(errObj.retryAfterSeconds * 1000, errorString || undefined);
         return true;
       }
+      // A limit the server named without a wait ("try again later", up to an
+      // hour): there is nothing to count down, and a guessed 60 seconds would
+      // promise a code that will not come. The caller shows the sentence.
+      if (typeof errObj.errorCode === 'string') return false;
     }
 
     const parsed = parseRateLimitDuration(errorString);

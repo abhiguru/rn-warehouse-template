@@ -409,12 +409,53 @@ async function boundedAuthRPC(
   }
 }
 
+/** A limit the server applied to a sign-in code request or check (backend migration 44). */
+export type OtpLimitCode = 'otp_wait' | 'otp_rate_limited' | 'enrollment_limited';
+
 type OperatorEnvelope = {
   success: boolean;
   error?: string;
   message?: string;
   data?: Record<string, unknown>;
+  /** Set on a refusal the app has its own words for; `error` is then already translated. */
+  errorCode?: OtpLimitCode;
+  /** How long the server said to wait, when it said (the 60 s resend wait or the 15 minute slow lane). */
+  retryAfterSeconds?: number;
 };
+
+/** The longest wait the app will count down; anything longer is not a wait the server sends. */
+const MAX_RETRY_AFTER_SECONDS = 24 * 60 * 60;
+
+/** `retry_after_seconds` of the answer, or its Retry-After header, as whole seconds. */
+function retryAfterSecondsOf(response: Response, body: unknown): number | undefined {
+  const fromBody = (body as { retry_after_seconds?: unknown } | null)?.retry_after_seconds;
+  const fromHeader = typeof response.headers?.get === 'function' ? response.headers.get('Retry-After') : null;
+  for (const candidate of [fromBody, fromHeader]) {
+    const seconds = typeof candidate === 'number' ? candidate : typeof candidate === 'string' && /^\d+$/.test(candidate.trim()) ? Number(candidate) : NaN;
+    if (Number.isFinite(seconds) && seconds > 0) return Math.min(Math.ceil(seconds), MAX_RETRY_AFTER_SECONDS);
+  }
+  return undefined;
+}
+
+/** "Wait 42 seconds" or "wait 15 minutes" before asking for another code. */
+export function otpWaitText(seconds: number): string {
+  return seconds < 120
+    ? t('errors.auth.otpWaitSeconds', { seconds: localizeDigits(String(seconds)) })
+    : t('errors.auth.otpWaitMinutes', { minutes: localizeDigits(String(Math.ceil(seconds / 60))) });
+}
+
+/**
+ * The limits the sign-in endpoint answers with HTTP 429, in the app's words.
+ * The endpoint sends a sentence and no code, so the sentence is what is read.
+ */
+function otpLimit(status: number, serverError: unknown, retryAfterSeconds: number | undefined): { errorCode: OtpLimitCode; error: string } | undefined {
+  if (status !== 429) return undefined;
+  const text = typeof serverError === 'string' ? serverError.toLowerCase() : '';
+  if (text.includes('new access requests')) return { errorCode: 'enrollment_limited', error: t('errors.auth.enrollmentLimited') };
+  if (retryAfterSeconds !== undefined) return { errorCode: 'otp_wait', error: otpWaitText(retryAfterSeconds) };
+  if (text.includes('please wait')) return { errorCode: 'otp_wait', error: t('errors.auth.otpWait') };
+  return { errorCode: 'otp_rate_limited', error: t('errors.auth.otpTooMany') };
+}
 
 async function operatorOtpRequest(
   action: 'request' | 'verify' | 'status' | 'signout',
@@ -444,6 +485,9 @@ async function operatorOtpRequest(
     });
     const result = (await response.json()) as OperatorEnvelope;
     if (!response.ok || result.success !== true) {
+      const retryAfterSeconds = retryAfterSecondsOf(response, result);
+      const limit = otpLimit(response.status, result.error || result.message, retryAfterSeconds);
+      if (limit) return { success: false, ...limit, retryAfterSeconds };
       return { success: false, error: serverText(result.error || result.message, t('errors.auth.requestFailedHttp', { status: String(response.status) })) };
     }
     return result;
@@ -529,8 +573,21 @@ export const signInWithPhone = async (phone: string) => {
 
       return { success: true, data: responseData };
     } else {
-      const errorMsg = serverText(responseData.error || responseData.message, t('errors.auth.otpSendFailed'));
       console.error('[Auth] Send OTP failed:');
+      // A limit of the server: its wait (60 seconds, or 15 minutes for a number
+      // that has used up its hourly codes) is returned as a number, so the
+      // screens count down from it. "Try again later" has no wait to count.
+      if (responseData.errorCode) {
+        return {
+          success: false,
+          error: responseData.error ?? t('errors.auth.otpSendFailed'),
+          errorCode: responseData.errorCode,
+          rateLimited: true as const,
+          rateLimitReason: 'server' as const,
+          retryAfterSeconds: responseData.retryAfterSeconds,
+        };
+      }
+      const errorMsg = serverText(responseData.error || responseData.message, t('errors.auth.otpSendFailed'));
       return { success: false, error: errorMsg };
     }
   } catch (error) {
@@ -563,6 +620,8 @@ interface AuthPendingResult {
 interface AuthFailureResult {
   success: false;
   error: string;
+  /** Set when `error` is the app's own sentence for a server limit: show it as it is. */
+  errorCode?: OtpLimitCode;
 }
 
 type AuthResult = AuthSuccessResult | AuthPendingResult | AuthFailureResult;
@@ -698,8 +757,11 @@ export const verifyOTP = async (
     const isSuccess = rpcResponse?.success === true;
 
     if (!isSuccess || !rpcResponse?.data) {
-      const errorMsg = serverText(rpcResponse?.error || rpcResponse?.message, t('errors.auth.verificationFailed'));
       console.error('[Auth] OTP verification failed:');
+      if (rpcResponse?.errorCode) {
+        return { success: false, error: rpcResponse.error ?? t('errors.auth.verificationFailed'), errorCode: rpcResponse.errorCode };
+      }
+      const errorMsg = serverText(rpcResponse?.error || rpcResponse?.message, t('errors.auth.verificationFailed'));
       return { success: false, error: errorMsg };
     }
 

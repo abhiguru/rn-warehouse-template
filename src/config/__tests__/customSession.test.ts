@@ -51,6 +51,7 @@ import {
   deviceExpiry,
 } from '../supabaseConfig';
 import { loadOperatorServer, saveOperatorServer } from '../operatorServer';
+import { setLanguage, t } from '@/i18n';
 
 jest.mock('@supabase/supabase-js', () => ({ createClient: jest.fn() }));
 jest.mock('@/utils/secureSessionMarker', () => ({
@@ -1076,4 +1077,73 @@ test('a save in flight still holds a server switch back', async () => {
   await save;
   expect(beginOperatorSwitch()).toBe(true);
   endOperatorSwitch();
+});
+
+// Backend migration 44: the limits the server applies to sign-in codes.
+describe('sign-in code limits from the server (migration 44)', () => {
+  const refused = (body: Record<string, unknown>, status = 429, headers: Record<string, string> = {}) =>
+    ({ ...operatorResponse(body, status), headers: { get: (name: string) => headers[name] ?? headers[name.toLowerCase()] ?? null } }) as unknown as Response;
+
+  beforeEach(() => {
+    jest.mocked(checkOTPRateLimit).mockResolvedValue({ allowed: true });
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+  });
+  afterEach(() => setLanguage('en'));
+
+  it('a request refused with retry_after_seconds returns the wait as a number', async () => {
+    jest.mocked(global.fetch).mockResolvedValue(
+      refused({ success: false, error: 'Please wait before requesting another OTP.', retry_after_seconds: 900 }, 429, { 'Retry-After': '900' })
+    );
+    const result = await signInWithPhone('+910000000001');
+    expect(result).toMatchObject({ success: false, rateLimited: true, retryAfterSeconds: 900, errorCode: 'otp_wait' });
+    // 15 minutes is said in minutes, not as "900 seconds".
+    expect(result.error).toBe(t('errors.auth.otpWaitMinutes', { minutes: '15' }));
+  });
+
+  it('a short wait is said in seconds', async () => {
+    jest.mocked(global.fetch).mockResolvedValue(
+      refused({ success: false, error: 'Please wait before requesting another OTP.', retry_after_seconds: 42 })
+    );
+    const result = await signInWithPhone('+910000000001');
+    expect(result).toMatchObject({ success: false, rateLimited: true, retryAfterSeconds: 42 });
+    expect(result.error).toBe(t('errors.auth.otpWaitSeconds', { seconds: '42' }));
+  });
+
+  it('reads the Retry-After header when the body has no number', async () => {
+    jest.mocked(global.fetch).mockResolvedValue(
+      refused({ success: false, error: 'Please wait before requesting another OTP.' }, 429, { 'Retry-After': '60' })
+    );
+    expect(await signInWithPhone('+910000000001')).toMatchObject({ success: false, rateLimited: true, retryAfterSeconds: 60 });
+  });
+
+  it('a request refused without a wait ("try again later") has no countdown', async () => {
+    jest.mocked(global.fetch).mockResolvedValue(refused({ success: false, error: 'Too many OTP requests. Try again later.' }));
+    const result = await signInWithPhone('+910000000001') as { error: string; retryAfterSeconds?: number; errorCode?: string };
+    expect(result.error).toBe(t('errors.auth.otpTooMany'));
+    expect(result.errorCode).toBe('otp_rate_limited');
+    expect(result.retryAfterSeconds).toBeUndefined();
+  });
+
+  it('a verification refused for too many requests says so, in the app language', async () => {
+    jest.mocked(global.fetch).mockResolvedValue(refused({ success: false, error: 'Too many OTP requests. Try again later.' }));
+    setLanguage('gu');
+    const result = await verifyOTP('0000000002', '123456');
+    expect(result).toMatchObject({ success: false, errorCode: 'otp_rate_limited', error: t('errors.auth.otpTooMany', undefined, 'gu') });
+    expect((result as { error: string }).error).toMatch(/[઀-૿]/);
+  });
+
+  it('a verification refused for too many new access requests says "tomorrow"', async () => {
+    jest.mocked(global.fetch).mockResolvedValue(refused({ success: false, error: 'Too many new access requests. Try again tomorrow.' }));
+    const result = await verifyOTP('0000000002', '123456');
+    expect(result).toMatchObject({ success: false, errorCode: 'enrollment_limited', error: t('errors.auth.enrollmentLimited') });
+    setLanguage('gu');
+    expect(await verifyOTP('0000000002', '123456')).toMatchObject({ error: t('errors.auth.enrollmentLimited', undefined, 'gu') });
+  });
+
+  it('a wrong code is still an ordinary failure', async () => {
+    jest.mocked(global.fetch).mockResolvedValue(refused({ success: false, error: 'Invalid or expired OTP' }, 400));
+    const result = await verifyOTP('0000000002', '123456') as { error: string; errorCode?: string };
+    expect(result.error).toBe('Invalid or expired OTP');
+    expect(result.errorCode).toBeUndefined();
+  });
 });

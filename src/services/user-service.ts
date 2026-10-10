@@ -257,7 +257,16 @@ export class UserService {
       console.log('[UserService] Account deletion RPC response:', data);
 
       // Check RPC response for success flag
-      const rpcResponse = data as { success: boolean; message?: string; error?: string } | null;
+      const rpcResponse = data as { success: boolean; message?: string; error?: string; code?: string } | null;
+
+      // The only administrator cannot delete the account (backend migration 44).
+      if (rpcResponse && !rpcResponse.success && rpcResponse.code === 'LAST_ADMIN') {
+        return {
+          success: false,
+          message: t('errors.user.lastAdminDelete'),
+          error: t('errors.user.lastAdminDelete'),
+        };
+      }
 
       if (!rpcResponse?.success) {
         console.error('[UserService] Account deletion failed:', rpcResponse?.error);

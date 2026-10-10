@@ -158,9 +158,9 @@ export default function OTPScreen() {
           router.replace('/');
         }
       } else {
-        const friendlyMessage = parseErrorToFriendly(
-          (result as { success: false; error: string }).error
-        );
+        const failure = result as { success: false; error: string; errorCode?: string };
+        // A limit of the server already comes in the app's words.
+        const friendlyMessage = failure.errorCode ? failure.error : parseErrorToFriendly(failure.error);
         showAlert(tr('auth.otp.couldNotVerifyTitle'), friendlyMessage);
       }
     } catch {
@@ -195,7 +195,8 @@ export default function OTPScreen() {
         if (handleRateLimitError(result)) {
           return;
         }
-        const friendlyMessage = parseErrorToFriendly(result.error);
+        // A limit of the server already comes in the app's words.
+        const friendlyMessage = 'errorCode' in result && result.errorCode ? result.error : parseErrorToFriendly(result.error);
         showAlert(tr('auth.login.couldNotSendTitle'), friendlyMessage);
       }
     } catch (error) {

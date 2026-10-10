@@ -59,6 +59,9 @@ interface RpcCustomerAssignment {
 // SERVICE CLASS
 // =============================================================================
 
+/** The server refuses to remove the warehouse's last administrator (backend migration 44). */
+const LAST_ADMIN = 'LAST_ADMIN';
+
 class AdminUserService {
   // ===========================================================================
   // LIST USERS
@@ -269,7 +272,10 @@ class AdminUserService {
       if (!responseData || !responseData.success) {
         return {
           success: false,
-          error: serverText(responseData?.error, t('errors.user.updateRoleFailed')),
+          // The server names this refusal by a code, not a sentence (migration 44).
+          error: responseData?.error === LAST_ADMIN
+            ? t('errors.user.lastAdminRole')
+            : serverText(responseData?.error, t('errors.user.updateRoleFailed')),
         };
       }
 
@@ -327,7 +333,9 @@ class AdminUserService {
       if (!responseData || !responseData.success) {
         return {
           success: false,
-          error: serverText(responseData?.error, t('errors.user.updateStatusFailed')),
+          error: responseData?.error === LAST_ADMIN
+            ? t('errors.user.lastAdminDeactivate')
+            : serverText(responseData?.error, t('errors.user.updateStatusFailed')),
         };
       }
 
