@@ -114,13 +114,47 @@ describe('user management actions', () => {
   ])(
     '%s on a %s (self: %s): role and status %s, assignments %s, roles %j',
     (callerRole, targetRole, self, canEdit, canChangeAssignments, roles) => {
-      const actions = userManagementActions(
-        { id: 'caller', role: callerRole },
-        { id: self ? 'caller' : 'target', role: targetRole }
-      );
-      expect(actions).toEqual({ canEdit, canChangeAssignments, assignableRoles: roles });
+      // The same for a target known to be active and for one whose status is not known yet.
+      for (const active of [true, undefined]) {
+        const actions = userManagementActions(
+          { id: 'caller', role: callerRole },
+          { id: self ? 'caller' : 'target', role: targetRole, active }
+        );
+        expect(actions).toEqual({ canEdit, canChangeAssignments, assignableRoles: roles, needsAdministrator: false });
+      }
     }
   );
+
+  // Backend migration 47: giving access back is an administrator's decision. A profile that
+  // is not active is one whose access is not approved (deactivated, rejected or pending), and
+  // the server refuses a supervisor everything on it (ENROLLMENT_NOT_APPROVED).
+  describe('a user who is not active', () => {
+    const NOTHING = { canEdit: false, canChangeAssignments: false, assignableRoles: [] };
+
+    it.each(['customer', 'staff', 'supervisor'])('a supervisor is offered nothing on an inactive %s, and is told to ask an administrator', (targetRole) => {
+      expect(userManagementActions({ id: 'caller', role: 'supervisor' }, { id: 'target', role: targetRole, active: false }))
+        .toEqual({ ...NOTHING, needsAdministrator: true });
+    });
+
+    it('a supervisor is offered nothing on an active user whose access is not approved', () => {
+      for (const enrollmentStatus of ['pending', 'rejected', 'disabled']) {
+        expect(userManagementActions({ id: 'caller', role: 'supervisor' }, { id: 'target', role: 'customer', active: true, enrollmentStatus }))
+          .toEqual({ ...NOTHING, needsAdministrator: true });
+      }
+      expect(userManagementActions({ id: 'caller', role: 'supervisor' }, { id: 'target', role: 'customer', active: true, enrollmentStatus: 'approved' }).canEdit)
+        .toBe(true);
+    });
+
+    it('an inactive administrator is still simply out of a supervisor\'s reach', () => {
+      expect(userManagementActions({ id: 'caller', role: 'supervisor' }, { id: 'target', role: 'admin', active: false }))
+        .toEqual({ ...NOTHING, needsAdministrator: false });
+    });
+
+    it.each(['customer', 'staff', 'supervisor', 'admin'])('an administrator can still activate an inactive %s', (targetRole) => {
+      expect(userManagementActions({ id: 'caller', role: 'admin' }, { id: 'target', role: targetRole, active: false }))
+        .toEqual({ canEdit: true, canChangeAssignments: true, assignableRoles: ALL, needsAdministrator: false });
+    });
+  });
 
   it('offers nothing while the caller or the target is unknown', () => {
     expect(userManagementActions({ id: undefined, role: 'admin' }, { id: 'target', role: 'staff' }).canEdit).toBe(false);

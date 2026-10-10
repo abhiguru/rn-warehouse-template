@@ -52,7 +52,7 @@ import { showAlert } from '@/utils/alert';
 import { t as tr, type TranslationKey } from '@/i18n';
 import { roleLabel as roleName } from '@/utils/roleLabel';
 import { serverText } from '@/utils/serverText';
-import { userManagementActions } from '@/config/roles';
+import { normalizeRole, userManagementActions } from '@/config/roles';
 
 /** "… is now an admin." is one sentence per role: the article and word order differ by language. */
 const ROLE_CHANGED_KEYS: Record<UserRole, TranslationKey> = {
@@ -113,10 +113,12 @@ export default function UserEditScreen() {
   const callerRole = (userProfile?.role || 'customer') as 'admin' | 'supervisor';
   const targetId = user?.id ?? userId ?? '';
   const isSelfEdit = !!userProfile?.id && userProfile.id === targetId;
-  const { canEdit, canChangeAssignments, assignableRoles } = userManagementActions(
+  const { canEdit, canChangeAssignments, assignableRoles, needsAdministrator } = userManagementActions(
     { id: userProfile?.id, role: userProfile?.role },
-    { id: targetId, role: user?.role }
+    { id: targetId, role: user?.role, active: user?.active }
   );
+  // A supervisor deactivates a user but cannot activate one again (backend migration 47).
+  const deactivationIsFinalForCaller = normalizeRole(userProfile?.role) === 'supervisor';
 
   // ===========================================================================
   // LOAD USER DETAILS
@@ -188,7 +190,7 @@ export default function UserEditScreen() {
       if (!newActive) {
         showAlert(
           tr('users.edit.deactivateTitle', { name: user.name }),
-          tr('users.edit.deactivateMessage'),
+          tr(deactivationIsFinalForCaller ? 'users.edit.deactivateMessageSupervisor' : 'users.edit.deactivateMessage'),
           [
             { text: tr('common.cancel'), style: 'cancel' },
             {
@@ -205,7 +207,7 @@ export default function UserEditScreen() {
 
       await updateStatus(true);
     },
-    [user]
+    [user, deactivationIsFinalForCaller]
   );
 
   const updateStatus = async (active: boolean) => {
@@ -483,7 +485,7 @@ export default function UserEditScreen() {
           {isSelfEdit && (
             <Text style={styles.helperText}>{tr('users.edit.ownRole')}</Text>
           )}
-          {!canEdit && !isSelfEdit && (
+          {!canEdit && !isSelfEdit && !needsAdministrator && (
             <Text style={styles.helperText}>{tr('users.edit.supervisorLimit')}</Text>
           )}
         </View>
@@ -519,6 +521,9 @@ export default function UserEditScreen() {
           </View>
           {isSelfEdit && (
             <Text style={styles.helperText}>{tr('users.edit.ownStatus')}</Text>
+          )}
+          {needsAdministrator && (
+            <Text style={styles.helperText}>{tr('users.edit.needsAdministrator')}</Text>
           )}
         </View>
 

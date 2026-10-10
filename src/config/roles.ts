@@ -101,6 +101,10 @@ export function settingsFeatureRows(role: string | null | undefined): SettingsFe
 export interface UserActionTarget {
   id: string;
   role: string | null | undefined;
+  /** The target's status. Not known (not loaded yet) counts as active. */
+  active?: boolean | null;
+  /** The target's access request, where the server gives it. Not known counts as approved. */
+  enrollmentStatus?: string | null;
 }
 
 export interface UserManagementActions {
@@ -110,27 +114,36 @@ export interface UserManagementActions {
   canChangeAssignments: boolean;
   /** Roles the caller may give the target. Empty when canEdit is false. */
   assignableRoles: RoleName[];
+  /** A supervisor is offered nothing because the target's access is not approved. */
+  needsAdministrator: boolean;
 }
 
 /**
- * What the caller may do to one user. The server's rules (migrations 44 and 45): nobody
+ * What the caller may do to one user. The server's rules (migrations 44, 45 and 47): nobody
  * changes the own role or status; an administrator may change anyone else, and the own
  * customer assignments; a supervisor may change users who are not administrators, never
  * anything on the own profile, and can never grant the administrator role.
+ *
+ * Giving access is an administrator's decision: a supervisor deactivates a user but does
+ * not activate one, and is offered nothing on a user whose access is not approved. The
+ * user list and details carry `active` only; a user who is not active is one whose access
+ * is deactivated, rejected or still requested, so that is what decides here.
  */
 export function userManagementActions(
   caller: { id: string | null | undefined; role: string | null | undefined },
   target: UserActionTarget
 ): UserManagementActions {
-  const none: UserManagementActions = { canEdit: false, canChangeAssignments: false, assignableRoles: [] };
+  const none: UserManagementActions = { canEdit: false, canChangeAssignments: false, assignableRoles: [], needsAdministrator: false };
   const callerRole = normalizeRole(caller.role);
   if (!isManager(callerRole) || !caller.id || !target.id) return none;
   const self = caller.id === target.id;
   if (callerRole === 'admin') {
     return self
       ? { ...none, canChangeAssignments: true }
-      : { canEdit: true, canChangeAssignments: true, assignableRoles: ['customer', 'staff', 'supervisor', 'admin'] };
+      : { ...none, canEdit: true, canChangeAssignments: true, assignableRoles: ['customer', 'staff', 'supervisor', 'admin'] };
   }
   if (self || normalizeRole(target.role) === 'admin') return none;
-  return { canEdit: true, canChangeAssignments: true, assignableRoles: ['customer', 'staff', 'supervisor'] };
+  const approved = target.active !== false && (!target.enrollmentStatus || target.enrollmentStatus === 'approved');
+  if (!approved) return { ...none, needsAdministrator: true };
+  return { ...none, canEdit: true, canChangeAssignments: true, assignableRoles: ['customer', 'staff', 'supervisor'] };
 }

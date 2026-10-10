@@ -66,6 +66,18 @@ interface RpcCustomerAssignment {
 /** The server refuses to remove the warehouse's last administrator (backend migration 44). */
 const LAST_ADMIN = 'LAST_ADMIN';
 
+/**
+ * Refusals about the target's access request (backend migration 47), by the code the
+ * server names them with: a supervisor on a user whose access is not approved, and a
+ * role change on a request nobody has reviewed yet.
+ */
+const enrollmentRefusal = (code: unknown): string | null =>
+  code === 'ENROLLMENT_NOT_APPROVED'
+    ? t('errors.user.enrollmentNotApproved')
+    : code === 'ENROLLMENT_PENDING'
+      ? t('errors.user.enrollmentPending')
+      : null;
+
 class AdminUserService {
   // ===========================================================================
   // LIST USERS
@@ -270,7 +282,7 @@ class AdminUserService {
           // The server names this refusal by a code, not a sentence (migration 44).
           error: responseData?.error === LAST_ADMIN
             ? t('errors.user.lastAdminRole')
-            : serverText(responseData?.error, t('errors.user.updateRoleFailed')),
+            : enrollmentRefusal(responseData?.error) ?? serverText(responseData?.error, t('errors.user.updateRoleFailed')),
         };
       }
 
@@ -329,7 +341,7 @@ class AdminUserService {
           success: false,
           error: responseData?.error === LAST_ADMIN
             ? t('errors.user.lastAdminDeactivate')
-            : serverText(responseData?.error, t('errors.user.updateStatusFailed')),
+            : enrollmentRefusal(responseData?.error) ?? serverText(responseData?.error, t('errors.user.updateStatusFailed')),
         };
       }
 
