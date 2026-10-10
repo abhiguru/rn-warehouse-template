@@ -95,3 +95,16 @@ export function serverText(text: unknown, fallback: string): string {
   if (getLanguage() === 'en') return unwrapDatabaseError(text) || fallback;
   return serverReason(text) ?? fallback;
 }
+
+/**
+ * What to show when a request failed and the caller holds both the server's raw error
+ * text and the app's own message for the action. The raw text is developer wording
+ * ("permission denied for function ...", "invalid input syntax for type uuid") and is
+ * never shown; when it names a reason the app knows, that reason is shown in the app's
+ * words, otherwise the app's own message.
+ */
+export function failureText(rawError: unknown, ownMessage: unknown, fallback: string): string {
+  const reason = typeof rawError === 'string' ? serverReason(rawError) : undefined;
+  if (reason) return reason;
+  return typeof ownMessage === 'string' && ownMessage.trim() !== '' ? ownMessage : fallback;
+}

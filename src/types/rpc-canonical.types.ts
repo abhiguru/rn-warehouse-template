@@ -108,8 +108,13 @@ export interface RpcCustomerDetails {
 export interface RpcSupervisorDetails {
   id: string;
   name: string;
-  mobile: string | null;
-  role: 'admin' | 'supervisor' | 'staff';
+  /**
+   * Sent to administrators, supervisors and staff only. A customer account gets the
+   * name without the number (server migration 45), so there is nothing to call.
+   */
+  mobile?: string | null;
+  /** Sent to administrators, supervisors and staff only (server migration 45). */
+  role?: 'admin' | 'supervisor' | 'staff';
   display_name: string | null;
 }
 

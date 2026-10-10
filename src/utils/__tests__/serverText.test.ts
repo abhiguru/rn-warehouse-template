@@ -1,6 +1,6 @@
 import { setLanguage } from '@/i18n/language';
 import { t } from '@/i18n';
-import { serverReason, serverText } from '../serverText';
+import { failureText, serverReason, serverText } from '../serverText';
 
 afterEach(() => setLanguage('en'));
 
@@ -157,5 +157,39 @@ describe('business-rule refusals in English', () => {
   it('keep the server sentence, including one that names a Gujarati item', () => {
     expect(serverText('Cannot delete item "લસણ" - has 3 existing dispatches', 'x')).toBe('Cannot delete item "લસણ" - has 3 existing dispatches');
     expect(serverText('Discount exceeds the invoice amount', 'x')).toBe('Discount exceeds the invoice amount');
+  });
+});
+
+// The server's refusals in user management (migration 45) and the last-administrator
+// rule are permission refusals to the reader, not "customer assignment required".
+describe('user management refusals', () => {
+  it.each([
+    "Supervisors cannot change their own or an administrator's customer assignments",
+    'Administrator required',
+    'Supervisors cannot modify admin users',
+    'You cannot change your own role',
+    'You cannot change your own status',
+    'Staff access required',
+    'Customer access denied',
+  ])('"%s" is a permission refusal in Gujarati', (text) => {
+    setLanguage('gu');
+    expect(serverText(text, 'x')).toBe(t('errors.parsed.noPermission'));
+  });
+});
+
+describe('a failed request with a raw error and the app message', () => {
+  it.each([
+    ['permission denied for function get_grn_item_dispatches', 'errors.parsed.noPermission'],
+    ['Staff access required', 'errors.parsed.noPermission'],
+    ['GRN item not found or access denied', 'errors.parsed.itemNotFound'],
+  ] as const)('names the reason of "%s" in the app words', (raw, key) => {
+    expect(failureText(raw, 'Failed to load dispatches', 'fallback')).toBe(t(key));
+  });
+
+  it('never shows developer text: an unknown raw error gives the app message', () => {
+    const raw = 'invalid input syntax for type uuid: "2660"';
+    expect(failureText(raw, 'Failed to load dispatches', 'fallback')).toBe('Failed to load dispatches');
+    expect(failureText(raw, undefined, 'fallback')).toBe('fallback');
+    expect(failureText(undefined, '  ', 'fallback')).toBe('fallback');
   });
 });

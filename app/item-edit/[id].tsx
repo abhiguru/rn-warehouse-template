@@ -73,27 +73,13 @@ const ItemEditScreen: React.FC = () => {
     }
   }, [id]);
 
-  // Debug: Log when formData changes
-  useEffect(() => {
-    console.log('[ItemEdit] formData state updated:', formData);
-  }, [formData]);
-
   const loadItemData = async () => {
     try {
       setLoading(true);
-      console.log('[ItemEdit] Loading item with ID:', id);
       const result = await itemService.getItemById(id!);
-      console.log('[ItemEdit] getItemById result:', JSON.stringify(result, null, 2));
 
       if (result.success && result.data) {
         const item = result.data;
-        console.log('[ItemEdit] Parsed item data:', {
-          id: item.id,
-          name: item.name,
-          packaging: item.packaging,
-          description: item.description,
-          active: item.active,
-        });
         setOriginalItem(item);
         setFormData({
           name: item.name || '',

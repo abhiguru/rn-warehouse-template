@@ -9,10 +9,18 @@ import type { InvoiceDetailsResponse } from '@/services/invoice-service';
 const mockAuth = { userProfile: { role: 'admin' } };
 const grnId = '00000000-0000-4000-8000-000000000123';
 
+// The screen's focus callback, kept so a test can bring the screen "back into view".
+let mockFocus: (() => void) | undefined;
 jest.mock('expo-router', () => ({
   useLocalSearchParams: () => ({ id: 'fictional-invoice' }),
   router: { push: jest.fn(), replace: jest.fn() },
   Stack: { Screen: () => null },
+  useFocusEffect: (callback: () => void) => {
+    const React = require('react');
+    mockFocus = callback;
+    // The navigator runs the callback once when the screen first gains focus.
+    React.useEffect(() => { callback(); }, [callback]);
+  },
 }));
 jest.mock('@/store/hooks', () => ({
   useAppDispatch: () => jest.fn(),
@@ -119,4 +127,14 @@ it('opens a billed dispatch by its id, not by its printed number', async () => {
   await act(async () => { link!.props.onPress(); });
 
   expect(router.push).toHaveBeenCalledWith(`/dispatch-details/${dispatchId}`);
+});
+
+it('loads the invoice again when the screen comes back into view after an edit', async () => {
+  await openBreakdown({ id: grnId, gr_no: 'IRP05' });
+  // The mount loads once; the first focus is the mount and does not load again.
+  expect(getInvoiceDetails).toHaveBeenCalledTimes(1);
+
+  await act(async () => { mockFocus!(); });
+  expect(getInvoiceDetails).toHaveBeenCalledTimes(2);
+  expect(getInvoiceDetails).toHaveBeenLastCalledWith('fictional-invoice');
 });

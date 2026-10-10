@@ -56,7 +56,7 @@ export const DispatchOverviewTab: React.FC<DispatchOverviewTabProps> = ({
   source_order_no,
   dispatch_id,
   disp_no,
-  can_edit = true,
+  can_edit = false,
   can_delete,
   onEdit,
   onDelete,

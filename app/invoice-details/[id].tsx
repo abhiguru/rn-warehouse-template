@@ -5,10 +5,10 @@
  * breakdown), share and print actions, and loading and not-found states.
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { View, Text, Pressable } from 'react-native';
 import { DetailSkeleton } from '@/components/skeletons';
-import { useLocalSearchParams, router, Stack } from 'expo-router';
+import { useLocalSearchParams, router, Stack, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import {
@@ -161,6 +161,19 @@ function InvoiceDetailScreen() {
       fetchInvoiceDetails();
     }
   }, [id, user, session, userProfile]);
+
+  // Load again when the screen comes back into view (after an edit this screen is still
+  // on the stack under the list, and Back would show the amounts from before the edit).
+  // The first focus is the mount, which the effect above already loads.
+  const focusCountRef = useRef(0);
+  const fetchInvoiceDetailsRef = useRef(fetchInvoiceDetails);
+  fetchInvoiceDetailsRef.current = fetchInvoiceDetails;
+  useFocusEffect(
+    useCallback(() => {
+      focusCountRef.current += 1;
+      if (focusCountRef.current > 1) void fetchInvoiceDetailsRef.current();
+    }, [])
+  );
 
   // Handle GRN navigation
   const handleViewGRN = (grnId: string) => {

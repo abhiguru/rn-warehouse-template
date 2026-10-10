@@ -15,7 +15,6 @@ export class UserService {
   // Get user by ID with customer assignments
   static async getUserById(userId: string): Promise<UserServiceResponse<UserProfile>> {
     try {
-      console.log('[UserService] Fetching user by ID:', userId);
 
       if (!userId) {
         return {
@@ -26,9 +25,7 @@ export class UserService {
       }
 
       // Get authenticated client (handles JWT auth properly)
-      console.log('[UserService] Getting authenticated client...');
       const client = await getAuthenticatedClient();
-      console.log('[UserService] Got authenticated client, fetching user profile...');
 
       // Fetch user profile - try by id first, then by auth_user_id
       let userProfile = null;
@@ -41,10 +38,6 @@ export class UserService {
         .eq('id', userId)
         .maybeSingle();
 
-      console.log('[UserService] Query by id result:', {
-        found: !!profileById,
-        error: errorById?.message
-      });
 
       if (profileById) {
         userProfile = profileById;
@@ -56,10 +49,6 @@ export class UserService {
           .eq('auth_user_id', userId)
           .maybeSingle();
 
-        console.log('[UserService] Query by auth_user_id result:', {
-          found: !!profileByAuthId,
-          error: errorByAuthId?.message
-        });
 
         userProfile = profileByAuthId;
         userError = errorByAuthId;
@@ -122,11 +111,6 @@ export class UserService {
         assignedCustomers: assignedCustomers
       };
 
-      console.log('[UserService] User fetched successfully:', {
-        userId: mappedUser.id,
-        role: mappedUser.role,
-        assignedCustomersCount: assignedCustomers.length
-      });
 
       return {
         success: true,
@@ -208,7 +192,6 @@ export class UserService {
       // Fetch updated user data
       const updatedUserResult = await this.getUserById(userId);
       
-      console.log('[UserService] User updated successfully');
 
       return {
         success: true,
@@ -238,7 +221,6 @@ export class UserService {
    */
   static async deleteAccount(): Promise<UserServiceResponse<void>> {
     try {
-      console.log('[UserService] Initiating account deletion...');
 
       const client = await getAuthenticatedClient();
 
@@ -254,7 +236,6 @@ export class UserService {
         };
       }
 
-      console.log('[UserService] Account deletion RPC response:', data);
 
       // Check RPC response for success flag
       const rpcResponse = data as { success: boolean; message?: string; error?: string; code?: string } | null;

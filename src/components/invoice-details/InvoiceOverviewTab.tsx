@@ -186,7 +186,7 @@ export const InvoiceOverviewTab: React.FC<InvoiceOverviewTabProps> = ({
   on_view_grn,
   on_edit_invoice,
   on_delete_invoice,
-  can_edit = true,
+  can_edit = false,
   can_delete,
   is_deleting = false,
   on_share_pdf,

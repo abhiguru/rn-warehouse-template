@@ -215,7 +215,9 @@ const ImageTile: React.FC<{
               source={{ uri: item.image_url }}
               style={styles.image}
               contentFit="cover"
-              cachePolicy="memory-disk"
+              // A signed URL is new on every load, so a disk copy is never reused and
+              // would only leave the private photo on the device.
+              cachePolicy="memory"
               transition={150}
               onLoadStart={() => {
                 setIsLoading(true);
@@ -282,6 +284,37 @@ const ImageTile: React.FC<{
   );
 };
 
+/**
+ * One filter chip. Declared at module level: declared inside the tab it was a new
+ * component on every render, so the chips were remounted and lost screen-reader focus.
+ */
+const FilterButton: React.FC<{
+  label: string;
+  count: number;
+  selected: boolean;
+  onSelect: () => void;
+  styles: Styles;
+  t: ThemeTokens;
+}> = ({ label, count, selected, onSelect, styles, t }) => (
+  <Pressable
+    style={({ pressed }) => [
+      styles.filterChip,
+      pressed && !selected && styles.filterChipPressed,
+      selected && styles.filterChipSelected,
+    ]}
+    onPress={onSelect}
+    hitSlop={{ top: space.sm, bottom: space.sm }}
+    accessibilityRole="button"
+    accessibilityLabel={`${label}, ${formatCount(count, 'image')}`}
+    accessibilityState={{ selected }}
+  >
+    {selected && <Icon name="check" size={iconSize.sm} color={t.brand.tint} />}
+    <Text style={[styles.filterText, selected && styles.filterTextSelected]} maxFontSizeMultiplier={1.6}>
+      {label} ({formatNumber(count)})
+    </Text>
+  </Pressable>
+);
+
 export const GRNImagesTab: React.FC<GRNImagesTabProps> = ({
   images,
   onImagePress,
@@ -338,29 +371,6 @@ export const GRNImagesTab: React.FC<GRNImagesTabProps> = ({
     );
   }
 
-  const FilterButton = ({ type, label, count }: { type: FilterType; label: string; count: number }) => {
-    const selected = filter === type;
-    return (
-      <Pressable
-        style={({ pressed }) => [
-          styles.filterChip,
-          pressed && !selected && styles.filterChipPressed,
-          selected && styles.filterChipSelected,
-        ]}
-        onPress={() => setFilter(type)}
-        hitSlop={{ top: space.sm, bottom: space.sm }}
-        accessibilityRole="button"
-        accessibilityLabel={`${label}, ${formatCount(count, 'image')}`}
-        accessibilityState={{ selected }}
-      >
-        {selected && <Icon name="check" size={iconSize.sm} color={t.brand.tint} />}
-        <Text style={[styles.filterText, selected && styles.filterTextSelected]} maxFontSizeMultiplier={1.6}>
-          {label} ({formatNumber(count)})
-        </Text>
-      </Pressable>
-    );
-  };
-
   const renderImage = ({ item, index }: { item: GRNImageData; index: number }) => (
     <ImageTile
       item={item}
@@ -375,9 +385,9 @@ export const GRNImagesTab: React.FC<GRNImagesTabProps> = ({
     <View style={styles.container}>
       {/* Quick filters and add action */}
       <View style={styles.filterRow}>
-        <FilterButton type="all" label={tr('common.all')} count={images.length} />
-        <FilterButton type="header" label={tr('grn.images.filterHeader')} count={headerCount} />
-        <FilterButton type="item" label={tr('common.items')} count={itemCount} />
+        <FilterButton label={tr('common.all')} count={images.length} selected={filter === 'all'} onSelect={() => setFilter('all')} styles={styles} t={t} />
+        <FilterButton label={tr('grn.images.filterHeader')} count={headerCount} selected={filter === 'header'} onSelect={() => setFilter('header')} styles={styles} t={t} />
+        <FilterButton label={tr('common.items')} count={itemCount} selected={filter === 'item'} onSelect={() => setFilter('item')} styles={styles} t={t} />
         {onUpload && (
           <Pressable
             accessibilityRole="button"

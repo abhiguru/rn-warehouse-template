@@ -169,6 +169,8 @@ describe.each(THEMES)('shared sheets in %s %s', (brand, mode) => {
     expect(hasStyle(tree, 'backgroundColor', t.brand.tint)).toBe(true);
     const tabs = tree.root.findAll(n => n.props.accessibilityRole === 'tab' && typeof n.type !== 'string');
     expect(tabs.some(tab => tab.props.accessibilityState?.selected)).toBe(true);
+    // The badge is announced with the tab's own name, not as "3 items" for every tab.
+    expect([...new Set(tabs.map(tab => tab.props.accessibilityLabel))]).toEqual(['Overview', 'Items, 3']);
     act(() => tree.unmount());
   });
 });

@@ -71,11 +71,8 @@ const UserEditScreen: React.FC = () => {
 
   // Load user data
   const loadUserData = useCallback(async () => {
-    console.log('[UserEditScreen] loadUserData called');
-    console.log('[UserEditScreen] userId from params:', userId);
 
     if (!userId) {
-      console.log('[UserEditScreen] No userId provided, going back');
       showAlert(tr('users.selfEdit.couldNotOpenTitle'), tr('users.selfEdit.couldNotOpenMessage'));
       router.back();
       return;
@@ -83,15 +80,8 @@ const UserEditScreen: React.FC = () => {
 
     try {
       setLoading(true);
-      console.log('[UserEditScreen] Calling UserService.getUserById with:', userId);
 
       const result = await UserService.getUserById(userId);
-      console.log('[UserEditScreen] getUserById result:', {
-        success: result.success,
-        message: result.message,
-        error: result.error,
-        hasData: !!result.data
-      });
       
       if (!result.success || !result.data) {
         showAlert(tr('users.selfEdit.couldNotLoadTitle'), serverText(result.message, tr('common.checkConnection')));
@@ -113,11 +103,6 @@ const UserEditScreen: React.FC = () => {
         assignedCustomerIds: (userData.assignedCustomers || []).map(c => c.id)
       });
 
-      if (__DEV__) console.log('[UserEditScreen] User data loaded:', {
-        name: userData.name,
-        role: userData.role,
-        assignedCustomersCount: userData.assignedCustomers?.length || 0
-      });
     } catch (error) {
       console.error('[UserEditScreen] Load error:', error);
       showAlert(tr('users.selfEdit.couldNotLoadTitle'), tr('common.checkConnection'));
@@ -140,7 +125,6 @@ const UserEditScreen: React.FC = () => {
 
     try {
       setSaving(true);
-      if (__DEV__) console.log('[UserEditScreen] Saving user data:', formData);
 
       const result = await UserService.updateUser(userId, formData);
 
@@ -152,7 +136,6 @@ const UserEditScreen: React.FC = () => {
             name: formData.name,
           };
           dispatch(setUserProfile(updatedProfile));
-          console.log('[UserEditScreen] Updated Redux userProfile:', updatedProfile.name);
         }
 
         showAlert(

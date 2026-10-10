@@ -59,8 +59,9 @@ export const ActionsSection: React.FC<ActionsSectionProps> = ({
   onPrint,
   isPrintLoading = false,
   onEdit,
-  canEdit = true,
-  canDelete, // If not provided, defaults to canEdit for backward compatibility
+  // Hidden unless the caller says the role may: a forgotten prop must not show Edit or Delete.
+  canEdit = false,
+  canDelete, // If not provided, follows canEdit
   onDelete,
   isDeleting = false,
 }) => {

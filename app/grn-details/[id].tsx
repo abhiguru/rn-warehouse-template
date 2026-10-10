@@ -56,7 +56,7 @@ import { deleteGRNImage, uploadGRNImage } from '@/features/grn/services/imageUpl
 import { showAlert } from '@/utils/alert';
 import { formatCount } from '@/utils/formatters';
 import { t as tr, formatIdentifier } from '@/i18n';
-import { serverText } from '@/utils/serverText';
+import { serverText, failureText } from '@/utils/serverText';
 const makeStyles = (t: ThemeTokens) => ({
   container: {
     flex: 1,
@@ -353,7 +353,9 @@ function GRNDetailScreen() {
           }
         } else if (!firstError) {
           firstError =
-            serverText(result.error || result.message, tr('grn.details.dispatchHistoryFailed'));
+            // result.error is the raw PostgREST text and stays in the log; the reader gets
+            // the reason in the app's words, or the service's own message.
+            failureText(result.error, result.message, tr('grn.details.dispatchHistoryFailed'));
         }
       });
 
