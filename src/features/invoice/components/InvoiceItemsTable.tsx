@@ -6,24 +6,24 @@
  * charge, labour and tax cells.
  */
 import React, { useMemo, useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, Pressable, TextInput, ScrollView, Platform } from 'react-native';
+import { View, Text, StyleSheet, Pressable, TextInput, ScrollView, Platform, useWindowDimensions } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
-import { fontWeight, iconSize, layout, radius, space, touchTarget, typography, trackedText } from '@/theme/tokens';
+import { byLanguage, fontWeight, iconSize, layout, radius, space, touchTarget, typography, trackedText } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { InvoiceItemData, GroupedInvoiceItems } from '@/types/invoice.types';
 import { useAppSelector } from '@/store/hooks';
 import { selectInvoiceFormBulkPricing } from '@/store/slices/invoiceFormSlice';
 import { formatInvoiceAmount } from '@/utils/invoiceCalculations';
 import { formatCount, formatDate, formatWeight } from '@/utils/formatters';
-import { localizeDigits, normalizeDigits, t as tr, formatIdentifier } from '@/i18n';
+import { getLanguage, localizeDigits, normalizeDigits, t as tr, formatIdentifier } from '@/i18n';
 
 /** Table rows with editable cells keep the full 44 minimum (§13.7). */
 const ROW_MIN_HEIGHT = 44;
 
 const COLUMN_WIDTH = {
   dispatch: 104,
-  qty: 64,
+  qty: 80,
   duration: 76,
   charge: 88,
   labour: 88,
@@ -31,12 +31,38 @@ const COLUMN_WIDTH = {
   total: 120,
 } as const;
 
+/** Gujarati words and digits are wider: `૧.૬ મહિના` does not fit the Latin duration column. */
+const COLUMN_WIDTH_GUJARATI = { ...COLUMN_WIDTH, duration: 96 } as const;
+
+/** Columns stop growing here; beyond it the table is already far wider than the screen. */
+const MAX_COLUMN_FONT_SCALE = 2;
+
+type ColumnKey = keyof typeof COLUMN_WIDTH;
+
+/**
+ * Column widths for the device font size. The text inside a cell grows with the
+ * font size, so the space between the cell paddings grows with it; the paddings do not.
+ */
+export const invoiceTableColumnWidths = (fontScale: number): Record<ColumnKey, number> => {
+  const base = byLanguage<Record<ColumnKey, number>>(COLUMN_WIDTH, COLUMN_WIDTH_GUJARATI);
+  const scale = Math.min(Math.max(fontScale, 1), MAX_COLUMN_FONT_SCALE);
+  const padding = space.md * 2;
+  const widths = {} as Record<ColumnKey, number>;
+  (Object.keys(base) as ColumnKey[]).forEach((key) => {
+    widths[key] = Math.round(padding + (base[key] - padding) * scale);
+  });
+  return widths;
+};
+
 // Format number with Indian grouping - show decimals only if needed
 const formatNumber = (value: number, maxDecimals: number = 2): string => {
   if (!value) return localizeDigits('0');
   return localizeDigits(new Intl.NumberFormat('en-IN', { maximumFractionDigits: maxDecimals }).format(value));
 };
 
+
+/** A value too long for its column shrinks instead of breaking onto a second line. */
+const oneLine = { numberOfLines: 1, adjustsFontSizeToFit: true, minimumFontScale: 0.7 } as const;
 
 const tabular = { fontVariant: ['tabular-nums' as const] };
 
@@ -257,15 +283,6 @@ const makeStyles = (t: ThemeTokens) => ({
     textAlign: 'right' as const,
   },
 
-  // Column widths: text left, numbers right
-  colDispatch: { width: COLUMN_WIDTH.dispatch, alignItems: 'flex-start' as const },
-  colQty: { width: COLUMN_WIDTH.qty, alignItems: 'flex-end' as const },
-  colDuration: { width: COLUMN_WIDTH.duration, alignItems: 'flex-end' as const },
-  colCharge: { width: COLUMN_WIDTH.charge, alignItems: 'flex-end' as const },
-  colLabour: { width: COLUMN_WIDTH.labour, alignItems: 'flex-end' as const },
-  colTax: { width: COLUMN_WIDTH.tax, alignItems: 'flex-end' as const },
-  colTotal: { width: COLUMN_WIDTH.total, alignItems: 'flex-end' as const },
-
   // Dispatch cell
   dispatchNo: {
     ...typography.subhead,
@@ -383,6 +400,21 @@ export const InvoiceItemsTable: React.FC<InvoiceItemsTableProps> = ({
   onEditPricing,
 }) => {
   const styles = useThemedStyles(makeStyles);
+  const { fontScale } = useWindowDimensions();
+  const language = getLanguage();
+  // Column widths: text left, numbers right. They differ by language too.
+  const cols = useMemo(() => {
+    const width = invoiceTableColumnWidths(fontScale);
+    return StyleSheet.create({
+      colDispatch: { width: width.dispatch, alignItems: 'flex-start' },
+      colQty: { width: width.qty, alignItems: 'flex-end' },
+      colDuration: { width: width.duration, alignItems: 'flex-end' },
+      colCharge: { width: width.charge, alignItems: 'flex-end' },
+      colLabour: { width: width.labour, alignItems: 'flex-end' },
+      colTax: { width: width.tax, alignItems: 'flex-end' },
+      colTotal: { width: width.total, alignItems: 'flex-end' },
+    });
+  }, [fontScale, language]);
   const t = useTokens();
 
   // Get bulk pricing from Redux
@@ -653,7 +685,7 @@ export const InvoiceItemsTable: React.FC<InvoiceItemsTableProps> = ({
                   onBlur={() => setEditingCell(null)}
                 />
               ) : (
-                <Text style={styles.tableDataText}>{display}</Text>
+                <Text style={styles.tableDataText} {...oneLine}>{display}</Text>
               )}
             </Pressable>
           );
@@ -783,25 +815,25 @@ export const InvoiceItemsTable: React.FC<InvoiceItemsTableProps> = ({
                   <View>
                     {/* Header row */}
                     <View style={styles.tableHeaderRow}>
-                      <View style={[styles.tableHeaderCell, styles.colDispatch]}>
+                      <View style={[styles.tableHeaderCell, cols.colDispatch]}>
                         <Text style={styles.tableHeaderText}>{tr('common.dispatch')}</Text>
                       </View>
-                      <View style={[styles.tableHeaderCell, styles.colQty]}>
+                      <View style={[styles.tableHeaderCell, cols.colQty]}>
                         <Text style={[styles.tableHeaderText, styles.tableHeaderTextNumeric]}>{tr('invoice.lineItem.colQty')}</Text>
                       </View>
-                      <View style={[styles.tableHeaderCell, styles.colDuration]}>
+                      <View style={[styles.tableHeaderCell, cols.colDuration]}>
                         <Text style={[styles.tableHeaderText, styles.tableHeaderTextNumeric]}>{tr('invoice.label.duration')}</Text>
                       </View>
-                      <View style={[styles.tableHeaderCell, styles.colCharge]}>
+                      <View style={[styles.tableHeaderCell, cols.colCharge]}>
                         <Text style={[styles.tableHeaderText, styles.tableHeaderTextNumeric]}>{tr('invoice.table.colCharge')}</Text>
                       </View>
-                      <View style={[styles.tableHeaderCell, styles.colLabour]}>
+                      <View style={[styles.tableHeaderCell, cols.colLabour]}>
                         <Text style={[styles.tableHeaderText, styles.tableHeaderTextNumeric]}>{tr('invoice.table.colLabour')}</Text>
                       </View>
-                      <View style={[styles.tableHeaderCell, styles.colTax]}>
+                      <View style={[styles.tableHeaderCell, cols.colTax]}>
                         <Text style={[styles.tableHeaderText, styles.tableHeaderTextNumeric]}>{tr('invoice.itemCard.taxLabel')}</Text>
                       </View>
-                      <View style={[styles.tableHeaderCell, styles.colTotal]}>
+                      <View style={[styles.tableHeaderCell, cols.colTotal]}>
                         <Text style={[styles.tableHeaderText, styles.tableHeaderTextNumeric]}>{tr('common.total')}</Text>
                       </View>
                     </View>
@@ -810,51 +842,51 @@ export const InvoiceItemsTable: React.FC<InvoiceItemsTableProps> = ({
                     {allItems.map((item) => (
                       <View key={item.temp_id} style={styles.tableDataRow}>
                         {/* Dispatch info */}
-                        <View style={[styles.tableDataCell, styles.colDispatch]}>
+                        <View style={[styles.tableDataCell, cols.colDispatch]}>
                           <Text style={styles.dispatchNo}>{item.dispatch_no}</Text>
                           <Text style={styles.dispatchDate}>{formatDate(item.dispatch_date, 'short')}</Text>
                         </View>
 
                         {/* Qty - read only */}
-                        <View style={[styles.tableDataCell, styles.colQty]}>
-                          <Text style={styles.tableDataText}>{formatNumber(item.qty)}</Text>
+                        <View style={[styles.tableDataCell, cols.colQty]}>
+                          <Text style={styles.tableDataText} {...oneLine}>{formatNumber(item.qty)}</Text>
                         </View>
 
                         {/* Duration - read only */}
                         <View
-                          style={[styles.tableDataCell, styles.colDuration]}
+                          style={[styles.tableDataCell, cols.colDuration]}
                           accessible
                           accessibilityLabel={`${formatCount(Math.round(item.duration * 10) / 10, 'month')}, ${formatCount(item.no_of_days, 'day')}`}
                         >
-                          <Text style={styles.tableDataText}>{tr('invoice.table.monthsShort', { months: formatNumber(item.duration, 1) })}</Text>
-                          <Text style={styles.secondaryText}>{formatCount(item.no_of_days, 'day')}</Text>
+                          <Text style={styles.tableDataText} {...oneLine}>{tr('invoice.table.monthsShort', { months: formatNumber(item.duration, 1) })}</Text>
+                          <Text style={styles.secondaryText} {...oneLine}>{formatCount(item.no_of_days, 'day')}</Text>
                         </View>
 
                         {renderEditableCell(
                           item,
                           'charge',
-                          styles.colCharge,
+                          cols.colCharge,
                           tr('invoice.label.charge'),
                           item.charge > 0 ? formatNumber(item.charge) : '—'
                         )}
                         {renderEditableCell(
                           item,
                           'labour_rate',
-                          styles.colLabour,
+                          cols.colLabour,
                           tr('invoice.label.labourRate'),
                           item.labour_rate > 0 ? formatNumber(item.labour_rate) : '—'
                         )}
                         {renderEditableCell(
                           item,
                           'tax',
-                          styles.colTax,
+                          cols.colTax,
                           tr('invoice.itemCard.taxA11y'),
                           item.tax > 0 ? formatNumber(item.tax, 1) : '—'
                         )}
 
                         {/* Total - calculated */}
-                        <View style={[styles.tableDataCell, styles.colTotal]}>
-                          <Text style={[styles.tableDataText, styles.tableTotalText]}>
+                        <View style={[styles.tableDataCell, cols.colTotal]}>
+                          <Text style={[styles.tableDataText, styles.tableTotalText]} {...oneLine}>
                             {formatInvoiceAmount(item.item_total)}
                           </Text>
                         </View>

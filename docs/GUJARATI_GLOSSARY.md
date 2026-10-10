@@ -167,6 +167,10 @@ From the Unicode locale data that Android uses.
 
 ## Wording review with the owner (2026-10-10)
 
+Confirmed by the owner on 2026-10-10 (these five followed from the review answers and were asked separately):
+લૉગઆઉટ; નંગ for a general quantity, so જથ્થો means only a lot; થોડી જાવક થઈ and પૂરી જાવક થઈ; મુદત only on invoices,
+while a report period stays સમયગાળો.
+
 The owner chose these one by one after seeing the converted app. They override earlier rows where they differ.
 
 | English | Gujarati | Replaces |
