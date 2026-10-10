@@ -112,12 +112,6 @@ export default function TabsLayout() {
               }}
             />
             <Tabs.Screen
-              name="order-queue"
-              options={{
-                title: 'Queue',
-              }}
-            />
-            <Tabs.Screen
               name="grn"
               options={{
                 title: 'GRN',

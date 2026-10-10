@@ -276,7 +276,6 @@ describe('TabsLayout authentication gate', () => {
 
     const expectedScreens = [
       'index',
-      'order-queue',
       'grn',
       'dispatch',
       'invoices',

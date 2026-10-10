@@ -72,6 +72,8 @@ export interface OrderFlashListProps {
   onItemPress?: (order: Order) => void;
   /** Show only orders with items */
   hasItemsOnly?: boolean;
+  /** Rendered directly under the header in every state, e.g. a view switch. */
+  subHeader?: React.ReactNode;
 }
 
 // ============================================================================
@@ -138,6 +140,7 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
   customerId,
   onItemPress,
   hasItemsOnly = false,
+  subHeader,
 }) => {
   const fetchInProgressRef = useRef(false);
   const liveRefreshPendingRef = useRef(false);
@@ -528,6 +531,7 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
         <View style={styles.header}>
           <Text style={styles.headerTitle} accessibilityRole="header">Orders</Text>
         </View>
+        {subHeader}
         <ListSkeleton count={5} metricsCount={3} />
       </View>
     );
@@ -540,6 +544,7 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
         <View style={styles.header}>
           <Text style={styles.headerTitle} accessibilityRole="header">Orders</Text>
         </View>
+        {subHeader}
         <ErrorStateView
           presentation="inline"
           title="Couldn't load orders"
@@ -558,6 +563,7 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
           <Text style={styles.headerTitle} accessibilityRole="header">Orders</Text>
           {headerActions(false)}
         </View>
+        {subHeader}
         <EmptyState
           isFiltered={showWithItemsOnly}
           onClearFilters={handleClearFilters}
@@ -582,6 +588,7 @@ const OrderFlashList: React.FC<OrderFlashListProps> = ({
         <Text style={styles.headerTitle} accessibilityRole="header">Orders</Text>
         {headerActions(true)}
       </View>
+      {subHeader}
 
       {/* Stale data warning: critical message strip */}
       {error && (

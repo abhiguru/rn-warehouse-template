@@ -52,6 +52,8 @@ import type { ThemeTokens } from '@/theme/tokens';
 export interface SupervisorOrderQueueListProps {
   /** Optional customer name filter */
   customerFilter?: string;
+  /** Rendered directly under the header in every state, e.g. a view switch. */
+  subHeader?: React.ReactNode;
 }
 
 // ============================================================================
@@ -92,6 +94,7 @@ EmptyState.displayName = 'EmptyState';
 
 const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = ({
   customerFilter: externalFilter,
+  subHeader,
 }) => {
   const fetchInProgressRef = useRef(false);
   const liveRefreshPendingRef = useRef(false);
@@ -378,6 +381,7 @@ const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = ({
         <View style={styles.header}>
           <Text style={styles.headerTitle} accessibilityRole="header">Order queue</Text>
         </View>
+        {subHeader}
         <ListSkeleton count={5} />
       </View>
     );
@@ -390,6 +394,7 @@ const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = ({
         <View style={styles.header}>
           <Text style={styles.headerTitle} accessibilityRole="header">Order queue</Text>
         </View>
+        {subHeader}
         <ErrorStateView
           presentation="inline"
           title="Couldn't load the order queue"
@@ -429,6 +434,7 @@ const SupervisorOrderQueueList: React.FC<SupervisorOrderQueueListProps> = ({
           </Pressable>
         </View>
       </View>
+      {subHeader}
 
       {/* Search Bar */}
       <View style={styles.searchContainer}>

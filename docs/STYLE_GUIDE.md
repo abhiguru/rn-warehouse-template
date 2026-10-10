@@ -877,7 +877,7 @@ More header rules:
 - Search bars in headers: `background.base` fill, `radius.button`, minimum height 44, no border, `magnify` icon in `icon.secondary`.
 - Top-level tab list headers use `largeTitle` (or `title1` when actions crowd it); other screens use the stack header's `headline` title. Native-stack `headerTitleStyle` takes only `fontSize`, `fontWeight` and `color` from `typography.headline`.
 - Detail tabs share the width when they fit (four on phones) and scroll sideways when they do not.
-- Staff currently have six bottom tabs, one more than Fiori's five; the sixth (Reports) stays until a product decision moves it.
+- Five bottom tabs for every role: Orders, GRN, Dispatch, Invoices, Reports. The order queue is not a tab: warehouse roles switch between Orders and Queue with a segmented control under the Orders header (`app/(tabs)/index.tsx`). A second view of the same object goes in its tab like this, not in a new tab.
 
 ### 13.9 Dialogs, sheets and messages
 

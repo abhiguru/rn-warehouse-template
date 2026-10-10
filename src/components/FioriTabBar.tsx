@@ -27,7 +27,6 @@ import type { Tabs } from 'expo-router';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
-import { useRoleBasedAccess } from '@/hooks/useRoleBasedAccess';
 import {
   fontWeight,
   iconSize,
@@ -44,15 +43,11 @@ const BADGE_SIZE = 18;
 // Icon mapping for each tab route
 const TAB_ICONS: Record<string, { outline: string; filled: string }> = {
   index: { outline: 'clipboard-text-outline', filled: 'clipboard-text' },
-  'order-queue': { outline: 'clipboard-list-outline', filled: 'clipboard-list' },
   grn: { outline: 'package-variant', filled: 'package-variant-closed' },
   dispatch: { outline: 'truck-fast-outline', filled: 'truck-fast' },
   invoices: { outline: 'receipt-text-outline', filled: 'receipt-text' },
   reports: { outline: 'warehouse', filled: 'warehouse' },
 };
-
-// Tabs that should only be visible to warehouse roles (admin/supervisor/staff)
-const STAFF_ONLY_TABS = ['order-queue'];
 
 /** Props Expo Router passes to a custom tabBar. */
 type BottomTabBarProps = Parameters<NonNullable<React.ComponentProps<typeof Tabs>['tabBar']>>[0];
@@ -71,18 +66,7 @@ export default function FioriTabBar({
   const insets = useSafeAreaInsets();
   const t = useTokens();
   const styles = useThemedStyles(makeStyles);
-  const { canManageOrders } = useRoleBasedAccess();
-
-  // Filter routes based on user role
-  const visibleRoutes = React.useMemo(() => {
-    return state.routes.filter(route => {
-      // Hide the order queue from customer accounts
-      if (STAFF_ONLY_TABS.includes(route.name)) {
-        return canManageOrders;
-      }
-      return true;
-    });
-  }, [state.routes, canManageOrders]);
+  const visibleRoutes = state.routes;
 
   // Small extra padding when there is no home indicator inset
   const bottomPadding = insets.bottom > 0 ? insets.bottom : Platform.OS === 'android' ? space.s6 : space.xs;
