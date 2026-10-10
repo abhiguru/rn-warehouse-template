@@ -419,7 +419,7 @@ export default function StockSummaryScreen() {
         setAllCustomersData(response.data);
       } else {
         logger.warn('All-customer load failed', { error: response.error });
-        setError(loadError());
+        setError(response.message || loadError());
       }
     } catch (err) {
       logger.error('Error fetching all customers data', err);
@@ -448,7 +448,7 @@ export default function StockSummaryScreen() {
         setData(response.data);
       } else {
         logger.warn('Customer load failed', { error: response.error });
-        setError(loadError());
+        setError(response.message || loadError());
       }
     } catch (err) {
       logger.error('Error fetching single customer data', err);

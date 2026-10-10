@@ -14,6 +14,7 @@ import type {
   GRNAutocompleteItem,
 } from '@/types/dispatch.types';
 import { serverText } from '@/utils/serverText';
+import { rpcRefusal } from '@/utils/rpcRefusal';
 
 // ============================================================================
 // SEARCH GRN NUMBERS (Autocomplete)
@@ -105,6 +106,12 @@ export const getGRNPrefixesWithStock = async (
       throw new Error(serverText(error.message, t('dispatch.service.grnPrefixesFailed')));
     }
 
+    // A denial comes back as the answer ({success:false, message}); it is not "no GRNs".
+    const refusal = Array.isArray(data) ? undefined : rpcRefusal(data);
+    if (refusal) {
+      throw new Error(serverText(refusal.text, t('dispatch.service.grnPrefixesFailed')));
+    }
+
     // Handle nested data structure: { data: [...], success: true }
     const itemsArray = Array.isArray(data) ? data : (data?.data || []);
 
@@ -166,6 +173,12 @@ export const getCustomerGRNsWithStock = async (
     if (error) {
       console.error('[GRNDetailService] Error fetching customer GRNs:', error);
       throw new Error(serverText(error.message, t('dispatch.service.customerGrnsFailed')));
+    }
+
+    // A denial comes back as the answer ({success:false, message}); it is not "no GRNs".
+    const refusal = Array.isArray(data) ? undefined : rpcRefusal(data);
+    if (refusal) {
+      throw new Error(serverText(refusal.text, t('dispatch.service.customerGrnsFailed')));
     }
 
     // Handle nested data structure: { data: [...], success: true }

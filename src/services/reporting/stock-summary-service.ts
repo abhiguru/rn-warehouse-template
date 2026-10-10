@@ -5,11 +5,12 @@
  * Returns current inventory at a glance with item-level breakdowns.
  */
 
-import {
-  getAuthenticatedClient,
-  getStoredToken,
-} from '@/config/supabaseConfig';
+import { getAuthenticatedClient } from '@/config/supabaseConfig';
 import { t } from '@/i18n';
+import { createLogger } from '@/utils/logger';
+import { reportBody, reportRefusal, refusedReport } from './reportEnvelope';
+
+const logger = createLogger('Reports');
 import type {
   StockSummaryResponse,
   StockSummaryData,
@@ -60,7 +61,7 @@ export async function getCustomerStockSummary(
   customerId: string
 ): Promise<StockSummaryResponse> {
   if (!customerId) {
-    console.error('[StockSummary] Customer ID is required');
+    logger.error('[StockSummary] Customer ID is required');
     return {
       success: false,
       data: EMPTY_RESPONSE,
@@ -70,37 +71,17 @@ export async function getCustomerStockSummary(
   }
 
   try {
-    console.time('⏱️ [StockSummary] RPC call duration');
-
-    // Debug: Check token status before making RPC call
-    const tokenData = await getStoredToken();
-    console.log('[StockSummary] Token status:', {
-      isValid: tokenData.isValid,
-      type: tokenData.type,
-      hasAuthToken: !!tokenData.authToken,
-      expiresAt: tokenData.expiresAt
-        ? new Date(tokenData.expiresAt).toISOString()
-        : 'none',
-    });
-
     const client = await getAuthenticatedClient();
 
     const rpcParams = { p_customer_uuid: customerId };
-
-    console.log(
-      '[StockSummary] Calling get_customer_stock_summary with params:',
-      rpcParams
-    );
 
     const { data, error } = await client.rpc(
       'get_customer_stock_summary',
       rpcParams
     );
 
-    console.timeEnd('⏱️ [StockSummary] RPC call duration');
-
     if (error) {
-      console.error('[StockSummary] RPC error:', error.message);
+      logger.error('[StockSummary] RPC error:', error.message);
       return {
         success: false,
         data: EMPTY_RESPONSE,
@@ -110,7 +91,6 @@ export async function getCustomerStockSummary(
     }
 
     if (!data) {
-      console.log('[StockSummary] No data returned from RPC');
       return {
         success: true,
         data: EMPTY_RESPONSE,
@@ -118,14 +98,13 @@ export async function getCustomerStockSummary(
       };
     }
 
-    // Log response size for debugging
-    const dataSize = JSON.stringify(data).length;
-    console.log(
-      `📊 [StockSummary] Response size: ${(dataSize / 1024).toFixed(2)} KB`
-    );
+    const refusal = reportRefusal(data);
+    if (refusal) {
+      return refusedReport(refusal, EMPTY_RESPONSE, t('reports.stockSummary.service.fetchFailed'));
+    }
 
     // Parse the RPC response - handle both wrapped and unwrapped formats
-    const responseData = Array.isArray(data) ? data[0] : data;
+    const responseData = reportBody(data);
 
     // Map to our expected format
     const summary: StockSummaryKPIs = {
@@ -166,17 +145,13 @@ export async function getCustomerStockSummary(
     const items = mapItems(responseData?.items);
     const outOfStockItems = mapItems(responseData?.out_of_stock_items);
 
-    console.log(
-      `[StockSummary] Parsed ${items.length} in-stock items, ${outOfStockItems.length} out-of-stock items, total qty: ${summary.total_quantity}`
-    );
-
     return {
       success: true,
       data: { summary, items, out_of_stock_items: outOfStockItems },
       message: t('reports.stockSummary.service.retrieved'),
     };
   } catch (error) {
-    console.error('[StockSummary] Unexpected error:', error);
+    logger.error('[StockSummary] Unexpected error:', error);
     return {
       success: false,
       data: EMPTY_RESPONSE,
@@ -193,26 +168,12 @@ export async function getCustomerStockSummary(
  */
 export async function getAllStockSummary(): Promise<AllStockSummaryResponse> {
   try {
-    console.time('⏱️ [AllStockSummary] RPC call duration');
-
-    // Debug: Check token status before making RPC call
-    const tokenData = await getStoredToken();
-    console.log('[AllStockSummary] Token status:', {
-      isValid: tokenData.isValid,
-      type: tokenData.type,
-      hasAuthToken: !!tokenData.authToken,
-    });
-
     const client = await getAuthenticatedClient();
-
-    console.log('[AllStockSummary] Calling get_all_stock_summary');
 
     const { data, error } = await client.rpc('get_all_stock_summary');
 
-    console.timeEnd('⏱️ [AllStockSummary] RPC call duration');
-
     if (error) {
-      console.error('[AllStockSummary] RPC error:', error.message);
+      logger.error('[AllStockSummary] RPC error:', error.message);
       return {
         success: false,
         data: EMPTY_ALL_RESPONSE,
@@ -222,7 +183,6 @@ export async function getAllStockSummary(): Promise<AllStockSummaryResponse> {
     }
 
     if (!data) {
-      console.log('[AllStockSummary] No data returned from RPC');
       return {
         success: true,
         data: EMPTY_ALL_RESPONSE,
@@ -230,14 +190,13 @@ export async function getAllStockSummary(): Promise<AllStockSummaryResponse> {
       };
     }
 
-    // Log response size for debugging
-    const dataSize = JSON.stringify(data).length;
-    console.log(
-      `📊 [AllStockSummary] Response size: ${(dataSize / 1024).toFixed(2)} KB`
-    );
+    const refusal = reportRefusal(data);
+    if (refusal) {
+      return refusedReport(refusal, EMPTY_ALL_RESPONSE, t('reports.stockSummary.service.fetchAllFailed'));
+    }
 
     // Parse the RPC response - handle both wrapped and unwrapped formats
-    const responseData = Array.isArray(data) ? data[0] : data;
+    const responseData = reportBody(data);
 
     // Map to our expected format
     const summary: AllStockSummaryKPIs = {
@@ -259,17 +218,13 @@ export async function getAllStockSummary(): Promise<AllStockSummaryResponse> {
       })
     );
 
-    console.log(
-      `[AllStockSummary] Parsed ${customers.length} customers, total qty: ${summary.total_quantity}`
-    );
-
     return {
       success: true,
       data: { summary, customers },
       message: t('reports.stockSummary.service.retrievedAll'),
     };
   } catch (error) {
-    console.error('[AllStockSummary] Unexpected error:', error);
+    logger.error('[AllStockSummary] Unexpected error:', error);
     return {
       success: false,
       data: EMPTY_ALL_RESPONSE,

@@ -901,6 +901,8 @@ export default function CustomerActivityScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<TranslationKey | null>(null);
+  // The reason the server gave for refusing the report, already in the app's language.
+  const [errorReason, setErrorReason] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'all' | 'single'>('all');
   const [selectedCustomer, setSelectedCustomer] = useState<CustomerActivityRow | null>(null);
   const [selectedPeriod, setSelectedPeriod] = useState<CustomerActivityPeriod>('last120days');
@@ -921,6 +923,7 @@ export default function CustomerActivityScreen() {
       if (showRefresh) setIsRefreshing(true);
       else setIsLoading(true);
       setError(null);
+      setErrorReason(null);
 
       const daysToUse = overrideDays ?? periodDays;
       try {
@@ -930,6 +933,7 @@ export default function CustomerActivityScreen() {
           setAllData(response.data);
         } else {
           logger.warn('List load failed', { error: response.error });
+          setErrorReason(response.message ?? null);
           setError(LIST_ERROR);
         }
       } catch (err) {
@@ -949,6 +953,7 @@ export default function CustomerActivityScreen() {
       if (showRefresh) setIsRefreshing(true);
       else setIsLoading(true);
       setError(null);
+      setErrorReason(null);
 
       const daysToUse = overrideDays ?? periodDays;
       try {
@@ -957,6 +962,7 @@ export default function CustomerActivityScreen() {
           setDetailData(response.data);
         } else {
           logger.warn('Detail load failed', { error: response.error });
+          setErrorReason(response.message ?? null);
           setError(DETAIL_ERROR);
         }
       } catch (err) {
@@ -1120,7 +1126,7 @@ export default function CustomerActivityScreen() {
           icon={noCustomer ? 'account-off-outline' : 'alert-circle-outline'}
           tone={noCustomer ? 'default' : 'error'}
           message={tr(noCustomer ? 'reports.customerActivity.noCustomerTitle' : 'reports.customerActivity.errorTitle')}
-          description={tr(error)}
+          description={errorReason ?? tr(error)}
           actionLabel={noCustomer ? undefined : tr('common.retry')}
           onAction={noCustomer ? undefined : handleRefresh}
         />

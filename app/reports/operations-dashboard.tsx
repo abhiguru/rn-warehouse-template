@@ -285,7 +285,12 @@ export default function OperationsDashboardScreen() {
         setData(response.data);
       } else {
         logger.warn('Load failed', { error: response.error });
-        setError(loadError());
+        // The server refuses by role in the body of its answer; the service names that STAFF_ONLY.
+        setError(
+          response.error === 'STAFF_ONLY'
+            ? tr('reports.operations.staffOnlyError')
+            : response.message || loadError()
+        );
       }
     } catch (err) {
       logger.error('Error fetching data', err);

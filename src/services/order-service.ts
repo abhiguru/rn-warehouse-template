@@ -32,6 +32,7 @@ import type {
 } from '@/types/rpc-canonical.types';
 import { t } from '@/i18n';
 import { serverText } from '@/utils/serverText';
+import { rpcRefusal } from '@/utils/rpcRefusal';
 
 // Order Service - Frontend uses "Order" terminology, backend uses "Cart"
 export class OrderService {
@@ -659,6 +660,16 @@ export class OrderService {
           success: false,
           message: t('errors.dispatch.fetchCustomerFailed'),
           error: error.message,
+        };
+      }
+
+      // A denial comes back as the answer: {success:false, data:null, message}. It is not an empty list.
+      const refusal = rpcRefusal(data);
+      if (refusal) {
+        return {
+          success: false,
+          message: serverText(refusal.text, t('errors.dispatch.fetchCustomerFailed')),
+          error: refusal.code ?? 'RPC_REFUSED',
         };
       }
 

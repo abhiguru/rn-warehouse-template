@@ -383,6 +383,8 @@ export default function InvoiceHistoryScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<TranslationKey | null>(null);
+  // The reason the server gave for refusing the report, already in the app's language.
+  const [errorReason, setErrorReason] = useState<string | null>(null);
   const [selectedPeriod, setSelectedPeriod] = useState<ReportPeriod>('last120days');
   const [monthlyExpanded, setMonthlyExpanded] = useState(false);
   const [viewMode, setViewMode] = useState<'all' | 'single'>('all');
@@ -398,6 +400,7 @@ export default function InvoiceHistoryScreen() {
     if (showRefresh) setIsRefreshing(true);
     else setIsLoading(true);
     setError(null);
+    setErrorReason(null);
 
     try {
       const response = await getAllInvoiceHistory({ fromDate: from, toDate: to });
@@ -405,6 +408,7 @@ export default function InvoiceHistoryScreen() {
         // Backend now filters by user permissions via auth.uid()
         setAllCustomersData(response.data);
       } else {
+        setErrorReason(response.message ?? null);
         setError(LOAD_ERROR);
       }
     } catch (err) {
@@ -422,6 +426,7 @@ export default function InvoiceHistoryScreen() {
     if (showRefresh) setIsRefreshing(true);
     else setIsLoading(true);
     setError(null);
+    setErrorReason(null);
 
     try {
       const response = await getCustomerInvoiceHistory({
@@ -432,6 +437,7 @@ export default function InvoiceHistoryScreen() {
       if (response.success && response.data) {
         setData(response.data);
       } else {
+        setErrorReason(response.message ?? null);
         setError(LOAD_ERROR);
       }
     } catch (err) {
@@ -593,7 +599,7 @@ export default function InvoiceHistoryScreen() {
       <View style={styles.container}>
         <ReportHeader title={tr('reports.titles.invoiceHistory')} />
         <PeriodSelector selectedPeriod={selectedPeriod} onPeriodChange={handlePeriodChange} />
-        <ReportEmptyState icon="alert-circle-outline" message={tr('reports.customerActivity.errorTitle')} description={tr(error)} />
+        <ReportEmptyState icon="alert-circle-outline" message={tr('reports.customerActivity.errorTitle')} description={errorReason ?? tr(error)} />
         {(shouldShowListView || singleAssignedCustomerId || selectedCustomer) && (
           <View style={styles.retry}>
             <Button type="secondary" onPress={() => handlePeriodChange(selectedPeriod)}>{tr('common.retry')}</Button>

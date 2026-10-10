@@ -5,10 +5,7 @@
  * Returns GRN history with items, invoice status, and dispatch summary.
  */
 
-import {
-  getAuthenticatedClient,
-  getStoredToken,
-} from '@/config/supabaseConfig';
+import { getAuthenticatedClient } from '@/config/supabaseConfig';
 import type {
   GRNActivityResponse,
   GRNActivityData,
@@ -22,6 +19,10 @@ import type {
 
 import { toLocalISODate } from '@/utils/formatters';
 import { t } from '@/i18n';
+import { createLogger } from '@/utils/logger';
+import { reportBody, reportRefusal, refusedReport } from './reportEnvelope';
+
+const logger = createLogger('Reports');
 /**
  * Default empty response for error cases
  */
@@ -84,7 +85,7 @@ export async function getCustomerGRNActivity(
   params: GRNActivityParams
 ): Promise<GRNActivityResponse> {
   if (!params.customerId) {
-    console.error('[GRNActivity] Customer ID is required');
+    logger.error('[GRNActivity] Customer ID is required');
     return {
       success: false,
       data: EMPTY_RESPONSE,
@@ -94,19 +95,6 @@ export async function getCustomerGRNActivity(
   }
 
   try {
-    console.time('⏱️ [GRNActivity] RPC call duration');
-
-    // Debug: Check token status before making RPC call
-    const tokenData = await getStoredToken();
-    console.log('[GRNActivity] Token status:', {
-      isValid: tokenData.isValid,
-      type: tokenData.type,
-      hasAuthToken: !!tokenData.authToken,
-      expiresAt: tokenData.expiresAt
-        ? new Date(tokenData.expiresAt).toISOString()
-        : 'none',
-    });
-
     const client = await getAuthenticatedClient();
 
     // Calculate date range
@@ -120,20 +108,13 @@ export async function getCustomerGRNActivity(
       p_to_date: toDate,
     };
 
-    console.log(
-      '[GRNActivity] Calling get_customer_grn_activity with params:',
-      rpcParams
-    );
-
     const { data, error } = await client.rpc(
       'get_customer_grn_activity',
       rpcParams
     );
 
-    console.timeEnd('⏱️ [GRNActivity] RPC call duration');
-
     if (error) {
-      console.error('[GRNActivity] RPC error:', error.message);
+      logger.error('[GRNActivity] RPC error:', error.message);
       return {
         success: false,
         data: EMPTY_RESPONSE,
@@ -143,7 +124,6 @@ export async function getCustomerGRNActivity(
     }
 
     if (!data) {
-      console.log('[GRNActivity] No data returned from RPC');
       return {
         success: true,
         data: EMPTY_RESPONSE,
@@ -151,21 +131,16 @@ export async function getCustomerGRNActivity(
       };
     }
 
-    // Log response size for debugging
-    const dataSize = JSON.stringify(data).length;
-    console.log(
-      `📊 [GRNActivity] Response size: ${(dataSize / 1024).toFixed(2)} KB`
-    );
+    const refusal = reportRefusal(data);
+    if (refusal) {
+      return refusedReport(refusal, EMPTY_RESPONSE, t('reports.grnActivity.errors.fetchFailed'));
+    }
 
     // Parse the RPC response - handle both wrapped and unwrapped formats
-    const rawData = Array.isArray(data) ? data[0] : data;
+    const rawData = reportBody(data);
 
     // Unwrap if response has { data, success, metadata } structure
     const responseData = rawData?.data ?? rawData;
-    console.log(
-      '[GRNActivity] Unwrapped responseData keys:',
-      responseData ? Object.keys(responseData) : 'null'
-    );
 
     // Map to our expected format
     const summary: GRNActivityKPIs = {
@@ -216,17 +191,13 @@ export async function getCustomerGRNActivity(
       })
     );
 
-    console.log(
-      `[GRNActivity] Parsed ${grns.length} GRNs, total qty: ${summary.total_quantity}`
-    );
-
     return {
       success: true,
       data: { summary, grns },
       message: t('reports.grnActivity.retrieved'),
     };
   } catch (error) {
-    console.error('[GRNActivity] Unexpected error:', error);
+    logger.error('[GRNActivity] Unexpected error:', error);
     return {
       success: false,
       data: EMPTY_RESPONSE,
@@ -251,16 +222,6 @@ export async function getAllGRNActivity(
   params: AllGRNActivityParams
 ): Promise<AllGRNActivityResponse> {
   try {
-    console.time('⏱️ [AllGRNActivity] RPC call duration');
-
-    // Debug: Check token status before making RPC call
-    const tokenData = await getStoredToken();
-    console.log('[AllGRNActivity] Token status:', {
-      isValid: tokenData.isValid,
-      type: tokenData.type,
-      hasAuthToken: !!tokenData.authToken,
-    });
-
     const client = await getAuthenticatedClient();
 
     const rpcParams = {
@@ -268,17 +229,10 @@ export async function getAllGRNActivity(
       p_to_date: params.toDate,
     };
 
-    console.log(
-      '[AllGRNActivity] Calling get_all_grn_activity with params:',
-      rpcParams
-    );
-
     const { data, error } = await client.rpc('get_all_grn_activity', rpcParams);
 
-    console.timeEnd('⏱️ [AllGRNActivity] RPC call duration');
-
     if (error) {
-      console.error('[AllGRNActivity] RPC error:', error.message);
+      logger.error('[AllGRNActivity] RPC error:', error.message);
       return {
         success: false,
         data: EMPTY_ALL_RESPONSE,
@@ -288,7 +242,6 @@ export async function getAllGRNActivity(
     }
 
     if (!data) {
-      console.log('[AllGRNActivity] No data returned from RPC');
       return {
         success: true,
         data: EMPTY_ALL_RESPONSE,
@@ -296,25 +249,16 @@ export async function getAllGRNActivity(
       };
     }
 
-    // Log response size for debugging
-    const dataSize = JSON.stringify(data).length;
-    console.log(
-      `📊 [AllGRNActivity] Response size: ${(dataSize / 1024).toFixed(2)} KB`
-    );
+    const refusal = reportRefusal(data);
+    if (refusal) {
+      return refusedReport(refusal, EMPTY_ALL_RESPONSE, t('reports.grnActivity.errors.fetchAllFailed'));
+    }
 
     // Parse the RPC response - handle both wrapped and unwrapped formats
-    const rawData = Array.isArray(data) ? data[0] : data;
-    console.log(
-      '[AllGRNActivity] Parsed rawData keys:',
-      rawData ? Object.keys(rawData) : 'null'
-    );
+    const rawData = reportBody(data);
 
     // Unwrap if response has { data, success, metadata } structure
     const responseData = rawData?.data ?? rawData;
-    console.log(
-      '[AllGRNActivity] Unwrapped responseData keys:',
-      responseData ? Object.keys(responseData) : 'null'
-    );
 
     // Map to our expected format (new get_all_grn_activity RPC)
     const summary: AllGRNActivityKPIs = {
@@ -336,17 +280,13 @@ export async function getAllGRNActivity(
       latest_grn_date: customer.latest_grn ?? '', // Backend uses latest_grn
     }));
 
-    console.log(
-      `[AllGRNActivity] Parsed ${byCustomer.length} customers, total GRNs: ${summary.total_grns}`
-    );
-
     return {
       success: true,
       data: { summary, by_customer: byCustomer },
       message: t('reports.grnActivity.retrievedAll'),
     };
   } catch (error) {
-    console.error('[AllGRNActivity] Unexpected error:', error);
+    logger.error('[AllGRNActivity] Unexpected error:', error);
     return {
       success: false,
       data: EMPTY_ALL_RESPONSE,

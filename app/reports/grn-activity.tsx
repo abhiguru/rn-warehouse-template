@@ -360,10 +360,10 @@ export default function GRNActivityScreen() {
         // Backend now filters by user permissions via auth.uid()
         setAllCustomersData(response.data);
       } else {
-        setError(response.error || 'Failed to load GRN activity');
+        setError(response.message || tr('reports.grnActivity.errors.fetchFailed'));
       }
     } catch (err) {
-      setError('An unexpected error occurred');
+      setError(tr('reports.grnActivity.errors.fetchFailed'));
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
@@ -387,10 +387,10 @@ export default function GRNActivityScreen() {
       if (response.success && response.data) {
         setData(response.data);
       } else {
-        setError(response.error || 'Failed to load GRN activity');
+        setError(response.message || tr('reports.grnActivity.errors.fetchFailed'));
       }
     } catch (err) {
-      setError('An unexpected error occurred');
+      setError(tr('reports.grnActivity.errors.fetchFailed'));
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);

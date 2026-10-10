@@ -19,6 +19,7 @@ import type { RpcPagination, RpcDispatchListItem } from '@/types/rpc-canonical.t
 import { t } from '@/i18n';
 import { customerHistory } from './customerHistoryCache';
 import { serverText } from '@/utils/serverText';
+import { rpcRefusal } from '@/utils/rpcRefusal';
 
 // Cache configuration for dispatch data (DRY-7: Using shared cacheManager)
 const DISPATCH_CACHE_PREFIX = CACHE_PREFIXES.DISPATCH_LIST;
@@ -344,6 +345,16 @@ export const getAllDispatchItems = async (
         success: false,
         message: t('errors.general.noDataFromServer'),
         error: t('errors.general.emptyResponse')
+      };
+    }
+
+    // A denial comes back as the answer: {success:false, data:null, message}. It is not an empty list.
+    const refusal = rpcRefusal(data);
+    if (refusal) {
+      return {
+        success: false,
+        message: t('errors.dispatch.fetchItemsFailed'),
+        error: serverText(refusal.text, t('errors.dispatch.fetchItemsFailed')),
       };
     }
 

@@ -5,11 +5,12 @@
  * Returns stock items grouped by aging buckets with dispatch velocity info.
  */
 
-import {
-  getAuthenticatedClient,
-  getStoredToken,
-} from '@/config/supabaseConfig';
+import { getAuthenticatedClient } from '@/config/supabaseConfig';
 import { t } from '@/i18n';
+import { createLogger } from '@/utils/logger';
+import { reportBody, reportRefusal, refusedReport } from './reportEnvelope';
+
+const logger = createLogger('Reports');
 import type {
   StockAgingResponse,
   StockAgingData,
@@ -73,7 +74,7 @@ export async function getCustomerStockAging(
   params: StockAgingParams
 ): Promise<StockAgingResponse> {
   if (!params.customerId) {
-    console.error('[StockAging] Customer ID is required');
+    logger.error('[StockAging] Customer ID is required');
     return {
       success: false,
       data: EMPTY_RESPONSE,
@@ -83,19 +84,6 @@ export async function getCustomerStockAging(
   }
 
   try {
-    console.time('⏱️ [StockAging] RPC call duration');
-
-    // Debug: Check token status before making RPC call
-    const tokenData = await getStoredToken();
-    console.log('[StockAging] Token status:', {
-      isValid: tokenData.isValid,
-      type: tokenData.type,
-      hasAuthToken: !!tokenData.authToken,
-      expiresAt: tokenData.expiresAt
-        ? new Date(tokenData.expiresAt).toISOString()
-        : 'none',
-    });
-
     const client = await getAuthenticatedClient();
 
     // Build RPC params
@@ -108,20 +96,13 @@ export async function getCustomerStockAging(
       rpcParams.p_aging_buckets = params.agingBuckets;
     }
 
-    console.log(
-      '[StockAging] Calling get_stock_aging_report with params:',
-      rpcParams
-    );
-
     const { data, error } = await client.rpc(
       'get_stock_aging_report',
       rpcParams
     );
 
-    console.timeEnd('⏱️ [StockAging] RPC call duration');
-
     if (error) {
-      console.error('[StockAging] RPC error:', error.message);
+      logger.error('[StockAging] RPC error:', error.message);
       return {
         success: false,
         data: EMPTY_RESPONSE,
@@ -131,7 +112,6 @@ export async function getCustomerStockAging(
     }
 
     if (!data) {
-      console.log('[StockAging] No data returned from RPC');
       return {
         success: true,
         data: EMPTY_RESPONSE,
@@ -139,21 +119,16 @@ export async function getCustomerStockAging(
       };
     }
 
-    // Log response size for debugging
-    const dataSize = JSON.stringify(data).length;
-    console.log(
-      `📊 [StockAging] Response size: ${(dataSize / 1024).toFixed(2)} KB`
-    );
+    const refusal = reportRefusal(data);
+    if (refusal) {
+      return refusedReport(refusal, EMPTY_RESPONSE, t('reports.stockAging.service.fetchFailed'));
+    }
 
     // Parse the RPC response - handle both wrapped and unwrapped formats
-    const rawData = Array.isArray(data) ? data[0] : data;
+    const rawData = reportBody(data);
 
     // Unwrap if response has { data, success, metadata } structure
     const responseData = rawData?.data ?? rawData;
-    console.log(
-      '[StockAging] Unwrapped responseData keys:',
-      responseData ? Object.keys(responseData) : 'null'
-    );
 
     // Map to our expected format
     const summary: StockAgingKPIs = {
@@ -212,17 +187,13 @@ export async function getCustomerStockAging(
       })
     );
 
-    console.log(
-      `[StockAging] Parsed ${items.length} items, avg age: ${summary.average_age_days} days`
-    );
-
     return {
       success: true,
       data: { summary, by_bucket: byBucket, items },
       message: t('reports.stockAging.service.retrieved'),
     };
   } catch (error) {
-    console.error('[StockAging] Unexpected error:', error);
+    logger.error('[StockAging] Unexpected error:', error);
     return {
       success: false,
       data: EMPTY_RESPONSE,
@@ -246,16 +217,6 @@ export async function getAllStockAging(
   params?: AllStockAgingParams
 ): Promise<AllStockAgingResponse> {
   try {
-    console.time('⏱️ [AllStockAging] RPC call duration');
-
-    // Debug: Check token status before making RPC call
-    const tokenData = await getStoredToken();
-    console.log('[AllStockAging] Token status:', {
-      isValid: tokenData.isValid,
-      type: tokenData.type,
-      hasAuthToken: !!tokenData.authToken,
-    });
-
     const client = await getAuthenticatedClient();
 
     // Build RPC params - pass null for customer to get all customers
@@ -268,20 +229,13 @@ export async function getAllStockAging(
       rpcParams.p_aging_buckets = params.agingBuckets;
     }
 
-    console.log(
-      '[AllStockAging] Calling get_stock_aging_report with params:',
-      rpcParams
-    );
-
     const { data, error } = await client.rpc(
       'get_stock_aging_report',
       rpcParams
     );
 
-    console.timeEnd('⏱️ [AllStockAging] RPC call duration');
-
     if (error) {
-      console.error('[AllStockAging] RPC error:', error.message);
+      logger.error('[AllStockAging] RPC error:', error.message);
       return {
         success: false,
         data: EMPTY_ALL_RESPONSE,
@@ -291,7 +245,6 @@ export async function getAllStockAging(
     }
 
     if (!data) {
-      console.log('[AllStockAging] No data returned from RPC');
       return {
         success: true,
         data: EMPTY_ALL_RESPONSE,
@@ -299,21 +252,16 @@ export async function getAllStockAging(
       };
     }
 
-    // Log response size for debugging
-    const dataSize = JSON.stringify(data).length;
-    console.log(
-      `📊 [AllStockAging] Response size: ${(dataSize / 1024).toFixed(2)} KB`
-    );
+    const refusal = reportRefusal(data);
+    if (refusal) {
+      return refusedReport(refusal, EMPTY_ALL_RESPONSE, t('reports.stockAging.service.fetchAllFailed'));
+    }
 
     // Parse the RPC response - handle both wrapped and unwrapped formats
-    const rawData = Array.isArray(data) ? data[0] : data;
+    const rawData = reportBody(data);
 
     // Unwrap if response has { data, success, metadata } structure
     const responseData = rawData?.data ?? rawData;
-    console.log(
-      '[AllStockAging] Unwrapped responseData keys:',
-      responseData ? Object.keys(responseData) : 'null'
-    );
 
     // Map to our expected format
     const summary: AllStockAgingKPIs = {
@@ -356,17 +304,13 @@ export async function getAllStockAging(
       aging_distribution: customer.aging_distribution ?? {},
     }));
 
-    console.log(
-      `[AllStockAging] Parsed ${byCustomer.length} customers, avg age: ${summary.average_age_days} days`
-    );
-
     return {
       success: true,
       data: { summary, by_bucket: byBucket, by_customer: byCustomer },
       message: t('reports.stockAging.service.retrievedAll'),
     };
   } catch (error) {
-    console.error('[AllStockAging] Unexpected error:', error);
+    logger.error('[AllStockAging] Unexpected error:', error);
     return {
       success: false,
       data: EMPTY_ALL_RESPONSE,

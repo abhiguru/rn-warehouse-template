@@ -5,10 +5,7 @@
  * Staff-only report showing cross-customer KPIs and trends.
  */
 
-import {
-  getAuthenticatedClient,
-  getStoredToken,
-} from '@/config/supabaseConfig';
+import { getAuthenticatedClient } from '@/config/supabaseConfig';
 import type {
   OperationsDashboardResponse,
   OperationsDashboardData,
@@ -19,6 +16,10 @@ import type {
 
 import { toLocalISODate } from '@/utils/formatters';
 import { t } from '@/i18n';
+import { createLogger } from '@/utils/logger';
+import { isAccessRefusal, reportBody, reportRefusal, refusedReport } from './reportEnvelope';
+
+const logger = createLogger('Reports');
 /**
  * Default empty response for error cases
  */
@@ -72,19 +73,6 @@ export async function getOperationsDashboard(
   params: OperationsDashboardParams = {}
 ): Promise<OperationsDashboardResponse> {
   try {
-    console.time('⏱️ [OperationsDashboard] RPC call duration');
-
-    // Debug: Check token status before making RPC call
-    const tokenData = await getStoredToken();
-    console.log('[OperationsDashboard] Token status:', {
-      isValid: tokenData.isValid,
-      type: tokenData.type,
-      hasAuthToken: !!tokenData.authToken,
-      expiresAt: tokenData.expiresAt
-        ? new Date(tokenData.expiresAt).toISOString()
-        : 'none',
-    });
-
     const client = await getAuthenticatedClient();
 
     // Calculate date range
@@ -97,20 +85,13 @@ export async function getOperationsDashboard(
       p_to_date: toDate,
     };
 
-    console.log(
-      '[OperationsDashboard] Calling get_operations_dashboard with params:',
-      rpcParams
-    );
-
     const { data, error } = await client.rpc(
       'get_operations_dashboard',
       rpcParams
     );
 
-    console.timeEnd('⏱️ [OperationsDashboard] RPC call duration');
-
     if (error) {
-      console.error('[OperationsDashboard] RPC error:', error.message);
+      logger.error('[OperationsDashboard] RPC error:', error.message);
 
       // Check for access denied error
       if (error.message.includes('Access denied') || error.code === '42501') {
@@ -131,7 +112,6 @@ export async function getOperationsDashboard(
     }
 
     if (!data) {
-      console.log('[OperationsDashboard] No data returned from RPC');
       return {
         success: true,
         data: EMPTY_RESPONSE,
@@ -139,14 +119,22 @@ export async function getOperationsDashboard(
       };
     }
 
-    // Log response size for debugging
-    const dataSize = JSON.stringify(data).length;
-    console.log(
-      `📊 [OperationsDashboard] Response size: ${(dataSize / 1024).toFixed(2)} KB`
-    );
+    const refusal = reportRefusal(data);
+    if (refusal) {
+      // The role check answers in the body: {error:'Access denied: ...', kpis:null}.
+      if (isAccessRefusal(refusal)) {
+        return {
+          success: false,
+          data: EMPTY_RESPONSE,
+          message: t('reports.operations.service.accessDenied'),
+          error: 'STAFF_ONLY',
+        };
+      }
+      return refusedReport(refusal, EMPTY_RESPONSE, t('reports.operations.service.fetchFailed'));
+    }
 
     // Parse the RPC response - handle both wrapped and unwrapped formats
-    const responseData = Array.isArray(data) ? data[0] : data;
+    const responseData = reportBody(data);
 
     // Map to our expected format
     const kpis: OperationsKPIs = {
@@ -180,17 +168,13 @@ export async function getOperationsDashboard(
       time: item.time,
     }));
 
-    console.log(
-      `[OperationsDashboard] Parsed KPIs - GRNs: ${kpis.total_grns}, Dispatches: ${kpis.total_dispatches}`
-    );
-
     return {
       success: true,
       data: { kpis, trends, recent_activity },
       message: t('reports.operations.service.retrieved'),
     };
   } catch (error) {
-    console.error('[OperationsDashboard] Unexpected error:', error);
+    logger.error('[OperationsDashboard] Unexpected error:', error);
     return {
       success: false,
       data: EMPTY_RESPONSE,

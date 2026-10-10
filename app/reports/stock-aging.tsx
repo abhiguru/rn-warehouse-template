@@ -516,7 +516,7 @@ export default function StockAgingScreen() {
         setAllCustomersData(response.data);
       } else {
         logger.warn('All-customer load failed', { error: response.error });
-        setError(loadError());
+        setError(response.message || loadError());
       }
     } catch (err) {
       logger.error('All-customer load exception', err);
@@ -539,7 +539,7 @@ export default function StockAgingScreen() {
         setData(response.data);
       } else {
         logger.warn('Customer load failed', { error: response.error });
-        setError(loadError());
+        setError(response.message || loadError());
       }
     } catch (err) {
       logger.error('Customer load exception', err);

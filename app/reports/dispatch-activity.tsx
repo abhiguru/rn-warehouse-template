@@ -569,6 +569,8 @@ export default function DispatchActivityScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<TranslationKey | null>(null);
+  // The reason the server gave for refusing the report, already in the app's language.
+  const [errorReason, setErrorReason] = useState<string | null>(null);
   const [expandedDispatches, setExpandedDispatches] = useState<Set<string>>(new Set());
   const [selectedPeriod, setSelectedPeriod] = useState<ReportPeriod>('last120days');
   const [dateRange, setDateRange] = useState(() => getDateRangeForPeriod('last120days'));
@@ -590,6 +592,7 @@ export default function DispatchActivityScreen() {
       setIsLoading(true);
     }
     setError(null);
+    setErrorReason(null);
 
     try {
       const response = await getAllDispatchActivity({
@@ -601,6 +604,7 @@ export default function DispatchActivityScreen() {
         // Backend now filters by user permissions via auth.uid()
         setAllCustomersData(response.data);
       } else {
+        setErrorReason(response.message ?? null);
         setError(LOAD_ERROR);
       }
     } catch (err) {
@@ -622,6 +626,7 @@ export default function DispatchActivityScreen() {
       setIsLoading(true);
     }
     setError(null);
+    setErrorReason(null);
 
     try {
       const response = await getCustomerDispatchActivity({
@@ -633,6 +638,7 @@ export default function DispatchActivityScreen() {
       if (response.success && response.data) {
         setData(response.data);
       } else {
+        setErrorReason(response.message ?? null);
         setError(LOAD_ERROR);
       }
     } catch (err) {
@@ -888,7 +894,7 @@ export default function DispatchActivityScreen() {
         <ReportEmptyState
           icon="alert-circle-outline"
           message={tr('reports.dispatchActivity.errorTitle')}
-          description={tr(error)}
+          description={errorReason ?? tr(error)}
         />
         {canRetry && (
           <View style={styles.retryRow}>
