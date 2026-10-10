@@ -10,6 +10,8 @@ import {
   signOut,
   getStoredToken,
   getCachedUserProfile,
+  reloadUserProfile,
+  ensureValidTokens,
   cacheUserProfile,
   clearStoredTokens,
   getSupabaseClient,
@@ -304,6 +306,10 @@ export const initializeAuth = createAsyncThunk(
               // Set user context for crash reporting
               setSentryUser(cachedProfile.id, cachedProfile.role);
 
+              // The cached copy may be up to a day old: ask the server in the
+              // background and show what it says now.
+              void reconcileCachedProfile(dispatch, cachedProfile);
+
               return { session: null, user: null, userProfile: cachedProfile };
             } else {
               // A missing profile may be a temporary network/cache failure.
@@ -565,66 +571,47 @@ export const refreshAuthToken = createAsyncThunk(
   }
 );
 
-// Track if refresh is in progress to prevent multiple simultaneous refreshes
-let isRefreshInProgress = false;
+const sameProfile = (a: UserProfile, b: UserProfile): boolean => {
+  const assigned = (profile: UserProfile) => [...(profile.assignedCustomerIds ?? [])].sort().join(',');
+  return (
+    a.id === b.id &&
+    a.role === b.role &&
+    a.name === b.name &&
+    assigned(a) === assigned(b)
+  );
+};
+
+// After a start from the cached profile: replace it when the server's differs
+// (a changed role or customer assignment). Nothing happens offline.
+async function reconcileCachedProfile(
+  dispatch: (action: ReturnType<typeof authSlice.actions.setUserProfile>) => unknown,
+  cached: UserProfile
+): Promise<void> {
+  const generation = getSessionGeneration();
+  const fresh = (await reloadUserProfile()) as UserProfile | null;
+  if (!fresh || generation !== getSessionGeneration() || sameProfile(cached, fresh)) return;
+  dispatch(authSlice.actions.setUserProfile(fresh));
+  setSentryUser(fresh.id, fresh.role);
+}
 
 /**
- * Check token expiry and attempt refresh if needed.
- * Updates state with warning/expired flags.
+ * Renews the access token ahead of its expiry (every minute while signed in
+ * and on return to the foreground), so the first request after a pause does
+ * not have to wait for a refresh. The custom session has no expiry the person
+ * must act on: a session that has really ended is reported by the refresh
+ * itself (forced logout), so the warning and expired flags stay off.
  */
 export const checkTokenExpiry = createAsyncThunk(
   'auth/checkTokenExpiry',
-  async (_, { getState, dispatch }) => {
-    const state = getState() as { auth: AuthState };
-    const { session } = state.auth;
-
-    if (!session?.expires_at) {
-      return { warning: false, expired: false, refreshAttempted: false };
-    }
-
-    const now = Math.floor(Date.now() / 1000);
-    const expiresAt = session.expires_at;
-    const timeUntilExpiry = expiresAt - now;
-
-    // Warning if less than 5 minutes until expiry
-    const warningThreshold = 5 * 60;
-    // Refresh threshold - attempt refresh when less than 3 minutes until expiry
-    const refreshThreshold = 3 * 60;
-    // Expired if already past expiry time
-    const isExpired = timeUntilExpiry <= 0;
-    const isWarning = !isExpired && timeUntilExpiry <= warningThreshold;
-    const shouldRefresh = !isExpired && timeUntilExpiry <= refreshThreshold;
-
-    // Attempt proactive token refresh if within refresh threshold
-    if (shouldRefresh && !isRefreshInProgress) {
-      isRefreshInProgress = true;
-      console.log(
-        '[AuthSlice] Token expires in',
-        timeUntilExpiry,
-        'seconds, attempting refresh...'
-      );
-
-      try {
-        await dispatch(refreshAuthToken()).unwrap();
-        console.log('[AuthSlice] Proactive token refresh successful');
-      } catch (refreshError) {
-        console.warn(
-          '[AuthSlice] Proactive token refresh failed:',
-          refreshError
-        );
-        // Don't clear auth - let user continue until actual expiry
-      } finally {
-        isRefreshInProgress = false;
-      }
-
-      return { warning: isWarning, expired: false, refreshAttempted: true };
-    }
-
-    return {
-      warning: isWarning,
-      expired: isExpired,
-      refreshAttempted: false,
-    };
+  async () => {
+    const none = { warning: false, expired: false, refreshAttempted: false };
+    const stored = await getStoredToken();
+    if (stored.type !== 'jwt' || !stored.expiresAt) return none;
+    // ensureValidTokens renews inside the same five minutes; asking earlier
+    // would only read the secure store.
+    if (stored.expiresAt - Date.now() > 5 * 60 * 1000) return none;
+    await ensureValidTokens();
+    return { ...none, refreshAttempted: true };
   }
 );
 
