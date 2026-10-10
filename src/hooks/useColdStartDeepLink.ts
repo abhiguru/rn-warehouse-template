@@ -53,10 +53,10 @@ export function parseDeepLinkUrl(url: string): string | null {
       return '/' + schemeMatch[1];
     }
 
-    // Handle https URLs (universal links)
-    const httpsMatch = url.match(/^https?:\/\/[^/]+\/(.+)$/);
-    if (httpsMatch) {
-      return '/' + httpsMatch[1];
+    // A web address is not an app link. The app registers its own scheme only (no
+    // universal-link host is configured), so no site can name a route inside the app.
+    if (/^https?:\/\//i.test(url)) {
+      return null;
     }
 
     // Handle expo dev URLs
@@ -72,6 +72,9 @@ export function parseDeepLinkUrl(url: string): string | null {
     return null;
   }
 }
+
+/** Screens of the sign-in flow: a warm link is ignored while one of them is focused. */
+const SIGN_IN_PATHS: readonly string[] = ['/login', '/otp', '/operator-server', '/pending-enrollment'];
 
 /**
  * Checks if a route requires authentication
@@ -129,6 +132,10 @@ export function useColdStartDeepLink(
 
       const routePath = parseDeepLinkUrl(url);
       if (!routePath) return;
+
+      // A link that arrives during sign-in does not take the screen away: a half-typed
+      // code or facility address would be lost, and there is no session to open it with.
+      if (SIGN_IN_PATHS.includes(currentPath)) return;
 
       setInitialUrl(url);
 

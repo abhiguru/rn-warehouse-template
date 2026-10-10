@@ -78,6 +78,7 @@ import { createLogger } from '@/utils/logger';
 import { useAppDispatch } from '@/store/hooks';
 import { useAppLanguage } from '@/i18n/useAppLanguage';
 import { useProfileLanguage } from '@/i18n/useProfileLanguage';
+import { GuardedScreen, useRootRouteGuard } from '@/navigation/RouteGuard';
 import { t as translate } from '@/i18n';
 import { initializeAuth } from '@/store/slices/authSlice';
 import { logout } from '@/store/slices/authSlice';
@@ -295,6 +296,9 @@ function NavigationStack({ screenBackground }: { screenBackground: string }) {
 
   return (
     <Stack
+      // Every screen of the root stack goes through the authentication guard: a screen that
+      // is not for this person is not mounted while useRootRouteGuard replaces it.
+      screenLayout={({ route, children }) => <GuardedScreen routeName={route.name}>{children}</GuardedScreen>}
       screenOptions={{
         headerShown: false,
         // Stack header per style guide §13.8, for any screen that shows one.
@@ -410,6 +414,10 @@ function ThemedContent() {
 
   // I10: Handle cold start deep links only after the root auth check settles.
   useColdStartDeepLink(authCheckSettled);
+
+  // One guard for the whole stack: signed out on any route that is not public goes to
+  // sign-in. It waits for the restore above, so a stored session is never sent there.
+  useRootRouteGuard(authCheckSettled);
 
   // Rebuild the Paper and navigation themes only when the brand or mode changes.
   const currentPaperTheme = useMemo(
