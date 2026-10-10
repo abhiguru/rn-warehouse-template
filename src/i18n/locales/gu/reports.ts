@@ -32,6 +32,8 @@ export const reports: Translation<typeof source> = {
     chooseCustomer: 'વેપારી પસંદ કરો',
     chooseCustomerHint: 'આ વેપારીનો અહેવાલ બતાવે છે',
     unnamedCustomer: 'વેપારી',
+    customerNamesFailed: 'વેપારીઓનાં નામ લોડ થઈ શક્યાં નથી',
+    customerNamesFailedDescription: 'કનેક્શન તપાસો અને ફરી પ્રયાસ કરો.',
     noMatchingCustomers: 'કોઈ વેપારી મળ્યા નથી',
     noCustomersMatch: '"{{search}}" સાથે મળતો કોઈ વેપારી નથી. ઓછા અક્ષરો લખી જુઓ.',
     noStockYet: 'હજુ કોઈ સ્ટોક નથી',

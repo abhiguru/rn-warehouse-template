@@ -29,6 +29,8 @@ export const reports = {
     chooseCustomer: 'Choose a customer',
     chooseCustomerHint: 'Shows this report for the customer',
     unnamedCustomer: 'Customer',
+    customerNamesFailed: 'Customer names could not be loaded',
+    customerNamesFailedDescription: 'Check the connection and try again.',
     noMatchingCustomers: 'No matching customers',
     noCustomersMatch: 'No customers match "{{search}}". Try fewer letters.',
     noStockYet: 'No stock yet',

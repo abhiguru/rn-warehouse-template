@@ -44,6 +44,23 @@ jest.mock('expo-router', () => ({
   router: { back: jest.fn(), push: jest.fn() },
   useLocalSearchParams: () => mockParams,
 }));
+// The customers table as row-level security shows it to the signed-in account.
+let mockCustomerRows: { id: string; name: string }[] | Error = [];
+const mockCustomerNameQuery = jest.fn();
+jest.mock('@/config/supabaseConfig', () => ({
+  getAuthenticatedClient: async () => ({
+    from: (table: string) => ({
+      select: (columns: string) => ({
+        in: async (column: string, ids: string[]) => {
+          mockCustomerNameQuery(table, columns, column, ids);
+          return mockCustomerRows instanceof Error
+            ? { data: null, error: mockCustomerRows }
+            : { data: mockCustomerRows.filter((row) => ids.includes(row.id)), error: null };
+        },
+      }),
+    }),
+  }),
+}));
 jest.mock('react-native-gifted-charts', () => ({ LineChart: 'LineChart' }));
 jest.mock('@/services/search-service', () => ({ searchService: { searchCustomers: jest.fn(() => Promise.resolve([])) } }));
 jest.mock('@/services/pdf-service', () => ({ generateCustomerStockPDF: jest.fn() }));
@@ -71,7 +88,7 @@ jest.mock('@/services/reporting/invoice-history-service', () => ({ getAllInvoice
 jest.mock('@/services/stock-service', () => ({ StockService: { getItemWiseStockList: jest.fn() } }));
 jest.mock('@/services/grn-service', () => ({ getAllGRNItems: jest.fn(), getCustomerGRNItems: jest.fn() }));
 
-type Profile = { id: string; role: string; assignedCustomerIds: string[]; assignedCustomers: { id: string; name: string; active: boolean }[] };
+type Profile = { id: string; role: string; assignedCustomerIds: string[]; assignedCustomers?: { id: string; name: string; active: boolean }[] };
 const customers = (...ids: string[]) => ids.map((id) => ({ id, name: id === 'c1' ? 'Fictional Traders' : 'Example Agro', active: true }));
 const profile = (role: string, ...ids: string[]): Profile => ({ id: 'p1', role, assignedCustomerIds: ids, assignedCustomers: customers(...ids) });
 
@@ -170,6 +187,49 @@ describe.each(REPORTS)('$name', ({ Screen, all, one, customerOf }) => {
     expect(one).toHaveBeenCalled();
     expect(one.mock.calls.map(([argument]) => customerOf(argument))).toEqual(one.mock.calls.map(() => 'c2'));
     expect(pickerRows()).toHaveLength(0);
+  });
+});
+
+describe('the picker for a profile as sign-in stores it (assigned ids, no names)', () => {
+  // verifyOTP and the profile reload store the user row plus assignedCustomerIds only.
+  const signedIn = { id: 'p1', role: 'customer', assignedCustomerIds: ['c1', 'c2'] };
+  const openSignedIn = async () => {
+    mockState = { theme: { preference: 'light', brand: 'orange' }, auth: { userProfile: signedIn } };
+    await act(async () => {
+      tree = create(<StockSummaryScreen />);
+    });
+  };
+
+  it('reads the names of its own customers and shows them', async () => {
+    mockCustomerRows = [{ id: 'c2', name: 'Example Agro' }, { id: 'c1', name: 'Fictional Traders' }, { id: 'c9', name: 'Someone Else' }];
+    await openSignedIn();
+    expect(mockCustomerNameQuery).toHaveBeenCalledWith('customers', 'id, name', 'id', ['c1', 'c2']);
+    expect(pickerRows().map((row) => row.props.accessibilityLabel)).toEqual(['Fictional Traders', 'Example Agro']);
+    expect(texts()).not.toContain('Customer');
+
+    await pick('c2');
+    expect(jest.mocked(reporting.getCustomerStockSummary).mock.calls[0][0]).toBe('c2');
+  });
+
+  it('offers no unnamed rows when the names cannot be read, and reads again on Try again', async () => {
+    mockCustomerRows = new Error('offline');
+    await openSignedIn();
+    expect(pickerRows()).toHaveLength(0);
+    expect(texts()).toContain('Customer names could not be loaded');
+    expect(reporting.getCustomerStockSummary).not.toHaveBeenCalled();
+
+    mockCustomerRows = [{ id: 'c1', name: 'Fictional Traders' }, { id: 'c2', name: 'Example Agro' }];
+    const retry = tree!.root.findAll((node) => typeof node.props.onPress === 'function' && node.props.accessibilityLabel === 'Try again')[0];
+    await act(async () => {
+      retry.props.onPress();
+    });
+    expect(pickerRows().map((row) => row.props.accessibilityLabel)).toEqual(['Fictional Traders', 'Example Agro']);
+  });
+
+  it('a profile that carries names does not ask the server', async () => {
+    await open(StockSummaryScreen, 'customer with two customers');
+    expect(mockCustomerNameQuery).not.toHaveBeenCalled();
+    expect(pickerRows()).toHaveLength(2);
   });
 });
 
