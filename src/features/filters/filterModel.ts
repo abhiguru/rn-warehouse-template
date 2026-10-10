@@ -159,6 +159,7 @@ export function describeValue(field: FilterFieldDef, value: FilterValue | undefi
 export const SORT_DIRECTIONS: Record<SortFieldOption['kind'], Record<'asc' | 'desc', string>> = {
   date: { desc: 'Newest first', asc: 'Oldest first' },
   number: { desc: 'Highest number first', asc: 'Lowest number first' },
+  amount: { desc: 'Highest first', asc: 'Lowest first' },
   text: { desc: 'Z to A', asc: 'A to Z' },
 };
 
@@ -175,11 +176,17 @@ export function isDefaultSort(config: FilterListDefinition, sort: SortState | un
 }
 
 /** "GRN no." for the chip; the direction is shown by its arrow. */
-export function describeSort(config: FilterListDefinition, sort: SortState | undefined): { label: string; direction: string } {
+export function describeSort(
+  config: FilterListDefinition,
+  sort: SortState | undefined
+): { label: string; direction: string; spoken: string } {
   const active = currentSort(config, sort);
   const option = config.sort?.options.find(candidate => candidate.field === active?.field);
-  if (!active || !option) return { label: 'Sort', direction: '' };
-  return { label: option.chipLabel ?? option.label, direction: SORT_DIRECTIONS[option.kind][active.order] };
+  if (!active || !option) return { label: 'Sort', direction: '', spoken: '' };
+  const direction = SORT_DIRECTIONS[option.kind][active.order];
+  // Inside a sentence the direction starts in lower case, except "A to Z" and "Z to A".
+  const spoken = option.kind === 'text' ? direction : direction.toLowerCase();
+  return { label: option.chipLabel ?? option.label, direction, spoken };
 }
 
 /** Order-independent comparison of two sets of values, for "are there unsaved changes". */

@@ -52,7 +52,7 @@ export const INVOICE_FILTERS: FilterListConfig<InvoiceListRequest> = {
       { field: 'inv_date', label: 'Date', kind: 'date' },
       { field: 'inv_no', label: 'Invoice number', chipLabel: 'Number', kind: 'number' },
       { field: 'customer_name', label: 'Customer', kind: 'text' },
-      { field: 'total', label: 'Total', kind: 'number' },
+      { field: 'total', label: 'Total', kind: 'amount' },
     ],
     default: { field: 'inv_date', order: 'desc' },
   },

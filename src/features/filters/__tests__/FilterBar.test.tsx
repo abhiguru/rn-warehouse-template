@@ -194,3 +194,42 @@ describe.each(BRANDS.flatMap(brand => MODES.map(mode => [brand, mode] as const))
     expect(backgrounds).toContain(t.surface.card);
   });
 });
+
+describe('FilterBar wording', () => {
+  it('names an amount order without the word "number", and keeps "A to Z" as written', () => {
+    const invoices = FILTER_CONFIGS['invoice-list'];
+    const labelFor = (sort: SortState) => {
+      const filters = { ...makeFilters({}), fields: visibleFields(invoices, staff), sort } as unknown as Filters;
+      let renderer!: TestRenderer.ReactTestRenderer;
+      act(() => {
+        renderer = TestRenderer.create(<FilterBar config={invoices} filters={filters} />);
+      });
+      return renderer.root
+        .findAll(node => typeof node.type !== 'string' && typeof node.props.accessibilityLabel === 'string' && node.props.accessibilityLabel.startsWith('Sorted by'))[0]
+        .props.accessibilityLabel as string;
+    };
+    expect(labelFor({ field: 'total', order: 'desc' })).toBe('Sorted by Total, highest first. Change sort');
+    expect(labelFor({ field: 'total', order: 'asc' })).toBe('Sorted by Total, lowest first. Change sort');
+    expect(labelFor({ field: 'customer_name', order: 'asc' })).toBe('Sorted by Customer, A to Z. Change sort');
+    expect(labelFor({ field: 'inv_no', order: 'desc' })).toBe('Sorted by Number, highest number first. Change sort');
+  });
+
+  it('names a switch that is on without repeating its label', () => {
+    const orders = FILTER_CONFIGS['order-list'];
+    const filters = {
+      ...makeFilters({ withItems: true }),
+      fields: visibleFields(orders, staff),
+      sort: undefined,
+      activeCount: 1,
+      hasAny: true,
+    } as unknown as Filters;
+    let renderer!: TestRenderer.ReactTestRenderer;
+    act(() => {
+      renderer = TestRenderer.create(<FilterBar config={orders} filters={filters} />);
+    });
+    const labels = renderer.root
+      .findAll(node => typeof node.type !== 'string' && node.props.accessibilityRole === 'button' && node.parent?.props.accessibilityLabel !== node.props.accessibilityLabel)
+      .map(node => node.props.accessibilityLabel as string);
+    expect(labels).toEqual(['With items, on. Turn off', 'Remove filter With items', 'Clear all filters and the search']);
+  });
+});

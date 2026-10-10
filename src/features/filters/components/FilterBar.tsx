@@ -88,7 +88,7 @@ export function FilterBar({ config, filters, onOpenAll }: FilterBarProps) {
               label={sortText.label}
               chevron
               onPress={() => setOpen({ type: 'sort' })}
-              accessibilityLabel={`Sorted by ${sortText.label}, ${sortText.direction.toLowerCase()}. Change sort`}
+              accessibilityLabel={`Sorted by ${sortText.label}, ${sortText.spoken}. Change sort`}
             />
           ) : null}
           {active.map(field => (
@@ -98,8 +98,11 @@ export function FilterBar({ config, filters, onOpenAll }: FilterBarProps) {
               label={describeValue(field, values[field.key])}
               onPress={() => press(field)}
               onRemove={() => filters.setField(field.key, undefined)}
-              accessibilityLabel={`${field.label}: ${describeValue(field, values[field.key])}. Change`}
-              removeLabel={`${field.label} ${describeValue(field, values[field.key])}`}
+              // A switch has no value to name: "With items, on", not "With items: With items".
+              accessibilityLabel={
+                opensSheet(field) ? `${field.label}: ${describeValue(field, values[field.key])}. Change` : `${field.label}, on. Turn off`
+              }
+              removeLabel={opensSheet(field) ? `${field.label} ${describeValue(field, values[field.key])}` : field.label}
             />
           ))}
           {recognised.date ? (

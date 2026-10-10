@@ -117,8 +117,8 @@ export interface SortFieldOption {
   label: string;
   /** Short label for the sort chip. Defaults to the label. */
   chipLabel?: string;
-  /** Decides the direction wording: newest first, highest number first, A to Z. */
-  kind: 'date' | 'number' | 'text';
+  /** Decides the direction wording: newest first, highest number first, highest first (an amount), A to Z. */
+  kind: 'date' | 'number' | 'amount' | 'text';
 }
 
 export interface SearchConfig {

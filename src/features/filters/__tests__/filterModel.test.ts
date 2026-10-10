@@ -118,8 +118,8 @@ describe('chip text', () => {
     expect(describeValue(field('package'), ' red ')).toBe('Package: red');
   });
   it('names the sort and its direction in the words of the field', () => {
-    expect(describeSort(GRN_FILTERS, undefined)).toEqual({ label: 'GRN no.', direction: 'Highest number first' });
-    expect(describeSort(GRN_FILTERS, { field: 'date', order: 'asc' })).toEqual({ label: 'Date', direction: 'Oldest first' });
+    expect(describeSort(GRN_FILTERS, undefined)).toEqual({ label: 'GRN no.', direction: 'Highest number first', spoken: 'highest number first' });
+    expect(describeSort(GRN_FILTERS, { field: 'date', order: 'asc' })).toEqual({ label: 'Date', direction: 'Oldest first', spoken: 'oldest first' });
     expect(isDefaultSort(GRN_FILTERS, undefined)).toBe(true);
     expect(isDefaultSort(GRN_FILTERS, { field: 'gr_no', order: 'asc' })).toBe(false);
     // An unknown stored sort falls back to the default.
