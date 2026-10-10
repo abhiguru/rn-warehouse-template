@@ -52,6 +52,27 @@ export function normalizeDigits(text: string): string {
   return text.replace(GUJARATI_DIGIT, digit => String(digit.charCodeAt(0) - GUJARATI_ZERO));
 }
 
+/**
+ * `value` and `onChangeText` for a text input that holds a NUMBER (weight, rate, price,
+ * tax %, quantity, amount): the stored 0-9 text is shown in the language's digits, and
+ * what is typed is stored in 0-9, so state and backend never hold ૦-૯.
+ *
+ *   <TextInput {...numericInput(weight, setWeight)} keyboardType="decimal-pad" />
+ */
+export const numericInput = (value: string | number | null | undefined, onChangeText?: (text: string) => void) => ({
+  value: value === null || value === undefined ? '' : localizeDigits(String(value)),
+  onChangeText: (text: string) => onChangeText?.(normalizeDigits(text)),
+});
+
+/**
+ * The same for an input that holds an IDENTIFIER (document number, vehicle, phone, GST,
+ * PAN, pincode, login code): shown exactly as stored; typed ૦-૯ are stored as 0-9.
+ */
+export const identifierInput = (value: string | number | null | undefined, onChangeText?: (text: string) => void) => ({
+  value: formatIdentifier(value),
+  onChangeText: (text: string) => onChangeText?.(normalizeDigits(text)),
+});
+
 /** An identifier exactly as stored. It exists so that leaving digits alone is a visible decision. */
 export const formatIdentifier = (value: string | number | null | undefined): string =>
   value === null || value === undefined ? '' : String(value);

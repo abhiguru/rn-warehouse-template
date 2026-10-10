@@ -36,6 +36,7 @@ import {
   touchTarget,
   typography,
   type ThemeTokens,
+  singleLineText,
 } from '@/theme/tokens';
 import { localizeDigits, t as tr } from '@/i18n';
 
@@ -159,6 +160,7 @@ export default function FioriTabBar({
               <Text
                 style={[styles.label, isFocused && styles.labelSelected]}
                 numberOfLines={1}
+                {...singleLineText()}
                 maxFontSizeMultiplier={1.6}
               >
                 {typeof label === 'string' ? label : route.name}

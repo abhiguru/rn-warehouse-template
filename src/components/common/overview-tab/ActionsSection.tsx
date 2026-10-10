@@ -10,7 +10,7 @@ import React from 'react';
 import { View, Text, Pressable, ActivityIndicator } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { iconSize } from '@/theme/tokens';
-import { overviewStyles, useOverviewColors } from './FioriStyles';
+import { useOverviewStyles, useOverviewColors } from './FioriStyles';
 import { SectionHeader } from './SectionHeader';
 
 import { showAlert } from '@/utils/alert';
@@ -65,6 +65,7 @@ export const ActionsSection: React.FC<ActionsSectionProps> = ({
   isDeleting = false,
 }) => {
   const colorStyles = useOverviewColors();
+  const overviewStyles = useOverviewStyles();
 
   // Resolve canDelete - if not explicitly provided, fall back to canEdit
   const resolvedCanDelete = canDelete ?? canEdit;

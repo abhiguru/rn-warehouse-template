@@ -8,7 +8,7 @@ import React from 'react';
 import { View, ScrollView } from 'react-native';
 import { useTokens } from '@/hooks/useTheme';
 import {
-  overviewStyles,
+  useOverviewStyles,
   useOverviewColors,
   SectionHeader,
   ContactCard,
@@ -66,6 +66,7 @@ export const GRNOverviewTab: React.FC<GRNOverviewTabProps> = ({
   is_print_loading = false,
 }) => {
   const colorStyles = useOverviewColors();
+  const overviewStyles = useOverviewStyles();
   const t = useTokens();
   const isOneTime = pricing_mode?.toUpperCase() === 'ONE_TIME';
 

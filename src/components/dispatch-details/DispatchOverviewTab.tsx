@@ -9,7 +9,7 @@ import { View, ScrollView } from 'react-native';
 import { useTokens } from '@/hooks/useTheme';
 import { t as tr } from '@/i18n';
 import {
-  overviewStyles,
+  useOverviewStyles,
   useOverviewColors,
   SectionHeader,
   ContactCard,
@@ -66,6 +66,7 @@ export const DispatchOverviewTab: React.FC<DispatchOverviewTabProps> = ({
   is_print_loading = false,
 }) => {
   const colorStyles = useOverviewColors();
+  const overviewStyles = useOverviewStyles();
   const t = useTokens();
 
   return (

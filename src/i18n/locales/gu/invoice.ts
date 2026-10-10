@@ -95,7 +95,7 @@ export const invoice: Translation<typeof source> = {
   },
   // The sheet that lists the GRNs that can be invoiced
   grnPicker: {
-    searchPlaceholder: 'આવક પાવતી નંબર અથવા વેપારી શોધો',
+    searchPlaceholder: 'આવક પાવતી નંબર કે વેપારી શોધો',
     closeListA11y: 'આવક પાવતીની યાદી બંધ કરો',
     loading: 'ઇન્વૉઇસ બનાવી શકાય એવી આવક પાવતી લોડ થઈ રહી છે…',
     loadingA11y: 'આવક પાવતી લોડ થઈ રહી છે',

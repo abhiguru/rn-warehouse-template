@@ -20,6 +20,7 @@ import {
   touchTarget,
   typography,
   type ThemeTokens,
+  singleLineText,
 } from '@/theme/tokens';
 import type { ReportPeriod } from '@/types/report.types';
 
@@ -191,6 +192,7 @@ export const PeriodSelector: React.FC<PeriodSelectorProps> = ({
               <Text
                 style={[styles.segmentText, isSelected && styles.segmentTextSelected]}
                 maxFontSizeMultiplier={1.6}
+                {...singleLineText()}
               >
                 {tr('reports.period.days', { count: option.days })}
               </Text>
@@ -218,6 +220,7 @@ export const PeriodSelector: React.FC<PeriodSelectorProps> = ({
           <Text
             style={[styles.customChipText, customSelected && styles.customChipTextSelected]}
             maxFontSizeMultiplier={1.6}
+            {...singleLineText()}
           >
             {tr('reports.period.custom')}
           </Text>

@@ -320,7 +320,8 @@ const makeStyles = (t: ThemeTokens) => ({
     paddingHorizontal: space.xl,
     justifyContent: 'center' as const,
     alignItems: 'center' as const,
-    marginRight: space.xs,
+    // The header pads by space.sm: the rest brings the button's edge to the page margin.
+    marginRight: layout.marginCompact - space.sm,
     backgroundColor: t.brand.fill,
   },
   saveButtonPressed: {

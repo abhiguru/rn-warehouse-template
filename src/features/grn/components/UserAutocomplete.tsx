@@ -11,6 +11,7 @@ import React, { useCallback } from 'react';
 import { View, Text } from 'react-native';
 import { RemoteAutocompleteInput } from '@/components/RemoteAutocompleteInput';
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
+import { formatMobile } from '@/utils/formatters';
 import { useThemedStyles } from '@/hooks/useTheme';
 import { space, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
@@ -105,7 +106,7 @@ export const UserAutocomplete: React.FC<UserAutocompleteProps> = ({
         <Text style={styles.itemName} numberOfLines={1}>
           {user.name}
         </Text>
-        {user.phone ? <Text style={styles.phoneText}>{user.phone}</Text> : null}
+        {user.phone ? <Text style={styles.phoneText}>{formatMobile(user.phone)}</Text> : null}
       </View>
     );
   }, [styles]);

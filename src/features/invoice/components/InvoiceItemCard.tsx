@@ -382,7 +382,7 @@ export const InvoiceItemCard: React.FC<InvoiceItemCardProps> = ({ item, onUpdate
                 <TextInput
                   style={styles.input}
                   accessibilityLabel={tr('invoice.itemCard.chargeA11y')}
-                  value={item.charge > 0 ? item.charge.toString() : ''}
+                  value={item.charge > 0 ? localizeDigits(item.charge.toString()) : ''}
                   onChangeText={(text) => handleFieldChange('charge', text)}
                   placeholder={localizeDigits('0.00')}
                   keyboardType="decimal-pad"
@@ -404,7 +404,7 @@ export const InvoiceItemCard: React.FC<InvoiceItemCardProps> = ({ item, onUpdate
                 <TextInput
                   style={styles.input}
                   accessibilityLabel={tr('invoice.itemCard.labourRateA11y')}
-                  value={item.labour_rate > 0 ? item.labour_rate.toString() : ''}
+                  value={item.labour_rate > 0 ? localizeDigits(item.labour_rate.toString()) : ''}
                   onChangeText={(text) => handleFieldChange('labour_rate', text)}
                   placeholder={localizeDigits('0.00')}
                   keyboardType="decimal-pad"
@@ -425,7 +425,7 @@ export const InvoiceItemCard: React.FC<InvoiceItemCardProps> = ({ item, onUpdate
                 <TextInput
                   style={styles.input}
                   accessibilityLabel={tr('invoice.itemCard.taxA11y')}
-                  value={item.tax > 0 ? item.tax.toString() : ''}
+                  value={item.tax > 0 ? localizeDigits(item.tax.toString()) : ''}
                   onChangeText={(text) => handleFieldChange('tax', text)}
                   placeholder={localizeDigits('0')}
                   keyboardType="decimal-pad"

@@ -45,7 +45,7 @@ import {
 import { canNavigateFromStep1 } from '@/features/invoice/utils/swipeNavigationHelpers';
 
 import { showAlert } from '@/utils/alert';
-import { getLanguage, normalizeDigits, t as tr, formatIdentifier } from '@/i18n';
+import { getLanguage, normalizeDigits, t as tr, formatIdentifier, identifierInput } from '@/i18n';
 import { formatFinancialYear } from '@/utils/formatters';
 export default function InvoiceEditStep1() {
   const dispatch = useAppDispatch();
@@ -392,8 +392,7 @@ export default function InvoiceEditStep1() {
           <View style={[styles.field, styles.fieldRow, !!invNoError && styles.fieldError]}>
             <TextInput
               style={[styles.fieldValue, styles.numeric]}
-              value={header.inv_no > 0 ? header.inv_no.toString() : ''}
-              onChangeText={handleInvoiceNumberChange}
+              {...identifierInput(header.inv_no > 0 ? header.inv_no : '', handleInvoiceNumberChange)}
               placeholder={tr('common.invoiceNumber')}
               placeholderTextColor={t.text.placeholder}
               keyboardType="number-pad"

@@ -645,7 +645,7 @@ export const InvoiceItemsTable: React.FC<InvoiceItemsTableProps> = ({
                 <TextInput
                   style={styles.cellInput}
                   accessibilityLabel={tr('invoice.table.cellInputA11y', { label, number: formatIdentifier(item.dispatch_no) })}
-                  value={rawValue > 0 ? rawValue.toString() : ''}
+                  value={rawValue > 0 ? localizeDigits(rawValue.toString()) : ''}
                   onChangeText={(text) => handleCellValueChange(item.temp_id, field, text)}
                   keyboardType="decimal-pad"
                   autoFocus
@@ -733,7 +733,7 @@ export const InvoiceItemsTable: React.FC<InvoiceItemsTableProps> = ({
                     <TextInput
                       style={styles.bulkInput}
                       accessibilityLabel={tr('invoice.table.chargeForA11y', { item: itemGroup.item_name })}
-                      value={currentInputs.charge}
+                      value={localizeDigits(currentInputs.charge ?? '')}
                       onChangeText={(text) => handleBulkPricingChange(groupKey, 'charge', text)}
                       placeholder={localizeDigits('0')}
                       placeholderTextColor={t.text.placeholder}
@@ -749,7 +749,7 @@ export const InvoiceItemsTable: React.FC<InvoiceItemsTableProps> = ({
                     <TextInput
                       style={styles.bulkInput}
                       accessibilityLabel={tr('invoice.table.labourRateForA11y', { item: itemGroup.item_name })}
-                      value={currentInputs.labour_rate}
+                      value={localizeDigits(currentInputs.labour_rate ?? '')}
                       onChangeText={(text) => handleBulkPricingChange(groupKey, 'labour_rate', text)}
                       placeholder={localizeDigits('0')}
                       placeholderTextColor={t.text.placeholder}
@@ -764,7 +764,7 @@ export const InvoiceItemsTable: React.FC<InvoiceItemsTableProps> = ({
                     <TextInput
                       style={styles.bulkInput}
                       accessibilityLabel={tr('invoice.table.taxPercentForA11y', { item: itemGroup.item_name })}
-                      value={currentInputs.tax}
+                      value={localizeDigits(currentInputs.tax ?? '')}
                       onChangeText={(text) => handleBulkPricingChange(groupKey, 'tax', text)}
                       placeholder={localizeDigits('0')}
                       placeholderTextColor={t.text.placeholder}

@@ -37,6 +37,7 @@ import {
   touchTarget,
   typography,
   type ThemeTokens,
+  singleLineText,
 } from '@/theme/tokens';
 
 import { showAlert } from '@/utils/alert';
@@ -365,7 +366,7 @@ export default function ItemsScreen() {
             <View style={styles.titleContainer} accessible accessibilityRole="header">
               <Text style={styles.headerTitle}>{tr('common.items')}</Text>
               {state.totalCount > 0 && (
-                <Text style={styles.headerSubtitle}>{formatCount(state.totalCount, 'item')}</Text>
+                <Text style={styles.headerSubtitle} {...singleLineText()}>{formatCount(state.totalCount, 'item')}</Text>
               )}
             </View>
           ),

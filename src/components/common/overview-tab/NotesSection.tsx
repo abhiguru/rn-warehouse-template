@@ -8,7 +8,7 @@ import React from 'react';
 import { View, Text } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { iconSize } from '@/theme/tokens';
-import { overviewStyles, useOverviewColors } from './FioriStyles';
+import { useOverviewStyles, useOverviewColors } from './FioriStyles';
 import { SectionHeader } from './SectionHeader';
 import { t } from '@/i18n';
 
@@ -22,6 +22,7 @@ export const NotesSection: React.FC<NotesSectionProps> = ({
   title: titleProp,
 }) => {
   const colorStyles = useOverviewColors();
+  const overviewStyles = useOverviewStyles();
   const title = titleProp ?? t('components.notes.remarks');
 
   return (

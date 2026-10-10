@@ -452,6 +452,11 @@ export const makeGRNListStyles = (t: ThemeTokens) => ({
     marginLeft: space.sm,
   },
 
+  // StatusTag aligns itself to the start; in the table it sits under its right-aligned header.
+  stockTag: {
+    alignSelf: 'flex-end' as const,
+  },
+
   cellValue: {
     ...typography.subhead,
     color: t.text.primary,

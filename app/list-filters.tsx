@@ -22,7 +22,7 @@ import { useFilterResultCount } from '@/features/filters/useFilterResultCount';
 import { useListFilters } from '@/features/filters/useListFilters';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { t as translate } from '@/i18n';
-import { fontWeight, iconSize, layout, radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
+import { fontWeight, iconSize, layout, radius, space, touchTarget, typography, type ThemeTokens, singleLineText } from '@/theme/tokens';
 import { showAlert } from '@/utils/alert';
 
 const makeStyles = (t: ThemeTokens) => ({
@@ -165,7 +165,7 @@ function SortAndFilterPage({ config }: { config: CountableFilterList }) {
             accessibilityRole="button"
             accessibilityLabel={pickerText(picker.noun, 'done')}
           >
-            <Text style={styles.headerAction} maxFontSizeMultiplier={1.6}>{translate('common.done')}</Text>
+            <Text style={styles.headerAction} maxFontSizeMultiplier={1.6} {...singleLineText()}>{translate('common.done')}</Text>
           </Pressable>
         ) : (
           <Pressable
@@ -177,7 +177,7 @@ function SortAndFilterPage({ config }: { config: CountableFilterList }) {
             accessibilityLabel={translate('filters.page.resetLabel')}
             accessibilityState={{ disabled: !hasDraftFilters }}
           >
-            <Text style={[styles.headerAction, !hasDraftFilters && styles.headerActionDisabled]} maxFontSizeMultiplier={1.6}>{translate('common.reset')}</Text>
+            <Text style={[styles.headerAction, !hasDraftFilters && styles.headerActionDisabled]} maxFontSizeMultiplier={1.6} {...singleLineText()}>{translate('common.reset')}</Text>
           </Pressable>
         )}
       </View>

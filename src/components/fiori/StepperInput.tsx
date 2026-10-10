@@ -146,7 +146,7 @@ export const StepperInput: React.FC<StepperInputProps> = ({
               <TextInput
                 ref={inputRef}
                 style={styles.valueInput}
-                value={inputValue}
+                value={localizeDigits(inputValue)}
                 onChangeText={handleInputChange}
                 onBlur={handleInputBlur}
                 keyboardType="decimal-pad"
@@ -244,7 +244,7 @@ export const StepperInput: React.FC<StepperInputProps> = ({
             <TextInput
               ref={inputRef}
               style={styles.valueInput}
-              value={inputValue}
+              value={localizeDigits(inputValue)}
               onChangeText={handleInputChange}
               onBlur={handleInputBlur}
               keyboardType="decimal-pad"

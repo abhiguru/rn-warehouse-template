@@ -5,7 +5,7 @@ import type { Translation } from '../../types';
 export const orders: Translation<typeof source> = {
   // The order screen of one customer.
   screen: {
-    title: '{{name}} નો ઑર્ડર',
+    title: 'ઑર્ડર: {{name}}',
     viewHistory: 'ઑર્ડરનો ઇતિહાસ જુઓ',
     addItemsToOrder: 'ઑર્ડરમાં આઇટમ ઉમેરો',
     historyError: 'ઑર્ડરનો ઇતિહાસ લોડ કરી શકાયો નથી. તમારું કનેક્શન તપાસો અને ફરી પ્રયાસ કરો.',
@@ -57,7 +57,7 @@ export const orders: Translation<typeof source> = {
     noneSelectedTitle: 'કોઈ આઇટમ પસંદ કરી નથી',
     noneSelectedMessage: 'ઓછામાં ઓછી એક આઇટમના નંગ પસંદ કરો, પછી ઉમેરો પર ટૅપ કરો.',
     searchLabel: 'સ્ટોકની આઇટમ શોધો',
-    searchPlaceholderHint: 'નામ, માર્કો અથવા વજનથી શોધો, જેમ કે ૧૦-૨૦',
+    searchPlaceholderHint: 'નામ, માર્કો કે વજનથી શોધો',
     searchItems: 'આઇટમ શોધો',
     resultsByWeight: 'વજન મુજબ {{total}} માંથી {{shown}}',
     resultsByName: 'નામ કે પેકિંગ મુજબ {{total}} માંથી {{shown}}',

@@ -38,6 +38,7 @@ import {
   touchTarget,
   typography,
   type ThemeTokens,
+  singleLineText,
 } from '@/theme/tokens';
 
 import { Avatar, StatusTag } from '@/components/ui';
@@ -366,7 +367,7 @@ export default function CustomersScreen() {
             <View style={styles.titleContainer} accessible accessibilityRole="header">
               <Text style={styles.headerTitle}>{tr('common.customers')}</Text>
               {state.totalCount > 0 && (
-                <Text style={styles.headerSubtitle}>
+                <Text style={styles.headerSubtitle} {...singleLineText()}>
                   {formatCount(state.totalCount, 'customer')}
                 </Text>
               )}

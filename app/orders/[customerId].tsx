@@ -151,7 +151,7 @@ export default function CustomerOrderScreen() {
           <View style={[styles.customHeaderContent, { paddingTop: insets.top }]}>
             <HeaderBackButton />
             <View style={styles.headerTitleContainer}>
-              <Text style={styles.headerTitle} numberOfLines={2} accessibilityRole="header">
+              <Text style={styles.headerTitle} numberOfLines={1} ellipsizeMode="middle" accessibilityRole="header">
                 {tr('orders.screen.title', { name: customerName })}
               </Text>
             </View>

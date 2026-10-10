@@ -15,7 +15,7 @@ import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { iconSize, radius, space, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { formatNumber } from '@/utils/formatters';
-import { normalizeDigits, t as tr } from '@/i18n';
+import { normalizeDigits, t as tr, localizeDigits } from '@/i18n';
 
 // ============================================================================
 // TYPES
@@ -138,7 +138,7 @@ export const QuantityWeightFields = forwardRef<QuantityWeightFieldsRef, Quantity
               isQtyLocked && styles.inputReadOnly,
               focusedField === 'qty' && !isQtyLocked && styles.inputFocused,
             ]}
-            value={qty}
+            value={localizeDigits(qty ?? '')}
             onChangeText={handleQtyChange}
             placeholder={formatNumber(0)}
             placeholderTextColor={t.text.placeholder}
@@ -171,7 +171,7 @@ export const QuantityWeightFields = forwardRef<QuantityWeightFieldsRef, Quantity
               ref={weightInputRef}
               accessibilityLabel={tr('grn.item.weightInputLabel')}
               style={styles.suffixInput}
-              value={weight}
+              value={localizeDigits(weight ?? '')}
               onChangeText={(text) => onWeightChange(normalizeDigits(text))}
               placeholder={formatNumber(0)}
               placeholderTextColor={t.text.placeholder}

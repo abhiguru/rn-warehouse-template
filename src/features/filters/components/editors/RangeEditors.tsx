@@ -6,7 +6,7 @@
 import React, { useState } from 'react';
 import { Text, TextInput, View } from 'react-native';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
-import { normalizeDigits, t as translate } from '@/i18n';
+import { normalizeDigits, t as translate, numericInput } from '@/i18n';
 import { radius, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
 import type { NumberRangeValue, TextRangeValue } from '../../types';
 
@@ -72,8 +72,7 @@ export function NumberRangeEditor({ label, value, onChange, unit, integer = fals
       <View style={[styles.field, invalid && styles.fieldError]}>
         <TextInput
           style={styles.input}
-          value={text}
-          onChangeText={onText}
+          {...numericInput(text, onText)}
           keyboardType={integer ? 'number-pad' : 'decimal-pad'}
           placeholder={translate('common.any')}
           placeholderTextColor={t.text.placeholder}
@@ -129,7 +128,7 @@ export function TextRangeEditor({ label, value, onChange, placeholder = [transla
         <TextInput
           style={styles.input}
           value={value?.[end] ?? ''}
-          onChangeText={text => set(end, text)}
+          onChangeText={text => set(end, normalizeDigits(text))}
           autoCapitalize="characters"
           autoCorrect={false}
           placeholder={translate('common.any')}

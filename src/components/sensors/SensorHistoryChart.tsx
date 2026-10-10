@@ -34,6 +34,7 @@ import {
   touchTarget,
   typography,
   type ThemeTokens,
+  singleLineText,
 } from '@/theme/tokens';
 import type { SensorHistoryReading, SensorChartDataPoint } from '@/types/sensor-history.types';
 import {
@@ -744,7 +745,7 @@ export const SensorHistoryChart: React.FC<SensorHistoryChartProps> = ({
                       size={iconSize.sm}
                       color={selected ? t.brand.onFill : t.icon.primary}
                     />
-                    <Text style={[styles.segmentText, selected && styles.segmentTextSelected]}>
+                    <Text style={[styles.segmentText, selected && styles.segmentTextSelected]} {...singleLineText()}>
                       {view === 'chart' ? tr('sensors.chart.chart') : tr('sensors.chart.table')}
                     </Text>
                   </Pressable>

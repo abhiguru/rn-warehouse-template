@@ -35,6 +35,7 @@ import {
   touchTarget,
   typography,
   type ThemeTokens,
+  singleLineText,
 } from '@/theme/tokens';
 import { Avatar, StatusTag } from '@/components/ui';
 import { formatCount, formatMobile } from '@/utils/formatters';
@@ -288,7 +289,7 @@ export default function UsersScreen() {
             <View style={styles.titleContainer} accessible accessibilityRole="header">
               <Text style={styles.title}>{tr('users.list.title')}</Text>
               {state.totalCount > 0 && (
-                <Text style={styles.subtitle}>{formatCount(state.totalCount, 'user')}</Text>
+                <Text style={styles.subtitle} {...singleLineText()}>{formatCount(state.totalCount, 'user')}</Text>
               )}
             </View>
           ),

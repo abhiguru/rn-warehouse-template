@@ -13,7 +13,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef, forwardRef, u
 import { View, Text, TextInput, Pressable, Platform } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
-import { fontWeight, iconSize, radius, space, typography, trackedText } from '@/theme/tokens';
+import { fontWeight, iconSize, radius, space, typography, trackedText, singleLineText } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { t as tr } from '@/i18n';
 
@@ -193,7 +193,7 @@ export const RackChamberPicker = forwardRef<RackChamberPickerRef, RackChamberPic
         {selected && (
           <Icon name="check" size={iconSize.sm} color={t.brand.tint} style={styles.chipCheckmark} />
         )}
-        <Text style={[styles.chipText, selected && styles.chipTextSelected]} maxFontSizeMultiplier={1.6}>
+        <Text style={[styles.chipText, selected && styles.chipTextSelected]} maxFontSizeMultiplier={1.6} {...singleLineText()}>
           {option}
         </Text>
       </Pressable>

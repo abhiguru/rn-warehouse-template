@@ -16,7 +16,7 @@ import {
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
-import { fontWeight, iconSize as iconSizes, radius, space, touchTarget, typography } from '@/theme/tokens';
+import { fontWeight, iconSize as iconSizes, radius, space, touchTarget, typography, singleLineText } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 import { formatCount } from '@/utils/formatters';
 import { localizeDigits } from '@/i18n';
@@ -152,6 +152,7 @@ export function GenericDetailTabNavigator<T extends string>({
               <Text
                 style={[dynamicStyles.label, isActive && dynamicStyles.labelActive]}
                 numberOfLines={1}
+                {...singleLineText()}
                 maxFontSizeMultiplier={1.6}
               >
                 {tab.label}

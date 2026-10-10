@@ -1,7 +1,7 @@
 /**
  * Overview tab styles (GRN, dispatch and invoice overview tabs).
  *
- * Layout lives in the static `overviewStyles`; colours, shadows and the icon
+ * Layout and type come from `useOverviewStyles()`; colours, shadows and the icon
  * colours come from `useOverviewColors()`, which is built from the semantic
  * tokens for the current brand and mode (docs/STYLE_GUIDE.md §13.6).
  */
@@ -16,24 +16,19 @@ import {
   radius,
   space,
   touchTarget,
+  trackedText,
   typography,
 } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
 
 
-/** Section header text (§13.6): footnote, semibold, capitals. */
-const sectionHeaderType = {
-  ...typography.footnote,
-  fontWeight: fontWeight.semibold,
-  letterSpacing: 0.5,
-  textTransform: 'uppercase' as const,
-};
-
 // =============================================================================
-// Static layout (no colours)
+// Layout and type (no colours)
 // =============================================================================
 
-export const overviewStyles = StyleSheet.create({
+// A factory, not a sheet built when the file is loaded: the type styles follow the
+// language (Gujarati has taller lines and no letter spacing).
+const makeOverviewStyles = (_t: ThemeTokens) => ({
   container: {
     flex: 1,
   },
@@ -50,8 +45,12 @@ export const overviewStyles = StyleSheet.create({
     paddingTop: space.xxl,
     paddingBottom: space.sm,
   },
+  // Section header text (§13.6): footnote, semibold, capitals.
   sectionHeaderText: {
-    ...sectionHeaderType,
+    ...typography.footnote,
+    fontWeight: fontWeight.semibold,
+    letterSpacing: trackedText(0.5),
+    textTransform: 'uppercase' as const,
   },
 
   // Card
@@ -61,13 +60,13 @@ export const overviewStyles = StyleSheet.create({
   },
   cardClip: {
     borderRadius: radius.card,
-    overflow: 'hidden',
+    overflow: 'hidden' as const,
   },
 
   // Object cell
   objectCellHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
     padding: space.lg,
     minHeight: layout.objectCellMinHeight,
   },
@@ -75,8 +74,8 @@ export const overviewStyles = StyleSheet.create({
     width: layout.avatar.md,
     height: layout.avatar.md,
     borderRadius: radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
     marginRight: space.md,
   },
   objectCellContent: {
@@ -100,8 +99,8 @@ export const overviewStyles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
   },
   contactAction: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
     paddingHorizontal: space.lg,
     paddingVertical: space.sm,
     minHeight: touchTarget,
@@ -113,8 +112,8 @@ export const overviewStyles = StyleSheet.create({
     width: space.xxxl,
     height: space.xxxl,
     borderRadius: radius.button,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
     marginRight: space.md,
   },
   contactActionText: {
@@ -124,14 +123,14 @@ export const overviewStyles = StyleSheet.create({
 
   // Info chips
   chipsCard: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexDirection: 'row' as const,
+    flexWrap: 'wrap' as const,
     gap: space.sm,
     marginBottom: space.md,
   },
   infoChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
     paddingHorizontal: space.md,
     paddingVertical: space.s6,
     borderRadius: radius.pill,
@@ -144,7 +143,7 @@ export const overviewStyles = StyleSheet.create({
 
   // Notes
   notesContent: {
-    flexDirection: 'row',
+    flexDirection: 'row' as const,
     padding: space.lg,
   },
   notesIcon: {
@@ -164,9 +163,9 @@ export const overviewStyles = StyleSheet.create({
 
   // Primary button (§13.1)
   primaryButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
     minHeight: touchTarget,
     borderRadius: radius.button,
     paddingHorizontal: space.lg,
@@ -178,9 +177,9 @@ export const overviewStyles = StyleSheet.create({
 
   // Secondary tint button
   secondaryTintButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
     backgroundColor: 'transparent',
     minHeight: touchTarget,
     borderRadius: radius.button,
@@ -194,9 +193,9 @@ export const overviewStyles = StyleSheet.create({
 
   // Secondary negative button
   secondaryNegativeButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
     backgroundColor: 'transparent',
     minHeight: touchTarget,
     borderRadius: radius.button,
@@ -215,8 +214,8 @@ export const overviewStyles = StyleSheet.create({
 
   // Detail rows (invoice)
   detailRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
     marginBottom: space.sm,
     gap: space.sm,
   },
@@ -225,6 +224,13 @@ export const overviewStyles = StyleSheet.create({
     ...typography.subhead,
   },
 });
+
+export type OverviewStyles = ReturnType<typeof makeOverviewStyles>;
+
+/** Layout and type for the overview tab building blocks, in the current language. */
+export function useOverviewStyles() {
+  return useThemedStyles(makeOverviewStyles);
+}
 
 // =============================================================================
 // Themed colours

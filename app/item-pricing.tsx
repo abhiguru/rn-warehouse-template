@@ -26,6 +26,7 @@ import {
   touchTarget,
   typography,
   type ThemeTokens,
+  singleLineText,
 } from '@/theme/tokens';
 import { getItemStoragePrices, deleteItemStoragePrice } from '@/services/item-pricing-service';
 import type { ItemStoragePrice, ItemPricingListParams } from '@/types/item-pricing.types';
@@ -578,7 +579,7 @@ const ItemPricingScreen: React.FC = () => {
                 accessibilityRole="button"
                 accessibilityState={{ disabled: deleting }}
               >
-                <Text style={styles.modalButtonTextSecondary}>{tr('common.cancel')}</Text>
+                <Text style={styles.modalButtonTextSecondary} {...singleLineText()}>{tr('common.cancel')}</Text>
               </Pressable>
               <Pressable
                 style={({ pressed }) => [styles.modalButton, styles.modalButtonDestructive, pressed && styles.modalButtonDestructivePressed]}
@@ -591,7 +592,7 @@ const ItemPricingScreen: React.FC = () => {
                 {deleting ? (
                   <ActivityIndicator size="small" color={t.destructive.onFill} />
                 ) : (
-                  <Text style={styles.modalButtonTextDestructive}>{tr('pricing.list.deletePrice')}</Text>
+                  <Text style={styles.modalButtonTextDestructive} {...singleLineText()}>{tr('pricing.list.deletePrice')}</Text>
                 )}
               </Pressable>
             </View>

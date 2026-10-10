@@ -27,6 +27,7 @@ import {
   touchTarget,
   typography,
   type ThemeTokens,
+  singleLineText,
 } from '@/theme/tokens';
 import { formatCount, formatDate, formatNumber, formatWeight } from '@/utils/formatters';
 import { StatusTag } from '@/components/ui';
@@ -967,7 +968,7 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
           accessibilityRole="button"
           accessibilityLabel={tr('orders.catalog.cancelAdding')}
         >
-          <Text style={styles.headerButtonTextCancel}>{tr('common.cancel')}</Text>
+          <Text style={styles.headerButtonTextCancel} {...singleLineText()}>{tr('common.cancel')}</Text>
         </Pressable>
         <Text style={styles.headerTitle} accessibilityRole="header">{tr('orders.catalog.addItems')}</Text>
         <Pressable
@@ -980,7 +981,7 @@ const ItemCatalogBrowser: React.FC<ItemCatalogBrowserProps> = ({
               : tr('orders.catalog.addCountToOrder', { items: formatCount(selectionSummary.count, 'item') })
           }
         >
-          <Text style={styles.headerButtonTextAction}>
+          <Text style={styles.headerButtonTextAction} {...singleLineText()}>
             {selectionSummary.count > 0 ? tr('orders.catalog.addCount', { count: selectionSummary.count }) : tr('common.add')}
           </Text>
         </Pressable>

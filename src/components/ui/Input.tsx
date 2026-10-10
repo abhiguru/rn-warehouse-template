@@ -26,7 +26,7 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
 import { iconSize, radius, space, touchTarget, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
-import { localizeDigits, t as tr } from '@/i18n';
+import { localizeDigits, normalizeDigits, t as tr } from '@/i18n';
 
 /** Touch area padding that brings the 20 pt clear glyph up to the minimum target. */
 const CLEAR_HIT_SLOP = (touchTarget - iconSize.md) / 2;
@@ -60,6 +60,16 @@ export interface InputProps extends TextInputProps {
   readOnly?: boolean;
   /** Show clear button when typing */
   showClearButton?: boolean;
+  /**
+   * The field holds a NUMBER (weight, rate, amount, quantity): the value is shown in
+   * the language's digits (૦-૯ in Gujarati) and `onChangeText` receives 0-9.
+   */
+  numeric?: boolean;
+  /**
+   * The field holds an IDENTIFIER (document number, phone, GST, pincode): shown exactly
+   * as stored; typed ૦-૯ reach `onChangeText` as 0-9.
+   */
+  identifier?: boolean;
 }
 
 // ============================================================================
@@ -79,6 +89,8 @@ export function Input({
   showCharacterCount = false,
   readOnly = false,
   showClearButton = true,
+  numeric = false,
+  identifier = false,
   value,
   onChangeText,
   editable = true,
@@ -99,7 +111,8 @@ export function Input({
   const isInvalid = hasError || isOverLimit;
 
   // Handle text change
-  const handleChangeText = (text: string) => {
+  const handleChangeText = (typed: string) => {
+    const text = numeric || identifier ? normalizeDigits(typed) : typed;
     setInternalValue(text);
     onChangeText?.(text);
   };
@@ -165,7 +178,7 @@ export function Input({
         <TextInput
           ref={inputRef}
           {...textInputProps}
-          value={currentValue}
+          value={numeric ? localizeDigits(currentValue) : currentValue}
           onChangeText={handleChangeText}
           editable={!isReadOnly && editable}
           selectTextOnFocus={isReadOnly}
@@ -263,7 +276,7 @@ export function PasswordInput(props: Omit<InputProps, 'secureTextEntry'>) {
  * Phone Input - Convenience wrapper with phone keyboard
  */
 export function PhoneInput(props: InputProps) {
-  return <Input {...props} keyboardType="phone-pad" />;
+  return <Input identifier {...props} keyboardType="phone-pad" />;
 }
 
 /**
@@ -284,7 +297,7 @@ export function EmailInput(props: InputProps) {
  * Number Input - Convenience wrapper with numeric keyboard
  */
 export function NumberInput(props: InputProps) {
-  return <Input {...props} keyboardType="numeric" />;
+  return <Input numeric {...props} keyboardType="numeric" />;
 }
 
 /**

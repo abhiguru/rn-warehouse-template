@@ -11,6 +11,7 @@ import React, { useCallback } from 'react';
 import { View, Text } from 'react-native';
 import { RemoteAutocompleteInput } from '@/components/RemoteAutocompleteInput';
 import { getAuthenticatedClient } from '@/config/supabaseConfig';
+import { formatMobile } from '@/utils/formatters';
 import { useThemedStyles } from '@/hooks/useTheme';
 import { space, typography } from '@/theme/tokens';
 import type { ThemeTokens } from '@/theme/tokens';
@@ -102,7 +103,7 @@ export const CustomerAutocomplete: React.FC<CustomerAutocompleteProps> = ({
         </Text>
         {customer.mobile ? (
           <Text style={styles.itemMobile} numberOfLines={1}>
-            {customer.mobile}
+            {formatMobile(customer.mobile)}
           </Text>
         ) : null}
       </View>

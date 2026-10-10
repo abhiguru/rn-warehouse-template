@@ -20,7 +20,7 @@ import { searchItems } from '@/services/item-search-service';
 
 import { showAlert } from '@/utils/alert';
 import { formatNumber } from '@/utils/formatters';
-import { normalizeDigits, t as tr } from '@/i18n';
+import { normalizeDigits, t as tr, localizeDigits } from '@/i18n';
 const FIELD_WIDTH_LARGE = 220; // Width for item name field
 const FIELD_WIDTH_QTY_WEIGHT = 117; // Qty & Weight reduced by 35% (was 180)
 const FIELD_WIDTH_RACK = 196; // Rack reduced by 30% (was 280), chips will wrap
@@ -399,7 +399,7 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                                 isQtyLocked && styles.inputReadOnly,
                                 focusedField === 'qty' && !isQtyLocked && styles.inputFocused,
                             ]}
-                            value={currentItem.qty}
+                            value={localizeDigits(currentItem.qty ?? '')}
                             onChangeText={(text) => {
                                 if (isQtyLocked) {
                                     onQtyLockedPress?.();
@@ -446,7 +446,7 @@ export const HorizontalItemForm = forwardRef<HorizontalItemFormRef, HorizontalIt
                                 ref={weightInputRef}
                                 accessibilityLabel={tr('grn.item.weightInputLabel')}
                                 style={[styles.suffixInput, styles.numericInput]}
-                                value={currentItem.weight}
+                                value={localizeDigits(currentItem.weight ?? '')}
                                 onChangeText={(text) => onFieldChange('weight', normalizeDigits(text))}
                                 placeholder={formatNumber(0)}
                                 placeholderTextColor={t.text.placeholder}

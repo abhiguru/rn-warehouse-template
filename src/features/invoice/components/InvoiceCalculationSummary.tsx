@@ -12,7 +12,7 @@ import {
   formatInvoiceDeduction,
 } from '@/utils/invoiceCalculations';
 import { InlineValidation } from '@/components/fiori';
-import { localizeDigits, normalizeDigits, t as tr } from '@/i18n';
+import { localizeDigits, normalizeDigits, t as tr, numericInput } from '@/i18n';
 
 interface InvoiceCalculationSummaryProps {
   header: InvoiceHeaderData;
@@ -456,7 +456,7 @@ export const InvoiceCalculationSummary: React.FC<InvoiceCalculationSummaryProps>
           <TextInput
             style={styles.discountInput}
             accessibilityLabel={tr('invoice.summary.discountA11y')}
-            value={discountText}
+            value={localizeDigits(discountText)}
             onChangeText={handleDiscountChange}
             placeholder={localizeDigits('0.00')}
             keyboardType={Platform.OS === 'ios' ? 'numbers-and-punctuation' : 'default'}
@@ -517,8 +517,7 @@ export const InvoiceCalculationSummary: React.FC<InvoiceCalculationSummaryProps>
               <TextInput
                 style={styles.calculatorInput}
                 accessibilityLabel={tr('invoice.summary.finalAmountA11y')}
-                value={finalAmountText}
-                onChangeText={handleFinalAmountChange}
+                {...numericInput(finalAmountText, handleFinalAmountChange)}
                 placeholder={localizeDigits(Math.round(base).toString())}
                 keyboardType="numeric"
                 placeholderTextColor={t.text.placeholder}

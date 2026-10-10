@@ -430,7 +430,7 @@ const makeStyles = (t: ThemeTokens) => ({
     paddingHorizontal: space.xl,
     justifyContent: 'center' as const,
     alignItems: 'center' as const,
-    marginRight: space.xs,
+    marginRight: layout.marginCompact - space.sm,
     backgroundColor: t.brand.fill,
   },
   saveButtonPressed: {

@@ -357,7 +357,7 @@ const GRNCardFiori = memo<GRNCardProps>(({
                       {formatNumber(Math.round(item.weight || 0))}
                     </Text>
                     <View style={[styles.tableCell, styles.colStock]}>
-                      <StatusTag status={itemStatus.status} label={formatNumber(item.stock)} icon={itemStatus.icon} />
+                      <StatusTag status={itemStatus.status} label={formatNumber(item.stock)} icon={itemStatus.icon} style={styles.stockTag} />
                     </View>
                   </View>
                 );

@@ -8,7 +8,7 @@ export const settings: Translation<typeof source> = {
   features: {
     title: 'ઍપની સુવિધાઓ',
     customersSubtitle: 'વેપારીઓનાં એકાઉન્ટ સંભાળો',
-    enrollmentReviewSubtitle: 'ચકાસાયેલા વેપારીઓને મંજૂર કરો અને ઍક્સેસ આપો',
+    enrollmentReviewSubtitle: 'વેપારીઓને મંજૂર કરો, ઍક્સેસ આપો',
     itemsSubtitle: 'સ્ટોકની આઇટમ સંભાળો',
     usersSubtitle: 'વપરાશકર્તાઓનાં એકાઉન્ટ સંભાળો',
     itemPricing: 'આઇટમના દર',
@@ -43,7 +43,7 @@ export const settings: Translation<typeof source> = {
   account: {
     title: 'એકાઉન્ટ',
     deleteAccount: 'એકાઉન્ટ ડિલીટ કરો',
-    deleteAccountSubtitle: 'તમારું એકાઉન્ટ અને ડેટા કાયમ માટે ડિલીટ કરો',
+    deleteAccountSubtitle: 'એકાઉન્ટ અને ડેટા કાયમી ડિલીટ કરો',
   },
   about: {
     title: 'ઍપ વિશે',
@@ -55,7 +55,7 @@ export const settings: Translation<typeof source> = {
   development: {
     title: 'ડેવલપમેન્ટ',
     styleGuide: 'સ્ટાઇલ ગાઇડ',
-    styleGuideSubtitle: 'હાલની બ્રાન્ડ અને મોડમાં ટોકન અને કમ્પોનન્ટ',
+    styleGuideSubtitle: 'બ્રાન્ડ અને મોડનાં ટોકન, કમ્પોનન્ટ',
   },
   footer: {
     version: 'મેનેજમેન્ટ સિસ્ટમ v{{version}}',

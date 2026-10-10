@@ -55,7 +55,7 @@ import { createLogger } from '@/utils/logger';
 
 import { showAlert } from '@/utils/alert';
 import { formatDate, toLocalISODate } from '@/utils/formatters';
-import { normalizeDigits, t as tr } from '@/i18n';
+import { numericInput, t as tr } from '@/i18n';
 import { priceTypeLabel } from '@/features/item-pricing/utils/priceLabels';
 const itemPricingFormLogger = createLogger('ItemPricingForm');
 
@@ -689,7 +689,8 @@ const ItemPricingFormScreen: React.FC = () => {
               suffix={tr('pricing.kg')}
               error={fieldErrors.weightMin}
               value={weightMin}
-              onChangeText={(text) => setWeightMin(normalizeDigits(text))}
+              onChangeText={setWeightMin}
+              numeric
               keyboardType="decimal-pad"
             />
             <FormField
@@ -700,7 +701,8 @@ const ItemPricingFormScreen: React.FC = () => {
               suffix={tr('pricing.kg')}
               error={fieldErrors.weightMax}
               value={weightMax}
-              onChangeText={(text) => setWeightMax(normalizeDigits(text))}
+              onChangeText={setWeightMax}
+              numeric
               keyboardType="decimal-pad"
             />
           </View>
@@ -747,7 +749,8 @@ const ItemPricingFormScreen: React.FC = () => {
             prefix="₹"
             error={fieldErrors.unitPrice}
             value={unitPrice}
-            onChangeText={(text) => setUnitPrice(normalizeDigits(text))}
+            onChangeText={setUnitPrice}
+            numeric
             keyboardType="decimal-pad"
           />
 
@@ -759,7 +762,8 @@ const ItemPricingFormScreen: React.FC = () => {
             prefix="₹"
             error={fieldErrors.labourRate}
             value={labourRate}
-            onChangeText={(text) => setLabourRate(normalizeDigits(text))}
+            onChangeText={setLabourRate}
+            numeric
             keyboardType="decimal-pad"
           />
 
@@ -771,7 +775,8 @@ const ItemPricingFormScreen: React.FC = () => {
             suffix="%"
             error={fieldErrors.taxPercent}
             value={taxPercent}
-            onChangeText={(text) => setTaxPercent(normalizeDigits(text))}
+            onChangeText={setTaxPercent}
+            numeric
             keyboardType="decimal-pad"
           />
 
@@ -953,6 +958,8 @@ type FormFieldProps = TextInputProps & {
   error?: string;
   prefix?: string;
   suffix?: string;
+  /** The field holds a number: shown in the language's digits, stored in 0-9. */
+  numeric?: boolean;
   containerStyle?: StyleProp<ViewStyle>;
 };
 
@@ -977,9 +984,12 @@ function FormField({
   error,
   prefix,
   suffix,
+  numeric,
   containerStyle,
   onFocus,
   onBlur,
+  value,
+  onChangeText,
   ...inputProps
 }: FormFieldProps) {
   const styles = useThemedStyles(makeStyles);
@@ -1002,6 +1012,7 @@ function FormField({
         {prefix ? <Text style={styles.affix}>{prefix}</Text> : null}
         <TextInput
           {...inputProps}
+          {...(numeric ? numericInput(value, onChangeText) : { value, onChangeText })}
           editable={!readOnly}
           style={styles.input}
           placeholderTextColor={t.text.placeholder}
@@ -1068,7 +1079,8 @@ const makeStyles = (t: ThemeTokens) => ({
     paddingHorizontal: space.xl,
     justifyContent: 'center' as const,
     alignItems: 'center' as const,
-    marginRight: space.xs,
+    // The header pads by space.sm: the rest brings the button's edge to the page margin.
+    marginRight: layout.marginCompact - space.sm,
     backgroundColor: t.brand.fill,
   },
   saveButtonPressed: {

@@ -228,3 +228,55 @@ describe('identifiers given to t are not formatted as numbers', () => {
     expect(found).toEqual([]);
   });
 });
+
+/**
+ * Type styles follow the language (docs/I18N.md rule 10): `typography.body` has a
+ * taller line and no letter spacing in Gujarati. A style built while a file is loaded
+ * (a module-level `StyleSheet.create` or constant) keeps the metrics of the language
+ * the app started in, so `typography.` is read only inside a function: a
+ * `useThemedStyles` factory, a component, a getter.
+ */
+const MODULE_LEVEL_TYPOGRAPHY_ALLOWED = new Set<string>([
+  // The tokens themselves.
+  'src/theme/tokens/metrics.ts',
+]);
+
+export function moduleLevelTypography(source: ts.SourceFile, rel: string): string[] {
+  const found: string[] = [];
+  const visit = (node: ts.Node) => {
+    const reads =
+      (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) &&
+      ts.isIdentifier(node.expression) &&
+      node.expression.text === 'typography';
+    if (reads && runsAtModuleLevel(node)) {
+      const { line } = source.getLineAndCharacterOfPosition(node.getStart());
+      found.push(`${rel}:${line + 1}  ${node.getText(source).slice(0, 60)}`);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  return found;
+}
+
+describe('typography is never read while a file is loaded', () => {
+  const check = (code: string, rel = 'src/example.tsx') => moduleLevelTypography(parse(rel, code), rel);
+
+  it('the check finds a module-level stylesheet or constant that uses typography', () => {
+    expect(check(`import { typography } from '@/theme/tokens';\nconst styles = StyleSheet.create({ title: { ...typography.headline } });`)).toEqual([
+      'src/example.tsx:2  typography.headline',
+    ]);
+    expect(check(`import { typography } from '@/theme/tokens';\nexport const TYPE = { data: typography.subhead };`)).toHaveLength(1);
+    expect(check(`import { typography } from '@/theme/tokens';\nconst size = typography['body'].fontSize;`)).toHaveLength(1);
+  });
+
+  it('the check accepts a factory, a component and a getter', () => {
+    expect(check(`import { typography } from '@/theme/tokens';\nconst makeStyles = (t: object) => ({ title: { ...typography.headline } });`)).toEqual([]);
+    expect(check(`import { typography } from '@/theme/tokens';\nfunction Title() { return typography.body.fontSize; }`)).toEqual([]);
+    expect(check(`import { typography } from '@/theme/tokens';\nexport const TYPE = { get data() { return typography.subhead; } };`)).toEqual([]);
+  });
+
+  it('no file under app/ or src/ does it', () => {
+    const found = FILES.filter(file => !MODULE_LEVEL_TYPOGRAPHY_ALLOWED.has(file.rel)).flatMap(file => moduleLevelTypography(parse(file.path), file.rel));
+    expect(found).toEqual([]);
+  });
+});

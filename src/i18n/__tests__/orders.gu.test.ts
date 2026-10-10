@@ -8,7 +8,7 @@ describe('orders in Gujarati', () => {
     expect(t('orders.catalog.addBags', { count: 1, name: 'Potato' })).toBe('Add 1 bag of Potato');
   });
   it('puts the customer name first in the screen title', () => {
-    expect(t('orders.screen.title', { name: 'રમેશ ટ્રેડર્સ' }, 'gu')).toBe('રમેશ ટ્રેડર્સ નો ઑર્ડર');
+    expect(t('orders.screen.title', { name: 'રમેશ ટ્રેડર્સ' }, 'gu')).toBe('ઑર્ડર: રમેશ ટ્રેડર્સ');
   });
   it('formats a count in Gujarati digits with Indian grouping', () => {
     expect(t('orders.catalog.addCount', { count: 1200 }, 'gu')).toBe('ઉમેરો (૧,૨૦૦)');

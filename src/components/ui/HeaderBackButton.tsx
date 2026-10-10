@@ -9,7 +9,7 @@ import { Platform, Pressable, Text, type StyleProp, type ViewStyle } from 'react
 import { router } from 'expo-router';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles, useTokens } from '@/hooks/useTheme';
-import { iconSize, space, touchTarget, typography, type ThemeTokens } from '@/theme/tokens';
+import { iconSize, space, touchTarget, typography, type ThemeTokens, singleLineText } from '@/theme/tokens';
 import { t as tr } from '@/i18n';
 
 export const BACK_GLYPH = Platform.OS === 'ios' ? 'chevron-left' : 'arrow-left';
@@ -52,7 +52,7 @@ export function HeaderBackButton({ onPress, label: labelProp, color, style, test
       testID={testID}
     >
       <Icon name={BACK_GLYPH} size={iconSize.lg} color={tint} />
-      <Text style={[styles.label, { color: tint }]} maxFontSizeMultiplier={1.6}>
+      <Text style={[styles.label, { color: tint }]} maxFontSizeMultiplier={1.6} {...singleLineText()}>
         {label}
       </Text>
     </Pressable>

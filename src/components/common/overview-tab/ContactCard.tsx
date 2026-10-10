@@ -9,7 +9,7 @@ import React from 'react';
 import { View, Text, Pressable, Linking } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { iconSize } from '@/theme/tokens';
-import { overviewStyles, useOverviewColors } from './FioriStyles';
+import { useOverviewStyles, useOverviewColors } from './FioriStyles';
 import { t } from '@/i18n';
 
 export interface ContactDetails {
@@ -48,6 +48,7 @@ export const ContactCard: React.FC<ContactCardProps> = ({
   iconBgColor,
 }) => {
   const colorStyles = useOverviewColors();
+  const overviewStyles = useOverviewStyles();
 
   const handlePhonePress = (phoneNumber: string) => {
     Linking.openURL(`tel:${phoneNumber}`);

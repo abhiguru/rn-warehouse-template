@@ -9,7 +9,7 @@ import React from 'react';
 import { View, Text } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { iconSize } from '@/theme/tokens';
-import { overviewStyles, useOverviewColors } from './FioriStyles';
+import { useOverviewStyles, useOverviewColors } from './FioriStyles';
 
 interface InfoChipProps {
   icon: string;
@@ -20,6 +20,7 @@ interface InfoChipProps {
 
 export const InfoChip: React.FC<InfoChipProps> = ({ icon, label, iconColor }) => {
   const colorStyles = useOverviewColors();
+  const overviewStyles = useOverviewStyles();
 
   return (
     <View style={[overviewStyles.infoChip, colorStyles.infoChip]} accessible accessibilityLabel={label}>
