@@ -132,11 +132,6 @@ export function CustomerDetailsStep({ mode, customerId }: CustomerDetailsStepPro
   );
 
   const handleNext = useCallback(async () => {
-    console.log('[CustomerDetailsStep] handleNext called, currentStep:', currentStep, 'formData:', {
-      name: formData.name,
-      mobile: formData.mobile,
-    });
-
     // Validate first to get errors directly
     const validationResult = await validateCurrentStep();
 

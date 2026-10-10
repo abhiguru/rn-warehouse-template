@@ -129,3 +129,31 @@ describe('checking a GRN again just before saving', () => {
     expect(result.ok).toBe(false);
   });
 });
+
+describe('what a failed invoice call writes to the device log', () => {
+  // PostgreSQL puts row values into `details` and `hint`; they stay out of the log.
+  const error = {
+    code: '23505',
+    message: 'duplicate key value violates unique constraint "unique_inv_no_per_year"',
+    details: 'Key (customer_name, discount_reason)=(Example Traders, Damaged bags) already exists.',
+    hint: 'Row of Example Traders',
+  };
+  const logged = (spy: jest.SpyInstance) => spy.mock.calls.map((call) => call.map((part: unknown) => (typeof part === 'string' ? part : JSON.stringify(part))).join(' ')).join('\n');
+
+  it('has the error code and message, not the row values', async () => {
+    const errorLog = console.error as unknown as jest.SpyInstance;
+    const otherLogs = [console.log as unknown as jest.SpyInstance, console.warn as unknown as jest.SpyInstance];
+    mockRpc({ data: null, error });
+
+    await createInvoice(payload);
+    await updateInvoice('33333333-3333-4444-8555-666666666666', payload);
+
+    const text = logged(errorLog);
+    expect(text).toContain('23505');
+    expect(text).toContain('unique_inv_no_per_year');
+    for (const spy of [errorLog, ...otherLogs]) {
+      expect(logged(spy)).not.toContain('Example Traders');
+      expect(logged(spy)).not.toContain('Damaged bags');
+    }
+  });
+});

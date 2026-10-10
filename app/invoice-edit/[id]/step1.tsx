@@ -156,7 +156,7 @@ export default function InvoiceEditStep1() {
         showAlert(tr('invoice.form.grnLoadFailedTitle'), serverText(response.message, tr('common.checkConnection')));
       }
     } catch (error: any) {
-      console.error('[InvoiceEditStep1] Error loading GRN data:', error);
+      console.error('[InvoiceEditStep1] Error loading GRN data:', error instanceof Error ? error.message : String(error));
       // Clear failed GRN selection and reset items
       dispatch(setSelectedGrId(null));
       dispatch(setItems([]));

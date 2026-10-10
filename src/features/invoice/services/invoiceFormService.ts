@@ -14,6 +14,22 @@ import { t } from '@/i18n';
 import { toLocalISODate } from '@/utils/formatters';
 import { calculateItemAmounts } from '@/utils/invoiceCalculations';
 import { serverReason, serverText } from '@/utils/serverText';
+import { createLogger } from '@/utils/logger';
+
+const invoiceFormLogger = createLogger('InvoiceFormService');
+
+/**
+ * What goes to the device log for a failed call: the error's code and message.
+ * A PostgREST error also carries `details` and `hint`, where PostgreSQL repeats
+ * row values (a customer name, an amount, a discount reason); those are left out.
+ */
+const errorForLog = (error: unknown): { code?: string; message: string } => {
+  const source = (error ?? {}) as { code?: unknown; message?: unknown };
+  return {
+    code: typeof source.code === 'string' ? source.code : undefined,
+    message: typeof source.message === 'string' ? source.message : String(error),
+  };
+};
 
 /** The server's words for a GRN that the preview refuses: not fully dispatched, or already invoiced. */
 const NOT_INVOICEABLE = /not (be )?ready for invoicing/i;
@@ -82,7 +98,7 @@ export const getNextInvoiceNumber = async (
     const { data, error } = await authenticatedClient.rpc('get_next_invoice_number');
 
     if (error) {
-      console.error('[InvoiceFormService] RPC error:', error.message);
+      invoiceFormLogger.error('RPC error:', errorForLog(error));
       throw new Error(serverText(error.message, t('invoice.service.nextNumberFailed')));
     }
 
@@ -110,7 +126,7 @@ export const getNextInvoiceNumber = async (
     };
   } catch (error: any) {
     // Handled: the form then asks for the number to be typed.
-    console.warn('[InvoiceFormService] Error in getNextInvoiceNumber:', error);
+    invoiceFormLogger.warn('Error in getNextInvoiceNumber:', errorForLog(error));
     // Return 1 as default for first invoice of the year
     return {
       success: false,
@@ -144,7 +160,7 @@ export const getInvoiceableGrns = async (
     });
 
     if (error) {
-      console.error('[InvoiceFormService] Error fetching invoiceable GRNs:', error);
+      invoiceFormLogger.error('Error fetching invoiceable GRNs:', errorForLog(error));
       throw new Error(serverText(error.message, t('invoice.service.grnsFailed')));
     }
 
@@ -198,7 +214,7 @@ export const getInvoiceableGrns = async (
       data: grns,
     };
   } catch (error: any) {
-    console.error('[InvoiceFormService] Error in getInvoiceableGrns:', error);
+    invoiceFormLogger.error('Error in getInvoiceableGrns:', errorForLog(error));
     return {
       success: false,
       data: [],
@@ -230,7 +246,7 @@ export const loadInvoiceFormData = async (
     );
 
     if (error) {
-      console.error('[InvoiceFormService] Error loading invoice form data:', error);
+      invoiceFormLogger.error('Error loading invoice form data:', errorForLog(error));
       throw new Error(serverText(error.message, t('invoice.service.formDataFailed')));
     }
 
@@ -394,7 +410,7 @@ export const loadInvoiceFormData = async (
       },
     };
   } catch (error: any) {
-    console.error('[InvoiceFormService] Error in loadInvoiceFormData:', error);
+    invoiceFormLogger.error('Error in loadInvoiceFormData:', errorForLog(error));
     return {
       success: false,
       code: error instanceof GrnNotInvoiceableError ? 'not_invoiceable' : undefined,
@@ -515,9 +531,8 @@ export const createInvoice = async (
       };
     });
 
-    console.log('[InvoiceFormService] Calling save_invoice RPC with payload:', {
+    invoiceFormLogger.debug('Calling save_invoice RPC with payload:', {
       invoiceNo: invoiceData.inv_no,
-      customer: invoiceData.customer_name,
       itemsCount: invoiceItems.length,
     });
 
@@ -531,7 +546,7 @@ export const createInvoice = async (
     const { data, error } = await authenticatedClient.rpc('save_invoice', rpcPayload);
 
     if (error) {
-      console.error('[InvoiceFormService] RPC error:', error);
+      invoiceFormLogger.error('RPC error:', errorForLog(error));
       throw new Error(invoiceSaveMessage(error.message, t('invoice.service.createFailed')));
     }
 
@@ -549,7 +564,7 @@ export const createInvoice = async (
       },
     };
   } catch (error: any) {
-    console.error('[InvoiceFormService] Error in createInvoice:', error);
+    invoiceFormLogger.error('Error in createInvoice:', errorForLog(error));
     return {
       success: false,
       data: {
@@ -594,7 +609,7 @@ export const loadInvoiceData = async (
     ]);
 
     if (error) {
-      console.error('[InvoiceFormService] RPC error:', error);
+      invoiceFormLogger.error('RPC error:', errorForLog(error));
       throw new Error(serverText(error.message, t('invoice.service.fetchFailed')));
     }
 
@@ -738,7 +753,7 @@ export const loadInvoiceData = async (
       message: t('invoice.service.loaded'),
     };
   } catch (error: any) {
-    console.error('[InvoiceFormService] Error loading invoice:', error);
+    invoiceFormLogger.error('Error loading invoice:', errorForLog(error));
     return {
       success: false,
       data: {
@@ -816,7 +831,7 @@ export const updateInvoice = async (
     });
 
     if (error) {
-      console.error('[InvoiceFormService] RPC error:', error);
+      invoiceFormLogger.error('RPC error:', errorForLog(error));
       throw new Error(invoiceSaveMessage(error.message, t('invoice.service.updateFailed')));
     }
 
@@ -842,7 +857,7 @@ export const updateInvoice = async (
       message: serverText(result.message, t('invoice.service.updated')),
     };
   } catch (error: any) {
-    console.error('[InvoiceFormService] Error updating invoice:', error);
+    invoiceFormLogger.error('Error updating invoice:', errorForLog(error));
     return {
       success: false,
       data: { invoice_id: '', invoice_no: 0 },
