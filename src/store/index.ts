@@ -12,6 +12,7 @@ import dispatchFormReducer from './slices/dispatchFormSlice';
 import invoiceFormReducer from './slices/invoiceFormSlice';
 import customerFormReducer from './slices/customerFormSlice';
 import filterReducer from './slices/filterSlice';
+import listFilterReducer from './slices/listFilterSlice';
 import themeReducer from './slices/themeSlice';
 
 // Import middleware
@@ -25,6 +26,8 @@ const rootReducer = combineReducers({
   invoiceForm: invoiceFormReducer,
   customerForm: customerFormReducer,
   filter: filterReducer,
+  // Session only: not in the persist whitelist below.
+  listFilters: listFilterReducer,
   theme: themeReducer,
 });
 

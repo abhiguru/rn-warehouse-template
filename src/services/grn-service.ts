@@ -43,6 +43,8 @@ export interface GRNFilters {
   stock_status?: 'all' | 'in_stock' | 'out_of_stock';
   weight_min?: number;
   weight_max?: number;
+  /** Quick search: every word must match the number, customer, item, package, rack or vehicle. */
+  search?: string;
 }
 
 /**
@@ -180,6 +182,7 @@ export const getAllGRNItems = async (params: GRNListParams = {}): Promise<GRNLis
 
       if (filters.weight_min !== undefined) cleanFilters.weight_min = filters.weight_min;
       if (filters.weight_max !== undefined) cleanFilters.weight_max = filters.weight_max;
+      if (filters.search?.trim()) cleanFilters.search = filters.search.trim();
 
       if (Object.keys(cleanFilters).length > 0) {
         rpcParams.p_filters = cleanFilters;

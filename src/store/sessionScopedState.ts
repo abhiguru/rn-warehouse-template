@@ -10,6 +10,7 @@ import { resetForm as resetGrn } from './slices/grnFormSlice';
 import { resetForm as resetDispatch } from './slices/dispatchFormSlice';
 import { resetForm as resetInvoice } from './slices/invoiceFormSlice';
 import { resetForm as resetCustomer } from './slices/customerFormSlice';
+import { resetAllListFilters } from './slices/listFilterSlice';
 import { clearAllCaches } from '@/utils/cacheManager';
 import { sweepSharedDocuments } from '@/utils/shareDocument';
 
@@ -23,6 +24,8 @@ export async function clearSessionScopedState(
   dispatch(resetDispatch());
   dispatch(resetInvoice());
   dispatch(resetCustomer());
+  // Filters and searches name customers and items of this session's facility.
+  dispatch(resetAllListFilters());
   await clearAllCaches();
   // Local teardown must not fail because a cached file could not be removed.
   await sweepSharedDocuments().catch(() => {});
