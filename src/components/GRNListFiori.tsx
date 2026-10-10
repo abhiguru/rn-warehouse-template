@@ -18,7 +18,7 @@ import {
   LayoutAnimation,
   ActivityIndicator,
 } from 'react-native';
-import { FlashList } from '@shopify/flash-list';
+import { FlashList, type FlashListRef } from '@shopify/flash-list';
 import {
   FlattenedItem,
   flattenSections,
@@ -643,6 +643,11 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({
   // Sort state
   const [sortBy, setSortBy] = useState<SortField>('grNo');
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
+  const listRef = useRef<FlashListRef<FlattenedItem<GRNGroupData>>>(null);
+  // A new sort starts from its first row, wherever the list was scrolled to.
+  useEffect(() => {
+    listRef.current?.scrollToOffset({ offset: 0, animated: false });
+  }, [sortBy, sortOrder]);
 
   // Expand all state
   const [allExpanded, setAllExpanded] = useState(false);
@@ -1071,7 +1076,10 @@ const GRNListFiori: React.FC<GRNListFioriProps> = ({
       {/* Main content */}
       {flattenedData.length > 0 ? (
         <FlashList
+          ref={listRef}
           data={flattenedData}
+          // Re-sorted lists must not stay anchored on the row that was on top before.
+          maintainVisibleContentPosition={{ disabled: true }}
           renderItem={renderItem}
           keyExtractor={(item: FlattenedItem<GRNGroupData>) => item.key}
           getItemType={getItemType}

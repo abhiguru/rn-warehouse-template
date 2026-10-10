@@ -20,7 +20,7 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo, memo } from 'react';
 import { View, Text, StyleSheet, RefreshControl, Pressable, LayoutAnimation } from 'react-native';
 
-import { FlashList } from '@shopify/flash-list';
+import { FlashList, type FlashListRef } from '@shopify/flash-list';
 import { ActivityIndicator, Badge, IconButton, Portal, Snackbar } from 'react-native-paper';
 import { router } from 'expo-router';
 import { useFocusEffect } from 'expo-router';
@@ -304,6 +304,7 @@ FilterChips.displayName = 'FilterChips';
 const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => {
   const reduxDispatch = useAppDispatch();
   const fetchInProgressRef = useRef(false);
+  const listRef = useRef<FlashListRef<FlattenedItem<Dispatch>>>(null);
 
   // Theme
   const styles = useThemedStyles(makeStyles);
@@ -594,6 +595,11 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
     setSnackbarVisible(false);
   }, []);
 
+  // A new sort starts from its first row, wherever the list was scrolled to.
+  useEffect(() => {
+    listRef.current?.scrollToOffset({ offset: 0, animated: false });
+  }, [sortField, sortOrder]);
+
   const toggleSortField = useCallback(() => {
     setSortField(prev => prev === 'dispDate' ? 'dispNo' : 'dispDate');
   }, []);
@@ -790,7 +796,10 @@ const DispatchFlashList: React.FC<DispatchFlashListProps> = ({ customerId }) => 
 
       {/* FlashList - The key to performance */}
       <FlashList
+        ref={listRef}
         data={flattenedData}
+        // Re-sorted lists must not stay anchored on the row that was on top before.
+        maintainVisibleContentPosition={{ disabled: true }}
         renderItem={renderItem}
         keyExtractor={keyExtractor}
         getItemType={getItemType}
