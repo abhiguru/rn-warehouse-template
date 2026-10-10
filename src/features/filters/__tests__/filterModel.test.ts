@@ -165,3 +165,19 @@ describe('invoice number range chip', () => {
     expect(describeValue(field, { min: 1200, max: 1300 })).not.toMatch(/[૦-૯,]/);
   });
 });
+
+// X6-14: what a stored Customer filter becomes in the request, per account.
+describe('a stored customer filter in the request', () => {
+  const stored = { customers: [{ id: 'c1', label: 'A' }, { id: 'c9', label: 'Taken away' }] };
+  const sentCustomers = (values: typeof stored, ctx: FilterContext) =>
+    (GRN_FILTERS.toRequest(normalizeValues(GRN_FILTERS, values, ctx), undefined, ctx) as any).p_filters?.customer_ids;
+
+  it('does not send a customer the account is no longer assigned', () => {
+    expect(sentCustomers(stored, twoCustomers)).toEqual(['c1']);
+    expect(sentCustomers({ customers: [{ id: 'c9', label: 'Taken away' }] }, twoCustomers)).toBeUndefined();
+  });
+
+  it('sends whatever a warehouse account picked', () => {
+    expect(sentCustomers(stored, staff)).toEqual(['c1', 'c9']);
+  });
+});
