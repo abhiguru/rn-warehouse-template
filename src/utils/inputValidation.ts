@@ -96,8 +96,8 @@ export const validatePhone = (phone: unknown, fieldName: string = t('validation.
   // ૦-૯ typed on a Gujarati keyboard mean the same as 0-9.
   const sanitized = normalizeDigits(sanitizeString(String(phone)));
 
-  // Remove country code if present
-  const phoneNumber = sanitized.replace(/^91/, '');
+  // Remove the country code only from a 12-digit number: a 10-digit number may begin with 91.
+  const phoneNumber = /^91\d{10}$/.test(sanitized) ? sanitized.slice(2) : sanitized;
 
   if (!PATTERNS.PHONE.test(phoneNumber)) {
     validationLogger.warn(`Invalid phone format for ${fieldName}`);

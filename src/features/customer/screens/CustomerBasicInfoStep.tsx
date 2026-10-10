@@ -17,7 +17,8 @@ import { useCustomerForm } from '@/hooks/useCustomerForm';
 import { GenericStepIndicatorHeader } from '@/components/GenericStepIndicatorHeader';
 import { CUSTOMER_STEP_NUMBERS, getCompletedSteps } from '@/constants/customerSteps';
 import { customerSteps } from '@/features/customer/customerStepLabels';
-import { normalizeDigits, t as tr } from '@/i18n';
+import { t as tr } from '@/i18n';
+import { nationalMobileDigits } from '@/utils/formatters';
 import { CustomerFormMode } from '@/types/customer.types';
 
 import { showAlert } from '@/utils/alert';
@@ -201,10 +202,10 @@ export function CustomerBasicInfoStep({ mode, customerId }: CustomerBasicInfoSte
                   focusedField === 'mobile' && styles.inputFocused,
                   validationErrors.mobile && styles.inputError,
                 ]}
-                value={formData.mobile.replace(/^91/, '')}
+                value={nationalMobileDigits(formData.mobile)}
                 onChangeText={(text) => {
                   // Remove non-digits and limit to 10 chars
-                  const cleaned = normalizeDigits(text).replace(/\D/g, '').slice(0, 10);
+                  const cleaned = nationalMobileDigits(text).slice(0, 10);
                   updateMobile(cleaned);
                 }}
                 placeholder={tr('customers.form.mobilePlaceholder')}

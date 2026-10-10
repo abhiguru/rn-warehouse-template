@@ -2,7 +2,7 @@
  * Shared formatting utilities for consistent display across the app
  */
 
-import { getLanguage, localizeDigits } from '@/i18n/language';
+import { getLanguage, localizeDigits, normalizeDigits } from '@/i18n/language';
 import { commonWords } from '@/i18n/locales/common';
 
 /** The calendar and unit words of the app's language. */
@@ -191,6 +191,19 @@ export const formatDateTime = (date: string | Date | null | undefined): string =
  */
 export const formatFinancialYear = (year: string | number | null | undefined): string =>
   year === null || year === undefined ? '' : localizeDigits(String(year));
+
+/**
+ * The 10-digit national number in a typed or stored mobile number. The country
+ * code is dropped only from a 12-digit number and a trunk 0 only from an
+ * 11-digit one: "9198765432" is a complete number that happens to begin with
+ * 91. Anything else is returned as its digits. Digits typed as ૦-૯ count.
+ */
+export const nationalMobileDigits = (mobile: string | null | undefined): string => {
+  const digits = normalizeDigits(mobile ?? '').replace(/\D/g, '');
+  if (digits.length === 12 && digits.startsWith('91')) return digits.slice(2);
+  if (digits.length === 11 && digits.startsWith('0')) return digits.slice(1);
+  return digits;
+};
 
 /**
  * Mobile number with the +91 prefix and 5 + 5 grouping (§12.3):

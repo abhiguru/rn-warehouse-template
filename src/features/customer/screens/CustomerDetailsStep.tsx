@@ -28,6 +28,7 @@ import { GenericStepIndicatorHeader } from '@/components/GenericStepIndicatorHea
 import { CUSTOMER_STEP_NUMBERS, getCompletedSteps } from '@/constants/customerSteps';
 import { customerSteps } from '@/features/customer/customerStepLabels';
 import { normalizeDigits, t as tr } from '@/i18n';
+import { nationalMobileDigits } from '@/utils/formatters';
 import { CustomerFormMode } from '@/types/customer.types';
 
 import { showAlert } from '@/utils/alert';
@@ -403,9 +404,9 @@ export function CustomerDetailsStep({ mode, customerId }: CustomerDetailsStepPro
                 label={tr('customers.form.contactMobile')}
                 prefix="+91"
                 error={validationErrors.contact_mobile}
-                value={formData.contact_mobile.replace(/^91/, '')}
+                value={nationalMobileDigits(formData.contact_mobile)}
                 onChangeText={(text) => {
-                  const cleaned = normalizeDigits(text).replace(/\D/g, '').slice(0, 10);
+                  const cleaned = nationalMobileDigits(text).slice(0, 10);
                   updateContactMobile(cleaned);
                 }}
                 placeholder={tr('customers.form.mobilePlaceholder')}

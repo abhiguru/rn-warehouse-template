@@ -8,6 +8,7 @@
 import * as yup from 'yup';
 import { CustomerFormData, CustomerValidationErrors } from '@/types/customer.types';
 import { normalizeDigits, t } from '@/i18n';
+import { nationalMobileDigits } from '@/utils/formatters';
 
 // Messages are functions so that each one is read in the language of the moment it is shown.
 const maxLength = (max: number) => () => t('customers.validation.maxLength', { max });
@@ -62,9 +63,7 @@ export const basicInfoSchema = yup.object().shape({
     .required(() => t('customers.validation.mobileRequired'))
     .test('valid-mobile', mobileInvalid, (value) => {
       if (!value) return false;
-      // Remove country code if present
-      const cleaned = normalizeDigits(value).replace(/^91/, '').replace(/\D/g, '');
-      return cleaned.length === 10 && /^[6-9]\d{9}$/.test(cleaned);
+      return /^[6-9]\d{9}$/.test(nationalMobileDigits(value));
     }),
 
   email: yup
@@ -143,8 +142,7 @@ export const detailsSchema = yup.object().shape({
     .transform((value) => (value === '' ? null : value))
     .test('valid-contact-mobile', mobileInvalid, (value) => {
       if (!value || value === '') return true;
-      const cleaned = normalizeDigits(value).replace(/^91/, '').replace(/\D/g, '');
-      return cleaned.length === 10 && /^[6-9]\d{9}$/.test(cleaned);
+      return /^[6-9]\d{9}$/.test(nationalMobileDigits(value));
     }),
 
   contact_email: yup
@@ -380,12 +378,9 @@ export async function validateField(
  */
 export function formatMobile(mobile: string): string {
   if (!mobile) return '';
-  // Remove all non-digits
-  const digits = normalizeDigits(mobile).replace(/\D/g, '');
-  // Remove leading 91 if present
-  const cleaned = digits.replace(/^91/, '');
+  const national = nationalMobileDigits(mobile);
   // Return with 91 prefix
-  return cleaned.length === 10 ? `91${cleaned}` : mobile;
+  return national.length === 10 ? `91${national}` : mobile;
 }
 
 /**
